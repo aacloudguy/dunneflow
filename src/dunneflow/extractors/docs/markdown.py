@@ -289,6 +289,16 @@ class _Scanner:
                 self.reporting = bool(self.trail and reports_rather_than_rules(self.trail))
                 if self.in_defs and _is_term_shaped(head.text):
                     self.pending = (head.text, head.line, [])
+                # A heading is prose too, and it is where a plan document states which
+                # plan it is. Skipping it made the most canonical governance document
+                # of all -- one titled by its id and never repeating it in the body --
+                # contribute nothing to the traceability join. 58 real ids on Mensores
+                # were invisible for this reason. The detector is unchanged; only the
+                # lines it is offered are.
+                if has_annotation(head.text):
+                    self.facts.annotations.extend(
+                        mine_annotations(head.text, head.line)
+                    )
                 i += 1
                 continue
 
@@ -362,9 +372,16 @@ class _Scanner:
                         # code actually uses is decided later, at binding, not here.
                         self._add_def(row[t], row[mean], i + 3 + r,
                                       DefForm.TABLE_ROW, " | ".join(row))
-        for line in self.lines[i:j]:
+        for offset, line in enumerate(self.lines[i:j]):
             for m in BACKTICK.finditer(line):
                 self.facts.refs.append(DocRef(DocRefKind.CODE, m.group(1).strip(), i + 1))
+            # A roadmap is a table, and a plan index is a table. Consuming table rows
+            # without offering them to the annotation detector made every governance id
+            # stated only in a table invisible to the traceability join -- `ADR-0057` is
+            # named in `.groma/ROADMAP.md` and was reported as undocumented work.
+            # Rule 12 in the other direction: a row is prose, and prose is where ids live.
+            if has_annotation(line):
+                self.facts.annotations.extend(mine_annotations(line, i + 1 + offset))
         return j
 
     def _deflist(self, i: int) -> int:
@@ -424,6 +441,18 @@ class _Scanner:
                 text += " " + self.lines[j].strip()
                 j += 1
             is_item = False
+
+        # The unit's continuation lines never pass through the main loop, so anything
+        # stated on the second line of a wrapped bullet was invisible to the annotation
+        # detector. `ADR-0045` authored "at Plan 44-01 APPLY" on line 4 of a bullet
+        # beginning on line 2, and the plan read as undocumented work in consequence.
+        # Third instance of one defect: a branch that consumes lines without offering
+        # them to every detector that wants them.
+        for k in range(i + 1, j):
+            if not self.mask[k] and has_annotation(self.lines[k]):
+                self.facts.annotations.extend(
+                    mine_annotations(self.lines[k], k + 1)
+                )
 
         self._maybe_rule(_text(text), i + 1, is_item)
         return max(j, i + 1)

@@ -25,6 +25,7 @@ from .glossary import render_glossary
 from .mermaid import command_tree_diagram, flow_diagram
 from .naming import render_naming
 from .network import render_network
+from .traceability import render_traceability
 
 # Diagrams are bounded because a picture of 4,500 nodes conveys nothing; every
 # routine a diagram omits is listed in full beneath it. Reference lists are never
@@ -81,6 +82,7 @@ def render_all(store: Store, out_dir: Path, root: Path, program: str,
         # eleven words" is a finding; an absent glossary is a silence.
         render_glossary(store, docs, out_dir, root, program, stamp, docs_root),
         render_naming(store, docs, out_dir, root, program, stamp, docs_root),
+        render_traceability(store, docs, out_dir, root, program, stamp, docs_root),
     ]
     return [w for w in written if w]
 

@@ -406,7 +406,7 @@ class FileFacts:
 
 # Bump whenever the stored shape or the meaning of an extracted doc fact changes.
 # Separate from SCHEMA_VERSION so a prose rule change does not discard the code graph.
-DOC_SCHEMA_VERSION = 2
+DOC_SCHEMA_VERSION = 5
 
 
 class DocFormat(StrEnum):

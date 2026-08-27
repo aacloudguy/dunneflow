@@ -459,18 +459,66 @@ Still open on this half, in the order they are likely to matter:
   conservative; splitting resolver config from extraction config would fix it and has
   not been worth 18 seconds yet.
 
+### Built 2026-08-27: the traceability report
+
+`12-traceability.md`, written every run. Governance ids normalised for separator and
+zero-padding, joined across `annotations` and `doc_annotations` via `ATTACH`. No model.
+
+**Seven bands, not two lists.** An id is not traced or untraced; it has a standing, set
+by whether any document is *about* it — names it in a title or a top-two-level heading
+— and whether the code cites it. Traced (298) · thinly traced (190) · undocumented work
+(29) · likely landed (94) · possibly landed (45) · no trace in code (31) · passing
+reference (748). Every band states what would make a placement in it wrong, and every id
+is listed with the evidence that placed it, so a reader can move it.
+
+**"Planned and never built" is not observable, and the page says so.** A plan can land
+and never be cited in a comment; the absence looks identical. What *is* observable is
+whether the code symbols a plan's document names actually exist — and that signal needed
+hard filtering, because rule 5 applies to it exactly. Only symbols unique in the program
+count (3,378 of 3,757 names), Python builtins are excluded on top (`ADR-59`'s entire
+claim to having landed was the word `list`), and the surviving names are printed as the
+whole of the evidence. Population is counted over identities, not rows: 570 names sit in
+both `structures` and `classes`, and summing rows would have disqualified exactly the
+distinctive type names a plan is most likely to cite.
+
+**Three extractor recall gaps, one defect.** See rule 15 in `CLAUDE.md`. Headings, table
+rows and the continuation lines of wrapped bullets were each consumed by a branch that
+mined what it wanted and passed nothing on. `ADR-0057` is named in `.groma/ROADMAP.md`
+and `Plan 44-01` in `ADR-0045`; both were reported as built-without-a-plan until fixed.
+Undocumented work fell 59 → 29 and traceability rose 89% → 93%. `DOC_SCHEMA_VERSION`
+2 → 5 across the three, because the fingerprint covers prose YAML and not extractor code
+— rule 12's gap, worth closing properly.
+
+**Counting.** 574 annotation rows are one marker caught by two detectors (`ISS-014`
+matches ISSUE and TICKET both). Deduplicated on exactly the triple the shipped query
+selects, so the printed count and the query beside it cannot disagree — rule 13, now
+asserted by a test across the `ATTACH`.
+
+**`dunneflow query --docs`** attaches the document store as `docs`, which is what makes
+a cross-store claim reproducible at all.
+
+Still open on this half:
+
+* **An id stated only in frontmatter or a filename is invisible.** 15 of the remaining
+  29 "undocumented work" ids have a plan file on disk whose *name* encodes the id —
+  `68-03-PLAN.md` declares itself as `phase: 68-front-door-extraction` / `plan: 03` in
+  YAML and the string `Plan 68-03` appears nowhere in the corpus. Composing an id from
+  frontmatter keys is a naming convention, so it belongs in `detectors/*.yaml` as a
+  config decision, not in a guess. This is the single biggest remaining false-positive
+  source in the band.
+* **The mirror query** — vocabulary the documentation defines that the program never
+  uses (`tabularium`) — is still one query away and still not built. Tom notes there is
+  a `tabularium.db` referenced frequently, so the `.db` suffix may be defeating the
+  term matcher; worth checking before assuming drift.
+* **The band boundary at three symbols** is a threshold, printed so it can be argued
+  with, and not yet argued with against a second corpus.
+
 ### Next, in order
 
 **1. ~~The documentation extractor.~~ ~~The glossary and naming-standard renderers.~~
 Done — see above.**
 
-**2. The traceability report.** Governance ids normalised for separator and zero-padding
-(`ADR-0001` == `ADR 1`), joined across `annotations` and `doc_annotations` via `ATTACH`.
-Three complete lists: traceable in both, code-only (built without a plan), docs-only
-(planned and never annotated). Both halves are now ingested — 1,230 distinct ids in
-prose, 530 in code annotations — so this is a renderer and a query, nothing more. Needs
-no model, and is the first thing that answers "what was built without a plan, and what
-was planned without being built".
+**2. ~~The traceability report.~~ Done — see "Built 2026-08-27: the traceability report" above.**
 
 **3. The one-time model pass — `dunneflow infer`.** Postures (Off / Documentation /
 Documentation + identifiers / Everything / Local endpoint), stored per corpus; a file

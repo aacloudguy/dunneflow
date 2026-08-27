@@ -183,7 +183,19 @@ These each came from a false result on real code. Keep them.
     lift all passed it; only a coincidence test corrected for the number of tries
     separates it from `*Error`, 372 of 375. Rule 5 in a statistical key.
 
-15. **Never open a database as the wrong kind.** Pointing `--db` at `docs.db` opened it
+15. **A branch that consumes lines must offer them to every detector that wants them.**
+    Building the traceability join surfaced the same defect three times in one file.
+    The scanner skipped heading lines, `_table()` consumed table rows, and
+    `_rule_unit()` swallowed the continuation lines of a wrapped bullet -- each one
+    mining what *it* wanted and passing nothing on. So governance ids stated in a
+    heading, in a roadmap table, or on the second line of a bullet were invisible:
+    `ADR-0057` is named in `.groma/ROADMAP.md` and `Plan 44-01` in `ADR-0045`, and both
+    were reported as work built without a plan. Fixing all three moved 30 ids out of
+    that band and lifted code-to-docs traceability from 89% to 93%. Rule 9 says
+    documentation is never code; this is its converse -- **prose is prose wherever it
+    sits**, and a consuming branch is the easiest place in a parser to lose it.
+
+16. **Never open a database as the wrong kind.** Pointing `--db` at `docs.db` opened it
     as a graph, failed the staleness check, and dropped every table in it — a
     destructive fallback wearing the costume of a version upgrade. Both stores now stamp
     their kind and refuse the other, before anything is allowed to drop anything.

@@ -360,7 +360,16 @@ def cmd_query(args: argparse.Namespace) -> int:
     opened = _open_store(args)
     if not opened:
         return 2
-    store, _ = opened
+    store, db_path = opened
+    # A claim this tool prints from both stores has to be re-runnable from both
+    # stores, or rule 13 is satisfied only on paper.
+    if getattr(args, "docs", False):
+        docs_path = Path(args.docs_db) if args.docs_db else db_path.parent / "docs.db"
+        if not docs_path.exists():
+            _emit(f"error: no document store at {docs_path}")
+            store.close()
+            return 2
+        store.conn.execute("ATTACH DATABASE ? AS docs", (str(docs_path),))
     try:
         rows = store.query(args.sql)
     except Exception as exc:
@@ -438,6 +447,9 @@ def build_parser() -> argparse.ArgumentParser:
     nm.set_defaults(func=cmd_naming)
 
     q = sub.add_parser("query", help="ask the graph directly with SQL")
+    q.add_argument("--docs", action="store_true",
+                   help="attach the document store as `docs` for cross-store joins")
+    q.add_argument("--docs-db", help="document database path (defaults beside the graph)")
     common(q)
     q.add_argument("--sql", required=True)
     q.add_argument("--limit", type=int, default=40)

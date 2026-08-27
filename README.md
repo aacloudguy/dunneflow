@@ -38,6 +38,9 @@ uv run dunneflow naming   <path>                    # the naming standard, state
 uv run dunneflow query    <path> --sql "..."        # ask the graph directly
 ```
 
+`query` takes `--docs` to attach the document store as `docs`, which is what makes the
+cross-store claims in the traceability report reproducible.
+
 `analyze` reads documentation as well as source, from the package root by default
 (`--docs <path>`, `--no-docs`, `--recheck-docs`). It is incremental: unchanged files
 are not re-parsed. Output lands in `output/<program>/` and is not checked in —

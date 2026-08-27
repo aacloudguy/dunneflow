@@ -18,11 +18,14 @@ from ..anomalies import detect
 from ..docstore import DocStore
 from ..resolve.cli import command_tree
 from ..resolve.flows import boundary_index, trace_flow, ways_in
+from ..schema import StructureKind
 from ..store import Store
 from .anomalies import render_anomalies
+from .constants import render_constants
 from .database import render_database
 from .glossary import render_glossary
 from .mermaid import command_tree_diagram, flow_diagram
+from .mirror import render_mirror
 from .naming import render_naming
 from .network import render_network
 from .traceability import render_traceability
@@ -83,6 +86,8 @@ def render_all(store: Store, out_dir: Path, root: Path, program: str,
         render_glossary(store, docs, out_dir, root, program, stamp, docs_root),
         render_naming(store, docs, out_dir, root, program, stamp, docs_root),
         render_traceability(store, docs, out_dir, root, program, stamp, docs_root),
+        render_mirror(store, docs, out_dir, root, program, stamp, docs_root),
+        render_constants(store, out_dir, root, program, stamp),
     ]
     return [w for w in written if w]
 
@@ -395,7 +400,14 @@ def _data(store: Store, out: Path, root: Path, program: str, stamp: str) -> Path
             lines.append(f"### {s.name} · {s.kind.value}{base}\n")
             if s.docstring:
                 lines.append(f"{_esc(s.docstring)}\n")
-            if s.fields:
+            if s.kind is StructureKind.TYPE_ALIAS:
+                # A `Literal` alias has members, not fields. Rendering them in a
+                # Field / Type / Default / Note table put the members under the wrong
+                # heading and filled three columns with em-dashes.
+                if s.fields:
+                    members = " · ".join(f"`{_esc(f.name)}`" for f in s.fields)
+                    lines.append(f"One of: {members}\n")
+            elif s.fields:
                 lines.append("| Field | Type | Default | Note |\n|---|---|---|---|")
                 for f in s.fields:
                     lines.append(

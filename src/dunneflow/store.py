@@ -266,6 +266,36 @@ CREATE TABLE IF NOT EXISTS imports (
     line    INTEGER NOT NULL
 );
 
+-- Files the program names in its own source: `tabularium.db`, `groma.json`,
+-- `STATUSQUO.md`. One row per reference site, never deduplicated at ingest, so
+-- "how often is this named, and by whom" is answerable.
+-- Values the program names at module level: model names, token ceilings, directory
+-- names, retry limits. A constant is a name a person chose, and it carries the WHY
+-- in the comment beside it.
+CREATE TABLE IF NOT EXISTS constants (
+    file     TEXT NOT NULL,
+    module   TEXT NOT NULL,
+    name     TEXT NOT NULL,
+    value    TEXT NOT NULL,
+    type     TEXT NOT NULL DEFAULT '',
+    is_final INTEGER NOT NULL DEFAULT 0,
+    comment  TEXT NOT NULL DEFAULT '',
+    private  INTEGER NOT NULL DEFAULT 0,
+    line     INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS artefacts (
+    file       TEXT NOT NULL,
+    routine_id TEXT NOT NULL,
+    name       TEXT NOT NULL,
+    stem       TEXT NOT NULL,
+    ext        TEXT NOT NULL,
+    kind       TEXT NOT NULL,
+    line       INTEGER NOT NULL,
+    literal    TEXT NOT NULL,
+    is_pattern INTEGER NOT NULL DEFAULT 0
+);
+
 CREATE INDEX IF NOT EXISTS ix_routines_file    ON routines(file);
 CREATE INDEX IF NOT EXISTS ix_routines_modname ON routines(module, name);
 CREATE INDEX IF NOT EXISTS ix_routines_name    ON routines(name);
@@ -302,6 +332,13 @@ CREATE INDEX IF NOT EXISTS ix_dbtables_file    ON db_tables(file);
 CREATE INDEX IF NOT EXISTS ix_dbcolumns_file   ON db_columns(file);
 CREATE INDEX IF NOT EXISTS ix_dbcolumns_tbl    ON db_columns(tbl);
 CREATE INDEX IF NOT EXISTS ix_dbindexes_file   ON db_indexes(file);
+CREATE INDEX IF NOT EXISTS ix_artefacts_file   ON artefacts(file);
+CREATE INDEX IF NOT EXISTS ix_artefacts_stem   ON artefacts(stem);
+CREATE INDEX IF NOT EXISTS ix_artefacts_name   ON artefacts(name);
+CREATE INDEX IF NOT EXISTS ix_artefacts_rout   ON artefacts(routine_id);
+CREATE INDEX IF NOT EXISTS ix_constants_file   ON constants(file);
+CREATE INDEX IF NOT EXISTS ix_constants_name   ON constants(name);
+CREATE INDEX IF NOT EXISTS ix_constants_module ON constants(module);
 """
 
 
@@ -448,7 +485,8 @@ class Store:
         )
         for table in ("routines", "structures", "calls", "boundaries", "imports",
                       "entrypoints", "cli_apps", "cli_mounts", "sql_ops", "db_tables",
-                      "db_columns", "db_indexes", "net_calls", "classes"):
+                      "db_columns", "db_indexes", "net_calls", "classes",
+                      "artefacts", "constants"):
             c.execute(f"DELETE FROM {table} WHERE file = ?", (path,))
         c.execute("DELETE FROM files WHERE path = ?", (path,))
 
@@ -584,6 +622,18 @@ class Store:
             " VALUES(?,?,?,?,?,?)",
             [(ff.path, m.parent_var, m.parent_module, m.child_expr, m.line, m.name)
              for m in ff.cli_mounts],
+        )
+        c.executemany(
+            "INSERT INTO artefacts(file,routine_id,name,stem,ext,kind,line,literal,is_pattern)"
+            " VALUES(?,?,?,?,?,?,?,?,?)",
+            [(ff.path, a.routine_id, a.name, a.stem, a.ext, a.kind, a.line, a.literal,
+              int(a.is_pattern)) for a in ff.artefacts],
+        )
+        c.executemany(
+            "INSERT INTO constants(file,module,name,value,type,is_final,comment,private,line)"
+            " VALUES(?,?,?,?,?,?,?,?,?)",
+            [(ff.path, ff.module, k.name, k.value, k.type or "", int(k.is_final),
+              k.comment or "", int(k.private), k.line) for k in ff.constants],
         )
 
     def add_entrypoint(self, e: Entrypoint, file: str = "") -> None:

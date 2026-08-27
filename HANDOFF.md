@@ -23,6 +23,11 @@ Working, verified against Society of Mensores (623 files, 184k lines):
 | **Documentation ingest** — `DocFacts`, `docs.db`, markdown/rst/text reader | **done** |
 | **Glossary** — terms bound to the documentation that defines them | **done** |
 | **Naming standard** — two lanes: stated Vocabulary, measured Form | **done** |
+| **Traceability** — governance ids joined across both stores, seven bands | **done** |
+| **Named artefacts** — files the program names (`tabularium.db`) | **done** |
+| **The mirror** — defined words the code does not use, four bands | **done** |
+| **Comments** — every one reaches the store, 18,208 of 18,208 | **done** |
+| **Named values** — 2,618 constants and 86 type aliases | **done** |
 | Stable identity across edits (prerequisite for layers) | done |
 | **Interactive dashboard** | **designed 2026-08-27, not yet built** |
 | **Temporal layers / snapshots / flow diff** | **not started — after the static view** |
@@ -30,8 +35,8 @@ Working, verified against Society of Mensores (623 files, 184k lines):
 | LLM narration | not started |
 | Cross-process stitching: outbound call → the handler that serves it | not started |
 
-Commands: `dunneflow analyze | touches | impact | check | glossary | naming | query`.
-Gates: 100 tests, mypy clean, ruff clean. Cold run 2.3s of code plus ~18s of documentation, against budgets of 90s and 20s; warm 2.1s total.
+Commands: `dunneflow analyze | touches | impact | check | glossary | naming | mirror | query`.
+Gates: 220 tests, mypy clean, ruff clean. Cold run 2.3s of code plus ~18s of documentation, against budgets of 90s and 20s; warm 2.1s total.
 
 ## Verify it still works
 
@@ -514,12 +519,202 @@ Still open on this half:
   fingerprint, so editing it left every document cached and answering the old rule —
   rule 12 wearing the other corpus as a disguise. It is in `doc_rules_fingerprint()`
   now.
-* **The mirror query** — vocabulary the documentation defines that the program never
-  uses (`tabularium`) — is still one query away and still not built. Tom notes there is
-  a `tabularium.db` referenced frequently, so the `.db` suffix may be defeating the
-  term matcher; worth checking before assuming drift.
+* ~~**The mirror query.**~~ Done. Tom's instinct was right and the reason was worse
+  than suspected: the `.db` suffix was not defeating a term matcher, there was no
+  filename surface at all. `tabularium.db` is the most-named thing in Mensores and every
+  one of its 155 named files was invisible. Doubting the tool first turned a one-query
+  report into a new fact type.
 * **The band boundary at three symbols** is a threshold, printed so it can be argued
   with, and not yet argued with against a second corpus.
+
+### Built 2026-08-27: named artefacts, and the mirror query
+
+`13-mirror.md` and `dunneflow mirror`, written every run. The traceability report's
+mirror: **vocabulary the documentation defines, and what the code does with it.** No
+model.
+
+**The premise was wrong, and checking it first is what made the feature.** `tabularium`
+was recorded as probable drift. It is not drift and the `.db` suffix was not defeating a
+term matcher -- there was no filename surface at all. `tabularium.db` is the most-named
+thing in Mensores, 52 references across 25 files, and it was invisible because the path
+is assembled: `root / ".mensores" / "tabularium.db"` is not a module, not a table and
+not a boundary target, because only the parts are literals. 155 such names in that
+source and DunneFlow recorded none. Tom's generalisation was the right one -- databases,
+scripts and programs are all named with defined words, and the extension is the tell.
+
+So `schema.Artefact` came first: name, stem, extension, kind, and one row per reference
+site so "how often, and by whom" is answerable. `SCHEMA_VERSION` 2 -> 3. Admission is an
+extension list in `detectors/python.yaml`, which is the whole precision defence (rule 5):
+without it `1.2.3`, `utf-8` and `mensores.cli` all read as named files. `.org` was
+removed from that list on evidence -- the only thing it ever matched was
+`host="freetsa.org"`. 350 references to 155 names on Mensores, and `tabularium` moves
+from Absent to **Named**.
+
+**Four bands, not two lists**, the same register as the traceability report. Named (51:
+a package, class, table, way in or named file answers to it) · Borne (6: a routine,
+param or field carries it) · Spoken (25: only comments and docstrings say it) · Absent
+(37). Each states what would make a placement in it wrong. Matching is on identity, not
+containment -- `Gate` does not match `aggregate` -- but compounds are split into the
+words a person joined, so `disceptator_handle` carries `disceptator` exactly as
+`bootstrap-config.json` carries `config`.
+
+**The admission rule is the report.** Run forwards, the join to code filtered the
+definition extractor's over-reach for free: a heading matches no code and is never seen.
+Run backwards there is no filter, and 94 of Mensores' 245 definitions are not words --
+38 code-shaped, 23 test names, 19 numbered headings, 14 sentences. Reporting them as
+vocabulary Mensores ignores would be a finding about DunneFlow in a finding's uniform.
+They are set aside **in the report, not at ingest**, by a rule stated on the page,
+counted, and listed whole: the glossary and naming lanes are verified as they stand, and
+tightening the extractor is a separate change with its own before-and-after. This
+section is where the evidence for making it accumulates.
+
+Ground truth reproduced: four executables at 1,366 / 421 / 265 / 111 reach; the research
+paper still yields zero naming rules. 141 tests, mypy and ruff clean, `check` exits 0.
+The mirror costs 0.37s.
+
+### Two blind spots found while verifying the Absent band, neither fixed
+
+Sampling Absent against real source -- the rule under "Anomalies" -- put four terms in it
+that Mensores does use. Both causes are in DunneFlow, both are out of the mirror's scope,
+and both change numbers in already-verified reports, so they are recorded rather than
+quietly fixed. The Absent band's blind spot names them on the page, so it never asserts
+drift where the tool is blind.
+
+1. **A comment outside every function is not recorded at all.** Comments are collected
+   per function; the `<module>` routine is created lazily and never receives any. On
+   Mensores that is **9,887 of 18,208 comment tokens, 54%**, and 99 of 465 files with
+   comments have none stored -- the `*_extras_schemas.py` modules, which are almost
+   entirely module-level commentary, lose everything. Measured with `tokenize` rather
+   than by grepping for `#`, because a `#` inside a prompt string is not a comment and
+   the first count was inflated by them.
+
+   The cost is not readability, it is governance: those comments carry **2,270
+   annotations across 438 distinct ids**, of which **76 appear nowhere else in the graph
+   and 75 of those are documented in the corpus**. They are real, traceable, and
+   currently invisible. This is the layer CLAUDE.md says the tool exists to show, so it
+   is probably the next thing to fix -- and it will move `06-governance.md` and every
+   band in `12-traceability.md`, including the 97% headline.
+
+2. **A module-level constant is not a recorded name.** `visit_Assign` catches only CLI
+   app objects; class-level assignments become `Field_` and module-level ones become
+   nothing. `JTBD_OPENERS` is declared in `_prompts.py` and read six times, and reads as
+   Absent. A constant is a name a person chose, which is the same argument that made
+   artefacts a fact type.
+
+Also seen and left alone: `TechDebt` is a Neo4j node label inside a Cypher string, so it
+is a name in a query language DunneFlow does not parse. Correctly Absent, honestly
+reported.
+
+### Built 2026-08-27: the comment gap, closed
+
+Recorded as the next thing to do while building the mirror, and done. **Every comment in
+every analysed file now reaches the store: 18,208 of 18,208, verified against `tokenize`
+rather than against a grep for `#`.** Before, 8,549 were claimed and 9,659 -- 53% -- were
+not.
+
+**The mechanism.** Comments were collected per function: the block above a definition,
+and everything inside its line span. The synthetic `<module>` routine is created on
+demand by `_owner()` and was never handed any, so a comment outside every function was
+simply dropped. Whole files lost everything they had -- the `*_extras_schemas.py`
+modules are almost entirely module-level commentary. `claim_orphan_comments()` runs once
+after the walk, so "claimed" means claimed by anybody: a comment leading a nested
+definition is legitimately owned by both the inner and enclosing routine (187 of them)
+and is not duplicated. `SCHEMA_VERSION` 3 -> 4, because extractor code is not in the
+detector fingerprint -- rule 12's known gap, still worth closing properly.
+
+Class bodies count as module scope. That is not a compromise: a class body runs at
+import, and `_owner()` already assigns boundaries, calls and SQL found there to the same
+routine. Anywhere else would have invented a second ownership model for one fact type.
+
+**What it was worth**, all of it in the governance layer:
+
+| | Before | After |
+|---|---:|---:|
+| Comments stored | 8,736 | 18,384 |
+| Annotations | 4,713 | 6,944 |
+| Distinct governance ids in code | 520 | 596 |
+| Ids cited in code (traceability) | 517 | 593 |
+| Traced -- both ends meet | 424 | **471** |
+| Thinly traced | 79 | 107 |
+| Likely landed, never annotated | 157 | **116** |
+| Planned without landing | 258 | **211** |
+| Marker kinds found | 7 | 8 (`DECISION` appeared) |
+
+The direction is what matters: 47 plans moved *out* of "a document is about it but no
+comment cites it" and into "the code says it landed". That band was over-reporting
+speculation, and the evidence to settle it was sitting in comments nobody read.
+Code-to-docs traceability held at 97% across a 15% larger population, so the new ids are
+as traceable as the old. Anomalies went 93 -> 94 suspect; the one addition is a real
+`LOST_EDGE` in newly-visible code, sitting beside the identical finding for its sibling
+stage.
+
+**One more defect, found by refusing to accept 30.** After the fix, 30 comments were
+still missing. They were in three files the walk never read: `is_test_path` matched
+`test_` as a **substring**, so `_test_stage.py` -- the real Test stage of the Groma
+pipeline, Plan 30-02 -- along with `_test_extras_schemas.py` and
+`_test_acceptance_extras_schemas.py` were dropped from the map entirely, routines,
+boundaries and all. Rule 5 in a place nobody had looked. A marker must sit at an edge of
+the name; a module *about* testing is not a test. 623 files -> 626, and the missing
+count is now zero.
+
+**Still open on this half.** A module-level constant is still not a recorded name --
+`JTBD_OPENERS` is declared and read six times and reaches only Spoken, on a comment.
+Same shape of gap as named artefacts, much smaller, and the mirror's Absent band names
+it as a live blind spot.
+
+### Built 2026-08-27: module-level constants, and the type aliases hiding in them
+
+The last of the three blind spots the mirror's Absent band named. `14-constants.md`,
+written every run: **2,618 named values and 86 type aliases**, none of them previously
+recorded. `SCHEMA_VERSION` 4 -> 5.
+
+**The gap.** `visit_Assign` caught only CLI app objects, `_class_fields` caught only
+class bodies, and module level produced nothing at all -- so `JTBD_OPENERS` was declared
+in `_prompts.py`, read six times, and absent from the map. Module level is taken from
+**position**, not from a scope stack: it means *runs at import*, so a constant inside a
+module-level `try` or `if TYPE_CHECKING` counts (13 of them) and one inside a function
+does not. That is the same boundary the module scope already uses for comments and
+boundaries, which is the argument for it.
+
+**What the page is for.** A constant is configuration a person wrote down and named: the
+model to call, the token ceiling, the directory to write into, the actual system prompts
+the program sends to an LLM. 1,030 of the 2,618 carry a comment saying *why* they are
+that value, and the comment leads -- a named value without its reason is a number. 1,689
+are `Final`. Values are printed whole (rule 8): a ceiling cut to eighty characters is no
+longer the ceiling, and a reader who has to open the source for the number they came for
+was not helped.
+
+**86 type aliases were hiding among them, and `StructureKind.TYPE_ALIAS` had existed
+from the start with nothing ever producing one.** `QueueState = Literal["pending",
+"adjudicating", "emitted", "rejected", "skipped"]` is an enumerated vocabulary declared
+without the word `enum`; 67 of the 86 are `Literal`. They are `DataStructure`s, so
+`04-data.md` renders them for free -- as *members*, after the first attempt put them in a
+Field / Type / Default / Note table with three columns of em-dashes, which was found by
+looking rather than by testing.
+
+The admission rule is a constructor list in `detectors/python.yaml`, exactly as the
+artefact extension list is, because `X = SOME_DICT["key"]` is also a Subscript. A bare
+`X = Y` is deliberately **not** admitted -- it cannot be told from `DEFAULT =
+OTHER_DEFAULT` without resolving `Y`, and it is recorded as a constant instead, which is
+true either way. The rule ignores case, which turned out to matter: it found three
+`_TOKEN_CLASS = Literal[...]` aliases that a CapWords-based measurement had missed.
+
+**In the mirror.** `constant` is now a naming surface, and `JTBD_OPENERS` moved from
+Spoken to **Named**. Named 51 -> 57, Absent 33 -> 32. The Absent band's blind spot is
+down to one item, honestly stated: only Python is extracted.
+
+**One matching change came with it, measured before it shipped.** `TOOL_STATUS_RAN`
+carries `tool status`, and whole-name-plus-single-words missed it: a term matching the
+*front* of a compound matched nothing. Names are now indexed under every contiguous
+word-run. Simulated first: it moves exactly one term on its own evidence and six in
+total, every one verified against source, and no false placement. Splitting a name
+someone wrote is still identity and not containment -- `aggregate` yields one key and
+never `gate` -- so rule 5 holds, and a test asserts it.
+
+**Still open.** The Absent band now has one blind spot, not three: only Python is
+extracted, so a word living in a shell script, a template, a front end or a sibling
+program is absent from this graph and present in the product. That is a language
+question, not a defect.
 
 ### Attestation: promoting an inference, and why it is not canon (2026-08-27)
 
@@ -587,14 +782,27 @@ Done — see above.**
 
 **2. ~~The traceability report.~~ Done — see "Built 2026-08-27: the traceability report" above.**
 
-**3. The mirror query.** *Vocabulary the documentation defines that the program never
-uses.* `tabularium` is glossed in the pantheon and appears in the glossary nowhere,
-because nothing in the code answers to it. Tom notes there **is** a `tabularium.db`,
-referenced frequently -- so check first whether the `.db` suffix is defeating the term
-matcher before reporting drift; if it is, that is a defect in DunneFlow and not a
-finding about Mensores, and it is exactly the case rule "doubt the tool first" exists
-for. Otherwise it is the traceability report's mirror: one query, one small renderer,
-no model. Small, and next.
+**3. ~~The mirror query.~~ Done — see "Built 2026-08-27: named artefacts, and the
+mirror query" above.** The premise was wrong and checking it first was the whole value:
+`tabularium` is not drift, it is the most-named file in the program, and DunneFlow could
+see no file a program names. `schema.Artefact` and `13-mirror.md` came out of it.
+
+**3a. ~~The comment gap.~~ ~~Module-level constants.~~ Both done — see the two
+sections above.** 53% of comments never reached the store and now all do, taking ids
+cited in code from 517 to 593 and moving 47 plans out of the speculative bands.
+Constants and type aliases followed, closing the last recoverable blind spot the mirror
+named. What remains on that band is a language question, not a defect: only Python is
+extracted.
+
+**3b. Close rule 12 properly — small, and it bit three times in one session.** The
+file cache keys on `SCHEMA_VERSION` plus a hash of `detectors/*.yaml`, so editing the
+extension point invalidates the graph. **Extractor code is not in that key.** Artefacts,
+the comment fix and constants each changed what extraction *means* while every cached
+file still answered the old rules, and each was saved only by remembering to bump
+`SCHEMA_VERSION` by hand. A forgotten bump is exactly rule 12's failure: a confident map
+answering the previous version. The fix is to fold a hash of `extractors/` into the same
+key, the way `detectors/*.yaml` already is. Currently `SCHEMA_VERSION = 5`,
+`DOC_SCHEMA_VERSION = 6`.
 
 **4. The one-time model pass — `dunneflow infer`.** Postures (Off / Documentation /
 Documentation + identifiers / Everything / Local endpoint), stored per corpus; a file

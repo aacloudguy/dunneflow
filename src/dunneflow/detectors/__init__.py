@@ -11,6 +11,7 @@ import re
 from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
+from typing import Any
 
 import yaml
 
@@ -220,6 +221,11 @@ class RuleSet:
     net_libraries: tuple[tuple[str, str, bool], ...] = ()
     net_verbs: frozenset[str] = field(default_factory=frozenset)
     net_kwargs: dict[str, frozenset[str]] = field(default_factory=dict)
+    # extension (lowercased, no dot) -> artefact kind. See `artefacts` in the YAML.
+    artefact_kinds: dict[str, str] = field(default_factory=dict)
+    # Subscript bases and call factories that make an assignment a type alias.
+    alias_constructors: frozenset[str] = field(default_factory=frozenset)
+    alias_factories: frozenset[str] = field(default_factory=frozenset)
 
     def network_profile(self, dotted: str) -> tuple[str, bool] | None:
         """(protocol, is_async_library) for a call, by longest matching prefix."""
@@ -257,6 +263,26 @@ class RuleSet:
             if rule.matches_call(dotted):
                 return rule
         return None
+
+    def is_type_expression(self, base: str) -> bool:
+        """Does a subscript on this name produce a type?
+
+        `Literal[...]` does; `SOME_DICT[...]` does not. Matched on the last segment so
+        `typing.Literal` and a bare `Literal` are the same rule.
+        """
+        return bool(base) and base.rsplit(".", 1)[-1] in self.alias_constructors
+
+    def is_alias_factory(self, dotted: str) -> bool:
+        """`NewType(...)` and `TypeVar(...)` declare a type by calling something."""
+        return bool(dotted) and dotted.rsplit(".", 1)[-1] in self.alias_factories
+
+    def artefact_kind(self, ext: str) -> str | None:
+        """The kind of file this extension names, or None if it names no file.
+
+        An unknown extension is not an artefact. That is the whole precision defence:
+        without it `"1.2.3"` and `"mensores.cli"` both read as named files.
+        """
+        return self.artefact_kinds.get(ext.lower())
 
     def match_subscript(self, dotted: str) -> BoundaryRule | None:
         return self.subscript_index.get(dotted)
@@ -328,7 +354,25 @@ def load_rules(lang: str = "python") -> RuleSet:
             k: frozenset(v)
             for k, v in ((data.get("network", {}) or {}).get("kwargs", {}) or {}).items()
         },
+        artefact_kinds={
+            ext.lower().lstrip("."): kind
+            for kind, exts in _artefact_extensions(data).items()
+            for ext in exts
+        },
+        alias_constructors=frozenset(
+            (data.get("type_aliases", {}) or {}).get("constructors", [])
+        ),
+        alias_factories=frozenset(
+            (data.get("type_aliases", {}) or {}).get("factories", [])
+        ),
     )
+
+def _artefact_extensions(data: dict[str, Any]) -> dict[str, list[str]]:
+    """The `artefacts.extensions` block, or nothing if the language declares none."""
+    block = data.get("artefacts") or {}
+    exts = block.get("extensions") or {}
+    return {str(k): list(v) for k, v in exts.items()}
+
 
 def rules_fingerprint() -> str:
     """A hash of every detector file that shapes extraction.

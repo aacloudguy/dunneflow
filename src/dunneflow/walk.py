@@ -44,6 +44,7 @@ DOC_SKIP_DIRS = frozenset({
     ".benchmarks", ".git-crypt", "_build",
 })
 
+# Matched at an edge of the filename, never as a substring -- see `is_test_path`.
 TEST_MARKERS = ("test_", "_test", "conftest")
 
 LANG_SUFFIX = {".py": "python", ".pyi": "python"}
@@ -59,9 +60,23 @@ class WalkStats:
 
 
 def is_test_path(path: Path) -> bool:
+    """Is this a test, as opposed to a module that has something to do with testing?
+
+    The marker must be at an edge of the name, because a substring match is rule 5 in
+    a new place: `_test_stage.py` is the real Test stage of the Groma pipeline (Plan
+    30-02), `_test_extras_schemas.py` declares schemas, and all three were dropped from
+    the map entirely -- routines, boundaries, comments and all -- for containing the
+    word. `test_x` and `x_test` are the pytest conventions and are what a test is
+    actually called.
+    """
     if any(p in {"tests", "test", "testing"} for p in path.parts):
         return True
-    return any(m in path.stem for m in TEST_MARKERS)
+    stem = path.stem
+    return (
+        stem == "conftest"
+        or stem.startswith("test_")
+        or stem.endswith("_test")
+    )
 
 
 def discover(root: Path, include_tests: bool = False,

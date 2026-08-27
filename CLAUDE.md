@@ -25,6 +25,7 @@ uv run dunneflow touches  <path> --routine <name>   # what does this reach?
 uv run dunneflow impact   <path> --routine <name>   # what breaks if I change it?
 uv run dunneflow glossary <path>                    # what its words mean, and who says so
 uv run dunneflow naming   <path>                    # the naming standard, stated and measured
+uv run dunneflow mirror   <path>                    # words the docs define that the code never uses
 uv run dunneflow query    <path> --sql "..."        # ask the graph directly
 ```
 
@@ -199,6 +200,57 @@ These each came from a false result on real code. Keep them.
     as a graph, failed the staleness check, and dropped every table in it — a
     destructive fallback wearing the costume of a version upgrade. Both stores now stamp
     their kind and refuse the other, before anything is allowed to drop anything.
+
+17. **A program names its files, and those names are vocabulary.** `tabularium` is
+    glossed in Mensores' pantheon and appeared in the glossary nowhere, which read as a
+    word the project had abandoned. It is the name of the database the whole program
+    writes to -- 52 references across 25 files. It was invisible because the path is
+    assembled, `root / ".mensores" / "tabularium.db"`, so only the parts are literals:
+    not a module, not a table, not a boundary target. 155 such names on Mensores and
+    DunneFlow recorded none of them. `schema.Artefact` now does, admitted only by an
+    extension listed in `detectors/*.yaml` -- rule 5 again, because a trailing dotted
+    part is not an extension and without the list `1.2.3`, `utf-8` and `mensores.cli`
+    all read as named files. `.org` was removed from that list on evidence: the only
+    thing it ever matched was `host="freetsa.org"`.
+
+18. **Every comment must land on something, and the module scope owns what no function
+    does.** Comments were collected per function -- the block above a definition and
+    everything inside its span -- so everything else fell on the floor: **9,659 of
+    Mensores' 18,208 comments, 53%.** Whole files lost every comment they had. The
+    synthetic `<module>` routine already owned module-level boundaries, calls and SQL;
+    it was simply never handed any comments. A class body counts as module scope for
+    the same reason it already does for every other fact type -- it runs at import.
+
+    The cost was governance, not readability. Those comments carried 2,270 annotations
+    across 438 ids, 76 of which the graph had never seen. Closing it took ids cited in
+    code from 517 to 593, moved 47 plans out of *likely landed* into *traced*, and
+    surfaced a marker kind (`DECISION`) that had never appeared at all. **Assert the
+    total, not the cases**: the test counts comment tokens and demands none go
+    unclaimed, because the defect was a whole category nobody had thought to name.
+
+    Found the same way as rule 15 and for the same reason: a step that consumes what it
+    wants and passes nothing on. Verifying it turned up rule 5 once more in
+    `walk.is_test_path`, which matched `test_` as a *substring* -- so `_test_stage.py`,
+    the real Test stage of the Groma pipeline, was dropped from the map entirely along
+    with two others. A marker must sit at an edge of the name. A module about testing
+    is not a test.
+
+19. **A constant is a name, and a `Literal` alias is an enum.** Module level produced no
+    facts at all: `visit_Assign` caught only CLI app objects and `_class_fields` caught
+    only class bodies, so `JTBD_OPENERS` was declared, read six times, and absent from
+    the map. 2,618 constants on Mensores carrying its configuration -- model names,
+    token ceilings, directory names, the actual system prompts it sends -- and 1,030 of
+    them carry a comment saying why. Module level means **runs at import**, taken from
+    position rather than from a scope stack, which is the same boundary the module scope
+    already uses for comments and boundaries.
+
+    Among them hid 86 type aliases. `QueueState = Literal["pending", "adjudicating",
+    "emitted", "rejected", "skipped"]` is an enumerated vocabulary declared without the
+    word `enum`, and `StructureKind.TYPE_ALIAS` had existed in the schema from the start
+    with nothing ever producing one. The admission rule is a constructor list in
+    `detectors/*.yaml`, exactly as the artefact extension list is: `X = SOME_DICT["key"]`
+    is also a Subscript. A bare `X = Y` is **not** admitted -- it cannot be told from
+    `DEFAULT = OTHER_DEFAULT` without resolving `Y`, and rule 1 says precision first.
 
 ## Anomalies: the discipline
 

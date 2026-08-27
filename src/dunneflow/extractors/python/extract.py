@@ -16,12 +16,14 @@ from __future__ import annotations
 
 import ast
 import io
+import re
 import tokenize
 from pathlib import Path
 
 from ... import sql as sqlmod
 from ...detectors import RuleSet, load_rules, mine_annotations
 from ...schema import (
+    Artefact,
     BoundaryHit,
     CallSite,
     ClassDef_,
@@ -29,6 +31,7 @@ from ...schema import (
     CliMount,
     Comment,
     Confidence,
+    Constant,
     DataStructure,
     Entrypoint,
     EntrypointKind,
@@ -85,6 +88,12 @@ def dotted_name(node: ast.AST) -> str:
         parts.append(cur.id)
         return ".".join(reversed(parts))
     return ""
+
+
+# A file basename, as a person would write one. Deliberately narrow: no spaces, no
+# quoting, no shell metacharacters beyond the glob forms, and an extension of at most
+# eight characters. Anything else is prose that happens to contain a dot.
+_ARTEFACT_NAME = re.compile(r"^[A-Za-z0-9_*?\[\]][A-Za-z0-9_.*?\[\]-]*\.[A-Za-z0-9]{1,8}$")
 
 
 def _literal(node: ast.AST | None) -> str | None:
@@ -162,6 +171,13 @@ class _Extractor(ast.NodeVisitor):
         self._awaited: set[int] = set()
         self.tables: list[TableSchema] = []
         self.indexes: list[IndexSchema] = []
+        self.artefacts: list[Artefact] = []
+        self.constants: list[Constant] = []
+        # An f-string is visited whole and then descended into, so `f"{root}/g.json"`
+        # would name `g.json` twice -- once with the fuller literal, once from the
+        # bare constant part. The same file named on the same line is one naming act;
+        # the f-string is seen first and so keeps the more informative literal.
+        self._artefact_seen: set[tuple[str, int]] = set()
         self._sql_seen: set[tuple[str, int]] = set()
         # A broken program may define one qualified name twice. Both keep an identity
         # of their own rather than merging, so the collision can be reported.
@@ -204,6 +220,149 @@ class _Extractor(ast.NodeVisitor):
             )
             self.routines.append(self._module_routine)
         return self._module_routine
+
+    # -- module-level names ------------------------------------------------- #
+
+    def collect_module_names(self, body: list[ast.stmt]) -> None:
+        """Every value the module names at import, as a constant or as a type alias.
+
+        `visit_Assign` caught only CLI app objects and `_class_fields` caught only
+        class bodies, so module level produced nothing at all: `JTBD_OPENERS` was
+        declared, read six times, and absent from the map. 3,072 of these on Mensores.
+
+        Walked from the statement list rather than through the visitor, because module
+        level is exactly "runs at import" and that is a property of position, not of a
+        scope stack. A `try: import x except ImportError:` at module level runs; a
+        function body does not, and is never descended into.
+        """
+        for stmt in body:
+            if isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                continue
+            if isinstance(stmt, (ast.If, ast.Try, ast.With, ast.For, ast.While)):
+                for attr in ("body", "orelse", "finalbody"):
+                    self.collect_module_names(getattr(stmt, attr, []) or [])
+                for handler in getattr(stmt, "handlers", []) or []:
+                    self.collect_module_names(handler.body)
+                continue
+            annotation: str | None = None
+            value: ast.expr | None = None
+            if isinstance(stmt, ast.Assign):
+                targets = [t.id for t in stmt.targets if isinstance(t, ast.Name)]
+                value = stmt.value
+            elif isinstance(stmt, ast.AnnAssign) and isinstance(stmt.target, ast.Name):
+                targets = [stmt.target.id]
+                annotation = _annotation(stmt.annotation)
+                value = stmt.value
+            else:
+                continue
+            if value is None:
+                continue    # `X: int` declares a name and binds nothing
+            for name in targets:
+                # A dunder is packaging metadata, not something the program named.
+                if name.startswith("__") and name.endswith("__"):
+                    continue
+                if self._record_type_alias(name, value, stmt):
+                    continue
+                self.constants.append(Constant(
+                    name=name,
+                    value=_literal(value) or "",
+                    line=stmt.lineno,
+                    type=annotation,
+                    is_final=bool(annotation and annotation.split("[")[0].endswith("Final")),
+                    comment=self._value_comment(stmt.lineno),
+                    private=name.startswith("_"),
+                ))
+
+    def _record_type_alias(self, name: str, value: ast.expr, stmt: ast.stmt) -> bool:
+        """`QueueState = Literal[...]` is an enumerated vocabulary, not a constant.
+
+        `StructureKind.TYPE_ALIAS` was declared in the schema from the start and nothing
+        produced one, because only a `class` statement became a structure. The admission
+        rule lives in `detectors/python.yaml`: the subscript base or the called factory
+        must be named there, or `X = SOME_DICT["key"]` reads as a type. A bare `X = Y`
+        is not admitted at all -- it cannot be told from `DEFAULT = OTHER_DEFAULT`.
+        """
+        target = ""
+        members: list[Field_] = []
+        if isinstance(value, ast.Subscript):
+            base = dotted_name(value.value)
+            if not self.rules.is_type_expression(base):
+                return False
+            target = _literal(value) or ""
+            if base.rsplit(".", 1)[-1] == "Literal":
+                items = (value.slice.elts if isinstance(value.slice, ast.Tuple)
+                         else [value.slice])
+                members = [
+                    Field_(name=_literal(item) or "", type=None)
+                    for item in items
+                ]
+        elif isinstance(value, ast.Call) and self.rules.is_alias_factory(
+            dotted_name(value.func)
+        ):
+            target = _literal(value) or ""
+        else:
+            return False
+
+        self.structures.append(DataStructure(
+            id=make_id(f"{self.module}.{name}"),
+            name=name,
+            kind=StructureKind.TYPE_ALIAS,
+            module=self.module,
+            file=self.path,
+            line=stmt.lineno,
+            fields=members,
+            docstring=self._value_comment(stmt.lineno),
+            bases=[target] if target else [],
+        ))
+        return True
+
+    def _value_comment(self, line: int) -> str | None:
+        """The WHY beside a named value: the comment on its line, else the block above.
+
+        Both are already owned by the module scope, and both are shown here too. A
+        comment belongs against the thing it explains, and a constant is a thing.
+        """
+        inline = self.comments.get(line)
+        if inline:
+            return inline
+        block = [c.text for c in self._leading_comments(line)]
+        return " ".join(block) if block else None
+
+    def claim_orphan_comments(self) -> None:
+        """Give every comment nobody claimed to the module's import-time scope.
+
+        Comments were collected per function: the block above a definition, and
+        everything inside its line span. Anything else was dropped on the floor --
+        **9,659 of Mensores' 18,208 comments, 53%** -- because the synthetic `<module>`
+        routine is created on demand by `_owner()` and was never handed any.
+
+        That is not a readability loss, it is a governance one. Comments are the only
+        source of the WHY layer, and the unclaimed half carried 2,270 governance
+        annotations across 438 distinct ids -- 76 of which appeared nowhere else in the
+        graph, and 75 of those documented in the corpus. Real, traceable, and invisible.
+
+        Two kinds are unclaimed, and both belong here for the same reason. A comment at
+        module level explains code that runs at import. A comment inside a class body
+        but outside every method (1,040 of them) explains code that *also* runs at
+        import -- a class body is executed, not declared -- and `_owner()` already
+        assigns boundaries, calls and SQL found there to this same routine. Putting
+        comments anywhere else would invent a second ownership model for one fact type.
+
+        Called once, after the walk, so "claimed" means claimed by anybody. A comment
+        leading a nested definition is legitimately owned by both the inner routine and
+        the enclosing one (187 such on Mensores); it is claimed either way and is not
+        duplicated here.
+        """
+        claimed = {c.line for r in self.routines for c in r.comments}
+        orphans = sorted(ln for ln in self.comments if ln not in claimed)
+        if not orphans:
+            return
+        owner = self._owner()
+        owner.comments.extend(
+            Comment(text=self.comments[ln], line=ln, leading=False) for ln in orphans
+        )
+        for ln in orphans:
+            owner.annotations.extend(mine_annotations(self.comments[ln], ln))
 
     def _body_hash(self, start: int, end: int) -> str:
         """Hash of a routine's own source lines.
@@ -619,6 +778,7 @@ class _Extractor(ast.NodeVisitor):
         """
         if isinstance(node.value, str) and id(node) not in self._docstrings:
             self._scan_sql(node.value, node.lineno)
+            self._scan_artefact(node.value, node.lineno)
         self.generic_visit(node)
 
     def visit_JoinedStr(self, node: ast.JoinedStr) -> None:
@@ -627,8 +787,50 @@ class _Extractor(ast.NodeVisitor):
             v.value if isinstance(v, ast.Constant) and isinstance(v.value, str) else "?"
             for v in node.values
         ]
-        self._scan_sql("".join(parts), node.lineno)
+        joined = "".join(parts)
+        self._scan_sql(joined, node.lineno)
+        # `f"{root}/tabularium.db"` still names the file; `f"{name}.db"` does not, and
+        # is rejected below because the stem itself came back as the `?` placeholder.
+        self._scan_artefact(joined, node.lineno)
         self.generic_visit(node)
+
+    def _scan_artefact(self, text: str, line: int) -> None:
+        """A string literal that names a file the program uses.
+
+        Precision is bought entirely by the extension list in `detectors/*.yaml`
+        (rule 5): a trailing dotted part is not a file extension, or `"1.2.3"`,
+        `"utf-8"` and `"mensores.cli"` would all read as named files. Everything
+        else here is a guard against reading prose as a path.
+
+        The literal is recorded whole (rule 8). The basename is what gets matched,
+        because `.mensores/tabularium.db` and `tabularium.db` name the same file.
+        """
+        raw = text.strip()
+        if not raw or len(raw) > 512 or any(ch.isspace() for ch in raw):
+            return
+        if "://" in raw:            # a URL is a network boundary, not a local artefact
+            return
+        base = raw.replace("\\", "/").rsplit("/", 1)[-1]
+        if "." not in base[1:]:     # leading dot is a hidden file, not an extension
+            return
+        stem, _, ext = base.rpartition(".")
+        kind = self.rules.artefact_kind(ext)
+        if kind is None or not stem:
+            return
+        # `?` is the placeholder an f-string leaves where a value was interpolated.
+        # A stem that is only a placeholder names nothing a reader could look up.
+        if "?" in stem or not any(ch.isalnum() for ch in stem):
+            return
+        if not _ARTEFACT_NAME.match(base):
+            return
+        if (base, line) in self._artefact_seen:
+            return
+        self._artefact_seen.add((base, line))
+        self.artefacts.append(Artefact(
+            name=base, stem=stem, ext=ext.lower(), kind=kind,
+            routine_id=self._owner().id, line=line, literal=text,
+            is_pattern=any(ch in base for ch in "*?[") ,
+        ))
 
     def _scan_sql(self, text: str, line: int) -> None:
         if len(text) < 6 or len(text) > 200_000:
@@ -848,6 +1050,10 @@ def extract_file(path: Path, root: Path, src: str | None = None) -> FileFacts:
     except RecursionError:
         facts.errors.append("extraction aborted: expression nesting too deep")
 
+    ex.collect_module_names(tree.body)
+    # After the walk, so "claimed" means claimed by any routine at all.
+    ex.claim_orphan_comments()
+
     facts.routines = ex.routines
     facts.calls = ex.calls
     facts.boundaries = ex.boundaries
@@ -861,6 +1067,8 @@ def extract_file(path: Path, root: Path, src: str | None = None) -> FileFacts:
     facts.network = ex.network
     facts.tables = ex.tables
     facts.indexes = ex.indexes
+    facts.artefacts = ex.artefacts
+    facts.constants = ex.constants
 
     # A module that guards __main__ is startable in its own right.
     if ex._has_main_guard:

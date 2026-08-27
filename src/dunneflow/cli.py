@@ -24,6 +24,8 @@ from .resolve.cli import resolve_cli
 from .resolve.entrypoints import entrypoints_from_packaging
 from .resolve.flows import entry_reach
 from .resolve.glossary import bind
+from .resolve.mirror import BANDS as MIRROR_BANDS
+from .resolve.mirror import measure as measure_mirror
 from .resolve.naming import measure
 from .store import Store
 from .walk import analyze_docs_tree, analyze_tree
@@ -324,6 +326,54 @@ def cmd_naming(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_mirror(args: argparse.Namespace) -> int:
+    """Vocabulary the documentation defines, and what the code does with it.
+
+    The traceability report's mirror. Prints the spectrum, then the band that is
+    actually a finding -- the words nothing in the program answers to -- because a
+    reader opening this is looking for drift, not for confirmation that `groma` is
+    a package name.
+    """
+    opened = _open_store(args)
+    if not opened:
+        return 2
+    store, _ = opened
+    docs = _open_docs(args)
+    report = measure_mirror(store, docs)
+
+    if not report.had_docs:
+        print("no documentation was read, so there is nothing to mirror.")
+        print("point analyze at a documentation root: --docs <path>")
+        store.close()
+        return 0
+
+    groups = report.by_band()
+    print(f"{report.definitions_seen:,} definitions read, "
+          f"{report.excluded_total:,} set aside as not a word, "
+          f"{len(report.terms):,} terms carried forward")
+    for band in MIRROR_BANDS:
+        print(f"  {band.label:8} {len(groups[band.key]):4}   {band.meaning}")
+
+    absent = groups["ABSENT"]
+    if absent:
+        print(f"\ndefined in documentation, nowhere in the code ({len(absent):,}):")
+        for term in absent[: args.limit]:
+            source = term.definitions[0]
+            print(f"\n  {term.term}")
+            print(f"    {source.definition[:160]}")
+            print(f"    {source.doc}:{source.line}")
+        if len(absent) > args.limit:
+            print(f"\n  ... see 13-mirror.md for all {len(absent):,}, "
+                  "each with its definition and the line it came from")
+    print("\nonly Python is extracted: absent from this graph is not absent from "
+          "the product.")
+
+    if docs is not None:
+        docs.close()
+    store.close()
+    return 0
+
+
 def cmd_check(args: argparse.Namespace) -> int:
     """Anomalies only. Exits non-zero when something is BROKEN, so CI can gate on it."""
     opened = _open_store(args)
@@ -445,6 +495,12 @@ def build_parser() -> argparse.ArgumentParser:
     common(nm)
     nm.add_argument("--limit", type=int, default=15)
     nm.set_defaults(func=cmd_naming)
+
+    mr = sub.add_parser(
+        "mirror", help="words the documentation defines that the code does not use")
+    common(mr)
+    mr.add_argument("--limit", type=int, default=15)
+    mr.set_defaults(func=cmd_mirror)
 
     q = sub.add_parser("query", help="ask the graph directly with SQL")
     q.add_argument("--docs", action="store_true",

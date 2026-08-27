@@ -24,7 +24,7 @@ from typing import Literal
 # Bump whenever the stored shape or the meaning of an extracted fact changes.
 # A mismatch discards the graph and re-extracts: graph.db is derived data, and a
 # stale map that answers confidently is worse than no map at all.
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 5
 
 
 # --------------------------------------------------------------------------- #
@@ -364,6 +364,60 @@ class Entrypoint:
 
 
 @dataclass(slots=True)
+class Constant:
+    """A value the program names at module level, and the comment explaining why.
+
+    Added because `JTBD_OPENERS` is declared in `_prompts.py`, read six times, and the
+    map could not say it existed: `visit_Assign` caught only CLI app objects, class
+    bodies became `Field_`, and module level became nothing. A constant is a name a
+    person chose for a value -- the same argument that made `Artefact` a fact type --
+    and 2,489 of them on Mensores carry the program's configuration: model names, token
+    ceilings, directory names, retry limits.
+
+    Module level means *runs at import*, so a constant inside a module-level `try` or
+    `if TYPE_CHECKING` counts, and one inside a function does not. That is the same
+    boundary the module scope already uses for comments and for boundaries.
+
+    `value` is the assigned expression whole, never shortened -- rule 8. A ceiling cut
+    off at eighty characters is no longer the ceiling.
+    """
+
+    name: str
+    value: str                    # the assigned expression, as written
+    line: int
+    type: str | None = None       # the declared annotation, where there is one
+    is_final: bool = False        # `Final[...]`, which says it is not meant to be rebound
+    comment: str | None = None    # the WHY, from the comment beside or above it
+    private: bool = False         # leading underscore: internal to the module
+
+
+@dataclass(slots=True)
+class Artefact:
+    """A file the program names: a database, a config, a script, a document.
+
+    Added because `tabularium.db` -- the single most-referenced name in Mensores, 50
+    quoted occurrences -- appeared nowhere in the map. It is built as
+    `repo_root / ".mensores" / "tabularium.db"`, so it is not a module, not a table,
+    and not a boundary target: the path is assembled from parts and only the parts
+    are literals. A program names its artefacts as deliberately as it names its
+    packages, and the words it chooses are part of its vocabulary. 101 distinct ones
+    in Mensores, and DunneFlow could see none of them.
+
+    One row per reference site, never deduplicated at ingest, so "how often is this
+    named, and by whom" is answerable and rule 8 holds.
+    """
+
+    name: str            # basename as written -- "tabularium.db"
+    stem: str            # basename minus its final extension -- "tabularium"
+    ext: str             # lowercased, no dot -- "db"
+    kind: str            # DATABASE | CONFIG | SCRIPT | DOCUMENT | DATA | ARCHIVE
+    routine_id: str
+    line: int
+    literal: str         # the whole literal as written, never shortened (rule 8)
+    is_pattern: bool = False   # `chaos_*.py` names a set, not a file
+
+
+@dataclass(slots=True)
 class ImportRec:
     """An import, kept only so call names can be resolved to their module."""
 
@@ -400,6 +454,8 @@ class FileFacts:
     classes: list[ClassDef_] = field(default_factory=list)
     tables: list[TableSchema] = field(default_factory=list)
     indexes: list[IndexSchema] = field(default_factory=list)
+    artefacts: list[Artefact] = field(default_factory=list)
+    constants: list[Constant] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
 
 

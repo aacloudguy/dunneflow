@@ -113,6 +113,13 @@ def _candidate_terms(store: Store) -> dict[str, Term]:
         for word in re.split(r"[^A-Za-z0-9]+", str(r["tbl"])):
             note(word, "table", f"table {r['tbl']}")
 
+    # A constant is the third place a person must name a thing rather than describe
+    # one. `EMBEDDING_MODEL` and `MENSORES_DIRNAME` carry the program's configuration
+    # vocabulary, and until constants were recorded none of it was here.
+    for r in store.query("SELECT DISTINCT name FROM constants WHERE name <> ''"):
+        for word in re.split(r"[^A-Za-z0-9]+", str(r["name"])):
+            note(word, "constant", f"constant `{r['name']}`")
+
     return terms
 
 

@@ -146,6 +146,12 @@ class _Handler(BaseHTTPRequestHandler):
             self._json(self._payload)
         elif path.startswith("/static/"):
             self._file(STATIC / path[len("/static/"):])
+        elif path == "/favicon.ico":
+            # Browsers always ask. Answering "nothing here" is quieter than a 404 in
+            # everyone's console.
+            self.send_response(204)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
         elif path.startswith("/vendor/"):
             self._file(VENDOR / path[len("/vendor/"):])
         else:

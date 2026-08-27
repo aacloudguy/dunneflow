@@ -15,7 +15,7 @@
 
 const {
   Deck, OrbitView, ScatterplotLayer, LineLayer, TextLayer, PolygonLayer,
-  COORDINATE_SYSTEM,
+  COORDINATE_SYSTEM, CollisionFilterExtension,
 } = deck;
 
 const CARTESIAN = COORDINATE_SYSTEM.CARTESIAN;
@@ -30,17 +30,29 @@ const KIND_COLOR = {
   BOUNDARY:  [196, 181, 253],
 };
 const SHADOW_COLOR = [ 90, 104, 124];
-const EDGE_COLOR   = [ 68,  86, 110, 130];
-const CROSS_COLOR  = [125, 211, 252,  90];   // transposition: shadow → its real self
+const EDGE_COLOR   = [ 68,  86, 110,  70];
+const CROSS_COLOR  = [125, 211, 252,  70];   // transposition: shadow → its real self
 const DISK_FILL    = [ 22,  30,  41, 110];
 const DISK_LINE    = [ 44,  56,  73, 200];
 
 /* Labels are capped, and the cap is stated. Fifteen thousand labels is not a picture and
  * not a reading; the cap picks the busiest nodes, and the HUD says how many it hid --
- * design rule 1, no filter is ever silent. */
-const NODE_LABEL_CAP = 400;
-const EDGE_LABEL_CAP = 150;
-const EDGE_LABEL_ZOOM = 1.5;      // edge labels only once genuinely zoomed in
+ * design rule 1, no filter is ever silent.
+ *
+ * There are two label regimes, because there are two questions. Looking at the whole
+ * stack the question is "what are these plates", so the plates are named and the nodes
+ * are not -- 250 node labels in a 700-pixel overview all collide, and a collision filter
+ * doing its job correctly then renders nothing at all, which reads as a bug. Zoomed in,
+ * the question is "what is this thing", and the nodes are named. The HUD says which
+ * regime is in force so the absence of node labels is never mistaken for their failure. */
+const NODE_LABEL_CAP = 250;
+const NODE_LABEL_ZOOM = -1.2;     // below this the stack is an overview, not a reading
+
+/* Every disk is drawn the same size, so fifty-one of them at any generous spacing is a
+ * column rather than a deck -- and a column is exactly what the stack must not look
+ * like, because it hides the one thing the model exists to show. The default fans them
+ * close: wide enough to see the plates apart, flat enough to read as cards. */
+const DEFAULT_SPREAD = 0.35;
 
 const el = (id) => document.getElementById(id);
 const state = {
@@ -48,6 +60,12 @@ const state = {
   viewState: { target: [0, 0, 0], zoom: -4, rotationX: 35, rotationOrbit: 20,
                minZoom: -9, maxZoom: 6 },
   hiddenLabels: 0,
+  /* Transpositions are off by default, and that is a correction rather than a
+   * preference. Five thousand two hundred lines running the whole height of the stack
+   * fill its interior with a solid wash -- frame it a little tighter than the whole
+   * silhouette and the screen is simply blue. They are how you follow *one* thread, so
+   * they belong to a selection, not to the ambient picture. */
+  showTranspositions: false,
 };
 
 /* Frame the whole stack from its actual extent rather than from a guessed constant.
@@ -55,7 +73,7 @@ const state = {
  * DunneFlow -- so any fixed target and zoom is right for exactly one program and shows
  * the others as a speck or from inside. Opening onto nothing is indistinguishable from
  * opening onto a failure. */
-function fitView(d, rotationX = 35) {
+function bounds(d) {
   let lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
   for (let i = 0; i < d.n; i++) {
     for (let a = 0; a < 3; a++) {
@@ -64,10 +82,40 @@ function fitView(d, rotationX = 35) {
       if (v > hi[a]) hi[a] = v;
     }
   }
-  const target = [0, 1, 2].map((a) => (lo[a] + hi[a]) / 2);
-  const span = Math.max(hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2], 1);
-  const px = Math.min(window.innerWidth, window.innerHeight) * 0.82;
-  return { ...state.viewState, target, rotationX, zoom: Math.log2(px / span) };
+  const centre = [0, 1, 2].map((a) => (lo[a] + hi[a]) / 2);
+  // The stack is a cylinder, so measure it as one: a true radius about the axis rather
+  // than half the X extent, which would be wrong for any disk that is not a full circle.
+  let r = 0;
+  for (let i = 0; i < d.n; i++) {
+    const dx = d.positions[i * 3] - centre[0], dy = d.positions[i * 3 + 1] - centre[1];
+    const h = Math.hypot(dx, dy);
+    if (h > r) r = h;
+  }
+  return { centre, radius: r || 1, height: (hi[2] - lo[2]) || 1 };
+}
+
+/* Fit the *bounding cylinder*, at the tilt actually in force.
+ *
+ * A bounding sphere is rotation-invariant and therefore safe at every angle, but safe by
+ * being wrong at nearly all of them: it reserves room for the worst case, so the stack
+ * sits small in the frame whichever way it is turned. The stack is a cylinder, and
+ * orbiting about Z leaves its footprint a circle -- so the only thing that changes the
+ * silhouette is tilt, and that makes a snug fit a two-term formula rather than a guess.
+ *
+ * Vertical extent goes from the full height seen edge-on to the full diameter seen from
+ * above; horizontal extent is the diameter at every angle.
+ */
+function fitView(d, rotationX = state.viewState.rotationX) {
+  const b = bounds(d);
+  const t = (rotationX * Math.PI) / 180;
+  const vertical = Math.abs(b.height * Math.cos(t)) + Math.abs(2 * b.radius * Math.sin(t));
+  const horizontal = 2 * b.radius;
+  const margin = 0.88;
+  const scale = Math.min(
+    (window.innerWidth * margin) / horizontal,
+    (window.innerHeight * margin) / vertical,
+  );
+  return { ...state.viewState, target: b.centre, rotationX, zoom: Math.log2(scale) };
 }
 
 /* ---------------------------------------------------------------- data prep --- */
@@ -153,6 +201,7 @@ function applySpread(d, spread) {
     d.tDst[k * 3 + 2] = d.baseZ[r] * spread;
   });
   for (const p of d.plates) for (const pt of p.polygon) pt[2] = p.baseZ * spread;
+  if (d.diskLabels) for (const l of d.diskLabels) l.pos[2] = l.plate.baseZ * spread;
   d.gpu = null;                 // one re-upload, on change, not per frame
 }
 
@@ -174,6 +223,16 @@ function diskPlates(raw) {
     }
     return { polygon: ring, disk: d, baseZ: z };
   });
+}
+
+function diskLabels(plates) {
+  /* At the rim, not the centre: a disk's centre is where its busiest nodes are, and a
+   * name dropped there is unreadable over its own contents. */
+  return plates.map((p) => ({
+    pos: [1090, 0, p.baseZ],
+    text: `${p.disk.name}  ${p.disk.nodes}`,
+    plate: p,
+  }));
 }
 
 /* ------------------------------------------------------------------ layers --- */
@@ -212,10 +271,6 @@ function buildLayers(d) {
       updateTriggers: { getPolygon: d.spread },
     }),
     new LineLayer({
-      id: 'transpositions', coordinateSystem: CARTESIAN, data: gpu.trans,
-      getColor: CROSS_COLOR, getWidth: 1, widthUnits: 'pixels', pickable: false,
-    }),
-    new LineLayer({
       id: 'edges', coordinateSystem: CARTESIAN, data: gpu.edges,
       getColor: EDGE_COLOR, getWidth: 1, widthUnits: 'pixels', pickable: false,
     }),
@@ -227,7 +282,27 @@ function buildLayers(d) {
     }),
   ];
 
+  if (state.showTranspositions) {
+    layers.splice(1, 0, new LineLayer({
+      id: 'transpositions', coordinateSystem: CARTESIAN, data: gpu.trans,
+      getColor: CROSS_COLOR, getWidth: 1, widthUnits: 'pixels', pickable: false,
+    }));
+  }
+
   if (showLabels) {
+    layers.push(new TextLayer({
+      id: 'disk-labels', data: d.diskLabels, coordinateSystem: CARTESIAN,
+      getPosition: (o) => o.pos, getText: (o) => o.text,
+      getSize: 12, sizeUnits: 'pixels', getColor: [147, 161, 179, 240],
+      getTextAnchor: 'start', getAlignmentBaseline: 'center',
+      getPixelOffset: [10, 0], background: true,
+      getBackgroundColor: [11, 17, 25, 210], backgroundPadding: [4, 2],
+      characterSet: 'auto', fontFamily: 'ui-monospace, Menlo, monospace',
+      billboard: true, pickable: false,
+    }));
+  }
+
+  if (showLabels && state.viewState.zoom >= NODE_LABEL_ZOOM) {
     const labels = pickLabels(d);
     layers.push(new TextLayer({
       id: 'node-labels', data: labels, coordinateSystem: CARTESIAN,
@@ -238,6 +313,13 @@ function buildLayers(d) {
       getBackgroundColor: [11, 17, 25, 190], backgroundPadding: [3, 1],
       characterSet: 'auto', fontFamily: 'ui-monospace, Menlo, monospace',
       pickable: false,
+      /* Overlapping labels are not a denser reading, they are a grey mat. The collision
+       * filter drops the ones that would collide and keeps the higher-priority label --
+       * priority here is degree, so what survives a crowded patch is its busiest node. */
+      extensions: [new CollisionFilterExtension()],
+      collisionEnabled: true,
+      collisionTestProps: { sizeScale: 1.6 },
+      getCollisionPriority: (o) => o.priority,
     }));
   }
   return layers;
@@ -251,7 +333,7 @@ function pickLabels(d) {
   for (let k = 0; k < cap; k++) {
     const i = d.ranked[k];
     out.push({ pos: [d.positions[i * 3], d.positions[i * 3 + 1], d.positions[i * 3 + 2]],
-               text: d.raw.nodes.label[i] });
+               text: d.raw.nodes.label[i], priority: d.degree[i] });
   }
   state.hiddenLabels = d.ranked.length - cap;
   return out;
@@ -286,9 +368,16 @@ function render() {
 
 function updateCounts() {
   const s = state.data.stats;
-  const hidden = state.moving
-    ? 'labels off while moving'
-    : (state.hiddenLabels ? `${state.hiddenLabels.toLocaleString()} labels hidden by cap` : 'all labels shown');
+  let hidden;
+  if (state.moving) {
+    hidden = 'labels off while moving';
+  } else if (state.viewState.zoom < NODE_LABEL_ZOOM) {
+    hidden = `disk names only \u2014 zoom in to name nodes (${s.drawn_nodes.toLocaleString()} unlabelled)`;
+  } else {
+    hidden = state.hiddenLabels
+      ? `${state.hiddenLabels.toLocaleString()} node labels hidden by cap and collision`
+      : 'all node labels shown';
+  }
   el('counts').innerHTML =
     `${s.drawn_nodes.toLocaleString()} drawn · ${s.edges.toLocaleString()} edges · ` +
     `${s.disks} disks<br><span class="muted">${hidden}</span>`;
@@ -345,12 +434,20 @@ async function boot() {
   state.data = raw;
   state.prepared = prepare(raw);
   state.prepared.plates = diskPlates(raw);
+  state.prepared.diskLabels = diskLabels(state.prepared.plates);
 
+  applySpread(state.prepared, DEFAULT_SPREAD);
   state.viewState = fitView(state.prepared, 35);
 
   state.deckgl = new Deck({
     parent: el('stage'),
-    views: [new OrbitView({ orbitAxis: 'Z', fovy: 50 })],
+    /* Orthographic, not perspective. Two reasons, and the first is the one that
+     * matters: under perspective the near plates are magnified and the far ones shrink,
+     * so a stack of equal disks renders as a tapered cylinder -- which is precisely the
+     * shape the model is trying not to be. The second is that orthographic zoom maps
+     * world units to pixels exactly, so framing the stack is arithmetic rather than a
+     * fudge factor that holds at one window size. */
+    views: [new OrbitView({ orbitAxis: 'Z', orthographic: true })],
     viewState: state.viewState,
     controller: { inertia: 250 },
     onViewStateChange,
@@ -367,6 +464,8 @@ async function boot() {
     layers: buildLayers(state.prepared),
   });
 
+  // Handles for headless inspection; harmless, and the alternative is guessing.
+  window.__deck = state.deckgl; window.__d = state.prepared; window.__state = state;
   updateCounts();
   el('hint').textContent =
     `loaded in ${((performance.now() - t0) / 1000).toFixed(1)}s · drag orbit · scroll zoom`;
@@ -385,13 +484,27 @@ document.getElementById('spread').addEventListener('input', (ev) => {
   render();
 });
 
+document.getElementById('trans').addEventListener('change', (ev) => {
+  state.showTranspositions = ev.target.checked;
+  render();
+});
+
 document.addEventListener('click', (ev) => {
   const act = ev.target?.dataset?.act;
   if (!act) return;
   if (act === 'bench') return benchmark();
-  // Re-fit rather than only re-tilt: a top-down frame and a tilted one need different
-  // zooms, because the stack is wide seen from above and tall seen from the side.
-  onViewStateChange({ viewState: fitView(state.prepared, act === 'top' ? 90 : 35) });
+  // `fit` keeps the angle you are looking from and only re-frames; the view buttons
+  // choose an angle and re-frame for it. Re-framing is not optional either way: the
+  // stack is wide seen from above and tall seen from the side, so a tilt without a
+  // re-fit walks straight off the edge of the screen.
+  const tilt = act === 'top' ? 90 : act === 'tilt' ? 35 : state.viewState.rotationX;
+  onViewStateChange({ viewState: fitView(state.prepared, tilt) });
+});
+
+document.addEventListener('keydown', (ev) => {
+  if (ev.key === 'f' && !ev.metaKey && !ev.ctrlKey && state.prepared) {
+    onViewStateChange({ viewState: fitView(state.prepared) });
+  }
 });
 
 boot();

@@ -10,14 +10,18 @@
   <div class="row" id="counts">loading…</div>
   <div class="row muted" id="hint">drag orbit · shift-drag pan · scroll zoom</div>
   <div class="row">
+    <button data-act="fit" title="re-frame the stack without changing your angle (f)">snap to fit</button>
     <button data-act="top">top-down</button>
     <button data-act="tilt">tilt</button>
     <button data-act="bench">benchmark</button>
   </div>
   <div class="row">
     <label for="spread" class="muted">spread</label>
-    <input id="spread" type="range" min="0.15" max="3" step="0.05" value="1">
-    <span id="spreadval" class="muted">1.0&times;</span>
+    <input id="spread" type="range" min="0.05" max="2" step="0.05" value="0.35">
+    <span id="spreadval" class="muted">0.35&times;</span>
+  </div>
+  <div class="row">
+    <label><input id="trans" type="checkbox"> <span class="muted">transposition lines</span></label>
   </div>
   <div class="row" id="bench"></div>
 </div>

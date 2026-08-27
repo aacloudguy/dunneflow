@@ -43,3 +43,6 @@ button:hover { border-color: var(--accent); color: var(--accent); }
 #diag { display: block; font: 11px/1.5 ui-monospace, Menlo, monospace; color: var(--muted);
   border-top: 1px solid var(--border); margin-top: .4rem; padding-top: .4rem; }
 #err { display: block; color: #f87171; font-size: 12px; }
+#err code { background: var(--ground); border: 1px solid var(--border);
+  border-radius: .2rem; padding: 0 .25rem; font-size: 11px; }
+#err b { color: #fca5a5; }

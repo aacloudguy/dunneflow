@@ -524,7 +524,20 @@ async function boot() {
     },
     layers: buildLayers(state.prepared),
     onError: (err) => {
-      el('err').textContent = `deck.gl: ${err.message}`;
+      /* A raw driver string is a fact, not an answer. The one failure a reader will
+       * actually hit is a browser with hardware acceleration switched off -- the canvas
+       * then stays blank with no clue that the cause is a setting rather than the
+       * program -- so that case is named and the remedy is given. Same discipline as a
+       * finding stating its blind spot: say what would make this go away. */
+      const gpuOff = /Failed to create WebGL context|GL_RENDERER = Disabled/.test(err.message);
+      el('err').innerHTML = gpuOff
+        ? '<b>This browser cannot draw.</b> Hardware acceleration is off, so no page ' +
+          'here can get a WebGL context \u2014 nothing to do with your machine.<br>' +
+          'Turn it on at <code>chrome://settings/system</code> ' +
+          '(&ldquo;Use graphics acceleration when available&rdquo;), then relaunch Chrome. ' +
+          '<code>chrome://gpu</code> says why it is off. Safari works today without changing anything.' +
+          `<br><span class="muted">${err.message}</span>`
+        : `deck.gl: ${err.message}`;
       el('err').hidden = false;
     },
     onAfterRender: () => { framesDrawn++; },

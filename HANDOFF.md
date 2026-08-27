@@ -521,6 +521,65 @@ Still open on this half:
 * **The band boundary at three symbols** is a threshold, printed so it can be argued
   with, and not yet argued with against a second corpus.
 
+### Attestation: promoting an inference, and why it is not canon (2026-08-27)
+
+Agreed in principle, recorded rather than built. It waits behind temporal layers,
+because it needs the same storage they do.
+
+**Where it comes from.** DunneWrite's note ingest asks the fiction author to certify
+whether an inferred fact is true; if so it is promoted to canon, otherwise it stays
+marked as the model's guess. The question was whether that model transfers to source
+code, "since it is or isn't real, not the same as fiction".
+
+**It transfers, but not the vocabulary.** In fiction the author *is* the ground truth:
+certification does not discover a fact, it creates one, which is why "canon" is the
+right word there. In code there is a fact of the matter independent of any reader --
+`Plan 68-03` either did or did not govern that file -- so a person confirming it is not
+authoring, they are **witnessing**. Calling that canon would quietly borrow the fiction
+author's authority for someone who does not have it.
+
+What makes the mechanism worth having anyway is not whether truth exists but **who can
+see it**. DunneFlow's `Plan 68-03` inference is unfalsifiable *by DunneFlow*: the
+evidence lives in a convention someone holds in their head, or in a tracker outside
+`--docs`. A person who knows the project can falsify it in seconds. Their judgement adds
+information the tool cannot derive, which is exactly the condition that makes
+certification worth building rather than decorative.
+
+**Three changes from the DunneWrite model.**
+
+1. **An attestation is a claim, so it carries provenance.** Rule 13 applies to people
+   too. The tier is *attested*, beside quoted and measured -- who, when, and on what
+   basis, because "I wrote this plan" and "it looks right to me" are different evidence.
+   A quoted definition proves itself with a line; an attestation proves itself with a
+   person, and must name them.
+
+2. **An attestation goes stale; canon does not.** Fiction canon is decided and stays
+   decided. Code moves. An attestation must be keyed to the *evidence* it was made
+   about, so that renaming the file, changing the convention, or the plan document
+   finally appearing invalidates it rather than silently carrying an old judgement
+   forward. That is content-addressing again, and it is the same storage question
+   temporal layers answer -- which is the whole reason this waits for them. A second
+   store keyed by revision would be the same mistake the project profile records.
+
+3. **The third pile is the valuable one.** The anomaly worklist already has the right
+   shape: *the blind spot applies* / *real and acknowledged* / *this is a DunneFlow
+   defect*. Attestation must feed the same loop rather than growing a parallel system.
+   Rejecting `Plan 06-06` is not a fact about one id -- it is a fact about the
+   `document_identity` rule in `detectors/annotations.yaml` that composed it. An
+   inference rejected repeatedly means the convention is wrong, and the rule is the
+   thing to fix. Certification that only decorates individual rows throws away its own
+   best signal.
+
+**One invariant.** Promotion must never overwrite the inference. Record "inferred, then
+attested by <person> on <date>" with both visible. In fiction the guess can be discarded
+once canon exists; here, if the attestation turns out wrong, you need to see what it was
+resting on.
+
+**Scope when it is built.** Not only composed ids. Every INFERRED thing DunneFlow
+reports is a candidate: `Confidence.INFERRED` call edges, the *likely landed* and
+*possibly landed* traceability bands, and whatever `dunneflow infer` returns. One
+mechanism, one worklist, one triage vocabulary.
+
 ### Next, in order
 
 **1. ~~The documentation extractor.~~ ~~The glossary and naming-standard renderers.~~
@@ -528,7 +587,16 @@ Done — see above.**
 
 **2. ~~The traceability report.~~ Done — see "Built 2026-08-27: the traceability report" above.**
 
-**3. The one-time model pass — `dunneflow infer`.** Postures (Off / Documentation /
+**3. The mirror query.** *Vocabulary the documentation defines that the program never
+uses.* `tabularium` is glossed in the pantheon and appears in the glossary nowhere,
+because nothing in the code answers to it. Tom notes there **is** a `tabularium.db`,
+referenced frequently -- so check first whether the `.db` suffix is defeating the term
+matcher before reporting drift; if it is, that is a defect in DunneFlow and not a
+finding about Mensores, and it is exactly the case rule "doubt the tool first" exists
+for. Otherwise it is the traceability report's mirror: one query, one small renderer,
+no model. Small, and next.
+
+**4. The one-time model pass — `dunneflow infer`.** Postures (Off / Documentation /
 Documentation + identifiers / Everything / Local endpoint), stored per corpus; a file
 manifest shown before anything leaves; two-step arm-then-confirm; `CITED` results
 verified against the line they name and *reported* when they do not verify. Its worklist
@@ -536,12 +604,15 @@ already exists: `10-glossary.md` ends with the 191 terms nothing defines, and
 `11-naming.md` says plainly that Mensores states no Form rule anywhere. The Form lane
 needs no model at all — counting is what a database is for.
 
-**4. The dashboard proper.** Astro 5 + Tailwind 4, the design ratified across this
+**5. The dashboard proper.** Astro 5 + Tailwind 4, the design ratified across this
 session and mocked at the artifact URL in
 `memory/project-dunneflow-dashboard-ui.md`. Port the mockup's decisions, not its code.
 
-**5. Then, and only then, temporal layers.** Snapshots keyed by revision, the flow diff,
+**6. Then, and only then, temporal layers.** Snapshots keyed by revision, the flow diff,
 the scrubber. Identity is already position-independent, which was the prerequisite.
+
+**7. Attestation**, on the layer storage — see "Attestation: promoting an inference"
+above. Not before it; it needs the same content-addressed, revision-keyed store.
 
 Deferred, recorded so they are not lost: a graph viewer that holds 10,000+ nodes (see
 `../usdgraph`, NetworkX to OpenUSD); cross-process stitching; TypeScript extraction;

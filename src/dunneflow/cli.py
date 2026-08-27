@@ -27,7 +27,7 @@ from .resolve.glossary import bind
 from .resolve.mirror import BANDS as MIRROR_BANDS
 from .resolve.mirror import measure as measure_mirror
 from .resolve.naming import measure
-from .store import Store
+from .store import StaleGraphError, Store
 from .walk import analyze_docs_tree, analyze_tree
 
 DEFAULT_OUTPUT = Path("output")
@@ -126,7 +126,8 @@ def cmd_analyze(args: argparse.Namespace) -> int:
             f"({rstats.rate():.0f}% internal) in {t_resolve:.1f}s"
         )
         _emit(
-            f"cli: {clistats.apps} apps, {clistats.commands_attached} commands, "
+            f"cli: {clistats.apps} apps, {clistats.commands_found} commands "
+            f"({clistats.commands_attached} in a tree), "
             f"{clistats.mounts_resolved}/{clistats.mounts_total} mounts"
         )
 
@@ -188,7 +189,12 @@ def _open_store(args: argparse.Namespace) -> tuple[Store, Path] | None:
     if not db_path.exists():
         _emit(f"error: no graph at {db_path} — run `dunneflow analyze` first")
         return None
-    return Store(db_path), db_path
+    try:
+        # Read-only: an orientation command must never drop the map it came to read.
+        return Store(db_path, writable=False), db_path
+    except StaleGraphError as exc:
+        _emit(f"error: {exc}")
+        return None
 
 
 def cmd_touches(args: argparse.Namespace) -> int:
@@ -258,7 +264,13 @@ def _open_docs(args: argparse.Namespace) -> DocStore | None:
     target = Path(args.path).resolve()
     _program, out_dir = _default_paths(target, args.name, Path(args.output))
     path = out_dir / "docs.db"
-    return DocStore(path) if path.exists() else None
+    if not path.exists():
+        return None
+    try:
+        return DocStore(path, writable=False)
+    except StaleGraphError as exc:
+        _emit(f"error: {exc}")
+        return None
 
 
 def cmd_glossary(args: argparse.Namespace) -> int:

@@ -25,6 +25,7 @@ class CliStats:
     apps: int = 0
     mounts_resolved: int = 0
     mounts_total: int = 0
+    commands_found: int = 0
     commands_attached: int = 0
     scripts_linked: int = 0
     launches_linked: int = 0
@@ -162,9 +163,27 @@ def resolve_cli(store: Store) -> CliStats:
     # this run happened to change, so a warm re-analysis -- where every command was
     # already attached -- announced "0 commands" over a map holding 149 of them.
     # A statistic that reads as a collapsed command tree is worse than none.
-    stats.commands_attached = store.query(
-        "SELECT COUNT(*) FROM entrypoints WHERE parent_id IS NOT NULL"
-    )[0][0]
+    # Attached is not found, and the two must be counted over the *same* population or
+    # the pair is worse than either alone. A command reaches an app object only when
+    # there is one, and argparse builds its parser inside a function -- so
+    # `p = ArgumentParser()` is never a module-level app and its subcommands have no
+    # parent to hang from. They are extracted correctly and rendered correctly; only
+    # this counter could not see them, and it read "0 commands" over a CLI holding
+    # eight. That is the same collapsed-tree misreading the note above was written to
+    # prevent, and it cost this session its first finding, which was wrong.
+    #
+    # Console-script declarations are excluded from both: `mensores = "...:app"` is the
+    # executable, not one of its commands, and counting it inflates the total by one
+    # per entry point.
+    counted = (
+        "FROM entrypoints"
+        " WHERE kind = 'CLI' AND evidence NOT LIKE '%[project.scripts]%'"
+    )
+    row = store.query(
+        f"SELECT COUNT(*), SUM(parent_id IS NOT NULL) {counted}"
+    )[0]
+    stats.commands_found = row[0]
+    stats.commands_attached = row[1] or 0
     stats.scripts_linked = store.query(
         "SELECT COUNT(*) FROM entrypoints"
         " WHERE parent_id IS NOT NULL AND evidence LIKE '%[project.scripts]%'"

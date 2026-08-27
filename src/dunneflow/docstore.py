@@ -24,6 +24,7 @@ from typing import Any
 
 from .detectors.prose import doc_rules_fingerprint
 from .schema import DOC_SCHEMA_VERSION, DocFacts
+from .store import StaleGraphError
 
 DOC_SCHEMA_SQL = """
 PRAGMA journal_mode = WAL;
@@ -135,12 +136,19 @@ CREATE INDEX IF NOT EXISTS ix_documents_dup   ON documents(duplicate_of);
 class DocStore:
     """A connection to one program's documentation corpus."""
 
-    def __init__(self, path: Path | str) -> None:
+    def __init__(self, path: Path | str, *, writable: bool = True) -> None:
+        """See `Store.__init__`: a reader refuses a stale corpus, it never drops one."""
         self.path = Path(path)
-        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.writable = writable
+        if writable:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
         self.conn = sqlite3.connect(self.path)
         self.conn.row_factory = sqlite3.Row
         self._refuse_wrong_kind()
+        if not writable:
+            self.rebuilt = False
+            self._refuse_if_stale()
+            return
         self.rebuilt = self._discard_if_stale()
         self.conn.executescript(DOC_SCHEMA_SQL)
         self.set_meta("kind", "docs")
@@ -163,14 +171,8 @@ class DocStore:
                 f"to open it as one, because doing so would discard its contents"
             )
 
-    def _discard_if_stale(self) -> bool:
-        """Rule 12, applied to prose.
-
-        A cached fact is valid only if the source *and* the rule that read it are both
-        unchanged. `detectors/docs/*.yaml` is the thing most often edited, and the file
-        cache keys on document content, so a rule change would otherwise leave every
-        stored fact answering the previous rule with nothing to reveal it.
-        """
+    def _is_stale(self) -> bool:
+        """The decision, with no side effect. See `Store._is_stale`."""
         try:
             row = self.conn.execute(
                 "SELECT value FROM meta WHERE key = 'extractor'"
@@ -182,9 +184,26 @@ class DocStore:
                 n = self.conn.execute("SELECT COUNT(*) FROM documents").fetchone()[0]
             except sqlite3.Error:
                 return False
-            if not n:
-                return False
-        elif str(row[0]) == self._want():
+            return bool(n)
+        return str(row[0]) != self._want()
+
+    def _refuse_if_stale(self) -> None:
+        """A reader never drops. See `Store._refuse_if_stale`."""
+        if self._is_stale():
+            raise StaleGraphError(
+                f"{self.path} was written by a different version of DunneFlow and "
+                f"cannot be read safely -- re-run `dunneflow analyze` to rebuild it"
+            )
+
+    def _discard_if_stale(self) -> bool:
+        """Rule 12, applied to prose.
+
+        A cached fact is valid only if the source *and* the rule that read it are both
+        unchanged. `detectors/docs/*.yaml` is the thing most often edited, and the file
+        cache keys on document content, so a rule change would otherwise leave every
+        stored fact answering the previous rule with nothing to reveal it.
+        """
+        if not self._is_stale():
             return False
         names = [
             r[0] for r in self.conn.execute(

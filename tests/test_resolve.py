@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from dunneflow.resolve.calls import resolve_calls
 from dunneflow.resolve.cli import resolve_cli
 from dunneflow.schema import Confidence
 from dunneflow.store import Store
@@ -135,3 +136,42 @@ def test_cli_stats_report_state_not_delta(tmp_path: Path) -> None:
     assert warm.commands_attached == cold.commands_attached, (
         "a warm run under-reported the command tree"
     )
+
+
+def test_argparse_commands_are_counted_even_with_no_app_object(tmp_path):
+    """The summary line must not read as a collapsed command tree.
+
+    `commands_attached` counts entrypoints hanging off an app object. argparse builds
+    its parser inside a function, so there is no module-level app and no parent to
+    hang from -- and the line therefore announced "0 commands" over a CLI holding
+    eight of them. The commands were extracted correctly the whole time; only the
+    statistic was blind, which is the harder kind of wrong to notice.
+    """
+    root = tmp_path / "src"
+    root.mkdir()
+    (root / "tool.py").write_text(
+        "import argparse\n"
+        "\n"
+        "def cmd_go(args):\n"
+        "    pass\n"
+        "\n"
+        "def build():\n"
+        "    p = argparse.ArgumentParser()\n"
+        "    sub = p.add_subparsers()\n"
+        "    g = sub.add_parser('go')\n"
+        "    g.set_defaults(func=cmd_go)\n"
+        "    return p\n"
+    )
+    store = Store(tmp_path / "g.db")
+    analyze_tree(root, store)
+    resolve_calls(store)
+    stats = resolve_cli(store)
+
+    assert stats.apps == 0, "argparse builds its parser in a function; there is no app"
+    assert stats.commands_found == 1, "the argparse subcommand was not counted"
+    assert stats.commands_attached == 0, "it has no app object to attach to"
+
+    names = [r["name"] for r in store.query(
+        "SELECT name FROM entrypoints WHERE kind = 'CLI'"
+    )]
+    assert "go" in names, "the subcommand itself was lost, not merely uncounted"

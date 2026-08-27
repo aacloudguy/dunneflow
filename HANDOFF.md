@@ -36,7 +36,7 @@ Working, verified against Society of Mensores (623 files, 184k lines):
 | Cross-process stitching: outbound call → the handler that serves it | not started |
 
 Commands: `dunneflow analyze | touches | impact | check | glossary | naming | mirror | query`.
-Gates: 220 tests, mypy clean, ruff clean. Cold run 2.3s of code plus ~18s of documentation, against budgets of 90s and 20s; warm 2.1s total.
+Gates: 227 tests, mypy clean, ruff clean. Cold run 4.1s of code plus ~17s of documentation, against budgets of 90s and 20s; warm 2.7s total.
 
 ## Verify it still works
 
@@ -794,15 +794,31 @@ Constants and type aliases followed, closing the last recoverable blind spot the
 named. What remains on that band is a language question, not a defect: only Python is
 extracted.
 
-**3b. Close rule 12 properly — small, and it bit three times in one session.** The
-file cache keys on `SCHEMA_VERSION` plus a hash of `detectors/*.yaml`, so editing the
-extension point invalidates the graph. **Extractor code is not in that key.** Artefacts,
-the comment fix and constants each changed what extraction *means* while every cached
-file still answered the old rules, and each was saved only by remembering to bump
-`SCHEMA_VERSION` by hand. A forgotten bump is exactly rule 12's failure: a confident map
-answering the previous version. The fix is to fold a hash of `extractors/` into the same
-key, the way `detectors/*.yaml` already is. Currently `SCHEMA_VERSION = 5`,
-`DOC_SCHEMA_VERSION = 6`.
+**3b. ~~Close rule 12 properly.~~ Done — and it uncovered a worse one.** The extractor
+is now in the cache key for both corpora: `code_extraction_inputs()` in
+`detectors/__init__.py` and `doc_extraction_inputs()` in `detectors/prose.py` name the
+files, and `fingerprint_files()` hashes them by package-relative path and content. The
+two lists are deliberately disjoint apart from `annotations.yaml`, so a prose edit never
+discards the code graph; a test asserts membership *and* the disjointness, because a
+test that re-derived the list would agree with a wrong list. The `SCHEMA_VERSION` bump
+is no longer load-bearing.
+
+Changing the fingerprint is what exposed **rule 20**: every read command opened `Store`,
+which discarded a stale graph unconditionally, so the first `dunneflow query` after the
+change dropped all 4,734 mensores routines and answered `(no rows)` — a silent wrong
+answer that consumed its own evidence. `Store` and `DocStore` now take
+`writable=False`; a reader raises `StaleGraphError` naming the fix, and only `analyze`
+may drop. Three tests cover it, including that a read-only open does not alter the file
+at all. See rule 20 in `CLAUDE.md`.
+
+Also fixed: the `cli:` summary line counted only commands attached to an app object, so
+it read `0 apps, 0 commands` over DunneFlow's own eight-command CLI — argparse builds
+its parser inside a function, so there is no module-level app to hang them from. **The
+commands themselves were never lost**; only the counter was blind, which cost this
+session its first finding. Both counters are now taken over the same population
+(CLI-kind entrypoints, excluding console-script declarations) and the line reads
+`116 commands (111 in a tree)` on mensores — the 5 unattached are exactly signator's
+argparse subcommands.
 
 **4. The one-time model pass — `dunneflow infer`.** Postures (Off / Documentation /
 Documentation + identifiers / Everything / Local endpoint), stored per corpus; a file

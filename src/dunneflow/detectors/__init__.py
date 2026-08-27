@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
@@ -18,6 +19,7 @@ import yaml
 from ..schema import Annotation, BoundaryKind, Confidence, Direction, EntrypointKind
 
 RULES_DIR = Path(__file__).parent
+_PKG_ROOT = RULES_DIR.parent
 
 
 @dataclass(slots=True)
@@ -374,17 +376,62 @@ def _artefact_extensions(data: dict[str, Any]) -> dict[str, list[str]]:
     return {str(k): list(v) for k, v in exts.items()}
 
 
+def fingerprint_files(paths: Iterable[Path]) -> str:
+    """Hash a set of files by name and content, order-independently.
+
+    The name is hashed as well as the body so that renaming a rule file, or adding an
+    empty one, still changes the answer.
+
+    The label is the path relative to the package, not the bare filename: the code key
+    holds two files called `__init__.py` -- the rule loader and the extractor package
+    -- and a bare name cannot tell them apart.
+    """
+    h = hashlib.sha256()
+    for path in sorted(set(paths)):
+        try:
+            label = str(path.relative_to(_PKG_ROOT))
+        except ValueError:      # a path from outside the package, as in tests
+            label = path.name
+        h.update(label.encode("utf-8"))
+        h.update(path.read_bytes())
+    return h.hexdigest()[:16]
+
+
+def code_extraction_inputs() -> list[Path]:
+    """Every file that shapes code extraction: the rules, the loader, and the reader.
+
+    Named separately from the hash so a test can assert *membership* rather than
+    re-deriving the list, which is the same defence the annotation prefilter uses --
+    a hand-kept list drifts the moment someone adds a file, and a key that silently
+    omits one is the silent no-op this project has paid for repeatedly.
+    """
+    return [
+        *RULES_DIR.glob("*.yaml"),      # the rules: python.yaml, annotations.yaml
+        RULES_DIR / "__init__.py",      # the loader that decides what a rule means
+        *(_PKG_ROOT / "extractors" / "python").rglob("*.py"),  # the reader itself
+    ]
+
+
 def rules_fingerprint() -> str:
-    """A hash of every detector file that shapes extraction.
+    """A hash of everything that shapes *code* extraction -- rules and reader alike.
 
     `detectors/*.yaml` is the extension point -- teaching DunneFlow a framework is a
     config edit, not a code change. That makes it the thing most often edited and the
     thing most likely to leave a cached graph stale, because the file cache keys on
     source content and the source did not change. Editing a rule must invalidate the
     cache as surely as editing the schema does.
+
+    Rule 12 says a cached fact is valid only if the source **and the tool that read
+    it** are unchanged, and for a while only half of that was enforced. The rules were
+    hashed; the extractor that applies them was not. Named artefacts, the comment fix
+    and module-level constants each changed what extraction *means* while every cached
+    file still answered the old rules, and each was saved only by someone remembering
+    to bump `SCHEMA_VERSION` by hand. A forgotten bump is precisely rule 12's failure
+    mode: a confident map answering the previous version of the tool. So the reader is
+    in the key too, and the bump is no longer load-bearing.
+
+    Scope is decided by asking what this extraction actually reads. `detectors/docs/`
+    and `prose.py` are absent deliberately -- they shape the *other* corpus, and
+    editing a prose rule must not discard the code graph.
     """
-    h = hashlib.sha256()
-    for path in sorted(RULES_DIR.glob("*.yaml")):
-        h.update(path.name.encode("utf-8"))
-        h.update(path.read_bytes())
-    return h.hexdigest()[:16]
+    return fingerprint_files(code_extraction_inputs())

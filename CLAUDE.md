@@ -252,6 +252,29 @@ These each came from a false result on real code. Keep them.
     is also a Subscript. A bare `X = Y` is **not** admitted -- it cannot be told from
     `DEFAULT = OTHER_DEFAULT` without resolving `Y`, and rule 1 says precision first.
 
+20. **A read may refuse, but it may never repair.** `Store.__init__` discarded a stale
+    graph on *every* open. For `analyze` that is right -- it re-extracts in the same
+    breath, and rule 12 says a graph answering the previous version of the tool is the
+    one outcome this tool may not produce. But `touches`, `impact`, `query`, `glossary`,
+    `naming` and `mirror` open the very same class, so upgrading DunneFlow and then
+    asking it a question dropped every table and answered out of the hole. `(no rows)`
+    is indistinguishable from a true empty result, so the failure was **silent, and it
+    consumed the evidence on its way past**. A reader now refuses and names the fix;
+    only `analyze` is allowed to drop anything.
+
+    Two general points, both already stated elsewhere in a different costume. Rule 16
+    was the same shape -- a destructive fallback wearing the uniform of a version
+    upgrade -- and the lesson did not transfer because it was filed under *wrong kind*
+    rather than under *destructive on a read path*. And the reasoning that licensed it
+    ("derived data, rebuildable in seconds") was true of the caller it was written for
+    and false of every other caller of the same constructor. **A justification that
+    depends on the caller belongs at the call site, not in the constructor**; the
+    decision (`_is_stale`) is now separate from the act of dropping.
+
+    Found by dogfooding, which is the only reason it was found at all: no test covered
+    a read against a stale store, because nobody thought of a reader as something that
+    could destroy.
+
 ## Anomalies: the discipline
 
 `anomalies.py` reports what looks wrong. It exists under one rule:
@@ -359,7 +382,13 @@ three destinations. Astro 5 + Tailwind 4, built assets shipped inside the packag
     the extension point, and therefore the thing edited most -- left every cached fact
     answering the old rule while the new rule silently never ran. The cache key is now
     `SCHEMA_VERSION` plus a hash of every detector file, and a mismatch discards the
-    graph and says so.
+    graph and says so. **The reader is in that key too**, and for a while it was not:
+    the rules were hashed and the extractor applying them was not, so artefacts, the
+    comment fix and constants each changed what extraction *meant* while every cached
+    file stayed byte-identical -- saved each time only by someone remembering to bump
+    `SCHEMA_VERSION` by hand, which is precisely the half of the rule a hand forgets.
+    `code_extraction_inputs()` and `doc_extraction_inputs()` name the files, per corpus,
+    and a test asserts membership rather than re-deriving the list.
 
 13. **Every reported meaning must carry its provenance, and the provenance must open.**
     A definition or a naming rule is a claim, and a claim without its source is an

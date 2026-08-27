@@ -342,15 +342,39 @@ CREATE INDEX IF NOT EXISTS ix_constants_module ON constants(module);
 """
 
 
+class StaleGraphError(RuntimeError):
+    """A stored map was written by a different version of DunneFlow.
+
+    Raised only on read paths. `analyze` rebuilds instead, because it has the source
+    in hand; a reader does not, and answering out of an emptied graph would be a
+    confident wrong answer -- the one outcome this tool may not produce.
+    """
+
+
 class Store:
     """A connection to one analysed program's graph."""
 
-    def __init__(self, path: Path | str) -> None:
+    def __init__(self, path: Path | str, *, writable: bool = True) -> None:
+        """Open one program's graph.
+
+        `writable=False` is how every orientation command opens it, and the
+        distinction is load-bearing rather than tidy. Discarding a stale graph is safe
+        for `analyze`, which re-extracts in the same breath; for `touches`, `impact` or
+        `query` it empties the map and then answers out of the hole, and `(no rows)` is
+        indistinguishable from a true empty result. So a reader refuses a stale graph
+        and says how to rebuild it, and only `analyze` is allowed to drop anything.
+        """
         self.path = Path(path)
-        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.writable = writable
+        if writable:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
         self.conn = sqlite3.connect(self.path)
         self.conn.row_factory = sqlite3.Row
         self._refuse_wrong_kind()
+        if not writable:
+            self.rebuilt = False
+            self._refuse_if_stale()
+            return
         self.rebuilt = self._discard_if_stale()
         self.conn.executescript(SCHEMA_SQL)
         self.set_meta("kind", "graph")
@@ -377,17 +401,11 @@ class Store:
             )
         return True
 
-    def _discard_if_stale(self) -> bool:
-        """Drop a graph written by a different version of DunneFlow.
+    def _is_stale(self) -> bool:
+        """Was this graph written by a different version of DunneFlow?
 
-        `CREATE TABLE IF NOT EXISTS` will not add a column to a table that already
-        exists, so an upgraded tool reading an older graph silently gets the old
-        shape -- and because the incremental cache keys on source content alone,
-        nothing re-parses to reveal it. The result is a map that is wrong and says
-        nothing about being wrong, which is the one outcome this tool may not have.
-
-        The graph is derived data, rebuildable from source in seconds. Discarding it
-        is always safe; keeping a stale one is not.
+        The decision, with no side effect. Kept apart from `_discard_if_stale` so a
+        reader can ask the same question and refuse rather than destroy.
         """
         want = f"{SCHEMA_VERSION}:{rules_fingerprint()}"
         try:
@@ -403,9 +421,31 @@ class Store:
                 n = self.conn.execute("SELECT COUNT(*) FROM files").fetchone()[0]
             except sqlite3.Error:
                 return False
-            if not n:
-                return False
-        elif str(row[0]) == want:
+            return bool(n)
+        return str(row[0]) != want
+
+    def _refuse_if_stale(self) -> None:
+        """A reader never drops. It says the map is stale and how to rebuild it."""
+        if self._is_stale():
+            raise StaleGraphError(
+                f"{self.path} was written by a different version of DunneFlow and "
+                f"cannot be read safely -- re-run `dunneflow analyze` to rebuild it"
+            )
+
+    def _discard_if_stale(self) -> bool:
+        """Drop a graph written by a different version of DunneFlow.
+
+        `CREATE TABLE IF NOT EXISTS` will not add a column to a table that already
+        exists, so an upgraded tool reading an older graph silently gets the old
+        shape -- and because the incremental cache keys on source content alone,
+        nothing re-parses to reveal it. The result is a map that is wrong and says
+        nothing about being wrong, which is the one outcome this tool may not have.
+
+        The graph is derived data, rebuildable from source in seconds. Discarding it
+        is safe *here*, because `analyze` re-extracts immediately; it is not safe on a
+        read path, which is why `_is_stale` is separate from the dropping.
+        """
+        if not self._is_stale():
             return False
         names = [
             r[0] for r in self.conn.execute(

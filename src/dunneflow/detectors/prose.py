@@ -11,7 +11,6 @@ they are stored apart.
 
 from __future__ import annotations
 
-import hashlib
 import re
 from dataclasses import dataclass
 from functools import lru_cache
@@ -21,8 +20,10 @@ from typing import Any
 import yaml
 
 from ..schema import DocClass, RuleLane
+from . import fingerprint_files
 
 DOC_RULES_DIR = Path(__file__).parent / "docs"
+_PKG_ROOT = Path(__file__).parent.parent
 
 
 def _alternation(words: list[str]) -> re.Pattern[str]:
@@ -104,6 +105,16 @@ def load_prose_rules() -> ProseRules:
     )
 
 
+def doc_extraction_inputs() -> list[Path]:
+    """Every file that shapes document extraction. See `code_extraction_inputs`."""
+    return [
+        *DOC_RULES_DIR.glob("*.yaml"),              # the prose rules
+        DOC_RULES_DIR.parent / "annotations.yaml",  # governs both corpora
+        Path(__file__),                             # the loader and classifier
+        *(_PKG_ROOT / "extractors" / "docs").rglob("*.py"),  # the reader itself
+    ]
+
+
 def doc_rules_fingerprint() -> str:
     """A hash of every rule file that shapes document extraction.
 
@@ -118,16 +129,14 @@ def doc_rules_fingerprint() -> str:
     the other corpus as a disguise. A rule file that shapes an extraction belongs in
     that extraction's fingerprint, and the only safe way to decide which is to ask what
     the extractor reads, not to keep a list by hand.
+
+    The reader is in here too, for the same reason it is on the code side: rule 12 says
+    a cached fact is valid only if the source **and the tool that read it** are
+    unchanged, and hashing only the rules enforces half of that. Editing
+    `extractors/docs/markdown.py` changes what a document means just as surely as
+    editing `prose.yaml` does.
     """
-    h = hashlib.sha256()
-    paths = [*sorted(DOC_RULES_DIR.glob("*.yaml")),
-             DOC_RULES_DIR.parent / "annotations.yaml"]
-    for path in paths:
-        if not path.exists():
-            continue
-        h.update(path.name.encode("utf-8"))
-        h.update(path.read_bytes())
-    return h.hexdigest()[:16]
+    return fingerprint_files(doc_extraction_inputs())
 
 
 # --------------------------------------------------------------------------- #

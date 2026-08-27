@@ -66,6 +66,8 @@ const state = {
    * silhouette and the screen is simply blue. They are how you follow *one* thread, so
    * they belong to a selection, not to the ambient picture. */
   showTranspositions: false,
+  // On until the blank-canvas report is settled, then it goes.
+  testPattern: true,
 };
 
 /* Frame the whole stack from its actual extent rather than from a guessed constant.
@@ -267,7 +269,7 @@ function buildLayers(d) {
       id: 'plates', data: d.plates, coordinateSystem: CARTESIAN,
       getPolygon: (p) => p.polygon, filled: true, stroked: true, extruded: false,
       getFillColor: DISK_FILL, getLineColor: DISK_LINE, getLineWidth: 2,
-      lineWidthUnits: 'pixels', pickable: false, parameters: { depthTest: false },
+      lineWidthUnits: 'pixels', pickable: false,
       updateTriggers: { getPolygon: d.spread },
     }),
     new LineLayer({
@@ -281,6 +283,27 @@ function buildLayers(d) {
       highlightColor: [255, 255, 255, 255],
     }),
   ];
+
+  if (state.testPattern) {
+    /* Three large markers at known world positions: the centre of the stack and its two
+     * ends. They exist to split one question into two that have different answers.
+     *
+     * If these draw and the graph does not, WebGL is fine and the fault is in our
+     * geometry or scale. If they do not draw either, nothing is reaching the screen and
+     * the fault is the context, the canvas, or the driver. A blank canvas cannot tell
+     * those apart, and every hour spent staring at one is spent guessing. */
+    const b = bounds(d);
+    layers.push(new ScatterplotLayer({
+      id: 'test-pattern', coordinateSystem: CARTESIAN,
+      data: [
+        { p: b.centre, c: [255, 0, 200] },
+        { p: [b.centre[0], b.centre[1], b.centre[2] + b.height / 2], c: [255, 220, 0] },
+        { p: [b.centre[0], b.centre[1], b.centre[2] - b.height / 2], c: [0, 200, 255] },
+      ],
+      getPosition: (o) => o.p, getFillColor: (o) => o.c,
+      getRadius: 26, radiusUnits: 'pixels', radiusMinPixels: 20, pickable: false,
+    }));
+  }
 
   if (state.showTranspositions) {
     layers.splice(1, 0, new LineLayer({
@@ -386,6 +409,7 @@ function updateCounts() {
 /* ---------------------------------------------------------------------- fps --- */
 
 let frames = 0, lastReport = performance.now(), samples = [];
+let framesDrawn = 0;
 function tick() {
   frames++;
   const now = performance.now();
@@ -426,6 +450,43 @@ function benchmark(seconds = 6) {
   step();
 }
 
+/* -------------------------------------------------------------- diagnostics --- */
+
+/* Everything needed to tell "drawn off-screen" apart from "not drawn", printed on the
+ * page. A blank canvas has many causes and they are indistinguishable by looking at it;
+ * the one thing that separates them is where the geometry landed in screen space, so
+ * that is computed and shown rather than described.
+ */
+function diagnose() {
+  const lines = [];
+  const canvas = document.querySelector('#stage canvas');
+  const gl = canvas && (canvas.getContext('webgl2') || canvas.getContext('webgl'));
+  const dbg = gl && gl.getExtension('WEBGL_debug_renderer_info');
+  lines.push(`canvas ${canvas ? canvas.width + '\u00d7' + canvas.height : 'MISSING'}` +
+             ` · css ${window.innerWidth}\u00d7${window.innerHeight} · dpr ${window.devicePixelRatio}`);
+  lines.push(`gl ${gl ? 'ok' : 'NONE'}` +
+             (dbg ? ` · ${gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL)}` : ''));
+
+  const vp = state.deckgl?.getViewports?.()[0];
+  if (vp) {
+    const b = bounds(state.prepared);
+    const probe = [b.centre,
+                   [b.centre[0], b.centre[1], b.centre[2] + b.height / 2],
+                   [b.centre[0], b.centre[1], b.centre[2] - b.height / 2]];
+    const on = probe.map((w) => vp.project(w).map(Math.round));
+    lines.push(`viewport ${Math.round(vp.width)}\u00d7${Math.round(vp.height)}` +
+               ` · zoom ${state.viewState.zoom.toFixed(2)} · tilt ${Math.round(state.viewState.rotationX)}`);
+    lines.push(`centre \u2192 [${on[0]}] · top \u2192 [${on[1]}] · base \u2192 [${on[2]}]`);
+    const inside = on.some(([x, y]) => x > 0 && y > 0 && x < vp.width && y < vp.height);
+    lines.push(inside ? 'geometry projects ON screen' : 'geometry projects OFF screen');
+  } else {
+    lines.push('no viewport — deck did not initialise');
+  }
+  lines.push(`layers ${state.deckgl?.props?.layers?.length ?? 0}` +
+             ` · nodes ${state.prepared?.n ?? 0} · frames ${framesDrawn}`);
+  el('diag').innerHTML = lines.join('<br>');
+}
+
 /* --------------------------------------------------------------------- boot --- */
 
 async function boot() {
@@ -462,10 +523,16 @@ async function boot() {
                         fontSize: '12px' } };
     },
     layers: buildLayers(state.prepared),
+    onError: (err) => {
+      el('err').textContent = `deck.gl: ${err.message}`;
+      el('err').hidden = false;
+    },
+    onAfterRender: () => { framesDrawn++; },
   });
 
   // Handles for headless inspection; harmless, and the alternative is guessing.
   window.__deck = state.deckgl; window.__d = state.prepared; window.__state = state;
+  setTimeout(diagnose, 1500);
   updateCounts();
   el('hint').textContent =
     `loaded in ${((performance.now() - t0) / 1000).toFixed(1)}s · drag orbit · scroll zoom`;
@@ -481,6 +548,11 @@ document.getElementById('spread').addEventListener('input', (ev) => {
   document.getElementById('spreadval').textContent = v.toFixed(2) + '\u00d7';
   applySpread(state.prepared, v);
   // Nothing about the camera changed, so keep the frame and just redraw.
+  render();
+});
+
+document.getElementById('test').addEventListener('change', (ev) => {
+  state.testPattern = ev.target.checked;
   render();
 });
 

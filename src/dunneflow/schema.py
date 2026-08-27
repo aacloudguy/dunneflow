@@ -131,15 +131,23 @@ class Comment:
 
 @dataclass(slots=True)
 class Annotation:
-    """A structured marker mined out of a comment or docstring.
+    """A structured marker mined out of a comment, a docstring, or prose.
 
     Governance IDs, audit locks, warnings -- the things that are load-bearing prose.
+
+    `confidence` is CERTAIN when the marker was read as written: the string is on the
+    line, and a reader can go and see it. It is INFERRED when the marker was composed
+    from a naming convention rather than quoted -- a plan document that declares itself
+    only as `phase:` and `plan:` in frontmatter never writes "Plan 68-03" anywhere, so
+    the id is assembled and is a claim about a convention, not a quotation. Rule 6:
+    never blur the two.
     """
 
     kind: str
     value: str
     line: int
     text: str = ""
+    confidence: Confidence = Confidence.CERTAIN
 
 
 @dataclass(slots=True)
@@ -406,7 +414,7 @@ class FileFacts:
 
 # Bump whenever the stored shape or the meaning of an extracted doc fact changes.
 # Separate from SCHEMA_VERSION so a prose rule change does not discard the code graph.
-DOC_SCHEMA_VERSION = 5
+DOC_SCHEMA_VERSION = 6
 
 
 class DocFormat(StrEnum):

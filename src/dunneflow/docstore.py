@@ -104,11 +104,15 @@ CREATE TABLE IF NOT EXISTS doc_table_rows (
 );
 
 CREATE TABLE IF NOT EXISTS doc_annotations (
-    doc   TEXT NOT NULL,
-    kind  TEXT NOT NULL,
-    value TEXT NOT NULL,
-    line  INTEGER NOT NULL,
-    text  TEXT NOT NULL DEFAULT ''
+    doc        TEXT NOT NULL,
+    kind       TEXT NOT NULL,
+    value      TEXT NOT NULL,
+    line       INTEGER NOT NULL,
+    text       TEXT NOT NULL DEFAULT '',
+    -- CERTAIN: the string is on the line and a reader can go and see it.
+    -- INFERRED: composed from the document's frontmatter or filename by a naming
+    -- convention. Never blurred -- rule 6 -- and separately filterable in the report.
+    confidence TEXT NOT NULL DEFAULT 'CERTAIN'
 );
 
 CREATE INDEX IF NOT EXISTS ix_headings_doc   ON headings(doc);
@@ -320,8 +324,10 @@ class DocStore:
                 [(df.path, i, r, json.dumps(cells)) for r, cells in enumerate(t.rows)],
             )
         c.executemany(
-            "INSERT INTO doc_annotations(doc,kind,value,line,text) VALUES(?,?,?,?,?)",
-            [(df.path, a.kind, a.value, a.line, a.text) for a in df.annotations],
+            "INSERT INTO doc_annotations(doc,kind,value,line,text,confidence)"
+            " VALUES(?,?,?,?,?,?)",
+            [(df.path, a.kind, a.value, a.line, a.text, str(a.confidence))
+             for a in df.annotations],
         )
 
     # -- reads -------------------------------------------------------------- #

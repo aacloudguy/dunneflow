@@ -25,7 +25,7 @@ from pathlib import Path
 
 import yaml
 
-from ...detectors import has_annotation, mine_annotations
+from ...detectors import has_annotation, identify_document, mine_annotations
 from ...detectors.prose import (
     about_naming,
     classify,
@@ -215,6 +215,12 @@ class _Scanner:
         self.start = body_start
         self.mask = _fence_mask(lines, body_start)
         self.facts.headings = (headings_fn or _headings)(lines, body_start, self.mask)
+
+        # What the document says it is, as distinct from what it writes. A plan whose
+        # id lives only in `phase:`/`plan:` or in its filename is invisible to the
+        # traceability join otherwise -- and these are marked INFERRED, because a
+        # convention is a claim and a quotation is not.
+        self.facts.annotations.extend(identify_document(meta, Path(path).name))
 
         heads = [h.text for h in self.facts.headings]
         self.facts.doc_class = classify(rel, meta.get("kind", ""), heads)

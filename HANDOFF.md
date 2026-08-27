@@ -499,13 +499,21 @@ a cross-store claim reproducible at all.
 
 Still open on this half:
 
-* **An id stated only in frontmatter or a filename is invisible.** 15 of the remaining
-  29 "undocumented work" ids have a plan file on disk whose *name* encodes the id —
-  `68-03-PLAN.md` declares itself as `phase: 68-front-door-extraction` / `plan: 03` in
-  YAML and the string `Plan 68-03` appears nowhere in the corpus. Composing an id from
-  frontmatter keys is a naming convention, so it belongs in `detectors/*.yaml` as a
-  config decision, not in a guess. This is the single biggest remaining false-positive
-  source in the band.
+* ~~**An id stated only in frontmatter or a filename is invisible.**~~ Done, as a
+  `document_identity` rule in `detectors/annotations.yaml` — a config edit, not a code
+  change. Every id it composes is marked `INFERRED` and is never merged with one read
+  as written: the report has a "What was read, and what was inferred" section, marks
+  composed evidence *(inferred)* wherever it appears, and lists whole the 33 ids whose
+  entire documentary standing rests on the convention. Undocumented work 29 → 14, and
+  code-to-docs traceability 93% → 97%.
+
+  Two things this cost, both worth keeping. The corpus writes `plan:` two ways —
+  `plan: "1"` and `plan: "06-02"` — and one pattern across both parts read `06-02` as
+  `06` and composed `Plan 06-06`, an id that exists nowhere. Patterns are now
+  positional, one per part. And `annotations.yaml` was not in the document store's
+  fingerprint, so editing it left every document cached and answering the old rule —
+  rule 12 wearing the other corpus as a disguise. It is in `doc_rules_fingerprint()`
+  now.
 * **The mirror query** — vocabulary the documentation defines that the program never
   uses (`tabularium`) — is still one query away and still not built. Tom notes there is
   a `tabularium.db` referenced frequently, so the `.db` suffix may be defeating the

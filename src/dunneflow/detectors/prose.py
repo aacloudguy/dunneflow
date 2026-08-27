@@ -105,13 +105,26 @@ def load_prose_rules() -> ProseRules:
 
 
 def doc_rules_fingerprint() -> str:
-    """A hash of every prose rule file, for the document store's staleness check.
+    """A hash of every rule file that shapes document extraction.
 
     Rule 12, applied to the other corpus: a cached fact is valid only if the source and
     the rule that read it are both unchanged.
+
+    `annotations.yaml` is in here as well as the prose rules, and had to be added the
+    hard way. It governs both corpora -- comments are comments and prose is prose, and
+    the same governance markers are mined from each -- so editing it changed what a
+    document means while leaving every document cached and answering the old rule. That
+    is the same silent staleness the graph's own fingerprint exists to prevent, wearing
+    the other corpus as a disguise. A rule file that shapes an extraction belongs in
+    that extraction's fingerprint, and the only safe way to decide which is to ask what
+    the extractor reads, not to keep a list by hand.
     """
     h = hashlib.sha256()
-    for path in sorted(DOC_RULES_DIR.glob("*.yaml")):
+    paths = [*sorted(DOC_RULES_DIR.glob("*.yaml")),
+             DOC_RULES_DIR.parent / "annotations.yaml"]
+    for path in paths:
+        if not path.exists():
+            continue
         h.update(path.name.encode("utf-8"))
         h.update(path.read_bytes())
     return h.hexdigest()[:16]

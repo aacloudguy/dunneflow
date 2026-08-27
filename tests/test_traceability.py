@@ -295,3 +295,122 @@ def test_every_id_appears_in_the_report(joined, tmp_path):
     text = path.read_text(encoding="utf-8")
     for t in result.ids:
         assert f"`{t.id}`" in text, f"{t.id} is missing from the report"
+
+
+# --------------------------------------------------------------------------- #
+# Composed identity: marked as an inference, never blurred with a quotation
+# --------------------------------------------------------------------------- #
+
+# A plan document in the shape that made 15 ids read as unplanned work: it declares
+# itself in frontmatter and in its filename, and never writes the id in its prose.
+FRONTMATTER_PLAN = """---
+phase: 68-front-door-extraction
+plan: 03
+type: execute
+---
+
+# Front-door extraction
+
+Adds `enqueue_preflight` handling. Nothing here writes the plan id in words.
+"""
+
+
+@pytest.fixture(scope="module")
+def composed(tmp_path_factory):
+    root = tmp_path_factory.mktemp("composed")
+    (root / "prog.py").write_text(PROGRAM, encoding="utf-8")
+    docs = root / "docs"
+    docs.mkdir()
+    (docs / "68-03-PLAN.md").write_text(FRONTMATTER_PLAN, encoding="utf-8")
+    (docs / "plan-01-02.md").write_text(TRACED_DOC, encoding="utf-8")
+    store = Store(root / "graph.db")
+    analyze_tree(root, store)
+    doc_store = DocStore(root / "docs.db")
+    analyze_docs_tree(docs, doc_store, jobs=1)
+    doc_store.mark_duplicates()
+    yield store, doc_store, root
+    store.close()
+    doc_store.close()
+
+
+def test_an_id_stated_only_in_frontmatter_is_found(composed):
+    """`Plan 68-03` appears nowhere in the corpus as prose, and the document exists."""
+    store, docs, _ = composed
+    result = measure(store, docs)
+    plan = next((t for t in result.ids if t.id == "PLAN-68-3"), None)
+    assert plan is not None, "composed identity did not reach the join"
+    assert plan.subjects, "the document should count as being about the id"
+
+
+def test_a_composed_id_is_marked_as_an_inference(composed):
+    """Rule 6. The document is real; nothing in it says this in words."""
+    store, docs, _ = composed
+    result = measure(store, docs)
+    plan = next(t for t in result.ids if t.id == "PLAN-68-3")
+    assert plan.by_inference_only
+    assert not plan.stated_anywhere
+    assert all(not site.stated for site in plan.documents())
+    assert result.inferred_annotations >= 1
+
+
+def test_a_written_id_is_never_marked_inferred(composed):
+    """`Plan 01-02` is written out in its document's heading, so it is a quotation."""
+    store, docs, _ = composed
+    result = measure(store, docs)
+    plan = next(t for t in result.ids if t.id == "PLAN-1-2")
+    assert plan.stated_anywhere
+    assert not plan.by_inference_only
+
+
+def test_the_report_separates_the_two_tiers(composed, tmp_path):
+    store, docs, root = composed
+    path = render_traceability(store, docs, tmp_path, root, "sample", "stamp")
+    text = path.read_text(encoding="utf-8")
+    assert "What was read, and what was inferred" in text
+    assert "*(inferred)*" in text
+    assert "entire documentary standing is composed" in text
+
+
+def test_a_corpus_with_no_composed_ids_says_so(joined, tmp_path):
+    """No filter is ever silent, and neither is an empty one."""
+    store, docs, root = joined
+    result = measure(store, docs)
+    assert result.inferred_annotations == 0
+    path = render_traceability(store, docs, tmp_path, root, "sample", "stamp")
+    assert "Nothing here was inferred" in path.read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize(
+    ("meta", "basename", "expected"),
+    [
+        # The corpus writes `plan:` two ways. A single pattern read `06-02` as `06`
+        # and composed `Plan 06-06`, an id that does not exist anywhere.
+        ({"phase": "06-pm-agent-dogfood", "plan": "06-02"}, "notes.md", "Plan 06-02"),
+        ({"phase": "01-foundation", "plan": "1"}, "notes.md", "Plan 01-01"),
+        ({"phase": "68-front-door-extraction", "plan": "03"}, "x.md", "Plan 68-03"),
+        # A sub-plan belongs to its parent; the code-side vocabulary has no third
+        # segment, so the fraction is deliberately dropped rather than invented.
+        ({}, "85-08.1-PLAN.md", "Plan 85-08"),
+    ],
+)
+def test_an_id_is_composed_from_either_convention(meta, basename, expected):
+    from dunneflow.detectors import identify_document
+    assert [a.value for a in identify_document(meta, basename)] == [expected]
+
+
+def test_a_document_matching_no_convention_composes_nothing():
+    """Half an id is not an id, and a guess is worse than a gap."""
+    from dunneflow.detectors import identify_document
+    assert identify_document({}, "async-neo4j-writer-test-idiom.md") == []
+    assert identify_document({"phase": "06-x"}, "README.md") == []   # no `plan` key
+    assert identify_document({"plan": "2"}, "README.md") == []       # no `phase` key
+
+
+def test_every_composed_id_is_marked_inferred():
+    """Rule 6, at the point of creation rather than only at the point of display."""
+    from dunneflow.detectors import identify_document
+    from dunneflow.schema import Confidence
+    made = identify_document({"phase": "68-a", "plan": "03"}, "68-03-PLAN.md")
+    assert made
+    assert all(a.confidence == Confidence.INFERRED for a in made)
+    assert all(a.line == 0 for a in made), "a composed id has no line to point at"

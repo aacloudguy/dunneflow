@@ -60,7 +60,10 @@ def _docs_cell(t: TracedId, root: Path | None) -> str:
     """
     if not t.subjects:
         return "—"
-    return "<br>".join(f"`{_esc(_rel(s.doc, root))}`" for s in t.subjects)
+    return "<br>".join(
+        f"`{_esc(_rel(s.doc, root))}`" + ("" if s.stated else " *(inferred)*")
+        for s in t.subjects
+    )
 
 
 def render_traceability(
@@ -89,6 +92,7 @@ def render_traceability(
         return _write(out, lines)
 
     lines += _what_was_joined(t)
+    lines += _inference(t)
     lines += _spectrum(t)
     lines += _headlines(t)
     lines += _method(t)
@@ -164,6 +168,58 @@ def _what_was_joined(t: Traceability) -> list[str]:
             "in a corpus that writes both.\n"
         )
     return lines
+
+
+def _inference(t: Traceability) -> list[str]:
+    """What was composed rather than quoted, said before any count below is read.
+
+    Rule 6, and rule 13's spirit. A quoted id proves itself with a line a reader can
+    open; a composed one cannot prove itself at all, and must say so.
+    """
+    only = t.by_inference_only()
+    if not t.inferred_annotations:
+        return [
+            "## Nothing here was inferred\n",
+            "Every id below was read as written, from a line you can open. No "
+            "`document_identity` rule in `detectors/annotations.yaml` matched anything "
+            "in this corpus, so nothing was composed from a filename or from "
+            "frontmatter.\n",
+        ]
+    return [
+        "## What was read, and what was inferred\n",
+        "Most ids here were **read as written** \u2014 the string is on a line and you "
+        "can go and look at it. Some were **composed** from a document's own identity "
+        "instead: `68-03-PLAN.md` declares itself as `phase: 68-front-door-extraction` "
+        "and `plan: 03` in YAML frontmatter, and the string `Plan 68-03` appears "
+        "nowhere in the corpus. Without composing it, the document is invisible and "
+        "its work reads as unplanned. With it, unmarked, it would read as though "
+        "someone had written the plan down. Neither is true, so the two never merge.\n",
+        "| | Count |",
+        "|---|---:|",
+        f"| Ids written out somewhere in the corpus "
+        f"| {sum(1 for x in t.ids if x.stated_anywhere):,} |",
+        f"| Mentions composed from frontmatter or a filename "
+        f"| {t.inferred_annotations:,} |",
+        f"| **Ids whose entire documentary standing is composed** | **{len(only):,}** |",
+        "",
+        "The last row is the one to be sceptical of, and it is listed whole so the "
+        "rest of the page can be read without it. These ids are marked *(inferred)* "
+        "wherever they appear below.\n",
+        "| Id | Composed from | Cited in code |",
+        "|---|---|---:|",
+        *(
+            f"| `{_esc(x.id)}` "
+            f"| {'<br>'.join(f'`{_esc(Path(s.doc).name)}`' for s in x.documents())} "
+            f"| {len(x.code):,} |"
+            for x in only
+        ),
+        "",
+        "The convention that produced them is a rule in "
+        "`detectors/annotations.yaml`, not a judgement in code \u2014 a project that "
+        "names its plans differently edits a config file rather than this tool. It is "
+        "an inference either way: a convention can be wrong, superseded, or simply not "
+        "the one in force when a given file was written.\n",
+    ]
 
 
 def _spectrum(t: Traceability) -> list[str]:

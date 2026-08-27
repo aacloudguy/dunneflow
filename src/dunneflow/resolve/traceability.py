@@ -35,6 +35,7 @@ from dataclasses import dataclass, field
 from functools import cache
 
 from ..docstore import DocStore
+from ..schema import Confidence
 from ..store import Store
 
 # An id is a marker with a number in it. `WARNING`, `TODO` and `Audit-locked` are
@@ -188,13 +189,19 @@ class CodeSite:
 
 @dataclass(slots=True)
 class DocSite:
-    """One place in the corpus that names an id."""
+    """One place in the corpus that names an id.
+
+    `stated` is False when the id was composed from the document's frontmatter or
+    filename rather than written in its prose. Such a document is real and the id is
+    probably right, but nothing in it says so in words, and the two are never merged.
+    """
 
     doc: str
     line: int
     title: str
     doc_class: str
     text: str
+    stated: bool = True
 
 
 @dataclass(slots=True)
@@ -230,6 +237,23 @@ class TracedId:
     def documents(self) -> list[DocSite]:
         return [*self.subjects, *self.mentions]
 
+    @property
+    def stated_anywhere(self) -> bool:
+        """Does any document write this id out, as opposed to implying it?"""
+        return any(site.stated for site in self.documents())
+
+    @property
+    def by_inference_only(self) -> bool:
+        """Known to the documentation, but only because a convention was applied.
+
+        The load-bearing case: `Plan 68-03` has a plan document, an audit and a
+        summary, and the string appears nowhere in the corpus. Without the convention
+        it reads as work built against no plan; with it, and unmarked, it would read
+        as though someone had written the plan down. Neither is true.
+        """
+        docs = self.documents()
+        return bool(docs) and not any(site.stated for site in docs)
+
 
 @dataclass(slots=True)
 class Traceability:
@@ -244,6 +268,7 @@ class Traceability:
     unique_symbols: int = 0
     total_symbols: int = 0
     doc_prefixes: list[str] = field(default_factory=list)
+    inferred_annotations: int = 0
     merged_forms: list[tuple[str, list[str]]] = field(default_factory=list)
 
     def by_state(self) -> dict[str, list[TracedId]]:
@@ -259,6 +284,13 @@ class Traceability:
 
     def in_code(self) -> int:
         return sum(1 for t in self.ids if t.code)
+
+    def by_inference_only(self) -> list[TracedId]:
+        """Ids whose entire documentary standing rests on a naming convention."""
+        return sorted(
+            (t for t in self.ids if t.by_inference_only),
+            key=lambda t: (t.prefix, _sortable(t.id)),
+        )
 
     def traced(self) -> int:
         return sum(1 for t in self.ids if t.code and (t.subjects or t.mentions))
@@ -396,7 +428,8 @@ def measure(store: Store, docs: DocStore | None) -> Traceability:
     seen_docs: set[tuple[str, str, int]] = set()   # as DOC_IDS_SQL selects
     placed: set[tuple[str, str]] = set()          # (id, document) already recorded
     for row in docs.query(
-        "SELECT doc, kind, value, line, text FROM doc_annotations ORDER BY value"
+        "SELECT doc, kind, value, line, text, confidence FROM doc_annotations"
+        " ORDER BY value"
     ):
         doc = row["doc"]
         if doc not in live or not IS_ID.match(row["value"]):
@@ -407,10 +440,18 @@ def measure(store: Store, docs: DocStore | None) -> Traceability:
             continue
         seen_docs.add(where)
         result.doc_annotations += 1
+        stated = row["confidence"] != Confidence.INFERRED
+        if not stated:
+            result.inferred_annotations += 1
         title, doc_class = live[doc]
         site = DocSite(doc=doc, line=row["line"], title=title,
-                       doc_class=doc_class, text=row["text"])
-        bucket = t.subjects if t.id in about.get(doc, ()) else t.mentions
+                       doc_class=doc_class, text=row["text"], stated=stated)
+        # A document that only implies its id is still *about* it -- that is the whole
+        # point of composing one -- but the implication travels with the evidence, and
+        # the report never shows it as something a person wrote down.
+        bucket = (
+            t.subjects if (not stated or t.id in about.get(doc, ())) else t.mentions
+        )
         # A set rather than a scan of the bucket: `AC-1` is named in 385 documents and
         # cited 24,096 times, and re-scanning its list per row is quadratic.
         if (t.id, doc) not in placed:

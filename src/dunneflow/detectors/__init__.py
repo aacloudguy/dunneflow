@@ -14,7 +14,7 @@ from pathlib import Path
 
 import yaml
 
-from ..schema import Annotation, BoundaryKind, Direction, EntrypointKind
+from ..schema import Annotation, BoundaryKind, Confidence, Direction, EntrypointKind
 
 RULES_DIR = Path(__file__).parent
 
@@ -77,6 +77,98 @@ def load_annotation_rules() -> tuple[AnnotationRule, ...]:
         AnnotationRule(kind=r["kind"], regex=re.compile(r["regex"]))
         for r in data.get("patterns", [])
     )
+
+
+@dataclass(slots=True)
+class DocumentIdentityRule:
+    """An id composed from a document's own identity rather than read from its prose.
+
+    Always INFERRED. The document does not state this in words; the rule assembles it
+    from a naming convention, and a convention can be wrong, superseded, or simply not
+    the one in force when the file was written.
+    """
+
+    kind: str
+    fmt: str
+    part: tuple[re.Pattern[str], ...]
+    frontmatter: tuple[str, ...] = ()
+    filename: re.Pattern[str] | None = None
+
+    def _compose(self, parts: list[str]) -> str | None:
+        """Every part must yield a number. Half an id is not an id."""
+        if len(parts) != len(self.part):
+            return None
+        numbers: list[str] = []
+        for raw, pattern in zip(parts, self.part, strict=True):
+            m = pattern.search(raw or "")
+            if not m:
+                return None
+            numbers.append(m.group(1) if m.groups() else m.group(0))
+        try:
+            return self.fmt.format(*numbers)
+        except (IndexError, KeyError, ValueError):
+            return None
+
+    def from_frontmatter(self, meta: dict[str, str]) -> str | None:
+        if not self.frontmatter or any(k not in meta for k in self.frontmatter):
+            return None
+        return self._compose([str(meta[k]) for k in self.frontmatter])
+
+    def from_filename(self, basename: str) -> str | None:
+        if self.filename is None:
+            return None
+        m = self.filename.match(basename)
+        return self._compose(list(m.groups())) if m else None
+
+
+def _part_patterns(spec: str | list[str], count: int) -> tuple[re.Pattern[str], ...]:
+    """One pattern per part. A scalar applies to every part."""
+    if isinstance(spec, str):
+        return tuple(re.compile(spec) for _ in range(count))
+    return tuple(re.compile(p) for p in spec)
+
+
+@lru_cache(maxsize=1)
+def load_document_identity_rules() -> tuple[DocumentIdentityRule, ...]:
+    path = RULES_DIR / "annotations.yaml"
+    if not path.exists():
+        return ()
+    data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    return tuple(
+        DocumentIdentityRule(
+            kind=r["kind"],
+            fmt=r["format"],
+            part=_part_patterns(r.get("part", r"(\d+)"),
+                                len(r.get("frontmatter", [])) or 1),
+            frontmatter=tuple(r.get("frontmatter", [])),
+            filename=re.compile(r["filename"]) if r.get("filename") else None,
+        )
+        for r in data.get("document_identity", [])
+    )
+
+
+def identify_document(meta: dict[str, str], basename: str) -> list[Annotation]:
+    """Ids a document states about itself without writing them out.
+
+    Line 0, because there is no line to point at -- that absence is the honest signal
+    that this was assembled rather than quoted, and the renderer says so in words.
+    """
+    out: list[Annotation] = []
+    seen: set[tuple[str, str]] = set()
+    for rule in load_document_identity_rules():
+        for value, how in (
+            (rule.from_frontmatter(meta), "frontmatter"),
+            (rule.from_filename(basename), "filename"),
+        ):
+            if not value or (rule.kind, value) in seen:
+                continue
+            seen.add((rule.kind, value))
+            out.append(Annotation(
+                kind=rule.kind, value=value, line=0,
+                text=f"composed from the document's {how}; not stated in its prose",
+                confidence=Confidence.INFERRED,
+            ))
+    return out
 
 
 @lru_cache(maxsize=1)

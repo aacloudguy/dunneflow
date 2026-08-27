@@ -1,0 +1,41 @@
+/* Spike chrome only. The ratified token stylesheet lands with the shell (chunk 3);
+   nothing here is meant to survive that, so it stays deliberately small. */
+:root {
+  --ground: #0b1119;
+  --surface: #161e29;
+  --border: #2c3849;
+  --text: #e6ecf3;
+  --muted: #93a1b3;
+  --accent: #2dd4bf;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: var(--ground); color: var(--text);
+  font: 13px/1.45 ui-sans-serif, -apple-system, "Segoe UI", sans-serif; overflow: hidden; }
+#stage { position: fixed; inset: 0; }
+
+#hud {
+  position: fixed; top: .75rem; left: .75rem; z-index: 10;
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  border: 1px solid var(--border); border-radius: .5rem;
+  padding: .6rem .7rem; min-width: 17rem;
+  backdrop-filter: blur(6px);
+}
+#hud .row { display: flex; gap: .5rem; align-items: center; margin: .15rem 0; }
+#hud b { font-size: 1.15rem; color: var(--accent); font-variant-numeric: tabular-nums; }
+.muted { color: var(--muted); }
+.tag { margin-left: auto; color: var(--muted); font-size: .75rem;
+  border: 1px solid var(--border); border-radius: .25rem; padding: 0 .35rem; }
+button { font: inherit; color: var(--text); background: transparent;
+  border: 1px solid var(--border); border-radius: .3rem; padding: .2rem .5rem; cursor: pointer; }
+button:hover { border-color: var(--accent); color: var(--accent); }
+#bench:empty { display: none; }
+#bench { font-variant-numeric: tabular-nums; color: var(--muted); }
+
+#tip {
+  position: fixed; z-index: 20; pointer-events: none;
+  background: var(--surface); border: 1px solid var(--border); border-radius: .35rem;
+  padding: .35rem .5rem; max-width: 26rem;
+}
+#tip .k { color: var(--muted); }
+#hud input[type=range] { flex: 1; accent-color: var(--accent); }
+#hud label { min-width: 3.4rem; }

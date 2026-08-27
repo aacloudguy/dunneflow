@@ -1,0 +1,28 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>DunneFlow</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="stylesheet" href="/static/style.css">
+<div id="stage"></div>
+
+<div id="hud">
+  <div class="row"><b id="fps">–</b> fps<span id="mode" class="tag">static</span></div>
+  <div class="row" id="counts">loading…</div>
+  <div class="row muted" id="hint">drag orbit · shift-drag pan · scroll zoom</div>
+  <div class="row">
+    <button data-act="top">top-down</button>
+    <button data-act="tilt">tilt</button>
+    <button data-act="bench">benchmark</button>
+  </div>
+  <div class="row">
+    <label for="spread" class="muted">spread</label>
+    <input id="spread" type="range" min="0.15" max="3" step="0.05" value="1">
+    <span id="spreadval" class="muted">1.0&times;</span>
+  </div>
+  <div class="row" id="bench"></div>
+</div>
+
+<div id="tip" hidden></div>
+
+<script src="/vendor/deck.gl.min.js"></script>
+<script src="/static/app.js"></script>

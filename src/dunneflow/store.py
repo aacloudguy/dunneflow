@@ -920,5 +920,12 @@ class Store:
             for r in rows
         ]
 
-    def query(self, sql: str, args: tuple[Any, ...] = ()) -> list[sqlite3.Row]:
+    def query(self, sql: str,
+              args: tuple[Any, ...] | dict[str, Any] = ()) -> list[sqlite3.Row]:
+        """Run one query. A dict binds named placeholders (`:root`), a tuple positional.
+
+        Named binding matters for the dashboard's disk queries, where the same package
+        expression is spliced into several statements and repeating its parameters
+        positionally in each one is how they drift apart.
+        """
         return list(self.conn.execute(sql, args))

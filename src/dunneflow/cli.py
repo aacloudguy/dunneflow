@@ -522,7 +522,25 @@ def build_parser() -> argparse.ArgumentParser:
     q.add_argument("--sql", required=True)
     q.add_argument("--limit", type=int, default=40)
     q.set_defaults(func=cmd_query)
+
+    sv = sub.add_parser("serve", help="open the interactive map in a browser")
+    sv.add_argument("out_dir", help="an analysed program's output directory")
+    sv.add_argument("--port", type=int, default=8787)
+    sv.add_argument("--no-open", action="store_true", help="do not open a browser")
+    sv.set_defaults(func=cmd_serve)
     return p
+
+
+def cmd_serve(args: argparse.Namespace) -> int:
+    """Open the map. Read-only throughout -- serving can never damage what it shows."""
+    from .web.serve import serve
+    try:
+        serve(Path(args.out_dir), port=args.port,
+              open_browser=not args.no_open, emit=_emit)
+    except (FileNotFoundError, StaleGraphError) as exc:
+        _emit(f"error: {exc}")
+        return 2
+    return 0
 
 
 def main(argv: list[str] | None = None) -> int:

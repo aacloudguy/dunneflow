@@ -1,0 +1,109 @@
+"""Where things sit on a disk, and where the disks sit in the stack.
+
+Two layouts, because design rule 2 says that when two options are genuinely
+interchangeable you build both and let real use retire the loser:
+
+* **structural** -- deterministic placement from the program's own structure. Instant,
+  stable, and never a hairball. Computed here.
+* **force** -- ForceAtlas2, refined in a browser worker and posted back to be stored.
+  Reveals clusters the module tree does not. Not computed here.
+
+Structural is the one that exists first because it is also the *initial state* force
+needs: ForceAtlas2 from a good starting arrangement converges far faster than from noise,
+and a seeded start is what makes the result reproducible rather than a different picture
+every run.
+
+Nothing here uses a random number generator. The same graph must produce the same map on
+every machine and every run, or spatial memory -- the whole reason to store layout at all
+-- never forms.
+"""
+
+from __future__ import annotations
+
+import math
+
+from .graph import GraphModel
+
+# Golden angle. Successive points at this angle from the centre never line up into
+# spokes, which is why a sunflower packs evenly; any rational fraction of a turn does.
+GOLDEN_ANGLE = math.pi * (3.0 - math.sqrt(5.0))
+
+# One disk's radius in world units. Disks are drawn the same size regardless of how much
+# they hold, so a plate with 900 nodes and one with 30 read as the same kind of object;
+# density then carries the information rather than area.
+DISK_RADIUS = 1000.0
+
+# Vertical gap between plates. Deliberately small against `DISK_RADIUS`: fifty-one plates
+# at half the disk radius apart is a tower ten times taller than it is wide, which reads
+# as a column rather than a deck and cannot be framed without losing all detail. At this
+# spacing the stack reads the way it is meant to -- cards, slightly fanned.
+DISK_GAP = 190.0
+
+
+def phyllotaxis(index: int, total: int, radius: float = DISK_RADIUS) -> tuple[float, float]:
+    """Even placement of `total` points on a disk, deterministic in `index`.
+
+    `sqrt` spacing keeps area per point constant, so the centre does not clot.
+    """
+    if total <= 1:
+        return (0.0, 0.0)
+    r = radius * math.sqrt((index + 0.5) / total)
+    theta = index * GOLDEN_ANGLE
+    return (r * math.cos(theta), r * math.sin(theta))
+
+
+def structural(model: GraphModel) -> dict[tuple[str, str], tuple[float, float, float]]:
+    """Place every drawn thing: real nodes and shadows alike.
+
+    Keyed `(node_id, disk)` because one entity holds a position per disk it appears on --
+    its real one, and one for every disk that shadows it.
+
+    Within a disk, nodes are ordered by degree so that the busiest sit nearest the middle.
+    That ordering is the only structure this layout imposes, and it is enough to make a
+    plate readable: what a package mostly does ends up where the eye lands first.
+    """
+    degree: dict[tuple[str, str], int] = {}
+    for e in model.edges:
+        for end in (e.src, e.dst):
+            key = (end, e.disk)
+            degree[key] = degree.get(key, 0) + 1
+
+    members: dict[str, list[tuple[str, bool]]] = {}
+    for n in model.nodes:
+        members.setdefault(n.disk, []).append((n.id, False))
+    for s in model.shadows:
+        members.setdefault(s.disk, []).append((s.node_id, True))
+
+    z_of = disk_heights(model)
+    out: dict[tuple[str, str], tuple[float, float, float]] = {}
+    for disk, entries in members.items():
+        # Busiest first, then by id so the arrangement never depends on row order.
+        entries.sort(key=lambda e: (-degree.get((e[0], disk), 0), e[0]))
+        z = z_of.get(disk, 0.0)
+        for i, (node_id, _is_shadow) in enumerate(entries):
+            x, y = phyllotaxis(i, len(entries))
+            out[(node_id, disk)] = (x, y, z)
+    return out
+
+
+def disk_heights(model: GraphModel) -> dict[str, float]:
+    """Where each plate sits in the stack.
+
+    Externals go underneath the code that reaches them, in one band, so the stack reads
+    top-down as *the program, then what it touches*. Within each band, the order is by
+    size: the biggest plates near the middle of the stack, which keeps the silhouette
+    from being top- or bottom-heavy when it is tilted.
+
+    The order is only a default. Disks shuffle like cards, and the renderer owns that.
+    """
+    packages = [d for d in model.disks if d["kind"] == "package"]
+    externals = [d for d in model.disks if d["kind"] == "external"]
+    packages.sort(key=lambda d: (-int(d["nodes"]), str(d["id"])))
+    externals.sort(key=lambda d: (-int(d["nodes"]), str(d["id"])))
+
+    heights: dict[str, float] = {}
+    for i, d in enumerate(packages):
+        heights[str(d["id"])] = (len(packages) - i) * DISK_GAP
+    for i, d in enumerate(externals):
+        heights[str(d["id"])] = -(i + 1) * DISK_GAP
+    return heights

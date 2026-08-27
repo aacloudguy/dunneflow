@@ -1,0 +1,42 @@
+# Structured markers mined out of comments and docstrings, in any language.
+#
+# Comments are where WHY lives. Most of a comment is prose, but some of it is
+# load-bearing reference: a governance plan, an audit lock, a warning about a
+# caveat that the code cannot express. Those are promoted to first-class,
+# filterable annotations so questions like "show me everything governed by
+# Plan 15-03, and every boundary it touches" become answerable.
+#
+# Patterns are Python regexes. The first capture group, when present, is the
+# value; otherwise the whole match is.
+
+version: 1
+
+patterns:
+  - kind: PLAN
+    regex: '\b(Plan \d{2}-\d{2})\b'
+  - kind: DECISION
+    regex: '\b(D-\d{2}-\d{2}-\d+)\b'
+  - kind: AUDIT_LOCK
+    regex: '\b(Audit-locked)\b'
+  - kind: ADR
+    regex: '\b(ADR-\d+)\b'
+  - kind: ISSUE
+    regex: '\b(ISS-\d+)\b'
+  - kind: GATE
+    regex: '\b(G\d+)\b(?=[\s.,)]|$)'
+  - kind: WARNING
+    regex: '\b(WARNING|CAUTION|DANGER|IMPORTANT|SECURITY)\b\s*:?'
+  - kind: TODO
+    regex: '\b(TODO|FIXME|XXX|HACK)\b\s*:?'
+  # A bare LETTERS-DIGITS pattern is rule 5's failure in a new place: it matches every
+  # standard, cipher and encoding a program names. SHA-256, UTF-8, ISO-8601, RFC-3161 and
+  # IEEE-29148 accounted for 121 phantom tickets on Mensores, found by joining code
+  # annotations against the same ids in project documentation. The denylist is
+  # evidence-led, not guessed, and extended with the standards bodies most likely to
+  # appear elsewhere.
+  #
+  # Blind spot: a project that genuinely tracks work as "ISO-14" loses those annotations.
+  # Precision is the right trade -- a false governance link claims traceability that does
+  # not exist.
+  - kind: TICKET
+    regex: '\b(?!(?:SHA|UTF|IEEE|RFC|ISO|ANSI|NIST|FIPS|PKCS|ASN|AES|RSA|HMAC|PBKDF|ECDSA|TLS|SSL|HTTP|IPV|UTS|UAX)-)([A-Z]{2,10}-\d+)\b'

@@ -314,6 +314,31 @@ These each came from a false result on real code. Keep them.
     never happens. That is the same silent no-op as a string replacement that matches
     nothing, in a shader's clothing, and only looking closely at one node found it.
 
+23. **A shadow is never drawn, and never an endpoint. The crossings are the point.**
+    A shadow is a *placement device*: a proxy standing in on a plate so that plate's
+    layout feels the pull of something living elsewhere. Drawing one puts a copy of a
+    routine somewhere it is not, which is a lie about where code lives; ending an edge at
+    one stops a real connection at a stand-in.
+
+    The model stores every crossing twice, once per plate, each copy ending in a shadow --
+    which is exactly what lets both plates lay out under the same forces. For drawing,
+    those two halves are resolved back to their real ends and kept once. What comes out is
+    the connection worth the screen: **this routine, on that plate, reaching that one over
+    there**, drawn as a single line spanning Z. Within-plate links say what a package does
+    among itself; crossings say how the program hangs together, and the two are counted
+    separately because they answer different questions.
+
+    A crossing is drawn when *both* ends are selected, so picking two plates shows exactly
+    what passes between them. Its colour walks from the source plate's colour to the
+    target's along its length, because a crossing passes visually through plates it has
+    nothing to do with, and one flat colour there cannot be read -- the gradient says
+    which end you are looking at without tracing the line back. Every disk therefore gets
+    a distinct default colour, walked by the golden angle: a feature that only works once
+    the reader has hand-coloured fifty-two plates is a feature nobody reaches.
+
+    This was missing for a whole session and the stack looked fine without it, which is
+    the warning. Plates full of dots are a plausible picture of nothing much.
+
 ## Anomalies: the discipline
 
 `anomalies.py` reports what looks wrong. It exists under one rule:

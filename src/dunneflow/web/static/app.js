@@ -44,11 +44,21 @@ const KIND_COLOR = {
   // made, touching is something the code does. Different act, different colour.
   ARTEFACT:  [251, 191,  36],
 };
-const DISK_DEFAULT = { package: [ 45, 212, 191], external: [196, 181, 253] };
-const SHADOW_COLOR = [ 88, 102, 122];
+/* A distinct default hue per disk, walked by the golden angle so neighbours in the list
+ * never land on neighbouring hues. Overridable from the menu, but true from the start --
+ * a feature that only works once the reader has hand-coloured fifty-two plates is a
+ * feature nobody reaches. Externals sit in a cooler, paler band so the two kinds stay
+ * tellable apart even when every plate has its own colour. */
+function hslToRgb(h, sl, l) {
+  const a = sl * Math.min(l, 1 - l);
+  const f = (n) => {
+    const k = (n + h * 12) % 12;
+    return Math.round(255 * (l - a * Math.max(-1, Math.min(k - 3, 9 - k, 1))));
+  };
+  return [f(0), f(8), f(4)];
+}
 const DIM_COLOR    = [ 52,  64,  82];
 const EDGE_COLOR   = [ 94, 234, 212, 150];
-const CROSS_COLOR  = [125, 211, 252, 130];
 const PLATE_FILL   = [ 22,  30,  41,  70];
 const PLATE_LINE   = [ 44,  56,  73, 140];
 
@@ -169,6 +179,32 @@ function prepare(raw) {
     inbound.get(b).push(e);
   }
 
+  /* Every connection, resolved to the nodes that really exist.
+   *
+   * **A shadow is never drawn and never an endpoint.** It is a placement device: a proxy
+   * standing in on a plate so that plate's layout feels the pull of something living
+   * elsewhere. Drawing one would put a copy of a routine somewhere it is not, which is a
+   * lie about where code lives -- and drawing an edge *to* one would end a real
+   * connection at a stand-in.
+   *
+   * So each crossing, which the model stores twice (once per plate, each copy ending in
+   * a shadow), is resolved back to its two real ends and kept once. What is left is the
+   * connection the reader is actually after: this routine reaching that one, wherever
+   * each of them truly sits. `same` records whether it stays on one plate or spans the
+   * stack, because those are drawn differently and counted separately. */
+  const linkSeen = new Set();
+  const links = [];
+  for (let e = 0; e < raw.edges.from.length; e++) {
+    const a = raw.edges.from[e], b = raw.edges.to[e];
+    const ra = raw.nodes.shadow[a] === 1 ? raw.nodes.real[a] : a;
+    const rb = raw.nodes.shadow[b] === 1 ? raw.nodes.real[b] : b;
+    if (ra < 0 || rb < 0 || ra === rb) continue;
+    const key = ra < rb ? `${ra}:${rb}` : `${rb}:${ra}`;
+    if (linkSeen.has(key)) continue;
+    linkSeen.add(key);
+    links.push([ra, rb, e, raw.nodes.disk[ra] === raw.nodes.disk[rb]]);
+  }
+
   const ranked = [];
   for (let i = 0; i < n; i++) if (raw.nodes.shadow[i] === 0) ranked.push(i);
   ranked.sort((a, b) => degree[b] - degree[a]);
@@ -190,7 +226,7 @@ function prepare(raw) {
   }
 
   return { raw, n, positions, colors, radii, degree, byDisk, inbound, outbound,
-           ranked, haystack, plates: [], diskZ: new Map() };
+           links, ranked, haystack, plates: [], diskZ: new Map() };
 }
 
 /* ------------------------------------------------------------------ layout --- */
@@ -239,8 +275,10 @@ function diskPlates(raw) {
 function diskColor(diskId) {
   const s = state.settings;
   if (s.diskColors[diskId]) return hexToRgb(s.diskColors[diskId]);
-  const info = state.data.disks.find((d) => d.id === diskId);
-  return DISK_DEFAULT[info?.kind ?? 'package'];
+  const i = state.data.disks.findIndex((d) => d.id === diskId);
+  const external = state.data.disks[i]?.kind === 'external';
+  const hue = ((i < 0 ? 0 : i) * 0.381966) % 1;          // golden angle around the wheel
+  return external ? hslToRgb(hue, 0.45, 0.78) : hslToRgb(hue, 0.62, 0.58);
 }
 
 function paintNodes(d) {
@@ -253,18 +291,24 @@ function paintNodes(d) {
   const size = state.settings.nodeSize;
 
   for (let i = 0; i < d.n; i++) {
-    const shadow = d.raw.nodes.shadow[i] === 1;
+    /* A shadow is never drawn. It exists so a plate's layout can feel the pull of
+     * something living elsewhere; putting a dot there would place a copy of a routine
+     * somewhere it is not. Zero radius rather than a filtered buffer -- the vertex is
+     * degenerate and costs nothing, and keeping one index space means picking, selection
+     * and search all stay honest without a translation table between them. */
+    if (d.raw.nodes.shadow[i] === 1) {
+      d.radii[i] = 0;
+      d.colors[i * 4 + 3] = 0;
+      continue;
+    }
     const out = sel && !sel.has(i);
     let c, a;
-    if (out && hide) {
-      c = DIM_COLOR; a = 0;
-    } else if (out) {
-      c = DIM_COLOR; a = 110;
-    } else {
-      c = shadow ? SHADOW_COLOR
-        : byDisk ? diskColor(d.raw.nodes.disk[i])
-        : (KIND_COLOR[d.raw.nodes.kind[i]] || KIND_COLOR.ROUTINE);
-      a = shadow ? 150 : 255;
+    if (out && hide) { c = DIM_COLOR; a = 0; }
+    else if (out) { c = DIM_COLOR; a = 110; }
+    else {
+      c = byDisk ? diskColor(d.raw.nodes.disk[i])
+                 : (KIND_COLOR[d.raw.nodes.kind[i]] || KIND_COLOR.ROUTINE);
+      a = 255;
     }
     d.colors[i * 4] = c[0]; d.colors[i * 4 + 1] = c[1];
     d.colors[i * 4 + 2] = c[2]; d.colors[i * 4 + 3] = a;
@@ -330,49 +374,66 @@ function afterSelectionChange(d) {
 }
 
 function buildSelectionGeometry(d) {
-  /* Only the edges the selection actually touches. A disk pick draws the edges *within*
-   * it; a node pick draws the edges at that node in the chosen direction. Both are small
-   * by construction, so this is rebuilt rather than cached -- a stale buffer costs more
-   * than a rebuild. */
+  /* Only the connections the selection actually touches, and every one of them ending at
+   * a node that exists. Both ends must be in the selection: picking two plates therefore
+   * shows exactly what passes between them, which is the question the stack is for.
+   *
+   * Two kinds, counted apart because they answer different things. A link that stays on
+   * one plate says what a package does among itself. A link that crosses says how the
+   * program hangs together -- and those are the ones worth the screen. */
   if (!state.picks.length) { state.selGeom = null; return; }
-  const wanted = new Set();
-  for (const pick of state.picks) {
-    if (pick.kind === 'node') {
-      for (const e of neighbours(d, pick.index)) wanted.add(e);
-    } else {
-      const members = new Set(d.byDisk.get(pick.id) ?? []);
-      for (let e = 0; e < d.raw.edges.from.length; e++) {
-        if (members.has(d.raw.edges.from[e]) && members.has(d.raw.edges.to[e])) wanted.add(e);
+
+  const within = [], crossing = [];
+  for (const link of d.links) {
+    if (!state.members.has(link[0]) || !state.members.has(link[1])) continue;
+    (link[3] ? within : crossing).push(link);
+  }
+
+  const widthOf = (e) => 0.9 + Math.min(3.0, Math.log2(1 + (d.raw.edges.weight?.[e] ?? 1)));
+
+  const src = new Float32Array(within.length * 3);
+  const dst = new Float32Array(within.length * 3);
+  const wid = new Float32Array(within.length);
+  within.forEach(([a, b, e], k) => {
+    for (let ax = 0; ax < 3; ax++) {
+      src[k * 3 + ax] = d.positions[a * 3 + ax];
+      dst[k * 3 + ax] = d.positions[b * 3 + ax];
+    }
+    wid[k] = widthOf(e);
+  });
+
+  /* Crossings are cut into segments whose colour walks from one plate's colour to the
+   * other's. A crossing may pass visually through plates it has nothing to do with, and a
+   * single flat colour there is unreadable -- the gradient says which end you are looking
+   * at without tracing the line back. `LineLayer` carries one colour per line, so the
+   * gradient is made of lines rather than of a shader. */
+  const SEG = 10;
+  const iSrc = new Float32Array(crossing.length * SEG * 3);
+  const iDst = new Float32Array(crossing.length * SEG * 3);
+  const iCol = new Uint8Array(crossing.length * SEG * 4);
+  const iWid = new Float32Array(crossing.length * SEG);
+  let k = 0;
+  for (const [a, b, e] of crossing) {
+    const ca = diskColor(d.raw.nodes.disk[a]);
+    const cb = diskColor(d.raw.nodes.disk[b]);
+    const w = widthOf(e);
+    for (let seg = 0; seg < SEG; seg++) {
+      const t0 = seg / SEG, t1 = (seg + 1) / SEG, tm = (t0 + t1) / 2;
+      for (let ax = 0; ax < 3; ax++) {
+        const pa = d.positions[a * 3 + ax], pb = d.positions[b * 3 + ax];
+        iSrc[k * 3 + ax] = pa + (pb - pa) * t0;
+        iDst[k * 3 + ax] = pa + (pb - pa) * t1;
       }
+      for (let c = 0; c < 3; c++) iCol[k * 4 + c] = Math.round(ca[c] + (cb[c] - ca[c]) * tm);
+      iCol[k * 4 + 3] = 215;
+      iWid[k] = w;
+      k++;
     }
   }
-  const list = [...wanted];
-  const src = new Float32Array(list.length * 3);
-  const dst = new Float32Array(list.length * 3);
-  const wid = new Float32Array(list.length);
-  list.forEach((e, k) => {
-    const a = d.raw.edges.from[e] * 3, b = d.raw.edges.to[e] * 3;
-    src[k * 3] = d.positions[a]; src[k * 3 + 1] = d.positions[a + 1]; src[k * 3 + 2] = d.positions[a + 2];
-    dst[k * 3] = d.positions[b]; dst[k * 3 + 1] = d.positions[b + 1]; dst[k * 3 + 2] = d.positions[b + 2];
-    /* Width from the edge's own weight -- how many times the connection appears in the
-     * source. This is the channel a profiler will later feed: importing a run becomes a
-     * second source for something already drawn, not a change to how it is drawn. */
-    wid[k] = 0.8 + Math.min(3.2, Math.log2(1 + (d.raw.edges.weight?.[e] ?? 1)) * 1.1);
-  });
 
-  const links = [];
-  for (const i of state.members) {
-    const r = d.raw.nodes.real[i];
-    if (d.raw.nodes.shadow[i] === 1 && r >= 0) links.push([i, r]);
-  }
-  const tS = new Float32Array(links.length * 3), tD = new Float32Array(links.length * 3);
-  links.forEach(([i, r], k) => {
-    tS[k * 3] = d.positions[i * 3]; tS[k * 3 + 1] = d.positions[i * 3 + 1]; tS[k * 3 + 2] = d.positions[i * 3 + 2];
-    tD[k * 3] = d.positions[r * 3]; tD[k * 3 + 1] = d.positions[r * 3 + 1]; tD[k * 3 + 2] = d.positions[r * 3 + 2];
-  });
-
-  state.selGeom = { count: list.length, src, dst, wid,
-                    transCount: links.length, transSrc: tS, transDst: tD, gpu: null };
+  state.selGeom = { count: within.length, src, dst, wid,
+                    interCount: crossing.length, segs: crossing.length * SEG,
+                    iSrc, iDst, iCol, iWid, gpu: null };
 }
 
 /* ------------------------------------------------------------------ layers --- */
@@ -393,9 +454,11 @@ function selGpu(g) {
       getSourcePosition: { value: g.src, size: 3 },
       getTargetPosition: { value: g.dst, size: 3 },
       getWidth: { value: g.wid, size: 1 } } },
-    trans: { length: g.transCount, attributes: {
-      getSourcePosition: { value: g.transSrc, size: 3 },
-      getTargetPosition: { value: g.transDst, size: 3 } } },
+    inter: { length: g.segs, attributes: {
+      getSourcePosition: { value: g.iSrc, size: 3 },
+      getTargetPosition: { value: g.iDst, size: 3 },
+      getColor: { value: g.iCol, size: 4, normalized: true },
+      getWidth: { value: g.iWid, size: 1 } } },
   };
   return g.gpu;
 }
@@ -421,10 +484,10 @@ function buildLayers(d) {
       id: 'sel-edges', coordinateSystem: CARTESIAN, data: g.edges,
       getColor: EDGE_COLOR, widthUnits: 'pixels', pickable: false,
     }));
-    if (state.selGeom.transCount && s.showTranspositions) {
+    if (state.selGeom.interCount) {
       layers.push(new LineLayer({
-        id: 'sel-trans', coordinateSystem: CARTESIAN, data: g.trans,
-        getColor: CROSS_COLOR, getWidth: 1.2, widthUnits: 'pixels', pickable: false,
+        id: 'inter-edges', coordinateSystem: CARTESIAN, data: g.inter,
+        widthUnits: 'pixels', pickable: false,
       }));
     }
   }
@@ -615,15 +678,17 @@ function updateCounts() {
       : state.data.nodes.label[p.index]);
     const shown = names.slice(0, 3).join(', ') + (names.length > 3 ? ` +${names.length - 3}` : '');
     // Never a silent filter: what is not being shown is stated, in counts.
-    const rest = s.drawn_nodes - n;
+    const rest = s.nodes - n;
+    const cross = state.selGeom?.interCount ?? 0;
     line = `${shown} · ${n.toLocaleString()} nodes · ` +
-           `${(state.selGeom?.count ?? 0).toLocaleString()} edges · ` +
+           `${(state.selGeom?.count ?? 0).toLocaleString()} within · ` +
+           `${cross.toLocaleString()} crossing · ` +
            `${rest.toLocaleString()} ${state.settings.filterMode === 'hide' ? 'hidden' : 'dimmed'}`;
   } else {
-    line = `nothing selected — all ${s.edges.toLocaleString()} edges hidden; ` +
-           'pick a disk, search, or click a node';
+    line = `nothing selected — all links hidden; pick two disks to see what crosses ` +
+           'between them, or click a node';
   }
-  el('counts').innerHTML = `${s.drawn_nodes.toLocaleString()} drawn · ${s.disks} disks` +
+  el('counts').innerHTML = `${s.nodes.toLocaleString()} nodes · ${s.disks} disks` +
                            `<br><span class="muted">${line}</span>`;
   el('clear').hidden = !n;
 }
@@ -662,7 +727,7 @@ function benchmark(seconds = 6) {
       const capped = med >= 59 && worst >= 59;
       el('bench').textContent =
         `median ${med.toFixed(0)} fps · worst ${worst.toFixed(0)} · ` +
-        `${state.data.stats.drawn_nodes.toLocaleString()} nodes` +
+        `${state.data.stats.nodes.toLocaleString()} nodes` +
         (state.settings.nodeSize >= SPHERE_FROM ? ' · spheres' : '') +
         (state.selGeom?.count ? ` · ${state.selGeom.count.toLocaleString()} edges` : '') +
         (capped ? ' · no frames dropped (60 is the vsync cap; headroom unmeasured)' : '');
@@ -723,7 +788,6 @@ function syncControls() {
   el('direction').value = s.direction;
   el('colorby').value = s.colorBy;
   el('plates').checked = s.showPlates;
-  el('trans').checked = s.showTranspositions;
 }
 
 async function boot() {
@@ -913,13 +977,11 @@ el('colorby').addEventListener('change', (ev) => {
   persist();
   render();
 });
-for (const [id, key] of [['plates', 'showPlates'], ['trans', 'showTranspositions']]) {
-  el(id).addEventListener('change', (ev) => {
-    state.settings[key] = ev.target.checked;
-    persist();
-    render();
-  });
-}
+el('plates').addEventListener('change', (ev) => {
+  state.settings.showPlates = ev.target.checked;
+  persist();
+  render();
+});
 
 el('q').addEventListener('input', runSearch);
 el('results').addEventListener('click', (ev) => {

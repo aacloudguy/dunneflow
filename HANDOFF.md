@@ -871,6 +871,14 @@ their own plate (155, 329 edges) -- searching `tabularium` returned nothing and 
 gap in the map, not the search. Edge width is driven by weight end to end, which is the
 whole preparation for flow replay.
 
+**The crossings, and what a shadow is for.** A shadow is a placement device only: it is
+never drawn and never an edge endpoint. The model stores each crossing twice, once per
+plate, each copy ending in a shadow -- that is what lets both plates lay out under the
+same forces -- and for drawing the two halves are resolved back to their real ends and
+kept once. The result spans Z as a single line, coloured walking from one plate's colour
+to the other's, drawn when both ends are selected. Within-plate and crossing links are
+counted separately. On Mensores: 8,969 links, of which 4,963 cross. See rule 23.
+
 **Still open after phase 2:** two measurements need real hardware -- fps with spheres at
 full size, and fps with a large multi-disk selection drawing thousands of edges. The
 sphere threshold (2.2x) is set by judgment and should be set by the first of those. Layout

@@ -29,7 +29,6 @@ const DEFAULTS = {
   nodeSize: 1,            // multiplier: 1 = the tiny dots the 60 fps figure was taken on
   spread: 0.35,
   showPlates: false,
-  showTranspositions: false,
   panels: { hud: true, disks: true, settings: false },
   picks: [],              // the selection itself, so a session survives a reload
 };
@@ -90,7 +89,7 @@ function resetSettings(program, current) {
     diskOrder: 'disk order', diskColors: 'disk colours', colorBy: 'colour source',
     sortMode: 'sort', filterMode: 'filter mode', direction: 'direction',
     nodeSize: 'node size', spread: 'spread', picks: 'selection',
-    showPlates: 'disk plates', showTranspositions: 'transpositions',
+    showPlates: 'disk plates',
   };
   for (const [k, label] of Object.entries(named)) {
     if (JSON.stringify(current[k]) !== JSON.stringify(base[k])) cleared.push(label);

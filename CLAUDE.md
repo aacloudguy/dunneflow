@@ -4,6 +4,10 @@ Maps what moves through a program: where it starts, what it runs, what it touche
 why. Built for a reader who reads code but does not write it, and who thinks in
 entrypoints, flows, routines, and boundaries.
 
+**New here? Read `BRIEFING.md` first** — where the code lives, what is built, what we are
+doing now, and which decisions are closed. This file is the rules; `HANDOFF.md` is the
+chronological record.
+
 ## What this tool is for
 
 A program is started, fed inputs at its boundary, pulls more from its environment

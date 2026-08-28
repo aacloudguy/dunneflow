@@ -29,7 +29,7 @@ Working, verified against Society of Mensores (623 files, 184k lines):
 | **Comments** — every one reaches the store, 18,208 of 18,208 | **done** |
 | **Named values** — 2,618 constants and 86 type aliases | **done** |
 | Stable identity across edits (prerequisite for layers) | done |
-| **Interactive dashboard** | **designed 2026-08-27, not yet built** |
+| **Interactive dashboard** | **chunk 1 built 2026-08-27: the 2.5D graph** |
 | **Temporal layers / snapshots / flow diff** | **not started — after the static view** |
 | TypeScript extraction (`ts-morph` sidecar) | not started |
 | LLM narration | not started |
@@ -116,7 +116,11 @@ graph, table, document — over one shared selection. Breadcrumb above it, expan
 in the graph, never a drill-down that replaces the view. Hover = signature and one-line
 WHY; click = select; double-click or Enter = descend. Keyboard equivalents throughout.
 
-**Stack.** Astro 5 + Tailwind 4, matching `../wct-site`. Its brand tokens are
+**Stack.** ~~Astro 5 + Tailwind 4~~ — **struck 2026-08-27**, see `CLAUDE.md`. Built as
+vanilla JS + deck.gl on `http.server`. The colour reasoning below still stands and the
+ratified token stylesheet is still the one to port; only the framework changed.
+
+*Superseded:* Astro 5 + Tailwind 4, matching `../wct-site`. Its brand tokens are
 light-mode-shaped, so the app uses semantic tokens (`--surface`, `--surface-raised`,
 `--border`, `--text`, `--text-muted`, `--accent`, `--focus`) filled per theme. Teal
 carries interaction in both themes; amber carries attention. Dark mode is new work —
@@ -828,9 +832,36 @@ already exists: `10-glossary.md` ends with the 191 terms nothing defines, and
 `11-naming.md` says plainly that Mensores states no Form rule anywhere. The Form lane
 needs no model at all — counting is what a database is for.
 
-**5. The dashboard proper.** Astro 5 + Tailwind 4, the design ratified across this
-session and mocked at the artifact URL in
-`memory/project-dunneflow-dashboard-ui.md`. Port the mockup's decisions, not its code.
+**5. The dashboard. Chunk 1 built 2026-08-27 — the 2.5D graph.** `dunneflow serve
+output/<program>`: stdlib `http.server`, vanilla JS, deck.gl 9.3.10 vendored into
+`web/vendor/`. No Node at build or runtime. **Astro 5 + Tailwind 4 was struck** — see
+`CLAUDE.md`, dashboard preamble, for why.
+
+The model is Tom's, from usdgraph, and it is the valuable part: a stack of 2D disks
+"like ice rinks". Within a disk an ordinary graph; an edge leaving it puts a **shadow**
+there, taking part in that disk's forces normally, with the real node on its own disk and
+a **transposition** joining them across Z. Disks shuffle like cards. It is the answer to
+density — usdgraph's own continuation prompt records the failure it fixes, an HR graph
+"too dense to be useful" even filtered to ~700 employees. Decomposition, not filtering,
+and nothing is discarded.
+
+Disks: one per top-level package, plus one per boundary kind for external systems. On
+Mensores that is 51 disks, largest 959, 9,719 real nodes plus 5,272 shadows = 14,991
+drawn, 13,277 edges. Payload builds in ~30 ms and is sent columnar.
+
+What real use corrected, all now in `CLAUDE.md` as dashboard rules 18–21: the plates must
+not be drawn at all (the stack is an abstraction), edges only on demand for a selection
+and only when still, the fit is a bounding *cylinder* at the tilt in force under an
+orthographic projection, and a blank canvas must say why it is blank.
+
+**Still open on chunk 1:** the measured frame rate. Every capture so far is headless
+SwiftShader and means nothing; the number has to come off real hardware. Node selection
+is fiddly at overview zoom — the likely fix is a disk-focus mode that flies to a plate and
+drops to top-down, which belongs to chunk 2. Layout is still `structural` only:
+ForceAtlas2 in a worker, posted back and stored in a `layout` table, is not built.
+
+Chunks 2–9 (shadows/shuffling UI, the three-pane shell, inspector, table and document
+modes, anomaly worklist, glossary pages, exploration layer, settings) are unchanged.
 
 **6. Then, and only then, temporal layers.** Snapshots keyed by revision, the flow diff,
 the scrubber. Identity is already position-independent, which was the prerequisite.

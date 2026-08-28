@@ -305,8 +305,14 @@ shipping the detector.
 A reading tool for someone orienting in code they did not write. Settled shape: a local
 server (`dunneflow serve`), three panes — navigator, centre view, inspector — where the
 centre pane is a mode toggle (graph / table / document) over one shared selection, not
-three destinations. Astro 5 + Tailwind 4, built assets shipped inside the package so
-`uv run` needs no Node.
+three destinations. **Vanilla JS + deck.gl, served by `http.server`** — no framework, no
+Node at runtime or build, deck.gl vendored into `web/vendor/`.
+
+*Astro 5 + Tailwind 4 was ratified here and has been struck, on evidence.* It was chosen
+before the graph became the defining requirement and before the ratified mockup turned
+out to be vanilla with a hand-authored 832-line token stylesheet and no Tailwind at all.
+The graph must be WebGL whichever stack wins, so Astro bought a build step and Tailwind
+bought a rewrite of settled CSS, neither of which serves the thing the tool is for.
 
 1. **No filter is ever silent.** A filtered view states what it removed, in counts, with
    the hidden set one click away. Same discipline as `LOST_EDGE` and rule 8 above: a
@@ -439,6 +445,50 @@ three destinations. Astro 5 + Tailwind 4, built assets shipped inside the packag
     list derived from the source rather than hand-kept so it cannot drift. When editing
     by string replacement, assert the pattern matched -- a silent no-op is the most
     expensive kind of edit.
+
+18. **The stack is an abstraction, not an object — so do not draw it.** The 2.5D model
+    is a stack of disks, and the disks are the *idea* that groups nodes by height. Drawing
+    the plates draws the scaffolding as though it were the content, and at fifteen
+    thousand nodes it reads as a solid cylinder. Nodes are tiny dots — 1.4 to 3.6 pixels,
+    degree moving the size across two pixels rather than twenty, because any radius that
+    reads as a disc fuses the whole thing into a mass. Plates exist as a toggle, off.
+
+19. **Edges are shown on demand, never by default.** All 13,277 at once do not describe a
+    program, they erase it: everything else goes under a haze. Nothing but nodes is drawn
+    until a disk or a node is selected, then only the edges the selection touches, and
+    only once the camera has stopped. Selecting a node takes **one** hop — two hops is
+    most of the program again. Unselected nodes dim rather than vanish, so a subset stays
+    legible inside the shape it belongs to.
+
+    The consequence is that **the filter is the interface**, not a refinement of it. The
+    legend is therefore the main way in, and is built for it: fifty-one disks, clickable,
+    three columns interleaved a fraction of a row apart so rows nest instead of sharing
+    baselines — the whole index in a third of the height one column needs. It is HTML,
+    not text in the scene, because a legend that spins away with the camera is not a
+    legend.
+
+20. **Frame the bounding cylinder at the tilt in force, and always offer a way back.** A
+    bounding sphere is rotation-invariant and therefore safe at every angle by being
+    wrong at nearly all of them — it reserves room for the worst case, so the subject
+    sits small however it is turned. The stack is a cylinder and orbiting about Z leaves
+    its footprint circular, so tilt is the only term that changes the silhouette and a
+    snug fit is two terms. Projection is **orthographic**: under perspective the near
+    plates magnify and the far ones shrink, rendering a stack of equal disks as a tapered
+    cylinder — the exact shape the model exists not to be — and orthographic zoom maps
+    world units to pixels exactly, so framing is arithmetic rather than a fudge that
+    holds at one window size. A snap-to-fit control is not a convenience: nothing may
+    strand the reader off-screen with no way back.
+
+21. **A blank canvas must say why it is blank.** Hardware acceleration switched off in
+    the browser gives no WebGL context, and the symptom is an empty page that looks
+    exactly like a broken program. The failure names itself, gives the remedy, and keeps
+    the raw driver string underneath as evidence. Diagnostics live *on the page* —
+    canvas size, device pixel ratio, GL renderer, and where the geometry projects in
+    screen space — because "drawn off-screen" and "not drawn" are indistinguishable by
+    looking, and a developer cannot run a console in someone else's browser. A test
+    pattern of three markers at known positions splits the question in two: if they draw
+    and the graph does not, the fault is our geometry; if neither draws, nothing is
+    reaching the screen at all.
 
 17. **View state is local, and exported deliberately.** Column widths, density, chosen
    columns, saved filters, and expansion state persist per program, keyed by stable

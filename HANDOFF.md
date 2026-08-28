@@ -1458,6 +1458,166 @@ Tom noticed is diagnosed but not fixed: the obvious remedy, a negative `near` un
 orthographic projection, **breaks pan and zoom**, and was shipped without being driven (rule
 39). It is reverted, documented in `graph.js`, and waits for a fix that keeps `near` positive.
 
+**5l. Built 2026-08-28: the pop-up, and threads that lead somewhere.**
+
+Tom's, and stated as a goal rather than a feature: *dramatically expand what each pop-up
+says, so a reader can delve deeply in a few clicks, see adjacent nodes, follow threads
+wherever they lead, and always find the way back.* Three answers settled the shape — the
+pop-up is a rich hover card with the clickable depth staying in the inspector (one
+implementation of one pane); all four thread kinds get computed; and following a neighbour
+builds **both** behaviours with a Setting deciding, per design rule 2.
+
+*The pop-up.* `getTooltip` was three lines and could never be more: deck.gl's tooltip
+returns finished HTML synchronously, so it can only say what the payload already holds and
+cannot be filled in two stages. It is a `hover` **event** now — the engine reports what the
+picture knows, the shell draws — and the card is painted twice. The first paint is free
+(name, qualified name, `file:line`, plate, `3← 5→`, all from the engine's own maps); the
+second is `/api/hover`, a compact card carrying lines, comment count, what it touches
+grouped and named, its governance ids and one line of WHY. Not in the payload, deliberately:
+fifteen thousand node entries already cross the wire and carrying all of that would charge
+every node for the handful anybody hovers.
+
+**The fan counts come from the engine and only from the engine.** A second count taken from
+`calls` would be over a different population — externals resolve to no node — so the card and
+the picture would disagree, both correct, about things neither of them named. Rule 32, and
+the fix is not to take the count twice.
+
+*Which left one number still not adding up, and it was the last thing found.* The card said
+`3← 5→` while the inspector's **Out** heading said **8**, on the same screen about the same
+routine. Both right: eight calls leave `guarded_cwd`, five reach a routine this map holds and
+three leave the program, so the graph can only draw five. The fix is not a third count — it
+is to state the **externals**, which is the one quantity neither number was carrying and is
+not a re-count of anything (an external resolves to no node and is in neither of the engine's
+maps). The card reads `45 lines · 6 comments · 3 external` now and 5 + 3 = 8, so the two
+headings are one arithmetic instead of two claims. Design rule 8 says an external is
+first-class anyway.
+
+*Two things looking found that no check would have.* The card is positioned as the 87px
+skeleton and then filled to 293px: on a 418px canvas that put its bottom 29px past the pane,
+so the half that had just arrived was the half nobody could see. It is placed again after
+the fill — idempotent, so a card that still fits does not move, which is the whole point of
+growing downward. And at 26rem it covered **84%** of the canvas on an ordinary 1276px
+window, answering the question by hiding its subject; it is bounded by half the picture now.
+
+*The double count, and it was general.* The card first read three tables **and** "DATABASE
+20" — which is the same seventeen statements seen by two detectors. Measured across the
+program: 991 of 1,316 DATABASE boundaries sit on a line with a `sql_ops` row, and **all
+twenty** NETWORK boundaries sit on a `net_calls` row. A boundary already named by a more
+specific record on the same line is not counted again — per *line*, not per routine,
+because 43 routines have a DATABASE boundary and no `sql_ops` at all and a coarser rule
+would blank their card. The transaction statements that then had no row of their own got
+one, because dropping ten of seventeen operations silently is the omission the anti-join was
+supposed to prevent.
+
+*Threads, computed.* `threads.py` and `/api/threads`, three kinds: **governance kin** (who
+else carries this plan), **the other end of a boundary** — the kind that finds code with no
+call edge to you at all — and **outliers nearby**, scoped to the package you are standing on.
+Every thread carries a **subject** the router can act on, and the click routes from a table
+so an unhandled kind is a named error. Ordered by **rarity ascending** in every kind, which
+is the opposite of the obvious: a thing shared with three routines is work you can hold in
+your head, a thing shared with three hundred is a category. The count travels so the reader
+can disagree.
+
+*What it replaced was fiction pointing at a blank page.* `THREADS` was six hand-written rows
+about one Mensores routine — `Plan 84-06`, `disceptator`, `SOCIETY_HEADLESS` — and **every
+one of them set `state.view = "curiosities"`**, a page that says nothing has been computed.
+It rendered, it highlighted, it took nobody anywhere. Rule 30 for the fourth time, and rule
+34: it escaped all three pinned-data guards at once, being a `const` object rather than a
+`let []`, absent from `PER_PROGRAM`, and invisible to the prose guard, which looks for the
+sample program's *name* while this data said `disceptator`.
+
+*Following, both ways.* `followMode` is `replace` or `walk`. Walk needed **no new selection
+machinery** — `togglePick` has taken a mode since the multi-pick work and `walk` is `add`,
+after which `recomputeMembers` keeps each hop and `buildSelectionGeometry` draws the edges
+between consecutive ones because both ends are already members. It reaches both follow paths
+through one predicate, so the reader who chose it gets it whichever way they followed. The
+walked path states its length and says `⌘Z drops the last`. Verified by driving it: 1 → 2 →
+3 hops, undo to 2, redo to 3, switch to replace and back to 1.
+
+*Found on the way, and pre-existing.* The runtime self-check had been printing **"dead
+controls"** on every page load since the panes learned to fold, and was wrong about all of
+them: `insp`, `fold`, `navid`, `titled` and `legend` are real — CSS track state and handler
+parameters — and had simply never been added to `WIRED_ATTRS`. Its own comment says why that
+costs: *a check that cries wolf is a check nobody reads*, and a genuine dead control would
+have arrived as a sixth line in an error nobody had believed for weeks. `legend` is the one
+worth the sentence: it is written on the graph mount, which does not exist until the reader
+opens the graph, so the check said four at boot and five afterwards — one page, two answers,
+neither of them the truth. There is a source-derived guard now, because the existing one
+reads `index.html` and every one of these is written by JavaScript.
+
+*Six guards, each run against its own defect **and** a half-working version.* One of them
+failed that discipline on the first try and had to be fixed: it looked for
+`followThread(subject)` anywhere in the file and passed against a version where the click
+called `selectFromNav` directly — because the string also occurs in
+`async function followThread(subject)`, the definition vouching for its own call site. That
+is rule 37 applied to a guard written for rule 37. A second was widened after missing `insp`,
+which `applyPanels` writes as `grid.dataset[spec.attr]` — a computed property no regex over
+attribute literals can see, so the panel table is read too.
+
+*Not verifiable here, and stated as such.* deck.gl's picking pass **does** run in a
+browser-automation tab — `pickObject` returns a real node from the `nodes` layer, and the
+whole chain was driven end to end from a genuine pick. What could not be exercised is the
+pointer event that normally calls `onHover`, which is deck.gl's own plumbing and the same
+mechanism `onClick` already uses in production. Rule 38: the instrument proved what it could
+and the rest wants a real window.
+
+**5m. Built 2026-08-28: vocabulary threads, and the two lanes finally served.**
+
+The fourth thread kind, and it needed one structural change first. A measured naming
+convention carried `claim` — a sentence — and `sql`, which reproduces its *exceptions*.
+Neither can answer *is this routine one of these?*, which is what the inspector needs before
+it can say a routine shares a convention with ninety-eight others. `Convention.glob` is that
+population now, and it is the **same string the exceptions query is built from**, so the
+membership test and the evidence cannot drift. Rule 41.
+
+Writing the guard for it found that `test_an_affix_glob_respects_the_separator` had **never
+run**: the fixture it uses produces no affix convention at all — five `is_*` routines out of
+nine do not survive the coincidence correction, which is rule 14 working — so its assertion
+had sat behind `if predicates:` for its whole life. There is a second fixture now, shaped to
+produce one: eight `check_*` routines that all return a boolean against twenty-seven that do
+not, which is high precision over a *low* base rate. Both terms are needed; seven of seven
+against a background where a third of routines have the property anyway is the `Provenance`
+coincidence rule 14 rejects.
+
+*The two lanes are served.* `naming.measure()` and `glossary.bind()` were built, tested, and
+reachable only from the command line — the shell's glossary and naming pages have said "not
+computed yet" since they were written, honestly, because nothing ever served them.
+`/api/naming` and `/api/glossary` do now, computed **once at start**: measured at 0.4 s and
+2.1 s, against a boot that was already 7.7 s, and the reason it is not lazy is where they are
+used. A vocabulary thread is part of `/api/threads`, asked on **every selection**, so a lazy
+first call would stall the reading loop on the first click of every session.
+
+*What it produces.* Picking `witness_defer_cmd` shows four vocabulary threads: the convention
+`*_cmd` ("registered as a way in — 97 of 99 (C); 98 others named this way"), `mensores`
+defined in `__init__.py:1`, and two words the program uses heavily and **defines nowhere** —
+`witness`, across 19 constants, 8 way ins, 6 tables and a module. That last is the mirror's
+finding arriving where a reader is actually looking rather than on a page they have to think
+to open.
+
+*Following one is exact.* The claim says 97 of 99 and following it selects **99** — the
+cohort query uses `GLOB` with the convention's own glob, so the population you land in is
+the population the number was measured over. Drawn: 986 nodes, 253 within-plate links and
+1,109 crossings over 34 plates, at 60 fps. Terms match on **whole segments, never
+substrings** — rule 5's most literal form, and the same defect rule 18 found in
+`walk.is_test_path`: `mensor` returns nine routines, all of them in `mensores.mensor.*` or
+named `write_mensor`, and none of the nine routines whose names contain `dimension`.
+
+*The glossary and naming pages are still not ported*, and now say so accurately: the data is
+served and the graph already uses it; what is missing is those two views, which were written
+against the prototype's shape and would render the real data wrongly rather than not at all.
+That is a different statement from "nothing has been computed" and the two must not look
+alike.
+
+*Two things found while driving it.* The runtime self-check had been red since 5g (rule 43).
+And `selectionOnScreen()` guarded `getViewports()` with `?.` while deck.gl asserts *inside*
+the call — so picking a routine before opening the graph threw out of `applyWanted()` and
+took `persist()`, `recordSelection()` and `render()` with it. The selection happened, undo
+never recorded it, nothing repainted. Rule 42.
+
+*Three more guards, each run against its own defect and a half-working version*, plus one
+that catches a dead query for a kind nothing mints — the quieter half of the both-directions
+check, and the one that makes a table look more complete than the feature is.
+
 **5b. Planned, not scheduled: the layered layout — a stack of architecture drawings.**
 Tom's, stated 2026-08-27. Keep everything that exists and add a second way of drawing a
 plate: instead of a spring layout, lay the disk out the way Mermaid lays out an

@@ -653,6 +653,98 @@ body {
  * never visible: what it changes is that the pixels beside it are now honest, so snap-to
  * -fit frames the stack in the space the stack actually has instead of centring it under
  * the panel. Design rule 24, applied to the third pane that was not one. */
+/* ── the pop-up ─────────────────────────────────────────────────────────────────────
+ *
+ * A card, not a tooltip. It replaced three lines of deck.gl's own tooltip, and the
+ * difference that matters is not size: this one is filled in two stages, so it has to be
+ * an element the application owns rather than a string the renderer returns.
+ *
+ * `pointer-events: none` is load-bearing and stays. The card follows the cursor, so any
+ * hit area it had would put a surface between the reader and the node they are pointing
+ * at -- and the clickable depth belongs to the inspector, which is the pane the whole
+ * design points at. A second interactive pane floating on the canvas is how this project
+ * ended up with two applications.
+ *
+ * `left` and `top` are set from script in px, and that is not a rule-3 exception: they are
+ * a *cursor position* reported by deck.gl in device-independent pixels, not a dimension of
+ * the surface. Everything the card is actually made of -- its width, padding and type -- is
+ * rem, so the scale multiplier resizes it with everything else.
+ */
+.hovercard {
+  position: absolute; z-index: 4; pointer-events: none;
+  /* Bounded by the picture as well as by itself, and this is not a detail.
+   *
+   * 26rem is the width the card wants and it is right on a wide window. On a 1276px one
+   * -- an ordinary size, and the one this was looked at in -- the legend takes its track
+   * and the canvas is 496px, so the card covered 84% of the thing the reader is pointing
+   * at. A pop-up that answers the question by hiding its subject is worse than a smaller
+   * one that does not.
+   *
+   * So: at most half the canvas, never below a width a qualified name can be read in.
+   * All three terms stay in rem where they are dimensions, so the scale multiplier still
+   * reaches them (design rule 3); the 50% is a *share of the picture*, which is a
+   * different kind of quantity and is the one thing here that must not be fixed. */
+  max-width: max(15rem, min(26rem, 50%)); min-width: 12rem;
+  background: var(--surface); color: var(--text);
+  border: 1px solid var(--border-strong); border-radius: .375rem;
+  box-shadow: var(--shadow);
+  padding: .4rem .55rem .45rem;
+  font-size: .72rem; line-height: 1.45;
+  display: flex; flex-direction: column; gap: .22rem;
+}
+.hovercard[hidden] { display: none; }
+
+.hc-head { display: flex; align-items: baseline; gap: .35rem; }
+.hc-name { font-family: var(--f-mono); font-size: .78rem; font-weight: 600;
+           overflow-wrap: anywhere; }
+.hc-sub { color: var(--text-muted); font-size: .66rem; overflow-wrap: anywhere; }
+
+.hc-meta { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem;
+           color: var(--text-muted); font-size: .66rem; }
+/* The fan counts. Accent because they are the one thing on the card that is also *drawn*
+ * -- these are the callers and callees the selection will light -- and rule 32 says the
+ * number and the picture must be the same claim. */
+.hc-fan { font-family: var(--f-mono); color: var(--accent-text); font-weight: 600; }
+.hc-where { color: var(--text-faint); }
+.hc-plate { color: var(--text-faint); }
+
+/* Pointing at a stand-in is a fact the reader is entitled to (rule 23), and it is a
+ * correction rather than a detail -- so it is stated, not muted away. */
+.hc-shadow { font-size: .66rem; color: var(--sev-suspect);
+             background: var(--sev-suspect-bg); border-radius: .1875rem;
+             padding: .18rem .3rem; }
+
+/* Everything below here arrives a few milliseconds after the card. It is appended into
+ * `.hc-rest`, which grows downward, so nothing already under the reader's eye moves. */
+.hc-rest { display: flex; flex-direction: column; gap: .22rem; }
+.hc-rest:empty { display: none; }
+
+.hc-meas { color: var(--text-muted); font-size: .66rem; }
+.hc-value { color: var(--text); overflow-wrap: anywhere;
+            display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;
+            overflow: hidden; }
+
+.hc-touches { display: flex; flex-wrap: wrap; gap: .2rem .45rem; font-size: .66rem; }
+.hc-t { display: inline-flex; align-items: baseline; gap: .2rem;
+        font-family: var(--f-mono); color: var(--text-muted); }
+.hc-t .gl { font-style: normal; color: var(--text-faint); }
+.hc-t b { color: var(--text); font-weight: 600; }
+.hc-t .dim { color: var(--text-faint); }
+
+.hc-gov { display: flex; flex-wrap: wrap; align-items: center; gap: .2rem; }
+.hc-gov .gl { font-style: normal; color: var(--text-faint); margin-right: .1rem; }
+/* Never a bare ellipsis: a cut list says how much it cut, or a slice reads as the whole
+ * (design rule 1). */
+.hc-more { font-size: .62rem; color: var(--text-faint); font-family: var(--f-mono); }
+
+/* The WHY, and its citation. The two are one unit: a line of prose with no route back to
+ * where it came from is an assertion wearing a uniform, and on this card the route is the
+ * label plus the line (design rule 13). */
+.hc-why { font-size: .68rem; color: var(--text); border-left: 2px solid var(--border-strong);
+          padding-left: .4rem; margin-top: .1rem; }
+.hc-cite { display: block; font-size: .6rem; color: var(--text-faint);
+           font-family: var(--f-mono); margin-top: .1rem; }
+
 .graphlegend { overflow: auto; background: var(--surface);
                border-left: 1px solid var(--border); padding: .4rem; }
 .legrows { column-count: 3; column-gap: .5rem; }
@@ -1078,15 +1170,35 @@ kbd { font-family: var(--f-mono); font-size: .66rem; background: var(--sunken);
   background: none; border: 0; border-radius: .25rem; padding: .25rem .3rem; cursor: pointer;
   color: var(--text); align-items: baseline; }
 .thread:hover { background: var(--raised); }
-.thread-kind { font-size: .56rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase;
-  padding: .06rem .26rem; border-radius: .1875rem; background: var(--sunken);
-  color: var(--text-muted); flex: none; min-width: 4.6rem; text-align: center; }
-.thread-kind.governance { background: var(--accent-soft); color: var(--accent-text); }
-.thread-kind.curiosity  { background: var(--sev-suspect-bg); color: var(--sev-suspect); }
-.thread-kind.boundary   { background: var(--sev-info-bg); color: var(--sev-info); }
+/* The kind is on the *group*, not on every row in it.
+ *
+ * Each row used to carry a 4.6rem `GOVERNANCE` chip sitting directly under a heading
+ * reading "Shares a plan" -- the same fact stated twice, five rows running, in a pane
+ * 22rem wide where that chip is a fifth of the line a qualified name has to fit into.
+ * Design rule 4 in a small key: the channel is scarce, so spend it once. The heading
+ * carries the colour and the rows get the width back. */
 .thread-body { display: flex; flex-direction: column; min-width: 0; }
-.thread-to { font-size: .74rem; font-weight: 500; }
+.thread-to { font-size: .74rem; font-weight: 500; overflow-wrap: anywhere; }
 .thread-why { font-size: .7rem; color: var(--text-muted); }
+
+/* Grouped by what makes the thread a thread, because the three answer different
+ * questions and a flat list makes the reader sort them by eye. The head carries the
+ * group's true size even when the list under it is cut -- the cut is stated separately,
+ * so the two numbers are never the same claim (rule 32). */
+.threadgroup { margin-top: .3rem; }
+.threadgroup + .threadgroup { border-top: 1px solid var(--border); padding-top: .3rem; }
+.threadgroup-head { display: flex; align-items: baseline; gap: .35rem;
+  font-size: .62rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--text-faint); padding: .1rem .3rem .15rem; }
+.threadgroup.governance .threadgroup-head { color: var(--accent-text); }
+.threadgroup.boundary   .threadgroup-head { color: var(--sev-info); }
+/* An outlier is the curiosity family under its measured name: what came out furthest from
+ * the middle. It borrows the suspect colour rather than spending a new one (design rule 4)
+ * -- the same "worth your attention, not broken" note. */
+.threadgroup.outlier    .threadgroup-head { color: var(--sev-suspect); }
+.threadgroup-head .n { margin-left: auto; font-weight: 500; letter-spacing: 0;
+  font-family: var(--f-mono); }
+.threadgroup .hint { padding: .1rem .3rem; }
 
 /* ═══ source viewer ═══ */
 .viewer-scrim { position: fixed; inset: 0; background: rgba(8,12,18,.55); z-index: 90; }

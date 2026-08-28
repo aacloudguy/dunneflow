@@ -96,6 +96,23 @@ class Convention:
     exceptions: list[Exception_] = field(default_factory=list)
     sql: str = ""        # reproduces the exceptions, via `dunneflow query`
     note: str = ""
+    # The population as a **glob**, so something other than a person can ask whether a
+    # given name is in it.
+    #
+    # `claim` is a sentence and `sql` reproduces the *exceptions*; neither can answer "is
+    # `write_spec_seal_atomic` one of these?", which is exactly what the inspector needs
+    # to say a routine shares a convention with others. Deriving it back out of the
+    # sentence would be parsing prose to recover something the code already computed --
+    # the failure rule 12 names in the other direction.
+    #
+    # It is the *same* string the exceptions query is built from, deliberately, so the
+    # membership test and the evidence cannot drift apart. Rule 13's discipline: the
+    # query beside a claim must be the query that produced it.
+    #
+    # Empty for the conventions that have no glob to give -- a case convention is a
+    # property of every name in a population, not a subset of it -- and that is a real
+    # absence rather than a missing value.
+    glob: str = ""
 
     @property
     def prevalence(self) -> float:
@@ -455,6 +472,7 @@ def _affix_conventions(
                          for k in keys if k not in set(holds)),
                         key=lambda e: e.name,
                     ),
+                    glob=glob,
                     sql=exception_sql.format(
                         glob=glob, lacks=f"NOT ({predicates[prop]})"
                     ),

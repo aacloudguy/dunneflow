@@ -355,6 +355,513 @@ ORDER BY a.file, a.line
 
 
 # --------------------------------------------------------------------------- #
+# The hover card
+#
+# What the pop-up says about a node the cursor is merely passing over. Two rules
+# shape it and both are about *not* answering.
+#
+# It does not count callers or callees. The picture already has those numbers --
+# `inbound` and `outbound` in the engine, the same maps the selection itself is
+# drawn from -- and a second count taken from `calls` here would be over a
+# different population (externals included) and would disagree. Rule 32 is
+# exactly that failure: three correct numbers, no two of them counting the same
+# thing, and a reader reasonably reading the wrong one.
+#
+# It counts the **externals**, which is the opposite move and is what makes the
+# rest reconcile. `guarded_cwd` shows `3<- 5->` on the card and `Out 8` in the
+# inspector, and both are right: eight calls leave it, five reach a routine this
+# map holds and three leave the program, so the graph can only draw five. Stating
+# the three is what turns two competing numbers into one arithmetic. It is not a
+# second count of the same thing -- externals resolve to no node and are in
+# neither of the engine's maps -- and design rule 8 says an external is
+# first-class anyway.
+#
+# And it is a query, not a slice of the payload. Fifteen thousand node entries
+# already cross the wire; carrying every node's touch counts, governance ids and
+# comment text would charge all of them for the handful anybody hovers. The store
+# is the spine, so this is a lookup on an indexed id and costs nothing until
+# somebody looks.
+# --------------------------------------------------------------------------- #
+
+HOVER_ROUTINE = """
+SELECT r.name, r.qualname, r.module, r.file, r.line_start, r.line_end,
+       r.is_async, r.is_method, r.class_name, r.visibility, r.docstring,
+       (SELECT COUNT(*) FROM comments c WHERE c.routine_id = r.id) AS n_comments,
+       (SELECT COUNT(*) FROM calls c
+         WHERE c.caller_id = r.id AND c.external = 1) AS n_external
+FROM routines r
+WHERE r.id = :id
+"""
+
+# Grouped, because a bare total cannot say what it counted. "3 boundaries" is not
+# a fact anybody can act on; "2 ENV, 1 FILE" is the shape of what this routine
+# reaches. `first` gives the card one name to show beside the count, taken by
+# salience so the one shown is the one that mattered most to the detector.
+#
+# **A boundary already named by a more specific record on the same line is not
+# counted again.** This was found by looking at the card rather than by any test:
+# `write_spec_seal_atomic` showed three tables *and* "DATABASE 20", which reads as
+# twenty-three database things and is in fact the same seventeen statements seen by
+# two detectors. Measured across Mensores it is not an oddity of one routine -- 991
+# of 1,316 DATABASE boundaries sit on a line with a `sql_ops` row, and **all twenty**
+# NETWORK boundaries sit on a `net_calls` row. A summary that states the same act
+# twice is rule 32 in miniature: two correct numbers, neither of them saying what it
+# counted.
+#
+# The exclusion is per line rather than per routine, because a routine that opens a
+# connection *and* runs statements genuinely does two things and the boundary is the
+# only record of the first -- 43 routines have a DATABASE boundary and no `sql_ops`
+# at all, and their card would go blank under a coarser rule.
+#
+# The one-line tolerance is a judgment and is stated as one: the detectors disagree
+# by a line on multi-line statements, recording the call site and the statement start
+# (1233 against 1234 in the routine above). Two lines would start swallowing genuinely
+# separate adjacent acts.
+HOVER_BOUNDARY_KINDS = """
+SELECT kind, COUNT(*) AS n,
+       (SELECT b2.target FROM boundaries b2
+         WHERE b2.routine_id = :id AND b2.kind = b.kind AND b2.target <> ''
+         ORDER BY b2.salience DESC, b2.line LIMIT 1) AS first
+FROM boundaries b
+WHERE b.routine_id = :id
+  AND NOT EXISTS (SELECT 1 FROM sql_ops s
+                   WHERE s.routine_id = b.routine_id AND abs(s.line - b.line) <= 1)
+  AND NOT EXISTS (SELECT 1 FROM net_calls n
+                   WHERE n.routine_id = b.routine_id AND abs(n.line - b.line) <= 1)
+  AND NOT EXISTS (SELECT 1 FROM artefacts a
+                   WHERE a.routine_id = b.routine_id AND abs(a.line - b.line) <= 1)
+GROUP BY kind
+ORDER BY n DESC, kind
+"""
+
+# Distinct tables, not operations: a routine that reads one table in a loop of
+# four statements touches one table. The direction is what the reader wants next
+# and it is what the database report is built on, so it travels too -- a table
+# written is a different neighbour from a table read.
+HOVER_TABLES = """
+SELECT tbl AS name,
+       SUM(direction = 'WRITE') AS writes,
+       SUM(direction = 'READ')  AS reads,
+       COUNT(*)                 AS ops
+FROM sql_ops
+WHERE routine_id = :id AND tbl <> ''
+GROUP BY tbl
+ORDER BY tbl
+"""
+
+# The statements with no table of their own -- `BEGIN`, `COMMIT`, `ROLLBACK`,
+# `CREATE TABLE`. Ten of `write_spec_seal_atomic`'s seventeen operations are these,
+# and without a row for them the card would state three tables and quietly drop more
+# than half of what the routine does to the database. Design rule 1: a filter is
+# never silent, and dropping them was exactly the omission the boundary anti-join
+# above would otherwise have introduced.
+#
+# Grouped by direction because DDL is not transaction control: a routine that creates
+# a table and a routine that wraps two writes in a transaction are different animals,
+# and `CONTROL` alone would call them the same.
+HOVER_SQL_UNTABLED = """
+SELECT direction AS kind, COUNT(*) AS n,
+       (SELECT s2.operation FROM sql_ops s2
+         WHERE s2.routine_id = :id AND s2.tbl = '' AND s2.direction = s.direction
+         ORDER BY s2.line LIMIT 1) AS first
+FROM sql_ops s
+WHERE s.routine_id = :id AND s.tbl = ''
+GROUP BY direction
+ORDER BY n DESC, direction
+"""
+
+HOVER_NET = """
+SELECT protocol AS kind, COUNT(*) AS n,
+       (SELECT n2.destination FROM net_calls n2
+         WHERE n2.routine_id = :id AND n2.protocol = n.protocol
+               AND n2.destination <> ''
+         ORDER BY n2.line LIMIT 1) AS first
+FROM net_calls n
+WHERE n.routine_id = :id
+GROUP BY protocol
+ORDER BY n DESC, protocol
+"""
+
+HOVER_ARTEFACTS = """
+SELECT COUNT(DISTINCT name) AS n,
+       (SELECT a2.name FROM artefacts a2 WHERE a2.routine_id = :id
+         ORDER BY a2.line LIMIT 1) AS first
+FROM artefacts a
+WHERE a.routine_id = :id
+"""
+
+# The governance ids only, deduplicated. The card has room for a line of them and
+# the inspector has room for all of them with their text; sending the text here
+# would be paying for a paragraph to render a chip.
+# Distinct on the **value**, not on the pair. `ISS-123` is recorded once as an
+# ISSUE and once as a TICKET by two different markers in the same file, and a card
+# listing it twice is stating a fact about this tool's detectors rather than about
+# the program. `MIN(kind)` keeps the choice stable rather than whichever row the
+# planner happened to reach first.
+#
+# The card has room for four of these, so the order decides which four a reader sees
+# and it may not be alphabetical: sorted by value, Mensores' 3,713 TICKETs beginning
+# `AC-` crowd out every PLAN and ADR on the routine. The order is by what the id
+# *is* -- a decision, then the record of one, then the plan, then the issue -- and
+# then by how often this routine cites it. It is a stated ranking rather than a
+# guess, and the inspector still shows every one of them with its text.
+HOVER_ANNOTATIONS = """
+SELECT value, MIN(kind) AS kind, COUNT(*) AS n
+FROM annotations
+WHERE owner_id = :id AND owner_kind = 'routine'
+GROUP BY value
+ORDER BY CASE MIN(kind)
+           WHEN 'DECISION' THEN 0 WHEN 'ADR' THEN 1 WHEN 'PLAN' THEN 2
+           WHEN 'ISSUE' THEN 3 WHEN 'GATE' THEN 4 ELSE 5 END,
+         n DESC, value
+"""
+
+# The WHY, and it has to say which kind of WHY it is.
+#
+# A comment above a `def` is about the routine; a comment forty lines inside it is
+# about a statement. `leading` tells them apart -- and on Mensores only 243 of
+# 18,414 comments are leading ones, so a card that accepted nothing else would be
+# blank on the overwhelming majority of routines that are in fact well explained.
+#
+# So the order is: the block above the definition, then the first comment inside
+# it. The two are **not** interchangeable and the caller must not present them as
+# though they were, which is why `leading` comes back with the text rather than
+# being consumed here. A first-line comment shown as "what this routine is for"
+# would be this tool inventing a summary; shown with its line number it is a
+# quotation, and design rule 13 is satisfied by the reader being able to go and
+# read it.
+HOVER_WHY_COMMENT = """
+SELECT line, text, leading
+FROM comments
+WHERE routine_id = :id
+ORDER BY leading DESC, line
+LIMIT 1
+"""
+
+HOVER_STRUCTURE = """
+SELECT s.name, s.kind, s.module, s.file, s.line, s.docstring, s.bases,
+       (SELECT COUNT(*) FROM fields f WHERE f.structure_id = s.id) AS n_fields
+FROM structures s
+WHERE s.id = :id
+"""
+
+HOVER_CONSTANT = """
+SELECT name, module, file, line, value, type, is_final, private, comment
+FROM constants
+WHERE module = :module AND name = :name
+LIMIT 1
+"""
+
+# An external's card answers "who of mine talks to it", which is the only question
+# about a thing we have no source for. Counted two ways because they differ and the
+# difference is the interesting part: forty touches from three routines is a
+# different shape from forty touches from forty.
+HOVER_BOUNDARY_NODE = """
+SELECT COUNT(*) AS hits, COUNT(DISTINCT routine_id) AS callers,
+       (SELECT b2.direction FROM boundaries b2
+         WHERE b2.kind = :kind AND COALESCE(b2.target,'') = COALESCE(:target,'')
+         ORDER BY b2.salience DESC LIMIT 1) AS direction
+FROM boundaries b
+WHERE b.kind = :kind AND COALESCE(b.target,'') = COALESCE(:target,'')
+"""
+
+HOVER_ARTEFACT_NODE = """
+SELECT COUNT(*) AS mentions, COUNT(DISTINCT routine_id) AS namers,
+       (SELECT a2.ext FROM artefacts a2 WHERE a2.name = :name LIMIT 1) AS ext,
+       (SELECT a2.kind FROM artefacts a2 WHERE a2.name = :name LIMIT 1) AS akind
+FROM artefacts a
+WHERE a.name = :name
+"""
+
+
+# --------------------------------------------------------------------------- #
+# Threads to pull
+#
+# Beside the call graph, the *reasons* a neighbour is worth a detour -- design
+# rule 15's "adjacency by interest, not only by edge". The call graph answers
+# "what runs next"; none of these do, and that is the point: the routine that
+# shares your plan, the one at the other end of the table you write, the most
+# commented thing on your plate. A reader following a thread is not tracing
+# execution, they are following a *reason*.
+#
+# Two disciplines run through all of them.
+#
+# **A thread must lead somewhere.** Every query here excludes the subject itself
+# and requires at least one other party, because a thread with nobody at the far
+# end is a row that looks like a doorway and is a wall. This is rule 30 stated as
+# a query: a label is not an identity, and a thread whose subject resolves to
+# nothing is the same failure one layer down.
+#
+# **A thread states its size, and the smallest sorts first.** "9 other routines
+# carry this plan" is a different invitation from "312 other routines carry this
+# plan", and the reader is the one who should decide which is worth a detour. So
+# the count travels and nothing is thresholded away -- a cut-off invented in the
+# query is a filter the reader cannot see (design rule 1).
+#
+# What the query does decide is the *order*, and it is rarity ascending in every
+# one of these, which is the opposite of the obvious. A thing shared with three
+# routines is a piece of work you can hold in your head; the same thing shared
+# with three hundred is a category, and a category is not a detour. The panel
+# bounds the list for space, so what sorts to the top has to be what a reader can
+# act on -- and the count beside it is what lets them disagree.
+# --------------------------------------------------------------------------- #
+
+# Governance kin: what else was this change about?
+#
+# Ordered by **rarity**, which is the opposite of the obvious. A plan carried by
+# three routines is a piece of work you can hold in your head; the same plan
+# carried by three hundred is a category, and a category is not a detour. Nothing
+# is dropped for being large -- the count is shown and the reader chooses -- but
+# what sorts to the top is what is small enough to look at.
+THREAD_GOVERNANCE = """
+SELECT mine.value                     AS value,
+       MIN(mine.kind)                 AS kind,
+       COUNT(DISTINCT other.owner_id) AS others
+FROM annotations mine
+JOIN annotations other
+  ON other.value = mine.value
+ AND other.owner_kind = 'routine'
+ AND other.owner_id <> :id
+WHERE mine.owner_id = :id AND mine.owner_kind = 'routine'
+GROUP BY mine.value
+ORDER BY others, mine.value
+"""
+
+# The other end of a table. This is the thread kind that finds code with **no call
+# edge to the subject at all** -- two routines that never call each other and both
+# write `audit_events` are coupled through the store, and nothing in a call graph
+# can say so.
+#
+# Readers and writers are counted apart because they are different neighbours: the
+# question "who else writes what I read" is the one that finds where a value comes
+# from, and a single "others" total cannot answer it.
+#
+# **Declarers are counted too, and that was not foresight.** `spec_seals` first read
+# "6 others -- 3 read, 0 write", three numbers that are each correct and cannot be
+# reconciled by anybody looking at them. The missing three are `DDL`: the routines
+# that *create* the table. They turned out to be the most interesting of the three
+# groups -- the schema is where a table is defined -- and hiding them behind a total
+# that did not add up is rule 32 in the plainest form.
+#
+# The three still do not partition, and must not be presented as though they did: a
+# routine that reads and writes the same table is in two of them. Each says what it
+# counted and none claims to be a share of the whole.
+THREAD_TABLES = """
+SELECT mine.tbl                             AS name,
+       COUNT(DISTINCT other.routine_id)     AS others,
+       COUNT(DISTINCT CASE WHEN other.direction = 'WRITE'
+                           THEN other.routine_id END) AS writers,
+       COUNT(DISTINCT CASE WHEN other.direction = 'READ'
+                           THEN other.routine_id END) AS readers,
+       COUNT(DISTINCT CASE WHEN other.direction = 'DDL'
+                           THEN other.routine_id END) AS declarers,
+       MAX(mine.direction = 'WRITE')        AS i_write,
+       MAX(mine.direction = 'READ')         AS i_read
+FROM sql_ops mine
+JOIN sql_ops other ON other.tbl = mine.tbl AND other.routine_id <> :id
+WHERE mine.routine_id = :id AND mine.tbl <> ''
+GROUP BY mine.tbl
+ORDER BY others, mine.tbl
+"""
+
+# The other end of a boundary. The endpoint is already a node in the graph
+# (`bnd:KIND:target`), so following one selects the thing itself rather than a set
+# standing in for it -- which is why boundaries get a node subject and tables,
+# which are not nodes, get a set.
+#
+# **A boundary already named by a `sql_ops` row on the same line is excluded**, for
+# the same reason the hover card excludes it, and here the consequence was louder:
+# without it the three best threads off `write_spec_seal_atomic` were `ROLLBACK`,
+# `COMMIT` and `BEGIN IMMEDIATE`, shared with 91, 87 and 84 other routines. Those
+# are SQL keywords recorded as boundary targets, not endpoints anybody would want
+# to visit, and following one selects a tenth of the storage layer. The tables the
+# same routine touches are the real answer and they were sorted underneath.
+THREAD_BOUNDARIES = """
+SELECT mine.kind                         AS kind,
+       mine.target                       AS target,
+       COUNT(DISTINCT other.routine_id)  AS others,
+       MIN(mine.direction)               AS direction
+FROM boundaries mine
+JOIN boundaries other
+  ON other.kind = mine.kind AND other.target = mine.target
+ AND other.routine_id <> :id
+WHERE mine.routine_id = :id AND mine.target <> ''
+  AND NOT EXISTS (SELECT 1 FROM sql_ops s
+                   WHERE s.routine_id = mine.routine_id
+                     AND abs(s.line - mine.line) <= 1)
+  AND NOT EXISTS (SELECT 1 FROM net_calls n
+                   WHERE n.routine_id = mine.routine_id
+                     AND abs(n.line - mine.line) <= 1)
+GROUP BY mine.kind, mine.target
+ORDER BY others, mine.kind, mine.target
+"""
+
+THREAD_ARTEFACTS = """
+SELECT mine.name                        AS name,
+       MIN(mine.kind)                   AS akind,
+       COUNT(DISTINCT other.routine_id) AS others
+FROM artefacts mine
+JOIN artefacts other ON other.name = mine.name AND other.routine_id <> :id
+WHERE mine.routine_id = :id AND mine.name <> ''
+GROUP BY mine.name
+ORDER BY others, mine.name
+"""
+
+THREAD_NET = """
+SELECT mine.destination                 AS target,
+       MIN(mine.protocol)               AS protocol,
+       COUNT(DISTINCT other.routine_id) AS others
+FROM net_calls mine
+JOIN net_calls other
+  ON other.destination = mine.destination AND other.routine_id <> :id
+WHERE mine.routine_id = :id AND mine.destination <> ''
+GROUP BY mine.destination
+ORDER BY others, mine.destination
+"""
+
+# --------------------------------------------------------------------------- #
+# Outliers nearby
+#
+# The curiosity family, scoped to the package the reader is standing in. Not
+# problems -- doorways. Each is a genuine measured maximum and carries its number,
+# because "the most commented routine here" without the count is a claim the
+# reader cannot weigh, and 264 comments and 7 comments are not the same discovery.
+#
+# The package is matched on the module prefix rather than through the CASE
+# expression the node queries use, because here it is *known* -- the subject's own
+# package -- and a prefix match says so in one line.
+#
+# Every one of them excludes the subject. Telling a reader that the most commented
+# routine in this package is the one they are already looking at is true and is
+# not a thread: there is nowhere to go.
+# --------------------------------------------------------------------------- #
+
+THREAD_MOST_COMMENTED = """
+SELECT r.id, r.name, r.qualname, COUNT(*) AS n
+FROM comments c
+JOIN routines r ON r.id = c.routine_id
+WHERE (r.module = :pkg OR r.module LIKE :pkg_dot) AND r.id <> :id
+GROUP BY r.id
+ORDER BY n DESC, r.qualname
+LIMIT 1
+"""
+
+THREAD_MOST_CALLED = """
+SELECT r.id, r.name, r.qualname, COUNT(DISTINCT c.caller_id) AS n
+FROM calls c
+JOIN routines r ON r.id = c.callee_id
+WHERE (r.module = :pkg OR r.module LIKE :pkg_dot) AND r.id <> :id
+GROUP BY r.id
+ORDER BY n DESC, r.qualname
+LIMIT 1
+"""
+
+# Nesting depth, measured as the qualname's segments below its module. A closure
+# four factories deep is a real thing to find and there is no other record of it:
+# rule 10 gave every nested routine its enclosing scope in its qualname precisely
+# so that seven closures called `_close_ladybug` stay seven routines, and this
+# reads that structure back out.
+THREAD_DEEPEST = """
+SELECT r.id, r.name, r.qualname,
+       (length(r.qualname) - length(replace(r.qualname, '.', ''))) -
+       (length(r.module)   - length(replace(r.module,   '.', ''))) AS depth
+FROM routines r
+WHERE (r.module = :pkg OR r.module LIKE :pkg_dot) AND r.id <> :id
+  AND r.is_nested = 1
+ORDER BY depth DESC, r.qualname
+LIMIT 1
+"""
+
+# A table this package writes far more often than it reads, or the reverse. The
+# lopsidedness is the doorway: something writes a great deal that nobody here
+# reads back, which is either an audit log or a question.
+THREAD_LOPSIDED_TABLE = """
+SELECT s.tbl AS name,
+       SUM(s.direction = 'WRITE') AS writes,
+       SUM(s.direction = 'READ')  AS reads
+FROM sql_ops s
+JOIN routines r ON r.id = s.routine_id
+WHERE (r.module = :pkg OR r.module LIKE :pkg_dot) AND s.tbl <> ''
+GROUP BY s.tbl
+HAVING writes > 0 AND reads > 0
+ORDER BY MAX(CAST(writes AS REAL) / reads, CAST(reads AS REAL) / writes) DESC, s.tbl
+LIMIT 1
+"""
+
+# --------------------------------------------------------------------------- #
+# Following a thread
+#
+# What a thread's subject resolves to. Boundaries and artefacts are nodes already
+# and need none of this; a governance id and a table are not nodes, so following
+# one means selecting the code that carries or touches it -- the same reasoning
+# `TABLE_ROUTINES` was written under, and the reason there is no invented id for
+# either of them.
+# --------------------------------------------------------------------------- #
+
+GOVERNANCE_ROUTINES = """
+SELECT DISTINCT a.owner_id AS node
+FROM annotations a
+JOIN routines r ON r.id = a.owner_id
+WHERE a.value = :value AND a.owner_kind = 'routine'
+ORDER BY r.qualname
+"""
+
+# Every routine a measured naming convention is about. `GLOB` rather than `LIKE`
+# because the glob is the string the convention was counted with -- rule 13 says a
+# claim's query must return exactly what is printed beside it, and translating the
+# pattern into a second dialect on the way here would be a second population
+# wearing the first one's number.
+#
+# Nested routines and dunders are excluded exactly as the mining pass excludes
+# them: `<module>` is a name DunneFlow invents rather than one anybody chose, and
+# counting them once made a convention that holds in every real case read as 92%.
+CONVENTION_ROUTINES = """
+SELECT r.id AS node
+FROM routines r
+WHERE r.is_nested = 0
+  AND r.name NOT GLOB '__*__'
+  AND r.name NOT GLOB '<*>'
+  AND r.name GLOB :glob
+ORDER BY r.qualname
+"""
+
+# Every routine whose name uses one of the program's own words.
+#
+# **Whole segments, never substrings**, and this is rule 5 in its most literal form. A
+# term matched anywhere inside a name matches half the program: `mensor` would claim
+# every `dimensions` and `groma` every `programmatic`. Rule 18 found the same defect in
+# `walk.is_test_path`, where `test_` as a substring dropped the real `_test_stage.py` out
+# of the map entirely -- a marker must sit at an edge of a segment.
+#
+# Six globs rather than one because GLOB has no alternation, and lowercased on both sides
+# because GLOB is case-sensitive while a term is a word rather than an identifier. That
+# costs the index on a query run once per click, which is the right way round.
+TERM_ROUTINES = """
+SELECT r.id AS node
+FROM routines r
+WHERE r.is_nested = 0
+  AND r.name NOT GLOB '<*>'
+  AND (   lower(r.name)   = :term
+       OR lower(r.name)   GLOB :n_pre
+       OR lower(r.name)   GLOB :n_suf
+       OR lower(r.name)   GLOB :n_mid
+       OR lower(r.module) = :term
+       OR lower(r.module) GLOB :m_pre
+       OR lower(r.module) GLOB :m_suf
+       OR lower(r.module) GLOB :m_mid )
+ORDER BY r.qualname
+"""
+
+NET_ROUTINES = """
+SELECT DISTINCT n.routine_id AS node
+FROM net_calls n
+JOIN routines r ON r.id = n.routine_id
+WHERE n.destination = :target
+ORDER BY r.qualname
+"""
+
+
+# --------------------------------------------------------------------------- #
 # Document mode
 #
 # Every row selects the graph's node id in the same statement that selects its

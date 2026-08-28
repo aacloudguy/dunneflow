@@ -150,6 +150,21 @@ before anything is drawn. And the `data` wrappers are built once rather than ins
 per-frame layer function, which would re-upload half a megabyte on every frame of a drag
 and reintroduce the exact cost the typed arrays exist to avoid.
 
+Opening the dashboard (`dunneflow serve`) on an analysed program, 10.2 s to first serve,
+of which the two vocabulary lanes are 2.5 s:
+
+| Measure | Budget | Measured 2026-08-28 |
+|---|---|---|
+| `serve` start to first request | < 15 s | 10.2 s |
+| …of which the naming pass | | 0.4 s |
+| …of which the glossary pass | | 2.1 s |
+
+Both lanes are paid for **at start rather than on first use**, and that is a decision
+rather than an accident. A vocabulary thread is part of `/api/threads`, which is asked on
+every selection, so a lazy first call would stall the reading loop on the first click of
+every session — two seconds where the reader is entitled to think the click failed. Paid at
+boot it is invisible, beside a payload build and a cover that were already being computed.
+
 Documentation (2,381 documents, 44 MB):
 
 | Measure | Budget | Measured |
@@ -194,6 +209,13 @@ docs   ──► extract ──► docs.db  (SQLite) ─────────
   config edit here, not a code change. Prefer adding a rule over adding a branch.
 - `resolve/` — call graph, CLI command trees, flows, naming conventions, glossary.
 - `render/` — Markdown and Mermaid.
+- `web/threads.py` — **adjacency by interest, not by edge.** Why a neighbour is worth a
+  detour: shares a plan, the other end of a table you write, the most commented routine on
+  your plate, named like ninety-eight others. Every thread carries a *subject* the router
+  can act on, never a label (rule 30), and states its size so the reader can weigh it.
+- `web/vocabulary.py` — the two naming lanes served, and matched against one name. The
+  membership test is `Convention.glob`, which is the same string the exceptions query is
+  built from, so the claim and the population cannot drift (rule 41).
 - `sql.py` — reads schemas out of the `CREATE TABLE` statements the code contains.
 
 ## Rules learned the hard way
@@ -608,6 +630,70 @@ These each came from a false result on real code. Keep them.
     rather than the plane. Recorded because the diagnosis is right and the obvious remedy is
     not, and because it was shipped without being driven: **not being able to test a change
     is a reason to describe it, never a reason to ship it and ask.**
+
+40. **Two detectors recording one act is two numbers about one thing.** The hover card
+    read three tables *and* "DATABASE 20" — which is the same seventeen statements seen by
+    the SQL reader and the boundary reader. Not an oddity of one routine: 991 of Mensores'
+    1,316 DATABASE boundaries sit on a line with a `sql_ops` row, and **all twenty** NETWORK
+    boundaries sit on a `net_calls` row. A summary that states the same act twice is rule 32
+    in a smaller box — two correct numbers, neither of them saying what it counted.
+
+    A boundary already named by a more specific record on the same line is not counted
+    again. **Per line, not per routine**: 43 routines have a DATABASE boundary and no
+    `sql_ops` at all — they open a connection and run nothing — and a coarser rule blanks
+    their card. The one-line tolerance is a judgment and is written down as one; the
+    detectors disagree by a line on multi-line statements, recording the call site and the
+    statement start.
+
+    Its companion, found in the same edit: **excluding the general record must not lose what
+    only it recorded.** Ten of that routine's seventeen operations are `BEGIN` / `COMMIT` /
+    `ROLLBACK` with no table of their own, and the first fix dropped them silently — the
+    exact omission the anti-join was written to prevent, inverted. They have their own row,
+    grouped by direction, because DDL is not transaction control.
+
+41. **A prose claim and a machine-readable population are two things, and only one of them
+    can be asked a question.** A measured naming convention carried `claim` (a sentence) and
+    `sql` (which reproduces its *exceptions*). Neither can answer "is `witness_defer_cmd`
+    one of these?" — which is what the inspector needs before it can say a routine shares a
+    convention with ninety-eight others. Recovering the affix by parsing the sentence would
+    be reading prose to get back something the code had already computed and thrown away.
+
+    `Convention.glob` is that population, and it is **the same string the exceptions query
+    is built from**, so the membership test and the evidence cannot drift. A test asserts
+    the glob appears in the SQL — rule 13 applied to a second way of naming one set.
+    Writing it exposed that `test_an_affix_glob_respects_the_separator` had **never run**:
+    its fixture produces no affix convention at all, so its assertion sat behind
+    `if predicates:` for as long as it had existed.
+
+42. **A guard that names the right case may still not catch it.** `selectionOnScreen()`
+    documents itself as returning null when there is no viewport — "we cannot say" and "it
+    is off screen" being different answers — and guarded with
+    `g.deckgl?.getViewports?.()`. deck.gl does not return a falsy viewport before it has
+    one; it **asserts inside** `getViewports()`, so the optional chaining protected against
+    a missing deck and not against the case the comment describes. The `?.` was what made
+    the code look guarded.
+
+    The path is ordinary: pick a routine in the navigator before opening the graph, and
+    `selectFromNav` mounts the engine and calls `applyWanted()` synchronously, before any
+    frame. The throw left `applyWanted`, so `persist()`, `recordSelection()` and `render()`
+    never ran — the selection happened, undo did not record it, nothing repainted. Rule 37
+    in the code rather than in the tests: **check that the guard catches, not that it
+    mentions.**
+
+43. **A check that cries wolf has already failed, and it fails silently.** The shell's
+    runtime self-check printed "dead controls" on every page load and was wrong about every
+    one of them: `insp`, `fold`, `navid`, `titled` and `legend` are real — grid track state
+    the stylesheet reads, and parameters read off controls found by class — and had simply
+    never joined `WIRED_ATTRS`. Its own comment says why that costs: *a check that cries
+    wolf is a check nobody reads*, and a genuine dead control would have arrived as a sixth
+    line in an error nobody had believed for weeks.
+
+    `legend` is the one worth keeping. It is written on the graph mount, which does not
+    exist until the reader opens the graph, so the check said four at boot and five
+    afterwards — one page, two answers, neither of them the truth. **A check whose answer
+    depends on when it runs needs a counterpart that does not run at all**, so the roster is
+    now derived from the source, generated markup included; the existing guard reads
+    `index.html`, and every one of these five is written by JavaScript.
 
 ## Anomalies: the discipline
 

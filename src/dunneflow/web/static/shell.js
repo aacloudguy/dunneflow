@@ -47,16 +47,16 @@ let CURIOSITIES = [];   // what came out furthest from the middle -- served, not
 
 /* What sits next to the thing you are looking at. Not the call graph \u2014 the reasons
    something else might be worth a detour. */
-const THREADS = {
-  "_run_extract_mode": [
-    { to: "Plan 84-06", why: "9 other routines carry this plan", kind: "governance" },
-    { to: "ISS-184", why: "the prerequisite gate exists because of this issue", kind: "governance" },
-    { to: "_enforce_architect_prerequisite", why: "the gate itself, 3 lines down", kind: "call" },
-    { to: "disceptator", why: "5 of its 16 calls leave for the interview engine", kind: "package" },
-    { to: "make_operational_event", why: "the other end of the audit emit \u2014 and the most commented routine in the program", kind: "curiosity" },
-    { to: "SOCIETY_HEADLESS", why: "one of 154 environment reads; this one decides whether a human is watching", kind: "boundary" }
-  ]
-};
+/* Threads to pull, per node, served -- not pinned.
+ *
+ * This was six hand-written rows about one Mensores routine, naming its plans, its
+ * packages and its environment variables, and it slipped past all three pinned-data
+ * guards: it is a `const` object rather than a `let []`, so the array guard could not
+ * see it; it is not in `PER_PROGRAM`, so the top-level guard was not looking; and the
+ * prose guard searches for the program's *name*, while this said `disceptator`. It is
+ * in `PER_PROGRAM` now, which is a structural check rather than a lexical one and
+ * therefore cannot be evaded the same way. Rule 34. */
+let THREADS = {};
 
 let PROVENANCE = {};   // where each glossary term is defined, by tier -- served, not pinned
 
@@ -138,6 +138,8 @@ const state = {
   ambient: false,         // anomaly badges on nodes
   hideInferred: false,
   density: "comfortable",
+  followMode: "replace",   // "replace" | "walk" -- what following a neighbour does
+  threadsAll: false,       // the threads panel bounded (rule 8) or opened whole
   selected: null,          // the node id under inspection, or null for nothing picked
   /* What the reader asked for, in id space, before it is resolved to drawn indices.
    * Held here rather than only in the engine so a choice made from the navigator while
@@ -1451,23 +1453,96 @@ function viewPins() {
   </div>`;
 }
 
-function threadsPanel(anchor) {
-  const th = THREADS[anchor] || [];
-  if (!th.length) return "";
+/* How many of each kind the panel shows before it says what it cut.
+ *
+ * `write_spec_seal_atomic` carries thirteen governance ids, and the tail of that list --
+ * a ticket shared with 109 other routines -- is a category rather than a detour. Rarity
+ * sorts first, so the cut takes the least useful end; and it is *stated*, with the whole
+ * list one click away, which is rule 8's bargain exactly: abbreviation is allowed only
+ * where the complete content sits beside it. */
+const THREADS_SHOWN = 5;
+
+const THREAD_KIND_TITLE = {
+  governance: "Shares a plan",
+  boundary: "The other end",
+  /* The two lanes of the naming standard read as adjacency: a routine ending `_cmd` has
+     ninety-eight relatives it never calls, and a routine whose module is a word the
+     project defines has a document behind its name. This is the only place the graph
+     touches the glossary and naming lanes, which were otherwise reachable only from
+     their own pages. */
+  vocabulary: "Named like these",
+  outlier: "Unusual nearby",
+};
+
+function threadsPanel(nodeId) {
+  const th = THREADS[nodeId];
+
+  /* Three states, and they are three different claims. Undefined: we have not asked yet.
+     Null: we asked and could not find out. Empty: we asked and there is nothing, which is
+     the ordinary answer for a private helper. A panel that renders the same thing for all
+     three tells the reader the wrong one twice out of three times. */
+  if (th === undefined) return "";
+  if (th === null) {
+    return `
+      <div class="flowsec threads">
+        <h3><button aria-expanded="true"><span class="caret">\u25bc</span>Threads to pull
+          <span class="rule"></span></button></h3>
+        <div class="flowsec-body"><p class="hint">Could not ask what is beside this one.
+          That is a fact about the connection, not about the program.</p></div>
+      </div>`;
+  }
+  if (!th.length) {
+    return `
+      <div class="flowsec threads">
+        <h3><button aria-expanded="true"><span class="caret">\u25bc</span>Threads to pull
+          <span class="secn">0</span><span class="rule"></span></button></h3>
+        <div class="flowsec-body"><p class="hint">Nothing is beside this one — no shared
+          plan, no shared table, nothing at the other end of anything it touches. That is
+          an ordinary thing for a routine to be.</p></div>
+      </div>`;
+  }
+
+  const all = state.threadsAll;
+  const groups = [];
+  for (const kind of Object.keys(THREAD_KIND_TITLE)) {
+    const rows = th.filter(t => t.kind === kind);
+    if (!rows.length) continue;
+    const shown = all ? rows : rows.slice(0, THREADS_SHOWN);
+    groups.push(`
+      <div class="threadgroup ${esc(kind)}">
+        <div class="threadgroup-head">${esc(THREAD_KIND_TITLE[kind])}
+          <span class="n">${rows.length}</span></div>
+        ${shown.map(t => `
+          <button class="thread" data-thread="${esc(JSON.stringify(t.subject))}"
+                  data-threadwhy="${esc(t.why)}" data-threadlabel="${esc(t.label)}">
+            <span class="thread-body">
+              <span class="thread-to mono">${esc(t.label)}</span>
+              <span class="thread-why">${esc(t.why)}</span>
+            </span>
+          </button>`).join("")}
+        ${rows.length > shown.length
+          ? `<div class="hint">Showing ${shown.length} of ${rows.length}, rarest first.</div>`
+          : ""}
+      </div>`);
+  }
+
+  const cut = th.length - (all ? th.length
+    : Object.keys(THREAD_KIND_TITLE).reduce(
+        (n, k) => n + Math.min(THREADS_SHOWN, th.filter(t => t.kind === k).length), 0));
+
   return `
     <div class="flowsec threads">
       <h3><button aria-expanded="true"><span class="caret">\u25bc</span>Threads to pull
         <span class="secn">${th.length}</span><span class="rule"></span></button></h3>
       <div class="flowsec-body">
-        <p class="threadintro">Not the call graph \u2014 reasons something nearby might be worth a detour.</p>
-        ${th.map(t => `
-          <button class="thread" data-thread="${esc(t.to)}" data-threadwhy="${esc(t.why)}">
-            <span class="thread-kind ${esc(t.kind)}">${esc(t.kind)}</span>
-            <span class="thread-body">
-              <span class="thread-to mono">${esc(t.to)}</span>
-              <span class="thread-why">${esc(t.why)}</span>
-            </span>
-          </button>`).join("")}
+        <p class="threadintro">Not the call graph — reasons something nearby is worth a
+          detour. Two routines that never call each other and both write one table are
+          related, and no call graph can say that.</p>
+        ${groups.join("")}
+        ${cut > 0 || all
+          ? `<button class="linkbtn" data-threadsall>${all
+              ? "Show fewer" : `Show all ${th.length}`}</button>`
+          : ""}
       </div>
     </div>`;
 }
@@ -1665,10 +1740,12 @@ function viewGlossary() {
     return `
     <div style="max-width:58rem">
       <div class="note">
-        <b>The glossary is not served to this page yet.</b> It is computed by
-        <code class="mono">dunneflow glossary</code>, which reads the project's own
-        documentation for the definitions before generating any — so an empty page here
-        means nobody has asked, not that this program explains none of its words.
+        <b>The glossary is computed but this page has not been ported to it.</b>
+        <code class="mono">/api/glossary</code> serves it, and the graph already uses it —
+        picking a routine shows the program's own words in its name under
+        <b>Named like these</b>, with the file and line that define each one. What is
+        missing is this view, which was written against a different shape and would
+        render the real data wrongly rather than not at all.
       </div>
     </div>`;
   }
@@ -1788,10 +1865,13 @@ function viewNaming() {
     </div>
 
     ${!CONVENTIONS.length ? `<div class="note">
-      <b>Not computed here yet.</b> The naming standard is measured by
-      <code class="mono">dunneflow naming</code> and is not yet served to this page, so
-      there is nothing to show — which is a different statement from "this program follows
-      no conventions", and the two must not look alike.
+      <b>Measured, and this page has not been ported to it.</b>
+      <code class="mono">/api/naming</code> serves every convention with the query that
+      counted it, and the graph already uses them — picking a routine shows which
+      conventions its name is an instance of, and following one selects exactly the
+      population the claim was measured over. What is missing is this view, which was
+      written against a different shape. That is a different statement from "this program
+      follows no conventions", and the two must not look alike.
     </div>` : ""}
     ${CONVENTIONS.map((cv, i) => {
       const pct = (cv.ok / cv.n) * 100;
@@ -1865,6 +1945,34 @@ async function loadNode(id) {
     if (inspectorFor === id) SPECIMEN = { notFound: true, id, reason: err.message };
   }
   render();
+  loadThreads(id);
+}
+
+/* The reasons a neighbour is worth a detour, asked alongside the node itself.
+ *
+ * A separate request rather than a field on `/api/node`, because the two answer at
+ * different speeds and for different reasons: the inspector's own content is one lookup
+ * per section on an indexed id, while a thread is a self-join over every annotation or
+ * every `sql_ops` row in the program. Blocking the pane the whole tool points at on the
+ * slower of the two would make every selection feel like the slowest thing it does.
+ *
+ * Cached per node for the session. The store does not change while the map is open, so
+ * asking twice for the same routine is asking the same question twice. */
+async function loadThreads(id) {
+  if (THREADS[id] !== undefined) return;
+  try {
+    const r = await fetch(`/api/threads?id=${encodeURIComponent(id)}`);
+    if (!r.ok) throw new Error(`the server answered ${r.status}`);
+    const d = await r.json();
+    /* An empty list is a real answer -- most private helpers genuinely have nothing
+       beside them -- and `null` is the other one: we asked and could not find out.
+       The panel says something different for each, because "nothing here" and "nobody
+       looked" are opposite claims. */
+    THREADS[id] = d.found ? (d.threads || []) : null;
+  } catch {
+    THREADS[id] = null;
+  }
+  if (inspectorFor === id) render();
 }
 
 /* Design rule 5: confidence is **shape**, not colour -- solid for CERTAIN, dashed for
@@ -2068,7 +2176,7 @@ function viewInspector() {
     ${sec("out", "Out", calls.length, outBody)}
     ${sec("touches", "Touches", touches.length, touchBody)}
     ${sec("gov", "Governance", anns.length + comments.length, govBody)}
-    ${threadsPanel(id.qualname || s.id)}
+    ${threadsPanel(s.id)}
     ${sec("sig", "Signature", params.length || null, sigBody)}
 
     <div class="insp-actions">
@@ -2192,6 +2300,11 @@ function render() {
   const stackOn = state.view === "graph" && state.graphLayout === "stack";
   $("#graphMount").hidden = !stackOn;
   $("#viewMount").hidden = stackOn;
+  /* The pop-up hides with its mount, but `hoverAt` would not: coming back and pointing at
+     the same node again would find the id unchanged, take the "moving within the same
+     node" path, and reposition an empty card. Clearing the subject is what makes the two
+     halves agree. */
+  if (!stackOn) hideHoverCard();
   if (stackOn) {
     // Coming back from a hidden container: deck.gl sized itself to nothing while away.
     if (Graph.mounted()) requestAnimationFrame(() => Graph.resize());
@@ -2287,8 +2400,14 @@ function wire() {
     const id = b.dataset.node;
     if (!id) return;
     const i = Graph.mounted() ? Graph.indexOfId(id) : -1;
-    if (i >= 0) Graph.togglePick({ kind: "node", index: i }, "replace");
+    /* `replace` starts a fresh one hop from where you land; `walk` adds, so every node
+       you followed stays picked and the hops between them draw themselves -- both ends
+       of each are already members, which is all `buildSelectionGeometry` asks. The mode
+       argument has existed since the multi-pick work, so this is a choice between two
+       values the engine already takes rather than a second way to select. */
+    if (i >= 0) Graph.togglePick({ kind: "node", index: i }, followPickMode());
     else { loadNode(id); }
+    used("follow:" + state.followMode);
     pushTrail(state.view, b.textContent.trim(), "followed from the inspector");
   }));
 
@@ -2530,9 +2649,18 @@ function wire() {
 
   /* a thread is a detour you can take and come back from */
   $$("[data-thread]").forEach(b => b.addEventListener("click", () => {
-    pushTrail(state.view, b.dataset.thread, b.dataset.threadwhy);
-    state.view = "curiosities";
-    render();
+    let subject;
+    try {
+      subject = JSON.parse(b.dataset.thread);
+    } catch (err) {
+      console.error("[dunneflow] a thread carries no subject:", b.dataset.thread, err);
+      return;
+    }
+    pushTrail(state.view, b.dataset.threadlabel || "thread", b.dataset.threadwhy);
+    followThread(subject);
+  }));
+  $$("[data-threadsall]").forEach(b => b.addEventListener("click", () => {
+    state.threadsAll = !state.threadsAll; render();
   }));
 
   const sp = $("#srcPath");
@@ -2640,8 +2768,38 @@ document.addEventListener("keydown", (e) => {
    plus those read as companions inside another handler, those bound by element
    selector rather than by attribute, and the structural markers that only style or
    identify and are never clicked. */
-const WIRED_ATTRS = new Set(["aiop", "airun", "bound", "cite", "citeidx", "closeviewer", "col", "crumb", "curi", "cursor", "den", "drop", "egress", "ep", "disk", "edgesmotion", "gact", "gosev", "goto", "graphtheme", "layout", "pkgnode",
-  "pane", "pkgpick", "manifest", "menuorder", "mode", "nav", "nav2", "node", "open", "pin", "pinnote", "resize", "row", "scale-set", "sec", "sev", "sevnav", "sort", "sqlshow", "start", "step", "theme", "theme-set", "thread", "threadwhy", "toggle", "trail", "trailback", "trailcap", "trailclear", "triage", "triaged", "unpin", "viewtab"]);
+/* Every `data-` attribute the shell renders, and it is a roster of two kinds of thing.
+ *
+ * Most are **controls**: something listens, and an absence here means a button that
+ * renders, looks live and does nothing (design rule 16). Some are **parameters** --
+ * `pinnote`, `threadwhy`, `navid` -- read off a control that was found by class, and some
+ * are **state** the stylesheet reads, like `insp` on the grid track. Nothing listens for
+ * those and nothing should; they are here because the self-check sweeps every `data-`
+ * attribute it can see and cannot tell the three apart from the DOM.
+ *
+ * Five were missing -- `insp`, `fold`, `navid`, `titled`, `legend` -- and had been since
+ * the panes learned to fold and the navigator became the routine list. All five are real
+ * and none was ever dead, so the self-check printed a red "dead controls" error on every
+ * page load while being wrong about all of them. Its own comment says why that is
+ * expensive: a check that cries wolf is a check nobody reads, and this one had four
+ * standing false alarms behind which a genuine one would have sat unnoticed.
+ *
+ * The fifth is the one worth the sentence. `legend` is written on the graph mount, which
+ * does not exist until the reader opens the graph, so the console error said four at boot
+ * and five afterwards -- the same check giving two different answers about one page, and
+ * neither of them the truth. The source guard has no such state to be in.
+ *
+ * `test_every_data_attribute_the_shell_writes_is_in_the_roster` now derives the same set
+ * from the source, generated markup included, which is the direction the existing guard
+ * could not see: it reads `index.html`, and all four of these are written by JavaScript. */
+const WIRED_ATTRS = new Set([
+  "aiop", "airun", "bound", "cite", "citeidx", "closeviewer", "col", "crumb", "curi",
+  "cursor", "den", "disk", "drop", "edgesmotion", "egress", "ep", "fold", "gact", "gosev",
+  "goto", "graphtheme", "insp", "layout", "legend", "manifest", "menuorder", "mode", "nav", "nav2",
+  "navid", "node", "open", "pane", "pin", "pinnote", "pkgnode", "pkgpick", "resize", "row",
+  "scale-set", "sec", "sev", "sevnav", "sort", "sqlshow", "start", "step", "theme",
+  "theme-set", "thread", "threadlabel", "threadsall", "threadwhy", "titled", "toggle",
+  "trail", "trailback", "trailcap", "trailclear", "triage", "triaged", "unpin", "viewtab"]);
 
 function selfCheck() {
   const problems = [];
@@ -3052,9 +3210,6 @@ function cssPalette() {
     plateTouchLine: [...hex("--accent"), 70],
     label: [...hex("--graph-label"), 240],
     labelBg: [...hex("--graph-label-bg"), 200],
-    tooltipBg: cs.getPropertyValue("--surface").trim(),
-    tooltipText: cs.getPropertyValue("--text").trim(),
-    tooltipLine: cs.getPropertyValue("--border").trim(),
     diskS: num("--graph-disk-s"), diskL: num("--graph-disk-l"),
     extS: num("--graph-ext-s"), extL: num("--graph-ext-l"),
     ambient: num("--graph-ambient"), diffuse: num("--graph-diffuse"),
@@ -3108,6 +3263,7 @@ async function ensureGraph() {
   }
 
   Graph.on("select", onGraphSelect);
+  Graph.on("hover", onGraphHover);
   Graph.on("counts", (c) => { counts = c; updateGraphCounts(); });
   Graph.on("fps", (v) => {
     fps = v;
@@ -3172,6 +3328,252 @@ function revealSelectedRoutine() {
   row.scrollIntoView({ block: "nearest" });
 }
 
+/* ══ the pop-up ═════════════════════════════════════════════════
+ *
+ * What a node says when the cursor is merely passing over it. It was three lines --
+ * label, kind, plate -- and its job is to be enough that a reader can decide whether to
+ * stop, without stopping.
+ *
+ * **Painted in two stages so it is never late.** The first is free: the engine already
+ * holds the name, the qualified name, the plate and the fan counts, so the card is on
+ * screen in the same frame as the pointer event. The second is a lookup -- what it
+ * touches, which plans it carries, one line of why -- and lands a few milliseconds later
+ * on a localhost socket. Carrying that second half in the graph payload would charge all
+ * fifteen thousand nodes for the handful anybody hovers.
+ *
+ * **It grows downward and never reflows what is already readable**, because a card that
+ * rearranges itself under a moving cursor is a card nobody finishes reading.
+ *
+ * It is not interactive and must not become so: `pointer-events` stay off. The clickable
+ * depth is the inspector's, which is the pane the whole design points at -- a second
+ * interactive pane floating on the canvas is how the graph and the shell became two
+ * applications before chunk 2.
+ */
+
+let hoverAt = null;               // the node id the card is currently about
+let hoverPos = { x: 0, y: 0 };    // where the cursor was, so a grown card can be re-placed
+let hoverTimer = 0;
+let hoverFetch = null;            // the in-flight AbortController, if any
+const hoverCache = new Map();     // id -> the served card; a re-hover costs nothing
+
+/* Dwell before asking. A cursor crossing the stack passes over dozens of nodes on its way
+ * somewhere else, and a request per node is a request per node. Short enough that a
+ * deliberate pause feels instant. */
+const HOVER_DWELL = 90;
+
+function hoverEl() { return $("#hoverCard"); }
+
+/* Design rule 1 in a very small space: a card showing "3 tables" would be a total that
+ * cannot say what it counted (rule 32). Every row names its own thing, and a table row
+ * carries its direction, because a table this writes and a table this reads are different
+ * neighbours -- which is the distinction the boundary threads are built on. */
+function hoverTouchRow(t) {
+  if (t.what === "table") {
+    const w = t.writes || 0, r = t.reads || 0;
+    const dir = [w ? `${w}w` : "", r ? `${r}r` : ""].filter(Boolean).join(" ");
+    return `<span class="hc-t"><i class="gl">▤</i>${esc(t.first)}${
+      dir ? ` <b>${dir}</b>` : ""}</span>`;
+  }
+  if (t.what === "artefact") {
+    return `<span class="hc-t"><i class="gl">▣</i>${esc(t.first)}${
+      t.n > 1 ? ` <b>${t.n}</b>` : ""}</span>`;
+  }
+  /* `▤` is the database glyph and a table row already carries it, so a SQL statement
+     with no table of its own gets the same mark and reads as one more of the same
+     family -- which is exactly what it is. Everything else takes its own kind's glyph. */
+  const glyph = t.what === "sql" ? "▤" : t.what === "net" ? "◆" : (BKIND_GLYPH[t.kind] || "◇");
+  return `<span class="hc-t"><i class="gl">${glyph}</i>${esc(t.kind.toLowerCase())} <b>${t.n}</b>${
+    t.first ? ` <span class="dim">${esc(t.first)}</span>` : ""}</span>`;
+}
+
+/* The governance ids, and the count of the ones that did not fit. Never a bare "…":
+ * a list that has been cut says so, in numbers, or the reader mistakes a slice for the
+ * whole (design rule 1, and rule 8 in the smallest possible box). */
+const HOVER_GOV_SHOWN = 4;
+
+function hoverGovRow(gov) {
+  if (!gov || !gov.length) return "";
+  const shown = gov.slice(0, HOVER_GOV_SHOWN);
+  const more = gov.length - shown.length;
+  return `<div class="hc-gov"><i class="gl">⚑</i>${
+    shown.map(a => `<span class="govchip ${esc(String(a.kind || "").toLowerCase())}"
+      >${esc(a.value)}</span>`).join("")}${
+    more ? `<span class="hc-more">+${more}</span>` : ""}</div>`;
+}
+
+/* The WHY, carrying where it came from.
+ *
+ * A docstring is the routine explaining itself. A leading comment is the author explaining
+ * it from outside. A comment inside the body is about a *statement* -- it is being quoted,
+ * not summarised -- so it shows its line number and its label, and the reader can tell the
+ * three apart at a glance. Design rule 13: never render a claim without the route back to
+ * where it came from, and the label plus the line is that route in one line of text. */
+function hoverWhyRow(why) {
+  if (!why || !why.text) return "";
+  const cite = why.source === "docstring" ? "docstring"
+             : `${why.source}${why.line ? ` :${why.line}` : ""}`;
+  return `<div class="hc-why">${esc(why.text)}<span class="hc-cite">${esc(cite)}</span></div>`;
+}
+
+/* Stage one: everything the picture already knows, drawn in the same frame as the event. */
+function hoverSkeleton(h) {
+  const d = h.detail || {};
+  const plate = (Graph.disks().find(x => x.id === h.disk) || {}).name || h.disk;
+  const file = String(d.file || "").split("/").slice(-1)[0];
+  const where = file ? `${file}${d.line ? `:${d.line}` : ""}` : "";
+  const sub = d.qualname || d.module || d.bkind || d.akind || "";
+
+  return `
+    <div class="hc-head">
+      <b class="hc-name">${esc(h.label)}</b>
+      <span class="kind-tag">${esc(h.kind)}</span>
+    </div>
+    ${sub ? `<div class="hc-sub mono">${breakable(sub)}</div>` : ""}
+    <div class="hc-meta">
+      ${where ? `<span class="hc-where mono">${esc(where)}</span>` : ""}
+      <span class="hc-fan" title="callers and callees, one hop"
+        >${h.degIn}← ${h.degOut}→</span>
+      <span class="hc-plate">${esc(plate)}</span>
+      ${d.class_name ? `<span class="kind-tag">${esc(d.class_name)}</span>` : ""}
+      ${d.is_async ? `<span class="kind-tag">async</span>` : ""}
+    </div>
+    ${h.shadow ? `<div class="hc-shadow">A stand-in. This routine lives on
+      <b>${esc((Graph.disks().find(x => x.id === h.disk) || {}).name || h.disk)}</b> —
+      the copy you are pointing at is a placement device and is never an endpoint.</div>` : ""}
+    <div class="hc-rest"></div>`;
+}
+
+/* Stage two: what only the store knows. Written into `.hc-rest` rather than by rebuilding
+ * the card, so the half already under the reader's eye does not move. */
+function hoverDetailHtml(card) {
+  if (!card || !card.found) return "";
+  const bits = [];
+
+  if (card.kind === "ROUTINE") {
+    const meas = [
+      card.lines ? `${card.lines} lines` : "",
+      card.comments ? `${card.comments} comment${card.comments === 1 ? "" : "s"}` : "",
+      /* The calls the graph cannot draw. Without it the card says `5→` while the
+         inspector says `Out 8` about the same routine, both correct and neither saying
+         which population it counted -- rule 32. Five reach a routine this map holds and
+         three leave the program, so the arithmetic closes as soon as it is stated. */
+      card.externals ? `${card.externals} external` : "",
+    ].filter(Boolean).join(" · ");
+    if (meas) bits.push(`<div class="hc-meas">${meas}</div>`);
+  } else if (card.kind === "BOUNDARY") {
+    bits.push(`<div class="hc-meas">${card.hits.toLocaleString()} touch${
+      card.hits === 1 ? "" : "es"} from ${card.callers.toLocaleString()} routine${
+      card.callers === 1 ? "" : "s"}${card.direction ? ` · ${esc(card.direction)}` : ""}
+      <span class="badge external">OUTSIDE</span></div>`);
+  } else if (card.kind === "ARTEFACT") {
+    bits.push(`<div class="hc-meas">named ${card.mentions.toLocaleString()} time${
+      card.mentions === 1 ? "" : "s"} by ${card.namers.toLocaleString()} routine${
+      card.namers === 1 ? "" : "s"}${card.akind ? ` · ${esc(card.akind)}` : ""}</div>`);
+  } else if (card.kind === "STRUCTURE") {
+    bits.push(`<div class="hc-meas">${esc(card.struct_kind || "")}${
+      card.fields ? ` · ${card.fields} field${card.fields === 1 ? "" : "s"}` : ""}</div>`);
+  } else if (card.kind === "CONSTANT") {
+    /* Whole, never shortened here. Rule 8 is about ingest, but a value cut in the one place
+       a reader looks at it is the same loss one layer later; the box clamps it visually and
+       the full text stays in the DOM. */
+    bits.push(`<div class="hc-meas mono hc-value">${esc(String(card.value || ""))}</div>`);
+  }
+
+  if (card.touches && card.touches.length) {
+    bits.push(`<div class="hc-touches">${card.touches.map(hoverTouchRow).join("")}</div>`);
+  }
+  bits.push(hoverGovRow(card.gov));
+  bits.push(hoverWhyRow(card.why));
+  return bits.filter(Boolean).join("");
+}
+
+/* Placed against `.graphcanvas`, which is the box deck.gl measures hover against, so the
+ * arithmetic is direct. It flips rather than clipping: a card that runs off the pane is a
+ * card whose second half does not exist, and the second half is the part that was fetched. */
+function hoverPlace(el, x, y) {
+  const box = el.parentElement;               // .graphcanvas
+  if (!box) return;
+  const pad = 14;
+  const w = el.offsetWidth, h = el.offsetHeight;
+  let left = x + pad, top = y + pad;
+  if (left + w > box.clientWidth) left = Math.max(0, x - pad - w);
+  if (top + h > box.clientHeight) top = Math.max(0, y - pad - h);
+  el.style.left = `${left}px`;
+  el.style.top = `${top}px`;
+}
+
+function hideHoverCard() {
+  hoverAt = null;
+  clearTimeout(hoverTimer);
+  if (hoverFetch) { hoverFetch.abort(); hoverFetch = null; }
+  const el = hoverEl();
+  if (el) { el.hidden = true; el.innerHTML = ""; }
+}
+
+function onGraphHover(h) {
+  const el = hoverEl();
+  if (!el) return;
+  if (!h) { hideHoverCard(); return; }
+
+  /* Moving within the same node is a move, not a new subject: re-rendering there would
+     throw away a fetched second half and start it again for the same answer. */
+  if (h.id === hoverAt) { hoverPos = { x: h.x, y: h.y }; hoverPlace(el, h.x, h.y); return; }
+
+  hoverAt = h.id;
+  hoverPos = { x: h.x, y: h.y };
+  clearTimeout(hoverTimer);
+  if (hoverFetch) { hoverFetch.abort(); hoverFetch = null; }
+
+  el.hidden = false;
+  el.innerHTML = hoverSkeleton(h);
+  hoverPlace(el, h.x, h.y);
+
+  const cached = hoverCache.get(h.id);
+  if (cached !== undefined) { hoverFill(h.id, cached); return; }
+
+  hoverTimer = setTimeout(() => hoverAsk(h.id), HOVER_DWELL);
+}
+
+async function hoverAsk(id) {
+  const ctl = new AbortController();
+  hoverFetch = ctl;
+  try {
+    const r = await fetch(`/api/hover?id=${encodeURIComponent(id)}`, { signal: ctl.signal });
+    if (!r.ok) throw new Error(`the server answered ${r.status}`);
+    const card = await r.json();
+    hoverCache.set(id, card);
+    hoverFill(id, card);
+  } catch (err) {
+    if (err.name === "AbortError") return;      // the cursor moved on; not a failure
+    /* A card that silently stays half-drawn is indistinguishable from a node with nothing
+       to say, which is the one confusion this whole surface exists to avoid. */
+    hoverFill(id, { found: false, reason: err.message });
+  } finally {
+    if (hoverFetch === ctl) hoverFetch = null;
+  }
+}
+
+function hoverFill(id, card) {
+  if (id !== hoverAt) return;                   // the reader moved on while this was in flight
+  const el = hoverEl();
+  if (!el || el.hidden) return;
+  const rest = el.querySelector(".hc-rest");
+  if (!rest) return;
+  rest.innerHTML = (card && card.found)
+    ? hoverDetailHtml(card)
+    : `<div class="hc-why">Nothing more is recorded about this one.<span class="hc-cite"
+        >${esc((card && card.reason) || "no answer")}</span></div>`;
+
+  /* Place it again now it has its real height, and this is not belt and braces -- it is
+     the hazard the two-stage paint creates. The card is positioned as the 87px skeleton,
+     fits easily, and is then filled to 293px: on a 418px canvas that puts its bottom 29px
+     past the pane, so the half that just arrived is the half nobody can see. `hoverPlace`
+     is idempotent -- a card that still fits does not move, which is the whole point of
+     growing downward -- so calling it again corrects only the case where the alternative
+     is losing content. Found by looking at the thing, not by any check. */
+  hoverPlace(el, hoverPos.x, hoverPos.y);
+}
+
 /* ── picking a subject from the navigator ──────────────────────────────────────────
  *
  * The selection is held in *id* space here and resolved to drawn indices only when the
@@ -3206,7 +3608,21 @@ function applyWanted() {
     ? `${undrawn.length} of ${undrawn.length + picks.length} not drawn under the current filter`
     : "";
 
-  Graph.setSelection(picks);              // the engine announces; onGraphSelect does the rest
+  /* `walk` keeps what was already picked, so the route the reader took stays on screen.
+     The engine is handed the whole set rather than told to append, because `setSelection`
+     is the one entry point that also resolves ids to drawn indices -- appending here and
+     replacing there would be two ways to arrive at a selection, which is how the two
+     halves of a rule end up disagreeing. Deduplicated on drawn index: following back to
+     somewhere you have already been must not pick it twice. */
+  const keep = (want.add && Graph.mounted()) ? Graph.selection() : [];
+  const seen = new Set();
+  const merged = [...keep, ...picks].filter(pk => {
+    const key = pk.kind === "disk" ? `d:${pk.id}` : `n:${pk.index}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  Graph.setSelection(merged);             // the engine announces; onGraphSelect does the rest
   updateGraphCounts();
 }
 
@@ -3238,6 +3654,79 @@ async function selectFromNav(want) {
   persist();
   recordSelection();
   render();
+}
+
+/* Which `togglePick` mode a follow uses. One function, so the inspector's neighbours and
+ * a thread's subject cannot drift apart -- two copies of this would agree until the day
+ * one of them was edited. */
+function followPickMode() {
+  return state.followMode === "walk" ? "add" : "replace";
+}
+
+/* The same question `followPickMode` asks, for the path that goes through
+ * `selectFromNav` rather than through `togglePick`. One predicate, two callers, so a
+ * reader who chose to walk gets a walk whichever way they followed. */
+function walking() { return state.followMode === "walk"; }
+
+/* ── following a thread ────────────────────────────────────────────────────────────
+ *
+ * **Routed from a table**, because the failure this replaces was a fall-through: every
+ * thread, whatever it named, set `state.view = "curiosities"` and landed on a page saying
+ * nothing had been computed. It rendered, it highlighted, and it took nobody anywhere.
+ * Design rule 16, and rule 30 -- a label is not an identity.
+ *
+ * So a subject that no entry here handles is a **named error** rather than a default that
+ * looks deliberate. That is the whole reason it is a table.
+ *
+ * Two shapes, because there are genuinely two. Something already in the graph is selected
+ * as itself. Something that is not a node -- a plan id, a table -- is resolved to the code
+ * that carries or touches it, which is what `queries.py` wrote down before anything needed
+ * it: inventing an id to make a row clickable would be a link to nothing.
+ */
+const THREAD_SUBJECTS = {
+  node: async (s) => { await selectFromNav({ nodes: [s.id], add: walking() }); },
+  cohort: async (s) => {
+    let r;
+    try {
+      r = await fetch(`/api/thread?kind=${encodeURIComponent(s.kind)}` +
+                      `&key=${encodeURIComponent(s.key)}`).then(x => x.json());
+    } catch (err) {
+      state.navNote = `could not follow ${s.label}: ${err.message}`;
+      render();
+      return;
+    }
+    if (!r.found) {
+      /* The server refusing a kind it has no query for is the same named error one tier
+         up, and it must reach the reader rather than being swallowed into an empty
+         selection that looks like a true empty answer. */
+      state.navNote = r.reason || `nothing answers for ${s.label}`;
+      render();
+      return;
+    }
+    /* Following a cohort to nowhere is a real answer, not a failure: a governance id can
+       be cited in documentation and carried by no code at all. Saying so beats selecting
+       nothing and letting the reader guess which happened. */
+    if (!r.nodes.length) {
+      state.navNote = `${s.label} is not carried by any code in this map`;
+      render();
+      return;
+    }
+    await selectFromNav({ nodes: r.nodes, add: walking() });
+  },
+};
+
+async function followThread(subject) {
+  const go = THREAD_SUBJECTS[subject && subject.type];
+  if (!go) {
+    console.error("[dunneflow] no route for thread subject:", subject);
+    state.navNote = `this thread points at a kind of thing nothing knows how to open` +
+                    ` (${(subject && subject.type) || "no type"})`;
+    render();
+    return;
+  }
+  used("thread");
+  used("follow:" + state.followMode);
+  await go(subject);
 }
 
 /* ── the furniture: the HUD and the legend ─────────────────────────────────── */
@@ -3275,6 +3764,13 @@ function countLine(c) {
     /* Design rule 1: closing a plate's gap removes it from the picture, and a shorter
      * stack is indistinguishable from a smaller program by looking. */
     (c.collapsed ? ` · <b class="num">${c.collapsed.toLocaleString()}</b> plates collapsed` : "") +
+    /* A walked path that does not say how long it is, is a selection growing silently --
+     * design rule 1, and the reason "keeps the path" needs a way back stated beside it.
+     * Only while walking and only past the first step: on a single pick there is no path
+     * and saying "1 step" would be furniture pretending to be information. */
+    (state.followMode === "walk" && state.picks.length > 1
+      ? ` · <b class="num">${state.picks.length}</b> walked <span class="muted">(⌘Z drops the last)</span>`
+      : "") +
     /* One node and no edges looks exactly like a graph that failed to draw, and the reader
        has no way to tell the difference by looking -- so it is stated. Snap to fit on a
        single node is also the most confusing thing this view does, because the frame does
@@ -3514,6 +4010,14 @@ function renderLegend() {
         <option value="dim" ${state.filterMode === "dim" ? "selected" : ""}>dimmed</option>
         <option value="hide" ${state.filterMode === "hide" ? "selected" : ""}>hidden</option>
       </select>
+      · following
+      <select class="gsel" id="gfollow"
+              aria-label="What following a neighbour does to the selection">
+        <option value="replace" ${state.followMode === "replace" ? "selected" : ""}
+          >replaces</option>
+        <option value="walk" ${state.followMode === "walk" ? "selected" : ""}
+          >keeps the path</option>
+      </select>
       <label style="display:inline-flex;align-items:center;gap:.2rem;margin-left:.4rem">
         <input id="gcollapse" type="checkbox" ${state.collapseUnused ? "checked" : ""}
                aria-label="Close the gap left by plates nothing is looking at">
@@ -3679,6 +4183,11 @@ function wireGraphOnce() {
     if (t.id === "gsort") { state.sortMode = t.value; renderLegend(); persist(); }
     if (t.id === "gcolorby") { state.colorBy = t.value; Graph.setOptions({ colorBy: t.value }); persist(); }
     if (t.id === "gfilter") { state.filterMode = t.value; Graph.setOptions({ filterMode: t.value }); persist(); }
+    /* Nothing to push to the engine: this changes what the *shell* does next time it
+       follows something, not how the picture is drawn. A `setOptions` call here would be
+       a control wired to an option the engine ignores -- which is the silent no-op the
+       spread-slider guard was written from, one layer up. */
+    if (t.id === "gfollow") { state.followMode = t.value; persist(); renderGraphFurniture(); }
   });
   mount.addEventListener("change", (ev) => {
     // Committed, not live: a localStorage write per frame of a slider drag is waste, and

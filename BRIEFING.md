@@ -5,8 +5,8 @@ It exists so a fresh context can be useful in a few minutes instead of an hour.
 
 | Read | For |
 |---|---|
-| `CLAUDE.md` | The rules. 39 engineering rules and 26 dashboard design rules, each earned from a false result on real code. **Binding.** |
-| `HANDOFF.md` | The chronological record — what was built when, what it cost, what broke. ~1,150 lines. Read *sections*, not the whole thing. |
+| `CLAUDE.md` | The rules. 43 engineering rules and 26 dashboard design rules, each earned from a false result on real code. **Binding.** |
+| `HANDOFF.md` | The chronological record — what was built when, what it cost, what broke. ~1,700 lines. Read *sections*, not the whole thing. |
 | **this file** | Where things are, what is done, what we are doing now, what not to re-open. |
 | Artifact `f993d319-d2b7-4217-9130-cdbba698d1bc` | The ratified dashboard design — a complete working UI, the source of truth for every view. Read it with the **Artifact tool**, not from a screenshot. |
 
@@ -54,7 +54,9 @@ no build step. deck.gl is vendored into `web/vendor/`.
 |---|---|
 | `serve.py` | the server — a route table, one handler per endpoint |
 | `queries.py` | every dashboard query as **SQL text**, in one place |
-| `cover.py` · `detail.py` · `documents.py` | the cover · the inspector · document mode |
+| `cover.py` · `detail.py` · `documents.py` | the cover · the inspector and the hover card · document mode |
+| `threads.py` | adjacency by *interest* — why a neighbour is worth a detour |
+| `vocabulary.py` | the naming and glossary lanes, served and matched against one name |
 | `graph.py` · `layout.py` | the 2.5D model, and where things sit |
 | `packages.py` | the package overview — the other graph layout |
 | `static/shell.js` | **the application**: state, routing, every view, the self-check |
@@ -83,23 +85,44 @@ traceability across both stores · named artefacts · the mirror · comments (18
 **Dashboard:** one application — the ratified shell (cover, navigator, worklist, table,
 document, glossary, naming, settings) with the 2.5D stack and the package overview as two
 layouts inside graph mode, one inspector reading `/api/node`, and the graph following the
-theme.
+theme. The reading loop: the navigator is the routine list, hovering a node gives a card,
+picking one lights its hop and fills the inspector, threads lead sideways, and ⌘Z takes any
+of it back.
 
 **Not built:** `dunneflow infer` (the model pass) · temporal layers · attestation · the
 project profile · document mode's narrative view · packaging as a binary · any language
 but Python.
 
+**Built but not on screen:** the glossary and naming *pages*. Both lanes are computed at
+start and served (`/api/naming`, `/api/glossary`), and the graph already reads them — the two
+views were written against the prototype's field shape and are not ported, so they say so
+rather than rendering the real data wrongly. `CURIOSITIES` is beside them: `threads.py`
+computes outliers per package already, and running that program-wide is most of that view.
+
 ## What we are doing now
 
-**The reading loop is built — 2026-08-28.** The thing DunneFlow is *for*: the navigator is
-the routine list, picking one highlights it in the stack with everything that calls it and
-everything it calls, clicking a node in the stack moves the list to match, and ⌘Z takes any
-of it back. See `HANDOFF.md` 5h–5k. Most of it was wiring — the data, the one-hop
-computation and the selection plumbing all already existed — and what stood between them was
-five dead controls and a rule read in only one direction.
+**The pop-up and the threads are built — 2026-08-28.** See `HANDOFF.md` 5l–5m.
 
-**The next conversation is the graph's pop-up information**, which Tom has flagged for its
-own discussion.
+- **The pop-up is a card, painted in two stages.** `getTooltip` is gone; the engine emits a
+  `hover` event and the shell draws. The first paint is free from the payload — name,
+  qualified name, `file:line`, plate, `3← 5→` — and `/api/hover` fills in the lines, the
+  comment count, what it touches grouped and named, the governance ids and one line of WHY
+  with the label saying whether it came from a docstring, a leading comment or a quotation.
+- **Threads to pull are computed, in four kinds**: governance kin, the other end of a
+  boundary, outliers nearby, and vocabulary. Every one carries a **subject** the router acts
+  on, ordered rarest-first, with the count beside it. What they replaced was six hand-written
+  rows about one routine, every one of which went to the same empty page.
+- **Following a neighbour is a Setting** (design rule 2): `replace` starts a fresh hop,
+  `walk` keeps the path lit. Both built, ⌘Z drops the last hop, and the walked length is
+  stated.
+- **`/api/naming` and `/api/glossary` are served**, computed once at start. The graph uses
+  them; the glossary and naming *pages* are not ported to them yet and say so.
+
+**Next, and named:** port the glossary and naming views to the served shape. They were
+written against the prototype's fields and would render the real data wrongly rather than not
+at all, which is why they still show a note instead. `CURIOSITIES` is the other one — the
+outlier machinery in `threads.py` computes exactly this per package, and running it
+program-wide is most of that view.
 
 **Known and not fixed: the near-plane clipping.** Zooming far enough in clips the nodes
 nearest the camera. It is deck.gl's default frustum, the diagnosis is in `graph.js`, and the
@@ -174,6 +197,11 @@ Rules 28, 29 and 30.
 | The **navigator is the routine list** — not a split centre pane, not a fourth mode | design rule 26 |
 | Selecting never moves the camera; off-screen is *stated* with one click to frame it | design rule 26 |
 | Clicking an already-selected node still clears it — undo makes it recoverable | rule 33 |
+| The pop-up is a **hover card**; the clickable depth stays in the inspector | `HANDOFF.md` 5l |
+| A thread carries a **subject**, never a label; the click routes from a table | rule 30; design rule 16 |
+| Threads sort **rarest first** — three routines is a detour, three hundred is a category | `threads.py` |
+| Following a neighbour: **both** replace and walk, a Setting, usage retires the loser | design rule 2 |
+| The naming and glossary lanes are computed **at start**, not lazily | `CLAUDE.md` budget |
 | Plates a selection touches are drawn faintly and named, though plates stay off | design rule 26 |
 
 ## How to verify — all three, before saying anything is done
@@ -212,6 +240,12 @@ standards and must yield **zero** naming rules.
 - **A rule about drawing is usually also a rule about reading.** Rule 23 said a shadow is
   never an endpoint; the code that *drew* edges obeyed it and the code that *read* them did
   not, which silently deleted every cross-plate caller from the selection. Rule 31.
+- **A guard that names the right case may still not catch it.** `selectionOnScreen()`
+  documented itself as returning null when there is no viewport and guarded with `?.` —
+  while deck.gl asserts *inside* `getViewports()`. The `?.` was what made it look guarded.
+  Rule 42.
+- **A check that cries wolf has already failed.** The runtime self-check reported four dead
+  controls on every page load for two sessions and was wrong about all four. Rule 43.
 
 Each of these looked like working code and passed every automated check.
 

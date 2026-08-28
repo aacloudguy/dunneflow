@@ -146,6 +146,14 @@
           <div class="graphcanvas">
             <div class="graphstage" id="graphStage"></div>
             <div class="graphhud" id="graphHud"></div>
+            <!--
+              The pop-up. It lives here, beside the stage rather than inside `#viewMount`,
+              for the same reason the canvas does: `render()` rewrites that mount on every
+              keystroke, and a card rebuilt under the cursor is a card that flickers and
+              loses its place. `.graphcanvas` is also the box deck.gl reports hover
+              coordinates against, so positioning is arithmetic rather than a correction.
+            -->
+            <div class="hovercard" id="hoverCard" hidden aria-hidden="true"></div>
           </div>
           <aside class="graphlegend" id="graphLegend" aria-label="Plates"></aside>
           <button class="rail rail-right" id="legendRail" data-pane="legend"

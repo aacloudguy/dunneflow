@@ -199,9 +199,15 @@ def test_hidden_actually_hides() -> None:
 
 # ----------------------------------------------------------------- pinned data --- #
 
+# `THREADS` is here because it was the one that got away. It held six hand-written rows
+# about one Mensores routine -- naming `Plan 84-06`, `disceptator`, `SOCIETY_HEADLESS` --
+# and evaded all three pinned-data guards at once: a `const` object rather than a `let []`,
+# absent from this list, and invisible to the prose guard, which searches for the sample
+# program's *name* while this data said `disceptator`. Membership here is structural and
+# cannot be evaded that way.
 PER_PROGRAM = ["ENTRYPOINTS", "BOUNDARIES", "PKGS", "TABLES", "ROUTINES",
                "ANOMALIES", "TERMS", "CONVENTIONS", "MANIFEST", "CURIOSITIES",
-               "PROVENANCE"]
+               "PROVENANCE", "THREADS"]
 
 
 def test_no_program_data_is_pinned_into_the_shell() -> None:
@@ -782,3 +788,319 @@ def test_the_selection_can_be_taken_back() -> None:
     for act in ("undo", "redo"):
         assert re.search(rf'data-gact="{act}"', js), f"no control reaches {act}"
         assert re.search(rf"^  {act}: ", js, re.M), f"{act} has a control but no action"
+
+
+# ------------------------------------------------------------------ the pop-up --- #
+
+WEB = Path(__file__).resolve().parents[1] / "src" / "dunneflow" / "web"
+
+
+def test_the_hover_event_is_emitted_and_listened_for() -> None:
+    """Both halves, from the source, because either alone passes while nothing happens.
+
+    The engine reports and the application draws (`graph.js` states that boundary in as
+    many words). Split across two files, that is two places to be wrong in and each one
+    looks fine on its own: an `emit('hover', ...)` nobody listens for draws nothing, and a
+    `Graph.on("hover", ...)` nothing emits to is a listener that never runs. Neither raises,
+    neither logs, and the pop-up simply does not appear -- design rule 16 across a module
+    boundary.
+
+    The engine's `listeners` table is checked too, because `on()` throws on an unknown
+    event: a handler registered for an event the table does not declare fails loudly at
+    boot rather than quietly at hover, and that is only true while `hover` is in it.
+    """
+    engine, shell = _read("graph.js"), _read("shell.js")
+
+    assert re.search(r"const listeners = \{[^}]*\bhover:\s*\[\]", engine), (
+        "`hover` is not in the engine's listeners table -- `on('hover', ...)` throws, and "
+        "the pop-up never binds"
+    )
+    assert re.search(r"emit\(\s*'hover'", engine), (
+        "nothing in the engine emits `hover`, so the shell's listener can never run"
+    )
+    assert "onHover:" in engine, (
+        "deck.gl is not handed an `onHover` prop, so no pointer event ever reaches the emit"
+    )
+    assert re.search(r'Graph\.on\(\s*"hover"\s*,\s*(\w+)', shell), (
+        "the shell never listens for `hover`; the engine reports into nothing"
+    )
+
+
+def test_the_hover_card_renders_only_fields_the_server_sends() -> None:
+    """Rule 13 in the smallest space this product has: the claim and its source must agree.
+
+    The card is filled from `/api/hover`, and a template reading `card.tables` against a
+    server emitting `n_tables` renders **nothing** -- no error, no blank, just a row that
+    is never there. The card would look exactly like a node with nothing to say, which is
+    the one confusion this whole surface exists to prevent.
+
+    Derived both ways from the source rather than from a hand-kept list, since a list is
+    the thing that agrees with a wrong implementation.
+    """
+    shell = _read("shell.js")
+    detail = (WEB / "detail.py").read_text(encoding="utf-8")
+
+    # Everything `hoverDetailHtml` reads off the served object.
+    body = shell.split("function hoverDetailHtml(card) {", 1)[1].split("\n}\n", 1)[0]
+    read = set(re.findall(r"\bcard\.(\w+)", body))
+    assert read, "hoverDetailHtml changed shape -- this test is blind"
+
+    # Everything `hover_card` puts on it. Only the dict literals it returns, so a key that
+    # exists elsewhere in the module does not vouch for one the card never receives.
+    served = set(re.findall(r'"(\w+)":', detail.split("def hover_card(", 1)[1]))
+    assert served, "hover_card changed shape -- this test is blind"
+
+    missing = sorted(read - served)
+    assert not missing, (
+        f"the pop-up renders fields the server never sends: {missing} -- each is a row "
+        "that silently does not appear, indistinguishable from a node with nothing to say"
+    )
+
+
+def test_the_hover_card_is_placed_again_once_it_is_filled() -> None:
+    """The hazard the two-stage paint creates, and it is not hypothetical.
+
+    The card is positioned as the skeleton -- 87px -- then filled to 293px. On a 418px
+    canvas that puts its bottom 29px past the pane, so the half that just arrived is the
+    half nobody can see. Growing downward is deliberate and stays; what has to follow it
+    is one more placement, which is idempotent and therefore moves nothing that still fits.
+
+    Checks that the fill path *calls* it, not merely that the function exists: a
+    `hoverPlace` defined and never called from `hoverFill` is exactly the state this was
+    written from.
+    """
+    shell = _read("shell.js")
+    fill = shell.split("function hoverFill(id, card) {", 1)[1].split("\n}\n", 1)[0]
+    assert "hoverPlace(" in fill, (
+        "hoverFill does not re-place the card, so a card that grows past the bottom of "
+        "the pane keeps the fetched half off screen"
+    )
+    # And it must place against the remembered cursor, not against something it invents:
+    # the pointer event is long gone by the time the fetch lands.
+    assert "hoverPos" in fill, (
+        "hoverFill re-places without the remembered cursor position, so it cannot know "
+        "where the card belongs"
+    )
+
+
+def test_every_thread_carries_a_subject_and_every_subject_has_a_route() -> None:
+    """Both directions, and either half alone passes while the feature is dead.
+
+    This is rule 30 in the place it has now appeared four times. The threads panel it
+    replaces rendered six rows, highlighted correctly, and set `state.view = "curiosities"`
+    whatever was clicked -- one destination for every thread, and a page that says nothing
+    has been computed. The route existed, so no no-route check ever tripped; what was
+    missing was a *subject*.
+
+    So: every subject the server can mint must have a handler, and the handler table must
+    be what the click actually routes through. A server emitting a `plate` subject nothing
+    opens is a dead row; a client with a handler the server never sends is dead code that
+    reads as coverage.
+    """
+    shell = _read("shell.js")
+    threads_py = (WEB / "threads.py").read_text(encoding="utf-8")
+
+    minted = set(re.findall(r'return \{"type": "(\w+)"', threads_py))
+    assert minted, "threads.py no longer mints subjects as `{'type': ...}` -- this is blind"
+
+    body = shell.split("const THREAD_SUBJECTS = {", 1)[1].split("\n};", 1)[0]
+    routed = set(re.findall(r"^\s+(\w+):", body, re.M))
+    assert routed, "THREAD_SUBJECTS changed shape -- this test is blind"
+
+    assert minted <= routed, (
+        f"the server mints thread subjects nothing opens: {sorted(minted - routed)} -- "
+        "each is a row that renders, highlights, and goes nowhere"
+    )
+    assert routed <= minted, (
+        f"the shell routes subject kinds the server never sends: {sorted(routed - minted)} "
+        "-- dead code that reads as coverage"
+    )
+
+    # And the click must go *through* the table rather than past it. A handler table
+    # nothing consults is the same defect with a tidier shape.
+    #
+    # Scoped to the click handler, and that is not fussiness: the first draft looked for
+    # `followThread(subject)` anywhere in the file and passed against a version where the
+    # click called `selectFromNav` directly, because the string also occurs in
+    # `async function followThread(subject)` -- the definition vouching for its own call
+    # site. Rule 37, on a guard written for rule 37.
+    click = shell.split('$$("[data-thread]").forEach', 1)[1].split("}));", 1)[0]
+    assert "followThread(" in click, (
+        "the thread click handler does not call followThread, so the subject table is "
+        "decoration and the click routes past it"
+    )
+    assert re.search(r"const go = THREAD_SUBJECTS\[", shell), (
+        "followThread does not route from THREAD_SUBJECTS -- an unhandled subject would "
+        "fall through to something that looks deliberate"
+    )
+
+
+def test_every_thread_kind_the_server_groups_is_a_kind_the_panel_shows() -> None:
+    """A kind computed and never rendered is a whole thread family that silently vanishes.
+
+    `threads.py` fixes the group order in `KIND_ORDER` so two readers of one routine see
+    the same list; the panel titles them from `THREAD_KIND_TITLE`. Add a kind to one and
+    not the other and its threads are computed, served, counted in the section heading --
+    and drawn nowhere, because the panel iterates its own table. The heading would say 17
+    over a list of 4.
+    """
+    shell = _read("shell.js")
+    threads_py = (WEB / "threads.py").read_text(encoding="utf-8")
+
+    order = re.search(r"KIND_ORDER = \((.*?)\)", threads_py, re.S)
+    assert order, "KIND_ORDER changed shape -- this test is blind"
+    kinds = set(re.findall(r'"(\w+)"', order.group(1)))
+
+    body = shell.split("const THREAD_KIND_TITLE = {", 1)[1].split("\n};", 1)[0]
+    titled = set(re.findall(r"^\s+(\w+):", body, re.M))
+    assert titled, "THREAD_KIND_TITLE changed shape -- this test is blind"
+
+    assert kinds == titled, (
+        f"the server groups {sorted(kinds)} and the panel shows {sorted(titled)} -- "
+        "threads in the difference are computed, counted in the heading, and drawn nowhere"
+    )
+
+
+def test_following_a_neighbour_reaches_both_selection_paths() -> None:
+    """Design rule 2 built both, so both have to be reachable, and by both routes.
+
+    A neighbour is followed two ways -- `togglePick` from the inspector's caller and callee
+    lists, and `selectFromNav` from a thread's subject -- and they are different mechanisms.
+    Wiring the setting to one of them leaves the reader who chose *keep the path* watching
+    it work on half their clicks, which is worse than not offering it: an option that works
+    sometimes is one nobody can build a habit on.
+
+    The setting itself is covered for free by `test_every_persisted_setting_is_read_by_
+    something`; what that cannot see is whether it reaches *both* paths.
+    """
+    shell = _read("shell.js")
+
+    assert "followPickMode()" in shell.split("$$(\".gotonode\")", 1)[1][:900], (
+        "the inspector's follow does not consult followPickMode -- it always replaces, "
+        "whatever the reader chose"
+    )
+    subjects = shell.split("const THREAD_SUBJECTS = {", 1)[1].split("\n};", 1)[0]
+    assert subjects.count("walking()") >= 2, (
+        "not every thread subject honours the walk, so following one kind keeps the path "
+        "and following another silently throws it away"
+    )
+    # `selectFromNav` must actually do something with it, or both call sites are polite
+    # about a flag nothing reads.
+    apply_wanted = shell.split("function applyWanted() {", 1)[1].split("\n}\n", 1)[0]
+    assert "want.add" in apply_wanted, (
+        "applyWanted ignores `add`, so every thread replaces the selection and the walk "
+        "setting is a control wired to nothing"
+    )
+
+
+def test_every_data_attribute_the_shell_writes_is_in_the_roster() -> None:
+    """The half `test_every_static_control_is_listened_for` cannot see.
+
+    That guard reads `index.html`, so it covers only the markup that ships as a file. Every
+    interesting control in this shell is *generated* -- the navigator rows, the thread
+    buttons, the pane fold controls, the grid's own track state -- and none of it is in
+    that file.
+
+    Four attributes had been outside the roster since the panes learned to fold and the
+    navigator became the routine list: `insp`, `fold`, `navid`, `titled`. All four are
+    real. So the runtime self-check printed "dead controls" on every page load, was wrong
+    about all four, and a genuine dead control would have arrived as a fifth line in an
+    error nobody had believed for weeks. Its own comment says why that costs: a check that
+    cries wolf is a check nobody reads.
+
+    Derived from the source rather than from a list kept beside it, which is the whole
+    reason the roster drifted in the first place.
+    """
+    js = _read("shell.js")
+    # Strip comments first: this file discusses `data-nav` and `data-insp` in prose, and a
+    # guard that reads its own documentation as evidence is vouching for nothing.
+    body = re.sub(r"/\*.*?\*/|//[^\n]*", "", js, flags=re.S)
+
+    written = set(re.findall(r'\bdata-([a-zA-Z][\w-]*)=', body))
+    # `dataset.x` is the same attribute seen from the other side; camelCase maps back to
+    # a hyphenated name, so only the plain ones are checked here -- the hyphenated ones
+    # are all written as attributes somewhere and are caught by the line above.
+    written |= {m for m in re.findall(r"\bdataset\.([a-z][a-z0-9]*)\b", body)}
+
+    # And the grid's track state, which neither of those can see: `applyPanels` writes it
+    # as `grid.dataset[spec.attr]`, a computed property whose name exists only as a string
+    # in `PANELS`. That is precisely how `insp` stayed outside the roster -- the first
+    # draft of this guard found the other three and missed it, which is the reason to run
+    # a new check against its own defect rather than against a tidy version of it.
+    panels = js.split("const PANELS = {", 1)[1].split("\n};", 1)[0]
+    written |= set(re.findall(r'attr:\s*"(\w+)"', panels))
+    assert written, "the shell writes no data attributes -- this test is blind"
+
+    roster = _js_set("WIRED_ATTRS")
+    missing = sorted(written - roster)
+    assert not missing, (
+        f"data attributes the shell writes that are not in WIRED_ATTRS: {missing} -- "
+        "each makes the runtime self-check report a dead control, and four standing false "
+        "alarms are how a real one goes unread"
+    )
+
+
+def test_every_cohort_kind_minted_has_a_query_to_resolve_it() -> None:
+    """The same both-directions check as the subject table, one tier down.
+
+    A cohort subject is a promise: *there is code at the far end of this, ask me and I will
+    name it.* `_cohort("plate", ...)` with no entry in `cohort()`'s table is a thread that
+    renders, highlights, is clicked, and comes back "no such thread kind" -- rule 30's
+    failure wearing a server's uniform instead of a client's.
+
+    The reverse matters too and is the quieter half: a query for a kind nothing ever mints
+    is dead code that reads as coverage, and it is exactly what makes a table look more
+    complete than the feature is.
+    """
+    threads_py = (WEB / "threads.py").read_text(encoding="utf-8")
+
+    minted = set(re.findall(r'_cohort\(\s*"(\w+)"', threads_py))
+    assert minted, "nothing mints a cohort any more -- this test is blind"
+
+    table = threads_py.split("    sql = {", 1)[1].split("    }.get(kind)", 1)[0]
+    resolved = set(re.findall(r'^\s+"(\w+)":', table, re.M))
+    assert resolved, "cohort()'s query table changed shape -- this test is blind"
+
+    assert minted == resolved, (
+        f"cohort kinds minted: {sorted(minted)}; kinds with a query: {sorted(resolved)} -- "
+        "one side is a thread that goes nowhere, the other is dead code that reads as "
+        "coverage"
+    )
+
+    # And every one of them must be spendable: `cohort()` turns a single key into whatever
+    # parameters its query needs, and a kind missing from that mapping raises `KeyError` on
+    # a click rather than answering.
+    spend = threads_py.split("    if kind == \"term\":", 1)[1].split("    nodes = ", 1)[0]
+    named = set(re.findall(r'"(\w+)":\s*"\w+"', spend)) | {"term"}
+    assert minted <= named, (
+        f"cohort kinds with no parameter mapping: {sorted(minted - named)} -- following "
+        "one raises rather than answering"
+    )
+
+
+def test_asking_where_the_selection_is_cannot_throw() -> None:
+    """A guard that names the right case and does not catch it.
+
+    `selectionOnScreen()` documents itself as returning null when there is no viewport --
+    "we cannot say" and "it is off screen" being different answers that must not look
+    alike. It guarded with `g.deckgl?.getViewports?.()`, which protects against a missing
+    deck and **not** against the case it was written for: deck.gl asserts *inside*
+    `getViewports()` before it has a view manager, so the throw came from within the call
+    the optional chaining was wrapped around.
+
+    The path is ordinary. Pick a routine in the navigator before opening the graph, and
+    `selectFromNav` mounts the engine and runs `applyWanted()` synchronously, before any
+    frame. The exception left `applyWanted`, so `persist()`, `recordSelection()` and
+    `render()` after it never ran -- the selection happened, undo never recorded it, and
+    nothing repainted.
+
+    Checks for the catch rather than for the `?.`, because the `?.` was there the whole
+    time and was exactly what made the code look guarded.
+    """
+    engine = _read("graph.js")
+    body = engine.split("function selectionOnScreen() {", 1)[1].split("\n}\n", 1)[0]
+    assert "getViewports" in body, "selectionOnScreen changed shape -- this test is blind"
+    assert re.search(r"\btry\b", body) and re.search(r"\bcatch\b", body), (
+        "selectionOnScreen calls getViewports() unguarded -- deck.gl asserts inside it "
+        "before its first frame, and the throw takes out the rest of selectFromNav"
+    )

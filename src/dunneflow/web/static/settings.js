@@ -46,6 +46,18 @@ const DEFAULTS = {
   edgesInMotion: true,    // links stay up while the camera turns -- see graph.js
   graphLayout: 'stack',   // 'stack' | 'packages' -- both built, use retires the loser
   graphTheme: 'follow',   // 'follow' | 'dark' -- design rule 2; see the Settings page
+  /* What following a neighbour does to the picture. Design rule 2: both are genuinely
+   * good and real use decides, so both are built and usage retires the loser.
+   *
+   * `replace` is one hop from wherever you land -- the cleanest picture, and what design
+   * rule 19 asks for. `walk` keeps every node you followed picked, so the hops you took
+   * stay drawn and a few clicks build a visible route through the program. Rule 19 warns
+   * that two hops is most of the program again; a walk is bounded by what the reader
+   * actually clicked, which is a different limit and one they control.
+   *
+   * No new selection machinery either way: `togglePick` has taken a mode since the
+   * multi-pick work, and this chooses between two values it already accepts. */
+  followMode: 'replace',  // 'replace' | 'walk'
   picks: [],              // the selection itself, so a session survives a reload
   /* Which panes are open. Read by `applyPanels()` in the shell, which routes every one of
    * these through the `PANELS` table -- and a key here with no entry there is a named
@@ -153,7 +165,7 @@ function resetSettings(program, current) {
   const named = {
     diskOrder: 'disk order', diskColors: 'disk colours', colorBy: 'colour source',
     sortMode: 'sort', filterMode: 'filter mode', direction: 'direction',
-    nodeSize: 'node size', picks: 'selection',
+    nodeSize: 'node size', picks: 'selection', followMode: 'following a neighbour',
     spreadX: 'spread across', spreadY: 'spread deep', spreadZ: 'spread between plates',
     collapseUnused: 'collapsed plates',
     showPlates: 'disk plates', edgesInMotion: 'edges while moving',

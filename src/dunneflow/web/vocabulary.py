@@ -1,0 +1,178 @@
+"""The program's own words, as the dashboard serves them.
+
+Two lanes, and design rule 13 says they prove themselves differently. A **quoted**
+definition proves itself with a file and a line the reader can open and read in context; a
+**measured** convention proves itself with the query that counted it, reproducible via
+`dunneflow query`. Neither is worth anything without that route back, so nothing here
+crosses the wire without it.
+
+`resolve/naming.py` and `resolve/glossary.py` do the work and are unchanged; this is
+exposure. Both were built, tested and reachable only from the command line -- the shell's
+glossary and naming pages have said "not computed yet" since they were written, honestly,
+because no endpoint ever served them.
+
+**Computed once, at start.** Measured on Mensores: the naming pass is 0.4 s and the
+glossary pass 2.1 s, the latter because it reads a 176 MB document store. Two seconds is
+tolerable on a page a reader deliberately opened and intolerable inside `/api/threads`,
+which is asked on **every selection** -- the reading loop would stall on the first click of
+every session. So both are paid for at boot, once, where the server is already building a
+payload and a cover and says so as it goes.
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+from ..docstore import DocStore
+from ..resolve import glossary as glossary_resolve
+from ..resolve import naming as naming_resolve
+from ..store import Store
+
+
+def measure_naming(store: Store) -> dict[str, Any]:
+    """The Form lane: what this program does about names, counted.
+
+    Every convention travels with the query that produced it. Rule 13 is not decorative
+    here -- three of the first twenty-seven conventions ever measured returned something
+    other than the number printed beside them, and a query that disagrees with its claim is
+    worse than no query, because it invites a reader to check and then misleads them.
+    """
+    m = naming_resolve.measure(store)
+    return {
+        "conventions": [
+            {
+                "kind": c.kind,
+                "claim": c.claim,
+                "population": c.population,
+                "total": c.total,
+                "holds": c.holds,
+                "rating": c.rating(),
+                "prevalence": round(c.prevalence, 4),
+                # The population as a glob, so the inspector can ask whether a given name
+                # is in it. Empty for a case convention, which is a property of every name
+                # in its population rather than a subset of it -- a real absence.
+                "glob": c.glob,
+                "sql": c.sql,
+                "note": c.note,
+                # **The exceptions are the product.** The three non-exception `*Error`
+                # classes on Mensores are frozen dataclasses carrying error information
+                # that cannot be raised -- a real finding, verified against source, and the
+                # most interesting thing the whole lane produced. Sending the claim without
+                # them would be sending the boring half.
+                "exceptions": [{"name": e.name, "where": e.where} for e in c.exceptions],
+            }
+            for c in m.conventions
+        ],
+        # A population with no dominant convention is a fact about the program, not a
+        # blank. Design rule 1: what was looked at and found nothing is stated.
+        "gaps": [{"population": g.population, "total": g.total,
+                  "spread": [[k, n] for k, n in g.spread]} for g in m.gaps],
+        "thresholds": m.thresholds,
+    }
+
+
+def bind_glossary(store: Store, docs: DocStore | None) -> dict[str, Any]:
+    """The Vocabulary lane: the program's words and who says what they mean.
+
+    Documentation may be absent, and that is the normal case rather than the exception
+    (design rule 11) -- five abandoned games taught that. A missing `docs.db` costs the
+    DECLARED_DOCS tier and nothing else: the terms are still mined from the code, and the
+    docstring definitions still stand.
+    """
+    report = glossary_resolve.bind(store, docs)
+    defined, total = report.coverage()
+    return {
+        "terms": [
+            {
+                "term": t.term,
+                "uses": t.uses,
+                "used_as": t.used_as(),
+                "defined": t.defined,
+                "senses": [
+                    {
+                        "definition": s.definition,
+                        # Never blended, never blurred (rule 6, and the glossary's own
+                        # four tiers). A quotation from a docstring and a model's guess
+                        # are different claims and the reader must be able to tell.
+                        "provenance": str(s.provenance),
+                        "source": s.source,
+                        "line": s.line,
+                        "heading": s.heading,
+                        "form": s.form,
+                    }
+                    for s in t.senses
+                ],
+            }
+            for t in report.terms
+        ],
+        "undefined": [{"term": t.term, "uses": t.uses, "used_as": t.used_as()}
+                      for t in report.undefined],
+        "definitions_seen": report.definitions_seen,
+        "documents_seen": report.documents_seen,
+        "coverage": [defined, total],
+    }
+
+
+# --------------------------------------------------------------------------- #
+# Matching one name against the vocabulary
+#
+# What turns the two lanes into *threads*: given a routine, which conventions is
+# it an instance of, and which of the program's own words does its name use.
+# --------------------------------------------------------------------------- #
+
+def _glob_matches(glob: str, name: str) -> bool:
+    """SQLite's `GLOB`, for the two shapes this actually mints.
+
+    Deliberately not a general glob implementation. `_affix_conventions` produces exactly
+    `prefix<sep>*` and `*<sep>suffix` and nothing else, so handling those two exactly is
+    both complete and checkable -- and a general matcher would be a second, subtly
+    different reading of a pattern the store already interprets one way.
+    """
+    if not glob or "*" not in glob:
+        return False
+    if glob.startswith("*"):
+        return name.endswith(glob[1:])
+    if glob.endswith("*"):
+        return name.startswith(glob[:-1])
+    return False
+
+
+def conventions_for(naming: dict[str, Any], name: str) -> list[dict[str, Any]]:
+    """Every measured convention this name is an instance of.
+
+    Only the affix conventions can answer, because only they name a *subset*: "routines are
+    named in snake_case" is true of this routine and of four and a half thousand others,
+    which is a fact about the program rather than a thread worth pulling.
+    """
+    out = []
+    for c in naming.get("conventions", []):
+        if not c.get("glob"):
+            continue
+        if _glob_matches(c["glob"], name):
+            out.append(c)
+    # The strongest claim first, then the biggest population: an `A` over 372 cases is a
+    # better doorway than a `D` over 13, and the reader should not have to sort by eye.
+    out.sort(key=lambda c: (c["rating"], -c["total"]))
+    return out
+
+
+def terms_in(glossary: dict[str, Any], name: str, module: str) -> list[dict[str, Any]]:
+    """The program's own words that this routine's name uses.
+
+    Matched on whole segments, never on substrings. Rule 5 in its most literal form: a
+    term matched anywhere inside a name matches half the program -- `mensor` would claim
+    every `dimensions`, and `groma` every `programatic` -- and rule 18 caught the same
+    defect in `walk.is_test_path`, where `test_` as a substring dropped `_test_stage.py`
+    out of the map entirely. A word must sit at a segment boundary to count.
+    """
+    segs = {s.lower() for s in name.replace("-", "_").split("_") if s}
+    segs |= {s.lower() for s in module.split(".") if s}
+    if not segs:
+        return []
+    out = [t for t in glossary.get("terms", []) if t["term"].lower() in segs]
+    # A defined word first: it is the one that can show the reader a definition with a file
+    # and a line, which is the whole point of the tier (design rule 13). Then by how much
+    # of the program uses it, because a word used twice is a coincidence and a word used
+    # six hundred times is the vocabulary.
+    out.sort(key=lambda t: (not t["defined"], -t["uses"]))
+    return out

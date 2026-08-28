@@ -28,14 +28,17 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs
 
+from ..docstore import DocStore
 from ..sourcedb import SourceStore
 from ..store import Store
 from . import packages, queries
 from .cover import anomalies as build_anomalies
 from .cover import build as build_cover
-from .detail import describe
-from .graph import GraphModel, build
+from .detail import describe, hover_card
+from .graph import GraphModel, build, root_package
 from .layout import structural
+from .threads import cohort, for_node
+from .vocabulary import bind_glossary, measure_naming
 
 STATIC = Path(__file__).parent / "static"
 VENDOR = Path(__file__).parent / "vendor"
@@ -168,6 +171,17 @@ class _Live:
         # queries on every navigation would make the first screen the slowest one.
         self.cover: dict[str, Any] = {}
 
+        # The program's own root package, read from the data rather than assumed -- one
+        # aggregate over `files`, and it is what scopes an outlier thread to the plate the
+        # reader is standing on. Computed here because it cannot change while the map is
+        # open and a per-request GROUP BY over every file would be a cost paid for nothing.
+        self.root: str = root_package(self.store)
+
+        # The two lanes of the naming standard, filled at start rather than here -- see
+        # `serve()`, which pays for them where it can say so.
+        self.naming: dict[str, Any] = {}
+        self.glossary: dict[str, Any] = {}
+
     def close(self) -> None:
         self.store.close()
         if self.source is not None:
@@ -248,6 +262,70 @@ class _Handler(BaseHTTPRequestHandler):
             body = describe(self._live.store, node_id, self._live.source)
         self._json(body)
 
+    def _r_hover(self, q: dict[str, list[str]]) -> None:
+        """The compact card behind the pop-up.
+
+        Separate from `/api/node` rather than a slice of it, because the two answer
+        different questions and cost different amounts. `/api/node` returns every caller,
+        every callee, every comment and a span of source -- right for something the reader
+        has chosen, wildly wrong for something the cursor is passing over on its way
+        somewhere else.
+        """
+        node_id = (q.get("id") or [""])[0]
+        if not node_id:
+            self._json({"found": False, "reason": "no id asked for"})
+            return
+        with self._live.lock:
+            body = hover_card(self._live.store, node_id)
+        self._json(body)
+
+    def _r_threads(self, q: dict[str, list[str]]) -> None:
+        """The reasons a neighbour is worth a detour, for one node.
+
+        The subject's module comes out of the store here rather than being asked for by
+        the client: an outlier thread is scoped to the package the reader is standing on,
+        and a module supplied from outside is a parameter that can disagree with the id
+        beside it. There is one right answer and the store has it.
+        """
+        node_id = (q.get("id") or [""])[0]
+        if not node_id:
+            self._json({"found": False, "reason": "no id asked for", "threads": []})
+            return
+        with self._live.lock:
+            row = self._live.store.query(
+                "SELECT module, name FROM routines WHERE id = :id", {"id": node_id})
+            module = str(row[0]["module"]) if row else ""
+            name = str(row[0]["name"]) if row else ""
+            body = for_node(self._live.store, node_id,
+                            module=module, root=self._live.root, name=name,
+                            naming=self._live.naming, glossary=self._live.glossary)
+        self._json(body)
+
+    def _r_thread(self, q: dict[str, list[str]]) -> None:
+        """What one thread's subject resolves to.
+
+        Only cohorts come here. A thread whose subject is already a node needs nothing
+        resolved -- it is selected as itself -- and asking the server about it would be
+        a round trip to be told what the client already knew.
+        """
+        kind = (q.get("kind") or [""])[0]
+        key = (q.get("key") or [""])[0]
+        if not kind or not key:
+            self._json({"found": False, "nodes": [],
+                        "reason": "a thread needs both a kind and a key"})
+            return
+        with self._live.lock:
+            body = cohort(self._live.store, kind, key)
+        self._json(body)
+
+    def _r_naming(self, q: dict[str, list[str]]) -> None:
+        """The Form lane: what this program does about names, counted."""
+        self._json(self._live.naming)
+
+    def _r_glossary(self, q: dict[str, list[str]]) -> None:
+        """The Vocabulary lane: the program's words and who says what they mean."""
+        self._json(self._live.glossary)
+
     def _r_table(self, q: dict[str, list[str]]) -> None:
         """The routines that touch one table.
 
@@ -320,6 +398,11 @@ class _Handler(BaseHTTPRequestHandler):
         "/api/documents": "_r_documents",
         "/api/document": "_r_document",
         "/api/node": "_r_node",
+        "/api/hover": "_r_hover",
+        "/api/threads": "_r_threads",
+        "/api/thread": "_r_thread",
+        "/api/naming": "_r_naming",
+        "/api/glossary": "_r_glossary",
         "/api/table": "_r_table",
         "/api/source": "_r_source",
         "/favicon.ico": "_r_favicon",
@@ -393,6 +476,32 @@ def serve(out_dir: Path, *, port: int = 8787, open_browser: bool = True,
     model = build(live.store)
     payload = columnar(model)
     live.cover = build_cover(live.store, live.source, out_dir.name)
+
+    # The program's own words, both lanes, computed once.
+    #
+    # Not lazily, and the reason is where they are *used*: a vocabulary thread is part of
+    # `/api/threads`, which is asked on every selection, so a lazy first call would stall
+    # the reading loop on the first click of every session. Measured on Mensores at 0.4 s
+    # for the naming pass and 2.1 s for the glossary -- the latter reads a 176 MB document
+    # store -- against a start that is already building a payload and a cover.
+    #
+    # Documentation is optional by design (design rule 11): with no `docs.db` the glossary
+    # keeps every code-derived term and loses only the tier that quotes a document. It is
+    # never a prerequisite for a code-derived fact.
+    docs_db = out_dir / "docs.db"
+    docs = None
+    if docs_db.exists():
+        try:
+            docs = DocStore(docs_db, writable=False)
+        except (ValueError, OSError):
+            docs = None
+    live.naming = measure_naming(live.store)
+    live.glossary = bind_glossary(live.store, docs)
+    if docs is not None:
+        docs.close()
+    emit(f"{len(live.naming['conventions'])} naming conventions measured; "
+         f"{live.glossary['coverage'][0]:,} of {live.glossary['coverage'][1]:,} "
+         f"terms defined somewhere")
 
     # Named so the browser can key stored settings per program. A disk order and a set of
     # colours worked out for one codebase mean nothing in another, and silently applying

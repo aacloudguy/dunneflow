@@ -86,6 +86,40 @@ def CamelRoutine() -> None:
 '''
 
 
+# A second program, because the one above produces **no affix convention at all**: five
+# `is_*` routines out of nine do not survive the coincidence correction, which is rule 14
+# working exactly as intended. That is worth knowing on its own --
+# `test_an_affix_glob_respects_the_separator` guards its assertion with `if predicates:`
+# and has therefore never once run.
+#
+# So this one is shaped to produce one: eight `check_*` routines that all return a boolean,
+# against twenty-seven that do not, which is high precision over a *low* base rate. Both
+# terms are needed. Seven of seven against a background where a third of routines have the
+# property anyway is the `Provenance` coincidence rule 14 was written from, and it is
+# correctly rejected.
+AFFIX_PROGRAM = (
+    '"""One clear affix convention against a background that lacks the property."""\n\n'
+    + "\n\n".join(
+        f"def check_{n}(x: int) -> bool:\n    return x > {i}"
+        for i, n in enumerate(
+            ["alpha", "beta", "gamma", "delta", "epsilon", "zeta", "eta", "theta"]))
+    + "\n\n"
+    + "\n\n".join(
+        f"def render_{n}(x: int) -> str:\n    return str(x)"
+        for n in ["one", "two", "three", "four", "five", "six", "seven", "eight", "nine",
+                  "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen",
+                  "seventeen", "eighteen", "nineteen", "twenty", "hazel", "willow",
+                  "cedar", "maple", "rowan", "alder", "aspen"])
+)
+
+
+def _affix_store(tmp_path: Path) -> Store:
+    (tmp_path / "affix.py").write_text(AFFIX_PROGRAM, encoding="utf-8")
+    store = Store(tmp_path / "affix.db")
+    analyze_tree(tmp_path, store)
+    return store
+
+
 def _store(tmp_path: Path) -> Store:
     (tmp_path / "prog.py").write_text(PROGRAM, encoding="utf-8")
     store = Store(tmp_path / "graph.db")
@@ -125,6 +159,33 @@ def test_every_query_returns_exactly_the_exceptions_listed(tmp_path: Path) -> No
         rows = store.query(c.sql)          # raises if the SQL is malformed
         assert {str(r[0]) for r in rows} == {e.name for e in c.exceptions}, (
             f"the query for {c.claim!r} does not reproduce its own exception list"
+        )
+    store.close()
+
+
+def test_the_glob_and_the_query_name_the_same_population(tmp_path: Path) -> None:
+    """The membership test and the evidence must be one string, not two that agree today.
+
+    `glob` exists so something other than a person can ask "is this name one of these?" --
+    the inspector says a routine shares a convention with others, and neither `claim`, which
+    is a sentence, nor `sql`, which reproduces the *exceptions*, can answer that.
+
+    The risk it introduces is drift: two derivations of one population, correct on the day
+    they were written and silently disagreeing after the next edit. So the glob is the same
+    string the exceptions query is built from, and this asserts it -- rule 13 applied to a
+    second way of naming the same set. The alternative, deriving the affix back out of the
+    claim sentence, would be parsing prose to recover something the code had already
+    computed and thrown away.
+    """
+    store = _affix_store(tmp_path)
+    m = measure(store)
+    affixes = [c for c in m.conventions if c.kind == "AFFIX"]
+    assert affixes, "no affix convention was measured; this test is blind"
+    for c in affixes:
+        assert c.glob, f"an affix convention with no glob: {c.claim!r}"
+        assert f"'{c.glob}'" in c.sql, (
+            f"the glob {c.glob!r} is not the one {c.claim!r} counts with -- two "
+            "derivations of one population, free to disagree after the next edit"
         )
     store.close()
 

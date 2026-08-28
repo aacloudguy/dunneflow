@@ -83,9 +83,6 @@ const PALETTE = {
   plateTouchLine: [ 45, 212, 191,  70],
   label:      [230, 236, 243, 240],
   labelBg:    [ 11,  17,  25, 200],
-  tooltipBg:  '#161e29',
-  tooltipText:'#e6ecf3',
-  tooltipLine:'#2c3849',
   diskS: 0.62, diskL: 0.58,          // packages
   extS:  0.45, extL:  0.78,          // externals, a cooler paler band
   /* Ambient floor and specular strength for the sphere shading. On a dark ground a ball
@@ -173,7 +170,7 @@ const opts = {
 
 /* The engine says what happened; the application decides what to show. Anything that used
  * to be `el('counts').innerHTML = ...` is one of these. */
-const listeners = { select: [], counts: [], fps: [], error: [], ready: [] };
+const listeners = { select: [], counts: [], fps: [], error: [], ready: [], hover: [] };
 
 function on(event, fn) {
   if (!(event in listeners)) throw new Error(`DunneFlowGraph: no such event "${event}"`);
@@ -1005,9 +1002,27 @@ function diagnostics() {
  * a claim must be produced by the thing it claims about.
  *
  * Returns null rather than a guess when there is no viewport or no payload yet: "we cannot
- * say" and "it is off screen" are different answers and must not look alike. */
+ * say" and "it is off screen" are different answers and must not look alike.
+ *
+ * **The guard has to be a try/catch, and `?.` is not enough.** deck.gl does not return a
+ * falsy viewport before it has one -- it asserts *inside* `getViewports()`, so optional
+ * chaining protects against a missing `deckgl` and not against the case this was written
+ * for. The comment above described the intended behaviour correctly and the code did not
+ * achieve it, which is the quietest kind of wrong.
+ *
+ * It fires on an ordinary path: pick a routine in the navigator before ever opening the
+ * graph, and `selectFromNav` mounts the engine and calls `applyWanted()` in the same
+ * breath -- synchronously, before deck.gl has rendered a frame and therefore before it has
+ * a view manager. The throw propagated out of `applyWanted`, so `persist()`,
+ * `recordSelection()` and `render()` after it never ran: the selection happened, the
+ * undo stack did not record it, and nothing repainted. */
 function selectionOnScreen() {
-  const vp = g.deckgl?.getViewports?.()[0];
+  let vp;
+  try {
+    vp = g.deckgl?.getViewports?.()[0];
+  } catch {
+    return null;                      // no view manager yet; that is "cannot say"
+  }
   if (!vp || !g.prepared) return null;
   const b = bounds(g.prepared, g.members.size ? g.members : null);
   const at = vp.project(b.centre).map(Math.round);
@@ -1080,17 +1095,42 @@ function mount(container, raw, options = {}) {
                  : 'replace';
       togglePick({ kind: 'node', index: info.index }, mode);
     },
-    getTooltip: ({ index }) => {
-      if (index < 0) return null;
-      const n = raw.nodes;
-      const det = n.detail[index] || {};
-      const extra = det.qualname || det.module || det.bkind || '';
-      return { html: `<b>${n.label[index]}</b>${n.shadow[index] ? ' (shadow)' : ''}<br>` +
-                     `<span class="k">${n.kind[index]} · ${n.disk[index]}</span>` +
-                     (extra ? `<br><span class="k">${extra}</span>` : ''),
-               style: { background: PALETTE.tooltipBg, color: PALETTE.tooltipText,
-                        border: `1px solid ${PALETTE.tooltipLine}`, borderRadius: '4px',
-                        fontSize: '12px', padding: '4px 6px' } };
+    /* The pop-up is a `hover` event, not a `getTooltip`.
+     *
+     * deck.gl's own tooltip returns finished HTML synchronously, which fixes two things
+     * this card must not be fixed on. It can only ever say what the payload already holds
+     * -- so no touch counts, no governance ids, no WHY, because carrying those for fifteen
+     * thousand nodes would charge every node for the handful anybody hovers. And it cannot
+     * be filled in two stages, so the moment anything is fetched the card either blocks or
+     * flickers.
+     *
+     * So the engine reports what it knows -- which is everything the picture knows -- and
+     * the application decides what to draw and what else to go and ask for. Same boundary
+     * as `select`: the engine touches no DOM it was not handed.
+     *
+     * A shadow is resolved to its real node first. Rule 23 says a shadow is a placement
+     * device and never an endpoint, and rule 31 says that applies to *reading* as much as
+     * to drawing -- hovering one and being told about "a routine on this plate" would put
+     * a routine somewhere it does not live, in the one surface whose whole job is to say
+     * what a thing is. `shadow` still travels, because the reader is entitled to know they
+     * are pointing at a stand-in. */
+    onHover: (info) => {
+      const i = info.index;
+      if (i < 0 || !g.prepared) { emit('hover', null); return; }
+      const raw2 = g.data.nodes;
+      const real = raw2.shadow[i] ? raw2.real[i] : i;
+      emit('hover', {
+        index: real, id: raw2.id[real], label: raw2.label[real],
+        kind: raw2.kind[real], disk: raw2.disk[real],
+        detail: raw2.detail[real] || {},
+        shadow: raw2.shadow[i] === 1,
+        /* The fan counts come from here and only from here. The navigator prints the same
+         * `3<- 5->` off the same maps, and the selection is drawn from them too, so all
+         * three agree by construction. Rule 32 is what happens when they do not. */
+        degIn: (g.prepared.inbound.get(real) ?? []).length,
+        degOut: (g.prepared.outbound.get(real) ?? []).length,
+        x: info.x, y: info.y,
+      });
     },
     onError: (err) => {
       /* A blank canvas must say why it is blank (design rule 21). Hardware acceleration

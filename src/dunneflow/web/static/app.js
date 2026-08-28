@@ -351,8 +351,10 @@ function togglePick(d, pick, mode = 'replace') {
   const at = state.picks.findIndex((p) => pickKey(p) === key);
   if (mode === 'replace') {
     state.picks = at >= 0 && state.picks.length === 1 ? [] : [pick];
-  } else if (mode === 'remove' || at >= 0) {
+  } else if (mode === 'remove') {
     if (at >= 0) state.picks.splice(at, 1);
+  } else if (at >= 0) {
+    state.picks.splice(at, 1);          // 'toggle' and 'add' both drop an existing pick
   } else {
     state.picks.push(pick);
   }
@@ -478,20 +480,6 @@ function buildLayers(d) {
     }));
   }
 
-  if (state.selGeom && still && state.selGeom.count) {
-    const g = selGpu(state.selGeom);
-    layers.push(new LineLayer({
-      id: 'sel-edges', coordinateSystem: CARTESIAN, data: g.edges,
-      getColor: EDGE_COLOR, widthUnits: 'pixels', pickable: false,
-    }));
-    if (state.selGeom.interCount) {
-      layers.push(new LineLayer({
-        id: 'inter-edges', coordinateSystem: CARTESIAN, data: g.inter,
-        widthUnits: 'pixels', pickable: false,
-      }));
-    }
-  }
-
   /* One layer, one draw call, whatever the size. Above `SPHERE_FROM` the shading
    * extension turns each disc into a ball -- same buffers, same call, a few extra
    * arithmetic operations per fragment. Real geometry would have cost fifteen thousand
@@ -521,6 +509,30 @@ function buildLayers(d) {
      * Nodes composite in draw order instead, which is what a graph wants anyway: nothing
      * here is solid, and a node hidden behind another is a node the reader cannot click. */
   }));
+
+  /* Edges are drawn *after* the nodes, so they are never buried.
+   *
+   * Under them is the conventional order and it fails the moment the size slider is used
+   * in anger: at full size the spheres cover every within-plate link, and the map goes
+   * quiet exactly when the reader has zoomed in to look at something. Information the
+   * reader asked for must not be occluded by decoration they also asked for.
+   *
+   * The two kinds are guarded separately. Nesting the crossings inside the within-count
+   * meant a selection with nothing internal drew nothing at all -- which is precisely the
+   * case of two plates that only talk to each other. */
+  const g = state.selGeom && still ? selGpu(state.selGeom) : null;
+  if (g && state.selGeom.count) {
+    layers.push(new LineLayer({
+      id: 'sel-edges', coordinateSystem: CARTESIAN, data: g.edges,
+      getColor: EDGE_COLOR, widthUnits: 'pixels', pickable: false,
+    }));
+  }
+  if (g && state.selGeom.interCount) {
+    layers.push(new LineLayer({
+      id: 'inter-edges', coordinateSystem: CARTESIAN, data: g.inter,
+      widthUnits: 'pixels', pickable: false,
+    }));
+  }
 
   if (still && state.viewState.zoom >= NODE_LABEL_ZOOM) {
     const labels = pickLabels(d);
@@ -898,8 +910,12 @@ el('size').addEventListener('change', persist);
 el('menu').addEventListener('click', (ev) => {
   const row = ev.target.closest('.leg');
   if (!row || ev.target.classList.contains('sw')) return;
-  const mode = ev.shiftKey || ev.metaKey ? 'add' : ev.altKey ? 'remove' : 'replace';
-  togglePick(state.prepared, { kind: 'disk', id: row.dataset.disk }, mode);
+  /* Plain click *toggles*, with no modifier. This is a multi-select list, and requiring
+   * shift to reach the thing the list exists for meant clicking plate after plate just
+   * replaced the selection each time -- so there was never a second layer to cross to,
+   * and the crossings, which are the whole point of the stack, could not appear at all.
+   * The failure looked like missing edges and was really a missing selection. */
+  togglePick(state.prepared, { kind: 'disk', id: row.dataset.disk }, 'toggle');
   render();
 });
 

@@ -1108,6 +1108,86 @@ ST` defect in a new pane; and all three shading no-ops.
 - Document mode's narrative view, the exploration layer, and the usage report screen are
   still as they were.
 
+*Added after the chunk, on Tom's correction: edges stay up while the camera turns.*
+Hiding them during motion was a speed measure borrowed from slower renderers and this one
+does not need it -- the geometry is uploaded once as flat typed arrays, so a turning camera
+re-uploads nothing and the links cost the same moving as they do still. It also worked
+against the picture: **a rotation is how connections between plates resolve into depth
+rather than a flat tangle**, so stripping the edges during one hid exactly what the reader
+turned the view to see. Now a Setting, *Show edges while moving*, default on; off kept for a
+slower machine or a very large selection. Design rule 19's "…and only once the camera has
+stopped" is struck; its **on demand** half is untouched and is the half that carries the
+rule. The benchmark still forces edges on regardless, because a run must measure the frame
+it names.
+
+### Do not re-open: why the nodes are flat circles
+
+Recorded because it looks like a shortcut and is not, and because a future session reading
+"fake spheres" in the code could easily try to "fix" it into real geometry.
+
+**Billboarded circles are the technique, not an approximation of one.** They came out of
+Tom's research on another product, where drawing spheres as circles that always face the
+screen sped up rendering enough to put *massive* numbers of nodes on screen at full speed.
+The custom lighting is what simulates the sphere, and it has to hold up while the reader
+rotates the model in space -- which is the whole point, since rotation is how relationships
+between nodes are read. A fixed light in view space is therefore correct: the highlight
+stays put as the view turns.
+
+The corollary is the one that cost this session: **the lighting is load-bearing, not
+decoration.** Without it the technique renders flat discs, and a flat disc read at a glance
+is a coin, not a ball. It is worth checking by eye after any change near the layer.
+
+### The sphere shading: three silent no-ops, stacked
+
+Worth its own heading because each one alone is subtle and all three have the same shape --
+*it compiles, it draws, the effect never happens* -- and because scripted checks caught none
+of them.
+
+1. **The inject hook was named wrong** (`fragmentColor:DECKGL_FILTER_COLOR` rather than
+   `fs:…`). Already recorded as rule 22. An unrecognised hook is not an error.
+2. **A GLSL name collision.** The block is injected into deck.gl's own fragment shader, so
+   `vec3 normal = …` landed in a scope that already had one. Every local is now prefixed
+   `df`.
+3. **The shader was never reassembled.** deck.gl resolves an extension's shader once per
+   extension *class*, so a second instance carrying different values silently reuses the
+   first assembly. `shading.js` now builds **one class per lighting**, cached by it -- two
+   for the life of a page. Established by experiment: an identical body in a freshly
+   declared class shades, and in a shared class it does not.
+
+Related and separate: a layer's shader is built once with its model, and deck.gl matches an
+incoming layer to the drawn one **by id**. The nodes layer first renders below the sphere
+threshold with no extension at all, so it kept its plain shader forever. The id now carries
+the shading signature.
+
+All three were found by looking closely at one node. Nothing else has ever detected any of
+them.
+
+### A check may only claim what its instrument can prove
+
+The runtime self-check reported `clear` as "reached by no control" while sitting on the
+Settings view. True of that moment, false about the product: half these controls are
+conditional -- `clear` appears only with a selection, and the whole HUD only in graph mode.
+
+**The DOM can prove a control has no action. It cannot prove an action has no control.**
+That second direction moved to `test_web_controls.py`, which reads every `data-gact` in the
+source whether it is on screen or not. A check that cries wolf is a check nobody reads, and
+this project's checks are load-bearing.
+
+Same shape as rule 24 (a measurement must measure the thing it names) and as rule 13 (a
+claim's query must return what is printed beside it), arriving in a third costume.
+
+### Guards added this session, and the defect each was written from
+
+| Guard | Written from |
+|---|---|
+| `test_the_javascript_parses` | a backtick in an HTML comment closed a template literal; the page came up empty and every Python test passed |
+| `test_no_backtick_hides_in_an_html_comment` | the same defect, twice in one day; needs no JavaScript engine, so it runs everywhere |
+| `test_the_page_loads_what_it_needs` | the shell replaced `index.html` and stopped loading the engine entirely |
+| `test_the_graph_has_somewhere_to_live` | `render()` would destroy the canvas if it ever wrote to the viewport again |
+| `test_every_graph_action_is_reachable_and_every_control_acts` | design rule 16, both directions, from the source |
+| `test_no_program_data_is_pinned_inside_state` | three pinned Mensores values the existing guard could not see |
+| `test_a_reset_reports_every_setting_it_clears` | a reset that walked its label table under-reported itself |
+
 **5b. Planned, not scheduled: the layered layout — a stack of architecture drawings.**
 Tom's, stated 2026-08-27. Keep everything that exists and add a second way of drawing a
 plate: instead of a spring layout, lay the disk out the way Mermaid lays out an

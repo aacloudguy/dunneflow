@@ -108,8 +108,12 @@ Deferred deliberately: the layered "stack of architecture drawings" layout (`HAN
 
 **One thing owed:** the two "spheres" rows in the `CLAUDE.md` budget table are withdrawn and
 want retaking on a visible, focused window — they measured flat discs while printing the
-word spheres. A hidden tab gets no animation frames at all, so this cannot be done from
-automation; the benchmark now refuses rather than hanging.
+word spheres, and the lighting now actually runs. One click on **benchmark** in the graph
+HUD, reproducing the eight-plate selection named in `CLAUDE.md`, or it is a different
+measurement under the same label. It could not be done from automation: a hidden tab is
+given no animation frames at all, so the benchmark now refuses rather than hanging and says
+why. Worth retaking **with edges kept up while moving**, since that is now the default and
+is the more expensive frame.
 
 ## Decided — do not re-open these
 
@@ -131,6 +135,8 @@ automation; the benchmark now refuses rather than hanging.
 | Egress is scoped, never a switch; nothing infers during `analyze` | design rule 14 |
 | DunneFlow **never** talks to a VCS to fetch code | `HANDOFF.md` "Version control must stay pluggable" |
 | A single binary is the product; sqlite-wasm is the *export* format | `HANDOFF.md` "Distribution" |
+| **Nodes are billboarded circles, lit to read as spheres** — the technique, not an approximation | `HANDOFF.md` "why the nodes are flat circles" |
+| Edges stay up while the camera turns; a Setting, default on | design rule 19, amended |
 
 ## How to verify — all three, before saying anything is done
 
@@ -154,6 +160,28 @@ Ground truth is in `CLAUDE.md` — both halves. Positive: the four executables m
 appear in "Where to start" with plausible reach. Negative, and it matters more:
 `.groma/research/v0.2/conventions-naming-and-documentation.md` is a paper *about* naming
 standards and must yield **zero** naming rules.
+
+### The traps that cost this session
+
+Each of these looked like working code and passed every automated check.
+
+- **The nodes are flat circles on purpose.** Billboarded circles lit to *simulate* spheres
+  is the performance technique that lets the stack hold ten thousand nodes at full speed —
+  it came out of prior research and is not an approximation of something better. The
+  lighting is load-bearing: without it they render as coins, not balls. Do not "fix" this
+  into real geometry.
+- **A shader effect that does nothing is not an error.** Three separate causes did it here
+  — an unrecognised inject hook, a GLSL name collision with deck.gl's own scope, and a
+  shader never reassembled because deck.gl resolves one per extension *class*. Each
+  compiles, each draws. Check by eye after touching the layer.
+- **A backtick inside an HTML comment inside a template literal** closes the literal. The
+  page comes up blank; nothing else fails. Two guards now catch it.
+- **`render()` rewrites the centre pane on every keystroke.** Anything with state of its
+  own — a canvas, a colour picker, a slider being dragged — must live outside it or be
+  updated narrowly.
+- **A check may only claim what its instrument can prove.** The DOM can show a control with
+  no handler; it cannot show a handler no control reaches, because half the controls are
+  conditional. That direction belongs in a test that reads the source.
 
 ### Three habits this project paid for
 

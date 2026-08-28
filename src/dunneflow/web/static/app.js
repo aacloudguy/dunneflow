@@ -32,6 +32,7 @@ const {
  * before anything renders. */
 const Settings = window.DunneFlowSettings;
 const Shading = window.DunneFlowShading;
+const Inspector = window.DunneFlowInspector;
 
 const CARTESIAN = COORDINATE_SYSTEM.CARTESIAN;
 
@@ -84,6 +85,8 @@ const state = {
                minZoom: -9, maxZoom: 8 },
   picks: [],              // [{kind:'disk', id} | {kind:'node', index}] -- ordered
   members: new Set(),
+  mode: 'graph',          // which centre view is showing; see MODES
+  inspecting: null,       // the node id the inspector is currently on
   hiddenLabels: 0,
   benching: false,
 };
@@ -346,6 +349,30 @@ function recomputeMembers(d) {
 
 function pickKey(p) { return p.kind === 'disk' ? `d:${p.id}` : `n:${p.index}`; }
 
+/* Following a link in the inspector moves the graph too, because they are one selection
+ * and not two. The trail this leaves is what makes a detour free -- you can always click
+ * back along the way you came, which is the whole argument for exploring sideways rather
+ * than only drilling down.
+ *
+ * A node the graph does not draw is a real case, not an error: constants can be switched
+ * off, and an external whose plate is folded away has no index. The inspector still shows
+ * it -- refusing to *show* something because it cannot be *drawn* would make the picture
+ * the limit of the map. */
+function gotoNodeById(id) {
+  const raw = state.data.nodes;
+  let index = -1;
+  for (let i = 0; i < raw.id.length; i++) {
+    if (raw.id[i] === id && !raw.shadow[i]) { index = i; break; }
+  }
+  if (index < 0) {
+    state.inspecting = id;
+    Inspector.show(id);
+    return;
+  }
+  togglePick(state.prepared, { kind: 'node', index }, 'replace');
+  render();
+}
+
 function togglePick(d, pick, mode = 'replace') {
   const key = pickKey(pick);
   const at = state.picks.findIndex((p) => pickKey(p) === key);
@@ -372,7 +399,53 @@ function afterSelectionChange(d) {
   paintNodes(d);
   markMenu();
   markResults();
+  syncInspector();
   persist();
+}
+
+/* One shared selection, three views. The inspector follows the *last node* picked rather
+ * than the whole set, because "what is this thing" has one answer and a set of forty-two
+ * does not -- while disks stay a set, since the graph's question genuinely is plural.
+ * Shadows are resolved to their real node first: a shadow is a placement device and never
+ * an endpoint, so inspecting one would show a routine as living somewhere it does not. */
+function syncInspector() {
+  const last = [...state.picks].reverse().find((p) => p.kind === 'node');
+  if (!last) {
+    state.inspecting = null;
+    Inspector.show(null);
+    updateCrumb();
+    return;
+  }
+  const raw = state.data.nodes;
+  const i = raw.shadow[last.index] ? raw.real[last.index] : last.index;
+  const id = raw.id[i];
+  if (id === state.inspecting) return;      // same node: do not re-fetch on every repaint
+  state.inspecting = id;
+  Inspector.show(id);
+  updateCrumb();
+}
+
+/* The breadcrumb says where the reader is without taking the place they were. It names
+ * the disk and the node, because at fifty-two plates "which plate am I on" is a question
+ * the picture alone stops answering the moment you have zoomed in. */
+function updateCrumb() {
+  const c = el('crumb');
+  if (!c) return;
+  const parts = [];
+  const disks = state.picks.filter((p) => p.kind === 'disk');
+  if (disks.length) {
+    const names = disks.map((p) =>
+      state.data.disks.find((x) => x.id === p.id)?.name ?? p.id);
+    parts.push(names.slice(0, 2).join(' + ') +
+               (names.length > 2 ? ` +${names.length - 2}` : ''));
+  }
+  const last = [...state.picks].reverse().find((p) => p.kind === 'node');
+  if (last) {
+    const raw = state.data.nodes;
+    const i = raw.shadow[last.index] ? raw.real[last.index] : last.index;
+    parts.push(raw.disk[i], raw.label[i]);
+  }
+  c.textContent = parts.length ? parts.join(' › ') : '';
 }
 
 function buildSelectionGeometry(d) {
@@ -520,7 +593,14 @@ function buildLayers(d) {
    * The two kinds are guarded separately. Nesting the crossings inside the within-count
    * meant a selection with nothing internal drew nothing at all -- which is precisely the
    * case of two plates that only talk to each other. */
-  const g = state.selGeom && still ? selGpu(state.selGeom) : null;
+  /* Edges are hidden while the camera moves (rule 19) -- but a benchmark exists to
+   * measure the most expensive frame the reader can ask for, and that frame has edges in
+   * it. Orbiting with the ordinary gate in force measured nodes only, while the readout
+   * still printed the selection's edge count beside the number: a claim about geometry
+   * that was never drawn. The override is scoped to the two link layers, so the run
+   * isolates edge cost rather than also pulling in the collision-filtered labels. */
+  const drawEdges = still || state.benching;
+  const g = state.selGeom && drawEdges ? selGpu(state.selGeom) : null;
   if (g && state.selGeom.count) {
     layers.push(new LineLayer({
       id: 'sel-edges', coordinateSystem: CARTESIAN, data: g.edges,
@@ -682,7 +762,7 @@ function updateCounts() {
   const s = state.data.stats;
   const n = state.members.size;
   let line;
-  if (state.moving) {
+  if (state.moving && !state.benching) {
     line = 'nodes only while moving';
   } else if (n) {
     const names = state.picks.map((p) => p.kind === 'disk'
@@ -733,6 +813,9 @@ function benchmark(seconds = 6) {
       samples.sort((a, b) => a - b);
       const med = samples[Math.floor(samples.length / 2)] || 0;
       const worst = samples[0] || 0;
+      const within = state.selGeom?.count ?? 0;
+      const crossing = state.selGeom?.interCount ?? 0;
+      const edgeCount = within + crossing;
       /* 60 is the vsync ceiling, not a measurement of capacity. When median and worst
        * both sit on it the honest statement is "no frames dropped, headroom unknown" --
        * reporting it as a score invites reading a ceiling as a limit. */
@@ -741,7 +824,13 @@ function benchmark(seconds = 6) {
         `median ${med.toFixed(0)} fps · worst ${worst.toFixed(0)} · ` +
         `${state.data.stats.nodes.toLocaleString()} nodes` +
         (state.settings.nodeSize >= SPHERE_FROM ? ' · spheres' : '') +
-        (state.selGeom?.count ? ` · ${state.selGeom.count.toLocaleString()} edges` : '') +
+        /* Both kinds, because both were drawn. Reporting `count` alone under-stated a
+         * run by its crossings -- 2,199 printed against 4,253 submitted -- which is
+         * rule 24 surviving in the half of the line the first fix did not touch. The
+         * two are named separately because they answer different questions, and summing
+         * them here would lose that as surely as omitting one did. */
+        (edgeCount ? ` · ${within.toLocaleString()} within + ` +
+                     `${crossing.toLocaleString()} crossing edges` : '') +
         (capped ? ' · no frames dropped (60 is the vsync cap; headroom unmeasured)' : '');
       setMoving(false);
       return;
@@ -829,6 +918,20 @@ async function boot() {
   buildMenu();
   syncControls();
   applyPanels();
+  applyRails();
+  setMode(state.settings.mode || 'graph');
+
+  // Named in the header so two maps open side by side are tellable apart, which is the
+  // same reason settings are stored per program rather than globally.
+  el('program').textContent = state.program;
+
+  Inspector.wire((id) => gotoNodeById(id));
+  syncInspector();
+
+  // Rule 16's second defence, and the one a hand cannot forget: the list of controls is
+  // read out of the DOM, so markup and handlers cannot drift apart silently.
+  selfCheck();
+
   state.viewState = fitView(state.prepared, 35);
 
   state.deckgl = new Deck({
@@ -1008,6 +1111,147 @@ el('results').addEventListener('click', (ev) => {
   render();
 });
 
+/* ------------------------------------------------------------------ routing ---
+ *
+ * Design rule 16: **route from a table.** What was here was an `if`/`elif` chain ending
+ * in `fitView(...)`, so any `data-act` nobody had written a branch for silently snapped
+ * the camera and looked entirely deliberate -- the same shape as the eight menu items
+ * that rendered perfectly and did nothing. A table cannot fall through: an unknown action
+ * is an error with a name, and `selfCheck()` refuses to start quietly if the page draws a
+ * control this table has never heard of.
+ */
+
+const ACTIONS = {
+  bench: () => benchmark(),
+
+  clear: () => { clearSelection(state.prepared); render(); },
+
+  fit:  () => onViewStateChange({ viewState: fitView(state.prepared, state.viewState.rotationX) }),
+  top:  () => onViewStateChange({ viewState: fitView(state.prepared, 90) }),
+  tilt: () => onViewStateChange({ viewState: fitView(state.prepared, 35) }),
+
+  reset: () => {
+    const { settings, cleared } = Settings.resetSettings(state.program, state.settings);
+    state.settings = settings;
+    state.settings.diskOrder = defaultOrder(state.data);
+    state.picks = [];
+    applyLayout(state.prepared);
+    recomputeMembers(state.prepared);
+    buildSelectionGeometry(state.prepared);
+    paintNodes(state.prepared);
+    buildMenu(); syncControls(); applyPanels(); syncInspector();
+    // A reset that silently reverts everything leaves you guessing what was yours.
+    el('bench').textContent = cleared.length
+      ? `reset to defaults — cleared ${cleared.join(', ')}`
+      : 'already at defaults';
+    onViewStateChange({ viewState: fitView(state.prepared, 35) });
+  },
+
+  'rail-left':  () => toggleRail('left'),
+  'rail-right': () => toggleRail('right'),
+};
+
+/* The centre pane is a mode toggle over one shared selection, never three destinations:
+ * switching mode must not cost the reader the thing they were looking at. An unbuilt mode
+ * shows its own "not built" panel rather than borrowing the graph, which is the whole
+ * point of rule 16 -- a view that silently shows something else looks like it works. */
+const MODES = ['graph', 'table', 'document'];
+
+function setMode(name) {
+  if (!MODES.includes(name)) {
+    console.error('[dunneflow] no such centre mode:', name);
+    return;
+  }
+  state.mode = name;
+  document.querySelectorAll('.view').forEach((v) => {
+    v.hidden = v.dataset.view !== name;
+  });
+  document.querySelectorAll('#modes button').forEach((b) => {
+    b.setAttribute('aria-selected', String(b.dataset.mode === name));
+  });
+  state.settings.mode = name;
+  persist();
+  // deck.gl sizes itself to a container that was `hidden`; coming back needs a nudge.
+  if (name === 'graph' && state.deckgl) render();
+  verifyOneViewShowing(name);
+}
+
+/* Check what is *painted*, not what the DOM says.
+ *
+ * The DOM was right and the screen was wrong: `hidden` was set correctly on both other
+ * views while an author `display` rule cancelled it, so all three stacked and the topmost
+ * won. Reading `v.hidden` back agreed with itself and proved nothing. `offsetParent` is
+ * null only when something is genuinely not laid out, which is the question actually
+ * being asked.
+ *
+ * This is the shape of check design rule 16 asks for, one layer lower than the wiring:
+ * the control worked, the handler ran, the attribute flipped, and the reader still saw a
+ * button that did nothing. */
+function verifyOneViewShowing(name) {
+  const showing = [...document.querySelectorAll('.view')]
+    .filter((v) => v.offsetParent !== null || v === el('stage') && !v.hidden)
+    .map((v) => v.dataset.view);
+  if (showing.length === 1 && showing[0] === name) return;
+  const line = `mode "${name}" selected but ${showing.length} view(s) are on screen: `
+             + `${showing.join(', ') || 'none'}`;
+  console.error('[dunneflow] view check:', line);
+  const box = el('err');
+  if (box) {
+    box.hidden = false;
+    box.innerHTML = `<b>View check failed.</b> ${line}. A mode that flips its attribute `
+      + 'but changes nothing on screen looks exactly like one that is broken — because '
+      + 'it is.';
+  }
+}
+
+function toggleRail(side) {
+  const shell = el('shell');
+  const cls = side === 'left' ? 'no-left' : 'no-right';
+  shell.classList.toggle(cls);
+  state.settings.rails = {
+    left: !shell.classList.contains('no-left'),
+    right: !shell.classList.contains('no-right'),
+  };
+  persist();
+}
+
+function applyRails() {
+  const r = state.settings.rails || { left: true, right: true };
+  const shell = el('shell');
+  shell.classList.toggle('no-left', !r.left);
+  shell.classList.toggle('no-right', !r.right);
+}
+
+/* Every control the page draws must be listened for by something. The list is derived
+ * from the DOM rather than hand-kept, so it cannot drift out of step with the markup the
+ * way a written-down list does -- which is the half of rule 16 that a hand forgets. */
+function selfCheck() {
+  const missing = [];
+  document.querySelectorAll('[data-act]').forEach((n) => {
+    if (!(n.dataset.act in ACTIONS)) missing.push(`data-act="${n.dataset.act}"`);
+  });
+  document.querySelectorAll('[data-mode]').forEach((n) => {
+    if (!MODES.includes(n.dataset.mode)) missing.push(`data-mode="${n.dataset.mode}"`);
+  });
+  document.querySelectorAll('[data-panel]').forEach((n) => {
+    if (!(n.dataset.panel in state.settings.panels)) {
+      missing.push(`data-panel="${n.dataset.panel}"`);
+    }
+  });
+  if (missing.length) {
+    const line = `${missing.length} control(s) wired to nothing: ${missing.join(', ')}`;
+    console.error('[dunneflow] self-check:', line);
+    const box = el('err');
+    if (box) {
+      box.hidden = false;
+      box.innerHTML = `<b>Self-check failed.</b> ${line}. ` +
+        'A control that renders but does nothing looks exactly like one that works, ' +
+        'so this is shown rather than logged.';
+    }
+  }
+  return missing;
+}
+
 document.addEventListener('click', (ev) => {
   const head = ev.target.closest('[data-panel]');
   if (head) {
@@ -1017,29 +1261,19 @@ document.addEventListener('click', (ev) => {
     persist();
     return;
   }
-  const act = ev.target?.dataset?.act;
-  if (!act) return;
-  if (act === 'bench') return benchmark();
-  if (act === 'clear') { clearSelection(state.prepared); return render(); }
-  if (act === 'reset') {
-    const { settings, cleared } = Settings.resetSettings(state.program, state.settings);
-    state.settings = settings;
-    state.settings.diskOrder = defaultOrder(state.data);
-    state.picks = [];
-    applyLayout(state.prepared);
-    recomputeMembers(state.prepared);
-    buildSelectionGeometry(state.prepared);
-    paintNodes(state.prepared);
-    buildMenu(); syncControls(); applyPanels();
-    // A reset that silently reverts everything leaves you guessing what was yours.
-    el('bench').textContent = cleared.length
-      ? `reset to defaults — cleared ${cleared.join(', ')}`
-      : 'already at defaults';
-    onViewStateChange({ viewState: fitView(state.prepared, 35) });
+  const modeBtn = ev.target.closest('[data-mode]');
+  if (modeBtn) return setMode(modeBtn.dataset.mode);
+
+  const btn = ev.target.closest('[data-act]');
+  if (!btn) return;
+  const act = btn.dataset.act;
+  const fn = ACTIONS[act];
+  if (!fn) {
+    // Never a fallback. An action nobody handles is a defect, and it says so.
+    console.error('[dunneflow] no handler for action:', act);
     return;
   }
-  const tilt = act === 'top' ? 90 : act === 'tilt' ? 35 : state.viewState.rotationX;
-  onViewStateChange({ viewState: fitView(state.prepared, tilt) });
+  fn();
 });
 
 document.addEventListener('keydown', (ev) => {

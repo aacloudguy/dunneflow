@@ -3,84 +3,161 @@
 <title>DunneFlow</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <link rel="stylesheet" href="/static/style.css">
-<div id="stage"></div>
 
-<section id="panel-hud" class="panel left">
-  <header data-panel="hud"><span class="chev"></span>view</header>
-  <div class="body">
-    <div class="row"><b id="fps">–</b> fps<span id="mode" class="tag">still</span></div>
-    <div class="row" id="counts">loading…</div>
-    <div class="row muted" id="hint">drag orbit · scroll zoom</div>
-    <div class="row">
-      <button data-act="fit" title="frame the selection, or the whole stack (f)">snap to fit</button>
-      <button data-act="top">top-down</button>
-      <button data-act="tilt">tilt</button>
-      <button data-act="bench">benchmark</button>
-      <button data-act="clear" id="clear" hidden title="clear the selection (esc)">clear</button>
-    </div>
-    <div class="row" id="bench"></div>
-    <div class="row err" id="err" hidden></div>
-    <div class="row diag" id="diag"></div>
-  </div>
-</section>
+<!--
+  Three panes over one shared selection: navigator | centre | inspector.
 
-<section id="panel-settings" class="panel left">
-  <header data-panel="settings"><span class="chev"></span>settings</header>
-  <div class="body">
-    <div class="row">
-      <label for="size">node size</label>
-      <input id="size" type="range" min="0.4" max="14" step="0.2" value="1">
-      <span id="sizeval" class="muted">1.0×</span>
-    </div>
-    <div class="row">
-      <label for="spread">spread</label>
-      <input id="spread" type="range" min="0.05" max="2" step="0.05" value="0.35">
-      <span id="spreadval" class="muted">0.35×</span>
-    </div>
-    <div class="row">
-      <label for="filter">others</label>
-      <select id="filter"><option value="dim">dim</option><option value="hide">hide</option></select>
-      <label for="direction">follow</label>
-      <select id="direction">
-        <option value="both">both ways</option>
-        <option value="callers">callers</option>
-        <option value="callees">callees</option>
-      </select>
-    </div>
-    <div class="row">
-      <label for="colorby">colour by</label>
-      <select id="colorby"><option value="kind">kind</option><option value="disk">disk</option></select>
-      <label><input id="plates" type="checkbox"> <span class="muted">plates</span></label>
-    </div>
-    <div class="row">
-      <button data-act="reset" title="clear every stored setting for this program">reset to defaults</button>
-    </div>
-  </div>
-</section>
+  The centre is a *mode toggle*, not three destinations — graph, table and document all
+  show whatever is currently selected, so switching mode never loses your place. That is
+  the whole reason it is a toggle: a drill-down that replaces the view costs the reader
+  the thing they were looking at.
 
-<section id="panel-disks" class="panel right">
-  <header data-panel="disks"><span class="chev"></span>disks &amp; search</header>
-  <div class="body">
-    <div class="row">
-      <input id="q" type="search" placeholder="search names, modules, files, kinds…  ( / )">
+  Every control here carries `data-act` or `data-mode`, and a startup self-check asserts
+  something listens for each one. Eight of eleven menu items once rendered perfectly and
+  did nothing, because a control wired to nothing looks exactly like one that works.
+-->
+
+<header id="bar">
+  <span id="program" class="brand">DunneFlow</span>
+  <nav id="modes" role="tablist" aria-label="centre view">
+    <button data-mode="graph" role="tab" aria-selected="true">graph</button>
+    <button data-mode="table" role="tab" aria-selected="false">table</button>
+    <button data-mode="document" role="tab" aria-selected="false">document</button>
+  </nav>
+  <span id="crumb" class="muted"></span>
+  <span class="spacer"></span>
+  <button data-act="rail-left" title="show or hide the navigator">navigator</button>
+  <button data-act="rail-right" title="show or hide the inspector">inspector</button>
+</header>
+
+<main id="shell">
+
+  <!-- ── navigator ─────────────────────────────────────────────────────── -->
+  <aside id="rail-left" class="rail">
+
+    <section id="panel-hud" class="panel">
+      <header data-panel="hud"><span class="chev"></span>view</header>
+      <div class="body">
+        <div class="row"><b id="fps">–</b> fps<span id="mode" class="tag">still</span></div>
+        <div class="row" id="counts">loading…</div>
+        <div class="row muted" id="hint">drag orbit · scroll zoom</div>
+        <div class="row">
+          <button data-act="fit" title="frame the selection, or the whole stack (f)">snap to fit</button>
+          <button data-act="top">top-down</button>
+          <button data-act="tilt">tilt</button>
+          <button data-act="bench">benchmark</button>
+          <button data-act="clear" id="clear" hidden title="clear the selection (esc)">clear</button>
+        </div>
+        <div class="row" id="bench"></div>
+        <div class="row err" id="err" hidden></div>
+        <div class="row diag" id="diag"></div>
+      </div>
+    </section>
+
+    <section id="panel-settings" class="panel">
+      <header data-panel="settings"><span class="chev"></span>settings</header>
+      <div class="body">
+        <div class="row">
+          <label for="size">node size</label>
+          <input id="size" type="range" min="0.4" max="14" step="0.2" value="1">
+          <span id="sizeval" class="muted">1.0×</span>
+        </div>
+        <div class="row">
+          <label for="spread">spread</label>
+          <input id="spread" type="range" min="0.05" max="2" step="0.05" value="0.35">
+          <span id="spreadval" class="muted">0.35×</span>
+        </div>
+        <div class="row">
+          <label for="filter">others</label>
+          <select id="filter"><option value="dim">dim</option><option value="hide">hide</option></select>
+          <label for="direction">follow</label>
+          <select id="direction">
+            <option value="both">both ways</option>
+            <option value="callers">callers</option>
+            <option value="callees">callees</option>
+          </select>
+        </div>
+        <div class="row">
+          <label for="colorby">colour by</label>
+          <select id="colorby"><option value="kind">kind</option><option value="disk">disk</option></select>
+          <label><input id="plates" type="checkbox"> <span class="muted">plates</span></label>
+        </div>
+        <div class="row">
+          <button data-act="reset" title="clear every stored setting for this program">reset to defaults</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="panel-disks" class="panel grow">
+      <header data-panel="disks"><span class="chev"></span>disks &amp; search</header>
+      <div class="body">
+        <div class="row">
+          <input id="q" type="search" placeholder="search names, modules, files, kinds…  ( / )">
+        </div>
+        <div class="row muted" id="searchnote"></div>
+        <div id="results"></div>
+        <div class="row">
+          <label for="sort">sort</label>
+          <select id="sort">
+            <option value="nodes">by size</option>
+            <option value="name">by name</option>
+            <option value="kind">by kind</option>
+            <option value="manual">manual (drag)</option>
+          </select>
+          <span class="muted tiny">click toggles · pick two to see what crosses · drag reorders</span>
+        </div>
+        <div id="menu"></div>
+      </div>
+    </section>
+
+  </aside>
+
+  <!-- ── centre ────────────────────────────────────────────────────────── -->
+  <section id="centre">
+    <div id="stage" class="view" data-view="graph"></div>
+
+    <!--
+      Declared and empty, deliberately. A mode that silently showed the graph instead of
+      its own content is the exact failure design rule 16 was written from, so an
+      unbuilt mode says it is unbuilt rather than borrowing a view that works.
+    -->
+    <div id="view-table" class="view unbuilt" data-view="table" hidden>
+      <div class="notyet">
+        <h2>Table mode is not built yet.</h2>
+        <p>It is the accessible path beside the graph, not a fallback — a node graph
+           stops being meaningfully screen-reader navigable at around fifty nodes, and
+           this map draws fifteen thousand.</p>
+        <p class="muted">Nothing is being hidden from you here: the graph and the
+           inspector are showing everything this map currently knows how to display.</p>
+      </div>
     </div>
-    <div class="row muted" id="searchnote"></div>
-    <div id="results"></div>
-    <div class="row">
-      <label for="sort">sort</label>
-      <select id="sort">
-        <option value="nodes">by size</option>
-        <option value="name">by name</option>
-        <option value="kind">by kind</option>
-        <option value="manual">manual (drag)</option>
-      </select>
-      <span class="muted tiny">click toggles · pick two to see what crosses · drag reorders</span>
+
+    <div id="view-document" class="view unbuilt" data-view="document" hidden>
+      <div class="notyet">
+        <h2>Document mode is not built yet.</h2>
+        <p>It will show the prose that defines this program's words, with the file and
+           line each definition was quoted from.</p>
+        <p class="muted">Until then the fifteen rendered documents in the output
+           directory hold the same material.</p>
+      </div>
     </div>
-    <div id="menu"></div>
-  </div>
-</section>
+  </section>
+
+  <!-- ── inspector ─────────────────────────────────────────────────────── -->
+  <aside id="rail-right" class="rail">
+    <section id="panel-inspector" class="panel grow">
+      <header data-panel="inspector"><span class="chev"></span>inspector</header>
+      <div class="body" id="inspector">
+        <p class="muted empty">Nothing selected. Click a node, or pick a disk from the
+           navigator.</p>
+      </div>
+    </section>
+  </aside>
+
+</main>
 
 <script src="/vendor/deck.gl.min.js"></script>
 <script src="/static/settings.js"></script>
 <script src="/static/shading.js"></script>
+<script src="/static/inspector.js"></script>
 <script src="/static/app.js"></script>

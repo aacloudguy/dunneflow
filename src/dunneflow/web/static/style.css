@@ -1,4 +1,13 @@
-/* Spike chrome. The ratified token stylesheet lands with the shell; this stays small. */
+/* The shell: a header over three panes, and one root scale that moves all of it.
+ *
+ * Design rule 3: everything dimensional is stored in `rem`, never `px`. One multiplier on
+ * the root font size must resize the whole surface together -- type, rail widths, row
+ * heights, padding, icons. A width in pixels is a width the multiplier cannot reach, and
+ * the layout then breaks for everyone who is not its author.
+ *
+ * The exceptions are deliberate and are all sub-pixel hairlines: a 1px border is a device
+ * pixel by intent, and scaling it produces a blurry line rather than a bigger one.
+ */
 :root {
   --ground: #0b1119;
   --surface: #161e29;
@@ -8,84 +17,158 @@
   --muted: #93a1b3;
   --accent: #2dd4bf;
   --external: #c4b5fd;
-}
-* { box-sizing: border-box; }
-html, body { margin: 0; height: 100%; background: var(--ground); color: var(--text);
-  font: 13px/1.45 ui-sans-serif, -apple-system, "Segoe UI", sans-serif; overflow: hidden; }
-#stage { position: fixed; inset: 0; }
+  --warn: #fbbf24;
+  --bad: #f87171;
 
-/* ── Panels ──────────────────────────────────────────────────────────────────
-   Each collapses to its own header so the map gets the whole screen when the
-   controls are not wanted. Collapse state is remembered per program, like every
-   other arrangement the reader makes.                                        */
-.panel {
-  position: fixed; z-index: 10;
-  background: color-mix(in srgb, var(--surface) 93%, transparent);
-  border: 1px solid var(--border); border-radius: .5rem;
-  backdrop-filter: blur(6px);
-  max-height: calc(100vh - 1.4rem);
-  display: flex; flex-direction: column;
+  --rail-left: 27rem;
+  --rail-right: 30rem;
+  --bar-height: 2.2rem;
+  --gap: 0.5rem;
 }
-.panel.left { left: .7rem; width: 27rem; max-width: 44vw; }
-.panel.right { right: .7rem; top: .7rem; width: 34rem; max-width: 42vw; }
-#panel-hud { top: .7rem; }
-#panel-settings { top: 0; }              /* placed by script-free flow below the HUD */
+
+* { box-sizing: border-box; }
+
+/* `hidden` must actually hide.
+ *
+ * The attribute's `display: none` comes from the user-agent stylesheet, and *any* author
+ * rule setting `display` beats it -- specificity never enters into it, author styles
+ * simply win. So `.unbuilt { display: grid }` quietly cancelled `hidden` on the table and
+ * document views, and because all three views are absolutely positioned over each other,
+ * the last one in the document painted on top of the canvas. The graph was drawing at
+ * 60 fps the whole time, underneath a panel saying "not built yet", and the mode buttons
+ * flipped `hidden` and `aria-selected` correctly while nothing on screen ever changed.
+ *
+ * A control that renders and appears to do nothing, one layer below where design rule 16
+ * was looking: the wiring was right and the paint was wrong. `!important` is the fix that
+ * fits the cause -- the UA rule is what should have won. */
+[hidden] { display: none !important; }
+html, body {
+  margin: 0; height: 100%; background: var(--ground); color: var(--text);
+  font: 1rem/1.45 ui-sans-serif, -apple-system, "Segoe UI", sans-serif;
+  overflow: hidden;
+}
+html { font-size: 13px; }              /* the one place a pixel is allowed: the root scale */
+
+/* ── The shell ─────────────────────────────────────────────────────────────── */
+
+#bar {
+  position: fixed; inset: 0 0 auto 0; height: var(--bar-height); z-index: 20;
+  display: flex; align-items: center; gap: var(--gap); padding: 0 .6rem;
+  background: var(--surface); border-bottom: 1px solid var(--border);
+}
+#bar .brand { font-weight: 600; letter-spacing: .02em; color: var(--accent); }
+#bar .spacer { flex: 1; }
+
+#modes { display: flex; gap: .15rem; }
+#modes button { border-radius: .3rem; padding: .1rem .55rem; }
+#modes button[aria-selected="true"] {
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  border-color: var(--accent); color: var(--accent);
+}
+
+#shell {
+  position: fixed; inset: var(--bar-height) 0 0 0;
+  display: grid; gap: var(--gap); padding: var(--gap);
+  grid-template-columns: var(--rail-left) minmax(0, 1fr) var(--rail-right);
+  align-items: stretch;
+}
+/* Hiding a rail collapses its column rather than overlaying the centre, so the map
+   actually gains the room. Both rails off is the reading-the-graph-alone case. */
+#shell.no-left  { grid-template-columns: 0 minmax(0, 1fr) var(--rail-right); }
+#shell.no-right { grid-template-columns: var(--rail-left) minmax(0, 1fr) 0; }
+#shell.no-left.no-right { grid-template-columns: 0 minmax(0, 1fr) 0; }
+#shell.no-left  > #rail-left,
+#shell.no-right > #rail-right { display: none; }
+
+.rail { display: flex; flex-direction: column; gap: var(--gap); min-height: 0; }
+
+#centre { position: relative; min-width: 0; min-height: 0; }
+.view { position: absolute; inset: 0; border-radius: .5rem; overflow: hidden; }
+#stage { background: var(--ground); }
+
+.unbuilt {
+  background: var(--surface); border: 1px solid var(--border);
+  display: grid; place-items: center; overflow: auto;
+}
+.notyet { max-width: 34rem; padding: 2rem; }
+.notyet h2 { margin: 0 0 .6rem; font-size: 1.15rem; color: var(--warn); }
+.notyet p { margin: .5rem 0; line-height: 1.6; }
+
+/* ── Panels ────────────────────────────────────────────────────────────────
+   Each collapses to its own header. Collapse state is remembered per program,
+   like every other arrangement the reader makes.                            */
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--border); border-radius: .5rem;
+  display: flex; flex-direction: column; min-height: 0;
+}
+.panel.grow { flex: 1; min-height: 0; }
 .panel > header {
   display: flex; align-items: center; gap: .4rem; cursor: pointer; user-select: none;
-  padding: .4rem .6rem; font-size: 11px; letter-spacing: .04em; text-transform: uppercase;
+  padding: .4rem .6rem; font-size: .85rem; letter-spacing: .04em; text-transform: uppercase;
   color: var(--muted); border-bottom: 1px solid var(--border);
 }
 .panel > header:hover { color: var(--accent); }
-.panel .chev { width: 0; height: 0; border-left: 5px solid currentColor;
-  border-top: 4px solid transparent; border-bottom: 4px solid transparent;
-  transform: rotate(90deg); transition: transform .12s; }
+.panel .chev {
+  width: 0; height: 0; border-left: .38rem solid currentColor;
+  border-top: .3rem solid transparent; border-bottom: .3rem solid transparent;
+  transform: rotate(90deg); transition: transform .12s;
+}
 .panel.closed .chev { transform: rotate(0deg); }
 .panel.closed > .body { display: none; }
-.panel.closed { border-radius: .4rem; }
-.panel > .body { padding: .5rem .6rem; overflow: auto; }
+.panel.closed { flex: none; }
+.panel > .body { padding: .5rem .6rem; overflow: auto; min-height: 0; }
 
-/* The left column stacks: the settings panel sits under whatever height the HUD
-   currently has, so collapsing one moves the other rather than overlapping it. */
-.panel.left { position: fixed; }
-#panel-hud { top: .7rem; }
-#panel-settings { top: auto; bottom: .7rem; }
+/* ── Common bits ───────────────────────────────────────────────────────────── */
 
 .row { display: flex; gap: .5rem; align-items: center; margin: .18rem 0; flex-wrap: wrap; }
 .row > label { color: var(--muted); white-space: nowrap; }
 b#fps { font-size: 1.15rem; color: var(--accent); font-variant-numeric: tabular-nums; }
 .muted { color: var(--muted); }
-.tiny { font-size: 10px; }
-.tag { margin-left: auto; color: var(--muted); font-size: .75rem;
-  border: 1px solid var(--border); border-radius: .25rem; padding: 0 .35rem; }
-button { font: inherit; color: var(--text); background: transparent;
+.tiny { font-size: .8rem; }
+.tag {
+  margin-left: auto; color: var(--muted); font-size: .75rem;
+  border: 1px solid var(--border); border-radius: .25rem; padding: 0 .35rem;
+}
+button {
+  font: inherit; color: var(--text); background: transparent;
   border: 1px solid var(--border); border-radius: .3rem; padding: .18rem .45rem;
-  cursor: pointer; }
+  cursor: pointer;
+}
 button:hover { border-color: var(--accent); color: var(--accent); }
-select, input[type=search] { font: inherit; color: var(--text); background: var(--raised);
-  border: 1px solid var(--border); border-radius: .3rem; padding: .15rem .3rem; }
+select, input[type=search] {
+  font: inherit; color: var(--text); background: var(--raised);
+  border: 1px solid var(--border); border-radius: .3rem; padding: .15rem .3rem;
+}
 input[type=search] { flex: 1; min-width: 8rem; }
 input[type=range] { flex: 1; min-width: 6rem; accent-color: var(--accent); }
 label { display: flex; align-items: center; gap: .3rem; }
 #bench:empty { display: none; }
 #bench { font-variant-numeric: tabular-nums; color: var(--muted); }
-#diag { display: block; font: 11px/1.5 ui-monospace, Menlo, monospace; color: var(--muted);
-  border-top: 1px solid var(--border); margin-top: .4rem; padding-top: .4rem; }
-#err { display: block; color: #f87171; font-size: 12px; }
-#err code { background: var(--ground); border: 1px solid var(--border);
-  border-radius: .2rem; padding: 0 .25rem; font-size: 11px; }
+#diag {
+  display: block; font: .85rem/1.5 ui-monospace, Menlo, monospace; color: var(--muted);
+  border-top: 1px solid var(--border); margin-top: .4rem; padding-top: .4rem;
+}
+#err { display: block; color: var(--bad); font-size: .92rem; }
+#err code {
+  background: var(--ground); border: 1px solid var(--border);
+  border-radius: .2rem; padding: 0 .25rem; font-size: .85rem;
+}
 #err b { color: #fca5a5; }
 
-/* ── Search results ─────────────────────────────────────────────────────── */
+/* ── Search results ────────────────────────────────────────────────────────── */
 #results { max-height: 11rem; overflow: auto; margin: .2rem 0; }
 #results:empty { display: none; }
-.hit { display: flex; justify-content: space-between; gap: .5rem; width: 100%;
+.hit {
+  display: flex; justify-content: space-between; gap: .5rem; width: 100%;
   border: 0; background: none; text-align: left; padding: .08rem .3rem;
-  border-radius: .2rem; font: 11px/1.5 ui-monospace, Menlo, monospace; }
+  border-radius: .2rem; font: .85rem/1.5 ui-monospace, Menlo, monospace;
+}
 .hit .ct { color: var(--muted); }
 .hit:hover { background: color-mix(in srgb, var(--accent) 16%, transparent); }
 .hit.on { background: color-mix(in srgb, var(--accent) 30%, transparent); }
 
-/* ── The disk menu ───────────────────────────────────────────────────────────
+/* ── The disk menu ─────────────────────────────────────────────────────────
    Three columns, interleaved a fraction of a row apart so rows nest rather than
    share baselines — fifty-one entries in a third of the height one column needs.
    With edges hidden until something is chosen, this is the way into the graph
@@ -98,20 +181,99 @@ label { display: flex; align-items: center; gap: .3rem; }
 #menu .leg:nth-child(3n+2) { transform: translateY(0.42em); }
 #menu .leg:nth-child(3n+3) { transform: translateY(0.84em); }
 
-.leg { display: flex; align-items: center; gap: .3rem; padding: .04rem .2rem;
-  border-radius: .2rem; font: 11px/1.5 ui-monospace, Menlo, monospace;
-  cursor: grab; }
-.leg .nm { flex: 1; border: 0; background: none; color: var(--text); text-align: left;
-  font: inherit; padding: 0; cursor: pointer; overflow: hidden; text-overflow: ellipsis; }
+.leg {
+  display: flex; align-items: center; gap: .3rem; padding: .04rem .2rem;
+  border-radius: .2rem; font: .85rem/1.5 ui-monospace, Menlo, monospace; cursor: grab;
+}
+.leg .nm {
+  flex: 1; border: 0; background: none; color: var(--text); text-align: left;
+  font: inherit; padding: 0; cursor: pointer; overflow: hidden; text-overflow: ellipsis;
+}
 .leg .ct { color: var(--muted); font-variant-numeric: tabular-nums; }
 .leg.external .nm { color: var(--external); }
-.leg .sw { width: .72rem; height: .72rem; padding: 0; border: 1px solid var(--border);
-  border-radius: 2px; background: none; cursor: pointer; flex: none;
-  -webkit-appearance: none; appearance: none; }
+.leg .sw {
+  width: .72rem; height: .72rem; padding: 0; border: 1px solid var(--border);
+  border-radius: .12rem; background: none; cursor: pointer; flex: none;
+  -webkit-appearance: none; appearance: none;
+}
 .leg .sw::-webkit-color-swatch-wrapper { padding: 0; }
-.leg .sw::-webkit-color-swatch { border: 0; border-radius: 1px; }
+.leg .sw::-webkit-color-swatch { border: 0; border-radius: .08rem; }
 .leg:hover { background: color-mix(in srgb, var(--accent) 14%, transparent); }
-.leg.on { background: color-mix(in srgb, var(--accent) 30%, transparent);
-  outline: 1px solid var(--accent); }
+.leg.on {
+  background: color-mix(in srgb, var(--accent) 30%, transparent);
+  outline: 1px solid var(--accent);
+}
 .leg.dragging { opacity: .45; }
 .leg.over { outline: 1px dashed var(--accent); }
+
+/* ── The inspector ─────────────────────────────────────────────────────────
+   Flow-first: IN, OUT, TOUCHES, GOVERNANCE, then the source. The signature is
+   demoted into the params view, because what moves through a routine is the
+   subject and its type annotations are not.                                 */
+
+#inspector .empty { padding: .6rem .2rem; }
+.ins-head { border-bottom: 1px solid var(--border); padding-bottom: .4rem; margin-bottom: .5rem; }
+.ins-head h2 {
+  margin: 0; font: 600 1.15rem/1.3 ui-monospace, Menlo, monospace; word-break: break-word;
+}
+.ins-head .sub { color: var(--muted); font-size: .88rem; word-break: break-all; }
+.ins-badge {
+  display: inline-block; font-size: .75rem; text-transform: uppercase;
+  letter-spacing: .04em; border: 1px solid var(--border); border-radius: .25rem;
+  padding: 0 .3rem; margin-right: .3rem; color: var(--muted);
+}
+.ins-badge.outside { color: var(--external); border-color: var(--external); }
+
+.sect { margin: .7rem 0 0; }
+.sect > h3 {
+  margin: 0 0 .25rem; font-size: .78rem; letter-spacing: .07em; text-transform: uppercase;
+  color: var(--muted); display: flex; align-items: baseline; gap: .4rem;
+}
+.sect > h3 .n { color: var(--text); font-variant-numeric: tabular-nums; }
+.sect.none > h3 { opacity: .55; }
+
+.item {
+  display: block; width: 100%; text-align: left; border: 0; background: none;
+  color: var(--text); font: .85rem/1.5 ui-monospace, Menlo, monospace;
+  padding: .1rem .3rem; border-radius: .2rem; border-left: .15rem solid transparent;
+}
+button.item { cursor: pointer; }
+button.item:hover { background: color-mix(in srgb, var(--accent) 16%, transparent); }
+.item .where { color: var(--muted); }
+/* Design rule 5: confidence is shape, never colour. A dashed left edge is INFERRED,
+   solid is CERTAIN — the same channel the graph uses for its edges, so the two views
+   cannot disagree about how sure the tool is. */
+.item.certain  { border-left-style: solid;  border-left-color: var(--border); }
+.item.inferred { border-left-style: dashed; border-left-color: var(--border); }
+/* Outside the program: its own mark, and deliberately neither solid nor dashed. See
+   `callRow` in inspector.js -- an external is not an edge we are unsure of. */
+.item.outside { border-left-style: dotted; border-left-color: var(--external); }
+.item.outside .nm { color: var(--external); }
+.item.ambiguous .nm { color: var(--warn); }
+
+.kv { display: grid; grid-template-columns: auto 1fr; gap: 0 .5rem; font-size: .88rem; }
+.kv dt { color: var(--muted); }
+.kv dd { margin: 0; font-family: ui-monospace, Menlo, monospace; word-break: break-word; }
+
+.note {
+  font-size: .88rem; line-height: 1.5; color: var(--text);
+  border-left: .15rem solid var(--border); padding: .1rem .5rem; margin: .2rem 0;
+}
+.note .ln { color: var(--muted); font-family: ui-monospace, Menlo, monospace; }
+.ann { display: inline-block; color: var(--warn); font-family: ui-monospace, Menlo, monospace; }
+
+/* Source. Rule 13: provenance must open — a quoted claim proves itself with a file and
+   line the reader can read in context, with the thing itself highlighted. */
+.src { margin: .3rem 0 0; border: 1px solid var(--border); border-radius: .3rem; overflow: auto; }
+.src table { border-collapse: collapse; width: 100%; font: .85rem/1.5 ui-monospace, Menlo, monospace; }
+.src td { padding: 0 .4rem; white-space: pre; vertical-align: top; }
+.src td.n {
+  color: var(--muted); text-align: right; user-select: none;
+  border-right: 1px solid var(--border); width: 1%;
+}
+.src tr.focus { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.src tr.focus td.n { color: var(--accent); }
+.why {
+  font-size: .88rem; color: var(--muted); font-style: italic;
+  border-left: .15rem solid var(--border); padding-left: .5rem; margin: .3rem 0;
+}

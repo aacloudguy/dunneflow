@@ -29,8 +29,10 @@ const DEFAULTS = {
   nodeSize: 1,            // multiplier: 1 = the tiny dots the 60 fps figure was taken on
   spread: 0.35,
   showPlates: false,
-  panels: { hud: true, disks: true, settings: false },
+  panels: { hud: true, disks: true, settings: false, inspector: true },
   picks: [],              // the selection itself, so a session survives a reload
+  mode: 'graph',          // which centre view: 'graph' | 'table' | 'document'
+  rails: { left: true, right: true },
 };
 
 function storageKey(program) {
@@ -65,6 +67,7 @@ function loadSettings(program) {
   for (const k of Object.keys(out)) {
     if (!(k in saved)) continue;
     if (k === 'panels') Object.assign(out.panels, saved.panels || {});
+    else if (k === 'rails') Object.assign(out.rails, saved.rails || {});
     else out[k] = saved[k];
   }
   return out;
@@ -89,7 +92,7 @@ function resetSettings(program, current) {
     diskOrder: 'disk order', diskColors: 'disk colours', colorBy: 'colour source',
     sortMode: 'sort', filterMode: 'filter mode', direction: 'direction',
     nodeSize: 'node size', spread: 'spread', picks: 'selection',
-    showPlates: 'disk plates',
+    showPlates: 'disk plates', mode: 'centre view', rails: 'panel layout',
   };
   for (const [k, label] of Object.entries(named)) {
     if (JSON.stringify(current[k]) !== JSON.stringify(base[k])) cleared.push(label);

@@ -27,6 +27,8 @@ from .resolve.glossary import bind
 from .resolve.mirror import BANDS as MIRROR_BANDS
 from .resolve.mirror import measure as measure_mirror
 from .resolve.naming import measure
+from .sourcedb import SourceStore
+from .sourcedb import capture as capture_source
 from .store import StaleGraphError, Store
 from .walk import analyze_docs_tree, analyze_tree
 
@@ -130,6 +132,28 @@ def cmd_analyze(args: argparse.Namespace) -> int:
             f"({clistats.commands_attached} in a tree), "
             f"{clistats.mounts_resolved}/{clistats.mounts_total} mounts"
         )
+
+    # The source sidecar. Driven by the hashes the graph just recorded rather than by a
+    # second walk of the tree, so a file whose body is already held is never opened: a
+    # re-analysis with nothing changed reads no source at all. Content-addressed, so this
+    # is also the store the temporal layers will be built on.
+    src_stats = None
+    if not args.no_source:
+        source = SourceStore(out_dir / "source.db")
+        source.set_meta("program", program)
+        source.set_meta("source_root", str(source_root))
+        src_stats = capture_source(store.known_hashes(), source,
+                                   langs=store.known_langs())
+        sc = source.counts()
+        if not args.quiet:
+            _emit(
+                f"source: {sc['blobs']:,} bodies for {sc['paths']:,} paths "
+                f"({sc['stored'] / 1e6:.1f} MB stored, {sc['bytes'] / 1e6:.1f} MB of "
+                f"source) — {src_stats['stored']:,} read, {src_stats['cached']:,} "
+                f"already held"
+                + (f", {src_stats['missing']:,} unreadable" if src_stats["missing"] else "")
+            )
+        source.close()
 
     if not args.no_render:
         t2 = time.perf_counter()
@@ -473,6 +497,8 @@ def build_parser() -> argparse.ArgumentParser:
     a.add_argument("--no-docs", action="store_true", help="skip documentation entirely")
     a.add_argument("--recheck-docs", action="store_true",
                    help="hash every document rather than trusting its modification time")
+    a.add_argument("--no-source", action="store_true",
+                   help="do not keep a copy of the source beside the map")
     a.add_argument("--quiet", action="store_true")
     a.set_defaults(func=cmd_analyze)
 

@@ -26,8 +26,11 @@ from functools import partial
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
+from urllib.parse import parse_qs
 
+from ..sourcedb import SourceStore
 from ..store import Store
+from .detail import describe
 from .graph import GraphModel, build
 from .layout import structural
 
@@ -133,36 +136,142 @@ def columnar(model: GraphModel) -> dict[str, Any]:
     }
 
 
+class _Live:
+    """The read-only stores the dashboard queries while it is open.
+
+    One sqlite connection per store, guarded by a lock. `ThreadingHTTPServer` hands each
+    request to its own thread and a sqlite connection refuses to be used from a thread it
+    was not created on, so the choice is a connection per thread or a lock -- and for a
+    reading tool with one reader, contention is not a thing that happens. The lock is the
+    smaller of the two mistakes to have made.
+
+    Both stores are opened `writable=False`. Rule 20: serving may refuse, it may never
+    repair, and it must never be able to damage the map it came to show.
+    """
+
+    def __init__(self, graph_db: Path, source_db: Path) -> None:
+        self.lock = threading.Lock()
+        self.store = Store(graph_db, writable=False, shared=True)
+        # A sidecar is optional by design -- `--no-source`, or a map handed over without
+        # it. Absent is a state the inspector states plainly, never one it hides.
+        self.source: SourceStore | None = None
+        if source_db.exists():
+            try:
+                self.source = SourceStore(source_db, writable=False, shared=True)
+            except (ValueError, OSError):
+                self.source = None
+
+    def close(self) -> None:
+        self.store.close()
+        if self.source is not None:
+            self.source.close()
+
+
 class _Handler(BaseHTTPRequestHandler):
-    """Static files and one JSON endpoint. No routing framework, no state."""
+    """Static files and the JSON endpoints, routed from a table.
+
+    A table rather than an `if`/`elif` chain, because design rule 16 was written after
+    eight of eleven controls silently did the wrong thing: a chain ends in a fallback,
+    and a fallback that looks deliberate is indistinguishable from a route that works.
+    An unknown path here fails loudly and by name.
+    """
 
     server_version = "DunneFlow"
 
-    def __init__(self, *args: Any, payload: dict[str, Any], **kw: Any) -> None:
+    def __init__(self, *args: Any, payload: dict[str, Any], live: _Live,
+                 **kw: Any) -> None:
         self._payload = payload
+        self._live = live
         super().__init__(*args, **kw)
 
     def log_message(self, fmt: str, *args: Any) -> None:
         return                                    # a reading tool is not a web log
 
+    # -- the table --------------------------------------------------------- #
+
+    def _r_index(self, q: dict[str, list[str]]) -> None:
+        self._file(STATIC / "index.html")
+
+    def _r_graph(self, q: dict[str, list[str]]) -> None:
+        self._json(self._payload)
+
+    def _r_node(self, q: dict[str, list[str]]) -> None:
+        """Everything the inspector shows about one node."""
+        node_id = (q.get("id") or [""])[0]
+        if not node_id:
+            self._json({"found": False, "reason": "no id asked for"})
+            return
+        with self._live.lock:
+            body = describe(self._live.store, node_id, self._live.source)
+        self._json(body)
+
+    def _r_source(self, q: dict[str, list[str]]) -> None:
+        """A span of one file, straight out of the sidecar.
+
+        Separate from `/api/node` because the inspector opens a definition first and the
+        surrounding file only if asked. Sending a whole file with every selection would
+        put a megabyte behind every click for a view most clicks never open.
+        """
+        path = (q.get("path") or [""])[0]
+        if not path:
+            self._json({"available": False, "reason": "no path asked for"})
+            return
+        if self._live.source is None:
+            self._json({"available": False, "file": path,
+                        "reason": "no source sidecar beside this map"})
+            return
+        try:
+            first = int((q.get("first") or ["1"])[0])
+            last = int((q.get("last") or ["0"])[0])
+        except ValueError:
+            self._json({"available": False, "file": path,
+                        "reason": "line numbers must be numbers"})
+            return
+        with self._live.lock:
+            if last <= 0:
+                whole = self._live.source.text(path)
+                lines = list(enumerate((whole or "").split("\n"), 1)) if whole else []
+            else:
+                lines = self._live.source.lines(path, first, last)
+        if not lines:
+            self._json({"available": False, "file": path,
+                        "reason": "the sidecar does not hold this file"})
+            return
+        self._json({"available": True, "file": path,
+                    "first": lines[0][0], "last": lines[-1][0],
+                    "lines": [{"n": n, "text": t} for n, t in lines]})
+
+    def _r_favicon(self, q: dict[str, list[str]]) -> None:
+        # Browsers always ask. Answering "nothing here" is quieter than a 404 in
+        # everyone's console.
+        self.send_response(204)
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
+    ROUTES: dict[str, str] = {
+        "/": "_r_index",
+        "/index.html": "_r_index",
+        "/api/graph": "_r_graph",
+        "/api/node": "_r_node",
+        "/api/source": "_r_source",
+        "/favicon.ico": "_r_favicon",
+    }
+
+    # Served directories, checked in order. Kept beside the route table rather than
+    # inside the dispatch so both are readable as one list of what this server answers.
+    TREES: tuple[tuple[str, Path], ...] = (("/static/", STATIC), ("/vendor/", VENDOR))
+
     def do_GET(self) -> None:                     # noqa: N802  (stdlib's spelling)
-        path = self.path.split("?", 1)[0]
-        if path in ("/", "/index.html"):
-            self._file(STATIC / "index.html")
-        elif path == "/api/graph":
-            self._json(self._payload)
-        elif path.startswith("/static/"):
-            self._file(STATIC / path[len("/static/"):])
-        elif path == "/favicon.ico":
-            # Browsers always ask. Answering "nothing here" is quieter than a 404 in
-            # everyone's console.
-            self.send_response(204)
-            self.send_header("Content-Length", "0")
-            self.end_headers()
-        elif path.startswith("/vendor/"):
-            self._file(VENDOR / path[len("/vendor/"):])
-        else:
-            self.send_error(404)
+        raw, _, query = self.path.partition("?")
+        handler = self.ROUTES.get(raw)
+        if handler is not None:
+            getattr(self, handler)(parse_qs(query))
+            return
+        for prefix, root in self.TREES:
+            if raw.startswith(prefix):
+                self._file(root / raw[len(prefix):])
+                return
+        self.send_error(404, f"no route for {raw}")
 
     def _json(self, obj: dict[str, Any]) -> None:
         body = json.dumps(obj, separators=(",", ":")).encode("utf-8")
@@ -212,12 +321,9 @@ def serve(out_dir: Path, *, port: int = 8787, open_browser: bool = True,
     if not graph_db.exists():
         raise FileNotFoundError(f"no graph at {graph_db} -- run `dunneflow analyze` first")
 
-    store = Store(graph_db, writable=False)
-    try:
-        model = build(store)
-        payload = columnar(model)
-    finally:
-        store.close()
+    live = _Live(graph_db, out_dir / "source.db")
+    model = build(live.store)
+    payload = columnar(model)
 
     # Named so the browser can key stored settings per program. A disk order and a set of
     # colours worked out for one codebase mean nothing in another, and silently applying
@@ -232,7 +338,7 @@ def serve(out_dir: Path, *, port: int = 8787, open_browser: bool = True,
          f"{s['edges']:,} edges, {s['shadows']:,} shadows for placement only")
 
     port = _free_port(port)
-    handler = partial(_Handler, payload=payload)
+    handler = partial(_Handler, payload=payload, live=live)
     httpd = ThreadingHTTPServer(("127.0.0.1", port), handler)
     url = f"http://127.0.0.1:{port}/"
     emit(f"serving {url}  (ctrl-c to stop)")
@@ -244,3 +350,4 @@ def serve(out_dir: Path, *, port: int = 8787, open_browser: bool = True,
         emit("stopped")
     finally:
         httpd.server_close()
+        live.close()

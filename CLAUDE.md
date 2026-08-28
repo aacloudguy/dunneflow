@@ -75,16 +75,31 @@ collapses to a reach of 1 or 2, a registration idiom is being missed.
 | Orientation query (touches / impact) | < 1 s |
 | Peak memory | < 1 GB, flat as file count grows |
 
-The interactive map (`dunneflow serve`), measured on Mensores: 51 disks, 9,719 nodes plus
-5,272 shadows = **14,991 drawn**, 13,277 edges.
+The interactive map (`dunneflow serve`), measured on Mensores: 52 disks, largest 959,
+**9,874 nodes drawn**, 13,935 edges in the model, plus 5,727 shadows that are *never*
+drawn — they are placement devices only (rule 23). An earlier version of this table read
+"14,991 drawn" by counting the shadows; that number was already wrong when shadows stopped
+being drawn, and it overstated the picture by half.
 
 | Measure | Budget | Measured 2026-08-27, Apple M1 / Chrome Metal |
 |---|---|---|
 | Payload build, server side | < 2 s | ~0.03 s |
 | First paint in the browser | < 2 s | 0.1 s |
-| Sustained fps, six-second orbit | >= 55 median | **60 median, 60 worst — no frames dropped** |
+| Sustained fps, six-second orbit, dots | >= 55 median | **60 median, 60 worst — no frames dropped** |
+| …spheres at full size (14×) | >= 55 median | **60 median, 60 worst — no frames dropped** |
+| …spheres at 14× plus 4,253 edges | >= 55 median | **60 median, 60 worst — no frames dropped** |
 
-60 is the vsync ceiling, so that row states a floor, not a capacity: nothing was dropped
+The last two were taken 2026-08-27 in the second session, and the third one could not have
+been taken before it: the orbit set the moving flag, which stripped the edges, so the
+benchmark measured nodes only while printing an edge count beside the number (rule 24).
+The edge run is eight plates selected — `disceptator`, `STDIO`, `quaestor`, `_internal`,
+`storage`, `cli`, `governance`, `DATABASE` — giving 2,199 within-plate links and 2,054
+crossings, with both layers confirmed present in the frame.
+
+The sphere threshold (2.2×) was set by judgment and is now set by evidence: full size costs
+nothing measurable, so the ceiling is a look rather than a budget.
+
+60 is the vsync ceiling, so these rows state a floor, not a capacity: nothing was dropped
 and the headroom above it is unmeasured. Read it as "never missed a frame", never as a
 score. The benchmark says so in the readout for the same reason.
 
@@ -338,6 +353,45 @@ These each came from a false result on real code. Keep them.
 
     This was missing for a whole session and the stack looked fine without it, which is
     the warning. Plates full of dots are a plausible picture of nothing much.
+
+24. **A measurement must measure the thing it names.** The orbit benchmark drove the
+    camera every frame, which set the moving flag, which stripped the edges -- so it
+    measured nodes only, while the readout printed `· 4,963 edges` beside the number
+    because a selection existed. A claim about geometry that was never drawn. This is
+    rule 13 in a renderer's clothing: the query must return what is printed beside it,
+    and a benchmark's "query" is the frame it actually submitted. The override is scoped
+    to the two link layers so the run isolates edge cost rather than also pulling in the
+    collision-filtered labels -- measuring more than you name is the same defect
+    inverted.
+
+25. **The one store that is not derived must never be discarded.** Rule 12 says a cached
+    fact is valid only if the source and the tool that read it are unchanged, so every
+    store here is dropped when the extractor fingerprint moves. `source.db` is the
+    exception and the reasoning inverts cleanly: it holds the file bodies themselves, no
+    rule was applied to them, so no rule change can make them wrong. Dropping it would
+    throw away the one artefact that cannot be rebuilt once the source tree has moved
+    on -- which is precisely what the temporal layers exist to hold. It carries no
+    staleness check at all, and a test asserts the module contains no `DROP TABLE`,
+    because the defect this guards against is a future edit rather than a present bug.
+    Rule 20 said a read may refuse but never repair; this says a *store* may be refused
+    but never repaired away.
+
+26. **External is not inferred.** Every call that did not resolve to a local routine is
+    stored `INFERRED` -- 23,829 of Mensores' 30,209. But design rule 5 spends the dashed
+    edge on *we are not sure this call exists*, and that is not the claim: we are certain
+    the call happens and simply cannot see the other end. Drawing the two the same way
+    blurs exactly what rule 6 says never to blur, so an external carries its own mark and
+    no confidence shape at all. Found by noticing that a routine's inspector showed 22
+    inferred calls and 22 external ones, and that the numbers were equal for a reason.
+
+27. **A marker counts only where it touches.** `#:` is Sphinx's doc-comment marker and
+    its colon is syntax; `# :mod:\`x\`` is an ordinary comment whose text legitimately
+    begins with a reStructuredText role. Stripping only `#` left 1,698 comments reading
+    `": Keychain service name"` and 323 constants carrying their WHY through a stray
+    colon, while stripping any leading colon would have eaten the role -- the same
+    shortening-at-ingest as the tag-stripper that ate `<role>`. The test is position, not
+    presence, which is rule 5 stated once more: a marker must sit at an edge. Fixing it
+    moved 1,698 to 62, and the 62 that remain are exactly the roles.
 
 ## Anomalies: the discipline
 

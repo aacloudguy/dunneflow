@@ -354,7 +354,8 @@ class StaleGraphError(RuntimeError):
 class Store:
     """A connection to one analysed program's graph."""
 
-    def __init__(self, path: Path | str, *, writable: bool = True) -> None:
+    def __init__(self, path: Path | str, *, writable: bool = True,
+                 shared: bool = False) -> None:
         """Open one program's graph.
 
         `writable=False` is how every orientation command opens it, and the
@@ -368,7 +369,12 @@ class Store:
         self.writable = writable
         if writable:
             self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.conn = sqlite3.connect(self.path)
+        # `shared` hands the connection to more than one thread, and the caller then
+        # owes it a lock. Only the server asks for it: `ThreadingHTTPServer` answers each
+        # request on its own thread, and sqlite refuses a connection used off the thread
+        # that made it -- serialising the calls is not enough on its own, which is worth
+        # saying because a lock looks like it should be.
+        self.conn = sqlite3.connect(self.path, check_same_thread=not shared)
         self.conn.row_factory = sqlite3.Row
         self._refuse_wrong_kind()
         if not writable:
@@ -500,6 +506,17 @@ class Store:
         return {
             r["path"]: r["content_hash"]
             for r in self.conn.execute("SELECT path, content_hash FROM files")
+        }
+
+    def known_langs(self) -> dict[str, str]:
+        """Every file already analysed, and the language it was read as.
+
+        Kept apart from `known_hashes` because the two answer different questions and
+        only one of them gates re-parsing; the source sidecar wants both.
+        """
+        return {
+            r["path"]: r["lang"]
+            for r in self.conn.execute("SELECT path, lang FROM files")
         }
 
     def forget_file(self, path: str) -> None:

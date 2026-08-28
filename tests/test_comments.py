@@ -271,3 +271,31 @@ def test_a_tests_directory_is_still_excluded():
     from dunneflow.walk import is_test_path
 
     assert is_test_path(Path("tests/helpers/thing.py"))
+
+
+# --------------------------------------------------------------- doc markers --- #
+
+def test_sphinx_doc_comment_marker_is_stripped_but_an_rst_role_is_not():
+    """`#:` is syntax; `# :mod:` is text. The difference is whether it touches the hash.
+
+    Both shapes are live in Mensores -- 1,698 comments carry the marker and some of the
+    rest open with a reStructuredText role. A stripper that took any leading colon would
+    read `:mod:` as a marker and shorten a value at ingest, which is rule 12's `<role>`
+    lesson and rule 5's "a marker must sit at an edge".
+    """
+    from dunneflow.extractors.python.extract import collect_comments
+
+    src = (
+        "#: Keychain service name. Matches the operator's item.\n"
+        "# :mod:`mensores._internal._sanitize`. The previous definition is gone.\n"
+        "#:\n"
+        "#\n"
+        "### banner ###\n"
+        "x = 1\n"
+    )
+    got = collect_comments(src)
+    assert got[1] == "Keychain service name. Matches the operator's item."
+    assert got[2] == ":mod:`mensores._internal._sanitize`. The previous definition is gone."
+    assert got[3] == ""          # a bare `#:` is an empty line, not a colon
+    assert got[4] == ""
+    assert got[5] == "banner ###"

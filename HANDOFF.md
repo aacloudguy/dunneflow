@@ -891,6 +891,126 @@ ForceAtlas2 in a worker, posted back and stored in a `layout` table, is not buil
 Chunks 2–9 (shadows/shuffling UI, the three-pane shell, inspector, table and document
 modes, anomaly worklist, glossary pages, exploration layer, settings) are unchanged.
 
+**5a. Built 2026-08-27 (second session): the shell, the inspector, and the source
+sidecar.** The graph stopped being the page and became a mode inside it.
+
+*The shell.* Three panes over one shared selection -- navigator | centre | inspector --
+as a CSS grid under a header carrying the program name, the mode toggle and a breadcrumb.
+The centre is a toggle, never three destinations: graph, table and document all show
+whatever is selected, so switching never costs the reader their place. Table and document
+are **declared and explicitly unbuilt** rather than silently showing the graph, which is
+the failure design rule 16 was written from.
+
+Three things rode along because they were cheapest now and structural later:
+
+- **Routing from a table.** The click handler ended `const tilt = act === 'top' ? 90 :
+  act === 'tilt' ? 35 : state.viewState.rotationX` -- so *any* unrecognised `data-act`
+  snapped the camera and looked entirely deliberate. `ACTIONS` and `MODES` are tables; an
+  unknown action is a named error.
+- **A startup self-check**, deriving its list from the DOM so markup and handlers cannot
+  drift. Plus `tests/test_web_controls.py`, which asserts the same agreement in `pytest`
+  -- a self-check nobody opens the page to see is one that has already failed. It runs
+  both directions: a control with no handler, *and* a handler no control reaches.
+- **The `px` to `rem` conversion**, design rule 3. The test caught three 2px borders
+  written in the same session -- the confidence-shape markers, which are exactly the
+  thing that must scale with everything else.
+
+*The inspector.* `/api/node?id=`, flow-first in the settled order: IN (callers, and any
+entrypoint registered on it) → OUT (with `external`, `at_boundary` and `ambiguous` all
+distinguished) → TOUCHES (boundaries, SQL with direction, the full network record,
+artefacts) → GOVERNANCE (annotations, then the comments placed against the line they
+explain) → source. The signature is demoted into a params view. Every list states what it
+is not showing and opens in place. All five node kinds answer -- routine, structure,
+constant, boundary, artefact -- and each answers with what it actually has rather than
+posing as a routine with fields missing.
+
+*The source sidecar.* `output/<program>/source.db`, content-addressed on the
+`content_hash` already in `files`, `--no-source` to skip it. On Mensores: 626 bodies,
+7.8 MB of source in 2.6 MB. Driven by the hashes the graph just recorded rather than by a
+second walk, so a re-analysis with nothing changed reads **zero** bytes of source --
+confirmed in the same run that discarded the graph for an extractor change, which is
+rule 25 demonstrated rather than asserted.
+
+*Found while building, all fixed:*
+
+- The orbit benchmark could never draw edges (rule 24) -- so one of the two outstanding
+  measurements was not merely unmeasured but unmeasurable, and the readout printed an
+  edge count for geometry it had not drawn.
+- `ThreadingHTTPServer` plus one sqlite connection: a lock is not enough, because sqlite
+  refuses a connection used off its creating thread whatever the caller does about
+  ordering. Both stores take `shared=True` now, and the lock is what then makes it safe.
+- Externals were drawn as INFERRED (rule 26).
+- The Sphinx `#:` marker leaked into 1,698 comments and 323 constants (rule 27).
+
+*The two fps measurements are taken.* Both at 60 median and 60 worst, nothing dropped:
+spheres at full size (14×), and spheres at 14× with 4,253 edges drawn (2,199 within, 2,054
+crossing, eight plates selected). **The sphere threshold is now set by evidence rather
+than judgment** -- full size costs nothing measurable, so 2.2× is a look, not a budget.
+The budget table in `CLAUDE.md` also had two stale figures: it claimed 14,991 drawn by
+counting shadows, which stopped being drawn when rule 23 landed. It is 9,874.
+
+*One defect found by taking the measurement.* The bench line reported `selGeom.count` and
+omitted `interCount` -- 2,199 printed against 4,253 actually submitted. Rule 24 surviving
+in the half of the line the first fix had not touched, which is worth noticing: fixing the
+cause of a mis-stated measurement is not the same as fixing every place it was mis-stated.
+
+*And one found by Tom looking at it.* `[hidden]` is a user-agent rule, and any author
+`display` declaration beats it outright -- specificity is not involved. `.unbuilt {
+display: grid }` therefore cancelled `hidden` on the table and document views; all three
+views are absolutely positioned over one another, so the document panel painted on top of
+the canvas. The graph was rendering at 60 fps underneath it the whole time, and the mode
+buttons flipped `hidden` and `aria-selected` correctly while nothing on screen changed.
+
+This is design rule 16 one layer below where every existing check was looking. `selfCheck()`
+compares markup to handlers and passed; `test_web_controls.py` compares the same two files
+and passed; reading `v.hidden` back agreed with itself and proved nothing. **The wiring was
+right and the paint was wrong.** Two guards added: `verifyOneViewShowing()` asks
+`offsetParent`, which is null only when something is genuinely not laid out, and a test
+asserts the `[hidden]` override is still in the stylesheet, since it is one line any later
+`display` rule can silently re-break.
+
+The general lesson, and it is the one already written down as *look, don't only test*: this
+session verified the DOM, the routing, the endpoints and all five node kinds, declared the
+shell working, and never once took a screenshot. One screenshot would have shown it
+immediately.
+
+Also not done: `source.db` is written but the inspector's "open the whole file" is the
+only route into it, and the graph does not yet offer a way to reach a node's source
+without going through the inspector.
+
+**5b. Planned, not scheduled: the layered layout — a stack of architecture drawings.**
+Tom's, stated 2026-08-27. Keep everything that exists and add a second way of drawing a
+plate: instead of a spring layout, lay the disk out the way Mermaid lays out an
+architecture diagram of that one module — layered top-to-bottom, ordinary edges, nodes as
+rectangles or as the pseudo-spheres, which of the two does not matter. Crossings between
+plates stay exactly as they are now. The result reads as a stack of architecture drawings
+rather than a stack of constellations, so the disks must also **spread along X and Y
+independently**, not only along Z.
+
+Four consequences worth fixing in place before anything is built on top of them:
+
+- **It is a layout, not a mode.** The centre pane's modes are graph / table / document.
+  Layered sits *inside* graph mode beside `structural` and `force`, which is what
+  `layout.py` already anticipates and what design rule 2 asks for — force answers "what
+  clusters", layered answers "what flows into what", both are good, so both get built and
+  usage retires the loser.
+- **Disk placement must become an origin, not a height.** `disk_heights()` returns Z
+  alone and the renderer stacks on Z alone. X and Y spread means `disk_origins()`
+  returning `(x, y, z)`, with three independent spread multipliers in settings. Cheap
+  now, a rewrite of every position path later.
+- **Layered edges are routed, not straight.** A Sugiyama drawing puts bends in its edges;
+  `LineLayer` draws segments. Within-plate links under this layout want `PathLayer` with
+  computed waypoints. The crossings keep `LineLayer` — they genuinely are straight lines
+  through Z.
+- **The size problem does not go away, it moves.** The largest plate holds 959 nodes.
+  Mermaid itself is unreadable well below that, and a layered drawing of 959 nodes is a
+  very tall picture rather than a dense one. Layered will need its own answer to bounding
+  — rule 8's, most likely: draw a bounded thing only where the complete listing sits
+  beside it.
+
+Not scheduled. Recorded so the shell, the settings schema and the layout module leave
+room for it rather than being retrofitted.
+
 **6. Then, and only then, temporal layers.** Snapshots keyed by revision, the flow diff,
 the scrubber. Identity is already position-independent, which was the prerequisite.
 

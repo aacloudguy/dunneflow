@@ -854,8 +854,14 @@ not be drawn at all (the stack is an abstraction), edges only on demand for a se
 and only when still, the fit is a bounding *cylinder* at the tilt in force under an
 orthographic projection, and a blank canvas must say why it is blank.
 
-**Still open on chunk 1:** the measured frame rate. Every capture so far is headless
-SwiftShader and means nothing; the number has to come off real hardware. Node selection
+**Chunk 1's gate is met.** Measured on the M1 with Chrome's Metal renderer: **60 fps
+median, 60 worst, no frames dropped** across the six-second orbit at 14,991 drawn nodes,
+loading in 0.1 s. The plan's threshold was 55 median, so deck.gl stays and the three.js
+fallback is not needed. 60 is the vsync ceiling, so that is a floor with unmeasured
+headroom, not a capacity — the readout now says so rather than letting a ceiling read as
+a score.
+
+**Still open on chunk 1:** node selection
 is fiddly at overview zoom — the likely fix is a disk-focus mode that flies to a plate and
 drops to top-down, which belongs to chunk 2. Layout is still `structural` only:
 ForceAtlas2 in a worker, posted back and stored in a `layout` table, is not built.

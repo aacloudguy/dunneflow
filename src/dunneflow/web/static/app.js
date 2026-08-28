@@ -511,9 +511,16 @@ function benchmark(seconds = 6) {
       state.benching = false;
       samples.sort((a, b) => a - b);
       const med = samples[Math.floor(samples.length / 2)] || 0;
+      const worst = samples[0] || 0;
+      /* 60 is the vsync ceiling, not a measurement of capacity. When median and worst
+       * both sit on it the honest statement is "no frames dropped, headroom unknown" --
+       * reporting it as a score would invite reading a ceiling as a limit, and the
+       * difference matters the first time this is pointed at something larger. */
+      const capped = med >= 59 && worst >= 59;
       el('bench').textContent =
-        `median ${med.toFixed(0)} fps · worst ${(samples[0] || 0).toFixed(0)} · ` +
-        `${state.data.stats.drawn_nodes.toLocaleString()} nodes`;
+        `median ${med.toFixed(0)} fps · worst ${worst.toFixed(0)} · ` +
+        `${state.data.stats.drawn_nodes.toLocaleString()} nodes` +
+        (capped ? ' · no frames dropped (60 is the vsync cap; headroom unmeasured)' : '');
       setMoving(false);
       return;
     }

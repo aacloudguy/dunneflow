@@ -75,6 +75,26 @@ collapses to a reach of 1 or 2, a registration idiom is being missed.
 | Orientation query (touches / impact) | < 1 s |
 | Peak memory | < 1 GB, flat as file count grows |
 
+The interactive map (`dunneflow serve`), measured on Mensores: 51 disks, 9,719 nodes plus
+5,272 shadows = **14,991 drawn**, 13,277 edges.
+
+| Measure | Budget | Measured 2026-08-27, Apple M1 / Chrome Metal |
+|---|---|---|
+| Payload build, server side | < 2 s | ~0.03 s |
+| First paint in the browser | < 2 s | 0.1 s |
+| Sustained fps, six-second orbit | >= 55 median | **60 median, 60 worst — no frames dropped** |
+
+60 is the vsync ceiling, so that row states a floor, not a capacity: nothing was dropped
+and the headroom above it is unmeasured. Read it as "never missed a frame", never as a
+score. The benchmark says so in the readout for the same reason.
+
+The frame rate is bought by two decisions and both are load-bearing. Everything drawn is
+uploaded once as flat typed arrays — with per-object accessors, fifteen thousand nodes
+means fifteen thousand function calls per attribute per update, and the budget is gone
+before anything is drawn. And the `data` wrappers are built once rather than inside the
+per-frame layer function, which would re-upload half a megabyte on every frame of a drag
+and reintroduce the exact cost the typed arrays exist to avoid.
+
 Documentation (2,381 documents, 44 MB):
 
 | Measure | Budget | Measured |

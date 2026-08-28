@@ -104,6 +104,8 @@ const POSTURES = [
 const state = {
   view: "cover",          // cover | graph | table | doc | settings | usage | a11y | anomalies
   mode: "graph",
+  graphLayout: "stack",   // "stack" | "packages" -- a layout inside graph mode,
+                          // never a fourth mode. Both built; use retires the loser.
   scale: 1,
   theme: "system",
   startup: "cover",
@@ -113,7 +115,7 @@ const state = {
   ambient: false,         // anomaly badges on nodes
   hideInferred: false,
   density: "comfortable",
-  selected: "specimen",
+  selected: null,          // the node id under inspection, or null for nothing picked
   colourBy: "none",
   colWidths: { q: 22, lines: 5.5, ret: 10, np: 3.5, fan: 3.5, nb: 3.5, nc: 3.5 },
   // No filter can be applied yet, so none is claimed. The prototype carried three
@@ -122,7 +124,12 @@ const state = {
   // that is not happening is worse, because the reader adjusts for a slice they are
   // not being shown.
   filters: [],
-  usage: { cover: 41, graph: 68, table: 52, doc: 12, settings: 9, anomalies: 0 },
+  /* Counted locally, and only so a Setting can be retired on evidence rather than on
+   * opinion. It starts empty: the prototype shipped `{cover: 41, graph: 68, table: 52}`
+   * as pinned Mensores numbers, which would have retired a setting on fiction and read as
+   * a measurement while doing it. `test_no_program_data_is_pinned_into_the_shell` looked
+   * only at the top-level arrays and never inside `state`, so it never saw them. */
+  usage: {},
   sev: "suspect",          // which severity tab the worklist is on
   cursor: 0,               // position in the worklist
   triage: {},              // finding id -> "ack" | "notbug" | "tooldefect"
@@ -131,7 +138,7 @@ const state = {
   egress: "off",
   showManifest: false,
   showSql: null,
-  selectedRow: "mensores.quaestor._witness_client.submit_to_peer",
+  selectedRow: null,       // which table row is current; a program has none until read
   sortKey: "fan",
   sortAsc: false,
   viewer: null,
@@ -144,6 +151,12 @@ const state = {
 
 const $  = (s, r) => (r || document).querySelector(s);
 const $$ = (s, r) => Array.from((r || document).querySelectorAll(s));
+/* Usage is counted so a Setting can be retired on evidence rather than on opinion, which
+ * means it starts at zero for every program and every key. `state.usage.graph++` on an
+ * absent key yields NaN, and a NaN in the usage report is a count that silently stops
+ * counting -- so no caller increments directly. */
+function used(key) { state.usage[key] = (state.usage[key] || 0) + 1; }
+
 const esc = (s) => String(s).replace(/[&<>"]/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;" }[c]));
 
 /* ═══ theme + scale ═══ */
@@ -155,6 +168,9 @@ function applyTheme() {
   const label = { system: "◐ System", light: "☀ Light", dark: "☾ Dark" }[state.theme];
   btn.textContent = label;
   btn.setAttribute("aria-label", "Theme: " + state.theme + ". Activate to change.");
+  /* The graph follows the theme. It reads the same tokens off `:root`, but nothing tells
+   * a WebGL canvas that a CSS custom property changed -- so the palette is pushed. */
+  if (typeof applyGraphPalette === "function") applyGraphPalette();
 }
 function applyScale() {
   document.documentElement.style.setProperty("--scale", state.scale);
@@ -162,6 +178,11 @@ function applyScale() {
   $("#scaleVal").textContent = pct + "%";
   const sl = $("#scaleSlider");
   if (sl) { sl.value = state.scale; sl.setAttribute("aria-valuetext", pct + " percent"); }
+  /* Design rule 3, and what the Settings page already promises in so many words: "one
+   * multiplier over everything -- type, column widths, row heights, icons, graph nodes."
+   * The graph had its own independent size slider and never saw this one, so the promise
+   * was true of every dimension on the page except the one it named last. */
+  if (Graph && Graph.mounted()) Graph.setScale(state.scale);
 }
 $("#themeBtn").addEventListener("click", () => {
   state.theme = { system: "light", light: "dark", dark: "system" }[state.theme];
@@ -201,13 +222,13 @@ const NAV_ROUTES = {
     loadAnomalies().then(render);
     state.sev = b.dataset.sevnav || "suspect";
     state.cursor = 0;
-    state.usage.anomalies++;
+    used("anomalies");
   },
   /* These four set what you are looking AT, and keep the centre pane's current mode. */
-  ep:  () => { state.view = state.mode; },
-  pkg: () => { state.view = state.mode; },
-  b:   () => { state.view = state.mode; },
-  t:   () => { state.view = state.mode; },
+  ep:  () => { state.view = state.mode; ensureGraph(); },
+  pkg: () => { state.view = state.mode; ensureGraph(); },
+  b:   () => { state.view = state.mode; ensureGraph(); },
+  t:   () => { state.view = state.mode; ensureGraph(); },
 };
 
 document.addEventListener("click", (ev) => {
@@ -231,15 +252,16 @@ document.addEventListener("click", (ev) => {
 $$("#modes button").forEach(b => b.addEventListener("click", () => {
   state.mode = b.dataset.mode;
   state.view = state.mode;
+  if (state.mode === "graph") ensureGraph();
   pushTrail(state.mode, b.textContent.trim());
-  state.usage[state.mode] = (state.usage[state.mode] || 0) + 1;
+  used(state.mode);
   render();
 }));
 
 /* ═══ settings ═══ */
 $("#settingsBtn").addEventListener("click", () => {
   state.view = state.view === "settings" ? state.startup : "settings";
-  state.usage.settings++;
+  used("settings");
   render();
 });
 
@@ -378,80 +400,34 @@ function viewCover() {
   </div>`;
 }
 
+/* The package overview -- one of two layouts inside graph mode, beside the stack.
+ *
+ * Two altitudes, two answers, and the project decided long ago to keep both: a package
+ * graph is "adequate for orientation and will not scale", the stack is the viewer that
+ * holds ten thousand nodes. Neither is the other's replacement.
+ *
+ * The ratified design drew this with `x` and `y` written into `PKGS` by hand, which is
+ * exactly right for settling a design and exactly wrong for shipping one -- `/api/cover`
+ * supplies no coordinates and no package-level edges, so the same code against a real
+ * store drew forty-seven rectangles at `x="undefined"` and zero edges. It said nothing
+ * about that, which is the worse half: an empty picture reads as a program with no
+ * structure rather than as a view with no data.
+ *
+ * So until `/api/packages` exists it says so. "Nothing here" and "nobody has computed
+ * this yet" are opposite claims, and a blank canvas must say which one it is.
+ */
 function viewGraph() {
-  const byId = {};
-  PKGS.forEach(p => byId[p.id] = p);
-  EXTERNALS.forEach(p => byId[p.id] = p);
-  const W = 190, H = 46, EW = 168;
-  const showExt = !state.filters.some(f => f.id === "ext");
-
-  const edgePath = (a, b, aw, bw) => {
-    const A = byId[a], B = byId[b];
-    if (!A || !B) return "";
-    const x1 = A.x + (aw || W), y1 = A.y + H / 2;
-    const x2 = B.x,             y2 = B.y + H / 2;
-    const mx = (x1 + x2) / 2;
-    return `M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}`;
-  };
-
-  const edges = EDGES.filter(e => !(state.hideInferred && e.c === "INFERRED")).map(e =>
-    `<path class="gedge ${e.c === "INFERRED" ? "inferred" : ""}" d="${edgePath(e.a, e.b, W, W)}"
-       stroke-width="${Math.max(1, Math.min(5, e.w / 32))}" marker-end="url(#arw)"></path>`).join("");
-
-  const extEdges = showExt ? EXT_EDGES.filter(e => !(state.hideInferred && e.c === "INFERRED")).map(e =>
-    `<path class="gedge ${e.c === "INFERRED" ? "inferred" : ""}" d="${edgePath(e.a, e.b, W, W)}"
-       stroke-width="1.5" marker-end="url(#arwx)"></path>`).join("") : "";
-
-  const anomOn = state.ambient;
-
-  const node = (p, isExt) => {
-    const w = isExt ? EW : W;
-    const fill = isExt ? "var(--external-bg)" : (p.entry ? "var(--accent-soft)" : "var(--raised)");
-    const stroke = isExt ? "var(--external)" : (p.entry ? "var(--accent)" : "var(--border-strong)");
-    const dash = isExt ? 'stroke-dasharray="5 3"' : "";
-    const badge = (anomOn && (p.id === "quaestor" || p.id === "Anthropic API"))
-      ? `<circle cx="${p.x + w - 11}" cy="${p.y + 11}" r="5.5" fill="var(--sev-suspect)"></circle>
-         <text x="${p.x + w - 11}" y="${p.y + 14.5}" text-anchor="middle" style="font-size:8px;font-weight:700;fill:var(--surface)">!</text>` : "";
-    return `<g class="gnode" tabindex="0" role="button"
-              aria-label="${esc(p.id)}${isExt ? ", external system, " + p.proto : ", " + p.n + " routines"}"
-              data-node="${esc(p.id)}" ${p.id === "cli" ? 'aria-current="true"' : ""}>
-      <rect x="${p.x}" y="${p.y}" width="${w}" height="${H}" rx="6"
-            fill="${fill}" stroke="${stroke}" stroke-width="1.5" ${dash}></rect>
-      <text x="${p.x + 12}" y="${p.y + 20}">${esc(p.id)}</text>
-      <text class="sub" x="${p.x + 12}" y="${p.y + 34}">${isExt
-        ? esc(p.proto) + " · " + esc(p.detail) + " · outside our control"
-        : p.n + " routines" + (p.entry ? " · way in" : "")}</text>
-      ${badge}
-    </g>`;
-  };
-
   return `
-  <div class="graphwrap">
-    <svg viewBox="0 0 890 460" role="img"
-         aria-label="Package graph: mensores.cli reaches nine internal packages, which cross the system boundary to four external systems.">
-      <defs>
-        <marker id="arw" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-          <path d="M0,0 L10,5 L0,10 z" fill="var(--border-strong)"></path>
-        </marker>
-        <marker id="arwx" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-          <path d="M0,0 L10,5 L0,10 z" fill="var(--external)"></path>
-        </marker>
-      </defs>
-
-      ${showExt ? `<line class="boundline" x1="660" y1="30" x2="660" y2="440"></line>
-      <text class="boundlabel" x="668" y="24">System boundary</text>` : ""}
-
-      ${edges}
-      ${extEdges}
-      ${PKGS.map(p => node(p, false)).join("")}
-      ${showExt ? EXTERNALS.map(p => node(p, true)).join("") : ""}
-    </svg>
-    <div class="legend">
-      <span><svg width="26" height="8"><line x1="0" y1="4" x2="26" y2="4" stroke="currentColor" stroke-width="2"/></svg> CERTAIN — pinned by import</span>
-      <span><svg width="26" height="8"><line x1="0" y1="4" x2="26" y2="4" stroke="currentColor" stroke-width="2" stroke-dasharray="4 3"/></svg> INFERRED — unique name only</span>
-      <span><svg width="14" height="10"><rect x="0.75" y="0.75" width="12.5" height="8.5" rx="2" fill="none" stroke="var(--external)" stroke-width="1.5" stroke-dasharray="4 2"/></svg> External — outside our control</span>
-      <span>Line weight = calls between packages</span>
-      <span>Arrow keys move between nodes · Enter descends</span>
+  <div class="panel">
+    <div class="panel-head"><h2>Package overview</h2>
+      <span class="hint">not computed yet</span></div>
+    <div class="panel-body">
+      <p>This is the orientation altitude: every top-level package as one box, the system
+         boundary drawn, and externals beyond it. It needs package-level edge weights and a
+         computed placement, and neither is served yet — so rather than draw an empty
+         diagram that would read as a program with no structure, it says so.</p>
+      <p class="hint">The stack is built and is the other layout in this mode. Switch to it
+         with <b>Stack</b> above, or from Settings.</p>
     </div>
   </div>`;
 }
@@ -1451,7 +1427,7 @@ function crumbsFor() {
 }
 
 function render() {
-  const vp = $("#viewport");
+  const vp = $("#viewMount");
   $("#crumbs").innerHTML = crumbsFor();
   $("#modes").style.visibility = ["graph", "table", "doc"].includes(state.view) ? "visible" : "hidden";
   $$("#modes button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.mode === state.mode)));
@@ -1459,7 +1435,23 @@ function render() {
   document.documentElement.style.setProperty("--row-pad",
     { compact: "0.18rem", comfortable: "0.34rem", spacious: "0.55rem" }[state.density]);
 
-  if (state.view === "cover")          vp.innerHTML = viewCover();
+  /* Two mounts, exactly one on screen. The graph lives in a container `render()` never
+   * touches -- innerHTML on the viewport would destroy the deck.gl canvas, its GL context
+   * and the reader's place, on every keystroke. */
+  const stackOn = state.view === "graph" && state.graphLayout === "stack";
+  $("#graphMount").hidden = !stackOn;
+  $("#viewMount").hidden = stackOn;
+  if (stackOn) {
+    // Coming back from a hidden container: deck.gl sized itself to nothing while away.
+    if (Graph.mounted()) requestAnimationFrame(() => Graph.resize());
+    renderGraphFurniture();
+    vp.innerHTML = "";
+  }
+  /* No early return. The graph is a view in the centre pane, not a page -- the inspector,
+   * the trail, the filter strip and the navigator counts all still belong on screen, and
+   * returning here would quietly empty three panes whenever the stack was showing. */
+
+  else if (state.view === "cover")     vp.innerHTML = viewCover();
   else if (state.view === "graph")     vp.innerHTML = viewGraph();
   else if (state.view === "table")     vp.innerHTML = viewTable();
   else if (state.view === "doc")       vp.innerHTML = viewDoc();
@@ -1492,12 +1484,17 @@ function render() {
   if (np) { np.textContent = state.pins.length; np.className = "n" + (state.pins.length ? " sevcount info" : ""); }
   renderFilters();
   wire();
+  /* Persisted here rather than in each handler. Forty controls change settings and every
+   * one of them ends in `render()`, so this is the one place that cannot be forgotten --
+   * and a setting that silently stops being saved is indistinguishable from one nobody
+   * used, which is exactly the evidence the usage counter exists to provide. */
+  persist();
 }
 
 function wire() {
   /* cover → graph */
   $$("[data-ep]").forEach(b => b.addEventListener("click", () => {
-    state.view = "graph"; state.mode = "graph"; state.usage.graph++; render();
+    state.view = "graph"; state.mode = "graph"; used("graph"); ensureGraph(); render();
   }));
 
   /* graph nodes: click, and arrow-key traversal */
@@ -1577,7 +1574,7 @@ function wire() {
   }));
   $$("[data-menuorder]").forEach(b => b.addEventListener("click", () => {
     state.menuOrder = b.dataset.menuorder;
-    state.usage["menu:" + state.menuOrder] = (state.usage["menu:" + state.menuOrder] || 0) + 1;
+    used("menu:" + state.menuOrder);
     render();
   }));
   $$("[data-start]").forEach(b => b.addEventListener("click", () => {
@@ -1643,7 +1640,7 @@ function wire() {
   $$("[data-gosev]").forEach(b => b.addEventListener("click", () => {
     loadAnomalies().then(render);
     state.view = "anomalies"; state.sev = b.dataset.gosev; state.cursor = 0;
-    state.usage.anomalies++; render();
+    used("anomalies"); render();
   }));
 
   /* glossary filter — updates in place so the field keeps focus while typing */
@@ -1822,7 +1819,7 @@ document.addEventListener("keydown", (e) => {
    plus those read as companions inside another handler, those bound by element
    selector rather than by attribute, and the structural markers that only style or
    identify and are never clicked. */
-const WIRED_ATTRS = new Set(["aiop", "airun", "bound", "cite", "citeidx", "closeviewer", "col", "crumb", "curi", "cursor", "den", "drop", "egress", "ep", "gosev", "goto", "manifest", "menuorder", "mode", "nav", "nav2", "node", "open", "pin", "pinnote", "resize", "row", "scale-set", "sec", "sev", "sevnav", "sort", "sqlshow", "start", "step", "theme", "theme-set", "thread", "threadwhy", "toggle", "trail", "trailback", "trailcap", "trailclear", "triage", "triaged", "unpin", "viewtab"]);
+const WIRED_ATTRS = new Set(["aiop", "airun", "bound", "cite", "citeidx", "closeviewer", "col", "crumb", "curi", "cursor", "den", "drop", "egress", "ep", "disk", "gact", "gosev", "goto", "manifest", "menuorder", "mode", "nav", "nav2", "node", "open", "pin", "pinnote", "resize", "row", "scale-set", "sec", "sev", "sevnav", "sort", "sqlshow", "start", "step", "theme", "theme-set", "thread", "threadwhy", "toggle", "trail", "trailback", "trailcap", "trailclear", "triage", "triaged", "unpin", "viewtab"]);
 
 function selfCheck() {
   const problems = [];
@@ -1838,6 +1835,21 @@ function selfCheck() {
       }
     }
   });
+  /* Both directions for the graph's own table too: a control with no action, and an
+   * action no control reaches. The second half is the one a hand forgets -- it is how a
+   * feature quietly stops being reachable while every test still passes. */
+  document.querySelectorAll("[data-gact]").forEach(el => {
+    if (!(el.dataset.gact in GRAPH_ACTIONS)) {
+      problems.push(`graph control [data-gact="${el.dataset.gact}"] has no action`);
+    }
+  });
+  if (Graph.mounted()) {
+    const drawn = new Set($$("[data-gact]").map(el => el.dataset.gact));
+    for (const k of Object.keys(GRAPH_ACTIONS)) {
+      if (!drawn.has(k)) problems.push(`graph action "${k}" is reached by no control`);
+    }
+  }
+
   const unique = [...new Set(problems)];
   if (unique.length) {
     console.error("DunneFlow self-check found dead controls:", unique);
@@ -1999,6 +2011,495 @@ async function loadAnomalies() {
 }
 
 /* ════════════════════════════════════════════════════════════
+   The graph, driven from here
+
+   `graph.js` is the engine and knows nothing about this page. It draws into the element
+   it is handed, and everything it wants to say -- what is selected, what is on screen,
+   what is not, how fast, what went wrong -- leaves as an event. This section is the other
+   half of that boundary: the shell owns the selection, the settings, the search, the
+   legend and the breadcrumb, and pushes into the engine what the engine needs to draw.
+
+   Before this, both halves existed twice. The graph had its own header, mode toggle,
+   settings pane, disk menu, search box, breadcrumb and inspector, and so did the shell --
+   two complete applications for one reader.
+   ════════════════════════════════════════════════════════════ */
+
+const Graph = window.DunneFlowGraph;
+const Settings = window.DunneFlowSettings;
+
+/* The reader's arrangement, and the only fields written to storage. Everything else in
+ * `state` is where they are right now, which is not the same thing and must not outlive
+ * the visit: which severity tab is open, what is typed in the search box, whether a SQL
+ * block is expanded. */
+const PERSISTED = [
+  "theme", "scale", "startup", "mode", "menuOrder", "trailShown", "trailCap",
+  "density", "ambient", "hideInferred", "colWidths", "insp", "sortKey", "sortAsc",
+  "egress", "aiOps", "triage", "pins", "usage", "graphLayout",
+  "diskOrder", "diskColors", "colorBy", "sortMode", "filterMode", "direction",
+  "nodeSize", "spread", "showPlates", "picks", "graphTheme",
+];
+
+let settings = null;      // the loaded blob; `state` is the live copy
+let program = null;
+let graphPayload = null;
+let graphLoading = false;
+let graphError = null;
+let counts = null;        // the engine's last count report
+let fps = 0;
+let legendOpen = true;
+
+function persist() {
+  if (!program) return;
+  const out = {};
+  for (const k of PERSISTED) out[k] = state[k];
+  Settings.saveSettings(program, out);
+}
+
+/* Settings are loaded once the program is known, because they are stored per program: a
+ * disk order and a set of colours worked out for one codebase mean nothing in another. */
+function adoptSettings(name) {
+  program = name;
+  settings = Settings.loadSettings(name);
+  for (const k of PERSISTED) {
+    if (k in settings) state[k] = settings[k];
+  }
+}
+
+/* ── the palette, read from the stylesheet ─────────────────────────────────────
+ *
+ * `tokens.css` says no component declares a colour outside that block, and the graph is a
+ * component. Reading the tokens rather than keeping a second table in JavaScript means the
+ * theme toggle already on the page drives the stack with no second code path, and there is
+ * exactly one place a colour is written down. */
+function cssPalette() {
+  const cs = getComputedStyle(document.documentElement);
+  const hex = (name) => {
+    const v = cs.getPropertyValue(name).trim();
+    return [1, 3, 5].map(i => parseInt(v.slice(i, i + 2), 16));
+  };
+  const num = (name) => parseFloat(cs.getPropertyValue(name));
+  const ground = hex("--graph-ground");
+  return {
+    kind: {
+      ROUTINE:   hex("--graph-routine"),
+      STRUCTURE: hex("--graph-structure"),
+      CONSTANT:  hex("--graph-constant"),
+      BOUNDARY:  hex("--graph-boundary"),
+      ARTEFACT:  hex("--graph-artefact"),
+    },
+    dim: hex("--graph-dim"),
+    dimAlpha: num("--graph-dim-alpha"),
+    edge: [...hex("--graph-edge"), num("--graph-edge-alpha")],
+    plateFill: [...hex("--graph-plate-fill"), 70],
+    plateLine: [...hex("--graph-plate-line"), 140],
+    label: [...hex("--graph-label"), 240],
+    labelBg: [...hex("--graph-label-bg"), 200],
+    tooltipBg: cs.getPropertyValue("--surface").trim(),
+    tooltipText: cs.getPropertyValue("--text").trim(),
+    tooltipLine: cs.getPropertyValue("--border").trim(),
+    diskS: num("--graph-disk-s"), diskL: num("--graph-disk-l"),
+    extS: num("--graph-ext-s"), extL: num("--graph-ext-l"),
+    ambient: num("--graph-ambient"), diffuse: num("--graph-diffuse"),
+    specular: num("--graph-specular"),
+    ground,
+  };
+}
+
+/* Design rule 2 in force: the graph follows the theme by default, and a reader who
+ * genuinely prefers a dark stack over a light page can have one. Usage decides which
+ * survives; until then both exist. */
+function graphPaletteNow() {
+  if (state.graphTheme === "dark") {
+    const saved = document.documentElement.getAttribute("data-theme");
+    document.documentElement.setAttribute("data-theme", "dark");
+    const p = cssPalette();
+    if (saved === null) document.documentElement.removeAttribute("data-theme");
+    else document.documentElement.setAttribute("data-theme", saved);
+    return p;
+  }
+  return cssPalette();
+}
+
+function applyGraphPalette() {
+  const p = graphPaletteNow();
+  $("#graphMount").style.background =
+    `rgb(${p.ground[0]},${p.ground[1]},${p.ground[2]})`;
+  if (Graph.mounted()) Graph.setPalette(p);
+}
+
+/* ── mounting ─────────────────────────────────────────────────────────────────
+ *
+ * Lazily, on first entry to graph mode. The payload is nine thousand nodes and the cover
+ * is the first screen most sessions never leave, so fetching it at boot would slow the
+ * one screen that has to be fast in order to serve the one that might never open. */
+async function ensureGraph() {
+  // Cheap to call from anywhere that might land in graph mode; it decides for itself.
+  if (state.mode !== "graph" || state.graphLayout !== "stack") return;
+  if (Graph.mounted() || graphLoading) return;
+  graphLoading = true;
+  renderGraphFurniture();
+  try {
+    const r = await fetch("/api/graph");
+    if (!r.ok) throw new Error(`the server answered ${r.status} for /api/graph`);
+    graphPayload = await r.json();
+  } catch (err) {
+    graphError = { message: err.message };
+    graphLoading = false;
+    renderGraphFurniture();
+    return;
+  }
+
+  Graph.on("select", onGraphSelect);
+  Graph.on("counts", (c) => { counts = c; updateGraphCounts(); });
+  Graph.on("fps", (v) => {
+    fps = v;
+    const box = $("#gfps");
+    if (box) box.textContent = v.toFixed(0);
+  });
+  Graph.on("error", (e) => { graphError = e; renderGraphFurniture(); });
+
+  Graph.mount($("#graphStage"), graphPayload, {
+    diskOrder: state.diskOrder, diskColors: state.diskColors, colorBy: state.colorBy,
+    filterMode: state.filterMode, direction: state.direction, nodeSize: state.nodeSize,
+    spread: state.spread, showPlates: state.showPlates, scale: state.scale,
+    picks: state.picks,
+  });
+  /* Read back the order the engine resolved. A saved order from a graph that has since
+   * changed is discarded there, and the shell must not go on persisting the stale one --
+   * that is how a setting outlives the thing it described. */
+  state.diskOrder = Graph.diskOrder();
+  state.picks = Graph.selection();
+  graphLoading = false;
+  applyGraphPalette();
+  render();
+}
+
+/* One selection, every view. The graph reports what was picked; the inspector, the
+ * breadcrumb and the trail all follow from here rather than from each other. */
+function onGraphSelect(sel) {
+  state.picks = sel.picks;
+  state.selected = sel.node ? sel.node.id : null;
+  persist();
+  render();
+}
+
+/* ── the furniture: the HUD and the legend ─────────────────────────────────── */
+
+/* Never a silent filter (design rule 1). What is not on screen is stated, in counts,
+ * whichever way the filter is set -- and "nothing selected" says what to do about it,
+ * because with edges hidden by default an unselected stack is a picture of nothing much
+ * and the reader has no way to know that is deliberate. */
+function countLine(c) {
+  if (c.moving) return "nodes only while moving";
+  if (!c.selected) {
+    return "nothing selected — all links hidden; pick two disks to see what crosses "
+         + "between them, or click a node";
+  }
+  const names = c.names || [];
+  return `${esc(names.slice(0, 3).join(", "))}${
+      names.length > 3 ? ` +${names.length - 3}` : ""} · ` +
+    `<b class="num">${(c.selected || 0).toLocaleString()}</b> nodes · ` +
+    `<b class="num">${(c.within || 0).toLocaleString()}</b> within · ` +
+    `<b class="num">${(c.crossing || 0).toLocaleString()}</b> crossing · ` +
+    `<b class="num">${(c.excluded || 0).toLocaleString()}</b> ${c.excludedBy}`;
+}
+
+/* The narrow path: update the sentence, never the pane around it.
+ *
+ * Rebuilding the HUD here would destroy whichever slider was being dragged, because
+ * dragging one changes what is on screen and therefore emits counts -- the same defect
+ * that cost a colour picker in the mockup session, arriving by a new route. So the counts
+ * event touches exactly the two things counts can change. */
+function updateGraphCounts() {
+  const line = $("#gcounts");
+  if (line) line.innerHTML = countLine(counts || {});
+  const legend = $("#graphLegend");
+  if (!legend) return;
+  const on = new Set(state.picks.filter(p => p.kind === "disk").map(p => p.id));
+  legend.querySelectorAll(".leg").forEach(row => {
+    row.classList.toggle("on", on.has(row.dataset.disk));
+  });
+}
+
+function renderGraphFurniture() {
+  const hud = $("#graphHud");
+  if (!hud) return;
+
+  if (graphError) {
+    /* Design rule 21: a blank canvas must say why it is blank. Hardware acceleration off
+     * gives no WebGL context, and the symptom is an empty page that looks exactly like a
+     * broken program. The raw driver string stays underneath as evidence. */
+    hud.innerHTML = `<div class="hudbox gerr">${graphError.gpuOff
+      ? `<b>This browser cannot draw.</b> Hardware acceleration is off, so no page here can
+         get a WebGL context — nothing to do with your machine.<br>
+         Turn it on at <code>chrome://settings/system</code>, then relaunch Chrome.
+         <code>chrome://gpu</code> says why. Safari works without changing anything.`
+      : `<b>The graph could not start.</b>`}
+      <br><span class="muted">${esc(graphError.message)}</span></div>`;
+    $("#graphLegend").innerHTML = "";
+    return;
+  }
+  if (!Graph.mounted()) {
+    hud.innerHTML = `<div class="hudbox"><span class="muted">${
+      graphLoading ? "reading the stack…" : "the stack is not loaded yet"}</span></div>`;
+    $("#graphLegend").innerHTML = "";
+    return;
+  }
+
+  const c = counts || {};
+  const line = countLine(c);
+
+  hud.innerHTML = `
+    <div class="hudbox">
+      <div><b class="num" id="gfps">${fps ? fps.toFixed(0) : "–"}</b> fps ·
+        <b class="num">${(c.nodes || 0).toLocaleString()}</b> nodes ·
+        <b class="num">${c.disks || 0}</b> disks</div>
+      <div class="muted" id="gcounts">${line}</div>
+      <div style="margin-top:.3rem">
+        <button class="gbtn" data-gact="fit">snap to fit</button>
+        <button class="gbtn" data-gact="top">top-down</button>
+        <button class="gbtn" data-gact="tilt">tilt</button>
+        <button class="gbtn" data-gact="bench">benchmark</button>
+        ${c.selected ? `<button class="gbtn" data-gact="clear">clear</button>` : ""}
+      </div>
+      <div class="muted" id="gbench"></div>
+    </div>
+
+    <!-- Live controls update in place and re-render only the graph. A pane that rebuilds
+         itself on every input event destroys the control being dragged -- that cost a
+         colour picker once, and it is why these write straight to the engine and to their
+         own readout, never through a full re-render. -->
+    <div class="hudbox">
+      <label style="display:flex;align-items:center;gap:.35rem">
+        <span class="muted" style="width:3.2rem">size</span>
+        <input id="gsize" type="range" min="0.4" max="14" step="0.2"
+               value="${state.nodeSize}" aria-label="Node size">
+        <span class="muted num" id="gsizeval">${(+state.nodeSize).toFixed(1)}×</span>
+      </label>
+      <label style="display:flex;align-items:center;gap:.35rem">
+        <span class="muted" style="width:3.2rem">spread</span>
+        <input id="gspread" type="range" min="0.05" max="2" step="0.05"
+               value="${state.spread}" aria-label="Distance between plates">
+        <span class="muted num" id="gspreadval">${(+state.spread).toFixed(2)}×</span>
+      </label>
+      <div style="display:flex;align-items:center;gap:.35rem;margin-top:.2rem">
+        <span class="muted" style="width:3.2rem">follow</span>
+        <select class="gsel" id="gdirection"
+                aria-label="Which connections a picked node pulls in">
+          ${[["both", "callers and callees"], ["callers", "callers only"],
+             ["callees", "callees only"]].map(([v, l]) =>
+            `<option value="${v}" ${state.direction === v ? "selected" : ""}>${l}</option>`).join("")}
+        </select>
+        <label style="display:flex;align-items:center;gap:.2rem">
+          <input id="gplates" type="checkbox" ${state.showPlates ? "checked" : ""}>
+          <span class="muted">plates</span>
+        </label>
+      </div>
+    </div>`;
+
+  renderLegend();
+}
+
+/* Design rule 19: with edges hidden by default this is the way *into* the graph, not an
+ * index beside it. Three columns interleaved so rows nest rather than share baselines --
+ * fifty-one disks in a third of the height one column needs. Each row is a button, a
+ * swatch and a drag handle. */
+function renderLegend() {
+  const host = $("#graphLegend");
+  if (!host) return;
+  const disks = sortedDisks();
+  const on = new Set(state.picks.filter(p => p.kind === "disk").map(p => p.id));
+  host.classList.toggle("closed", !legendOpen);
+  host.innerHTML = `
+    <div style="display:flex;align-items:center;gap:.4rem;margin-bottom:.3rem">
+      <button class="linkbtn" data-gact="legend" aria-expanded="${legendOpen}"
+        >${legendOpen ? "▾" : "▸"} Plates</button>
+      <span class="hint" style="font-size:.66rem">${disks.length} · click to select,
+        drag to reorder</span>
+      <select class="gsel" id="gsort" style="margin-left:auto"
+              aria-label="Sort plates">
+        ${[["nodes", "by size"], ["name", "by name"], ["kind", "by kind"],
+           ["manual", "as arranged"]].map(([v, l]) =>
+          `<option value="${v}" ${state.sortMode === v ? "selected" : ""}>${l}</option>`).join("")}
+      </select>
+    </div>
+    <div class="legrows">
+      ${disks.map(d => `
+        <div class="leg ${d.kind} ${on.has(d.id) ? "on" : ""}" data-disk="${esc(d.id)}"
+             draggable="true" title="${d.nodes} nodes · ${d.shadows} shadows · ${d.edges} edges">
+          <input class="sw" type="color" value="${Graph.diskColorHex(d.id)}"
+                 aria-label="colour for ${esc(d.name)}">
+          <button class="nm" type="button">${esc(d.name)}</button>
+          <span class="ct">${d.nodes}</span>
+        </div>`).join("")}
+    </div>
+    <div class="legfoot">Colour by
+      <select class="gsel" id="gcolorby"
+              aria-label="Colour nodes by">
+        <option value="kind" ${state.colorBy === "kind" ? "selected" : ""}>what it is</option>
+        <option value="disk" ${state.colorBy === "disk" ? "selected" : ""}>which plate</option>
+      </select>
+      · unselected
+      <select class="gsel" id="gfilter"
+              aria-label="What happens to unselected nodes">
+        <option value="dim" ${state.filterMode === "dim" ? "selected" : ""}>dimmed</option>
+        <option value="hide" ${state.filterMode === "hide" ? "selected" : ""}>hidden</option>
+      </select>
+    </div>`;
+}
+
+function sortedDisks() {
+  const disks = Graph.disks();
+  const byId = new Map(disks.map(d => [d.id, d]));
+  if (state.sortMode === "manual" && Array.isArray(state.diskOrder)) {
+    return state.diskOrder.map(id => byId.get(id)).filter(Boolean);
+  }
+  const list = disks.slice();
+  if (state.sortMode === "name") list.sort((a, b) => a.name.localeCompare(b.name));
+  else if (state.sortMode === "kind") {
+    list.sort((a, b) => (a.kind === b.kind ? b.nodes - a.nodes
+                                          : a.kind === "package" ? -1 : 1));
+  } else list.sort((a, b) => b.nodes - a.nodes);
+  return list;
+}
+
+/* ── the graph's controls ─────────────────────────────────────────────────────
+ *
+ * Delegated from the mount rather than bound to elements, because the legend is rebuilt
+ * whenever the selection changes and handlers bound to elements would stop working
+ * silently the moment they were replaced. */
+
+const GRAPH_ACTIONS = {
+  fit:   () => Graph.fit(),
+  top:   () => Graph.topDown(),
+  tilt:  () => Graph.tilt(),
+  clear: () => Graph.clearSelection(),
+  legend: () => { legendOpen = !legendOpen; renderLegend(); },
+  bench: async () => {
+    const out = $("#gbench");
+    if (out) out.textContent = "benchmarking…";
+    const r = await Graph.benchmark(6);
+    if (!out) return;
+    /* 60 is the vsync ceiling, not a measurement of capacity: when median and worst both
+     * sit on it the honest statement is "nothing was dropped, headroom unknown". And both
+     * edge kinds are named, because both were drawn -- reporting one under-states the run
+     * by the other, which is rule 24 in the half of the line a first fix did not touch. */
+    out.innerHTML = `median <b class="num">${r.median.toFixed(0)}</b> fps · worst ` +
+      `<b class="num">${r.worst.toFixed(0)}</b> · ${r.nodes.toLocaleString()} nodes` +
+      (r.spheres ? " · spheres" : "") +
+      (r.within + r.crossing
+        ? ` · ${r.within.toLocaleString()} within + ${r.crossing.toLocaleString()} crossing edges`
+        : " · no edges drawn") +
+      (r.capped ? " · no frames dropped (60 is the vsync cap; headroom unmeasured)" : "");
+  },
+};
+
+let dragDisk = null;
+
+function wireGraphOnce() {
+  const mount = $("#graphMount");
+  /* A plain property, not `data-wired`. A marker written as a data attribute is
+   * indistinguishable from a control by anything reading the DOM -- including the
+   * self-check, which duly reported it as wired to nothing. It was right. */
+  if (!mount || mount.__wired) return;
+  mount.__wired = true;
+
+  mount.addEventListener("click", (ev) => {
+    const act = ev.target.closest("[data-gact]");
+    if (act) {
+      const fn = GRAPH_ACTIONS[act.dataset.gact];
+      // Route from a table (design rule 16): an unhandled action is a named error, never
+      // a fall-through to something that looks deliberate.
+      if (!fn) return console.error("[dunneflow] no graph action:", act.dataset.gact);
+      return fn();
+    }
+    const row = ev.target.closest(".leg");
+    if (!row || ev.target.classList.contains("sw")) return;
+    /* Plain click *toggles*, with no modifier. This is a multi-select list, and requiring
+     * shift to reach the thing the list exists for meant clicking plate after plate just
+     * replaced the selection each time -- so there was never a second layer to cross to,
+     * and the crossings, which are the whole point of the stack, could not appear at all.
+     * The failure looked like missing edges and was really a missing selection. */
+    Graph.togglePick({ kind: "disk", id: row.dataset.disk }, "toggle");
+  });
+
+  mount.addEventListener("input", (ev) => {
+    const t = ev.target;
+    if (t.classList.contains("sw")) {
+      const row = t.closest(".leg");
+      state.diskColors[row.dataset.disk] = t.value;
+      // Choosing a colour for a disk is a statement that colour should mean *disk*.
+      state.colorBy = "disk";
+      Graph.setOptions({ diskColors: state.diskColors, colorBy: "disk" });
+      return;                        // the graph repaints; the swatch is left alone
+    }
+    if (t.id === "gsize") {
+      state.nodeSize = parseFloat(t.value);
+      $("#gsizeval").textContent = state.nodeSize.toFixed(1) + "×" +
+        (state.nodeSize * state.scale >= Graph.SPHERE_FROM ? " spheres" : "");
+      Graph.setOptions({ nodeSize: state.nodeSize });
+      return;
+    }
+    if (t.id === "gspread") {
+      state.spread = parseFloat(t.value);
+      $("#gspreadval").textContent = state.spread.toFixed(2) + "×";
+      Graph.setOptions({ spread: state.spread });
+      return;
+    }
+    if (t.id === "gdirection") {
+      state.direction = t.value; Graph.setOptions({ direction: t.value }); persist(); return;
+    }
+    if (t.id === "gplates") {
+      state.showPlates = t.checked; Graph.setOptions({ showPlates: t.checked }); persist(); return;
+    }
+    if (t.id === "gsort") { state.sortMode = t.value; renderLegend(); persist(); }
+    if (t.id === "gcolorby") { state.colorBy = t.value; Graph.setOptions({ colorBy: t.value }); persist(); }
+    if (t.id === "gfilter") { state.filterMode = t.value; Graph.setOptions({ filterMode: t.value }); persist(); }
+  });
+  mount.addEventListener("change", (ev) => {
+    // Committed, not live: a localStorage write per frame of a slider drag is waste, and
+    // the value is already in `state` -- this only decides when it reaches disk.
+    if (ev.target.classList.contains("sw") ||
+        ["gsize", "gspread"].includes(ev.target.id)) persist();
+  });
+
+  /* Drag to reorder. Reordering is the stack order, so dropping a row moves a plate. */
+  mount.addEventListener("dragstart", (ev) => {
+    const row = ev.target.closest(".leg");
+    if (!row) return;
+    dragDisk = row.dataset.disk;
+    row.classList.add("dragging");
+    ev.dataTransfer.effectAllowed = "move";
+  });
+  mount.addEventListener("dragover", (ev) => {
+    ev.preventDefault();
+    ev.target.closest(".leg")?.classList.add("over");
+  });
+  mount.addEventListener("dragleave", (ev) => {
+    ev.target.closest(".leg")?.classList.remove("over");
+  });
+  mount.addEventListener("drop", (ev) => {
+    ev.preventDefault();
+    const row = ev.target.closest(".leg");
+    $$(".leg").forEach(r => r.classList.remove("over", "dragging"));
+    if (!row || !dragDisk || row.dataset.disk === dragDisk) return;
+    const order = state.diskOrder.slice();
+    order.splice(order.indexOf(dragDisk), 1);
+    order.splice(order.indexOf(row.dataset.disk), 0, dragDisk);
+    state.diskOrder = order;
+    // A hand-made order is only visible under manual sort, so say so by switching to it.
+    state.sortMode = "manual";
+    dragDisk = null;
+    Graph.setOptions({ diskOrder: order });
+    renderLegend();
+    persist();
+  });
+  mount.addEventListener("dragend", () => {
+    $$(".leg").forEach(r => r.classList.remove("over", "dragging"));
+  });
+}
+
+/* ════════════════════════════════════════════════════════════
    Boot
    ════════════════════════════════════════════════════════════ */
 
@@ -2022,8 +2523,18 @@ async function boot() {
     }
     return;
   }
+  /* Settings are stored per program, so they can only be adopted once the cover has
+   * said which program this is. Theme and scale are re-applied after, because the first
+   * call at the top of boot ran against defaults the reader may have overridden. */
+  adoptSettings(STATS.program);
+  applyTheme();
+  applyScale();
+  state.view = state.startup;
+
   buildNav();
+  wireGraphOnce();
   render();
+  if (state.view === "graph") ensureGraph();
   selfCheck();
 }
 

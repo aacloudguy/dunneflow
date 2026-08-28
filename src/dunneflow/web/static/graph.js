@@ -1,4 +1,16 @@
-/* The 2.5D stack.
+/* The 2.5D stack — the rendering engine, and nothing else.
+ *
+ * This file used to be the whole page: it owned a header, a mode toggle, a settings pane,
+ * a disk menu, a search box, an inspector and a breadcrumb, and it booted itself. All of
+ * those exist in the shell as well, which is how the project ended up with two complete
+ * applications that had never been joined. **The shell is the application; this is a view
+ * inside it.** So everything here that was a shell concern is gone, and what remains is
+ * the part nothing else can do: turn a payload into pixels at sixty frames a second.
+ *
+ * The boundary is drawn at the container. The engine draws inside the element it is handed
+ * and touches no DOM outside it -- counts, fps, hints, diagnostics and errors leave as
+ * events, because a renderer that writes into `#counts` is a renderer that can only ever
+ * live on one page.
  *
  * Rules that came from use, each correcting something this file did wrong:
  *
@@ -22,34 +34,59 @@
  */
 'use strict';
 
+/* Wrapped: a classic script's top-level declarations are globals, and a global here
+ * collides with the same name in the shell. One exported name, no leakage. */
+(function () {
+
 const {
   Deck, OrbitView, ScatterplotLayer, LineLayer, TextLayer, PolygonLayer,
   COORDINATE_SYSTEM, CollisionFilterExtension,
 } = deck;
-/* Reached through their namespaces rather than destructured. These files are classic
- * scripts sharing one global scope, so `const loadSettings = ...` here would redeclare the
- * function of that name over there -- which is a SyntaxError that stops the page dead
- * before anything renders. */
-const Settings = window.DunneFlowSettings;
 const Shading = window.DunneFlowShading;
-const Inspector = window.DunneFlowInspector;
 
 const CARTESIAN = COORDINATE_SYSTEM.CARTESIAN;
 
-const KIND_COLOR = {
-  ROUTINE:   [ 45, 212, 191],
-  STRUCTURE: [147, 197, 253],
-  CONSTANT:  [148, 163, 184],
-  BOUNDARY:  [196, 181, 253],
-  // A file the program names is not a boundary it touches: naming is a choice the authors
-  // made, touching is something the code does. Different act, different colour.
-  ARTEFACT:  [251, 191,  36],
+/* ------------------------------------------------------------------ palette --- */
+
+/* Every colour the engine draws with, in one object, replaceable at runtime.
+ *
+ * It is a parameter rather than a constant because the graph follows the theme, and the
+ * theme is the shell's to know: `tokens.css` says no component declares a colour outside
+ * that block, and a second hand-kept table here would be exactly that. The defaults below
+ * are the dark values the 60 fps figure was measured on, so an engine mounted without a
+ * palette still draws what it always drew.
+ *
+ * `diskS` and `diskL` are the saturation and lightness band the golden-angle disk hues are
+ * generated at. They are a band and not a list because there are fifty-two disks and a
+ * hand-written palette of fifty-two is a palette nobody maintains. */
+const PALETTE = {
+  kind: {
+    ROUTINE:   [ 45, 212, 191],
+    STRUCTURE: [147, 197, 253],
+    CONSTANT:  [148, 163, 184],
+    BOUNDARY:  [196, 181, 253],
+    // A file the program names is not a boundary it touches: naming is a choice the
+    // authors made, touching is something the code does. Different act, different colour.
+    ARTEFACT:  [251, 191,  36],
+  },
+  dim:        [ 52,  64,  82],
+  dimAlpha:   110,
+  edge:       [ 94, 234, 212, 150],
+  plateFill:  [ 22,  30,  41,  70],
+  plateLine:  [ 44,  56,  73, 140],
+  label:      [230, 236, 243, 240],
+  labelBg:    [ 11,  17,  25, 200],
+  tooltipBg:  '#161e29',
+  tooltipText:'#e6ecf3',
+  tooltipLine:'#2c3849',
+  diskS: 0.62, diskL: 0.58,          // packages
+  extS:  0.45, extL:  0.78,          // externals, a cooler paler band
+  /* Ambient floor and specular strength for the sphere shading. On a dark ground a ball
+   * is lit up out of the background; on a light one it must darken away from the light,
+   * and an additive white highlight vanishes. So they are parameters, not constants. */
+  ambient: 0.42, diffuse: 0.72, specular: 0.5,
 };
-/* A distinct default hue per disk, walked by the golden angle so neighbours in the list
- * never land on neighbouring hues. Overridable from the menu, but true from the start --
- * a feature that only works once the reader has hand-coloured fifty-two plates is a
- * feature nobody reaches. Externals sit in a cooler, paler band so the two kinds stay
- * tellable apart even when every plate has its own colour. */
+
 function hslToRgb(h, sl, l) {
   const a = sl * Math.min(l, 1 - l);
   const f = (n) => {
@@ -58,10 +95,6 @@ function hslToRgb(h, sl, l) {
   };
   return [f(0), f(8), f(4)];
 }
-const DIM_COLOR    = [ 52,  64,  82];
-const EDGE_COLOR   = [ 94, 234, 212, 150];
-const PLATE_FILL   = [ 22,  30,  41,  70];
-const PLATE_LINE   = [ 44,  56,  73, 140];
 
 const DOT_MIN = 1.4;
 const DOT_MAX = 3.6;
@@ -73,33 +106,63 @@ const SPHERE_FROM = 2.2;
 const DISK_GAP = 190;
 const NODE_LABEL_CAP = 250;
 const NODE_LABEL_ZOOM = -1.2;
-const SEARCH_CAP = 200;
-
-const el = (id) => document.getElementById(id);
-
-const state = {
-  program: 'program', settings: null,
-  data: null, prepared: null, deckgl: null,
-  moving: false, stopTimer: 0,
-  viewState: { target: [0, 0, 0], zoom: -4, rotationX: 35, rotationOrbit: 20,
-               minZoom: -9, maxZoom: 8 },
-  picks: [],              // [{kind:'disk', id} | {kind:'node', index}] -- ordered
-  members: new Set(),
-  mode: 'graph',          // which centre view is showing; see MODES
-  inspecting: null,       // the node id the inspector is currently on
-  hiddenLabels: 0,
-  benching: false,
-};
-
-/* ------------------------------------------------------------------ helpers --- */
 
 const hexToRgb = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
 const rgbToHex = (c) => '#' + c.map((v) => v.toString(16).padStart(2, '0')).join('');
 
-function persist() {
-  const s = state.settings;
-  s.picks = state.picks;
-  Settings.saveSettings(state.program, s);
+/* ------------------------------------------------------------------- state --- */
+
+/* Engine state: what is on screen right now. It is deliberately *not* the reader's
+ * settings -- those belong to the application, which pushes the ones the engine needs in
+ * through `setOptions`. The split is the whole point of this file: the reader's choices
+ * survive a reload and travel between views, and none of that is a renderer's business. */
+const g = {
+  container: null,
+  data: null, prepared: null, deckgl: null,
+  viewState: { target: [0, 0, 0], zoom: -4, rotationX: 35, rotationOrbit: 20,
+               minZoom: -9, maxZoom: 8 },
+  moving: false, stopTimer: 0,
+  picks: [],              // [{kind:'disk', id} | {kind:'node', index}] -- ordered
+  members: new Set(),
+  selGeom: null,
+  hiddenLabels: 0,
+  benching: false,
+  mounted: false,
+};
+
+/* The view options the application owns and the engine obeys. Defaults match
+ * `settings.js`, which is where their real values live. */
+const opts = {
+  diskOrder: null,
+  diskColors: {},
+  colorBy: 'kind',
+  filterMode: 'dim',
+  direction: 'both',
+  nodeSize: 1,
+  spread: 0.35,
+  showPlates: false,
+  scale: 1,               // design rule 3: one multiplier resizes everything, nodes too
+};
+
+/* ------------------------------------------------------------------- events --- */
+
+/* The engine says what happened; the application decides what to show. Anything that used
+ * to be `el('counts').innerHTML = ...` is one of these. */
+const listeners = { select: [], counts: [], fps: [], error: [], ready: [] };
+
+function on(event, fn) {
+  if (!(event in listeners)) throw new Error(`DunneFlowGraph: no such event "${event}"`);
+  listeners[event].push(fn);
+  return () => {
+    const i = listeners[event].indexOf(fn);
+    if (i >= 0) listeners[event].splice(i, 1);
+  };
+}
+
+function emit(event, payload) {
+  for (const fn of listeners[event]) {
+    try { fn(payload); } catch (err) { console.error(`[dunneflow] ${event} listener:`, err); }
+  }
 }
 
 /* ---------------------------------------------------------------- geometry --- */
@@ -133,17 +196,19 @@ function bounds(d, subset = null) {
  * leaves the footprint circular, so tilt is the only term that changes the silhouette.
  *
  * With a selection it frames the selection: having pushed everything else out of the way,
- * the next thing anyone wants is to see what is left, filling the screen. */
-function fitView(d, rotationX = state.viewState.rotationX, subset = null) {
-  const b = bounds(d, subset ?? (state.members.size ? state.members : null));
+ * the next thing anyone wants is to see what is left, filling the screen.
+ *
+ * Measured against the *container*, not the window. As a page of its own those were the
+ * same number; inside a three-pane shell they are not, and framing against the window
+ * puts the stack partly under the inspector. */
+function fitView(d, rotationX = g.viewState.rotationX, subset = null) {
+  const b = bounds(d, subset ?? (g.members.size ? g.members : null));
   const t = (rotationX * Math.PI) / 180;
   const vertical = Math.abs(b.height * Math.cos(t)) + Math.abs(2 * b.radius * Math.sin(t));
-  const wide = state.settings.panels.disks ? 0.60 : 0.90;   // room for the menu, if open
-  const scale = Math.min(
-    (window.innerWidth * wide) / (2 * b.radius),
-    (window.innerHeight * 0.88) / vertical,
-  );
-  return { ...state.viewState, target: b.centre, rotationX, zoom: Math.log2(scale) };
+  const w = g.container?.clientWidth || window.innerWidth;
+  const h = g.container?.clientHeight || window.innerHeight;
+  const scale = Math.min((w * 0.90) / (2 * b.radius), (h * 0.88) / vertical);
+  return { ...g.viewState, target: b.centre, rotationX, zoom: Math.log2(scale) };
 }
 
 /* ---------------------------------------------------------------- data prep --- */
@@ -238,10 +303,9 @@ function prepare(raw) {
  * owns it from then on, which is what makes drag-and-drop reordering, the spread slider
  * and any future shuffling the same single operation. */
 function applyLayout(d) {
-  const order = state.settings.diskOrder;
-  const spread = state.settings.spread;
+  const order = opts.diskOrder;
   d.diskZ.clear();
-  order.forEach((id, i) => d.diskZ.set(id, (order.length - i) * DISK_GAP * spread));
+  order.forEach((id, i) => d.diskZ.set(id, (order.length - i) * DISK_GAP * opts.spread));
 
   for (let i = 0; i < d.n; i++) {
     d.positions[i * 3 + 2] = d.diskZ.get(d.raw.nodes.disk[i]) ?? 0;
@@ -251,7 +315,7 @@ function applyLayout(d) {
     for (const pt of p.polygon) pt[2] = z;
   }
   d.gpu = null;
-  if (state.picks.length) buildSelectionGeometry(d);
+  if (g.picks.length) buildSelectionGeometry(d);
 }
 
 function defaultOrder(raw) {
@@ -276,22 +340,22 @@ function diskPlates(raw) {
 /* ----------------------------------------------------------------- colours --- */
 
 function diskColor(diskId) {
-  const s = state.settings;
-  if (s.diskColors[diskId]) return hexToRgb(s.diskColors[diskId]);
-  const i = state.data.disks.findIndex((d) => d.id === diskId);
-  const external = state.data.disks[i]?.kind === 'external';
+  if (opts.diskColors[diskId]) return hexToRgb(opts.diskColors[diskId]);
+  const i = g.data.disks.findIndex((d) => d.id === diskId);
+  const external = g.data.disks[i]?.kind === 'external';
   const hue = ((i < 0 ? 0 : i) * 0.381966) % 1;          // golden angle around the wheel
-  return external ? hslToRgb(hue, 0.45, 0.78) : hslToRgb(hue, 0.62, 0.58);
+  return external ? hslToRgb(hue, PALETTE.extS, PALETTE.extL)
+                  : hslToRgb(hue, PALETTE.diskS, PALETTE.diskL);
 }
 
 function paintNodes(d) {
   /* Colour carries one dimension at a time (design rule 4): either what a thing *is*, or
    * which disk it sits on -- never both at once. Selection state is carried by dimming,
    * a separate channel, so it never competes with either. */
-  const byDisk = state.settings.colorBy === 'disk';
-  const hide = state.settings.filterMode === 'hide';
-  const sel = state.members.size ? state.members : null;
-  const size = state.settings.nodeSize;
+  const byDisk = opts.colorBy === 'disk';
+  const hide = opts.filterMode === 'hide';
+  const sel = g.members.size ? g.members : null;
+  const size = opts.nodeSize * opts.scale;
 
   for (let i = 0; i < d.n; i++) {
     /* A shadow is never drawn. It exists so a plate's layout can feel the pull of
@@ -306,11 +370,11 @@ function paintNodes(d) {
     }
     const out = sel && !sel.has(i);
     let c, a;
-    if (out && hide) { c = DIM_COLOR; a = 0; }
-    else if (out) { c = DIM_COLOR; a = 110; }
+    if (out && hide) { c = PALETTE.dim; a = 0; }
+    else if (out) { c = PALETTE.dim; a = PALETTE.dimAlpha; }
     else {
       c = byDisk ? diskColor(d.raw.nodes.disk[i])
-                 : (KIND_COLOR[d.raw.nodes.kind[i]] || KIND_COLOR.ROUTINE);
+                 : (PALETTE.kind[d.raw.nodes.kind[i]] || PALETTE.kind.ROUTINE);
       a = 255;
     }
     d.colors[i * 4] = c[0]; d.colors[i * 4 + 1] = c[1];
@@ -324,7 +388,7 @@ function paintNodes(d) {
 /* --------------------------------------------------------------- selection --- */
 
 function neighbours(d, index) {
-  const dir = state.settings.direction;
+  const dir = opts.direction;
   const edges = [];
   if (dir !== 'callees') for (const e of d.inbound.get(index) ?? []) edges.push(e);
   if (dir !== 'callers') for (const e of d.outbound.get(index) ?? []) edges.push(e);
@@ -333,7 +397,7 @@ function neighbours(d, index) {
 
 function recomputeMembers(d) {
   const m = new Set();
-  for (const pick of state.picks) {
+  for (const pick of g.picks) {
     if (pick.kind === 'disk') {
       for (const i of d.byDisk.get(pick.id) ?? []) m.add(i);
     } else {
@@ -344,52 +408,24 @@ function recomputeMembers(d) {
       }
     }
   }
-  state.members = m;
+  g.members = m;
 }
 
 function pickKey(p) { return p.kind === 'disk' ? `d:${p.id}` : `n:${p.index}`; }
 
-/* Following a link in the inspector moves the graph too, because they are one selection
- * and not two. The trail this leaves is what makes a detour free -- you can always click
- * back along the way you came, which is the whole argument for exploring sideways rather
- * than only drilling down.
- *
- * A node the graph does not draw is a real case, not an error: constants can be switched
- * off, and an external whose plate is folded away has no index. The inspector still shows
- * it -- refusing to *show* something because it cannot be *drawn* would make the picture
- * the limit of the map. */
-function gotoNodeById(id) {
-  const raw = state.data.nodes;
-  let index = -1;
-  for (let i = 0; i < raw.id.length; i++) {
-    if (raw.id[i] === id && !raw.shadow[i]) { index = i; break; }
-  }
-  if (index < 0) {
-    state.inspecting = id;
-    Inspector.show(id);
-    return;
-  }
-  togglePick(state.prepared, { kind: 'node', index }, 'replace');
-  render();
-}
-
-function togglePick(d, pick, mode = 'replace') {
+function togglePick(pick, mode = 'replace') {
+  const d = g.prepared;
   const key = pickKey(pick);
-  const at = state.picks.findIndex((p) => pickKey(p) === key);
+  const at = g.picks.findIndex((p) => pickKey(p) === key);
   if (mode === 'replace') {
-    state.picks = at >= 0 && state.picks.length === 1 ? [] : [pick];
+    g.picks = at >= 0 && g.picks.length === 1 ? [] : [pick];
   } else if (mode === 'remove') {
-    if (at >= 0) state.picks.splice(at, 1);
+    if (at >= 0) g.picks.splice(at, 1);
   } else if (at >= 0) {
-    state.picks.splice(at, 1);          // 'toggle' and 'add' both drop an existing pick
+    g.picks.splice(at, 1);              // 'toggle' and 'add' both drop an existing pick
   } else {
-    state.picks.push(pick);
+    g.picks.push(pick);
   }
-  afterSelectionChange(d);
-}
-
-function clearSelection(d) {
-  state.picks = [];
   afterSelectionChange(d);
 }
 
@@ -397,55 +433,33 @@ function afterSelectionChange(d) {
   recomputeMembers(d);
   buildSelectionGeometry(d);
   paintNodes(d);
-  markMenu();
-  markResults();
-  syncInspector();
-  persist();
+  draw();
+  announceSelection();
 }
 
 /* One shared selection, three views. The inspector follows the *last node* picked rather
  * than the whole set, because "what is this thing" has one answer and a set of forty-two
  * does not -- while disks stay a set, since the graph's question genuinely is plural.
  * Shadows are resolved to their real node first: a shadow is a placement device and never
- * an endpoint, so inspecting one would show a routine as living somewhere it does not. */
-function syncInspector() {
-  const last = [...state.picks].reverse().find((p) => p.kind === 'node');
-  if (!last) {
-    state.inspecting = null;
-    Inspector.show(null);
-    updateCrumb();
-    return;
-  }
-  const raw = state.data.nodes;
-  const i = raw.shadow[last.index] ? raw.real[last.index] : last.index;
-  const id = raw.id[i];
-  if (id === state.inspecting) return;      // same node: do not re-fetch on every repaint
-  state.inspecting = id;
-  Inspector.show(id);
-  updateCrumb();
-}
-
-/* The breadcrumb says where the reader is without taking the place they were. It names
- * the disk and the node, because at fifty-two plates "which plate am I on" is a question
- * the picture alone stops answering the moment you have zoomed in. */
-function updateCrumb() {
-  const c = el('crumb');
-  if (!c) return;
-  const parts = [];
-  const disks = state.picks.filter((p) => p.kind === 'disk');
-  if (disks.length) {
-    const names = disks.map((p) =>
-      state.data.disks.find((x) => x.id === p.id)?.name ?? p.id);
-    parts.push(names.slice(0, 2).join(' + ') +
-               (names.length > 2 ? ` +${names.length - 2}` : ''));
-  }
-  const last = [...state.picks].reverse().find((p) => p.kind === 'node');
+ * an endpoint, so inspecting one would show a routine as living somewhere it does not.
+ *
+ * The engine reports; the shell decides what to do about it. That is what lets one
+ * selection drive the graph, the inspector, the breadcrumb and the table without any of
+ * them knowing about the others. */
+function announceSelection() {
+  const last = [...g.picks].reverse().find((p) => p.kind === 'node');
+  let node = null;
   if (last) {
-    const raw = state.data.nodes;
+    const raw = g.data.nodes;
     const i = raw.shadow[last.index] ? raw.real[last.index] : last.index;
-    parts.push(raw.disk[i], raw.label[i]);
+    node = { index: i, id: raw.id[i], label: raw.label[i], disk: raw.disk[i],
+             kind: raw.kind[i] };
   }
-  c.textContent = parts.length ? parts.join(' › ') : '';
+  const disks = g.picks.filter((p) => p.kind === 'disk').map((p) => ({
+    id: p.id, name: g.data.disks.find((x) => x.id === p.id)?.name ?? p.id,
+  }));
+  emit('select', { picks: g.picks.slice(), node, disks, members: g.members.size });
+  announceCounts();
 }
 
 function buildSelectionGeometry(d) {
@@ -456,11 +470,11 @@ function buildSelectionGeometry(d) {
    * Two kinds, counted apart because they answer different things. A link that stays on
    * one plate says what a package does among itself. A link that crosses says how the
    * program hangs together -- and those are the ones worth the screen. */
-  if (!state.picks.length) { state.selGeom = null; return; }
+  if (!g.picks.length) { g.selGeom = null; return; }
 
   const within = [], crossing = [];
   for (const link of d.links) {
-    if (!state.members.has(link[0]) || !state.members.has(link[1])) continue;
+    if (!g.members.has(link[0]) || !g.members.has(link[1])) continue;
     (link[3] ? within : crossing).push(link);
   }
 
@@ -506,9 +520,9 @@ function buildSelectionGeometry(d) {
     }
   }
 
-  state.selGeom = { count: within.length, src, dst, wid,
-                    interCount: crossing.length, segs: crossing.length * SEG,
-                    iSrc, iDst, iCol, iWid, gpu: null };
+  g.selGeom = { count: within.length, src, dst, wid,
+                interCount: crossing.length, segs: crossing.length * SEG,
+                iSrc, iDst, iCol, iWid, gpu: null };
 }
 
 /* ------------------------------------------------------------------ layers --- */
@@ -522,34 +536,34 @@ function gpuData(d) {
   return d.gpu;
 }
 
-function selGpu(g) {
-  if (g.gpu) return g.gpu;
-  g.gpu = {
-    edges: { length: g.count, attributes: {
-      getSourcePosition: { value: g.src, size: 3 },
-      getTargetPosition: { value: g.dst, size: 3 },
-      getWidth: { value: g.wid, size: 1 } } },
-    inter: { length: g.segs, attributes: {
-      getSourcePosition: { value: g.iSrc, size: 3 },
-      getTargetPosition: { value: g.iDst, size: 3 },
-      getColor: { value: g.iCol, size: 4, normalized: true },
-      getWidth: { value: g.iWid, size: 1 } } },
+function selGpu(sg) {
+  if (sg.gpu) return sg.gpu;
+  sg.gpu = {
+    edges: { length: sg.count, attributes: {
+      getSourcePosition: { value: sg.src, size: 3 },
+      getTargetPosition: { value: sg.dst, size: 3 },
+      getWidth: { value: sg.wid, size: 1 } } },
+    inter: { length: sg.segs, attributes: {
+      getSourcePosition: { value: sg.iSrc, size: 3 },
+      getTargetPosition: { value: sg.iDst, size: 3 },
+      getColor: { value: sg.iCol, size: 4, normalized: true },
+      getWidth: { value: sg.iWid, size: 1 } } },
   };
-  return g.gpu;
+  return sg.gpu;
 }
 
 function buildLayers(d) {
-  const still = !state.moving;
-  const s = state.settings;
+  const still = !g.moving;
   const layers = [];
+  const size = opts.nodeSize * opts.scale;
 
-  if (s.showPlates) {
+  if (opts.showPlates) {
     layers.push(new PolygonLayer({
       id: 'plates', data: d.plates, coordinateSystem: CARTESIAN,
       getPolygon: (p) => p.polygon, filled: true, stroked: true, extruded: false,
-      getFillColor: PLATE_FILL, getLineColor: PLATE_LINE, getLineWidth: 1,
+      getFillColor: PALETTE.plateFill, getLineColor: PALETTE.plateLine, getLineWidth: 1,
       lineWidthUnits: 'pixels', pickable: false,
-      updateTriggers: { getPolygon: [s.spread, s.diskOrder] },
+      updateTriggers: { getPolygon: [opts.spread, opts.diskOrder] },
     }));
   }
 
@@ -557,10 +571,10 @@ function buildLayers(d) {
    * extension turns each disc into a ball -- same buffers, same call, a few extra
    * arithmetic operations per fragment. Real geometry would have cost fifteen thousand
    * mesh instances and a lighting pass for a difference nobody can see. */
-  const spheres = s.nodeSize >= SPHERE_FROM;
+  const spheres = size >= SPHERE_FROM;
   layers.push(new ScatterplotLayer({
     id: 'nodes', coordinateSystem: CARTESIAN, data: gpuData(d).nodes,
-    radiusUnits: 'pixels', radiusMinPixels: 0, radiusMaxPixels: DOT_MAX * 2 * s.nodeSize,
+    radiusUnits: 'pixels', radiusMinPixels: 0, radiusMaxPixels: DOT_MAX * 2 * size,
     pickable: true, autoHighlight: true, highlightColor: [255, 255, 255, 255],
     /* Billboarded: the disc always faces the camera.
      *
@@ -575,7 +589,10 @@ function buildLayers(d) {
      * moved with the model would be better still and is worth doing later; a fixed one
      * on a billboard is already convincing, and costs nothing. */
     billboard: true,
-    extensions: spheres ? [new Shading.SphereShadingExtension()] : [],
+    extensions: spheres ? [new Shading.SphereShadingExtension({
+      ambient: PALETTE.ambient, diffuse: PALETTE.diffuse, specular: PALETTE.specular,
+    })] : [],
+    updateTriggers: { getFillColor: [opts.colorBy, opts.filterMode] },
     /* No depth writing. A billboard is a flat quad held facing the camera, so two of them
      * at slightly different depths intersect along a straight line -- which renders as a
      * clean slice taken out of a ball and looks like a clipping bug, because it is one.
@@ -599,31 +616,31 @@ function buildLayers(d) {
    * still printed the selection's edge count beside the number: a claim about geometry
    * that was never drawn. The override is scoped to the two link layers, so the run
    * isolates edge cost rather than also pulling in the collision-filtered labels. */
-  const drawEdges = still || state.benching;
-  const g = state.selGeom && drawEdges ? selGpu(state.selGeom) : null;
-  if (g && state.selGeom.count) {
+  const drawEdges = still || g.benching;
+  const sg = g.selGeom && drawEdges ? selGpu(g.selGeom) : null;
+  if (sg && g.selGeom.count) {
     layers.push(new LineLayer({
-      id: 'sel-edges', coordinateSystem: CARTESIAN, data: g.edges,
-      getColor: EDGE_COLOR, widthUnits: 'pixels', pickable: false,
+      id: 'sel-edges', coordinateSystem: CARTESIAN, data: sg.edges,
+      getColor: PALETTE.edge, widthUnits: 'pixels', pickable: false,
     }));
   }
-  if (g && state.selGeom.interCount) {
+  if (sg && g.selGeom.interCount) {
     layers.push(new LineLayer({
-      id: 'inter-edges', coordinateSystem: CARTESIAN, data: g.inter,
+      id: 'inter-edges', coordinateSystem: CARTESIAN, data: sg.inter,
       widthUnits: 'pixels', pickable: false,
     }));
   }
 
-  if (still && state.viewState.zoom >= NODE_LABEL_ZOOM) {
+  if (still && g.viewState.zoom >= NODE_LABEL_ZOOM) {
     const labels = pickLabels(d);
     if (labels.length) {
       layers.push(new TextLayer({
         id: 'node-labels', data: labels, coordinateSystem: CARTESIAN,
         getPosition: (o) => o.pos, getText: (o) => o.text,
-        getSize: 11, sizeUnits: 'pixels', getColor: [230, 236, 243, 240],
+        getSize: 11 * opts.scale, sizeUnits: 'pixels', getColor: PALETTE.label,
         getTextAnchor: 'start', getAlignmentBaseline: 'center',
         getPixelOffset: [7, 0], background: true,
-        getBackgroundColor: [11, 17, 25, 200], backgroundPadding: [3, 1],
+        getBackgroundColor: PALETTE.labelBg, backgroundPadding: [3, 1],
         characterSet: 'auto', fontFamily: 'ui-monospace, Menlo, monospace',
         billboard: true, pickable: false,
         extensions: [new CollisionFilterExtension()],
@@ -636,8 +653,8 @@ function buildLayers(d) {
 }
 
 function pickLabels(d) {
-  const pool = state.members.size
-    ? [...state.members].sort((a, b) => d.degree[b] - d.degree[a])
+  const pool = g.members.size
+    ? [...g.members].sort((a, b) => d.degree[b] - d.degree[a])
     : d.ranked;
   const cap = Math.min(NODE_LABEL_CAP, pool.length);
   const out = [];
@@ -646,301 +663,174 @@ function pickLabels(d) {
     out.push({ pos: [d.positions[i * 3], d.positions[i * 3 + 1], d.positions[i * 3 + 2]],
                text: d.raw.nodes.label[i], priority: d.degree[i] });
   }
-  state.hiddenLabels = pool.length - cap;
+  g.hiddenLabels = pool.length - cap;
   return out;
-}
-
-/* --------------------------------------------------------------- disk menu --- */
-
-function sortedDisks() {
-  const s = state.settings;
-  const byId = new Map(state.data.disks.map((d) => [d.id, d]));
-  if (s.sortMode === 'manual') return s.diskOrder.map((id) => byId.get(id)).filter(Boolean);
-  const list = state.data.disks.slice();
-  if (s.sortMode === 'nodes') list.sort((a, b) => b.nodes - a.nodes);
-  else if (s.sortMode === 'name') list.sort((a, b) => a.name.localeCompare(b.name));
-  else list.sort((a, b) => (a.kind === b.kind ? b.nodes - a.nodes
-                                             : a.kind === 'package' ? -1 : 1));
-  return list;
-}
-
-function buildMenu() {
-  /* Three columns, interleaved a fraction of a row apart so rows nest rather than share
-   * baselines -- fifty-one entries in a third of the height one column needs. Each row is
-   * a button, a swatch and a drag handle, because with edges hidden by default this menu
-   * is the way into the graph rather than an index beside it. */
-  const host = el('menu');
-  host.innerHTML = '';
-  for (const disk of sortedDisks()) {
-    const row = document.createElement('div');
-    row.className = `leg ${disk.kind}`;
-    row.dataset.disk = disk.id;
-    row.draggable = true;
-    row.title = `${disk.nodes} nodes · ${disk.shadows} shadows · ${disk.edges} edges`;
-    row.innerHTML =
-      `<input class="sw" type="color" value="${rgbToHex(diskColor(disk.id))}" ` +
-      `title="colour this disk" aria-label="colour for ${disk.name}">` +
-      `<button class="nm" type="button">${disk.name}</button>` +
-      `<span class="ct">${disk.nodes}</span>`;
-    host.appendChild(row);
-  }
-  markMenu();
-}
-
-function markMenu() {
-  const on = new Set(state.picks.filter((p) => p.kind === 'disk').map((p) => p.id));
-  for (const row of document.querySelectorAll('.leg')) {
-    row.classList.toggle('on', on.has(row.dataset.disk));
-  }
-}
-
-/* ------------------------------------------------------------------ search --- */
-
-let searchHits = [];
-
-function runSearch() {
-  const q = el('q').value.trim().toLowerCase();
-  const d = state.prepared;
-  searchHits = [];
-  if (q) {
-    for (let i = 0; i < d.n && searchHits.length < SEARCH_CAP; i++) {
-      if (d.raw.nodes.shadow[i] === 0 && d.haystack[i].includes(q)) searchHits.push(i);
-    }
-    searchHits.sort((a, b) => d.degree[b] - d.degree[a]);
-  }
-  const total = q ? countMatches(d, q) : 0;
-  el('results').innerHTML = searchHits.map((i) =>
-    `<button class="hit" data-i="${i}">` +
-    `<span class="nm">${d.raw.nodes.label[i]}</span>` +
-    `<span class="ct">${d.raw.nodes.disk[i].replace(/^(pkg|ext):/, '')}</span></button>`
-  ).join('');
-  el('searchnote').textContent = !q ? ''
-    : total > searchHits.length
-      ? `${searchHits.length} of ${total} shown — refine to see the rest`
-      : `${total} match${total === 1 ? '' : 'es'}`;
-  markResults();
-}
-
-function countMatches(d, q) {
-  let n = 0;
-  for (let i = 0; i < d.n; i++) {
-    if (d.raw.nodes.shadow[i] === 0 && d.haystack[i].includes(q)) n++;
-  }
-  return n;
-}
-
-function markResults() {
-  for (const b of document.querySelectorAll('.hit')) {
-    b.classList.toggle('on', state.members.has(Number(b.dataset.i)));
-  }
 }
 
 /* ------------------------------------------------------------------ motion --- */
 
 function setMoving(moving) {
-  if (state.moving === moving) return;
-  state.moving = moving;
-  el('mode').textContent = moving ? 'moving · nodes only' : 'still';
-  render();
+  if (g.moving === moving) return;
+  g.moving = moving;
+  draw();
+  announceCounts();
 }
 
 function onViewStateChange({ viewState }) {
-  state.viewState = viewState;
+  g.viewState = viewState;
   setMoving(true);
-  clearTimeout(state.stopTimer);
-  state.stopTimer = setTimeout(() => setMoving(false), 180);
-  render();
+  clearTimeout(g.stopTimer);
+  g.stopTimer = setTimeout(() => setMoving(false), 180);
+  draw();
 }
 
-function render() {
-  if (!state.deckgl || !state.prepared) return;
-  state.deckgl.setProps({ layers: buildLayers(state.prepared), viewState: state.viewState });
-  updateCounts();
+function draw() {
+  if (!g.deckgl || !g.prepared) return;
+  g.deckgl.setProps({ layers: buildLayers(g.prepared), viewState: g.viewState });
 }
 
-function updateCounts() {
-  const s = state.data.stats;
-  const n = state.members.size;
-  let line;
-  if (state.moving && !state.benching) {
-    line = 'nodes only while moving';
-  } else if (n) {
-    const names = state.picks.map((p) => p.kind === 'disk'
-      ? (state.data.disks.find((x) => x.id === p.id)?.name ?? p.id)
-      : state.data.nodes.label[p.index]);
-    const shown = names.slice(0, 3).join(', ') + (names.length > 3 ? ` +${names.length - 3}` : '');
-    // Never a silent filter: what is not being shown is stated, in counts.
-    const rest = s.nodes - n;
-    const cross = state.selGeom?.interCount ?? 0;
-    line = `${shown} · ${n.toLocaleString()} nodes · ` +
-           `${(state.selGeom?.count ?? 0).toLocaleString()} within · ` +
-           `${cross.toLocaleString()} crossing · ` +
-           `${rest.toLocaleString()} ${state.settings.filterMode === 'hide' ? 'hidden' : 'dimmed'}`;
-  } else {
-    line = `nothing selected — all links hidden; pick two disks to see what crosses ` +
-           'between them, or click a node';
-  }
-  el('counts').innerHTML = `${s.nodes.toLocaleString()} nodes · ${s.disks} disks` +
-                           `<br><span class="muted">${line}</span>`;
-  el('clear').hidden = !n;
+/* What is on screen, and -- design rule 1 -- what is not. Never a silent filter: the
+ * excluded count is always stated, in numbers, whichever way the filter is set. */
+function announceCounts() {
+  if (!g.data) return;
+  const s = g.data.stats;
+  emit('counts', {
+    nodes: s.nodes,
+    disks: s.disks,
+    selected: g.members.size,
+    within: g.selGeom?.count ?? 0,
+    crossing: g.selGeom?.interCount ?? 0,
+    excluded: s.nodes - g.members.size,
+    excludedBy: opts.filterMode === 'hide' ? 'hidden' : 'dimmed',
+    hiddenLabels: g.hiddenLabels,
+    moving: g.moving && !g.benching,
+    names: g.picks.map((p) => p.kind === 'disk'
+      ? (g.data.disks.find((x) => x.id === p.id)?.name ?? p.id)
+      : g.data.nodes.label[p.index]),
+  });
 }
 
 /* ---------------------------------------------------------------------- fps --- */
 
 let frames = 0, lastReport = performance.now(), samples = [];
 let framesDrawn = 0;
+let ticking = false;
+
 function tick() {
   frames++;
   const now = performance.now();
   if (now - lastReport >= 500) {
     const fps = (frames * 1000) / (now - lastReport);
-    el('fps').textContent = fps.toFixed(0);
-    if (state.benching) samples.push(fps);
+    emit('fps', fps);
+    if (g.benching) samples.push(fps);
     frames = 0; lastReport = now;
   }
   requestAnimationFrame(tick);
 }
 
+/* Measure the most expensive frame the reader can ask for -- and report the geometry that
+ * was actually submitted, which is rule 24. */
 function benchmark(seconds = 6) {
-  samples = []; state.benching = true;
-  el('bench').textContent = 'benchmarking…';
-  const t0 = performance.now();
-  const start = { ...state.viewState };
-  function step() {
-    const t = (performance.now() - t0) / 1000;
-    if (t >= seconds) {
-      state.benching = false;
-      samples.sort((a, b) => a - b);
-      const med = samples[Math.floor(samples.length / 2)] || 0;
-      const worst = samples[0] || 0;
-      const within = state.selGeom?.count ?? 0;
-      const crossing = state.selGeom?.interCount ?? 0;
-      const edgeCount = within + crossing;
-      /* 60 is the vsync ceiling, not a measurement of capacity. When median and worst
-       * both sit on it the honest statement is "no frames dropped, headroom unknown" --
-       * reporting it as a score invites reading a ceiling as a limit. */
-      const capped = med >= 59 && worst >= 59;
-      el('bench').textContent =
-        `median ${med.toFixed(0)} fps · worst ${worst.toFixed(0)} · ` +
-        `${state.data.stats.nodes.toLocaleString()} nodes` +
-        (state.settings.nodeSize >= SPHERE_FROM ? ' · spheres' : '') +
-        /* Both kinds, because both were drawn. Reporting `count` alone under-stated a
-         * run by its crossings -- 2,199 printed against 4,253 submitted -- which is
-         * rule 24 surviving in the half of the line the first fix did not touch. The
-         * two are named separately because they answer different questions, and summing
-         * them here would lose that as surely as omitting one did. */
-        (edgeCount ? ` · ${within.toLocaleString()} within + ` +
-                     `${crossing.toLocaleString()} crossing edges` : '') +
-        (capped ? ' · no frames dropped (60 is the vsync cap; headroom unmeasured)' : '');
-      setMoving(false);
-      return;
+  return new Promise((resolve) => {
+    samples = []; g.benching = true;
+    const t0 = performance.now();
+    const start = { ...g.viewState };
+    function step() {
+      const t = (performance.now() - t0) / 1000;
+      if (t >= seconds) {
+        g.benching = false;
+        samples.sort((a, b) => a - b);
+        const med = samples[Math.floor(samples.length / 2)] || 0;
+        const worst = samples[0] || 0;
+        const within = g.selGeom?.count ?? 0;
+        const crossing = g.selGeom?.interCount ?? 0;
+        setMoving(false);
+        /* 60 is the vsync ceiling, not a measurement of capacity. When median and worst
+         * both sit on it the honest statement is "no frames dropped, headroom unknown" --
+         * reporting it as a score invites reading a ceiling as a limit. */
+        resolve({
+          median: med, worst, capped: med >= 59 && worst >= 59,
+          nodes: g.data.stats.nodes,
+          spheres: opts.nodeSize * opts.scale >= SPHERE_FROM,
+          /* Both kinds, because both were drawn. Reporting `count` alone under-stated a
+           * run by its crossings -- 2,199 against 4,253 submitted -- which is rule 24
+           * surviving in the half of the line the first fix did not touch. They are named
+           * separately because they answer different questions, and summing them here
+           * would lose that as surely as omitting one did. */
+          within, crossing,
+        });
+        return;
+      }
+      onViewStateChange({ viewState: { ...start,
+        rotationOrbit: start.rotationOrbit + t * 60,
+        rotationX: 55 + Math.sin(t) * 20,
+        zoom: start.zoom + Math.sin(t * 0.8) * 0.6 } });
+      requestAnimationFrame(step);
     }
-    onViewStateChange({ viewState: { ...start,
-      rotationOrbit: start.rotationOrbit + t * 60,
-      rotationX: 55 + Math.sin(t) * 20,
-      zoom: start.zoom + Math.sin(t * 0.8) * 0.6 } });
-    requestAnimationFrame(step);
-  }
-  step();
+    step();
+  });
 }
 
 /* -------------------------------------------------------------- diagnostics --- */
 
-function diagnose() {
+/* On the page, not in a console: "drawn off-screen" and "not drawn" are indistinguishable
+ * by looking, and a developer cannot open a console in someone else's browser. */
+function diagnostics() {
   const lines = [];
-  const canvas = document.querySelector('#stage canvas');
+  const canvas = g.container?.querySelector('canvas');
   const gl = canvas && (canvas.getContext('webgl2') || canvas.getContext('webgl'));
   const dbg = gl && gl.getExtension('WEBGL_debug_renderer_info');
   lines.push(`canvas ${canvas ? canvas.width + '×' + canvas.height : 'MISSING'}` +
              ` · dpr ${window.devicePixelRatio}`);
   lines.push(`gl ${gl ? 'ok' : 'NONE'}` +
              (dbg ? ` · ${gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL)}` : ''));
-  const vp = state.deckgl?.getViewports?.()[0];
-  if (vp) {
-    const b = bounds(state.prepared, state.members.size ? state.members : null);
+  const vp = g.deckgl?.getViewports?.()[0];
+  if (vp && g.prepared) {
+    const b = bounds(g.prepared, g.members.size ? g.members : null);
     const p = vp.project(b.centre).map(Math.round);
     const inside = p[0] > 0 && p[1] > 0 && p[0] < vp.width && p[1] < vp.height;
-    lines.push(`zoom ${state.viewState.zoom.toFixed(2)} · tilt ${Math.round(state.viewState.rotationX)}` +
+    lines.push(`zoom ${g.viewState.zoom.toFixed(2)} · tilt ${Math.round(g.viewState.rotationX)}` +
                ` · centre [${p}] ${inside ? 'ON' : 'OFF'} screen`);
   }
-  lines.push(`layers ${state.deckgl?.props?.layers?.length ?? 0} · frames ${framesDrawn}`);
-  el('diag').innerHTML = lines.join('<br>');
+  lines.push(`layers ${g.deckgl?.props?.layers?.length ?? 0} · frames ${framesDrawn}`);
+  return lines;
 }
 
-/* --------------------------------------------------------------------- boot --- */
+/* -------------------------------------------------------------------- mount --- */
 
-function applyPanels() {
-  const p = state.settings.panels;
-  for (const [id, open] of Object.entries(p)) {
-    const node = el(`panel-${id}`);
-    if (node) node.classList.toggle('closed', !open);
-  }
-}
+function mount(container, raw, options = {}) {
+  if (g.mounted) return;
+  g.container = container;
+  g.data = raw;
+  Object.assign(opts, options);
 
-function syncControls() {
-  const s = state.settings;
-  el('spread').value = s.spread;
-  el('spreadval').textContent = (+s.spread).toFixed(2) + '×';
-  el('size').value = s.nodeSize;
-  el('sizeval').textContent = (+s.nodeSize).toFixed(1) + '×' +
-    (s.nodeSize >= SPHERE_FROM ? ' spheres' : '');
-  el('sort').value = s.sortMode;
-  el('filter').value = s.filterMode;
-  el('direction').value = s.direction;
-  el('colorby').value = s.colorBy;
-  el('plates').checked = s.showPlates;
-}
-
-async function boot() {
-  const t0 = performance.now();
-  const raw = await (await fetch('/api/graph')).json();
-  state.data = raw;
-  state.program = raw.program || 'program';
-  state.settings = Settings.loadSettings(state.program);
-
-  state.prepared = prepare(raw);
-  state.prepared.plates = diskPlates(raw);
+  g.prepared = prepare(raw);
+  g.prepared.plates = diskPlates(raw);
 
   // A saved order from a graph that has since changed must not silently drop disks.
   const ids = new Set(raw.disks.map((d) => d.id));
-  const saved = state.settings.diskOrder;
+  const saved = opts.diskOrder;
   const usable = Array.isArray(saved) && saved.length &&
                  saved.every((id) => ids.has(id)) && saved.length === ids.size;
-  state.settings.diskOrder = usable ? saved : defaultOrder(raw);
+  opts.diskOrder = usable ? saved : defaultOrder(raw);
 
-  state.picks = (state.settings.picks || []).filter((p) =>
-    p.kind === 'disk' ? ids.has(p.id) : p.index >= 0 && p.index < state.prepared.n);
+  g.picks = (options.picks || []).filter((p) =>
+    p.kind === 'disk' ? ids.has(p.id) : p.index >= 0 && p.index < g.prepared.n);
 
-  applyLayout(state.prepared);
-  recomputeMembers(state.prepared);
-  buildSelectionGeometry(state.prepared);
-  paintNodes(state.prepared);
-  buildMenu();
-  syncControls();
-  applyPanels();
-  applyRails();
-  setMode(state.settings.mode || 'graph');
+  applyLayout(g.prepared);
+  recomputeMembers(g.prepared);
+  buildSelectionGeometry(g.prepared);
+  paintNodes(g.prepared);
 
-  // Named in the header so two maps open side by side are tellable apart, which is the
-  // same reason settings are stored per program rather than globally.
-  el('program').textContent = state.program;
+  g.viewState = fitView(g.prepared, 35);
 
-  Inspector.wire((id) => gotoNodeById(id));
-  syncInspector();
-
-  // Rule 16's second defence, and the one a hand cannot forget: the list of controls is
-  // read out of the DOM, so markup and handlers cannot drift apart silently.
-  selfCheck();
-
-  state.viewState = fitView(state.prepared, 35);
-
-  state.deckgl = new Deck({
-    parent: el('stage'),
+  g.deckgl = new Deck({
+    parent: container,
     /* Orthographic: under perspective the near plates magnify and the far ones shrink,
      * rendering a stack of equal disks as a tapered cylinder -- the exact shape the model
      * exists not to be. It also makes zoom map world units to pixels exactly. */
     views: [new OrbitView({ orbitAxis: 'Z', orthographic: true })],
-    viewState: state.viewState,
+    viewState: g.viewState,
     controller: { inertia: 250 },
     onViewStateChange,
     onClick: (info, event) => {
@@ -948,8 +838,7 @@ async function boot() {
       const mode = event?.srcEvent?.altKey ? 'remove'
                  : (event?.srcEvent?.shiftKey || event?.srcEvent?.metaKey) ? 'add'
                  : 'replace';
-      togglePick(state.prepared, { kind: 'node', index: info.index }, mode);
-      render();
+      togglePick({ kind: 'node', index: info.index }, mode);
     },
     getTooltip: ({ index }) => {
       if (index < 0) return null;
@@ -959,329 +848,146 @@ async function boot() {
       return { html: `<b>${n.label[index]}</b>${n.shadow[index] ? ' (shadow)' : ''}<br>` +
                      `<span class="k">${n.kind[index]} · ${n.disk[index]}</span>` +
                      (extra ? `<br><span class="k">${extra}</span>` : ''),
-               style: { background: '#161e29', color: '#e6ecf3',
-                        border: '1px solid #2c3849', borderRadius: '4px',
+               style: { background: PALETTE.tooltipBg, color: PALETTE.tooltipText,
+                        border: `1px solid ${PALETTE.tooltipLine}`, borderRadius: '4px',
                         fontSize: '12px', padding: '4px 6px' } };
     },
     onError: (err) => {
+      /* A blank canvas must say why it is blank (design rule 21). Hardware acceleration
+       * switched off gives no WebGL context, and the symptom is an empty page that looks
+       * exactly like a broken program. */
       const gpuOff = /Failed to create WebGL context|GL_RENDERER = Disabled/.test(err.message);
-      el('err').innerHTML = gpuOff
-        ? '<b>This browser cannot draw.</b> Hardware acceleration is off, so no page ' +
-          'here can get a WebGL context — nothing to do with your machine.<br>' +
-          'Turn it on at <code>chrome://settings/system</code>, then relaunch Chrome. ' +
-          '<code>chrome://gpu</code> says why. Safari works without changing anything.' +
-          `<br><span class="muted">${err.message}</span>`
-        : `deck.gl: ${err.message}`;
-      el('err').hidden = false;
+      emit('error', { gpuOff, message: err.message });
     },
     onAfterRender: () => { framesDrawn++; },
-    layers: buildLayers(state.prepared),
+    layers: buildLayers(g.prepared),
   });
 
-  window.__deck = state.deckgl; window.__d = state.prepared; window.__state = state;
-  setTimeout(diagnose, 1500);
-  updateCounts();
-  el('hint').textContent =
-    `loaded in ${((performance.now() - t0) / 1000).toFixed(1)}s · ` +
-    'shift-click adds · alt-click removes';
-  tick();
+  g.mounted = true;
+  window.__deck = g.deckgl; window.__d = g.prepared; window.__graph = g;
+  if (!ticking) { ticking = true; tick(); }
+  announceSelection();
+  emit('ready', { disks: raw.disks, stats: raw.stats });
 }
 
-/* ----------------------------------------------------------------- controls --- */
+/* ---------------------------------------------------------------------- api --- */
 
-/* Live controls update in place and re-render only the graph. A settings pane that
- * rebuilds itself on every `input` event destroys the control being dragged -- that cost
- * a colour picker in the mockup session, and it is why nothing here rebuilds the menu
- * while a swatch is being dragged. */
-el('spread').addEventListener('input', (ev) => {
-  state.settings.spread = parseFloat(ev.target.value);
-  el('spreadval').textContent = state.settings.spread.toFixed(2) + '×';
-  applyLayout(state.prepared);
-  render();
-});
-el('spread').addEventListener('change', persist);
+/* Everything the application can ask of the renderer, and nothing about the page it
+ * happens to be on. */
+window.DunneFlowGraph = {
+  mount,
+  mounted: () => g.mounted,
+  on,
 
-el('size').addEventListener('input', (ev) => {
-  state.settings.nodeSize = parseFloat(ev.target.value);
-  el('sizeval').textContent = state.settings.nodeSize.toFixed(1) + '×' +
-    (state.settings.nodeSize >= SPHERE_FROM ? ' spheres' : '');
-  paintNodes(state.prepared);
-  render();
-});
-el('size').addEventListener('change', persist);
-
-el('menu').addEventListener('click', (ev) => {
-  const row = ev.target.closest('.leg');
-  if (!row || ev.target.classList.contains('sw')) return;
-  /* Plain click *toggles*, with no modifier. This is a multi-select list, and requiring
-   * shift to reach the thing the list exists for meant clicking plate after plate just
-   * replaced the selection each time -- so there was never a second layer to cross to,
-   * and the crossings, which are the whole point of the stack, could not appear at all.
-   * The failure looked like missing edges and was really a missing selection. */
-  togglePick(state.prepared, { kind: 'disk', id: row.dataset.disk }, 'toggle');
-  render();
-});
-
-el('menu').addEventListener('input', (ev) => {
-  if (!ev.target.classList.contains('sw')) return;
-  const row = ev.target.closest('.leg');
-  state.settings.diskColors[row.dataset.disk] = ev.target.value;
-  // Choosing a colour for a disk is a statement that colour should mean *disk*.
-  state.settings.colorBy = 'disk';
-  el('colorby').value = 'disk';
-  paintNodes(state.prepared);
-  render();                       // the graph repaints; the swatch is left alone
-});
-el('menu').addEventListener('change', (ev) => {
-  if (ev.target.classList.contains('sw')) persist();
-});
-
-/* Drag to reorder. Reordering is the stack order, so dropping a row moves a plate. */
-let dragId = null;
-el('menu').addEventListener('dragstart', (ev) => {
-  const row = ev.target.closest('.leg');
-  if (!row) return;
-  dragId = row.dataset.disk;
-  row.classList.add('dragging');
-  ev.dataTransfer.effectAllowed = 'move';
-});
-el('menu').addEventListener('dragover', (ev) => {
-  ev.preventDefault();
-  const row = ev.target.closest('.leg');
-  if (row) row.classList.add('over');
-});
-el('menu').addEventListener('dragleave', (ev) => {
-  ev.target.closest('.leg')?.classList.remove('over');
-});
-el('menu').addEventListener('drop', (ev) => {
-  ev.preventDefault();
-  const row = ev.target.closest('.leg');
-  document.querySelectorAll('.leg').forEach((r) => r.classList.remove('over', 'dragging'));
-  if (!row || !dragId || row.dataset.disk === dragId) return;
-  const order = state.settings.diskOrder;
-  order.splice(order.indexOf(dragId), 1);
-  order.splice(order.indexOf(row.dataset.disk), 0, dragId);
-  // A hand-made order is only visible under manual sort, so say so by switching to it.
-  state.settings.sortMode = 'manual';
-  el('sort').value = 'manual';
-  dragId = null;
-  applyLayout(state.prepared);
-  buildMenu();
-  persist();
-  render();
-});
-el('menu').addEventListener('dragend', () => {
-  document.querySelectorAll('.leg').forEach((r) => r.classList.remove('over', 'dragging'));
-});
-
-el('sort').addEventListener('change', (ev) => {
-  state.settings.sortMode = ev.target.value;
-  buildMenu();
-  persist();
-});
-el('filter').addEventListener('change', (ev) => {
-  state.settings.filterMode = ev.target.value;
-  paintNodes(state.prepared);
-  persist();
-  render();
-});
-el('direction').addEventListener('change', (ev) => {
-  state.settings.direction = ev.target.value;
-  afterSelectionChange(state.prepared);
-  render();
-});
-el('colorby').addEventListener('change', (ev) => {
-  state.settings.colorBy = ev.target.value;
-  paintNodes(state.prepared);
-  persist();
-  render();
-});
-el('plates').addEventListener('change', (ev) => {
-  state.settings.showPlates = ev.target.checked;
-  persist();
-  render();
-});
-
-el('q').addEventListener('input', runSearch);
-el('results').addEventListener('click', (ev) => {
-  const b = ev.target.closest('.hit');
-  if (!b) return;
-  const mode = ev.shiftKey || ev.metaKey ? 'add' : ev.altKey ? 'remove' : 'replace';
-  togglePick(state.prepared, { kind: 'node', index: Number(b.dataset.i) }, mode);
-  render();
-});
-
-/* ------------------------------------------------------------------ routing ---
- *
- * Design rule 16: **route from a table.** What was here was an `if`/`elif` chain ending
- * in `fitView(...)`, so any `data-act` nobody had written a branch for silently snapped
- * the camera and looked entirely deliberate -- the same shape as the eight menu items
- * that rendered perfectly and did nothing. A table cannot fall through: an unknown action
- * is an error with a name, and `selfCheck()` refuses to start quietly if the page draws a
- * control this table has never heard of.
- */
-
-const ACTIONS = {
-  bench: () => benchmark(),
-
-  clear: () => { clearSelection(state.prepared); render(); },
-
-  fit:  () => onViewStateChange({ viewState: fitView(state.prepared, state.viewState.rotationX) }),
-  top:  () => onViewStateChange({ viewState: fitView(state.prepared, 90) }),
-  tilt: () => onViewStateChange({ viewState: fitView(state.prepared, 35) }),
-
-  reset: () => {
-    const { settings, cleared } = Settings.resetSettings(state.program, state.settings);
-    state.settings = settings;
-    state.settings.diskOrder = defaultOrder(state.data);
-    state.picks = [];
-    applyLayout(state.prepared);
-    recomputeMembers(state.prepared);
-    buildSelectionGeometry(state.prepared);
-    paintNodes(state.prepared);
-    buildMenu(); syncControls(); applyPanels(); syncInspector();
-    // A reset that silently reverts everything leaves you guessing what was yours.
-    el('bench').textContent = cleared.length
-      ? `reset to defaults — cleared ${cleared.join(', ')}`
-      : 'already at defaults';
-    onViewStateChange({ viewState: fitView(state.prepared, 35) });
+  /* The reader's settings arrive here. Each option says what it invalidates, because
+   * repainting everything on a slider drag is how a 60 fps budget is lost. */
+  setOptions(partial) {
+    const before = { ...opts };
+    Object.assign(opts, partial);
+    if (!g.prepared) return;
+    if (partial.spread !== undefined || partial.diskOrder !== undefined) {
+      applyLayout(g.prepared);
+    }
+    if (partial.direction !== undefined && partial.direction !== before.direction) {
+      recomputeMembers(g.prepared);
+      buildSelectionGeometry(g.prepared);
+    }
+    paintNodes(g.prepared);
+    draw();
+    announceCounts();
   },
 
-  'rail-left':  () => toggleRail('left'),
-  'rail-right': () => toggleRail('right'),
+  setScale(multiplier) {
+    opts.scale = multiplier;
+    if (!g.prepared) return;
+    paintNodes(g.prepared);
+    draw();
+  },
+
+  /* The palette is replaced whole, never merged field by field: a half-applied theme is
+   * harder to recognise as wrong than a reset one, which is the same argument
+   * `settings.js` makes about a version mismatch. */
+  setPalette(palette) {
+    Object.assign(PALETTE, palette);
+    if (!g.prepared) return;
+    paintNodes(g.prepared);
+    buildSelectionGeometry(g.prepared);   // crossings carry plate colour along their length
+    draw();
+  },
+
+  setSelection(picks) {
+    if (!g.prepared) return;
+    g.picks = picks.slice();
+    afterSelectionChange(g.prepared);
+  },
+  togglePick(pick, mode) { if (g.prepared) togglePick(pick, mode); },
+  clearSelection() { if (g.prepared) { g.picks = []; afterSelectionChange(g.prepared); } },
+  selection: () => g.picks.slice(),
+  isSelected: (pick) => g.picks.some((p) => pickKey(p) === pickKey(pick)),
+
+  /* A node the graph does not draw is a real case, not an error: constants can be switched
+   * off, and an external whose plate is folded away has no index. The caller is told so
+   * and can still show it -- refusing to *show* something because it cannot be *drawn*
+   * would make the picture the limit of the map. */
+  indexOfId(id) {
+    if (!g.data) return -1;
+    const raw = g.data.nodes;
+    for (let i = 0; i < raw.id.length; i++) {
+      if (raw.id[i] === id && !raw.shadow[i]) return i;
+    }
+    return -1;
+  },
+
+  /* The haystack lives with the payload, so matching belongs here; what to do with the
+   * hits does not. Returns indices, ranked by degree, plus the true total -- because a
+   * capped list that does not say what it capped is a silent filter. */
+  search(query, cap = 200) {
+    const d = g.prepared;
+    const q = String(query).trim().toLowerCase();
+    if (!d || !q) return { hits: [], total: 0 };
+    const hits = [];
+    let total = 0;
+    for (let i = 0; i < d.n; i++) {
+      if (d.raw.nodes.shadow[i] === 1 || !d.haystack[i].includes(q)) continue;
+      total++;
+      hits.push(i);
+    }
+    hits.sort((a, b) => d.degree[b] - d.degree[a]);
+    return { hits: hits.slice(0, cap), total };
+  },
+
+  node(index) {
+    const raw = g.data?.nodes;
+    if (!raw || index < 0 || index >= raw.id.length) return null;
+    const i = raw.shadow[index] ? raw.real[index] : index;
+    return { index: i, id: raw.id[i], label: raw.label[i], kind: raw.kind[i],
+             disk: raw.disk[i], detail: raw.detail[i] || {} };
+  },
+
+  disks: () => (g.data?.disks ?? []).slice(),
+  /* The order actually in force, which is not always the one handed in: a saved
+   * order from a graph that has since changed is discarded at mount. */
+  diskOrder: () => (opts.diskOrder ?? []).slice(),
+  diskColorHex: (id) => rgbToHex(diskColor(id)),
+  defaultOrder: () => (g.data ? defaultOrder(g.data) : []),
+  stats: () => g.data?.stats ?? null,
+
+  /* Guarded, because these are buttons and a reader can press one while the payload is
+   * still arriving. Nine thousand nodes take a moment, the HUD is on screen throughout,
+   * and "snap to fit" before the stack exists is an ordinary thing to do -- not an error
+   * to throw on. */
+  fit(tilt) { if (g.prepared) onViewStateChange({ viewState: fitView(g.prepared, tilt ?? g.viewState.rotationX) }); },
+  topDown() { if (g.prepared) onViewStateChange({ viewState: fitView(g.prepared, 90) }); },
+  tilt() { if (g.prepared) onViewStateChange({ viewState: fitView(g.prepared, 35) }); },
+
+  /* deck.gl sizes itself to its container, and a container that was `hidden` has no size.
+   * Coming back to graph mode needs a nudge or the canvas stays at whatever it was when
+   * the shell first laid it out. */
+  resize() { if (g.deckgl) { draw(); } },
+
+  benchmark,
+  diagnostics,
+  SPHERE_FROM,
 };
 
-/* The centre pane is a mode toggle over one shared selection, never three destinations:
- * switching mode must not cost the reader the thing they were looking at. An unbuilt mode
- * shows its own "not built" panel rather than borrowing the graph, which is the whole
- * point of rule 16 -- a view that silently shows something else looks like it works. */
-const MODES = ['graph', 'table', 'document'];
-
-function setMode(name) {
-  if (!MODES.includes(name)) {
-    console.error('[dunneflow] no such centre mode:', name);
-    return;
-  }
-  state.mode = name;
-  document.querySelectorAll('.view').forEach((v) => {
-    v.hidden = v.dataset.view !== name;
-  });
-  document.querySelectorAll('#modes button').forEach((b) => {
-    b.setAttribute('aria-selected', String(b.dataset.mode === name));
-  });
-  state.settings.mode = name;
-  persist();
-  // deck.gl sizes itself to a container that was `hidden`; coming back needs a nudge.
-  if (name === 'graph' && state.deckgl) render();
-  verifyOneViewShowing(name);
-}
-
-/* Check what is *painted*, not what the DOM says.
- *
- * The DOM was right and the screen was wrong: `hidden` was set correctly on both other
- * views while an author `display` rule cancelled it, so all three stacked and the topmost
- * won. Reading `v.hidden` back agreed with itself and proved nothing. `offsetParent` is
- * null only when something is genuinely not laid out, which is the question actually
- * being asked.
- *
- * This is the shape of check design rule 16 asks for, one layer lower than the wiring:
- * the control worked, the handler ran, the attribute flipped, and the reader still saw a
- * button that did nothing. */
-function verifyOneViewShowing(name) {
-  const showing = [...document.querySelectorAll('.view')]
-    .filter((v) => v.offsetParent !== null || v === el('stage') && !v.hidden)
-    .map((v) => v.dataset.view);
-  if (showing.length === 1 && showing[0] === name) return;
-  const line = `mode "${name}" selected but ${showing.length} view(s) are on screen: `
-             + `${showing.join(', ') || 'none'}`;
-  console.error('[dunneflow] view check:', line);
-  const box = el('err');
-  if (box) {
-    box.hidden = false;
-    box.innerHTML = `<b>View check failed.</b> ${line}. A mode that flips its attribute `
-      + 'but changes nothing on screen looks exactly like one that is broken — because '
-      + 'it is.';
-  }
-}
-
-function toggleRail(side) {
-  const shell = el('shell');
-  const cls = side === 'left' ? 'no-left' : 'no-right';
-  shell.classList.toggle(cls);
-  state.settings.rails = {
-    left: !shell.classList.contains('no-left'),
-    right: !shell.classList.contains('no-right'),
-  };
-  persist();
-}
-
-function applyRails() {
-  const r = state.settings.rails || { left: true, right: true };
-  const shell = el('shell');
-  shell.classList.toggle('no-left', !r.left);
-  shell.classList.toggle('no-right', !r.right);
-}
-
-/* Every control the page draws must be listened for by something. The list is derived
- * from the DOM rather than hand-kept, so it cannot drift out of step with the markup the
- * way a written-down list does -- which is the half of rule 16 that a hand forgets. */
-function selfCheck() {
-  const missing = [];
-  document.querySelectorAll('[data-act]').forEach((n) => {
-    if (!(n.dataset.act in ACTIONS)) missing.push(`data-act="${n.dataset.act}"`);
-  });
-  document.querySelectorAll('[data-mode]').forEach((n) => {
-    if (!MODES.includes(n.dataset.mode)) missing.push(`data-mode="${n.dataset.mode}"`);
-  });
-  document.querySelectorAll('[data-panel]').forEach((n) => {
-    if (!(n.dataset.panel in state.settings.panels)) {
-      missing.push(`data-panel="${n.dataset.panel}"`);
-    }
-  });
-  if (missing.length) {
-    const line = `${missing.length} control(s) wired to nothing: ${missing.join(', ')}`;
-    console.error('[dunneflow] self-check:', line);
-    const box = el('err');
-    if (box) {
-      box.hidden = false;
-      box.innerHTML = `<b>Self-check failed.</b> ${line}. ` +
-        'A control that renders but does nothing looks exactly like one that works, ' +
-        'so this is shown rather than logged.';
-    }
-  }
-  return missing;
-}
-
-document.addEventListener('click', (ev) => {
-  const head = ev.target.closest('[data-panel]');
-  if (head) {
-    const name = head.dataset.panel;
-    state.settings.panels[name] = !state.settings.panels[name];
-    applyPanels();
-    persist();
-    return;
-  }
-  const modeBtn = ev.target.closest('[data-mode]');
-  if (modeBtn) return setMode(modeBtn.dataset.mode);
-
-  const btn = ev.target.closest('[data-act]');
-  if (!btn) return;
-  const act = btn.dataset.act;
-  const fn = ACTIONS[act];
-  if (!fn) {
-    // Never a fallback. An action nobody handles is a defect, and it says so.
-    console.error('[dunneflow] no handler for action:', act);
-    return;
-  }
-  fn();
-});
-
-document.addEventListener('keydown', (ev) => {
-  if (ev.metaKey || ev.ctrlKey || !state.prepared) return;
-  if (ev.target.tagName === 'INPUT') return;          // typing in search is not a shortcut
-  if (ev.key === 'f') onViewStateChange({ viewState: fitView(state.prepared) });
-  if (ev.key === 'Escape') { clearSelection(state.prepared); render(); }
-  if (ev.key === '/') { ev.preventDefault(); el('q').focus(); }
-});
-
-boot();
+})();

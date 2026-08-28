@@ -12,8 +12,11 @@
   because a dashboard that ships one program's numbers inside it will show them
   to the next program too, confidently and wrongly.
 
-  Chunk 2 mounts the 2.5D graph into the viewport. Until then the graph mode
-  says so rather than borrowing a view that works.
+  The 2.5D graph is a view inside this page, not a page of its own. There is no
+  iframe: WebGL has no requirement to be the top-level document, deck.gl mounts
+  into any div, and an iframe would cut the single shared selection in half --
+  turning "click a routine in the text, see it in the graph" into a postMessage
+  protocol, which is the one interaction the whole design is built around.
 -->
 
 
@@ -97,7 +100,23 @@
         <div class="hiddenlist" id="hiddenList" hidden></div>
       </div>
 
-      <div class="viewport" id="viewport"></div>
+      <!--
+        Two permanent children, and the split is load-bearing.
+
+        `render()` fills `#viewMount` with innerHTML on every keystroke. A deck.gl
+        canvas cannot live there: it would be destroyed and rebuilt continuously,
+        losing its GL context, its camera and the reader's place in the program.
+        So the graph gets a mount `render()` never touches, and mode swaps which of
+        the two is on screen.
+      -->
+      <div class="viewport" id="viewport">
+        <div class="graphmount" id="graphMount" hidden>
+          <div class="graphstage" id="graphStage"></div>
+          <div class="graphhud" id="graphHud"></div>
+          <div class="graphlegend" id="graphLegend"></div>
+        </div>
+        <div class="viewmount" id="viewMount"></div>
+      </div>
     </main>
 
     <!-- ══════════ INSPECTOR ══════════ -->
@@ -107,4 +126,15 @@
 </div>
 
 
+<!--
+  Order matters and is not incidental. deck.gl defines the `deck` global that
+  `shading.js` and `graph.js` both read at parse time, and `shell.js` reads
+  `window.DunneFlowGraph` when it mounts. These are classic scripts sharing one
+  global scope, which is why each of the three wraps itself in an IIFE and exports
+  exactly one name.
+-->
+<script src="/vendor/deck.gl.min.js"></script>
+<script src="/static/settings.js"></script>
+<script src="/static/shading.js"></script>
+<script src="/static/graph.js"></script>
 <script src="/static/shell.js"></script>

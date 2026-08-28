@@ -17,9 +17,16 @@
  * collides with the same name imported in app.js. One exported name each, no leakage. */
 (function () {
 
-const SETTINGS_VERSION = 1;
+/* Bumped to 2 when the graph and the shell became one application. Before that there were
+ * two stores for one reader -- the graph persisted its arrangement per program and the
+ * shell persisted nothing at all, so a theme and a scale chosen deliberately were gone on
+ * reload while a disk order nobody remembered setting survived. A blob written by v1 is
+ * discarded whole rather than merged, which is the rule this file already stated: a
+ * half-applied layout is harder to recognise as wrong than a reset one. */
+const SETTINGS_VERSION = 2;
 
 const DEFAULTS = {
+  /* ── the graph ───────────────────────────────────────────────────────────── */
   diskOrder: null,        // null = the server's default order
   diskColors: {},         // diskId -> "#rrggbb"
   colorBy: 'kind',        // 'kind' | 'disk'
@@ -29,10 +36,37 @@ const DEFAULTS = {
   nodeSize: 1,            // multiplier: 1 = the tiny dots the 60 fps figure was taken on
   spread: 0.35,
   showPlates: false,
-  panels: { hud: true, disks: true, settings: false, inspector: true },
+  graphLayout: 'stack',   // 'stack' | 'packages' -- both built, use retires the loser
+  graphTheme: 'follow',   // 'follow' | 'dark' -- design rule 2; see the Settings page
   picks: [],              // the selection itself, so a session survives a reload
-  mode: 'graph',          // which centre view: 'graph' | 'table' | 'document'
-  rails: { left: true, right: true },
+  panels: { hud: true, disks: true, settings: false, inspector: true },
+
+  /* ── the shell ───────────────────────────────────────────────────────────── */
+  theme: 'system',        // 'system' | 'light' | 'dark'
+  scale: 1,               // design rule 3: one multiplier over every dimension
+  startup: 'cover',       // 'cover' | 'graph'
+  mode: 'graph',          // which centre view: 'graph' | 'table' | 'doc'
+  menuOrder: 'waysin',    // 'waysin' | 'explore' -- a genuine tie, so both exist
+  trailShown: true,
+  trailCap: 12,
+  density: 'comfortable', // 'compact' | 'comfortable' | 'spacious'
+  ambient: false,         // anomaly badges wherever a thing appears
+  hideInferred: false,
+  colWidths: { q: 22, lines: 5.5, ret: 10, np: 3.5, fan: 3.5, nb: 3.5, nc: 3.5 },
+  insp: { in: true, out: true, touches: true, gov: true, sig: false },
+  sortKey: 'fan',
+  sortAsc: false,
+
+  /* ── egress, and what has been looked at ─────────────────────────────────── */
+  egress: 'off',          // design rule 14: scoped, never a switch, off until turned on
+  aiOps: { harvest: true },
+  triage: {},             // finding id -> 'ack' | 'notbug' | 'tooldefect'
+  pins: [],               // the shelf: what was found while looking for something else
+
+  /* Counted locally, and only so a Setting can be retired on evidence rather than on
+   * opinion. Starts at zero for every program: seeded with invented numbers it would
+   * retire settings on fiction, which is worse than not counting at all. */
+  usage: {},
 };
 
 function storageKey(program) {
@@ -66,8 +100,13 @@ function loadSettings(program) {
    * default -- so adding a setting never has to migrate anything. */
   for (const k of Object.keys(out)) {
     if (!(k in saved)) continue;
-    if (k === 'panels') Object.assign(out.panels, saved.panels || {});
-    else if (k === 'rails') Object.assign(out.rails, saved.rails || {});
+    /* A nested group merges key by key rather than being replaced whole, so a group that
+     * gains a member -- another inspector section, another column -- keeps its default for
+     * the new one instead of losing it to an older blob. Arrays are values, not groups:
+     * `picks` and `pins` are replaced entire. Named by shape rather than by a list, so
+     * adding a group does not mean remembering to add it here too. */
+    const isGroup = (v) => v && typeof v === 'object' && !Array.isArray(v);
+    if (isGroup(out[k]) && isGroup(saved[k])) Object.assign(out[k], saved[k]);
     else out[k] = saved[k];
   }
   return out;
@@ -92,10 +131,23 @@ function resetSettings(program, current) {
     diskOrder: 'disk order', diskColors: 'disk colours', colorBy: 'colour source',
     sortMode: 'sort', filterMode: 'filter mode', direction: 'direction',
     nodeSize: 'node size', spread: 'spread', picks: 'selection',
-    showPlates: 'disk plates', mode: 'centre view', rails: 'panel layout',
+    showPlates: 'disk plates', mode: 'centre view', panels: 'panel layout',
+    graphLayout: 'graph layout', graphTheme: 'graph theme',
+    theme: 'theme', scale: 'interface scale', startup: 'startup screen',
+    menuOrder: 'menu order', trailShown: 'the trail', trailCap: 'trail length',
+    density: 'row density', ambient: 'ambient badges', hideInferred: 'inferred edges',
+    colWidths: 'column widths', insp: 'inspector sections',
+    sortKey: 'table sort', sortAsc: 'table sort direction',
+    egress: 'egress posture', aiOps: 'model operations',
+    triage: 'triage decisions', pins: 'the shelf', usage: 'usage counts',
   };
-  for (const [k, label] of Object.entries(named)) {
-    if (JSON.stringify(current[k]) !== JSON.stringify(base[k])) cleared.push(label);
+  /* Walk the *defaults*, not the label table. Walking the labels meant a setting added
+   * without a label was cleared and never mentioned -- a reset that under-reports itself,
+   * which is the same silent-omission defect as a filter that does not say what it
+   * removed. An unnamed key falls back to its own name: ugly on screen is far better than
+   * absent, and it is visible enough to get a label written for it. */
+  for (const k of Object.keys(base)) {
+    if (JSON.stringify(current[k]) !== JSON.stringify(base[k])) cleared.push(named[k] || k);
   }
   try {
     window.localStorage.removeItem(storageKey(program));

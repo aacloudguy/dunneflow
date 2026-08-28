@@ -20,7 +20,11 @@ implementation, which is the failure it was supposed to detect.
 from __future__ import annotations
 
 import re
+import shutil
+import subprocess
 from pathlib import Path
+
+import pytest
 
 STATIC = Path(__file__).resolve().parents[1] / "src" / "dunneflow" / "web" / "static"
 
@@ -81,10 +85,85 @@ def test_every_static_control_is_listened_for() -> None:
 
 
 def test_the_page_loads_what_it_needs() -> None:
-    """A missing script is a blank page, and a blank page must never be a mystery."""
+    """A missing script is a blank page, and a blank page must never be a mystery.
+
+    The graph is the reason this is not a formality. For one session the shell replaced
+    `index.html` and simply stopped loading the engine: deck.gl was never fetched, there
+    were no canvases on the page, and the 2.5D stack -- built, measured at 60 fps and
+    entirely intact -- was unreachable. Nothing failed. The page loaded, every control
+    worked, and one whole half of the product was not there.
+    """
     html = _read("index.html")
-    assert "/static/shell.js" in html, "the shell is never loaded"
+    for src in ("/vendor/deck.gl.min.js", "/static/settings.js", "/static/shading.js",
+                "/static/graph.js", "/static/shell.js"):
+        assert src in html, f"{src} is never loaded, so the page is missing part of itself"
     assert "/static/tokens.css" in html, "the token stylesheet is never loaded"
+
+    # Order is not incidental: these are classic scripts sharing one global scope, and each
+    # reads the global the one before it defines.
+    at = [html.index(s) for s in ("/vendor/deck.gl.min.js", "/static/shading.js",
+                                  "/static/graph.js", "/static/shell.js")]
+    assert at == sorted(at), "the scripts are loaded out of order; each needs the last"
+
+
+def test_the_javascript_parses() -> None:
+    """A syntax error in the shell is a blank page with no dashboard at all.
+
+    It happened while writing this chunk: a backtick inside an HTML comment, inside a
+    template literal, closed the literal early. `shell.js` failed to parse, the page came
+    up with an empty navigator and "showing 0 of 0 routines", and every Python test still
+    passed -- because none of them had ever asked whether the file was valid JavaScript.
+
+    Skipped rather than required when no engine is present. DunneFlow ships with **no Node
+    at runtime or build** and that is not negotiable; this uses whatever engine the
+    developer's machine happens to have, and asserts nothing about the product.
+    """
+    engine = next((c for c in ("node", "deno", "bun") if shutil.which(c)), None)
+    if engine is None:
+        jsc = Path("/System/Library/Frameworks/JavaScriptCore.framework"
+                   "/Versions/A/Helpers/jsc")
+        engine = str(jsc) if jsc.exists() else None
+    if engine is None:
+        pytest.skip("no JavaScript engine on this machine to parse with")
+
+    cmd = {"node": ["--check"], "deno": ["check"], "bun": ["build", "--no-bundle"]}
+    for js in sorted(STATIC.glob("*.js")):
+        args = [engine, *cmd.get(Path(engine).name, []), str(js)]
+        r = subprocess.run(args, capture_output=True, text=True)
+        assert r.returncode == 0, f"{js.name} does not parse:\n{r.stderr or r.stdout}"
+
+
+def test_the_graph_has_somewhere_to_live() -> None:
+    """`render()` fills the centre pane with innerHTML on every keystroke.
+
+    A deck.gl canvas in that element would be destroyed and rebuilt continuously, losing
+    its GL context, its camera and the reader's place. So the graph gets a mount that
+    `render()` never touches, and the two are swapped rather than rewritten.
+    """
+    html = _read("index.html")
+    assert 'id="graphMount"' in html and 'id="viewMount"' in html
+    js = _read("shell.js")
+    assert 'const vp = $("#viewMount")' in js, (
+        "render() writes to the viewport again, which would destroy the graph canvas"
+    )
+
+
+def test_every_graph_action_is_reachable_and_every_control_acts() -> None:
+    """Design rule 16, both directions, for the graph's own control table.
+
+    The second direction is the one a hand forgets: an action no control reaches is a
+    feature that has quietly stopped being reachable while every other test still passes.
+    """
+    js = _read("shell.js")
+    body = js.split("const GRAPH_ACTIONS = {", 1)[1].split("\n};", 1)[0]
+    actions = set(re.findall(r"^\s+([a-zA-Z][\w]*)\s*:", body, re.M))
+    assert actions, "GRAPH_ACTIONS changed shape -- this test is blind"
+    # A `${...}` is an interpolation, not markup -- the self-check quotes the attribute
+    # back in its own error message, and reading that as a control is the same category
+    # error as reading a docstring as code (rule 9).
+    drawn = {v for v in re.findall(r'data-gact="([^"]+)"', js) if "${" not in v}
+    assert drawn <= actions, f"graph controls with no action: {sorted(drawn - actions)}"
+    assert actions <= drawn, f"graph actions no control reaches: {sorted(actions - drawn)}"
 
 
 def test_hidden_actually_hides() -> None:

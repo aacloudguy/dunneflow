@@ -34,6 +34,44 @@
 
   --shadow: 0 1px 2px rgba(15,23,42,.06), 0 2px 8px rgba(15,23,42,.05);
 
+  /* ── the graph ───────────────────────────────────────────────────────────────
+     The stack reads these through `getComputedStyle`, so the theme toggle drives
+     it with no second code path and no hand-kept palette in JavaScript. Design
+     rule 4 still governs: colour carries one dimension at a time, and dimming is
+     a separate channel from either.
+
+     The light values are not the dark ones lightened. On a pale ground a node has
+     to be *darker* than its surroundings to read at all, and dimming means moving
+     toward the ground rather than away from it -- so `--graph-dim` here is light
+     and its dark counterpart is nearly black. Nodes are 1.4 to 3.6 pixels; at that
+     size only chroma separates them, which is why the light band is saturated
+     rather than pastel. */
+  --graph-ground:    #eef1f5;
+  --graph-routine:   #0d7f75;
+  --graph-structure: #1d4ed8;
+  --graph-constant:  #5a6675;
+  --graph-boundary:  #6d28d9;
+  --graph-artefact:  #a16207;
+  --graph-dim:       #c2cad6;
+  --graph-dim-alpha: 150;
+  --graph-edge:      #0d7f75;
+  --graph-edge-alpha: 150;
+  --graph-plate-fill: #dfe5ee;
+  --graph-plate-line: #b6c0cd;
+  --graph-label:     #0f172a;
+  --graph-label-bg:  #ffffff;
+  /* Saturation and lightness the golden-angle per-disk hues are generated at.
+     A band rather than a list, because fifty-two hand-picked colours is a palette
+     nobody maintains. Externals sit apart from packages in *lightness* here and in
+     both dark blocks, so the two kinds stay tellable apart once every plate has
+     its own hue. */
+  --graph-disk-s: 0.70;  --graph-disk-l: 0.42;
+  --graph-ext-s:  0.55;  --graph-ext-l:  0.58;
+  /* Sphere lighting. On a light ground the ball darkens away from the light and an
+     additive white highlight is invisible, so the ambient floor sits above 1 and the
+     diffuse term is negative -- shading *down* from the base colour. */
+  --graph-ambient: 1.06;  --graph-diffuse: -0.34;  --graph-specular: 0.0;
+
   /* the blanket multiplier — every dimension below is rem, so this
      one value resizes type, columns, rows, padding, icons and graph */
   --scale: 1;
@@ -75,6 +113,25 @@
     --external-bg:   #291f45;
 
     --shadow: 0 1px 2px rgba(0,0,0,.4), 0 2px 10px rgba(0,0,0,.32);
+
+    /* ── the graph — the values the 60 fps figure was measured on ───────────── */
+    --graph-ground:    #0b1119;
+    --graph-routine:   #2dd4bf;
+    --graph-structure: #93c5fd;
+    --graph-constant:  #94a3b8;
+    --graph-boundary:  #c4b5fd;
+    --graph-artefact:  #fbbf24;
+    --graph-dim:       #344052;
+    --graph-dim-alpha: 110;
+    --graph-edge:      #5eead4;
+    --graph-edge-alpha: 150;
+    --graph-plate-fill: #161e29;
+    --graph-plate-line: #2c3849;
+    --graph-label:     #e6ecf3;
+    --graph-label-bg:  #0b1119;
+    --graph-disk-s: 0.62;  --graph-disk-l: 0.58;
+    --graph-ext-s:  0.45;  --graph-ext-l:  0.78;
+    --graph-ambient: 0.42;  --graph-diffuse: 0.72;  --graph-specular: 0.5;
   }
 }
 :root[data-theme="dark"] {
@@ -106,6 +163,25 @@
   --external-bg:   #291f45;
 
   --shadow: 0 1px 2px rgba(0,0,0,.4), 0 2px 10px rgba(0,0,0,.32);
+
+  /* ── the graph — the values the 60 fps figure was measured on ─────────────── */
+  --graph-ground:    #0b1119;
+  --graph-routine:   #2dd4bf;
+  --graph-structure: #93c5fd;
+  --graph-constant:  #94a3b8;
+  --graph-boundary:  #c4b5fd;
+  --graph-artefact:  #fbbf24;
+  --graph-dim:       #344052;
+  --graph-dim-alpha: 110;
+  --graph-edge:      #5eead4;
+  --graph-edge-alpha: 150;
+  --graph-plate-fill: #161e29;
+  --graph-plate-line: #2c3849;
+  --graph-label:     #e6ecf3;
+  --graph-label-bg:  #0b1119;
+  --graph-disk-s: 0.62;  --graph-disk-l: 0.58;
+  --graph-ext-s:  0.45;  --graph-ext-l:  0.78;
+  --graph-ambient: 0.42;  --graph-diffuse: 0.72;  --graph-specular: 0.5;
 }
 
 /* ═══ base ═══ */
@@ -338,7 +414,77 @@ body {
 .hiddenlist ul { margin: .3rem 0 0; padding-left: 1.1rem; }
 .hiddenlist li { margin: .1rem 0; }
 
-.viewport { flex: 1; overflow: auto; padding: .875rem; min-height: 0; }
+/* The viewport holds two mounts, exactly one of which is on screen.
+ *
+ * It no longer scrolls or pads itself: the graph must fill it edge to edge and be sized
+ * in pixels deck.gl can read, while every other view wants padding and a scrollbar. So
+ * the padding and the overflow moved down onto `#viewMount`, and `#graphMount` gets
+ * neither. A padded canvas parent is a canvas that reports the wrong size. */
+.viewport { flex: 1; min-height: 0; position: relative; display: flex; }
+.viewmount { flex: 1; overflow: auto; padding: .875rem; min-height: 0; min-width: 0; }
+
+/* `position: relative` and an explicit size, because deck.gl measures its parent at
+ * construction and a parent with no laid-out size gives a 0×0 canvas -- which draws
+ * nothing and looks exactly like a broken program (design rule 21). */
+.graphmount { flex: 1; position: relative; min-height: 0; min-width: 0; overflow: hidden;
+              background: var(--graph-ground); }
+.graphstage { position: absolute; inset: 0; }
+
+/* The HUD and the legend float over the canvas rather than beside it: the stack wants
+ * every pixel, and both are furniture for the graph rather than part of the shell. */
+.graphhud { position: absolute; top: .5rem; left: .5rem; z-index: 2; max-width: 22rem;
+            font-size: .72rem; line-height: 1.45; pointer-events: none; }
+.graphhud > * { pointer-events: auto; }
+.graphhud .hudbox { background: var(--surface); border: 1px solid var(--border);
+                    border-radius: .375rem; padding: .4rem .55rem; box-shadow: var(--shadow);
+                    margin-bottom: .35rem; }
+.graphhud .num { font-family: var(--f-mono); font-weight: 600; }
+.graphhud .muted { color: var(--text-muted); }
+.graphhud .gbtn { font: inherit; font-size: .7rem; background: var(--raised);
+                  border: 1px solid var(--border); border-radius: .25rem;
+                  padding: .12rem .4rem; margin-right: .25rem; cursor: pointer;
+                  color: var(--text); }
+.graphhud .gbtn:hover { background: var(--sunken); }
+/* The graph's own selects. `.tb-select` was reused here at first and is white-on-
+ * translucent-white by design -- correct against the dark topbar it was written for, and
+ * invisible on a white panel. Design rule 6 in its plainest form: a control the reader
+ * cannot read is a control that is not there. */
+.gsel { font: inherit; font-size: .66rem; background: var(--raised); color: var(--text);
+        border: 1px solid var(--border); border-radius: .25rem; padding: .1rem .3rem; }
+
+.graphhud .gerr { border-color: var(--sev-broken); background: var(--sev-broken-bg);
+                  color: var(--sev-broken); }
+
+/* Design rule 19: with edges hidden by default the legend *is* the way in, not an index
+ * beside the picture. Three columns interleaved a fraction of a row apart so rows nest
+ * instead of sharing baselines -- fifty-one disks in a third of the height one column
+ * needs. It is HTML rather than text in the scene because a legend that spins away with
+ * the camera is not a legend. */
+.graphlegend { position: absolute; right: .5rem; top: .5rem; bottom: .5rem; z-index: 2;
+               width: 26rem; overflow: auto; background: var(--surface);
+               border: 1px solid var(--border); border-radius: .375rem;
+               box-shadow: var(--shadow); padding: .4rem; }
+.graphlegend.closed { bottom: auto; height: auto; overflow: visible; }
+.graphlegend.closed .legrows, .graphlegend.closed .legfoot { display: none; }
+.legrows { column-count: 3; column-gap: .5rem; }
+.leg { display: flex; align-items: center; gap: .25rem; font-size: .68rem;
+       break-inside: avoid; padding: .06rem .1rem; border-radius: .18rem;
+       cursor: pointer; }
+.leg:nth-child(3n+2) { margin-top: .22rem; }   /* the interleave: rows nest, not align */
+.leg:nth-child(3n)   { margin-top: .44rem; }
+.leg:hover { background: var(--raised); }
+.leg.on { background: var(--accent-soft); outline: 1px solid var(--accent); }
+.leg.dragging { opacity: .45; }
+.leg.over { outline: 1px dashed var(--accent); }
+.leg .sw { width: .8rem; height: .8rem; padding: 0; border: 0; background: none;
+           flex: none; cursor: pointer; }
+.leg .nm { font: inherit; background: none; border: 0; padding: 0; color: var(--text);
+           text-align: left; overflow: hidden; text-overflow: ellipsis;
+           white-space: nowrap; flex: 1; cursor: pointer; }
+.leg.external .nm { color: var(--external); }
+.leg .ct { font-family: var(--f-mono); color: var(--text-faint); flex: none; }
+.legfoot { font-size: .66rem; color: var(--text-muted); padding: .3rem .1rem 0;
+           border-top: 1px solid var(--border); margin-top: .35rem; }
 
 /* ═══ cover ═══ */
 .cover-grid { display: grid; grid-template-columns: 1fr; gap: .875rem; max-width: 62rem; }

@@ -295,6 +295,25 @@ These each came from a false result on real code. Keep them.
     a read against a stale store, because nobody thought of a reader as something that
     could destroy.
 
+22. **A node is a billboard, not a disc.** A circle drawn in the plane of its own disk
+    foreshortens into an ellipse the moment the stack is tilted, and an ellipse does not
+    read as a ball -- it reads as a coin seen edge-on. A sphere has no orientation, so a
+    picture of one must not either: the quad is held facing the camera, always. Invisible
+    at dot sizes; the whole illusion the moment nodes are big enough to look at.
+
+    Real geometry is not the answer. Instanced meshes and a lighting pass would cost
+    fifteen thousand draws for a difference nobody can see, against a frame budget
+    measured on a single instanced draw of flat circles. The sphere is a few lines of
+    shader reconstructing a normal from the disc's own uv -- same layer, same call, same
+    buffers. Depth writing stays **off**: two billboards at slightly different depths
+    intersect along a straight line, which renders as a clean slice taken out of a ball.
+
+    The shading silently did nothing at first, because the inject hook was named
+    `fragmentColor:DECKGL_FILTER_COLOR` instead of `fs:DECKGL_FILTER_COLOR`. An
+    unrecognised hook is not an error -- the shader compiles, the layer draws, the effect
+    never happens. That is the same silent no-op as a string replacement that matches
+    nothing, in a shader's clothing, and only looking closely at one node found it.
+
 ## Anomalies: the discipline
 
 `anomalies.py` reports what looks wrong. It exists under one rule:

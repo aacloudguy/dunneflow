@@ -861,7 +861,21 @@ fallback is not needed. 60 is the vsync ceiling, so that is a floor with unmeasu
 headroom, not a capacity — the readout now says so rather than letting a ceiling read as
 a score.
 
-**Still open on chunk 1:** node selection
+**Phase 2 built 2026-08-27.** The working session: selection is a set of picks (shift
+adds, alt removes, esc clears), disks multi-select and drag-to-reorder with Z owned by the
+client, per-disk colour, sort by size/name/kind/manual, dim-or-hide with the excluded
+count always stated, collapsible panels, node size from dots to billboarded spheres,
+search across every metadata field the payload carries, and settings persisted per program
+and versioned with a reset that says what it cleared. Named artefacts became nodes on
+their own plate (155, 329 edges) -- searching `tabularium` returned nothing and that was a
+gap in the map, not the search. Edge width is driven by weight end to end, which is the
+whole preparation for flow replay.
+
+**Still open after phase 2:** two measurements need real hardware -- fps with spheres at
+full size, and fps with a large multi-disk selection drawing thousands of edges. The
+sphere threshold (2.2x) is set by judgment and should be set by the first of those. Layout
+is still `structural` only; ForceAtlas2 in a worker, posted back and stored, is not built.
+Node selection
 is fiddly at overview zoom — the likely fix is a disk-focus mode that flies to a plate and
 drops to top-down, which belongs to chunk 2. Layout is still `structural` only:
 ForceAtlas2 in a worker, posted back and stored in a `layout` table, is not built.

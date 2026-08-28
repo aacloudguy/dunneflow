@@ -438,8 +438,25 @@ function buildLayers(d) {
     id: 'nodes', coordinateSystem: CARTESIAN, data: gpuData(d).nodes,
     radiusUnits: 'pixels', radiusMinPixels: 0, radiusMaxPixels: DOT_MAX * 2 * s.nodeSize,
     pickable: true, autoHighlight: true, highlightColor: [255, 255, 255, 255],
+    /* Billboarded: the disc always faces the camera.
+     *
+     * Without this the circle lies in the plane of its own disk, so tilting the stack
+     * foreshortens every node into an ellipse -- and an ellipse does not read as a ball,
+     * it reads as a coin seen edge-on. A sphere has no orientation, so a picture of one
+     * must not either. At dot sizes nobody notices; the moment the nodes are big enough
+     * to be worth looking at, it is the whole illusion.
+     *
+     * The shading in `shading.js` is computed from the disc's own uv, which is now always
+     * screen-facing, so the highlight stays put as the view turns. A real light that
+     * moved with the model would be better still and is worth doing later; a fixed one
+     * on a billboard is already convincing, and costs nothing. */
+    billboard: true,
     extensions: spheres ? [new Shading.SphereShadingExtension()] : [],
-    parameters: spheres ? { depthCompare: 'less-equal', depthWriteEnabled: true } : {},
+    /* No depth writing. A billboard is a flat quad held facing the camera, so two of them
+     * at slightly different depths intersect along a straight line -- which renders as a
+     * clean slice taken out of a ball and looks like a clipping bug, because it is one.
+     * Nodes composite in draw order instead, which is what a graph wants anyway: nothing
+     * here is solid, and a node hidden behind another is a node the reader cannot click. */
   }));
 
   if (still && state.viewState.zoom >= NODE_LABEL_ZOOM) {

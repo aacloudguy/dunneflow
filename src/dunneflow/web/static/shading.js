@@ -23,7 +23,12 @@
 const SPHERE_SHADER = {
   name: 'sphere-shading',
   inject: {
-    'fragmentColor:DECKGL_FILTER_COLOR': `
+    /* `fs:DECKGL_FILTER_COLOR` is the hook name deck.gl 9 actually looks for. An inject
+     * key it does not recognise is not an error -- the shader compiles, the layer draws,
+     * and the effect silently never happens, which is exactly the class of no-op this
+     * project keeps paying for. Verified by looking at a node close up: flat colour meant
+     * the hook was wrong, not the maths. */
+    'fs:DECKGL_FILTER_COLOR': `
       // geometry.uv spans the unit circle, so the near hemisphere's normal is free.
       float r2 = dot(geometry.uv, geometry.uv);
       vec3 normal = vec3(geometry.uv, sqrt(max(0.0, 1.0 - r2)));

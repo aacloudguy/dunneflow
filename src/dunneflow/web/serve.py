@@ -30,6 +30,8 @@ from urllib.parse import parse_qs
 
 from ..sourcedb import SourceStore
 from ..store import Store
+from .cover import anomalies as build_anomalies
+from .cover import build as build_cover
 from .detail import describe
 from .graph import GraphModel, build
 from .layout import structural
@@ -161,6 +163,10 @@ class _Live:
             except (ValueError, OSError):
                 self.source = None
 
+        # Built once: nothing here changes while the map is open, and 175 reachability
+        # queries on every navigation would make the first screen the slowest one.
+        self.cover: dict[str, Any] = {}
+
     def close(self) -> None:
         self.store.close()
         if self.source is not None:
@@ -194,6 +200,32 @@ class _Handler(BaseHTTPRequestHandler):
 
     def _r_graph(self, q: dict[str, list[str]]) -> None:
         self._json(self._payload)
+
+    def _r_cover(self, q: dict[str, list[str]]) -> None:
+        """The first screen. Built once at startup -- see `cover.py`."""
+        self._json(self._live.cover)
+
+    def _r_anomalies(self, q: dict[str, list[str]]) -> None:
+        """The worklist. Separate from the cover, which carries only the counts.
+
+        The findings are large -- every one carries its detail and its blind spot -- and
+        most sessions read the counts without ever opening the list. Sending them with
+        the cover would put that weight behind the first paint of every map.
+        """
+        with self._live.lock:
+            self._json({"findings": build_anomalies(self._live.store)})
+
+    def _r_documents(self, q: dict[str, list[str]]) -> None:
+        """What document mode can show."""
+        from .documents import index
+        self._json({"documents": index()})
+
+    def _r_document(self, q: dict[str, list[str]]) -> None:
+        """One document, whole, every row carrying its graph node id."""
+        from .documents import build as build_doc
+        doc_id = (q.get("id") or [""])[0]
+        with self._live.lock:
+            self._json(build_doc(self._live.store, doc_id))
 
     def _r_node(self, q: dict[str, list[str]]) -> None:
         """Everything the inspector shows about one node."""
@@ -252,6 +284,10 @@ class _Handler(BaseHTTPRequestHandler):
         "/": "_r_index",
         "/index.html": "_r_index",
         "/api/graph": "_r_graph",
+        "/api/cover": "_r_cover",
+        "/api/anomalies": "_r_anomalies",
+        "/api/documents": "_r_documents",
+        "/api/document": "_r_document",
         "/api/node": "_r_node",
         "/api/source": "_r_source",
         "/favicon.ico": "_r_favicon",
@@ -324,6 +360,7 @@ def serve(out_dir: Path, *, port: int = 8787, open_browser: bool = True,
     live = _Live(graph_db, out_dir / "source.db")
     model = build(live.store)
     payload = columnar(model)
+    live.cover = build_cover(live.store, live.source, out_dir.name)
 
     # Named so the browser can key stored settings per program. A disk order and a set of
     # colours worked out for one codebase mean nothing in another, and silently applying

@@ -498,3 +498,61 @@ WHERE a.name <> ''
 GROUP BY a.name
 ORDER BY COUNT(*) DESC, a.name
 """
+
+
+# --------------------------------------------------------------------------- #
+# The cover
+#
+# Four questions in the order a reader asks them. Each is a count over the
+# store, never a summary the tool invented.
+# --------------------------------------------------------------------------- #
+
+# The most-touched target per kind is shown beside the count, because "DATABASE
+# 1,316" says how much and "ROLLBACK" says what -- and the second is the one
+# that makes a reader curious enough to click.
+COVER_BOUNDARIES = """
+SELECT kind             AS kind,
+       COUNT(*)         AS n,
+       (SELECT b2.target FROM boundaries b2
+         WHERE b2.kind = b.kind AND b2.target <> ''
+         GROUP BY b2.target ORDER BY COUNT(*) DESC, b2.target LIMIT 1) AS common
+FROM boundaries b
+GROUP BY kind
+ORDER BY n DESC
+"""
+
+# Top-level package by routine count. The same decomposition the graph's disks
+# use, so the navigator and the stack agree about what a package is.
+COVER_PACKAGES = """
+SELECT CASE
+         WHEN instr(module, '.') = 0 THEN module
+         ELSE substr(module, 1, instr(module, '.') - 1)
+       END || CASE
+         WHEN instr(substr(module, instr(module, '.') + 1), '.') > 0
+           THEN '.' || substr(substr(module, instr(module, '.') + 1), 1,
+                              instr(substr(module, instr(module, '.') + 1), '.') - 1)
+         WHEN instr(module, '.') > 0
+           THEN '.' || substr(module, instr(module, '.') + 1)
+         ELSE ''
+       END AS full_pkg,
+       CASE
+         WHEN instr(module, '.') = 0 THEN module
+         WHEN instr(substr(module, instr(module, '.') + 1), '.') > 0
+           THEN substr(substr(module, instr(module, '.') + 1), 1,
+                       instr(substr(module, instr(module, '.') + 1), '.') - 1)
+         ELSE substr(module, instr(module, '.') + 1)
+       END AS pkg,
+       COUNT(*) AS n
+FROM routines
+GROUP BY pkg
+ORDER BY n DESC
+"""
+
+# Tables ranked by how much traffic they carry, which is the order a reader
+# wants: the busiest table is where the program's state actually lives.
+COVER_TABLES = """
+SELECT t.name AS name,
+       (SELECT COUNT(*) FROM sql_ops o WHERE o.tbl = t.name) AS n
+FROM db_tables t
+ORDER BY n DESC, t.name
+"""

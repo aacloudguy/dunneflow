@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 import sys
 import time
+from datetime import UTC, datetime
 from pathlib import Path
 
 from .anomalies import BROKEN, INFO, SUSPECT, detect
@@ -58,6 +59,10 @@ def cmd_analyze(args: argparse.Namespace) -> int:
     store = Store(db_path)
     store.set_meta("program", program)
     store.set_meta("source_root", str(source_root))
+    # When this map was made. The cover says it out loud, because a map is a reading of
+    # a program at a moment and a reader who cannot see the moment cannot judge the map.
+    store.set_meta("analysed_at",
+                   datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC"))
 
     def progress(path: str, i: int, total: int) -> None:
         if args.quiet:

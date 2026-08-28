@@ -19,8 +19,11 @@
  *    no surface.
  * 2. **Edges are shown on demand.** Thirteen thousand lines erase a program rather than
  *    describe it. Nothing but nodes until something is selected, then only the edges the
- *    selection touches, and only once the camera has stopped.
- * 3. **Only nodes while moving.**
+ *    selection touches.
+ * 3. **They stay up while the camera moves**, and that is a Setting. Hiding them was a
+ *    speed measure from a slower renderer; here the geometry is uploaded once and orbiting
+ *    re-uploads nothing. A rotation with the links up is how the connections between
+ *    plates read as depth rather than as a flat tangle.
  * 4. **The session accumulates.** Selection is a set of picks, not one value, because the
  *    way this is used is: take the busiest disk, add a few routines by hand, push the
  *    rest out of the way, then frame what is left.
@@ -141,6 +144,13 @@ const opts = {
   nodeSize: 1,
   spread: 0.35,
   showPlates: false,
+  /* Keeping the links up while the camera turns is what makes a rotation *say* something:
+   * relationships are what the stack is for, and stripping them the moment anyone moves
+   * hides the thing they are moving to see. It was only ever a performance measure, and on
+   * this renderer it is not needed -- the geometry is uploaded once as typed arrays and a
+   * turning camera re-uploads nothing. Still a Setting, because a slower machine or a very
+   * large selection may want it back. */
+  edgesInMotion: true,
   scale: 1,               // design rule 3: one multiplier resizes everything, nodes too
 };
 
@@ -631,13 +641,21 @@ function buildLayers(d) {
    * The two kinds are guarded separately. Nesting the crossings inside the within-count
    * meant a selection with nothing internal drew nothing at all -- which is precisely the
    * case of two plates that only talk to each other. */
-  /* Edges are hidden while the camera moves (rule 19) -- but a benchmark exists to
-   * measure the most expensive frame the reader can ask for, and that frame has edges in
-   * it. Orbiting with the ordinary gate in force measured nodes only, while the readout
-   * still printed the selection's edge count beside the number: a claim about geometry
-   * that was never drawn. The override is scoped to the two link layers, so the run
-   * isolates edge cost rather than also pulling in the collision-filtered labels. */
-  const drawEdges = still || g.benching;
+  /* Whether edges survive a moving camera is now the reader's call, and on by default.
+   *
+   * Hiding them was a speed measure from a slower renderer. Here everything drawn is
+   * uploaded once as flat typed arrays, so orbiting re-uploads nothing and the links cost
+   * the same turning as they do still -- and a rotation with the edges up is the whole
+   * point of the stack: it is how the connections between plates read as depth rather than
+   * as a flat tangle.
+   *
+   * `benching` still forces them on regardless. A benchmark measures the most expensive
+   * frame the reader can ask for, and that frame has edges in it; with the setting off, an
+   * orbit would otherwise measure nodes only while the readout printed an edge count beside
+   * the number -- a claim about geometry that was never drawn (rule 24). The override stays
+   * scoped to the two link layers, so the run isolates edge cost rather than also pulling
+   * in the collision-filtered labels. */
+  const drawEdges = still || g.benching || opts.edgesInMotion;
   const sg = g.selGeom && drawEdges ? selGpu(g.selGeom) : null;
   if (sg && g.selGeom.count) {
     layers.push(new LineLayer({
@@ -725,6 +743,7 @@ function announceCounts() {
     excludedBy: opts.filterMode === 'hide' ? 'hidden' : 'dimmed',
     hiddenLabels: g.hiddenLabels,
     moving: g.moving && !g.benching,
+    edgesInMotion: opts.edgesInMotion,
     names: g.picks.map((p) => p.kind === 'disk'
       ? (g.data.disks.find((x) => x.id === p.id)?.name ?? p.id)
       : g.data.nodes.label[p.index]),

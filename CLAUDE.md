@@ -596,10 +596,21 @@ bought a rewrite of settled CSS, neither of which serves the thing the tool is f
 
 19. **Edges are shown on demand, never by default.** All 13,277 at once do not describe a
     program, they erase it: everything else goes under a haze. Nothing but nodes is drawn
-    until a disk or a node is selected, then only the edges the selection touches, and
-    only once the camera has stopped. Selecting a node takes **one** hop — two hops is
-    most of the program again. Unselected nodes dim rather than vanish, so a subset stays
-    legible inside the shape it belongs to.
+    until a disk or a node is selected, then only the edges the selection touches.
+    Selecting a node takes **one** hop — two hops is most of the program again. Unselected
+    nodes dim rather than vanish, so a subset stays legible inside the shape it belongs to.
+
+    *"…and only once the camera has stopped" is struck, and is now a Setting defaulting to
+    on.* That clause was a speed measure carried over from slower renderers, and it is not
+    what this one needs: everything drawn is uploaded once as flat typed arrays, so a
+    turning camera re-uploads nothing and the links cost the same moving as they do still.
+    It also worked against the picture. **A rotation is how the connections between plates
+    read as depth rather than as a flat tangle**, so stripping the edges during one hides
+    precisely what the reader turned the view to see. Off is kept for a slower machine or a
+    very large selection.
+
+    The **on demand** half stands unchanged, and it is the half that carries the rule: what
+    is drawn is still only what the selection touches.
 
     The consequence is that **the filter is the interface**, not a refinement of it. The
     legend is therefore the main way in, and is built for it: fifty-one disks, clickable,

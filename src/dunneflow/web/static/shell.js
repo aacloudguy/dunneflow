@@ -104,6 +104,7 @@ const POSTURES = [
 const state = {
   view: "cover",          // cover | graph | table | doc | settings | usage | a11y | anomalies
   mode: "graph",
+  edgesInMotion: true,    // links stay up while the camera turns
   pkgPick: null,          // which package the overview is showing everything for
   graphLayout: "stack",   // "stack" | "packages" -- a layout inside graph mode,
                           // never a fourth mode. Both built; use retires the loser.
@@ -271,6 +272,15 @@ document.addEventListener("click", (ev) => {
   used("layout:" + state.graphLayout);
   if (state.view === "graph") pushTrail("graph", b.textContent.trim());
   if (state.graphLayout === "stack") ensureGraph();
+  render();
+});
+
+document.addEventListener("click", (ev) => {
+  const b = ev.target.closest("[data-edgesmotion]");
+  if (!b) return;
+  state.edgesInMotion = !state.edgesInMotion;
+  used("edgesInMotion:" + state.edgesInMotion);
+  Graph.setOptions({ edgesInMotion: state.edgesInMotion });
   render();
 });
 
@@ -962,6 +972,22 @@ function viewSettings() {
             <button data-graphtheme="dark" aria-pressed="${state.graphTheme === "dark"}"
               >Always dark</button>
           </div>
+        </div>
+
+        <div class="setrow">
+          <div><div class="lbl">Show edges while moving</div>
+            <div class="desc">The stack draws a node as a flat circle held facing the
+              camera and shades it to read as a ball — which is why it can hold ten
+              thousand of them at full speed, and why turning the view is cheap. Hiding the
+              links during a turn was a speed measure borrowed from slower renderers; here
+              the geometry is uploaded once and orbiting re-uploads nothing.<br><br>
+              Leaving them up is the point: a rotation is how the connections between
+              plates read as depth rather than as a flat tangle, and stripping them hides
+              the very thing you are turning the view to see. Off is kept for a slower
+              machine or a very large selection.</div></div>
+          <button class="toggle" data-edgesmotion="1"
+                  aria-pressed="${state.edgesInMotion}"
+                  aria-label="Show edges while moving"></button>
         </div>
 
         <div class="setrow">
@@ -2250,7 +2276,8 @@ document.addEventListener("keydown", (e) => {
    plus those read as companions inside another handler, those bound by element
    selector rather than by attribute, and the structural markers that only style or
    identify and are never clicked. */
-const WIRED_ATTRS = new Set(["aiop", "airun", "bound", "cite", "citeidx", "closeviewer", "col", "crumb", "curi", "cursor", "den", "drop", "egress", "ep", "disk", "gact", "gosev", "goto", "graphtheme", "layout", "pkgnode", "pkgpick", "manifest", "menuorder", "mode", "nav", "nav2", "node", "open", "pin", "pinnote", "resize", "row", "scale-set", "sec", "sev", "sevnav", "sort", "sqlshow", "start", "step", "theme", "theme-set", "thread", "threadwhy", "toggle", "trail", "trailback", "trailcap", "trailclear", "triage", "triaged", "unpin", "viewtab"]);
+const WIRED_ATTRS = new Set(["aiop", "airun", "bound", "cite", "citeidx", "closeviewer", "col", "crumb", "curi", "cursor", "den", "drop", "egress", "ep", "disk", "edgesmotion", "gact", "gosev", "goto", "graphtheme", "layout", "pkgnode",
+  "pkgpick", "manifest", "menuorder", "mode", "nav", "nav2", "node", "open", "pin", "pinnote", "resize", "row", "scale-set", "sec", "sev", "sevnav", "sort", "sqlshow", "start", "step", "theme", "theme-set", "thread", "threadwhy", "toggle", "trail", "trailback", "trailcap", "trailclear", "triage", "triaged", "unpin", "viewtab"]);
 
 function selfCheck() {
   const problems = [];
@@ -2266,20 +2293,23 @@ function selfCheck() {
       }
     }
   });
-  /* Both directions for the graph's own table too: a control with no action, and an
-   * action no control reaches. The second half is the one a hand forgets -- it is how a
-   * feature quietly stops being reachable while every test still passes. */
+  /* Only one direction is answerable here, and knowing which is the point.
+   *
+   * **A control on screen with no action** is always a defect: it renders, it looks
+   * live, and nothing listens. The DOM proves that outright.
+   *
+   * **An action no control reaches** cannot be judged from the DOM at all, because half
+   * these controls are conditional -- `clear` appears only with a selection, and the whole
+   * HUD only in graph mode. Asking the live page reported `clear` as unreachable while
+   * sitting on the Settings view, which is a true statement about that moment and a false
+   * one about the product. A check that cries wolf is a check nobody reads, so that
+   * direction is answered where it *is* answerable: `test_web_controls.py` scans the source
+   * for every `data-gact` written anywhere, conditional or not. */
   document.querySelectorAll("[data-gact]").forEach(el => {
     if (!(el.dataset.gact in GRAPH_ACTIONS)) {
       problems.push(`graph control [data-gact="${el.dataset.gact}"] has no action`);
     }
   });
-  if (Graph.mounted()) {
-    const drawn = new Set($$("[data-gact]").map(el => el.dataset.gact));
-    for (const k of Object.keys(GRAPH_ACTIONS)) {
-      if (!drawn.has(k)) problems.push(`graph action "${k}" is reached by no control`);
-    }
-  }
 
   const unique = [...new Set(problems)];
   if (unique.length) {
@@ -2467,7 +2497,7 @@ const PERSISTED = [
   "density", "ambient", "hideInferred", "colWidths", "insp", "sortKey", "sortAsc",
   "egress", "aiOps", "triage", "pins", "usage", "graphLayout",
   "diskOrder", "diskColors", "colorBy", "sortMode", "filterMode", "direction",
-  "nodeSize", "spread", "showPlates", "picks", "graphTheme",
+  "nodeSize", "spread", "showPlates", "picks", "graphTheme", "edgesInMotion",
 ];
 
 let settings = null;      // the loaded blob; `state` is the live copy
@@ -2593,7 +2623,7 @@ async function ensureGraph() {
     diskOrder: state.diskOrder, diskColors: state.diskColors, colorBy: state.colorBy,
     filterMode: state.filterMode, direction: state.direction, nodeSize: state.nodeSize,
     spread: state.spread, showPlates: state.showPlates, scale: state.scale,
-    picks: state.picks,
+    edgesInMotion: state.edgesInMotion, picks: state.picks,
   });
   /* Read back the order the engine resolved. A saved order from a graph that has since
    * changed is discarded there, and the shell must not go on persisting the stale one --
@@ -2623,7 +2653,8 @@ function onGraphSelect(sel) {
  * because with edges hidden by default an unselected stack is a picture of nothing much
  * and the reader has no way to know that is deliberate. */
 function countLine(c) {
-  if (c.moving) return "nodes only while moving";
+  // Never claim a filter that is not happening: with edges kept up, "nodes only" is false.
+  if (c.moving && !c.edgesInMotion) return "nodes only while moving";
   if (!c.selected) {
     return "nothing selected — all links hidden; pick two disks to see what crosses "
          + "between them, or click a node";

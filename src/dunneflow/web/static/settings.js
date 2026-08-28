@@ -36,6 +36,7 @@ const DEFAULTS = {
   nodeSize: 1,            // multiplier: 1 = the tiny dots the 60 fps figure was taken on
   spread: 0.35,
   showPlates: false,
+  edgesInMotion: true,    // links stay up while the camera turns -- see graph.js
   graphLayout: 'stack',   // 'stack' | 'packages' -- both built, use retires the loser
   graphTheme: 'follow',   // 'follow' | 'dark' -- design rule 2; see the Settings page
   picks: [],              // the selection itself, so a session survives a reload
@@ -131,7 +132,8 @@ function resetSettings(program, current) {
     diskOrder: 'disk order', diskColors: 'disk colours', colorBy: 'colour source',
     sortMode: 'sort', filterMode: 'filter mode', direction: 'direction',
     nodeSize: 'node size', spread: 'spread', picks: 'selection',
-    showPlates: 'disk plates', mode: 'centre view', panels: 'panel layout',
+    showPlates: 'disk plates', edgesInMotion: 'edges while moving',
+    mode: 'centre view', panels: 'panel layout',
     graphLayout: 'graph layout', graphTheme: 'graph theme',
     theme: 'theme', scale: 'interface scale', startup: 'startup screen',
     menuOrder: 'menu order', trailShown: 'the trail', trailCap: 'trail length',

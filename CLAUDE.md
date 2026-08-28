@@ -481,6 +481,134 @@ These each came from a false result on real code. Keep them.
     needed it. Assert both directions: the item must emit an identity and the route must
     consume one, because either half alone passes while the feature is dead.
 
+31. **A shadow is never an endpoint — when *reading* an edge as much as when drawing one.**
+    Rule 23 says a shadow is a placement device, never drawn and never an end. `d.links`
+    obeys it, resolving each stored edge back to its two real ends. `recomputeMembers` did
+    not: it added `raw.edges.from/to` unresolved, so for a call that leaves the plate it put
+    the **shadow** into the selection instead of the routine the shadow stands in for.
+
+    Both halves then failed together and silently. The real neighbour was not a member, so
+    it was never lit; and `buildSelectionGeometry` requires *both resolved ends* to be
+    members, so the crossing was skipped — and crossings are exactly the edges that leave
+    the plate. **Picking a routine drew its callers and callees only where they happened to
+    sit on the same plate.** `console_script` has four callers and three callees and drew a
+    single unconnected dot; `guarded_cwd` has eleven connections and drew seven. Nothing
+    reported it, because a routine that genuinely has no neighbours looks identical.
+
+    The lesson is not "resolve shadows" — rule 23 already said that, in as many words:
+    *ending an edge at a stand-in stops a real connection at a stand-in*. It is that a rule
+    about drawing was never applied to the code that **reads**, and the two are the same
+    rule. Found by a reader saying a picture looked wrong, not by any check.
+
+32. **A count must say what it counts.** The navigator listed `degree` — an edge count —
+    beside each routine, in a pane where every other group's number counts *things*: 14 ways
+    in, 8 packages, 52 disks. `guarded_cwd` printed **8**, drew **7** nodes, and had **3
+    callers and 5 callees**. All three numbers were correct and no two of them agreed about
+    what they were, so the reader reasonably read 8 as nodes and reported a missing one.
+
+    Rule 13 in a list rather than in a claim: the number must be produced by, and named
+    after, the thing it measures. It is `3← 5→` now, taken from the same `inbound`/`outbound`
+    maps the selection itself uses, so the figure and the picture cannot disagree.
+
+33. **A trail step must carry its subject, or the trail cannot take anyone back.** Steps were
+    `{view, label, note}`; clicking one set `state.view` and re-rendered. From inside graph
+    mode, where the view is *already* graph, that is a no-op — so the trail rendered,
+    highlighted the current step, scrolled and pruned correctly, and could return nobody to
+    anything. Rule 30 for the third time, and the most expensive place for it: design rule 15
+    says the trail is what makes a detour free, because **nobody chases a rabbit if they
+    might not find their way back**.
+
+    Its companion, and the reason undo exists: two ordinary clicks strand a reader. Clicking
+    the node you are already looking at clears the whole selection (a deliberate toggle-off
+    in `togglePick`, and a trap when the click is *also* how you move), and every
+    nothing-selected state looks identical, so nothing on screen says which routine you had.
+    **The toggle is kept** — clearing by clicking is right, and `Esc` and the clear button do
+    the same — because undo makes it recoverable, which is the cheaper fix and the better UI.
+
+34. **Pinned data hides in prose, and that is the hiding place the guards missed.** Two
+    guards kept the shell's top-level arrays empty and its `state` clean. Neither could see a
+    *sentence*. Table mode's footer read "Showing **12** of **515** routines in
+    `mensores.quaestor`"; the breadcrumb's three centre modes were fixed pairs — "packages ›
+    system boundary", "quaestor › routines", "cli › interview" — shown on every screen for
+    every program; document mode was a page of hand-written narrative about
+    `mensores interview --extract`, formatted exactly as generated output with nothing
+    marking it as a sample; the glossary asserted findings about specific `.groma` files; and
+    a citation path called `.replace("mensores.", "mensores/")`, silently wrong elsewhere.
+
+    Worst of them, and the one that says why this matters: **the egress consent surface**
+    carried "4,568 routine names", "184,000 lines" and a manifest of "2,449" — one program's
+    figures written into the one screen in the product where a wrong number is a consent the
+    reader did not give (design rule 14).
+
+    Guard on the *sample program's name*, not on numbers: a number in prose is often
+    legitimate ("one hop", "three panes"), a specific program's name never is. And note what
+    that still misses — the glossary named the program's **files** rather than the program.
+
+35. **A `let X = []` that nothing assigns is an empty view with no symptom.** `ROUTINES` was
+    declared, commented "for table mode", and written to by nothing, so table mode rendered
+    zero rows for as long as it existed. It is the pinned-data family inverted: those guards
+    assert the arrays are *empty*, which this passed perfectly by never being filled.
+
+    The invariant is not "must be assigned" — an unbuilt feature legitimately has no data.
+    It is **assigned, or the view says it is empty**, because "not computed yet" and "nothing
+    to report" are opposite claims and a blank panel states the wrong one. Written as a list
+    of exemptions first; that list reached five of ten arrays before it was obvious it would
+    grow until the guard caught nothing. Finding the invariant is what made it a check rather
+    than a ledger. It then found `CONVENTIONS`, `TERMS` and `MANIFEST` — and three variables
+    read by nothing at all, which were deleted rather than exempted.
+
+36. **A generic loop narrowed to a literal is how a feature disappears without a trace.**
+    The pre-merge graph walked `Object.entries(panels)` and folded every panel. The rewrite
+    wrote `[["navigator","nav"], ["inspector","insp"]]` — correct for the two it named, and
+    it silently dropped `hud` and `controls`, which stayed defaulted, persisted, and listed
+    in the reset dialog as "panel layout". Dead *inside a live key*, where the guard written
+    for exactly this failure could not see them: it walks the top-level keys of `DEFAULTS`,
+    and `panels` as a whole was plainly being read.
+
+    Route from a table, walk the *settings* rather than a list of your own, and make an
+    unknown key a named error. Then assert the two key sets agree, both derived. The same
+    reasoning retires every hand-kept second list — `FOLDABLE` now derives from `PANELS`.
+
+37. **A guard that checks a name appears has not checked that anything happens.** Three of
+    this session's guards passed against their own defect on the first try. One split on
+    `.graphlegend {` and read an *earlier* rule with the same selector, asserting against
+    `display: none`. One accepted `step.subject` appearing anywhere, staying green while one
+    of the two ways back was broken. One accepted the presence of `restoringSelection` while
+    the line that consults it was gone.
+
+    **Run every new guard against the defect it was written from, and against a version
+    where only half the feature works.** A check that has never failed is a claim nobody has
+    tested — the same argument as rule 13, applied to the tests themselves.
+
+38. **An instrument that cannot see cannot report.** A browser-automation tab is given no
+    animation frames, so `ResizeObserver` never fires and `requestAnimationFrame` never
+    ticks. Measured through one, deck.gl's canvas appeared never to resize on a pane fold —
+    a confident, reproducible, entirely false finding, and the fix for it was most of the
+    way written before an observer attached by hand also failed to fire and gave it away.
+
+    Static DOM facts survive a starved tab: layout runs without frames, so grid tracks,
+    widths and classes are real. **Anything needing a rendered frame does not exist there.**
+    Rule 24's family — a measurement must measure the thing it names — and the reason the
+    benchmark already refuses to start on a hidden tab. When the instrument cannot prove it,
+    describe the change and let someone with a real window look.
+
+39. **Under an orthographic projection a negative `near` is geometrically sound and breaks
+    the controls.** deck.gl's default frustum (`near 0.1, far 500`) clips the stack when the
+    reader zooms in: `OrbitView` scales world units by `2 ** zoom / height` with the camera a
+    fixed focal distance from the target, so the stack's *view-space* depth grows with zoom
+    until its near half crosses the near plane. Nodes nearest the camera vanish and return on
+    zooming out.
+
+    An orthographic frustum is a box, not a pyramid, so a negative `near` looks like the
+    obvious fix. **It kills pan and zoom outright** — deck.gl's orbit controller implements
+    both through `viewport.unproject()`, while rotate is angle arithmetic that never
+    unprojects, so exactly the two controls that unproject stop and the one that does not
+    carries on. Losing pan and zoom is far worse than clipping at extreme zoom, so the
+    default stands until there is a fix that keeps `near` positive — moving the camera back
+    rather than the plane. Recorded because the diagnosis is right and the obvious remedy is
+    not, and because it was shipped without being driven: **not being able to test a change
+    is a reason to describe it, never a reason to ship it and ask.**
+
 ## Anomalies: the discipline
 
 `anomalies.py` reports what looks wrong. It exists under one rule:
@@ -764,6 +892,44 @@ bought a rewrite of settled CSS, neither of which serves the thing the tool is f
     fold button and put the collapse control a third of the way down the pane. **An
     ordering rule that names a position rather than an identity breaks the moment anything
     is added beside it.**
+
+25. **The primary way in is a pane, not furniture.** The legend was 26rem of opaque surface
+    pinned over the canvas it indexes — design rule 19 calls it the main way into the graph,
+    and it was drawn as though it were decoration. It cost nothing in visible canvas to fix,
+    because the pixels under it were never visible: what changes is that the pixels *beside*
+    it are now honest, so snap-to-fit frames the stack in the space the stack actually has
+    instead of centring it under the panel.
+
+    That is the tell in general. `fitView` once carried `panels.disks ? 0.60 : 0.90` — a
+    fudge factor kept in sync with a UI state by hand — and when the two applications merged
+    the term was dropped while the panel stayed, so fit went on burying half the subject.
+    **A framing correction for something floating over the picture means the thing floating
+    should own a track.** With the legend as a grid column, `clientWidth` *is* the drawable
+    width and the margin is plain arithmetic again, which is the same reason rule 20 chose
+    orthographic over perspective.
+
+    Two collapse idioms, because there are genuinely two shapes: a full-height side pane
+    collapses its **track** and leaves a rotated rail (rule 24); an overlay box floating on
+    the canvas collapses to a horizontal **ribbon** — its own header strip, still stating its
+    summary, because a strip reading only "controls" is rule 24's icon rail lying down.
+
+26. **The list and the picture are one instrument, and it has to run both ways.** Pick a
+    routine on the left and the stack highlights it with everything that calls it and
+    everything it calls; click a node in the stack and the list moves to it and marks it.
+    Only one of those directions is a lookup. **Both of them is how a thread gets chased**,
+    which design rule 15 says is what to build for, and either alone leaves the reader
+    translating between two views by hand.
+
+    Three things that are not optional once it runs both ways. The list must **not move the
+    camera** — a list you can click through is useless if every click throws away where you
+    were looking — so an off-screen selection is *stated* and framing it is one click away
+    (rule 20's reasoning applied to selection rather than to the camera). The automatic
+    scroll that follows the graph must not fight a deliberate click, so it only acts when
+    the row is genuinely out of sight. And **plates are the missing answer**: rule 18 keeps
+    all fifty-two undrawn, but the two or three a selection touches are the only thing on
+    screen that can say *which plate am I looking at*, so they are drawn faintly and named
+    on the HUD — the outlines say where, the names say what, and one without the other is
+    half an answer.
 
 17. **View state is local, and exported deliberately.** Column widths, density, chosen
    columns, saved filters, and expansion state persist per program, keyed by stable

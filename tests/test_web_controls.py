@@ -507,3 +507,278 @@ def test_every_persisted_setting_is_read_by_something() -> None:
         "settings persisted, reset by name, and read by nothing: "
         f"{sorted(unread)} — either wire them up or take them out"
     )
+
+
+def test_every_panel_has_a_mechanism() -> None:
+    """A panel in the settings with no entry in `PANELS` folds nothing, silently.
+
+    This is the guard the previous one could not be. `test_every_persisted_setting_is_read_
+    by_something` walks the *top-level* keys of `DEFAULTS`, and `panels` as a whole was
+    plainly being read -- so `panels.hud` and `panels.controls` sat defaulted, persisted and
+    named in the reset dialog as "panel layout" while `applyPanels()` looped over a
+    two-element literal that did not mention them. The pre-merge graph could fold those two
+    boxes; the merge kept the switch and dropped the implementation, and then the first fix
+    narrowed a loop over `Object.entries(panels)` to a literal pair and took the capability
+    with it a second time.
+
+    So the two key sets must agree, both derived from the source. A panel added to settings
+    without a mechanism fails here rather than rendering a control that does nothing.
+
+    **Not generalised to every nested group, on purpose.** `state.insp[key]` and
+    `state.aiOps[o.id]` are read by *computed index*, so a nested property-access check
+    would report both as dead while they work perfectly -- and a check that cries wolf is a
+    check nobody reads (HANDOFF: "a check may only claim what its instrument can prove").
+    `panels` can be checked precisely because it has a mechanism table to check against.
+    """
+    settings = _read("settings.js")
+    panels_default = settings.split("panels: {", 1)[1].split("}", 1)[0]
+    declared = set(re.findall(r"(\w+):", panels_default))
+    assert declared, "DEFAULTS.panels changed shape -- this test is blind"
+
+    shell = _read("shell.js")
+    table = shell.split("const PANELS = {", 1)[1].split("\n};", 1)[0]
+    wired = set(re.findall(r"^\s{2}(\w+):", table, re.M))
+    assert wired, "the PANELS table changed shape -- this test is blind"
+
+    assert declared == wired, (
+        "settings and mechanisms disagree — "
+        f"persisted but unfoldable: {sorted(declared - wired)}; "
+        f"wired but never stored: {sorted(wired - declared)}"
+    )
+
+
+def test_the_legend_is_a_track_not_an_overlay() -> None:
+    """The legend indexes the picture; it may not be drawn on top of it.
+
+    It was 26rem of opaque surface pinned over the canvas — the primary way into the graph
+    (design rule 19) rendered as though it were furniture. That is also what made `fitView`
+    wrong: the pre-merge engine carried `panels.disks ? 0.60 : 0.90` to aim the framing away
+    from the panel, chunk 2 dropped the term while the panel stayed, and snap-to-fit went on
+    centring the stack under it.
+
+    Both halves are asserted, because either alone passes while the defect is live: the
+    legend must not be positioned over the canvas, and the mount must give it a track that
+    collapses (design rule 24 — the track carries the state, or collapsing the pane leaves a
+    hole exactly its width).
+    """
+    css = _read("tokens.css")
+    # Anchored to the start of a line, not merely to the selector text: ".graphlegend {"
+    # also appears inside '.graphmount[data-legend="off"] > .graphlegend { display: none }',
+    # which sits earlier in the file -- so a plain split read that rule instead and passed
+    # whatever the real declaration said. Caught by running the guard against its own
+    # defect, which is the only reason it is not still passing for the wrong reason.
+    rule = re.search(r"^\.graphlegend \{(.*?)\}", css, re.M | re.S)
+    assert rule, "the .graphlegend rule has moved -- this test is blind"
+    legend = rule.group(1)
+    assert "position: absolute" not in legend, (
+        "the legend is floating over the canvas again — it is a pane, not furniture, "
+        "and fitView frames by arithmetic only while it owns a track"
+    )
+    assert "grid-template-columns" in css.split(".graphmount {", 1)[1].split("}", 1)[0], (
+        ".graphmount must be a grid: the legend needs a track of its own"
+    )
+    assert '.graphmount[data-legend="off"]' in css, (
+        "nothing collapses the legend's track — a pane hidden while its column stays "
+        "26rem leaves a 26rem hole"
+    )
+
+
+def test_the_slider_reset_covers_every_slider_and_invents_no_defaults() -> None:
+    """A reset that misses a slider leaves the reader in the arrangement they wanted out of.
+
+    Four axes, each stepping 0.05, are genuinely hard to land by hand, and the only way back
+    used to be a reload or the whole-settings reset — which also throws away the disk order,
+    the colours and the selection. So `sizereset` resets exactly the slider keys.
+
+    Both halves matter. Every slider on screen must be in `SLIDER_KEYS`, or the reset
+    silently leaves one where it was and reports success for the rest. And every key must
+    exist in `DEFAULTS`, because the reset reads its values from there rather than carrying
+    numbers of its own: a second copy of a default is a second thing to forget when one of
+    them moves, and `state[k] = undefined` would render a slider with no position at all.
+    """
+    js = _read("shell.js")
+
+    keys = re.search(r"const SLIDER_KEYS = \[([^\]]*)\]", js)
+    assert keys, "SLIDER_KEYS is gone; the reset cannot know what it resets"
+    reset = set(re.findall(r'"(\w+)"', keys.group(1)))
+
+    # Every range input in the controls box, taken from the markup rather than a list.
+    axis_table = re.search(r"const AXIS = \{([^}]*)\}", js)
+    assert axis_table, "the AXIS table is gone -- this test is blind"
+    axes = set(re.findall(r'"(spread[XYZ])"', axis_table.group(1)))
+    assert axes, "the AXIS table changed shape -- this test is blind"
+    sliders = axes | {"nodeSize"}          # the size slider is the fourth, handled apart
+
+    assert sliders <= reset, (
+        f"sliders the reset does not restore: {sorted(sliders - reset)} — "
+        "it would report success while leaving them where they were"
+    )
+
+    settings = _read("settings.js")
+    block = settings.split("const DEFAULTS = {", 1)[1].split("\n};", 1)[0]
+    declared = set(re.findall(r"^\s{2}(\w+):", block, re.M))
+    assert reset <= declared, (
+        f"reset keys with no default: {sorted(reset - declared)} — "
+        "the reset reads Settings.DEFAULTS, so these would become undefined"
+    )
+    assert "Settings.DEFAULTS[k]" in js, (
+        "the reset has stopped reading Settings.DEFAULTS — a second copy of a default "
+        "is a second thing to forget when one of them moves"
+    )
+
+
+def test_every_declared_data_array_is_assigned_somewhere() -> None:
+    """`let X = []` that nothing ever writes to is an empty view with no symptom.
+
+    `ROUTINES` was declared at the top of the shell, commented "for table mode", and
+    assigned by **nothing** — so table mode rendered zero rows for as long as it has
+    existed, under a footer stating a count from a different program. Nothing failed. The
+    page loaded, the columns drew, the sort buttons worked, and there was no data.
+
+    It is the pinned-data family from the other side: those guards check that the arrays are
+    *empty* at rest, which `ROUTINES` passed perfectly by never being filled at all.
+    """
+    js = _read("shell.js")
+    head = js.split("const $  =", 1)[0]
+    declared = set(re.findall(r"^let ([A-Z][A-Z_]+)\s*=\s*\[\]", head, re.M))
+    assert declared, "the data arrays changed shape -- this test is blind"
+
+    for name in sorted(declared):
+        assigned = re.search(rf"^\s*{name}\s*=\s*(?!\[\]\s*;)", js, re.M)
+        # An array nothing fills is fine *if the view says so* — "not computed yet" and
+        # "nothing to report" are opposite claims and a blank panel states the wrong one.
+        # This is the invariant rather than a list of exemptions, which would have grown
+        # until the guard was mostly exceptions and caught nothing.
+        # Either polarity of the branch counts -- `!X.length ? empty : rows` and
+        # `X.length ? rows : empty` are the same statement, and a guard that only
+        # knew one of them would fail on correct code, which is how a check stops
+        # being read.
+        says_so = re.search(rf"(!\s*{name}\.length|{name}\.length\s*\?)", js)
+        assert assigned or says_so, (
+            f"{name} is declared, never assigned, and no view states that it is empty — "
+            "so the page renders blank where it should say nothing has been computed"
+        )
+
+
+def test_no_program_data_is_pinned_into_view_prose() -> None:
+    """The third hiding place, after the top-level arrays and `state`.
+
+    Table mode's footer read "Showing **12** of **515** routines in
+    `mensores.quaestor`" — a hard count and a real module name from the prototype, sitting
+    in a template literal where neither existing guard could see it: it is not an array and
+    not a `state` field, it is a sentence. `state.trail` carried a pinned "mensores" the
+    same way.
+
+    Looks for the sample program's name in the view templates rather than for numbers,
+    because a number in prose is often legitimate ("one hop", "three panes") and a specific
+    program's name never is.
+    """
+    for name in ("shell.js", "index.html"):
+        text = _read(name)
+        # Comments legitimately discuss the program the tool was verified against.
+        body = re.sub(r"/\*.*?\*/|//[^\n]*|<!--.*?-->", "", text, flags=re.S)
+        hits = [m for m in re.findall(r"[\"'`>][^\"'`<]*\bmensores[\w.]*", body)]
+        assert not hits, (
+            f"{name}: one program's name is pinned into what the page renders: "
+            f"{hits[:3]} — the next codebase gets shown it, confidently and wrongly"
+        )
+
+
+def test_the_search_box_is_listened_for() -> None:
+    """The most prominent control on the page, wired to nothing at all.
+
+    `#search` has always carried the placeholder "Search routines, tables, boundaries…",
+    has always been focusable with `/`, and appeared exactly once in `shell.js` — in the
+    shortcut that focuses it. It rendered, it took keystrokes, and there was no handler.
+
+    It is an `id` control rather than a `data-` one, which is precisely the half
+    `selfCheck()` and `test_every_static_control_is_listened_for` cannot cover: both walk
+    `data-` attributes. Same blind spot the spread sliders were found in, so the same
+    remedy — read the markup for `id`-addressed inputs and demand a listener for each.
+    """
+    html = _read("index.html")
+    js = _read("shell.js")
+
+    inputs = set(re.findall(r'<input[^>]*\bid="([^"]+)"', html))
+    inputs |= set(re.findall(r'<select[^>]*\bid="([^"]+)"', html))
+    assert "search" in inputs, "the search box is gone -- this test is blind"
+
+    # Inert on purpose, and visibly so: `prog` holds one option because switching programs
+    # is not built, and `rev` carries a disabled "— layers not built yet —" option. Named
+    # rather than silently skipped, so that building either one removes its line here.
+    declared_inert = {"prog", "rev"}
+
+    for ident in sorted(inputs - declared_inert):
+        listened = (
+            re.search(rf'#{re.escape(ident)}"\s*\)\s*\.addEventListener', js)
+            or re.search(rf'\$\("#{re.escape(ident)}"\)[\s\S]{{0,400}}?addEventListener', js)
+            or re.search(rf't\.id === "{re.escape(ident)}"', js)
+            or re.search(rf'id === "{re.escape(ident)}"', js)
+        )
+        assert listened, (
+            f"#{ident} is an input nothing listens to — it renders, it accepts input, "
+            "and there is nothing on the other end"
+        )
+
+
+def test_a_trail_step_carries_the_subject_it_arrived_at() -> None:
+    """A trail that cannot take you back is not a trail.
+
+    Steps were `{view, label, note}` and clicking one set `state.view` and re-rendered — so
+    from inside graph mode, where the view is already "graph", **nothing happened**. It
+    rendered, highlighted the current step, scrolled and pruned correctly, and could not
+    return anyone to anything they had been looking at.
+
+    Rule 30 for the third time, and the most expensive place for it: design rule 15 says the
+    trail is what makes a detour free, because nobody chases a rabbit if they might not find
+    their way back.
+
+    Both halves are asserted, because either alone passes while the feature is dead — the
+    step must record a subject, and the handler must apply one.
+    """
+    js = _read("shell.js")
+
+    push = re.search(r"state\.trail\.push\(\{([^}]*)\}", js)
+    assert push, "pushTrail no longer pushes an object literal -- this test is blind"
+    assert "subject" in push.group(1), (
+        "a trail step records no subject, so clicking it cannot restore what you were "
+        f"looking at: {push.group(1).strip()}"
+    )
+    # Both ways back must restore it: clicking a step, and the Back button. Checking that
+    # the name merely appears passed while one of the two still went nowhere.
+    applied = len(re.findall(r"applySelectionStep\(step\.subject\)", js))
+    assert applied >= 2, (
+        f"only {applied} of the two ways back apply a step's subject — clicking a step and "
+        "pressing Back are separate handlers, and one of them would take you nowhere"
+    )
+
+
+def test_the_selection_can_be_taken_back() -> None:
+    """Two ordinary clicks strand a reader, so undo is not a convenience here.
+
+    Clicking the node you are already looking at clears the whole selection (a deliberate
+    toggle-off in `togglePick`, and a trap when the click is also how you move), and every
+    nothing-selected state looks identical — so there is nothing on screen to say which
+    routine you had. Recovering it needs a history.
+
+    Checks the whole chain rather than the presence of a function: recorded on both
+    selection paths, guarded against recording its own replay, and reachable from a control.
+    """
+    js = _read("shell.js")
+
+    assert "function recordSelection()" in js, "no selection history is recorded"
+    assert js.count("recordSelection()") >= 3, (
+        "the history is recorded on fewer paths than there are ways to select — the graph "
+        "announcing a click and the list driving one must both reach it"
+    )
+    # The guard itself, not just the flag. The flag being declared and set proves nothing:
+    # the recorder has to actually consult it, or every undo records itself as a new step
+    # and the history can never move backwards.
+    guard = r"function recordSelection\(\)\s*\{\s*if \(restoringSelection\) return;"
+    assert re.search(guard, js), (
+        "recordSelection does not bail while a restore is in flight, so an undo records "
+        "itself as a new step and the history never moves backwards"
+    )
+    for act in ("undo", "redo"):
+        assert re.search(rf'data-gact="{act}"', js), f"no control reaches {act}"
+        assert re.search(rf"^  {act}: ", js, re.M), f"{act} has a control but no action"

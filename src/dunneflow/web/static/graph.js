@@ -77,6 +77,10 @@ const PALETTE = {
   edge:       [ 94, 234, 212, 150],
   plateFill:  [ 22,  30,  41,  70],
   plateLine:  [ 44,  56,  73, 140],
+  /* The plates a selection touches: context, not content, so quieter than the
+   * plates layer proper and quieter still than anything drawn on them. */
+  plateTouchFill: [ 45, 212, 191,  16],
+  plateTouchLine: [ 45, 212, 191,  70],
   label:      [230, 236, 243, 240],
   labelBg:    [ 11,  17,  25, 200],
   tooltipBg:  '#161e29',
@@ -226,6 +230,19 @@ function fitView(d, rotationX = g.viewState.rotationX, subset = null) {
   const b = bounds(d, subset ?? (g.members.size ? g.members : null));
   const t = (rotationX * Math.PI) / 180;
   const vertical = Math.abs(b.height * Math.cos(t)) + Math.abs(2 * b.radius * Math.sin(t));
+  /* `clientWidth` of the container the engine was handed, and the 0.90 is margin -- not a
+   * correction for anything sitting on top of the picture.
+   *
+   * It was once `panels.disks ? 0.60 : 0.90`, because the legend was a 26rem opaque panel
+   * floating over the canvas and fit had to be told to aim away from it. That is a fudge
+   * kept in sync with a UI state by hand, and when the two applications merged the term
+   * was dropped while the panel stayed: fit went on centring the stack across the full
+   * container and burying nearly half the subject under the legend. The legend is a grid
+   * track now, so `clientWidth` *is* the drawable width and this is plain arithmetic
+   * again -- the same reason design rule 20 chose orthographic over perspective.
+   *
+   * If a factor like that is ever wanted back here, something has gone back to floating
+   * over the canvas, and that is the thing to fix instead. */
   const w = g.container?.clientWidth || window.innerWidth;
   const h = g.container?.clientHeight || window.innerHeight;
   const scale = Math.min((w * 0.90) / (2 * b.radius), (h * 0.88) / vertical);
@@ -468,16 +485,44 @@ function neighbours(d, index) {
   return edges;
 }
 
+/* A shadow is never an endpoint (rule 23), and that applies to *reading* an edge as much
+ * as to drawing one.
+ *
+ * `d.links` resolves every edge back to its two real ends, because the model stores each
+ * crossing twice -- once per plate, each copy ending in a shadow. `recomputeMembers` did
+ * not: it added `raw.edges.from/to` unresolved, so for a call that leaves the plate it put
+ * the **shadow** into the member set instead of the routine the shadow stands in for.
+ *
+ * Both halves of the selection then failed, quietly and consistently:
+ *
+ *   - the real neighbour was not a member, so it was never lit;
+ *   - `buildSelectionGeometry` requires *both resolved ends* to be members, so the crossing
+ *     was skipped -- and crossings are exactly the edges that leave the plate.
+ *
+ * So picking a routine drew its callers and callees **only where they happened to sit on
+ * the same plate**, and a routine whose connections all cross drew as a single unconnected
+ * dot. `console_script` has four callers and three callees and drew one node; `guarded_cwd`
+ * has eleven connections and drew seven. Nothing reported it, because a selection that
+ * genuinely has no neighbours looks identical.
+ *
+ * This is rule 23 read in the other direction, and the rule already said so in as many
+ * words: ending an edge at a stand-in stops a real connection at a stand-in. */
+function realIndex(d, i) {
+  return d.raw.nodes.shadow[i] === 1 ? d.raw.nodes.real[i] : i;
+}
+
 function recomputeMembers(d) {
   const m = new Set();
   for (const pick of g.picks) {
     if (pick.kind === 'disk') {
       for (const i of d.byDisk.get(pick.id) ?? []) m.add(i);
     } else {
-      m.add(pick.index);
+      m.add(realIndex(d, pick.index));
       for (const e of neighbours(d, pick.index)) {
-        m.add(d.raw.edges.from[e]);
-        m.add(d.raw.edges.to[e]);
+        const a = realIndex(d, d.raw.edges.from[e]);
+        const b = realIndex(d, d.raw.edges.to[e]);
+        if (a >= 0) m.add(a);
+        if (b >= 0) m.add(b);
       }
     }
   }
@@ -631,10 +676,46 @@ function selGpu(sg) {
   return sg.gpu;
 }
 
+/* Which disks the current selection sits on -- itself and its one hop. Module scope
+ * because both the layer builder and the public API need it, and a second walk would be a
+ * second answer to one question. */
+function selectedDisks() {
+  const d = g.prepared;
+  if (!d || !g.members.size) return [];
+  const seen = new Set();
+  for (const i of g.members) seen.add(d.raw.nodes.disk[i]);
+  return [...seen];
+}
+
 function buildLayers(d) {
   const still = !g.moving;
   const layers = [];
   const size = opts.nodeSize * opts.scale;
+
+  /* The plates the selection actually reaches, drawn faintly even when plates are off.
+   *
+   * Rule 18 says the stack is an abstraction and the plates are not the content, which is
+   * why they are not drawn -- at fifteen thousand nodes drawing them all reads as a solid
+   * cylinder. That argument is about drawing *all* of them. Drawing the two or three a
+   * selection touches is the opposite: it is the only thing on screen that answers "which
+   * plate am I looking at", which is otherwise unanswerable because a routine and its
+   * callers are dots at heights with nothing to say what a height means.
+   *
+   * Faint on purpose. The plate is context for the nodes, never a thing competing with
+   * them, and a selected plate (the legend's own selection) still reads differently. */
+  const touched = new Set(selectedDisks());
+  if (!opts.showPlates && touched.size && touched.size < d.plates.length) {
+    layers.push(new PolygonLayer({
+      id: 'plates-touched', data: d.plates.filter(p => touched.has(p.id)),
+      coordinateSystem: CARTESIAN,
+      getPolygon: (p) => p.polygon, filled: true, stroked: true, extruded: false,
+      getFillColor: PALETTE.plateTouchFill, getLineColor: PALETTE.plateTouchLine,
+      getLineWidth: 1, lineWidthUnits: 'pixels', pickable: false,
+      updateTriggers: { getPolygon: [opts.spreadX, opts.spreadY, opts.spreadZ,
+                                     opts.diskOrder, opts.collapseUnused],
+                        data: [...touched].join(',') },
+    }));
+  }
 
   if (opts.showPlates) {
     layers.push(new PolygonLayer({
@@ -907,16 +988,30 @@ function diagnostics() {
              ` · dpr ${window.devicePixelRatio}`);
   lines.push(`gl ${gl ? 'ok' : 'NONE'}` +
              (dbg ? ` · ${gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL)}` : ''));
-  const vp = g.deckgl?.getViewports?.()[0];
-  if (vp && g.prepared) {
-    const b = bounds(g.prepared, g.members.size ? g.members : null);
-    const p = vp.project(b.centre).map(Math.round);
-    const inside = p[0] > 0 && p[1] > 0 && p[0] < vp.width && p[1] < vp.height;
+  const where = selectionOnScreen();
+  if (where) {
     lines.push(`zoom ${g.viewState.zoom.toFixed(2)} · tilt ${Math.round(g.viewState.rotationX)}` +
-               ` · centre [${p}] ${inside ? 'ON' : 'OFF'} screen`);
+               ` · centre [${where.at}] ${where.onScreen ? 'ON' : 'OFF'} screen`);
   }
   lines.push(`layers ${g.deckgl?.props?.layers?.length ?? 0} · frames ${framesDrawn}`);
   return lines;
+}
+
+/* Where the current selection projects, and whether it is on screen.
+ *
+ * One function, because two things need the answer: the diagnostics line, and the HUD note
+ * that offers to fly to a selection the reader cannot see. Computing it twice is how a
+ * readout comes to disagree with the thing beside it -- rule 13's shape, and rule 24's:
+ * a claim must be produced by the thing it claims about.
+ *
+ * Returns null rather than a guess when there is no viewport or no payload yet: "we cannot
+ * say" and "it is off screen" are different answers and must not look alike. */
+function selectionOnScreen() {
+  const vp = g.deckgl?.getViewports?.()[0];
+  if (!vp || !g.prepared) return null;
+  const b = bounds(g.prepared, g.members.size ? g.members : null);
+  const at = vp.project(b.centre).map(Math.round);
+  return { at, onScreen: at[0] > 0 && at[1] > 0 && at[0] < vp.width && at[1] < vp.height };
 }
 
 /* -------------------------------------------------------------------- mount --- */
@@ -952,6 +1047,28 @@ function mount(container, raw, options = {}) {
     /* Orthographic: under perspective the near plates magnify and the far ones shrink,
      * rendering a stack of equal disks as a tapered cylinder -- the exact shape the model
      * exists not to be. It also makes zoom map world units to pixels exactly. */
+    /* ── the near plane, and why it is left alone ──
+     *
+     * Zooming far enough in clips the nodes nearest the camera: they vanish as the stack is
+     * pulled towards the reader and return on zooming out. The cause is deck.gl's default
+     * frustum, near 0.1 and far 500, which nothing here ever set. `OrbitView` scales world
+     * units by `2 ** zoom / height` with the camera a fixed focal distance from the target,
+     * so the stack's depth *in view space* grows with zoom until its near half crosses the
+     * near plane.
+     *
+     * Under an orthographic projection the frustum is a box rather than a pyramid, so a
+     * negative near is geometrically meaningful and looks like the obvious fix. It is not,
+     * and this comment exists so nobody tries it twice: **it breaks pan and zoom outright.**
+     * deck.gl's orbit controller implements both through `viewport.unproject()` -- zoom
+     * anchors the point under the cursor, pan drags it -- while rotate is angle arithmetic
+     * that never unprojects. A negative near makes the unprojection matrix produce nonsense,
+     * so exactly the two controls that unproject stop working and the one that does not
+     * carries on, which is a very confusing thing to be looking at.
+     *
+     * Losing pan and zoom is far worse than clipping at extreme zoom, so the default stands
+     * until there is a fix that keeps near positive -- moving the camera back rather than
+     * moving the plane. Not attempted here: `focalDistance` is not an `OrbitView` prop, and
+     * reaching past the documented surface is what produced the broken build. */
     views: [new OrbitView({ orbitAxis: 'Z', orthographic: true })],
     viewState: g.viewState,
     controller: { inertia: 250 },
@@ -1050,6 +1167,36 @@ window.DunneFlowGraph = {
   selection: () => g.picks.slice(),
   isSelected: (pick) => g.picks.some((p) => pickKey(p) === pickKey(pick)),
 
+  /* Where the selection is, and whether the reader can see it. The shell offers to fly to
+   * it when it cannot; the diagnostics line reads the same function, so the note and the
+   * readout beside it cannot come to disagree. */
+  selectionOnScreen,
+
+  /* Callers and callees, counted separately.
+   *
+   * This replaced a single `degree` in the navigator, and the difference is not cosmetic:
+   * every other list in the navigator counts *things* -- 14 ways in, 8 packages -- so one
+   * bare number beside a routine reads as "how many nodes", and degree is how many *edges*.
+   * A routine with 3 callers and 5 callees showed "8" and drew 7 nodes, and there was no
+   * way to tell that both were right. Rule 13's family: a number must say what it counts.
+   *
+   * Counted off the same `inbound`/`outbound` maps the selection uses, so the figure and
+   * the picture cannot disagree about what is connected to what. */
+  connections(id) {
+    const d = g.prepared;
+    if (!d) return null;
+    const i = this.indexOfId(id);
+    if (i < 0) return null;
+    return { in: (d.inbound.get(i) ?? []).length, out: (d.outbound.get(i) ?? []).length };
+  },
+
+  /* Which plates the current selection actually sits on -- itself and its one hop.
+   *
+   * "I can't tell which plate I'm viewing" is the commonest thing to be unable to answer
+   * about this picture, because plates are an abstraction and are not drawn (rule 18). The
+   * members are already computed for drawing; naming their disks costs a walk. */
+  selectedDisks,
+
   /* A node the graph does not draw is a real case, not an error: constants can be switched
    * off, and an external whose plate is folded away has no index. The caller is told so
    * and can still show it -- refusing to *show* something because it cannot be *drawn*
@@ -1085,8 +1232,13 @@ window.DunneFlowGraph = {
     const raw = g.data?.nodes;
     if (!raw || index < 0 || index >= raw.id.length) return null;
     const i = raw.shadow[index] ? raw.real[index] : index;
+    /* `degree` rides along because the shell's routine list wants "how busy is this" and
+     * the count already exists here -- computed once at prepare, off the edge arrays. The
+     * alternative is the shell counting edges it does not hold, which is the sort of
+     * second implementation that ends up disagreeing with the first. */
     return { index: i, id: raw.id[i], label: raw.label[i], kind: raw.kind[i],
-             disk: raw.disk[i], detail: raw.detail[i] || {} };
+             disk: raw.disk[i], detail: raw.detail[i] || {},
+             degree: g.prepared ? g.prepared.degree[i] : 0 };
   },
 
   disks: () => (g.data?.disks ?? []).slice(),

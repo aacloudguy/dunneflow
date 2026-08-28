@@ -314,14 +314,19 @@ body {
  * would leave a 22rem hole -- which is the shape of the defect this shell already had once,
  * from the other direction. */
 .body[data-nav="off"]  { grid-template-columns: var(--rail) 1fr 22rem; }
-.body[data-insp="off"] { grid-template-columns: 14.5rem 1fr var(--rail); }
+.body[data-insp="off"] { grid-template-columns: var(--nav-w, 21rem) 1fr var(--rail); }
 .body[data-nav="off"][data-insp="off"] { grid-template-columns: var(--rail) 1fr var(--rail); }
 .body[data-nav="off"]  > .navigator,
 .body[data-insp="off"] > .inspector { display: none; }
 
 .body {
   display: grid;
-  grid-template-columns: 14.5rem 1fr 22rem;
+  /* The containing block for the navigator's drag grip, which is positioned rather than
+   * placed: a fourth child of a three-column grid would take a cell of its own. */
+  position: relative;
+  /* `--nav-w` is set by `applyNavWidth()` and dragged by the divider; the fallback is what
+   * a reader sees before settings are adopted, never a second source of truth. */
+  grid-template-columns: var(--nav-w, 21rem) 1fr 22rem;
   /* One row, and it may not grow past the space it was given. Without this the row is
    * sized `auto` and takes the height of the tallest pane -- the navigator, whose content
    * runs to 1,151px -- so the panes stood 700px tall inside a 446px box and the document
@@ -367,6 +372,28 @@ body {
   .body { grid-template-columns: 1fr; }
   .body > .navigator { display: none; }
 }
+
+/* The drag grip between the navigator and the centre.
+ *
+ * Positioned at the navigator's right edge rather than placed in the grid, and wider than
+ * the hairline it sits on because a one-pixel target is a control most readers never find.
+ * It is absolute against `.body` rather than inside the navigator, which scrolls 1,151px
+ * of its own content -- a grip that scrolls away is one the reader cannot reach.
+ *
+ * Hidden when the navigator is railed: there is no width to drag, and a grip that resizes
+ * something invisible is worse than no grip. */
+.navgrip {
+  position: absolute; top: 0; bottom: 0; left: var(--nav-w, 21rem);
+  width: .5rem; margin-left: -.25rem; z-index: 3; cursor: col-resize;
+}
+.navgrip::after {
+  content: ""; position: absolute; inset: 0 calc(50% - 1px);
+  background: transparent; transition: background .12s;
+}
+.navgrip:hover::after, .navgrip.active::after { background: var(--accent); }
+.navgrip:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.body[data-nav="off"] > .navgrip { display: none; }
+@media (max-width: 768px) { .navgrip { display: none; } }
 
 /* The rail: what a collapsed pane leaves behind.
  *
@@ -439,6 +466,28 @@ body {
 .nav-item .navlabel.long  { font-size: .70rem; }
 .nav-item .navlabel.xlong { font-size: .63rem; letter-spacing: -.01em; }
 .nav-item .n { flex: none; margin-left: auto; padding-left: .3rem; }
+
+/* The module a routine lives in. Many routines share a name -- `run`, `emit`, `_close` --
+ * so the name alone is not enough to know which one a row is offering. Dimmed and
+ * truncated from the *left*, because the distinguishing end of a dotted path is the last
+ * segment, never the first. */
+/* `direction: rtl` was used here to clip from the left, and it mangles any path with
+ * punctuation in it -- `mensores._internal._cwd_guard` rendered as
+ * "...ores_internal_cwd_guard", which is not a string that exists in the program. The
+ * shortening is chosen in JS now (`moduleTail`), so this only has to not overflow. */
+.nav-item .navsub {
+  flex: none; max-width: 11rem; color: var(--text-faint); font-size: .64rem;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  margin-right: .3rem;
+}
+/* Two numbers, not one, so they need room and a monospace column to line up in. */
+.nav-item .n { font-family: var(--f-mono); white-space: nowrap; }
+/* What the list is not showing (design rule 1). Sits under the items rather than in the
+ * group header, so it reads as a footnote to the list it describes. */
+.nav-note {
+  font-size: .64rem; color: var(--text-muted); padding: .1rem .55rem .45rem;
+  line-height: 1.35;
+}
 .nav-item:hover { background: var(--raised); }
 .nav-item[aria-current="true"] {
   background: var(--accent-soft); color: var(--accent-text); font-weight: 600;
@@ -526,18 +575,51 @@ body {
 /* `position: relative` and an explicit size, because deck.gl measures its parent at
  * construction and a parent with no laid-out size gives a 0×0 canvas -- which draws
  * nothing and looks exactly like a broken program (design rule 21). */
-.graphmount { flex: 1; position: relative; min-height: 0; min-width: 0; overflow: hidden;
-              background: var(--graph-ground); }
+.graphmount { flex: 1; min-height: 0; min-width: 0; overflow: hidden;
+              background: var(--graph-ground);
+              display: grid; grid-template-columns: minmax(0, 1fr) 26rem;
+              grid-template-rows: minmax(0, 1fr); }
+/* The *track* collapses, not the pane. Hiding `.graphlegend` while its column stayed
+ * 26rem would leave a 26rem hole exactly the width of the pane that is no longer there --
+ * the defect `.body` above already had once, from the other direction. */
+.graphmount[data-legend="off"] { grid-template-columns: minmax(0, 1fr) var(--rail); }
+.graphmount[data-legend="off"] > .graphlegend { display: none; }
+
+/* The containing block for the canvas and the HUD, and only for them. It is what makes
+ * `#graphStage`'s `clientWidth` the width the stack can actually draw in, so `fitView`
+ * frames by arithmetic rather than by a fudge factor kept in sync with a panel state. */
+.graphcanvas { position: relative; min-width: 0; min-height: 0; overflow: hidden; }
 .graphstage { position: absolute; inset: 0; }
 
-/* The HUD and the legend float over the canvas rather than beside it: the stack wants
- * every pixel, and both are furniture for the graph rather than part of the shell. */
+/* The HUD floats over the canvas rather than beside it: the stack wants every pixel, and
+ * it is furniture for the graph rather than part of the shell. The legend is not
+ * furniture -- see below. */
 .graphhud { position: absolute; top: .5rem; left: .5rem; z-index: 2; max-width: 22rem;
             font-size: .72rem; line-height: 1.45; pointer-events: none; }
 .graphhud > * { pointer-events: auto; }
 .graphhud .hudbox { background: var(--surface); border: 1px solid var(--border);
-                    border-radius: .375rem; padding: .4rem .55rem; box-shadow: var(--shadow);
+                    border-radius: .375rem; box-shadow: var(--shadow);
                     margin-bottom: .35rem; }
+
+/* The ribbon: what a collapsed HUD box leaves behind.
+ *
+ * These are overlay boxes, not panes, so they get the pre-merge idiom -- a header strip
+ * with a chevron -- rather than the rotated rail a full-height pane gets. Both idioms are
+ * already precedented here and the shapes are genuinely different; one control for both
+ * would be wrong for one of them.
+ *
+ * The strip states its own summary, open or closed, so a collapsed box still says
+ * something. A ribbon reading only "controls" is the icon rail rule 24 rejects, in a
+ * horizontal costume: it makes the reader open it to find out what it was. */
+.graphhud .hudhead { display: flex; align-items: center; gap: .35rem; width: 100%;
+                     background: none; border: 0; cursor: pointer; color: var(--text);
+                     font: inherit; font-size: .72rem; text-align: left;
+                     padding: .3rem .55rem; border-radius: .375rem; }
+.graphhud .hudhead:hover { background: var(--raised); }
+.graphhud .hudhead:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.graphhud .chev { color: var(--text-faint); flex: none; font-size: .7rem; }
+.graphhud .hudbody { padding: 0 .55rem .4rem; }
+.hudbox.closed > .hudbody { display: none; }
 .graphhud .num { font-family: var(--f-mono); font-weight: 600; }
 .graphhud .muted { color: var(--text-muted); }
 /* "Some of what you picked is not drawn" is a filter statement, and design rule 1 says a
@@ -563,13 +645,16 @@ body {
  * beside the picture. Three columns interleaved a fraction of a row apart so rows nest
  * instead of sharing baselines -- fifty-one disks in a third of the height one column
  * needs. It is HTML rather than text in the scene because a legend that spins away with
- * the camera is not a legend. */
-.graphlegend { position: absolute; right: .5rem; top: .5rem; bottom: .5rem; z-index: 2;
-               width: 26rem; overflow: auto; background: var(--surface);
-               border: 1px solid var(--border); border-radius: .375rem;
-               box-shadow: var(--shadow); padding: .4rem; }
-.graphlegend.closed { bottom: auto; height: auto; overflow: visible; }
-.graphlegend.closed .legrows, .graphlegend.closed .legfoot { display: none; }
+ * the camera is not a legend.
+ *
+ * It is a *pane*, and for a long time it was 26rem of opaque surface floating on top of
+ * the picture it indexes -- the primary navigation control drawn as though it were
+ * furniture. That cost nothing in visible canvas to fix, because the pixels under it were
+ * never visible: what it changes is that the pixels beside it are now honest, so snap-to
+ * -fit frames the stack in the space the stack actually has instead of centring it under
+ * the panel. Design rule 24, applied to the third pane that was not one. */
+.graphlegend { overflow: auto; background: var(--surface);
+               border-left: 1px solid var(--border); padding: .4rem; }
 .legrows { column-count: 3; column-gap: .5rem; }
 .leg { display: flex; align-items: center; gap: .25rem; font-size: .68rem;
        break-inside: avoid; padding: .06rem .1rem; border-radius: .18rem;
@@ -578,6 +663,11 @@ body {
 .leg:nth-child(3n)   { margin-top: .44rem; }
 .leg:hover { background: var(--raised); }
 .leg.on { background: var(--accent-soft); outline: 1px solid var(--accent); }
+/* "The selection reaches this plate", which is not the same as "you picked this plate" --
+ * selecting one routine touches three plates without selecting any. Quieter than `.on`
+ * for exactly that reason: it is telling you where you are, not what you chose. */
+.leg.touched { background: var(--accent-soft); opacity: .85; }
+.leg.touched .nm { font-weight: 600; }
 .leg.dragging { opacity: .45; }
 .leg.over { outline: 1px dashed var(--accent); }
 .leg .sw { width: .8rem; height: .8rem; padding: 0; border: 0; background: none;

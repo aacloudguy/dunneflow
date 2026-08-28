@@ -1364,6 +1364,100 @@ still true: **the legend covers a third of the graph** when open. It has its own
 ("Plates"), so the pieces are all there now -- what is missing is a decision about what it
 should do by default, and a horizontal stack will want that width.
 
+**5h. Built 2026-08-28: the legend becomes a pane, and the panes fold again.**
+
+Started as "the legend covers the graph, fix its default" and the default turned out not to
+be the question. The legend was a 26rem opaque overlay pinned over the canvas it indexes --
+the primary way in (design rule 19) drawn as furniture -- and `legendOpen` was a bare module
+`let`, so the reader's answer could never survive a reload and the *default* was the only
+answer there was. It is `panels.legend` now, with its own grid track and a rail.
+
+*What it cost in canvas: nothing.* At 1454px with both panes open the graph pane was 870px
+of which 416 sat under the legend -- 454 visible. As a track it is 454 **honest**. What
+changes is `fitView`, which had carried `panels.disks ? 0.60 : 0.90` in the pre-merge engine
+and lost the term in the chunk-2 merge while the panel stayed, so snap-to-fit went on
+centring the stack under the legend. Design rule 25.
+
+*The fold capability was not deleted, it was narrowed.* `applyPanels()` walked
+`Object.entries(panels)` before the merge; the 5g rewrite wrote a two-element literal, which
+left `panels.hud` and `panels.controls` dead **inside a live key** -- somewhere the guard
+written for that exact failure could not see, because it walks the top-level keys of
+`DEFAULTS`. Both HUD boxes ribbon again, each strip stating its own summary. Rule 36.
+
+**5i. Built 2026-08-28: pick a routine, see what calls it and what it calls.**
+
+Tom's, and the thing the tool is for. Investigating it found the interaction was mostly
+*wiring*: `/api/document?id=routines` already returned all 4,734 routines with their graph
+node ids, `/api/node` already answered callers and callees, `recomputeMembers()` already
+pulled in one hop, and `selectFromNav()` already did the whole forward path. Four defects
+stood between those pieces and the feature.
+
+`ROUTINES` was declared and assigned by nothing, so table mode had always rendered zero rows
+(rule 35). Table rows carried a qualname rather than an id (rule 30 again). The topbar
+search -- "Search routines, tables, boundaries…", focusable with `/` -- **listened to
+nothing**, an `id` control and therefore invisible to both the DOM self-check and
+`test_every_static_control_is_listened_for`. And nothing moved the list when the graph
+changed.
+
+The navigator is the list now (Tom's call: the ratified three-pane shape, not a split centre
+pane), draggable, with the camera deliberately not moving on selection and an off-screen
+selection stated with one click to frame it. Design rule 26.
+
+*Then the picture was wrong, and the reason was rule 23 read backwards.* `recomputeMembers`
+added raw edge endpoints unresolved, so a call leaving the plate put the **shadow** into the
+selection. The real neighbour was never lit and the crossing was skipped -- so picking a
+routine drew its callers and callees *only where they sat on the same plate*.
+`console_script` has four callers and three callees and drew one dot. Rule 31, and the rule
+it breaks had already written the sentence: ending an edge at a stand-in stops a real
+connection at a stand-in.
+
+*Found in the same pass, from Tom looking rather than from any check:* the navigator's
+number was `degree`, an edge count, in a pane where every other number counts things (rule
+32); the module was clipped with `direction: rtl`, which renders
+`mensores._internal._cwd_guard` as "...ores_internal_cwd_guard", a string not in the program
+anywhere; and `dressNavItems()` overwrote each row's title with the leaf name, losing the
+only thing a hover was worth doing for.
+
+**5j. Built 2026-08-28: undo, and a trail that can take you back.**
+
+A stranded session. Clicking the node you are already looking at clears the whole selection
+-- a deliberate toggle-off in `togglePick`, and a trap when the click is also how you move --
+and every nothing-selected state looks identical, so nothing on screen says which routine you
+had. The trail could not help: steps recorded `{view, label, note}` and clicking one set
+`state.view`, which from inside graph mode is a no-op. **It rendered, highlighted, scrolled
+and pruned correctly and could return nobody to anything.** Rule 33.
+
+Steps carry their subject now, and there is a linear selection history -- ↶/↷ on the HUD
+first in the row, ⌘Z / ⇧⌘Z from anywhere, recorded on both selection paths, seeded at boot so
+the first click has somewhere to come back to, and guarded so an undo does not record itself.
+
+**The click-to-deselect stays**, on Tom's call and it is the right one: clearing by clicking
+is reasonable, `Esc` and the button do the same, and undo makes it recoverable. The cheaper
+fix was the better UI.
+
+**5k. What the guards found once they existed.** Four guards written from the four defects
+above then turned up six more of the same families, all pre-existing and none of them
+reported by anything: the breadcrumb's three centre modes were fixed Mensores pairs shown on
+every screen; document mode was a page of hand-written narrative formatted as generated
+output; the **egress consent surface** carried one program's file counts (design rule 14 --
+the one screen where a wrong number is a consent nobody gave); the glossary asserted findings
+about specific `.groma` files; a citation path hard-coded one package prefix; and three
+variables were read by nothing at all. Rule 34.
+
+*Three of those guards passed against their own defect on the first attempt* -- one read an
+earlier CSS rule with the same selector, one accepted a name appearing anywhere while half
+the feature was broken, one accepted a flag being declared while the line consulting it was
+gone. Rule 37 exists because of that, and every guard here has now been run against its own
+defect **and** against a half-working version.
+
+*Two things could not be verified by this session at all.* The automation tab is given no
+animation frames, so `ResizeObserver` never fires and `rAF` never ticks -- a confident,
+reproducible and entirely false "the canvas never resizes" finding came out of it, withdrawn
+when an observer attached by hand also failed to fire (rule 38). And the near-plane clipping
+Tom noticed is diagnosed but not fixed: the obvious remedy, a negative `near` under the
+orthographic projection, **breaks pan and zoom**, and was shipped without being driven (rule
+39). It is reverted, documented in `graph.js`, and waits for a fix that keeps `near` positive.
+
 **5b. Planned, not scheduled: the layered layout — a stack of architecture drawings.**
 Tom's, stated 2026-08-27. Keep everything that exists and add a second way of drawing a
 plate: instead of a spring layout, lay the disk out the way Mermaid lays out an

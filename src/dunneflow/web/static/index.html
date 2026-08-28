@@ -35,8 +35,9 @@
     <label class="sr-only" for="prog">Program</label>
     <select class="tb-select" id="prog"></select>
 
-    <button class="srcpath" id="srcPath" aria-expanded="false"
-            title="../mensores-overhaul/src">
+    <!-- The title is filled from the served root by loadCover(); pinning one here put
+         one developer's disk in a tooltip on every other machine. -->
+    <button class="srcpath" id="srcPath" aria-expanded="false">
       <span class="srcpath-k">source directory</span>
       <span class="srcpath-v" id="srcPathV"></span>
     </button>
@@ -71,6 +72,11 @@
          where it went and gives it back. A pane that simply disappears is a silent
          filter, which design rule 1 forbids, and the reader has no way to know the
          layout is a choice rather than the product. -->
+    <!-- The divider between the navigator and the centre. A separate element rather than a
+         border on the pane, because it needs a hit area wider than a hairline and must not
+         move when the pane scrolls. -->
+    <div class="navgrip" id="navGrip" role="separator" aria-orientation="vertical"
+         tabindex="0" aria-label="Resize the navigator"></div>
     <button class="rail rail-left" id="navigatorRail" data-pane="navigator"
             hidden aria-expanded="false" aria-controls="navigator"
             title="Show the navigator"><span class="railtext">Navigator</span></button>
@@ -124,10 +130,27 @@
         the two is on screen.
       -->
       <div class="viewport" id="viewport">
+        <!--
+          The legend is a *pane*, not an overlay, and the mount is a grid so that its
+          column can collapse rather than its contents (design rule 24, and the same
+          reason `.body` puts the state on the track: a pane hidden while its column
+          stayed 26rem would leave a 26rem hole).
+
+          `.graphcanvas` exists so the stage and the HUD share a containing block that
+          is only the drawable area. `Graph.mount()` is handed `#graphStage`, so its
+          `clientWidth` is now the width the stack can actually use — which is what lets
+          `fitView` frame with plain arithmetic instead of the `0.60 : 0.90` fudge the
+          pre-merge engine needed while the legend sat on top of the picture.
+        -->
         <div class="graphmount" id="graphMount" hidden>
-          <div class="graphstage" id="graphStage"></div>
-          <div class="graphhud" id="graphHud"></div>
-          <div class="graphlegend" id="graphLegend"></div>
+          <div class="graphcanvas">
+            <div class="graphstage" id="graphStage"></div>
+            <div class="graphhud" id="graphHud"></div>
+          </div>
+          <aside class="graphlegend" id="graphLegend" aria-label="Plates"></aside>
+          <button class="rail rail-right" id="legendRail" data-pane="legend"
+                  hidden aria-expanded="false" aria-controls="graphLegend"
+                  title="Show the plates"><span class="railtext">Plates</span></button>
         </div>
         <div class="viewmount" id="viewMount"></div>
       </div>

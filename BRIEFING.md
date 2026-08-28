@@ -5,7 +5,7 @@ It exists so a fresh context can be useful in a few minutes instead of an hour.
 
 | Read | For |
 |---|---|
-| `CLAUDE.md` | The rules. 30 engineering rules and 24 dashboard design rules, each earned from a false result on real code. **Binding.** |
+| `CLAUDE.md` | The rules. 39 engineering rules and 26 dashboard design rules, each earned from a false result on real code. **Binding.** |
 | `HANDOFF.md` | The chronological record — what was built when, what it cost, what broke. ~1,150 lines. Read *sections*, not the whole thing. |
 | **this file** | Where things are, what is done, what we are doing now, what not to re-open. |
 | Artifact `f993d319-d2b7-4217-9130-cdbba698d1bc` | The ratified dashboard design — a complete working UI, the source of truth for every view. Read it with the **Artifact tool**, not from a screenshot. |
@@ -91,6 +91,24 @@ but Python.
 
 ## What we are doing now
 
+**The reading loop is built — 2026-08-28.** The thing DunneFlow is *for*: the navigator is
+the routine list, picking one highlights it in the stack with everything that calls it and
+everything it calls, clicking a node in the stack moves the list to match, and ⌘Z takes any
+of it back. See `HANDOFF.md` 5h–5k. Most of it was wiring — the data, the one-hop
+computation and the selection plumbing all already existed — and what stood between them was
+five dead controls and a rule read in only one direction.
+
+**The next conversation is the graph's pop-up information**, which Tom has flagged for its
+own discussion.
+
+**Known and not fixed: the near-plane clipping.** Zooming far enough in clips the nodes
+nearest the camera. It is deck.gl's default frustum, the diagnosis is in `graph.js`, and the
+obvious remedy — a negative `near`, which is geometrically sound under an orthographic
+projection — **breaks pan and zoom**. Do not retry it without a way to drive the controls.
+Rule 39.
+
+## What was being done before that
+
 **Chunk 2, "one application" — done 2026-08-28.** The two applications are one: the stack
 mounts inside the shell, there is one state, one settings store, one inspector and one
 self-check; the package overview is computed rather than hand-placed and sits beside the
@@ -152,6 +170,11 @@ Rules 28, 29 and 30.
 | A single binary is the product; sqlite-wasm is the *export* format | `HANDOFF.md` "Distribution" |
 | **Nodes are billboarded circles, lit to read as spheres** — the technique, not an approximation | `HANDOFF.md` "why the nodes are flat circles" |
 | Edges stay up while the camera turns; a Setting, default on | design rule 19, amended |
+| The legend is a **pane with its own track**, never an overlay; open by default | design rule 25 |
+| The **navigator is the routine list** — not a split centre pane, not a fourth mode | design rule 26 |
+| Selecting never moves the camera; off-screen is *stated* with one click to frame it | design rule 26 |
+| Clicking an already-selected node still clears it — undo makes it recoverable | rule 33 |
+| Plates a selection touches are drawn faintly and named, though plates stay off | design rule 26 |
 
 ## How to verify — all three, before saying anything is done
 
@@ -177,6 +200,18 @@ appear in "Where to start" with plausible reach. Negative, and it matters more:
 standards and must yield **zero** naming rules.
 
 ### The traps that cost this session
+
+- **The automation tab gets no animation frames.** `ResizeObserver` never fires and `rAF`
+  never ticks in it, so anything needing a rendered frame cannot be observed there — a
+  confident, reproducible and entirely false finding came out of measuring through one.
+  Static DOM facts (grid tracks, widths, classes) survive; everything else must be driven
+  by a human in a real window. Rule 38.
+- **A guard that checks a name appears has not checked anything happens.** Three guards
+  written this session passed against their own defect first time. Run every new one against
+  the defect it came from *and* against a half-working version. Rule 37.
+- **A rule about drawing is usually also a rule about reading.** Rule 23 said a shadow is
+  never an endpoint; the code that *drew* edges obeyed it and the code that *read* them did
+  not, which silently deleted every cross-plate caller from the selection. Rule 31.
 
 Each of these looked like working code and passed every automated check.
 

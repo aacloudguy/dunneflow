@@ -47,10 +47,21 @@ const DEFAULTS = {
   graphLayout: 'stack',   // 'stack' | 'packages' -- both built, use retires the loser
   graphTheme: 'follow',   // 'follow' | 'dark' -- design rule 2; see the Settings page
   picks: [],              // the selection itself, so a session survives a reload
-  /* Which panes are open. Read by `applyPanels()` in the shell -- for a long time this
-   * was persisted, named in the reset dialog, and read by nothing at all. */
-  panels: { navigator: true, inspector: true, hud: true, controls: true },
+  /* Which panes are open. Read by `applyPanels()` in the shell, which routes every one of
+   * these through the `PANELS` table -- and a key here with no entry there is a named
+   * error, because that is exactly how two of them died. For a long time the whole group
+   * was persisted, named in the reset dialog, and read by nothing at all; then it was
+   * wired up for `navigator` and `inspector` only, leaving `hud` and `controls` dead
+   * inside a live key where the guard written for the first failure could not see them.
+   *
+   * `legend` needs no version bump: `loadSettings` merges a group member by member
+   * precisely so that a group gaining one keeps its default for it. */
+  panels: { navigator: true, inspector: true, legend: true, hud: true, controls: true },
   inspectorAuto: true,    // rail the inspector while nothing is selected
+  /* Navigator width, in rem so the scale multiplier reaches it (design rule 3).
+     Wider than the old fixed 14.5: it holds the routine list now, and a qualified
+     name is the thing it has to be able to show. */
+  navWidth: 21,
 
   /* ── the shell ───────────────────────────────────────────────────────────── */
   theme: 'system',        // 'system' | 'light' | 'dark'
@@ -63,7 +74,8 @@ const DEFAULTS = {
   density: 'comfortable', // 'compact' | 'comfortable' | 'spacious'
   ambient: false,         // anomaly badges wherever a thing appears
   hideInferred: false,
-  colWidths: { q: 22, lines: 5.5, ret: 10, np: 3.5, fan: 3.5, nb: 3.5, nc: 3.5 },
+  colWidths: { q: 26, why: 30, fan: 5 },   // the columns the routine list can fill
+  // today; lines/returns/params/touches come back with an endpoint that serves them
   insp: { in: true, out: true, touches: true, gov: true, sig: false },
   sortKey: 'fan',
   sortAsc: false,
@@ -146,7 +158,7 @@ function resetSettings(program, current) {
     collapseUnused: 'collapsed plates',
     showPlates: 'disk plates', edgesInMotion: 'edges while moving',
     mode: 'centre view', panels: 'panel layout',
-    inspectorAuto: 'auto-collapse the inspector',
+    inspectorAuto: 'auto-collapse the inspector', navWidth: 'navigator width',
     graphLayout: 'graph layout', graphTheme: 'graph theme',
     theme: 'theme', scale: 'interface scale', startup: 'startup screen',
     menuOrder: 'menu order', trailShown: 'the trail', trailCap: 'trail length',

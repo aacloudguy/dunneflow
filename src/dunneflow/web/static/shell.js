@@ -24,14 +24,21 @@ let ENTRYPOINTS = [];   // ways in, deduplicated and ranked by reach
 let BOUNDARIES  = [];   // boundary kinds with counts and their commonest target
 let PKGS        = [];   // top-level packages by routine count
 let TABLES      = [];   // declared tables, busiest first
-let ROUTINES    = [];   // for table mode
+/* Every routine, each carrying the graph's own node id. Loaded on demand by
+   `loadRoutines()` and read by two things: the navigator's routine list and table mode.
+   One array, because they are the same list and a second copy is a second thing to get
+   out of step. For a long time this was declared here and **assigned by nothing** -- so
+   table mode rendered no rows at all, under a footer stating a count from another
+   program. A `let X = []` nothing writes to is an empty view with no symptom. */
+let ROUTINES    = [];
 let ANOMALIES   = [];   // the worklist; loaded on demand, not with the cover
 let STATS       = null; // files, lines, routines, when it was analysed
 
-/* Not yet served. Chunk 2 mounts the real 2.5D graph in place of the prototype's
-   hand-placed SVG, so these two stay empty rather than being filled with a
-   picture of a different program. */
-let EXTERNALS = [], EDGES = [], EXT_EDGES = [];
+/* `EXTERNALS`, `EDGES` and `EXT_EDGES` were here, awaiting the real graph. Chunk 2
+   mounted it and the prototype's hand-placed SVG went with it, but the three variables
+   stayed -- declared, never assigned, and read by nothing at all. Deleted rather than
+   exempted from the guard that found them: an unused variable that looks like pending
+   work is a promise the code is not keeping. */
 let SPECIMEN = null;
 
 /* Things unusual enough to be worth a look. Every one is a real measurement from
@@ -113,11 +120,12 @@ const state = {
    * named in the reset dialog -- and nothing anywhere read it: the pre-merge graph had
    * collapsible panels and the merge kept the switch while dropping the implementation.
    * A setting wired to nothing is design rule 16 without even a control to look at. */
-  panels: { navigator: true, inspector: true, hud: true, controls: true },
+  panels: { navigator: true, inspector: true, legend: true, hud: true, controls: true },
   /* The inspector answers "what is this thing", so when nothing is picked it has nothing
    * to say and should not be holding 22rem to say it. It rails itself, and pops back the
    * moment there is something to show. An explicit fold by the reader outranks this. */
   inspectorAuto: true,
+  navWidth: 21,           // rem; the routine list has to fit a qualified name
   pkgPick: null,          // which package the overview is showing everything for
   graphLayout: "stack",   // "stack" | "packages" -- a layout inside graph mode,
                           // never a fourth mode. Both built; use retires the loser.
@@ -137,7 +145,7 @@ const state = {
   wanted: null,            // {nodes: [id], disks: [id]} | null
   navNote: "",             // what that choice could not draw, stated (design rule 1)
   colourBy: "none",
-  colWidths: { q: 22, lines: 5.5, ret: 10, np: 3.5, fan: 3.5, nb: 3.5, nc: 3.5 },
+  colWidths: { q: 26, why: 30, fan: 5 },
   // No filter can be applied yet, so none is claimed. The prototype carried three
   // pinned chips and the strip announced "showing 187 of 4,568 routines" over a view
   // that was filtering nothing -- a silent filter is bad, and an *announced* filter
@@ -158,16 +166,29 @@ const state = {
   egress: "off",
   showManifest: false,
   showSql: null,
-  selectedRow: null,       // which table row is current; a program has none until read
   sortKey: "fan",
   sortAsc: false,
   viewer: null,
-  trail: [{ view: "cover", label: "mensores", note: "started here" }],
+  /* Seeded once the program's name is known, never with a name written here -- this
+     carried a literal "mensores" from the prototype, which is a confident label about a
+     program nobody has read. */
+  trail: [],
   pins: [],      // {term, idx} — which citation is open in the source viewer   // what a one-time inference pass would cover
   aiConfirm: false,            // second click arms it
   aiDone: false,               // has the pass been run
-  termFilter: ""
+  termFilter: "",
+  /* What is typed in the topbar search. Transient like `termFilter`: a filter is a
+     question being asked right now, not an arrangement worth restoring next visit. */
+  routineQ: ""
 };
+
+/* How many routines the navigator lists at once.
+ *
+ * Bounded, which rule 8 allows *only* because the complete list sits beside it -- table
+ * mode reads the same `ROUTINES` array and shows every row. The bound exists because
+ * `render()` rebuilds the navigator on every keystroke, and 4,734 buttons per keystroke is
+ * a filter that fights the reader. What is left out is always stated (design rule 1). */
+const NAV_ROUTINE_CAP = 200;
 
 const $  = (s, r) => (r || document).querySelector(s);
 const $$ = (s, r) => Array.from((r || document).querySelectorAll(s));
@@ -188,7 +209,33 @@ const esc = (s) => String(s).replace(/[&<>"]/g, c => ({ "&":"&amp;","<":"&lt;","
  * implementation. A reset would have reported clearing a layout that never existed.
  *
  * The grid tracks carry the state, not the panes: collapsing a pane without collapsing its
- * column leaves a hole exactly the width of the pane that is no longer there. */
+ * column leaves a hole exactly the width of the pane that is no longer there.
+ *
+ * ── and why this is a table ──
+ *
+ * The first fix wired up `navigator` and `inspector` by writing them as a literal pair,
+ * which left `hud` and `controls` dead *inside* a live key -- somewhere the guard written
+ * for the original failure could not see, because it walks the top-level keys of
+ * `DEFAULTS` and `panels` as a whole was plainly being read. The capability the pre-merge
+ * graph had was not deleted; a loop over `Object.entries(panels)` was narrowed to a
+ * two-element literal, and the two entries that fell out took a feature with them.
+ *
+ * So: every panel is an entry here, `applyPanels()` walks the *settings*, and a key with
+ * no entry is a named error rather than a silent skip (design rule 16). A test asserts the
+ * two key sets agree, so a panel added to settings cannot quietly stop folding.
+ *
+ * Two mechanisms, because there are genuinely two shapes. A full-height side pane
+ * collapses its grid *track* and leaves a rotated rail (design rule 24). An overlay box
+ * floating on the canvas collapses to a horizontal ribbon -- its own header strip, still
+ * stating its summary. Merging them would give one of the two the wrong furniture. */
+const PANELS = {
+  navigator: { how: "track", grid: ".body",       attr: "nav",    rail: "#navigatorRail" },
+  inspector: { how: "track", grid: ".body",       attr: "insp",   rail: "#inspectorRail" },
+  legend:    { how: "track", grid: "#graphMount", attr: "legend", rail: "#legendRail" },
+  hud:       { how: "class", box: "#panel-hud" },
+  controls:  { how: "class", box: "#panel-controls" },
+};
+
 function panelIsOpen(name) {
   if (name === "inspector" && state.inspectorAuto && state.panels.inspector) {
     /* Auto only ever *closes*, and only when the inspector genuinely has nothing to say.
@@ -200,16 +247,50 @@ function panelIsOpen(name) {
   return Boolean(state.panels[name]);
 }
 
-function applyPanels() {
+/* Walks the settings, not a list of its own: a panel that exists in `DEFAULTS.panels` and
+ * is missing from `PANELS` is announced rather than skipped. Silence here is precisely how
+ * two panels stopped folding without anything reporting it. */
+/* The navigator's width, in rem so the scale multiplier reaches it (design rule 3).
+ *
+ * Written to the grid as a custom property rather than into `grid-template-columns`,
+ * because the track shorthand is also what `data-nav`/`data-insp` rewrite when a pane
+ * folds -- two rules setting the same property means the last one wins and one of the two
+ * features silently stops working. A variable lets both act without racing. */
+function applyNavWidth() {
   const body = document.querySelector(".body");
-  if (!body) return;
-  for (const [name, attr] of [["navigator", "nav"], ["inspector", "insp"]]) {
+  if (body) body.style.setProperty("--nav-w", `${state.navWidth}rem`);
+}
+
+function applyPanels() {
+  applyNavWidth();
+  for (const name of Object.keys(state.panels)) {
+    const spec = PANELS[name];
+    if (!spec) {
+      console.error("DunneFlow: panel with no mechanism:", name,
+                    "-- add it to PANELS or take it out of DEFAULTS.panels");
+      continue;
+    }
     const open = panelIsOpen(name);
-    body.dataset[attr === "nav" ? "nav" : "insp"] = open ? "on" : "off";
-    const rail = $(`#${name}Rail`);
-    if (rail) {
-      rail.hidden = open;
-      rail.setAttribute("aria-expanded", String(open));
+    if (spec.how === "track") {
+      const grid = document.querySelector(spec.grid);
+      if (!grid) continue;                    // the graph mount is absent in doc-only pages
+      grid.dataset[spec.attr] = open ? "on" : "off";
+      const rail = $(spec.rail);
+      if (rail) {
+        rail.hidden = open;
+        rail.setAttribute("aria-expanded", String(open));
+      }
+    } else {
+      /* The box is rebuilt by `renderGraphFurniture()`, so it is often absent -- the
+       * class is applied there too, from the same `panelIsOpen()`. This branch is what
+       * handles a fold while it is on screen. */
+      const box = $(spec.box);
+      if (!box) continue;
+      box.classList.toggle("closed", !open);
+      const head = box.querySelector(".hudhead");
+      if (head) head.setAttribute("aria-expanded", String(open));
+      const chev = box.querySelector(".chev");
+      if (chev) chev.textContent = open ? "▾" : "▸";
     }
   }
 }
@@ -263,6 +344,13 @@ document.addEventListener("click", (ev) => {
    `state.view = state.mode`, which silently showed the graph instead of the page
    that was clicked -- a dead control that looked like a working one. */
 const NAV_ROUTES = {
+  /* The interaction the tool is for, and it is one line because every piece of it already
+   * existed separately. `selectFromNav` selects in id space, loads `/api/node`, ensures the
+   * graph and applies the selection; `recomputeMembers()` in the engine then pulls in the
+   * node's one-hop callers and callees and draws exactly those edges, filtered by the
+   * `follow` control. What was missing was never the machinery -- it was a row that
+   * carried an identity and a route that consumed one. Rule 30, from the other side. */
+  routine:     (b) => { selectFromNav({ nodes: navIds(b) }); },
   cover:       () => { state.view = "cover"; },
   glossary:    () => { state.view = "glossary"; },
   naming:      () => { state.view = "naming"; },
@@ -322,7 +410,10 @@ document.addEventListener("click", (ev) => {
  * selection -- a handler bound to either element would be thrown away with it. Registered
  * from a table for the same reason the other routes are (design rule 16): an unknown pane
  * is a named error, never a fall-through that looks deliberate. */
-const FOLDABLE = new Set(["navigator", "inspector"]);
+/* Derived, not hand-kept. A second list of panel names is a second place to forget one,
+ * and forgetting one here makes its control silently inert -- the failure this whole
+ * change exists to undo. */
+const FOLDABLE = new Set(Object.keys(PANELS));
 
 document.addEventListener("click", (ev) => {
   const btn = ev.target.closest("[data-fold], [data-pane]");
@@ -332,7 +423,12 @@ document.addEventListener("click", (ev) => {
     console.error("DunneFlow: no such foldable pane:", name, btn);
     return;
   }
-  const opening = Boolean(btn.dataset.pane);       // a rail opens; a fold button closes
+  /* A rail opens and a fold button closes -- each is one-way, because each is only on
+   * screen in one of the two states. A ribbon's header is on screen in both, so it
+   * toggles. The difference is the furniture, not the panel. */
+  const opening = PANELS[name].how === "class"
+    ? !state.panels[name]
+    : Boolean(btn.dataset.pane);
   state.panels = { ...state.panels, [name]: opening };
   /* Opening the inspector by hand with nothing selected is a deliberate act, so the auto
    * rule stops overriding it until something is picked again. Without this the rail would
@@ -719,13 +815,20 @@ function viewGraph() {
   </div>`;
 }
 
+/* `q` sorts by qualified name, `fan` by how connected the routine is. `fan` comes from the
+ * graph and is blank until the engine is mounted, so sorting by it before then would order
+ * by nothing at all -- it falls back to the name rather than producing an arbitrary order
+ * that looks deliberate. */
 function sortedRoutines() {
   const k = state.sortKey;
   const dir = state.sortAsc ? 1 : -1;
+  const qual = (r) => `${r.module}.${r.name}`;
   return ROUTINES.slice().sort((a, b) => {
-    const x = a[k], y = b[k];
-    if (typeof x === "number" && typeof y === "number") return (x - y) * dir;
-    return String(x).localeCompare(String(y)) * dir;
+    if (k === "fan" && Graph.mounted()) {
+      const d = (Number(routineFan(a.id)) || 0) - (Number(routineFan(b.id)) || 0);
+      if (d) return d * dir;
+    }
+    return qual(a).localeCompare(qual(b)) * (k === "fan" ? 1 : dir);
   });
 }
 
@@ -754,70 +857,58 @@ function viewTable() {
 
   <div class="tablewrap">
     <table class="grid">
-      <caption class="sr-only">Routines in mensores.quaestor, ordered by fan-out</caption>
+      <caption class="sr-only">Every routine in ${esc(STATS ? STATS.program : "this program")}</caption>
       <thead><tr>
         ${col("q", "Routine")}
-        ${col("lines", "Lines")}
-        ${col("ret", "Returns")}
-        ${col("np", "Params", true)}
-        ${col("fan", "Calls out", true)}
-        ${col("nb", "Touches", true)}
-        ${col("nc", "Comments", true)}
+        ${col("why", "WHY")}
+        ${col("fan", "Connections", true)}
       </tr></thead>
       <tbody>
-        ${sortedRoutines().map((r, i) => {
-          const parts = r.q.split(".");
-          const leaf = parts.pop();
-          return `<tr data-row="${esc(r.q)}" aria-selected="${state.selectedRow === r.q}" tabindex="0">
-            <td><span class="qual"><span class="dim">${esc(parts.join("."))}.</span>${esc(leaf)}</span>
-              ${state.ambient && r.anom ? ` <span class="badge suspect">! ${esc(r.anom)}</span>` : ""}</td>
-            <td class="mono" style="font-size:.72rem;color:var(--text-muted)">${esc(r.lines)}</td>
-            <td class="mono" style="font-size:.72rem">${esc(r.ret)}</td>
-            <td class="numeric">${r.np}</td>
-            <td class="numeric">${r.fan}</td>
-            <td class="numeric">${r.nb}</td>
-            <td class="numeric">${r.nc}</td>
-          </tr>`;
-        }).join("")}
+        ${sortedRoutines().map(r => `
+          <tr data-row="${esc(r.id)}" aria-selected="${state.selected === r.id}" tabindex="0">
+            <td><span class="qual"><span class="dim">${esc(r.module)}.</span>${esc(r.name)}</span></td>
+            <td style="font-size:.72rem;color:var(--text-muted)">${esc(r.why)}</td>
+            <td class="numeric">${esc(String(routineFan(r.id)))}</td>
+          </tr>`).join("")}
       </tbody>
     </table>
     <div class="tfoot">
-      <span>Showing <b>12</b> of <b>515</b> routines in <code class="mono">mensores.quaestor</code></span>
-      <span style="margin-left:auto">Scroll is virtualised — every row is present, none are paged away.</span>
+      <span>${ROUTINES.length
+        ? `All <b>${ROUTINES.length.toLocaleString()}</b> routines — this is the complete list the
+           navigator abbreviates.`
+        : "Reading the routine list\u2026"}</span>
+      <span style="margin-left:auto">Lines, returns, params and touches want a routines
+        endpoint of their own; until there is one they are absent rather than blank.</span>
     </div>
   </div>`;
 }
 
+/* Document mode: declared and explicitly unbuilt, which is the only honest state for it.
+ *
+ * This held a full page of hand-written prose about one Mensores command -- headings, a
+ * lead, three sections of specific narrative -- presented exactly as generated output
+ * would be. It was the ratified design's mockup content, never replaced, and it is the
+ * most expensive kind of pinned data: not a stale number in a corner but a confident,
+ * detailed answer about a program the reader may not even be looking at. Nothing marked it
+ * as a sample, so there was no way to tell it apart from a real one.
+ *
+ * The backend for the *other* thing called document mode does exist -- eight documents,
+ * every row carrying a node id, which is what the routine list is now built from. The
+ * narrative view is a different thing and is not built. Saying so is not a failure state;
+ * "nothing here yet" and "nothing to report" are opposite claims and must not look alike.
+ */
 function viewDoc() {
   return `
   <article class="doc">
-    <h1>What happens after <code class="mono">mensores interview --extract</code></h1>
-    <p class="lead">The same selection you have in the graph and the table, read as prose. This is
-      <code class="mono">02-flows.md</code>, scrolled to the routine you have selected.</p>
-
-    <h2>The door</h2>
-    <div class="prose">
-      <p>The command is registered on the Typer app and reaches
-      <code class="mono">_run_extract_mode</code> through a single caller. Before anything is minted,
-      swept or emitted, the run passes a prerequisite gate — placement that was pinned at plan time
-      rather than left to “as early as possible”, because a gate that refuses after minting a session
-      has started the interview it claims to have denied.</p>
-
-      <p>The architect is resolved next, and is deferred-safe unless organisational consent, a
-      resolvable model and a present API key all hold. A dry run never egresses, even with consent.</p>
-    </div>
-
-    <h2>Where it leaves the program</h2>
-    <div class="prose">
-      <p>Six boundary touches: two environment reads that decide whether the run is headless, two
-      existence checks that guard against overwriting a contractual artifact, and two file writes at
-      the end — the spec itself and its rendered form.</p>
-    </div>
-
-    <div class="note" style="margin-top:1rem">
-      <b>Note.</b> This is the one view that would read live from
-      <code class="mono">output/mensores/source.db</code> — the content-addressed sidecar — so the
-      prose and the code beside it are both what was measured, not what the tree happens to say now.
+    <div class="note">
+      <b>Not built yet.</b> Document mode will read the current selection as prose — the
+      routine you have picked, in its own words, scrolled to the line you are looking at,
+      taken from <code class="mono">source.db</code> so the text and the code beside it are
+      both what was measured rather than what the tree happens to say now.
+      <p style="margin:.5rem 0 0">What exists today is the document <em>backend</em>: eight
+      documents, every row carrying its graph node id. The routine list in the navigator is
+      built from one of them. The narrative reading of a selection is not built, and this
+      page would rather say so than show you a sample.</p>
     </div>
   </article>`;
 }
@@ -1182,11 +1273,98 @@ function sec(key, title, count, bodyHtml) {
 
 
 
+/* ═══ undo: getting back to what you were just looking at ═══
+ *
+ * Chasing a thread means clicking a lot, and two of those clicks lose your place with no
+ * way back. Clicking the node you are *already* looking at clears the whole selection --
+ * a deliberate toggle-off, and a trap when the click is also how you move -- and every
+ * nodes-are-all-visible state looks identical, so there is nothing on screen to say which
+ * routine you had. Design rule 15 puts it plainly: nobody chases a rabbit if they might
+ * not find their way back, and the trail is what makes the detour free.
+ *
+ * Linear and index-space, deliberately. A session's payload does not change under it, so
+ * engine indices are stable for as long as the history is worth keeping; storing ids and
+ * re-resolving would buy nothing and could fail differently. Capped, because an unbounded
+ * history of a thing nobody looks at is a leak nobody can see -- the same reasoning the
+ * trail's own cap already carries.
+ *
+ * `restoring` is the whole correctness argument: applying an undo changes the selection,
+ * which is what records history, so without it every undo would record itself and the
+ * stack would never move.
+ */
+const SELECTION_HISTORY_CAP = 50;
+let selHistory = [];
+let selAt = -1;
+let restoringSelection = false;
+
+function selectionSnapshot() {
+  return { picks: (state.picks || []).slice(), selected: state.selected };
+}
+
+function sameSelection(a, b) {
+  return a && b && a.selected === b.selected &&
+         a.picks.length === b.picks.length &&
+         a.picks.every((p, i) => {
+           const q = b.picks[i];
+           return p.kind === q.kind && p.id === q.id && p.index === q.index;
+         });
+}
+
+/* Called wherever a selection settles, from either direction -- the graph announcing a
+ * click, or the list driving one. One recorder, because two would disagree about order. */
+function recordSelection() {
+  if (restoringSelection) return;
+  const now = selectionSnapshot();
+  if (sameSelection(selHistory[selAt], now)) return;   // a repaint is not a step
+  selHistory = selHistory.slice(0, selAt + 1);         // a new move drops the redo branch
+  selHistory.push(now);
+  if (selHistory.length > SELECTION_HISTORY_CAP) selHistory.shift();
+  selAt = selHistory.length - 1;
+}
+
+function applySelectionStep(step) {
+  restoringSelection = true;
+  try {
+    state.picks = step.picks.slice();
+    state.selected = step.selected;
+    if (Graph.mounted()) Graph.setSelection(state.picks);
+    if (state.selected) loadNode(state.selected);
+    else { inspectorFor = null; SPECIMEN = null; }
+    persist();
+    buildNav();
+    revealSelectedRoutine();
+    render();
+  } finally {
+    restoringSelection = false;
+  }
+}
+
+function canUndoSelection() { return selAt > 0; }
+function canRedoSelection() { return selAt >= 0 && selAt < selHistory.length - 1; }
+
+function undoSelection() {
+  if (!canUndoSelection()) return;
+  applySelectionStep(selHistory[--selAt]);
+}
+
+function redoSelection() {
+  if (!canRedoSelection()) return;
+  applySelectionStep(selHistory[++selAt]);
+}
+
 /* ═══ the trail: where you have been, so you can wander without losing it ═══ */
+/* A step records the *subject* it arrived at, not just a label.
+ *
+ * It used to be `{view, label, note}`, and clicking a step set `state.view` and re-rendered
+ * -- so from inside graph mode, where the view is already "graph", **nothing happened at
+ * all**. The trail rendered, highlighted, scrolled and pruned correctly, and could not take
+ * anyone back to anything. Rule 30 a third time, in the one feature design rule 15 says
+ * exists to make a detour free: nobody chases a rabbit if they might not find their way
+ * back. */
 function pushTrail(view, label, note) {
   const last = state.trail[state.trail.length - 1];
   if (last && last.view === view && last.label === label) return;   // no repeats
-  state.trail.push({ view, label, note: note || "" });
+  state.trail.push({ view, label, note: note || "", subject: selectionSnapshot() });
   // Prune on every step whether the trail is on screen or not: a hidden trail that
   // grows without bound is a leak nobody can see.
   const cap = Math.max(2, state.trailCap);
@@ -1381,17 +1559,27 @@ function viewInference() {
             <div class="egressrow ${permits(k) ? "on" : "off"}">
               <span class="mark">${permits(k) ? "\u25cf" : "\u2715"}</span>
               <span class="what">${esc(NEED_LABEL[k])}</span>
+              <!-- Design rule 14: before anything leaves, show what would leave. These
+                   were "4,568 routine names", "184,000 lines" and a manifest of "2,449"
+                   documents -- one program's figures, written into the one surface in the
+                   product where a wrong number is a consent the reader did not give. Two
+                   are measurements now; the third says it cannot say. -->
               <span class="detail">${
-                k === "docs"   ? `${MANIFEST.length} candidate documents \u00b7 ${(manifestBytes / 1024).toFixed(0)} KB`
-              : k === "names"  ? "4,568 routine names and signatures \u00b7 no bodies"
-              :                  "184,000 lines of source"}</span>
+                k === "docs"   ? (MANIFEST.length
+                    ? `${MANIFEST.length} candidate documents \u00b7 ${(manifestBytes / 1024).toFixed(0)} KB`
+                    : "the document manifest is not served yet")
+              : k === "names"  ? `${STATS ? Number(STATS.routines).toLocaleString() : "\u2014"} routine names and signatures \u00b7 no bodies`
+              :                  `${STATS ? Number(STATS.lines).toLocaleString() : "\u2014"} lines of source`}</span>
               ${k === "docs" && permits("docs") ? `<button class="linkbtn" data-manifest>${state.showManifest ? "Hide" : "Review"} the exact list</button>` : ""}
             </div>`).join("")}
         </div>
 
         ${state.showManifest && permits("docs") ? `
           <div class="manifest">
-            <div class="manifesthead">Every file a documentation scan would send \u2014 ${MANIFEST.length} of 2,449</div>
+            <div class="manifesthead">${MANIFEST.length
+              ? `Every file a documentation scan would send \u2014 ${MANIFEST.length}`
+              : "The manifest is not served yet. Nothing may leave until this list can be "
+                + "shown in full \u2014 an unverifiable manifest is not consent."}</div>
             <ol>${MANIFEST.map(m => `<li><span class="mono">${esc(m.path)}</span>
               <span class="num">${(m.bytes / 1024).toFixed(0)} KB</span></li>`).join("")}</ol>
           </div>` : ""}
@@ -1464,6 +1652,26 @@ function tierBadge(t) {
 }
 
 function viewGlossary() {
+  /* Nothing serves the glossary to this page yet, and until something does the whole view
+   * has to say so rather than render itself over an empty array.
+   *
+   * It did the latter: "0 of the 0 opaque terms are already defined by this project",
+   * followed by a paragraph naming `.groma/milestones/.../NAMING.md` and `.groma/PROJECT.md`
+   * and stating findings about them. Pinned prose from the ratified prototype, and invisible
+   * to the guard that looks for the sample program's *name* because it names its files
+   * instead. A reader on another codebase was being told, in detail and with confidence,
+   * about documents their program does not have. */
+  if (!TERMS.length) {
+    return `
+    <div style="max-width:58rem">
+      <div class="note">
+        <b>The glossary is not served to this page yet.</b> It is computed by
+        <code class="mono">dunneflow glossary</code>, which reads the project's own
+        documentation for the definitions before generating any — so an empty page here
+        means nobody has asked, not that this program explains none of its words.
+      </div>
+    </div>`;
+  }
   const q = state.termFilter.toLowerCase();
   const shown = TERMS.filter(t => !q || t.term.includes(q) || t.declared.toLowerCase().includes(q));
   const opq = TERMS.filter(t => t.opaque);
@@ -1514,7 +1722,7 @@ function viewGlossary() {
             <div class="termdef">
               <span class="quoted">${esc(t.declared)}</span>
               <div class="src">${citeIndex(t.term, "code") >= 0
-                ? citeBtn(t.term, citeIndex(t.term, "code"), `${t.module.replace("mensores.", "mensores/")}/__init__.py \u00b7 module docstring`)
+                ? citeBtn(t.term, citeIndex(t.term, "code"), `${t.module.split(".").join("/")}/__init__.py \u00b7 module docstring`)
                 : `<span class="mono">${esc(t.module)}</span>`}</div>
               ${t.circular ? `<div class="src blind"><b>Measured.</b> The gloss repeats the word instead of
                 explaining it \u2014 "the Mensores Dispensator" does not say what a dispensator is.
@@ -1579,6 +1787,12 @@ function viewNaming() {
       the time tells you where to look.
     </div>
 
+    ${!CONVENTIONS.length ? `<div class="note">
+      <b>Not computed here yet.</b> The naming standard is measured by
+      <code class="mono">dunneflow naming</code> and is not yet served to this page, so
+      there is nothing to show — which is a different statement from "this program follows
+      no conventions", and the two must not look alike.
+    </div>` : ""}
     ${CONVENTIONS.map((cv, i) => {
       const pct = (cv.ok / cv.n) * 100;
       const perfect = cv.ok === cv.n;
@@ -1610,7 +1824,7 @@ function viewNaming() {
             <button class="cite" data-sqlshow="${i}">
               <span class="citeicon" aria-hidden="true">\u2317</span>How this number was counted<span class="citego">show the query</span></button>
             ${state.showSql === i ? `<pre class="srcblock sqlblock">${esc(cv.sql)}</pre>
-              <div class="provfoot">Run it yourself: <span class="mono">uv run dunneflow query output/mensores --sql "\u2026"</span>.
+              <div class="provfoot">Run it yourself: <span class="mono">uv run dunneflow query output/${esc(STATS ? STATS.program : "&lt;program&gt;")} --sql "\u2026"</span>.
                 A counted claim proves itself by being reproducible \u2014 the query is its provenance.</div>` : ""}
           </div>` : ""}
         </div>
@@ -1913,12 +2127,27 @@ function section(name, fn) {
    three static elements that said "mensores > cli > interview" on every screen --
    a label that is wrong everywhere is worse than no label at all. */
 function crumbsFor() {
-  const prog = { label: "mensores", to: "cover" };
+  /* The program's own name, and the *current selection* -- not a pinned path.
+   *
+   * `graph`, `table` and `doc` used to be fixed pairs -- "packages > system boundary",
+   * "quaestor > routines", "cli > interview" -- so every screen for every program showed
+   * one Mensores path that had nothing to do with what was on it. The comment above this
+   * function already said a label wrong everywhere is worse than no label, and the table
+   * underneath it was doing exactly that. The three centre modes now say what is selected,
+   * or say that nothing is. */
+  const prog = { label: STATS ? STATS.program : "", to: "cover" };
+  const subject = () => {
+    if (!state.selected) return [{ label: "nothing selected", cur: true }];
+    const r = ROUTINES.find(x => x.id === state.selected);
+    return r
+      ? [{ label: r.module }, { label: r.name, cur: true }]
+      : [{ label: SPECIMEN ? SPECIMEN.label : "selection", cur: true }];
+  };
   const trail = {
     cover:       [],
-    graph:       [{ label: "packages" }, { label: "system boundary", cur: true }],
-    table:       [{ label: "quaestor" }, { label: "routines", cur: true }],
-    doc:         [{ label: "cli" }, { label: "interview", cur: true }],
+    graph:       subject(),
+    table:       subject(),
+    doc:         subject(),
     anomalies:   [{ label: "anomalies", to: "anomalies" },
                   { label: { broken: "Broken", suspect: "Suspect", info: "Informational" }[state.sev],
                     cur: true }],
@@ -2008,7 +2237,18 @@ function render() {
   }
 
   const tm = $("#trailMount");
-  if (tm) tm.innerHTML = trailBar();
+  if (tm) {
+    tm.innerHTML = trailBar();
+    /* Scroll the trail to where the reader actually is.
+     *
+     * The bar overflows horizontally and always rendered from the start, so after a few
+     * steps the current position sat off the right edge and had to be scrolled to by hand
+     * -- which defeats the point of it. Design rule 15 calls the trail the thing that makes
+     * a detour free, and a trail that hides where you are is a map with no "you are here".
+     * `block: "nearest"` so it never scrolls the page, only the bar. */
+    const here = tm.querySelector(".trailstep.here");
+    if (here) here.scrollIntoView({ block: "nearest", inline: "end" });
+  }
   const np = $("#navPins");
   if (np) { np.textContent = state.pins.length; np.className = "n" + (state.pins.length ? " sevcount info" : ""); }
   renderFilters();
@@ -2088,8 +2328,13 @@ function wire() {
   /* Selection is keyed by qualname, never by row index -- sorting reorders the array,
      and a revision change reorders it again. Same rule the temporal layers depend on. */
   $$("tbody tr[data-row]").forEach(tr => tr.addEventListener("click", () => {
-    state.selectedRow = tr.dataset.row;
-    render();
+    /* The row carries the node id, not the qualified name it prints.
+     *
+     * It used to be `data-row="${r.q}"` and this handler set `state.selectedRow` and
+     * re-rendered -- so clicking a routine highlighted a row and did nothing else, while
+     * the graph beside it and the inspector went on showing whatever was there before.
+     * Rule 30 in the view that most looks like it works: a label is not an identity. */
+    selectFromNav({ nodes: [tr.dataset.row] });
   }));
   $$("[data-resize]").forEach(h => {
     h.addEventListener("pointerdown", (e) => {
@@ -2234,14 +2479,19 @@ function wire() {
     const step = state.trail[i];
     state.trail = state.trail.slice(0, i + 1);
     state.view = step.view;
-    render();
+    // The subject is the point. Steps recorded before this existed have none, and those
+    // still change the view -- old data is not a reason to fail, only to do less.
+    if (step.subject) applySelectionStep(step.subject);
+    else render();
   }));
   const tb = $("[data-trailback]");
   if (tb) tb.addEventListener("click", () => {
     if (state.trail.length > 1) {
       state.trail.pop();
-      state.view = state.trail[state.trail.length - 1].view;
-      render();
+      const step = state.trail[state.trail.length - 1];
+      state.view = step.view;
+      if (step.subject) applySelectionStep(step.subject);
+      else render();
     }
   });
   const tc = $("[data-trailclear]");
@@ -2291,9 +2541,11 @@ function wire() {
     sp.addEventListener("click", () => {
       const open = sp.getAttribute("aria-expanded") === "true";
       sp.setAttribute("aria-expanded", String(!open));
-      $("#srcPathV").textContent = open
-        ? "mensores-overhaul/src"
-        : "../mensores-overhaul/src";
+      /* Long form and short form of the *served* root. It used to toggle between two
+         literals naming one developer's disk, which is a confident lie on any other. */
+      const full = (STATS && STATS.source_root) || "";
+      const parts = full.split("/").filter(Boolean);
+      $("#srcPathV").textContent = open ? parts.slice(-2).join("/") : full;
     });
   }
 
@@ -2356,6 +2608,15 @@ document.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && state.viewer) { e.preventDefault(); state.viewer = null; render(); return; }
   const typing = ["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement.tagName);
   if (e.key === "/" && !typing) { e.preventDefault(); $("#search").focus(); return; }
+  /* Undo the selection, from anywhere -- the reader who needs it is by definition lost and
+   * should not have to find a particular pane first. Above the anomalies-only guard below
+   * for the same reason. The platform chord, because a reader who wants to take something
+   * back tries the one their hands already know. */
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z" && !typing) {
+    e.preventDefault();
+    if (e.shiftKey) redoSelection(); else undoSelection();
+    return;
+  }
   if (typing || state.view !== "anomalies") return;
   if (e.key === "j") { e.preventDefault(); step(1); }
   if (e.key === "k") { e.preventDefault(); step(-1); }
@@ -2433,7 +2694,10 @@ function dressNavItems() {
   span.textContent = texts.map(n => n.textContent).join("").trim();
   if (span.textContent.length > 25)      span.classList.add("xlong");
   else if (span.textContent.length > 17) span.classList.add("long");
-  el.title = span.textContent;
+  // An item that brought its own title knows more than the leaf text does -- a routine row
+  // carries the qualified name, and overwriting it with the leaf loses the only thing the
+  // hover was worth doing for.
+  if (!el.dataset.titled) el.title = span.textContent;
   texts.forEach(n => n.remove());
   const count = el.querySelector(".n");
   el.insertBefore(span, count || null);
@@ -2452,7 +2716,76 @@ function dressNavItems() {
    whole port exists to undo.
    ════════════════════════════════════════════════════════════ */
 
+/* The routine list: the way in for the interaction this whole shell is for -- pick one on
+ * the left, and the graph on the right highlights it with everything that calls it and
+ * everything it calls.
+ *
+ * `sel` is the node id, and it is the entire point. Rule 30 was written from four
+ * navigator routes whose items carried only a label, so forty rows all did the same
+ * nothing while the inspector went on truthfully reporting "Nothing selected". A row here
+ * with no id is dropped at load rather than rendered as a button that cannot act. */
+function matchingRoutines() {
+  const q = state.routineQ.trim().toLowerCase();
+  if (!q) return { rows: ROUTINES.slice(0, NAV_ROUTINE_CAP), total: ROUTINES.length };
+  const rows = [];
+  for (const r of ROUTINES) {
+    if (r.name.toLowerCase().includes(q) || r.module.toLowerCase().includes(q)) rows.push(r);
+  }
+  return { rows: rows.slice(0, NAV_ROUTINE_CAP), total: rows.length };
+}
+
+/* Callers and callees, shown as two numbers rather than one.
+ *
+ * This was `degree` -- a single edge count -- and it misled exactly as a single number
+ * should be expected to: every other group in this navigator counts *things*, so "8" beside
+ * a routine reads as eight nodes. `guarded_cwd` has 3 callers and 5 callees, printed 8, and
+ * drew 7 nodes; all three numbers were right and no two of them agreed about what they
+ * were. A count must say what it counts.
+ *
+ * Blank until the engine is mounted rather than guessed, because an absent count and a
+ * count of zero are opposite claims. */
+function routineFan(id) {
+  if (!Graph.mounted()) return "";
+  const c = Graph.connections(id);
+  if (!c) return "";
+  return `${c.in}\u2190 ${c.out}\u2192`;
+}
+
+/* The last two segments of a dotted module path.
+ *
+ * The whole path was shown, clipped from the left with `direction: rtl`, which renders as
+ * garbage the moment punctuation is involved -- `mensores._internal._cwd_guard` came out as
+ * "...ores_internal_cwd_guard", a string that is not in the program anywhere. Better to
+ * choose which part to show than to let the browser cut one arbitrarily; the full path is
+ * on the row's title either way. */
+function moduleTail(module) {
+  const parts = String(module).split(".");
+  return parts.length > 2 ? "\u2026" + parts.slice(-2).join(".") : module;
+}
+
 const NAV_GROUPS = [
+  { id: "navRoutines", title: "Routines", open: true,
+    count: () => ROUTINES.length,
+    note: () => {
+      const { rows, total } = matchingRoutines();
+      if (!ROUTINES.length) return "reading the routine list…";
+      if (!total) return `nothing matches “${esc(state.routineQ)}”`;
+      // Design rule 1: a filter is never silent about what it removed.
+      return total > rows.length
+        ? `showing ${rows.length} of ${total.toLocaleString()} — narrow the search, `
+          + `or open the table for all ${ROUTINES.length.toLocaleString()}`
+        : `${total.toLocaleString()} shown`;
+    },
+    items: () => matchingRoutines().rows.map(r => ({
+      nav: "routine", label: r.name, sub: moduleTail(r.module), sel: r.id,
+      n: routineFan(r.id),
+      /* The full qualified name, because the row shows an abbreviation of it and a reader
+       * hovering an abbreviation is asking exactly this. `dressNavItems()` sets a title
+       * from the loose label text alone, which for these rows is the leaf and tells them
+       * nothing they could not already see. */
+      title: `${r.module}.${r.name}`,
+      current: state.selected === r.id,
+    })) },
   { id: "navExplore", title: "Explore", open: true, items: () => [
       { nav: "curiosities", label: "Worth a look", n: "" },
       { nav: "pins",        label: "Kept",         n: state.pins.length, id: "navPins" },
@@ -2496,6 +2829,7 @@ const NAV_GROUPS = [
 ];
 
 function groupCount(g) {
+  if (g.count) return g.count();
   const items = g.items();
   if (g.id === "navBounds") return BOUNDARIES.reduce((s, b) => s + b.n, 0);
   if (g.id === "navPkgs")   return PKGS.length;
@@ -2523,14 +2857,20 @@ function buildNav() {
       <div class="nav-items">
         ${items.map(i => `
           <button class="nav-item" data-nav="${esc(i.nav)}"
+                  ${i.title ? `title="${esc(i.title)}" data-titled="1"` : ""}
                   ${i.sel ? `data-navid="${esc(i.sel)}"` : ""}
                   ${i.sevnav ? `data-sevnav="${esc(i.sevnav)}"` : ""}
                   ${i.current ? 'aria-current="true"' : ""}>
             ${i.dot ? `<span class="sevdot" style="background:var(--sev-${esc(i.dot)})"></span>` : ""}
+            ${/* A sibling, not a wrapper: `dressNavItems()` collects the *loose text* of an
+                  item into `.navlabel` and sizes it, so emitting that span here would make
+                  it find nothing and quietly drop the long-name handling and the title. */
+              i.sub ? `<span class="navsub">${esc(i.sub)}</span>` : ""}
             ${esc(i.label)}<span class="n${i.dot && i.n ? " num sevcount " + esc(i.dot) : ""}"
               ${i.id ? `id="${esc(i.id)}"` : ""}>${esc(String(i.n))}</span>
           </button>`).join("")}
       </div>
+      ${g.note ? `<div class="nav-note">${g.note()}</div>` : ""}
     </div>`;
   }).join("");
   dressNavItems();
@@ -2564,6 +2904,38 @@ async function loadCover() {
     sp.textContent = parts.slice(-2).join("/");
     if (spb) spb.title = d.stats.source_root;
   }
+}
+
+/* The routine list, from the document backend that already carries what is needed.
+ *
+ * No new endpoint: `/api/document?id=routines` returns every routine grouped by module,
+ * and **every row already carries `node`, the graph's own id** -- which is the whole
+ * reason this is wiring rather than building. The id is what makes a row selectable at
+ * all; `queries.py` had already written down why inventing one would be wrong, before
+ * anything needed it.
+ *
+ * Loaded on demand rather than with the cover: 4,734 rows is a real payload and most
+ * sessions that only read the overview never want it. */
+async function loadRoutines() {
+  if (ROUTINES.length) return;
+  const r = await fetch("/api/document?id=routines");
+  if (!r.ok) throw new Error(`the server answered ${r.status} for the routine list`);
+  const d = await r.json();
+  const out = [];
+  for (const section of d.sections || []) {
+    for (const group of section.groups || []) {
+      for (const row of group.rows || []) {
+        if (!row.node) continue;         // a row with no identity is not selectable
+        out.push({
+          id: row.node,
+          name: row.cells?.name || "",
+          module: group.title || "",
+          why: row.cells?.why || "",
+        });
+      }
+    }
+  }
+  ROUTINES = out;
 }
 
 async function loadAnomalies() {
@@ -2613,7 +2985,7 @@ const PERSISTED = [
   "egress", "aiOps", "triage", "pins", "usage", "graphLayout",
   "diskOrder", "diskColors", "colorBy", "sortMode", "filterMode", "direction",
   "nodeSize", "spreadX", "spreadY", "spreadZ", "collapseUnused",
-  "panels", "inspectorAuto",
+  "panels", "inspectorAuto", "navWidth",
   "showPlates", "picks", "graphTheme", "edgesInMotion",
 ];
 
@@ -2624,7 +2996,9 @@ let graphLoading = false;
 let graphError = null;
 let counts = null;        // the engine's last count report
 let fps = 0;
-let legendOpen = true;
+/* `legendOpen` used to live here: a bare module `let`, so the reader's answer could
+ * never survive a reload and the *default* was the only answer there was. It is
+ * `panels.legend` now, persisted with every other pane. */
 
 function persist() {
   if (!program) return;
@@ -2670,6 +3044,12 @@ function cssPalette() {
     edge: [...hex("--graph-edge"), num("--graph-edge-alpha")],
     plateFill: [...hex("--graph-plate-fill"), 70],
     plateLine: [...hex("--graph-plate-line"), 140],
+    /* The plates a selection touches. Derived from the accent rather than from the plate
+       colours, because these are *not* a fainter version of the plates layer -- they answer
+       a different question ("which plate is this?") and belong to the selection, which is
+       what the accent already means everywhere else on the page. */
+    plateTouchFill: [...hex("--accent"), 16],
+    plateTouchLine: [...hex("--accent"), 70],
     label: [...hex("--graph-label"), 240],
     labelBg: [...hex("--graph-label-bg"), 200],
     tooltipBg: cs.getPropertyValue("--surface").trim(),
@@ -2763,7 +3143,33 @@ function onGraphSelect(sel) {
   if (sel.node) loadNode(sel.node.id);
   else { inspectorFor = null; SPECIMEN = null; }
   persist();
+  recordSelection();          // so the click that lost your place can be taken back
+  buildNav();                 // the list follows the graph -- the other half of the loop
+  revealSelectedRoutine();
   render();
+}
+
+/* The back path: click a node in the graph, and the routine list moves to it.
+ *
+ * Chasing a thread runs both ways -- see something in the list and find it in the picture,
+ * or spot something in the picture and find out what it is called -- and only one of those
+ * directions existed. `buildNav()` marks the row (`current` on the item), and this scrolls
+ * it into view.
+ *
+ * Guarded on `scrollIntoViewIfNeeded` semantics rather than always scrolling: a list that
+ * jumps on *every* selection yanks itself out from under the reader's own click. That is
+ * the same shape as the inspector's auto-rail reopening underneath a deliberate fold
+ * (rule 24) -- an automatic move may not fight a deliberate one -- so this only acts when
+ * the row is genuinely out of sight. */
+function revealSelectedRoutine() {
+  if (!state.selected) return;
+  const row = $(`#navRoutines .nav-item[data-navid="${CSS.escape(state.selected)}"]`);
+  if (!row) return;           // filtered out, or past the cap; the note already says so
+  const pane = row.closest(".navigator");
+  if (!pane) return;
+  const r = row.getBoundingClientRect(), p = pane.getBoundingClientRect();
+  if (r.top >= p.top && r.bottom <= p.bottom) return;      // already visible; leave it
+  row.scrollIntoView({ block: "nearest" });
 }
 
 /* ── picking a subject from the navigator ──────────────────────────────────────────
@@ -2830,6 +3236,7 @@ async function selectFromNav(want) {
   await ensureGraph();
   applyWanted();
   persist();
+  recordSelection();
   render();
 }
 
@@ -2847,7 +3254,19 @@ function countLine(c) {
          + "between them, or click a node";
   }
   const names = c.names || [];
-  return `${esc(names.slice(0, 3).join(", "))}${
+  /* Which plates the selection is on.
+   *
+   * Plates are not drawn (rule 18), so a routine and its callers are dots at heights with
+   * nothing on screen to say what a height means -- "I can't tell which plate I'm viewing"
+   * is the commonest thing this picture cannot answer about itself. The faint plate
+   * outlines say *where*; this says *what they are called*, and one without the other is
+   * half an answer. */
+  const on = Graph.mounted() ? Graph.selectedDisks() : [];
+  const plates = on.length
+    ? `<span class="muted">on</span> ${esc(on.slice(0, 4).join(", "))}${
+        on.length > 4 ? ` +${on.length - 4}` : ""} · `
+    : "";
+  return plates + `${esc(names.slice(0, 3).join(", "))}${
       names.length > 3 ? ` +${names.length - 3}` : ""} · ` +
     `<b class="num">${(c.selected || 0).toLocaleString()}</b> nodes · ` +
     `<b class="num">${(c.within || 0).toLocaleString()}</b> within · ` +
@@ -2855,7 +3274,14 @@ function countLine(c) {
     `<b class="num">${(c.excluded || 0).toLocaleString()}</b> ${c.excludedBy}` +
     /* Design rule 1: closing a plate's gap removes it from the picture, and a shorter
      * stack is indistinguishable from a smaller program by looking. */
-    (c.collapsed ? ` · <b class="num">${c.collapsed.toLocaleString()}</b> plates collapsed` : "");
+    (c.collapsed ? ` · <b class="num">${c.collapsed.toLocaleString()}</b> plates collapsed` : "") +
+    /* One node and no edges looks exactly like a graph that failed to draw, and the reader
+       has no way to tell the difference by looking -- so it is stated. Snap to fit on a
+       single node is also the most confusing thing this view does, because the frame does
+       not visibly change. */
+    (c.selected === 1 && !c.within && !c.crossing
+      ? ` — <span class="warnnote">nothing calls it and it calls nothing the map can see</span>`
+      : "");
 }
 
 /* The narrow path: update the sentence, never the pane around it.
@@ -2869,12 +3295,16 @@ function updateGraphCounts() {
   // The note rides on the count line rather than in a pane of its own, because rebuilding
   // the HUD here is what destroys a slider mid-drag.
   if (line) line.innerHTML = countLine(counts || {}) +
-    (state.navNote ? ` · <span class="warnnote">${esc(state.navNote)}</span>` : "");
+    (state.navNote ? ` · <span class="warnnote">${esc(state.navNote)}</span>` : "") +
+    offScreenNote();
   const legend = $("#graphLegend");
   if (!legend) return;
   const on = new Set(state.picks.filter(p => p.kind === "disk").map(p => p.id));
+  const touched = new Set(Graph.mounted() ? Graph.selectedDisks() : []);
   legend.querySelectorAll(".leg").forEach(row => {
-    row.classList.toggle("on", on.has(row.dataset.disk));
+    const id = row.dataset.disk;
+    row.classList.toggle("on", on.has(id));
+    row.classList.toggle("touched", !on.has(id) && touched.has(id));
   });
 }
 
@@ -2893,40 +3323,67 @@ function renderGraphFurniture() {
          <code>chrome://gpu</code> says why. Safari works without changing anything.`
       : `<b>The graph could not start.</b>`}
       <br><span class="muted">${esc(graphError.message)}</span></div>`;
-    $("#graphLegend").innerHTML = "";
+    legendSays("no plates — the graph did not start");
     return;
   }
   if (!Graph.mounted()) {
     hud.innerHTML = `<div class="hudbox"><span class="muted">${
       graphLoading ? "reading the stack…" : "the stack is not loaded yet"}</span></div>`;
-    $("#graphLegend").innerHTML = "";
+    legendSays(graphLoading ? "reading the plates…" : "no plates yet");
     return;
   }
 
   const c = counts || {};
   const line = countLine(c);
 
+  /* Both boxes fold to a ribbon -- their own header strip, which states the summary open
+   * or closed. `panels.hud` and `panels.controls` have existed since the first day and
+   * were read by nothing until now; see the PANELS table for how they came to be dead
+   * inside a live key. The chevron and `aria-expanded` are written here *and* in
+   * `applyPanels()`, because this rebuilds the box and that folds one already on screen. */
+  const hudOpen = panelIsOpen("hud");
+  const ctlOpen = panelIsOpen("controls");
   hud.innerHTML = `
-    <div class="hudbox">
+    <div class="hudbox ${hudOpen ? "" : "closed"}" id="panel-hud">
+      <button class="hudhead" data-fold="hud" aria-expanded="${hudOpen}"
+              aria-controls="panel-hud-body">
+        <span class="chev">${hudOpen ? "▾" : "▸"}</span>
       <div><b class="num" id="gfps">${fps ? fps.toFixed(0) : "–"}</b> fps ·
         <b class="num">${(c.nodes || 0).toLocaleString()}</b> nodes ·
         <b class="num">${c.disks || 0}</b> disks</div>
-      <div class="muted" id="gcounts">${line}</div>
-      <div style="margin-top:.3rem">
-        <button class="gbtn" data-gact="fit">snap to fit</button>
-        <button class="gbtn" data-gact="top">top-down</button>
-        <button class="gbtn" data-gact="tilt">tilt</button>
-        <button class="gbtn" data-gact="bench">benchmark</button>
-        ${c.selected ? `<button class="gbtn" data-gact="clear">clear</button>` : ""}
+      </button>
+      <div class="hudbody" id="panel-hud-body">
+        <div class="muted" id="gcounts">${line}</div>
+        <div style="margin-top:.3rem">
+          <!-- Undo first, because it is the control a stranded reader is looking for and
+               the camera controls are not what stranded them. Disabled rather than hidden:
+               a control that vanishes leaves no clue that the feature exists. -->
+          <button class="gbtn" data-gact="undo" ${canUndoSelection() ? "" : "disabled"}
+                  title="Back to the previous selection (\u2318Z)">\u21b6 undo</button>
+          <button class="gbtn" data-gact="redo" ${canRedoSelection() ? "" : "disabled"}
+                  title="Forward again (\u21e7\u2318Z)">\u21b7</button>
+          <button class="gbtn" data-gact="fit">snap to fit</button>
+          <button class="gbtn" data-gact="top">top-down</button>
+          <button class="gbtn" data-gact="tilt">tilt</button>
+          <button class="gbtn" data-gact="bench">benchmark</button>
+          ${c.selected ? `<button class="gbtn" data-gact="clear">clear</button>` : ""}
+        </div>
+        <div class="muted" id="gbench"></div>
       </div>
-      <div class="muted" id="gbench"></div>
     </div>
 
     <!-- Live controls update in place and re-render only the graph. A pane that rebuilds
          itself on every input event destroys the control being dragged -- that cost a
          colour picker once, and it is why these write straight to the engine and to their
-         own readout, never through a full re-render. -->
-    <div class="hudbox">
+         own readout, never through a full re-render. The ribbon's summary is on that same
+         narrow path -- updateControlsSummary(), never a rebuild. -->
+    <div class="hudbox ${ctlOpen ? "" : "closed"}" id="panel-controls">
+      <button class="hudhead" data-fold="controls" aria-expanded="${ctlOpen}"
+              aria-controls="panel-controls-body">
+        <span class="chev">${ctlOpen ? "▾" : "▸"}</span>
+        <span class="muted" id="gctlsum">${controlsSummary()}</span>
+      </button>
+      <div class="hudbody" id="panel-controls-body">
       <label style="display:flex;align-items:center;gap:.35rem">
         <span class="muted" style="width:3.2rem">size</span>
         <input id="gsize" type="range" min="0.4" max="14" step="0.2"
@@ -2955,9 +3412,57 @@ function renderGraphFurniture() {
           <span class="muted">plates</span>
         </label>
       </div>
+      <div style="margin-top:.35rem">
+        <button class="gbtn" data-gact="sizereset">reset sliders</button>
+        <span class="muted" id="gresetnote"></span>
+      </div>
+      </div>
     </div>`;
 
   renderLegend();
+}
+
+/* Emptied and honest rather than emptied and blank. The legend holds a 26rem track now, so
+ * clearing its markup leaves a blank column beside an error message -- and "nothing unusual
+ * here" and "nobody has looked yet" are opposite claims an empty pane cannot tell apart. */
+function legendSays(what) {
+  const host = $("#graphLegend");
+  if (host) host.innerHTML = `<div class="hint" style="font-size:.66rem">${esc(what)}</div>`;
+}
+
+/* What the controls ribbon says when it is shut. A strip reading only "controls" would be
+ * the icon rail design rule 24 rejects, turned on its side: it makes the reader open it to
+ * find out what it was. These are the two things the box actually sets. */
+function controlsSummary() {
+  return `size <b class="num">${(+state.nodeSize).toFixed(1)}×</b> · spread ` +
+    `<b class="num">${(+state.spreadX).toFixed(2)}</b> / ` +
+    `<b class="num">${(+state.spreadY).toFixed(2)}</b> / ` +
+    `<b class="num">${(+state.spreadZ).toFixed(2)}</b>`;
+}
+
+/* The selection is real but the reader cannot see it.
+ *
+ * Picking a routine deliberately does **not** move the camera: a list you can click through
+ * is useless if every click throws away where you were looking, and chasing a thread is the
+ * whole point. But a selection that lights up off-screen is indistinguishable from one that
+ * did nothing -- so it is stated, and framing it is one click away. Design rule 20's
+ * reasoning ("nothing may strand the reader with no way back") applied to selection rather
+ * than to the camera.
+ *
+ * Silent when the engine cannot say: `selectionOnScreen()` returns null before there is a
+ * viewport, and "we cannot say" must not be printed as "it is off screen". */
+function offScreenNote() {
+  if (!Graph.mounted() || !counts || !counts.selected) return "";
+  const where = Graph.selectionOnScreen();
+  if (!where || where.onScreen) return "";
+  return ` · <span class="warnnote">off screen</span> ` +
+         `<button class="gbtn" data-gact="findit">find it</button>`;
+}
+
+/* The narrow path again: a slider drag must not rebuild the pane its slider lives in. */
+function updateControlsSummary() {
+  const el = $("#gctlsum");
+  if (el) el.innerHTML = controlsSummary();
 }
 
 /* Design rule 19: with edges hidden by default this is the way *into* the graph, not an
@@ -2969,13 +3474,16 @@ function renderLegend() {
   if (!host) return;
   const disks = sortedDisks();
   const on = new Set(state.picks.filter(p => p.kind === "disk").map(p => p.id));
-  host.classList.toggle("closed", !legendOpen);
+  /* Two different states, and conflating them would lose the one that answers the question.
+   * `on` is "you picked this plate"; `touched` is "what you picked lives here" -- selecting
+   * one routine touches three plates without selecting any of them. */
+  const touched = new Set(Graph.mounted() ? Graph.selectedDisks() : []);
   host.innerHTML = `
     <div style="display:flex;align-items:center;gap:.4rem;margin-bottom:.3rem">
-      <button class="linkbtn" data-gact="legend" aria-expanded="${legendOpen}"
-        >${legendOpen ? "▾" : "▸"} Plates</button>
-      <span class="hint" style="font-size:.66rem">${disks.length} · click to select,
-        drag to reorder</span>
+      <button class="panefold" data-fold="legend" title="Send the plates to the rail"
+              aria-label="Collapse the plates">⇥</button>
+      <span class="hint" style="font-size:.66rem"><b>Plates</b> · ${disks.length} ·
+        click to select, drag to reorder</span>
       <select class="gsel" id="gsort" style="margin-left:auto"
               aria-label="Sort plates">
         ${[["nodes", "by size"], ["name", "by name"], ["kind", "by kind"],
@@ -2985,7 +3493,8 @@ function renderLegend() {
     </div>
     <div class="legrows">
       ${disks.map(d => `
-        <div class="leg ${d.kind} ${on.has(d.id) ? "on" : ""}" data-disk="${esc(d.id)}"
+        <div class="leg ${d.kind} ${on.has(d.id) ? "on" : ""}${
+             !on.has(d.id) && touched.has(d.id) ? " touched" : ""}" data-disk="${esc(d.id)}"
              draggable="true" title="${d.nodes} nodes · ${d.shadows} shadows · ${d.edges} edges">
           <input class="sw" type="color" value="${Graph.diskColorHex(d.id)}"
                  aria-label="colour for ${esc(d.name)}">
@@ -3034,12 +3543,39 @@ function sortedDisks() {
  * whenever the selection changes and handlers bound to elements would stop working
  * silently the moment they were replaced. */
 
+/* The four sliders are hard to land on a value by hand -- four axes, each 0.05 apart --
+ * and the way out of a bad arrangement was reloading or the whole-settings reset, which
+ * also throws away the disk order, the colours and the selection. This resets exactly the
+ * four and says which, because a reset that does not name what it cleared leaves the
+ * reader guessing which of the things they had arranged were theirs.
+ *
+ * The values come from `Settings.DEFAULTS`, never from numbers written here: a second copy
+ * of a default is a second thing to forget when one of them moves. */
+const SLIDER_KEYS = ["nodeSize", "spreadX", "spreadY", "spreadZ"];
+
 const GRAPH_ACTIONS = {
   fit:   () => Graph.fit(),
   top:   () => Graph.topDown(),
   tilt:  () => Graph.tilt(),
   clear: () => Graph.clearSelection(),
-  legend: () => { legendOpen = !legendOpen; renderLegend(); },
+  // `fit` already frames the *selection* when there is one, so this is that, named
+  // for what the reader wants rather than for what it does.
+  findit: () => Graph.fit(),
+  undo: () => undoSelection(),
+  redo: () => redoSelection(),
+  sizereset: () => {
+    const changed = SLIDER_KEYS.filter(k => state[k] !== Settings.DEFAULTS[k]);
+    for (const k of SLIDER_KEYS) state[k] = Settings.DEFAULTS[k];
+    Graph.setOptions(Object.fromEntries(SLIDER_KEYS.map(k => [k, state[k]])));
+    persist();
+    renderGraphFurniture();          // the sliders themselves have to move back
+    const note = $("#gresetnote");
+    if (note) {
+      note.textContent = changed.length
+        ? `back to defaults: ${changed.join(", ")}`
+        : "already at defaults";
+    }
+  },
   bench: async () => {
     const out = $("#gbench");
     if (out) out.textContent = "benchmarking…";
@@ -3109,6 +3645,7 @@ function wireGraphOnce() {
       state.nodeSize = parseFloat(t.value);
       $("#gsizeval").textContent = state.nodeSize.toFixed(1) + "×" +
         (state.nodeSize * state.scale >= Graph.SPHERE_FROM ? " spheres" : "");
+      updateControlsSummary();
       Graph.setOptions({ nodeSize: state.nodeSize });
       return;
     }
@@ -3119,6 +3656,7 @@ function wireGraphOnce() {
       const key = AXIS[t.id];
       state[key] = parseFloat(t.value);
       $(`#${t.id}val`).textContent = state[key].toFixed(2) + "×";
+      updateControlsSummary();
       Graph.setOptions({ [key]: state[key] });
       return;
     }
@@ -3189,6 +3727,77 @@ function wireGraphOnce() {
    Boot
    ════════════════════════════════════════════════════════════ */
 
+/* The topbar search, which until now listened to nothing at all.
+ *
+ * It has always said "Search routines, tables, boundaries…", has always been reachable
+ * with `/`, and `#search` appeared exactly once in this file -- in the shortcut that
+ * focuses it. Design rule 16 with the most prominent control on the page: it rendered, it
+ * took keystrokes, and nothing was on the other end. It is an `id` control rather than a
+ * `data-` one, which is the half `selfCheck()` and `test_every_static_control_is_listened_
+ * for` provably cannot see, so nothing ever reported it.
+ *
+ * Bound once, at boot, because the topbar lives in `index.html` and `render()` never
+ * touches it -- unlike the glossary's filter, which is rebuilt and rebinds every time.
+ * Only the navigator is rebuilt here, so the field keeps focus and caret by itself. */
+/* Dragging the navigator wider. The same pointer-capture idiom the table's column resizers
+ * use, and the width is stored in **rem** for the same reason theirs are (design rule 3):
+ * a width in pixels is a width the scale multiplier cannot reach.
+ *
+ * Clamped, and the clamp is the point rather than defensiveness -- dragged to nothing the
+ * navigator becomes an invisible pane with no rail to bring it back, which is the stranding
+ * design rule 20 forbids. Wide enough to read a qualified name, never wider than half. */
+const NAV_MIN_REM = 12, NAV_MAX_REM = 44;
+
+function wireNavGripOnce() {
+  const grip = $("#navGrip");
+  if (!grip || grip.__wired) return;
+  grip.__wired = true;
+
+  grip.addEventListener("pointerdown", (e) => {
+    e.preventDefault();
+    const rootPx = parseFloat(getComputedStyle(document.documentElement).fontSize);
+    const startX = e.clientX, startRem = state.navWidth;
+    grip.classList.add("active");
+    grip.setPointerCapture(e.pointerId);
+    const move = (ev) => {
+      const rem = startRem + (ev.clientX - startX) / rootPx;
+      state.navWidth = Math.min(NAV_MAX_REM, Math.max(NAV_MIN_REM, Math.round(rem * 4) / 4));
+      applyNavWidth();
+      // The canvas is a grid track away, so its width changed with this one.
+      if (Graph.mounted()) Graph.resize();
+    };
+    const up = () => {
+      grip.classList.remove("active");
+      grip.removeEventListener("pointermove", move);
+      grip.removeEventListener("pointerup", up);
+      persist();                    // committed, not per frame of the drag
+    };
+    grip.addEventListener("pointermove", move);
+    grip.addEventListener("pointerup", up);
+  });
+
+  // Keyboard, because a drag-only control is one a keyboard reader cannot operate at all.
+  grip.addEventListener("keydown", (e) => {
+    const step = e.key === "ArrowLeft" ? -1 : e.key === "ArrowRight" ? 1 : 0;
+    if (!step) return;
+    e.preventDefault();
+    state.navWidth = Math.min(NAV_MAX_REM, Math.max(NAV_MIN_REM, state.navWidth + step));
+    applyNavWidth();
+    if (Graph.mounted()) Graph.resize();
+    persist();
+  });
+}
+
+function wireSearchOnce() {
+  const box = $("#search");
+  if (!box || box.__wired) return;
+  box.__wired = true;
+  box.addEventListener("input", () => {
+    state.routineQ = box.value;
+    buildNav();
+  });
+}
+
 async function boot() {
   applyTheme();
   applyScale();
@@ -3217,11 +3826,28 @@ async function boot() {
   applyScale();
   state.view = state.startup;
 
+  if (!state.trail.length) pushTrail(state.view, STATS.program);
+  /* Seed the history with where the session starts, so the *first* click has somewhere to
+   * come back to. Without it the first undo is the one that does nothing, which is the
+   * moment a reader decides the feature is broken. */
+  recordSelection();
+
   buildNav();
   wireGraphOnce();
+  wireSearchOnce();
+  wireNavGripOnce();
   render();
   if (state.view === "graph") ensureGraph();
   selfCheck();
+
+  /* The routine list is the way in, so it is fetched immediately -- but *after* the first
+   * paint, because 4,734 rows must not stand between the reader and a usable page. The
+   * navigator says "reading the routine list…" until it lands, which is a different claim
+   * from "this program has no routines" and has to look like one. */
+  loadRoutines().then(buildNav).catch(err => {
+    console.error("DunneFlow: the routine list could not be read:", err);
+    buildNav();
+  });
 }
 
 boot();

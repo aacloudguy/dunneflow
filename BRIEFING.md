@@ -5,7 +5,7 @@ It exists so a fresh context can be useful in a few minutes instead of an hour.
 
 | Read | For |
 |---|---|
-| `CLAUDE.md` | The rules. 27 engineering rules and 21 dashboard design rules, each earned from a false result on real code. **Binding.** |
+| `CLAUDE.md` | The rules. 30 engineering rules and 24 dashboard design rules, each earned from a false result on real code. **Binding.** |
 | `HANDOFF.md` | The chronological record — what was built when, what it cost, what broke. ~1,150 lines. Read *sections*, not the whole thing. |
 | **this file** | Where things are, what is done, what we are doing now, what not to re-open. |
 | Artifact `f993d319-d2b7-4217-9130-cdbba698d1bc` | The ratified dashboard design — a complete working UI, the source of truth for every view. Read it with the **Artifact tool**, not from a screenshot. |
@@ -106,14 +106,29 @@ Signing decides the experience, and there is already an Apple Developer account.
 Deferred deliberately: the layered "stack of architecture drawings" layout (`HANDOFF.md`
 5b); temporal layers; attestation; `dunneflow infer`.
 
-**One thing owed:** the two "spheres" rows in the `CLAUDE.md` budget table are withdrawn and
-want retaking on a visible, focused window — they measured flat discs while printing the
-word spheres, and the lighting now actually runs. One click on **benchmark** in the graph
-HUD, reproducing the eight-plate selection named in `CLAUDE.md`, or it is a different
-measurement under the same label. It could not be done from automation: a hidden tab is
-given no animation frames at all, so the benchmark now refuses rather than hanging and says
-why. Worth retaking **with edges kept up while moving**, since that is now the default and
-is the more expensive frame.
+**Owed and now discharged:** the two "spheres" rows in the `CLAUDE.md` budget table were
+retaken 2026-08-28 — 60 median, nothing dropped, on a 2652×1537 canvas framed with snap to
+fit, shading confirmed by eye first. Both the canvas size and the framing are recorded this
+time, because their absence is what made the original pair impossible to reproduce.
+
+**Also done 2026-08-28 (`HANDOFF.md` 5g):** the side panes fold to a labelled rail, and
+the inspector rails itself while nothing is selected. Found doing it: `panels` had been a
+persisted, reset-by-name setting that **nothing read** since the chunk-2 merge. Design rule
+24, and design rule 16 extended.
+
+**Also done 2026-08-28 (`HANDOFF.md` 5f):** three independent spread axes (X and Y widen a
+plate, Z is the gap between plates; all three together is what zoom already is), and
+hide/collapse as separate switches so a selection of eight plates out of fifty-two stops
+reading as eight plates down a tower of empty slots. Design rules 22 and 23. **Still owed
+from that conversation: per-plate sphere scaling, and stack orientation** — laying the column
+on its side, which is structural because `OrbitView` has no camera roll.
+
+**Also done 2026-08-28 (`HANDOFF.md` 5e):** three layout and navigator defects found while
+clearing that debt. A `rem` inside `@media` resolves against the browser's font size, not
+the page's, so five breakpoints silently meant the wrong width; the narrow layout's
+`display: none` lost to a later equal-specificity rule and never hid anything; and all four
+navigator routes that set a subject carried no subject, so forty rows did the same nothing.
+Rules 28, 29 and 30.
 
 ## Decided — do not re-open these
 
@@ -179,6 +194,14 @@ Each of these looked like working code and passed every automated check.
 - **`render()` rewrites the centre pane on every keystroke.** Anything with state of its
   own — a canvas, a colour picker, a slider being dragged — must live outside it or be
   updated narrowly.
+- **CSS has three defaults that look like absence and are not.** A `rem` inside `@media`
+  silently means the *browser's* font size, not the page's. A media query adds no
+  specificity, so its `display: none` loses to any equal selector declared later. And a
+  grid item is `min-height: auto`, so it refuses to shrink and hands its overflow to the
+  document. All three were live in one stylesheet at once and produced one symptom.
+- **`outerWidth`/`outerHeight` are device pixels; `inner*` are CSS pixels.** Mixing them
+  made 88px of ordinary browser chrome read as 677px and sent a diagnosis chasing a docked
+  panel that did not exist.
 - **A check may only claim what its instrument can prove.** The DOM can show a control with
   no handler; it cannot show a handler no control reaches, because half the controls are
   conditional. That direction belongs in a test that reads the source.

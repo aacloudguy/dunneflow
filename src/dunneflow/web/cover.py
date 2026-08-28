@@ -57,6 +57,12 @@ def build(store: Store, source: SourceStore | None, program: str) -> dict[str, A
             # the world nowhere is a fact worth seeing, not a blank.
             "touches": " ".join(k.value for k in w["kinds"]) or "—",
             "aliases": w.get("aliases", []),
+            # The routines this way in actually starts. `ways_in` has already computed
+            # them -- an app object contributes every command hung off it -- and the
+            # cover used to drop them on the floor, which left the navigator listing six
+            # ways in that could not say *which* one had been clicked. A label is not an
+            # identity: without these the four subject-setting routes had no subject.
+            "nodes": list(w["roots"]),
         }
         for w in ways_in(store)
     ]

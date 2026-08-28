@@ -30,7 +30,7 @@ from urllib.parse import parse_qs
 
 from ..sourcedb import SourceStore
 from ..store import Store
-from . import packages
+from . import packages, queries
 from .cover import anomalies as build_anomalies
 from .cover import build as build_cover
 from .detail import describe
@@ -248,6 +248,25 @@ class _Handler(BaseHTTPRequestHandler):
             body = describe(self._live.store, node_id, self._live.source)
         self._json(body)
 
+    def _r_table(self, q: dict[str, list[str]]) -> None:
+        """The routines that touch one table.
+
+        A table is not a node in the graph, so selecting one means selecting the code
+        that reads and writes it. Answered on demand rather than shipped with the cover:
+        Mensores has 1,042 operations across its tables and most sessions never click a
+        table at all.
+        """
+        name = (q.get("name") or [""])[0]
+        if not name:
+            self._json({"found": False, "reason": "no table asked for", "nodes": []})
+            return
+        with self._live.lock:
+            rows = self._live.store.query(queries.TABLE_ROUTINES, {"name": name})
+        nodes = [r["node"] for r in rows]
+        # `found: False` for a real table nothing touches would read as "no such table".
+        # They are different answers and the client shows different things for each.
+        self._json({"found": True, "table": name, "nodes": nodes})
+
     def _r_source(self, q: dict[str, list[str]]) -> None:
         """A span of one file, straight out of the sidecar.
 
@@ -301,6 +320,7 @@ class _Handler(BaseHTTPRequestHandler):
         "/api/documents": "_r_documents",
         "/api/document": "_r_document",
         "/api/node": "_r_node",
+        "/api/table": "_r_table",
         "/api/source": "_r_source",
         "/favicon.ico": "_r_favicon",
     }

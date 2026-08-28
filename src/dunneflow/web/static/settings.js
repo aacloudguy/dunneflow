@@ -23,7 +23,7 @@
  * reload while a disk order nobody remembered setting survived. A blob written by v1 is
  * discarded whole rather than merged, which is the rule this file already stated: a
  * half-applied layout is harder to recognise as wrong than a reset one. */
-const SETTINGS_VERSION = 2;
+const SETTINGS_VERSION = 3;
 
 const DEFAULTS = {
   /* ── the graph ───────────────────────────────────────────────────────────── */
@@ -34,13 +34,23 @@ const DEFAULTS = {
   filterMode: 'dim',      // 'dim' | 'hide'
   direction: 'both',      // 'callers' | 'callees' | 'both'
   nodeSize: 1,            // multiplier: 1 = the tiny dots the 60 fps figure was taken on
-  spread: 0.35,
+  /* Three independent axes. X and Y widen a plate, which is what separates nodes that
+   * fuse into a mass at large sizes; Z is the gap between plates. All three moving
+   * together is what zoom already does, so there is no linked control. Version 3: the
+   * single `spread` these replace was Z alone. */
+  spreadX: 1,
+  spreadY: 1,
+  spreadZ: 0.35,
+  collapseUnused: false,  // close the gap a plate nothing is looking at leaves behind
   showPlates: false,
   edgesInMotion: true,    // links stay up while the camera turns -- see graph.js
   graphLayout: 'stack',   // 'stack' | 'packages' -- both built, use retires the loser
   graphTheme: 'follow',   // 'follow' | 'dark' -- design rule 2; see the Settings page
   picks: [],              // the selection itself, so a session survives a reload
-  panels: { hud: true, disks: true, settings: false, inspector: true },
+  /* Which panes are open. Read by `applyPanels()` in the shell -- for a long time this
+   * was persisted, named in the reset dialog, and read by nothing at all. */
+  panels: { navigator: true, inspector: true, hud: true, controls: true },
+  inspectorAuto: true,    // rail the inspector while nothing is selected
 
   /* ── the shell ───────────────────────────────────────────────────────────── */
   theme: 'system',        // 'system' | 'light' | 'dark'
@@ -131,9 +141,12 @@ function resetSettings(program, current) {
   const named = {
     diskOrder: 'disk order', diskColors: 'disk colours', colorBy: 'colour source',
     sortMode: 'sort', filterMode: 'filter mode', direction: 'direction',
-    nodeSize: 'node size', spread: 'spread', picks: 'selection',
+    nodeSize: 'node size', picks: 'selection',
+    spreadX: 'spread across', spreadY: 'spread deep', spreadZ: 'spread between plates',
+    collapseUnused: 'collapsed plates',
     showPlates: 'disk plates', edgesInMotion: 'edges while moving',
     mode: 'centre view', panels: 'panel layout',
+    inspectorAuto: 'auto-collapse the inspector',
     graphLayout: 'graph layout', graphTheme: 'graph theme',
     theme: 'theme', scale: 'interface scale', startup: 'startup screen',
     menuOrder: 'menu order', trailShown: 'the trail', trailCap: 'trail length',

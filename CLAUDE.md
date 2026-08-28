@@ -90,18 +90,31 @@ being drawn, and it overstated the picture by half.
 | Payload build, server side | < 2 s | ~0.03 s |
 | First paint in the browser | < 2 s | 0.1 s |
 | Sustained fps, six-second orbit, dots | >= 55 median | **60 median, 60 worst — no frames dropped** |
-| …spheres at full size (14×) | >= 55 median | *withdrawn — see below* |
-| …spheres at 14× plus 4,253 edges | >= 55 median | *withdrawn — see below* |
+| …spheres at full size (14×) | >= 55 median | **60 median, 59.7 worst — retaken 2026-08-28** |
+| …spheres at 14× plus 4,253 edges | >= 55 median | **60 median, 59.9 worst — retaken 2026-08-28** |
 
-**The two sphere rows are withdrawn, not merely stale: the sphere shading was not running
-when they were taken.** Three separate silent no-ops kept the fragment work from ever
-executing — an inject hook deck.gl did not recognise, a GLSL local colliding with one of
-its own, and a shader that was never reassembled because deck.gl resolves an extension's
-shader once per extension class. Every one of them compiles and draws. So those runs
-measured flat discs while the readout printed the word *spheres*, which is rule 24 exactly:
-a measurement must measure the thing it names, and these two named something that was not
-on screen. They were replaced with nothing rather than with a guess, and want retaking on a
-visible, focused window at full size now that the shading actually runs.
+**The two sphere rows were withdrawn and are now retaken, with the shading confirmed
+running by eye before either was recorded.** They had been withdrawn rather than left
+stale because the sphere shading was not executing when they were first taken: three
+separate silent no-ops kept the fragment work from ever happening — an inject hook deck.gl
+did not recognise, a GLSL local colliding with one of its own, and a shader that was never
+reassembled because deck.gl resolves an extension's shader once per extension class. Every
+one of them compiles and draws. Those runs measured flat discs while the readout printed
+the word *spheres*, which is rule 24 exactly.
+
+**Both retaken rows state their canvas and their framing, because the first pair did not
+and that is what made them impossible to reproduce.** Canvas **2652×1537 device pixels**
+(1326×768 CSS at dpr 2), framed with **snap to fit** at the tilt in force. Both matter and
+neither is incidental: sphere shading is per-fragment work, so the same 14× nodes in a
+1072×251 pane and in a full window are not the same measurement, and a stack that sits
+small in the frame covers few fragments however large the canvas is. An early attempt this
+session ran at 4.08M canvas pixels with the stack occupying a fraction of them — a bigger
+number measuring the same little picture. Retaking without reproducing both is a different
+measurement under the same label, exactly as with the plate selection below.
+
+Read with the caveat that at 14× the nodes fuse into a solid mass and occlude the edges
+they are drawn with: the frame is honest about cost and is not a picture anyone would read.
+That is the case for independent X and Y spread, not against the measurement.
 
 The dots row stands: nothing about it depended on the shading.
 
@@ -117,10 +130,14 @@ A benchmark now refuses to start on a tab that is not visible. A hidden tab is g
 animation frames at all — not throttled, none — so a run started before switching away sits
 at "benchmarking…" and then reports a figure averaged over the time nobody was looking.
 
-The sphere threshold (2.2×) was set by judgment, then briefly recorded as set by evidence —
-that claim is withdrawn with the rows it rested on. The evidence was a run in which the
-shading did not execute, so it showed only that flat discs are cheap, which was never in
-doubt. It is a judgment again until the two rows above are retaken.
+The sphere threshold (2.2×) is **a judgment, and stays one.** It was briefly recorded as
+set by evidence; that claim was withdrawn with the rows it rested on, because the evidence
+was a run in which the shading did not execute and so showed only that flat discs are
+cheap, which was never in doubt. The rows above are now retaken with the shading confirmed
+running — and they still do not set the threshold. They say the shading is affordable at
+full size in this framing, which is a different claim: where a *reader* wants a disc to
+become a ball is a question about looking, not about cost. Setting it by evidence would
+take a measurement of the fused-mass problem, and that measurement does not exist.
 
 60 is the vsync ceiling, so these rows state a floor, not a capacity: nothing was dropped
 and the headroom above it is unmeasured. Read it as "never missed a frame", never as a
@@ -416,6 +433,54 @@ These each came from a false result on real code. Keep them.
     presence, which is rule 5 stated once more: a marker must sit at an edge. Fixing it
     moved 1,698 to 62, and the 62 that remain are exactly the roles.
 
+28. **A `rem` inside `@media` is not the page's `rem`.** Design rule 3 puts every
+    dimension in rem so one multiplier resizes the surface together, and that is worth
+    keeping — it works, and it is why the whole shell scales from one slider. But a
+    breakpoint is not a dimension; it is a question about the *window*. By spec a relative
+    unit in a media query resolves against the **browser's** default font size and ignores
+    `:root`, which this stylesheet pins to 16px and which the scale slider drives. On a
+    reader whose Chrome default is 24px, moving the slider took the navigator from 192px
+    to 288px and moved the breakpoints not one pixel, while `68rem` silently meant 1632px
+    instead of 1088px — so a 1454px window got the narrow layout. Five media queries were
+    written this way. They are px now, at the widths the rem values were meant to express,
+    and everything else stays rem. A unit that looks like a member of the scaling family
+    and is not one is worse than an obvious exception.
+
+29. **A media query contributes no specificity, so equal selectors go to source order.**
+    `.inspector { display: none }` inside the narrow block lost to `.inspector { display:
+    flex }` declared 350 lines later, so the narrow layout never hid what it said it hid:
+    the pane rendered into a grid declaring two columns, wrapped onto row 2, and put
+    "Nothing selected" at the bottom left with an empty strip beside it — while the app
+    grew taller than the window and the whole document scrolled. **Fix it with specificity,
+    not with order**, or the next component rule takes it back silently. This is the
+    `[hidden]` defect exactly (rule: an author `display` beats a user-agent one), and the
+    lesson did not transfer because it was filed under *user-agent rules* rather than under
+    *a later `display` wins*.
+
+    Its companion, found in the same layout: **a grid item defaults to `min-height: auto`
+    and refuses to shrink below its content.** The navigator's 1,151px of content held the
+    row open at 700px inside a 446px box. Every pane here scrolls inside itself, so that
+    default hands the overflow to the document, which does not scroll panes, instead of to
+    the pane, which does. `minmax(0, 1fr)` on the row and `min-height: 0` on the children.
+
+30. **A label is not an identity.** The four navigator routes that set what you are looking
+    AT — ways in, packages, boundaries, tables — were `() => { state.view = state.mode;
+    ensureGraph(); }`. They switched mode and selected nothing, so **all forty rows did the
+    same thing**, and the inspector went on truthfully reporting "Nothing selected" while
+    every control worked. It never tripped the no-route check, because the route existed
+    and simply had no subject; no identity had ever reached the DOM for it to act on. Design
+    rule 16 one level below where the checks were looking, for the third time.
+
+    The four are not one shape, and finding that out is what made the fix right rather than
+    plausible: a package and a boundary kind are **plates** and select as themselves; a way
+    in resolves to routines, and `ways_in()` had computed those roots all along while the
+    cover threw them away; and a table is **neither** — `audit_events` is not a node at all,
+    so selecting a table means selecting the code that reads and writes it. `queries.py`
+    already said so in as many words — *inventing an id to make a row clickable would be a
+    link to nothing* — which is the negative half of rule 17 and was written before anything
+    needed it. Assert both directions: the item must emit an identity and the route must
+    consume one, because either half alone passes while the feature is dead.
+
 ## Anomalies: the discipline
 
 `anomalies.py` reports what looks wrong. It exists under one rule:
@@ -587,6 +652,16 @@ bought a rewrite of settled CSS, neither of which serves the thing the tool is f
     by string replacement, assert the pattern matched -- a silent no-op is the most
     expensive kind of edit.
 
+    **And the same rule with no control at all: a setting nothing reads.** `panels` sat in
+    `settings.js` from the first day -- persisted per program, versioned, and named in the
+    reset dialog as "panel layout" -- while nothing anywhere read it, so a reset reported
+    clearing a layout that had never existed. The pre-merge graph had collapsible panes and
+    the merge kept the switch while dropping the implementation. A test now reads the keys
+    out of `DEFAULTS` and demands each appear as a **property access** somewhere: every key
+    is also a plain string in the list of things to persist, so searching for the bare name
+    passes on a setting that is faithfully saved, restored, and never once acted upon --
+    which is exactly the failure.
+
 18. **The stack is an abstraction, not an object — so do not draw it.** The 2.5D model
     is a stack of disks, and the disks are the *idea* that groups nodes by height. Drawing
     the plates draws the scaffolding as though it were the content, and at fifteen
@@ -641,6 +716,54 @@ bought a rewrite of settled CSS, neither of which serves the thing the tool is f
     pattern of three markers at known positions splits the question in two: if they draw
     and the graph does not, the fault is our geometry; if neither draws, nothing is
     reaching the screen at all.
+
+22. **Spread is three axes, and the fourth control is zoom.** X and Y widen a plate, Z
+    is the gap between plates, and they are independent because they answer different
+    questions -- a plate too dense to read wants X and Y, a stack too tall to frame wants
+    Z. Scaling all three by the same factor is *zoom*: under an orthographic projection
+    uniform scaling and zoom are the same operation, so a "linked" slider would be a second
+    way to do what the mouse wheel already does. Every scale is computed from an unscaled
+    base copy of the payload's positions rather than applied in place -- 2x then 2x again
+    is 4x, and a slider dragged back to 1 must come home.
+
+    It is what makes large nodes usable at all. Billboarded spheres fuse into a solid mass
+    once they are big enough to look at, and at 14x no amount of Z helps, because the
+    crowding is *within* a plate. Widening is the answer, not shrinking the nodes.
+
+23. **Hiding and collapsing are separate switches.** Hiding decides whether an unselected
+    plate draws; collapsing decides whether it still takes up room. Wanting the second
+    without the first is ordinary -- it is how eight plates out of fifty-two stop reading
+    as eight plates scattered down a tower of empty slots. Merging them into one control
+    makes "show me these eight, packed" unreachable.
+
+    Two things follow. A collapsed plate is one *nothing is looking at*, so with no
+    selection nothing collapses and the control quietly does nothing rather than emptying
+    the stack -- the same reasoning as edges on demand. And which plates are unused is a
+    function of the selection, so it is recomputed when the selection changes and not only
+    when the control moves, or the stack keeps the shape of the previous selection while
+    confidently showing the current one. The count is stated (rule 1): a shorter stack and
+    a smaller program are indistinguishable by looking.
+
+24. **A pane collapses to a rail, and the rail says which pane it is.** Three panes over
+    one selection is the settled shape, but the inspector answers "what is this thing" and
+    holds 22rem to say nothing when nothing is picked. So every pane folds, and folding
+    leaves a rail behind: a pane that simply disappears is a silent filter, and the reader
+    has no way to know the layout is a choice rather than the product. The label is rotated
+    rather than reduced to an icon, because an icon rail is a puzzle.
+
+    The grid **tracks** carry the state, not the panes -- collapsing a pane without
+    collapsing its column leaves a hole exactly the width of the pane that is no longer
+    there. The inspector rails itself while nothing is selected and returns when something
+    is, but an explicit fold outranks that: auto may only ever *close*, or the reader's
+    choice reopens underneath them. And opening the rail with nothing selected has to
+    suspend the auto rule, or the pane reopens and instantly re-collapses, which reads as a
+    broken button.
+
+    Adding chrome to a pane broke something else, worth keeping: the Ways in / Explore
+    reorder moved a group before `firstElementChild`, which swept it in front of the new
+    fold button and put the collapse control a third of the way down the pane. **An
+    ordering rule that names a position rather than an identity breaks the moment anything
+    is added beside it.**
 
 17. **View state is local, and exported deliberately.** Column widths, density, chosen
    columns, saved filters, and expansion state persist per program, keyed by stable

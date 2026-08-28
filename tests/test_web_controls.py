@@ -290,15 +290,220 @@ def test_layout_dimensions_are_stored_in_rem() -> None:
     small corner radius read correctly at every scale, and scaling a hairline produces a
     blurry line rather than a bigger one. The root `font-size` is the value the
     multiplier acts *on*, so it is the one dimension that cannot itself be in rem.
+
+    A `@media` condition is exempt too, and that one is not a concession — see
+    `test_breakpoints_are_px_because_a_media_rem_is_not_the_pages_rem` below, which
+    asserts the opposite for exactly those lines.
     """
     exempt = re.compile(r"--shadow|box-shadow|outline|border-radius|"
                         r"border(-\w+)?:\s*[\d.]+px\s+(solid|dashed|dotted)|font-size:\s*calc")
+    # Block comments are stripped from the whole file before splitting into lines. Doing
+    # it per line saw only a comment that opened and closed on one, so prose inside a
+    # multi-line comment was read as CSS -- this test failed on a sentence explaining why
+    # a breakpoint is 1088px, which is a test reporting its own blind spot as a defect.
+    css = re.sub(r"/\*.*?\*/", "", _read("tokens.css"), flags=re.S)
     offenders = []
-    for line in _read("tokens.css").splitlines():
-        bare = line.split("/*", 1)[0]
-        if exempt.search(bare):
+    for bare in css.splitlines():
+        if exempt.search(bare) or bare.lstrip().startswith("@media"):
             continue
         for hit in re.findall(r"(-?\d*\.?\d+)px", bare):
             if abs(float(hit)) > 1:
-                offenders.append(line.strip())
+                offenders.append(bare.strip())
     assert not offenders, f"layout dimensions the scale multiplier cannot reach: {offenders}"
+
+
+# ------------------------------------------------------------- the breakpoints --- #
+
+def test_breakpoints_are_px_because_a_media_rem_is_not_the_pages_rem() -> None:
+    """The one place `px` is right, and `rem` is actively wrong.
+
+    Design rule 3 puts every *dimension* in rem so one multiplier resizes the surface
+    together. A breakpoint is not a dimension -- it is a question about the window -- and
+    a `rem` inside `@media` does not mean what it means anywhere else in the file: by
+    spec it resolves against the **browser's** default font size and ignores `:root`,
+    which this stylesheet pins and which the scale slider drives.
+
+    Measured on a reader whose Chrome default is 24px: moving the slider took the
+    navigator from 192px to 288px and moved the breakpoints not one pixel, while `68rem`
+    silently meant 1632px instead of 1088px and put a 1454px window into the narrow
+    layout -- where the inspector wrapped onto a second grid row and the whole app grew
+    taller than the window.
+
+    So this asserts the inverse of the rule-3 test, over exactly the lines that test
+    skips. A rem here looks like a member of the scaling family and is not one.
+    """
+    offenders = [
+        line.strip() for line in _read("tokens.css").splitlines()
+        if line.lstrip().startswith("@media") and "rem" in line.split("/*", 1)[0]
+    ]
+    assert not offenders, (
+        "breakpoints in rem resolve against the browser's font size, not the page's: "
+        f"{offenders}"
+    )
+
+
+def test_the_narrow_layout_actually_hides_what_it_hides() -> None:
+    """A media query contributes no specificity, so equal selectors go to source order.
+
+    `.inspector { display: none }` inside the narrow block lost to `.inspector { display:
+    flex }` declared later in the same file. The pane then rendered into a grid declaring
+    two columns and wrapped onto row 2 -- "Nothing selected" at the bottom left, an empty
+    strip beside it, and an app taller than the viewport.
+
+    Same family as `test_hidden_actually_hides`: the wiring was right and the paint was
+    wrong, and nothing that reads the DOM can see it. The fix is specificity, not order,
+    so that a later component rule cannot silently take it back.
+    """
+    css = _read("tokens.css")
+    for pane in ("inspector", "navigator"):
+        assert f".body > .{pane} {{ display: none; }}" in css, (
+            f"the narrow layout hides .{pane} with a bare selector that a later "
+            f"`display` declaration will beat"
+        )
+
+
+# -------------------------------------------------------------- a real subject --- #
+
+def test_every_subject_setting_nav_item_carries_a_subject() -> None:
+    """A label is not an identity.
+
+    The four routes that set what you are looking AT -- ways in, packages, boundaries,
+    tables -- were `() => { state.view = state.mode; ensureGraph(); }`: they switched
+    mode and selected nothing, so all forty navigator rows did the same thing and the
+    inspector went on truthfully reporting "Nothing selected". It never tripped the
+    no-route check, because the route existed and had nothing to act on.
+
+    Asserted in both directions, because either half alone passes while the feature is
+    dead: the item must emit an identity, and the route must consume one.
+    """
+    js = _read("shell.js")
+    body = js.split("const NAV_GROUPS = [", 1)[1].split("\n];", 1)[0]
+
+    subject_kinds = {"ep", "pkg", "b", "t"}
+
+    def item_text(kind: str) -> str | None:
+        """The item literal for one nav kind, brace-matched.
+
+        Not a character class: `sel: \\`pkg:${p.id}\\`` contains braces of its own, and
+        `[^{}]` stopped dead at the first one -- which silently found no item for `pkg`
+        and `b` and would have reported a working feature as dead.
+        """
+        m = re.search(rf'\bnav:\s*"{re.escape(kind)}"', body)
+        if not m:
+            return None
+        start = body.rfind("{", 0, m.start())
+        depth = 0
+        for i in range(start, len(body)):
+            if body[i] == "{":
+                depth += 1
+            elif body[i] == "}":
+                depth -= 1
+                if depth == 0:
+                    return body[start:i + 1]
+        return None
+
+    for kind in sorted(subject_kinds):
+        item = item_text(kind)
+        assert item, f'no navigator item builds nav kind "{kind}"'
+        assert "sel:" in item, (
+            f'nav kind "{kind}" builds an item with no `sel:` — it can only say that '
+            f"something was clicked, never which thing: {item}"
+        )
+
+    routes = js.split("const NAV_ROUTES = {", 1)[1].split("\n};", 1)[0]
+    for kind in subject_kinds:
+        route = re.search(rf"^\s*{re.escape(kind)}:\s*(.+)$", routes, re.M)
+        assert route, f'no route for nav kind "{kind}"'
+        assert "selectFromNav" in route.group(1), (
+            f'route "{kind}" does not select anything: {route.group(1).strip()}'
+        )
+
+    assert 'data-navid="${esc(i.sel)}"' in js, (
+        "the identity never reaches the DOM, so the route cannot read it back"
+    )
+
+
+# ------------------------------------------------------------------ the axes --- #
+
+def test_every_spread_slider_reaches_the_engine() -> None:
+    """A slider whose id the handler does not know moves nothing and says nothing.
+
+    The three axes are driven by one table rather than three copies of a branch, so the
+    failure mode is a slider present in the markup with no entry in that table: it renders,
+    it drags, its readout never updates and the geometry never moves. Design rule 16 for a
+    control that is an `id` rather than a `data-` attribute, which is the half the DOM
+    self-check and `test_every_static_control_is_listened_for` cannot see.
+
+    Asserted in both directions, and against `graph.js` as well, because a slider wired to
+    an option the engine ignores is the same silent no-op one layer further down.
+    """
+    js = _read("shell.js")
+
+    rendered = set(re.findall(r'\["(gspread[a-z])",', js))
+    assert rendered, "the spread sliders are no longer built from a table; this test is blind"
+
+    table = re.search(r"const AXIS = \{([^}]*)\}", js)
+    assert table, "the AXIS table is gone; the sliders cannot reach the engine"
+    handled = dict(re.findall(r"(gspread[a-z]):\s*\"(\w+)\"", table.group(1)))
+
+    assert rendered == set(handled), (
+        f"sliders with no handler: {sorted(rendered - set(handled))}; "
+        f"handlers with no slider: {sorted(set(handled) - rendered)}"
+    )
+
+    engine = _read("graph.js")
+    for slider, option in sorted(handled.items()):
+        assert f"opts.{option}" in engine, (
+            f"slider {slider} sets `{option}`, which the engine never reads"
+        )
+        assert f"partial.{option} !== undefined" in engine, (
+            f"`{option}` never triggers a re-layout, so moving {slider} changes nothing"
+        )
+
+
+def test_collapsing_is_separate_from_hiding() -> None:
+    """Two switches, because they answer two questions.
+
+    Hiding decides whether an unselected plate draws at all; collapsing decides whether it
+    still takes up room in the stack. Folding them into one control would make "show me
+    these eight plates, packed" unreachable — which is the state the pair exists for.
+    """
+    shell, engine = _read("shell.js"), _read("graph.js")
+    assert 'id="gcollapse"' in shell, "the collapse control is gone"
+    assert "collapseUnused" in shell and "collapseUnused" in engine
+    assert "filterMode" in engine, "hiding and collapsing have been merged"
+
+    # Rule 1: a plate whose gap has been closed has left the picture and must be counted.
+    assert "collapsed:" in engine, "the engine never reports how many plates it collapsed"
+    assert "plates collapsed" in shell, "the count is never shown, so the filter is silent"
+
+
+# ------------------------------------------------------------- dead settings --- #
+
+def test_every_persisted_setting_is_read_by_something() -> None:
+    """A setting nothing reads is design rule 16 without even a control to look at.
+
+    `panels` lived in `settings.js` from the first day: persisted per program, versioned,
+    and named in the reset dialog as "panel layout" — so a reset would have reported
+    clearing a layout that had never existed. Nothing anywhere read it. The pre-merge graph
+    had collapsible panes and the merge kept the switch while dropping the implementation,
+    which is the same shape as the eight menu items that rendered perfectly and did nothing.
+
+    It looks for a **property access** -- `state.panels`, `opts.spreadZ` -- rather than the
+    bare name, and that distinction is the test. Every one of these keys is also written as
+    a plain string in the list of things to persist, so searching for the name alone passes
+    on a setting that is faithfully saved and restored and never once acted upon, which is
+    precisely the failure. The keys are read out of `DEFAULTS` itself, so a hand-kept list
+    cannot agree with a wrong implementation.
+    """
+    settings = _read("settings.js")
+    block = settings.split("const DEFAULTS = {", 1)[1].split("\n};", 1)[0]
+    keys = re.findall(r"^\s{2}([a-zA-Z][\w]*):", block, re.M)
+    assert len(keys) > 20, "DEFAULTS changed shape -- this test is blind"
+
+    readers = _read("shell.js") + _read("graph.js")
+    unread = [k for k in keys if not re.search(rf"\.{re.escape(k)}\b", readers)]
+    assert not unread, (
+        "settings persisted, reset by name, and read by nothing: "
+        f"{sorted(unread)} — either wire them up or take them out"
+    )

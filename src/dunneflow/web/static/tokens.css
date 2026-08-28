@@ -13,6 +13,7 @@
   --border-strong: #b6c0cd;
   --text:          #0f172a;
   --text-muted:    #5a6675;
+  --rail:          1.75rem;   /* width of a collapsed pane's rail */
   --text-faint:    #8894a5;
   --accent:        #0d7f75;
   --accent-soft:   #d7efec;
@@ -226,11 +227,20 @@ body {
 .skip-link:focus { top: 0; }
 
 /* ═══ shell ═══ */
+/* The app is exactly the viewport and never taller: every pane scrolls inside itself
+ * (`min-height: 0` plus `overflow: auto` below), and the whole surface scrolling as one
+ * document breaks that model -- the graph pane gets squeezed into a short row and the
+ * inspector is pushed below the fold where it has to be scrolled to.
+ *
+ * `min-height: 40rem` used to sit here to stop the panes collapsing on a short window.
+ * It bought nothing: a floor taller than the viewport does not give a pane more room, it
+ * just moves the overflow from the pane, which handles it, to the document, which does
+ * not. */
 .app {
   display: grid;
   grid-template-rows: auto 1fr;
   height: 100vh;
-  min-height: 40rem;
+  min-height: 0;
 }
 
 .topbar {
@@ -298,19 +308,100 @@ body {
 .scale-val { font-size: .68rem; color: var(--chrome-muted); min-width: 2.6rem; text-align: center; }
 .scaleslider { width: 5.5rem; accent-color: var(--accent); cursor: pointer; margin: 0 .15rem; }
 
+/* Columns are driven by `data-nav` / `data-insp` on `.body` rather than by classes on the
+ * panes themselves: the *track* has to collapse, not just its contents, and a track is a
+ * property of the grid. A pane hidden with `display:none` while its column stayed 22rem
+ * would leave a 22rem hole -- which is the shape of the defect this shell already had once,
+ * from the other direction. */
+.body[data-nav="off"]  { grid-template-columns: var(--rail) 1fr 22rem; }
+.body[data-insp="off"] { grid-template-columns: 14.5rem 1fr var(--rail); }
+.body[data-nav="off"][data-insp="off"] { grid-template-columns: var(--rail) 1fr var(--rail); }
+.body[data-nav="off"]  > .navigator,
+.body[data-insp="off"] > .inspector { display: none; }
+
 .body {
   display: grid;
   grid-template-columns: 14.5rem 1fr 22rem;
+  /* One row, and it may not grow past the space it was given. Without this the row is
+   * sized `auto` and takes the height of the tallest pane -- the navigator, whose content
+   * runs to 1,151px -- so the panes stood 700px tall inside a 446px box and the document
+   * scrolled. `minmax(0, 1fr)` is the row half of the same fix as `min-height: 0` below. */
+  grid-template-rows: minmax(0, 1fr);
   min-height: 0;
 }
-@media (max-width: 68rem) {
+
+/* A grid item defaults to `min-height: auto`, which refuses to shrink below its content.
+ * Every pane here scrolls inside itself, so that default is exactly wrong: it hands the
+ * overflow to the document, which does not scroll panes, instead of to the pane, which
+ * does. Written as a child rule so a new pane cannot be added without inheriting it. */
+.body > * { min-height: 0; min-width: 0; }
+/* ── the two breakpoints, and why these are px when everything else is rem ──────────
+ *
+ * Design rule 3 says every *dimension* is stored in rem so one multiplier resizes the
+ * whole surface together, and that still holds everywhere below: widths, padding, type
+ * and graph nodes are all rem and all move with the scale slider.
+ *
+ * A breakpoint is not a dimension. It is a question about the window, and a `rem` asked
+ * inside `@media` does not mean what it means anywhere else in this file: by spec it
+ * resolves against the *browser's* default font size and ignores `:root` -- which this
+ * stylesheet pins, and which the scale slider drives. Measured on a reader whose Chrome
+ * default is 24px: the slider moved the navigator from 192px to 288px and moved these
+ * breakpoints not one pixel, while `68rem` silently meant 1632px instead of 1088px and
+ * put a 1454px window into the narrow layout. The rem here looked like a member of the
+ * scaling family and never was one.
+ *
+ * So they are px, at exactly the widths the rem values were meant to express, and the
+ * surface inside them stays rem. */
+@media (max-width: 1088px) {                 /* was 68rem, intended as 68 × 16px */
   .body { grid-template-columns: 12rem 1fr; }
-  .inspector { display: none; }
+  /* Out-specified on purpose: `.inspector { display: flex }` is declared later in this
+   * file, a media query contributes no specificity, and equal specificity is settled by
+   * source order -- so the plain `.inspector` here lost and the pane rendered anyway,
+   * wrapping onto a second grid row because only two columns are declared. That put
+   * "Nothing selected" at the bottom left and an empty strip beside it, and forced the
+   * whole app taller than the window. `.body >` makes this win wherever it sits.
+   * Same family as the `[hidden]` defect: the wiring was right and the paint was wrong. */
+  .body > .inspector { display: none; }
 }
-@media (max-width: 48rem) {
+@media (max-width: 768px) {                  /* was 48rem, intended as 48 × 16px */
   .body { grid-template-columns: 1fr; }
-  .navigator { display: none; }
+  .body > .navigator { display: none; }
 }
+
+/* The rail: what a collapsed pane leaves behind.
+ *
+ * Wide enough to be an obvious target and narrow enough that giving up the pane is worth
+ * it -- 1.75rem, in rem like every other dimension so the scale multiplier reaches it
+ * (design rule 3). The label is rotated rather than abbreviated to an icon, because an
+ * icon rail is a puzzle and this one has to say which pane it is holding. */
+.rail {
+  display: flex; align-items: center; justify-content: center;
+  background: var(--surface); border: 0; padding: 0; cursor: pointer;
+  color: var(--text-muted); font: inherit; font-size: .68rem;
+  letter-spacing: .04em; text-transform: uppercase;
+}
+.rail-left  { border-right: 1px solid var(--border); }
+.rail-right { border-left: 1px solid var(--border); }
+.rail:hover { background: var(--raised); color: var(--text); }
+.rail:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.railtext { writing-mode: vertical-rl; transform: rotate(180deg); white-space: nowrap; }
+
+/* Sticky, because the navigator scrolls its own 1,151px of content and a collapse control
+ * that scrolls away is one the reader cannot reach from the bottom of the list. */
+.panebar {
+  position: sticky; top: 0; z-index: 1;
+  display: flex; justify-content: flex-end;
+  padding: .15rem .25rem 0;
+  background: var(--surface);
+}
+
+/* The button that sends a pane to its rail, sitting in the pane's own header. */
+.panefold {
+  background: none; border: 0; cursor: pointer; color: var(--text-faint);
+  font: inherit; font-size: .8rem; line-height: 1; padding: .1rem .25rem;
+  border-radius: .2rem;
+}
+.panefold:hover { background: var(--raised); color: var(--text); }
 
 /* ═══ navigator ═══ */
 .navigator {
@@ -449,6 +540,10 @@ body {
                     margin-bottom: .35rem; }
 .graphhud .num { font-family: var(--f-mono); font-weight: 600; }
 .graphhud .muted { color: var(--text-muted); }
+/* "Some of what you picked is not drawn" is a filter statement, and design rule 1 says a
+ * filter is never silent -- so it is not muted. It borrows the suspect colour rather than
+ * spending a new one (rule 4): this is the same "worth your attention, not broken" note. */
+.graphhud .warnnote { color: var(--sev-suspect); }
 .graphhud .gbtn { font: inherit; font-size: .7rem; background: var(--raised);
                   border: 1px solid var(--border); border-radius: .25rem;
                   padding: .12rem .4rem; margin-right: .25rem; cursor: pointer;
@@ -497,7 +592,7 @@ body {
 
 /* ═══ cover ═══ */
 .cover-grid { display: grid; grid-template-columns: 1fr; gap: .875rem; max-width: 62rem; }
-@media (min-width: 60rem) { .cover-grid { grid-template-columns: 1.55fr 1fr; } }
+@media (min-width: 960px) { .cover-grid { grid-template-columns: 1.55fr 1fr; } }
 .panel {
   background: var(--surface); border: 1px solid var(--border);
   border-radius: .5rem; box-shadow: var(--shadow); overflow: hidden;
@@ -769,7 +864,7 @@ kbd { font-family: var(--f-mono); font-size: .66rem; background: var(--sunken);
   border: 1px solid var(--border); border-radius: .1875rem; padding: 0 .22rem; }
 
 .wl-body { display: grid; grid-template-columns: 20rem 1fr; gap: .75rem; min-height: 0; flex: 1; align-items: start; }
-@media (max-width: 62rem) { .wl-body { grid-template-columns: 1fr; } }
+@media (max-width: 992px) { .wl-body { grid-template-columns: 1fr; } }
 
 .wl-list { list-style: none; margin: 0; padding: 0; max-height: 32rem; overflow-y: auto;
   background: var(--surface); border: 1px solid var(--border); border-radius: .5rem; box-shadow: var(--shadow); }
@@ -862,7 +957,7 @@ kbd { font-family: var(--f-mono); font-size: .66rem; background: var(--sunken);
 .linkbtn.pinned { background: var(--accent-soft); color: var(--accent-text); border-color: var(--accent); }
 
 .curigrid { display: grid; gap: .6rem; }
-@media (min-width: 48rem) { .curigrid { grid-template-columns: 1fr 1fr; } }
+@media (min-width: 768px) { .curigrid { grid-template-columns: 1fr 1fr; } }
 .curi { display: flex; gap: .55rem; text-align: left; font: inherit; cursor: pointer;
   background: var(--surface); border: 1px solid var(--border); border-radius: .5rem;
   padding: .6rem .7rem; box-shadow: var(--shadow); color: var(--text); }

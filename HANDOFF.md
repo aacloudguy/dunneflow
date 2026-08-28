@@ -1188,6 +1188,182 @@ claim's query must return what is printed beside it), arriving in a third costum
 | `test_no_program_data_is_pinned_inside_state` | three pinned Mensores values the existing guard could not see |
 | `test_a_reset_reports_every_setting_it_clears` | a reset that walked its label table under-reported itself |
 
+**5e. Built 2026-08-28: the layout, the navigator, and the two rows finally taken.**
+
+Started as "clear the owed fps rows" and turned into three defects, because the rows could
+not be taken honestly until the canvas was the size a reader actually has.
+
+*What Tom saw.* A default panel stuck at the bottom left reading "Nothing selected", text
+scrolling off the bottom, a strip along the bottom right, and picking something from
+**Ways in** no longer clearing it. Three separate causes, none of them what either of us
+guessed first -- my own first diagnosis, DevTools docked to the window, was wrong, and so
+was the second, `min-height: 40rem`, which turned out to be a consequence rather than a
+cause.
+
+*The chain.* `@media (max-width: 68rem)` meant **1632px** rather than 1088px, because a
+relative unit in a media query resolves against the browser's default font size -- 24px on
+that machine -- and ignores the `:root` this stylesheet pins. So a 1454px window got the
+narrow layout. The narrow layout's `.inspector { display: none }` then lost to
+`.inspector { display: flex }` declared 350 lines later, since a media query contributes no
+specificity and equal specificity goes to source order -- so the pane rendered into a grid
+declaring two columns and wrapped onto row 2. Two rows of panes needed 640px, `min-height:
+40rem` held the app there against a 500px viewport, and the document scrolled. Rules 28 and
+29.
+
+Measured rather than argued: the scale slider took the navigator from 192px to 288px and
+moved the breakpoints not one pixel. **The rem in those media queries was never part of the
+scaling system** -- it looked like a member of the family and was not one. Five queries were
+written that way; all five are px now, and every real dimension stays rem. The rule-3 test
+grew an exemption for `@media` lines and a second test asserting the inverse over exactly
+those lines, so the pair cannot drift.
+
+Its companion, in the same layout: a grid item defaults to `min-height: auto` and refuses to
+shrink below its content, so the navigator's 1,151px held the row open at 700px inside a
+446px box. `minmax(0, 1fr)` on the row, `min-height: 0` on the children.
+
+*The one that mattered.* All four navigator routes that set a subject -- `ep`, `pkg`, `b`,
+`t` -- were `() => { state.view = state.mode; ensureGraph(); }`. They switched mode and
+selected nothing, so **forty rows all did the same thing** and the inspector went on
+truthfully reporting "Nothing selected". No identity had ever reached the DOM: the item
+objects were `{nav, label, n}`. It never tripped the no-route check, because the route
+existed. Rule 30.
+
+The four turned out not to be one shape, which is what made the fix right rather than
+plausible. A package and a boundary kind are plates and select as themselves. A way in
+resolves to routines, and `ways_in()` had been computing those roots all along while
+`cover.py` dropped them -- `mensores` has 104, `mensores-mcp` 38. A table is **neither**:
+`audit_events` is not a node at all, so selecting a table means selecting the code that
+reads and writes it, which is a new `TABLE_ROUTINES` query and `/api/table`. `queries.py`
+had already written the reason down before anything needed it -- *inventing an id to make a
+row clickable would be a link to nothing*.
+
+Selection is now held in **id space** in the shell and resolved to drawn indices only when
+the engine is mounted, so picking a way in works while the centre pane is showing a table or
+a document, and the stack adopts it when it next appears. What cannot be drawn is counted
+and stated on the HUD (design rule 1) rather than going quietly missing.
+
+*The rows, taken.* Both at **60 median, nothing dropped** -- 59.7 worst without edges, 59.9
+worst with 4,253 -- on a **2652×1537** canvas framed with **snap to fit**, shading confirmed
+by eye on a single node before either was recorded. Both facts are now in the table, because
+their absence is what made the first pair impossible to reproduce: an early attempt this
+session ran at 4.08M canvas pixels with the stack sitting small inside them, which is a
+bigger number measuring the same little picture. The 2.2× sphere threshold stays **a
+judgment** -- these rows say the shading is affordable, not where a reader wants a disc to
+become a ball.
+
+*Also learned.* `outerWidth/Height` are device pixels while `inner*` are CSS pixels, which
+is what made a normal 88px of browser chrome read as 677px and sent the first diagnosis to a
+docked panel that did not exist.
+
+*Not done, and named:* hiding the inspector on a narrow window is a silent filter, which
+design rule 1 says it may not be -- it should say what it removed. The legend panel covers
+most of the graph at moderate widths. And at 14× the nodes fuse into a solid mass and
+occlude their own edges, which is the case for independent X and Y spread (5b) rather than
+against the measurement.
+
+**5f. Built 2026-08-28: three spread axes, and collapsing the gaps.**
+
+Tom's, from looking at the 14x benchmark frame and seeing a solid cylinder: at large node
+sizes the spheres fuse, and no amount of Z spacing helps because the crowding is *within*
+a plate.
+
+*Three axes.* `applyLayout()` is the single place positions are computed, which is what
+made this cheap -- it already scaled Z by one `spread` and never touched X or Y, which
+arrived from the server's phyllotaxis. Now all three, independent. Every scale is computed
+from an unscaled **base copy** of the payload positions rather than applied in place, so
+the operation is idempotent and a slider dragged back to 1 comes home -- verified: fit zoom
+returns to exactly -2.63. There is deliberately **no linked slider**: under an orthographic
+projection uniform scaling of all three axes *is* zoom, so it would be a second mouse
+wheel. Design rule 22.
+
+*Hide and collapse, separately.* Hiding already existed as `filterMode` and stops
+unselected plates drawing; what it could not do is close the gap they leave, so a selection
+of eight plates out of fifty-two read as eight plates scattered down a tower of empty slots.
+Collapsing repacks the stack over the plates still in play. The two are independent because
+"show me these eight, packed" needs both and is unreachable if they are one control.
+Design rule 23.
+
+Two consequences that had to be got right rather than assumed. Which plates are unused is a
+function of the *selection*, so it is recomputed in `afterSelectionChange` and not only when
+the control moves -- otherwise the stack keeps the shape of the previous selection while
+confidently showing the current one. And a collapsed plate's nodes are parked on the slot
+their neighbour takes rather than left at the old height, because they are still crossing
+endpoints and one left behind drags an edge to a place nothing is.
+
+Measured on Mensores: eight plates selected collapses 44 of 52, three plates collapses 49,
+and the count line says so (design rule 1) -- a shorter stack and a smaller program are
+indistinguishable by looking. At 8x with X and Y at 3.5 the spheres are individually
+separated and readable, 3,578 nodes at 60 fps, which is the state the whole change exists
+for.
+
+*Settings went to version 3*, so the single `spread` is discarded rather than silently
+reinterpreted as one of three.
+
+*Two guards, both verified to fail on their own defect.* The spread sliders are driven by
+one table rather than three copies of a branch, so the failure mode is a slider with no
+entry in it: it renders, it drags, its readout never updates, nothing moves. The test walks
+both directions and follows each option into `graph.js` to check the engine both reads it
+and re-lays out on it -- a slider wired to an option the engine ignores is the same silent
+no-op one layer down. These are `id` controls rather than `data-` ones, which is exactly the
+half `selfCheck()` and `test_every_static_control_is_listened_for` cannot see.
+
+*Still open from this chunk.* Per-plate sphere scaling and stack orientation -- laying the
+column on its side -- are the two Tom asked for that are not built. Orientation is the
+structural one: deck.gl's `OrbitView` orbits a fixed axis and offers no camera roll, so
+laying the stack down means making the stack axis a different world axis, which changes what
+`fit`, `top-down` and `tilt` each mean and changes the silhouette `fitView` computes
+(design rule 20 frames a bounding cylinder, and its axis moves). It wants its own step.
+
+Also seen and not fixed: **the legend covers most of the graph** at ordinary widths -- it is
+an opaque panel over the canvas, and at 1279px it left the stack a corner to draw in. It
+collapses to a "Plates" button, but it opens by default over the thing it indexes.
+
+**5g. Built 2026-08-28: the panes fold, and a setting that had never done anything.**
+
+Tom's, on seeing the inspector holding 22rem to say "Nothing selected": rail it when there
+is nothing to show, pop it out when there is. He added that the panes used to be
+collapsible and that it should still be in the code somewhere.
+
+*It was, and it was dead.* `settings.js` carried `panels: { hud, disks, settings, inspector }`
+from the first day -- persisted per program, versioned, and named in the reset dialog as
+"panel layout" -- and **nothing anywhere read it**. Not a dead control: a dead *setting*,
+which a reset would have cheerfully reported clearing. The pre-merge graph had collapsible
+panels and the merge kept the switch while dropping the implementation, exactly as it kept
+two inspectors and two boot paths. Design rule 16 with no control to look at.
+
+*What was built.* Both side panes fold to a 1.75rem rail carrying a rotated label -- a pane
+that simply vanishes is a silent filter, and the rail is what makes the layout legibly a
+choice. The **grid tracks** carry the state, not the panes, because collapsing a pane
+without its column leaves a hole the width of the pane that is no longer there. The
+inspector rails itself while nothing is selected and returns when something is; an explicit
+fold outranks that, and clicking the rail with nothing selected suspends the auto rule --
+without which the pane reopens and instantly re-collapses, which reads as a broken button.
+Verified through all six transitions plus that edge case.
+
+*Found while building, and worth keeping.* Adding a fold button to the navigator moved it a
+third of the way down the pane. `render()` reorders Ways in / Explore with
+`insertBefore(first, parentNode.firstElementChild)` -- which assumed the first element child
+*was* a group, and swept the chosen one in front of the new chrome. It targets the first
+`.nav-group` now. **An ordering rule that names a position rather than an identity breaks
+the moment anything is added beside it**, which is the same shape as rule 15 and rule 18
+and cost nothing to fix only because a screenshot showed it immediately.
+
+The panebar is `position: sticky` for a plainer reason: the navigator scrolls 1,151px of
+its own content, and a collapse control that scrolls away is one the reader cannot reach
+from the bottom of the list.
+
+*The guard is the valuable part.* A test now reads every key out of `DEFAULTS` and demands
+each appear as a **property access** in the shell or the engine. Searching for the bare name
+is not enough and the first draft of the test proved it: every key is also a plain string in
+the list of things to persist, so the weak version passed on a setting that is faithfully
+saved, restored, and never once acted upon. Verified against both shapes -- a brand-new dead
+key, and `panels` unwired while left in the persist list.
+
+*Still owed from that conversation:* per-plate sphere scaling, and stack orientation. Also
+still true: **the legend covers a third of the graph** when open. It has its own collapse
+("Plates"), so the pieces are all there now -- what is missing is a decision about what it
+should do by default, and a horizontal stack will want that width.
+
 **5b. Planned, not scheduled: the layered layout — a stack of architecture drawings.**
 Tom's, stated 2026-08-27. Keep everything that exists and add a second way of drawing a
 plate: instead of a spring layout, lay the disk out the way Mermaid lays out an

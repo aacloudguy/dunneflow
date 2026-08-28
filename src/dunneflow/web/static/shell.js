@@ -105,6 +105,19 @@ const state = {
   view: "cover",          // cover | graph | table | doc | settings | usage | a11y | anomalies
   mode: "graph",
   edgesInMotion: true,    // links stay up while the camera turns
+  spreadX: 1,             // three independent axes; all three together is what zoom is
+  spreadY: 1,
+  spreadZ: 0.35,
+  collapseUnused: false,  // close the gap a plate nothing is looking at leaves behind
+  /* Which panes are open. This existed in `settings.js` from the start -- persisted,
+   * named in the reset dialog -- and nothing anywhere read it: the pre-merge graph had
+   * collapsible panels and the merge kept the switch while dropping the implementation.
+   * A setting wired to nothing is design rule 16 without even a control to look at. */
+  panels: { navigator: true, inspector: true, hud: true, controls: true },
+  /* The inspector answers "what is this thing", so when nothing is picked it has nothing
+   * to say and should not be holding 22rem to say it. It rails itself, and pops back the
+   * moment there is something to show. An explicit fold by the reader outranks this. */
+  inspectorAuto: true,
   pkgPick: null,          // which package the overview is showing everything for
   graphLayout: "stack",   // "stack" | "packages" -- a layout inside graph mode,
                           // never a fourth mode. Both built; use retires the loser.
@@ -118,6 +131,11 @@ const state = {
   hideInferred: false,
   density: "comfortable",
   selected: null,          // the node id under inspection, or null for nothing picked
+  /* What the reader asked for, in id space, before it is resolved to drawn indices.
+   * Held here rather than only in the engine so a choice made from the navigator while
+   * the centre pane is showing a table or a document is still a real choice. */
+  wanted: null,            // {nodes: [id], disks: [id]} | null
+  navNote: "",             // what that choice could not draw, stated (design rule 1)
   colourBy: "none",
   colWidths: { q: 22, lines: 5.5, ret: 10, np: 3.5, fan: 3.5, nb: 3.5, nc: 3.5 },
   // No filter can be applied yet, so none is claimed. The prototype carried three
@@ -162,6 +180,40 @@ function used(key) { state.usage[key] = (state.usage[key] || 0) + 1; }
 const esc = (s) => String(s).replace(/[&<>"]/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;" }[c]));
 
 /* ═══ theme + scale ═══ */
+/* ── collapsible panes ───────────────────────────────────────────────────────────
+ *
+ * `state.panels` finally does something. It was in `settings.js` from the first day --
+ * persisted, listed in the reset dialog by name -- and read by nothing at all: the
+ * pre-merge graph had collapsible panels and the merge kept the switch while dropping the
+ * implementation. A reset would have reported clearing a layout that never existed.
+ *
+ * The grid tracks carry the state, not the panes: collapsing a pane without collapsing its
+ * column leaves a hole exactly the width of the pane that is no longer there. */
+function panelIsOpen(name) {
+  if (name === "inspector" && state.inspectorAuto && state.panels.inspector) {
+    /* Auto only ever *closes*, and only when the inspector genuinely has nothing to say.
+     * An explicit fold is recorded in `panels.inspector` and outranks this, so the reader
+     * can keep it shut with something selected -- what they cannot do is have it silently
+     * reopen underneath them. */
+    return Boolean(state.selected);
+  }
+  return Boolean(state.panels[name]);
+}
+
+function applyPanels() {
+  const body = document.querySelector(".body");
+  if (!body) return;
+  for (const [name, attr] of [["navigator", "nav"], ["inspector", "insp"]]) {
+    const open = panelIsOpen(name);
+    body.dataset[attr === "nav" ? "nav" : "insp"] = open ? "on" : "off";
+    const rail = $(`#${name}Rail`);
+    if (rail) {
+      rail.hidden = open;
+      rail.setAttribute("aria-expanded", String(open));
+    }
+  }
+}
+
 function applyTheme() {
   const r = document.documentElement;
   if (state.theme === "system") r.removeAttribute("data-theme");
@@ -226,12 +278,26 @@ const NAV_ROUTES = {
     state.cursor = 0;
     used("anomalies");
   },
-  /* These four set what you are looking AT, and keep the centre pane's current mode. */
-  ep:  () => { state.view = state.mode; ensureGraph(); },
-  pkg: () => { state.view = state.mode; ensureGraph(); },
-  b:   () => { state.view = state.mode; ensureGraph(); },
-  t:   () => { state.view = state.mode; ensureGraph(); },
+  /* These four set what you are looking AT, and keep the centre pane's current mode.
+   *
+   * They used to be `() => { state.view = state.mode; ensureGraph(); }` -- four routes
+   * that switched mode and selected nothing, so all forty navigator rows did the same
+   * thing and the inspector went on truthfully reporting "Nothing selected". It never
+   * tripped the no-route error below, because the route existed; it just had no subject
+   * to act on, and no subject had ever reached the DOM. Design rule 16 one level down
+   * again: a control that renders, routes, and resolves to nothing. */
+  ep:  (b) => selectFromNav({ nodes: navIds(b) }),
+  pkg: (b) => selectFromNav({ disks: navIds(b) }),
+  b:   (b) => selectFromNav({ disks: navIds(b) }),
+  t:   (b) => selectFromNav({ table: b.dataset.navid || "" }),
 };
+
+/* The identities a navigator row carries, as written into `data-navid`. Space separated
+ * because ids here are hex digests, plate ids and table names -- none of which contain a
+ * space -- and a JSON blob in an attribute is harder to read when something goes wrong. */
+function navIds(b) {
+  return (b.dataset.navid || "").split(" ").filter(Boolean);
+}
 
 document.addEventListener("click", (ev) => {
   const b = ev.target.closest(".nav-item");
@@ -248,6 +314,34 @@ document.addEventListener("click", (ev) => {
   const lbl = b.querySelector(".navlabel");
   pushTrail(state.view, (lbl ? lbl.textContent : b.textContent).replace(/\s+/g, " ").trim());
   render();
+});
+
+/* ═══ folding a pane ═══ */
+
+/* Delegated, because the navigator is rebuilt from the store and the inspector on every
+ * selection -- a handler bound to either element would be thrown away with it. Registered
+ * from a table for the same reason the other routes are (design rule 16): an unknown pane
+ * is a named error, never a fall-through that looks deliberate. */
+const FOLDABLE = new Set(["navigator", "inspector"]);
+
+document.addEventListener("click", (ev) => {
+  const btn = ev.target.closest("[data-fold], [data-pane]");
+  if (!btn) return;
+  const name = btn.dataset.fold || btn.dataset.pane;
+  if (!FOLDABLE.has(name)) {
+    console.error("DunneFlow: no such foldable pane:", name, btn);
+    return;
+  }
+  const opening = Boolean(btn.dataset.pane);       // a rail opens; a fold button closes
+  state.panels = { ...state.panels, [name]: opening };
+  /* Opening the inspector by hand with nothing selected is a deliberate act, so the auto
+   * rule stops overriding it until something is picked again. Without this the rail would
+   * be unclickable: it would reopen and immediately re-collapse, which reads as broken. */
+  if (name === "inspector" && opening && !state.selected) state.inspectorAuto = false;
+  if (name === "inspector" && !opening) state.inspectorAuto = true;
+  persist();
+  applyPanels();
+  if (Graph.mounted()) requestAnimationFrame(() => Graph.resize());
 });
 
 /* ═══ mode toggle ═══ */
@@ -1737,6 +1831,8 @@ function viewInspector() {
 
   return `
     <div class="insp-head">
+      <button class="panefold" data-fold="inspector" style="float:right"
+              title="Collapse the inspector" aria-label="Collapse the inspector">&#x00BB;</button>
       <h2>${breakable(id.qualname || s.label || s.id)}</h2>
       <div class="loc">${esc(fileName)}${id.line_start
         ? `:${id.line_start}–${id.line_end}` : ""}</div>
@@ -1890,6 +1986,7 @@ function render() {
   else if (state.view === "settings")  vp.innerHTML = viewSettings();
 
   $("#inspector").innerHTML = section("inspector", viewInspector);
+  applyPanels();
   let vw = document.getElementById("viewerMount");
   if (!vw) { vw = document.createElement("div"); vw.id = "viewerMount"; document.body.appendChild(vw); }
   vw.innerHTML = viewerPanel();
@@ -1901,7 +1998,13 @@ function render() {
   const ex = $("#navExplore"), wi = $("#navWaysIn");
   if (ex && wi && ex.parentNode) {
     const first = state.menuOrder === "explore" ? ex : wi;
-    if (ex.parentNode.firstElementChild !== first) ex.parentNode.insertBefore(first, ex.parentNode.firstElementChild);
+    /* Before the first *group*, not before the first element. The navigator also carries
+     * chrome now -- the fold button -- and `firstElementChild` swept the chosen group in
+     * front of it, which put the collapse control a third of the way down the pane. An
+     * ordering rule that names a position rather than an identity breaks the moment
+     * anything else is added beside it. */
+    const firstGroup = ex.parentNode.querySelector(".nav-group");
+    if (firstGroup !== first) ex.parentNode.insertBefore(first, firstGroup);
   }
 
   const tm = $("#trailMount");
@@ -2277,7 +2380,7 @@ document.addEventListener("keydown", (e) => {
    selector rather than by attribute, and the structural markers that only style or
    identify and are never clicked. */
 const WIRED_ATTRS = new Set(["aiop", "airun", "bound", "cite", "citeidx", "closeviewer", "col", "crumb", "curi", "cursor", "den", "drop", "egress", "ep", "disk", "edgesmotion", "gact", "gosev", "goto", "graphtheme", "layout", "pkgnode",
-  "pkgpick", "manifest", "menuorder", "mode", "nav", "nav2", "node", "open", "pin", "pinnote", "resize", "row", "scale-set", "sec", "sev", "sevnav", "sort", "sqlshow", "start", "step", "theme", "theme-set", "thread", "threadwhy", "toggle", "trail", "trailback", "trailcap", "trailclear", "triage", "triaged", "unpin", "viewtab"]);
+  "pane", "pkgpick", "manifest", "menuorder", "mode", "nav", "nav2", "node", "open", "pin", "pinnote", "resize", "row", "scale-set", "sec", "sev", "sevnav", "sort", "sqlshow", "start", "step", "theme", "theme-set", "thread", "threadwhy", "toggle", "trail", "trailback", "trailcap", "trailclear", "triage", "triaged", "unpin", "viewtab"]);
 
 function selfCheck() {
   const problems = [];
@@ -2358,16 +2461,24 @@ const NAV_GROUPS = [
       { nav: "cover", label: "Overview", n: "cover", current: state.view === "cover" },
       // Bounded, and it says so: the full list is the cover's own ranking, one
       // click away. Rule 8 -- abbreviation only where the whole sits beside it.
-      ...ENTRYPOINTS.slice(0, 6).map(e => ({ nav: "ep", label: e.name, n: e.reach })),
+      /* `sel` is the identity, and it is the whole point: without it these six rows
+       * differed only by the label they printed, and every one of them did the same
+       * nothing. A label is not an identity. */
+      ...ENTRYPOINTS.slice(0, 6).map(e => ({
+        nav: "ep", label: e.name, n: e.reach, sel: (e.nodes || []).join(" "),
+      })),
     ] },
   { id: "navPkgs", title: "Packages", open: true, items: () => [
-      ...PKGS.slice(0, 8).map(p => ({ nav: "pkg", label: p.id, n: p.n })),
+      // A package is a plate, and the plate id is what the legend already selects by.
+      ...PKGS.slice(0, 8).map(p => ({ nav: "pkg", label: p.id, n: p.n, sel: `pkg:${p.id}` })),
     ] },
   { id: "navBounds", title: "Boundaries", open: false, items: () => [
-      ...BOUNDARIES.map(b => ({ nav: "b", label: b.kind, n: b.n })),
+      ...BOUNDARIES.map(b => ({ nav: "b", label: b.kind, n: b.n, sel: `ext:${b.kind}` })),
     ] },
   { id: "navTables", title: "Database", open: true, items: () => [
-      ...TABLES.slice(0, 8).map(t => ({ nav: "t", label: t.name, n: t.n })),
+      // A table is not a node and not a plate, so the id here is its name and the route
+      // asks the server which routines touch it. See TABLE_ROUTINES in queries.py.
+      ...TABLES.slice(0, 8).map(t => ({ nav: "t", label: t.name, n: t.n, sel: t.name })),
     ] },
   { id: "navVocab", title: "Vocabulary", open: true, items: () => [
       { nav: "glossary", label: "Glossary",        n: TERMS.length || "" },
@@ -2397,7 +2508,10 @@ function groupCount(g) {
 function buildNav() {
   const nav = $("#navigator");
   if (!nav) return;
-  nav.innerHTML = NAV_GROUPS.map(g => {
+  nav.innerHTML = `<div class="panebar">
+      <button class="panefold" data-fold="navigator"
+              title="Collapse the navigator" aria-label="Collapse the navigator">&#x00AB;</button>
+    </div>` + NAV_GROUPS.map(g => {
     const items = g.items();
     const total = groupCount(g);
     return `
@@ -2409,6 +2523,7 @@ function buildNav() {
       <div class="nav-items">
         ${items.map(i => `
           <button class="nav-item" data-nav="${esc(i.nav)}"
+                  ${i.sel ? `data-navid="${esc(i.sel)}"` : ""}
                   ${i.sevnav ? `data-sevnav="${esc(i.sevnav)}"` : ""}
                   ${i.current ? 'aria-current="true"' : ""}>
             ${i.dot ? `<span class="sevdot" style="background:var(--sev-${esc(i.dot)})"></span>` : ""}
@@ -2497,7 +2612,9 @@ const PERSISTED = [
   "density", "ambient", "hideInferred", "colWidths", "insp", "sortKey", "sortAsc",
   "egress", "aiOps", "triage", "pins", "usage", "graphLayout",
   "diskOrder", "diskColors", "colorBy", "sortMode", "filterMode", "direction",
-  "nodeSize", "spread", "showPlates", "picks", "graphTheme", "edgesInMotion",
+  "nodeSize", "spreadX", "spreadY", "spreadZ", "collapseUnused",
+  "panels", "inspectorAuto",
+  "showPlates", "picks", "graphTheme", "edgesInMotion",
 ];
 
 let settings = null;      // the loaded blob; `state` is the live copy
@@ -2622,7 +2739,8 @@ async function ensureGraph() {
   Graph.mount($("#graphStage"), graphPayload, {
     diskOrder: state.diskOrder, diskColors: state.diskColors, colorBy: state.colorBy,
     filterMode: state.filterMode, direction: state.direction, nodeSize: state.nodeSize,
-    spread: state.spread, showPlates: state.showPlates, scale: state.scale,
+    spreadX: state.spreadX, spreadY: state.spreadY, spreadZ: state.spreadZ,
+    collapseUnused: state.collapseUnused, showPlates: state.showPlates, scale: state.scale,
     edgesInMotion: state.edgesInMotion, picks: state.picks,
   });
   /* Read back the order the engine resolved. A saved order from a graph that has since
@@ -2630,6 +2748,8 @@ async function ensureGraph() {
    * that is how a setting outlives the thing it described. */
   state.diskOrder = Graph.diskOrder();
   state.picks = Graph.selection();
+  // A choice made while the stack was not on screen is adopted now rather than lost.
+  applyWanted();
   graphLoading = false;
   applyGraphPalette();
   render();
@@ -2642,6 +2762,73 @@ function onGraphSelect(sel) {
   state.selected = sel.node ? sel.node.id : null;
   if (sel.node) loadNode(sel.node.id);
   else { inspectorFor = null; SPECIMEN = null; }
+  persist();
+  render();
+}
+
+/* ── picking a subject from the navigator ──────────────────────────────────────────
+ *
+ * The selection is held in *id* space here and resolved to drawn indices only when the
+ * engine is mounted. That is what lets a reader pick a way in while the centre pane is
+ * showing the table or a document: the choice is real immediately, the inspector answers
+ * from `/api/node` straight away, and the stack adopts it whenever it next appears --
+ * `Graph.mount()` is already handed `state.picks`, and `applyWanted()` runs again after.
+ *
+ * The alternative -- refusing to select unless the graph happens to be on screen -- would
+ * make the picture the limit of the map, which is the thing `indexOfId` says not to do. */
+function applyWanted() {
+  const want = state.wanted;
+  if (!want) return;
+  if (!Graph.mounted()) return;           // adopted on mount; nothing is lost meanwhile
+
+  const picks = [];
+  const undrawn = [];
+  for (const id of want.disks || []) {
+    if (Graph.disks().some(d => d.id === id)) picks.push({ kind: "disk", id });
+    else undrawn.push(id);
+  }
+  for (const id of want.nodes || []) {
+    const i = Graph.indexOfId(id);
+    if (i >= 0) picks.push({ kind: "node", index: i });
+    else undrawn.push(id);
+  }
+
+  /* Design rule 1: no filter is ever silent. A node can be real and still not drawn --
+   * constants can be switched off, and an external whose plate is folded away has no
+   * index -- so the count is stated rather than the row quietly going missing. */
+  state.navNote = undrawn.length
+    ? `${undrawn.length} of ${undrawn.length + picks.length} not drawn under the current filter`
+    : "";
+
+  Graph.setSelection(picks);              // the engine announces; onGraphSelect does the rest
+  updateGraphCounts();
+}
+
+async function selectFromNav(want) {
+  state.view = state.mode;                // these set what you look AT, not where you are
+
+  if (want.table !== undefined) {
+    /* A table is not a node and not a plate: selecting one means selecting the code that
+     * reads and writes it. Asked on demand -- most sessions never click a table. */
+    let r;
+    try {
+      r = await fetch(`/api/table?name=${encodeURIComponent(want.table)}`).then(x => x.json());
+    } catch (err) {
+      state.navNote = `could not ask which routines touch ${want.table}: ${err.message}`;
+      render();
+      return;
+    }
+    want = { nodes: r.nodes || [] };
+  }
+
+  state.wanted = want;
+  // The inspector can answer from an id alone, so it does not wait for the stack.
+  const first = (want.nodes || [])[0] || null;
+  state.selected = first;
+  if (first) loadNode(first); else { inspectorFor = null; SPECIMEN = null; }
+
+  await ensureGraph();
+  applyWanted();
   persist();
   render();
 }
@@ -2665,7 +2852,10 @@ function countLine(c) {
     `<b class="num">${(c.selected || 0).toLocaleString()}</b> nodes · ` +
     `<b class="num">${(c.within || 0).toLocaleString()}</b> within · ` +
     `<b class="num">${(c.crossing || 0).toLocaleString()}</b> crossing · ` +
-    `<b class="num">${(c.excluded || 0).toLocaleString()}</b> ${c.excludedBy}`;
+    `<b class="num">${(c.excluded || 0).toLocaleString()}</b> ${c.excludedBy}` +
+    /* Design rule 1: closing a plate's gap removes it from the picture, and a shorter
+     * stack is indistinguishable from a smaller program by looking. */
+    (c.collapsed ? ` · <b class="num">${c.collapsed.toLocaleString()}</b> plates collapsed` : "");
 }
 
 /* The narrow path: update the sentence, never the pane around it.
@@ -2676,7 +2866,10 @@ function countLine(c) {
  * event touches exactly the two things counts can change. */
 function updateGraphCounts() {
   const line = $("#gcounts");
-  if (line) line.innerHTML = countLine(counts || {});
+  // The note rides on the count line rather than in a pane of its own, because rebuilding
+  // the HUD here is what destroys a slider mid-drag.
+  if (line) line.innerHTML = countLine(counts || {}) +
+    (state.navNote ? ` · <span class="warnnote">${esc(state.navNote)}</span>` : "");
   const legend = $("#graphLegend");
   if (!legend) return;
   const on = new Set(state.picks.filter(p => p.kind === "disk").map(p => p.id));
@@ -2740,12 +2933,15 @@ function renderGraphFurniture() {
                value="${state.nodeSize}" aria-label="Node size">
         <span class="muted num" id="gsizeval">${(+state.nodeSize).toFixed(1)}×</span>
       </label>
+      ${[["gspreadx", "across", "spreadX", "How far apart nodes sit left to right"],
+          ["gspready", "deep",   "spreadY", "How far apart nodes sit front to back"],
+          ["gspreadz", "stack",  "spreadZ", "Distance between plates"]].map(([id, label, key, aria]) => `
       <label style="display:flex;align-items:center;gap:.35rem">
-        <span class="muted" style="width:3.2rem">spread</span>
-        <input id="gspread" type="range" min="0.05" max="2" step="0.05"
-               value="${state.spread}" aria-label="Distance between plates">
-        <span class="muted num" id="gspreadval">${(+state.spread).toFixed(2)}×</span>
-      </label>
+        <span class="muted" style="width:3.2rem">${label}</span>
+        <input id="${id}" type="range" min="0.05" max="6" step="0.05"
+               value="${state[key]}" aria-label="${aria}">
+        <span class="muted num" id="${id}val">${(+state[key]).toFixed(2)}×</span>
+      </label>`).join("")}
       <div style="display:flex;align-items:center;gap:.35rem;margin-top:.2rem">
         <span class="muted" style="width:3.2rem">follow</span>
         <select class="gsel" id="gdirection"
@@ -2809,6 +3005,11 @@ function renderLegend() {
         <option value="dim" ${state.filterMode === "dim" ? "selected" : ""}>dimmed</option>
         <option value="hide" ${state.filterMode === "hide" ? "selected" : ""}>hidden</option>
       </select>
+      <label style="display:inline-flex;align-items:center;gap:.2rem;margin-left:.4rem">
+        <input id="gcollapse" type="checkbox" ${state.collapseUnused ? "checked" : ""}
+               aria-label="Close the gap left by plates nothing is looking at">
+        <span class="muted">collapse gaps</span>
+      </label>
     </div>`;
 }
 
@@ -2911,10 +3112,14 @@ function wireGraphOnce() {
       Graph.setOptions({ nodeSize: state.nodeSize });
       return;
     }
-    if (t.id === "gspread") {
-      state.spread = parseFloat(t.value);
-      $("#gspreadval").textContent = state.spread.toFixed(2) + "×";
-      Graph.setOptions({ spread: state.spread });
+    /* One branch, three axes. Written as a table for the same reason the routes are:
+     * a fourth axis, or a rename, must not need a fourth copy of this block. */
+    const AXIS = { gspreadx: "spreadX", gspready: "spreadY", gspreadz: "spreadZ" };
+    if (AXIS[t.id]) {
+      const key = AXIS[t.id];
+      state[key] = parseFloat(t.value);
+      $(`#${t.id}val`).textContent = state[key].toFixed(2) + "×";
+      Graph.setOptions({ [key]: state[key] });
       return;
     }
     if (t.id === "gdirection") {
@@ -2922,6 +3127,16 @@ function wireGraphOnce() {
     }
     if (t.id === "gplates") {
       state.showPlates = t.checked; Graph.setOptions({ showPlates: t.checked }); persist(); return;
+    }
+    /* Hiding and collapsing are separate switches on purpose: one decides whether an
+     * unselected plate draws, the other whether it still takes up room. Wanting the
+     * second without the first is ordinary -- it is how a selection of eight plates out
+     * of fifty-two stops reading as eight plates scattered down a tower of empty slots. */
+    if (t.id === "gcollapse") {
+      state.collapseUnused = t.checked;
+      Graph.setOptions({ collapseUnused: t.checked });
+      persist();
+      return;
     }
     if (t.id === "gsort") { state.sortMode = t.value; renderLegend(); persist(); }
     if (t.id === "gcolorby") { state.colorBy = t.value; Graph.setOptions({ colorBy: t.value }); persist(); }
@@ -2931,7 +3146,7 @@ function wireGraphOnce() {
     // Committed, not live: a localStorage write per frame of a slider drag is waste, and
     // the value is already in `state` -- this only decides when it reaches disk.
     if (ev.target.classList.contains("sw") ||
-        ["gsize", "gspread"].includes(ev.target.id)) persist();
+        ["gsize", "gspreadx", "gspready", "gspreadz"].includes(ev.target.id)) persist();
   });
 
   /* Drag to reorder. Reordering is the stack order, so dropping a row moves a plate. */

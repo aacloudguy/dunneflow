@@ -568,6 +568,24 @@ FROM db_tables t
 ORDER BY n DESC, t.name
 """
 
+# The routines that touch one table -- what picking a table out of the navigator
+# selects.
+#
+# A table is deliberately *not* a node: `DOC_DB_TABLES` says so in as many words, and
+# inventing an id to make a row clickable would be a link to nothing. So selecting a
+# table cannot mean selecting the table; it means selecting the code that reads and
+# writes it, which is the question a reader has when they click the busiest one.
+#
+# `routine_id` is null for an operation at module scope. Those rows are dropped here
+# rather than folded into a synthetic node: the count beside the name comes from
+# COVER_TABLES and counts *operations*, so the two are different populations on
+# purpose, and the client says which it is showing.
+TABLE_ROUTINES = """
+SELECT DISTINCT o.routine_id AS node
+FROM sql_ops o
+WHERE o.tbl = :name AND o.routine_id IS NOT NULL
+"""
+
 
 # ── the package overview ─────────────────────────────────────────────────────────── #
 

@@ -142,7 +142,18 @@ const opts = {
   filterMode: 'dim',
   direction: 'both',
   nodeSize: 1,
-  spread: 0.35,
+  /* Three axes, independent, because they answer different questions. X and Y widen a
+   * plate and pull apart nodes that fuse into a solid mass once they are big enough to
+   * look at; Z is the gap between plates. There is deliberately no fourth "linked"
+   * control: under the orthographic projection this view uses, scaling all three by the
+   * same factor *is* zoom, and building a second way to zoom would be a control that
+   * duplicates the mouse wheel. */
+  spreadX: 1,
+  spreadY: 1,
+  spreadZ: 0.35,
+  /* Close the gap left by a plate nothing is looking at, rather than leaving a hole.
+   * Independent of `filterMode`, which decides whether those plates draw at all. */
+  collapseUnused: false,
   showPlates: false,
   /* Keeping the links up while the camera turns is what makes a rotation *say* something:
    * relationships are what the stack is for, and stripping them the moment anyone moves
@@ -230,7 +241,16 @@ function prepare(raw) {
   const radii = new Float32Array(n);
   const degree = new Uint16Array(n);
 
+  /* The payload's own X and Y, kept unscaled.
+   *
+   * `positions` is what gets drawn and is rewritten by `applyLayout` on every spread
+   * change, so scaling it in place would compound: 2× then 2× again is 4×, and dragging
+   * a slider back to 1 would not come home. The base is written once and every spread is
+   * computed from it, which makes the operation idempotent and the slider reversible. */
+  const baseXY = new Float32Array(n * 2);
   for (let i = 0; i < n; i++) {
+    baseXY[i * 2]     = raw.nodes.x[i];
+    baseXY[i * 2 + 1] = raw.nodes.y[i];
     positions[i * 3]     = raw.nodes.x[i];
     positions[i * 3 + 1] = raw.nodes.y[i];
   }
@@ -303,8 +323,8 @@ function prepare(raw) {
     haystack[i] = parts.join(' ').toLowerCase();
   }
 
-  return { raw, n, positions, colors, radii, degree, byDisk, inbound, outbound,
-           links, ranked, haystack, plates: [], diskZ: new Map() };
+  return { raw, n, positions, baseXY, colors, radii, degree, byDisk, inbound, outbound,
+           links, ranked, haystack, plates: [], diskZ: new Map(), collapsed: new Set() };
 }
 
 /* ------------------------------------------------------------------ layout --- */
@@ -314,15 +334,54 @@ function prepare(raw) {
  * and any future shuffling the same single operation. */
 function applyLayout(d) {
   const order = opts.diskOrder;
-  d.diskZ.clear();
-  order.forEach((id, i) => d.diskZ.set(id, (order.length - i) * DISK_GAP * opts.spread));
 
+  /* Collapsing closes the *gap* a plate leaves; hiding stops its nodes being drawn. They
+   * are separate switches because they answer separate questions -- "don't show me that"
+   * and "don't leave a hole where it was" -- and the pair is what makes a selection of
+   * eight plates out of fifty-two read as eight plates rather than as eight plates
+   * scattered down a tower of empty slots.
+   *
+   * A collapsed plate is only ever one nothing is looking at. With no selection every
+   * plate is in play, so nothing collapses and the control quietly does nothing rather
+   * than emptying the stack -- the same reasoning as edges being drawn on demand. */
+  d.collapsed.clear();
+  if (opts.collapseUnused && g.members.size) {
+    for (const [id, idx] of d.byDisk) {
+      if (!idx.some((i) => g.members.has(i))) d.collapsed.add(id);
+    }
+  }
+
+  d.diskZ.clear();
+  let slot = 0;
+  const kept = order.filter((id) => !d.collapsed.has(id));
+  order.forEach((id) => {
+    if (d.collapsed.has(id)) {
+      // Parked on the slot its neighbour takes rather than left at its old height: a
+      // collapsed plate is not drawn, but its nodes still carry a position, and one left
+      // behind would drag a crossing's endpoint to a place nothing is.
+      d.diskZ.set(id, (kept.length - slot) * DISK_GAP * opts.spreadZ);
+      return;
+    }
+    d.diskZ.set(id, (kept.length - slot) * DISK_GAP * opts.spreadZ);
+    slot++;
+  });
+
+  /* Three axes, independent. X and Y widen a plate, which is what separates nodes that
+   * fuse into a mass at large sizes; Z is the gap between plates. All three moving
+   * together is *zoom* -- under an orthographic projection uniform scaling and zoom are
+   * the same operation -- so there is no linked slider here, and none is wanted. */
   for (let i = 0; i < d.n; i++) {
+    d.positions[i * 3]     = d.baseXY[i * 2]     * opts.spreadX;
+    d.positions[i * 3 + 1] = d.baseXY[i * 2 + 1] * opts.spreadY;
     d.positions[i * 3 + 2] = d.diskZ.get(d.raw.nodes.disk[i]) ?? 0;
   }
   for (const p of d.plates) {
     const z = d.diskZ.get(p.disk.id) ?? 0;
-    for (const pt of p.polygon) pt[2] = z;
+    for (const pt of p.polygon) {
+      pt[0] = pt.base[0] * opts.spreadX;
+      pt[1] = pt.base[1] * opts.spreadY;
+      pt[2] = z;
+    }
   }
   d.gpu = null;
   if (g.picks.length) buildSelectionGeometry(d);
@@ -341,7 +400,11 @@ function diskPlates(raw) {
     const ring = [];
     for (let k = 0; k <= SEG; k++) {
       const t = (k / SEG) * Math.PI * 2;
-      ring.push([Math.cos(t) * R, Math.sin(t) * R, 0]);
+      const pt = [Math.cos(t) * R, Math.sin(t) * R, 0];
+      // Its own unscaled copy, for the same reason the nodes keep one: the plate must
+      // widen with the spread it outlines, and rescaling in place would compound.
+      pt.base = [pt[0], pt[1]];
+      ring.push(pt);
     }
     return { polygon: ring, disk };
   });
@@ -441,7 +504,13 @@ function togglePick(pick, mode = 'replace') {
 
 function afterSelectionChange(d) {
   recomputeMembers(d);
-  buildSelectionGeometry(d);
+  /* Which plates are in play is a function of the selection, so collapsing has to be
+   * recomputed here and not only when a control moves -- otherwise the stack keeps the
+   * shape of the *previous* selection while confidently showing the current one.
+   * Strictly after `recomputeMembers`, which is what it reads, and it rebuilds the
+   * selection geometry itself because every Z it just changed is an edge endpoint. */
+  if (opts.collapseUnused) applyLayout(d);
+  else buildSelectionGeometry(d);
   paintNodes(d);
   draw();
   announceSelection();
@@ -573,7 +642,8 @@ function buildLayers(d) {
       getPolygon: (p) => p.polygon, filled: true, stroked: true, extruded: false,
       getFillColor: PALETTE.plateFill, getLineColor: PALETTE.plateLine, getLineWidth: 1,
       lineWidthUnits: 'pixels', pickable: false,
-      updateTriggers: { getPolygon: [opts.spread, opts.diskOrder] },
+      updateTriggers: { getPolygon: [opts.spreadX, opts.spreadY, opts.spreadZ,
+                                      opts.diskOrder, opts.collapseUnused] },
     }));
   }
 
@@ -741,6 +811,9 @@ function announceCounts() {
     crossing: g.selGeom?.interCount ?? 0,
     excluded: s.nodes - g.members.size,
     excludedBy: opts.filterMode === 'hide' ? 'hidden' : 'dimmed',
+    // Design rule 1: a plate whose gap has been closed has left the picture, and the
+    // reader has no other way to tell a short stack from a small program.
+    collapsed: g.prepared?.collapsed.size ?? 0,
     hiddenLabels: g.hiddenLabels,
     moving: g.moving && !g.benching,
     edgesInMotion: opts.edgesInMotion,
@@ -935,7 +1008,9 @@ window.DunneFlowGraph = {
     const before = { ...opts };
     Object.assign(opts, partial);
     if (!g.prepared) return;
-    if (partial.spread !== undefined || partial.diskOrder !== undefined) {
+    if (partial.spreadX !== undefined || partial.spreadY !== undefined ||
+        partial.spreadZ !== undefined || partial.diskOrder !== undefined ||
+        partial.collapseUnused !== undefined) {
       applyLayout(g.prepared);
     }
     if (partial.direction !== undefined && partial.direction !== before.direction) {

@@ -29,7 +29,9 @@ Working, verified against Society of Mensores (623 files, 184k lines):
 | **Comments** — every one reaches the store, 18,208 of 18,208 | **done** |
 | **Named values** — 2,618 constants and 86 type aliases | **done** |
 | Stable identity across edits (prerequisite for layers) | done |
-| **Interactive dashboard** | **chunk 1 built 2026-08-27: the 2.5D graph** |
+| **Interactive dashboard — the 2.5D graph** | built 2026-08-27, 60 fps at every measured load |
+| **Interactive dashboard — shell, cover, navigator, worklist** | **built 2026-08-28, reading from the store** |
+| **The graph mounted inside the shell** | **next: chunk 2** |
 | **Temporal layers / snapshots / flow diff** | **not started — after the static view** |
 | TypeScript extraction (`ts-morph` sidecar) | not started |
 | LLM narration | not started |
@@ -978,6 +980,83 @@ Also not done: `source.db` is written but the inspector's "open the whole file" 
 only route into it, and the graph does not yet offer a way to reach a node's source
 without going through the inspector.
 
+**5c. Built 2026-08-28: the ratified shell, reading from the store.** The dashboard was
+built *first*, as a claude.ai artifact, and it is not a mockup -- it is a complete working
+UI with Mensores' real numbers pinned into it. Measured: **832 lines** of token stylesheet,
+**1,639 lines** of behaviour, **292 lines** of `const` arrays, and **zero `fetch` calls**.
+The design and the interaction were done; only the data binding was missing.
+
+*The artifact is the source of truth for the design* and is recorded under Still open
+below, because it took a screenshot and a search to find it again.
+
+What the port did: moved the stylesheet and behaviour into `web/static/` (vanilla already,
+no framework, no build step), emptied every pinned array, and served them. `/api/cover`
+answers in one request; `/api/anomalies` is separate because the findings are large and
+most sessions read the counts without opening the list.
+
+Live on Mensores: 626 files, 184,722 lines, 4,734 routines, analysed stamp, 14 ways in
+ranked by reach, 9 boundary kinds each with its commonest target, 94 suspect and 12
+informational findings with their blind spots. The line count is summed from `source.db`
+-- the sidecar earning its keep the day after it was built -- and says nothing at all when
+there is no sidecar rather than guessing from file sizes.
+
+**Emptied and honest rather than emptied and blank:** glossary, naming and curiosities all
+say they are not computed yet. "Nothing unusual here" and "nobody has looked yet" are
+opposite claims, and an empty grid reads as the first one. `PROVENANCE` alone was 52 KB of
+Mensores' glossary.
+
+*Two defects found by looking, both invisible to anything that reads the DOM:*
+
+- `viewInspector()` threw on a null specimen -- the prototype pinned one routine as its
+  permanent subject and could never reach "nothing selected". The exception took the rest
+  of `render()` with it, so the filter strip went on announcing **"showing 187 of 4,568
+  routines"** over a view filtering nothing. An *announced* filter that is not happening is
+  worse than a silent one, because the reader adjusts for a slice they are not being shown.
+  Each section now renders inside its own boundary and says on the page when it cannot.
+- The `[hidden]` override was lost with the old stylesheet. Carried forward, because the
+  failure it prevents reports success everywhere.
+
+*The guard this port exists for* is in `test_web_controls.py`: no per-program array may be
+non-empty, and none may be `const` -- a `const` the loader cannot fill is an empty
+dashboard with no symptom at all.
+
+**Chunk 2, next: mount the graph inside the shell.**
+
+The architecture question was settled by discussion and the answer is *not* what it looked
+like. The graph does **not** need to be the parent and there is no iframe: WebGL has no
+requirement to be the top-level document, deck.gl mounts into any div, and the only real
+constraints are a sized container at init and a resize nudge on reveal -- both already hit
+and fixed. An iframe would cut the single shared selection in half and turn "click a
+routine in the text, see it in the graph" into a postMessage protocol, which is the one
+interaction the whole design is built around.
+
+So: the dashboard is the parent, the graph is a view inside it. `graph.js` is the engine,
+renamed rather than removed; its shell concerns need separating from its rendering.
+
+**The graph follows the theme.** Decided against my recommendation, on evidence: Tom has
+talked to people who genuinely prefer a light graph. Design rule 2 settles it -- build
+both, make it a Setting, count usage locally, retire the loser on evidence. The work is
+real: `KIND_COLOR`, the golden-angle per-disk hues, edge, dim and plate colours are all
+chosen against near-black, and `shading.js` assumes a dark background for its sphere
+highlight. A light stack needs its own palette derivation, not the same numbers on a pale
+background.
+
+**Distribution: a single binary is the product.** Not for convenience -- because DunneFlow
+reads private source and `source.db` contains it, so a hosted model sends an unfamiliar
+codebase to a server, and dashboard rule 14 says egress is scoped and never a switch.
+PyInstaller/py2app, double-click, opens at localhost, full SQLite underneath, no Node.
+`pywebview` would give a real app window using the OS webview if wanted, still no Node.
+
+The static sqlite-wasm build is **not** scrapped, it is reclassified: it is the *export*
+format for handing one map to a colleague, which is what the handoff always called it
+("mailable"). It cannot be double-clicked from disk either -- browsers block `file://`
+range requests -- so it needs a host to work at all. Keeping every dashboard query as SQL
+text in `queries.py` is what keeps that path open.
+
+Signing is what decides the non-technical experience: unsigned, macOS says the developer
+cannot be verified and the user stops. **Tom has an Apple Developer account already**, so
+macOS is available whenever wanted. Windows is deferred to the last minute.
+
 **5b. Planned, not scheduled: the layered layout — a stack of architecture drawings.**
 Tom's, stated 2026-08-27. Keep everything that exists and add a second way of drawing a
 plate: instead of a spring layout, lay the disk out the way Mermaid lays out an
@@ -1026,6 +1105,33 @@ Swift extraction.
 - Layer storage builds on the same sidecar: content-addressing is version-control
   agnostic by construction, since it never asks where the bytes came from. Git,
   Perforce, Lore, a nightly cron, and a release tag are all the same problem.
+
+- **The ratified design lives in a claude.ai artifact**, and finding it again cost a
+  screenshot and a search:
+  `https://claude.ai/code/artifact/f993d319-d2b7-4217-9130-cdbba698d1bc`
+  It is the complete design -- cover, graph, table, doc, worklist, glossary, naming,
+  exploration, source viewer, settings, trail, curiosities, inference postures -- with
+  Mensores' data pinned in. Read it with the Artifact tool rather than working from a
+  screenshot. Views not yet ported are still specified there.
+
+- **Navigator bounds are a judgment, not a measurement.** Top 6 ways in, top 8 packages,
+  top 8 tables; the complete lists are on the cover and in the views, so rule 8 holds, but
+  the cuts have not been reviewed in use.
+
+- **Packages reads 47 where the ratified design says 24.** `COVER_PACKAGES` counts every
+  second-level package including very small ones. Either a floor is wanted or 47 is simply
+  the truth and the design's number was from an older extraction. Not yet checked.
+
+- **Document mode's backend is built and not wired to a view.** Eight documents, every row
+  carrying the graph's own node id: entrypoints 175, routines 4,734, data 665, constants
+  2,618, boundaries 3,950, database 1,042, network 32, artefacts 155. `/api/documents` and
+  `/api/document` serve them. What the ratified design calls Document mode is a different
+  thing -- narrative prose, serif, the current selection read as text and scrolled to the
+  selected routine, reading from `source.db`. Both are wanted; they are not the same view.
+
+- `/api/node` and `inspector.js` from the previous chunk are a parallel implementation of
+  the shell's own `viewInspector()`. The shell's is the ratified design; the endpoint is
+  the real data. They need reconciling in chunk 2, not two inspectors.
 
 - The usage report screen's content.
 - Layer selection UI — time slider, revision list, two-point comparison, or all three.

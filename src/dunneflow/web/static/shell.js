@@ -104,6 +104,7 @@ const POSTURES = [
 const state = {
   view: "cover",          // cover | graph | table | doc | settings | usage | a11y | anomalies
   mode: "graph",
+  pkgPick: null,          // which package the overview is showing everything for
   graphLayout: "stack",   // "stack" | "packages" -- a layout inside graph mode,
                           // never a fourth mode. Both built; use retires the loser.
   scale: 1,
@@ -258,6 +259,15 @@ $$("#modes button").forEach(b => b.addEventListener("click", () => {
   render();
 }));
 
+/* ═══ graph layout: two drawings of one selection ═══ */
+$$("#layouts button").forEach(b => b.addEventListener("click", () => {
+  state.graphLayout = b.dataset.layout;
+  used("layout:" + state.graphLayout);
+  pushTrail("graph", b.textContent.trim());
+  if (state.graphLayout === "stack") ensureGraph();
+  render();
+}));
+
 /* ═══ settings ═══ */
 $("#settingsBtn").addEventListener("click", () => {
   state.view = state.view === "settings" ? state.startup : "settings";
@@ -402,32 +412,190 @@ function viewCover() {
 
 /* The package overview -- one of two layouts inside graph mode, beside the stack.
  *
- * Two altitudes, two answers, and the project decided long ago to keep both: a package
- * graph is "adequate for orientation and will not scale", the stack is the viewer that
- * holds ten thousand nodes. Neither is the other's replacement.
+ * Two altitudes, two answers, and both were always the plan: a package graph is "adequate
+ * for orientation and will not scale", the stack is the viewer that holds ten thousand
+ * nodes. Neither replaces the other.
  *
- * The ratified design drew this with `x` and `y` written into `PKGS` by hand, which is
- * exactly right for settling a design and exactly wrong for shipping one -- `/api/cover`
- * supplies no coordinates and no package-level edges, so the same code against a real
- * store drew forty-seven rectangles at `x="undefined"` and zero edges. It said nothing
- * about that, which is the worse half: an empty picture reads as a program with no
- * structure rather than as a view with no data.
- *
- * So until `/api/packages` exists it says so. "Nothing here" and "nobody has computed
- * this yet" are opposite claims, and a blank canvas must say which one it is.
+ * Every coordinate here comes from `/api/packages`. The ratified design had them written
+ * into a JavaScript array by hand, which is right for settling a design and wrong for
+ * shipping one -- the same code against a real store drew forty-seven rectangles at
+ * `x="undefined"` and zero edges, and said nothing about it.
  */
+/* How many connections the unselected view draws. Chosen so the spine is legible on a
+ * laptop rather than by taste: at forty-seven boxes, past roughly fifty curves the boxes
+ * start going under the mesh, which is design rule 19's failure at a smaller scale. */
+const SPINE_EDGES = 45;
+
+let PACKAGEVIEW = null;      // served, never pinned
+let packagesLoading = false;
+let packagesError = null;
+
+async function ensurePackages() {
+  if (PACKAGEVIEW || packagesLoading) return;
+  packagesLoading = true;
+  try {
+    const r = await fetch("/api/packages");
+    if (!r.ok) throw new Error(`the server answered ${r.status} for /api/packages`);
+    PACKAGEVIEW = await r.json();
+  } catch (err) {
+    packagesError = err.message;
+  }
+  packagesLoading = false;
+  render();
+}
+
 function viewGraph() {
+  if (packagesError) {
+    return `<div class="panel"><div class="panel-head"><h2>Package overview</h2></div>
+      <div class="panel-body"><p>This view could not be read.</p>
+      <p class="hint">${esc(packagesError)}</p></div></div>`;
+  }
+  if (!PACKAGEVIEW) {
+    ensurePackages();
+    return `<div class="panel"><div class="panel-body"><p class="hint">Reading the
+      overview…</p></div></div>`;
+  }
+
+  const d = PACKAGEVIEW;
+  const W = d.box.w, H = d.box.h;
+  const at = {};
+  d.packages.forEach(p => at[p.id] = p);
+  d.externals.forEach(p => at[p.id] = p);
+  const showExt = !state.filters.some(f => f.id === "ext");
+
+  /* A curve, because two boxes in the same column would otherwise be joined by a line
+     lying flat along the row and reading as a rule rather than a connection. */
+  const edgePath = (a, b) => {
+    const A = at[a], B = at[b];
+    if (!A || !B) return "";
+    const x1 = A.x + W, y1 = A.y + H / 2;
+    const x2 = B.x,     y2 = B.y + H / 2;
+    const mx = (x1 + x2) / 2;
+    return `M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}`;
+  };
+
+  /* Design rule 19, at this altitude. Two hundred and twenty-eight package connections
+     and a hundred and seventy-four boundary touches drawn at once do not describe a
+     program -- they erase it, and the boxes go under a mesh. So the same discipline the
+     stack uses applies here: **edges on demand.**
+
+     Pick a package and you get everything it touches, at any weight, with the rest of the
+     drawing dimmed. Pick nothing and you get the heaviest connections only, which is the
+     spine of the program and the thing an orientation view is for. What is not drawn is
+     stated in the header either way -- design rule 1, and rule 8's requirement that a
+     bounded picture sit beside the complete count. */
+  const picked = state.pkgPick;
+  const visible = d.edges.filter(e => !(state.hideInferred && e.confidence === "INFERRED"));
+  const spine = visible.slice().sort((a, b) => b.weight - a.weight).slice(0, SPINE_EDGES);
+  const spineSet = new Set(spine.map(e => `${e.src}\u0000${e.dst}`));
+  const drawn = picked
+    ? visible.filter(e => e.src === picked || e.dst === picked)
+    : spine;
+  const undrawn = visible.length - drawn.length;
+  const inferredHidden = d.edges.length - visible.length;
+
+  /* Design rule 5: confidence is shape. Solid is CERTAIN, dashed is INFERRED, and the
+     global "hide inferred" toggle leaves the defensible skeleton readable on its own. */
+  const edges = drawn.map(e => `<path class="gedge ${
+      e.confidence === "INFERRED" ? "inferred" : ""} ${
+      picked || spineSet.has(`${e.src}\u0000${e.dst}`) ? "" : "faint"}"
+        d="${edgePath(e.src, e.dst)}"
+        stroke-width="${Math.max(1, Math.min(5, Math.log2(1 + e.weight)))}"
+        marker-end="url(#arw)"><title>${esc(e.src)} → ${esc(e.dst)}: ${
+        e.weight.toLocaleString()} calls, ${esc(e.confidence)}</title></path>`).join("");
+
+  /* Rule 26: an external is not an edge we are unsure of. It gets its own mark and no
+     confidence shape -- we are certain the call leaves, we simply cannot see the far end.
+     Off unless a package is picked: a hundred and seventy-four of them is the same haze
+     in a different colour, and the boundary column already says the systems are there. */
+  const extDrawn = showExt && picked
+    ? d.ext_edges.filter(e => e.src === picked)
+    : [];
+  const extEdges = extDrawn.map(e =>
+    `<path class="gedge outside" d="${edgePath(e.src, e.dst)}" stroke-width="1.5"
+       marker-end="url(#arwx)"><title>${esc(e.src)} → ${esc(e.dst)}: ${
+       e.weight.toLocaleString()} touches</title></path>`).join("");
+
+  const touching = new Set([picked]);
+  for (const e of drawn) { touching.add(e.src); touching.add(e.dst); }
+  for (const e of extDrawn) touching.add(e.dst);
+
+  const box = (p, isExt) => `
+    <g class="gnode ${isExt ? "outside" : (p.entry ? "entry" : "")} ${
+       picked ? (p.id === picked ? "picked" : (touching.has(p.id) ? "" : "dimmed")) : ""}"
+       tabindex="0" role="button"
+       data-pkgnode="${esc(p.id)}"
+       aria-label="${esc(p.id)}${isExt
+         ? `, external system, ${p.hits} touches`
+         : `, ${p.n} routines${p.entry ? ", a way in" : ""}`}">
+      <rect x="${p.x}" y="${p.y}" width="${W}" height="${H}" rx="6"></rect>
+      <text x="${p.x + 12}" y="${p.y + 20}">${esc(p.id)}</text>
+      <text class="sub" x="${p.x + 12}" y="${p.y + 34}">${isExt
+        ? `${p.targets.toLocaleString()} endpoints · outside our control`
+        : `${p.n.toLocaleString()} routines${p.entry ? " · way in" : ""}`}</text>
+    </g>`;
+
   return `
-  <div class="panel">
-    <div class="panel-head"><h2>Package overview</h2>
-      <span class="hint">not computed yet</span></div>
-    <div class="panel-body">
-      <p>This is the orientation altitude: every top-level package as one box, the system
-         boundary drawn, and externals beyond it. It needs package-level edge weights and a
-         computed placement, and neither is served yet — so rather than draw an empty
-         diagram that would read as a program with no structure, it says so.</p>
-      <p class="hint">The stack is built and is the other layout in this mode. Switch to it
-         with <b>Stack</b> above, or from Settings.</p>
+  <div class="graphwrap">
+    <div class="pkghead">
+      <b>${d.packages.length}</b> packages · <b>${d.edges.length}</b> connections between
+      them · <b>${d.externals.length}</b> external systems
+      <span class="pkgcut">${picked
+        ? `Showing everything <b>${esc(picked)}</b> touches: <b>${drawn.length}</b>
+           connection${drawn.length === 1 ? "" : "s"} and <b>${extDrawn.length}</b>
+           boundary${extDrawn.length === 1 ? "" : " kinds"}.
+           <b>${undrawn.toLocaleString()}</b> connections between other packages are not
+           drawn. <button class="linkbtn" data-pkgpick="">Show the spine again</button>`
+        : `Drawing the <b>${drawn.length}</b> heaviest connections — the spine.
+           <b>${undrawn.toLocaleString()}</b> lighter ones and all
+           <b>${d.ext_edges.length}</b> boundary touches are not drawn: click any package
+           to see every connection it has, at any weight.`}
+        ${inferredHidden ? ` <b>${inferredHidden}</b> inferred connection${
+          inferredHidden === 1 ? "" : "s"} hidden by your filter.` : ""}</span>
+      <span class="pkgcut">Columns are hops from a way in. Depth reads left to right;
+        a rank too deep for one column wraps rather than growing taller.</span>
+    </div>
+    <!-- Sized in rem, not px: design rule 3 says one root multiplier resizes the whole
+         surface together, and a width stored in pixels is a width the multiplier cannot
+         reach. The viewBox unit is one pixel at 100%, so dividing by 16 makes the drawing
+         grow and shrink with everything else. It scrolls inside its own pane rather than
+         being squeezed to fit -- a package box squeezed below legibility is a box nobody
+         can read, which is a worse answer than a scrollbar. -->
+    <svg viewBox="0 0 ${d.width} ${d.height}"
+         style="width:${(d.width / 16).toFixed(2)}rem;height:${(d.height / 16).toFixed(2)}rem"
+         role="img" aria-label="Package overview: ${d.packages.length} packages in ${
+           1 + Math.max(...d.packages.map(p => p.rank))} ranks, reaching ${
+           d.externals.length} external systems.">
+      <defs>
+        <marker id="arw" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6"
+                markerHeight="6" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="var(--border-strong)"></path>
+        </marker>
+        <marker id="arwx" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6"
+                markerHeight="6" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="var(--external)"></path>
+        </marker>
+      </defs>
+      ${showExt && d.boundary_x != null
+        ? `<line class="boundline" x1="${d.boundary_x}" y1="8" x2="${d.boundary_x}"
+             y2="${d.height - 8}"></line>
+           <text class="boundlabel" x="${d.boundary_x + 8}" y="20">System boundary</text>`
+        : ""}
+      ${edges}${extEdges}
+      ${d.packages.map(p => box(p, false)).join("")}
+      ${showExt ? d.externals.map(p => box(p, true)).join("") : ""}
+    </svg>
+    <div class="legend">
+      <span><svg width="26" height="8"><line x1="0" y1="4" x2="26" y2="4"
+        stroke="currentColor" stroke-width="2"/></svg> CERTAIN — pinned by import</span>
+      <span><svg width="26" height="8"><line x1="0" y1="4" x2="26" y2="4"
+        stroke="currentColor" stroke-width="2" stroke-dasharray="4 3"/></svg>
+        INFERRED — resolved by unique name</span>
+      <span><svg width="14" height="10"><rect x="0.75" y="0.75" width="12.5" height="8.5"
+        rx="2" fill="none" stroke="var(--external)" stroke-width="1.5"
+        stroke-dasharray="4 2"/></svg> External — outside our control, and not a
+        confidence</span>
+      <span>Line weight = calls between packages</span>
     </div>
   </div>`;
 }
@@ -1605,6 +1773,15 @@ function render() {
   const vp = $("#viewMount");
   $("#crumbs").innerHTML = crumbsFor();
   $("#modes").style.visibility = ["graph", "table", "doc"].includes(state.view) ? "visible" : "hidden";
+  /* The layout choice sits inside graph mode, never beside it. Graph / table / document are
+   * three ways of reading one selection; stack / packages are two drawings of one of them,
+   * and promoting a layout to a mode would say they answer different questions. */
+  const lay = $("#layouts");
+  if (lay) {
+    lay.hidden = state.view !== "graph";
+    $$("#layouts button").forEach(b =>
+      b.setAttribute("aria-pressed", String(b.dataset.layout === state.graphLayout)));
+  }
   $$("#modes button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.mode === state.mode)));
   $("#settingsBtn").setAttribute("aria-pressed", String(state.view === "settings"));
   document.documentElement.style.setProperty("--row-pad",
@@ -1667,6 +1844,19 @@ function render() {
 }
 
 function wire() {
+  /* The overview: clicking a package shows everything it touches. Clicking it again lets
+     go, because a view you cannot get out of is a view you stop clicking into. */
+  $$("[data-pkgnode]").forEach(b => b.addEventListener("click", () => {
+    const id = b.dataset.pkgnode;
+    state.pkgPick = state.pkgPick === id ? null : id;
+    if (state.pkgPick) pushTrail("graph", id, "everything it touches");
+    render();
+  }));
+  $$("[data-pkgpick]").forEach(b => b.addEventListener("click", () => {
+    state.pkgPick = b.dataset.pkgpick || null;
+    render();
+  }));
+
   /* Following a caller or a callee moves the graph as well: one selection, two views.
      The trail this leaves is what makes a detour free -- you can always click back along
      the way you came, which is the argument for exploring sideways rather than only
@@ -2012,7 +2202,7 @@ document.addEventListener("keydown", (e) => {
    plus those read as companions inside another handler, those bound by element
    selector rather than by attribute, and the structural markers that only style or
    identify and are never clicked. */
-const WIRED_ATTRS = new Set(["aiop", "airun", "bound", "cite", "citeidx", "closeviewer", "col", "crumb", "curi", "cursor", "den", "drop", "egress", "ep", "disk", "gact", "gosev", "goto", "manifest", "menuorder", "mode", "nav", "nav2", "node", "open", "pin", "pinnote", "resize", "row", "scale-set", "sec", "sev", "sevnav", "sort", "sqlshow", "start", "step", "theme", "theme-set", "thread", "threadwhy", "toggle", "trail", "trailback", "trailcap", "trailclear", "triage", "triaged", "unpin", "viewtab"]);
+const WIRED_ATTRS = new Set(["aiop", "airun", "bound", "cite", "citeidx", "closeviewer", "col", "crumb", "curi", "cursor", "den", "drop", "egress", "ep", "disk", "gact", "gosev", "goto", "layout", "pkgnode", "pkgpick", "manifest", "menuorder", "mode", "nav", "nav2", "node", "open", "pin", "pinnote", "resize", "row", "scale-set", "sec", "sev", "sevnav", "sort", "sqlshow", "start", "step", "theme", "theme-set", "thread", "threadwhy", "toggle", "trail", "trailback", "trailcap", "trailclear", "triage", "triaged", "unpin", "viewtab"]);
 
 function selfCheck() {
   const problems = [];

@@ -25,16 +25,27 @@ from __future__ import annotations
 # program.
 # --------------------------------------------------------------------------- #
 
-PACKAGE_EXPR = """
+def package_expr(col: str = "module") -> str:
+    """The package a module belongs to: the segment just under the program root.
+
+    Takes the column so one join can ask it of two different tables. It used to be a bare
+    string whose column name was patched in by substitution at the call site -- the kind of
+    string surgery this project keeps paying for, correct only for as long as no column
+    name happens to contain the word being substituted.
+    """
+    return f"""
     CASE
-      WHEN module = :root THEN '<root>'
-      WHEN module LIKE :root_dot THEN
-        CASE WHEN instr(substr(module, :cut), '.') > 0
-             THEN substr(module, :cut, instr(substr(module, :cut), '.') - 1)
-             ELSE substr(module, :cut) END
+      WHEN {col} = :root THEN '<root>'
+      WHEN {col} LIKE :root_dot THEN
+        CASE WHEN instr(substr({col}, :cut), '.') > 0
+             THEN substr({col}, :cut, instr(substr({col}, :cut), '.') - 1)
+             ELSE substr({col}, :cut) END
       ELSE '<external>'
     END
 """
+
+
+PACKAGE_EXPR = package_expr()
 
 ROUTINE_NODES = f"""
 SELECT r.id                AS id,
@@ -555,4 +566,68 @@ SELECT t.name AS name,
        (SELECT COUNT(*) FROM sql_ops o WHERE o.tbl = t.name) AS n
 FROM db_tables t
 ORDER BY n DESC, t.name
+"""
+
+
+# ── the package overview ─────────────────────────────────────────────────────────── #
+
+# The orientation altitude: every package as one box, and what passes between them.
+#
+# Counted **from the store, not from the drawn model**. The 2.5D model stores every
+# crossing twice -- once per plate, each copy ending in a shadow -- because that is what
+# lets both plates lay out under the same forces (rule 23). Aggregating those would double
+# every weight here, silently and plausibly. The store holds each call exactly once, so
+# counting from it cannot make that mistake.
+#
+# Confidence does not blur (rule 6). An aggregate is CERTAIN when *any* constituent call is
+# certain -- we are certain the two packages are connected, whatever we could not resolve
+# about individual calls -- and INFERRED only when every one of them was inferred.
+PACKAGE_EDGES = f"""
+SELECT {package_expr("caller.module")} AS src,
+       {package_expr("callee.module")} AS dst,
+       COUNT(*)                                          AS weight,
+       MAX(c.confidence = 'CERTAIN')                     AS any_certain
+FROM calls c
+JOIN routines caller ON caller.id = c.caller_id
+JOIN routines callee ON callee.id = c.callee_id
+WHERE c.callee_id IS NOT NULL
+  AND c.external = 0
+GROUP BY src, dst
+HAVING src <> dst
+ORDER BY weight DESC
+"""
+
+# A package reaching outside the program. The boundary kind is the destination, which is
+# what design rule 8 asks for: an external is a first-class node badged as outside our
+# control, not an edge that stops at the edge of the picture.
+PACKAGE_BOUNDARY_EDGES = f"""
+SELECT {package_expr("r.module")} AS src,
+       b.kind                                       AS dst,
+       COUNT(*)                                     AS weight,
+       COUNT(DISTINCT b.target)                     AS targets
+FROM boundaries b
+JOIN routines r ON r.id = b.routine_id
+GROUP BY src, dst
+ORDER BY weight DESC
+"""
+
+# Which packages hold a way in. An entrypoint's package is where a reader starts, so the
+# overview puts them first and the layout ranks outward from them.
+PACKAGE_ENTRYPOINTS = f"""
+SELECT DISTINCT {package_expr("r.module")} AS pkg
+FROM entrypoints e
+JOIN routines r ON r.id = e.routine_id
+"""
+
+
+# Package sizes under the *same* expression the disks use, so the overview and the stack
+# agree about what a package is. `COVER_PACKAGES` answers a different question -- it takes
+# the second segment without knowing the program root -- and two definitions of "package"
+# in one dashboard is how a reader ends up comparing two numbers that were never the same
+# measurement.
+PACKAGE_SIZES = f"""
+SELECT {PACKAGE_EXPR} AS pkg, COUNT(*) AS n
+FROM routines
+GROUP BY pkg
+ORDER BY n DESC
 """

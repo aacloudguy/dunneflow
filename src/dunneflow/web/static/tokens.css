@@ -554,7 +554,14 @@ body {
 /* ═══ graph ═══ */
 .graphwrap { background: var(--surface); border: 1px solid var(--border); border-radius: .5rem;
   box-shadow: var(--shadow); overflow: auto; }
-.graphwrap svg { display: block; min-width: 44rem; width: 100%; height: auto; }
+.graphwrap svg { display: block; }
+.gnode rect { fill: var(--raised); stroke: var(--border-strong); stroke-width: 1.5; }
+.gnode.entry rect { fill: var(--accent-soft); stroke: var(--accent); }
+/* Design rule 8: an external is a first-class node badged as outside our control -- its
+   own colour and its own dashed edge, never the dashed line that means "unsure". */
+.gnode.outside rect { fill: var(--external-bg); stroke: var(--external);
+                      stroke-dasharray: 5 3; }
+.gnode.outside text { fill: var(--external); }
 .gnode rect, .gnode polygon { transition: none; }
 .gnode text { font-family: var(--f-mono); font-size: .72rem; fill: var(--text); }
 .gnode .sub { font-family: var(--f-sans); font-size: .6rem; fill: var(--text-muted); }
@@ -564,6 +571,20 @@ body {
 .gnode[aria-current="true"] rect { stroke: var(--accent); stroke-width: 2.5; }
 .gedge { fill: none; stroke: var(--border-strong); }
 .gedge.inferred { stroke-dasharray: 4 3; }
+/* Rule 26: external is not inferred. We are certain the call leaves and simply cannot see
+   the far end, so it carries its own mark and no confidence shape at all. */
+.gedge.outside { stroke: var(--external); stroke-dasharray: 2 3; }
+.gedge.faint { opacity: .35; }
+/* Unselected boxes dim rather than vanish, so a subset stays legible inside the shape it
+   belongs to -- design rule 19's reasoning, at the overview altitude. */
+.gnode.dimmed { opacity: .32; }
+.gnode.picked rect { stroke: var(--accent); stroke-width: 2.5; }
+
+.pkghead { padding: .55rem .75rem; font-size: .72rem; color: var(--text-muted);
+           border-bottom: 1px solid var(--border); background: var(--raised); }
+.pkghead b { color: var(--text); font-variant-numeric: tabular-nums; }
+/* Never a silent filter, and never a silent bound: what is not drawn says so here. */
+.pkgcut { display: block; margin-top: .2rem; color: var(--text-faint); }
 .boundline { stroke: var(--external); stroke-dasharray: 6 5; stroke-width: 1.5; opacity: .75; }
 .boundlabel { font-family: var(--f-sans); font-size: .6rem; fill: var(--external);
   letter-spacing: .08em; text-transform: uppercase; font-weight: 600; }

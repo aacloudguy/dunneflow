@@ -133,6 +133,27 @@ def test_the_javascript_parses() -> None:
         assert r.returncode == 0, f"{js.name} does not parse:\n{r.stderr or r.stdout}"
 
 
+def test_no_backtick_hides_in_an_html_comment() -> None:
+    """The parse test catches this; this one names it.
+
+    It has happened twice in a day. A template literal holds HTML, the HTML holds a
+    comment, and the comment mentions a symbol the way the rest of this codebase does --
+    in backticks. The backtick closes the literal, the file stops being JavaScript, and the
+    page comes up empty. Nothing else fails.
+
+    Kept separate from `test_the_javascript_parses` because that one skips when the machine
+    has no JavaScript engine, and this defect needs no engine to find. A comment inside
+    generated markup is prose about code, and prose does not need the quoting that code
+    does -- rule 9 in a very small key.
+    """
+    for js in sorted(STATIC.glob("*.js")):
+        for comment in re.findall(r"<!--.*?-->", js.read_text(encoding="utf-8"), re.S):
+            assert "`" not in comment, (
+                f"{js.name}: a backtick inside an HTML comment closes the template literal "
+                f"it sits in — write the symbol without backticks:\n{comment[:200]}"
+            )
+
+
 def test_the_graph_has_somewhere_to_live() -> None:
     """`render()` fills the centre pane with innerHTML on every keystroke.
 

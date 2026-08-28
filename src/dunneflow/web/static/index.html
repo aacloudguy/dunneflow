@@ -78,6 +78,13 @@
 
       <div class="crumbbar">
         <div class="crumbs" id="crumbs"></div>
+        <!-- Two drawings of one selection, not a fourth mode. The stack holds ten
+             thousand nodes and answers what is in here; the overview holds forty boxes
+             and answers what this is shaped like. Both were always the plan. -->
+        <div class="modes" role="group" aria-label="Graph layout" id="layouts" hidden>
+          <button data-layout="stack" aria-pressed="true">Stack</button>
+          <button data-layout="packages" aria-pressed="false">Overview</button>
+        </div>
         <div class="modes" role="group" aria-label="View mode" id="modes">
           <button data-mode="graph" aria-pressed="true">Graph</button>
           <button data-mode="table" aria-pressed="false">Table</button>

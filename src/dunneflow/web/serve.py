@@ -30,6 +30,7 @@ from urllib.parse import parse_qs
 
 from ..sourcedb import SourceStore
 from ..store import Store
+from . import packages
 from .cover import anomalies as build_anomalies
 from .cover import build as build_cover
 from .detail import describe
@@ -201,6 +202,16 @@ class _Handler(BaseHTTPRequestHandler):
     def _r_graph(self, q: dict[str, list[str]]) -> None:
         self._json(self._payload)
 
+    def _r_packages(self, q: dict[str, list[str]]) -> None:
+        """The overview altitude: every package as a box, and what passes between them.
+
+        Built per request rather than at startup. It is two aggregations over indexed
+        columns, the payload is a few kilobytes, and most sessions never open it -- caching
+        it would trade a measurable startup cost for a saving nobody can perceive.
+        """
+        with self._live.lock:
+            self._json(packages.build(self._live.store))
+
     def _r_cover(self, q: dict[str, list[str]]) -> None:
         """The first screen. Built once at startup -- see `cover.py`."""
         self._json(self._live.cover)
@@ -285,6 +296,7 @@ class _Handler(BaseHTTPRequestHandler):
         "/index.html": "_r_index",
         "/api/graph": "_r_graph",
         "/api/cover": "_r_cover",
+        "/api/packages": "_r_packages",
         "/api/anomalies": "_r_anomalies",
         "/api/documents": "_r_documents",
         "/api/document": "_r_document",

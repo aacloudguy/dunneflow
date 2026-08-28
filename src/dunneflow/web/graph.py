@@ -99,7 +99,7 @@ class GraphModel:
         }
 
 
-def _root_package(store: Store) -> str:
+def root_package(store: Store) -> str:
     """The program's own root package, taken from the data rather than assumed.
 
     `mensores.cli` and `dunneflow.cli` are both one dotted segment deep; hard-coding a
@@ -115,15 +115,15 @@ def _root_package(store: Store) -> str:
     return max(roots.items(), key=lambda kv: kv[1])[0] if roots else ""
 
 
-def _pkg_params(root: str) -> dict[str, Any]:
+def pkg_params(root: str) -> dict[str, Any]:
     # `:cut` is 1-based and points just past "<root>." -- SQLite's substr is 1-indexed.
     return {"root": root, "root_dot": f"{root}.%", "cut": len(root) + 2}
 
 
 def build(store: Store, *, include_constants: bool = True) -> GraphModel:
     """Assemble the whole stack from the fact store."""
-    root = _root_package(store)
-    params = _pkg_params(root)
+    root = root_package(store)
+    params = pkg_params(root)
     m = GraphModel()
     disk_of: dict[str, str] = {}
 

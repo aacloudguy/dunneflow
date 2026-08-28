@@ -752,7 +752,17 @@ function tick() {
 /* Measure the most expensive frame the reader can ask for -- and report the geometry that
  * was actually submitted, which is rule 24. */
 function benchmark(seconds = 6) {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
+    /* A hidden tab gets no animation frames at all -- not throttled, none -- so the run
+     * would sit at "benchmarking..." for as long as the reader was looking at something
+     * else, and resolve minutes later with a number taken over a window that included the
+     * time they were away. Refusing is the only honest answer, and it is the same rule the
+     * readout follows: a measurement must measure the thing it names. */
+    if (document.visibilityState !== 'visible') {
+      reject(new Error('this tab is not visible, so the browser is drawing no frames — '
+                     + 'bring the window to the front and run it again'));
+      return;
+    }
     samples = []; g.benching = true;
     const t0 = performance.now();
     const start = { ...g.viewState };

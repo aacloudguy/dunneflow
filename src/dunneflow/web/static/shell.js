@@ -2811,7 +2811,14 @@ const GRAPH_ACTIONS = {
   bench: async () => {
     const out = $("#gbench");
     if (out) out.textContent = "benchmarking…";
-    const r = await Graph.benchmark(6);
+    let r;
+    try {
+      r = await Graph.benchmark(6);
+    } catch (err) {
+      // A refusal states its reason, the same way a finding states its blind spot.
+      if (out) out.textContent = err.message;
+      return;
+    }
     if (!out) return;
     /* 60 is the vsync ceiling, not a measurement of capacity: when median and worst both
      * sit on it the honest statement is "nothing was dropped, headroom unknown". And both

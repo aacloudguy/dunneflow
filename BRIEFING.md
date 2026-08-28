@@ -45,26 +45,29 @@ docs   ──► extract ──► docs.db  ──────ATTACH──┘
 | `anomalies.py` | What looks wrong. Every finding states what would make it a false alarm. |
 | `sql.py` | Reads schemas out of the `CREATE TABLE` statements the code contains. |
 
-### `web/` — and the two applications inside it
+### `web/` — one application
 
 The dashboard is **vanilla JS + deck.gl on stdlib `http.server`**. No Node, no framework,
 no build step. deck.gl is vendored into `web/vendor/`.
 
-| File | Belongs to |
+| File | What it is |
 |---|---|
-| `serve.py` | server — route table, one handler per endpoint |
+| `serve.py` | the server — a route table, one handler per endpoint |
 | `queries.py` | every dashboard query as **SQL text**, in one place |
 | `cover.py` · `detail.py` · `documents.py` | the cover · the inspector · document mode |
-| `graph.py` · `layout.py` | the 2.5D model and where things sit |
-| `static/shell.js` | **the dashboard application** — ratified design, reads the store |
-| `static/graph.js` | **the graph application** — the 2.5D engine |
-| `static/settings.js` · `shading.js` · `inspector.js` | the graph application's parts |
-| `static/tokens.css` · `style.css` | the token stylesheet; **no colour is declared outside it** |
+| `graph.py` · `layout.py` | the 2.5D model, and where things sit |
+| `packages.py` | the package overview — the other graph layout |
+| `static/shell.js` | **the application**: state, routing, every view, the self-check |
+| `static/graph.js` | **the engine**: payload to pixels, and nothing about this page |
+| `static/settings.js` | the store — per program, versioned |
+| `static/shading.js` | the sphere shading, one extension class per lighting |
+| `static/tokens.css` | the tokens; **no colour is declared outside this file** |
 
-> **The central fact of the current work:** those are *two complete applications that have
-> never been joined*. Each works. `index.html` loads only `shell.js`, so the graph engine
-> is not reached at all — deck.gl is never fetched and there are zero canvases on the page.
-> Chunk 2 makes them one.
+> **The boundary that matters** is the container. The engine draws inside the element it is
+> handed and touches no DOM outside it; what it has to say — selection, counts, fps,
+> diagnostics, errors — leaves as events. The shell owns the selection, the settings, the
+> search, the legend and the breadcrumb. Before chunk 2 both halves existed twice, and
+> `index.html` loaded only one of them.
 
 ## Built, and not
 
@@ -77,26 +80,36 @@ blind spots · Markdown + Mermaid · documentation ingest · glossary · naming 
 traceability across both stores · named artefacts · the mirror · comments (18,208 of
 18,208) · constants and type aliases · stable identity · source sidecar.
 
-**Dashboard:** the 2.5D graph (60 fps at every measured load) and the ratified shell
-(cover, navigator, worklist, reading from the store) — both built, **not yet joined**.
+**Dashboard:** one application — the ratified shell (cover, navigator, worklist, table,
+document, glossary, naming, settings) with the 2.5D stack and the package overview as two
+layouts inside graph mode, one inspector reading `/api/node`, and the graph following the
+theme.
 
 **Not built:** `dunneflow infer` (the model pass) · temporal layers · attestation · the
 project profile · document mode's narrative view · packaging as a binary · any language
 but Python.
 
-## What we are doing now — chunk 2, "one application"
+## What we are doing now
 
-Unify the two applications, then package. In order:
+**Chunk 2, "one application" — done 2026-08-28.** The two applications are one: the stack
+mounts inside the shell, there is one state, one settings store, one inspector and one
+self-check; the package overview is computed rather than hand-placed and sits beside the
+stack as a *layout*; and the graph follows the theme. See `HANDOFF.md` 5d for what it cost
+and what it found — including that the sphere shading had never actually run.
 
-1. this briefing
-2. the stack mounted inside the shell — one state, one settings store, one self-check
-3. one inspector — the shell's renderer fed by `/api/node`
-4. the package overview repaired as a *layout*, from real aggregated data
-5. the graph follows the theme — light palette derived from the CSS tokens
-6. re-measure, look at every view in both themes, record
+**Next: packaging.** A single double-clickable binary is the product, and not for
+convenience: DunneFlow reads private source and `source.db` contains it, so a hosted model
+would send an unfamiliar codebase to a server, and design rule 14 says egress is scoped and
+never a switch. PyInstaller or py2app, opens at localhost, full SQLite underneath, no Node.
+Signing decides the experience, and there is already an Apple Developer account.
 
-Deferred deliberately: packaging into a double-clickable app; the layered
-"stack of architecture drawings" layout (`HANDOFF.md` 5b); temporal layers.
+Deferred deliberately: the layered "stack of architecture drawings" layout (`HANDOFF.md`
+5b); temporal layers; attestation; `dunneflow infer`.
+
+**One thing owed:** the two "spheres" rows in the `CLAUDE.md` budget table are withdrawn and
+want retaking on a visible, focused window — they measured flat discs while printing the
+word spheres. A hidden tab gets no animation frames at all, so this cannot be done from
+automation; the benchmark now refuses rather than hanging.
 
 ## Decided — do not re-open these
 

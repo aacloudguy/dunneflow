@@ -90,18 +90,37 @@ being drawn, and it overstated the picture by half.
 | Payload build, server side | < 2 s | ~0.03 s |
 | First paint in the browser | < 2 s | 0.1 s |
 | Sustained fps, six-second orbit, dots | >= 55 median | **60 median, 60 worst — no frames dropped** |
-| …spheres at full size (14×) | >= 55 median | **60 median, 60 worst — no frames dropped** |
-| …spheres at 14× plus 4,253 edges | >= 55 median | **60 median, 60 worst — no frames dropped** |
+| …spheres at full size (14×) | >= 55 median | *withdrawn — see below* |
+| …spheres at 14× plus 4,253 edges | >= 55 median | *withdrawn — see below* |
 
-The last two were taken 2026-08-27 in the second session, and the third one could not have
-been taken before it: the orbit set the moving flag, which stripped the edges, so the
-benchmark measured nodes only while printing an edge count beside the number (rule 24).
-The edge run is eight plates selected — `disceptator`, `STDIO`, `quaestor`, `_internal`,
-`storage`, `cli`, `governance`, `DATABASE` — giving 2,199 within-plate links and 2,054
-crossings, with both layers confirmed present in the frame.
+**The two sphere rows are withdrawn, not merely stale: the sphere shading was not running
+when they were taken.** Three separate silent no-ops kept the fragment work from ever
+executing — an inject hook deck.gl did not recognise, a GLSL local colliding with one of
+its own, and a shader that was never reassembled because deck.gl resolves an extension's
+shader once per extension class. Every one of them compiles and draws. So those runs
+measured flat discs while the readout printed the word *spheres*, which is rule 24 exactly:
+a measurement must measure the thing it names, and these two named something that was not
+on screen. They were replaced with nothing rather than with a guess, and want retaking on a
+visible, focused window at full size now that the shading actually runs.
 
-The sphere threshold (2.2×) was set by judgment and is now set by evidence: full size costs
-nothing measurable, so the ceiling is a look rather than a budget.
+The dots row stands: nothing about it depended on the shading.
+
+Kept because the *method* survives even though the numbers did not. The edge run could not
+have been taken at all before the second session: the orbit set the moving flag, which
+stripped the edges, so the benchmark measured nodes only while printing an edge count beside
+the number (rule 24). Its selection is eight plates — `disceptator`, `STDIO`, `quaestor`,
+`_internal`, `storage`, `cli`, `governance`, `DATABASE` — giving 2,199 within-plate links
+and 2,054 crossings, with both layers confirmed present in the frame. Reproduce that
+selection when retaking the row, or it is a different measurement wearing the same label.
+
+A benchmark now refuses to start on a tab that is not visible. A hidden tab is given **no**
+animation frames at all — not throttled, none — so a run started before switching away sits
+at "benchmarking…" and then reports a figure averaged over the time nobody was looking.
+
+The sphere threshold (2.2×) was set by judgment, then briefly recorded as set by evidence —
+that claim is withdrawn with the rows it rested on. The evidence was a run in which the
+shading did not execute, so it showed only that flat discs are cheap, which was never in
+doubt. It is a judgment again until the two rows above are retaken.
 
 60 is the vsync ceiling, so these rows state a floor, not a capacity: nothing was dropped
 and the headroom above it is unmeasured. Read it as "never missed a frame", never as a

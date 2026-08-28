@@ -1057,6 +1057,57 @@ Signing is what decides the non-technical experience: unsigned, macOS says the d
 cannot be verified and the user stops. **Tom has an Apple Developer account already**, so
 macOS is available whenever wanted. Windows is deferred to the last minute.
 
+**5d. Built 2026-08-28: chunk 2, one application.** The graph and the dashboard were two
+complete applications that had never been joined -- each with its own state, settings, mode
+toggle, search, inspector, self-check and `boot()`. `index.html` loaded only one of them, so
+deck.gl was never fetched, there were no canvases on the page, and the 2.5D stack was
+unreachable while every control on the page worked perfectly.
+
+*What was done.* `graph.js` is the engine and nothing else: it draws inside the element it
+is handed, and counts, fps, selection, diagnostics and errors leave as events. The canvas
+lives in a mount `render()` never touches, since `render()` fills the centre pane with
+innerHTML on every keystroke. `settings.js` became the whole application's store at version
+2 -- before this the graph persisted its arrangement and the shell persisted nothing, so a
+theme chosen deliberately was gone on reload while a disk order nobody remembered setting
+survived. One inspector: the ratified layout fed by `/api/node`; `inspector.js` and
+`style.css` deleted, both already orphaned. The package overview is real -- `web/packages.py`,
+`/api/packages` -- computed rather than hand-placed, and it is a *layout* inside graph mode
+beside the stack, never a fourth mode. The graph follows the theme, reading its palette from
+`tokens.css` so there is one place a colour is written down.
+
+*The find that matters: the sphere shading has never run.* Three silent no-ops, stacked.
+Rule 22 records the first -- an inject hook deck.gl did not recognise. Behind it were a GLSL
+local colliding with one of deck.gl's own, and a shader that was never reassembled, because
+deck.gl resolves an extension's shader once per extension *class* and matches layers by id
+(and the layer first renders below the sphere threshold, with no extension at all). None of
+the three is an error: each compiles, each draws, each skips the effect. **The two "spheres"
+rows in the budget table are therefore withdrawn** -- they measured flat discs while printing
+the word spheres, which is rule 24 -- along with the claim that the 2.2x threshold was set by
+evidence. They want retaking now the fragment work actually runs.
+
+*Three pinned Mensores values left the shell*, invisible to the guard written to catch
+exactly them: it walked the top-level arrays and never looked inside `state`, where `usage`
+was seeded with invented counts and two routine paths were hard-coded.
+
+*Found by looking, every one of them:* a backtick inside an HTML comment closing a template
+literal (twice -- the page came up empty and every Python test passed); the counts event
+rebuilding the HUD and so destroying a slider mid-drag; `.tb-select` reused on a white panel,
+where it is white-on-white by design; long qualified names breaking mid-token, the `do_PO /
+ST` defect in a new pane; and all three shading no-ops.
+
+*Still open from this chunk.*
+
+- **The fps rows want retaking** on a visible, focused window at full size, reproducing the
+  eight-plate selection named in `CLAUDE.md` or it is a different measurement under the same
+  label. It could not be done in this session: the automation tab is not visible, and a
+  hidden tab is given **no** animation frames at all. The benchmark now refuses rather than
+  hanging, and says why.
+- `47` packages is the truth and the ratified design's `24` is stale -- 42 have eight or more
+  routines, 5 have fewer (11 routines, folded into `<small>`), and 42 + `<small>` + 9 boundary
+  kinds is exactly the 52 disks. That question in *Still open* is answered.
+- Document mode's narrative view, the exploration layer, and the usage report screen are
+  still as they were.
+
 **5b. Planned, not scheduled: the layered layout — a stack of architecture drawings.**
 Tom's, stated 2026-08-27. Keep everything that exists and add a second way of drawing a
 plate: instead of a spring layout, lay the disk out the way Mermaid lays out an

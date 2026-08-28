@@ -1690,11 +1690,28 @@ Swift extraction.
   thing -- narrative prose, serif, the current selection read as text and scrolled to the
   selected routine, reading from `source.db`. Both are wanted; they are not the same view.
 
-- `/api/node` and `inspector.js` from the previous chunk are a parallel implementation of
-  the shell's own `viewInspector()`. The shell's is the ratified design; the endpoint is
-  the real data. They need reconciling in chunk 2, not two inspectors.
+- ~~`/api/node` and `inspector.js` are a parallel implementation of the shell's own
+  `viewInspector()`.~~ **Closed in chunk 2.** There is one inspector, the ratified layout
+  reading the real endpoint, and `inspector.js` is gone from `static/`.
 
-- The usage report screen's content.
+- **The glossary and naming views are not ported to the data now behind them.** Both lanes
+  are computed at start and served -- `/api/naming` carries every convention with the query
+  that counted it and the exceptions it found, `/api/glossary` carries 1,207 terms with
+  their senses and the file and line of each -- and the graph already reads them. The two
+  *pages* were written against the ratified prototype's field shape (`{pattern, ok, n,
+  exceptions: [str]}` against the served `{glob, holds, total, exceptions: [{name, where}],
+  rating, sql}`) and would render the real data **wrongly** rather than not at all, so they
+  say that instead of pretending nothing has been computed. This is the next piece.
+
+- **`CURIOSITIES` is the same job at program scope.** `threads.py` already measures the
+  outlier family per package -- most commented, most called, deepest closure, most lopsided
+  table -- and design rule 15's curiosities panel is that computation run over the whole
+  program rather than one plate. It says honestly that it is not computed yet; it now has
+  the machinery sitting beside it.
+
+- The usage report screen's content. `followMode`, `graphLayout`, `graphTheme` and
+  `menuOrder` are all design-rule-2 pairs counting usage now, and none of them can be
+  retired on evidence until something shows the counts.
 - Layer selection UI — time slider, revision list, two-point comparison, or all three.
   That is the next conversation, not this one.
 

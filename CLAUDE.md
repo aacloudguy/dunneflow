@@ -222,6 +222,11 @@ docs   ──► extract ──► docs.db  (SQLite) ─────────
 
 These each came from a false result on real code. Keep them.
 
+*There is no engineering rule 21, and nothing is missing.* The numbers are cited from code
+comments, tests and `HANDOFF.md`, so they are addresses rather than an ordering and are
+never reused or closed up. Every "design rule 21" in the codebase refers to the dashboard
+rule of that number — a blank canvas must say why it is blank — which does exist.
+
 1. **Precision beats recall.** A false edge tells the reader something is connected
    when it is not — worse than a missing edge. Every match must be defensible.
 2. **A call that touches a boundary is never also an internal edge.** `conn.execute()`

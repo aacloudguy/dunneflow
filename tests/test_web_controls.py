@@ -201,6 +201,55 @@ def test_no_program_data_is_pinned_into_the_shell() -> None:
     assert not pinned, f"per-program data pinned into the shell: {pinned}"
 
 
+def test_no_program_data_is_pinned_inside_state() -> None:
+    """The same rule, one level down, where the guard above could not see.
+
+    `test_no_program_data_is_pinned_into_the_shell` walks the top-level arrays. It passed
+    for a whole session while `state` still carried the prototype's Mensores data:
+
+        usage:       {cover: 41, graph: 68, table: 52, doc: 12, settings: 9}
+        selectedRow: "mensores.quaestor._witness_client.submit_to_peer"
+        selected:    "specimen"
+
+    `usage` exists so a Setting can be retired on evidence rather than opinion; seeded with
+    invented counts it retires them on fiction, and reads as a measurement while doing it.
+    A qualified name is unmistakable -- two dots and no spaces -- so that is what this
+    looks for, rather than a list of words that would have to be kept by hand.
+    """
+    js = _read("shell.js")
+    body = js.split("const state = {", 1)[1].split("\n};", 1)[0]
+
+    qualified = [s for s in re.findall(r'"([^"]*)"', body)
+                 if s.count(".") >= 2 and " " not in s and len(s) > 8]
+    assert not qualified, f"qualified names pinned into state: {qualified}"
+
+    m = re.search(r"usage:\s*\{([^}]*)\}", body)
+    assert m, "usage is no longer an object literal in state; this test is blind"
+    assert not m.group(1).strip(), (
+        f"usage ships with counts already in it: {{{m.group(1).strip()}}} -- "
+        "a usage counter seeded with invented numbers retires settings on fiction"
+    )
+
+
+def test_a_reset_reports_every_setting_it_clears() -> None:
+    """A reset that under-reports itself is a silent omission, like an unstated filter.
+
+    `resetSettings` used to walk its own label table, so a setting added without a label
+    was cleared and never mentioned. It now walks the defaults; this keeps the labels
+    honest so the fallback stays a safety net rather than the normal case.
+    """
+    js = _read("settings.js")
+    defaults = set(re.findall(r"^  (\w+):", js.split("const DEFAULTS = {", 1)[1]
+                              .split("\n};", 1)[0], re.M))
+    named = set(re.findall(r"(\w+):\s*'", js.split("const named = {", 1)[1]
+                           .split("\n  };", 1)[0]))
+    assert defaults, "DEFAULTS changed shape -- this test is blind"
+    assert defaults <= named, (
+        f"settings with no label in the reset report: {sorted(defaults - named)} -- "
+        "they would be cleared and named only by their key"
+    )
+
+
 def test_the_shell_declares_nothing_const_that_the_store_owns() -> None:
     """`const` would also mean the loader cannot replace it -- a silent empty dashboard."""
     js = _read("shell.js")

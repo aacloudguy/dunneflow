@@ -1283,6 +1283,69 @@ function viewNaming() {
   </div>`;
 }
 
+/* ── the inspector ────────────────────────────────────────────────────────────
+ *
+ * One inspector, from two. The ratified design settled the *layout* and had one Mensores
+ * routine pinned into it as a permanent subject; `/api/node` and a separate `inspector.js`
+ * had the *data* and no design. Keeping both meant two implementations of the pane the
+ * whole tool points at, which is how the graph and the shell ended up as two applications.
+ *
+ * **Flow-first, not signature-first**, and the order is the argument the tool makes:
+ * how a thing is reached, what it does next, what it touches, and why it is there. The
+ * signature is demoted into a section of its own; WHAT and WHY are interleaved, because a
+ * comment belongs against the line it explains rather than pooled in a block at the end.
+ */
+
+/* Nothing is fetched twice for the same node: a repaint is not a reason to ask the server
+ * again, and the graph repaints on every camera stop. */
+let inspectorFor = null;
+
+async function loadNode(id) {
+  if (id === inspectorFor) return;
+  inspectorFor = id;
+  SPECIMEN = null;
+  render();
+  try {
+    const r = await fetch(`/api/node?id=${encodeURIComponent(id)}`);
+    if (!r.ok) throw new Error(`the server answered ${r.status}`);
+    const d = await r.json();
+    if (inspectorFor !== id) return;        // the reader moved on while this was in flight
+    SPECIMEN = d.found ? d : { notFound: true, id, reason: d.reason };
+  } catch (err) {
+    if (inspectorFor === id) SPECIMEN = { notFound: true, id, reason: err.message };
+  }
+  render();
+}
+
+/* Design rule 5: confidence is **shape**, not colour -- solid for CERTAIN, dashed for
+ * INFERRED. Rule 26: an external call is neither. Every call that did not resolve to a
+ * local routine was once stored INFERRED, but that is not the claim being made -- we are
+ * certain the call happens and simply cannot see the other end. Drawing the two the same
+ * way blurs exactly what rule 6 says never to blur, so an external carries its own mark
+ * and no confidence shape at all. */
+/* A qualified name has no spaces, so a browser breaks it wherever the box happens to end
+ * -- `resolve_session_id` became "resolve_session_ / id". It does have joints, though, so
+ * `<wbr>` marks them and the break lands on a dot. Escaped first, then marked: doing it the
+ * other way round would escape the markup we just added. */
+function breakable(qual) {
+  return esc(qual).split(".").join(".<wbr>");
+}
+
+function callBadge(c) {
+  if (c.external) return `<span class="conf badge external">EXTERNAL</span>`;
+  if (c.ambiguous) return `<span class="conf badge suspect">AMBIGUOUS</span>`;
+  return `<span class="conf badge ${c.confidence === "CERTAIN" ? "certain" : "inferred"}"
+    >${esc(c.confidence || "INFERRED")}</span>`;
+}
+
+/* Never a silent omission (design rule 1, and `LOST_EDGE` in another key). A list that has
+ * been cut says so, in counts, with the whole number beside the shown one. */
+function cut(shown, total, what) {
+  if (shown >= total) return "";
+  return `<div class="hint" style="margin-top:.35rem">Showing ${shown} of
+    ${total.toLocaleString()} ${what}.</div>`;
+}
+
 function viewInspector() {
   const s = SPECIMEN;
   /* Nothing selected is the ordinary state, not an error. The prototype could not reach
@@ -1290,86 +1353,198 @@ function viewInspector() {
      a real store threw on `SPECIMEN.outbound` and took the rest of `render()` with it. */
   if (!s) {
     return `<div class="insp-empty">
-      <p>Nothing selected.</p>
-      <p class="hint">Pick a way in from the cover, or a package from the navigator.
-         The inspector reads whatever the graph and the table are pointed at — it is one
-         selection, not three.</p>
+      <p>${inspectorFor ? "Reading…" : "Nothing selected."}</p>
+      <p class="hint">Pick a way in from the cover, a package from the navigator, or a node
+         in the graph. The inspector reads whatever the graph and the table are pointed at
+         — it is one selection, not three.</p>
     </div>`;
   }
+  if (s.notFound) {
+    /* A node the map does not hold is a fact about the map, and saying so is the whole
+       discipline: `(no rows)` is indistinguishable from a true empty answer. */
+    return `<div class="insp-empty">
+      <p>Not in this map.</p>
+      <p class="hint"><code>${esc(s.id)}</code><br>${esc(s.reason || "")}</p>
+    </div>`;
+  }
+
+  const id = s.identity || {};
+  const inn = s.in || { callers: [], entrypoints: [] };
+  const out = s.out || { calls: [] };
+  const t = s.touches || { boundaries: [], sql: [], net: [], artefacts: [] };
+  const gov = s.governance || { annotations: [], comments: [] };
   const showInf = !state.hideInferred;
-  const out = s.outbound.filter(o => showInf || o.conf === "CERTAIN");
 
-  const inBody = s.inbound.map(i => `
+  /* Comments are placed against the line they explain rather than pooled in a block --
+   * they are the only source of the governance layer, and a comment three sections away
+   * from the thing it is about has lost most of what made it worth keeping. */
+  const whyAt = new Map();
+  for (const c of gov.comments || []) {
+    if (!whyAt.has(c.line)) whyAt.set(c.line, c);
+  }
+  const why = (line) => {
+    const c = whyAt.get(line);
+    return c ? `<div class="why"><span class="ln">:${c.line}</span> ${esc(c.text)}</div>` : "";
+  };
+
+  /* ── IN: how this is reached ── */
+  const callers = inn.callers || [], eps = inn.entrypoints || [];
+  const inShown = callers.slice(0, 40);
+  const inBody = (eps.length ? eps.map(e => `
       <div class="flowitem">
-        <span class="arrow">\u2190</span>
-        <code>${esc(i.q)}</code>
-        <span class="conf badge ${i.conf === "CERTAIN" ? "certain" : "inferred"}">${esc(i.conf)}</span>
+        <span class="arrow">▸</span>
+        <code>${esc(e.name || e.command || e.id || "entrypoint")}</code>
+        <span class="conf badge certain">${esc(e.kind || "ENTRYPOINT")}</span>
+      </div>`).join("") : "")
+    + (inShown.length ? inShown.map(c => `
+      <div class="flowitem">
+        <span class="arrow">←</span>
+        <button class="gotonode" data-node="${esc(c.id || "")}"
+          title="${esc(c.qualname || c.name || "")}"
+          ><code>${esc(c.name || c.callee_expr)}${c.module
+              ? `<span class="dim">  ${esc(c.module)}</span>` : ""}</code></button>
+        ${callBadge(c)}
       </div>`).join("")
-    + `<div class="why"><span class="ln">:${s.intro.line}</span> ${s.intro.text}</div>`;
+      : (eps.length ? "" : `<div class="hint">Nothing in this map calls it. That is either a
+          way in, dead code, or a call DunneFlow cannot see — a dynamic dispatch, or a
+          language it does not read.</div>`))
+    + cut(inShown.length, callers.length, "callers")
+    + (id.docstring ? `<div class="why">${esc(String(id.docstring).split("\n")[0])}</div>` : "");
 
-  const outBody = out.map(o => `
+  /* ── OUT: what it does next ── */
+  const calls = (out.calls || []).filter(c => showInf || c.external || c.confidence === "CERTAIN");
+  const hiddenInf = (out.calls || []).length - calls.length;
+  const outShown = calls.slice(0, 60);
+  const outBody = (outShown.length ? outShown.map(c => `
       <div class="flowitem">
-        <span class="arrow">\u2192</span>
-        <code>${esc(o.q)}<span class="dim">  ${esc(o.mod)}</span></code>
-        <span class="conf badge ${o.conf === "CERTAIN" ? "certain" : "inferred"}">${esc(o.conf)}</span>
+        <span class="arrow">→</span>
+        ${c.id ? `<button class="gotonode" data-node="${esc(c.id)}"
+            title="${esc(c.qualname || c.name || "")}"><code>${
+            esc(c.name || c.callee_expr)}${c.module
+              ? `<span class="dim">  ${esc(c.module)}</span>` : ""}</code></button>`
+          : `<code>${esc(c.callee_expr)}${c.at_boundary
+              ? `<span class="dim">  at the boundary</span>` : ""}</code>`}
+        ${callBadge(c)}
       </div>
-      ${o.why ? `<div class="why"><span class="ln">:${o.why.line}</span> ${o.why.text}</div>` : ""}`).join("")
-    + (state.hideInferred
-        ? `<div style="font-size:.7rem;color:var(--sev-suspect);margin-top:.35rem">4 inferred calls hidden by your filter.</div>` : "");
+      ${why(c.line)}`).join("")
+      : `<div class="hint">It calls nothing this map can see.</div>`)
+    + cut(outShown.length, calls.length, "calls")
+    + (hiddenInf > 0
+        ? `<div style="font-size:.7rem;color:var(--sev-suspect);margin-top:.35rem"
+            >${hiddenInf} inferred call${hiddenInf === 1 ? "" : "s"} hidden by your filter.</div>`
+        : "");
 
-  const touchBody = s.touches.map(t => `
+  /* ── TOUCHES: what it reaches outside itself ── */
+  const touchRow = (glyph, kind, text, line) => `
       <div class="touchrow">
-        <span class="gl" aria-hidden="true">${t.gl}</span>
-        <span class="k">${esc(t.kind)}</span>
-        <span class="t">${esc(t.target)} <span class="dim" style="color:var(--text-faint)">:${t.line}</span></span>
-      </div>`).join("");
+        <span class="gl" aria-hidden="true">${glyph}</span>
+        <span class="k">${esc(kind)}</span>
+        <span class="t">${text}${line != null
+          ? ` <span class="dim" style="color:var(--text-faint)">:${line}</span>` : ""}</span>
+      </div>`;
+  const touches = [
+    ...(t.boundaries || []).map(b => touchRow(BKIND_GLYPH[b.kind] || "◇", b.kind,
+        `${esc(b.target)} <span class="dim">${esc(b.direction || "")}</span>`, b.line)),
+    /* Direction is the point of a SQL row: a table written twice as often as it is read is
+     * a doorway, and read/write is the distinction the database report is built on. */
+    ...(t.sql || []).map(q => touchRow("▤", q.operation || "SQL",
+        `${esc(q.table || q.statement || "")}`, q.line)),
+    /* The full network record, because design rule 8 says an external is a first-class
+     * node badged as outside our control, and what makes that useful is knowing the verb,
+     * the destination and whether anyone set a timeout. */
+    ...(t.net || []).map(nc => touchRow("◆", nc.protocol || "NET",
+        `${esc(nc.verb || "")} ${esc(nc.target || nc.host || "")} <span class="dim">${
+          nc.timeout ? `timeout ${esc(String(nc.timeout))}` : "no timeout"}${
+          nc.retries ? `, ${esc(String(nc.retries))} retries` : ""}</span>`, nc.line)),
+    /* A file the program names is not a boundary it touches: naming is a choice the
+     * authors made, touching is something the code does. */
+    ...(t.artefacts || []).map(a => touchRow("▣", a.kind || "ARTEFACT",
+        esc(a.name || a.path || ""), a.line)),
+  ];
+  const touchBody = touches.length ? touches.join("")
+    : `<div class="hint">It touches no boundary, table, remote or named file. Everything it
+       does, it does in memory.</div>`;
 
-  const govBody = `<div class="govchips">${s.gov.map(g => `<span class="govchip ${g.t}">${esc(g.v)}</span>`).join("")}</div>`;
+  /* ── GOVERNANCE: why it is there ── */
+  const anns = gov.annotations || [], comments = gov.comments || [];
+  const govBody = (anns.length
+      ? `<div class="govchips">${anns.map(a =>
+          `<span class="govchip ${esc(String(a.kind || "").toLowerCase())}"
+            >${esc(a.value)}</span>`).join("")}</div>`
+      : "")
+    + (comments.length
+        ? comments.slice(0, 40).map(c =>
+            `<div class="why"><span class="ln">:${c.line}</span> ${esc(c.text)}</div>`).join("")
+          + cut(Math.min(40, comments.length), comments.length, "comments")
+        : (anns.length ? "" : `<div class="hint">No annotations and no comments. The code
+            says what it does and nothing says why.</div>`));
 
-  const sigBody = `<pre class="srcblock"><span class="kw">def</span> _run_extract_mode(
-    ${esc(s.params).split(", ").join(",\n    ")}
-) -&gt; ${esc(s.ret)}:</pre>`;
+  /* ── the signature, demoted ── */
+  const params = s.params || [];
+  const sigBody = `<pre class="srcblock">${
+    id.is_async ? `<span class="kw">async </span>` : ""}<span class="kw">def</span> ${
+    esc(id.name || s.label)}(${params.length
+      ? "\n    " + params.map(p =>
+          esc(p.name) + (p.annotation ? `: ${esc(p.annotation)}` : "") +
+          (p.default ? ` = ${esc(p.default)}` : "")).join(",\n    ") + "\n"
+      : ""})${id.returns ? ` -&gt; ${esc(id.returns)}` : ""}:</pre>`;
+
+  const lines = (id.line_end && id.line_start) ? id.line_end - id.line_start + 1 : null;
+  const where = s.where || {};
+  const fileName = String(where.file || id.file || "").split("/").slice(-2).join("/");
 
   return `
     <div class="insp-head">
-      <h2>${esc(s.qual)}</h2>
-      <div class="loc">${esc(s.file)}:${esc(s.lines)}</div>
+      <h2>${breakable(id.qualname || s.label || s.id)}</h2>
+      <div class="loc">${esc(fileName)}${id.line_start
+        ? `:${id.line_start}–${id.line_end}` : ""}</div>
       <div class="tags">
         <span class="badge certain">ANALYZED</span>
-        ${state.ambient ? '<span class="badge suspect">! 1 lost edge</span>' : ""}
-        <span class="kind-tag">CLI COMMAND</span>
+        <span class="kind-tag">${esc(s.kind || "")}</span>
+        ${id.class_name ? `<span class="kind-tag">${esc(id.class_name)}</span>` : ""}
         <span style="margin-left:auto;display:flex;gap:.3rem">
-          ${pinBtn(s.qual, "263 lines, 90 comments, 41 governance ids")}
+          ${pinBtn(id.qualname || s.id, [
+            lines ? `${lines} lines` : null,
+            comments.length ? `${comments.length} comments` : null,
+            anns.length ? `${anns.length} governance ids` : null,
+          ].filter(Boolean).join(", ") || "no measurements")}
           <button class="linkbtn" id="collapseAll">Collapse all</button>
         </span>
       </div>
     </div>
-    ${sec("in", "In", null, inBody)}
-    ${sec("out", "Out", out.length, outBody)}
-    ${sec("touches", "Touches", s.touches.length, touchBody)}
-    ${sec("gov", "Governance", s.gov.length, govBody)}
-    ${threadsPanel(s.qual)}
-    ${sec("sig", "Signature", null, sigBody)}
+    ${sec("in", "In", callers.length + eps.length, inBody)}
+    ${sec("out", "Out", calls.length, outBody)}
+    ${sec("touches", "Touches", touches.length, touchBody)}
+    ${sec("gov", "Governance", anns.length + comments.length, govBody)}
+    ${threadsPanel(id.qualname || s.id)}
+    ${sec("sig", "Signature", params.length || null, sigBody)}
 
     <div class="insp-actions">
-      <button class="actbtn" id="srcBtn">Show source \u00b7 263 lines <span class="k">S</span></button>
-      <button class="actbtn">Data shapes it moves \u00b7 4 <span class="k">D</span></button>
-      <button class="actbtn">Full reach \u00b7 1,366 routines <span class="k">R</span></button>
-      <button class="actbtn">What breaks if this changes <span class="k">I</span></button>
-      <div id="srcPane" hidden>
-        <pre class="srcblock"><span class="ln">1181</span>    <span class="cm"># Plan 85-03 ([[ISS-184]]) \u2014 the PREREQUISITE GATE. Placement is</span>
-<span class="ln">1182</span>    <span class="cm"># load-bearing and was pinned at plan time rather than left to</span>
-<span class="ln">1183</span>    <span class="cm"># "as early as possible".</span>
-<span class="ln">1198</span>    _enforce_architect_prerequisite(spec_target, resume=resume)
-<span class="ln">1200</span>    db_path = resolve_audit_db_path()
-<span class="ln">1201</span>    <span class="cm"># D-80-07-CP2 = option-a. Suppression decided HERE, at</span>
-<span class="ln">1202</span>    <span class="cm"># construction, so it is visible in the diff and greppable.</span>
-<span class="ln">1204</span>    emit = _make_dry_run_suppressed_emit() <span class="kw">if</span> dry_run <span class="kw">else</span> _make_emit(db_path)</pre>
-        <p style="font-size:.7rem;color:var(--text-muted);margin:.35rem 0 0">
-          Read from the content-addressed sidecar \u2014 the source as measured on 2026-08-27,
-          not as the tree stands now.</p>
-      </div>
+      <button class="actbtn" id="srcBtn">${s.source && s.source.available
+        ? `Show source · ${(s.source.lines || []).length} lines`
+        : "Source not stored"} <span class="k">S</span></button>
+      <div id="srcPane" hidden>${srcPane(s)}</div>
     </div>`;
+}
+
+/* The source as it was *measured*, not as the tree stands now. That distinction is the
+ * whole reason for the content-addressed sidecar, and it is worth saying on the page:
+ * a map that quietly showed today's file beside yesterday's facts would be wrong in the
+ * one way nobody would think to check. */
+function srcPane(s) {
+  const src = s.source;
+  if (!src || !src.available) {
+    return `<p class="hint">This map was written with <code>--no-source</code>, so the
+      bodies are not here. The facts above were still measured from the file.</p>`;
+  }
+  const focus = new Set(src.focus || []);
+  const body = (src.lines || []).map(l =>
+    `<span class="ln">${l.n}</span>${focus.has(l.n) ? "<mark>" : ""}${
+      esc(l.text)}${focus.has(l.n) ? "</mark>" : ""}`).join("\n");
+  return `<pre class="srcblock">${body}</pre>
+    <p style="font-size:.7rem;color:var(--text-muted);margin:.35rem 0 0">
+      Read from the content-addressed sidecar — the source as measured when this map was
+      built, not as the tree stands now.</p>`;
 }
 
 /* ═══ render ═══ */
@@ -1492,6 +1667,24 @@ function render() {
 }
 
 function wire() {
+  /* Following a caller or a callee moves the graph as well: one selection, two views.
+     The trail this leaves is what makes a detour free -- you can always click back along
+     the way you came, which is the argument for exploring sideways rather than only
+     drilling down.
+
+     A node the graph does not draw is a real case, not an error: constants can be switched
+     off, and an external whose plate is folded away has no index. The inspector still
+     shows it. Refusing to *show* something because it cannot be *drawn* would make the
+     picture the limit of the map. */
+  $$(".gotonode").forEach(b => b.addEventListener("click", () => {
+    const id = b.dataset.node;
+    if (!id) return;
+    const i = Graph.mounted() ? Graph.indexOfId(id) : -1;
+    if (i >= 0) Graph.togglePick({ kind: "node", index: i }, "replace");
+    else { loadNode(id); }
+    pushTrail(state.view, b.textContent.trim(), "followed from the inspector");
+  }));
+
   /* cover → graph */
   $$("[data-ep]").forEach(b => b.addEventListener("click", () => {
     state.view = "graph"; state.mode = "graph"; used("graph"); ensureGraph(); render();
@@ -2179,6 +2372,8 @@ async function ensureGraph() {
 function onGraphSelect(sel) {
   state.picks = sel.picks;
   state.selected = sel.node ? sel.node.id : null;
+  if (sel.node) loadNode(sel.node.id);
+  else { inspectorFor = null; SPECIMEN = null; }
   persist();
   render();
 }

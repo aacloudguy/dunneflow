@@ -659,6 +659,20 @@ table.grid tbody tr[aria-selected="true"] td:first-child { box-shadow: inset .18
 .flowitem .arrow { color: var(--text-faint); font-family: var(--f-mono); flex: none; }
 .flowitem code { font-family: var(--f-mono); font-size: .74rem; word-break: break-word; }
 .flowitem .conf { margin-left: auto; flex: none; }
+/* A caller or callee is a doorway, so it looks like one. `code` inside keeps the
+ * monospace the rest of the flow list uses; the button exists for the click and the
+ * focus ring, not for a different appearance. */
+.gotonode { background: none; border: 0; padding: 0; font: inherit; color: inherit;
+            text-align: left; cursor: pointer; min-width: 0; overflow: hidden;
+            text-overflow: ellipsis; white-space: nowrap; }
+/* Never mid-token. A qualified name has no spaces, so a wrap breaks it wherever the box
+ * happens to end -- `AnthropicAdrDrafterProvider` became "Anthropi / cAdrDrafterProvider",
+ * which is the same defect that once read "do_PO / ST" and is invisible to every check
+ * that reads the DOM. The row shows the routine's own name with its module dimmed beside
+ * it, elided rather than wrapped, and the full path is in the title. */
+.flowitem code { white-space: nowrap; }
+.gotonode:hover code { text-decoration: underline; text-underline-offset: 0.125rem; }
+.srcblock mark { background: var(--accent-soft); color: var(--accent-text); }
 .flowitem .dim { color: var(--text-faint); }
 
 /* THE WHY — human prose, set in serif, indented against what it explains */

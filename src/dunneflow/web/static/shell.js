@@ -260,13 +260,28 @@ $$("#modes button").forEach(b => b.addEventListener("click", () => {
 }));
 
 /* ═══ graph layout: two drawings of one selection ═══ */
-$$("#layouts button").forEach(b => b.addEventListener("click", () => {
+/* Delegated, because the same control is drawn in two places -- the crumb bar while you
+ * are in graph mode, and Settings while you are deciding what to open on. Two handlers for
+ * one control is two things to keep in step, and the one that drifts is the one nobody
+ * clicks while testing. */
+document.addEventListener("click", (ev) => {
+  const b = ev.target.closest("[data-layout]");
+  if (!b) return;
   state.graphLayout = b.dataset.layout;
   used("layout:" + state.graphLayout);
-  pushTrail("graph", b.textContent.trim());
+  if (state.view === "graph") pushTrail("graph", b.textContent.trim());
   if (state.graphLayout === "stack") ensureGraph();
   render();
-}));
+});
+
+document.addEventListener("click", (ev) => {
+  const b = ev.target.closest("[data-graphtheme]");
+  if (!b) return;
+  state.graphTheme = b.dataset.graphtheme;
+  used("graphtheme:" + state.graphTheme);
+  applyGraphPalette();
+  render();
+});
 
 /* ═══ settings ═══ */
 $("#settingsBtn").addEventListener("click", () => {
@@ -928,6 +943,39 @@ function viewSettings() {
           <div class="seg" role="group" aria-label="Menu order">
             <button data-menuorder="waysin"  aria-pressed="${state.menuOrder === "waysin"}">Ways in first</button>
             <button data-menuorder="explore" aria-pressed="${state.menuOrder === "explore"}">Explore first</button>
+          </div>
+        </div>
+
+        <div class="setrow">
+          <div><div class="lbl">The graph's ground</div>
+            <div class="desc">The stack was built against near-black and every colour in it
+              was chosen there — the node colours, the fifty-two plate hues, the dimming,
+              and the highlight that makes a dot read as a ball. <b>Follow the theme</b>
+              derives all of it again for a pale ground, where a node has to be darker than
+              its surroundings and shading works downward from the base colour rather than
+              up. <b>Always dark</b> keeps the stack on black inside a light page.<br><br>
+              Genuinely arguable — some people much prefer a dark graph whatever the rest of
+              the interface does — so both exist and the usage counter decides.</div></div>
+          <div class="seg" role="group" aria-label="The graph's ground">
+            <button data-graphtheme="follow" aria-pressed="${state.graphTheme === "follow"}"
+              >Follow the theme</button>
+            <button data-graphtheme="dark" aria-pressed="${state.graphTheme === "dark"}"
+              >Always dark</button>
+          </div>
+        </div>
+
+        <div class="setrow">
+          <div><div class="lbl">Graph layout</div>
+            <div class="desc">Two drawings of the same selection. The <b>stack</b> holds
+              every routine — nine thousand nodes on fifty-two plates — and answers what is
+              in here. The <b>overview</b> holds one box per package and answers what the
+              program is shaped like. Neither replaces the other, and this only picks which
+              one graph mode opens on.</div></div>
+          <div class="seg" role="group" aria-label="Graph layout">
+            <button data-layout="stack" aria-pressed="${state.graphLayout === "stack"}"
+              >Stack</button>
+            <button data-layout="packages" aria-pressed="${state.graphLayout === "packages"}"
+              >Overview</button>
           </div>
         </div>
 
@@ -2202,7 +2250,7 @@ document.addEventListener("keydown", (e) => {
    plus those read as companions inside another handler, those bound by element
    selector rather than by attribute, and the structural markers that only style or
    identify and are never clicked. */
-const WIRED_ATTRS = new Set(["aiop", "airun", "bound", "cite", "citeidx", "closeviewer", "col", "crumb", "curi", "cursor", "den", "drop", "egress", "ep", "disk", "gact", "gosev", "goto", "layout", "pkgnode", "pkgpick", "manifest", "menuorder", "mode", "nav", "nav2", "node", "open", "pin", "pinnote", "resize", "row", "scale-set", "sec", "sev", "sevnav", "sort", "sqlshow", "start", "step", "theme", "theme-set", "thread", "threadwhy", "toggle", "trail", "trailback", "trailcap", "trailclear", "triage", "triaged", "unpin", "viewtab"]);
+const WIRED_ATTRS = new Set(["aiop", "airun", "bound", "cite", "citeidx", "closeviewer", "col", "crumb", "curi", "cursor", "den", "drop", "egress", "ep", "disk", "gact", "gosev", "goto", "graphtheme", "layout", "pkgnode", "pkgpick", "manifest", "menuorder", "mode", "nav", "nav2", "node", "open", "pin", "pinnote", "resize", "row", "scale-set", "sec", "sev", "sevnav", "sort", "sqlshow", "start", "step", "theme", "theme-set", "thread", "threadwhy", "toggle", "trail", "trailback", "trailcap", "trailclear", "triage", "triaged", "unpin", "viewtab"]);
 
 function selfCheck() {
   const problems = [];

@@ -572,8 +572,29 @@ function buildLayers(d) {
    * arithmetic operations per fragment. Real geometry would have cost fifteen thousand
    * mesh instances and a lighting pass for a difference nobody can see. */
   const spheres = size >= SPHERE_FROM;
+  /* The id carries the shading, and that is load-bearing rather than tidy.
+   *
+   * A layer's shader is assembled once, when its model is built. deck.gl matches an
+   * incoming layer to the drawn one **by id** and updates it in place, so a layer that
+   * first rendered without the sphere extension -- which is every session, because the
+   * default node size is below the threshold -- keeps its plain shader forever. Passing
+   * the extension later changed the props and nothing else: `getShaders()` was never
+   * asked again, the extension was demonstrably attached, and the nodes stayed flat discs.
+   *
+   * Changing the id makes it a different layer, so a new model is built and the shader is
+   * assembled again. It costs one re-upload of the position, colour and radius buffers,
+   * which happens when the reader crosses the size threshold or switches theme -- not per
+   * frame, and not while dragging within one side of the threshold.
+   *
+   * This is the third time the sphere shading has silently done nothing, and all three
+   * failed the same way: an unrecognised inject hook, a GLSL name collision, and now a
+   * shader that was never reassembled. None of them is an error. Each compiles, draws, and
+   * skips the effect -- and each was found only by looking at one node close up. */
+  const shadingId = spheres
+    ? `-sphere-${PALETTE.ambient}-${PALETTE.diffuse}-${PALETTE.specular}`
+    : '';
   layers.push(new ScatterplotLayer({
-    id: 'nodes', coordinateSystem: CARTESIAN, data: gpuData(d).nodes,
+    id: `nodes${shadingId}`, coordinateSystem: CARTESIAN, data: gpuData(d).nodes,
     radiusUnits: 'pixels', radiusMinPixels: 0, radiusMaxPixels: DOT_MAX * 2 * size,
     pickable: true, autoHighlight: true, highlightColor: [255, 255, 255, 255],
     /* Billboarded: the disc always faces the camera.
@@ -589,7 +610,7 @@ function buildLayers(d) {
      * moved with the model would be better still and is worth doing later; a fixed one
      * on a billboard is already convincing, and costs nothing. */
     billboard: true,
-    extensions: spheres ? [new Shading.SphereShadingExtension({
+    extensions: spheres ? [Shading.SphereShadingExtension({
       ambient: PALETTE.ambient, diffuse: PALETTE.diffuse, specular: PALETTE.specular,
     })] : [],
     updateTriggers: { getFillColor: [opts.colorBy, opts.filterMode] },

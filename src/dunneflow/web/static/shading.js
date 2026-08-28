@@ -43,16 +43,30 @@ function shaderFor(ambient, diffuse, specular) {
        * and the effect silently never happens, which is exactly the class of no-op this
        * project keeps paying for. Verified by looking at a node close up: flat colour meant
        * the hook was wrong, not the maths. */
+      /* Every local is prefixed `df`, and that is not a style choice.
+       *
+       * This block is injected into deck.gl's own fragment shader, so its declarations
+       * land in a scope that already has names in it. `vec3 normal = ...` collided with
+       * one, the block failed to compile, and the layer went on drawing flat discs --
+       * through a benchmark that reported "spheres" and a table in CLAUDE.md that
+       * recorded frame rates for geometry that was never shaded.
+       *
+       * That is rule 22's own lesson arriving a second time by a different route: the
+       * first version failed because the inject hook was named wrong, and an unrecognised
+       * hook is not an error. A name collision is not an error either. Both compile, both
+       * draw, and neither does anything. Found the same way as the first one -- by looking
+       * at a single node close up. */
       'fs:DECKGL_FILTER_COLOR': `
         // geometry.uv spans the unit circle, so the near hemisphere's normal is free.
-        float r2 = dot(geometry.uv, geometry.uv);
-        vec3 normal = vec3(geometry.uv, sqrt(max(0.0, 1.0 - r2)));
-        vec3 lightDir = normalize(vec3(-0.35, 0.45, 0.82));
-        float lambert = clamp(dot(normal, lightDir), 0.0, 1.0);
+        float dfR2 = dot(geometry.uv, geometry.uv);
+        vec3 dfNormal = vec3(geometry.uv, sqrt(max(0.0, 1.0 - dfR2)));
+        vec3 dfLight = normalize(vec3(-0.35, 0.45, 0.82));
+        float dfLambert = clamp(dot(dfNormal, dfLight), 0.0, 1.0);
         // A little ambient so the dark side stays a colour rather than a hole, and a tight
         // specular so the ball reads as round rather than merely shaded.
-        float spec = pow(lambert, 24.0) * ${specular.toFixed(4)};
-        color.rgb = color.rgb * (${ambient.toFixed(4)} + ${diffuse.toFixed(4)} * lambert) + spec;
+        float dfSpec = pow(dfLambert, 24.0) * ${specular.toFixed(4)};
+        color.rgb = color.rgb * (${ambient.toFixed(4)} + ${diffuse.toFixed(4)} * dfLambert)
+                    + dfSpec;
       `,
     },
   };
@@ -62,30 +76,48 @@ function shaderFor(ambient, diffuse, specular) {
  * with no arguments shades exactly as it always did. */
 const DEFAULTS = { ambient: 0.42, diffuse: 0.72, specular: 0.5 };
 
-class SphereShadingExtension extends deck.LayerExtension {
-  constructor(opts = {}) {
-    super();
-    const { ambient, diffuse, specular } = { ...DEFAULTS, ...opts };
-    this.shading = { ambient, diffuse, specular };
-    this._shaders = shaderFor(ambient, diffuse, specular);
-  }
+/* **One extension class per lighting, cached by it.**
+ *
+ * This looks like a strange way to write it, and it is the only arrangement that actually
+ * shades. deck.gl resolves an extension's shader once per extension *class*: a second
+ * instance of the same class with different `getShaders()` output reuses the first
+ * assembly. So one class carrying values in a field renders flat discs no matter what the
+ * values are -- the extension is attached, `getShaders()` returns the right source, the
+ * numbers are right, and the picture does not change.
+ *
+ * Established by experiment, not by reading: an identical shader body in a freshly
+ * declared class shades correctly, and in the shared class it does not. A distinct class
+ * per lighting is therefore what a distinct shader requires. There are two of them in
+ * practice -- light and dark -- so the cache holds two entries for the life of the page.
+ *
+ * It is the third silent no-op this one effect has produced. The hook name was wrong, then
+ * a GLSL local collided with deck.gl's own, and now the shader was never reassembled. Not
+ * one of the three is an error: each compiles, each draws, and each skips the effect. All
+ * three were found by looking closely at a single node, which is the only instrument that
+ * has ever detected any of them. */
+const classes = new Map();
 
-  getShaders() {
-    return this._shaders;
-  }
+function extensionClass(ambient, diffuse, specular) {
+  const key = `${ambient}|${diffuse}|${specular}`;
+  let cls = classes.get(key);
+  if (cls) return cls;
 
-  /* deck.gl compares extensions to decide whether a layer can be updated in place rather
-   * than rebuilt. Two extensions with different lighting must not compare equal, or a
-   * theme switch would leave the old shader on screen -- the same silent no-op the hook
-   * name once caused, arriving by a different route. */
-  equals(other) {
-    return other instanceof SphereShadingExtension &&
-           other.shading.ambient === this.shading.ambient &&
-           other.shading.diffuse === this.shading.diffuse &&
-           other.shading.specular === this.shading.specular;
-  }
+  const shaders = shaderFor(ambient, diffuse, specular);
+  cls = class extends deck.LayerExtension {
+    getShaders() { return shaders; }
+  };
+  cls.extensionName = shaders.name;
+  cls.shading = { ambient, diffuse, specular };
+  classes.set(key, cls);
+  return cls;
 }
-SphereShadingExtension.extensionName = 'SphereShadingExtension';
 
-window.DunneFlowShading = { SphereShadingExtension };
+/* Kept as a function rather than a class so callers read the same as before. */
+function SphereShadingExtension(opts = {}) {
+  const { ambient, diffuse, specular } = { ...DEFAULTS, ...opts };
+  const Cls = extensionClass(ambient, diffuse, specular);
+  return new Cls();
+}
+
+window.DunneFlowShading = { SphereShadingExtension, extensionClass };
 })();

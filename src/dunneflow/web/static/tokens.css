@@ -67,10 +67,19 @@
      its own hue. */
   --graph-disk-s: 0.70;  --graph-disk-l: 0.42;
   --graph-ext-s:  0.55;  --graph-ext-l:  0.58;
-  /* Sphere lighting. On a light ground the ball darkens away from the light and an
-     additive white highlight is invisible, so the ambient floor sits above 1 and the
-     diffuse term is negative -- shading *down* from the base colour. */
-  --graph-ambient: 1.06;  --graph-diffuse: -0.34;  --graph-specular: 0.0;
+  /* Sphere lighting. The falloff is the same shape as on dark -- a ball is darker where it
+     curves away from the light, whatever it sits on -- and two things change.
+
+     The **specular goes**: an additive white highlight on a pale ground is invisible where
+     it lands and washes the node where it does not.
+
+     And the **ambient must stay below 1**. Inverting the diffuse was tried first, on the
+     reasoning that a ball on light "darkens toward the light", and it is simply wrong: it
+     lit the rim and shaded the centre, so nodes read as crescents rather than balls. Worse,
+     an ambient above 1 multiplied the dim colour past white and the unselected nodes blew
+     out into pale blobs. Found by looking at one close up, which is the only way this kind
+     of thing is ever found. */
+  --graph-ambient: 0.55;  --graph-diffuse: 0.55;  --graph-specular: 0.0;
 
   /* the blanket multiplier — every dimension below is rem, so this
      one value resizes type, columns, rows, padding, icons and graph */

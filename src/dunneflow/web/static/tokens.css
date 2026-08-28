@@ -1264,6 +1264,29 @@ kbd { font-family: var(--f-mono); font-size: .66rem; background: var(--sunken);
 .exceptlist { margin: .25rem 0 0; padding-left: 1.1rem; font-size: .74rem; }
 .exceptlist li { margin: .12rem 0; color: var(--text); }
 
+/* A group heading over conventions of one kind. Deliberately not `.excepthead`, which is
+   amber because it heads exceptions -- reusing it would paint every heading on the page
+   the colour that means "look here". Colour is the scarcest channel (design rule 4). */
+.convgroup { display: flex; flex-direction: column; gap: .5rem; }
+.convgroup-head { font-size: .68rem; font-weight: 700; letter-spacing: .07em;
+  text-transform: uppercase; color: var(--text-muted); margin-top: .35rem; }
+.gaprow { display: grid; grid-template-columns: minmax(0, 12rem) 1fr; gap: .5rem;
+  align-items: baseline; padding: .3rem 0; border-top: 1px solid var(--border); font-size: .8rem; }
+.gaprow:first-child { border-top: 0; }
+
+/* Every word the program uses and does not define -- over a thousand of them on a real
+   codebase, and never bounded (rule 8). Columns rather than a cut list: the complete set
+   is the finding, and a shorter one would read as a smaller program. */
+.undeflist { list-style: none; margin: 0; padding: 0; columns: 3; column-gap: 1rem;
+  font-size: .74rem; }
+.undeflist li { break-inside: avoid; display: flex; gap: .35rem; align-items: baseline;
+  padding: .1rem 0; }
+.undeflist .hint { font-size: .66rem; }
+@media (max-width: 1088px) { .undeflist { columns: 2; } }
+
+.viewer-absent { padding: .9rem .75rem; font-size: .76rem; color: var(--text-muted);
+  line-height: 1.5; }
+
 /* ═══ settings ═══ */
 .settings { max-width: 46rem; display: flex; flex-direction: column; gap: .875rem; }
 .setrow {

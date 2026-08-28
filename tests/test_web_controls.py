@@ -206,8 +206,12 @@ def test_hidden_actually_hides() -> None:
 # program's *name* while this data said `disceptator`. Membership here is structural and
 # cannot be evaded that way.
 PER_PROGRAM = ["ENTRYPOINTS", "BOUNDARIES", "PKGS", "TABLES", "ROUTINES",
-               "ANOMALIES", "TERMS", "CONVENTIONS", "MANIFEST", "CURIOSITIES",
-               "PROVENANCE", "THREADS"]
+               "ANOMALIES", "TERMS", "UNDEFINED", "CONVENTIONS", "VOCAB", "MANIFEST",
+               "CURIOSITIES", "THREADS"]
+# `PROVENANCE` was here and is gone rather than renamed: it held every source span of every
+# glossary citation, and the viewer fetches one span from `/api/source` when a citation is
+# opened. This list is the record that it left deliberately -- the guard above fails on a
+# name it cannot find, which is how a rename is caught.
 
 
 def test_no_program_data_is_pinned_into_the_shell() -> None:
@@ -1103,4 +1107,121 @@ def test_asking_where_the_selection_is_cannot_throw() -> None:
     assert re.search(r"\btry\b", body) and re.search(r"\bcatch\b", body), (
         "selectionOnScreen calls getViewports() unguarded -- deck.gl asserts inside it "
         "before its first frame, and the throw takes out the rest of selectFromNav"
+    )
+
+
+# ------------------------------------------------- the two vocabulary lanes --- #
+
+def _fn(js: str, name: str) -> str:
+    """One function's source, from its `function` line to the next one at column 0."""
+    start = js.index(f"function {name}(")
+    rest = js[start:]
+    end = rest.find("\nfunction ", 1)
+    return rest if end < 0 else rest[:end]
+
+
+def _served_keys(py: str, fn: str) -> set[str]:
+    """The keys one `vocabulary.py` builder puts on the wire."""
+    start = py.index(f"def {fn}(")
+    body = py[start:]
+    nxt = body.find("\ndef ", 1)
+    return set(re.findall(r'^\s*"(\w+)":', body if nxt < 0 else body[:nxt], re.M))
+
+
+def test_the_vocabulary_views_read_the_fields_the_server_sends() -> None:
+    """The defect these two pages sat unported for, made into a check.
+
+    Both views were written against the ratified prototype's shape and the server sends a
+    different one -- `{glob, holds, total, rating, exceptions: [{name, where}]}` against
+    `{pattern, ok, n, exceptions: [str]}`, and a term's four hand-named document slots
+    against however many `senses` anything actually said. That is *worse* than an unported
+    page: `cv.ok` is `undefined`, `(cv.ok / cv.n) * 100` is `NaN`, and a percentage bar
+    renders at zero width beside a claim that is perfectly true. Nothing throws.
+
+    So the field names are checked against the ones `vocabulary.py` emits, in that
+    direction: a view may leave a served field unread (`uses` is a real example -- the
+    page shows `used_as`, which is the same fact in a form a reader wants), but a view
+    that reads a field the server does not send is silently rendering nothing.
+    """
+    js = _read("shell.js")
+    py = (STATIC.parent / "vocabulary.py").read_text(encoding="utf-8")
+
+    conv = _served_keys(py, "measure_naming")
+    assert {"glob", "holds", "total", "rating", "sql"} <= conv, (
+        "measure_naming changed shape -- this test is blind"
+    )
+    read = set(re.findall(r"\bcv\.(\w+)", _fn(js, "conventionPanel")))
+    assert read, "conventionPanel reads nothing off a convention -- this test is blind"
+    assert read <= conv | {"exceptions"}, (
+        f"the naming view reads fields the server does not send: {sorted(read - conv)}"
+    )
+
+    sense = _served_keys(py, "bind_glossary")
+    assert {"senses", "used_as", "provenance", "definition", "source", "line"} <= sense, (
+        "bind_glossary changed shape -- this test is blind"
+    )
+    for fn in ("senseRow", "viewerPanel"):
+        got = set(re.findall(r"\bs\.(\w+)", _fn(js, fn)))
+        assert got, f"{fn} reads nothing off a sense -- this test is blind"
+        assert got <= sense, (
+            f"{fn} reads sense fields the server does not send: {sorted(got - sense)}"
+        )
+
+
+def test_every_route_to_a_lane_can_cause_its_fetch() -> None:
+    """Five things route to these two pages and a fetch wired to one of them is a page
+    that works from one direction and says "not asked for yet" from the other four.
+
+    The navigator, the breadcrumb, `data-goto`, a curiosity and a trail step all set
+    `state.view`, so the ask belongs where the view is *painted* rather than at any of
+    them. This asserts the render dispatch reaches it, and that the one function it
+    reaches covers both lanes -- half of it wired is the failure that looks like working
+    code, because the page a session happens to open first is fine.
+    """
+    js = _read("shell.js")
+    dispatch = js.split("else if (state.view === \"glossary\")", 1)[1].split("\n\n", 1)[0]
+    assert dispatch.count("ensureVocabulary()") >= 2, (
+        "a lane is painted without anything asking for its data; it would show "
+        "\"not asked for yet\" forever"
+    )
+    body = _fn(js, "ensureVocabulary")
+    for loader in ("loadGlossary", "loadNaming"):
+        assert loader in body, f"ensureVocabulary never calls {loader}"
+    assert body.count(".then(render)") >= 2, (
+        "a lane is fetched and never repainted -- the data arrives behind a page that "
+        "already said it had none"
+    )
+
+
+def test_a_lane_count_never_comes_from_an_array_nobody_fetched() -> None:
+    """`TERMS.length` beside "Glossary" is zero until the page is opened.
+
+    The row then reads as *nothing here*, which is the opposite of what is true, and it is
+    the same confusion the whole port exists to remove: a count of nothing and an absent
+    count are different claims. The sizes ride with the cover; the bodies do not.
+    """
+    js = _read("shell.js")
+    nav = js.split('nav: "glossary"', 1)[1].split("]", 1)[0]
+    assert "TERMS.length" not in nav and "CONVENTIONS.length" not in nav, (
+        "a navigator count is taken from a lane array, which is empty until that lane's "
+        "page has been opened"
+    )
+    assert "vocabCount(" in nav, "the navigator counts are not taken from the cover"
+    assert '"vocabulary"' in (STATIC.parent / "cover.py").read_text(encoding="utf-8"), (
+        "the cover no longer carries the vocabulary sizes the navigator reads"
+    )
+
+
+def test_a_lane_says_which_of_the_four_states_it_is_in() -> None:
+    """"Not asked for", "on its way", "the server refused" and "there is nothing here"
+    are four claims and a blank panel states the wrong one whichever it is.
+
+    This is the whole reason the unported pages were written to say so rather than render
+    an empty grid, and the reason survives the port -- it just has more states now.
+    """
+    body = _fn(_read("shell.js"), "laneState")
+    for phrase in ("loading", "failed"):
+        assert phrase in body, f"laneState does not distinguish {phrase!r}"
+    assert "has not been asked for yet" in body, (
+        "laneState cannot say a lane was never asked for, so it looks like an empty one"
     )

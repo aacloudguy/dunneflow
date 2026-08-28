@@ -475,7 +475,6 @@ def serve(out_dir: Path, *, port: int = 8787, open_browser: bool = True,
     live = _Live(graph_db, out_dir / "source.db")
     model = build(live.store)
     payload = columnar(model)
-    live.cover = build_cover(live.store, live.source, out_dir.name)
 
     # The program's own words, both lanes, computed once.
     #
@@ -502,6 +501,16 @@ def serve(out_dir: Path, *, port: int = 8787, open_browser: bool = True,
     emit(f"{len(live.naming['conventions'])} naming conventions measured; "
          f"{live.glossary['coverage'][0]:,} of {live.glossary['coverage'][1]:,} "
          f"terms defined somewhere")
+
+    # After the two lanes, not before, so the first screen can state their sizes. The
+    # bodies stay where they are -- a quarter of a megabyte between them, fetched when
+    # their pages are opened -- and only the three counts travel with the cover.
+    defined, total = live.glossary["coverage"]
+    live.cover = build_cover(live.store, live.source, out_dir.name, vocabulary={
+        "conventions": len(live.naming["conventions"]),
+        "terms": total,
+        "defined": defined,
+    })
 
     # Named so the browser can key stored settings per program. A disk order and a set of
     # colours worked out for one codebase mean nothing in another, and silently applying

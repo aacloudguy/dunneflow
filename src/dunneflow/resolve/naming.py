@@ -464,7 +464,7 @@ def _affix_conventions(
                 out.append(Convention(
                     kind="AFFIX",
                     claim=f"A {noun} {position} `{affix}` is {prop}.",
-                    population=f"{noun}s {position} `{affix}`",
+                    population=f"{plural} {position} `{affix}`",
                     total=len(keys),
                     holds=len(holds),
                     exceptions=sorted(

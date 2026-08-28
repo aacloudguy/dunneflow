@@ -159,6 +159,20 @@ of which the two vocabulary lanes are 2.5 s:
 | …of which the naming pass | | 0.4 s |
 | …of which the glossary pass | | 2.1 s |
 
+The two lanes' **bodies** are fetched when their page is opened — 44 KB and 190 KB — while
+their sizes ride with the cover, because the navigator states a count beside every other row
+and a blank there reads as *nothing here*. Measured on the glossary, 1,207 words with 60
+defined and 1,147 not:
+
+| Measure | Budget | Measured 2026-08-28 |
+|---|---|---|
+| Full page render | < 100 ms | 51 ms |
+| One keystroke in the term filter | < 30 ms | 9 ms |
+
+The filter was **412 ms** per keystroke until it stopped calling `render()`, which rewrites
+the centre pane, the inspector, the navigator and the trail and then puts the caret back in
+the field it has just destroyed. The caret restoration was the tell.
+
 Both lanes are paid for **at start rather than on first use**, and that is a decision
 rather than an accident. A vocabulary thread is part of `/api/threads`, which is asked on
 every selection, so a lazy first call would stall the reading loop on the first click of
@@ -699,6 +713,24 @@ rule of that number — a blank canvas must say why it is blank — which does e
     depends on when it runs needs a counterpart that does not run at all**, so the roster is
     now derived from the source, generated markup included; the existing guard reads
     `index.html`, and every one of these five is written by JavaScript.
+
+44. **A live control reading a field the server does not send renders nothing and throws
+    nothing.** The glossary and naming pages were the ratified prototype's, written against
+    `{pattern, ok, n, exceptions: [str]}` while the server sends `{glob, holds, total,
+    rating, exceptions: [{name, where}]}`. That is *worse* than an unported page: `cv.ok /
+    cv.n` is `NaN`, the percentage bar renders at zero width beside a claim that is perfectly
+    true, and nothing anywhere fails. Both pages were held back saying so, which was right,
+    and neither existing guard had a name for the shape — a dead control renders and does
+    nothing (rule 30), a dead setting is read by nothing (design rule 16), a dead variable is
+    assigned by nothing (rule 35), and this one **works**, on data that is not there.
+
+    The check reads the served key names out of the builder and the accessed names out of the
+    view, and runs in one direction only. A view may leave a served field unread — the
+    glossary sends `uses` and the page shows `used_as`, which is the same fact in the form a
+    reader wants — but a view reading a field nothing sends is rendering a blank while looking
+    finished. Its companion, found in the same edit and the same shape one layer down: a
+    string the code composes is **prose the moment something prints it**, so `f"{noun}s"`
+    stood as `classs ending in \`Error\`` for as long as no page displayed it.
 
 ## Anomalies: the discipline
 

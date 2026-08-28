@@ -5,7 +5,7 @@ It exists so a fresh context can be useful in a few minutes instead of an hour.
 
 | Read | For |
 |---|---|
-| `CLAUDE.md` | The rules. 43 engineering rules and 26 dashboard design rules, each earned from a false result on real code. **Binding.** |
+| `CLAUDE.md` | The rules. 44 engineering rules and 26 dashboard design rules, each earned from a false result on real code. **Binding.** |
 | `HANDOFF.md` | The chronological record — what was built when, what it cost, what broke. ~1,700 lines. Read *sections*, not the whole thing. |
 | **this file** | Where things are, what is done, what we are doing now, what not to re-open. |
 | Artifact `f993d319-d2b7-4217-9130-cdbba698d1bc` | The ratified dashboard design — a complete working UI, the source of truth for every view. Read it with the **Artifact tool**, not from a screenshot. |
@@ -93,13 +93,55 @@ of it back.
 project profile · document mode's narrative view · packaging as a binary · any language
 but Python.
 
-**Built but not on screen:** the glossary and naming *pages*. Both lanes are computed at
-start and served (`/api/naming`, `/api/glossary`), and the graph already reads them — the two
-views were written against the prototype's field shape and are not ported, so they say so
-rather than rendering the real data wrongly. `CURIOSITIES` is beside them: `threads.py`
-computes outliers per package already, and running that program-wide is most of that view.
+**Built but not on screen:** `CURIOSITIES`. `threads.py` computes the outlier family per
+package already — most commented, most called, deepest closure, most lopsided table — and
+running that program-wide is most of design rule 15's doorway panel. It says honestly that it
+is not computed yet.
 
 ## What we are doing now
+
+**The glossary and naming pages are ported — 2026-08-28.** See `HANDOFF.md` 5n. They were the
+last two screens admitting to being unported: both lanes were computed, tested and served, and
+the two views were still the prototype's, written against a shape the server does not send.
+
+- **A convention is followable.** `glob` is the same string the exceptions query is built from
+  (rule 41), so *Show all 99 in the graph* on `*_cmd` selects exactly the 99 the claim was
+  measured over, and the trail records it. The grade leads and the percentage is gone —
+  `naming.py` says why: *a percentage implies a precision this does not have*.
+- **A term shows however many senses anything said about it**, each with its provenance, file
+  and line — not the prototype's three hand-named document slots, which assumed in advance
+  which documents a program has (design rule 11).
+- **A citation opens.** `PROVENANCE` is gone; the viewer fetches one span from `/api/source`.
+  Which exposed a limitation now stated on the page: the document corpus is scanned but not
+  stored, so a docstring opens in context and a Markdown definition names its line and stops.
+- **The lane sizes ride with the cover**, so the navigator's count is not `TERMS.length` —
+  zero until the page is opened, and reading as *nothing here*.
+- **Rule 44**, and the guard for it: a live control reading a field the server does not send
+  renders `NaN` at zero width beside a claim that is true, and nothing throws.
+
+**Next, and named — two things, and the navigator one came from Tom at the keyboard:**
+
+1. **The navigator does not survive a long list.** Two symptoms and one question behind them.
+   *Routines* puts its `showing 200 of 4,734` notice at the **bottom** of the list it
+   describes — visible only after scrolling past two hundred rows, or when the group is
+   collapsed, which is what gives it away. And scrolling into that list **traps you**: the
+   `ROUTINES ▶` control scrolls away, so every menu below it costs a traversal of the whole
+   list. 5g had already written the reason down — *a collapse control that scrolls away is one
+   the reader cannot reach from the bottom of the list* — and made the panebar sticky while
+   leaving the group headings, which carry the same control, to scroll. Tom navigates by
+   scroll wheel and the pane has to suit that. See `HANDOFF.md`, "Navigator: scrolling
+   feedback".
+2. **`CURIOSITIES`** — `threads.py` already measures the outlier family per package, and
+   design rule 15's panel is that computation run over the whole program.
+
+**Found by porting, not fixed, and belonging to the vocabulary lane rather than the
+dashboard:** a DASH_GLOSS mined out of a field-constraint table counts as a definition
+(`DEFINITION` = *1 ≤ len ≤ 5000 chars*), and the undefined list's head is segments of
+SCREAMING_SNAKE constant names — `DDL` 57, `EXTRAS` 50, `REASON` 43 — burying the words that
+matter (`witness`, `posture`, `claim`, `probe`). Precision beats recall (rule 1). Both were
+unreachable while the page said "not computed yet", which is most of the argument for the port.
+
+## What we were doing before that
 
 **The pop-up and the threads are built — 2026-08-28.** See `HANDOFF.md` 5l–5m.
 
@@ -116,13 +158,7 @@ computes outliers per package already, and running that program-wide is most of 
   `walk` keeps the path lit. Both built, ⌘Z drops the last hop, and the walked length is
   stated.
 - **`/api/naming` and `/api/glossary` are served**, computed once at start. The graph uses
-  them; the glossary and naming *pages* are not ported to them yet and say so.
-
-**Next, and named:** port the glossary and naming views to the served shape. They were
-written against the prototype's fields and would render the real data wrongly rather than not
-at all, which is why they still show a note instead. `CURIOSITIES` is the other one — the
-outlier machinery in `threads.py` computes exactly this per package, and running it
-program-wide is most of that view.
+  them; the two pages were ported the same day — see above.
 
 **Known and not fixed: the near-plane clipping.** Zooming far enough in clips the nodes
 nearest the camera. It is deck.gl's default frustum, the diagnosis is in `graph.js`, and the
@@ -130,7 +166,7 @@ obvious remedy — a negative `near`, which is geometrically sound under an orth
 projection — **breaks pan and zoom**. Do not retry it without a way to drive the controls.
 Rule 39.
 
-## What was being done before that
+### And before that
 
 **Chunk 2, "one application" — done 2026-08-28.** The two applications are one: the stack
 mounts inside the shell, there is one state, one settings store, one inspector and one
@@ -201,7 +237,8 @@ Rules 28, 29 and 30.
 | A thread carries a **subject**, never a label; the click routes from a table | rule 30; design rule 16 |
 | Threads sort **rarest first** — three routines is a detour, three hundred is a category | `threads.py` |
 | Following a neighbour: **both** replace and walk, a Setting, usage retires the loser | design rule 2 |
-| The naming and glossary lanes are computed **at start**, not lazily | `CLAUDE.md` budget |
+| The naming and glossary lanes are computed **at start**, not lazily; their bodies are fetched when their page opens, their sizes ride with the cover | `CLAUDE.md` budget; `HANDOFF.md` 5n |
+| A citation is opened from `/api/source`, never pinned into the page | `HANDOFF.md` 5n |
 | Plates a selection touches are drawn faintly and named, though plates stay off | design rule 26 |
 
 ## How to verify — all three, before saying anything is done

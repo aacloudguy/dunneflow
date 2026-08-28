@@ -113,6 +113,33 @@ AFFIX_PROGRAM = (
 )
 
 
+# The same shape over classes rather than routines, and it exists because the routine
+# fixture cannot see a whole family of defects: `noun` is "routine" there, and "routines"
+# is what `f"{noun}s"` produces, so a bug in how a population names itself is invisible.
+# Eight classes ending in `Error` that really are exceptions, against twenty-seven that
+# are neither -- high precision over a low base rate, which is what rule 14 requires.
+CLASS_AFFIX_PROGRAM = (
+    '"""Classes with one clear suffix convention."""\n\n'
+    + "\n\n".join(
+        f"class {n}Error(Exception):\n    pass"
+        for n in ["Alpha", "Beta", "Gamma", "Delta", "Epsilon", "Zeta", "Eta", "Theta"])
+    + "\n\n"
+    + "\n\n".join(
+        f"class {n}Panel:\n    pass"
+        for n in ["One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine",
+                  "Ten", "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen",
+                  "Seventeen", "Eighteen", "Nineteen", "Twenty", "Hazel", "Willow",
+                  "Cedar", "Maple", "Rowan", "Alder", "Aspen"])
+)
+
+
+def _class_affix_store(tmp_path: Path) -> Store:
+    (tmp_path / "classes.py").write_text(CLASS_AFFIX_PROGRAM, encoding="utf-8")
+    store = Store(tmp_path / "classes.db")
+    analyze_tree(tmp_path, store)
+    return store
+
+
 def _affix_store(tmp_path: Path) -> Store:
     (tmp_path / "affix.py").write_text(AFFIX_PROGRAM, encoding="utf-8")
     store = Store(tmp_path / "affix.db")
@@ -186,6 +213,24 @@ def test_the_glob_and_the_query_name_the_same_population(tmp_path: Path) -> None
         assert f"'{c.glob}'" in c.sql, (
             f"the glob {c.glob!r} is not the one {c.claim!r} counts with -- two "
             "derivations of one population, free to disagree after the next edit"
+        )
+    store.close()
+
+
+def test_a_population_names_itself_in_the_plural(tmp_path: Path) -> None:
+    """`population` is prose the dashboard prints as a heading, so it has to be English.
+
+    `_affix_conventions` takes both `noun` and `plural` -- "class" and "classes" -- and
+    built the population with `f"{noun}s"`, so every class affix convention on a real
+    program was headed **classs ending in `Error`**. Invisible for as long as it was, because
+    the naming page had never been ported and nothing printed the string.
+    """
+    store = _class_affix_store(tmp_path)
+    populations = [c.population for c in measure(store).conventions if c.kind == "AFFIX"]
+    assert populations, "no class affix convention was measured; this test is blind"
+    for pop in populations:
+        assert "sss" not in pop and not pop.startswith("classs"), (
+            f"a population that is not English: {pop!r} -- it is printed as a heading"
         )
     store.close()
 

@@ -1618,6 +1618,122 @@ never recorded it, nothing repainted. Rule 42.
 that catches a dead query for a kind nothing mints — the quieter half of the both-directions
 check, and the one that makes a table look more complete than the feature is.
 
+**5n. Built 2026-08-28: the glossary and naming pages, ported to the data behind them.**
+
+The last two screens that admitted to being unported. Both lanes have been computed, tested
+and served since 5m; the two *views* were still the ratified prototype's, written against a
+shape the server does not send, and they said so rather than rendering the real data wrongly.
+That was the right holding position and not a place to stay — "this page is not ported" and
+"this program has no conventions" are opposite claims and a reader cannot tell them apart.
+
+*What made it a port rather than a rename*, in both directions:
+
+| prototype | served |
+|---|---|
+| `{pattern, ok, n, exceptions: [str]}` | `{glob, holds, total, kind, rating, prevalence, sql, note, exceptions: [{name, where}]}` |
+| `{term, declared, module, opaque, circular, docs, project}` | `{term, uses, used_as, defined, senses: [{definition, provenance, source, line, heading, form}]}` |
+
+`glob` is what makes a convention **followable**: it is the same string the exceptions query
+is built from (rule 41), so the cohort you land in is the population the number was measured
+over. Driven: the naming page's *Show all 99 in the graph* on `*_cmd` selects exactly 99, and
+the trail records `*_cmd` so the detour is free. `rating` leads and the percentage is gone,
+because `naming.py` says why in as many words — *a percentage implies a precision this does
+not have*. And an exception carries where it lives, so the three `*Error` classes that are
+not exceptions are a place to go rather than three names.
+
+The glossary's four hand-named document slots became however many `senses` anything actually
+said. That is not a convenience: the prototype **knew in advance which three documents would
+define a word**, and design rule 11 says documentation is often absent and every path has to
+work with none at all. Grouping by evidence rather than by an expected document is what makes
+the page work on a program with no `.groma` at all.
+
+*Two things the prototype had that are deliberately not here.* `INFERRED_SAMPLE` was two
+paragraphs of Mensores prose about `oscal` and `testkit` — rule 34, and it went with the
+port. And `circular`, "the gloss repeats the word instead of explaining it", was a hand-set
+flag on one pinned term; computing it honestly flags **63 of 96 senses**, including *"Society
+of Mensores — spec-and-test-driven development with deterministic governance"*, which
+explains perfectly well. That is rule 1 and rule 14 together — a detector whose first sample
+against real data is mostly wrong is not shipped, it is dropped.
+
+*`PROVENANCE` is gone rather than renamed.* It held every source span of every citation, 52
+KB pinned for one program. The viewer fetches one span from `/api/source` when a citation is
+opened — the same bargain the hover card makes. What it exposed is a real limitation, now
+**stated on the page instead of hidden behind a button that opens nothing**: `source.db`
+holds the 626 files the graph was built from, and the document corpus is scanned but not
+stored, so a docstring opens in context and a definition quoted from a Markdown file names
+its file and line and stops. The viewer's foot also carried a hard-coded analysis date, which
+is rule 34 in a form the prose guard cannot see — it looks for the program's *name*.
+
+*The navigator counted from an array nobody had fetched.* `TERMS.length` beside "Glossary" is
+zero until the page is opened, so the row read as *nothing here* — the exact confusion the
+port exists to remove. The two lanes' **sizes** ride with the cover now (`cover.py` takes a
+`vocabulary` block, and `serve()` computes the lanes before the cover so it can); the bodies,
+234 KB between them, are fetched when their page is opened.
+
+*And the fetch is asked from `render()`, not from a click.* Five things route to these pages —
+the navigator, the breadcrumb, `data-goto`, a curiosity and a trail step. A loader wired to
+one of them is a page that works from one direction and says "not asked for yet" forever from
+the other four, which is design rule 16's family with no control to look at.
+
+*Found by driving it: the filter could not be typed into.* 412 ms per keystroke. The handler
+called `render()` — which rewrites the centre pane, the inspector, the navigator and the
+trail — and then put the caret back in the field it had just destroyed. **The caret
+restoration was the tell**: a workaround for having used the wrong instrument. It refills
+three elements now: 51 ms for the page, 9 ms per keystroke, and the count line states what
+the filter removed (design rule 1). Two things came out of measuring it — 1,214 `data-thread`
+attributes each carrying a JSON subject, and 1,214 listeners rebuilt on every keystroke. A
+word **is** its own identity, so the undefined list carries `data-term` and one delegated
+handler builds the cohort. That is rule 30 read the right way round: the control must carry an
+identity, and constructing the subject from it belongs in the route, where the table is.
+
+*One server-side defect, invisible until something printed the string.* `_affix_conventions`
+takes both `noun` and `plural` — "class" and "classes" — and built the population with
+`f"{noun}s"`, so every class affix convention read **classs ending in `Error`**. `plural` was
+passed and used in one place and ignored in the other, for as long as the naming page had
+been unported.
+
+Its guard is the more interesting half. Written against the existing affix fixture it
+**passed against its own defect**, because that fixture produces routine conventions only and
+`f"{noun}s"` is correct for "routine". A second fixture, eight `*Error` classes against
+twenty-seven that are neither, makes the case reachable. Rule 41's finding for the second
+time in two sessions: *a test whose fixture cannot produce the case has never run.*
+
+*Four guards, each run against its own defect and against every half-working version I could
+express* — eleven mutations, all caught. The load-bearing one is
+`test_the_vocabulary_views_read_the_fields_the_server_sends`, and it is a shape the existing
+guards had no name for. A dead control renders and does nothing (rule 30); a dead setting is
+read by nothing (design rule 16); a dead variable is assigned by nothing (rule 35). This is a
+**live** control reading a field that does not exist: `cv.ok / cv.n` is `NaN`, the bar renders
+at zero width beside a claim that is perfectly true, and nothing throws. Rule 44. The check
+reads the served key names out of `vocabulary.py` and the accessed names out of the two view
+functions, in that direction — a view may leave a served field unread (`uses` is a real
+example; the page shows `used_as`, the same fact in the form a reader wants), but a view
+reading a field the server does not send is rendering nothing while looking finished.
+
+*Two findings the port made visible, neither fixed, both for the vocabulary lane rather than
+for the dashboard.* They are recorded because they were unreachable while the page said
+"not computed yet", which is most of the argument for having ported it:
+
+- **A constraint is not a definition.** `DEFINITION` is one of the 60 terms the glossary calls
+  defined, and its gloss is `1 ≤ len ≤ 5000 chars`, a DASH_GLOSS mined out of a field table in
+  `22-03-PLAN.md:410`. It is used once, as one constant. Rule 12's family: prose-shaped is not
+  the same as prose.
+- **The undefined list is mostly not words.** Its head is `DDL` 57, `EXTRAS` 50, `REASON` 43,
+  `KEYS` 40, `BYTES` 39, `CHARS` 37 — the tails of SCREAMING_SNAKE constant names, not words
+  the program leans on and never explains. The genuinely interesting ones are in there —
+  `witness` (19 constants, 8 way ins, 6 tables, a module), `posture`, `claim`, `probe` — and
+  are buried among segments. Precision beats recall (rule 1), and this is the mirror's finding
+  arriving with its recall turned up too far.
+- Also seen, and a corpus fact rather than a defect: `mensores` carries the *same* definition
+  twice, from `.groma/PROJECT.md:474` and from a `.claude/worktrees/…/.paul/PROJECT.md:302`
+  copy of it. The scan reads worktrees.
+
+*What the instrument could not prove.* The pages are HTML and CSS with no canvas and no
+animation frame, so the automation tab is a fair witness for them (rule 38 bites on rendered
+frames, not on layout) — geometry, overflow, column counts and every interaction were driven
+here, and the console is clean. What it cannot say is whether they *read* well at Tom's own
+24px browser default on a 4K screen, which is where the last two layout defects came from.
+
 **5b. Planned, not scheduled: the layered layout — a stack of architecture drawings.**
 Tom's, stated 2026-08-27. Keep everything that exists and add a second way of drawing a
 plate: instead of a spring layout, lay the disk out the way Mermaid lays out an
@@ -1661,6 +1777,35 @@ Deferred, recorded so they are not lost: a graph viewer that holds 10,000+ nodes
 `../usdgraph`, NetworkX to OpenUSD); cross-process stitching; TypeScript extraction;
 Swift extraction.
 
+### Navigator: scrolling feedback from Tom, 2026-08-28 — not yet fixed
+
+Given at the end of the session with two screenshots, and recorded whole because the
+diagnosis is half-written already.
+
+**1. The truncation notice is at the bottom of the list it describes.** *Routines* shows
+`showing 200 of 4,734 — narrow the search, or open the table for all 4,734`, and the only
+ways to see it are to scroll past two hundred rows or to collapse the group — at which point
+it appears immediately, which is what makes it obviously wrong. Design rule 1 is satisfied in
+letter and defeated in fact: the view *does* state what it removed, somewhere nobody reads.
+**It belongs at the head of the group, and it must read the same open or closed.**
+
+**2. Scrolling into Routines traps the reader.** Two hundred rows with no `ROUTINES ▶`
+control in reach, so *Explore*, *Packages*, *Boundaries*, *Tables* and *Vocabulary* — every
+menu below it — cost a scroll through the whole list to get back to. This is exactly the
+finding 5g wrote down and then applied to only one element: *the navigator scrolls 1,151px of
+its own content, and a collapse control that scrolls away is one the reader cannot reach from
+the bottom of the list.* The panebar was made `position: sticky` for that reason; **the group
+headings inside it were not**, and they carry the same control.
+
+**3. Tom navigates by scroll wheel, heavily**, and says so — "it may not be best UI practice
+for me to move the way I do". It is not the reader's job to move differently. The navigator
+wants furniture that suits a wheel: sticky group headings, and buttons that get you between
+groups without traversing one.
+
+Not started. It is a navigator problem, not a vocabulary one, and it is bigger than the two
+symptoms — the question is what the pane offers someone who arrives in the middle of a long
+list, which is the ordinary case at 4,734 routines.
+
 ### Still open
 
 - Layer storage builds on the same sidecar: content-addressing is version-control
@@ -1694,14 +1839,13 @@ Swift extraction.
   `viewInspector()`.~~ **Closed in chunk 2.** There is one inspector, the ratified layout
   reading the real endpoint, and `inspector.js` is gone from `static/`.
 
-- **The glossary and naming views are not ported to the data now behind them.** Both lanes
-  are computed at start and served -- `/api/naming` carries every convention with the query
-  that counted it and the exceptions it found, `/api/glossary` carries 1,207 terms with
-  their senses and the file and line of each -- and the graph already reads them. The two
-  *pages* were written against the ratified prototype's field shape (`{pattern, ok, n,
-  exceptions: [str]}` against the served `{glob, holds, total, exceptions: [{name, where}],
-  rating, sql}`) and would render the real data **wrongly** rather than not at all, so they
-  say that instead of pretending nothing has been computed. This is the next piece.
+- ~~**The glossary and naming views are not ported to the data now behind them.**~~
+  **Closed 2026-08-28 -- see 5n.** Both pages read the served shape; a convention is
+  followable by its `glob` and proves itself with its query, a term shows however many senses
+  anything said about it, and a citation opens the surrounding source from `/api/source`.
+  What is *not* closed and belongs to the vocabulary lane rather than to the dashboard: a
+  DASH_GLOSS mined out of a constraint table is being counted as a definition, and the
+  undefined list's head is segments of SCREAMING_SNAKE constant names rather than words.
 
 - **`CURIOSITIES` is the same job at program scope.** `threads.py` already measures the
   outlier family per package -- most commented, most called, deepest closure, most lopsided

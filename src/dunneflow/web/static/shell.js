@@ -58,13 +58,20 @@ let CURIOSITIES = [];   // what came out furthest from the middle -- served, not
  * therefore cannot be evaded the same way. Rule 34. */
 let THREADS = {};
 
-let PROVENANCE = {};   // where each glossary term is defined, by tier -- served, not pinned
-
 let MANIFEST = [];   // the files a model pass would send, shown before anything leaves -- served, not pinned
 
-let TERMS = [];   // the program's vocabulary -- served, not pinned
+/* The two vocabulary lanes. `PROVENANCE` used to sit here -- a map from term to the source
+   spans that define it, pinned whole into the prototype at 52 KB for one program. It is
+   gone: a citation is opened from `/api/source` when the reader asks for it, so the shell
+   carries the file and the line rather than the file. */
+let TERMS = [];        // words this program uses as names that something defines -- served, not pinned
+let UNDEFINED = [];    // words it uses and nothing defines -- the mirror's finding, served
+let CONVENTIONS = [];  // measured naming conventions, each with the query that counted it -- served
+let VOCAB = {};        // the scalars beside them: coverage, thresholds, gaps, and which lane is loaded
 
-let CONVENTIONS = [];   // measured naming conventions, each with the query that counted it -- served, not pinned
+/* One span of one file, fetched for the citation currently open. Not a cache of the
+   program: the viewer shows one place at a time and asking again costs a local request. */
+let VIEWER_SRC = null;
 
 const AI_OPS = [
   { id: "harvest", label: "Harvest definitions from documentation", needs: "docs",
@@ -354,6 +361,10 @@ const NAV_ROUTES = {
    * carried an identity and a route that consumed one. Rule 30, from the other side. */
   routine:     (b) => { selectFromNav({ nodes: navIds(b) }); },
   cover:       () => { state.view = "cover"; },
+  /* No loader call here on purpose. Five things route to these two pages -- the navigator,
+     the breadcrumb, `data-goto`, a curiosity and the trail -- and a fetch wired at one of
+     them is a page that works from one direction and says "not asked for yet" forever from
+     the other four. `render()` asks, once, for whichever view is about to be painted. */
   glossary:    () => { state.view = "glossary"; },
   naming:      () => { state.view = "naming"; },
   inference:   () => { state.view = "inference"; },
@@ -388,6 +399,22 @@ const NAV_ROUTES = {
 function navIds(b) {
   return (b.dataset.navid || "").split(" ").filter(Boolean);
 }
+
+/* Every word in the glossary is a way into the graph, and there are 1,207 of them.
+ *
+ * Delegated rather than bound per row, and the term carries **itself** rather than a JSON
+ * subject: the cohort is `{kind: "term", key: <the word>}` and nothing about it is worth
+ * writing into a thousand attributes. That is not only weight -- 581 KB of markup and
+ * 1,214 listeners rebuilt on every keystroke of the filter -- it is rule 30 read the right
+ * way round. The control must carry an *identity*; constructing the subject from it belongs
+ * in the route, which is where the table is. */
+document.addEventListener("click", (ev) => {
+  const b = ev.target.closest("[data-term]");
+  if (!b) return;
+  const term = b.dataset.term;
+  pushTrail(state.view, term, b.dataset.termuse || "");
+  followThread({ type: "cohort", kind: "term", key: term, label: term });
+});
 
 document.addEventListener("click", (ev) => {
   const b = ev.target.closest(".nav-item");
@@ -1547,54 +1574,114 @@ function threadsPanel(nodeId) {
     </div>`;
 }
 
-/* ═══ source viewer: a citation you can open and read ═══ */
+/* ═══ source viewer: a citation you can open and read ═══
+ *
+ * Design rule 13: a quoted definition proves itself with a file and a line the reader can
+ * click through to and read **in context, highlighted**. The provenance is not decoration
+ * on the claim, it is the claim's evidence, and a definition rendered without the route
+ * back is an assertion wearing a uniform.
+ *
+ * The span is fetched when the citation is opened, from `/api/source`, rather than shipped
+ * with the page. The prototype pinned a `PROVENANCE` map -- every span of every citation,
+ * 52 KB for one program's glossary -- which is a page's worth of source code carried by
+ * every reader for the handful of citations anybody opens. Same bargain as the hover card.
+ */
 function viewerPanel() {
   if (!state.viewer) return "";
-  const ev = (PROVENANCE[state.viewer.term] || [])[state.viewer.idx];
-  if (!ev) return "";
-  const all = PROVENANCE[state.viewer.term] || [];
+  const term = TERMS.find(t => t.term === state.viewer.term);
+  const senses = (term && term.senses) || [];
+  const s = senses[state.viewer.idx];
+  if (!s) return "";
+
+  /* A docstring lives in a file the map holds; a definition in a Markdown file does not.
+   * `source.db` is the sidecar of everything the *graph* was built from, and the document
+   * corpus is scanned rather than stored -- so this says which of the two it is looking at
+   * instead of opening an empty pane. */
+  const openable = senseOpens(s);
+  const src = VIEWER_SRC && VIEWER_SRC.key === viewerKey(s) ? VIEWER_SRC : null;
+
+  let body;
+  if (!openable) {
+    body = `<div class="viewer-absent">
+      <b>This map does not hold the document, only what it says.</b>
+      The definition above was read from <span class="mono">${esc(s.source)}</span> at line ${s.line},
+      and that line is quoted whole. The source sidecar carries the files the graph was built
+      from — the program's own code — so a docstring opens here and a document does not.
+    </div>`;
+  } else if (!src) {
+    body = `<div class="viewer-absent">Reading ${esc(srcShort(s.source))}…</div>`;
+  } else if (src.error) {
+    body = `<div class="viewer-absent"><b>That file could not be read.</b> ${esc(src.error)}</div>`;
+  } else {
+    body = `<pre class="codeview">${src.lines.map(l => {
+      const cls = l.n === s.line ? " hit" : "";
+      return `<span class="cl${cls}"><span class="cn">${l.n}</span>${esc(l.text) || " "}</span>`;
+    }).join("\n")}</pre>`;
+  }
+
+  const stamp = (STATS && STATS.analysed) ? String(STATS.analysed).slice(0, 10) : "";
 
   return `
   <div class="viewer-scrim" data-closeviewer></div>
   <div class="viewer" role="dialog" aria-modal="true" aria-label="Source for ${esc(state.viewer.term)}">
     <div class="viewer-head">
       <div>
-        <div class="viewer-title mono">${esc(ev.path)}</div>
-        <div class="viewer-sub">line ${ev.hit_from}${ev.hit_to !== ev.hit_from ? "\u2013" + ev.hit_to : ""}
-          \u00b7 ${esc(ev.label)}
-          \u00b7 <span class="badge ${ev.kind === "code" ? "certain" : "info"}">${ev.kind === "code" ? "CODE" : "DOCS"}</span></div>
+        <div class="viewer-title mono" title="${esc(s.source)}">${esc(srcShort(s.source))}</div>
+        <div class="viewer-sub">line ${s.line}
+          ${s.heading ? ` · under ${esc(s.heading)}` : ""}
+          ${s.form ? ` · ${esc(s.form.toLowerCase().replace(/_/g, " "))}` : ""}
+          · ${tierBadge(s.provenance)}</div>
       </div>
-      <button class="linkbtn" data-closeviewer aria-label="Close source viewer">Close \u2715</button>
+      <button class="linkbtn" data-closeviewer aria-label="Close source viewer">Close ✕</button>
     </div>
 
-    ${all.length > 1 ? `<div class="viewer-tabs" role="tablist">
-      ${all.map((e, i) => `<button role="tab" aria-selected="${i === state.viewer.idx}"
-        data-viewtab="${i}">${esc(e.label)}</button>`).join("")}
+    ${senses.length > 1 ? `<div class="viewer-tabs" role="tablist">
+      ${senses.map((e, i) => `<button role="tab" aria-selected="${i === state.viewer.idx}"
+        data-viewtab="${i}" title="${esc(e.source)}">${esc(srcShort(e.source))}:${e.line}</button>`).join("")}
     </div>` : ""}
 
-    <div class="viewer-body">
-      <pre class="codeview">${ev.lines.map((l, i) => {
-        const n = ev.start + i;
-        const hit = n >= ev.hit_from && n <= ev.hit_to;
-        return `<span class="cl${hit ? " hit" : ""}"><span class="cn">${n}</span>${esc(l) || " "}</span>`;
-      }).join("\n")}</pre>
-    </div>
+    <div class="viewer-body">${body}</div>
 
     <div class="viewer-foot">
-      Read from the content-addressed sidecar \u2014 this is the file as measured on 2026-08-27,
-      not as the tree stands now. Highlighted line${ev.hit_to !== ev.hit_from ? "s are" : " is"} the citation.
+      ${openable
+        ? `Read from the content-addressed sidecar — the file as measured${stamp ? " on " + esc(stamp) : ""},
+           not as the tree stands now. The highlighted line is the citation.`
+        : `${senses.length > 1 ? "Other tabs may open." : "Nothing to open here."}
+           Everything this program says about “${esc(state.viewer.term)}” is on the glossary page.`}
     </div>
   </div>`;
 }
 
-function citeBtn(term, idx, label) {
-  return `<button class="cite" data-cite="${esc(term)}" data-citeidx="${idx}">
-    <span class="citeicon" aria-hidden="true">\u2317</span>${esc(label)}<span class="citego">show me</span></button>`;
+/* One key per span, so a repaint does not re-fetch and switching tabs does. */
+function viewerKey(s) { return `${s.source}#${s.line}`; }
+
+/* Six lines above and eight below: enough for a docstring's first line to sit inside the
+ * definition it belongs to, which is the context the citation is being opened for. */
+async function loadViewerSource() {
+  if (!state.viewer) return;
+  const term = TERMS.find(t => t.term === state.viewer.term);
+  const s = ((term && term.senses) || [])[state.viewer.idx];
+  if (!s || !senseOpens(s)) return;
+  const key = viewerKey(s);
+  if (VIEWER_SRC && VIEWER_SRC.key === key) return;
+  VIEWER_SRC = { key, lines: null, error: null };
+  const first = Math.max(1, s.line - 6), last = s.line + 8;
+  try {
+    const r = await fetch(`/api/source?path=${encodeURIComponent(s.source)}&first=${first}&last=${last}`);
+    if (!r.ok) throw new Error(`the server answered ${r.status}`);
+    const d = await r.json();
+    if (!VIEWER_SRC || VIEWER_SRC.key !== key) return;      // the reader moved on
+    if (!d.available) VIEWER_SRC = { key, lines: null, error: d.reason || "not available" };
+    else VIEWER_SRC = { key, lines: d.lines || [], error: null };
+  } catch (err) {
+    if (VIEWER_SRC && VIEWER_SRC.key === key) VIEWER_SRC = { key, lines: null, error: err.message };
+  }
+  render();
 }
 
-function citeIndex(term, kind, label) {
-  const all = PROVENANCE[term] || [];
-  return all.findIndex(e => e.kind === kind && (!label || e.label === label));
+function citeBtn(term, idx, label) {
+  return `<button class="cite" data-cite="${esc(term)}" data-citeidx="${idx}">
+    <span class="citeicon" aria-hidden="true">⌗</span>${esc(label)}<span class="citego">show me</span></button>`;
 }
 
 /* ═══ inference: its own place, off by default, scoped by what may leave ═══ */
@@ -1716,201 +1803,447 @@ function viewInference() {
   </div>`;
 }
 
-/* ═══ glossary: four provenances, never blended ═══ */
-function tierBadge(t) {
-  return {
-    code:     '<span class="badge certain">DECLARED \u00b7 code</span>',
-    docs:     '<span class="badge certain">DECLARED \u00b7 docs</span>',
-    cited:    '<span class="badge info">CITED</span>',
-    inferred: '<span class="badge inferred">INFERRED</span>'
-  }[t];
+/* ═══ the two vocabulary lanes ═══════════════════════════════════════════════
+ *
+ * The program's own words, and what it does about names. Both were computed, tested and
+ * served long before either page could show them: `resolve/naming.py` and
+ * `resolve/glossary.py` do the work, `web/vocabulary.py` exposes it, and these two views
+ * were still the ratified prototype's -- written against a shape the server does not send.
+ *
+ * They said so rather than rendering the real data wrongly, which was the right holding
+ * position and is not a place to stay: "this page is not ported" and "this program has no
+ * conventions" are opposite claims and the reader cannot tell them apart from a blank.
+ *
+ * What changed in the shape, and why each one is not a rename:
+ *
+ *   `{pattern, ok, n, exceptions: [str]}`  ->  `{glob, holds, total, kind, rating,
+ *                                               prevalence, sql, note,
+ *                                               exceptions: [{name, where}]}`
+ *
+ * `glob` is the population as a machine-readable string and is **the same string the
+ * exceptions query is built from** (rule 41), so it is what makes a convention followable:
+ * the cohort you land in is the population the number was measured over. `rating` is the
+ * grade, and `naming.py` says why it leads rather than the percentage -- "a percentage
+ * implies a precision this does not have". An exception carries where it lives, so a
+ * reader can go and look at the three `*Error` classes that are not exceptions.
+ *
+ *   `{term, declared, module, opaque, docs, project}`  ->  `{term, uses, used_as,
+ *                                                           defined, senses: [...]}`
+ *
+ * The prototype knew in advance which three documents would define a word. The served
+ * shape does not, and must not: design rule 11 says documentation is often absent and every
+ * path has to work with none at all. A term carries however many senses anything said about
+ * it, each with its own provenance, file, line, heading and form -- so the view groups by
+ * evidence rather than by a document it expects to find.
+ */
+
+/* Both lanes are computed at start, server side, and fetched when their page is opened.
+ * Their *sizes* ride with the cover instead, because the navigator states a count beside
+ * every other row (see `cover.py`). */
+async function loadNaming() {
+  if (VOCAB.naming) return;
+  VOCAB.naming = "loading";
+  try {
+    const r = await fetch("/api/naming");
+    if (!r.ok) throw new Error(`the server answered ${r.status}`);
+    const d = await r.json();
+    CONVENTIONS = d.conventions || [];
+    VOCAB.gaps = d.gaps || [];
+    VOCAB.thresholds = d.thresholds || {};
+    VOCAB.naming = "ready";
+  } catch (err) {
+    VOCAB.naming = "failed";
+    VOCAB.namingError = err.message;
+  }
+}
+
+async function loadGlossary() {
+  if (VOCAB.glossary) return;
+  VOCAB.glossary = "loading";
+  try {
+    const r = await fetch("/api/glossary");
+    if (!r.ok) throw new Error(`the server answered ${r.status}`);
+    const d = await r.json();
+    /* Defined and undefined are two bands, not one list with a flag, because they are read
+     * for different reasons: a defined word is evidence to weigh, an undefined one is the
+     * mirror's finding -- a word this program leans on and never explains. */
+    TERMS = (d.terms || []).filter(t => t.defined);
+    UNDEFINED = d.undefined || [];
+    VOCAB.coverage = d.coverage || [0, 0];
+    VOCAB.definitionsSeen = d.definitions_seen || 0;
+    VOCAB.documentsSeen = d.documents_seen || 0;
+    VOCAB.glossary = "ready";
+  } catch (err) {
+    VOCAB.glossary = "failed";
+    VOCAB.glossaryError = err.message;
+  }
+}
+
+/* The three parts of the glossary a filter changes. Nothing else on the page depends on
+   it, and rebuilding the rest is what made typing unusable. */
+function refreshGlossaryLists() {
+  const q = state.termFilter.trim().toLowerCase();
+  const defined = TERMS.filter(t => !q || t.term.toLowerCase().includes(q)
+    || (t.senses || []).some(s => s.definition.toLowerCase().includes(q)));
+  const undef = UNDEFINED.filter(t => !q || t.term.toLowerCase().includes(q));
+  const set = (id, html) => { const el = $(id); if (el) el.innerHTML = html; };
+  set("#glossCount", glossCount(defined, undef));
+  set("#glossDefined", glossTerms(defined));
+  set("#glossUndefHead", undefHead(undef));
+  set("#glossUndef", glossUndefined(undef));
+  /* The citation buttons in the rebuilt list need their listener back. Terms are delegated
+     at the document and need nothing; a citation is not, because it carries an index into
+     one term's senses. Same function as the page-wide bind, never a second copy of it. */
+  bindCitations("#glossDefined ");
+}
+
+/* Opening a citation: the one implementation, called from the page bind and again after
+   the filter rebuilds the list it lives in. */
+function bindCitations(within) {
+  $$(`${within}[data-cite]`).forEach(b => b.addEventListener("click", () => {
+    state.viewer = { term: b.dataset.cite, idx: parseInt(b.dataset.citeidx, 10) };
+    VIEWER_SRC = null;
+    render();
+    loadViewerSource();
+  }));
+}
+
+/* Asked once, from the one place that knows which page is about to be painted.
+ *
+ * Both loaders are idempotent -- they set their lane to "loading" before the first await,
+ * so the repaint this triggers on arrival does not start a second request. Wiring the fetch
+ * to a click instead would work from the navigator and fail from the breadcrumb, the trail,
+ * a curiosity and `data-goto`, and the failure is a page that says "not asked for yet" with
+ * nothing on it that would ever ask. */
+function ensureVocabulary() {
+  if (state.view === "glossary" && !VOCAB.glossary) loadGlossary().then(render);
+  if (state.view === "naming" && !VOCAB.naming) loadNaming().then(render);
+}
+
+/* "Not asked for yet", "on its way", "the server refused" and "there is nothing here" are
+ * four different things and a blank panel states the wrong one whichever it is. */
+function laneState(lane, err, what) {
+  if (!VOCAB[lane]) return `<div class="note">${esc(what)} has not been asked for yet.</div>`;
+  if (VOCAB[lane] === "loading") return `<div class="note">Reading ${esc(what)}…</div>`;
+  if (VOCAB[lane] === "failed") {
+    return `<div class="note"><b>${esc(what)} could not be read.</b>
+      ${esc(VOCAB[err] || "no reason given")}. Nothing is being shown rather than something
+      being guessed.</div>`;
+  }
+  return "";
+}
+
+/* The last two segments of a path. The whole thing is kept in `title`: a citation the
+ * reader cannot check is not a citation, and a citation that eats the pane is not readable.
+ * Never shortened from the left with `direction: rtl` -- that renders a string the program
+ * does not contain. */
+function srcShort(path) {
+  const parts = String(path || "").split("/").filter(Boolean);
+  return parts.slice(-2).join("/") || String(path || "");
+}
+
+/* ═══ naming standard: the conventions, and what breaks them ═══ */
+
+/* Grouped by what the convention is *about*, because the four kinds answer four different
+ * questions and reading them in one flat list makes the spelling rules and the leakage
+ * finding look like the same sort of claim. Routed from a table (design rule 16): a kind
+ * this shell has never heard of is named on the page and in the console, not folded
+ * silently into whatever group happens to be first. */
+const CONV_KINDS = [
+  ["CASE", "How names are spelled",
+   "Measured per row rather than per distinct name — a denominator counted one way and a numerator another once reported a 79% convention that holds in every case."],
+  ["HOUSE_PREFIX", "The house prefix",
+   "Whether everything this program ships answers to one name."],
+  ["AFFIX", "What an affix promises",
+   "An affix that predicts a property, stated in the direction that holds. Every affix is tested against every property, which is thousands of tests — so a run of sixes is expected by chance and each of these had to beat a correction for the number of tries."],
+  ["LEAKAGE", "Whether a boundary holds",
+   "Not what the names say, but whether the thing they claim is true."],
+];
+
+function ratingBadge(r) {
+  // A grade, not a severity. The severity palette belongs to the anomaly worklist and
+  // spending it here would say "this convention is broken", which is not the claim
+  // (design rule 4: one dimension at a time).
+  const cls = r === "A" ? "certain" : "opaque";
+  return `<span class="badge ${cls}" title="A ≥ 99.9%, B ≥ 98%, C ≥ 95%, D ≥ 90%, E below">${esc(r)}</span>`;
+}
+
+function conventionPanel(cv, i) {
+  const pct = (cv.prevalence != null ? cv.prevalence : (cv.total ? cv.holds / cv.total : 0)) * 100;
+  const missing = cv.total - cv.holds;
+  const heading = cv.glob || cv.population;
+  return `
+  <section class="panel">
+    <div class="panel-head">
+      <h2 style="text-transform:none;letter-spacing:0;font-size:.9rem;color:var(--text);font-family:var(--f-mono)">${esc(heading)}</h2>
+      ${ratingBadge(cv.rating)}
+      <span class="hint">${esc(cv.claim)}</span>
+    </div>
+    <div class="panel-body">
+      <div class="convbar">
+        <span class="bar" style="flex:1"><i style="width:${pct.toFixed(2)}%"></i></span>
+        <span class="num" style="font-weight:700">${cv.holds.toLocaleString()} of ${cv.total.toLocaleString()}</span>
+      </div>
+
+      ${missing ? `
+        <div class="excepthead">${missing.toLocaleString()} exception${missing === 1 ? "" : "s"}${
+          cv.exceptions.length < missing
+            ? ` — showing ${cv.exceptions.length.toLocaleString()}` : ""}</div>
+        <ul class="exceptlist">
+          ${cv.exceptions.map(e => `<li><span class="mono">${esc(e.name)}</span>${
+            e.where ? ` <span class="hint" title="${esc(e.where)}">${esc(srcShort(e.where))}</span>` : ""}</li>`).join("")}
+        </ul>`
+        : `<div class="excepthead ok">No exceptions. This convention holds everywhere.</div>`}
+
+      ${cv.note ? `<div class="why" style="margin-left:0;margin-top:.5rem">
+        <span class="ln">note</span> ${esc(cv.note)}
+      </div>` : ""}
+
+      ${cv.glob ? `
+      <div class="prov">
+        <button class="cite" data-thread="${esc(JSON.stringify({ type: "cohort", kind: "convention", key: cv.glob, label: cv.glob }))}"
+                data-threadlabel="${esc(cv.glob)}" data-threadwhy="${esc(cv.claim)}">
+          <span class="citeicon" aria-hidden="true">◈</span>Show all ${cv.total.toLocaleString()} in the graph<span class="citego">go</span></button>
+      </div>` : ""}
+
+      ${cv.sql ? `
+      <div class="prov">
+        <button class="cite" data-sqlshow="${i}">
+          <span class="citeicon" aria-hidden="true">⌗</span>How this number was counted<span class="citego">show the query</span></button>
+        ${state.showSql === i ? `<pre class="srcblock sqlblock">${esc(cv.sql)}</pre>
+          <div class="provfoot">Run it yourself:
+            <span class="mono">dunneflow query &lt;this map&gt; --sql "…"</span> — the directory this
+            dashboard is serving, not the source tree.
+            A counted claim proves itself by being reproducible, so the query is its provenance:
+            it returns exactly the ${missing.toLocaleString()} exception${missing === 1 ? "" : "s"} listed above.</div>` : ""}
+      </div>` : ""}
+    </div>
+  </section>`;
+}
+
+function viewNaming() {
+  const waiting = laneState("naming", "namingError", "the naming standard");
+  if (waiting) return `<div style="max-width:58rem">${waiting}</div>`;
+
+  const th = VOCAB.thresholds || {};
+  const gaps = VOCAB.gaps || [];
+  const grouped = [];
+  const seen = new Set();
+  for (const [kind, title, blurb] of CONV_KINDS) {
+    const rows = CONVENTIONS.filter(c => c.kind === kind);
+    rows.forEach(c => seen.add(c));
+    if (!rows.length) continue;
+    grouped.push({ kind, title, blurb, rows });
+  }
+  // Never fold an unrecognised kind into a group that happens to exist: it would read as
+  // a deliberate placement. It gets its own heading and says what it is.
+  const strays = CONVENTIONS.filter(c => !seen.has(c));
+  if (strays.length) {
+    console.error("[dunneflow] naming conventions of a kind this shell has no heading for:",
+                  [...new Set(strays.map(c => c.kind))]);
+    grouped.push({
+      kind: "unknown", title: "Measured, and not described here",
+      blurb: "This shell has no heading for these kinds — " +
+             [...new Set(strays.map(c => c.kind))].join(", ") +
+             ". They are shown as measured rather than left out.",
+      rows: strays,
+    });
+  }
+
+  let n = 0;
+  return `
+  <div style="max-width:58rem;display:flex;flex-direction:column;gap:.75rem">
+    <div class="note">
+      <b>Every figure here is counted, not guessed.</b> The exceptions are the point: a convention
+      followed every time tells you how to read the program, and a convention followed nearly every
+      time tells you where to look. The grade leads rather than a percentage, because a percentage
+      implies a precision this does not have.
+    </div>
+
+    ${!CONVENTIONS.length ? `<div class="note">
+      <b>No naming convention in this program meets the bar.</b> That is a measurement, not an
+      omission — ${esc(Object.entries(th).map(([k, v]) => `${k} ${v}`).join(", ") || "the thresholds below")}.
+      A population smaller than the minimum is not reported at all, in either direction.
+    </div>` : ""}
+
+    ${grouped.map(g => `
+      <div class="convgroup">
+        <div class="convgroup-head">${esc(g.title)}
+          <span class="num" style="font-weight:400;text-transform:none;letter-spacing:0"> · ${g.rows.length}</span></div>
+        <div class="hint" style="margin:-.25rem 0 0">${esc(g.blurb)}</div>
+        ${g.rows.map(cv => conventionPanel(cv, n++)).join("")}
+      </div>`).join("")}
+
+    <section class="panel">
+      <div class="panel-head">
+        <h2>Looked at and found nothing</h2>
+        <span class="hint">${gaps.length} population${gaps.length === 1 ? "" : "s"} with no dominant convention</span>
+      </div>
+      <div class="panel-body">
+        ${gaps.length ? gaps.map(g => `
+          <div class="gaprow">
+            <div class="mono">${esc(g.population)}</div>
+            <div>${g.total.toLocaleString()} of them, spelled
+              ${g.spread.map(([style, k]) => `${esc(style)} <span class="num">${k.toLocaleString()}</span>`).join(", ")}
+              — no single style holds often enough to be called a convention.</div>
+          </div>`).join("")
+        : `<p class="hint">Every population large enough to measure produced a dominant
+           convention. This section exists so that a program where none did says so, rather
+           than showing a shorter list that looks the same as a tidier program.</p>`}
+        <div class="provfoot">Reported only when
+          ${esc(Object.entries(th).map(([k, v]) => `${k} = ${v}`).join(" · ") || "no thresholds were sent")}.
+          An affix must also beat a correction for the number of affixes tried — with thousands
+          of tests, seven out of seven happens by itself.</div>
+      </div>
+    </section>
+  </div>`;
+}
+
+/* ═══ glossary: the program's words, and who says what they mean ═══ */
+
+/* Four tiers, never blended (design rule 13). Two of them are real today; the other two
+ * arrive with `dunneflow infer`, which is off until someone turns it on. */
+const TIER = {
+  DECLARED_CODE: ["certain", "DECLARED · code", "quoted from a docstring in this program"],
+  DECLARED_DOCS: ["certain", "DECLARED · docs", "quoted from the project's own documents"],
+  CITED: ["info", "CITED", "a model found it in prose and cited the line — checkable"],
+  INFERRED: ["inferred", "INFERRED", "nothing in the project explains it; this is a guess"],
+};
+
+function tierBadge(p) {
+  const t = TIER[p];
+  if (!t) {
+    // A provenance the shell has no badge for must not borrow another one: the whole
+    // point of the tiers is that a quotation and a guess never look alike.
+    console.error("[dunneflow] no badge for provenance:", p);
+    return `<span class="badge opaque">${esc(String(p))}</span>`;
+  }
+  return `<span class="badge ${t[0]}" title="${esc(t[2])}">${esc(t[1])}</span>`;
+}
+
+/* Only code can be opened. `source.db` holds the file bodies the graph was built from --
+ * 626 of them on the sample program -- and the document corpus is scanned but not stored,
+ * so a definition quoted out of a Markdown file names its file and line and stops there.
+ * That is a limitation to state, not to hide behind a button that opens nothing. */
+function senseOpens(s) { return s.provenance === "DECLARED_CODE"; }
+
+/* Which tiers this program actually produced. The key lists all four because the four are
+   what a tier badge can mean, and a reader who sees only two has no way to know whether the
+   other two are missing or unexplained. The bottom two arrive with the model pass, which is
+   off until someone turns it on -- so on every deterministic map they read "none here", and
+   that is the honest statement rather than a legend for badges nobody will see. */
+function seenTiers() {
+  return new Set(TERMS.flatMap(t => (t.senses || []).map(s => s.provenance)));
+}
+
+function senseRow(term, s, i) {
+  const where = `${esc(srcShort(s.source))}:${s.line}`;
+  return `
+  <div class="termrow">
+    ${tierBadge(s.provenance)}
+    <div class="termdef">
+      <span class="quoted">${esc(s.definition)}</span>
+      <div class="src">
+        ${senseOpens(s)
+          ? citeBtn(term, i, `${srcShort(s.source)}:${s.line}`)
+          : `<span class="mono" title="${esc(s.source)}">${where}</span>`}
+        ${s.heading ? ` · under ${esc(s.heading)}` : ""}
+        ${s.form ? ` · ${esc(s.form.toLowerCase().replace(/_/g, " "))}` : ""}
+      </div>
+    </div>
+  </div>`;
 }
 
 function viewGlossary() {
-  /* Nothing serves the glossary to this page yet, and until something does the whole view
-   * has to say so rather than render itself over an empty array.
-   *
-   * It did the latter: "0 of the 0 opaque terms are already defined by this project",
-   * followed by a paragraph naming `.groma/milestones/.../NAMING.md` and `.groma/PROJECT.md`
-   * and stating findings about them. Pinned prose from the ratified prototype, and invisible
-   * to the guard that looks for the sample program's *name* because it names its files
-   * instead. A reader on another codebase was being told, in detail and with confidence,
-   * about documents their program does not have. */
-  if (!TERMS.length) {
-    return `
-    <div style="max-width:58rem">
-      <div class="note">
-        <b>The glossary is computed but this page has not been ported to it.</b>
-        <code class="mono">/api/glossary</code> serves it, and the graph already uses it —
-        picking a routine shows the program's own words in its name under
-        <b>Named like these</b>, with the file and line that define each one. What is
-        missing is this view, which was written against a different shape and would
-        render the real data wrongly rather than not at all.
-      </div>
-    </div>`;
-  }
-  const q = state.termFilter.toLowerCase();
-  const shown = TERMS.filter(t => !q || t.term.includes(q) || t.declared.toLowerCase().includes(q));
-  const opq = TERMS.filter(t => t.opaque);
-  const covered = opq.filter(t => t.docs || t.project);
-  const orphan = opq.filter(t => !t.docs && !t.project);
+  const waiting = laneState("glossary", "glossaryError", "the glossary");
+  if (waiting) return `<div style="max-width:58rem">${waiting}</div>`;
+
+  const q = state.termFilter.trim().toLowerCase();
+  const hit = t => !q || t.term.toLowerCase().includes(q)
+    || (t.senses || []).some(s => s.definition.toLowerCase().includes(q));
+  const defined = TERMS.filter(hit);
+  const undef = UNDEFINED.filter(t => !q || t.term.toLowerCase().includes(q));
+  const [cov, tot] = VOCAB.coverage || [0, 0];
 
   return `
   <div style="max-width:58rem;display:flex;flex-direction:column;gap:.75rem">
 
     <div class="tierkey">
-      <span>${tierBadge("code")} parsed from a docstring \u2014 quoted, never paraphrased</span>
-      <span>${tierBadge("docs")} parsed from a structured glossary or naming table in the project's own documents</span>
-      <span>${tierBadge("cited")} a model found it in prose documentation and cited the line \u2014 checkable</span>
-      <span>${tierBadge("inferred")} nothing in the project explains it; this is a guess \u2014 not checkable</span>
+      ${Object.keys(TIER).map(p => `<span>${tierBadge(p)} ${esc(TIER[p][2])}${
+        seenTiers().has(p) ? "" : " — none here"}</span>`).join("")}
     </div>
 
     <div class="note">
-      <b>${covered.length} of the ${opq.length} opaque terms are already defined by this project.</b>
-      Not in the code \u2014 in <span class="mono">.groma/milestones/v1.1-harness-ownership/NAMING.md</span>,
-      a table titled "The pantheon" that maps every component to its Latin name with etymology, and in
-      <span class="mono">.groma/PROJECT.md</span>'s own Glossary section. DunneFlow was not reading either,
-      because it only read source code. <b>Only ${orphan.length} terms
-      (${orphan.map(t => `<span class="mono">${esc(t.term)}</span>`).join(", ")}) are undefined anywhere</b>,
-      and both are borrowed words rather than coinages. Inference has almost nothing to do here \u2014
-      which is the useful finding.
+      <b>${cov.toLocaleString()} of the ${tot.toLocaleString()} words this program uses as
+      names are defined somewhere it can quote.</b>
+      ${VOCAB.documentsSeen ? `${VOCAB.definitionsSeen.toLocaleString()} definitions were found
+        across ${VOCAB.documentsSeen.toLocaleString()} documents, and every one of them names the
+        file and the line it came from.`
+      : `No document store was read, so every definition here comes out of the code itself
+        — which is the normal case, not a degraded one.`}
+      The ${(tot - cov).toLocaleString()} the program does not define are listed below rather
+      than left out: a word carried by fifty constants and explained nowhere is a finding.
+      <b>Documents are scanned but not stored</b>, so a definition quoted from one names its
+      line and cannot be opened here; a docstring can.
     </div>
 
     <div style="display:flex;align-items:center;gap:.6rem;flex-wrap:wrap">
       <label class="sr-only" for="termq">Filter terms</label>
-      <input id="termq" class="termq" type="search" placeholder="Filter ${TERMS.length} terms\u2026" value="${esc(state.termFilter)}">
-      <span style="font-size:.74rem;color:var(--text-muted)">
-        <b class="num">${shown.length}</b> of <b class="num">${TERMS.length}</b> terms
-      </span>
+      <input id="termq" class="termq" type="search" placeholder="Filter ${tot.toLocaleString()} words…" value="${esc(state.termFilter)}">
+      <span id="glossCount" style="font-size:.74rem;color:var(--text-muted)">${glossCount(defined, undef)}</span>
     </div>
 
-    ${shown.map(t => `
-      <section class="panel term">
-        <div class="panel-head">
-          <h2 style="text-transform:none;letter-spacing:0;font-size:.92rem;color:var(--text);font-family:var(--f-mono)">${esc(t.term)}</h2>
-          ${t.opaque ? '<span class="kind-tag">domain word</span>' : ""}
-          ${t.circular ? '<span class="badge suspect">! defines itself with itself</span>' : ""}
-          <span class="hint mono">${esc(t.module)}</span>
-        </div>
-        <div class="panel-body">
+    <div id="glossDefined" style="display:flex;flex-direction:column;gap:.75rem">${glossTerms(defined)}</div>
 
-          <div class="termrow">
-            ${tierBadge("code")}
-            <div class="termdef">
-              <span class="quoted">${esc(t.declared)}</span>
-              <div class="src">${citeIndex(t.term, "code") >= 0
-                ? citeBtn(t.term, citeIndex(t.term, "code"), `${t.module.split(".").join("/")}/__init__.py \u00b7 module docstring`)
-                : `<span class="mono">${esc(t.module)}</span>`}</div>
-              ${t.circular ? `<div class="src blind"><b>Measured.</b> The gloss repeats the word instead of
-                explaining it \u2014 "the Mensores Dispensator" does not say what a dispensator is.
-                <b>Blind spot:</b> a reader who already knows the word would find this perfectly clear.</div>` : ""}
-            </div>
-          </div>
-
-          ${t.docs ? `
-          <div class="termrow">
-            ${tierBadge("docs")}
-            <div class="termdef">
-              <span class="quoted">${esc(t.docs.meaning)}</span>
-              <div class="src">${citeIndex(t.term, "docs", '"The pantheon" table') >= 0
-                ? citeBtn(t.term, citeIndex(t.term, "docs", '"The pantheon" table'), `NAMING.md:${t.docs.line} \u00b7 "The pantheon" table`)
-                : `<span class="mono">${esc(t.docs.file)}:${t.docs.line}</span>`}
-                ${t.docs.inherited ? ' \u00b7 inherited from <span class="mono">groma</span>' : ""}
-                \u00b7 component: ${esc(t.docs.component)}</div>
-            </div>
-          </div>` : ""}
-
-          ${t.project ? `
-          <div class="termrow">
-            ${tierBadge("docs")}
-            <div class="termdef">
-              <span class="quoted">${esc(t.project.body.slice(0, 420))}${t.project.body.length > 420 ? "\u2026" : ""}</span>
-              <div class="src">${citeIndex(t.term, "docs", "PROJECT.md ## Glossary") >= 0
-                ? citeBtn(t.term, citeIndex(t.term, "docs", "PROJECT.md ## Glossary"), `PROJECT.md:${t.project.line} \u00b7 ## Glossary`)
-                : `<span class="mono">${esc(t.project.file)}:${t.project.line}</span>`}
-                ${t.project.pos ? " \u00b7 " + esc(t.project.pos) : ""}</div>
-            </div>
-          </div>` : ""}
-
-          ${t.opaque && !t.docs && !t.project ? `
-          <div class="termrow">
-            ${state.aiDone ? tierBadge("inferred") : tierBadge("cited")}
-            <div class="termdef">
-              ${state.aiDone
-                ? `<span class="guess">${esc(INFERRED_SAMPLE[t.term] || "No inference produced.")}</span>
-                   <div class="src blind"><b>Blind spot.</b> No document in this project defines this term.
-                   It was inferred from the word and the surrounding code, and may be confidently wrong.</div>`
-                : `<span class="notrun">No document in this project defines this term. A one-time pass
-                   could search the prose for it, or guess.</span>`}
-            </div>
-          </div>` : ""}
-        </div>
-      </section>`).join("")}
+    <section class="panel">
+      <div class="panel-head">
+        <h2>Used, and defined nowhere</h2>
+        <span class="hint" id="glossUndefHead">${undefHead(undef)}</span>
+      </div>
+      <div class="panel-body" id="glossUndef">${glossUndefined(undef)}</div>
+    </section>
   </div>`;
 }
 
-const INFERRED_SAMPLE = {
-  oscal: "Not Latin, and not a coinage \u2014 NIST's Open Security Controls Assessment Language. Borrowed wholesale, which is why the pantheon table does not list it.",
-  testkit: "Ordinary English compound, not part of the Latin scheme. The docstring's own gloss \u2014 \"the contract-coverage enforcement Society ships into generated repos\" \u2014 already says what it is."
-};
+/* Design rule 1: a filtered view states what it removed, in counts. */
+function glossCount(defined, undef) {
+  const q = state.termFilter.trim();
+  const hidden = TERMS.length + UNDEFINED.length - defined.length - undef.length;
+  return `<b class="num">${defined.length.toLocaleString()}</b> defined and
+    <b class="num">${undef.length.toLocaleString()}</b> undefined
+    ${q ? `match “${esc(q)}” — <b class="num">${hidden.toLocaleString()}</b> hidden by the filter`
+        : "— nothing hidden"}`;
+}
 
-/* ═══ naming standard: the conventions, and what breaks them ═══ */
-function viewNaming() {
-  return `
-  <div style="max-width:58rem;display:flex;flex-direction:column;gap:.75rem">
-    <div class="note">
-      <b>Every figure here is counted, not guessed.</b> The exceptions are the point: a convention
-      followed 100% of the time tells you how to read the program, and a convention followed 98% of
-      the time tells you where to look.
-    </div>
+function undefHead(undef) {
+  return `${undef.length.toLocaleString()} word${undef.length === 1 ? "" : "s"}, most used first`;
+}
 
-    ${!CONVENTIONS.length ? `<div class="note">
-      <b>Measured, and this page has not been ported to it.</b>
-      <code class="mono">/api/naming</code> serves every convention with the query that
-      counted it, and the graph already uses them — picking a routine shows which
-      conventions its name is an instance of, and following one selects exactly the
-      population the claim was measured over. What is missing is this view, which was
-      written against a different shape. That is a different statement from "this program
-      follows no conventions", and the two must not look alike.
-    </div>` : ""}
-    ${CONVENTIONS.map((cv, i) => {
-      const pct = (cv.ok / cv.n) * 100;
-      const perfect = cv.ok === cv.n;
-      return `
-      <section class="panel">
+function glossTerms(defined) {
+  return defined.map(t => `
+      <section class="panel term">
         <div class="panel-head">
-          <h2 style="text-transform:none;letter-spacing:0;font-size:.9rem;color:var(--text);font-family:var(--f-mono)">${esc(cv.pattern)}</h2>
-          <span class="hint">${esc(cv.claim)}</span>
+          <h2 style="text-transform:none;letter-spacing:0;font-size:.92rem;color:var(--text);font-family:var(--f-mono)">${esc(t.term)}</h2>
+          <span class="kind-tag">${esc(t.used_as)}</span>
+          <button class="cite" data-term="${esc(t.term)}" data-termuse="${esc(t.used_as)}">
+            <span class="citeicon" aria-hidden="true">◈</span>where it is used<span class="citego">go</span></button>
         </div>
         <div class="panel-body">
-          <div class="convbar">
-            <span class="bar" style="flex:1"><i style="width:${pct}%;background:${perfect ? "var(--accent)" : "var(--sev-suspect)"}"></i></span>
-            <span class="num" style="font-weight:700;color:${perfect ? "var(--accent-text)" : "var(--sev-suspect)"}">${pct.toFixed(1)}%</span>
-            <span class="num" style="font-size:.72rem;color:var(--text-muted)">${cv.ok.toLocaleString()} of ${cv.n.toLocaleString()}</span>
-          </div>
-
-          ${cv.exceptions.length ? `
-            <div class="excepthead">${cv.n - cv.ok} exception${cv.n - cv.ok === 1 ? "" : "s"}${cv.exceptions.length < cv.n - cv.ok ? ` \u2014 showing ${cv.exceptions.length}, all listed in the table view` : ""}</div>
-            <ul class="exceptlist">
-              ${cv.exceptions.map(e => `<li class="mono">${esc(e)}</li>`).join("")}
-            </ul>`
-            : `<div class="excepthead ok">No exceptions. This convention holds everywhere.</div>`}
-
-          <div class="why" style="margin-left:0;margin-top:.5rem">
-            <span class="ln">note</span> ${esc(cv.note)}
-          </div>
-          ${cv.sql ? `
-          <div class="prov">
-            <button class="cite" data-sqlshow="${i}">
-              <span class="citeicon" aria-hidden="true">\u2317</span>How this number was counted<span class="citego">show the query</span></button>
-            ${state.showSql === i ? `<pre class="srcblock sqlblock">${esc(cv.sql)}</pre>
-              <div class="provfoot">Run it yourself: <span class="mono">uv run dunneflow query output/${esc(STATS ? STATS.program : "&lt;program&gt;")} --sql "\u2026"</span>.
-                A counted claim proves itself by being reproducible \u2014 the query is its provenance.</div>` : ""}
-          </div>` : ""}
+          ${(t.senses || []).map((s, i) => senseRow(t.term, s, i)).join("")}
         </div>
-      </section>`;
-    }).join("")}
-  </div>`;
+      </section>`).join("");
+}
+
+function glossUndefined(undef) {
+  return `${undef.length ? `<ul class="undeflist">
+          ${undef.map(t => `<li>
+            <button class="cite" data-term="${esc(t.term)}" data-termuse="${esc(t.used_as)}">
+              <span class="mono">${esc(t.term)}</span><span class="citego">go</span></button>
+            <span class="hint">${esc(t.used_as)}</span>
+          </li>`).join("")}
+        </ul>`
+        : `<p class="hint">Every word this program uses as a name is defined somewhere it can
+           quote — which is rare, and worth knowing.</p>`}`;
 }
 
 /* ── the inspector ────────────────────────────────────────────────────────────
@@ -2320,8 +2653,8 @@ function render() {
   else if (state.view === "table")     vp.innerHTML = viewTable();
   else if (state.view === "doc")       vp.innerHTML = viewDoc();
   else if (state.view === "anomalies") vp.innerHTML = viewAnomalies();
-  else if (state.view === "glossary")  vp.innerHTML = viewGlossary();
-  else if (state.view === "naming")    vp.innerHTML = viewNaming();
+  else if (state.view === "glossary")  { ensureVocabulary(); vp.innerHTML = viewGlossary(); }
+  else if (state.view === "naming")    { ensureVocabulary(); vp.innerHTML = viewNaming(); }
   else if (state.view === "inference") vp.innerHTML = viewInference();
   else if (state.view === "curiosities") vp.innerHTML = viewCuriosities();
   else if (state.view === "pins")       vp.innerHTML = viewPins();
@@ -2567,14 +2900,17 @@ function wire() {
     used("anomalies"); render();
   }));
 
-  /* glossary filter — updates in place so the field keeps focus while typing */
+  /* glossary filter — refills three elements, and touches nothing else.
+   *
+   * It used to call `render()`, which rewrites the whole centre pane, the inspector, the
+   * navigator and the trail, then put the caret back in the field it had just destroyed.
+   * That is 412 ms per keystroke on a real glossary -- a filter you cannot type into --
+   * and the caret restoration was the tell that a full repaint was the wrong instrument.
+   * The lists it actually changes are the two lists and the count beside the box. */
   const tq = $("#termq");
   if (tq) tq.addEventListener("input", () => {
     state.termFilter = tq.value;
-    const pos = tq.selectionStart;
-    render();
-    const again = $("#termq");
-    if (again) { again.focus(); again.setSelectionRange(pos, pos); }
+    refreshGlossaryLists();
   });
   $$("[data-goto]").forEach(b => b.addEventListener("click", () => {
     state.view = b.dataset.goto; render();
@@ -2678,16 +3014,14 @@ function wire() {
   }
 
   /* provenance click-through */
-  $$("[data-cite]").forEach(b => b.addEventListener("click", () => {
-    state.viewer = { term: b.dataset.cite, idx: parseInt(b.dataset.citeidx, 10) };
-    render();
-  }));
+  bindCitations("");
   $$("[data-closeviewer]").forEach(b => b.addEventListener("click", () => {
     state.viewer = null; render();
   }));
   $$("[data-viewtab]").forEach(b => b.addEventListener("click", () => {
     state.viewer = { ...state.viewer, idx: parseInt(b.dataset.viewtab, 10) };
     render();
+    loadViewerSource();
   }));
 
   /* egress posture + manifest */
@@ -2798,7 +3132,8 @@ const WIRED_ATTRS = new Set([
   "goto", "graphtheme", "insp", "layout", "legend", "manifest", "menuorder", "mode", "nav", "nav2",
   "navid", "node", "open", "pane", "pin", "pinnote", "pkgnode", "pkgpick", "resize", "row",
   "scale-set", "sec", "sev", "sevnav", "sort", "sqlshow", "start", "step", "theme",
-  "theme-set", "thread", "threadlabel", "threadsall", "threadwhy", "titled", "toggle",
+  "term", "termuse", "theme-set", "thread", "threadlabel", "threadsall", "threadwhy",
+  "titled", "toggle",
   "trail", "trailback", "trailcap", "trailclear", "triage", "triaged", "unpin", "viewtab"]);
 
 function selfCheck() {
@@ -2972,8 +3307,11 @@ const NAV_GROUPS = [
       ...TABLES.slice(0, 8).map(t => ({ nav: "t", label: t.name, n: t.n, sel: t.name })),
     ] },
   { id: "navVocab", title: "Vocabulary", open: true, items: () => [
-      { nav: "glossary", label: "Glossary",        n: TERMS.length || "" },
-      { nav: "naming",   label: "Naming standard", n: CONVENTIONS.length || "" },
+      /* From the cover, not from `TERMS.length` -- which is zero until the page is opened,
+         so the row read as "nothing here" on every session that had not been there yet.
+         An absent count and a count of nothing are opposite claims. */
+      { nav: "glossary", label: "Glossary",        n: vocabCount("terms") },
+      { nav: "naming",   label: "Naming standard", n: vocabCount("conventions") },
       { nav: "inference", label: "Inference",      n: "off", id: "navEgress" },
     ] },
   { id: "navAnom", title: "Anomalies", open: true, items: () => {
@@ -2995,6 +3333,14 @@ function groupCount(g) {
   if (g.id === "navWaysIn") return ENTRYPOINTS.length;
   if (g.id === "navAnom")   return items.reduce((s, i) => s + (Number(i.n) || 0), 0);
   return items.length;
+}
+
+/* The size of a vocabulary lane, from the cover. Empty rather than 0 when the server sent
+   no vocabulary block at all: a map analysed by an older DunneFlow has no such counts, and
+   printing 0 there would state a measurement nobody took. */
+function vocabCount(key) {
+  const v = STATS && STATS.vocabulary;
+  return v && v[key] != null ? Number(v[key]).toLocaleString() : "";
 }
 
 function buildNav() {
@@ -3050,7 +3396,8 @@ async function loadCover() {
   BOUNDARIES  = d.boundaries  || [];
   PKGS        = d.packages    || [];
   TABLES      = d.tables      || [];
-  STATS       = Object.assign({}, d.stats, { anomalies: d.anomalies, program: d.program });
+  STATS       = Object.assign({}, d.stats, { anomalies: d.anomalies, program: d.program,
+                                             vocabulary: d.vocabulary || null });
 
   const prog = $("#prog");
   if (prog) {

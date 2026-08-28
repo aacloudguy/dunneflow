@@ -41,8 +41,17 @@ def _lines(source: SourceStore | None) -> int | None:
     return int(row[0]) if row else None
 
 
-def build(store: Store, source: SourceStore | None, program: str) -> dict[str, Any]:
-    """Everything the first screen shows."""
+def build(store: Store, source: SourceStore | None, program: str, *,
+          vocabulary: dict[str, int] | None = None) -> dict[str, Any]:
+    """Everything the first screen shows.
+
+    `vocabulary` is the two lanes' *sizes* only -- how many conventions were measured, how
+    many words the program uses as names, how many of those anything defines. The lanes
+    themselves are a quarter of a megabyte and are fetched when their pages are opened;
+    these three numbers ride with the cover because the navigator states a count beside
+    every other row, and a blank beside "Glossary" reads as "nothing there" rather than as
+    "not asked for yet". Those are opposite claims and must not look alike.
+    """
     counts = store.counts()
 
     # Ways in, already deduplicated and ranked by reach. One entry is commonly detected
@@ -101,6 +110,9 @@ def build(store: Store, source: SourceStore | None, program: str) -> dict[str, A
             "suspect": ac.get(SUSPECT, 0),
             "info": ac.get(INFO, 0),
         },
+        # Absent, not zero, when the lanes have not been measured. Zero conventions is a
+        # finding about a program; an absent count is a fact about this request.
+        "vocabulary": dict(vocabulary) if vocabulary else {},
     }
 
 

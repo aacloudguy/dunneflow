@@ -100,6 +100,35 @@ WHERE target = ''
 GROUP BY kind
 """
 
+# A file the program *names*: `tabularium.db`, `groma.json`, `STATUSQUO.md`. Rule 17 --
+# a program names its files and those names are vocabulary. They reach no other detector,
+# because a path assembled as `root / ".mensores" / "tabularium.db"` is not a boundary
+# target, not a table and not a module, so without this they are absent from the map
+# entirely. Searching the graph for `tabularium` is what showed they were missing.
+#
+# One node per distinct name rather than per mention: 350 mentions collapse to ~150 files,
+# and drawing the same file once per reference would draw it fifty-two times.
+ARTEFACT_NODES = """
+SELECT 'art:' || name    AS id,
+       name              AS label,
+       ext               AS ext,
+       MIN(kind)         AS akind,
+       COUNT(*)          AS mentions,
+       COUNT(DISTINCT routine_id) AS namers
+FROM artefacts
+WHERE name <> ''
+GROUP BY name
+"""
+
+ARTEFACT_EDGES = """
+SELECT routine_id     AS src,
+       'art:' || name AS dst,
+       COUNT(*)       AS weight
+FROM artefacts
+WHERE routine_id IS NOT NULL AND name <> ''
+GROUP BY routine_id, name
+"""
+
 # --------------------------------------------------------------------------- #
 # Edges
 # --------------------------------------------------------------------------- #

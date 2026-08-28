@@ -174,6 +174,18 @@ def build(store: Store, *, include_constants: bool = True) -> GraphModel:
                     "unnamed": True, "source_status": "OPAQUE"},
         ))
 
+    # Files the program names. Their own plate rather than folded into FILE: a boundary
+    # touch is the program *using* a file, and an artefact is the program *naming* one.
+    # Reading them as the same thing would put a word the program chose beside a call it
+    # made, and rule 17 exists because those names are vocabulary.
+    for r in store.query(queries.ARTEFACT_NODES):
+        add(Node(
+            id=str(r["id"]), label=str(r["label"]), kind="ARTEFACT",
+            disk="ext:ARTEFACT",
+            detail={"ext": r["ext"], "akind": r["akind"], "mentions": r["mentions"],
+                    "namers": r["namers"], "source_status": "OPAQUE"},
+        ))
+
     _fold_small_disks(m, disk_of)
     _add_edges(store, m, disk_of)
     _summarise_disks(m)
@@ -233,6 +245,8 @@ def _add_edges(store: Store, m: GraphModel, disk_of: dict[str, str]) -> None:
               str(r["confidence"] or ""))
     for r in store.query(queries.BOUNDARY_EDGES):
         place(str(r["src"]), str(r["dst"]), "TOUCH", int(r["weight"]), "")
+    for r in store.query(queries.ARTEFACT_EDGES):
+        place(str(r["src"]), str(r["dst"]), "NAMES", int(r["weight"]), "")
 
     m.shadows = [Shadow(n, d) for n, d in sorted(shadow_set)]
     m.stats["dangling_edges"] = dangling

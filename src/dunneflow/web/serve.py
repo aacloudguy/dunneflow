@@ -99,6 +99,12 @@ def columnar(model: GraphModel) -> dict[str, Any]:
     e_kind: list[str] = []
     e_conf: list[str] = []
     e_disk: list[str] = []
+    # How many times this connection appears in the source. It is carried through to the
+    # client and drives edge width, which is the whole preparation for flow replay: when
+    # a profile is imported later it becomes a *second source for a channel that already
+    # exists*, rather than a reason to rewrite the renderer. Reserving storage for the
+    # profiler now would be building the feature, not preparing for it.
+    e_weight: list[int] = []
     dropped = 0
     for e in model.edges:
         a = index.get((e.src, e.disk))
@@ -111,6 +117,7 @@ def columnar(model: GraphModel) -> dict[str, Any]:
         e_kind.append(e.kind)
         e_conf.append(e.confidence)
         e_disk.append(e.disk)
+        e_weight.append(e.weight)
 
     stats = dict(model.stats)
     stats["edges_unplaced"] = dropped
@@ -120,7 +127,7 @@ def columnar(model: GraphModel) -> dict[str, Any]:
                   "x": xs, "y": ys, "z": zs, "shadow": shadow_flags, "real": real_of,
                   "detail": detail},
         "edges": {"from": e_from, "to": e_to, "kind": e_kind,
-                  "confidence": e_conf, "disk": e_disk},
+                  "confidence": e_conf, "disk": e_disk, "weight": e_weight},
         "disks": model.disks,
         "stats": stats,
     }
@@ -211,6 +218,11 @@ def serve(out_dir: Path, *, port: int = 8787, open_browser: bool = True,
         payload = columnar(model)
     finally:
         store.close()
+
+    # Named so the browser can key stored settings per program. A disk order and a set of
+    # colours worked out for one codebase mean nothing in another, and silently applying
+    # one to the other would be the worst kind of persistence.
+    payload["program"] = out_dir.name
 
     s = payload["stats"]
     emit(f"{s['nodes']:,} nodes + {s['shadows']:,} shadows = {s['drawn_nodes']:,} drawn, "

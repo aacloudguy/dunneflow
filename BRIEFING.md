@@ -162,15 +162,29 @@ taking a value rather than a thunk did the work it existed to avoid; re-attachin
 subtree made `render()` *worse* than before the cache; and a pane bounded by
 `calc(100vh - 16rem)` showed one line of code on a 589px window.
 
-**Next, and open for you:**
+**Next, and decided by Tom on 2026-08-29: search inside source.** It was named as its own
+loop when the browser was planned, and it is that rather than a bolt-on — 626 compressed
+blobs is a measurable job with its own budget row. Nothing about it is designed yet; the
+shape of the answer is the first conversation, not the implementation.
 
-- **Search inside source** — named as its own loop when the browser was planned, and now the
-  obvious next thing. 626 compressed blobs is a measurable job that deserves its own budget
-  row, not a bolt-on.
-- **The layer selection UI** — a time slider, a revision list, a two-point comparison, or all
-  three. The storage is ready and Mensores has a sealed snapshot to compare against as soon
-  as Society is pulled fresh. This is the conversation that was deferred, and it is now the
-  one thing standing between the spine and a second point in time on screen.
+Three things that are already known about it, and none of them decide it:
+
+- The bodies are **zlib blobs**, so a search decompresses. 7.8 MB of text in 3.1 MB on disk,
+  and `blobs` is content-addressed — so an identical file appearing at fifty paths is one
+  search, not fifty.
+- The graph already answers a *different* question well. `touches`, `impact` and the glossary
+  search names and meanings; this searches **text**, including comments, strings and the
+  lines that carry neither. Where those two answers overlap and where they differ is a design
+  question, not a technical one.
+- **Rule 45 is the thing to watch.** Three times now the cost has been work proportional to
+  the whole program on every keystroke, and a search box is where that defect lives. It also
+  decides the *answer*: "2,206 match, in 43 packages" is something a reader can act on, and
+  1,924 rows is the haystack again.
+
+**After it: the layer selection UI** — a time slider, a revision list, a two-point comparison,
+or all three. The storage is ready and Mensores has a sealed snapshot to compare against as
+soon as Society is pulled fresh. That is the deferred conversation, and it is now the one
+thing standing between the spine and a second point in time on screen.
 - **Reported, not fixed, because it is your design and not mine:** the navigator's nine group
   headings cost **306px** whether their groups are open or closed, so on a short window any
   open group — the routine list as much as the code — gets about 200px. Measured at 589px

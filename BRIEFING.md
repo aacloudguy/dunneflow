@@ -5,7 +5,7 @@ It exists so a fresh context can be useful in a few minutes instead of an hour.
 
 | Read | For |
 |---|---|
-| `CLAUDE.md` | The rules. 53 engineering rules and 26 dashboard design rules, each earned from a false result on real code. **Binding.** |
+| `CLAUDE.md` | The rules. 55 engineering rules and 26 dashboard design rules, each earned from a false result on real code. **Binding.** |
 | `HANDOFF.md` | The chronological record — what was built when, what it cost, what broke. ~1,700 lines. Read *sections*, not the whole thing. |
 | **this file** | Where things are, what is done, what we are doing now, what not to re-open. |
 | Artifact `f993d319-d2b7-4217-9130-cdbba698d1bc` | The ratified dashboard design — a complete working UI, the source of truth for every view. Read it with the **Artifact tool**, not from a screenshot. |
@@ -60,6 +60,7 @@ no build step. deck.gl is vendored into `web/vendor/`.
 | `graph.py` · `layout.py` | the 2.5D model, and where things sit |
 | `packages.py` | the package overview — the other graph layout |
 | `code.py` | the code browser — a file, its clickable names and what each line *is* |
+| `search.py` | searching the **text** — files first, then one file's lines with their margin |
 | `static/shell.js` | **the application**: state, routing, every view, the self-check |
 | `static/graph.js` | **the engine**: payload to pixels, and nothing about this page |
 | `static/settings.js` | the store — per program, versioned |
@@ -118,13 +119,26 @@ Links are lookups, never name matches: `calls.callee_id` is the resolver's own a
 it does not carry is a *column*, so a call is underlined only where its expression occurs
 exactly once on its line, and the counts of what was and was not placed ride with the payload.
 
-Still not built: **search inside source** (its own loop, its own budget row) and syntax
-highlighting (a design-rule-2 pair if ever wanted, done server-side with stdlib `tokenize`).
+**Search inside the source — built 2026-08-29.** The Code group's box asks two questions at
+once: what matches a **path**, filtered instantly over rows already in the page, and what
+matches the **text**, fetched. Files first — "782 lines in 166 files", 626 rows at worst and
+never bounded — and the top one opens itself once the answer has narrowed, saying so when it
+has not. A hit carries what the map knows about it: the routine it sits in (a line-range
+lookup, innermost first), its margin, and its clickable names, all of them `code.py`'s own
+answers narrowed to the matching lines. Literal and case-insensitive by default, with case,
+whole-word and regex switches; a regex turns whole word off and says why.
+
+Scanning all 184,722 lines is 20–30 ms, so rule 45 lands on the *answer* rather than on the
+search. FTS5 was rejected on evidence: token-based, so it cannot find `_emit` inside
+`self._emit`.
+
+Still not built: syntax highlighting (a design-rule-2 pair if ever wanted, done server-side
+with stdlib `tokenize`).
 
 **Not built:** `dunneflow infer` (the model pass) · temporal layers, and therefore **any
 second point in time on screen** — the storage spine is laid (see below), so what is missing
 is the selector and the diff screen · attestation · the project profile · document mode's
-narrative view · source search · packaging as a binary · any language but Python.
+narrative view · packaging as a binary · any language but Python.
 
 **The revision spine is in.** `WORKING` is a *state* rather than an id, and a revision is
 identified by when it was captured; `seal()` keeps the current snapshot under its own name so
@@ -141,61 +155,51 @@ is not computed yet.
 
 ## What we are doing now
 
-**Paused 2026-08-29 with the code browser built and the revision spine under it.** Three
-chunks, each verified against Mensores and each looked at in a real window; see `HANDOFF.md`
-5u.
+**Paused 2026-08-29 with search inside the source built.** Three chunks — the server, the
+client, and the measurements — each verified against Mensores and driven in a real window;
+see `HANDOFF.md` 5v. It was the thing Tom named at the last pause, and its shape was his:
+files first, one box with two lanes, the full margin on a hit.
 
-- **`WORKING` is a state, not an id.** A revision is identified by when it was captured, and
-  `seal()` keeps the current snapshot so the next `analyze` opens a second one beside it.
-  Mensores is sealed as `2026-08-29T19:43:39Z`. Nothing reads a second revision yet.
-- **`/api/files` and `/api/file`**, with two layers beside the source: *links*, which are
-  lookups on `calls.callee_id` and never name matches, and *marks*, which say what a line is.
-- **The Code group in the navigator**, `Code` as a fourth centre mode, and `?view=code`
-  detached — all three over one `CODEFILE`, and the pane follows the selection into whatever
-  file it lives in.
-- **The navigator's width cap is what the window can spare**, not a fixed 44rem, and the
-  Code group keeps its own width.
+- **`/api/search`, two answers behind one route.** Without `path`: which files hold the
+  query and how many lines each, complete and unbounded. With it: that one file's hits, each
+  carrying the routine it sits in, its margin and its clickable names — `code.py`'s own
+  answers narrowed to the matching lines, never a second copy of them.
+- **One compiled pattern for both passes**, so the count on a row and the lines beneath it
+  cannot disagree. Case, whole word and regex are switches; a regex turns whole word off and
+  says why; a pattern that will not compile is named rather than answered with no rows.
+- **`SourceStore` holds a bounded inflate cache**, 64 MB, keyed by content hash — and the
+  bound is stated rather than pretended away.
+- **The measurement decided the design.** Scanning all 184,722 lines is 20–30 ms, so rule 45
+  lands on the answer and not on the search. FTS5 was rejected on evidence.
 
-**Four defects found by driving it and invisible to every test** — rules 52 and 53 came out
-of two of them. `buildNav()` cost 1,937 ms per selection with a large file open; a cache
-taking a value rather than a thunk did the work it existed to avoid; re-attaching a large
-subtree made `render()` *worse* than before the cache; and a pane bounded by
-`calc(100vh - 16rem)` showed one line of code on a 589px window.
+**Four defects found by driving it, three of them pre-existing, none visible to any test.**
+The file filter had been destroying the box it was typed into on every keystroke since it was
+written; the search results overflowed their group and painted over the four below, clicks
+landing on the headings; the code pane measured 0px on a short window; and my own auto-open
+marked 84 files open that nothing fetched. **Rules 54 and 55** came out of the first and the
+last.
 
-**Next, and decided by Tom on 2026-08-29: search inside source.** It was named as its own
-loop when the browser was planned, and it is that rather than a bolt-on — 626 compressed
-blobs is a measurable job with its own budget row. Nothing about it is designed yet; the
-shape of the answer is the first conversation, not the implementation.
+**Also worth knowing: both mutation harnesses lied before either one did**, reporting every
+mutation as surviving because they were reading pytest's output rather than its exit code.
+Rule 43 in the instrument, twice in one session.
 
-Three things that are already known about it, and none of them decide it:
+**Reported, not fixed, because it is Tom's design.** The search box scrolls away with the
+list — the group note is sticky and carries the whole answer, but the input and its three
+switches are ordinary content in a group 1,900px tall on a broad search. Making them sticky
+costs ~64px of always-visible navigator, which is the vertical budget already flagged at the
+last pause (nine group headings cost ~306px open or closed). **That is one question waiting
+for you.**
 
-- The bodies are **zlib blobs**, so a search decompresses. 7.8 MB of text in 3.1 MB on disk,
-  and `blobs` is content-addressed — so an identical file appearing at fifty paths is one
-  search, not fifty.
-- The graph already answers a *different* question well. `touches`, `impact` and the glossary
-  search names and meanings; this searches **text**, including comments, strings and the
-  lines that carry neither. Where those two answers overlap and where they differ is a design
-  question, not a technical one.
-- **Rule 45 is the thing to watch.** Three times now the cost has been work proportional to
-  the whole program on every keystroke, and a search box is where that defect lives. It also
-  decides the *answer*: "2,206 match, in 43 packages" is something a reader can act on, and
-  1,924 rows is the haystack again.
-
-**After it: the layer selection UI** — a time slider, a revision list, a two-point comparison,
-or all three. The storage is ready and Mensores has a sealed snapshot to compare against as
-soon as Society is pulled fresh. That is the deferred conversation, and it is now the one
-thing standing between the spine and a second point in time on screen.
-- **Reported, not fixed, because it is your design and not mine:** the navigator's nine group
-  headings cost **306px** whether their groups are open or closed, so on a short window any
-  open group — the routine list as much as the code — gets about 200px. Measured at 589px
-  tall; I could not resize the automation window to check a realistic height (rule 38).
+**Next: the layer selection UI** — a time slider, a revision list, a two-point comparison, or
+all three. The storage is ready and Mensores is sealed as `2026-08-29T19:43:39Z`. Nothing
+else stands between the spine and a second point in time on screen.
 
 **Still owed from before, unchanged:** `CURIOSITIES`; the worklist's two jump buttons (a
-server change — `anomalies.py` carrying the node ids it already knows); the two vocabulary-lane
-precision defects; per-plate sphere scaling and stack orientation; packaging as a binary. One
-question is open on the worklist and was never answered: **what is an occurrence for
-LOST_EDGE** — the 142 callers, or the rival definitions? 93 of Mensores' 106 findings are
-LOST_EDGE, so it decides the feature.
+server change — `anomalies.py` carrying the node ids it already knows); the two
+vocabulary-lane precision defects; per-plate sphere scaling and stack orientation; packaging
+as a binary. One question is open on the worklist and was never answered: **what is an
+occurrence for LOST_EDGE** — the 142 callers, or the rival definitions? 93 of Mensores' 106
+findings are LOST_EDGE, so it decides the feature.
 
 **Owed and still not looked at:** the blank-graph fix (rule 49). The automation tab never
 mounts the graph — `canvas MISSING`, `frames 0` — so it is reasoned and guarded, not seen.
@@ -331,6 +335,13 @@ Rules 28, 29 and 30.
 | `WORKING` is a **state**; a revision is identified by when it was captured | rule 20; `sourcedb.py` |
 | A read defaults to the newest revision, never only to WORKING — sealing must not blind the dashboard | `sourcedb.py` `current_revision` |
 | The navigator's width cap is what the window can spare; the Code group keeps its own width | rule 28; `HANDOFF.md` 5u |
+| One box, two lanes: file names filtered here, source text asked of the server | `HANDOFF.md` 5v |
+| Files first, then lines — a flat hit list is the haystack again | rule 45; `HANDOFF.md` 5v |
+| One compiled pattern for the count and for the lines beneath it | rule 13; `search.py` |
+| A regex turns whole word **off**; a bad pattern is named, never answered with no rows | rule 46; rule 20 |
+| Where a hit sits is a line range, innermost span first — never a name match | rule 5; rule 10 |
+| No index: FTS5 is token-based and cannot find `_emit` inside `self._emit` | `search.py` |
+| The inflate cache is **bounded and says so** — 64 MB, keyed by content hash | `sourcedb.py` |
 
 ## How to verify — all three, before saying anything is done
 
@@ -379,6 +390,15 @@ standards and must yield **zero** naming rules.
   listener whatever is painted on top. A whole session's driving verified every control on
   the detail window and could not see that its scrim was over it. Use `elementFromPoint`.
   Rule 48.
+- **A class the generator emits around every item cannot name one item.** `buildNav()` wraps
+  every group body in `.nav-items`, so `querySelector(".nav-items")` inside a group returns
+  the **wrapper** — and the file filter had been replacing the box it was typed into on every
+  keystroke since it was written, with a guard for exactly that passing throughout. Rule 54.
+- **A component with two shapes needs two sets of rules, and must say which it is in.** One
+  flex chain served both and squashed the list state to 118px while 1,900px overflowed it and
+  painted over the panels below. Every row present, sized, correct and unclickable.
+- **Your mutation harness is a check too.** Both of this session's reported every mutation as
+  surviving, because they read pytest's output rather than its exit code. Rule 43.
 - **Three times now: a control correctly wired to a stylesheet that could not carry it.**
   `[hidden]` beaten by a later `display`, a `th` width ignored under `table-layout: auto`,
   a sticky header bound to a box that never scrolls. Markup and handlers both check out.

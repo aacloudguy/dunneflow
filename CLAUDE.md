@@ -36,6 +36,11 @@ uv run dunneflow query    <path> --sql "..."        # ask the graph directly
 `analyze` reads documentation as well as source, from the package root by default
 (`--docs <path>`, `--no-docs`, `--recheck-docs`).
 
+The dashboard also searches the **text** of the source — `/api/search`, the Code group's
+box. That is a different question from `touches`, `impact` and the glossary, which search
+names and meanings: this finds a word inside a comment, inside a string literal, or on a
+line that carries neither.
+
 `analyze` is incremental: unchanged files are not re-parsed.
 
 ## Verification — run before marking anything complete
@@ -212,6 +217,49 @@ away; it takes a builder function now. And re-attaching the built node still cos
 layout, so `render()` went from 155 ms to 1,370 — the only way not to pay a layout is not to
 detach, which is what the paint key is for.
 
+Search inside source, measured on the same corpus — 626 files, 184,722 lines, 7.8 MB of
+text held as 3.1 MB of zlib blobs:
+
+| Measure | Budget | Measured 2026-08-29 |
+|---|---|---|
+| `/api/search`, whole corpus, warm | < 100 ms | 38–102 ms |
+| …the same, first search of a session | < 500 ms | **250 ms – 2.2 s, and it is the disk** |
+| …as a regular expression | < 150 ms | 87–96 ms |
+| One file's hits with their margin | < 200 ms | 95 ms (`_server.py`) · 172–189 ms (268 hits) |
+| Paint the 166-file answer | < 100 ms | 16–21 ms |
+| Paint 268 hits of one file | < 200 ms | 158 ms |
+| The file-name lane, per keystroke | < 30 ms | 3.3 ms |
+
+**The cold row is a disk read and nothing else**, and it is stated as a range because that
+is what it is: 250 ms, 780 ms and 2,224 ms on three runs of the same query, varying only by
+how much of `source.db` the operating system still had. Warm it is 38–102 ms. The bodies are
+held in a bounded inflate cache — 64 MB, keyed by content hash, stated in `sourcedb.py`
+rather than pretended away — so a program larger than the bound re-inflates its overflow and
+the answer reports how many bodies it read. That is the same external-volume caveat this
+file already carries, and it is not a regression.
+
+**Rule 45 does not land on the search.** Scanning all 184,722 lines is 30 ms; the whole
+program is 7.8 MB of text and reading it is cheap. It lands entirely on the *answer* —
+133,454 hits for `e` is the haystack again — which is why the answer is 626 file rows and
+the lines come one file at a time. An index would have been the wrong instinct twice over:
+FTS5 is token-based, so it could not find `_emit` inside `self._emit` or a substring of a
+string literal, and there was nothing to make faster.
+
+**What is not measured, and why it is absent rather than estimated.** Keystroke-to-answer
+wall time, which is the number a reader actually feels. It was measured at 1.4–2.5 s through
+a browser-automation tab and thrown away: that tab gets no animation frames, `setTimeout`
+is throttled in it, and the same query the tab took 1,965 ms to poll for answered `curl` in
+86 ms. Rule 38 — an instrument that cannot see cannot report. The server times above are
+taken inside the server with `perf_counter` and stand; the paint times are synchronous
+deltas around a DOM write with a forced layout and stand; the round trip between them wants
+a real window.
+
+Two things looked like the cost and were not. Per-row `overflow-x` on 268 hit rows makes 268
+scroll containers, which is the shape that cost `codeTable` 1,358 ms — and it is 158 ms with
+them and 165 ms without, so it is the markup, not the containers. And the whole-word and
+regex passes are the same compiled-pattern loop as the literal one, so they cost what the
+literal costs plus what the pattern costs, not a second scan.
+
 The first code view of a session costs about a second if the first thing painted is a
 five-thousand-line file; painting a small one first makes every subsequent file 12–42 ms.
 That is warm-up rather than proportional work — the same file is 40 ms when it is not first —
@@ -274,6 +322,14 @@ docs   ──► extract ──► docs.db  (SQLite) ─────────
 - `web/vocabulary.py` — the two naming lanes served, and matched against one name. The
   membership test is `Convention.glob`, which is the same string the exceptions query is
   built from, so the claim and the population cannot drift (rule 41).
+- `web/search.py` — searching the **text**, which is the one question the graph cannot
+  answer: `touches`, `impact` and the glossary search names and meanings, and none of them
+  can find a word inside a comment or a string. **Files first** — 626 rows with a count on
+  each, never bounded — and one file's lines only when someone opens it, because the margin
+  is ten queries a file and a broad word touches 166. One compiled pattern serves both
+  passes so the count on a row and the lines beneath it cannot disagree (rule 13). Where a
+  hit sits is a line-range lookup, innermost span first; there is no name in the question,
+  so rule 5 never arises and rule 10 decides which scope wins.
 - `web/code.py` — the code browser. **Links are lookups, never name matches**: `calls`
   already carries `callee_id`, so a clickable name in the source is the resolver's own
   answer. What it does *not* carry is a column, so a call is underlined only where its
@@ -949,6 +1005,39 @@ rule of that number — a blank canvas must say why it is blank — which does e
     mine: the navigator's nine group headings cost **306px** whether or not their groups are
     open, so on a short window any open group — the routine list as much as the code — gets
     about 200px. That is pre-existing and affects every group equally.
+
+54. **A guard that names the wrong container has not guarded anything, and the container
+    is usually the generated one.** The Code group's file filter destroyed the box it was
+    typed into, on every keystroke, for as long as it had existed: `buildNav()` wraps every
+    group's body in a `<div class="nav-items">`, so `group.querySelector(".nav-items")`
+    inside `#navCode` returns the **wrapper** and writing rows into it replaced the whole
+    body, input and caret and all. Filtering 626 files has never worked past one character.
+
+    The guard for exactly this passed the whole time. It asserted the refresh does not
+    *call* `buildNav` — true, and beside the point, because it rebuilt the pane without
+    going through it. Rule 37 said check that a guard catches rather than that it mentions;
+    this is the same instruction pointed at a **selector**, and the general form is worth
+    keeping: *a class the generator emits around every item cannot distinguish the wrapper
+    from what the item puts inside it.* An id can. The same session found the same shape one
+    layer out — a flex chain written for one of a component's two states and applied to
+    both, which squashed the other to 118px and let 1,900px of content overflow it visibly
+    and paint over the four panels below. Every row present, sized, correct and unclickable;
+    `elementFromPoint` said `.nav-head` for all thirteen on screen. Neither was visible to
+    any test, and both were found by driving the thing.
+
+55. **A bound must be on the work, not only on the answer.** Rule 45's auto-open is free
+    where it was written: the routine list opens packages whose rows are already in memory,
+    so the only cost is markup. Carried into the search unchanged it marked 84 files open,
+    and a file there is a **request** — ten queries for its margin. Eighty-four of them
+    behind one keystroke is the very defect the rule exists to prevent, arriving by a route
+    its own precedent did not cover. One file opens now, the top one, and only once the
+    answer has narrowed.
+
+    Its companion, and how it was caught: the 84 rendered `opening…` for ever, because
+    *nothing fetched them*. The open state was computed in one place (`return !SEARCH.broad`)
+    and the fetch lived in another, so a file could be open without anything having opened
+    it. **One truth about what is open, and whoever sets it does the work** — rule 51 again,
+    and the version that looks identical on screen right up until it does not.
 
 ## Anomalies: the discipline
 

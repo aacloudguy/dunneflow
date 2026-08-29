@@ -2279,3 +2279,80 @@ window any open group — the routine list as much as the code — gets about 20
 **Next: search inside source**, named as its own loop when this was planned, and **the layer
 selection UI** — the storage is ready and there is now a sealed snapshot to compare against
 as soon as Society is pulled fresh.
+
+**5v. Built 2026-08-29 (fourth session): search inside the source.** The shape is Tom's,
+decided at the keyboard before anything was written: **files first, expand to lines**; **one
+box, two lanes** in the Code group; literal and case-insensitive by default with case,
+whole-word and regex switches; and **the full margin on a hit** — the routine it sits in, its
+marks, its clickable names.
+
+*The measurement came before the design and changed the conversation.* Scanning all 184,722
+lines of Mensores case-insensitively is **20–30 ms**, and a regex is 87. Rule 45 has never
+been about the search: the whole program is 7.8 MB of text and reading it is cheap. It is
+entirely about the **answer** — `e` matches 133,454 lines in all 626 files, and that is the
+haystack again. So the cheap pass returns 626 rows at worst and the expensive half, ten
+queries for a file's margin, is built only for a file someone opened. FTS5 was the obvious
+reach and is wrong twice over: token-based, so it cannot find `_emit` inside `self._emit` or
+a substring of a string literal, and there was nothing to make faster.
+
+One compiled pattern serves both passes, because the count on a file row and the lines
+beneath it are one claim and `str.lower()` against `re.IGNORECASE` is the easiest way to make
+them disagree (rule 13). Whole word is `\b` around an escaped needle rather than a second
+path; a regex turns it **off** rather than composing with it, because `a|b` wrapped in `\b`
+is not the question that was asked (rule 46). A pattern that will not compile is named, never
+answered with no rows — rule 20's `(no rows)` argument in a search box. Where a hit sits is a
+line-range lookup, innermost span first: no name is in the question, so rule 5 never arises,
+and rule 10 is why the factory is not the answer for a line inside its closure.
+
+`SourceStore` grew a bounded inflate cache keyed by content hash — a body at fifty paths
+inflates once — and `text`, `lines` and `path_lines` share it rather than materialising the
+same megabyte three times. **The bound is stated at 64 MB rather than pretended away**: text
+is the one thing here you cannot answer about without reading it, so the honest answer is a
+ceiling that says what it is.
+
+**Four defects found by driving it, three of them pre-existing and none visible to any test.**
+
+*The file filter has never worked past one character.* `buildNav()` wraps every group body in
+a `<div class="nav-items">`, so that class inside `#navCode` matches the **wrapper** — and the
+narrow refresh wrote rows into it, replacing the box and the caret. The guard written for
+exactly this asserted the refresh does not *call* `buildNav`: true, and beside the point.
+**Rule 54.**
+
+*The results painted over the four groups below them.* The flex chain that makes the Code
+group fill the scroller was written for the file-open state and applied to both, so the list
+was squashed to 118px while 1,900px of results overflowed it visibly. Every row present,
+sized and correct, and `elementFromPoint` said `.nav-head` for all thirteen on screen. Rule
+48, found by hit-testing and by nothing else.
+
+*The code pane measured 0px on a short window.* The nine group headings cost ~306px open or
+closed, so on a 536px window the group's share went negative — the file open, its lines in
+the DOM, none on screen. The box above it made an existing squeeze worse rather than causing
+it. A floor in rem, and the navigator scrolls. Rule 53's flex twin.
+
+*And one of mine.* Auto-opening every file while the answer was small marked 84 open that
+nothing fetched, so all 84 rendered `opening…` for ever — and 84 files is 84 requests.
+**Rule 55**: a bound must be on the work, not only on the answer, and one truth about what is
+open with whoever sets it doing the work.
+
+*Contrast, measured rather than assumed.* The match highlight was `--accent-soft`, which is
+what a hovered link fills with and is **1.20:1 against the pane** — for the one mark whose
+whole job is to be found, a rumour rather than a highlight. Full accent now, 4.87:1 light and
+9.01:1 dark. The pressed switch was 4.05:1 and reads `--text`.
+
+*What it cost in checks.* Twelve mutations on the server and twelve on the client, each the
+defect its guard was written from, all twenty-four caught. **Both mutation harnesses lied
+before either did** — the first misread `pytest -x`'s truncated tail, the second grepped for
+a summary line `-q` does not print here, and both reported everything as surviving. Rule 43
+in the instrument, twice in one session; they read the exit code now.
+
+*Reported rather than changed, because it is Tom's design.* The search box scrolls away with
+the list — the group's own note is sticky and carries the whole answer, but the input and its
+three switches are ordinary content in a group that is 1,900px tall on a broad search. Making
+them sticky would cost ~64px of always-visible navigator, which is the vertical budget already
+flagged at the last pause. And a hypothesis worth recording because it was reasonable and
+wrong: per-row `overflow-x` on 268 hit rows makes 268 scroll containers, the shape that cost
+`codeTable` 1,358 ms — and it is 158 ms with them and 165 ms without.
+
+**Next: the layer selection UI.** The storage is ready, Mensores is sealed as
+`2026-08-29T19:43:39Z`, and nothing else stands between the spine and a second point in time
+on screen.

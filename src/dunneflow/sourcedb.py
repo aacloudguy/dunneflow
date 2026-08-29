@@ -67,6 +67,23 @@ STATE_WORKING = "WORKING"
 STATE_FOR_COMPARISON = "FOR_COMPARISON"
 STATES = (STATE_WORKING, STATE_FOR_COMPARISON)
 
+# How much inflated source this store will keep in memory, and it is a **stated ceiling
+# rather than a pretence**.
+#
+# `store.py` says nothing holds the whole program in memory, and that rule is about the
+# graph: reachability is recursive SQL because a call graph does not fit and does not need
+# to. Text is the one thing here you cannot answer a question about without reading it --
+# searching 184,722 lines means inflating 184,722 lines -- so the honest answer is a bound
+# that says what it is, not a claim to be holding nothing. Mensores is 7.8 MB and fits
+# whole; a corpus larger than this re-inflates the overflow on every search, and the search
+# reports how many bodies it had to inflate so a reader can see that happening rather than
+# only feel it.
+#
+# Eviction is oldest-first. For a scan larger than the budget that is the worst case for
+# any policy -- it evicts exactly what the next scan asks for first -- and pretending
+# otherwise with an LRU would buy nothing. The bound is what matters; the order is not.
+INFLATE_BUDGET_BYTES = 64 * 1024 * 1024
+
 # What every sidecar written before revisions were recorded holds its paths under. It reads
 # as the working revision and is stamped on the next *writable* open -- never on a read.
 # Rule 20: a read may refuse, but it may never repair, and this is the one store that must
@@ -144,6 +161,11 @@ class SourceStore:
         # See `Store.__init__`: shared means many threads, and a lock owed by the caller.
         self.conn = sqlite3.connect(self.path, check_same_thread=not shared)
         self.conn.row_factory = sqlite3.Row
+        # Inflated bodies, keyed by content hash -- so an identical file at fifty paths is
+        # inflated once, which is the property content addressing was chosen for. Bounded
+        # by `INFLATE_BUDGET_BYTES`; see the note there for why a bound rather than none.
+        self._inflated: dict[str, list[str]] = {}
+        self._inflated_bytes = 0
         self._refuse_wrong_kind()
         if not writable:
             return
@@ -488,6 +510,30 @@ class SourceStore:
 
     # --------------------------------------------------------------- reading --- #
 
+    def hash_of(self, path: str, *, revision: str | None = None) -> str | None:
+        """Which body this path held at this revision. One indexed lookup, no blob."""
+        row = self.conn.execute(
+            "SELECT hash FROM paths WHERE revision = ? AND path = ?",
+            (self.resolve_revision(revision), path),
+        ).fetchone()
+        return None if row is None else str(row["hash"])
+
+    def path_lines(self, path: str, *,
+                   revision: str | None = None) -> list[str] | None:
+        """One file's body as a list of lines, through the cache.
+
+        The shape every caller here actually wanted. `text()` returned a single string and
+        every one of its callers immediately split it -- so opening a file, then a span of
+        it, then searching it, materialised the same megabyte three times over. Going
+        through `body_lines` means all three share one inflation.
+
+        The returned list is the cached one; see `body_lines` on not mutating it.
+        """
+        content_hash = self.hash_of(path, revision=revision)
+        if content_hash is None:
+            return None
+        return self.body_lines(content_hash)
+
     def text(self, path: str, *, revision: str | None = None) -> str | None:
         """The whole body of one file, or None if this sidecar does not hold it.
 
@@ -495,14 +541,8 @@ class SourceStore:
         `--no-source`, or handed over without its sidecar, has no source to open, and
         that is different from a file that is empty.
         """
-        row = self.conn.execute(
-            "SELECT b.body FROM paths p JOIN blobs b ON b.hash = p.hash "
-            "WHERE p.revision = ? AND p.path = ?",
-            (self.resolve_revision(revision), path),
-        ).fetchone()
-        if row is None:
-            return None
-        return zlib.decompress(row["body"]).decode("utf-8", errors="replace")
+        rows = self.path_lines(path, revision=revision)
+        return None if rows is None else "\n".join(rows)
 
     def lines(self, path: str, first: int, last: int, *,
               revision: str | None = None) -> list[tuple[int, str]]:
@@ -512,13 +552,79 @@ class SourceStore:
         numbers travel with the text so a span shown out of context still says where it
         came from.
         """
-        body = self.text(path, revision=revision)
-        if body is None:
+        rows = self.path_lines(path, revision=revision)
+        if rows is None:
             return []
-        rows = body.split("\n")
         lo = max(1, first)
         hi = min(len(rows), max(lo, last))
         return [(i, rows[i - 1]) for i in range(lo, hi + 1)]
+
+    def body_lines(self, content_hash: str) -> list[str] | None:
+        """One body, inflated and split, or None if this sidecar does not hold it.
+
+        Keyed by hash rather than by path, because that is what makes the cache correct:
+        two paths holding the same bytes are one entry, and the same body at a second
+        revision is not inflated twice.
+
+        The returned list is the cached one and callers must not mutate it. Copying it per
+        call would defeat the cache -- the whole cost being avoided is materialising the
+        text -- so the contract is stated here instead. Everything in this codebase that
+        reads it only slices.
+        """
+        hit = self._inflated.get(content_hash)
+        if hit is not None:
+            return hit
+        row = self.conn.execute(
+            "SELECT body FROM blobs WHERE hash = ?", (content_hash,)
+        ).fetchone()
+        if row is None:
+            return None
+        lines = zlib.decompress(row["body"]).decode("utf-8", errors="replace").split("\n")
+        self._remember(content_hash, lines)
+        return lines
+
+    def _remember(self, content_hash: str, lines: list[str]) -> None:
+        """Keep an inflated body, evicting oldest-first to stay inside the budget."""
+        cost = sum(len(ln) for ln in lines) + len(lines)
+        if cost > INFLATE_BUDGET_BYTES:
+            return                              # one file larger than the whole budget
+        while self._inflated and self._inflated_bytes + cost > INFLATE_BUDGET_BYTES:
+            oldest = next(iter(self._inflated))
+            gone = self._inflated.pop(oldest)
+            self._inflated_bytes -= sum(len(ln) for ln in gone) + len(gone)
+        self._inflated[content_hash] = lines
+        self._inflated_bytes += cost
+
+    def bodies(self, *, revision: str | None = None
+               ) -> Iterator[tuple[str, str, list[str]]]:
+        """Every path this revision holds, with its body as a list of lines.
+
+        Yields `(path, content_hash, lines)` in path order. The hash travels with the path
+        because the caller may legitimately want to know that two paths are one body --
+        a search reports how many *bodies* it read, not only how many files it answered
+        about, and those are different numbers on a program with a vendored copy in it.
+
+        Distinct bodies are inflated in one pass before anything is yielded, so a hash
+        shared by fifty paths costs one `zlib.decompress` rather than fifty cache probes
+        interleaved with fifty queries.
+        """
+        rows = [
+            (str(r["path"]), str(r["hash"])) for r in self.conn.execute(
+                "SELECT path, hash FROM paths WHERE revision = ? ORDER BY path",
+                (self.resolve_revision(revision),),
+            )
+        ]
+        for content_hash in dict.fromkeys(h for _, h in rows):
+            self.body_lines(content_hash)
+        for path, content_hash in rows:
+            lines = self.body_lines(content_hash)
+            if lines is None:
+                # A path row whose blob is gone. `prune_missing` never deletes blobs, so
+                # this cannot happen to a sidecar this code wrote -- but a truncated or
+                # hand-edited one is not this code's to trust, and skipping is the only
+                # answer that does not invent a body.
+                continue
+            yield path, content_hash, lines
 
     def held_paths(self) -> dict[str, int]:
         """Every path this revision holds, with how many lines its body has.

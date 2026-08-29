@@ -38,6 +38,7 @@ from .cover import build as build_cover
 from .detail import describe, hover_card
 from .graph import GraphModel, build, pkg_params, root_package
 from .layout import structural
+from .search import search_files, search_in_file
 from .threads import cohort, for_node
 from .vocabulary import bind_glossary, measure_naming
 
@@ -401,6 +402,35 @@ class _Handler(BaseHTTPRequestHandler):
             self._json(build_file(self._live.store, self._live.source, path,
                                   self._live.source_root))
 
+    def _r_search(self, q: dict[str, list[str]]) -> None:
+        """Search the text of the source, which is the one thing the graph cannot do.
+
+        Two answers behind one route, and the difference is `path`. Without it: which files
+        hold a match and how many lines each -- complete, and cheap enough to run on a
+        keystroke (20-30 ms over all 184,722 of Mensores' lines). With it: that one file's
+        hits, each carrying its margin, its links and the routine it sits in.
+
+        Split that way because the expensive half is the margin -- ten queries per file --
+        and a broad search touches 166 files. Building it for all of them behind a keystroke
+        would be rule 45 exactly; building it for the one file a reader opened is what
+        `/api/file` already costs.
+        """
+        term = (q.get("q") or [""])[0]
+        path = (q.get("path") or [""])[0]
+        flag = lambda k: (q.get(k) or ["0"])[0] in ("1", "true", "on")  # noqa: E731
+        case, word, regex = flag("case"), flag("word"), flag("regex")
+        with self._live.lock:
+            if path:
+                self._json(search_in_file(
+                    self._live.store, self._live.source, term, path,
+                    case=case, word=word, regex=regex,
+                    source_root=self._live.source_root))
+            else:
+                self._json(search_files(
+                    self._live.store, self._live.source, term,
+                    case=case, word=word, regex=regex,
+                    source_root=self._live.source_root))
+
     def _r_source(self, q: dict[str, list[str]]) -> None:
         """A span of one file, straight out of the sidecar.
 
@@ -464,6 +494,7 @@ class _Handler(BaseHTTPRequestHandler):
         "/api/source": "_r_source",
         "/api/files": "_r_files",
         "/api/file": "_r_file",
+        "/api/search": "_r_search",
         "/favicon.ico": "_r_favicon",
     }
 

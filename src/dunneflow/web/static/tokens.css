@@ -513,10 +513,32 @@ body {
  * group is a list that is happy to be as tall as its rows. */
 .nav-scroll { display: flex; flex-direction: column; }
 .nav-group { flex: none; }
-.nav-group#navCode[data-open="true"] {
-  flex: 1; min-height: 0; display: flex; flex-direction: column;
+/* **Only with a file open**, and the qualifier is the whole of it.
+ *
+ * With a file open the group fills what is left of the scroller so the code pane grows and
+ * shrinks with the window rather than guessing at it. In the *list* it must do the
+ * opposite -- be as tall as its content and let the navigator's own scroller carry it, the
+ * way the routine list carries 4,734 rows.
+ *
+ * Unqualified, this squashed the list state to 118px while 1,900px of search results
+ * overflowed it visibly and painted over the four groups below. The rows were all present,
+ * sized and correct; `elementFromPoint` answered `.nav-head` for every one on screen,
+ * because the clicks landed on headings drawn on top of them. `data-codemode` is written by
+ * `markCodeMode()` and is in the wired roster for the reason rule 43 gives. */
+.nav-group#navCode[data-open="true"][data-codemode="file"] {
+  /* **A floor, not `min-height: 0`** -- rule 53 says a pane bounded by arithmetic is right
+   * at one window size, and this is its flex twin. Nine group headings cost about 306px
+   * whether their groups are open or closed, so on a 536px window the Code group's share of
+   * the scroller went negative and `#codePaneMount` measured **0px**: the file was open, its
+   * lines were all in the DOM, and none of them were on screen. The search box above it made
+   * an existing squeeze worse rather than causing it.
+   *
+   * With a floor the group asks for more than the scroller has, and the navigator scrolls --
+   * which is what a scroller is for. A pane that collapses to nothing is a pane that says
+   * nothing, and it looks exactly like a file that failed to open. */
+  flex: 1; min-height: 20rem; display: flex; flex-direction: column;
 }
-.nav-group#navCode[data-open="true"] > .nav-items {
+.nav-group#navCode[data-open="true"][data-codemode="file"] > .nav-items {
   flex: 1; min-height: 0; display: flex; flex-direction: column;
 }
 #codePaneMount { flex: 1; min-height: 0; display: flex; flex-direction: column; }
@@ -1744,6 +1766,100 @@ kbd { font-family: var(--f-mono); font-size: .66rem; background: var(--sunken);
 .codepath { font-size: .76rem; font-weight: 600; }
 .codemod { font-size: .66rem; color: var(--text-faint); }
 .codehead .linkbtn:last-child { margin-left: auto; }
+
+/* ── searching inside the source ─────────────────────────────────────────────────────
+ *
+ * One box, two lanes. The lanes are named because a list with no heading over it is a list
+ * the reader has to infer the subject of -- and here the two answer different questions
+ * about the same word, so the difference has to be on screen rather than in a habit.
+ *
+ * Every dimension is `rem` (design rule 3): one multiplier resizes the surface together,
+ * and a width in pixels is a width the multiplier cannot reach. */
+.lane-head {
+  display: flex; align-items: baseline; justify-content: space-between;
+  padding: .5rem .55rem .2rem; font-size: .6rem; letter-spacing: .07em;
+  text-transform: uppercase; color: var(--text-faint); font-weight: 600;
+}
+.lane-head .n { font-weight: 400; letter-spacing: 0; text-transform: none; }
+
+/* The three switches sit under the box rather than inside it: an input with buttons
+   overlaid loses the right-hand end of what is being typed exactly when a query grows long
+   enough to need reading back. */
+.srch-flags { display: flex; gap: .25rem; margin-top: .3rem; }
+.srch-flag {
+  font: inherit; font-size: .62rem; font-family: var(--f-mono); line-height: 1;
+  padding: .22rem .4rem; border: 1px solid var(--border-strong); border-radius: .25rem;
+  background: var(--surface); color: var(--text-muted); cursor: pointer;
+}
+.srch-flag:hover:not(:disabled) { color: var(--text); border-color: var(--text-faint); }
+/* Pressed is border, fill and **`--text`**, not accent-on-soft. The pairing every chip in
+   this shell uses is 4.05:1 measured, which passes for a chip at .66rem and does not for a
+   27px switch at .62rem -- design rule 6 wants 4.5:1 for body text and this is body text.
+   The border and the fill already say "on"; the label does not have to. 14.8:1 light,
+   10.5:1 dark. */
+.srch-flag[aria-pressed="true"] {
+  background: var(--accent-soft); color: var(--text); border-color: var(--accent);
+}
+/* **Disabled says why, it does not merely stop.** Whole word is off while a regular
+   expression is in force because a pattern writes its own word edges, and the reason is on
+   the control's own title -- the choice `undo` and the worklist's jump buttons already
+   make. A control that refuses without a reason is indistinguishable from one that is
+   broken. */
+.srch-flag:disabled { opacity: .4; cursor: not-allowed; }
+.srch-note:empty { display: none; }
+.srch-note .warn { color: var(--sev-broken, var(--text)); }
+
+.srch-file .nav-pkgname { display: flex; align-items: baseline; gap: .3rem; }
+.srch-path { font-family: var(--f-mono); font-size: .7rem; }
+
+/* One hit: the line number, the line, its marks, and the routine it is in.
+ *
+ * A grid rather than a flex row, so the numbers line up down the column however wide the
+ * pane is -- a hit at line 9 and one at line 5,838 read as one column, not as two ragged
+ * ones. `minmax(0, 1fr)` on the code, because a grid item is `min-height: auto`'s
+ * horizontal twin and refuses to shrink below its content, which would hand a long line's
+ * overflow to the pane instead of to the cell that declares it. */
+.srch-hits { padding: 0 0 .3rem 1.5rem; }
+.srch-hit {
+  display: grid; grid-template-columns: 3.2rem minmax(0, 1fr) auto;
+  align-items: baseline; gap: .3rem; padding: .05rem .5rem .05rem 0;
+}
+.srch-hit:hover { background: var(--raised); }
+.srch-n {
+  font: inherit; font-family: var(--f-mono); font-size: .62rem; text-align: right;
+  background: none; border: 0; padding: 0; cursor: pointer; color: var(--text-faint);
+}
+.srch-n:hover { color: var(--accent); text-decoration: underline; }
+.srch-code {
+  font-family: var(--f-mono); font-size: .66rem; white-space: pre;
+  overflow-x: auto; color: var(--text-muted);
+}
+/* The match itself: a **filled block**, where a link is text with a thin rule under it.
+ *
+ * Two channels over the same characters, so a name that is both reads as both -- and the
+ * two must not be the same paint. `--accent-soft` was the first choice and is exactly what
+ * `.codelink:hover` fills with, so a hovered link and a match looked alike; worse, it is
+ * **1.20:1 against the pane**, which for the one mark on the page whose whole job is to be
+ * found is not a highlight, it is a rumour. Full accent, measured: 4.87:1 light and 9.01:1
+ * against the pane, 4.87 and 9.08 for the text on it. Loud, and a search match should be. */
+.codehit {
+  background: var(--accent); color: var(--on-accent);
+  border-radius: .12rem; padding: 0 .05rem;
+}
+.srch-marks { display: flex; gap: .15rem; }
+.codemark { font-size: .6rem; color: var(--text-faint); cursor: default; }
+/* The routine, on its own row beneath the code, because a qualified name and a line of
+   source both want the width and neither will give it up. */
+.srch-in {
+  grid-column: 2 / -1; font-size: .62rem; color: var(--text-faint);
+  padding: 0 0 .12rem 0; width: auto; text-align: left; scroll-margin-top: 0;
+}
+/* Generated, so the row's *text* is the routine's name and nothing else -- the trail
+   records a row's text, and a step called "in timestamp_cmd" is a sentence where the trail
+   wants a name. */
+.srch-in::before { content: "in "; color: var(--text-faint); }
+.srch-in:hover { background: none; color: var(--accent); text-decoration: underline; }
+.srch-nowhere { cursor: default; }
 
 /* **The box that scrolls is the box with a height** (rule 50). `.tablewrap` carried
  * `overflow: auto`, nothing bounded it, so it grew to the whole table and never scrolled a

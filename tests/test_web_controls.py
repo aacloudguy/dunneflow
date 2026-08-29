@@ -3210,9 +3210,19 @@ def test_the_code_pane_is_the_box_that_scrolls() -> None:
         "shrink below its content and hands the overflow to the document"
     )
     # And the reveal must move the box that scrolls, paired with the row that lives in it.
-    reveal = _fn(_code(_read("shell.js")), "revealSelectedLine")
+    #
+    # Read from `revealLine`, which is where the work moved when the search arrived and
+    # needed to go to a line nothing had selected. The claim did not change; its address
+    # did. `revealSelectedLine` is asserted to *delegate* rather than merely to exist, or a
+    # second copy could drift from this one and both would pass.
+    js = _code(_read("shell.js"))
+    reveal = _fn(js, "revealLine")
     assert "#codeScroll" in reveal and "#viewMount" in reveal, (
         "the reveal knows only one of the two places the file is on screen"
+    )
+    assert "revealLine(" in _fn(js, "revealSelectedLine"), (
+        "revealSelectedLine no longer reaches revealLine, so there are two reveals and only "
+        "one of them is checked here"
     )
     # The comparison itself, not the word `continue` -- which appears in this function
     # twice for other reasons, so naming it vouched for a body that had stopped comparing.
@@ -3240,9 +3250,164 @@ def test_the_file_filter_does_not_destroy_the_field_it_types_into() -> None:
     assert "buildNav()" not in narrow and "render()" not in narrow, (
         "the narrow refresh is not narrow -- it rebuilds the pane it is meant to spare"
     )
-    assert ".nav-items" in narrow and "note-navCode" in narrow, (
+    assert "codeFileRows" in narrow and "note-navCode" in narrow, (
         "the refresh does not update both the rows and the count beside them, so one of "
         "them describes the other's answer"
+    )
+    # **The half this guard did not have, and the defect it let stand for two sessions.**
+    #
+    # Not calling `buildNav` is not the same as not rebuilding the pane. `buildNav()` wraps
+    # every group body in a `<div class="nav-items">`, so that class inside `#navCode`
+    # matches the *wrapper* first -- and writing rows into it replaced the input, the caret
+    # and all, on the first character typed. The old assertion required exactly the selector
+    # that caused it. A class the generator emits around every body cannot distinguish the
+    # wrapper from what the body puts inside it; an id can. Rule 37.
+    assert '".nav-items"' not in narrow and "'.nav-items'" not in narrow, (
+        "the refresh selects `.nav-items` inside the group, which is the wrapper buildNav "
+        "puts around the whole body -- so it replaces the search box the reader is typing "
+        "into. Name the list by id."
+    )
+    assert 'id="codeFileRows"' in _fn(js, "codeFileList"), (
+        "the file rows have no id of their own, so nothing can be refreshed without "
+        "replacing the box above them"
+    )
+    body = _fn(js, "codeFileList")
+    box_at, rows_at = body.find("searchBoxHtml()"), body.find('id="codeFileRows"')
+    assert 'id="codeQ"' in _fn(js, "searchBoxHtml"), "the box moved out of searchBoxHtml"
+    assert 0 <= box_at < rows_at, (
+        "the box is not rendered outside and above the rows, so refreshing the rows reaches it"
+    )
+
+
+def test_a_search_never_goes_through_render_or_buildnav() -> None:
+    """Rule 45, by construction rather than by luck.
+
+    Three times now the cost has been work proportional to the whole program on every
+    character typed -- the glossary filter's 412 ms by calling `render()`, the routine list's
+    483 ms by building rows nobody could see, and `buildNav()`'s 1,937 ms with a large file
+    open. A search box is exactly where that defect lives, so the keystroke path is asserted
+    to touch only its own two strips.
+
+    `runSearch` may not repaint the pane either: it runs on the keystroke, before the answer
+    is back.
+    """
+    js = _code(_read("shell.js"))
+    for name in ("runSearch", "refreshCodeSearch", "loadSearchHits"):
+        body = _fn(js, name)
+        assert body, f"{name} is gone; this guard is blind"
+        assert "render()" not in body, (
+            f"{name} repaints the centre pane on a keystroke -- the glossary filter's 412 ms"
+        )
+        assert "buildNav()" not in body, (
+            f"{name} rebuilds the navigator on a keystroke, destroying the box being typed in"
+        )
+    wire = _fn(js, "wireCodeFilterOnce")
+    assert "runSearch(" in wire, "typing does not search the source at all"
+
+
+def test_a_broad_search_opens_nothing_and_says_why() -> None:
+    """Rule 45's better half: the bound is the better *answer*, and it must be stated.
+
+    Both halves, because either alone passes while the feature misleads. Opening everything
+    is the cost; opening nothing without saying so is a control that reads as broken.
+
+    The server decides `broad` and the client obeys it, so the two are asserted together --
+    a client that decided for itself would be a second definition of "narrowed down".
+    """
+    js = _code(_read("shell.js"))
+    go = _fn(js, "runSearch")
+    assert "d.broad" in go or "!d.broad" in go, (
+        "the client does not consult the server's own judgment of whether the answer has "
+        "narrowed, so there are two definitions of it"
+    )
+    assert "state.searchOpen[d.rows[0].path]" in go, (
+        "nothing opens itself when the answer narrows, so a reader who has found the word "
+        "must click again to see it"
+    )
+    assert "loadSearchHits" in go, (
+        "a file is marked open without its hits being fetched -- it renders `opening...` and "
+        "stays that way, which is a control that renders and does nothing"
+    )
+    note = _fn(js, "searchNote")
+    assert "SEARCH.broad" in note, "the note does not distinguish the two cases at all"
+    for phrase in ("too broad", "The first is open"):
+        assert phrase in note, f"the note never says {phrase!r}"
+
+
+def test_a_pattern_that_cannot_be_compiled_is_named_and_not_answered_with_nothing() -> None:
+    """Rule 20's `(no rows)` argument, in a search box.
+
+    "Nothing matches" and "that is not a pattern" are opposite claims. The server keeps them
+    apart with `ok`; this asserts the page reads that field rather than the row count, which
+    is the version that looks identical and tells the reader the wrong thing.
+    """
+    js = _code(_read("shell.js"))
+    note = _fn(js, "searchNote")
+    assert "SEARCH.ok" in note and "SEARCH.reason" in note, (
+        "the note does not distinguish a refusal from an empty result"
+    )
+    lst = _fn(js, "searchList")
+    assert "SEARCH.ok" in lst, "the list would draw rows for an answer the server refused"
+
+
+def test_whole_word_and_a_regular_expression_do_not_both_apply() -> None:
+    """Rule 46: two controls answering one question is how one is answered by accident.
+
+    A regex writes its own word edges, so wrapping one in `\\b` changes what was typed --
+    `a|b` becomes `\\ba` or `b\\b`. Three things have to agree: the request must not carry
+    the flag, the switch must be disabled, and it must say why. A disabled control with no
+    reason is indistinguishable from a broken one.
+    """
+    js = _code(_read("shell.js"))
+    params = _fn(js, "searchParams")
+    assert "!state.searchRegex" in params, (
+        "whole word is sent alongside a regular expression, so the pattern is rewritten"
+    )
+    box = _fn(js, "searchBoxHtml")
+    assert "state.searchRegex ?" in box, "the switch does not change with the regex flag"
+    assert "disabled" in box, "the switch is never disabled"
+    assert "writes its own" in box, "the switch is disabled without saying why"
+
+
+def test_the_code_group_declares_which_of_its_two_shapes_it_is_in() -> None:
+    """A flex chain written for one state and applied to both.
+
+    With a file open the group fills what is left of the scroller so the pane grows with the
+    window. In the list it must be as tall as its content and let the navigator scroll it.
+    Unqualified, the second was squashed to 118px while 1,900px of results overflowed it and
+    painted over the four groups below -- every row present, sized, correct, and unclickable.
+
+    Both halves: the attribute must be written, and the stylesheet must key on it. Either
+    alone is a rule that never applies or a value nothing reads.
+    """
+    js, css = _code(_read("shell.js")), _read("tokens.css")
+    mark = _fn(js, "markCodeMode")
+    assert "codemode" in mark and "state.codeFile" in mark, (
+        "the group does not say which shape it is in, or does not derive it from the file"
+    )
+    assert "markCodeMode()" in _fn(js, "buildNav"), (
+        "nothing sets it on a rebuild, so it is right once and stale after"
+    )
+    assert '[data-codemode="file"]' in css, (
+        "the stylesheet does not key the fill-the-scroller chain on the file state, so it "
+        "applies to the list too and squashes it"
+    )
+    assert "codemode" in _js_set("WIRED_ATTRS"), (
+        "an attribute the shell writes is missing from the roster, so the self-check will "
+        "report a dead control that is not one -- and a check that cries wolf is not read"
+    )
+    # And the pane must never be allowed to collapse to nothing: rule 53's flex twin.
+    # Comments stripped first: the note above these declarations quotes `min-height: 0` to
+    # explain what it is not, and a containment check over raw CSS reads its own explanation
+    # as the defect. Three guards in this file have been caught by that.
+    block = re.sub(r"/\*.*?\*/", "",
+                   css.split('[data-codemode="file"] {', 1)[1].split("}", 1)[0], flags=re.S)
+    assert "min-height: 0" not in block, (
+        "the group may shrink to nothing, so on a short window the code pane measures 0px "
+        "and an open file shows no lines at all"
+    )
+    assert re.search(r"min-height:\s*[\d.]+rem", block), (
+        "the group has no floor, in rem -- design rule 3, and rule 53 for why a floor"
     )
 
 

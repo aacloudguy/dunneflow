@@ -85,6 +85,25 @@ let VIEWER_SRC = null;
 let FILES = [];      // every analysed file, with the counts that earn a column -- served
 let CODEFILE = null; // { path, lines, links, marks, defs, ... } for the one file open
 
+/* Searching inside the source: the answer, and the files opened out of it.
+ *
+ * `SEARCH` is the **file-level** answer -- how many lines matched, in which files -- and it
+ * is the only one asked for on a keystroke. `SEARCHHITS` holds the expensive half, one
+ * entry per file the reader actually opened, because a hit carries the margin and the
+ * margin is ten queries a file: building it for the 166 files an ordinary word touches
+ * would be rule 45 behind a search box, which is where that defect has lived three times.
+ *
+ * Both are dropped whole when the question changes. A hit list that outlived its query
+ * would be an answer to a question nobody is asking, shown under one they are. */
+let SEARCH = null;        // { ok, q, total, files, rows, ... } | { loading: true } | null
+let SEARCHHITS = {};      // path -> { ok, hits: [...] } | { loading: true }, this query only
+
+/* A line to reveal once the file it is in has arrived. Not in `state`: it is a debt owed
+ * across one fetch, not a place the reader is, and persisting it would restore a scroll to
+ * a hit from a search nobody remembers making. Cleared as soon as it is paid, so a later
+ * `render()` cannot move the pane a second time under someone reading it. */
+let codeGoto = 0;
+
 const AI_OPS = [
   { id: "harvest", label: "Harvest definitions from documentation", needs: "docs",
     desc: "Reads only documents whose shape suggests a definition \u2014 a bold term, a heading, a table row, a term-dash-gloss. Returns quotations with a file and line you can check.",
@@ -156,7 +175,14 @@ const state = {
    * drags it, and the cap is whatever the window can spare. */
   codeWidth: 44,          // rem
   codeFile: "",           // which file the Code group has open, "" for the list
-  codeQ: "",              // the file filter
+  codeQ: "",              // one box, two lanes: file names, and the text inside them
+  /* How a match is decided. Persisted, because they are how this reader searches rather
+     than what they are looking for right now -- the same line `termFilter` and `routineQ`
+     sit on the other side of. */
+  searchCase: false,      // `Quaestor` and `quaestor` are different words
+  searchWord: false,      // `emit`, not `_emit_all`
+  searchRegex: false,     // and then whole-word is off, because a regex writes its own \b
+  searchOpen: {},         // path -> open, for the current answer only. Never persisted.
   pointerShown: true,     // the "you are here" arrow over each picked node
   pointerColor: "",       // "" = the token; anything else is the reader's, clamped
   pointerPlace: "rim",    // "rim" | "node" -- at the side of the stack, or over it
@@ -559,6 +585,34 @@ const CODE_ROUTES = {
     pushTrail(state.view, labelFor(id), "followed a name in the source");
   },
   codeback: () => openCodeFile(""),
+  /* Open or close one file in the search answer. The hits are fetched on the way in and
+     never before: the margin is the expensive half and it is built only for what someone
+     asked to see. */
+  searchopen: (b) => toggleSearchFile(b.dataset.searchopen),
+  /* Go to one matching line. A **line**, not a node -- there may be no routine there at
+     all, and the routine beside it is its own click. So this opens the file and reveals the
+     line rather than going through `selectFromNav`, which would need an identity this row
+     does not have: inventing one to make a row clickable is a link to nothing. */
+  searchgo: (b) => {
+    const path = b.dataset.searchgo, line = Number(b.dataset.searchline);
+    codeGoto = line || 0;
+    if (state.codeFile === path) { revealLine(codeGoto); codeGoto = 0; return; }
+    openCodeFile(path);
+  },
+  /* A switch that says what counts as a match. Routed from the table like everything else,
+     so a fourth flag added without a listener fails by name rather than by rendering. */
+  searchflag: (b) => {
+    const key = b.dataset.searchflag;
+    if (!("searchCase" in state) || !(key in state)) {
+      console.error("DunneFlow: no such search flag", key, b); return;
+    }
+    state[key] = !state[key];
+    persist();
+    buildNav();
+    /* Immediately, not after the debounce: a click is the reader having finished asking,
+       and a pause after one reads as the switch not working. */
+    runSearch({ now: true });
+  },
   /* Opened from a **click**, never a keypress: a pop-up blocker treats a click as the
      reader asking and a synthetic-looking keystroke as the page deciding for itself. If it
      is blocked anyway the reader is told, because a control that silently does nothing is
@@ -4041,7 +4095,11 @@ const WIRED_ATTRS = new Set([
   /* The code browser's three. `codelink` is on every clickable name in the source and
      `CODE_ROUTES` is what listens for all of them -- one table, checked by the guard that
      reads it, so a fourth kind added there without a listener fails by name. */
-  "codeback", "codedetach", "codelink", "codeopen",
+  "codeback", "codedetach", "codelink", "codeopen", "codemode",
+  /* The search's four. `searchline` rides with `searchgo` on the same button and carries no
+     handler of its own -- it is the line the click is about, and the roster is a list of
+     attributes the shell writes, not only of the ones that are clicked. */
+  "searchopen", "searchgo", "searchline", "searchflag",
   "navid", "node", "open", "pane", "pin", "pinnote", "pkgnode", "pkgpick", "qual",
   "resize", "row",
   "scale-set", "sec", "sev", "sevnav", "sort", "sqlshow", "start", "step", "theme",
@@ -4349,6 +4407,11 @@ async function loadCodeFile(path) {
   codePaintedFor = "";
   buildNav();
   render();
+  /* **Paint, then measure** -- rule 49's companion, and the reason this is not two lines
+   * higher. A reveal is a `scrollTop` against a box that must already hold the lines, so
+   * moving it before `render()` scrolls a pane whose content is about to be replaced. Paid
+   * once and cleared, because a debt that survives is a pane that jumps later. */
+  if (codeGoto) { revealLine(codeGoto); codeGoto = 0; }
 }
 
 /* Open a file in the pane, and say so in the trail.
@@ -4393,20 +4456,315 @@ function codeNote() {
     return `${n.toLocaleString()} lines, ${links} clickable${un}`;
   }
   const { rows, filtered } = matchingFiles();
-  if (!filtered) return `${FILES.length.toLocaleString()} files — open one, or search`;
-  if (!rows.length) return `nothing matches “${esc(state.codeQ)}”`;
-  return `${rows.length.toLocaleString()} of ${FILES.length.toLocaleString()} match “${esc(state.codeQ)}”`;
+  if (!filtered) return `${FILES.length.toLocaleString()} files — open one, or search names or source`;
+  /* **Both lanes, because one box asked both questions.** This is the group's own note and
+   * it stays visible when the heading sticks, so a reader who has scrolled past the box
+   * still has the whole answer. Saying only the file half of it read as the whole answer,
+   * and a search that found 782 lines looked like a search that found nothing. */
+  const inside = SEARCH && SEARCH.ok && SEARCH.total
+    ? ` · ${SEARCH.total.toLocaleString()} line${SEARCH.total === 1 ? "" : "s"} inside `
+      + `${SEARCH.files.toLocaleString()} file${SEARCH.files === 1 ? "" : "s"}`
+    : "";
+  const names = rows.length
+    ? `${rows.length.toLocaleString()} of ${FILES.length.toLocaleString()} named “${esc(state.codeQ)}”`
+    : `no file is named “${esc(state.codeQ)}”`;
+  return names + inside;
 }
 
-/* The list half of the group. */
+/* ══ searching inside the source ═══════════════════════════════════════════════════════
+ *
+ * One box, two lanes: **what matches a path**, and **what matches the text inside**. They
+ * are two questions and the reader has both at once rather than a mode switch between
+ * them, because "where is the quaestor code" and "where is the word quaestor" are asked in
+ * the same breath and the answer to one is usually the way into the other.
+ *
+ * The lanes are not alike underneath, and the difference is worth stating. The file lane is
+ * a filter over 626 rows already in the page: instant, and it costs a keystroke nothing.
+ * The text lane is a **request** -- 184,722 lines live in the sidecar as zlib blobs and the
+ * browser has none of them -- so it is debounced, it says while it is out, and it comes
+ * back with counts rather than with lines.
+ *
+ * **Files first, then lines, and that is the whole design.** `quaestor` matches 782 lines
+ * in 166 files; `e` matches 133,454 in all 626. One flat list of hits is the haystack
+ * again. 626 file rows with a count on each is an answer a reader can act on at any size,
+ * and the lines are one click beneath the file that holds them.
+ *
+ * Rule 45 three times over says where the cost is, and measuring said it is not here: the
+ * scan is 20-90 ms on the whole program. The cost is what is *drawn*, and the accordion is
+ * what keeps it to what someone asked to see.
+ */
+
+/* How many matching lines a search may open files for by itself.
+ *
+ * The routine list's own number, for the same reason and not by coincidence: it says
+ * whether a search has narrowed anything down yet. A hundred and eighty-two thousand lines
+ * hold most words somewhere, so a broad one opens nothing and **says why** -- closed rows
+ * with no explanation read as a control that failed. */
+const SEARCH_HITS_OPEN_MAX = SEARCH_OPEN_MAX;
+
+/* Which question is on the wire, so a slow answer to an old one is dropped rather than
+   shown under a new one. Two searches racing is ordinary: typing outruns a round trip. */
+let searchWanted = "";
+let searchTimer = 0;
+
+/* The three flags as the server reads them, and as the cache is keyed. One place builds
+   this, so the request and the key cannot come to disagree about what was asked. */
+function searchParams() {
+  return { case: state.searchCase ? 1 : 0,
+           /* **Whole-word is not sent with a regex**, and the control is disabled beside
+              it. A regex writes its own `\b`, so the two say one thing -- and rule 46 is
+              that two questions sharing an answer is how one gets answered by accident. */
+           word: (state.searchWord && !state.searchRegex) ? 1 : 0,
+           regex: state.searchRegex ? 1 : 0 };
+}
+
+function searchKey() {
+  const p = searchParams();
+  return `${state.codeQ} ${p.case}${p.word}${p.regex}`;
+}
+
+/* Ask the server which files hold the query, after the reader has stopped typing.
+ *
+ * Debounced rather than throttled: a search is a question, and answering a half-typed one
+ * costs a round trip to tell someone something they did not ask. 150 ms is under the point
+ * where a pause reads as the box not working, and the note says "searching…" for the rest. */
+function runSearch({ now = false } = {}) {
+  clearTimeout(searchTimer);
+  const key = searchKey();
+  const q = state.codeQ.trim();
+  searchWanted = key;
+  /* Dropped whole, both of them. A hit list belongs to the question it answered. */
+  SEARCHHITS = {};
+  state.searchOpen = {};
+  if (!q) { SEARCH = null; refreshCodeSearch(); return; }
+  SEARCH = { loading: true, q };
+  refreshCodeSearch();
+  const go = async () => {
+    const p = searchParams();
+    const url = `/api/search?q=${encodeURIComponent(q)}`
+              + `&case=${p.case}&word=${p.word}&regex=${p.regex}`;
+    let d;
+    try {
+      d = await fetch(url).then(r => r.json());
+    } catch (err) {
+      d = { ok: false, q, reason: `the search could not be run: ${err.message}` };
+    }
+    if (searchWanted !== key) return;             // the reader moved on
+    SEARCH = d;
+    /* **One file opens itself, and only when the answer has narrowed.** A reader who has
+     * found the word wants to see it in context without a second click, and the top row is
+     * the file the word is most in. One request, never eighty-four -- and none at all while
+     * the answer is still the haystack, because the top file of a broad search is a
+     * thousand lines nobody asked for. The note says which of the two happened, or closed
+     * rows with no explanation read as a control that failed. */
+    if (d.ok && !d.broad && d.rows && d.rows.length) {
+      state.searchOpen[d.rows[0].path] = true;
+      loadSearchHits(d.rows[0].path);
+    }
+    refreshCodeSearch();
+  };
+  if (now) go(); else searchTimer = setTimeout(go, 150);
+}
+
+/* One file's hits, with the margin. Asked for only when a file is opened in the answer. */
+async function loadSearchHits(path) {
+  const key = searchKey();
+  if (SEARCHHITS[path]) return;
+  SEARCHHITS[path] = { loading: true };
+  refreshCodeSearch();
+  const p = searchParams();
+  const url = `/api/search?q=${encodeURIComponent(state.codeQ.trim())}`
+            + `&path=${encodeURIComponent(path)}`
+            + `&case=${p.case}&word=${p.word}&regex=${p.regex}`;
+  let d;
+  try {
+    d = await fetch(url).then(r => r.json());
+  } catch (err) {
+    d = { ok: false, reason: err.message };
+  }
+  if (searchKey() !== key) return;                // the question changed under it
+  SEARCHHITS[path] = d;
+  refreshCodeSearch();
+}
+
+function toggleSearchFile(path) {
+  state.searchOpen[path] = !state.searchOpen[path];
+  if (state.searchOpen[path]) loadSearchHits(path);
+  else refreshCodeSearch();
+}
+
+/* Is this result file expanded?
+ *
+ * **One truth: `state.searchOpen`**, and whoever opens a file is the one that fetches its
+ * hits. The first version answered `true` for every row while the answer was small, which
+ * looked identical and was not: nothing fetched them, so eighty-four files rendered
+ * `opening…` and stayed that way -- a control that renders and does nothing, in a branch
+ * that never met the code that would have made it true.
+ *
+ * The deeper half is why that branch was wrong even with the fetch wired. Opening a file
+ * here is a **request** -- ten queries for its margin -- where the routine list's auto-open
+ * is rows already in memory. Eighty-four of them behind one keystroke is rule 45 arriving
+ * by a route the rule's own precedent did not cover. */
+function searchFileOpen(path) {
+  return !!state.searchOpen[path];
+}
+
+/* Where the text search stands, in words. Design rule 1, and every branch of it is a
+ * different claim: not asked, being answered, refused, empty, bounded, complete. Blurring
+ * any two of them is how a search box comes to look broken.
+ *
+ * The refusal branch is the one worth keeping. A pattern that cannot be compiled and a
+ * pattern that matches nothing are opposite claims, and the server keeps them apart so
+ * that this can. */
+function searchNote() {
+  if (!state.codeQ.trim()) return "";
+  if (!SEARCH) return "";
+  if (SEARCH.loading) return "searching the source…";
+  if (!SEARCH.ok) return `<span class="warn">${esc(SEARCH.reason || "that could not be searched")}</span>`;
+  const q = esc(state.codeQ.trim());
+  const scope = `${SEARCH.scanned.toLocaleString()} file${SEARCH.scanned === 1 ? "" : "s"}, `
+              + `${SEARCH.lines.toLocaleString()} lines`;
+  /* An analysed file the sidecar cannot open was searched by nobody. A search quietly
+     covering 620 of 626 files is a silent filter, and the reader is entitled to know. */
+  const short = SEARCH.unheld
+    ? ` — ${SEARCH.unheld.toLocaleString()} analysed file${SEARCH.unheld === 1 ? "" : "s"} `
+      + `not held in the sidecar and not searched`
+    : "";
+  if (!SEARCH.total) {
+    /* Whole-word `()` can never match: `\b` sits between a word character and a non-word
+       one. "Nothing here" and "this question cannot be asked" are different answers. */
+    if (SEARCH.wordable === false) {
+      return `“${q}” has no word edge to match on — whole word cannot find it. `
+           + `Searched ${scope}.${short}`;
+    }
+    return `nothing matches “${q}” in ${scope}.${short}`;
+  }
+  const files = `${SEARCH.files.toLocaleString()} file${SEARCH.files === 1 ? "" : "s"}`;
+  const head = `${SEARCH.total.toLocaleString()} line${SEARCH.total === 1 ? "" : "s"} `
+             + `in ${files}, of ${scope}`;
+  return SEARCH.broad
+    ? `${head} — too broad to open one for you. Keep typing, or open any.${short}`
+    : `${head}. The first is open; open any.${short}`;
+}
+
+/* The text lane: a file, a count, and its lines beneath when it is open. */
+function searchList() {
+  if (!state.codeQ.trim() || !SEARCH || SEARCH.loading || !SEARCH.ok) return "";
+  if (!SEARCH.rows.length) return "";
+  return SEARCH.rows.map(r => {
+    const open = searchFileOpen(r.path);
+    return `
+    <div class="nav-pkg srch-file" data-open="${open}">
+      <div class="nav-pkghead">
+        <button class="nav-pkgtoggle" data-searchopen="${esc(r.path)}" aria-expanded="${open}"
+                title="${open ? "Collapse" : "Expand"} ${esc(r.path)}"><span class="caret">▼</span></button>
+        <button class="nav-pkgname srch-path" data-searchopen="${esc(r.path)}" data-titled="1"
+                title="${esc(r.module)} — ${r.n.toLocaleString()} matching line${r.n === 1 ? "" : "s"}, first at line ${r.first}">
+          <span class="navsub">${esc(dirOf(r.path))}</span>${esc(baseOf(r.path))}
+          <span class="n">${r.n.toLocaleString()}</span></button>
+      </div>
+      ${open ? `<div class="srch-hits">${searchHitsHtml(r)}</div>` : ""}
+    </div>`;
+  }).join("");
+}
+
+/* The lines under one open file.
+ *
+ * Every hit carries what the map knows about it, because that is what makes this different
+ * from `grep`: the routine it sits in, the marks in its margin, and the clickable names on
+ * it -- all of them the code browser's own answers, narrowed to these lines by the server
+ * (rule 51), never recomputed here.
+ *
+ * Three separate clicks and each goes somewhere different, which is why the row is not one
+ * button. The **line** goes to that line of the file. The **routine** is an ordinary
+ * selection, so the stack lights and the trail records it. A **name** in the source is the
+ * same `codelink` every other line of code carries. */
+function searchHitsHtml(row) {
+  const got = SEARCHHITS[row.path];
+  if (!got) return `<div class="nav-note">opening…</div>`;
+  if (got.loading) return `<div class="nav-note">reading ${esc(baseOf(row.path))}…</div>`;
+  if (!got.ok) return `<div class="nav-note warn">${esc(got.reason || "could not be read")}</div>`;
+  if (!got.hits.length) return `<div class="nav-note">no lines here now</div>`;
+  return got.hits.map(h => `
+    <div class="srch-hit">
+      <button class="srch-n" data-searchgo="${esc(row.path)}" data-searchline="${h.line}"
+              data-titled="1" title="Open ${esc(row.path)} at line ${h.line}">${h.line}</button>
+      <code class="srch-code">${codeLineHtml(h.text, h.links, h.at)}</code>
+      ${h.marks && h.marks.length ? `<span class="srch-marks">${h.marks.map(m => `
+        <span class="codemark" data-titled="1"
+              title="${esc(markTitle(m))}">${MARK_GLYPH[m.kind] || "·"}</span>`).join("")}</span>` : ""}
+      ${/* The word "in" is a `::before`, not text. `dressNavItems` gathers a row's text
+             nodes into its label and the trail then records that label, so spelling it here
+             filed every step as "in timestamp_cmd" -- a sentence where the trail wants the
+             name of the thing arrived at. */
+        h.in ? `<button class="srch-in nav-item" data-nav="routine" data-navid="${esc(h.in.id)}"
+                  data-titled="1" data-card="1" data-qual="${esc(h.in.qualname)}"
+                  title="${esc(h.in.qualname)}">${esc(h.in.name)}</button>`
+             : `<span class="srch-in srch-nowhere" title="No routine's span covers this line — it is between definitions">—</span>`}
+    </div>`).join("");
+}
+
+/* The list half of the group: one box, then the two lanes it answers. */
 function codeFileList() {
-  const { rows } = matchingFiles();
+  const { rows, filtered } = matchingFiles();
+  const inside = searchList();
+  return `
+    ${searchBoxHtml()}
+    <div class="lane-head">Files<span class="n" id="codeFilesCount">${
+      fileLaneCount()}</span></div>
+    <div class="nav-items" id="codeFileRows">${fileRowsHtml(rows)}</div>
+    <div id="codeInside">${inside ? `<div class="lane-head">Inside<span class="n">${
+      SEARCH && SEARCH.ok ? SEARCH.total.toLocaleString() : ""}</span></div>${inside}` : ""}</div>`;
+}
+
+/* How many files the name filter is showing, in the words rule 32 asks for: the number
+   beside a list must be the number of things in it. It read `626` over 45 rows for as long
+   as the narrow refresh did not reach it -- two correct numbers, neither of them saying
+   what it counted, one directly above the other. */
+function fileLaneCount() {
+  const { rows, filtered } = matchingFiles();
+  return filtered
+    ? `${rows.length.toLocaleString()} of ${FILES.length.toLocaleString()}`
+    : FILES.length.toLocaleString();
+}
+
+/* The box, and the three switches that say what counts as a match.
+ *
+ * Rendered wherever the Code group is -- above the file list *and* above an open file --
+ * because searching is how a reader gets from the file they are reading to the one they
+ * are looking for, and making them back out of a file first is making them lose their
+ * place to ask a question. */
+function searchBoxHtml() {
+  const sw = (key, label, title, on = true) => `
+    <button class="srch-flag" data-searchflag="${key}" aria-pressed="${!!state[key] && on}"
+            ${on ? "" : "disabled"} data-titled="1" title="${esc(title)}">${label}</button>`;
   return `
     <div class="codefilter">
-      <input id="codeQ" type="search" placeholder="Filter files…"
-             value="${esc(state.codeQ)}" aria-label="Filter the file list">
+      <input id="codeQ" type="search" placeholder="Find in file names, or in the source…"
+             value="${esc(state.codeQ)}" aria-label="Search file names and source text">
+      <div class="srch-flags">
+        ${sw("searchCase", "Aa", "Match capitals exactly")}
+        ${sw("searchWord", "|ab|",
+             state.searchRegex ? "Whole word — off while a regular expression is in force, "
+                               + "because a pattern writes its own word edges"
+                               : "Whole word: emit, and not _emit_all",
+             !state.searchRegex)}
+        ${sw("searchRegex", ".*", "Read the query as a regular expression")}
+      </div>
     </div>
-    <div class="nav-items">${fileRowsHtml(rows)}</div>`;
+    <div id="searchNote" class="nav-note srch-note">${searchNote()}</div>`;
+}
+
+/* What one mark says, spelled out for the hover.
+ *
+ * The gutter carries a glyph because a gutter wide enough for prose is a gutter that has
+ * taken the code's column. This was written inline in `codeBody`, and the search needed the
+ * same sentence -- so it lives here and both read it, rather than agreeing until the day
+ * one of them is edited (rule 51). `note` was dropped by the inline version, which is how a
+ * boundary's direction and a constant's `final` never reached a reader. */
+function markTitle(m) {
+  const tail = [m.detail, m.note].filter(Boolean).join(" · ");
+  return `${m.kind}: ${m.label}${tail ? " — " + tail : ""}`;
 }
 
 /* One renderer for a file row, because the full build and the narrow filter refresh both
@@ -4432,22 +4790,49 @@ function dirOf(p)  { const i = String(p).lastIndexOf("/"); return i < 0 ? "" : p
  * inside the *next* occurrence of the same name -- which is the column problem the server
  * already refused to guess at, reintroduced in the client. The server said where; this
  * only cuts.
+ *
+ * `hits` are what a search matched, as `[col, len]` pairs. They are a **second** channel
+ * over the same characters and not a competing one: a link is an underlined button and a
+ * match is a background, so a name that is both reads as both. The marks nest *inside* the
+ * button rather than cutting it in two -- one name is one control, and splitting it would
+ * make half of it clickable and leave a reader to discover which half.
  */
-function codeLineHtml(text, spans) {
-  if (!spans || !spans.length) return esc(text) || "&nbsp;";
+function codeLineHtml(text, spans, hits) {
+  if (!spans || !spans.length) return marked(text, 0, hits) || "&nbsp;";
   let out = "", at = 0;
   for (const s of spans) {
     const a = s.col - 1, b = a + s.len;
     if (a < at) continue;                       // already covered; the server sorts these
-    out += esc(text.slice(at, a));
+    out += marked(text.slice(at, a), at, hits);
     out += `<button class="codelink${s.confidence === "INFERRED" ? " inferred" : ""}"
               data-codelink="${esc(s.id)}" data-titled="1"
               title="${esc(s.kind === "def" ? "Definition of " + s.label : "Calls " + s.label)}"
-              >${esc(text.slice(a, b))}</button>`;
+              >${marked(text.slice(a, b), a, hits)}</button>`;
     at = b;
   }
-  out += esc(text.slice(at));
+  out += marked(text.slice(at), at, hits);
   return out || "&nbsp;";
+}
+
+/* A slice of a line, escaped, with any search match inside it wrapped.
+ *
+ * `from` is where this slice starts in the whole line, because the server's columns are
+ * about the line and this is handed a piece of it -- an offset dropped here would highlight
+ * the right number of characters in the wrong place, which is exactly the invented position
+ * rule 1 refuses. */
+function marked(text, from, hits) {
+  if (!hits || !hits.length || !text) return esc(text);
+  let out = "", at = 0;
+  for (const [col, len] of hits) {
+    const a = (col - 1) - from, b = a + len;
+    if (b <= 0 || a >= text.length) continue;   // this match is in another slice
+    const lo = Math.max(0, a), hi = Math.min(text.length, b);
+    if (lo < at) continue;
+    out += esc(text.slice(at, lo));
+    out += `<mark class="codehit">${esc(text.slice(lo, hi))}</mark>`;
+    at = hi;
+  }
+  return out + esc(text.slice(at));
 }
 
 /* Short words for the gutter. A mark says what a line *is*; the letter is the kind and the
@@ -4555,7 +4940,7 @@ function codeBody() {
       const n = i + 1;
       const ms = marksBy.get(n) || [];
       const glyphs = [...new Set(ms.map(m => MARK_GLYPH[m.kind] || "·"))].join("");
-      const title = ms.map(m => `${m.kind}: ${m.label}${m.detail ? " — " + m.detail : ""}`).join("\n");
+      const title = ms.map(markTitle).join("\n");
       return `<span class="cl" id="codeline-${n}"><span class="cn">${n}</span>` +
              `<span class="cm"${title ? ` title="${esc(title)}" data-titled="1"` : ""}>${glyphs}</span>` +
              codeLineHtml(text, byLine.get(n)) + `</span>`;
@@ -4583,14 +4968,25 @@ function selectedLine() {
  * selection moved to exactly where they were already looking. */
 function revealSelectedLine() {
   const here = selectedLine();
-  if (!here || !here.first) return;
+  if (here && here.first) revealLine(here.first);
+}
+
+/* Bring one line of the open file under the reader's eye.
+ *
+ * Split out of `revealSelectedLine` when the search arrived, because a hit is a line
+ * nothing has selected -- clicking one goes *to* a line rather than to a node, and the
+ * routine beside it is the separate click. Rule 51: the second caller is the reason the
+ * rule belongs here rather than at the call site, and the list of callers is the thing
+ * that grows. */
+function revealLine(first) {
+  if (!first) return;
   /* Both hosts, because the same file is on screen in two places and either may be the one
    * the reader is looking at. Named pairs rather than one selector over both: rule 50 was
    * written from a reveal that moved a `scrollTop` on a box that does not scroll and then
    * measured against a box extending far below the window, so every row read as "in view"
    * and it reported success. The scroller and the row have to belong to each other. */
-  for (const [rowSel, boxSel] of [[`#codeline-${here.first}`, "#codeScroll"],
-                                  [`#crow-${here.first}`, "#viewMount"]]) {
+  for (const [rowSel, boxSel] of [[`#codeline-${first}`, "#codeScroll"],
+                                  [`#crow-${first}`, "#viewMount"]]) {
     const row = $(rowSel), box = $(boxSel);
     if (!row || !box) continue;
     const r = row.getBoundingClientRect(), b = box.getBoundingClientRect();
@@ -4604,10 +5000,22 @@ function codeList() {
   if (!FILES.length) return "";
   if (!state.codeFile) return codeFileList();
   const f = FILES.find(x => x.path === state.codeFile);
+  /* **The box stays above an open file**, and that is the whole reason it is rendered from
+   * one function rather than only in the list. Searching is how a reader gets from the file
+   * they are reading to the one they are looking for; making them close the file first is
+   * making them lose their place to ask a question. What the search *found* is one click
+   * back, stated with its size so the way back is not a guess. */
+  const back = (SEARCH && SEARCH.ok && SEARCH.total)
+    ? `<button class="linkbtn srch-back" data-codeback="1"
+               title="Back to what the search found">‹ ${SEARCH.total.toLocaleString()} line${
+                 SEARCH.total === 1 ? "" : "s"} in ${SEARCH.files.toLocaleString()} file${
+                 SEARCH.files === 1 ? "" : "s"}</button>`
+    : `<button class="linkbtn" data-codeback="1"
+               title="Back to the list of files">‹ files</button>`;
   return `
+    ${searchBoxHtml()}
     <div class="codehead">
-      <button class="linkbtn" data-codeback="1"
-              title="Back to the list of files">‹ files</button>
+      ${back}
       <span class="codepath mono" title="${esc(state.codeFile)}">${esc(baseOf(state.codeFile))}</span>
       ${f ? `<span class="codemod">${esc(f.module)}</span>` : ""}
       <button class="linkbtn" data-codeopen="1"
@@ -4907,6 +5315,7 @@ function buildNav() {
     </div>`;
   }).join("") + `</div>`;
   dressNavItems();
+  markCodeMode();
   wireCodeFilterOnce();
   attachCode();
   const sc = $("#navScroll");
@@ -5021,6 +5430,7 @@ const PERSISTED = [
   "egress", "aiOps", "triage", "pins", "usage", "graphLayout",
   "diskOrder", "diskColors", "colorBy", "sortMode", "filterMode", "direction",
   "nodeSize", "spreadX", "spreadY", "spreadZ", "collapseUnused",
+  "searchCase", "searchWord", "searchRegex",
   "panels", "inspectorAuto", "navWidth", "codeWidth", "codeFile", "navGroups",
   "navOpen", "navCap",
   "showPlates", "picks", "graphTheme", "edgesInMotion", "pointerShown", "pointerColor", "pointerPlace", "reticuleShown", "focusLocked",
@@ -6727,14 +7137,58 @@ addEventListener("resize", () => {
 function refreshCodeFileList() {
   const group = $("#navCode");
   if (!group) return;
-  const items = group.querySelector(".nav-items");
+  /* **By id, never by `.nav-items`** -- and this cost the file filter every keystroke it
+   * has ever had.
+   *
+   * `buildNav()` wraps every group's body in a `<div class="nav-items">` of its own, so
+   * that class inside `#navCode` matches the *wrapper* first and `querySelector` returns
+   * it. Writing rows into it replaced the whole body, input and all: one character typed,
+   * and the box the reader was typing into was gone along with the caret. Filtering the
+   * file list has never worked past a single letter.
+   *
+   * The guard written for exactly this passed the whole time, because it asserted the
+   * refresh does not *call* `buildNav` -- true, and beside the point. It rebuilt the pane
+   * without going through it. Rule 37: check that the guard catches, not that it mentions.
+   *
+   * A class the generator emits around every body cannot tell the wrapper from what the
+   * body puts inside it. An id can. */
+  const items = $("#codeFileRows");
   if (items) {
     const { rows } = matchingFiles();
     items.innerHTML = fileRowsHtml(rows);
     dressNavItems();
   }
+  /* The heading over those rows, or it goes on stating the number the list had before the
+     reader typed -- rule 32, one line above the rows that disagree with it. */
+  const n = $("#codeFilesCount");
+  if (n) n.textContent = fileLaneCount();
   const note = $("#note-navCode");
   if (note) note.innerHTML = codeNote();
+}
+
+/* Which of its two shapes the Code group is in, on the group itself, for the stylesheet.
+ *
+ * The two are genuinely different layouts and one set of rules cannot serve both. With a
+ * **file open** the group must fill what is left of the scroller so the code pane grows and
+ * shrinks with the window -- a flex chain from the group down to `#codePaneMount`, every
+ * link declaring `min-height: 0`. In the **list** it must do the opposite: be as tall as
+ * its content and let the navigator's own scroller carry it, exactly as the routine list
+ * does with 4,734 rows.
+ *
+ * The chain was written for the first and applied to both, which cost the search its whole
+ * answer: the group was squashed to 118px, 1,900px of results overflowed it *visibly*, and
+ * they painted over the four groups below. Every row was in the DOM, sized, and correct --
+ * and `elementFromPoint` came back `.nav-head` for all thirteen on screen, because clicks
+ * landed on the headings drawn on top of them. Rule 48 exactly, found by hit-testing and by
+ * nothing else: the markup, the handlers and the wiring all checked out.
+ *
+ * Set from here rather than written into `buildNav`'s template, because the template is
+ * generic across nine groups and only this one has two shapes. In `WIRED_ATTRS` for the
+ * reason rule 43 gives about `insp` and `fold`: grid and flex state the stylesheet reads is
+ * a real use, and a roster that cannot see it cries wolf. */
+function markCodeMode() {
+  const g = $("#navCode");
+  if (g) g.dataset.codemode = state.codeFile ? "file" : "list";
 }
 
 function wireCodeFilterOnce() {
@@ -6743,8 +7197,48 @@ function wireCodeFilterOnce() {
   box.__wired = true;
   box.addEventListener("input", () => {
     state.codeQ = box.value;
+    /* **Neither of these is `render()`**, and that is the point of both.
+     *
+     * `render()` rewrites the centre pane, the inspector, the navigator and the trail and
+     * then puts the caret back in the field it has just destroyed -- 412 ms a keystroke in
+     * the glossary, and the caret restoration was the tell. The file lane is a filter over
+     * rows already here; the text lane is a request. They refresh their own strips. */
     refreshCodeFileList();
+    runSearch();
   });
+}
+
+/* Repaint only the text lane and its note.
+ *
+ * Rule 45 by construction rather than by luck: this is the whole of what a keystroke may
+ * touch. The file *list* is `refreshCodeFileList`'s, the code pane is `attachCode`'s, and
+ * neither is rebuilt here -- a search that repainted a 5,838-line file on every character
+ * would be the 1,937 ms defect back in a different pane. */
+function refreshCodeSearch() {
+  const note = $("#searchNote");
+  if (note) note.innerHTML = searchNote();
+  /* The group's own note carries the inside half too, and it is the one that stays on
+     screen when the heading sticks -- so an answer that only reached the box would be
+     invisible to a reader who had scrolled. */
+  const group = $("#note-navCode");
+  if (group) group.innerHTML = codeNote();
+  const inside = $("#codeInside");
+  if (inside) {
+    const body = searchList();
+    inside.innerHTML = body
+      ? `<div class="lane-head">Inside<span class="n">${
+          SEARCH && SEARCH.ok ? SEARCH.total.toLocaleString() : ""}</span></div>${body}`
+      : "";
+    dressNavItems();
+  }
+  /* The way back out of an open file states the answer's size, so it moves when the answer
+     does. Narrow: one button, not the group. */
+  const back = $(".srch-back");
+  if (back && SEARCH && SEARCH.ok && SEARCH.total) {
+    back.textContent = `\u2039 ${SEARCH.total.toLocaleString()} line${
+      SEARCH.total === 1 ? "" : "s"} in ${SEARCH.files.toLocaleString()} file${
+      SEARCH.files === 1 ? "" : "s"}`;
+  }
 }
 
 function wireSearchOnce() {

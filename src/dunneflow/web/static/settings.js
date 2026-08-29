@@ -154,6 +154,13 @@ const DEFAULTS = {
      Wider than the old fixed 14.5: it holds the routine list now, and a qualified
      name is the thing it has to be able to show. */
   navWidth: 21,
+  /* The Code group's own width and the file it has open. Two panes wearing one track hold
+   * different things -- a list of names and a page of source -- so one width for both means
+   * the reader retunes it on every switch. `codeQ` is deliberately *not* here: a filter is a
+   * question being asked right now, exactly like the routine search box, and a question is
+   * not an arrangement. */
+  codeWidth: 44,
+  codeFile: '',
 
   /* ── the shell ───────────────────────────────────────────────────────────── */
   theme: 'system',        // 'system' | 'light' | 'dark'
@@ -254,6 +261,7 @@ function resetSettings(program, current) {
     reticuleShown: 'the focus reticule', focusLocked: 'focus locked to the selection',
     mode: 'centre view', panels: 'panel layout',
     inspectorAuto: 'auto-collapse the inspector', navWidth: 'navigator width',
+    codeWidth: 'code pane width', codeFile: 'which file the code pane has open',
     navGroups: 'how many navigator groups open at once', navOpen: 'which groups are open',
     navCap: 'how many routines a package lists',
     graphLayout: 'graph layout', graphTheme: 'graph theme',

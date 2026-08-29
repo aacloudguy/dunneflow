@@ -508,6 +508,19 @@ body {
 .nav-head .count { margin-left: auto; font-size: .66rem; color: var(--text-faint); font-weight: 500; }
 .nav-items { padding-bottom: .4rem; }
 
+/* The open group fills what is left of the scroller, so the code pane grows and shrinks
+ * with the window instead of guessing at it. Only the Code group asks for this: every other
+ * group is a list that is happy to be as tall as its rows. */
+.nav-scroll { display: flex; flex-direction: column; }
+.nav-group { flex: none; }
+.nav-group#navCode[data-open="true"] {
+  flex: 1; min-height: 0; display: flex; flex-direction: column;
+}
+.nav-group#navCode[data-open="true"] > .nav-items {
+  flex: 1; min-height: 0; display: flex; flex-direction: column;
+}
+#codePaneMount { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+
 /* ── the routine list, by package ──────────────────────────────────────────────
  * Two controls in one row, because they do two things: the caret opens the package and
  * the name selects its plate in the stack. One control doing both would mean either that
@@ -1712,3 +1725,135 @@ kbd { font-family: var(--f-mono); font-size: .66rem; background: var(--sunken);
    painted over the WebGL canvas while every control reported success. One line, kept
    because the failure it prevents is invisible to anything that reads the DOM. */
 [hidden] { display: none !important; }
+
+/* ═══ the code browser ═══════════════════════════════════════════════════════════
+ *
+ * No syntax colour, deliberately (design rule 4): colour goes on one dimension at a time,
+ * and what this tool knows about a line is not its grammar. Things that are already nodes
+ * are clickable; the gutter says what the line is. Everything dimensional is rem, so the
+ * scale multiplier reaches it (design rule 3).
+ */
+.codefilter { padding: .35rem .5rem; border-bottom: 1px solid var(--border);
+  background: var(--raised); }
+.codefilter input { width: 100%; font: inherit; font-size: .74rem; padding: .25rem .4rem;
+  border: 1px solid var(--border-strong); border-radius: .25rem;
+  background: var(--surface); color: var(--text); }
+
+.codehead { display: flex; align-items: baseline; gap: .4rem; padding: .35rem .5rem;
+  border-bottom: 1px solid var(--border); background: var(--raised); flex-wrap: wrap; }
+.codepath { font-size: .76rem; font-weight: 600; }
+.codemod { font-size: .66rem; color: var(--text-faint); }
+.codehead .linkbtn:last-child { margin-left: auto; }
+
+/* **The box that scrolls is the box with a height** (rule 50). `.tablewrap` carried
+ * `overflow: auto`, nothing bounded it, so it grew to the whole table and never scrolled a
+ * pixel while the pane scrolled underneath it -- and a sticky header stuck to a box that
+ * does not move. This one is bounded, so it is the scroller in fact and not only in its
+ * declaration. Horizontally too: a long line has somewhere to go that is not the document.
+ *
+ * Bounded by **what is left**, not by an arithmetic guess. It was `calc(100vh - 16rem)`,
+ * and 16rem is a number that is right at one window height and wrong at every other: on a
+ * 589px window the chrome above it came to more than that, so the box overflowed its own
+ * scroller and exactly one line of code was on screen. That is rule 49's shape -- a
+ * plausible value standing in for a measurement -- and the answer is the same one rule 29's
+ * companion gives: a flex child is `min-height: auto` and refuses to shrink below its
+ * content, so it must be told it may. */
+.codescroll { overflow: auto; flex: 1; min-height: 0; }
+.codepane { margin: 0; padding: .4rem 0; font-family: var(--f-mono); font-size: .7rem;
+  line-height: 1.5; white-space: pre; color: var(--text); }
+.codepane .cl { display: block; padding-right: .5rem; }
+.codepane .cl.here { background: var(--accent-soft);
+  box-shadow: inset .1875rem 0 0 var(--accent); }
+.codepane .cn { display: inline-block; width: 3rem; padding-right: .4rem; text-align: right;
+  color: var(--text-faint); user-select: none; }
+/* The gutter is one fixed column so the code below it stays aligned whatever a line
+   carries. A gutter wide enough for prose is a gutter that has taken the code's column,
+   so the glyph is the kind and the title says the rest. */
+.codepane .cm { display: inline-block; width: 2.4rem; padding-right: .5rem;
+  color: var(--text-muted); user-select: none; font-size: .66rem; }
+
+.codelink { font: inherit; background: none; border: 0; padding: 0; cursor: pointer;
+  color: var(--accent-text); border-bottom: 1px solid var(--accent-soft); }
+.codelink:hover, .codelink:focus-visible { background: var(--accent-soft);
+  border-bottom-color: var(--accent); }
+/* Confidence is shape, never colour (design rule 5). A call resolved by unique name gets
+   the dashed underline the graph gives an inferred edge, for the same reason. */
+.codelink.inferred { border-bottom-style: dashed; }
+
+.codeabsent { padding: .6rem .75rem; font-size: .72rem; color: var(--text-muted); }
+.codefile .navsub { color: var(--text-faint); }
+
+/* ── code, detached: the centre pane is the page ──
+ *
+ * Unlike the detail window this cannot hide `.app`, because the code view renders inside
+ * it. So it gets its own class and its own rules rather than an exception carved out of
+ * `.detached` — rule 29: two equal selectors arguing over one `display` are settled by
+ * source order, which the next component rule silently takes back.
+ *
+ * The toolbar stays. It carries the mode toggle, which is how a reader in this window gets
+ * to the graph or the table without losing the window — and the code view's own header
+ * carries the way back to the file list.
+ */
+body.detached-code .body { grid-template-columns: minmax(0, 1fr) !important; }
+body.detached-code .navigator,
+body.detached-code .inspector,
+body.detached-code .rail,
+body.detached-code .navgrip,
+body.detached-code #trailMount { display: none !important; }
+
+/* ── code in the centre: room for the columns ────────────────────────────────────
+ *
+ * The margin says what a line *is* rather than standing for it, which is the whole reason
+ * this view exists beside the pane. `table-layout: fixed` is not decoration: under `auto` a
+ * declared column width is a suggestion the browser weighs against content and always
+ * loses — the defect that made a resize handle do nothing in table mode.
+ */
+.codeview-full { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+.codeview-head { display: flex; align-items: flex-start; gap: .6rem; padding: .5rem .75rem;
+  border-bottom: 1px solid var(--border); background: var(--raised); flex: none; }
+.codeview-head .linkbtn { flex: none; }
+.codeview-head > div:first-child { margin-right: auto; min-width: 0; }
+.codeview-title { font-size: .84rem; font-weight: 600; word-break: break-all; }
+.codeview-sub { font-size: .7rem; color: var(--text-muted); margin-top: .1rem; }
+.codeview-note { padding: .4rem .75rem; font-size: .7rem; color: var(--text-muted);
+  background: var(--sunken); border-bottom: 1px solid var(--border); flex: none; }
+/* The scroller is this box, and it is bounded so it is one in fact (rule 50). */
+.codeview-body { overflow: auto; flex: 1; min-height: 0; }
+.codeview-foot { padding: .4rem .75rem; border-top: 1px solid var(--border);
+  background: var(--raised); font-size: .68rem; color: var(--text-faint); flex: none; }
+
+.codetable { margin: 0; padding: .3rem 0; font-family: var(--f-mono); font-size: .72rem;
+  line-height: 1.5; white-space: pre; color: var(--text); }
+.codetable .crow { display: block; }
+.codetable .cnum { display: inline-block; width: 3.5rem; padding-right: .5rem;
+  text-align: right; color: var(--text-faint); user-select: none; vertical-align: top; }
+/* Right-aligned against the code. It was 15rem and left-aligned, which looked reasonable in
+   the markup and wrong the moment it was on screen: 1,054 marks over 4,820 lines means four
+   rows in five carry nothing, so most of the pane was a blank column holding the code out
+   past the middle of the window. Aligned right, the marks abut what they describe. */
+.codetable .cmark { display: inline-block; width: 12rem; padding-right: .6rem;
+  text-align: right; white-space: nowrap; overflow: hidden; vertical-align: top; }
+.codetable .ccode { display: inline; }
+.codetable .crow.here { background: var(--accent-soft); }
+.codetable .crow.here .cnum { box-shadow: inset .1875rem 0 0 var(--accent); }
+
+/* One dimension of colour, and it is *kind* (design rule 4). Severity is not in play here
+   and confidence is shape, so the mark chips are the only thing spending it. */
+/* One line tall, always. A chip that wraps makes its row taller than its neighbours, and a
+   code listing whose rows are different heights is one the eye cannot run down. The label
+   is what a reader scans for and survives the clip; the detail is what gets cut, and the
+   whole of both is on the title — which is why nothing is shortened before it gets here
+   (rule 8: never truncate at ingest, and this is display, not ingest). */
+.mk { display: inline-flex; align-items: baseline; gap: .25rem; margin: 0 0 0 .2rem;
+  padding: .02rem .28rem; border-radius: .1875rem; font-size: .62rem; font-weight: 600;
+  background: var(--sunken); color: var(--text-muted);
+  max-width: 100%; overflow: hidden; white-space: nowrap; }
+.mk i { font-style: normal; font-weight: 400; color: var(--text-faint);
+  overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.mk-boundary { background: var(--sev-info-bg); color: var(--sev-info); }
+.mk-sql      { background: var(--accent-soft); color: var(--accent-text); }
+.mk-net      { background: var(--external-bg); color: var(--external); }
+.mk-library  { background: var(--external-bg); color: var(--external); }
+.mk-id       { background: var(--sev-suspect-bg); color: var(--sev-suspect); }
+
+.codeempty { padding: 1.25rem; }

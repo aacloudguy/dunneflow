@@ -1004,9 +1004,25 @@ def test_the_detached_window_is_the_same_application() -> None:
     """
     shell, css, html = _code(_read("shell.js")), _read("tokens.css"), _read("index.html")
 
-    assert 'get("view") === "detail"' in shell, "there is no detached mode"
+    assert 'DETACHED_VIEW' in shell, "there is no detached mode"
+    assert '"detail"' in shell and '"code"' in shell, (
+        "the detached kinds are no longer named, so `?view=` accepts anything"
+    )
     assert "document.body.classList.add(\"detached\")" in shell, (
         "detached mode never marks the document, so the stylesheet cannot lay it out"
+    )
+    # A second detached view was added, and it must not be a second page either. Its class
+    # is its own rather than an exception carved out of `.detached`: that rule hides `.app`
+    # outright, and the code view renders *inside* it, so sharing the class would be two
+    # equal selectors arguing over one `display` and settled by source order (rule 29).
+    assert 'classList.add("detached-code")' in shell, (
+        "the detached code window does not mark the document"
+    )
+    assert '.detached .app' in css and 'body.detached-code .body' in css, (
+        "the two detached views share one class, so one of them hides the pane it renders in"
+    )
+    assert 'code.html' not in shell and 'code.html' not in html, (
+        "the detached code view is a second page, which is a second place a file is drawn"
     )
     # One page, one renderer: the detached view must not be served from a second file.
     assert "detail.html" not in shell and "detail.html" not in html, (
@@ -3088,3 +3104,220 @@ def test_a_control_that_cannot_act_says_so_rather_than_looking_live() -> None:
             "built, this guard should be replaced by one asserting it acts"
         )
         assert "title=" in b, "it is disabled and does not say why"
+
+
+# ─────────────────────────────────────────────────────────────── the code browser --- #
+
+def test_the_code_views_read_the_fields_the_server_sends() -> None:
+    """Rule 44, applied to the newest pane before it can sit wrong for a session.
+
+    A live control reading a field the server does not send renders nothing and throws
+    nothing -- which is worse than an unported page, because it looks finished. Checked in
+    one direction only: a view may leave a served field unread, but a view reading a field
+    nothing sends is drawing a blank beside a claim that is perfectly true.
+    """
+    js = _read("shell.js")
+    py = (STATIC.parent / "code.py").read_text(encoding="utf-8")
+
+    served_file = _served_keys(py, "build_file")
+    assert {"lines", "links", "marks", "defs", "unplaced", "placed"} <= served_file, (
+        "build_file changed shape -- this test is blind"
+    )
+    read = set(re.findall(r"\bCODEFILE\.(\w+)", js))
+    assert read, "nothing reads the file payload -- this test is blind"
+    # `loading` and `file` are the client's own bookkeeping on the same object, set where
+    # the fetch is issued so a pane can say "opening…" without a second variable to drift.
+    assert read <= served_file | {"loading", "file"}, (
+        f"the code views read fields the server does not send: {sorted(read - served_file)}"
+    )
+
+    served_list = _served_keys(py, "build_files")
+    row = set(re.findall(r"\bf\.(\w+)", _fn(js, "fileRowsHtml")))
+    assert row, "fileRowsHtml reads nothing off a file -- this test is blind"
+    # `build_files` names the row's keys inside its loop, so they are in the same set.
+    assert row <= served_list, (
+        f"the file list reads fields the server does not send: {sorted(row - served_list)}"
+    )
+
+
+def test_every_clickable_name_in_the_source_carries_an_identity() -> None:
+    """Rule 30: a label is not an identity, and a control that emits none cannot act.
+
+    Forty navigator rows once did the same nothing because the route existed and had no
+    subject to act on. A name in the source is the same shape of control: it renders, it is
+    obviously clickable, and without the id it selects nothing while looking alive.
+    """
+    js = _code(_read("shell.js"))
+    span = _fn(js, "codeLineHtml")
+    assert "data-codelink=" in span, "a name in the source carries no identity"
+    assert "s.id" in span, "the identity written is not the node id the server resolved"
+
+    # ...and the route must *consume* one. Both halves, because either alone passes while
+    # the feature is dead: an id nothing reads, or a reader with no id to read.
+    route = js.split("const CODE_ROUTES = {", 1)[1].split("\n};", 1)[0]
+    assert "codelink:" in route, "nothing routes a click on a name in the source"
+    assert "dataset.codelink" in route, "the route does not read the identity it is given"
+    assert "selectFromNav" in route, (
+        "a name in the source does not make an ordinary selection, so the stack, the trail "
+        "and undo do not follow it (rule 51)"
+    )
+    assert "console.error" in route, (
+        "a link with no identity fails silently rather than by name"
+    )
+    # ...and the selection must settle **before** the step is filed. A trail step captures
+    # `state.selected` as its subject, so pushing first files a step whose subject is null:
+    # it renders, highlights and scrolls correctly and can take nobody back (rule 33).
+    # Found by reading a real step, not by any check, and this is that check.
+    body = route.split("codelink:", 1)[1]
+    assert body.index("await selectFromNav") < body.index("pushTrail"), (
+        "the trail step is filed before the selection settles, so it carries no subject"
+    )
+
+
+def test_the_code_pane_is_the_box_that_scrolls() -> None:
+    """Rule 50: a scroller is the element that scrolls, not the one declaring `overflow`.
+
+    `.tablewrap` carried `overflow: auto` and looked like the scroller; nothing bounded its
+    height, so it grew to all 339,229px of the table and never scrolled a pixel while the
+    pane scrolled underneath it. A sticky header stuck to a box that does not move, and a
+    reveal moved a `scrollTop` with nowhere to go while its own check measured against a box
+    extending far below the window -- so every row read as "in view" and it reported success.
+    """
+    css = _read("tokens.css")
+    pane = css.split(".codescroll {", 1)[1].split("}", 1)[0]
+    assert "overflow" in pane, ".codescroll does not scroll"
+    # Bounded by what is left, not by arithmetic. `calc(100vh - 16rem)` was right at one
+    # window height and wrong at every other: on a 589px window the chrome above came to
+    # more than 16rem, the box overflowed its own scroller, and exactly one line of code was
+    # on screen. A flex child is `min-height: auto` and refuses to shrink below its content,
+    # so both halves are needed and either alone leaves it unbounded.
+    assert "flex: 1" in pane and "min-height: 0" in pane, (
+        ".codescroll declares overflow with nothing bounding its height, so it grows to the "
+        "whole file and hands its overflow to the pane"
+    )
+    assert "100vh" not in pane, (
+        ".codescroll bounds itself with a guess at how much chrome sits above it"
+    )
+    chain = css.split(".nav-scroll { display: flex", 1)
+    assert len(chain) == 2, "the navigator's scroller is not a flex column, so nothing fills"
+    assert "#codePaneMount { flex: 1; min-height: 0;" in css, (
+        "the mount between the group and the scroller does not pass the height through, so "
+        "the chain is broken at exactly one link and the pane collapses to its content"
+    )
+    body = css.split(".codeview-body {", 1)[1].split("}", 1)[0]
+    assert "overflow: auto" in body and "min-height: 0" in body, (
+        "the centre code view is a grid/flex child at min-height auto, so it refuses to "
+        "shrink below its content and hands the overflow to the document"
+    )
+    # And the reveal must move the box that scrolls, paired with the row that lives in it.
+    reveal = _fn(_code(_read("shell.js")), "revealSelectedLine")
+    assert "#codeScroll" in reveal and "#viewMount" in reveal, (
+        "the reveal knows only one of the two places the file is on screen"
+    )
+    # The comparison itself, not the word `continue` -- which appears in this function
+    # twice for other reasons, so naming it vouched for a body that had stopped comparing.
+    assert "r.top >= b.top" in reveal and "r.bottom <= b.bottom" in reveal, (
+        "the reveal moves unconditionally, so it fights every deliberate click: design "
+        "rule 26 says an automatic scroll may only act on a row that is out of sight"
+    )
+
+
+def test_the_file_filter_does_not_destroy_the_field_it_types_into() -> None:
+    """The glossary filter's 412 ms defect in its other costume, and the caret was the tell.
+
+    `buildNav()` replaces the navigator's `innerHTML`. The routine search box survives that
+    only because it lives in the toolbar, outside the pane; this one is inside it, so
+    calling `buildNav` on every keystroke would rebuild the input mid-word.
+    """
+    js = _code(_read("shell.js"))
+    wire = _fn(js, "wireCodeFilterOnce")
+    assert "refreshCodeFileList" in wire, "the filter does not refresh anything"
+    assert "buildNav()" not in wire, (
+        "typing in the file filter rebuilds the whole navigator, destroying the input the "
+        "reader is typing into"
+    )
+    narrow = _fn(js, "refreshCodeFileList")
+    assert "buildNav()" not in narrow and "render()" not in narrow, (
+        "the narrow refresh is not narrow -- it rebuilds the pane it is meant to spare"
+    )
+    assert ".nav-items" in narrow and "note-navCode" in narrow, (
+        "the refresh does not update both the rows and the count beside them, so one of "
+        "them describes the other's answer"
+    )
+
+
+def test_code_is_a_centre_mode_in_all_three_places() -> None:
+    """A mode is a table entry, a button and a branch, and any one of them alone is dead.
+
+    Design rule 16 twice over: a control with no branch falls through to something that
+    looks deliberate, and a branch no control reaches is a view nobody can open.
+    """
+    js, html = _code(_read("shell.js")), _read("index.html")
+    modes = js.split("const CENTRE_MODES = ", 1)[1].split(";", 1)[0]
+    assert '"code"' in modes, "code is not a centre mode, so the mode strip hides for it"
+    assert 'data-mode="code"' in html, "there is no button that switches to code"
+    assert 'state.view === "code"' in js, "nothing paints the code view"
+    assert "viewCode()" in js, "the code view is never called"
+
+
+def test_the_code_view_reads_the_one_selection_and_keeps_no_second_copy() -> None:
+    """Rule 51. The detail window held a node id of its own beside the selection, and the
+    two drifted the first time anything else moved one of them -- the trail's Back stepped
+    the app to the previous routine and left the window on the one after it.
+
+    So the code panes hold *which file is open* and read the selection for where in it to
+    look. `state.codeFile` is a pane's subject, not a second answer to "what am I looking
+    at": a file is not a node, and nothing else in the application selects one.
+    """
+    js = _code(_read("shell.js"))
+    where = _fn(js, "selectedLine")
+    assert "SPECIMEN" in where, "the code view does not read the one selection"
+    assert "SPECIMEN.where" in where, (
+        "the line is not taken from the selection's own recorded position"
+    )
+    # No second node id anywhere in the code browser's own state.
+    for name in ("codeSelected", "codeNode", "codeId"):
+        assert name not in js, f"the code browser keeps its own `{name}` beside the selection"
+
+
+def test_the_navigator_width_is_asked_of_the_window() -> None:
+    """`NAV_MAX_REM = 44` was a judgment about one screen, and the code pane is what made it
+    a problem: too narrow for source at any useful type size, and a third of a 4K display.
+
+    Asked for at the keyboard -- *users may want that side to be much wider* -- so the cap is
+    what is left after the inspector's track and a floor for the centre, recomputed as the
+    window changes. Never a `rem` inside a media query: that resolves against the browser's
+    font size and not the page's (rule 28).
+    """
+    js = _code(_read("shell.js"))
+    assert "NAV_MAX_REM" not in js, "the cap is still a fixed number"
+    cap = _fn(js, "navMaxRem")
+    assert "innerWidth" in cap, "the cap does not ask the window how wide it is"
+    assert "CENTRE_FLOOR_REM" in cap, (
+        "the navigator may take the whole window, leaving the centre pane nothing"
+    )
+    assert "NAV_MIN_REM" in cap, (
+        "on a narrow window the cap can fall below the minimum, clamping the pane to a "
+        "width the reader never chose"
+    )
+    # Re-clamped on resize, or a width saved on a wide screen survives as a track wider
+    # than the window it is now in, pushing the centre off the edge with no way back.
+    assert 'addEventListener("resize"' in js and "applyNavWidth()" in js
+    apply = _fn(js, "applyNavWidth")
+    assert "navMaxRem()" in apply, "the stored width reaches the track unclamped"
+    # Two widths, because the two panes hold different things -- and asserted inside the
+    # function that chooses between them, not merely somewhere in the file. `codeWidth` is
+    # a state key and `widthKey` a function name, so both survive a body that has stopped
+    # choosing: a name where the claim is about a behaviour (rule 37).
+    getter, setter = _fn(js, "navWidth"), _fn(js, "setNavWidth")
+    assert "state.codeWidth" in getter and "state.navWidth" in getter, (
+        "one width serves the routine list and the source, so the reader retunes it on "
+        "every switch"
+    )
+    assert "state.codeWidth" in setter and "state.navWidth" in setter, (
+        "the drag writes one width whichever pane is open, so widening the code pane "
+        "narrows the routine list behind it"
+    )
+    assert "navCode" in _fn(js, "codeWidthInForce"), (
+        "the width is chosen without asking which group is open"
+    )

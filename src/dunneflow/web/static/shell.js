@@ -77,6 +77,14 @@ let VOCAB = {};        // the scalars beside them: coverage, thresholds, gaps, a
    program: the viewer shows one place at a time and asking again costs a local request. */
 let VIEWER_SRC = null;
 
+/* The code browser's two stores. `FILES` is the whole list, asked for once -- it cannot
+ * change while the map is open, and the server builds it at boot for the same reason.
+ * `CODEFILE` holds **one** file: whichever is open. A cache of many would be half a
+ * megabyte per large file kept against a reader who has moved on, and the payload is
+ * already fast enough that re-asking costs less than remembering. */
+let FILES = [];      // every analysed file, with the counts that earn a column -- served
+let CODEFILE = null; // { path, lines, links, marks, defs, ... } for the one file open
+
 const AI_OPS = [
   { id: "harvest", label: "Harvest definitions from documentation", needs: "docs",
     desc: "Reads only documents whose shape suggests a definition \u2014 a bold term, a heading, a table row, a term-dash-gloss. Returns quotations with a file and line you can check.",
@@ -137,6 +145,18 @@ const state = {
    * moment there is something to show. An explicit fold by the reader outranks this. */
   inspectorAuto: true,
   navWidth: 21,           // rem; the routine list has to fit a qualified name
+  /* The Code group's own width, because it is a different pane holding a different thing.
+   * One width for both means either a routine list padded out to hold source, or source
+   * squeezed into a list's column -- and the reader retunes it on every switch. Two keys
+   * rather than a map keyed by group: only one group holds code, and a map would invite a
+   * width per group that nothing else wants. */
+  /* 44rem holds about ninety characters of the pane's type, which is a Python line with
+   * room to spare, and still leaves the centre readable on a 1275px window. It was 52,
+   * which is right on a large display and takes two thirds of an ordinary one. The reader
+   * drags it, and the cap is whatever the window can spare. */
+  codeWidth: 44,          // rem
+  codeFile: "",           // which file the Code group has open, "" for the list
+  codeQ: "",              // the file filter
   pointerShown: true,     // the "you are here" arrow over each picked node
   pointerColor: "",       // "" = the token; anything else is the reader's, clamped
   pointerPlace: "rim",    // "rim" | "node" -- at the side of the stack, or over it
@@ -308,7 +328,11 @@ function panelIsOpen(name) {
  * features silently stops working. A variable lets both act without racing. */
 function applyNavWidth() {
   const body = document.querySelector(".body");
-  if (body) body.style.setProperty("--nav-w", `${state.navWidth}rem`);
+  /* Clamped on the way out as well as on the way in. A width saved on a wide screen, or
+     with the inspector folded, is a width this window may not have room for -- and a track
+     wider than the window pushes the centre off the right-hand edge with no way back. */
+  if (body) body.style.setProperty(
+    "--nav-w", `${Math.min(navMaxRem(), Math.max(NAV_MIN_REM, navWidth()))}rem`);
 }
 
 function applyPanels() {
@@ -463,6 +487,10 @@ const NAV_ROUTES = {
   pkg: (b) => selectFromNav({ disks: navIds(b) }),
   b:   (b) => selectFromNav({ disks: navIds(b) }),
   t:   (b) => selectFromNav({ table: b.dataset.navid || "" }),
+  /* A file is not a node: nothing lights in the stack and the inspector has nothing to
+     answer about it, so this opens a pane rather than making a selection. What the reader
+     picks *inside* it is a node, and that is the click that selects. */
+  file: (b) => openCodeFile(b.dataset.navid || ""),
 };
 
 /* The identities a navigator row carries, as written into `data-navid`. Space separated
@@ -505,6 +533,54 @@ document.addEventListener("click", (ev) => {
     state.detailAll = { ...keep, [all.dataset.detailall]: true };
     render();
     return;
+  }
+});
+
+/* Everything inside the code pane that is not a file row.
+ *
+ * Routed from a table for the same reason `NAV_ROUTES` is (design rule 16): an unhandled
+ * kind logs by name rather than falling through to something that looks deliberate.
+ * Delegated, because `buildNav()` rewrites this pane on every selection and a listener
+ * bound to a span would be bound to a span that no longer exists one click later.
+ */
+const CODE_ROUTES = {
+  /* A name in the source. An ordinary selection, exactly as a navigator row makes -- so the
+     stack lights up, the trail records the hop, undo reaches it, and the list moves. Rule
+     51: one truth, one door, and every caller reaching it through the same one. */
+  codelink: async (b) => {
+    const id = b.dataset.codelink;
+    if (!id) { console.error("DunneFlow: a code link with no identity", b); return; }
+    /* **Awaited, then recorded.** A step captures `state.selected` as its subject, so
+     * pushing before the selection settles files a step whose subject is `null` — the trail
+     * renders, highlights and scrolls exactly as it should and can take nobody back. Rule
+     * 33's defect, reintroduced in a new route and caught by reading the step rather than by
+     * any check; `openDetail` had the order right and this did not. */
+    await selectFromNav({ nodes: [id] });
+    pushTrail(state.view, labelFor(id), "followed a name in the source");
+  },
+  codeback: () => openCodeFile(""),
+  /* Opened from a **click**, never a keypress: a pop-up blocker treats a click as the
+     reader asking and a synthetic-looking keystroke as the page deciding for itself. If it
+     is blocked anyway the reader is told, because a control that silently does nothing is
+     the failure this project keeps paying for. */
+  codedetach: () => {
+    const w = window.open(`${location.pathname}?view=code`, "dunneflow-code",
+                          "width=1200,height=900,noopener=no");
+    if (!w) {
+      state.navNote = "The browser blocked the pop-up. Allow pop-ups for this page, or open "
+                    + `${location.pathname}?view=code in a tab yourself.`;
+      render();
+      return;
+    }
+    used("code:detached");
+  },
+  codeopen: () => { state.mode = "code"; state.view = "code"; persist(); render(); },
+};
+
+document.addEventListener("click", (ev) => {
+  for (const kind of Object.keys(CODE_ROUTES)) {
+    const b = ev.target.closest(`[data-${kind}]`);
+    if (b) { CODE_ROUTES[kind](b); return; }
   }
 });
 
@@ -1630,7 +1706,7 @@ function redoSelection() {
  * toggle over one shared selection, not three destinations** -- switching never costs the
  * reader their place.
  */
-const CENTRE_MODES = ["graph", "table", "doc"];
+const CENTRE_MODES = ["graph", "table", "doc", "code"];
 
 /* Going back to a step, and the one thing that surprised a reader about it.
  *
@@ -1688,6 +1764,103 @@ function pinBtn(label, note) {
 }
 
 /* ═══ curiosities: the reason to start wandering ═══ */
+/* ══ code, in the centre: the same file with room for the columns ══════════════════════
+ *
+ * The fourth centre mode. Design rule 26 settled that the modes are ways of looking at one
+ * selection rather than destinations, and source is plainly one of those -- so this reads
+ * the same `CODEFILE` the left pane does. One store, one truth: two copies would disagree
+ * the first time either was reloaded, which is rule 51's defect exactly.
+ *
+ * What the centre adds is the width, and what the width buys is that a mark can say what it
+ * *is* instead of standing for it. The pane's gutter is a column of glyphs because a gutter
+ * wide enough for prose has taken the code's column; here there is room for the words.
+ */
+function viewCode() {
+  if (!state.codeFile) {
+    /* Design rule 21's argument outside the canvas: a blank pane must say why it is blank.
+       "Nothing chosen" and "nothing here" are opposite claims about the map. */
+    return `<div class="panel codeempty">
+      <h2>No file open.</h2>
+      <p class="hint">Open the <b>Code</b> group in the navigator and pick one — or select a
+      routine anywhere, and this follows it into the file it lives in.
+      ${FILES.length ? `${FILES.length.toLocaleString()} files were analysed.` : ""}</p>
+    </div>`;
+  }
+  if (!CODEFILE || CODEFILE.loading) {
+    return `<div class="panel codeempty"><p>Opening ${esc(state.codeFile)}…</p></div>`;
+  }
+  if (CODEFILE.available === false) {
+    return `<div class="panel codeempty"><h2>Nothing to show.</h2>
+      <p>${esc(CODEFILE.reason || "")}</p></div>`;
+  }
+
+  const f = FILES.find(x => x.path === state.codeFile);
+
+  return `<div class="codeview-full">
+    <div class="codeview-head">
+      <div>
+        <div class="codeview-title mono">${esc(state.codeFile)}</div>
+        <div class="codeview-sub">${f ? esc(f.module) + " · " : ""}${
+          CODEFILE.lines.length.toLocaleString()} lines · ${
+          CODEFILE.defs.length} definitions · ${CODEFILE.marks.length.toLocaleString()} marks</div>
+      </div>
+      <button class="linkbtn" data-codedetach="1"
+              title="Open the code in a window of its own, in sync with this one">detach ⧉</button>
+      <button class="linkbtn" data-codeback="1" title="Back to the list of files">files ›</button>
+    </div>
+
+    ${/* Design rule 1: what is not on screen is stated, in counts. A name that is not
+          clickable with nothing said about it reads as a name the map does not know --
+          which is the opposite of the truth, since the map knows it and cannot say where
+          on the line it was written. */
+      CODEFILE.unplaced ? `<div class="codeview-note">${CODEFILE.placed.toLocaleString()}
+        names are clickable. ${CODEFILE.unplaced} more resolved to a routine but occur more
+        than once on their line, so there is no column to underline — they are listed in the
+        margin instead.</div>` : ""}
+
+    <div class="codeview-body" id="codeTableMount"></div>
+
+    <div class="codeview-foot">Read from the content-addressed sidecar — the file as
+      measured${CODEFILE.revision ? " at " + esc(CODEFILE.revision) : ""}, not as the tree
+      stands now.</div>
+  </div>`;
+}
+
+/* The centre's own rendering of the file, built once per file and re-attached (see
+ * `codeCached`). Separate from the chrome above it because the chrome is cheap and changes
+ * with the selection, while this is 1.37 MB of markup for the largest file and changes only
+ * when the file does. */
+function codeTable() {
+  const links = new Map();
+  for (const s of CODEFILE.links) {
+    if (!links.has(s.line)) links.set(s.line, []);
+    links.get(s.line).push(s);
+  }
+  const marks = new Map();
+  for (const m of CODEFILE.marks) {
+    if (!marks.has(m.line)) marks.set(m.line, []);
+    marks.get(m.line).push(m);
+  }
+  /* A `<pre>` of spans, not a table — the same structure the navigator's pane uses, and the
+   * reason is measured. As a `<table>` with a `<pre>` in every code cell this cost **1,358
+   * ms** to lay out `_server.py`, against table mode's 46 ms for 4,734 rows with *more*
+   * cells each. Per-row `overflow-x` makes 5,838 scroll containers and a table has to
+   * resolve them all before it can size a column. Fixed-width inline-blocks give the same
+   * three columns with none of that, and the alignment is exactly as reliable because every
+   * width is declared rather than negotiated. */
+  return `<pre class="codetable" id="codeTable">${
+    CODEFILE.lines.map((text, i) => {
+      const n = i + 1;
+      const ms = marks.get(n) || [];
+      return `<span class="crow" id="crow-${n}"><span class="cnum">${n}</span>` +
+        `<span class="cmark">${ms.map(m => `<span class="mk mk-${esc(m.kind)}"` +
+              ` title="${esc(m.kind)}${m.note ? " · " + esc(m.note) : ""}"` +
+              `>${esc(m.label)}${m.detail ? `<i>${esc(m.detail)}</i>` : ""}</span>`).join("")}</span>` +
+        `<span class="ccode">${codeLineHtml(text, links.get(n))}</span></span>`;
+    }).join("\n")
+  }</pre>`;
+}
+
 function viewCuriosities() {
   /* Not yet computed from the store. Said plainly rather than shown as an empty grid,
      because "nothing unusual here" and "nobody has looked yet" are opposite claims and
@@ -1873,7 +2046,16 @@ function threadsPanel(nodeId) {
  * The loop guard is the only subtle part. Adopting a selection must not re-publish it, or
  * two windows bounce one click between them for ever.
  */
-const DETACHED = new URLSearchParams(location.search).get("view") === "detail";
+/* Which detached view this window is, if any. `?view=detail` and `?view=code` boot the
+ * same application and then hide everything but the one panel -- not a second page, which
+ * would be the third place this project draws one node and the second place it draws a
+ * file. `DETACHED` stays a boolean for the detail window's own checks; `DETACHED_VIEW` is
+ * what says which. */
+const DETACHED_VIEW = (() => {
+  const v = new URLSearchParams(location.search).get("view");
+  return (v === "detail" || v === "code") ? v : "";
+})();
+const DETACHED = DETACHED_VIEW === "detail";
 const SYNC = ("BroadcastChannel" in window) ? new BroadcastChannel("dunneflow-selection") : null;
 let adopting = false;
 
@@ -2830,8 +3012,35 @@ async function loadNode(id) {
   } catch (err) {
     if (inspectorFor === id) SPECIMEN = { notFound: true, id, reason: err.message };
   }
+  followSelectionIntoCode();
   render();
   loadThreads(id);
+}
+
+/* **The other direction.** Design rule 26 says the list and the picture are one instrument
+ * and it has to run both ways -- clicking a name in the source selects it, and selecting
+ * anything anywhere moves the code to where it lives.
+ *
+ * Only while code is on screen. Fetching half a megabyte on every click for a pane nobody
+ * has open is rule 45's cost paid for nothing, and the file is opened when the reader opens
+ * the pane instead. The file is read from `SPECIMEN.where`, which is the one selection --
+ * never from a second copy, because rule 51 was written from a window that kept its own
+ * node id and disagreed with the app the first time anything else moved one of them.
+ */
+function codeOnScreen() {
+  return state.view === "code"
+      || groupOpen(NAV_GROUPS.find(g => g.id === "navCode"));
+}
+
+function followSelectionIntoCode() {
+  if (!codeOnScreen()) return;
+  const w = SPECIMEN && SPECIMEN.where;
+  if (!w || !w.file) return;
+  const f = FILES.find(x => w.file === x.full || String(w.file).endsWith("/" + x.path));
+  if (!f || f.path === state.codeFile) return;
+  state.codeFile = f.path;
+  persist();
+  loadCodeFile(f.path);
 }
 
 /* The reasons a neighbour is worth a detour, asked alongside the node itself.
@@ -3223,6 +3432,30 @@ function render() {
     revealSelectedRow(false);
   }
   else if (state.view === "doc")       vp.innerHTML = viewDoc();
+  else if (state.view === "code")    {
+    /* **Not repainted unless the file changed.** Re-attaching the built table was supposed
+     * to make this cheap and did not: moving 17,500 cells back into the document forces a
+     * style recalc and a layout over all of them, so `render()` still cost 1.3 s per call
+     * on `_server.py` — on a function that runs on every selection, every keystroke and
+     * every message from the other window. The only way to not pay a layout is to not
+     * detach the table, so when nothing about the file has changed the centre is left
+     * exactly as it is and only the highlight moves.
+     *
+     * The DOM is checked, not just the flag. A flag saying "already painted" is true of a
+     * pane another view has since overwritten, and `#codeTable` is the thing that either is
+     * or is not on screen — rule 42: check that the guard catches, not that it mentions. */
+    if (codePaintedFor !== codeDomKey() || !$("#codeTable")) {
+      const mount = $("#viewMount");
+      const keep = mount ? mount.scrollTop : 0;
+      vp.innerHTML = viewCode();
+      attachCode();
+      codePaintedFor = codeDomKey();
+      if (mount) mount.scrollTop = keep;
+    } else {
+      paintHere();
+      revealSelectedLine();
+    }
+  }
   else if (state.view === "anomalies") vp.innerHTML = viewAnomalies();
   else if (state.view === "glossary")  { ensureVocabulary(); vp.innerHTML = viewGlossary(); }
   else if (state.view === "naming")    { ensureVocabulary(); vp.innerHTML = viewNaming(); }
@@ -3805,6 +4038,10 @@ const WIRED_ATTRS = new Set([
   "goto", "graphtheme", "insp", "jump", "layout", "legend", "manifest", "menuorder",
   "mode", "nav", "nav2", "navcap", "navgroups", "pkgopen", "pointerplace", "pointerreset", "pointershown", "reticule",
   "closedetail", "detachdetail", "detail", "detailall", "tablego",
+  /* The code browser's three. `codelink` is on every clickable name in the source and
+     `CODE_ROUTES` is what listens for all of them -- one table, checked by the guard that
+     reads it, so a fourth kind added there without a listener fails by name. */
+  "codeback", "codedetach", "codelink", "codeopen",
   "navid", "node", "open", "pane", "pin", "pinnote", "pkgnode", "pkgpick", "qual",
   "resize", "row",
   "scale-set", "sec", "sev", "sevnav", "sort", "sqlshow", "start", "step", "theme",
@@ -4058,6 +4295,327 @@ function moduleTail(module) {
   return parts.length > 2 ? "\u2026" + parts.slice(-2).join(".") : module;
 }
 
+/* ══ the code browser ═══════════════════════════════════════════════════════════════
+ *
+ * Asked for at the keyboard: *it should be able to run on the left menu as well. I want to
+ * be able to see code and graph at the same time, and that's the only way.* Two windows
+ * can do it and a detached view is built; inside **one** window the left pane is the only
+ * place code can sit while the stack holds the centre.
+ *
+ * So the Code group is stacked, and it is the accordion the routine list already uses one
+ * level down: a file list that collapses once a file is picked, and that file's lines
+ * beneath it. Picking a file drives the pane; clicking a name in the source is an ordinary
+ * `selectFromNav`, so the stack lights up, the trail records the hop, undo reaches it, and
+ * the navigator's own highlight moves -- all through the one door rule 51 was written for.
+ *
+ * **No syntax colour**, and that is a decision rather than an omission. Design rule 4
+ * spends colour on one dimension at a time, and what this tool knows about a line is not
+ * its grammar -- it is that the line leaves the program, or carries a plan id, or writes a
+ * table. Colouring keywords would spend the scarcest channel on the thing DunneFlow knows
+ * least about. Things that are already nodes are clickable; nothing else is decorated.
+ */
+
+async function loadFiles() {
+  if (FILES.length) return;
+  try {
+    const d = await fetch("/api/files").then(r => r.json());
+    FILES = d.files || [];
+  } catch (err) {
+    state.navNote = `could not read the file list: ${err.message}`;
+  }
+}
+
+/* One file, replacing whatever was open. `state.codeFile` is the subject and `CODEFILE` is
+ * the answer to it, so a stale answer is dropped rather than shown beside a new question --
+ * two fetches racing is ordinary here, because a reader clicking down a list outruns a
+ * half-megabyte payload. */
+async function loadCodeFile(path) {
+  if (!path) { CODEFILE = null; return; }
+  if (CODEFILE && CODEFILE.file === path) return;
+  CODEFILE = { file: path, loading: true, lines: [], links: [], marks: [], defs: [] };
+  buildNav();
+  let d;
+  try {
+    d = await fetch(`/api/file?path=${encodeURIComponent(path)}`).then(r => r.json());
+  } catch (err) {
+    d = { available: false, file: path, reason: err.message };
+  }
+  if (state.codeFile !== path) return;            // the reader moved on
+  CODEFILE = { ...d, file: path, loading: false };
+  /* The built subtrees describe the *previous* file. Dropped here rather than left for the
+   * key check alone, so a node holding the wrong file cannot survive one render where the
+   * key happens to match -- and so the memory goes with it. */
+  codeDom = { pane: { key: "", node: null }, centre: { key: "", node: null } };
+  codePaintedFor = "";
+  buildNav();
+  render();
+}
+
+/* Open a file in the pane, and say so in the trail.
+ *
+ * A file is not a node, so this does not go through `selectFromNav`: there is nothing to
+ * light in the stack and nothing for the inspector to answer about. Inventing a node id to
+ * make the row selectable would be a link to nothing, which `queries.py` wrote down before
+ * anything needed it. What the reader picks *inside* the file is a node, and that is the
+ * click that selects. */
+function openCodeFile(path) {
+  state.codeFile = path || "";
+  persist();
+  loadCodeFile(state.codeFile);
+  buildNav();
+}
+
+/* Every file whose path or module matches what is typed. Flat and complete: 626 rows is a
+ * list, not a haystack, and rule 45's lesson was about building 3,413 rows nobody could
+ * see -- not about bounding a list this size. */
+function matchingFiles() {
+  const q = state.codeQ.trim().toLowerCase();
+  if (!q) return { rows: FILES, filtered: false };
+  const rows = FILES.filter(f => f.path.toLowerCase().includes(q)
+                              || f.module.toLowerCase().includes(q));
+  return { rows, filtered: true };
+}
+
+/* Where the file list stands, in words. Design rule 1: what is not on screen is stated. */
+function codeNote() {
+  if (!FILES.length) return "reading the file list…";
+  if (state.codeFile) {
+    const f = FILES.find(x => x.path === state.codeFile);
+    if (CODEFILE && CODEFILE.loading) return `opening ${esc(state.codeFile)}…`;
+    if (CODEFILE && CODEFILE.available === false) return esc(CODEFILE.reason || "not available");
+    const n = CODEFILE ? CODEFILE.lines.length : (f ? f.lines : 0);
+    const links = CODEFILE ? CODEFILE.links.length : 0;
+    /* The unplaced count is not decoration. A call whose expression appears twice on its
+       line has no column we can honestly give it, so it is not underlined -- and a name
+       that is not clickable, with nothing said about it, reads as a name the map does not
+       know. */
+    const un = CODEFILE && CODEFILE.unplaced ? `, ${CODEFILE.unplaced} overlapping and left plain` : "";
+    return `${n.toLocaleString()} lines, ${links} clickable${un}`;
+  }
+  const { rows, filtered } = matchingFiles();
+  if (!filtered) return `${FILES.length.toLocaleString()} files — open one, or search`;
+  if (!rows.length) return `nothing matches “${esc(state.codeQ)}”`;
+  return `${rows.length.toLocaleString()} of ${FILES.length.toLocaleString()} match “${esc(state.codeQ)}”`;
+}
+
+/* The list half of the group. */
+function codeFileList() {
+  const { rows } = matchingFiles();
+  return `
+    <div class="codefilter">
+      <input id="codeQ" type="search" placeholder="Filter files…"
+             value="${esc(state.codeQ)}" aria-label="Filter the file list">
+    </div>
+    <div class="nav-items">${fileRowsHtml(rows)}</div>`;
+}
+
+/* One renderer for a file row, because the full build and the narrow filter refresh both
+ * draw it. Two copies would agree until the day one of them was edited. */
+function fileRowsHtml(rows) {
+  return rows.map(f => `
+    <button class="nav-item codefile" data-nav="file" data-navid="${esc(f.path)}"
+            data-titled="1" title="${esc(f.module)} — ${f.lines.toLocaleString()} lines, ${
+              f.routines} routines, ${f.boundaries} boundaries, ${f.ids} governance ids"
+            ${f.path === state.codeFile ? 'aria-current="true"' : ""}>
+      <span class="navsub">${esc(dirOf(f.path))}</span>${esc(baseOf(f.path))}
+      <span class="n">${f.lines.toLocaleString()}</span>
+    </button>`).join("");
+}
+
+function baseOf(p) { const i = String(p).lastIndexOf("/"); return i < 0 ? p : p.slice(i + 1); }
+function dirOf(p)  { const i = String(p).lastIndexOf("/"); return i < 0 ? "" : p.slice(0, i) + "/"; }
+
+/* One line of source, with its clickable spans cut into it.
+ *
+ * Built by walking the line once and slicing at each span, rather than by replacing text:
+ * a `String.replace` over source would match inside a string literal, inside a comment, and
+ * inside the *next* occurrence of the same name -- which is the column problem the server
+ * already refused to guess at, reintroduced in the client. The server said where; this
+ * only cuts.
+ */
+function codeLineHtml(text, spans) {
+  if (!spans || !spans.length) return esc(text) || "&nbsp;";
+  let out = "", at = 0;
+  for (const s of spans) {
+    const a = s.col - 1, b = a + s.len;
+    if (a < at) continue;                       // already covered; the server sorts these
+    out += esc(text.slice(at, a));
+    out += `<button class="codelink${s.confidence === "INFERRED" ? " inferred" : ""}"
+              data-codelink="${esc(s.id)}" data-titled="1"
+              title="${esc(s.kind === "def" ? "Definition of " + s.label : "Calls " + s.label)}"
+              >${esc(text.slice(a, b))}</button>`;
+    at = b;
+  }
+  out += esc(text.slice(at));
+  return out || "&nbsp;";
+}
+
+/* Short words for the gutter. A mark says what a line *is*; the letter is the kind and the
+ * title carries what it says, because a gutter wide enough for prose is a gutter that has
+ * taken the code's column. */
+const MARK_GLYPH = {
+  boundary: "◆", sql: "▤", net: "⇄", library: "↗",
+  constant: "○", import: "↓", artefact: "□", table: "⌸", id: "§",
+};
+
+/* ── built once per file, re-attached ever after ───────────────────────────────────────
+ *
+ * Rule 45, found by looking and by nothing else. `buildNav()` runs on **every selection**
+ * and rewrites the navigator's `innerHTML`; with `_server.py` open that is 5,838 lines of
+ * markup re-parsed per click, and it measured **1,937 ms**. The centre pane is 1.37 MB of
+ * HTML for the same file and 155 ms per repaint, on a `render()` that also runs on every
+ * keystroke. Worse than the 2,418 ms table defect that earned the rule, and every test
+ * passed: a slow page reads as a slow page, not as a defect.
+ *
+ * The cost is *parsing*, not the DOM — so the subtree is built once and moved. Re-attaching
+ * a detached node is a pointer swap whatever it holds. Nothing is windowed and nothing is
+ * dropped: every line is in the document, which is what rule 8 requires of a reference.
+ *
+ * Keyed on the file **only**. The selection moves far more often than the file does, and it
+ * changes exactly two rows' worth of highlight — `paintHere()` does that narrowly, because
+ * rebuilding a megabyte to move a background colour is the same mistake one layer down.
+ */
+let codeDom = { pane: { key: "", node: null }, centre: { key: "", node: null } };
+let codePaintedFor = "";     // which file the centre pane currently holds
+
+function codeDomKey() {
+  return CODEFILE ? `${CODEFILE.file}#${CODEFILE.loading ? "…" : CODEFILE.available}` : "";
+}
+
+/* Build a node once per key, and hand back the same node after.
+ *
+ * Takes a **function**, not a string, and that is the whole of it: JavaScript evaluates
+ * arguments before the call, so `codeCached(slot, codeTable())` rebuilt 1.37 MB of markup
+ * on every hit and then threw it away. The cache was doing its job on the DOM and none at
+ * all on the work, and it looked exactly like a cache that worked — `render()` went from
+ * 155 ms to 1,370. Measured, or it would still be in. */
+function codeCached(slot, build) {
+  const key = codeDomKey();
+  if (slot.key !== key || !slot.node) {
+    const box = document.createElement("div");
+    box.innerHTML = build();
+    slot.node = box.firstElementChild;
+    slot.key = key;
+  }
+  return slot.node;
+}
+
+/* Move the selection's highlight without touching anything else.
+ *
+ * `render()` and `buildNav()` both used to redraw the whole file to change which rows carry
+ * `.here`, which is rule 45 in a background colour. */
+function paintHere() {
+  const here = selectedLine();
+  for (const root of [$("#codeScroll"), $("#codeTable")]) {
+    if (!root) continue;
+    root.querySelectorAll(".here").forEach(el => el.classList.remove("here"));
+    if (!here || !here.first) continue;
+    for (let n = here.first; n <= here.last; n++) {
+      const row = root.querySelector(`#codeline-${n}, #crow-${n}`);
+      if (row) row.classList.add("here");
+    }
+  }
+}
+
+/* Put the built subtree back into whichever pane has just been rewritten. Called after both
+ * `buildNav()` and `render()`, because either may have replaced the mount it goes in. */
+function attachCode() {
+  const paneMount = $("#codePaneMount");
+  if (paneMount && !paneMount.firstElementChild && CODEFILE) {
+    paneMount.appendChild(codeCached(codeDom.pane, codeBody));
+  }
+  const centreMount = $("#codeTableMount");
+  if (centreMount && !centreMount.firstElementChild && CODEFILE) {
+    centreMount.appendChild(codeCached(codeDom.centre, codeTable));
+  }
+  paintHere();
+  revealSelectedLine();
+}
+
+function codeBody() {
+  if (!CODEFILE) return "<div></div>";
+  if (CODEFILE.loading) return `<div class="nav-note">opening…</div>`;
+  if (CODEFILE.available === false) {
+    /* Three absences and the reader must be able to tell which (design rule 1). The server
+       keeps them apart; repeating the reason verbatim is what keeps them apart here. */
+    return `<div class="codeabsent"><b>Nothing to show.</b> ${esc(CODEFILE.reason || "")}</div>`;
+  }
+  const byLine = new Map();
+  for (const s of CODEFILE.links) {
+    if (!byLine.has(s.line)) byLine.set(s.line, []);
+    byLine.get(s.line).push(s);
+  }
+  const marksBy = new Map();
+  for (const m of CODEFILE.marks) {
+    if (!marksBy.has(m.line)) marksBy.set(m.line, []);
+    marksBy.get(m.line).push(m);
+  }
+  return `<div class="codescroll" id="codeScroll"><pre class="codepane">${
+    CODEFILE.lines.map((text, i) => {
+      const n = i + 1;
+      const ms = marksBy.get(n) || [];
+      const glyphs = [...new Set(ms.map(m => MARK_GLYPH[m.kind] || "·"))].join("");
+      const title = ms.map(m => `${m.kind}: ${m.label}${m.detail ? " — " + m.detail : ""}`).join("\n");
+      return `<span class="cl" id="codeline-${n}"><span class="cn">${n}</span>` +
+             `<span class="cm"${title ? ` title="${esc(title)}" data-titled="1"` : ""}>${glyphs}</span>` +
+             codeLineHtml(text, byLine.get(n)) + `</span>`;
+    }).join("\n")
+  }</pre></div>`;
+}
+
+/* The span of the current selection inside the file on screen, or null.
+ *
+ * Read from the one selection (`SPECIMEN.where`) rather than kept beside it. Rule 51: the
+ * detail window held a node id of its own and drifted from the selection the first time
+ * anything else moved one of them, and a second copy here would do the same on the first
+ * click in the stack. */
+function selectedLine() {
+  if (!SPECIMEN || !SPECIMEN.where || !CODEFILE) return null;
+  const w = SPECIMEN.where;
+  if (!w.file || !String(w.file).endsWith(CODEFILE.file)) return null;
+  return { first: w.first || 0, last: w.last || w.first || 0 };
+}
+
+/* The pane follows the selection, and only when the row is genuinely out of sight.
+ *
+ * Design rule 26's third condition: an automatic scroll must not fight a deliberate click.
+ * A reader who clicked a name three lines down does not want the pane to jump because the
+ * selection moved to exactly where they were already looking. */
+function revealSelectedLine() {
+  const here = selectedLine();
+  if (!here || !here.first) return;
+  /* Both hosts, because the same file is on screen in two places and either may be the one
+   * the reader is looking at. Named pairs rather than one selector over both: rule 50 was
+   * written from a reveal that moved a `scrollTop` on a box that does not scroll and then
+   * measured against a box extending far below the window, so every row read as "in view"
+   * and it reported success. The scroller and the row have to belong to each other. */
+  for (const [rowSel, boxSel] of [[`#codeline-${here.first}`, "#codeScroll"],
+                                  [`#crow-${here.first}`, "#viewMount"]]) {
+    const row = $(rowSel), box = $(boxSel);
+    if (!row || !box) continue;
+    const r = row.getBoundingClientRect(), b = box.getBoundingClientRect();
+    if (r.top >= b.top && r.bottom <= b.bottom) continue;   // already under their eye
+    box.scrollTop += (r.top - b.top) - box.clientHeight / 3;
+  }
+}
+
+/* The group's body: the list, or the file with a way back to the list. */
+function codeList() {
+  if (!FILES.length) return "";
+  if (!state.codeFile) return codeFileList();
+  const f = FILES.find(x => x.path === state.codeFile);
+  return `
+    <div class="codehead">
+      <button class="linkbtn" data-codeback="1"
+              title="Back to the list of files">‹ files</button>
+      <span class="codepath mono" title="${esc(state.codeFile)}">${esc(baseOf(state.codeFile))}</span>
+      ${f ? `<span class="codemod">${esc(f.module)}</span>` : ""}
+      <button class="linkbtn" data-codeopen="1"
+              title="Open this file in the centre pane, with its columns">open ▸</button>
+    </div>
+    <div id="codePaneMount"></div>`;
+}
+
 const NAV_GROUPS = [
   /* `primary`: the group the accordion opens on a first visit. The navigator *is* the
      routine list (design rule 26), whatever the menu order puts above it. */
@@ -4083,6 +4641,12 @@ const NAV_GROUPS = [
     /* A body rather than items, because these rows are two levels deep. Routed through the
        same `navItemHtml`, so a routine row in a package looks like every other row. */
     body: () => routineList() },
+  /* Code: the file list, and the file. Stacked, which is the accordion one level down --
+     the same shape `navRoutines` uses, for the same reason. */
+  { id: "navCode", title: "Code", open: false,
+    count: () => FILES.length,
+    note: () => codeNote(),
+    body: () => codeList() },
   { id: "navExplore", title: "Explore", open: true, items: () => [
       { nav: "curiosities", label: "Worth a look", n: "" },
       { nav: "pins",        label: "Kept",         n: state.pins.length, id: "navPins" },
@@ -4335,7 +4899,7 @@ function buildNav() {
              at once, which is what gave it away. Design rule 1 was satisfied in letter
              and defeated in fact. Outside `.nav-items` so it reads the same open or
              closed, and inside the sticky header so it stays with its heading. */
-          g.note ? `<div class="nav-note">${g.note()}</div>` : ""}
+          g.note ? `<div class="nav-note" id="note-${esc(g.id)}">${g.note()}</div>` : ""}
       </div>
       <div class="nav-items">
         ${g.body ? g.body() : items.map(navItemHtml).join("")}
@@ -4343,6 +4907,8 @@ function buildNav() {
     </div>`;
   }).join("") + `</div>`;
   dressNavItems();
+  wireCodeFilterOnce();
+  attachCode();
   const sc = $("#navScroll");
   if (sc) {
     sc.scrollTop = keep;
@@ -4455,7 +5021,8 @@ const PERSISTED = [
   "egress", "aiOps", "triage", "pins", "usage", "graphLayout",
   "diskOrder", "diskColors", "colorBy", "sortMode", "filterMode", "direction",
   "nodeSize", "spreadX", "spreadY", "spreadZ", "collapseUnused",
-  "panels", "inspectorAuto", "navWidth", "navGroups", "navOpen", "navCap",
+  "panels", "inspectorAuto", "navWidth", "codeWidth", "codeFile", "navGroups",
+  "navOpen", "navCap",
   "showPlates", "picks", "graphTheme", "edgesInMotion", "pointerShown", "pointerColor", "pointerPlace", "reticuleShown", "focusLocked",
 ];
 
@@ -6055,7 +6622,50 @@ function wireGraphOnce() {
  * Clamped, and the clamp is the point rather than defensiveness -- dragged to nothing the
  * navigator becomes an invisible pane with no rail to bring it back, which is the stranding
  * design rule 20 forbids. Wide enough to read a qualified name, never wider than half. */
-const NAV_MIN_REM = 12, NAV_MAX_REM = 44;
+const NAV_MIN_REM = 12;
+
+/* How wide the navigator may get, asked of the window rather than fixed at a number.
+ *
+ * It was `NAV_MAX_REM = 44`, which is a judgment about one screen: too narrow for source at
+ * any useful type size, and on a 4K display it caps the pane at a third of what is there.
+ * Asked for at the keyboard, about the code pane specifically -- *users may want that side
+ * to be much wider.*
+ *
+ * The cap is what is left after the inspector's track and a floor for the centre, so the
+ * reader can take almost the whole window and still never push the centre pane to nothing.
+ * Fold the inspector -- which is one click, and automatic while nothing is selected -- and
+ * that track comes back too. Computed from `innerWidth` and the root font size, which is
+ * exactly what the drag already does, and never from a `rem` inside a media query: that
+ * resolves against the *browser's* font size, not the page's (rule 28).
+ */
+const CENTRE_FLOOR_REM = 16;   // the centre never shrinks below a readable column
+function navMaxRem() {
+  const rootPx = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+  const insp = panelIsOpen("inspector") ? 22 : 3;
+  const room = (window.innerWidth / rootPx) - insp - CENTRE_FLOOR_REM;
+  /* Never below the minimum: on a very narrow window the answer is "you cannot widen this",
+     not a maximum smaller than the minimum, which would clamp the pane to a width the
+     reader never chose. */
+  return Math.max(NAV_MIN_REM, Math.round(room * 4) / 4);
+}
+
+/* Which width is in force. The Code group holds source and every other group holds a list,
+ * so they are two panes wearing one track, and one number for both means retuning it on
+ * every switch. `state.navWidth` stays the name for everything that is not code.
+ *
+ * Written as two named property accesses rather than `state[widthKey()]`, which is the same
+ * thing to a machine and invisible to the check that reads this file: the guard over
+ * persisted settings demands each one be *read* somewhere, precisely because a key that is
+ * faithfully saved and never acted upon passes any search for its bare name. A dynamic
+ * lookup is how a setting slips past it, so this one does not use one. */
+function codeWidthInForce() {
+  return groupOpen(NAV_GROUPS.find(g => g.id === "navCode"));
+}
+function navWidth() { return codeWidthInForce() ? state.codeWidth : state.navWidth; }
+function setNavWidth(rem) {
+  const v = Math.min(navMaxRem(), Math.max(NAV_MIN_REM, Math.round(rem * 4) / 4));
+  if (codeWidthInForce()) state.codeWidth = v; else state.navWidth = v;
+}
 
 function wireNavGripOnce() {
   const grip = $("#navGrip");
@@ -6065,12 +6675,11 @@ function wireNavGripOnce() {
   grip.addEventListener("pointerdown", (e) => {
     e.preventDefault();
     const rootPx = parseFloat(getComputedStyle(document.documentElement).fontSize);
-    const startX = e.clientX, startRem = state.navWidth;
+    const startX = e.clientX, startRem = navWidth();
     grip.classList.add("active");
     grip.setPointerCapture(e.pointerId);
     const move = (ev) => {
-      const rem = startRem + (ev.clientX - startX) / rootPx;
-      state.navWidth = Math.min(NAV_MAX_REM, Math.max(NAV_MIN_REM, Math.round(rem * 4) / 4));
+      setNavWidth(startRem + (ev.clientX - startX) / rootPx);
       applyNavWidth();
       // The canvas is a grid track away, so its width changed with this one.
       if (Graph.mounted()) Graph.resize();
@@ -6090,10 +6699,51 @@ function wireNavGripOnce() {
     const step = e.key === "ArrowLeft" ? -1 : e.key === "ArrowRight" ? 1 : 0;
     if (!step) return;
     e.preventDefault();
-    state.navWidth = Math.min(NAV_MAX_REM, Math.max(NAV_MIN_REM, state.navWidth + step));
+    setNavWidth(navWidth() + step);
     applyNavWidth();
     if (Graph.mounted()) Graph.resize();
     persist();
+  });
+}
+
+/* The cap is a function of the window, so it changes when the window does -- and a pane
+ * saved at 60rem on a wide screen must not survive a resize as a track wider than the
+ * window it is in. Re-clamped rather than remembered narrower: widening the window again
+ * puts the reader back where they were. */
+addEventListener("resize", () => {
+  applyNavWidth();
+  if (Graph.mounted()) Graph.resize();
+});
+
+/* Typing in the file filter rewrites the rows and **not the pane**.
+ *
+ * `buildNav()` replaces the navigator's `innerHTML`, which would destroy the input the
+ * reader is typing into -- the caret jumping to the end of the box on every character, or
+ * out of it entirely. That is the glossary filter's 412 ms defect in its other costume: the
+ * cost there was calling `render()`, and the tell was that the caret had to be put back
+ * into a field that had just been rebuilt. The remedy the file already records is to update
+ * narrowly, so this rewrites two nodes and touches nothing the reader is holding.
+ */
+function refreshCodeFileList() {
+  const group = $("#navCode");
+  if (!group) return;
+  const items = group.querySelector(".nav-items");
+  if (items) {
+    const { rows } = matchingFiles();
+    items.innerHTML = fileRowsHtml(rows);
+    dressNavItems();
+  }
+  const note = $("#note-navCode");
+  if (note) note.innerHTML = codeNote();
+}
+
+function wireCodeFilterOnce() {
+  const box = $("#codeQ");
+  if (!box || box.__wired) return;
+  box.__wired = true;
+  box.addEventListener("input", () => {
+    state.codeQ = box.value;
+    refreshCodeFileList();
   });
 }
 
@@ -6149,6 +6799,20 @@ async function boot() {
     document.body.classList.add("detached");
     state.detail = true;
   }
+  /* Code, detached: the centre pane *is* the page. Same application, same `CODEFILE`, and
+   * the same `BroadcastChannel` -- so selecting a routine in the main window walks this
+   * one to the file it lives in, and clicking a name here selects it over there. Two peers,
+   * never opener and child: a `window.opener` protocol breaks the moment the reader closes
+   * the main window, reloads either, or opens this by pasting the URL. */
+  if (DETACHED_VIEW === "code") {
+    /* `detached` alone, deliberately not: that class hides `.app` outright, and the code
+     * view is rendered *inside* it. Two classes fighting over one `display` is rule 29 --
+     * a later equal selector wins and the fix is specificity, never source order -- so this
+     * one gets its own class and its own rules rather than an exception to somebody else's. */
+    document.body.classList.add("detached-code");
+    state.view = "code";
+    state.mode = "code";
+  }
   buildNav();
   wireGraphOnce();
   wireSearchOnce();
@@ -6161,6 +6825,12 @@ async function boot() {
    * paint, because 4,734 rows must not stand between the reader and a usable page. The
    * navigator says "reading the routine list…" until it lands, which is a different claim
    * from "this program has no routines" and has to look like one. */
+  /* The file list, beside the routine list and for the same reason: the navigator asks
+   * for both, neither changes while the map is open, and the server already built this one
+   * at boot. If a file was open when the reader last closed the page, it comes back. */
+  loadFiles().then(() => { if (state.codeFile) return loadCodeFile(state.codeFile); })
+             .then(buildNav)
+             .catch(err => { state.navNote = `could not read the file list: ${err.message}`; });
   loadRoutines().then(buildNav).catch(err => {
     console.error("DunneFlow: the routine list could not be read:", err);
     buildNav();

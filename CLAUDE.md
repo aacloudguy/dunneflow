@@ -188,6 +188,35 @@ in a pane. A map built once with the payload is the whole fix. Reported as *lag 
 obvious*, and that is exactly right: two and a half seconds reads as a slow page, not as a
 defect.
 
+The code browser, measured on Mensores' largest file (`mensores/mcp/_server.py`, 5,838
+lines, 1.37 MB of markup) and on `mensores/cli/audit.py` (4,820 lines):
+
+| Measure | Budget | Measured 2026-08-29 |
+|---|---|---|
+| `/api/files`, 626 files | < 200 ms | 23 ms warm, 550 ms cold |
+| `/api/file`, largest file | < 100 ms | 53–59 ms |
+| Open a file in the pane | < 100 ms | 12–42 ms |
+| `buildNav()` with that file open | < 100 ms | 22–56 ms |
+| Repaint on a selection | < 100 ms | 30–37 ms |
+
+`buildNav()` was **1,937 ms** and `render()` **1,358 ms**, both on every selection and every
+keystroke — worse than the 2,418 ms table defect that earned rule 45, and found by looking
+rather than by any test, because a slow page reads as a slow page. The cost was *parsing*:
+both rewrite an `innerHTML`, and with a large file open that re-parsed 5,838 lines of markup
+per click. The subtree is now built once per file and re-attached, and the centre pane is not
+repainted at all when only the selection moved — the highlight is two class changes, 1 ms.
+
+Two things that looked like fixes and were not. `codeCached(slot, codeTable())` evaluates its
+argument before the call, so the cache rebuilt the 1.37 MB string on every hit and threw it
+away; it takes a builder function now. And re-attaching the built node still costs a full
+layout, so `render()` went from 155 ms to 1,370 — the only way not to pay a layout is not to
+detach, which is what the paint key is for.
+
+The first code view of a session costs about a second if the first thing painted is a
+five-thousand-line file; painting a small one first makes every subsequent file 12–42 ms.
+That is warm-up rather than proportional work — the same file is 40 ms when it is not first —
+and it is not attributed further than that.
+
 Both lanes are paid for **at start rather than on first use**, and that is a decision
 rather than an accident. A vocabulary thread is part of `/api/threads`, which is asked on
 every selection, so a lazy first call would stall the reading loop on the first click of
@@ -245,6 +274,14 @@ docs   ──► extract ──► docs.db  (SQLite) ─────────
 - `web/vocabulary.py` — the two naming lanes served, and matched against one name. The
   membership test is `Convention.glob`, which is the same string the exceptions query is
   built from, so the claim and the population cannot drift (rule 41).
+- `web/code.py` — the code browser. **Links are lookups, never name matches**: `calls`
+  already carries `callee_id`, so a clickable name in the source is the resolver's own
+  answer. What it does *not* carry is a column, so a call is underlined only where its
+  expression occurs exactly once on its line and goes to the margin otherwise — inventing a
+  column is inventing a position (rule 1).
+- `sourcedb.py` — `WORKING` is a **state**, not an id; a revision is identified by when it
+  was captured. `seal()` keeps the current snapshot under its own name so the next capture
+  is a second one rather than a replacement. Nothing reads a second revision yet.
 - `sql.py` — reads schemas out of the `CREATE TABLE` statements the code contains.
 
 ## Rules learned the hard way
@@ -877,6 +914,41 @@ rule of that number — a blank canvas must say why it is blank — which does e
 
     Both are the same instruction. One truth, one place that owns it, and every caller
     reaching it through the same door — because the list of callers is the thing that grows.
+
+52. **A cache that takes a value has already done the work it exists to avoid.** The code
+    browser rebuilds a file's markup once and re-attaches the node, because `buildNav()` and
+    `render()` both rewrite an `innerHTML` and both run on every selection — 1,937 ms and
+    1,358 ms per click with a 5,838-line file open. The cache was written as
+    `codeCached(slot, codeTable())`, and JavaScript evaluates arguments before the call: the
+    1.37 MB string was built on every hit and discarded. It takes a thunk now.
+
+    Its companion, and the more useful half: **re-attaching a large subtree is not cheap
+    either.** Moving 17,500 elements back into the document forces a style recalc and a
+    layout over all of them — `render()` measured *worse* after the cache than before it,
+    155 ms to 1,370. A node kept in the document costs nothing, so the pane is simply not
+    repainted when only the selection moved, and the highlight is two class changes. The
+    check on that is the DOM, not a flag: a flag saying *already painted* is true of a pane
+    another view has since overwritten, which is rule 42 in a repaint.
+
+    Both were invisible to every test, and both were found by driving the thing.
+
+53. **A layout bounded by arithmetic is right at one window size.** The code pane declared
+    `max-height: calc(100vh - 16rem)`, where 16rem stood for the chrome above it. On a 589px
+    window that chrome came to 185px, the box overflowed its own scroller, and **one line of
+    code was on screen** — while every check on the page passed, because the box did declare
+    `overflow` and did have a height. Rule 49's shape in a stylesheet: a plausible value
+    standing where a measurement belongs, and no symptom beyond a picture nobody had looked
+    at.
+
+    The remedy is the one rule 29's companion already gives. A flex child is `min-height:
+    auto` and refuses to shrink below its content, so the chain has to say `flex: 1;
+    min-height: 0` at *every* link between the scroller and the box — and a single missing
+    link collapses the pane to its content with nothing anywhere to indicate which one.
+
+    Not fixed, and reported rather than changed because it is a design decision that is not
+    mine: the navigator's nine group headings cost **306px** whether or not their groups are
+    open, so on a short window any open group — the routine list as much as the code — gets
+    about 200px. That is pre-existing and affects every group equally.
 
 ## Anomalies: the discipline
 

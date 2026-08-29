@@ -565,10 +565,17 @@ document.addEventListener("click", (ev) => {
 $$("#modes button").forEach(b => b.addEventListener("click", () => {
   state.mode = b.dataset.mode;
   state.view = state.mode;
-  if (state.mode === "graph") ensureGraph();
   pushTrail(state.mode, b.textContent.trim());
   used(state.mode);
+  /* **Paint before mounting.** This ran `ensureGraph()` first, so the engine measured
+   * `#graphMount` while it was still `hidden` from the previous render -- and a hidden
+   * container is 0x0. `fitView` then framed the stack for the whole window instead of the
+   * pane, and switching to the graph from the table showed an empty canvas until the reader
+   * found snap-to-fit. `boot()` had the order right; this call site did not.
+   *
+   * Reported as *the graph should have been there*, and it should. */
   render();
+  if (state.mode === "graph") ensureGraph();
 }));
 
 /* ═══ graph layout: two drawings of one selection ═══ */
@@ -643,7 +650,7 @@ function renderFilters() {
   const hid = state.filters.filter(f => f.hides).map(f => f.hides);
   $("#fsHidden").textContent = hid.length ? "· hidden: " + hid.join(" · ") : "";
 
-  const applies = ["graph", "table", "doc"].includes(state.view);
+  const applies = CENTRE_MODES.includes(state.view);
   strip.style.display = (applies && state.filters.length) ? "flex" : "none";
 
   $("#hiddenList").innerHTML =
@@ -1616,6 +1623,37 @@ function redoSelection() {
  * anyone back to anything. Rule 30 a third time, in the one feature design rule 15 says
  * exists to make a detour free: nobody chases a rabbit if they might not find their way
  * back. */
+/* The three ways of looking at one selection.
+ *
+ * Written out twice already and about to be a third time, which is how a list stops
+ * agreeing with itself (rule 36). It is the settled shape of the centre pane: **a mode
+ * toggle over one shared selection, not three destinations** -- switching never costs the
+ * reader their place.
+ */
+const CENTRE_MODES = ["graph", "table", "doc"];
+
+/* Going back to a step, and the one thing that surprised a reader about it.
+ *
+ * A step records the view it was made in, and replaying it set that view -- so a reader
+ * reading the table, who pressed Back expecting the previous row, was put in the graph
+ * because that is where the step had been made. Reported as *unexpected, so either must be
+ * changed or documented.*
+ *
+ * Changed, because the centre pane's own rule already settles it: the three modes are three
+ * ways of looking at one selection, so the *mode* is not part of where you were -- the
+ * subject is. A step made in the graph and a step made in the table are the same step.
+ *
+ * The mode is still restored when the reader is somewhere that is genuinely elsewhere -- the
+ * glossary, the worklist, settings -- because those are destinations rather than views of a
+ * selection, and staying put there would show nothing of the step being returned to.
+ */
+function goToTrailStep(step) {
+  const bothCentre = CENTRE_MODES.includes(step.view) && CENTRE_MODES.includes(state.view);
+  if (!bothCentre) state.view = step.view;
+  if (step.subject) applySelectionStep(step.subject);
+  else render();
+}
+
 function pushTrail(view, label, note) {
   const last = state.trail[state.trail.length - 1];
   if (last && last.view === view && last.label === label) return;   // no repeats
@@ -3133,7 +3171,7 @@ function crumbsFor() {
 function render() {
   const vp = $("#viewMount");
   $("#crumbs").innerHTML = crumbsFor();
-  $("#modes").style.visibility = ["graph", "table", "doc"].includes(state.view) ? "visible" : "hidden";
+  $("#modes").style.visibility = CENTRE_MODES.includes(state.view) ? "visible" : "hidden";
   /* The layout choice sits inside graph mode, never beside it. Graph / table / document are
    * three ways of reading one selection; stack / packages are two drawings of one of them,
    * and promoting a layout to a mode would say they answer different questions. */
@@ -3539,11 +3577,9 @@ function wire() {
     const i = parseInt(b.dataset.trail, 10);
     const step = state.trail[i];
     state.trail = state.trail.slice(0, i + 1);
-    state.view = step.view;
     // The subject is the point. Steps recorded before this existed have none, and those
     // still change the view -- old data is not a reason to fail, only to do less.
-    if (step.subject) applySelectionStep(step.subject);
-    else render();
+    goToTrailStep(step);
   }));
   /* `$$`, not `$`. The trail bar is rendered in two places now -- the app's header and the
    * detail window, which needs its own because the header is behind that window's scrim --
@@ -3556,10 +3592,7 @@ function wire() {
   $$("[data-trailback]").forEach(tb => tb.addEventListener("click", () => {
     if (state.trail.length > 1) {
       state.trail.pop();
-      const step = state.trail[state.trail.length - 1];
-      state.view = step.view;
-      if (step.subject) applySelectionStep(step.subject);
-      else render();
+      goToTrailStep(state.trail[state.trail.length - 1]);
     }
   }));
   $$("[data-trailclear]").forEach(tc => tc.addEventListener("click", () => {

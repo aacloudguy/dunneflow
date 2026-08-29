@@ -754,12 +754,28 @@ def test_a_trail_step_carries_the_subject_it_arrived_at() -> None:
         "a trail step records no subject, so clicking it cannot restore what you were "
         f"looking at: {push.group(1).strip()}"
     )
-    # Both ways back must restore it: clicking a step, and the Back button. Checking that
-    # the name merely appears passed while one of the two still went nowhere.
-    applied = len(re.findall(r"applySelectionStep\(step\.subject\)", js))
-    assert applied >= 2, (
-        f"only {applied} of the two ways back apply a step's subject — clicking a step and "
-        "pressing Back are separate handlers, and one of them would take you nowhere"
+    # Both ways back must restore it: clicking a step, and the Back button. This counted two
+    # copies of the same line, which was the right check while there were two handlers; they
+    # go through one function now, so the check follows it -- that both *route* there, and
+    # that it applies the subject. One place is the stronger version of the same claim.
+    go = _fn(js, "goToTrailStep")
+    assert "applySelectionStep(step.subject)" in go, (
+        "the one way back no longer restores a step's subject, so every step takes you "
+        "nowhere"
+    )
+    for handler, what in ((r"\[data-trail\]", "clicking a step"),
+                          (r"\[data-trailback\]", "pressing Back")):
+        seg = js.split(handler.replace("\\", ""), 1)[1][:600]
+        assert "goToTrailStep(" in seg, (
+            f"{what} does not go through the one way back, so the two can disagree about "
+            f"what returning to a step means"
+        )
+    # And the mode is not part of where you were: the three centre views are three ways of
+    # looking at one selection, so Back from the table must not land you in the graph.
+    assert "CENTRE_MODES.includes(step.view) && CENTRE_MODES.includes(state.view)" in go, (
+        "a step replays the mode it was recorded in, so a reader pressing Back in the table "
+        "is put in the graph -- which is where the step happened to be made, not where they "
+        "were"
     )
 
 
@@ -1207,6 +1223,53 @@ def test_the_table_keeps_its_header_and_its_subject_on_screen() -> None:
     assert css.count("\ntable.grid th {") == 1, (
         "the header rule is declared twice, and the later one wins on the properties it "
         "names -- which is how a `position: sticky` with no `top` cancelled a working one"
+    )
+
+
+def test_the_graph_is_never_framed_against_a_container_it_cannot_measure() -> None:
+    """Reported at the keyboard: switching from the table to the graph showed nothing until
+    snap-to-fit was clicked. *Nice fix, but the bug is real -- the graph should have been
+    there.*
+
+    Two causes, stacked. The mode toggle called `ensureGraph()` **before** `render()`, so the
+    engine mounted while `#graphMount` was still hidden from the previous paint -- and a
+    hidden container is 0x0. Then `fitView` read `clientWidth || window.innerWidth`, which
+    turns "I cannot measure this" into a confident wrong number: the stack was framed for a
+    1275px window and drawn into a 496px canvas, so it landed off screen.
+
+    The fallback is the half worth keeping a check on. A substitution that yields a plausible
+    measurement is worse than one that refuses, because nothing downstream can tell.
+    """
+    shell, engine = _code(_read("shell.js")), _code(_read("graph.js"))
+
+    # Paint, then mount. `boot()` had this right and the mode toggle did not.
+    toggle = shell.split('$$("#modes button").forEach', 1)[1].split("}));", 1)[0]
+    assert toggle.index("render();") < toggle.index("ensureGraph();"), (
+        "the mode toggle mounts the graph before painting it, so the engine measures a "
+        "container that is still hidden and frames the stack for the whole window"
+    )
+
+    fit = _fn(engine, "fitView")
+    assert "window.innerWidth" not in fit and "window.innerHeight" not in fit, (
+        "a fit against an unlaid-out container substitutes the window for it, which is a "
+        "wrong number rather than a refusal"
+    )
+    assert "g.fitOwed = true;" in fit and "return { ...g.viewState, rotationX };" in fit, (
+        "a fit that cannot be computed is not deferred, so it is either guessed or lost"
+    )
+    # And the debt is paid the first moment it can be.
+    rs = engine.split("resize() {", 1)[1].split("\n  },", 1)[0]
+    assert "g.fitOwed" in rs and "fitView(g.prepared)" in rs, (
+        "nothing performs the deferred fit, so the graph stays framed for a size it never had"
+    )
+    assert "onViewStateChange(" in rs, (
+        "the deferred fit sets the camera behind the back of the one path that watches it, "
+        "so the HUD and the way-back anchor never see it"
+    )
+    # Not an unconditional re-fit: switching away and back must keep the reader's camera.
+    assert "if (g.fitOwed &&" in rs, (
+        "every reveal re-frames the stack, which throws away the camera the reader set "
+        "(design rule 26)"
     )
 
 

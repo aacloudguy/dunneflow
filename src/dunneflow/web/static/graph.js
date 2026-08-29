@@ -128,6 +128,8 @@ const rgbToHex = (c) => '#' + c.map((v) => v.toString(16).padStart(2, '0')).join
 const g = {
   container: null,
   data: null, prepared: null, deckgl: null,
+  // A fit was asked for while the container had no size; owed until it has one.
+  fitOwed: false,
   viewState: { target: [0, 0, 0], zoom: -4, rotationX: 35, rotationOrbit: 20,
                minZoom: -9, maxZoom: 8 },
   moving: false, stopTimer: 0,
@@ -268,8 +270,23 @@ function fitView(d, rotationX = g.viewState.rotationX, subset = null) {
    *
    * If a factor like that is ever wanted back here, something has gone back to floating
    * over the canvas, and that is the thing to fix instead. */
-  const w = g.container?.clientWidth || window.innerWidth;
-  const h = g.container?.clientHeight || window.innerHeight;
+  /* **A hidden container has no size, and the window is not a substitute for it.**
+   *
+   * This read `clientWidth || window.innerWidth`, which turns "I cannot measure this" into
+   * a confident wrong number: mounted while the pane was hidden, the stack was framed for a
+   * 1275px window and drawn into a 496px canvas, so it landed off screen and the graph came
+   * up blank. A fallback that produces a plausible measurement is worse than one that
+   * refuses -- the same lesson as every other silent substitution in this codebase.
+   *
+   * So a fit against an unlaid-out container is **deferred**, not guessed: the view state is
+   * returned untouched and `resize()` performs it on the first draw that has a size. */
+  const w = g.container?.clientWidth || 0;
+  const h = g.container?.clientHeight || 0;
+  if (!w || !h) {
+    g.fitOwed = true;
+    return { ...g.viewState, rotationX };
+  }
+  g.fitOwed = false;
   const scale = Math.min((w * 0.90) / (2 * b.radius), (h * 0.88) / vertical);
   return { ...g.viewState, target: b.centre, rotationX, zoom: Math.log2(scale) };
 }
@@ -1918,7 +1935,21 @@ window.DunneFlowGraph = {
   /* deck.gl sizes itself to its container, and a container that was `hidden` has no size.
    * Coming back to graph mode needs a nudge or the canvas stays at whatever it was when
    * the shell first laid it out. */
-  resize() { if (g.deckgl) { draw(); } },
+  /* Called when the pane is revealed. If a fit was deferred because the container had no
+   * size when it was asked for, this is the first moment it can be answered -- and doing it
+   * here rather than always re-fitting is what keeps the reader's camera when they simply
+   * switch away and back (design rule 26). */
+  resize() {
+    if (!g.deckgl) return;
+    if (g.fitOwed && g.prepared && g.container?.clientWidth && g.container?.clientHeight) {
+      /* Through the same path a drag or a snap takes, so the HUD's readout and the "way
+         back" anchor see this exactly as they see any other camera move. A private
+         `setProps` here would be a second way the view state changes, and only one of them
+         would be watched. */
+      onViewStateChange({ viewState: fitView(g.prepared) });
+    }
+    draw();
+  },
 
   benchmark,
   diagnostics,

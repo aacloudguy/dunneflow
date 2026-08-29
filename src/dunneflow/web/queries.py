@@ -891,6 +891,27 @@ ORDER BY e.kind, e.name
 # The signature is assembled here rather than in Python so the whole document is
 # one statement per section -- which is also what lets these same strings run
 # client-side against sqlite-wasm later without a second implementation.
+# The routine list the navigator and table mode read.
+#
+# It carries the **package** as well as the module, and takes it from `PACKAGE_EXPR` -- the
+# same expression the disks are built from -- so a package heading in the list names a plate
+# in the stack rather than a second thing that happens to share its spelling. That is the
+# whole reason this is not `DOC_ROUTINES`: `documents.py` deliberately keeps the package
+# expression out of its query family, and binding parameters a statement does not name is
+# how two families drift into depending on each other's shape.
+#
+# `why` is here because table mode shows it. The signature is not: 4,734 signatures is most
+# of the payload and neither the navigator nor the table has anywhere to put one.
+NAV_ROUTINES = f"""
+SELECT r.id           AS id,
+       r.name         AS name,
+       r.module       AS module,
+       {PACKAGE_EXPR} AS pkg,
+       COALESCE(r.docstring, '') AS why
+FROM routines r
+ORDER BY r.module, r.line_start
+"""
+
 DOC_ROUTINES = """
 SELECT r.id       AS node,
        r.name     AS name,

@@ -81,6 +81,17 @@ const DEFAULTS = {
    * The default is `one` because the failure it fixes was observed: scrolling into
    * Routines put the reader two hundred rows away from every menu below it. */
   navGroups: 'one',       // 'one' | 'many'
+  /* How many routines a package lists before the rest are left to the table.
+   *
+   * 200 was a judgment about `render()`, which rebuilds the navigator on every keystroke,
+   * and it turned out to be a tease: most of Mensores' packages hold 200-400, so the notice
+   * read `200 of 377` and `200 of 357` over lists that were nearly whole. The reader's
+   * machine and the reader's patience are theirs to spend, so this is a Setting, and `0`
+   * means all of them -- a long pane being a thing someone may legitimately want.
+   *
+   * Under `all` there is no notice, because nothing is left out and design rule 1 is about
+   * what was *removed*, not about announcing that nothing was. */
+  navCap: 200,            // 0 = every routine, however many there are
   /* Which groups are open, by the id in the shell's `NAV_GROUPS` table. An arrangement
    * rather than a question being asked right now, so unlike the search box it is kept.
    *
@@ -191,6 +202,7 @@ function resetSettings(program, current) {
     mode: 'centre view', panels: 'panel layout',
     inspectorAuto: 'auto-collapse the inspector', navWidth: 'navigator width',
     navGroups: 'how many navigator groups open at once', navOpen: 'which groups are open',
+    navCap: 'how many routines a package lists',
     graphLayout: 'graph layout', graphTheme: 'graph theme',
     theme: 'theme', scale: 'interface scale', startup: 'startup screen',
     menuOrder: 'menu order', trailShown: 'the trail', trailCap: 'trail length',

@@ -35,7 +35,7 @@ from . import packages, queries
 from .cover import anomalies as build_anomalies
 from .cover import build as build_cover
 from .detail import describe, hover_card
-from .graph import GraphModel, build, root_package
+from .graph import GraphModel, build, pkg_params, root_package
 from .layout import structural
 from .threads import cohort, for_node
 from .vocabulary import bind_glossary, measure_naming
@@ -230,6 +230,29 @@ class _Handler(BaseHTTPRequestHandler):
         """The first screen. Built once at startup -- see `cover.py`."""
         self._json(self._live.cover)
 
+    def _r_routines(self, q: dict[str, list[str]]) -> None:
+        """Every routine, with the package the stack puts it on.
+
+        The navigator used to read this off `/api/document?id=routines`, which was right
+        while a routine row needed only a name and an id. Grouping the list by package needs
+        the package, and there are two expressions for one in this dashboard -- so it comes
+        from the one the *plates* use, and a package heading in the list is the plate in the
+        picture rather than a second thing spelled the same way.
+
+        On demand rather than with the cover: 4,734 rows is a real payload and a session
+        that reads only the overview never asks for it.
+        """
+        with self._live.lock:
+            rows = [dict(r) for r in self._live.store.query(
+                queries.NAV_ROUTINES, pkg_params(self._live.root))]
+        # Which packages actually have a plate. `graph.py` merges any package below
+        # `MIN_DISK` into `pkg:<small>`, so 47 packages become 45 plates -- and a list row
+        # offering `pkg:_version` would be selecting a plate that is not in the stack.
+        # `queries.py` wrote down why that is the wrong fix before anything needed it:
+        # inventing an id to make a row clickable is a link to nothing.
+        plates = [d["id"] for d in self._payload["disks"] if d["id"].startswith("pkg:")]
+        self._json({"routines": rows, "plates": plates})
+
     def _r_anomalies(self, q: dict[str, list[str]]) -> None:
         """The worklist. Separate from the cover, which carries only the counts.
 
@@ -393,6 +416,7 @@ class _Handler(BaseHTTPRequestHandler):
         "/index.html": "_r_index",
         "/api/graph": "_r_graph",
         "/api/cover": "_r_cover",
+        "/api/routines": "_r_routines",
         "/api/packages": "_r_packages",
         "/api/anomalies": "_r_anomalies",
         "/api/documents": "_r_documents",

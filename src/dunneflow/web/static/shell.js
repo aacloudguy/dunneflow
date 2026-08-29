@@ -31,6 +31,10 @@ let TABLES      = [];   // declared tables, busiest first
    table mode rendered no rows at all, under a footer stating a count from another
    program. A `let X = []` nothing writes to is an empty view with no symptom. */
 let ROUTINES    = [];
+/* Which package ids the stack actually draws a plate for, from `/api/routines`. Not the
+ * same set as the packages: the small ones are merged, and a heading offering a plate that
+ * does not exist is a control that renders and resolves to nothing (rule 30). */
+let PLATES      = new Set();
 let ANOMALIES   = [];   // the worklist; loaded on demand, not with the cover
 let STATS       = null; // files, lines, routines, when it was analysed
 
@@ -134,6 +138,7 @@ const state = {
   inspectorAuto: true,
   navWidth: 21,           // rem; the routine list has to fit a qualified name
   navGroups: "one",       // "one" | "many" -- an accordion, or every group at once
+  navCap: 200,            // routines listed per package; 0 is all of them
   navOpen: {},            // group id -> open; empty means "each group's own default"
   pkgPick: null,          // which package the overview is showing everything for
   graphLayout: "stack",   // "stack" | "packages" -- a layout inside graph mode,
@@ -193,13 +198,27 @@ const state = {
   routineQ: ""
 };
 
-/* How many routines the navigator lists at once.
+/* How many routines one package lists, and what the choices are.
  *
  * Bounded, which rule 8 allows *only* because the complete list sits beside it -- table
  * mode reads the same `ROUTINES` array and shows every row. The bound exists because
  * `render()` rebuilds the navigator on every keystroke, and 4,734 buttons per keystroke is
- * a filter that fights the reader. What is left out is always stated (design rule 1). */
-const NAV_ROUTINE_CAP = 200;
+ * a filter that fights the reader. What is left out is always stated (design rule 1).
+ *
+ * It is the reader's to set, because 200 was a judgment about *this* machine and it read as
+ * a tease: Mensores' packages mostly hold 200-400, so the notice said `200 of 377` over a
+ * list that was very nearly whole. `0` is every routine there is -- the pane gets long, and
+ * that is a thing someone may want. The default stays 200. */
+const NAV_CAPS = [50, 100, 200, 500, 0];
+
+/* How many matches a search may open packages for by itself. Not the reader's cap: that
+ * says how much of *one* package to list, and this says whether a search has narrowed
+ * anything down yet. A search matching four thousand routines has not. */
+const SEARCH_OPEN_MAX = 200;
+function navCap() {
+  const n = Number(state.navCap);
+  return Number.isFinite(n) && n > 0 ? n : Infinity;
+}
 
 /* What was typed in the search box the last time the navigator was built. The scroller
  * keeps its place across a rebuild, and this is how "the same list again" is told from
@@ -356,6 +375,20 @@ document.addEventListener("click", (ev) => {
   const g = b.closest(".nav-group");
   if (!g) return;
   setGroupOpen(g.id, g.dataset.open !== "true");
+});
+
+/* A package inside the routine list. Not the accordion: two packages open at once is how
+ * anyone compares them, and the accordion is about the pane's *groups* being longer than
+ * the pane. Kept in the same `navOpen` map, because "what is open in the navigator" is one
+ * question and one setting -- `setGroupOpen` only ever closes the top-level ids, so a
+ * package key is never swept up by it. */
+document.addEventListener("click", (ev) => {
+  const b = ev.target.closest("[data-pkgopen]");
+  if (!b) return;
+  const key = `pkg:${b.dataset.pkgopen}`;
+  state.navOpen[key] = !state.navOpen[key];
+  persist();
+  buildNav();
 });
 
 /* The jump strip, routed from the same table the strip is generated from (design rule 16):
@@ -1191,6 +1224,21 @@ function viewSettings() {
           <div class="seg" role="group" aria-label="Menu order">
             <button data-menuorder="waysin"  aria-pressed="${state.menuOrder === "waysin"}">Ways in first</button>
             <button data-menuorder="explore" aria-pressed="${state.menuOrder === "explore"}">Explore first</button>
+          </div>
+        </div>
+
+        <div class="setrow">
+          <div><div class="lbl">Routines listed per package</div>
+            <div class="desc">The navigator lists this many routines inside one package and
+              says what it left out. 200 was a guess about how much markup a keystroke can
+              afford, and on a program whose packages hold 200–400 it reads as a tease —
+              <i>200 of 377</i> is nearly the whole thing. <b>All</b> lists every routine
+              there is: the pane gets long and the search box gets slower on a very large
+              package, which is a price worth offering rather than deciding for you. The
+              complete list is in table mode either way (rule 8).</div></div>
+          <div class="seg" role="group" aria-label="Routines listed per package">
+            ${NAV_CAPS.map(n => `<button data-navcap="${n}"
+              aria-pressed="${Number(state.navCap) === n}">${n || "All"}</button>`).join("")}
           </div>
         </div>
 
@@ -2863,6 +2911,12 @@ function wire() {
     if (state.trail.length > cap) state.trail.splice(0, state.trail.length - cap);
     render();
   }));
+  $$("[data-navcap]").forEach(b => b.addEventListener("click", () => {
+    state.navCap = parseInt(b.dataset.navcap, 10);
+    used("navcap:" + state.navCap);
+    buildNav();
+    render();
+  }));
   $$("[data-navgroups]").forEach(b => b.addEventListener("click", () => {
     state.navGroups = b.dataset.navgroups;
     used("navgroups:" + state.navGroups);
@@ -3175,7 +3229,7 @@ const WIRED_ATTRS = new Set([
   "aiop", "airun", "bound", "cite", "citeidx", "closeviewer", "col", "crumb", "curi",
   "cursor", "den", "disk", "drop", "edgesmotion", "egress", "ep", "fold", "gact", "gosev",
   "goto", "graphtheme", "insp", "jump", "layout", "legend", "manifest", "menuorder",
-  "mode", "nav", "nav2", "navgroups",
+  "mode", "nav", "nav2", "navcap", "navgroups", "pkgopen",
   "navid", "node", "open", "pane", "pin", "pinnote", "pkgnode", "pkgpick", "resize", "row",
   "scale-set", "sec", "sev", "sevnav", "sort", "sqlshow", "start", "step", "theme",
   "term", "termuse", "theme-set", "thread", "threadlabel", "threadsall", "threadwhy",
@@ -3265,12 +3319,128 @@ function dressNavItems() {
  * with no id is dropped at load rather than rendered as a button that cannot act. */
 function matchingRoutines() {
   const q = state.routineQ.trim().toLowerCase();
-  if (!q) return { rows: ROUTINES.slice(0, NAV_ROUTINE_CAP), total: ROUTINES.length };
+  if (!q) return { rows: ROUTINES, total: ROUTINES.length, filtered: false };
   const rows = [];
   for (const r of ROUTINES) {
     if (r.name.toLowerCase().includes(q) || r.module.toLowerCase().includes(q)) rows.push(r);
   }
-  return { rows: rows.slice(0, NAV_ROUTINE_CAP), total: rows.length };
+  return { rows, total: rows.length, filtered: true };
+}
+
+/* The routine list, by package.
+ *
+ * A flat list capped at two hundred answers "what is in this program" with two hundred
+ * arbitrary rows out of 4,734 -- and arriving in the middle of it by wheel tells the reader
+ * nothing about where they are. Forty-seven package rows are a list a person can read, and
+ * every one of them is a plate in the stack beside it.
+ *
+ * The packages are complete and never bounded: forty-seven rows is a list, not a diagram,
+ * and rule 8 bounds only diagrams. The *routines within* one package are capped, because
+ * `render()` rebuilds this on every keystroke and the largest package holds 959 -- and what
+ * is left out is stated on the package it was left out of, never at the bottom of it.
+ *
+ * Ranked by size, which is the cover's own ranking: the biggest package is where most of
+ * the program is, and a reader who does not yet know the names has no better first guess. */
+/* Computed once per build of the pane.
+ *
+ * The group's note asks how many matched and in how many packages; its body asks for the
+ * packages themselves. Both are the same question, and both ran a full scan of 4,734
+ * routines and two passes over the matches -- twice per keystroke, for one answer. Cleared
+ * at the top of `buildNav()`, which is the only thing that reads it and is called by
+ * everything that could change it. */
+let treeCache = null;
+
+function routineTree() {
+  if (treeCache) return treeCache;
+  const { rows, total, filtered } = matchingRoutines();
+  const cap = navCap();
+
+  // Pass one: which packages, and how many in each. No rows yet -- what a package will
+  // draw depends on how big the answer turns out to be.
+  const by = new Map();
+  for (const r of rows) {
+    const g = by.get(r.pkg);
+    if (g) g.n++;
+    else by.set(r.pkg, { id: r.pkg, n: 1, rows: [] });
+  }
+  /* A search opens the packages it matched in, up to a point. Past that point it does not,
+   * and the note says so.
+   *
+   * The point exists because of what it cost: `e` matches 4,734 routines across all 47
+   * packages, and opening every one of them built 3,413 buttons in **483 ms** on the first
+   * keystroke of an ordinary search. That is the glossary filter's 412 ms again, in another
+   * pane. And it was the worse answer as well as the slower one -- "2,206 match g, in 43
+   * packages" is something a reader can act on; 1,924 rows is the same haystack again. */
+  const autoOpen = filtered && total <= SEARCH_OPEN_MAX;
+  /* Either the search opened it or the reader did. The reader's own choice must survive a
+     broad search, or the note's "open one" is an instruction the pane refuses to obey. */
+  for (const g of by.values()) g.open = autoOpen || pkgOpen(g.id);
+
+  // Pass two: rows, only for what will actually be drawn. A closed package's rows are
+  // `display: none`, and building them anyway cost 3,413 buttons on every keystroke where
+  // the flat list cost 200. Hidden is not the same as absent, and the difference is the bill.
+  for (const r of rows) {
+    const g = by.get(r.pkg);
+    if (g.open && g.rows.length < cap) g.rows.push(r);
+  }
+  const packages = [...by.values()].sort((a, b) => b.n - a.n || a.id.localeCompare(b.id));
+  treeCache = { packages, total, filtered, autoOpen };
+  for (const g of packages) {
+    /* Which plate this package is on, and it is not always its own. A package below
+     * `MIN_DISK` is merged into `pkg:<small>`, so `pkg:_version` names nothing in the
+     * stack -- and a row carrying it would be a control that renders and resolves to
+     * nothing. It selects the plate it is genuinely drawn on, or it carries no identity at
+     * all and stays a heading, which is the honest third answer. */
+    const own = `pkg:${g.id}`;
+    g.plate = PLATES.has(own) ? own : (PLATES.has("pkg:<small>") ? "pkg:<small>" : "");
+    g.merged = g.plate !== "" && g.plate !== own;
+  }
+  return treeCache;
+}
+
+/* Is this package expanded, when nothing is being searched for? While a search is running
+ * `routineTree` decides, because that answer depends on how large the answer is. */
+function pkgOpen(id) {
+  return !!state.navOpen[`pkg:${id}`];
+}
+
+function routineList() {
+  const { packages, total } = routineTree();
+  if (!ROUTINES.length) return "";
+  if (!total) return "";
+  return packages.map(g => {
+    const open = g.open;
+    const cut = g.n - g.rows.length;
+    return `
+    <div class="nav-pkg" data-open="${open}">
+      <div class="nav-pkghead">
+        <button class="nav-pkgtoggle" data-pkgopen="${esc(g.id)}" aria-expanded="${open}"
+                title="${open ? "Collapse" : "Expand"} ${esc(g.id)}"><span class="caret">▼</span></button>
+        ${g.plate
+          ? `<button class="nav-item nav-pkgname" data-nav="pkg" data-navid="${esc(g.plate)}"
+                     data-titled="1" title="${esc(g.merged
+                       ? `${g.id} is too small for a plate of its own — it is drawn on the small-packages plate`
+                       : `Select the ${g.id} plate in the stack`)}">${esc(g.id)}${
+                       g.merged ? ` <span class="navmerged">·small</span>` : ""
+                     }<span class="n">${g.n.toLocaleString()}</span></button>`
+          : `<div class="nav-pkgname nav-pkgplain">${esc(g.id)}<span class="n">${g.n.toLocaleString()}</span></div>`}
+      </div>
+      ${/* Only while it is open, unlike the group's own note. The group note states a
+            fact that is true either way -- 4,734 in 47 packages -- but this one describes a
+            list, and "showing 200 of 645" over a closed package describes nothing that is
+            on screen. Forty-seven of them at once would be noise where design rule 1 wants
+            a signal. */
+        open && cut > 0 ? `<div class="nav-note">showing ${g.rows.length} of ${g.n.toLocaleString()}
+          — search, or open the table for all of them</div>` : ""}
+      <div class="nav-items">
+        ${g.rows.map(r => navItemHtml({
+            nav: "routine", label: r.name, sub: moduleTail(r.module), sel: r.id,
+            n: routineFan(r.id), title: `${r.module}.${r.name}`,
+            current: state.selected === r.id,
+          })).join("")}
+      </div>
+    </div>`;
+  }).join("");
 }
 
 /* Callers and callees, shown as two numbers rather than one.
@@ -3308,25 +3478,25 @@ const NAV_GROUPS = [
   { id: "navRoutines", title: "Routines", open: true, primary: true,
     count: () => ROUTINES.length,
     note: () => {
-      const { rows, total } = matchingRoutines();
       if (!ROUTINES.length) return "reading the routine list…";
+      const { packages, total, filtered, autoOpen } = routineTree();
       if (!total) return `nothing matches “${esc(state.routineQ)}”`;
-      // Design rule 1: a filter is never silent about what it removed.
-      return total > rows.length
-        ? `showing ${rows.length} of ${total.toLocaleString()} — narrow the search, `
-          + `or open the table for all ${ROUTINES.length.toLocaleString()}`
-        : `${total.toLocaleString()} shown`;
+      const pkgs = `${packages.length} package${packages.length === 1 ? "" : "s"}`;
+      /* Design rule 1, and note what it does *not* have to say here: the packages are all
+         of them. What a package leaves out is stated on that package.
+         The third state is the one worth writing down -- a search too broad to open
+         anything must say that is why nothing opened, or the closed packages read as a
+         control that failed. */
+      if (!filtered) return `${total.toLocaleString()} in ${pkgs} — open one, or search`;
+      const q = esc(state.routineQ.trim());
+      return autoOpen
+        ? `${total.toLocaleString()} match “${q}”, in ${pkgs}`
+        : `${total.toLocaleString()} match “${q}” — too many to open, in ${pkgs}. `
+          + `Keep typing, or open one.`;
     },
-    items: () => matchingRoutines().rows.map(r => ({
-      nav: "routine", label: r.name, sub: moduleTail(r.module), sel: r.id,
-      n: routineFan(r.id),
-      /* The full qualified name, because the row shows an abbreviation of it and a reader
-       * hovering an abbreviation is asking exactly this. `dressNavItems()` sets a title
-       * from the loose label text alone, which for these rows is the leaf and tells them
-       * nothing they could not already see. */
-      title: `${r.module}.${r.name}`,
-      current: state.selected === r.id,
-    })) },
+    /* A body rather than items, because these rows are two levels deep. Routed through the
+       same `navItemHtml`, so a routine row in a package looks like every other row. */
+    body: () => routineList() },
   { id: "navExplore", title: "Explore", open: true, items: () => [
       { nav: "curiosities", label: "Worth a look", n: "" },
       { nav: "pins",        label: "Kept",         n: state.pins.length, id: "navPins" },
@@ -3374,7 +3544,7 @@ const NAV_GROUPS = [
 
 function groupCount(g) {
   if (g.count) return g.count();
-  const items = g.items();
+  const items = g.items ? g.items() : [];
   if (g.id === "navBounds") return BOUNDARIES.reduce((s, b) => s + b.n, 0);
   if (g.id === "navPkgs")   return PKGS.length;
   if (g.id === "navTables") return TABLES.length;
@@ -3511,6 +3681,28 @@ function jumpToGroup(id) {
   markJump();
 }
 
+/* One navigator row, and one place that decides what a row looks like.
+ *
+ * It was inline in `buildNav()`, which was fine while there was one list. The routine list
+ * is now a list of packages each holding rows of the same kind, and a second copy of this
+ * markup would be a second answer to what a row is -- the shape rule 36 was written from. */
+function navItemHtml(i) {
+  return `
+    <button class="nav-item" data-nav="${esc(i.nav)}"
+            ${i.title ? `title="${esc(i.title)}" data-titled="1"` : ""}
+            ${i.sel ? `data-navid="${esc(i.sel)}"` : ""}
+            ${i.sevnav ? `data-sevnav="${esc(i.sevnav)}"` : ""}
+            ${i.current ? 'aria-current="true"' : ""}>
+      ${i.dot ? `<span class="sevdot" style="background:var(--sev-${esc(i.dot)})"></span>` : ""}
+      ${/* A sibling, not a wrapper: `dressNavItems()` collects the *loose text* of an
+            item into `.navlabel` and sizes it, so emitting that span here would make it
+            find nothing and quietly drop the long-name handling and the title. */
+        i.sub ? `<span class="navsub">${esc(i.sub)}</span>` : ""}
+      ${esc(i.label)}<span class="n${i.dot && i.n ? " num sevcount " + esc(i.dot) : ""}"
+        ${i.id ? `id="${esc(i.id)}"` : ""}>${esc(String(i.n))}</span>
+    </button>`;
+}
+
 function buildNav() {
   const nav = $("#navigator");
   if (!nav) return;
@@ -3520,6 +3712,7 @@ function buildNav() {
    * down to the row it had just thrown away. An automatic move may not fight a deliberate
    * one (rule 24, and design rule 26). A *new question* is different: when what is typed in
    * the search box changes, the answer starts at the top. */
+  treeCache = null;           // the pane is being rebuilt, so the answer may have changed
   const prev = $("#navScroll");
   const keep = prev && navBuiltFor === state.routineQ ? prev.scrollTop : 0;
   navBuiltFor = state.routineQ;
@@ -3532,7 +3725,7 @@ function buildNav() {
               title="Collapse the navigator" aria-label="Collapse the navigator">&#x00AB;</button>
     </div>
     <div class="nav-scroll" id="navScroll">` + order.map(g => {
-    const items = g.items();
+    const items = g.items ? g.items() : [];
     const total = groupCount(g);
     return `
     <div class="nav-group" data-open="${groupOpen(g, order)}" id="${esc(g.id)}">
@@ -3550,20 +3743,7 @@ function buildNav() {
           g.note ? `<div class="nav-note">${g.note()}</div>` : ""}
       </div>
       <div class="nav-items">
-        ${items.map(i => `
-          <button class="nav-item" data-nav="${esc(i.nav)}"
-                  ${i.title ? `title="${esc(i.title)}" data-titled="1"` : ""}
-                  ${i.sel ? `data-navid="${esc(i.sel)}"` : ""}
-                  ${i.sevnav ? `data-sevnav="${esc(i.sevnav)}"` : ""}
-                  ${i.current ? 'aria-current="true"' : ""}>
-            ${i.dot ? `<span class="sevdot" style="background:var(--sev-${esc(i.dot)})"></span>` : ""}
-            ${/* A sibling, not a wrapper: `dressNavItems()` collects the *loose text* of an
-                  item into `.navlabel` and sizes it, so emitting that span here would make
-                  it find nothing and quietly drop the long-name handling and the title. */
-              i.sub ? `<span class="navsub">${esc(i.sub)}</span>` : ""}
-            ${esc(i.label)}<span class="n${i.dot && i.n ? " num sevcount " + esc(i.dot) : ""}"
-              ${i.id ? `id="${esc(i.id)}"` : ""}>${esc(String(i.n))}</span>
-          </button>`).join("")}
+        ${g.body ? g.body() : items.map(navItemHtml).join("")}
       </div>
     </div>`;
   }).join("") + `</div>`;
@@ -3609,34 +3789,28 @@ async function loadCover() {
 
 /* The routine list, from the document backend that already carries what is needed.
  *
- * No new endpoint: `/api/document?id=routines` returns every routine grouped by module,
- * and **every row already carries `node`, the graph's own id** -- which is the whole
- * reason this is wiring rather than building. The id is what makes a row selectable at
- * all; `queries.py` had already written down why inventing one would be wrong, before
- * anything needed it.
+ * It read `/api/document?id=routines` while a row needed only a name and an id. Grouping
+ * the list by package needs the package, and there are two expressions for one in this
+ * dashboard -- so this asks `/api/routines`, which takes it from the expression the
+ * *plates* are built from. A package heading in the list is then the plate in the picture
+ * rather than a second thing that happens to be spelled the same way.
+ *
+ * `plates` comes with it, because they are not the same set: `graph.py` merges any package
+ * below `MIN_DISK` into `pkg:<small>`, so 47 packages are 45 plates and a row offering
+ * `pkg:_version` would select a plate that is not in the stack.
  *
  * Loaded on demand rather than with the cover: 4,734 rows is a real payload and most
  * sessions that only read the overview never want it. */
 async function loadRoutines() {
   if (ROUTINES.length) return;
-  const r = await fetch("/api/document?id=routines");
+  const r = await fetch("/api/routines");
   if (!r.ok) throw new Error(`the server answered ${r.status} for the routine list`);
   const d = await r.json();
-  const out = [];
-  for (const section of d.sections || []) {
-    for (const group of section.groups || []) {
-      for (const row of group.rows || []) {
-        if (!row.node) continue;         // a row with no identity is not selectable
-        out.push({
-          id: row.node,
-          name: row.cells?.name || "",
-          module: group.title || "",
-          why: row.cells?.why || "",
-        });
-      }
-    }
-  }
-  ROUTINES = out;
+  PLATES = new Set(d.plates || []);
+  ROUTINES = (d.routines || [])
+    .filter(row => row.id)              // a row with no identity is not selectable
+    .map(row => ({ id: row.id, name: row.name || "", module: row.module || "",
+                   pkg: row.pkg || "", why: row.why || "" }));
 }
 
 async function loadAnomalies() {
@@ -3686,7 +3860,7 @@ const PERSISTED = [
   "egress", "aiOps", "triage", "pins", "usage", "graphLayout",
   "diskOrder", "diskColors", "colorBy", "sortMode", "filterMode", "direction",
   "nodeSize", "spreadX", "spreadY", "spreadZ", "collapseUnused",
-  "panels", "inspectorAuto", "navWidth", "navGroups", "navOpen",
+  "panels", "inspectorAuto", "navWidth", "navGroups", "navOpen", "navCap",
   "showPlates", "picks", "graphTheme", "edgesInMotion",
 ];
 
@@ -3862,20 +4036,23 @@ function onGraphSelect(sel) {
  * the row is genuinely out of sight. */
 function revealSelectedRoutine() {
   if (!state.selected) return;
-  const sel = `#navRoutines .nav-item[data-navid="${CSS.escape(state.selected)}"]`;
-  let row = $(sel);
-  if (!row) return;           // filtered out, or past the cap; the note already says so
-  /* Open Routines if it is closed, which under the accordion it usually is. A row inside a
-   * collapsed group is marked `current` and rendered `display: none`, so the list would
-   * look exactly as it did before the click -- the back half of the loop dead while the
-   * front half worked. This does close whatever else the reader had open, and that is the
-   * deliberate call: the row is the answer to the node they just clicked. */
-  const grp = row.closest(".nav-group");
-  if (grp && grp.dataset.open !== "true") {
-    setGroupOpen(grp.id, true);            // rebuilds the pane
-    row = $(sel);
-    if (!row) return;
-  }
+  /* From the routine, not from the row. A closed package draws no rows at all now, so
+   * looking the element up first and giving up when it is missing would have quietly
+   * retired the back half of the loop -- and it would have looked exactly like a routine
+   * that genuinely is not in the list. The data knows which package holds it either way. */
+  const r = ROUTINES.find(x => x.id === state.selected);
+  if (!r) return;             // not a routine, or the list has not been fetched yet
+  const group = NAV_GROUPS.find(g => g.id === "navRoutines");
+  const wantGroup = group && !groupOpen(group);
+  const wantPkg = !state.routineQ.trim() && !state.navOpen[`pkg:${r.pkg}`];
+  /* Opening the group under the accordion closes whatever else the reader had open, and
+   * that is the deliberate call: the row is the answer to the node they just clicked. */
+  if (wantPkg) state.navOpen[`pkg:${r.pkg}`] = true;
+  if (wantGroup) setGroupOpen("navRoutines", true);     // persists and rebuilds
+  else if (wantPkg) { persist(); buildNav(); }
+
+  const row = $(`#navRoutines .nav-item[data-navid="${CSS.escape(state.selected)}"]`);
+  if (!row) return;           // past the package's cap; its own notice already says so
   const sc = $("#navScroll");
   if (!sc) return;
   /* Measured against the *scroller*, and below its sticky heading. Against the pane as a
@@ -3885,8 +4062,8 @@ function revealSelectedRoutine() {
   const head = row.closest(".nav-group")?.querySelector(".nav-headwrap");
   const p = sc.getBoundingClientRect();
   const top = p.top + (head ? head.offsetHeight : 0);
-  const r = row.getBoundingClientRect();
-  if (r.top >= top && r.bottom <= p.bottom) return;        // already visible; leave it
+  const box = row.getBoundingClientRect();
+  if (box.top >= top && box.bottom <= p.bottom) return;    // already visible; leave it
   row.scrollIntoView({ block: "nearest" });
 }
 

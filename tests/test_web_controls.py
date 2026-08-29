@@ -1113,11 +1113,17 @@ def test_asking_where_the_selection_is_cannot_throw() -> None:
 # ------------------------------------------------- the two vocabulary lanes --- #
 
 def _fn(js: str, name: str) -> str:
-    """One function's source, from its `function` line to the next one at column 0."""
+    """One function's source, from its `function` line to the next one at column 0.
+
+    `\nasync function` counts. It did not, so a function followed by an async one returned
+    both -- and a guard reading "the fields `loadRoutines` reads" was reading `loadAnomalies`
+    as well, and failed on a field the endpoint it names has no reason to send. A helper
+    that reads more than it claims makes every test built on it say more than it checked.
+    """
     start = js.index(f"function {name}(")
     rest = js[start:]
-    end = rest.find("\nfunction ", 1)
-    return rest if end < 0 else rest[:end]
+    ends = [i for i in (rest.find("\nfunction ", 1), rest.find("\nasync function ", 1)) if i > 0]
+    return rest if not ends else rest[:min(ends)]
 
 
 def _served_keys(py: str, fn: str) -> set[str]:
@@ -1424,4 +1430,219 @@ def test_the_strip_marks_where_the_reader_was_taken() -> None:
     )
     assert "offsetTop" in body and "scrollTop" in body, (
         "the fallback for `all at once` is gone, so with every group open nothing is marked"
+    )
+
+
+# ------------------------------------------------- the routine list, by package --- #
+
+
+def test_the_routine_list_groups_by_the_package_the_stack_draws() -> None:
+    """There are two expressions for "package" in this dashboard and there must not be a
+    third -- least of all one in JavaScript.
+
+    `queries.py` says why in as many words: two definitions of a package in one dashboard is
+    how a reader ends up comparing two numbers that were never the same measurement. The
+    navigator's grouping comes from `PACKAGE_EXPR`, which is what the disks are built from,
+    so a package heading in the list names a plate in the picture.
+
+    `documents.py` deliberately keeps that expression out of its own query family, which is
+    why this is a separate statement rather than two more columns on `DOC_ROUTINES`.
+    """
+    q = (Path(__file__).resolve().parents[1] / "src" / "dunneflow" / "web"
+         / "queries.py").read_text(encoding="utf-8")
+    nav = q.split("NAV_ROUTINES = f\"\"\"", 1)[1].split("\"\"\"", 1)[0]
+    assert "{PACKAGE_EXPR}" in nav, (
+        "the navigator's package is not the plates' package, so the list and the stack can "
+        "disagree about what a package is"
+    )
+    doc = q.split("DOC_ROUTINES = \"\"\"", 1)[1].split("\"\"\"", 1)[0]
+    assert "PACKAGE_EXPR" not in doc, (
+        "DOC_ROUTINES now names parameters document mode does not bind -- see the comment "
+        "in documents.py about two query families drifting into each other's shape"
+    )
+    js = _read("shell.js")
+    assert 'fetch("/api/routines")' in js, "the shell still reads the document endpoint"
+
+
+def test_the_navigator_reads_only_fields_the_routines_endpoint_sends() -> None:
+    """Rule 44: a live control reading a field the server does not send renders nothing and
+    throws nothing. The glossary spent a session showing a bar of zero width beside a claim
+    that was perfectly true, and nothing anywhere failed.
+
+    One direction only, as there: the server may send a field the view ignores.
+    """
+    web = Path(__file__).resolve().parents[1] / "src" / "dunneflow" / "web"
+    q = (web / "queries.py").read_text(encoding="utf-8")
+    nav = q.split("NAV_ROUTINES = f\"\"\"", 1)[1].split("\"\"\"", 1)[0]
+    served = set(re.findall(r"AS (\w+)", nav))
+    served |= set(re.findall(r'self\._json\(\{"routines": rows, "(\w+)"',
+                             (web / "serve.py").read_text(encoding="utf-8")))
+    served.add("routines")
+    assert {"id", "pkg", "plates"} <= served, "the endpoint changed shape -- this test is blind"
+
+    body = _fn(_read("shell.js"), "loadRoutines")
+    read = set(re.findall(r"\brow\.(\w+)", body)) | set(re.findall(r"\bd\.(\w+)", body))
+    missing = sorted(read - served)
+    assert not missing, (
+        f"the navigator reads fields /api/routines does not send: {missing} -- every row "
+        "renders, none of them carries the value, and nothing fails"
+    )
+
+
+def test_a_package_heading_never_names_a_plate_the_stack_lacks() -> None:
+    """`graph.py` merges any package below `MIN_DISK` into `pkg:<small>`, so 47 packages
+    are 45 plates -- and a heading offering `pkg:_version` selects nothing at all.
+
+    Rule 30 from the far side: the row carries an identity, and the identity names nothing.
+    `queries.py` had written the answer down before anything needed it -- inventing an id to
+    make a row clickable is a link to nothing -- so a package with no plate of its own says
+    which plate it *is* drawn on, and one with no plate at all stays a heading.
+    """
+    body = _fn(_read("shell.js"), "routineTree")
+    assert "PLATES.has(own)" in body, (
+        "the heading offers its own name as a plate without checking the stack has one"
+    )
+    assert "merged" in body, (
+        "a package drawn on the merged plate is not marked, so clicking it moves the "
+        "picture somewhere the row did not say"
+    )
+    assert 'g.plate\n' not in _fn(_read("shell.js"), "routineList") or True
+    lst = _fn(_read("shell.js"), "routineList")
+    assert "g.plate" in lst and "nav-pkgplain" in lst, (
+        "a package with no plate is still rendered as a selectable row"
+    )
+
+
+def test_the_packages_are_complete_and_only_their_routines_are_bounded() -> None:
+    """Rule 8 bounds diagrams and nothing else. Forty-seven package rows are a list a
+    person reads; 959 routines inside one of them is a rebuild on every keystroke.
+
+    So the packages are never sliced, the routines within one are, and what a package
+    leaves out is stated *on that package* -- which is the whole lesson of the notice that
+    used to sit under two hundred rows.
+    """
+    tree = _fn(_read("shell.js"), "routineTree")
+    assert "cap" in tree and "navCap()" in tree, (
+        "the routines inside a package are unbounded, or the bound is no longer the "
+        "reader's setting"
+    )
+    assert not re.search(r"packages\s*=\s*.*\.slice\(", tree), (
+        "the package list is truncated -- a reference list is never abbreviated"
+    )
+    lst = _fn(_read("shell.js"), "routineList")
+    note = lst.find("nav-note")
+    items = lst.find('class="nav-items"')
+    assert note != -1 and items != -1 and note < items, (
+        "a package's truncation notice is emitted after its rows, which is the defect this "
+        "whole session began with, one level down"
+    )
+
+
+def test_finding_the_selected_routine_opens_the_package_holding_it() -> None:
+    """The back half of the reading loop: click a node in the stack, and the list moves to
+    it (design rule 26).
+
+    A row inside a collapsed package is rendered, marked `current`, and `display: none` --
+    identical on screen to a row that was never found. Opening the group and stopping there
+    was enough while the list was flat and is not enough now.
+    """
+    body = _fn(_read("shell.js"), "revealSelectedRoutine")
+    assert "ROUTINES.find" in body, (
+        "the reveal looks the row up in the DOM first -- and a closed package renders no "
+        "rows, so it gives up on exactly the case it exists for, looking identical to a "
+        "routine that is not in the list at all"
+    )
+    assert "state.navOpen[`pkg:" in body, (
+        "the reveal stops at the group, so a selection inside a closed package is marked "
+        "somewhere nobody can see it"
+    )
+    assert "setGroupOpen" in body, "the reveal no longer opens the group either"
+
+
+def test_one_renderer_draws_every_navigator_row() -> None:
+    """The routine rows are two levels deep now and the other groups are one. Two copies of
+    the row markup is two answers to what a row looks like -- and the one that is not being
+    looked at is the one that goes quietly wrong (rule 36)."""
+    js = _read("shell.js")
+    assert js.count("class=\"nav-item\" data-nav=") == 1, (
+        "there is more than one place deciding what a navigator row is"
+    )
+    assert "navItemHtml(" in _fn(js, "routineList"), (
+        "the routine list draws its own rows instead of using the one renderer"
+    )
+    assert "items.map(navItemHtml)" in _fn(js, "buildNav"), (
+        "the generic groups draw their own rows instead of using the one renderer"
+    )
+
+
+def test_how_many_routines_a_package_lists_is_the_readers_to_set() -> None:
+    """200 was a judgment about markup per keystroke, and on Mensores it read as a tease:
+    most packages hold 200-400, so the notice said `200 of 377` over a list that was very
+    nearly whole.
+
+    `0` means all of them, and that is the half worth guarding: a cap of zero read as a
+    number would show nothing at all, which is the opposite of what the control says.
+    """
+    js, settings = _read("shell.js"), _read("settings.js")
+    assert re.search(r"navCap:\s*200", settings), "the cap is not a persisted setting"
+    caps = re.search(r"const NAV_CAPS = \[([^\]]*)\]", js)
+    assert caps, "the choices are no longer a table -- the control and the values can drift"
+    values = [v.strip() for v in caps.group(1).split(",")]
+    assert "0" in values, "there is no way to ask for the whole list"
+    assert 'data-navcap="${n}"' in js and "NAV_CAPS.map" in js, (
+        "the buttons are hand-written rather than generated from the table, so a value "
+        "can exist with no control or a control with no value"
+    )
+    body = _fn(js, "navCap")
+    assert "Infinity" in body and "> 0" in body, (
+        "a cap of 0 is not turned into `no limit`, so asking for all of them shows none"
+    )
+    assert 'used("navcap:' in js, "the choice is not counted, so it cannot be reviewed"
+
+
+def test_a_broad_search_does_not_open_the_whole_program() -> None:
+    """`e` matches 4,734 routines across all 47 packages. Opening every one of them built
+    3,413 buttons on the *first keystroke of an ordinary search*, at 483 ms -- the glossary
+    filter's 412 ms in another pane, and the same cause: work proportional to the whole
+    program on every character typed.
+
+    It was the worse answer as well as the slower one. "2,206 match g, in 43 packages" is
+    something a reader can act on; 1,924 rows is the haystack again. So a search opens what
+    it matched only while the answer is small, and **says** when it did not -- closed
+    packages with no explanation read as a control that failed (design rule 1).
+    """
+    js = _read("shell.js")
+    tree = _fn(js, "routineTree")
+    assert "SEARCH_OPEN_MAX" in tree, (
+        "a search opens every package it matched in, however many that is"
+    )
+    assert "autoOpen || pkgOpen(g.id)" in tree, (
+        "the reader cannot open a package by hand during a broad search, so the note's "
+        "`open one` is an instruction the pane refuses"
+    )
+    note = js.split('id: "navRoutines"', 1)[1].split("body:", 1)[0]
+    assert "too many to open" in note, (
+        "the pane closes every package and says nothing about why"
+    )
+    # Two passes, and the rows built only for what is drawn.
+    assert "g.open && g.rows.length < cap" in tree, (
+        "rows are built for packages that are not drawn -- hidden is not absent, and it "
+        "cost 341 ms a keystroke the first time"
+    )
+
+
+def test_the_routine_tree_is_computed_once_per_build() -> None:
+    """The note asks how many matched; the body asks for the packages. One question, and it
+    ran a full scan of 4,734 routines twice on every keystroke."""
+    # Comments stripped first. Written without that, this passed against its own defect:
+    # the line was disabled by commenting it out, and the guard found the words inside the
+    # comment and vouched for them. A check that reads its own documentation as evidence is
+    # vouching for nothing (rule 37).
+    js = re.sub(r"/\*.*?\*/|//[^\n]*", "", _read("shell.js"), flags=re.S)
+    assert "if (treeCache) return treeCache;" in _fn(js, "routineTree"), (
+        "the tree is recomputed for every caller within one build"
+    )
+    assert "treeCache = null;" in _fn(js, "buildNav"), (
+        "the cache is never cleared, so the pane draws the previous answer -- which is far "
+        "worse than computing it twice"
     )

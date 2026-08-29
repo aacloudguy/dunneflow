@@ -498,6 +498,37 @@ body {
 .nav-group[data-open="false"] .nav-items { display: none; }
 .nav-head .count { margin-left: auto; font-size: .66rem; color: var(--text-faint); font-weight: 500; }
 .nav-items { padding-bottom: .4rem; }
+
+/* ── the routine list, by package ──────────────────────────────────────────────
+ * Two controls in one row, because they do two things: the caret opens the package and
+ * the name selects its plate in the stack. One control doing both would mean either that
+ * you cannot look inside without moving the picture, or that you cannot select a plate
+ * without a list of 645 routines opening under it. */
+.nav-pkg[data-open="false"] .nav-items { display: none; }
+.nav-pkghead { display: flex; align-items: stretch; }
+.nav-pkgtoggle {
+  flex: none; width: 1.5rem; font: inherit; background: none; border: 0; cursor: pointer;
+  color: var(--text-faint); padding: 0;
+}
+.nav-pkgtoggle:hover { color: var(--text); }
+.nav-pkgtoggle .caret { display: inline-block; transition: transform .15s; font-size: .55rem; }
+.nav-pkg[data-open="false"] .nav-pkgtoggle .caret { transform: rotate(-90deg); }
+.nav-pkgname {
+  flex: 1; min-width: 0; padding-left: 0; font-size: .74rem; font-weight: 600;
+  letter-spacing: .01em;
+}
+/* A package too small for a plate of its own, drawn on the merged one. Said on the row
+   rather than left to be discovered, because the row does select -- just not the plate its
+   own name would suggest. Design rule 1: nothing about the picture is silent. */
+.navmerged { font-size: .58rem; color: var(--text-faint); font-weight: 400; }
+.nav-pkgplain {
+  flex: 1; display: flex; align-items: baseline; gap: .4rem;
+  font-size: .74rem; font-weight: 600; color: var(--text-muted);
+  padding: .26rem .75rem .26rem 0;
+}
+/* The routines inside a package, indented under it so the level is readable at a glance. */
+.nav-pkg .nav-items .nav-item { padding-left: 2.1rem; }
+.nav-pkg .nav-note { padding-left: 1.5rem; }
 .nav-item {
   /* Clear of the sticky heading when `revealSelectedRoutine()` scrolls to a row: without
      this the row it scrolls to lands *under* the heading and reads as not found. */

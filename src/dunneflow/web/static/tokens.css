@@ -467,7 +467,10 @@ body {
 }
 .nav-scroll {
   overflow-y: auto; min-height: 0;
-  padding: .25rem 0 2rem;
+  /* No padding at the top, deliberately. A sticky child sticks to the *padding* box, so a
+     strip of padding there is a gap the list scrolls through above the heading -- rows
+     appear clipped over a heading that is supposed to be covering them. */
+  padding: 0 0 2rem;
   position: relative;      /* so a group's offsetTop is measured against this, not the page */
 }
 .nav-group { border-bottom: 1px solid var(--border); }

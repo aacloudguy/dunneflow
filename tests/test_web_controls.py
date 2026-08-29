@@ -1386,6 +1386,14 @@ def test_the_accordion_is_a_setting_and_both_halves_are_built() -> None:
     for value in ("one", "many"):
         assert f'data-navgroups="{value}"' in js, f"no control offers navGroups={value!r}"
     # Read, not merely stored: the accordion branch and the fallback branch both consult it.
+    # The accordion's first-visit group is named, not positional: with "Explore first" the
+    # pane would otherwise open on two rows and leave the routine list -- which design rule
+    # 26 says the navigator *is* -- closed, for no reason anyone chose.
+    assert "g.primary" in _fn(js, "navPrimary"), (
+        "the accordion opens whichever group happens to be first, so the menu order "
+        "silently decides what the pane opens on"
+    )
+    assert re.search(r"primary: true", js), "no navigator group is marked as the primary one"
     assert 'state.navGroups === "one"' in _fn(js, "groupOpen"), (
         "groupOpen ignores the setting, so `all at once` and `one at a time` open the same "
         "groups and the control is dead"
@@ -1395,4 +1403,25 @@ def test_the_accordion_is_a_setting_and_both_halves_are_built() -> None:
     )
     assert 'used("navgroups:' in js, (
         "the pair is not counted, so neither half can ever be retired on evidence"
+    )
+
+
+def test_the_strip_marks_where_the_reader_was_taken() -> None:
+    """The chips say which group you are in, and that claim has to survive a jump.
+
+    Found by clicking, not by any guard: with one group open the pane is short, so the
+    browser clamps a jump to a group near the bottom -- and the marker, read off the scroll
+    position, lit *Explore* one click after the reader asked for *Packages*. Two correct
+    numbers, neither of them saying what the reader had just done (rule 32).
+
+    Under the accordion the answer is not a scroll position at all: exactly one group is
+    open. The scroll rule stays for `all at once`, where there is no such answer.
+    """
+    body = _fn(_read("shell.js"), "markJump")
+    assert 'state.navGroups === "one"' in body and "groupOpen(g)" in body, (
+        "the marker reads the scroll position even under the accordion, so a jump the "
+        "browser clamps lights a chip the reader did not click"
+    )
+    assert "offsetTop" in body and "scrollTop" in body, (
+        "the fallback for `all at once` is gone, so with every group open nothing is marked"
     )

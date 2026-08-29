@@ -3303,7 +3303,9 @@ function moduleTail(module) {
 }
 
 const NAV_GROUPS = [
-  { id: "navRoutines", title: "Routines", open: true,
+  /* `primary`: the group the accordion opens on a first visit. The navigator *is* the
+     routine list (design rule 26), whatever the menu order puts above it. */
+  { id: "navRoutines", title: "Routines", open: true, primary: true,
     count: () => ROUTINES.length,
     note: () => {
       const { rows, total } = matchingRoutines();
@@ -3413,8 +3415,21 @@ function navGroupsInOrder() {
  * and then refuses to open two reads as a broken control rather than as a setting. */
 function groupOpen(g, order) {
   if (g.id in state.navOpen) return !!state.navOpen[g.id];
-  if (state.navGroups === "one") return g === (order || navGroupsInOrder())[0];
+  if (state.navGroups === "one") return g === navPrimary(order);
   return !!g.open;
+}
+
+/* Which single group the accordion opens when the reader has arranged nothing yet.
+ *
+ * Named by an identity (`primary`) rather than taken from the first position, which is what
+ * this was and which was wrong for a reason the file already records one function up: the
+ * menu order decides what sits at the *top*, and the two questions are not the same one.
+ * With "Ways in first" the pane opened on six entrypoints and left the routine list --
+ * which design rule 26 says the navigator *is* -- closed. An ordering rule that names a
+ * position breaks the moment anything is put beside it; so does an opening one. */
+function navPrimary(order) {
+  const groups = order || navGroupsInOrder();
+  return NAV_GROUPS.find(g => g.primary) || groups[0];
 }
 
 /* Opening a group under the accordion closes the rest.
@@ -3450,17 +3465,31 @@ function jumpChips(order) {
             title="Go to ${esc(g.title)}">${esc(g.title)}</button>`).join("");
 }
 
-/* Which group the reader is looking at: the last one whose heading has reached the top of
- * the scroller. Computed from `offsetTop` against `scrollTop` rather than from bounding
- * rectangles, so it is arithmetic over static layout and needs no rendered frame -- rule 38
- * says anything needing one cannot be observed in an automation tab, and "which chip is
- * lit" is exactly the kind of claim that would then be untestable. */
+/* Which group the reader is looking at.
+ *
+ * Under the accordion this is not a question about scrolling at all: exactly one group is
+ * open, and that is what they are looking at. Reading it off the scroll position instead
+ * was wrong in a way only clicking found -- with one group open the pane is short, so the
+ * browser clamps a jump to a group near the bottom, and the chip then lit *Explore* one
+ * click after the reader asked for *Packages*. Both numbers were right and neither said
+ * what the reader had just done. Rule 32 in a strip of chips.
+ *
+ * With every group open there is no such answer, so it falls back to the scroll position:
+ * the last group whose heading has reached the top. That is arithmetic over `offsetTop`
+ * rather than over bounding boxes, so it holds in a tab with no rendered frames (rule 38)
+ * -- "which chip is lit" would otherwise be a claim nothing could check. */
 function markJump() {
   const sc = $("#navScroll");
   if (!sc) return;
   let here = null;
-  for (const g of sc.querySelectorAll(".nav-group")) {
-    if (g.offsetTop - sc.scrollTop <= 4) here = g.id;
+  if (state.navGroups === "one") {
+    const open = NAV_GROUPS.find(g => groupOpen(g));
+    here = open ? open.id : null;
+  }
+  if (!here) {
+    for (const g of sc.querySelectorAll(".nav-group")) {
+      if (g.offsetTop - sc.scrollTop <= 4) here = g.id;
+    }
   }
   if (!here) {
     const first = sc.querySelector(".nav-group");

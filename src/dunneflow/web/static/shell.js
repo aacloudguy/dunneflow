@@ -494,6 +494,8 @@ document.addEventListener("click", (ev) => {
 document.addEventListener("click", (ev) => {
   const close = ev.target.closest("[data-closedetail]");
   if (close) { closeDetail(); return; }
+  const detach = ev.target.closest("[data-detachdetail]");
+  if (detach) { detachDetail(); return; }
   const hop = ev.target.closest("[data-detail]");
   if (hop) { hopDetail(hop.dataset.detail); return; }
   const all = ev.target.closest("[data-detailall]");
@@ -1526,6 +1528,7 @@ function sameSelection(a, b) {
 /* Called wherever a selection settles, from either direction -- the graph announcing a
  * click, or the list driving one. One recorder, because two would disagree about order. */
 function recordSelection() {
+  publishSelection();
   if (restoringSelection) return;
   const now = selectionSnapshot();
   if (sameSelection(selHistory[selAt], now)) return;   // a repaint is not a step
@@ -1770,6 +1773,91 @@ function threadsPanel(nodeId) {
  * 52 KB for one program's glossary -- which is a page's worth of source code carried by
  * every reader for the handful of citations anybody opens. Same bargain as the hover card.
  */
+/* ══ the detail window, detached ══════════════════════════════════════════════════════
+ *
+ * Asked for at the keyboard: *it should become its own window, held in sync with the left
+ * side window bidirectionally... a separate tab or pop-up window that remains in
+ * bidirectional sync with the menu on the left side of the main screen.* Wanted for the
+ * code viewer next, so this is built as a pattern rather than as one feature.
+ *
+ * **The same application, in a second window.** `?view=detail` boots the whole shell and
+ * then hides everything except the detail panel -- no second page, no second renderer, no
+ * second copy of `esc`, the threads panel or the trail. A detail view extracted into its own
+ * file would have been the third place this project rendered one node, and the first two
+ * disagreed about parameter types for a year.
+ *
+ * **Sync is a `BroadcastChannel`, not the opener.** Same origin, so it needs no server and
+ * no round trip -- and it does not care which window opened which, which is the whole point:
+ * the reader may close the main window, reload either one, or open the detached view in a
+ * tab by pasting the URL. A parent-child `postMessage` protocol would break on every one of
+ * those. Both windows are peers that publish where they are looking and adopt where the
+ * other is.
+ *
+ * The loop guard is the only subtle part. Adopting a selection must not re-publish it, or
+ * two windows bounce one click between them for ever.
+ */
+const DETACHED = new URLSearchParams(location.search).get("view") === "detail";
+const SYNC = ("BroadcastChannel" in window) ? new BroadcastChannel("dunneflow-selection") : null;
+let adopting = false;
+
+/* Publish where this window is looking. Called wherever a selection settles, beside
+ * `recordSelection()` -- one place, for the same reason that has one place. */
+function publishSelection() {
+  if (!SYNC || adopting || !state.selected) return;
+  SYNC.postMessage({ id: state.selected, from: DETACHED ? "detached" : "main" });
+}
+
+if (SYNC) {
+  SYNC.addEventListener("message", async (ev) => {
+    const msg = ev.data || {};
+    if (!msg.id || msg.id === state.selected) return;
+    /* Adopt without re-publishing. Two peers each echoing the other is a loop that looks
+       exactly like a hang, and neither window would be obviously at fault. */
+    adopting = true;
+    try {
+      await selectFromNav({ nodes: [msg.id] });
+      /* **The list has to move to it.** `selectFromNav` deliberately does not reveal,
+       * because a row the reader clicked themselves is already under their eye -- but a
+       * selection arriving from the other window is like one arriving from the graph, and
+       * design rule 26 says the list and the picture are one instrument running both ways.
+       * A third driver is still that instrument. Without this the main window's inspector
+       * followed perfectly while its navigator sat on an unopened package, which is the
+       * half Tom asked for by name. */
+      buildNav();
+      revealSelectedRoutine();
+      pushTrail(state.view, labelFor(msg.id), "followed the other window");
+      render();
+    } finally {
+      adopting = false;
+    }
+  });
+}
+
+/* Hand this node to a window of its own.
+ *
+ * Opened from a **click**, never from the keypress. A pop-up blocker treats a click as the
+ * user asking and a synthetic-looking keystroke as a page deciding for itself, so the one
+ * that survives is the button. If it is blocked anyway the reader is told, because a
+ * control that silently does nothing is the failure this project keeps paying for.
+ */
+function detachDetail() {
+  const w = window.open(
+    `${location.pathname}?view=detail`, "dunneflow-detail",
+    "width=1100,height=800,noopener=no");
+  if (!w) {
+    state.navNote = "The browser blocked the pop-up. Allow pop-ups for this page, or open "
+                  + `${location.pathname}?view=detail in a tab yourself.`;
+    render();
+    return;
+  }
+  used("detail:detached");
+  /* The in-app window closes behind it. Two copies of one view, one of them stale behind a
+     scrim, is worse than either alone -- and the new window publishes its selection, so
+     nothing is lost by closing this one. */
+  state.detail = false;
+  render();
+}
+
 /* Opening, hopping and closing. All three go through the one selection, so there is no
  * second piece of state that can disagree with the first.
  *
@@ -1955,7 +2043,7 @@ function detailPanel() {
 
 function detailShell(title, sub, body, kind) {
   return `
-  <div class="viewer-scrim" data-closedetail></div>
+  <div class="detail-scrim" data-closedetail></div>
   <div class="detailwin" role="dialog" aria-modal="true" aria-label="Detail: ${esc(title)}">
     <div class="detail-head">
       <div style="min-width:0">
@@ -1963,7 +2051,15 @@ function detailShell(title, sub, body, kind) {
           kind ? ` <span class="kind-tag">${esc(kind)}</span>` : ""}</div>
         ${sub ? `<div class="detail-sub mono">${breakable(sub)}</div>` : ""}
       </div>
-      <button class="linkbtn" data-closedetail>Close <kbd>Esc</kbd></button>
+      ${DETACHED
+        ? ""
+        : `<button class="linkbtn" data-detachdetail
+             title="Move this into a window of its own, kept in sync with the list on the left"
+             >Open in a window \u29c9</button>`}
+      ${DETACHED
+        ? `<span class="detail-synced" title="This window and the main one follow each other">
+             \u21c4 following the main window</span>`
+        : `<button class="linkbtn" data-closedetail>Close <kbd>Esc</kbd></button>`}
     </div>
     ${/* The one trail, not a second one. Every hop in here is an ordinary selection, so
           the journey it records is the reader's whole journey and Back works across the
@@ -3616,7 +3712,7 @@ const WIRED_ATTRS = new Set([
   "cursor", "den", "disk", "drop", "edgesmotion", "egress", "ep", "fold", "gact", "gosev",
   "goto", "graphtheme", "insp", "jump", "layout", "legend", "manifest", "menuorder",
   "mode", "nav", "nav2", "navcap", "navgroups", "pkgopen", "pointerplace", "pointerreset", "pointershown", "reticule",
-  "closedetail", "detail", "detailall",
+  "closedetail", "detachdetail", "detail", "detailall",
   "navid", "node", "open", "pane", "pin", "pinnote", "pkgnode", "pkgpick", "qual",
   "resize", "row",
   "scale-set", "sec", "sev", "sevnav", "sort", "sqlshow", "start", "step", "theme",
@@ -5885,6 +5981,14 @@ async function boot() {
    * moment a reader decides the feature is broken. */
   recordSelection();
 
+  /* Detached: the detail panel *is* the page. The rest of the shell is built and then
+   * hidden by a body class rather than skipped, because the panel reads `SPECIMEN`, the
+   * settings, the trail and the threads -- all of which the ordinary boot puts in place.
+   * Skipping it would be a second, quieter boot with its own set of things to forget. */
+  if (DETACHED) {
+    document.body.classList.add("detached");
+    state.detail = true;
+  }
   buildNav();
   wireGraphOnce();
   wireSearchOnce();

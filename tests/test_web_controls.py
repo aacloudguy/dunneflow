@@ -784,8 +784,17 @@ def test_the_selection_can_be_taken_back() -> None:
     # The guard itself, not just the flag. The flag being declared and set proves nothing:
     # the recorder has to actually consult it, or every undo records itself as a new step
     # and the history can never move backwards.
-    guard = r"function recordSelection\(\)\s*\{\s*if \(restoringSelection\) return;"
-    assert re.search(guard, js), (
+    # The guard must stand between a restore and the *history*, which is what it is for.
+    # It used to be pinned to the first statement of the function, and that is a position
+    # rather than an invariant: `publishSelection()` is deliberately above it, because an
+    # undo has genuinely changed where this window is looking and the window beside it is
+    # entitled to follow -- while still not recording the replay as a new step.
+    body = _code(_fn(js, "recordSelection"))
+    assert "if (restoringSelection) return;" in body, (
+        "recordSelection does not bail while a restore is in flight, so an undo records "
+        "itself as a new step and the history never moves backwards"
+    )
+    assert body.index("if (restoringSelection) return;") < body.index("selHistory"), (
         "recordSelection does not bail while a restore is in flight, so an undo records "
         "itself as a new step and the history never moves backwards"
     )
@@ -924,6 +933,153 @@ def test_the_invocation_line_is_the_one_in_the_code() -> None:
     assert "signature_parts(" in body, (
         "`Routine.signature()` no longer goes through the shared renderer, so the Markdown "
         "documents and the hover card are two opinions about one signature again"
+    )
+
+
+def test_every_scrim_sits_under_the_window_it_dims() -> None:
+    """A scrim dims what is behind it and must be *behind* what it dims. One shared scrim
+    cannot do that for two windows at different depths, and it did not: the detail window
+    took `z-index: 88` to stay below the source viewer, the shared scrim sat at 90, and so
+    the window rendered perfectly, greyed over, and turned every click on itself into
+    "close" -- because the scrim was what the pointer hit.
+
+    **No amount of driving would have caught it.** A synthetic `element.click()` invokes the
+    handler on the element it names; it proves a control is wired and says nothing about
+    whether a reader can reach it. Hit-testing is the half only a real pointer exercises,
+    which is why this is asserted from the stylesheet rather than from the browser. Reported
+    from a screenshot -- *look, don't only test*, once more.
+    """
+    css = _read("tokens.css")
+
+    def z(selector: str) -> int:
+        rule = css.split(f"{selector} {{", 1)[1].split("}", 1)[0]
+        found = re.search(r"z-index:\s*(\d+)", rule)
+        assert found, f"{selector} declares no z-index, so its layering is whatever order gives"
+        return int(found.group(1))
+
+    pairs = [(".detail-scrim", ".detailwin"), (".viewer-scrim", ".viewer")]
+    for scrim, win in pairs:
+        assert z(scrim) < z(win), (
+            f"{scrim} is above {win}, so the window is dimmed by its own scrim and every "
+            f"click on it lands on the scrim instead -- which reads as a window that closes "
+            f"itself whenever it is touched"
+        )
+    # And the pairs do not interleave: a window must clear the scrim of everything below it,
+    # or opening the upper one leaves the lower one's window poking through.
+    assert z(".detailwin") < z(".viewer-scrim"), (
+        "the source viewer's scrim no longer covers the detail window, so opening a citation "
+        "from inside it leaves the window it came from undimmed on top"
+    )
+    # Each window has its own scrim: sharing one is what produced the inversion.
+    shell = _read("shell.js")
+    assert 'class="detail-scrim"' in _fn(shell, "detailShell"), (
+        "the detail window uses the source viewer's scrim again, which cannot sit at two "
+        "depths at once"
+    )
+
+
+def test_the_detached_window_is_the_same_application() -> None:
+    """Asked for at the keyboard: a separate tab or pop-up window kept in bidirectional sync
+    with the menu on the left. Wanted for the code viewer next, so it is built as a pattern.
+
+    `?view=detail` boots the whole shell and hides everything but the panel. A second page
+    with its own renderer would have been the **third** place this project draws one node,
+    and the first two disagreed about parameter types for a year.
+    """
+    shell, css, html = _code(_read("shell.js")), _read("tokens.css"), _read("index.html")
+
+    assert 'get("view") === "detail"' in shell, "there is no detached mode"
+    assert "document.body.classList.add(\"detached\")" in shell, (
+        "detached mode never marks the document, so the stylesheet cannot lay it out"
+    )
+    # One page, one renderer: the detached view must not be served from a second file.
+    assert "detail.html" not in shell and "detail.html" not in html, (
+        "the detached view is a second page, which is a second place one node is rendered"
+    )
+    rule = css.split(".detached .detailwin {", 1)[1].split("}", 1)[0]
+    assert "position: static" in rule and "height: 100vh" in rule, (
+        "the detached panel is still a centred modal rather than the page it now is"
+    )
+    assert ".detached .app," in css and "display: none !important" in css, (
+        "the shell is not hidden in the detached window, so it renders behind the panel"
+    )
+
+
+def test_two_windows_follow_each_other_without_looping() -> None:
+    """Peers, not parent and child. A `postMessage` protocol through `window.opener` breaks
+    the moment the reader closes the main window, reloads either one, or opens the detached
+    view by pasting its URL -- all of which are ordinary. A `BroadcastChannel` is same-origin,
+    needs no server, and does not care which window opened which.
+
+    The loop guard is the whole subtlety: adopting a selection must not republish it, or two
+    peers bounce one click between them for ever, which looks exactly like a hang and leaves
+    neither window obviously at fault.
+    """
+    shell = _code(_read("shell.js"))
+    assert "new BroadcastChannel(" in shell, "the two windows have no way to reach each other"
+    # The guard line itself, not "the word appears somewhere below". `_fn` reads to the next
+    # `function`, and what follows `publishSelection` is the message handler -- which
+    # mentions `adopting` twice, so a containment check here vouched for the wrong code and
+    # passed against its own mutation. That hazard is written in `_fn`'s own docstring.
+    assert re.search(r"if \(!SYNC \|\| adopting \|\| !state\.selected\) return;", shell), (
+        "publishing does not check the adopt flag, so a selection received from the other "
+        "window is echoed straight back to it"
+    )
+    handler = shell.split('SYNC.addEventListener("message"', 1)[1].split("\n}\n", 1)[0]
+    assert "adopting = true;" in handler and "adopting = false;" in handler, (
+        "the adopt path never raises the flag, so the guard above it guards nothing"
+    )
+    assert "finally" in handler, (
+        "the flag is cleared on the happy path only -- one failed adopt and this window "
+        "stops publishing for the rest of the session, silently"
+    )
+    # Rule 26 with a third driver: the list must move to a selection it did not make.
+    assert "revealSelectedRoutine();" in handler and "buildNav();" in handler, (
+        "the window adopting a selection does not move its own routine list to it, so the "
+        "inspector follows perfectly while the navigator sits on an unopened package -- "
+        "which is the half that was asked for by name"
+    )
+    # It is published wherever a selection settles, not at one call site that will drift.
+    assert "publishSelection();" in _fn(shell, "recordSelection"), (
+        "the selection is published from somewhere other than the one place every path "
+        "already funnels through"
+    )
+
+
+def test_popping_out_is_a_click_and_says_when_it_is_blocked() -> None:
+    """A pop-up blocker reads a click as the reader asking and a keystroke as the page
+    deciding for itself, so the control that survives is a button. And a blocked pop-up is
+    the exact shape of a control that renders and does nothing -- so it says so, and names
+    the URL the reader can open themselves."""
+    shell = _code(_read("shell.js"))
+    detach = _fn(shell, "detachDetail")
+    assert "window.open(" in detach, "nothing opens a second window"
+    assert "state.navNote" in detach and "blocked" in detach, (
+        "a blocked pop-up leaves the reader with a button that did nothing and no reason"
+    )
+    assert "?view=detail" in detach, "the second window is not opened on the detached view"
+    # Present is not reached. An early `return` after the counter left this line in the
+    # source and out of the path, and a containment check passed against exactly that.
+    after = detach.split('used("detail:detached");', 1)[1]
+    closes = "state.detail = false;"
+    assert closes in after and "return;" not in after.split(closes, 1)[0], (
+        "the in-app window stays open behind the new one -- two copies of one view, the "
+        "nearer of them stale"
+    )
+    # A button, and only in the window that is not already detached.
+    assert 'data-detachdetail' in _read("shell.js"), "no control offers to pop out"
+    shell_raw = _read("shell.js")
+    head = shell_raw.split("function detailShell(", 1)[1].split("\n}\n", 1)[0]
+    # Guarded on the *button*, not on the word. `DETACHED` also gates the sync badge below,
+    # so "it appears in the header" stayed true with the button unconditionally rendered --
+    # which is a detached window offering to detach itself.
+    flat = " ".join(head.split())
+    assert '${DETACHED ? "" : `<button class="linkbtn" data-detachdetail' in flat, (
+        "the detached window still offers to detach itself"
+    )
+    assert re.search(r"\$\{DETACHED[\s\S]{0,400}?data-closedetail", head), (
+        "the detached window still shows a Close button that closes a panel rather than the "
+        "window the reader is actually looking at"
     )
 
 

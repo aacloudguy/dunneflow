@@ -1373,6 +1373,22 @@ kbd { font-family: var(--f-mono); font-size: .66rem; background: var(--sunken);
 .threadgroup .hint { padding: .1rem .3rem; }
 
 /* ═══ source viewer ═══ */
+/* ── the two scrims, and the layering they have to hold ──
+ *
+ * A scrim must sit **under** the thing it dims and over everything else, and one shared
+ * scrim cannot do that for two windows at different depths. The detail window took
+ * `z-index: 88` to stay below the source viewer, and this scrim at 90 then covered it: the
+ * window rendered perfectly, greyed, and swallowed every click into "close" -- because the
+ * scrim, not the window, was what the pointer actually hit.
+ *
+ * Reported from a screenshot, and no amount of driving would have found it. A synthetic
+ * `element.click()` invokes the handler on the element it names, so it proves a control is
+ * *wired* and says nothing about whether a reader can reach it. Hit-testing is the part
+ * only a real pointer -- or `elementFromPoint` -- exercises.
+ *
+ * So the layers are stated here as pairs, scrim then window, each pair above the last.
+ */
+.detail-scrim { position: fixed; inset: 0; background: rgba(8,12,18,.55); z-index: 87; }
 .viewer-scrim { position: fixed; inset: 0; background: rgba(8,12,18,.55); z-index: 90; }
 
 /* ── the detail window ──
@@ -1382,8 +1398,9 @@ kbd { font-family: var(--f-mono); font-size: .66rem; background: var(--sunken);
  * that `Esc` puts the reader back exactly where they were looking -- which is what makes a
  * detour free (design rule 15), and the reason the source viewer is a modal too.
  *
- * Below the source viewer's z-index on purpose: opening a citation from inside here must
- * land in front of here, not behind it.
+ * Below the source viewer's pair on purpose: opening a citation from inside here must land
+ * in front of it. Above its **own** scrim, which is the half that was wrong -- see the note
+ * beside the scrims.
  */
 .detailwin {
   position: fixed; z-index: 88; left: 50%; top: 50%; transform: translate(-50%, -50%);
@@ -1404,6 +1421,31 @@ kbd { font-family: var(--f-mono); font-size: .66rem; background: var(--sunken);
  * overflow to the document, which does not scroll panes -- the defect rule 29's companion
  * was written from, one container out. */
 .detail-body { overflow: auto; padding: .8rem; min-height: 0; }
+
+/* ── detached: the panel is the page ──
+ *
+ * `?view=detail` boots the whole application and then hides everything but this, rather
+ * than serving a second page with a second copy of the renderer. The shell is what puts
+ * `SPECIMEN`, the settings, the trail and the threads in place, and a leaner boot would be
+ * a quieter one with its own list of things to forget.
+ *
+ * The window's own chrome is the browser's, so the panel drops its border, its shadow and
+ * its centring and simply fills what it is given. `.app` is hidden rather than removed:
+ * `buildNav()`, `render()` and the self-check all still address it, and a shell that is not
+ * there would make every one of them a special case.
+ */
+.detached .app,
+.detached .detail-scrim { display: none !important; }
+.detached .detailwin {
+  position: static; transform: none;
+  width: 100%; max-width: none; height: 100vh; max-height: 100vh;
+  border: 0; border-radius: 0; box-shadow: none;
+}
+/* Says the two windows follow each other, because a reader looking at a second window has
+ * no way to know whether it is live or a snapshot -- and those are opposite claims. */
+.detail-synced { margin-left: auto; flex: none; font-size: .7rem; font-weight: 600;
+                 color: var(--accent-text); white-space: nowrap; }
+
 
 /* Three columns: what reaches it, it, and what it reaches. The arrangement *is* the answer
  * -- the same facts as the inspector's lists, laid out so the direction is visible without

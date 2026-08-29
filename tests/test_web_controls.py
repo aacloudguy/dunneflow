@@ -1083,6 +1083,148 @@ def test_popping_out_is_a_click_and_says_when_it_is_blocked() -> None:
     )
 
 
+def test_finding_a_node_by_id_is_a_lookup_and_not_a_scan() -> None:
+    """`indexOfId` walked all 15,601 nodes on every call. Fine for the handful of lookups it
+    was written for, and catastrophic for the caller that arrived later: table mode asks it
+    once per row, so 4,734 rows against 15,601 nodes is **73.8 million comparisons** and the
+    table took **2,418 ms** to build. Sorting by Connections asks twice per comparison.
+
+    Reported as *lag that is not obvious* -- and it is not obvious, because a view that takes
+    two and a half seconds to appear reads as a slow page rather than as a defect. Rule 45 in
+    the engine rather than in a pane. Measured after: 46 ms.
+    """
+    engine = _code(_read("graph.js"))
+    # An object method, not a `function` declaration, so `_fn` cannot reach it -- and a
+    # helper that silently returned the whole file here would make every assertion below
+    # true of something else.
+    idx = engine.split("indexOfId(id) {", 1)[1].split("\n  },", 1)[0]
+    assert "new Map()" in idx and "g.idIndex" in idx, (
+        "indexOfId is a linear scan again, which is 73.8 million comparisons per table build"
+    )
+    scan = r"for \(let i = 0; i < raw\.id\.length; i\+\+\) \{\s*if \(raw\.id\[i\] === id"
+    assert not re.search(scan, idx), (
+        "the scan is still the thing that answers, whatever else was added beside it"
+    )
+    # A shadow must never win over the node it stands in for (rule 23, in an index).
+    assert "!raw.shadow[i]" in idx, (
+        "the index admits shadows, so a lookup can return a placement device instead of the "
+        "routine it stands for"
+    )
+    # And it must not outlive the payload it describes.
+    assert "g.idIndex = null;" in _fn(engine, "mount"), (
+        "the index survives a new payload, so every lookup answers about the previous program"
+    )
+
+
+def test_a_column_can_actually_be_resized() -> None:
+    """Under `table-layout: auto` a `width` on a `th` is a suggestion the browser weighs
+    against its content, and against 4,734 long qualified names it loses every time: the drag
+    handler set `width: 40rem` and the column stayed at 799px, before and after. The control
+    was wired, the pointer capture worked, the rem arithmetic was right, and nothing happened
+    -- design rule 16 with the dead end in the stylesheet, where no check on this page was
+    looking.
+
+    And the table's own width must be the sum of its columns. With `min-width: 100%` and no
+    width the specified widths become mere *ratios* of the pane, so a column dragged to 40rem
+    moved 218px to 257px and stopped.
+    """
+    css, shell = _read("tokens.css"), _read("shell.js")
+    rule = css.split("table.grid {", 1)[1].split("}", 1)[0]
+    assert "table-layout: fixed" in rule, (
+        "the table lays out automatically again, so every column width is a suggestion the "
+        "browser is free to ignore -- and with these names it always does"
+    )
+    assert "min-width: 100%" not in rule, (
+        "the table is stretched to the pane, which turns each column's width into a ratio "
+        "of it rather than the width it says"
+    )
+    # On the table element, not "somewhere in the file" -- the drag handler sums the same
+    # columns, so a containment check stayed true with the table's own width removed.
+    assert re.search(r'<table class="grid" style="width:\$\{TABLE_COLS\.reduce', shell), (
+        "the table's width is no longer the sum of its columns, so a column cannot grow past "
+        "the space the table already had"
+    )
+    # Fixed layout stops a cell growing to fit, so long content must wrap rather than clip.
+    assert re.search(r"table\.grid td, table\.grid th \{ overflow-wrap: anywhere", css), (
+        "cells neither grow nor wrap, so a qualified name is cut at the column edge -- a "
+        "name that is not in the program"
+    )
+    # Design rule 17: widths persist per program. They were written to state and never saved.
+    up = shell.split("const up = () => {", 1)[1].split("};", 1)[0]
+    assert "persist();" in up, (
+        "a dragged column width is never stored, so design rule 17's 'widths persist per "
+        "program' describes something that does not happen"
+    )
+
+
+def test_the_table_says_which_row_is_yours() -> None:
+    """Reported at the keyboard: *I cannot tell what I am viewing in Table view.* It was in
+    sync the whole time -- the row carried `aria-selected` and was tinted, 238,401px down a
+    4,734-row list with the scroll at nought.
+
+    Design rule 26 says an off-screen selection is **stated** and framing it is one click
+    away. That was written for the graph and never applied to the pane that needs it more:
+    the graph at least dims everything else, and a table gives every row equal weight.
+    """
+    shell = _read("shell.js")
+    table = _code(_fn(shell, "viewTable"))
+    # The exact class, not a prefix of it: `tablesubject-x` contains `tablesubject`.
+    assert 'class="tablesubject"' in table, "the table never says what it is showing"
+    assert "row ${(at + 1).toLocaleString()} of" in table, (
+        "the strip names the selection without saying where it is, which is the number that "
+        "tells a reader whether scrolling is worth it"
+    )
+    assert "data-tablego" in table, "there is no way to get to the row it names"
+    # All three absences, told apart: a routine, a node that is not a routine, and nothing.
+    assert "not a routine, so it has no row here" in table and "Nothing selected" in table, (
+        "a selection this table cannot show is not distinguished from no selection at all"
+    )
+    # The rank comes from the list the rows are drawn from, or it can disagree with them.
+    assert "const rows = sortedRoutines();" in table and "${rows.map(r =>" in table, (
+        "the rank is computed from a different list than the rows, so the number and the "
+        "picture can disagree (rule 13)"
+    )
+
+
+def test_the_table_moves_to_a_new_subject_and_not_to_a_repaint() -> None:
+    """Two ways to get this wrong and both were live.
+
+    `.tablewrap` carries `overflow: auto` and looks like the scroller. Nothing bounds its
+    height, so it grows to all 339,229px of the table and the *pane* scrolls instead -- the
+    reveal moved a `scrollTop` with nowhere to go, and its own check compared the row against
+    a box extending far below the window, which made every row "in view" and reported
+    success. A guard naming the right case and measuring the wrong box.
+
+    And "reveal when the row is out of sight" is the wrong condition: scrolling away from
+    your selection to read around it is ordinary, and it made the row out of sight, so the
+    next repaint dragged the reader back. **An automatic move may not fight a deliberate
+    one.** It moves once per subject.
+    """
+    shell = _code(_read("shell.js"))
+    rev = _fn(shell, "revealSelectedRow")
+    assert "scrollerFor(row)" in rev, (
+        "the reveal assumes which element scrolls instead of asking, and the one that looks "
+        "like the scroller is not"
+    )
+    assert '$(".tablewrap")' not in rev, "the reveal is back on the wrapper, which never scrolls"
+    # The guard, not the variable. Removing the early return leaves the assignment below it
+    # intact, so "the name appears" stayed true with the behaviour gone -- rule 37, again.
+    assert "if (!force && state.selected === lastRevealedRow) return;" in rev, (
+        "the reveal fires on every repaint, so a reader who scrolls away from their "
+        "selection is dragged back to it by the next render"
+    )
+    sc = _fn(shell, "scrollerFor")
+    assert "scrollHeight > n.clientHeight" in sc and "overflowY" in sc, (
+        "the scroller is found by name or by class rather than by whether it scrolls"
+    )
+    # The place is kept across a rebuild, or the condition above could never be conditional.
+    keeps = r'const mount = \$\("#viewMount"\);\s*const keep = mount \? mount\.scrollTop : 0;'
+    assert re.search(keeps, shell), (
+        "the table's scroll position is discarded on every render, so every repaint sends a "
+        "4,734-row list back to row one"
+    )
+
+
 def test_the_detail_window_reads_the_one_selection() -> None:
     """It held a node id of its own, and the two states drifted the first time anything else
     moved the selection: the trail's Back stepped the app to the previous routine and left

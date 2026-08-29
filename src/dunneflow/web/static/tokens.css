@@ -1048,7 +1048,26 @@ body {
 /* ═══ table ═══ */
 .tablewrap { background: var(--surface); border: 1px solid var(--border);
   border-radius: .5rem; box-shadow: var(--shadow); overflow: auto; }
-table.grid { border-collapse: separate; border-spacing: 0; width: 100%; font-size: .78rem; }
+/* `fixed`, and it is the whole reason the resize handle does anything.
+ *
+ * Under `table-layout: auto` a `width` on a `th` is a *suggestion* the browser weighs
+ * against its content, and with 4,734 rows of long qualified names it loses every time:
+ * the drag handler set `width: 40rem` and the column stayed at 799px, before and after.
+ * The control was wired, the pointer capture worked, the rem arithmetic was right, and
+ * nothing happened -- design rule 16 with the dead end in the stylesheet rather than in
+ * the handler, which is why no check on this page could see it.
+ *
+ * The table's own width is the **sum of its columns**, written from script. With
+ * `min-width: 100%` and no width the specified widths become mere *ratios* of the pane --
+ * fixed layout distributes the container's width in proportion -- so dragging a column to
+ * 40rem moved it from 218px to 257px and no further. Summed, each column is exactly the
+ * width it says, and `.tablewrap` scrolls when they no longer fit. */
+table.grid { border-collapse: separate; border-spacing: 0; table-layout: fixed;
+             font-size: .78rem; }
+/* Fixed layout means a cell no longer grows to fit, so long content has to be told what to
+ * do. Wrap, never clip: a qualified name cut off at the column edge is a name that is not
+ * in the program (rule 8's argument, at the last surface). */
+table.grid td, table.grid th { overflow-wrap: anywhere; }
 table.grid th {
   position: sticky; top: 0; z-index: 2;
   background: var(--raised); color: var(--text-muted);
@@ -1061,6 +1080,18 @@ table.grid th .sortbtn { font: inherit; background: none; border: 0; color: inhe
   padding: 0; display: inline-flex; align-items: center; gap: .25rem; text-transform: inherit; letter-spacing: inherit; }
 table.grid th .sortbtn:hover { color: var(--text); }
 table.grid th .arrow { font-size: .6rem; color: var(--accent); }
+/* What the table is showing, stated. Above the controls rather than in the footer: the
+ * footer of a 4,734-row list is not a place anything is read (the navigator's truncation
+ * notice was moved for exactly this reason). */
+.tablesubject { display: flex; align-items: baseline; gap: .45rem; flex-wrap: wrap;
+                margin-bottom: .5rem; padding: .3rem .5rem; border-radius: .25rem;
+                background: var(--raised); font-size: .74rem; }
+.tsub-label { font-size: .66rem; font-weight: 700; letter-spacing: .09em;
+              text-transform: uppercase; color: var(--text-muted); }
+.tsub-name { font-weight: 600; overflow-wrap: anywhere; min-width: 0; }
+.tsub-rank { color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.tsub-none { color: var(--text-muted); }
+
 .resizer {
   position: absolute; right: 0; top: 0; height: 100%; width: .375rem;
   cursor: col-resize; background: none;

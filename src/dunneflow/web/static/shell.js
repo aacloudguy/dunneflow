@@ -953,6 +953,10 @@ function sortedRoutines() {
   });
 }
 
+/* The columns, in order, in one place. The table's own width is their sum -- see the note
+ * on `table.grid` -- and a hand-kept second list of them is how the two would drift. */
+const TABLE_COLS = ["q", "why", "fan"];
+
 function viewTable() {
   const cw = state.colWidths;
   const col = (k, label, numeric) =>
@@ -965,7 +969,40 @@ function viewTable() {
        </span>
      </th>`;
 
+  /* ── what you are looking at ──
+   *
+   * The table *was* in sync and there was no way to tell. The selected row carries
+   * `aria-selected` and is tinted, and on Mensores it sits 238,401px down a 4,734-row list
+   * with the scroll at nought -- so a reader switching to this view saw four thousand rows
+   * and nothing to say which of them was theirs. Reported exactly that way: *I cannot tell
+   * what I am viewing in Table view.*
+   *
+   * Design rule 26 says an off-screen selection is **stated**, and framing it is one click
+   * away. That was written for the graph and never applied to the pane that needs it most:
+   * the graph at least dims the rest, and a table gives every row equal weight.
+   *
+   * The rank is the point rather than a decoration. "Row 3,214 of 4,734" is what tells a
+   * reader whether scrolling is worth it, and it is taken from the same sorted list the
+   * rows are drawn from, so it cannot disagree with where the row actually is (rule 13). */
+  const rows = sortedRoutines();
+  const at = state.selected ? rows.findIndex(r => r.id === state.selected) : -1;
+  const cur = at >= 0 ? rows[at] : null;
+  const subject = cur
+    ? `<span class="tsub-name mono">${breakable(`${cur.module}.${cur.name}`)}</span>
+       <span class="tsub-rank">row ${(at + 1).toLocaleString()} of ${rows.length.toLocaleString()}</span>
+       <button class="linkbtn" data-tablego>Go to it</button>`
+    : state.selected
+      /* Selected, and not in this list. A structure, a constant, a boundary and an artefact
+         are all nodes the rest of the shell can hold and this table cannot show -- saying so
+         is a different claim from showing nothing, and the reader is owed which one it is. */
+      ? `<span class="tsub-none">The selection is not a routine, so it has no row here.</span>`
+      : `<span class="tsub-none">Nothing selected — every row is shown, none is yours yet.</span>`;
+
   return `
+  <div class="tablesubject">
+    <span class="tsub-label">Showing</span>${subject}
+  </div>
+
   <div style="display:flex;align-items:center;gap:.6rem;margin-bottom:.55rem;flex-wrap:wrap">
     <span style="font-size:.7rem;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--text-muted)">Row density</span>
     <div class="densitygroup" role="group" aria-label="Row density">
@@ -977,7 +1014,7 @@ function viewTable() {
   </div>
 
   <div class="tablewrap">
-    <table class="grid">
+    <table class="grid" style="width:${TABLE_COLS.reduce((n, k) => n + cw[k], 0)}rem">
       <caption class="sr-only">Every routine in ${esc(STATS ? STATS.program : "this program")}</caption>
       <thead><tr>
         ${col("q", "Routine")}
@@ -985,7 +1022,7 @@ function viewTable() {
         ${col("fan", "Connections", true)}
       </tr></thead>
       <tbody>
-        ${sortedRoutines().map(r => `
+        ${rows.map(r => `
           <tr data-row="${esc(r.id)}" aria-selected="${state.selected === r.id}" tabindex="0">
             <td><span class="qual"><span class="dim">${esc(r.module)}.</span>${esc(r.name)}</span></td>
             <td style="font-size:.72rem;color:var(--text-muted)">${esc(r.why)}</td>
@@ -3139,7 +3176,19 @@ function render() {
 
   else if (state.view === "cover")     vp.innerHTML = viewCover();
   else if (state.view === "graph")     vp.innerHTML = viewGraph();
-  else if (state.view === "table")     vp.innerHTML = viewTable();
+  else if (state.view === "table")   {
+    /* Keep the reader's place across a rebuild, exactly as `buildNav()` does and for the
+     * same reason: `render()` runs on every selection, every keystroke and every message
+     * from the other window, and rewriting `innerHTML` sends a 4,734-row scroller back to
+     * row one. Without this the reveal below could never be conditional either -- the row
+     * would be off screen after every repaint, so "only when it is out of sight" would
+     * mean "always", and an automatic move would fight every deliberate one. */
+    const mount = $("#viewMount");
+    const keep = mount ? mount.scrollTop : 0;
+    vp.innerHTML = viewTable();
+    if (mount) mount.scrollTop = keep;
+    revealSelectedRow(false);
+  }
   else if (state.view === "doc")       vp.innerHTML = viewDoc();
   else if (state.view === "anomalies") vp.innerHTML = viewAnomalies();
   else if (state.view === "glossary")  { ensureVocabulary(); vp.innerHTML = viewGlossary(); }
@@ -3280,6 +3329,9 @@ function wire() {
      * Rule 30 in the view that most looks like it works: a label is not an identity. */
     selectFromNav({ nodes: [tr.dataset.row] });
   }));
+  const tgo = $("[data-tablego]");
+  if (tgo) tgo.addEventListener("click", () => revealSelectedRow(true));
+
   $$("[data-resize]").forEach(h => {
     h.addEventListener("pointerdown", (e) => {
       e.preventDefault();
@@ -3290,16 +3342,28 @@ function wire() {
       const startRem = state.colWidths[key];
       h.classList.add("active");
       h.setPointerCapture(e.pointerId);
+      const table = th.closest("table");
       const move = (ev) => {
         const deltaRem = (ev.clientX - startX) / rootPx;   /* px in, rem out */
         const w = Math.max(2.5, +(startRem + deltaRem).toFixed(3));
         state.colWidths[key] = w;
         th.style.width = w + "rem";
+        /* The table is the sum of its columns, so it has to grow with them -- otherwise a
+           column dragged wider is still boxed in by a table that has not moved, and the
+           drag stops having any effect a few pixels in. */
+        if (table) {
+          table.style.width = TABLE_COLS.reduce((n, k) => n + state.colWidths[k], 0) + "rem";
+        }
       };
       const up = () => {
         h.classList.remove("active");
         h.removeEventListener("pointermove", move);
         h.removeEventListener("pointerup", up);
+        /* Design rule 17 says column widths persist per program, and they did not: the drag
+           wrote `state.colWidths` and nothing ever saved it, so every width was lost on
+           reload. A setting that is faithfully changed and never stored is the same shape
+           as one that is faithfully stored and never read. */
+        persist();
       };
       h.addEventListener("pointermove", move);
       h.addEventListener("pointerup", up);
@@ -3712,7 +3776,7 @@ const WIRED_ATTRS = new Set([
   "cursor", "den", "disk", "drop", "edgesmotion", "egress", "ep", "fold", "gact", "gosev",
   "goto", "graphtheme", "insp", "jump", "layout", "legend", "manifest", "menuorder",
   "mode", "nav", "nav2", "navcap", "navgroups", "pkgopen", "pointerplace", "pointerreset", "pointershown", "reticule",
-  "closedetail", "detachdetail", "detail", "detailall",
+  "closedetail", "detachdetail", "detail", "detailall", "tablego",
   "navid", "node", "open", "pane", "pin", "pinnote", "pkgnode", "pkgpick", "qual",
   "resize", "row",
   "scale-set", "sec", "sev", "sevnav", "sort", "sqlshow", "start", "step", "theme",
@@ -4617,6 +4681,59 @@ function onGraphSelect(sel) {
  * the same shape as the inspector's auto-rail reopening underneath a deliberate fold
  * (rule 24) -- an automatic move may not fight a deliberate one -- so this only acts when
  * the row is genuinely out of sight. */
+/* The table's half of design rule 26, and the same discipline the navigator's version
+ * states: **an automatic move may not fight a deliberate one.** So this acts only when the
+ * row is genuinely out of sight, or when the reader asked for it by name.
+ *
+ * `force` is that ask. Without it, arriving in table mode with a selection 238,401px down
+ * would be an answer nobody could see; with it applied on every render, a reader scrolling
+ * the list to read it would be thrown back to their selection on every repaint.
+ */
+/* The element that actually scrolls, asked rather than assumed.
+ *
+ * `.tablewrap` carries `overflow: auto` and looks like the scroller; it is not. Nothing
+ * bounds its height, so it grows to all 339,229px of the table and the *pane* scrolls
+ * instead. Both the reveal and its check were written against the wrapper, so the reveal
+ * moved a `scrollTop` that had nowhere to go and the check compared the row against a box
+ * extending far below the window -- which made every row "in view" and the whole thing
+ * report success. A guard that names the right case and measures the wrong box.
+ *
+ * Walking up until something genuinely overflows survives the next layout change too,
+ * which a hard-coded id would not. */
+function scrollerFor(el) {
+  for (let n = el && el.parentElement; n && n !== document.documentElement; n = n.parentElement) {
+    const cs = getComputedStyle(n);
+    if (n.scrollHeight > n.clientHeight + 4 && /auto|scroll/.test(cs.overflowY)) return n;
+  }
+  return null;
+}
+
+/* The last row this moved to on its own, so it moves once per subject and not once per
+ * repaint. "Only when the row is out of sight" was the obvious condition and it is the
+ * wrong one here: scrolling away from your selection to read the list around it is an
+ * ordinary thing to do, and it made the row out of sight, so the next repaint dragged the
+ * reader back. **An automatic move may not fight a deliberate one** (design rule 26) --
+ * and with 4,734 rows the deliberate one is a long way from home.
+ *
+ * A *new* subject is a different matter: nobody scrolled anywhere, the answer simply
+ * changed, and an answer 97,000px off screen is not an answer. */
+let lastRevealedRow = null;
+
+function revealSelectedRow(force) {
+  if (!state.selected) return;
+  if (!force && state.selected === lastRevealedRow) return;
+  const row = $(`tr[data-row="${CSS.escape(state.selected)}"]`);
+  const sc = row && scrollerFor(row);
+  if (!row || !sc) return;
+  lastRevealedRow = state.selected;
+  const rb = row.getBoundingClientRect(), sb = sc.getBoundingClientRect();
+  const hidden = rb.bottom < sb.top || rb.top > sb.bottom;
+  if (!force && !hidden) return;
+  /* Centred rather than merely inside: a row that lands one pixel below the header is on
+     screen and still nowhere the eye goes. */
+  sc.scrollTop += (rb.top - sb.top) - (sb.height / 2) + (rb.height / 2);
+}
+
 function revealSelectedRoutine() {
   if (!state.selected) return;
   /* From the routine, not from the row. A closed package draws no rows at all now, so

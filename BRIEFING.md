@@ -5,7 +5,7 @@ It exists so a fresh context can be useful in a few minutes instead of an hour.
 
 | Read | For |
 |---|---|
-| `CLAUDE.md` | The rules. 44 engineering rules and 26 dashboard design rules, each earned from a false result on real code. **Binding.** |
+| `CLAUDE.md` | The rules. 46 engineering rules and 26 dashboard design rules, each earned from a false result on real code. **Binding.** |
 | `HANDOFF.md` | The chronological record — what was built when, what it cost, what broke. ~1,700 lines. Read *sections*, not the whole thing. |
 | **this file** | Where things are, what is done, what we are doing now, what not to re-open. |
 | Artifact `f993d319-d2b7-4217-9130-cdbba698d1bc` | The ratified dashboard design — a complete working UI, the source of truth for every view. Read it with the **Artifact tool**, not from a screenshot. |
@@ -100,48 +100,50 @@ is not computed yet.
 
 ## What we are doing now
 
-**The glossary and naming pages are ported — 2026-08-28.** See `HANDOFF.md` 5n. They were the
-last two screens admitting to being unported: both lanes were computed, tested and served, and
-the two views were still the prototype's, written against a shape the server does not send.
+**The navigator survives a long list — 2026-08-29.** See `HANDOFF.md` 5o. All three symptoms
+Tom gave at the keyboard, and the question behind them: what does the pane offer someone who
+arrives in the middle of 4,734 rows?
 
-- **A convention is followable.** `glob` is the same string the exceptions query is built from
-  (rule 41), so *Show all 99 in the graph* on `*_cmd` selects exactly the 99 the claim was
-  measured over, and the trail records it. The grade leads and the percentage is gone —
-  `naming.py` says why: *a percentage implies a precision this does not have*.
-- **A term shows however many senses anything said about it**, each with its provenance, file
-  and line — not the prototype's three hand-named document slots, which assumed in advance
-  which documents a program has (design rule 11).
-- **A citation opens.** `PROVENANCE` is gone; the viewer fetches one span from `/api/source`.
-  Which exposed a limitation now stated on the page: the document corpus is scanned but not
-  stored, so a docstring opens in context and a Markdown definition names its line and stops.
-- **The lane sizes ride with the cover**, so the navigator's count is not `TERMS.length` —
-  zero until the page is opened, and reading as *nothing here*.
-- **Rule 44**, and the guard for it: a live control reading a field the server does not send
-  renders `NaN` at zero width beside a claim that is true, and nothing throws.
+- **The notice reads before the list**, inside a sticky header, the same open or closed.
+- **The pane is a header row over a scrolling body**, with the group headings sticky inside
+  it — so the collapse control is always within reach of a wheel. Two grid rows rather than a
+  second sticky element, because a sticky element under another has to know its height.
+- **A jump strip** takes you to any group in one click and marks the group you are in,
+  generated from the same ordered table the groups are. The menu order moved out of
+  `render()`, where it was applied by shuffling DOM nodes the strip could not see.
+- **The routine list is grouped by package** — 47 rows a person can read — and by the package
+  the *stack* uses, so a heading names a plate. Packages too small for a plate of their own
+  say so and select the merged one; rule 30 from the far side.
+- **Three Settings, all counted** (design rule 2): how many groups stand open at once
+  (default one), how many routines a package lists (50 / 100 / 200 / 500 / All — Tom's, and
+  the reason is that `200 of 377` is a tease rather than a bound), and the menu order.
+- **Rules 45 and 46**, and a fourth CSS default that looks like absence.
 
-**Next, and named — two things, and the navigator one came from Tom at the keyboard:**
+**Next, and named:**
 
-1. **The navigator does not survive a long list.** Two symptoms and one question behind them.
-   *Routines* puts its `showing 200 of 4,734` notice at the **bottom** of the list it
-   describes — visible only after scrolling past two hundred rows, or when the group is
-   collapsed, which is what gives it away. And scrolling into that list **traps you**: the
-   `ROUTINES ▶` control scrolls away, so every menu below it costs a traversal of the whole
-   list. 5g had already written the reason down — *a collapse control that scrolls away is one
-   the reader cannot reach from the bottom of the list* — and made the panebar sticky while
-   leaving the group headings, which carry the same control, to scroll. Tom navigates by
-   scroll wheel and the pane has to suit that. See `HANDOFF.md`, "Navigator: scrolling
-   feedback".
-2. **`CURIOSITIES`** — `threads.py` already measures the outlier family per package, and
-   design rule 15's panel is that computation run over the whole program.
+1. **`CURIOSITIES`** — `threads.py` already measures the outlier family per package, and
+   design rule 15's panel is that computation run over the whole program. It is the last
+   thing on screen that says "not computed yet".
+2. **The two vocabulary-lane precision defects**, still open and unchanged: a DASH_GLOSS
+   mined out of a field-constraint table counts as a definition, and the undefined list's
+   head is segments of SCREAMING_SNAKE constant names — `DDL` 57, `EXTRAS` 50, `REASON` 43 —
+   burying the words that matter (`witness`, `posture`, `claim`, `probe`). Rule 1.
+3. **Packaging as a binary**, which the briefing calls the product for a reason that has not
+   changed: the tool reads private source.
 
-**Found by porting, not fixed, and belonging to the vocabulary lane rather than the
-dashboard:** a DASH_GLOSS mined out of a field-constraint table counts as a definition
-(`DEFINITION` = *1 ≤ len ≤ 5000 chars*), and the undefined list's head is segments of
-SCREAMING_SNAKE constant names — `DDL` 57, `EXTRAS` 50, `REASON` 43 — burying the words that
-matter (`witness`, `posture`, `claim`, `probe`). Precision beats recall (rule 1). Both were
-unreachable while the page said "not computed yet", which is most of the argument for the port.
+**Open on the navigator, and deliberately left to use rather than to argument:** whether 47
+closed packages is the right first screen, and whether the accordion should be the default.
+Both are Settings and both are counted, which is what design rule 2 is for.
 
 ## What we were doing before that
+
+**The glossary and naming pages are ported — 2026-08-28.** See `HANDOFF.md` 5n. They were the
+last two screens admitting to being unported: both lanes were computed, tested and served, and
+the two views were still the prototype's, written against a shape the server does not send. A
+convention is followable by its `glob` (rule 41), a term shows however many senses anything
+said about it, a citation opens from `/api/source`, and the lane sizes ride with the cover.
+**Rule 44** came out of it: a live control reading a field the server does not send renders
+`NaN` at zero width beside a claim that is true, and nothing throws.
 
 **The pop-up and the threads are built — 2026-08-28.** See `HANDOFF.md` 5l–5m.
 
@@ -240,6 +242,10 @@ Rules 28, 29 and 30.
 | The naming and glossary lanes are computed **at start**, not lazily; their bodies are fetched when their page opens, their sizes ride with the cover | `CLAUDE.md` budget; `HANDOFF.md` 5n |
 | A citation is opened from `/api/source`, never pinned into the page | `HANDOFF.md` 5n |
 | Plates a selection touches are drawn faintly and named, though plates stay off | design rule 26 |
+| The navigator is a fixed header over a scrolling body; group headings are sticky | rule 45's session; `HANDOFF.md` 5o |
+| The routine list is grouped by package, and the package is the **plates'** package | `queries.py` `NAV_ROUTINES`; rule 30 |
+| How many routines a package lists is the reader's, `All` included | `HANDOFF.md` 5o |
+| A search opens what it matched only while the answer is small, and says when it did not | rule 45 |
 
 ## How to verify — all three, before saying anything is done
 
@@ -300,11 +306,13 @@ Each of these looked like working code and passed every automated check.
 - **`render()` rewrites the centre pane on every keystroke.** Anything with state of its
   own — a canvas, a colour picker, a slider being dragged — must live outside it or be
   updated narrowly.
-- **CSS has three defaults that look like absence and are not.** A `rem` inside `@media`
+- **CSS has four defaults that look like absence and are not.** A `rem` inside `@media`
   silently means the *browser's* font size, not the page's. A media query adds no
-  specificity, so its `display: none` loses to any equal selector declared later. And a
-  grid item is `min-height: auto`, so it refuses to shrink and hands its overflow to the
-  document. All three were live in one stylesheet at once and produced one symptom.
+  specificity, so its `display: none` loses to any equal selector declared later. A grid
+  item is `min-height: auto`, so it refuses to shrink and hands its overflow to the
+  document — the first three were live in one stylesheet at once and produced one symptom.
+  And a **sticky child sticks to its scroller's padding box**, so a strip of padding there
+  is a gap the content scrolls through *above* the header meant to be covering it.
 - **`outerWidth`/`outerHeight` are device pixels; `inner*` are CSS pixels.** Mixing them
   made 88px of ordinary browser chrome read as 677px and sent a diagnosis chasing a docked
   panel that did not exist.

@@ -732,6 +732,38 @@ rule of that number — a blank canvas must say why it is blank — which does e
     string the code composes is **prose the moment something prints it**, so `f"{noun}s"`
     stood as `classs ending in \`Error\`` for as long as no page displayed it.
 
+45. **Hidden is not absent, and the difference is the whole bill.** The routine list
+    grouped 4,734 routines into 47 packages and built every package's rows whether it was
+    open or not -- closed ones being `display: none`. That is 3,413 buttons on every
+    keystroke where the flat list cost 200, at **341 ms per character typed**. Its
+    companion in the same pane: a search opened every package it matched in, and `e`
+    matches all 4,734 routines across all 47 packages -- **483 ms on the first keystroke of
+    an ordinary search**.
+
+    Both are the glossary filter's 412 ms again (see the budget table), and the cause is the
+    same one in a third costume: **work proportional to the whole program on every character
+    typed**. The filter got there by calling `render()`; this got there by building markup
+    nobody could see, and then by opening everything a broad query touched.
+
+    The second was the worse *answer* as well as the slower one, which is the part worth
+    keeping. "2,206 match `g`, in 43 packages" is something a reader can act on; 1,924 rows
+    is the haystack again. A bound on how much a search opens by itself is not a performance
+    concession, it is the better reply to a question that has not narrowed anything down
+    yet. It must say so, though: closed packages with no explanation read as a control that
+    failed -- design rule 1 with nothing removed but everything hidden.
+
+46. **An opening rule that names a position breaks exactly as an ordering one does.** Rule
+    24's companion was recorded as *an ordering rule that names a position rather than an
+    identity breaks the moment anything is added beside it*, and it was written one function
+    away from where the accordion decided which group to open: `order[0]`. So with the menu
+    order set to "Ways in first" the navigator opened on six entrypoints and left the
+    routine list -- which design rule 26 says the navigator *is* -- closed. The menu order
+    decides what sits at the **top**; it was never asked what should be **open**, and two
+    questions sharing an answer is how one of them gets answered by accident. The group is
+    named (`primary`) now.
+
+    Found by looking at the pane, not by any of the six guards written that hour.
+
 ## Anomalies: the discipline
 
 `anomalies.py` reports what looks wrong. It exists under one rule:

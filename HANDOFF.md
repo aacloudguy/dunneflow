@@ -1806,6 +1806,54 @@ Not started. It is a navigator problem, not a vocabulary one, and it is bigger t
 symptoms — the question is what the pane offers someone who arrives in the middle of a long
 list, which is the ordinary case at 4,734 routines.
 
+**5o. Built 2026-08-29: the navigator that survives a long list.** The three symptoms
+Tom gave at the keyboard, and the question behind them -- what does the pane offer someone
+who arrives in the middle of 4,734 rows?
+
+**The furniture.** The truncation notice is above the list it describes, inside a sticky
+header, and reads the same open or closed. The pane is a grid: a header row that never
+scrolls over a body that does, with `.nav-headwrap` sticky inside it -- two grid rows
+rather than a second sticky element, because a sticky element under another has to know
+its height and that height moves with the scale multiplier. A jump strip in the panebar
+takes the reader to any group in one click and marks the group they are in, generated from
+the same ordered table the groups are; the menu order moved out of `render()`, where it was
+applied by shuffling DOM nodes the strip could not see. How many groups stand open at once
+is a Setting, defaulting to one at a time.
+
+**The list.** Grouped by package -- 47 rows a person can read instead of 200 arbitrary ones
+out of 4,734 -- and by the package the *stack* uses, so a heading names a plate. Not every
+package has one: `graph.py` merges anything below `MIN_DISK`, so `/api/routines` sends the
+plates it actually has and a merged package says so on its row. How many routines a package
+lists is the reader's: 50 / 100 / 200 / 500 / All. That came from Tom, and the reason is
+worth keeping -- 200 was a judgment about markup per keystroke, and on a program whose
+packages hold 200-400 the notice read `200 of 377`, which is a tease rather than a bound.
+
+**What it cost, found by measuring.** Closed packages were still building their rows --
+3,413 buttons a keystroke against the flat list's 200, at 341 ms. A search opened every
+package it matched in, and `e` matches all 4,734 routines in all 47 packages: 483 ms on the
+first keystroke of an ordinary search. Both are the glossary filter's 412 ms again, and the
+second was the worse answer as well as the slower one. Now: 12.4 ms median, 22.2 ms worst
+over three runs of a six-keystroke search.
+
+**What it found on the way.** Four defects nothing had reported. The accordion opened
+whichever group sat first, so "Ways in first" left the routine list closed -- an *opening*
+rule that names a position breaks exactly as an ordering one does. A sticky child sticks to
+the padding box, so the scroller's top padding was a strip the list scrolled through above
+the heading meant to cover it. The jump strip's marker lit *Explore* one click after the
+reader asked for *Packages*, because with one group open the pane is short and the browser
+clamps the jump -- two correct numbers, neither saying what the reader had just done. And
+`_fn` in the guard file stopped at `\nfunction` and swallowed the `async function` after
+it, so a guard naming one function was reading two.
+
+Fifteen guards, each run against the defect it came from and against a half-working
+version. One passed against its own defect first time: the line had been disabled by
+commenting it out and the guard found the words inside the comment. Rule 37, twice in one
+session, which is the argument for the practice rather than against it.
+
+**Still owed on the navigator**: nothing named. Whether 47 closed packages is the right
+first screen, and whether the accordion should be the default, are both questions for use
+rather than for argument -- which is why both are Settings and both are counted.
+
 ### Still open
 
 - Layer storage builds on the same sidecar: content-addressing is version-control

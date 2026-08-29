@@ -2356,3 +2356,29 @@ wrong: per-row `overflow-x` on 268 hit rows makes 268 scroll containers, the sha
 **Next: the layer selection UI.** The storage is ready, Mensores is sealed as
 `2026-08-29T19:43:39Z`, and nothing else stands between the spine and a second point in time
 on screen.
+
+**Paused here, and the second point now exists.** Tom, at the pause: *society has been
+updated and pushed so there is a new version to pull when ready.* So the layer work is no
+longer a feature to be built against one snapshot and imagined — pull, re-run `analyze`, and
+there are two.
+
+Three things checked at the pause rather than assumed, because the whole next session rests
+on them and getting them wrong destroys the thing being compared:
+
+* **The sealed bodies survive the pull.** `source.db` is content-addressed and
+  `prune_missing` deliberately leaves blobs alone, so the 626 bodies of
+  `2026-08-29T19:43:39Z` are safe once the tree moves on. Its label reads *"before Society is
+  pulled fresh"*; it was sealed for this.
+* **A second `analyze` opens a second revision beside the sealed one.** Verified on a copy of
+  the real sidecar: `open_working()` on a store whose only revision is `FOR_COMPARISON`
+  created `2026-08-29T22:27:21Z` as `WORKING`, left the sealed row untouched, and the sealed
+  snapshot still answered `text()`. That is `sourcedb.py`'s whole reason for existing and it
+  now has a test-by-driving behind it.
+* **The pull is not DunneFlow's to make.** *Version control must stay pluggable* — the tool
+  never talks to a VCS, and a snapshot is identified by when it was captured rather than by a
+  commit. Someone runs `git pull`, then `analyze`.
+
+And a correction from the session, because it changes what the next one can do: I reported in
+the plan that `../mensores-overhaul` was *not on this volume*. It is, and always was — the
+check was run from a drifted working directory. Nothing was verified against a toy program as
+a result; every measurement in 5v is against the real 626-file corpus.

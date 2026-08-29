@@ -191,8 +191,28 @@ last pause (nine group headings cost ~306px open or closed). **That is one quest
 for you.**
 
 **Next: the layer selection UI** — a time slider, a revision list, a two-point comparison, or
-all three. The storage is ready and Mensores is sealed as `2026-08-29T19:43:39Z`. Nothing
-else stands between the spine and a second point in time on screen.
+all three. Nothing else stands between the spine and a second point in time on screen, and
+**the second point now exists to compare against.**
+
+> **Society has been updated and pushed** (Tom, at the 2026-08-29 pause). Pull it, re-run
+> `analyze`, and there are two revisions. The design conversation comes first — the shape of
+> the answer, as it did for the search — but this is no longer a feature that has to be built
+> against one snapshot and imagined.
+
+Four things about that, verified rather than assumed at the pause:
+
+- **The sealed snapshot survives the pull.** `source.db` is content-addressed and
+  `prune_missing` never touches blobs, so the bodies of `2026-08-29T19:43:39Z` are safe once
+  the tree moves on. That snapshot is labelled *"before Society is pulled fresh"* — it was
+  made for exactly this.
+- **The next `analyze` opens a second revision beside it, rather than replacing it.** Checked
+  on a copy of the real sidecar: `open_working()` on a store whose only revision is
+  `FOR_COMPARISON` creates a new `WORKING` one and leaves the sealed bodies readable.
+- **DunneFlow never talks to a VCS** (decided; `HANDOFF.md` "Version control must stay
+  pluggable"). The pull is a shell command someone runs, not something the tool does.
+- **`../mensores-overhaul` is present and read-only**, holding the bodies of the sealed
+  snapshot until it is pulled. Its tree is `../mensores-overhaul/src`, which is what
+  `source_root` in the graph records. All output belongs in `output/`.
 
 **Still owed from before, unchanged:** `CURIOSITIES`; the worklist's two jump buttons (a
 server change — `anomalies.py` carrying the node ids it already knows); the two

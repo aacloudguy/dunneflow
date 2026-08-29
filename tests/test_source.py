@@ -177,3 +177,183 @@ def test_the_sidecar_has_no_way_to_drop_anything() -> None:
     lowered = text.lower()
     assert "drop table" not in lowered
     assert "delete from blobs" not in lowered
+
+
+# ---------------------------------------------------------------- revisions --- #
+
+def _cap(s: SourceStore, path: str, body: str) -> str:
+    h = hash_source(body)
+    s.add_blob(body, h)
+    s.map_path(path, h)
+    s.commit()
+    return h
+
+
+def test_a_first_capture_opens_a_working_revision_with_an_instant(tmp_path: Path) -> None:
+    """A snapshot has a name and a time. It used to have neither.
+
+    The id and the state were one empty string, so there was nowhere to record when the
+    bodies had been read, and re-analysing replaced the only snapshot there was.
+    """
+    s = _store(tmp_path)
+    capture({"/a.py": hash_source("x = 1\n")}, s)          # the file does not exist: fine
+    rows = s.revisions()
+    assert len(rows) == 1
+    assert rows[0]["state"] == sourcedb.STATE_WORKING
+    assert rows[0]["stamped"] is True
+    # Identity and instant agree for an ordinary capture; they only diverge on migration.
+    assert rows[0]["revision"] == rows[0]["captured_at"] != ""
+
+
+def test_sealing_moves_no_path_and_touches_no_body(tmp_path: Path) -> None:
+    """The claim `seal()` makes about itself, asserted rather than described.
+
+    Sealing is a change of state and nothing else -- which is the whole reason it is safe
+    to do to a store whose job is to be the thing that survives.
+    """
+    s = _store(tmp_path)
+    _cap(s, "/keep.py", "kept = True\n")
+    before_paths = s.conn.execute("SELECT revision, path, hash FROM paths").fetchall()
+    before_blobs = s.conn.execute("SELECT hash, body FROM blobs").fetchall()
+
+    rev = s.seal(label="before the fresh pull")
+    assert rev is not None
+
+    after_paths = s.conn.execute("SELECT revision, path, hash FROM paths").fetchall()
+    after_blobs = s.conn.execute("SELECT hash, body FROM blobs").fetchall()
+    assert [tuple(r) for r in after_paths] == [tuple(r) for r in before_paths]
+    assert [tuple(r) for r in after_blobs] == [tuple(r) for r in before_blobs]
+    assert s.revisions()[0]["state"] == sourcedb.STATE_FOR_COMPARISON
+    assert s.revisions()[0]["label"] == "before the fresh pull"
+
+
+def test_a_sealed_snapshot_is_still_readable_before_the_next_analysis(
+        tmp_path: Path) -> None:
+    """The defect this was written from, found by asking what `seal` leaves behind.
+
+    Sealing closes the working revision on purpose, so a read that resolved only to
+    WORKING would answer "no source" for every file the sidecar holds -- and the window
+    between sealing and the next analysis is exactly when someone opens the dashboard to
+    see what they are about to replace.
+    """
+    s = _store(tmp_path)
+    _cap(s, "/keep.py", "kept = True\n")
+    s.seal()
+    assert s.working_revision() is None          # nothing open to write into
+    assert s.text("/keep.py") == "kept = True\n"  # ...and everything still readable
+    assert list(sourcedb.iter_paths(s)) == ["/keep.py"]
+
+
+def test_seal_then_capture_leaves_two_snapshots_that_disagree(tmp_path: Path) -> None:
+    """The point of the whole exercise: a second point in time is now storable.
+
+    Nothing reads it yet -- the time selector is the layer work. This asserts the store
+    can hold the answer before anything is built to ask.
+    """
+    s = _store(tmp_path)
+    _cap(s, "/f.py", "version = 1\n")
+    old = s.seal(label="v1")
+    new = s.open_working(at="2026-09-01T00:00:00Z")
+    _cap_body = "version = 2\n"
+    h = hash_source(_cap_body)
+    s.add_blob(_cap_body, h)
+    s.map_path("/f.py", h, revision=new)
+    s.commit()
+
+    assert old != new
+    assert s.text("/f.py", revision=old) == "version = 1\n"
+    assert s.text("/f.py", revision=new) == "version = 2\n"
+    assert s.text("/f.py") == "version = 2\n"          # a read defaults to the working one
+    assert {r["revision"] for r in s.revisions()} == {old, new}
+    assert s.counts()["blobs"] == 2 and s.counts()["mapped"] == 2
+    # Rule 32: the count that is printed as "files" is this revision's, not both revisions'.
+    assert s.counts()["paths"] == 1
+
+
+def test_a_read_only_open_reports_an_un_stamped_sidecar_and_never_stamps_it(
+        tmp_path: Path) -> None:
+    """Rule 20, in the store that must survive everything.
+
+    A sidecar written before revisions existed holds its paths under the empty revision.
+    Opening it to *read* must leave it exactly as it is and say what it found; only a
+    writable open -- `analyze`, or `dunneflow revisions --seal` -- may migrate it.
+    """
+    db = tmp_path / "source.db"
+    s = SourceStore(db)
+    body = "legacy = True\n"
+    h = hash_source(body)
+    s.add_blob(body, h)
+    s.conn.execute("INSERT INTO paths(revision, path, hash) VALUES('', '/old.py', ?)", (h,))
+    s.conn.execute("DELETE FROM revisions")
+    s.commit()
+    s.close()
+
+    ro = SourceStore(db, writable=False)
+    rows = ro.revisions()
+    assert [r["stamped"] for r in rows] == [False]
+    assert rows[0]["revision"] == ""
+    assert "before revisions were recorded" in rows[0]["note"]
+    assert ro.text("/old.py") == body                     # readable, and unrepaired
+    assert ro.conn.execute("SELECT COUNT(*) FROM revisions").fetchone()[0] == 0
+    with pytest.raises(PermissionError):
+        ro.seal()
+    # And the migration itself refuses, rather than being merely unreachable. `__init__`
+    # returns before calling it on a read-only open, so this can never fire today -- which
+    # is exactly why it is asserted: an unreachable guard that returns None quietly is one
+    # a future caller trips without noticing. Rule 42.
+    with pytest.raises(PermissionError):
+        ro._stamp_legacy_paths()
+    assert ro.conn.execute("SELECT COUNT(*) FROM revisions").fetchone()[0] == 0
+    ro.close()
+
+    # ...and a writable open migrates it, losing no path and inventing no instant.
+    rw = SourceStore(db)
+    rows = rw.revisions()
+    assert [r["stamped"] for r in rows] == [True]
+    assert rows[0]["state"] == sourcedb.STATE_WORKING
+    assert rows[0]["revision"] != ""
+    assert rows[0]["captured_at"] == ""            # not known here, and not invented
+    assert rw.text("/old.py") == body
+
+
+def test_a_stated_instant_fills_an_unknown_one_and_never_overwrites_a_recorded_one(
+        tmp_path: Path) -> None:
+    """Rule 13. Provenance may be supplied where there is none; it may not be rewritten."""
+    s = _store(tmp_path)
+    _cap(s, "/a.py", "a = 1\n")
+    recorded = s.revisions()[0]["captured_at"]
+    assert recorded
+    s.seal(at="1999-01-01T00:00:00Z")
+    assert s.revisions()[0]["captured_at"] == recorded   # the real one stands
+
+    other = SourceStore(tmp_path / "two" / "source.db")
+    h = hash_source("b = 1\n")
+    other.add_blob("b = 1\n", h)
+    other.conn.execute("INSERT INTO paths(revision, path, hash) VALUES('', '/b.py', ?)", (h,))
+    other.conn.execute("DELETE FROM revisions")
+    other.commit()
+    other.close()
+    again = SourceStore(tmp_path / "two" / "source.db")      # migrates: instant unknown
+    assert again.revisions()[0]["captured_at"] == ""
+    again.seal(at="2026-08-29 17:02 UTC")
+    assert again.revisions()[0]["captured_at"] == "2026-08-29 17:02 UTC"
+
+
+def test_seal_refuses_a_state_it_does_not_know(tmp_path: Path) -> None:
+    """A state is a small closed set. An unknown one is a typo that would read as a fact."""
+    s = _store(tmp_path)
+    _cap(s, "/a.py", "a = 1\n")
+    with pytest.raises(ValueError, match="not a revision state"):
+        s.seal(state="ARCHIVED")
+
+
+def test_sealing_twice_says_so_rather_than_sealing_nothing(tmp_path: Path) -> None:
+    """"Already sealed" and "nothing here" are different answers, so they are said apart."""
+    s = _store(tmp_path)
+    _cap(s, "/a.py", "a = 1\n")
+    s.seal()
+    with pytest.raises(ValueError, match="already sealed"):
+        s.seal()
+
+    empty = SourceStore(tmp_path / "empty" / "source.db")
+    assert empty.seal() is None

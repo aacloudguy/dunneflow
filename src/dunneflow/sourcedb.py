@@ -27,6 +27,18 @@ Two rules from `CLAUDE.md` apply here in an unusual way, and both are load-beari
 
 Bodies are stored compressed, because a mailable sidecar is the point and source text
 compresses about four to one. Nothing is truncated on the way in -- rule 8.
+
+**A snapshot has a name and an instant.** `WORKING` is a *state* -- the one snapshot the
+next capture writes into -- and a revision's identity is when it was captured. Before that
+distinction existed the id and the state were the same empty string, so re-analysing
+replaced the only snapshot there was: the bodies survived, because blobs are never pruned,
+and nothing was left that could name them. `seal()` is the whole of the preparation for
+temporal layers, and it is deliberately small -- the working revision already has an
+identity and a timestamp, so keeping it is a change of state and nothing else. No path row
+moves and no body is touched.
+
+Nothing here reads a second revision yet. This is the spine, so that a time selector is
+added to a working view rather than invented alongside one.
 """
 
 from __future__ import annotations
@@ -34,15 +46,32 @@ from __future__ import annotations
 import sqlite3
 import zlib
 from collections.abc import Iterator
+from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
-SOURCE_SCHEMA_VERSION = 1
+SOURCE_SCHEMA_VERSION = 2
 
-# The working tree as analysed, as opposed to a named revision. Empty rather than a word
-# like "HEAD", because this store is deliberately version-control agnostic: it never asks
-# where the bytes came from, which is what lets git, Perforce, Lore and a nightly cron all
-# be the same problem.
-WORKING = ""
+# A revision is identified by **when it was captured**, and by nothing else. Not "HEAD",
+# not a commit, not a tag: this store is deliberately version-control agnostic and never
+# asks where the bytes came from, which is what lets git, Perforce, Lore, a nightly cron
+# and a release tag all be the same problem. An instant is the one identity every one of
+# them has.
+#
+# WORKING is a **state**, not an id. It used to be both -- the id was the empty string, and
+# there was nowhere to record when the snapshot had been taken -- so a re-analysis silently
+# replaced the only snapshot there was. The bodies survived it, because `prune_missing`
+# leaves blobs alone on purpose, but nothing was left that could name them. Exactly one
+# revision is WORKING at a time: the one the next capture writes into.
+STATE_WORKING = "WORKING"
+STATE_FOR_COMPARISON = "FOR_COMPARISON"
+STATES = (STATE_WORKING, STATE_FOR_COMPARISON)
+
+# What every sidecar written before revisions were recorded holds its paths under. It reads
+# as the working revision and is stamped on the next *writable* open -- never on a read.
+# Rule 20: a read may refuse, but it may never repair, and this is the one store that must
+# survive everything.
+LEGACY_REVISION = ""
 
 SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS meta (
@@ -69,7 +98,28 @@ CREATE TABLE IF NOT EXISTS paths (
     PRIMARY KEY (revision, path)
 );
 CREATE INDEX IF NOT EXISTS ix_paths_hash ON paths(hash);
+
+-- One row per snapshot. Additive: an older sidecar gains this table and loses nothing.
+--
+-- Two columns that look like one. `revision` is the identity and is always known -- the
+-- instant the row was made. `captured_at` is a claim about the *source*: when those bodies
+-- were measured. For an ordinary capture they are the same instant. For a sidecar migrated
+-- from before revisions existed they are not, because nothing here knows when its bodies
+-- were read, and `captured_at` is left empty rather than filled with a plausible lie.
+CREATE TABLE IF NOT EXISTS revisions (
+    revision    TEXT PRIMARY KEY,   -- ISO 8601 UTC, to the second
+    state       TEXT NOT NULL,      -- one of STATES
+    captured_at TEXT NOT NULL,      -- the same instant, or empty when it is not known
+    label       TEXT NOT NULL DEFAULT '',
+    note        TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS ix_revisions_state ON revisions(state);
 """
+
+
+def _now() -> str:
+    """The identity a new revision gets. UTC, to the second, sortable as a string."""
+    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 class WrongStoreKind(ValueError):
@@ -94,6 +144,7 @@ class SourceStore:
         self.conn.executescript(SCHEMA_SQL)
         self.set_meta("kind", "source")
         self.set_meta("schema_version", str(SOURCE_SCHEMA_VERSION))
+        self._stamp_legacy_paths()
 
     # ------------------------------------------------------------------ kind --- #
 
@@ -131,6 +182,226 @@ class SourceStore:
             return None
         return None if row is None else str(row[0])
 
+    # ------------------------------------------------------------- revisions --- #
+
+    def _require_writable(self, what: str) -> None:
+        """Rule 20, stated where it can be enforced rather than remembered."""
+        if not self.writable:
+            raise PermissionError(
+                f"this sidecar was opened read-only; refusing to {what}. A read may "
+                f"refuse, but it may never repair."
+            )
+
+    def _free_revision_id(self, stamp: str) -> str:
+        """`stamp`, or `stamp#2` if that instant is already taken.
+
+        Two captures inside one second is unlikely and not impossible, and a primary-key
+        collision here would silently merge two snapshots into one.
+        """
+        rev, n = stamp, 1
+        while self.conn.execute(
+            "SELECT 1 FROM revisions WHERE revision = ?", (rev,)
+        ).fetchone() is not None:
+            n += 1
+            rev = f"{stamp}#{n}"
+        return rev
+
+    def _stamp_legacy_paths(self) -> str | None:
+        """Give an un-stamped sidecar's paths a revision that has a name.
+
+        Writable opens only, which in practice means `analyze` and `dunneflow revisions`.
+        A reader gets the legacy revision exactly as it stands and reports it as
+        un-stamped, because rule 20 says a read may refuse but may never repair -- and of
+        every store here this is the one that must survive a tool upgrade untouched.
+
+        The instant recorded as the *identity* is this migration. `captured_at` is left
+        empty, because nothing in this file knows when those bodies were measured and a
+        plausible timestamp is worse than an absent one. `graph.db` records `analysed_at`
+        beside this file, and the CLI -- which legitimately holds both -- can state it.
+        """
+        # Loudly rather than quietly. `__init__` is the only caller and it returns before
+        # reaching here on a read-only open, so this can never fire today -- but a guard
+        # that silently returns None is one a future caller could trip without noticing,
+        # and this method writes. Rule 42: check that the guard catches, not that it
+        # mentions.
+        self._require_writable("stamp an un-stamped sidecar")
+        working = self.conn.execute(
+            "SELECT 1 FROM revisions WHERE state = ? LIMIT 1", (STATE_WORKING,)
+        ).fetchone()
+        if working is not None:
+            return None                         # already stamped; nothing to migrate
+        legacy = self.conn.execute(
+            "SELECT 1 FROM paths WHERE revision = ? LIMIT 1", (LEGACY_REVISION,)
+        ).fetchone()
+        if legacy is None:
+            return None                         # a fresh sidecar, or one already moved
+        rev = self._free_revision_id(_now())
+        self.conn.execute(
+            "INSERT INTO revisions(revision, state, captured_at, note) VALUES(?, ?, '', ?)",
+            (rev, STATE_WORKING,
+             "captured before revisions were recorded, so the instant these bodies were "
+             "measured is not known here"),
+        )
+        self.conn.execute(
+            "UPDATE paths SET revision = ? WHERE revision = ?", (rev, LEGACY_REVISION)
+        )
+        self.conn.commit()
+        return rev
+
+    def current_revision(self) -> str | None:
+        """The revision every read defaults to. `None` means this sidecar holds nothing.
+
+        The working revision if there is one, and **otherwise the newest** -- which is not
+        a nicety. `seal()` leaves no working revision behind, on purpose: the next capture
+        opens a fresh one. Between those two moments a sidecar that resolved reads only to
+        WORKING would answer "no source" for every file it holds, so sealing a snapshot
+        would blind the dashboard until the next analysis. Falling back to the newest is
+        the honest reading of "what is in this file"; opening a revision to *write* is a
+        different question and `open_working()` answers it.
+
+        `None` is a different answer from an empty file, and the caller must show it as one.
+        """
+        try:
+            row = self.conn.execute(
+                "SELECT revision FROM revisions "
+                "ORDER BY state = ? DESC, revision DESC LIMIT 1", (STATE_WORKING,),
+            ).fetchone()
+        except sqlite3.Error:
+            row = None                          # a sidecar older than this table
+        if row is not None:
+            return str(row["revision"])
+        legacy = self.conn.execute(
+            "SELECT 1 FROM paths WHERE revision = ? LIMIT 1", (LEGACY_REVISION,)
+        ).fetchone()
+        return LEGACY_REVISION if legacy is not None else None
+
+    def working_revision(self) -> str | None:
+        """The revision a capture would write into, or None if none is open.
+
+        Deliberately not `current_revision()`. "What do I read" and "what do I write" are
+        different questions, and answering both with one call is how the state and the id
+        were one string in the first place.
+        """
+        try:
+            row = self.conn.execute(
+                "SELECT revision FROM revisions WHERE state = ? "
+                "ORDER BY revision DESC LIMIT 1", (STATE_WORKING,),
+            ).fetchone()
+        except sqlite3.Error:
+            return None
+        return None if row is None else str(row["revision"])
+
+    def _resolve(self, revision: str | None) -> str:
+        """Reading: `None` means the current revision; anything else is taken at its word."""
+        if revision is not None:
+            return revision
+        current = self.current_revision()
+        return LEGACY_REVISION if current is None else current
+
+    def _resolve_for_write(self, revision: str | None) -> str:
+        """Writing: `None` means the working revision, **opened if there is none**.
+
+        Deliberately not `_resolve`. Reading a store that holds nothing must answer
+        nothing; writing into a store that holds nothing must create somewhere to put it,
+        or the row lands in the legacy revision -- a path belonging to no named snapshot,
+        which is the exact state this table exists to remove. `capture()` resolves once and
+        passes the id down; this catches every other caller, and there were three.
+        """
+        if revision is not None:
+            return revision
+        return self.open_working()
+
+    def open_working(self, *, at: str | None = None) -> str:
+        """The revision new bodies are mapped into, created and stamped if there is none.
+
+        Reused rather than recreated, so analysing twice in one day does not leave two
+        half-filled snapshots behind: a capture replaces the working revision's path map,
+        which is what `prune_missing` has always done.
+        """
+        self._require_writable("open a revision")
+        open_already = self.working_revision()
+        if open_already is not None:
+            return open_already
+        stamp = at or _now()
+        rev = self._free_revision_id(stamp)
+        self.conn.execute(
+            "INSERT INTO revisions(revision, state, captured_at) VALUES(?, ?, ?)",
+            (rev, STATE_WORKING, stamp),
+        )
+        return rev
+
+    def seal(self, *, state: str = STATE_FOR_COMPARISON, label: str = "",
+             note: str = "", at: str | None = None) -> str | None:
+        """Keep the current snapshot under its own name, so the next capture is a second one.
+
+        This is the whole of the temporal preparation, and it is deliberately small: the
+        working revision already **has** an identity and a timestamp, so sealing it is a
+        change of state and nothing else. No path rows move, no body is touched, and the
+        next `capture()` opens a fresh working revision beside it.
+
+        `at` fills in a `captured_at` that migration could not know. It is only ever
+        allowed to fill an empty one -- overwriting a recorded instant with a stated one
+        would be inventing provenance, which is what rule 13 exists to prevent.
+
+        Returns the sealed revision's id, or None if there was nothing to seal.
+        """
+        self._require_writable("seal a revision")
+        if state not in STATES:
+            raise ValueError(
+                f"{state!r} is not a revision state; expected one of {STATES}"
+            )
+        rev = self.working_revision()
+        if rev is None:
+            # Nothing open to seal. Either this sidecar is empty, or its snapshot is
+            # already sealed -- and those are different answers, so say which.
+            if self.current_revision() is None:
+                return None
+            raise ValueError(
+                "the newest snapshot is already sealed; the next `analyze` opens a "
+                "working revision beside it, and that is the one to seal next"
+            )
+        self.conn.execute(
+            "UPDATE revisions SET state = ?, label = ?, note = ?, "
+            "captured_at = CASE WHEN captured_at = '' THEN ? ELSE captured_at END "
+            "WHERE revision = ?",
+            (state, label, note, at or "", rev),
+        )
+        self.conn.commit()
+        return rev
+
+    def revisions(self) -> list[dict[str, Any]]:
+        """Every snapshot this sidecar holds, newest first, with how many paths it maps.
+
+        An un-stamped sidecar is *reported* as the one working revision it is, marked
+        `stamped: False`. Reporting is not repairing: nothing is written, and the row says
+        plainly that it has no identity yet rather than being given one behind the reader.
+        """
+        try:
+            rows = self.conn.execute(
+                "SELECT r.revision, r.state, r.captured_at, r.label, r.note, "
+                "       (SELECT COUNT(*) FROM paths p WHERE p.revision = r.revision) files "
+                "FROM revisions r ORDER BY r.revision DESC"
+            ).fetchall()
+        except sqlite3.Error:
+            rows = []
+        out: list[dict[str, Any]] = [
+            {"revision": str(r["revision"]), "state": str(r["state"]),
+             "captured_at": str(r["captured_at"]), "label": str(r["label"]),
+             "note": str(r["note"]), "files": int(r["files"]), "stamped": True}
+            for r in rows
+        ]
+        legacy = self.conn.execute(
+            "SELECT COUNT(*) FROM paths WHERE revision = ?", (LEGACY_REVISION,)
+        ).fetchone()
+        if legacy is not None and int(legacy[0]):
+            out.append({
+                "revision": LEGACY_REVISION, "state": STATE_WORKING, "captured_at": "",
+                "label": "", "files": int(legacy[0]), "stamped": False,
+                "note": "captured before revisions were recorded; open this sidecar for "
+                        "writing, or run `dunneflow revisions --seal`, to give it a name",
+            })
+        return out
+
     # --------------------------------------------------------------- writing --- #
 
     def has_blob(self, content_hash: str) -> bool:
@@ -164,12 +435,14 @@ class SourceStore:
         return True
 
     def map_path(self, path: str, content_hash: str, *,
-                 lang: str | None = None, revision: str = WORKING) -> None:
+                 lang: str | None = None, revision: str | None = None) -> None:
         """Record that `path` held this body at this revision.
 
         Written whether or not the blob was new: two paths with identical contents are
-        two facts about the program and one blob.
+        two facts about the program and one blob. `revision` defaults to the current one;
+        `capture()` resolves it once and passes it, rather than asking per file.
         """
+        revision = self._resolve_for_write(revision)
         self.conn.execute(
             "INSERT INTO paths(revision, path, hash, lang) VALUES(?, ?, ?, ?) "
             "ON CONFLICT(revision, path) DO UPDATE SET hash = excluded.hash, "
@@ -177,13 +450,15 @@ class SourceStore:
             (revision, path, content_hash, lang),
         )
 
-    def prune_missing(self, live_paths: list[str], *, revision: str = WORKING) -> int:
+    def prune_missing(self, live_paths: list[str], *,
+                      revision: str | None = None) -> int:
         """Forget paths that no longer exist at this revision.
 
         The *blobs* are deliberately left alone. A body that no path currently points at
         is still the body some earlier revision was analysed from, and this store exists
         to keep exactly that. Only the path mapping is current-state.
         """
+        revision = self._resolve_for_write(revision)
         keep = set(live_paths)
         gone = [
             r["path"] for r in self.conn.execute(
@@ -202,7 +477,7 @@ class SourceStore:
 
     # --------------------------------------------------------------- reading --- #
 
-    def text(self, path: str, *, revision: str = WORKING) -> str | None:
+    def text(self, path: str, *, revision: str | None = None) -> str | None:
         """The whole body of one file, or None if this sidecar does not hold it.
 
         None is an honest answer and the caller must show it as one: a map analysed with
@@ -212,14 +487,14 @@ class SourceStore:
         row = self.conn.execute(
             "SELECT b.body FROM paths p JOIN blobs b ON b.hash = p.hash "
             "WHERE p.revision = ? AND p.path = ?",
-            (revision, path),
+            (self._resolve(revision), path),
         ).fetchone()
         if row is None:
             return None
         return zlib.decompress(row["body"]).decode("utf-8", errors="replace")
 
     def lines(self, path: str, first: int, last: int, *,
-              revision: str = WORKING) -> list[tuple[int, str]]:
+              revision: str | None = None) -> list[tuple[int, str]]:
         """A numbered span of one file, clamped to what the file actually has.
 
         Numbering is one-based to match every line number the graph records, and the
@@ -242,9 +517,17 @@ class SourceStore:
         stored = self.conn.execute(
             "SELECT COALESCE(SUM(LENGTH(body)), 0) FROM blobs"
         ).fetchone()[0]
-        paths = self.conn.execute("SELECT COUNT(*) FROM paths").fetchone()[0]
-        return {"blobs": int(blobs), "paths": int(paths),
-                "bytes": int(raw), "stored": int(stored)}
+        # Per revision, not global. Once a second snapshot exists a global path count
+        # answers no question anybody asks -- "how many files does this program have" and
+        # "how many path-revision rows are stored" are different numbers, and the line
+        # `analyze` prints wants the first. Rule 32: a count must say what it counts.
+        paths = self.conn.execute(
+            "SELECT COUNT(*) FROM paths WHERE revision = ?", (self._resolve(None),)
+        ).fetchone()[0]
+        mapped = self.conn.execute("SELECT COUNT(*) FROM paths").fetchone()[0]
+        revs = self.conn.execute("SELECT COUNT(*) FROM revisions").fetchone()[0]
+        return {"blobs": int(blobs), "paths": int(paths), "mapped": int(mapped),
+                "revisions": int(revs), "bytes": int(raw), "stored": int(stored)}
 
     def close(self) -> None:
         self.conn.close()
@@ -252,7 +535,7 @@ class SourceStore:
 
 def capture(store_hashes: dict[str, str], source: SourceStore, *,
             langs: dict[str, str] | None = None,
-            revision: str = WORKING) -> dict[str, int]:
+            revision: str | None = None) -> dict[str, int]:
     """Store every body the graph measured that this sidecar does not already hold.
 
     Driven by `Store.known_hashes()` -- path to content hash for every live file -- rather
@@ -267,6 +550,9 @@ def capture(store_hashes: dict[str, str], source: SourceStore, *,
     paying for.
     """
     langs = langs or {}
+    # Resolved once. The working revision is created here if this is a first capture, so
+    # that every path row below lands in a snapshot that has a name and an instant.
+    revision = revision if revision is not None else source.open_working()
     stats = {"stored": 0, "cached": 0, "missing": 0}
     for path, content_hash in sorted(store_hashes.items()):
         if source.has_blob(content_hash):
@@ -287,9 +573,11 @@ def capture(store_hashes: dict[str, str], source: SourceStore, *,
     return stats
 
 
-def iter_paths(source: SourceStore, *, revision: str = WORKING) -> Iterator[str]:
+def iter_paths(source: SourceStore, *,
+               revision: str | None = None) -> Iterator[str]:
     """Every path this sidecar can serve, in order."""
     for row in source.conn.execute(
-        "SELECT path FROM paths WHERE revision = ? ORDER BY path", (revision,)
+        "SELECT path FROM paths WHERE revision = ? ORDER BY path",
+        (source._resolve(revision),),
     ):
         yield str(row["path"])

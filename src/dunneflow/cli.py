@@ -12,6 +12,7 @@ re-read.
 from __future__ import annotations
 
 import argparse
+import sqlite3
 import sys
 import time
 from datetime import UTC, datetime
@@ -28,7 +29,7 @@ from .resolve.glossary import bind
 from .resolve.mirror import BANDS as MIRROR_BANDS
 from .resolve.mirror import measure as measure_mirror
 from .resolve.naming import measure
-from .sourcedb import SourceStore
+from .sourcedb import STATE_FOR_COMPARISON, SourceStore
 from .sourcedb import capture as capture_source
 from .store import StaleGraphError, Store
 from .walk import analyze_docs_tree, analyze_tree
@@ -150,6 +151,7 @@ def cmd_analyze(args: argparse.Namespace) -> int:
         src_stats = capture_source(store.known_hashes(), source,
                                    langs=store.known_langs())
         sc = source.counts()
+        rev = source.current_revision()
         if not args.quiet:
             _emit(
                 f"source: {sc['blobs']:,} bodies for {sc['paths']:,} paths "
@@ -157,6 +159,14 @@ def cmd_analyze(args: argparse.Namespace) -> int:
                 f"source) — {src_stats['stored']:,} read, {src_stats['cached']:,} "
                 f"already held"
                 + (f", {src_stats['missing']:,} unreadable" if src_stats["missing"] else "")
+            )
+            # Which snapshot this went into, and how many there are. A sidecar quietly
+            # holding one revision and a sidecar quietly replacing the only one it had
+            # look identical from here, and they were the same thing until now.
+            _emit(
+                f"        revision {rev} of {sc['revisions']:,}"
+                + (f", {sc['mapped']:,} path-revision rows in all"
+                   if sc["revisions"] > 1 else "")
             )
         source.close()
 
@@ -447,6 +457,88 @@ def cmd_check(args: argparse.Namespace) -> int:
     return 1 if counts.get(BROKEN, 0) else 0
 
 
+def cmd_revisions(args: argparse.Namespace) -> int:
+    """What snapshots this sidecar holds, and how to keep the current one.
+
+    Listing opens the store **read-only**, which is not a detail: a writable open stamps a
+    sidecar written before revisions were recorded, and that is a migration. Rule 20 says a
+    read may refuse but may never repair, so asking what is there must not change what is
+    there. `--seal` is the writable path, and it says what it did.
+    """
+    out_dir = Path(args.out_dir)
+    db = out_dir / "source.db"
+    if not db.exists():
+        _emit(f"no source sidecar at {db} — analysed with --no-source, or handed over "
+              f"without it")
+        return 1
+
+    if args.seal:
+        # The instant those bodies were measured is not in this store, and inventing one
+        # would be provenance nobody can check (rule 13). The graph beside it recorded
+        # `analysed_at` when it read them, so state that rather than today's date.
+        at = args.at or _analysed_at(out_dir / "graph.db")
+        source = SourceStore(db)
+        try:
+            rev = source.seal(label=args.label or "", at=at)
+        except ValueError as exc:
+            # "already sealed" and "nothing here" are different answers and the store
+            # keeps them apart; printing one message for both would lose that.
+            _emit(f"nothing to seal: {exc}")
+            source.close()
+            return 1
+        source.commit()
+        if rev is None:
+            _emit("nothing to seal: this sidecar holds no paths")
+            source.close()
+            return 1
+        _emit(f"sealed {rev} as {STATE_FOR_COMPARISON}"
+              + (f" — “{args.label}”" if args.label else "")
+              + ("" if at else "\n  its capture instant is unknown and stays unknown; "
+                               "state one with --at"))
+        _emit("the next `analyze` opens a fresh working revision beside it")
+        source.close()
+        return 0
+
+    source = SourceStore(db, writable=False)
+    rows = source.revisions()
+    if not rows:
+        _emit(f"{db} holds no revisions and no paths")
+        source.close()
+        return 1
+    print(f"{'revision':22} {'state':16} {'captured':22} {'files':>6}  label")
+    for r in rows:
+        rev = r["revision"] or "(un-stamped)"
+        cap = r["captured_at"] or "—"
+        print(f"{rev:22} {r['state']:16} {cap:22} {r['files']:>6,}  {r['label']}")
+        if r["note"]:
+            print(f"  {r['note']}")
+    if any(not r["stamped"] for r in rows):
+        # The table goes to stdout and the advice to stderr, which two buffers will
+        # otherwise interleave backwards -- advice about a listing, printed above it.
+        sys.stdout.flush()
+        _emit("\nrun `dunneflow revisions <dir> --seal` to give the current snapshot a "
+              "name before it is replaced")
+    source.close()
+    return 0
+
+
+def _analysed_at(graph_db: Path) -> str:
+    """When the graph beside this sidecar says it read the source, or "" if it cannot say.
+
+    A separate store, opened here and nowhere else: `sourcedb` must not reach into
+    `graph.db`, and the CLI is the one caller that legitimately holds both paths.
+    """
+    if not graph_db.exists():
+        return ""
+    try:
+        conn = sqlite3.connect(f"file:{graph_db}?mode=ro", uri=True)
+        row = conn.execute("SELECT value FROM meta WHERE key = 'analysed_at'").fetchone()
+        conn.close()
+    except sqlite3.Error:
+        return ""
+    return "" if row is None else str(row[0])
+
+
 def cmd_query(args: argparse.Namespace) -> int:
     opened = _open_store(args)
     if not opened:
@@ -553,6 +645,16 @@ def build_parser() -> argparse.ArgumentParser:
     q.add_argument("--sql", required=True)
     q.add_argument("--limit", type=int, default=40)
     q.set_defaults(func=cmd_query)
+
+    rv = sub.add_parser(
+        "revisions", help="what snapshots the source sidecar holds, and keep the current one")
+    rv.add_argument("out_dir", help="an analysed program's output directory")
+    rv.add_argument("--seal", action="store_true",
+                    help="keep the current snapshot under its own name, so the next "
+                         "analysis is a second one rather than a replacement")
+    rv.add_argument("--label", help="a name for the sealed snapshot")
+    rv.add_argument("--at", help="when its bodies were measured, if the graph cannot say")
+    rv.set_defaults(func=cmd_revisions)
 
     sv = sub.add_parser("serve", help="open the interactive map in a browser")
     sv.add_argument("out_dir", help="an analysed program's output directory")

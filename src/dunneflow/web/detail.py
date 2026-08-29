@@ -23,6 +23,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from ..schema import signature_parts
 from ..sourcedb import SourceStore
 from ..store import Store
 from . import queries
@@ -385,6 +386,20 @@ def hover_card(store: Store, node_id: str) -> dict[str, Any]:
         start, end = routine["line_start"], routine["line_end"]
         return {
             "found": True, "id": node_id, "kind": "ROUTINE",
+            # What moves in, and what comes back out. This is the subject of the whole
+            # tool, and until now the one thing about a routine the card never said.
+            #
+            # Sent as **pieces**, not as a rendered line, so the card can colour the name
+            # apart from the types -- and rendered by `schema.signature_parts`, which is the
+            # same function the Markdown documents go through, so the two cannot disagree
+            # about where a `*` belongs. The alternative was splitting a finished string
+            # back into its parts in JavaScript, which is a second parser of something the
+            # first one had already taken apart.
+            "params": signature_parts([
+                (r["name"], r["type"], r["dflt"], r["kind"])
+                for r in _rows(store, queries.ROUTINE_PARAMS, {"id": node_id})
+            ]),
+            "returns": routine["returns"] or "",
             "name": routine["name"], "qualname": routine["qualname"],
             "module": routine["module"], "file": routine["file"],
             "line_start": start, "line_end": end,

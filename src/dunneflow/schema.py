@@ -17,6 +17,7 @@ and nothing read from code may ever depend on prose being present.
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Literal
@@ -102,7 +103,63 @@ class Param:
     name: str
     type: str | None = None
     default: str | None = None
-    kind: Literal["positional", "keyword", "vararg", "kwarg"] = "positional"
+    # `positional_only` is what sits before a `/`; `keyword` is what sits after a `*`.
+    # Both markers are structure, not decoration -- a signature printed without them
+    # is not the one in the file (rule 8 at ingest, rule 13 at the screen).
+    kind: Literal["positional_only", "positional", "vararg",
+                  "keyword", "kwarg"] = "positional"
+
+
+def signature_parts(
+    params: Sequence[tuple[str, str | None, str | None, str]],
+) -> list[dict[str, str]]:
+    """The parameter list as ordered pieces, **markers included**.
+
+    One implementation, because there are two callers and a signature is the kind of thing
+    that must not have two answers. `Routine.signature()` renders the line for the Markdown
+    documents; the hover card needs the same sequence with the name and the type still told
+    apart so it can colour them. Splitting one string back into its parts on the far side
+    would be a second parser of something the first one already knew.
+
+    The markers are the whole reason this is not a `join`. `def f(a, *, b)` and `def f(a, b)`
+    are different functions -- the first cannot be called `f(1, 2)` -- and `signature()`
+    rendered them identically for as long as it existed, because it handled the `*args` and
+    `**kwargs` *prefixes* and never the bare separators between groups. A printed signature
+    that is not the one in the file is rule 13 at the screen, and it is worse here than a
+    missing signature would be: it is specific, plausible and wrong.
+
+    `/` closes a run of positional-only parameters; `*` opens the keyword-only ones, and only
+    when no `*args` has already opened them -- `def f(*a, b)` needs no separator because
+    `*a` is one.
+    """
+    out: list[dict[str, str]] = []
+    seen_star = False
+    for i, (name, type_, default, kind) in enumerate(params):
+        if kind == "keyword" and not seen_star:
+            out.append({"text": "*", "marker": "*"})
+            seen_star = True
+        if kind == "vararg":
+            seen_star = True
+
+        prefix = {"vararg": "*", "kwarg": "**"}.get(kind, "")
+        text = f"{prefix}{name}"
+        if type_:
+            text += f": {type_}"
+        if default is not None:
+            text += f" = {default}"
+        piece = {"text": text, "name": f"{prefix}{name}"}
+        if type_:
+            piece["type"] = type_
+        if default is not None:
+            piece["default"] = default
+        out.append(piece)
+
+        # After the last of a run, never after each one.
+        if kind == "positional_only" and (
+            i + 1 == len(params) or params[i + 1][3] != "positional_only"
+        ):
+            out.append({"text": "/", "marker": "/"})
+    return out
 
 
 @dataclass(frozen=True, slots=True)
@@ -177,16 +234,9 @@ class Routine:
 
     def signature(self) -> str:
         """Render the signature the way it would be read, not the way it was written."""
-        parts = []
-        for p in self.params:
-            prefix = {"vararg": "*", "kwarg": "**"}.get(p.kind, "")
-            s = f"{prefix}{p.name}"
-            if p.type:
-                s += f": {p.type}"
-            if p.default is not None:
-                s += f" = {p.default}"
-            parts.append(s)
-        sig = f"{self.name}({', '.join(parts)})"
+        rendered = ", ".join(part["text"] for part in signature_parts(
+            [(p.name, p.type, p.default, p.kind) for p in self.params]))
+        sig = f"{self.name}({rendered})"
         if self.returns:
             sig += f" -> {self.returns}"
         return sig

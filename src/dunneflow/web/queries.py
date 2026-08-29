@@ -385,7 +385,7 @@ ORDER BY a.file, a.line
 
 HOVER_ROUTINE = """
 SELECT r.name, r.qualname, r.module, r.file, r.line_start, r.line_end,
-       r.is_async, r.is_method, r.class_name, r.visibility, r.docstring,
+       r.is_async, r.is_method, r.class_name, r.visibility, r.docstring, r.returns,
        (SELECT COUNT(*) FROM comments c WHERE c.routine_id = r.id) AS n_comments,
        (SELECT COUNT(*) FROM calls c
          WHERE c.caller_id = r.id AND c.external = 1) AS n_external

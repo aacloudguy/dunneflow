@@ -844,10 +844,21 @@ def test_the_hover_card_renders_only_fields_the_server_sends() -> None:
     shell = _read("shell.js")
     detail = (WEB / "detail.py").read_text(encoding="utf-8")
 
-    # Everything `hoverDetailHtml` reads off the served object.
-    body = shell.split("function hoverDetailHtml(card, needWhere) {", 1)[1].split("\n}\n", 1)[0]
-    read = set(re.findall(r"\bcard\.(\w+)", body))
-    assert read, "hoverDetailHtml changed shape -- this test is blind"
+    # Everything the card's renderers read off the served object.
+    #
+    # **Every** renderer, not just the one this was written against. `hoverSigHtml` was
+    # added as its own function and sat entirely outside this check's span for as long as
+    # it took to notice -- so the card's most important line, the one thing on it that is
+    # not a summary, was the one part nothing was vouching for. A check whose span does not
+    # follow the code it names has stopped being a check (rule 37, in a test rather than in
+    # a control).
+    read: set[str] = set()
+    for fn in ("hoverDetailHtml(card, needWhere)", "hoverSigHtml(card)", "hoverSkeleton(h)"):
+        name = fn.split("(", 1)[0]
+        assert f"function {fn} {{" in shell, f"{name} changed shape -- this test is blind"
+        body = shell.split(f"function {fn} {{", 1)[1].split("\n}\n", 1)[0]
+        read |= set(re.findall(r"\bcard\.(\w+)", body))
+    assert read, "no renderer reads the served card at all -- this test is blind"
 
     # Everything `hover_card` puts on it. Only the dict literals it returns, so a key that
     # exists elsewhere in the module does not vouch for one the card never receives.
@@ -858,6 +869,61 @@ def test_the_hover_card_renders_only_fields_the_server_sends() -> None:
     assert not missing, (
         f"the pop-up renders fields the server never sends: {missing} -- each is a row "
         "that silently does not appear, indistinguishable from a node with nothing to say"
+    )
+
+
+def test_the_invocation_line_is_the_one_in_the_code() -> None:
+    """What moves in and what comes back out -- the subject of the whole tool, and the one
+    thing about a routine the card never said. Asked for at the keyboard.
+
+    A signature is the kind of thing that must not have two answers, so the marker logic
+    lives once, in `schema.signature_parts`, and the client colours what it is handed. The
+    checks below are all one claim in different places: **the line printed is the line in
+    the file**, which is rule 13 at the last surface it can still go wrong on.
+    """
+    shell = _read("shell.js")
+    sig = _fn(shell, "hoverSigHtml")
+
+    # It leads the fetched half. The measures and the touches *describe* the routine; this
+    # one is the routine, and burying it under them answers a different question first.
+    detail = _fn(shell, "hoverDetailHtml")
+    at_sig = detail.index("hoverSigHtml(card)")
+    for later in ('needWhere && card.file', 'card.kind === "ROUTINE"', "card.touches"):
+        assert at_sig < detail.index(later), (
+            f"the invocation line is pushed after `{later}`, so the card leads with a "
+            f"summary of the routine rather than with the routine"
+        )
+
+    # The markers are rendered. Dropped, `def f(a, *, b)` prints as `f(a, b)` -- a different
+    # function, and one that cannot be called the way the card implies.
+    assert "p.marker" in sig and 'esc(p.marker)' in sig, (
+        "the client drops the `*` and `/` pieces, so 998 of Mensores' 4,734 signatures "
+        "print with a calling convention the code does not have"
+    )
+
+    # And it decides nothing about them. Two implementations of where a `*` belongs would
+    # agree until the day one was edited (rule 36); the server sends the pieces in order and
+    # this function's whole job is colour.
+    for word in ('"keyword"', '"vararg"', '"kwarg"', '"positional'):
+        assert word not in sig, (
+            f"the card reasons about parameter kinds ({word}) -- that is a second opinion "
+            f"on where a marker belongs, beside `schema.signature_parts`"
+        )
+
+    # `<module>` is DunneFlow's own name for module scope, not something anybody wrote.
+    # `<module>()` is a call that cannot be made -- inventing an invocation to fill a row.
+    assert 'card.name === "<module>"' in sig, (
+        "a module-scope node renders an invocation line, which is a call nobody can make"
+    )
+
+    # One renderer, reached from Python and from the browser, so the Markdown documents and
+    # the card cannot disagree about the same routine.
+    schema = (WEB.parent / "schema.py").read_text(encoding="utf-8")
+    assert "def signature_parts(" in schema, "the shared renderer is gone"
+    body = schema.split("def signature(self)", 1)[1].split("\n    def ", 1)[0]
+    assert "signature_parts(" in body, (
+        "`Routine.signature()` no longer goes through the shared renderer, so the Markdown "
+        "documents and the hover card are two opinions about one signature again"
     )
 
 

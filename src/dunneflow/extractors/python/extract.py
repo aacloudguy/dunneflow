@@ -409,12 +409,30 @@ class _Extractor(ast.NodeVisitor):
     # -- definitions ------------------------------------------------------- #
 
     def _params(self, args: ast.arguments) -> list[Param]:
+        """The parameters as written, markers included.
+
+        `posonlyargs` was folded into `args` here and recorded as plain `positional`, so
+        the `/` separating positional-only parameters was destroyed at ingest -- rule 8,
+        in the smallest possible instance: a value shortened before it reaches the store
+        is lost for good rather than merely unshown. Nothing had asked for it until the
+        hover card began printing the invocation line, and a printed signature that is not
+        the one in the file is exactly what rule 13 forbids.
+
+        Neither Mensores nor DunneFlow uses `/` in any of 4,724 definitions between them,
+        so this fixes nothing visible today. That is the argument for doing it now rather
+        than against: the cost is three lines while nothing depends on the old shape, and
+        the alternative is a renderer that is silently wrong on the first codebase that
+        does use it. Defaults still pad from the right across both groups, which is how
+        `def f(a, b=1, /, c=2)` binds.
+        """
         out: list[Param] = []
         positional = list(args.posonlyargs) + list(args.args)
+        n_posonly = len(args.posonlyargs)
         pad = len(positional) - len(args.defaults)
         for i, a in enumerate(positional):
             default = _literal(args.defaults[i - pad]) if i >= pad else None
-            out.append(Param(a.arg, _annotation(a.annotation), default, "positional"))
+            out.append(Param(a.arg, _annotation(a.annotation), default,
+                             "positional_only" if i < n_posonly else "positional"))
         if args.vararg:
             out.append(Param(args.vararg.arg, _annotation(args.vararg.annotation), None, "vararg"))
         for a, d in zip(args.kwonlyargs, args.kw_defaults, strict=False):

@@ -4488,6 +4488,49 @@ function navHoverSkeleton(row) {
     <div class="hc-rest"></div>`;
 }
 
+/* ── the invocation line ──
+ *
+ * What moves in and what comes back out, which is the subject of the whole tool and the one
+ * thing about a routine the card never said. Asked for at the keyboard: *the whole
+ * invocation line from the code -- focus on the name, then any arguments with types. We're
+ * looking at flow, and information flows are what we are chasing.*
+ *
+ * So it leads the fetched half, above the measures and the touches: those describe the
+ * routine, this one *is* it.
+ *
+ * The pieces arrive already ordered and already carrying their markers, decided by
+ * `schema.signature_parts` -- the same function the Markdown documents render through, so
+ * a `*` cannot appear in one and not the other. This function does nothing but colour what
+ * it is handed. Composing the line here from a bare parameter list is what the server was
+ * asked not to make it do: `def f(a, *, b)` and `def f(a, b)` are different functions, and
+ * 998 of Mensores' 4,734 routines need that separator.
+ *
+ * **No line at all for `<module>`.** That is DunneFlow's own name for module scope, not a
+ * routine anybody wrote, and `<module>()` would be a call that cannot be made -- inventing
+ * an invocation to fill a row is the same defect as inventing an id to make one clickable.
+ */
+function hoverSigHtml(card) {
+  if (card.kind !== "ROUTINE" || !card.name || card.name === "<module>") return "";
+  const params = card.params || [];
+
+  const piece = (p) => {
+    if (p.marker) return `<span class="sig-punc">${esc(p.marker)}</span>`;
+    let out = esc(p.name || "");
+    if (p.type) out += `<span class="sig-punc">: </span><span class="sig-type">${esc(p.type)}</span>`;
+    if (p.default !== undefined) {
+      out += `<span class="sig-punc"> = </span><span class="sig-dflt">${esc(p.default)}</span>`;
+    }
+    return out;
+  };
+
+  return `<div class="hc-sig">${card.is_async ? `<span class="sig-punc">async </span>` : ""
+    }<b class="sig-name">${esc(card.name)}</b><span class="sig-punc">(</span>${
+      params.map(piece).join(`<span class="sig-punc">, </span>`)
+    }<span class="sig-punc">)</span>${
+      card.returns ? `<span class="sig-punc"> \u2192 </span><span class="sig-type">${
+        esc(card.returns)}</span>` : ""}</div>`;
+}
+
 /* Stage two: what only the store knows. Written into `.hc-rest` rather than by rebuilding
  * the card, so the half already under the reader's eye does not move.
  *
@@ -4499,6 +4542,9 @@ function navHoverSkeleton(row) {
 function hoverDetailHtml(card, needWhere) {
   if (!card || !card.found) return "";
   const bits = [];
+
+  const sig = hoverSigHtml(card);
+  if (sig) bits.push(sig);
 
   if (needWhere && card.file) {
     const file = String(card.file).split("/").slice(-1)[0];

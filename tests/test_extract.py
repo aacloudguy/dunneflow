@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from dunneflow.extractors.python.extract import extract_file, module_name
-from dunneflow.schema import BoundaryKind
+from dunneflow.schema import BoundaryKind, signature_parts
 
 
 def _facts(sample_tree: Path):
@@ -24,6 +24,66 @@ def test_signature_carries_types_and_defaults(sample_tree):
     assert rt.signature() == (
         "save_widget(conn: sqlite3.Connection, name: str, qty: int = 0) -> None"
     )
+
+
+def test_a_signature_carries_the_markers_that_change_what_it_means(tmp_path):
+    """`def f(a, *, b)` and `def f(a, b)` are different functions -- the first cannot be
+    called `f(1, 2)` -- and `signature()` rendered them identically for as long as it
+    existed. It handled the `*args` and `**kwargs` prefixes and never the bare separators
+    between the groups, so a card printing it would have been specific, plausible and wrong.
+
+    Every kind at once, because the bug was in the *transitions* between them, not in any
+    one kind: `/` closes a run and `*` opens one, and `*args` opens it already.
+    """
+    src = tmp_path / "sig.py"
+    src.write_text(
+        "def every(a: int, b: str = 'x', /, c: float = 1.0, *args: int,\n"
+        "          d: bool = True, **rest: object) -> None: ...\n"
+        "def starred(a: int, *, b: str) -> None: ...\n"
+        "def varargs(*a: int, b: str) -> None: ...\n",
+        encoding="utf-8",
+    )
+    by = {r.name: r for r in extract_file(src, tmp_path).routines}
+
+    assert by["every"].signature() == (
+        "every(a: int, b: str = 'x', /, c: float = 1.0, *args: int, "
+        "d: bool = True, **rest: object) -> None"
+    )
+    # The defect exactly: without the separator this reads as two ordinary parameters.
+    assert by["starred"].signature() == "starred(a: int, *, b: str) -> None"
+    # And no separator where `*args` has already opened the keyword-only group.
+    assert by["varargs"].signature() == "varargs(*a: int, b: str) -> None"
+
+    # The markers travel as their own pieces, so the card can lay them out without
+    # re-parsing a string the renderer had already taken apart.
+    parts = signature_parts([(p.name, p.type, p.default, p.kind)
+                             for p in by["every"].params])
+    assert [x["text"] for x in parts] == [
+        "a: int", "b: str = 'x'", "/", "c: float = 1.0", "*args: int",
+        "d: bool = True", "**rest: object",
+    ]
+    assert [x.get("marker") for x in parts] == [None, None, "/", None, None, None, None]
+
+    # A marker is not a parameter and must never be coloured as one. Checked against
+    # `starred`, not against `every`: `every` opens its keyword-only group with `*args`, so
+    # it grows no bare `*` at all and this assertion had nothing to fail on -- it passed
+    # against its own mutation until the mutation was run. Rule 37, in a fixture.
+    star = signature_parts([(p.name, p.type, p.default, p.kind)
+                            for p in by["starred"].params])
+    assert [x["text"] for x in star] == ["a: int", "*", "b: str"]
+    assert [x.get("marker") for x in star] == [None, "*", None]
+    assert all("name" not in x and "type" not in x
+               for x in star + parts if x.get("marker"))
+
+
+def test_positional_only_survives_ingest(tmp_path):
+    """Rule 8 in its smallest instance. `posonlyargs` was folded into `args` and recorded as
+    plain `positional`, so the `/` was gone before anything could ask for it -- a value
+    shortened at ingest is lost for good rather than merely unshown."""
+    src = tmp_path / "po.py"
+    src.write_text("def f(a, b, /, c): ...\n", encoding="utf-8")
+    kinds = [p.kind for p in extract_file(src, tmp_path).routines[0].params]
+    assert kinds == ["positional_only", "positional_only", "positional"]
 
 
 def test_comment_becomes_the_why(sample_tree):

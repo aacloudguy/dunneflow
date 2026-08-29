@@ -242,6 +242,9 @@ Rules 28, 29 and 30.
 | The naming and glossary lanes are computed **at start**, not lazily; their bodies are fetched when their page opens, their sizes ride with the cover | `CLAUDE.md` budget; `HANDOFF.md` 5n |
 | A citation is opened from `/api/source`, never pinned into the page | `HANDOFF.md` 5n |
 | Plates a selection touches are drawn faintly and named, though plates stay off | design rule 26 |
+| **Plate**, never disk or plane, in every word a reader sees | `HANDOFF.md` 5p; a guard |
+| The you-are-here arrow is a billboard at the plate's rim, aimed by a screen angle | `HANDOFF.md` 5p; rule 22 |
+| The way back restores the view the selection was *found* in, not a computed fit | `HANDOFF.md` 5p |
 | The navigator is a fixed header over a scrolling body; group headings are sticky | rule 45's session; `HANDOFF.md` 5o |
 | The routine list is grouped by package, and the package is the **plates'** package | `queries.py` `NAV_ROUTINES`; rule 30 |
 | How many routines a package lists is the reader's, `All` included | `HANDOFF.md` 5o |

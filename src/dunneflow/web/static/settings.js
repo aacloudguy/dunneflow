@@ -69,6 +69,15 @@ const DEFAULTS = {
    * rather than body text. */
   pointerShown: true,
   pointerColor: '',       // '' = the token, whichever theme is in force
+  /* Where the arrow stands. Design rule 2, and a genuine pair.
+   *
+   * `rim` puts it at the side of the stack, at the height of the plate holding the node and
+   * on that node's own bearing, so the line through it leads the eye inward. It is findable
+   * from across the whole picture and is never buried in the mass it points into -- and it
+   * leaves the frame when the reader snaps to fit, because fit frames the selection and the
+   * rim is the width of a plate away from it. `node` stands the arrow directly over the
+   * node: exact at any zoom, and at full node size swallowed by its own neighbours. */
+  pointerPlace: 'rim',    // 'rim' | 'node'
   edgesInMotion: true,    // links stay up while the camera turns -- see graph.js
   graphLayout: 'stack',   // 'stack' | 'packages' -- both built, use retires the loser
   graphTheme: 'follow',   // 'follow' | 'dark' -- design rule 2; see the Settings page
@@ -226,6 +235,7 @@ function resetSettings(program, current) {
     collapseUnused: 'collapsed plates',
     showPlates: 'the plates themselves', edgesInMotion: 'edges while moving',
     pointerShown: 'the you-are-here pointer', pointerColor: 'the pointer colour',
+    pointerPlace: 'where the pointer stands',
     mode: 'centre view', panels: 'panel layout',
     inspectorAuto: 'auto-collapse the inspector', navWidth: 'navigator width',
     navGroups: 'how many navigator groups open at once', navOpen: 'which groups are open',

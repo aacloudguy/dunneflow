@@ -139,6 +139,7 @@ const state = {
   navWidth: 21,           // rem; the routine list has to fit a qualified name
   pointerShown: true,     // the "you are here" arrow over each picked node
   pointerColor: "",       // "" = the token; anything else is the reader's, clamped
+  pointerPlace: "rim",    // "rim" | "node" -- at the side of the stack, or over it
   navGroups: "one",       // "one" | "many" -- an accordion, or every group at once
   navCap: 200,            // routines listed per package; 0 is all of them
   navOpen: {},            // group id -> open; empty means "each group's own default"
@@ -1268,11 +1269,26 @@ function viewSettings() {
               one. The colour is yours, within a limit: below <b>3:1</b> against the graph's own
               ground it is refused and the pointer falls back to the theme's, because a signpost
               nobody can see is worse than no signpost. 3:1 rather than 4.5:1 — it is a large
-              graphic object, not body text.</div></div>
+              graphic object, not body text.<br><br>
+              <b>At the side</b> stands it on the rim of the stack, at the height of the plate
+              holding the node and on that node's own bearing, so the line through it leads
+              your eye inward — findable from across the whole picture, and never buried in
+              the mass it points into. It does leave the frame when you snap to fit, because
+              fit frames the selection and the rim is a plate's width away from it.
+              <b>Over the node</b> is exact at any zoom, and at full node size it can be
+              swallowed by the neighbours it stands among. Genuinely arguable, so both exist
+              and the usage counter decides.</div></div>
           <div>
             <div class="seg" role="group" aria-label="You are here">
               <button data-pointershown="1" aria-pressed="${state.pointerShown}">Shown</button>
               <button data-pointershown="0" aria-pressed="${!state.pointerShown}">Off</button>
+            </div>
+            <div class="seg" role="group" aria-label="Where the pointer stands"
+                 style="margin-top:.3rem">
+              <button data-pointerplace="rim"
+                      aria-pressed="${state.pointerPlace === "rim"}">At the side</button>
+              <button data-pointerplace="node"
+                      aria-pressed="${state.pointerPlace === "node"}">Over the node</button>
             </div>
             <div class="pointerpick">
               <input type="color" id="pointerPick" aria-label="Pointer colour"
@@ -2964,6 +2980,13 @@ function wire() {
     if (Graph.mounted()) Graph.setOptions({ pointerColor: pointerRgb() });
     persist();
   });
+  $$("[data-pointerplace]").forEach(b => b.addEventListener("click", () => {
+    state.pointerPlace = b.dataset.pointerplace;
+    used("pointerplace:" + state.pointerPlace);
+    if (Graph.mounted()) Graph.setOptions({ pointerPlace: state.pointerPlace });
+    persist();
+    render();
+  }));
   $$("[data-pointerreset]").forEach(b => b.addEventListener("click", () => {
     state.pointerColor = "";
     if (Graph.mounted()) Graph.setOptions({ pointerColor: null });
@@ -3288,7 +3311,7 @@ const WIRED_ATTRS = new Set([
   "aiop", "airun", "bound", "cite", "citeidx", "closeviewer", "col", "crumb", "curi",
   "cursor", "den", "disk", "drop", "edgesmotion", "egress", "ep", "fold", "gact", "gosev",
   "goto", "graphtheme", "insp", "jump", "layout", "legend", "manifest", "menuorder",
-  "mode", "nav", "nav2", "navcap", "navgroups", "pkgopen", "pointerreset", "pointershown",
+  "mode", "nav", "nav2", "navcap", "navgroups", "pkgopen", "pointerplace", "pointerreset", "pointershown",
   "navid", "node", "open", "pane", "pin", "pinnote", "pkgnode", "pkgpick", "resize", "row",
   "scale-set", "sec", "sev", "sevnav", "sort", "sqlshow", "start", "step", "theme",
   "term", "termuse", "theme-set", "thread", "threadlabel", "threadsall", "threadwhy",
@@ -3920,7 +3943,7 @@ const PERSISTED = [
   "diskOrder", "diskColors", "colorBy", "sortMode", "filterMode", "direction",
   "nodeSize", "spreadX", "spreadY", "spreadZ", "collapseUnused",
   "panels", "inspectorAuto", "navWidth", "navGroups", "navOpen", "navCap",
-  "showPlates", "picks", "graphTheme", "edgesInMotion", "pointerShown", "pointerColor",
+  "showPlates", "picks", "graphTheme", "edgesInMotion", "pointerShown", "pointerColor", "pointerPlace",
 ];
 
 let settings = null;      // the loaded blob; `state` is the live copy
@@ -4132,6 +4155,7 @@ async function ensureGraph() {
     collapseUnused: state.collapseUnused, showPlates: state.showPlates, scale: state.scale,
     edgesInMotion: state.edgesInMotion, picks: state.picks,
     pointerShown: state.pointerShown, pointerColor: pointerRgb(),
+    pointerPlace: state.pointerPlace,
   });
   /* Read back the order the engine resolved. A saved order from a graph that has since
    * changed is discarded there, and the shell must not go on persisting the stale one --

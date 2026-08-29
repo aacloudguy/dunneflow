@@ -1863,3 +1863,81 @@ def test_one_word_for_a_plate_wherever_a_reader_can_see_it() -> None:
         "the reader is shown the word 'disk' here, and the product says plate:\n  "
         + "\n  ".join(leaks)
     )
+
+
+def test_the_pointer_aims_by_computing_a_screen_direction() -> None:
+    """A billboard has no world orientation to inherit — that is rule 22 — so aiming one at
+    something means computing the direction in screen space and rotating the icon by it.
+
+    The convention is read out of deck's own vendored shader, not guessed: it rotates by
+    `mat2(cos, -sin, sin, cos)` (column-major) and then flips y, so with the icon's tip on
+    its anchor the arrow points along `(sin, cos)` — giving `atan2(dx, dy)`, not the usual
+    `atan2(dy, dx)`. An arrow aimed the wrong way is a working-looking signpost pointing at
+    nothing, and this cannot be checked by looking in a tab that draws no frames.
+    """
+    engine = _read("graph.js")
+    body = _fn(engine, "pointerAngle")
+    assert "Math.atan2(dx, dy)" in body, (
+        "the angle uses the usual atan2(dy, dx), which aims the arrow ninety degrees off "
+        "and mirrored -- see deck's rotate_by_angle, which this convention is read from"
+    )
+    assert "if (!vp) return null;" in body, (
+        "no viewport is treated as an angle rather than as `cannot say`, so the arrow aims "
+        "somewhere invented before deck has rendered"
+    )
+    # And the vendored shader still says what that reasoning rests on.
+    vendor = (Path(__file__).resolve().parents[1] / "src" / "dunneflow" / "web" / "vendor"
+              / "deck.gl.min.js").read_text(encoding="utf-8", errors="ignore")
+    assert "mat2(cos_angle, -sin_angle, sin_angle, cos_angle)" in vendor, (
+        "deck's icon rotation is no longer the matrix this angle was derived from -- "
+        "re-derive it before trusting the arrows"
+    )
+    assert "pixelOffset.y *= -1.0" in vendor, (
+        "deck no longer flips y after rotating, which inverts every pointer"
+    )
+
+
+def test_the_pointer_at_the_rim_stands_on_the_plate_and_leads_to_its_node() -> None:
+    """At the side of the stack, at the height of the plate holding the node and on that
+    node's own bearing, so the line through the arrow leads the eye inward.
+
+    The bearing is taken from the *base* coordinates, because the spread turns the plate's
+    circle into an ellipse: read from the drawn positions instead, the arrow stops lining up
+    the moment either spread slider moves. The plate radius is one constant, hoisted, because
+    two copies of it is a signpost that drifts off the edge of the thing it names.
+    """
+    engine = _read("graph.js")
+    rim = _fn(engine, "rimPoint")
+    assert "d.baseXY" in rim and "PLATE_R" in rim, (
+        "the rim point is not taken from the plate's own radius and the node's own bearing"
+    )
+    assert "opts.spreadX" in rim and "opts.spreadY" in rim, (
+        "the arrow does not follow the spread, so it leaves the plate it stands on"
+    )
+    assert "at[2]" in rim, (
+        "the arrow is not at the height of the plate holding the node, which is the whole "
+        "of what it is pointing out"
+    )
+    assert engine.count("const PLATE_R") == 1 and "const R = PLATE_R" in engine, (
+        "the plate radius is written down twice, so the plate and the pointer can disagree "
+        "about where the edge is"
+    )
+
+
+def test_where_the_pointer_stands_is_a_pair_and_both_are_read() -> None:
+    """Design rule 2. Rim is findable from across the picture and leaves the frame when the
+    reader snaps to fit; over-the-node is exact at any zoom and can be swallowed by the
+    neighbours it stands among. Both good, so both are built and usage decides."""
+    js, engine, settings = _read("shell.js"), _read("graph.js"), _read("settings.js")
+    assert re.search(r"pointerPlace:\s*'rim'", settings), "the placement is not persisted"
+    for value in ("rim", "node"):
+        assert f'data-pointerplace="{value}"' in js, f"no control offers {value!r}"
+    assert "opts.pointerPlace === 'node'" in _fn(engine, "pointerData"), (
+        "the engine ignores the setting, so both controls draw the same picture"
+    )
+    assert 'used("pointerplace:' in js, "the pair is not counted, so neither can be retired"
+    # The fit interaction is real and is stated rather than discovered.
+    assert "snap to fit" in js and "a plate's width away" in js, (
+        "the Setting does not say that the rim pointer leaves the frame when fit runs, "
+        "which is design rule 1 about the reader's own control"
+    )

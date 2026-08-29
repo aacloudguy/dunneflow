@@ -109,6 +109,10 @@ const DOT_MAX = 3.6;
 const SPHERE_FROM = 2.2;
 
 const DISK_GAP = 190;
+/* The radius of a plate, in the layout's own units. Hoisted out of `diskPlates` because
+ * the pointer stands on this circle: an arrow at the side of the stack has to know where
+ * the side is, and two copies of that number is a signpost that drifts off the edge. */
+const PLATE_R = 1060;
 const NODE_LABEL_CAP = 250;
 const NODE_LABEL_ZOOM = -1.2;
 
@@ -174,6 +178,9 @@ const opts = {
    * it follows the theme like everything else. */
   pointerShown: true,
   pointerColor: null,
+  /* Where the arrow stands. `rim` is at the side of the stack on the node's own bearing,
+   * `node` is directly over it. Design rule 2: both are good and usage decides. */
+  pointerPlace: 'rim',
   /* Keeping the links up while the camera turns is what makes a rotation *say* something:
    * relationships are what the stack is for, and stripping them the moment anyone moves
    * hides the thing they are moving to see. It was only ever a performance measure, and on
@@ -427,7 +434,7 @@ function defaultOrder(raw) {
 }
 
 function diskPlates(raw) {
-  const R = 1060, SEG = 64;
+  const R = PLATE_R, SEG = 64;
   return raw.disks.map((disk) => {
     const ring = [];
     for (let k = 0; k <= SEG; k++) {
@@ -908,20 +915,39 @@ function buildLayers(d) {
     if (pts.length) {
       const rgb = opts.pointerColor || PALETTE.pointer;
       const icon = pointerIcon(rgb);
+      /* Asked once per draw, not once per pointer, and inside a try because deck asserts
+       * from inside `getViewports()` before it has one rather than returning nothing --
+       * the same trap `selectionOnScreen()` was written from. */
+      let vp = null;
+      try { vp = g.deckgl?.getViewports?.()[0] ?? null; } catch { vp = null; }
+      for (const o of pts) {
+        o.angle = pointerAngle(vp, o);
+        /* No angle means no viewport, so nothing can be said about screen directions. The
+         * arrow stands on its node pointing down -- true without projecting anything --
+         * rather than at the rim aiming somewhere invented. It corrects on the next draw. */
+        if (o.angle === null) { o.pos = o.at; o.angle = 0; }
+      }
       layers.push(new IconLayer({
         id: `pointers-${icon.id}`, coordinateSystem: CARTESIAN, data: pts,
-        getPosition: (o) => o, getIcon: () => icon,
+        getPosition: (o) => o.pos, getIcon: () => icon, getAngle: (o) => o.angle,
         /* `opts.scale` and nothing else: design rule 3 says one multiplier resizes the
          * whole surface together, and a pointer that stayed 26 px while the type and the
          * nodes grew would be the one thing on screen the slider could not reach.
          * Deliberately *not* tied to `nodeSize`: the arrow's job is to be findable, and it
          * is needed most when the nodes are dots. */
         getSize: POINTER_SIZE * opts.scale, sizeUnits: 'pixels',
-        /* Clear of the node it points at, in the direction the arrow already points. The
-         * apex is the icon's anchor, so this is the only gap that has to be reasoned
-         * about, and it scales with the arrow. */
-        getPixelOffset: [0, -Math.round(4 * opts.scale)],
+        /* Clear of what it points at, along the arrow's own line. The apex is the icon's
+         * anchor, so this is the only gap that has to be reasoned about; at the rim the
+         * gap is world-space distance already and a pixel nudge there would fight the
+         * geometry rather than help it. */
+        getPixelOffset: (o) => (o.pos === o.at ? [0, -Math.round(4 * opts.scale)] : [0, 0]),
         billboard: true, pickable: false,
+        /* Every frame of an orbit changes where these point, so the accessors have to be
+         * re-read. The data array is rebuilt per draw anyway -- two dozen items -- and
+         * without this deck would keep the first frame's angles and the arrows would swing
+         * with the stack instead of staying aimed at it. */
+        updateTriggers: { getAngle: pts.map(o => o.angle).join(','),
+                          getPosition: opts.pointerPlace },
       }));
     }
   }
@@ -1048,8 +1074,20 @@ function pointerIcon(rgb) {
  * those pulled in. The neighbours are the answer; the picks are the question, and an arrow
  * over everything would point at the haystack again.
  *
- * A picked *disk* gets none. A plate is not a place -- pointing at the middle of 645 nodes
- * says nothing about where any of them is, and rule 23 is the same argument for shadows. */
+ * A picked *plate* gets none. A plate is not a place -- pointing at the middle of 645 nodes
+ * says nothing about where any of them is, and rule 23 is the same argument for shadows.
+ *
+ * Two placements, and they are a genuine pair (design rule 2). **Rim** stands the arrow at
+ * the side of the stack, at the height of the plate holding the node and on the node's own
+ * bearing, so the line through it leads the eye inward: findable from across the whole
+ * picture, and never buried in the mass it is pointing into. **Node** stands it directly
+ * over the node: exact, and at full node size it can be swallowed by its own neighbours.
+ * Rim is the default because finding is the job; usage decides.
+ *
+ * The rim point is collinear with the origin and the node, and that is not a coincidence
+ * worth relying on quietly: plates are circles centred on the axis, and X and Y scale the
+ * node and the plate by the same factors, so a bearing taken before the spread survives it.
+ * The arrow therefore points *through* its node rather than merely near it. */
 function pointerData(d) {
   const out = [];
   for (let k = g.picks.length - 1; k >= 0 && out.length < POINTER_CAP; k--) {
@@ -1057,9 +1095,57 @@ function pointerData(d) {
     if (p.kind !== 'node') continue;
     const i = realIndex(d, p.index);     // a shadow is never an endpoint (rules 23, 31)
     if (i < 0 || i >= d.n) continue;
-    out.push([d.positions[i * 3], d.positions[i * 3 + 1], d.positions[i * 3 + 2]]);
+    const at = [d.positions[i * 3], d.positions[i * 3 + 1], d.positions[i * 3 + 2]];
+    out.push({ at, pos: opts.pointerPlace === 'node' ? at : rimPoint(d, i, at) });
   }
   return out;
+}
+
+/* The point on the side of the stack that the node's own bearing passes through.
+ *
+ * Taken from the *base* coordinates rather than the drawn ones, because the spread turns
+ * the plate's circle into an ellipse and the two have to be stretched by the same pair of
+ * factors or the arrow stops lining up the moment either slider moves.
+ *
+ * A node exactly on the axis has no bearing. It gets +X, which is arbitrary and is still a
+ * line through the node -- the alternative is no pointer at all for the one node in the
+ * program that is hardest to describe the position of. */
+function rimPoint(d, i, at) {
+  const bx = d.baseXY[i * 2], by = d.baseXY[i * 2 + 1];
+  const t = (bx === 0 && by === 0) ? 0 : Math.atan2(by, bx);
+  return [Math.cos(t) * PLATE_R * opts.spreadX,
+          Math.sin(t) * PLATE_R * opts.spreadY,
+          at[2]];
+}
+
+/* Which way the arrow points, on screen.
+ *
+ * A billboard has no world orientation to inherit -- that is the whole of rule 22 -- so
+ * pointing at something means computing the direction in *screen* space and rotating the
+ * icon by it. Under this projection that is two `project()` calls per pointer and at most
+ * two dozen pointers, which is nothing beside a frame that draws ten thousand nodes.
+ *
+ * `atan2(dx, dy)`, not the usual `atan2(dy, dx)`, and no sign flip. That is read out of
+ * deck's own icon shader rather than guessed at, because an arrow aimed the wrong way is a
+ * working-looking signpost pointing at nothing, and this is a tab that draws no frames to
+ * check it in. The shader rotates by `mat2(cos, -sin, sin, cos)` -- column-major, so
+ * `(x cos + y sin, -x sin + y cos)` -- and then flips y. The icon's anchor is its tip and
+ * its body runs up the image, so a body point `(0, -h)` lands at `(-h sin, h cos)` in a
+ * y-up space; the arrow therefore points along `(sin, cos)` once y is put back down, which
+ * is the screen direction from the icon to the thing it aims at. Hence sin = dx, cos = dy.
+ *
+ * The tip sits *on* the anchor, so at the rim the arrow's point is on the cylinder and its
+ * body sticks outward, which is the way round that reads as pointing in.
+ *
+ * Returns null when there is no viewport to ask -- which is not "straight down", and the
+ * caller falls back to standing the arrow on the node, the one placement that needs no
+ * projection to be truthful. Rule 42 again: cannot say is its own answer. */
+function pointerAngle(vp, item) {
+  if (!vp) return null;
+  const a = vp.project(item.pos), b = vp.project(item.at);
+  const dx = b[0] - a[0], dy = b[1] - a[1];
+  if (!dx && !dy) return 0;
+  return (Math.atan2(dx, dy) * 180) / Math.PI;
 }
 
 function pointerCount() {
@@ -1239,8 +1325,23 @@ function diagnostics() {
   if (opts.pointerShown) {
     const rgb = opts.pointerColor || PALETTE.pointer;
     const icon = pointerIcon(rgb);
-    lines.push(`pointer rgb(${rgb}) · ${Math.min(pointerCount(), POINTER_CAP)} drawn` +
+    /* Where the first arrow projects, and which way it points. Design rule 21 asks for
+     * exactly this -- where the geometry lands in screen space -- because an arrow drawn
+     * off the edge and an arrow not drawn at all are indistinguishable by looking, and at
+     * the rim placement the first is a thing that genuinely happens: `fit` frames the
+     * selection, and the rim is a plate's width away from it. */
+    let vp = null;
+    try { vp = g.deckgl?.getViewports?.()[0] ?? null; } catch { vp = null; }
+    const first = g.prepared ? pointerData(g.prepared)[0] : null;
+    const where = first && vp
+      ? ` · at [${vp.project(first.pos).slice(0, 2).map(Math.round)}]` +
+        ` ∠${Math.round(pointerAngle(vp, first))}°` +
+        ` → node [${vp.project(first.at).slice(0, 2).map(Math.round)}]`
+      : '';
+    lines.push(`pointer rgb(${rgb}) · ${opts.pointerPlace}` +
+               ` · ${Math.min(pointerCount(), POINTER_CAP)} drawn` +
                ` · texture ${icon.blank ? 'BLANK' : `${Math.round(icon.url.length / 1024)} KB`}` +
+               where +
                (g.anchor ? ' · anchored' : g.anchorArmed ? ' · waiting for a view of it'
                                                          : ' · no anchor'));
   }

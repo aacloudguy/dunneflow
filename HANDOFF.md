@@ -1880,6 +1880,27 @@ the answer it gives. Rule 42's distinction acted on rather than documented. The 
 enabled state is written where the counts are and not where the HUD is rebuilt, since a
 selection never rebuilds the HUD: design rule 16 in the *state* of a control.
 
+**Moved to the rim, 2026-08-29, on Tom's direction**: *put it at the side of the cylinder,
+pointing at the plane that holds the node, at the x or y coordinate that leads the eye to
+it.* The arrow now stands on the plate's own circle at the height of the plate holding the
+node and on that node's bearing, aimed inward. Rim point, origin and node are collinear
+because plates are circles centred on the axis and the spread stretches node and plate by
+the same pair of factors -- so the bearing is taken from the *base* coordinates, or the arrow
+drifts off the plate the moment either spread slider moves.
+
+Aiming a billboard means computing a *screen* direction, and the convention was read out of
+deck's vendored shader rather than guessed at, because an arrow aimed the wrong way is a
+working-looking signpost pointing at nothing and this session had no frames to check it in.
+`rotate_by_angle` is `mat2(cos, -sin, sin, cos)` -- column-major, so `(x cos + y sin, -x sin
++ y cos)` -- followed by a y flip; with the icon's tip on its anchor that makes the arrow
+point along `(sin, cos)`, hence **`atan2(dx, dy)`**, not the usual `atan2(dy, dx)`. A guard
+asserts both halves of the shader still say that.
+
+Both placements are kept as a design-rule-2 pair, defaulting to the rim. **The rim placement
+leaves the frame when the reader snaps to fit**, because fit frames the *selection* and the
+rim is a plate's width away from it; that is stated in the Setting rather than left to be
+discovered, and it is the reason over-the-node stays built.
+
 **Deliberately not built, and a candidate Setting**: re-recording the anchor while the
 selection stays visible, so "back" means the *last* good view rather than the first. It is a
 real second answer and might be the better one; design rule 2 asks for use behind a pair
@@ -1893,14 +1914,22 @@ code has a second live meaning for "plate" (the polygon that draws a disk -- `sh
 `diskPlates`, `plateFill`), so renaming half the pair leaves the collision it was meant to
 remove. A guard keeps the reader-facing half honest.
 
-**On the Latin, since it was asked**: the word is **tabula** (pl. *tabulae*) -- a flat board,
+**Plate, and not plane or planum -- decided 2026-08-29.** *plane* is unbounded by
+definition where these are bounded, and it is already taken in this very codebase for the
+near and far frustum planes (rule 39 is an essay about one), so a renderer reader's mind goes
+to the wrong object. *planum* is the Latin flourish, ruled out with the rest of it. *plate*
+is bounded, physical, stacks, and has a plural nobody has to be taught -- and it leaves
+*disk* to mean what it means everywhere else in computing, which is the whole reason the
+question came up.
+
+**On the Latin, since it was asked and then declined**: the word is **tabula** (pl.
+*tabulae*) -- a flat board,
 and also a picture, and also a register. Recognisable through *tabula rasa* without being an
 English word, so DunneFlow could define it in its own glossary the way Mensores defines
 `mensor`. *lamina* is more exact for a thin plate in a stack and collides with the temporal
 *layers*; *discus* is simply the etymon of "disk"; *orbis* reads as "orb", and the nodes are
-already spheres. Not adopted -- a reading tool for someone orienting in code they did not
-write should not open by teaching them a word -- but it is the right word if the flourish is
-ever wanted, and it is a one-line change now the vocabulary is consistent.
+already spheres. Not adopted: a reading tool for someone orienting in code they did not
+write should not open by teaching them a word.
 
 **Not verified, and it needs a real window**: what the arrow looks like. The automation tab
 draws no frames at all -- canvas 300x150, `frames 0` -- so its shape, size and shading are

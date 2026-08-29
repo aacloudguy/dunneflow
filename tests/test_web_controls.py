@@ -845,7 +845,7 @@ def test_the_hover_card_renders_only_fields_the_server_sends() -> None:
     detail = (WEB / "detail.py").read_text(encoding="utf-8")
 
     # Everything `hoverDetailHtml` reads off the served object.
-    body = shell.split("function hoverDetailHtml(card) {", 1)[1].split("\n}\n", 1)[0]
+    body = shell.split("function hoverDetailHtml(card, needWhere) {", 1)[1].split("\n}\n", 1)[0]
     read = set(re.findall(r"\bcard\.(\w+)", body))
     assert read, "hoverDetailHtml changed shape -- this test is blind"
 
@@ -875,16 +875,187 @@ def test_the_hover_card_is_placed_again_once_it_is_filled() -> None:
     """
     shell = _read("shell.js")
     fill = shell.split("function hoverFill(id, card) {", 1)[1].split("\n}\n", 1)[0]
-    assert "hoverPlace(" in fill, (
+    assert "placeHoverCard()" in fill, (
         "hoverFill does not re-place the card, so a card that grows past the bottom of "
         "the pane keeps the fetched half off screen"
     )
-    # And it must place against the remembered cursor, not against something it invents:
-    # the pointer event is long gone by the time the fetch lands.
-    assert "hoverPos" in fill, (
-        "hoverFill re-places without the remembered cursor position, so it cannot know "
-        "where the card belongs"
+    # And it must place against the remembered anchor, not against something it invents:
+    # the pointer event is long gone by the time the fetch lands. Now that two surfaces
+    # share the card, the anchor is whatever that surface's placer needs -- a cursor
+    # position from the picture, a row element from the list -- so the check follows it
+    # into the one function that reads it.
+    place = _fn(shell, "placeHoverCard")
+    assert "hoverAnchor" in place and "host.place(el, hoverAnchor)" in place, (
+        "the card is re-placed without the remembered anchor, so it cannot know where it "
+        "belongs by the time the fetch lands"
     )
+    assert "hoverAnchor == null" in place, (
+        "nothing stops a placement running with no anchor, which puts the card at 0,0"
+    )
+
+
+def test_the_navigator_answers_with_a_card_and_not_a_native_tooltip() -> None:
+    """Reported at the keyboard: *the names are all truncated, and hover text is too tiny to
+    read.* That tiny text is the browser's own `title` tooltip -- unstyleable, delayed, and
+    incapable of holding anything but one line of plain text.
+
+    Both halves, because either alone passes while the feature is dead. The row must say it
+    has a card *and* stop carrying a title, since a native tooltip renders on top of the
+    thing that replaced it -- so a card that works perfectly still loses to the tiny text it
+    was built to remove.
+    """
+    shell = _read("shell.js")
+    html = _read("index.html")
+
+    rows = shell.split("function routineList() {", 1)[1].split("\n}\n", 1)[0]
+    assert 'card: true' in rows and 'qual: `${r.module}.${r.name}`' in rows, (
+        "routine rows no longer declare a card, or no longer carry the qualified name it "
+        "leads with"
+    )
+    assert "title:" not in rows, (
+        "a routine row still sets a native title, which renders on top of the card and is "
+        "the unreadable tooltip the card exists to replace"
+    )
+    dress = _fn(shell, "dressNavItems")
+    assert "!el.dataset.card" in dress, (
+        "dressNavItems still titles a row that has a card, so every carded row gets the "
+        "native tooltip back -- with the leaf name in it, which is less than it had before"
+    )
+
+    # The element is at body level. Inside the navigator it is clipped by that pane's own
+    # scroller for every row near an edge, which in a 4,734-row list is most of them.
+    assert 'id="navCard"' in html, "the navigator's card element is not in the markup"
+    before_app = html.split('id="navCard"', 1)[0]
+    assert before_app.count("</div>\n</div>") >= 1 and 'id="navCard"' in html, (
+        "the card is not emitted after the application shell closes"
+    )
+    css = _read("tokens.css")
+    nav_rule = css.split(".navcard {", 1)[1].split("}", 1)[0]
+    assert "position: fixed" in nav_rule, (
+        "the navigator's card is not fixed to the window, so the pane it sits in clips it"
+    )
+    assert "max-width" in nav_rule, "the card is unbounded and can cover the whole window"
+
+
+def test_one_card_serves_both_surfaces_and_only_one_shows() -> None:
+    """The picture and the list ask the same question, so they share the markup, the fetch,
+    the dwell and the cache -- two copies would agree until the day one of them was edited
+    (rule 36), and the day after that only one would carry the signature.
+
+    What they may not share is *two cards on screen*. Moving from a row straight into the
+    stack switches surfaces, and the invariant is held in `showHoverCard` rather than left to
+    emerge from two handlers firing in a lucky order.
+    """
+    shell = _read("shell.js")
+    show = _fn(shell, "showHoverCard")
+    assert "hideHoverCard();" in show, (
+        "showing a card does not tear down the previous one, so the navigator's card can "
+        "stand beside a stack that has moved on to another routine"
+    )
+    hide = _fn(shell, "hideHoverCard")
+    assert "Object.values(HOVER_HOSTS)" in hide, (
+        "hiding trusts `hoverHost` to still name the visible card, which it does not once "
+        "the reader has crossed from one surface to the other"
+    )
+    # Routed from a table, so an unknown surface is a named error rather than a card that
+    # appears somewhere nobody expected (design rule 16).
+    assert 'console.error("DunneFlow: no hover host"' in show, (
+        "an unknown hover surface falls through silently instead of naming itself"
+    )
+    for fn in ("hoverPlaceInCanvas", "hoverPlaceBesideNav"):
+        assert f"{fn}(" in shell.split("const HOVER_HOSTS", 1)[1].split("};", 1)[0], (
+            f"{fn} is defined but the hosts table does not use it"
+        )
+
+
+def test_a_card_is_offered_only_where_one_node_can_answer() -> None:
+    """Rule 30's family. A card needs a single node the map can answer for: a package row and
+    a boundary row select **plates**, and a way in resolves to many routines -- so a card over
+    one of those is either blank or a confident description of the first of twenty-four.
+
+    A table, so adding a kind later is an entry rather than a branch, and both directions are
+    asserted: every kind offering a card must be a kind the navigator can route.
+    """
+    shell = _read("shell.js")
+    kinds = set(re.findall(r"(\w+): \"", shell.split("const NAV_CARD_KINDS = {", 1)[1]
+                                              .split("};", 1)[0]))
+    assert kinds, "no navigator row offers a card at all"
+    routes = set(re.findall(r"^  (\w+):", shell.split("const NAV_ROUTES = {", 1)[1]
+                                              .split("\n};", 1)[0], re.M))
+    assert kinds <= routes, (
+        f"these offer a card and have no navigator route: {sorted(kinds - routes)}"
+    )
+    # The plate-selecting kinds must never be in it: `/api/hover` answers about nodes, and a
+    # disk id is not one, so the card would fetch and render nothing.
+    assert not (kinds & {"pkg", "b", "t"}), (
+        "a card is offered on a row that selects a plate or a table, neither of which is a "
+        "node -- the fetch returns `found: false` and the card stays a skeleton"
+    )
+    assert 'closest(".nav-item[data-card]")' in _fn(shell, "navCardRow"), (
+        "the hover handler does not select on the card marker, so it opens for rows that "
+        "declare no card"
+    )
+
+
+def test_the_navigator_card_lets_go_when_its_row_moves() -> None:
+    """The card is anchored to a row, so anything that moves the row invalidates it. Left
+    alone through a scroll it would sit level with whatever has slid into that place -- a
+    confident answer about a routine nobody is pointing at, which is precisely the failure
+    this surface exists to prevent (rule 47's argument, in a list rather than in the fog)."""
+    shell = _read("shell.js")
+    assert re.search(r'addEventListener\("scroll", \(\) => \{ if \(hoverHost === "nav"\) '
+                     r'hideHoverCard\(\); \}, true\)', shell), (
+        "nothing drops the navigator's card when the list scrolls under it"
+    )
+    assert re.search(r'addEventListener\("resize", \(\) => \{ if \(hoverHost === "nav"\)', shell), (
+        "nothing drops the navigator's card when the window resizes under it"
+    )
+    # Keyboard readers get the card too: these rows are buttons and the list is tabbable.
+    assert re.search(r'addEventListener\("focusin"', shell), (
+        "the card appears only under a pointer, so a keyboard reader can see other people "
+        "using a feature they cannot reach"
+    )
+    place = _fn(shell, "hoverPlaceBesideNav")
+    assert "row.isConnected" in place, (
+        "the card is placed against a row that may have been removed by a rebuild, which "
+        "reads a stale rectangle and puts the card somewhere arbitrary"
+    )
+    assert "nb.right + gap" in place, (
+        "the card is not anchored beside the pane, so it covers the list being read"
+    )
+
+
+def test_every_colour_token_a_stylesheet_reaches_for_actually_exists() -> None:
+    """An undefined custom property is not an error. `var(--surface-2)` where the token is
+    called `--sunken` resolves to nothing, the declaration is dropped, and the element paints
+    transparent -- a panel that renders, looks deliberate, and is missing the one thing it
+    asked for. Rule 44's family in a stylesheet: a live rule reading a name that is not there.
+
+    Written after making exactly that mistake in this file, which is the only reason it is
+    here rather than in a list of things that would be nice to check.
+
+    Two legitimate shapes are known and allowed rather than special-cased away. A `var(--x,
+    fallback)` is the documented escape hatch and `--nav-w` genuinely uses it: the value is
+    set from script by `applyNavWidth()`, so it is absent until the pane is dragged. And a
+    name composed in a template literal -- `var(--sev-${k})` -- cannot be resolved statically,
+    so its *prefix* is checked against the tokens instead, which still catches a rename.
+    """
+    css = _read("tokens.css")
+    defined = set(re.findall(r"^\s*(--[a-z0-9-]+)\s*:", css, re.M))
+    assert len(defined) > 30, "the token block has shrunk to almost nothing; check the split"
+
+    problems = []
+    for name in ("tokens.css", "shell.js", "graph.js", "index.html"):
+        text = _read(name)
+        # `var(--x)` and `var(--x)` only -- a comma means a fallback was supplied.
+        for used in set(re.findall(r"var\((--[a-z0-9-]+)\)", text)):
+            if used not in defined:
+                problems.append(f"{name}: var({used}) is used and no token defines it")
+        # Composed names: the literal part must at least be a real family.
+        for stem in set(re.findall(r"var\((--[a-z0-9-]+)\$\{", text)):
+            if not any(d.startswith(stem) for d in defined):
+                problems.append(f"{name}: var({stem}...) names no token family")
+    assert not problems, "\n".join(problems)
 
 
 def test_every_thread_carries_a_subject_and_every_subject_has_a_route() -> None:

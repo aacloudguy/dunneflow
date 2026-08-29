@@ -173,6 +173,18 @@
   </div>
 </div>
 
+<!--
+  The navigator's pop-up. Body level, and that is structural rather than tidy: the
+  navigator scrolls its own content, so a card inside it is clipped by that scroller
+  at exactly the rows nearest the edges -- which is most of them, since the pane is
+  a long list. Fixed positioning against the window is the only place it can be whole.
+
+  A second element rather than a second card: the markup, the fetch, the dwell and the
+  cache are all the graph card's, and the only things that differ are where it is
+  anchored and what is free to draw before the server answers.
+-->
+<div class="hovercard navcard" id="navCard" hidden aria-hidden="true"></div>
+
 
 <!--
   Order matters and is not incidental. deck.gl defines the `deck` global that

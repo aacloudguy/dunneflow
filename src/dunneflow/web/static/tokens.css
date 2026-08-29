@@ -824,6 +824,41 @@ body {
 }
 .hovercard[hidden] { display: none; }
 
+/* ── the navigator's pop-up ──
+ *
+ * The same card, anchored differently and allowed to be bigger.
+ *
+ * **Fixed, at body level.** The navigator is a scroller, so a card positioned inside it is
+ * cut off by that scroller for every row near an edge -- which in a 4,734-row list is most
+ * of them. The window is the only box that can hold it whole.
+ *
+ * **Wider than the graph's**, because the constraint that shapes that one does not apply
+ * here. The graph card is capped at half the canvas so it cannot hide the node it is
+ * describing; this one is anchored *beside* the navigator rather than over it, so nothing
+ * it covers is anything the reader is looking at. The cap is the window instead: half of it,
+ * so the centre pane is still readable behind the answer.
+ *
+ * `left` and `top` come from script in px for the same reason the graph card's do -- they
+ * are a position on screen, not a dimension of the surface. Everything it is made of is rem.
+ */
+.navcard {
+  position: fixed; z-index: 40;
+  max-width: min(34rem, 50vw); min-width: 18rem;
+}
+
+/* The invocation line. What moves in and what comes back out, which is the subject of the
+ * whole tool -- so it leads, directly under the name, and it is the one thing on the card
+ * allowed to be as long as the code made it. Wrapped rather than clipped: a signature cut
+ * at the pane edge is a signature that is not the one in the file. */
+.hc-sig { font-family: var(--f-mono); font-size: .7rem; line-height: 1.5;
+          color: var(--text-muted); overflow-wrap: anywhere;
+          background: var(--sunken); border-radius: .1875rem;
+          padding: .2rem .35rem; }
+.hc-sig .sig-name { color: var(--text); font-weight: 600; }
+.hc-sig .sig-type { color: var(--accent-text); }
+.hc-sig .sig-punc { color: var(--text-faint); }
+.hc-sig .sig-dflt { color: var(--text-faint); }
+
 .hc-head { display: flex; align-items: baseline; gap: .35rem; }
 .hc-name { font-family: var(--f-mono); font-size: .78rem; font-weight: 600;
            overflow-wrap: anywhere; }

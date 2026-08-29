@@ -3349,11 +3349,12 @@ document.addEventListener("keydown", (e) => {
  * from the source, generated markup included, which is the direction the existing guard
  * could not see: it reads `index.html`, and all four of these are written by JavaScript. */
 const WIRED_ATTRS = new Set([
-  "aiop", "airun", "bound", "cite", "citeidx", "closeviewer", "col", "crumb", "curi",
+  "aiop", "airun", "bound", "card", "cite", "citeidx", "closeviewer", "col", "crumb", "curi",
   "cursor", "den", "disk", "drop", "edgesmotion", "egress", "ep", "fold", "gact", "gosev",
   "goto", "graphtheme", "insp", "jump", "layout", "legend", "manifest", "menuorder",
   "mode", "nav", "nav2", "navcap", "navgroups", "pkgopen", "pointerplace", "pointerreset", "pointershown", "reticule",
-  "navid", "node", "open", "pane", "pin", "pinnote", "pkgnode", "pkgpick", "resize", "row",
+  "navid", "node", "open", "pane", "pin", "pinnote", "pkgnode", "pkgpick", "qual",
+  "resize", "row",
   "scale-set", "sec", "sev", "sevnav", "sort", "sqlshow", "start", "step", "theme",
   "term", "termuse", "theme-set", "thread", "threadlabel", "threadsall", "threadwhy",
   "titled", "toggle",
@@ -3413,7 +3414,7 @@ function dressNavItems() {
   // An item that brought its own title knows more than the leaf text does -- a routine row
   // carries the qualified name, and overwriting it with the leaf loses the only thing the
   // hover was worth doing for.
-  if (!el.dataset.titled) el.title = span.textContent;
+  if (!el.dataset.titled && !el.dataset.card) el.title = span.textContent;
   texts.forEach(n => n.remove());
   const count = el.querySelector(".n");
   el.insertBefore(span, count || null);
@@ -3568,7 +3569,7 @@ function routineList() {
       <div class="nav-items">
         ${g.rows.map(r => navItemHtml({
             nav: "routine", label: r.name, sub: moduleTail(r.module), sel: r.id,
-            n: routineFan(r.id), title: `${r.module}.${r.name}`,
+            n: routineFan(r.id), qual: `${r.module}.${r.name}`, card: true,
             current: state.selected === r.id,
           })).join("")}
       </div>
@@ -3823,6 +3824,15 @@ function navItemHtml(i) {
   return `
     <button class="nav-item" data-nav="${esc(i.nav)}"
             ${i.title ? `title="${esc(i.title)}" data-titled="1"` : ""}
+            ${/* The qualified name travels on the row rather than being looked up when the
+                  card opens. A `find` over 4,734 routines per `mouseover` is work
+                  proportional to the whole program on an event that fires as fast as the
+                  pointer moves -- rule 45, in the one place left that could still pay it. */
+              i.qual ? `data-qual="${esc(i.qual)}"` : ""}
+            ${/* Says the row answers with a card, so `dressNavItems` leaves its `title`
+                  alone. Two tooltips for one row is the native one winning: it renders on
+                  top, and it is the tiny unreadable thing the card replaced. */
+              i.card ? `data-card="1"` : ""}
             ${i.sel ? `data-navid="${esc(i.sel)}"` : ""}
             ${i.sevnav ? `data-sevnav="${esc(i.sevnav)}"` : ""}
             ${i.current ? 'aria-current="true"' : ""}>
@@ -4303,7 +4313,9 @@ function revealSelectedRoutine() {
  */
 
 let hoverAt = null;               // the node id the card is currently about
-let hoverPos = { x: 0, y: 0 };    // where the cursor was, so a grown card can be re-placed
+let hoverHost = null;             // which surface is asking: a key into `HOVER_HOSTS`
+let hoverAnchor = null;           // whatever that host's placer needs, so a grown card
+                                  // can be put back in the right place
 let hoverTimer = 0;
 let hoverFetch = null;            // the in-flight AbortController, if any
 const hoverCache = new Map();     // id -> the served card; a re-hover costs nothing
@@ -4313,7 +4325,45 @@ const hoverCache = new Map();     // id -> the served card; a re-hover costs not
  * deliberate pause feels instant. */
 const HOVER_DWELL = 90;
 
-function hoverEl() { return $("#hoverCard"); }
+/* ── two surfaces, one card ──
+ *
+ * The graph and the navigator both answer "what is this thing", and the answer is the same
+ * answer -- so the markup, the fetch, the dwell and the cache are shared, and a **table**
+ * says what differs. Two copies of a card would agree until the day one of them was edited
+ * (rule 36), and the day after that only one of them would carry the signature.
+ *
+ * What genuinely differs is where it is anchored, and the reason is worth stating because
+ * it is not arbitrary. In the picture the cursor *is* the subject's position, so the card
+ * follows the cursor and flips at the pane edges. In a list the **row** is the subject's
+ * position: a card that followed the cursor along a row would slide about while pointing at
+ * one unchanging thing, and it would sit on top of the list the reader is reading. So the
+ * navigator's card anchors beside the pane, level with the row.
+ */
+const HOVER_HOSTS = {
+  graph: {
+    el: () => $("#hoverCard"),
+    place: (el, at) => hoverPlaceInCanvas(el, at.x, at.y),
+  },
+  nav: {
+    el: () => $("#navCard"),
+    place: (el, row) => hoverPlaceBesideNav(el, row),
+  },
+};
+
+function hoverEl() {
+  const host = HOVER_HOSTS[hoverHost];
+  return host ? host.el() : null;
+}
+
+/* Re-placed rather than re-rendered, so the half already under the reader's eye does not
+ * move. Routed through the table for the same reason the click handlers are: a surface with
+ * no entry here is a named error, not a card that appears somewhere unexpected. */
+function placeHoverCard() {
+  const host = HOVER_HOSTS[hoverHost];
+  const el = host && host.el();
+  if (!host || !el || el.hidden || hoverAnchor == null) return;
+  host.place(el, hoverAnchor);
+}
 
 /* Design rule 1 in a very small space: a card showing "3 tables" would be a total that
  * cannot say what it counted (rule 32). Every row names its own thing, and a table row
@@ -4395,11 +4445,66 @@ function hoverSkeleton(h) {
     <div class="hc-rest"></div>`;
 }
 
+/* ── the navigator's first paint ──
+ *
+ * Everything a row already carries, which is not the same set the picture carries -- so the
+ * skeleton differs and stage two fills a different remainder. A navigator row knows the
+ * qualified name and the fan counts and does *not* know where the code is; a node in the
+ * stack knows `file:line` from the payload and knows which plate it is on. Both know enough
+ * to draw something in the same frame as the pointer event, which is the whole point of
+ * painting in two stages.
+ *
+ * **Which rows get one is a table, not a condition.** A card needs a single node the map
+ * can answer for, and today that is a routine: a package and a boundary kind select
+ * *plates*, and a way in resolves to many routines, so a card over one of those would either
+ * be blank or would confidently describe the first of twenty-four. A kind with no entry here
+ * keeps its plain title and loses nothing.
+ */
+const NAV_CARD_KINDS = { routine: "ROUTINE" };
+
+function navHoverSkeleton(row) {
+  const kind = NAV_CARD_KINDS[row.dataset.nav] || "";
+  const label = (row.querySelector(".navlabel") || {}).textContent || "";
+  const qual = row.dataset.qual || "";
+  const fan = ((row.querySelector(".n") || {}).textContent || "").trim();
+  /* The plate is the package heading this row sits under, read off the heading's own
+     identity rather than its text -- the text carries a count and a `·small` marker, and
+     stripping those back off would be inventing the answer a second time. */
+  const pkgBtn = row.closest(".nav-pkg");
+  const plate = pkgBtn
+    ? ((pkgBtn.querySelector('[data-nav="pkg"]') || {}).dataset || {}).navid || ""
+    : "";
+
+  return `
+    <div class="hc-head">
+      <b class="hc-name">${esc(label)}</b>
+      ${kind ? `<span class="kind-tag">${esc(kind)}</span>` : ""}
+    </div>
+    ${qual ? `<div class="hc-sub mono">${breakable(qual)}</div>` : ""}
+    <div class="hc-meta">
+      ${fan ? `<span class="hc-fan" title="callers and callees, one hop">${esc(fan)}</span>` : ""}
+      ${plate ? `<span class="hc-plate">${esc(plate.replace(/^pkg:/, ""))}</span>` : ""}
+    </div>
+    <div class="hc-rest"></div>`;
+}
+
 /* Stage two: what only the store knows. Written into `.hc-rest` rather than by rebuilding
- * the card, so the half already under the reader's eye does not move. */
-function hoverDetailHtml(card) {
+ * the card, so the half already under the reader's eye does not move.
+ *
+ * `needWhere` because the two surfaces arrive knowing different things. The graph's skeleton
+ * already printed `file:line` off the payload; the navigator's could not, because the
+ * routine list is not carrying a file path for 4,734 rows to serve the handful anybody
+ * hovers. So the one that did not have it gets it here. A parameter rather than a second
+ * copy of this function: two copies would agree until one of them was edited. */
+function hoverDetailHtml(card, needWhere) {
   if (!card || !card.found) return "";
   const bits = [];
+
+  if (needWhere && card.file) {
+    const file = String(card.file).split("/").slice(-1)[0];
+    bits.push(`<div class="hc-meta"><span class="hc-where mono">${esc(file)}${
+      card.line_start ? `:${card.line_start}` : ""}</span></div>`);
+  }
 
   if (card.kind === "ROUTINE") {
     const meas = [
@@ -4442,7 +4547,7 @@ function hoverDetailHtml(card) {
 /* Placed against `.graphcanvas`, which is the box deck.gl measures hover against, so the
  * arithmetic is direct. It flips rather than clipping: a card that runs off the pane is a
  * card whose second half does not exist, and the second half is the part that was fetched. */
-function hoverPlace(el, x, y) {
+function hoverPlaceInCanvas(el, x, y) {
   const box = el.parentElement;               // .graphcanvas
   if (!box) return;
   const pad = 14;
@@ -4454,36 +4559,92 @@ function hoverPlace(el, x, y) {
   el.style.top = `${top}px`;
 }
 
+/* Beside the navigator, level with the row -- never over the list.
+ *
+ * Fixed positioning, so the coordinates are the window's and the pane's own scroller cannot
+ * clip it. Two clamps and neither is decoration: a card taller than the space below its row
+ * is pushed up until it fits rather than running off the bottom, and one that will not fit
+ * to the right of the pane is pulled back inside the window. A card whose second half is
+ * off screen has lost exactly the half that was fetched. */
+function hoverPlaceBesideNav(el, row) {
+  const nav = $("#navigator");
+  if (!nav || !row || !row.isConnected) return;
+  const gap = 10, pad = 8;
+  const nb = nav.getBoundingClientRect();
+  const rb = row.getBoundingClientRect();
+  const w = el.offsetWidth, h = el.offsetHeight;
+
+  let left = nb.right + gap;
+  if (left + w > window.innerWidth - pad) left = Math.max(pad, window.innerWidth - pad - w);
+
+  /* Level with the row's top, not its middle: the name is the first line of the card and
+     the first thing on the row, so the two line up and the eye does not have to travel. */
+  let top = rb.top;
+  if (top + h > window.innerHeight - pad) top = window.innerHeight - pad - h;
+  if (top < pad) top = pad;
+
+  el.style.left = `${left}px`;
+  el.style.top = `${top}px`;
+}
+
+/* Hides *both* elements, not the one the current host names.
+ *
+ * Moving from the picture to the list switches hosts, and a hide that trusted `hoverHost`
+ * to still be what it was when the card was shown would leave the other one on screen --
+ * a stale card about a routine the reader has stopped pointing at, which is the one thing
+ * on this surface that must never happen. Cheap enough not to be clever about. */
 function hideHoverCard() {
   hoverAt = null;
+  hoverHost = null;
+  hoverAnchor = null;
   clearTimeout(hoverTimer);
   if (hoverFetch) { hoverFetch.abort(); hoverFetch = null; }
-  const el = hoverEl();
-  if (el) { el.hidden = true; el.innerHTML = ""; }
+  for (const host of Object.values(HOVER_HOSTS)) {
+    const el = host.el();
+    if (el) { el.hidden = true; el.innerHTML = ""; }
+  }
+}
+
+/* One way in for both surfaces: dwell, cache, two-stage paint. The caller says which host
+ * is asking, what to anchor to, and what it can draw for free. */
+function showHoverCard(host, id, anchor, skeleton) {
+  const spec = HOVER_HOSTS[host];
+  if (!spec) { console.error("DunneFlow: no hover host", host); return; }
+  const el = spec.el();
+  if (!el) return;
+
+  /* Tear the previous card down first, whichever surface it belonged to. **One card is on
+   * screen at a time**, and that invariant is held here rather than emerging from the two
+   * handlers happening to fire in the right order: moving from a row straight into the
+   * picture would otherwise leave the navigator's card standing beside a stack that is now
+   * answering about something else. It also clears the dwell timer and aborts the in-flight
+   * request, which this had to do anyway. */
+  hideHoverCard();
+
+  hoverHost = host;
+  hoverAnchor = anchor;
+  hoverAt = id;
+
+  el.hidden = false;
+  el.innerHTML = skeleton;
+  placeHoverCard();
+
+  const cached = hoverCache.get(id);
+  if (cached !== undefined) { hoverFill(id, cached); return; }
+  hoverTimer = setTimeout(() => hoverAsk(id), HOVER_DWELL);
 }
 
 function onGraphHover(h) {
-  const el = hoverEl();
-  if (!el) return;
   if (!h) { hideHoverCard(); return; }
 
   /* Moving within the same node is a move, not a new subject: re-rendering there would
      throw away a fetched second half and start it again for the same answer. */
-  if (h.id === hoverAt) { hoverPos = { x: h.x, y: h.y }; hoverPlace(el, h.x, h.y); return; }
-
-  hoverAt = h.id;
-  hoverPos = { x: h.x, y: h.y };
-  clearTimeout(hoverTimer);
-  if (hoverFetch) { hoverFetch.abort(); hoverFetch = null; }
-
-  el.hidden = false;
-  el.innerHTML = hoverSkeleton(h);
-  hoverPlace(el, h.x, h.y);
-
-  const cached = hoverCache.get(h.id);
-  if (cached !== undefined) { hoverFill(h.id, cached); return; }
-
-  hoverTimer = setTimeout(() => hoverAsk(h.id), HOVER_DWELL);
+  if (h.id === hoverAt && hoverHost === "graph") {
+    hoverAnchor = { x: h.x, y: h.y };
+    placeHoverCard();
+    return;
+  }
+  showHoverCard("graph", h.id, { x: h.x, y: h.y }, hoverSkeleton(h));
 }
 
 async function hoverAsk(id) {
@@ -4512,19 +4673,78 @@ function hoverFill(id, card) {
   const rest = el.querySelector(".hc-rest");
   if (!rest) return;
   rest.innerHTML = (card && card.found)
-    ? hoverDetailHtml(card)
+    ? hoverDetailHtml(card, hoverHost === "nav")
     : `<div class="hc-why">Nothing more is recorded about this one.<span class="hc-cite"
         >${esc((card && card.reason) || "no answer")}</span></div>`;
 
   /* Place it again now it has its real height, and this is not belt and braces -- it is
      the hazard the two-stage paint creates. The card is positioned as the 87px skeleton,
      fits easily, and is then filled to 293px: on a 418px canvas that puts its bottom 29px
-     past the pane, so the half that just arrived is the half nobody can see. `hoverPlace`
-     is idempotent -- a card that still fits does not move, which is the whole point of
-     growing downward -- so calling it again corrects only the case where the alternative
-     is losing content. Found by looking at the thing, not by any check. */
-  hoverPlace(el, hoverPos.x, hoverPos.y);
+     past the pane, so the half that just arrived is the half nobody can see. Both placers
+     are idempotent -- a card that still fits does not move, which is the whole point of
+     growing downward -- so calling again corrects only the case where the alternative is
+     losing content. Found by looking at the thing, not by any check. */
+  placeHoverCard();
 }
+
+/* ── the navigator's pop-up, wired ──
+ *
+ * Delegated from `document`, like every other navigator handler here, and for the reason
+ * written down beside them: `buildNav()` rewrites the pane on every keystroke *and* on every
+ * graph selection, so per-row listeners would be rebuilt thousands of times a session.
+ *
+ * `mouseover`/`mouseout` rather than `mouseenter`/`mouseleave`, because only the first pair
+ * bubbles and delegation needs bubbling. Moving *within* one row fires both, so the guard is
+ * on the row identity, not on the event.
+ *
+ * `focusin` is not decoration either: these rows are buttons and the list is reachable by
+ * keyboard, so a card that only ever appeared under a pointer would be a feature the
+ * keyboard reader can see other people using.
+ */
+function navCardRow(target) {
+  const row = target && target.closest && target.closest(".nav-item[data-card]");
+  return row && row.dataset.navid ? row : null;
+}
+
+function openNavCard(row) {
+  if (hoverAt === row.dataset.navid && hoverHost === "nav") return;   // same subject
+  showHoverCard("nav", row.dataset.navid, row, navHoverSkeleton(row));
+}
+
+document.addEventListener("mouseover", (ev) => {
+  const row = navCardRow(ev.target);
+  if (row) { openNavCard(row); return; }
+  /* Left the rows entirely. Scoped to the navigator: a pointer travelling from a row into
+     the picture must not have its nav card torn down *and then* be told to hide again by
+     the graph, which is the same card twice and one of them wrong. */
+  if (hoverHost === "nav" && !(ev.target.closest && ev.target.closest("#navigator"))) {
+    hideHoverCard();
+  }
+});
+
+document.addEventListener("mouseout", (ev) => {
+  if (hoverHost !== "nav") return;
+  const from = navCardRow(ev.target);
+  if (!from) return;
+  // Into a child of the same row is not leaving it.
+  if (ev.relatedTarget && from.contains(ev.relatedTarget)) return;
+  if (navCardRow(ev.relatedTarget)) return;      // straight onto the next row; that opens it
+  hideHoverCard();
+});
+
+document.addEventListener("focusin", (ev) => {
+  const row = navCardRow(ev.target);
+  if (row) openNavCard(row);
+  else if (hoverHost === "nav") hideHoverCard();
+});
+
+/* The card is anchored to a row, so anything that moves the row invalidates it. A scrolled
+ * list would otherwise leave the card level with whatever has slid into that place -- a
+ * confident answer about a routine the reader is no longer pointing at, which is the failure
+ * this whole surface exists to avoid. Cheaper and more honest than re-placing: the pointer
+ * has stopped being over the row, so there is nothing to describe. */
+window.addEventListener("scroll", () => { if (hoverHost === "nav") hideHoverCard(); }, true);
+window.addEventListener("resize", () => { if (hoverHost === "nav") hideHoverCard(); });
 
 /* ── picking a subject from the navigator ──────────────────────────────────────────
  *

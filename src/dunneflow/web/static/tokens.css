@@ -1374,6 +1374,89 @@ kbd { font-family: var(--f-mono); font-size: .66rem; background: var(--sunken);
 
 /* ═══ source viewer ═══ */
 .viewer-scrim { position: fixed; inset: 0; background: rgba(8,12,18,.55); z-index: 90; }
+
+/* ── the detail window ──
+ *
+ * A destination, not a pane: one node, what flows in, what flows out, what it touches, and
+ * the threads leading away from it. It floats over the app rather than taking the centre so
+ * that `Esc` puts the reader back exactly where they were looking -- which is what makes a
+ * detour free (design rule 15), and the reason the source viewer is a modal too.
+ *
+ * Below the source viewer's z-index on purpose: opening a citation from inside here must
+ * land in front of here, not behind it.
+ */
+.detailwin {
+  position: fixed; z-index: 88; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  width: min(72rem, 94vw); max-height: 88vh;
+  display: flex; flex-direction: column;
+  background: var(--surface); color: var(--text);
+  border: 1px solid var(--border-strong); border-radius: .4rem;
+  box-shadow: var(--shadow); overflow: hidden;
+}
+.detail-head { display: flex; align-items: flex-start; gap: .75rem;
+               padding: .6rem .8rem; border-bottom: 1px solid var(--border); }
+.detail-head .linkbtn { margin-left: auto; flex: none; }
+.detail-title { font-size: .92rem; font-weight: 600; display: flex;
+                align-items: baseline; gap: .4rem; flex-wrap: wrap; }
+.detail-sub { font-size: .7rem; color: var(--text-muted); margin-top: .15rem;
+              overflow-wrap: anywhere; }
+/* Scrolls inside itself. A grid child is `min-height: auto` and would otherwise hand its
+ * overflow to the document, which does not scroll panes -- the defect rule 29's companion
+ * was written from, one container out. */
+.detail-body { overflow: auto; padding: .8rem; min-height: 0; }
+
+/* Three columns: what reaches it, it, and what it reaches. The arrangement *is* the answer
+ * -- the same facts as the inspector's lists, laid out so the direction is visible without
+ * being read. */
+.dflow { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr) minmax(0, 1fr);
+         gap: .75rem; align-items: start; }
+.dflow-col h4, .dtouch h4, .dthreads h4 {
+  font-size: .66rem; font-weight: 700; letter-spacing: .09em; text-transform: uppercase;
+  color: var(--text-muted); margin: 0 0 .35rem; display: flex; gap: .35rem; align-items: baseline; }
+.dflow-col.out { text-align: right; }
+.dflow-col.out h4 { justify-content: flex-end; }
+.dflow-item { display: flex; align-items: baseline; gap: .3rem; padding: .06rem 0; }
+.dflow-col.out .dflow-item { flex-direction: row-reverse; }
+.dflow-arrow { color: var(--accent-text); font-weight: 700; flex: none; }
+.dflow-go, .dflow-dead {
+  font: inherit; font-family: var(--f-mono); font-size: .72rem;
+  background: none; border: 0; padding: .06rem .18rem; border-radius: .1875rem;
+  color: var(--text); text-align: inherit; min-width: 0; overflow-wrap: anywhere; }
+.dflow-go { cursor: pointer; }
+.dflow-go:hover { background: var(--accent-soft); color: var(--accent-text); }
+.dflow-dead { color: var(--text-muted); }
+.dflow-go .dim, .dflow-dead .dim { color: var(--text-faint); margin-left: .3rem; }
+
+/* The subject, between the two directions. Raised rather than bordered: it is the thing the
+ * arrows point at, and a box would read as a fourth column. */
+.dflow-hub { background: var(--raised); border-radius: .3rem; padding: .5rem .6rem;
+             display: flex; flex-direction: column; gap: .3rem; min-width: 0; }
+.dflow-hub .hc-sig { background: var(--sunken); }
+.dflow-eps { display: flex; flex-wrap: wrap; gap: .25rem; }
+.dflow-where { font-size: .68rem; color: var(--text-faint); }
+
+.dtouch { margin-top: .9rem; }
+.dtouch-item { display: inline-flex; align-items: baseline; gap: .25rem;
+               font-family: var(--f-mono); font-size: .7rem; color: var(--text-muted);
+               margin: 0 .6rem .2rem 0; }
+.dtouch-item .gl { font-style: normal; color: var(--text-faint); }
+.dtouch-item b { color: var(--text); font-weight: 600; }
+/* Present but unnamed: the boundary is real, the path is not a literal. Muted and
+ * italic so it does not read as a target called 'target not literal'. */
+.dtouch-item b.dtouch-unnamed { color: var(--text-faint); font-weight: 400;
+                               font-style: italic; }
+.dtouch-item .dim { color: var(--text-faint); }
+.dthreads { margin-top: .9rem; }
+
+@media (max-width: 900px) {
+  /* One column under the other, in reading order: what reaches it, it, what it reaches.
+     px, not rem -- a relative unit in a media query resolves against the *browser's* font
+     size and ignores `:root`, which rule 28 was written from. */
+  .dflow { grid-template-columns: minmax(0, 1fr); }
+  .dflow-col.out, .dflow-col.out h4 { text-align: left; justify-content: flex-start; }
+  .dflow-col.out .dflow-item { flex-direction: row; }
+}
+
 .viewer { position: fixed; z-index: 91; left: 50%; top: 50%; transform: translate(-50%, -50%);
   width: min(56rem, 94vw); max-height: 82vh; display: flex; flex-direction: column;
   background: var(--surface); border: 1px solid var(--border-strong); border-radius: .5rem;

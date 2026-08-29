@@ -87,7 +87,18 @@ def _routine(store: Store, node_id: str) -> dict[str, Any] | None:
         "id": node_id,
         "label": ident["name"],
         "identity": ident,
-        "params": _rows(store, queries.ROUTINE_PARAMS, args),
+        # The same pieces `/api/hover` sends, from the same renderer, so the inspector's
+        # signature and the card's invocation line cannot disagree about one routine.
+        #
+        # This was raw `params` rows, and the pane read `p.annotation` and `p.default`
+        # against a query that sends `type` and `dflt` -- so **every parameter in the
+        # inspector rendered as a bare name**, with no type and no default, from the day it
+        # was written. Rule 44 in the pane the whole design points at: `NaN` renders as
+        # nothing, and a missing type looks exactly like a routine that has none.
+        "params": signature_parts([
+            (r["name"], r["type"], r["dflt"], r["kind"])
+            for r in _rows(store, queries.ROUTINE_PARAMS, args)
+        ]),
         "in": {
             "callers": _rows(store, queries.ROUTINE_CALLERS, args),
             "entrypoints": _rows(store, queries.ROUTINE_ENTRYPOINTS, args),

@@ -927,6 +927,144 @@ def test_the_invocation_line_is_the_one_in_the_code() -> None:
     )
 
 
+def test_the_detail_window_reads_the_one_selection() -> None:
+    """It held a node id of its own, and the two states drifted the first time anything else
+    moved the selection: the trail's Back stepped the app to the previous routine and left
+    the window standing on the one after it. Two answers to "what am I looking at", in the
+    one window built to show how things connect.
+
+    So `state.detail` is **open or not**, never *which*. The window renders `SPECIMEN`, which
+    is the same thing the inspector renders, and cannot disagree with it by construction.
+    Found by driving it, not by any check.
+    """
+    shell = _read("shell.js")
+    assert re.search(r"^  detail: false,", shell, re.M), (
+        "the detail window holds a subject of its own again, which can drift from the "
+        "selection the rest of the application is showing"
+    )
+    panel = _code(_fn(shell, "detailPanel"))
+    assert "const s = SPECIMEN;" in panel, "the window no longer reads the one selection"
+    # A word boundary, or `state.detailAll` matches -- which is not a subject at all but
+    # per-node view state, already keyed by the selection and therefore unable to drift.
+    assert not re.search(r"state\.detail(?![A-Za-z])",
+                         panel.split("if (!state.detail) return", 1)[1]), (
+        "the window consults its own state for something other than being open"
+    )
+    # Every way in and every hop is an ordinary selection, so the trail records the journey
+    # once and undo already reaches every step of it.
+    opener = _fn(shell, "openDetail")
+    assert "selectFromNav({ nodes: [nodeId] })" in opener and "pushTrail(" in opener, (
+        "opening the window does not go through the one selection route, so the stack and "
+        "the trail do not follow the reader into it"
+    )
+    assert "hopDetail(hop.dataset.detail)" in shell and "function hopDetail" in shell, (
+        "a hop inside the window takes a different path from opening it -- two sets of "
+        "rules about what following a rabbit does to the trail"
+    )
+
+
+def test_a_control_rendered_twice_is_wired_twice() -> None:
+    """The trail bar is now in two places -- the app header, and the detail window, which
+    needs its own because the header sits behind that window's scrim. Its *steps* were wired
+    with `$$` and worked in both; **Back** and **Clear** were wired with `$`, so only
+    whichever copy came first in the DOM did anything.
+
+    Two thirds of one bar working is not a state anybody looks for, and design rule 15 says
+    the trail is what makes a detour free -- so the dead control was the one a lost reader
+    reaches for first.
+    """
+    shell = _code(_read("shell.js"))
+    for attr in ("trailback", "trailclear", "trail"):
+        assert re.search(rf'\$\$\("\[data-{attr}\]"\)', shell), (
+            f"[data-{attr}] is wired with the singular selector, so only the first of the "
+            f"two trail bars on the page responds to it"
+        )
+        # `(?<!\$)` or this matches the tail of `$$("[data-x]")` and fails on the fix.
+        assert not re.search(rf'(?<!\$)\$\("\[data-{attr}\]"\)', shell), (
+            f"[data-{attr}] still has a singular wiring beside the plural one"
+        )
+    # And the window really does render a second one, or the check above guards nothing.
+    assert "trailBar()" in _fn(shell, "detailShell"), (
+        "the detail window no longer carries the trail, so the reader inside it has no "
+        "breadcrumbs and no way back"
+    )
+
+
+def test_the_detail_window_never_drops_a_boundary_it_cannot_name() -> None:
+    """`write_backup` has two FILE OUT boundaries whose target is not a literal in the
+    source -- the path is assembled, which is rule 17's whole subject. Filtering rows with no
+    value dropped both and printed *"It reaches nothing outside itself"*, which is not a
+    weaker claim than the truth but a different and false one. Design rule 1, self-inflicted
+    within the hour."""
+    shell = _read("shell.js")
+    panel = _code(_fn(shell, "detailPanel"))
+    assert ".filter(x => x.v)" not in panel, (
+        "boundaries with no readable target are filtered out, so a routine that touches the "
+        "outside world can report that it touches nothing"
+    )
+    assert "dtouch-unnamed" in panel, (
+        "an unnamed boundary is not distinguished from a named one, so a blank reads as a "
+        "target rather than as a target we could not read"
+    )
+    # Rule 8: a bounded view states what it left out and opens the rest in place.
+    col = _fn(shell, "detailFlowCol")
+    assert "data-detailall" in col and "showing ${rows.length} of ${" in col, (
+        "the flow columns are capped without saying so, which is a silent filter"
+    )
+
+
+def test_drilling_in_opens_on_what_the_pointer_is_over() -> None:
+    """The card describes the node under the pointer, which is usually **not** the selected
+    one. Opening on the selection would answer a question the reader did not ask, plausibly
+    enough that they might not notice.
+
+    And the card stays untouchable. Making it clickable is the recorded decision this key
+    exists to avoid re-opening: the clickable depth is the inspector's and this window's, and
+    a second interactive surface floating over the canvas is how the graph and the shell
+    became two applications.
+    """
+    shell, css = _read("shell.js"), _read("tokens.css")
+    key = re.search(r'if \(e\.key === "Enter" && [^)]*\) \{\s*e\.preventDefault\(\);\s*'
+                    r'openDetail\((\w+)\);', shell)
+    assert key, "no key opens the detail window from the pop-up"
+    assert key.group(1) == "hoverAt", (
+        f"the key opens on `{key.group(1)}` rather than on the node the pop-up is about"
+    )
+    card_rule = css.split(".hovercard {", 1)[1].split("}", 1)[0]
+    assert "pointer-events: none" in card_rule, (
+        "the pop-up became interactive -- a second clickable surface over the canvas, which "
+        "is the decision the drill-in key was chosen to keep"
+    )
+    assert "hideHoverCard();" in _fn(shell, "openDetail"), (
+        "the card is left standing while the window opens over it, describing a node the "
+        "pointer has stopped being over"
+    )
+
+
+def test_the_inspector_prints_the_types_the_server_sends() -> None:
+    """It read `p.annotation` and `p.default` against a query sending `type` and `dflt`, so
+    **every parameter in the pane the whole design points at** rendered as a bare name --
+    no type, no default -- from the day it was written. Nothing failed, and a missing type is
+    indistinguishable from a routine that has none. Rule 44, found by reading the code beside
+    something else."""
+    shell = _read("shell.js")
+    insp = _code(shell.split("/* ── the signature, demoted ── */", 1)[1]
+                      .split("const lines =", 1)[0])
+    assert "p.annotation" not in insp and "p.default" not in insp, (
+        "the inspector reads parameter fields the server does not send, so every type and "
+        "every default renders as nothing"
+    )
+    assert "esc(p.text)" in insp, (
+        "the inspector composes its own parameter text instead of using the pieces "
+        "`signature_parts` already rendered -- a second opinion about one signature"
+    )
+    detail_py = (WEB / "detail.py").read_text(encoding="utf-8")
+    assert "signature_parts(" in detail_py.split("def _routine(", 1)[1].split("\ndef ", 1)[0], (
+        "/api/node no longer sends signature pieces, so the inspector and the card are two "
+        "renderings of two different shapes again"
+    )
+
+
 def test_the_hover_card_is_placed_again_once_it_is_filled() -> None:
     """The hazard the two-stage paint creates, and it is not hypothetical.
 
@@ -1361,6 +1499,27 @@ def _fn(js: str, name: str) -> str:
     rest = js[start:]
     ends = [i for i in (rest.find("\nfunction ", 1), rest.find("\nasync function ", 1)) if i > 0]
     return rest if not ends else rest[:min(ends)]
+
+
+def _code(js: str) -> str:
+    """JavaScript with its comment *lines* removed.
+
+    Three guards this session failed on the prose explaining the very thing they check --
+    a check for `p.annotation` tripping on the comment saying `p.annotation` was the bug,
+    and twice more besides. A containment check is only as good as the span it is taken
+    over (rule 37), and a comment is not code.
+
+    Whole lines only, which is the conservative half of the job and the only half that is
+    safe. A general comment stripper has to track string state, and a first attempt at one
+    ate the bodies of the template literals -- which in this codebase is where the code
+    being checked actually lives, so every check passed on an empty string. Every false
+    positive here came from a doc block, and every doc-block line begins with `/*`, `*` or
+    `*/` after its indent.
+    """
+    return "\n".join(
+        "" if re.match(r"\s*(/\*|\*/?|//)", line) else line
+        for line in js.split("\n")
+    )
 
 
 def _served_keys(py: str, fn: str) -> set[str]:

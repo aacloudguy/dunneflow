@@ -190,6 +190,16 @@ const state = {
   sortKey: "fan",
   sortAsc: false,
   viewer: null,
+  /* The detail window: **open or not**, never *which node*. It reads the one selection, so
+   * it cannot drift from it -- and it did, for as long as it held an id of its own: the
+   * trail's Back moved the selection and left the window standing on the node before it,
+   * two states disagreeing in the one window built to show how things connect. Found by
+   * driving it, not by any check.
+   *
+   * Not persisted: it is where the reader is looking right now, not how they like the
+   * surface arranged. */
+  detail: false,
+  detailAll: {},
   /* Seeded once the program's name is known, never with a name written here -- this
      carried a literal "mensores" from the prototype, which is a confident label about a
      program nobody has read. */
@@ -476,6 +486,24 @@ document.addEventListener("click", (ev) => {
   const term = b.dataset.term;
   pushTrail(state.view, term, b.dataset.termuse || "");
   followThread({ type: "cohort", kind: "term", key: term, label: term });
+});
+
+/* Routed from the DOM, delegated, because `render()` rewrites this window on every hop --
+ * a listener attached to a button inside it would be attached to a button that no longer
+ * exists one click later. */
+document.addEventListener("click", (ev) => {
+  const close = ev.target.closest("[data-closedetail]");
+  if (close) { closeDetail(); return; }
+  const hop = ev.target.closest("[data-detail]");
+  if (hop) { hopDetail(hop.dataset.detail); return; }
+  const all = ev.target.closest("[data-detailall]");
+  if (all) {
+    const subj = SPECIMEN && SPECIMEN.id;
+    const keep = state.detailAll.for === subj ? state.detailAll : { for: subj };
+    state.detailAll = { ...keep, [all.dataset.detailall]: true };
+    render();
+    return;
+  }
 });
 
 document.addEventListener("click", (ev) => {
@@ -1742,6 +1770,209 @@ function threadsPanel(nodeId) {
  * 52 KB for one program's glossary -- which is a page's worth of source code carried by
  * every reader for the handful of citations anybody opens. Same bargain as the hover card.
  */
+/* Opening, hopping and closing. All three go through the one selection, so there is no
+ * second piece of state that can disagree with the first.
+ *
+ * The card is torn down on the way in: it describes what is under the pointer, and the
+ * pointer is about to be somewhere else entirely. A card left standing over a modal is a
+ * second answer about a node the reader has stopped hovering.
+ */
+async function openDetail(nodeId) {
+  if (!nodeId) return;
+  hideHoverCard();
+  state.detail = true;
+  used("detail");
+  /* An ordinary selection, exactly as a navigator row or a node click makes. The stack
+     lights up underneath while the window is open, the trail records this hop once, and
+     undo already reaches it -- none of which is true of a window holding its own subject. */
+  await selectFromNav({ nodes: [nodeId] });
+  pushTrail(state.view, labelFor(nodeId), "opened in detail");
+  render();
+}
+
+/* A hop inside the window. Same route as opening, and deliberately so: chasing a rabbit and
+ * arriving are the same act, and a second path here would be a second set of rules about
+ * what a hop does to the trail. */
+function hopDetail(nodeId) { openDetail(nodeId); }
+
+function closeDetail() {
+  state.detail = false;
+  state.detailAll = {};
+  render();
+}
+
+/* The best name we have for a node before its own answer has arrived. `SPECIMEN` is the
+ * node being read, which on the first hop is still the previous one -- so this asks the
+ * routine list, then the graph, then falls back to the id rather than printing a label
+ * about the wrong routine. */
+function labelFor(nodeId) {
+  const r = (ROUTINES || []).find(x => x.id === nodeId);
+  if (r) return r.name;
+  if (SPECIMEN && SPECIMEN.id === nodeId) return (SPECIMEN.identity || {}).name || SPECIMEN.label;
+  return nodeId;
+}
+
+/* ══ the detail window: one node, and what flows through it ══════════════════════════
+ *
+ * Asked for at the keyboard: *is there a way I could choose to drill into the visible
+ * information from the banner? Think about the explorer aspect -- from that destination the
+ * user will want to follow breadcrumbs and rabbits to even more destinations, seeing how
+ * they are related to one another and how information flows between them.*
+ *
+ * **Not a second set of facts.** It reads `SPECIMEN` -- the same `/api/node` the inspector
+ * reads -- and `THREADS`, the same adjacency the inspector shows. What is new is the
+ * *arrangement*: callers on the left, callees on the right, the routine between them with
+ * its invocation line, and what it touches beneath. The inspector answers "what is this"
+ * as a list; this answers "what passes through it" as a shape, and design rule 15 is why
+ * the shape is worth a second rendering.
+ *
+ * **It drives the one selection rather than keeping its own.** Every hop inside is an
+ * ordinary `selectFromNav`, so the stack lights up underneath while the window is open, the
+ * trail records the journey once, and undo already reaches every step of it. Two trails
+ * would be two answers to "where have I been" (rule 36), and a window with a private
+ * selection is how the graph and the shell became two applications.
+ *
+ * Selecting does not move the camera (design rule 26), so closing the window leaves the
+ * reader looking at exactly the view they left, with whatever they found now lit in it.
+ *
+ * The card that opens it stays `pointer-events: none` and is not made interactive. That is
+ * a recorded decision, and the key is what keeps it: the clickable depth stays the
+ * inspector's and this window's, not the pop-up's.
+ */
+function detailFlowCol(side, rows, total, noun, empty) {
+  const arrow = side === "in" ? "←" : "→";
+  const body = rows.length
+    ? rows.map(r => `
+        <div class="dflow-item">
+          <span class="dflow-arrow">${arrow}</span>
+          ${r.id
+            ? `<button class="dflow-go" data-detail="${esc(r.id)}"
+                 title="${esc(r.qualname || r.name || "")}">${esc(r.name || r.callee_expr)}${
+                 r.module ? `<span class="dim">${esc(moduleTail(r.module))}</span>` : ""}</button>`
+            : `<span class="dflow-dead" title="${esc(r.callee_expr || "")}">${
+                 esc(r.name || r.callee_expr)}${
+                 r.at_boundary ? `<span class="dim">at the boundary</span>`
+                 : r.external ? `<span class="dim">outside this map</span>` : ""}</span>`}
+        </div>`).join("")
+    : `<div class="hint">${empty}</div>`;
+  /* Design rule 1, and rule 8: a bounded picture states what it left out and opens the rest
+     in place. The cut is here rather than in the data, so "40 of 213" is a fact about this
+     view and never about the program. */
+  const cut = total > rows.length
+    ? `<button class="linkbtn" data-detailall="${esc(side)}">showing ${rows.length} of ${
+        total.toLocaleString()} ${noun} — show all</button>`
+    : "";
+  return `<section class="dflow-col ${esc(side)}">
+      <h4>${side === "in" ? "IN" : "OUT"} <span class="num">${total.toLocaleString()}</span></h4>
+      ${body}${cut}
+    </section>`;
+}
+
+const DETAIL_FLOW_SHOWN = 12;
+
+function detailPanel() {
+  if (!state.detail) return "";
+  const s = SPECIMEN;
+  /* Three different absences, told apart rather than blurred: nothing selected, the answer
+     still in flight, and a node the map does not hold. A window that looked the same in all
+     three is the confusion every empty answer in this product is written against. */
+  if (!s) {
+    return detailShell(inspectorFor ? "Reading\u2026" : "Nothing selected", "",
+      `<div class="hint">${inspectorFor
+        ? "Reading this node\u2026"
+        : "Pick a routine and press <kbd>Enter</kbd> over it to come back here."}</div>`);
+  }
+  if (s.notFound) {
+    return detailShell(s.id, "", `<div class="hint">Not in this map. ${esc(s.reason || "")}</div>`);
+  }
+
+  const id = s.identity || {};
+  const inn = s.in || {}, out = s.out || {};
+  const callers = inn.callers || [], eps = inn.entrypoints || [];
+  const calls = out.calls || [];
+  /* Scoped to the node it was asked about. "Show all 213 callers" is a decision about
+     *this* routine, and carrying it to the next one would open a list the reader never
+     asked to see -- and would do it silently, since a long list and a chosen long list look
+     identical. It survives a trail Back to the same node, which is the point of keying it
+     rather than clearing it on every hop. */
+  const showAll = (state.detailAll && state.detailAll.for === s.id) ? state.detailAll : {};
+  const inRows = showAll.in ? callers : callers.slice(0, DETAIL_FLOW_SHOWN);
+  const outRows = showAll.out ? calls : calls.slice(0, DETAIL_FLOW_SHOWN);
+
+  const sig = hoverSigHtml({
+    kind: s.kind, name: id.name || s.label, params: s.params || [],
+    returns: id.returns || "", is_async: id.is_async,
+  });
+
+  const t = s.touches || {};
+  const touches = [
+    ...(t.boundaries || []).map(b => ({ g: BKIND_GLYPH[b.kind] || "◇",
+                                        k: b.kind, v: b.target, d: b.direction })),
+    ...(t.sql || []).map(q => ({ g: "▤", k: q.operation || "SQL",
+                                 v: q.table || "", d: q.direction })),
+    ...(t.net || []).map(n => ({ g: "◆", k: n.protocol || "NET", v: n.target || n.expr, d: "" })),
+    ...(t.artefacts || []).map(a => ({ g: "▣", k: "FILE", v: a.name, d: "" })),
+  ];
+
+  const body = `
+    <div class="dflow">
+      ${detailFlowCol("in", inRows, callers.length, "callers",
+        eps.length ? "Reached as a way in." : "Nothing in this map calls it.")}
+      <section class="dflow-hub">
+        ${eps.length ? `<div class="dflow-eps">${eps.map(e =>
+            `<span class="badge certain">${esc(e.kind || "ENTRYPOINT")} ${
+              esc(e.name || e.command || "")}</span>`).join("")}</div>` : ""}
+        ${sig || `<div class="hc-sig"><b class="sig-name">${esc(id.name || s.label)}</b></div>`}
+        <div class="dflow-where mono">${esc(String(id.file || "").split("/").slice(-1)[0])}${
+          id.line_start ? `:${id.line_start}` : ""}</div>
+        ${id.docstring ? `<div class="why">${esc(String(id.docstring).split("\n")[0])}</div>` : ""}
+      </section>
+      ${detailFlowCol("out", outRows, calls.length, "calls", "It calls nothing this map can see.")}
+    </div>
+
+    <div class="dtouch">
+      <h4>TOUCHES <span class="num">${touches.length}</span></h4>
+      ${touches.length
+        ? touches.map(x => `<span class="dtouch-item"><i class="gl">${x.g}</i>${
+            esc(x.k.toLowerCase())} ${x.v
+              ? `<b>${esc(x.v)}</b>`
+              /* A boundary DunneFlow found and could not *name* is still a boundary, and
+                 dropping it was a silent filter that turned two real FILE writes into
+                 "reaches nothing outside itself" (design rule 1, and the claim was simply
+                 false). The path is usually assembled rather than literal -- rule 17's
+                 `root / ".mensores" / "tabularium.db"` -- so only the parts are in the
+                 source and none of them is the name. */
+              : `<b class="dtouch-unnamed">target not literal in the source</b>`}${
+            x.d ? `<span class="dim">${esc(x.d)}</span>` : ""}</span>`).join("")
+        : `<div class="hint">It reaches nothing outside itself — no file, no database, no
+             network. Everything it moves, it was handed.</div>`}
+    </div>
+
+    <div class="dthreads">${threadsPanel(s.id)}</div>`;
+
+  return detailShell(id.name || s.label || s.id, id.qualname || "", body, s.kind);
+}
+
+function detailShell(title, sub, body, kind) {
+  return `
+  <div class="viewer-scrim" data-closedetail></div>
+  <div class="detailwin" role="dialog" aria-modal="true" aria-label="Detail: ${esc(title)}">
+    <div class="detail-head">
+      <div style="min-width:0">
+        <div class="detail-title">${esc(title)}${
+          kind ? ` <span class="kind-tag">${esc(kind)}</span>` : ""}</div>
+        ${sub ? `<div class="detail-sub mono">${breakable(sub)}</div>` : ""}
+      </div>
+      <button class="linkbtn" data-closedetail>Close <kbd>Esc</kbd></button>
+    </div>
+    ${/* The one trail, not a second one. Every hop in here is an ordinary selection, so
+          the journey it records is the reader's whole journey and Back works across the
+          boundary of this window in both directions. */
+      trailBar()}
+    <div class="detail-body">${body}</div>
+  </div>`;
+}
+
 function viewerPanel() {
   if (!state.viewer) return "";
   const term = TERMS.find(t => t.term === state.viewer.term);
@@ -2627,13 +2858,19 @@ function viewInspector() {
             says what it does and nothing says why.</div>`));
 
   /* ── the signature, demoted ── */
+  /* One piece per line, straight from `signature_parts` -- so this and the card's
+   * invocation line are the same sequence laid out two ways, and a `*` cannot appear in
+   * one and not the other.
+   *
+   * It read `p.annotation` and `p.default` against a query that sends `type` and `dflt`,
+   * so every parameter here printed as a bare name with no type and no default for as long
+   * as this pane has existed. Nothing failed; a missing type is indistinguishable from a
+   * routine that has none, which is rule 44 exactly. */
   const params = s.params || [];
   const sigBody = `<pre class="srcblock">${
     id.is_async ? `<span class="kw">async </span>` : ""}<span class="kw">def</span> ${
     esc(id.name || s.label)}(${params.length
-      ? "\n    " + params.map(p =>
-          esc(p.name) + (p.annotation ? `: ${esc(p.annotation)}` : "") +
-          (p.default ? ` = ${esc(p.default)}` : "")).join(",\n    ") + "\n"
+      ? "\n    " + params.map(p => esc(p.text)).join(",\n    ") + "\n"
       : ""})${id.returns ? ` -&gt; ${esc(id.returns)}` : ""}:</pre>`;
 
   const lines = (id.line_end && id.line_start) ? id.line_end - id.line_start + 1 : null;
@@ -2827,7 +3064,7 @@ function render() {
   applyPanels();
   let vw = document.getElementById("viewerMount");
   if (!vw) { vw = document.createElement("div"); vw.id = "viewerMount"; document.body.appendChild(vw); }
-  vw.innerHTML = viewerPanel();
+  vw.innerHTML = viewerPanel() + detailPanel();
   const ne = $("#navEgress");
   if (ne) {
     ne.textContent = posture().label.toLowerCase();
@@ -3153,8 +3390,15 @@ function wire() {
     if (step.subject) applySelectionStep(step.subject);
     else render();
   }));
-  const tb = $("[data-trailback]");
-  if (tb) tb.addEventListener("click", () => {
+  /* `$$`, not `$`. The trail bar is rendered in two places now -- the app's header and the
+   * detail window, which needs its own because the header is behind that window's scrim --
+   * and these two were wired with the singular selector, so only whichever copy came first
+   * in the DOM did anything. The window's *Back* rendered, looked live, and listened to
+   * nothing: design rule 16 in the one control a lost reader reaches for.
+   *
+   * The steps beside them were already `$$` and always worked, which is what made it
+   * confusing to look at -- two thirds of one bar working is not a state anybody expects. */
+  $$("[data-trailback]").forEach(tb => tb.addEventListener("click", () => {
     if (state.trail.length > 1) {
       state.trail.pop();
       const step = state.trail[state.trail.length - 1];
@@ -3162,12 +3406,11 @@ function wire() {
       if (step.subject) applySelectionStep(step.subject);
       else render();
     }
-  });
-  const tc = $("[data-trailclear]");
-  if (tc) tc.addEventListener("click", () => {
+  }));
+  $$("[data-trailclear]").forEach(tc => tc.addEventListener("click", () => {
     state.trail = [{ view: state.view, label: "here", note: "trail cleared" }];
     render();
-  });
+  }));
   $$("[data-nav2]").forEach(b => b.addEventListener("click", () => {
     state.view = b.dataset.nav2; pushTrail(state.view, "kept things"); render();
   }));
@@ -3282,7 +3525,27 @@ function step(d) {
 
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && state.viewer) { e.preventDefault(); state.viewer = null; render(); return; }
+  /* The source viewer sits *on top* of the detail window, so it closes first. Two modals
+     dismissed by one key have to unwind in the order they were opened, or Esc closes the
+     thing underneath and leaves the thing in front standing on nothing. */
+  if (e.key === "Escape" && state.detail) {
+    e.preventDefault(); closeDetail(); return;
+  }
   const typing = ["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement.tagName);
+  /* Drill into whatever the pop-up is describing.
+   *
+   * `hoverAt` rather than `state.selected`, and that is the whole point: the card is about
+   * the node under the pointer, which is usually *not* the one selected. Opening the window
+   * on the selection would answer a question the reader did not ask, and would do it
+   * plausibly enough that they might not notice.
+   *
+   * The card itself stays untouchable (`pointer-events: none`, a recorded decision), so a
+   * key is how a hover becomes a destination. */
+  if (e.key === "Enter" && !typing && hoverAt && !e.metaKey && !e.ctrlKey && !e.altKey) {
+    e.preventDefault();
+    openDetail(hoverAt);
+    return;
+  }
   if (e.key === "/" && !typing) { e.preventDefault(); $("#search").focus(); return; }
   /* Undo the selection, from anywhere -- the reader who needs it is by definition lost and
    * should not have to find a particular pane first. Above the anomalies-only guard below
@@ -3353,6 +3616,7 @@ const WIRED_ATTRS = new Set([
   "cursor", "den", "disk", "drop", "edgesmotion", "egress", "ep", "fold", "gact", "gosev",
   "goto", "graphtheme", "insp", "jump", "layout", "legend", "manifest", "menuorder",
   "mode", "nav", "nav2", "navcap", "navgroups", "pkgopen", "pointerplace", "pointerreset", "pointershown", "reticule",
+  "closedetail", "detail", "detailall",
   "navid", "node", "open", "pane", "pin", "pinnote", "pkgnode", "pkgpick", "qual",
   "resize", "row",
   "scale-set", "sec", "sev", "sevnav", "sort", "sqlshow", "start", "step", "theme",

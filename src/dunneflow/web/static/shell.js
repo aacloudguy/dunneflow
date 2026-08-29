@@ -1112,9 +1112,21 @@ function viewAnomalies() {
           fixing, which is a different pile from "the blind spot applies here".
         </div>
 
+        <!-- Disabled, with the reason, rather than removed: a control that vanishes
+             leaves no clue that the feature exists, and this one is wanted. Both were
+             live-looking buttons with no attributes, no handler and a keyboard badge for
+             a key nothing listened for -- invisible to the runtime self-check, which reads
+             data attributes and finds none on a button that has none.
+             They cannot simply be wired. A finding carries the *name* it found, not a node
+             id, and resolving that name is rule 5 exactly: eleven routines share self._emit.
+             queries.py wrote the answer down before anything needed it -- inventing an id
+             to make a row clickable is a link to nothing -- so this waits for the detector
+             to carry the ids it already knows. -->
         <div class="wl-jump">
-          <button class="actbtn">Go to the first occurrence in the graph <span class="k">G</span></button>
-          <button class="actbtn">Show all ${cur.a.n} occurrence${cur.a.n === 1 ? "" : "s"} as a table <span class="k">T</span></button>
+          <button class="actbtn" disabled
+                  title="Not yet: a finding carries the name it found, not the node. Resolving ${esc(cur.a.subject || "a name")} would be a guess between every routine that shares it.">Go to the first occurrence in the graph</button>
+          <button class="actbtn" disabled
+                  title="Not yet, for the same reason: the occurrences are known by name, and a table of guesses is worse than no table.">Show all ${cur.a.n} occurrence${cur.a.n === 1 ? "" : "s"} as a table</button>
         </div>`}
       </div>
     </div>
@@ -3280,6 +3292,14 @@ document.addEventListener("keydown", (e) => {
     e.preventDefault();
     if (e.shiftKey) redoSelection(); else undoSelection();
     return;
+  }
+  /* The source pane, from anywhere the inspector is showing one. The button has printed
+   * an `S` badge since the inspector was written and nothing has ever listened for it --
+   * a promise in a label rather than in a handler, which no check on this page could see:
+   * the runtime self-check reads `data-*` attributes, and a keyboard shortcut has none. */
+  if (e.key.toLowerCase() === "s" && !typing && !e.metaKey && !e.ctrlKey && !e.altKey) {
+    const sb = $("#srcBtn");
+    if (sb) { e.preventDefault(); sb.click(); return; }
   }
   if (typing || state.view !== "anomalies") return;
   if (e.key === "j") { e.preventDefault(); step(1); }

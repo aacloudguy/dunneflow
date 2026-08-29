@@ -2129,3 +2129,52 @@ def test_the_undo_pair_both_say_what_they_do() -> None:
         m = re.search(rf'data-gact="{act}"[^>]*>([^<]*)</button>', js, re.S)
         assert m, f"the {act} button is gone"
         assert act in m.group(1), f"the {act} button is a glyph with no word on it"
+
+
+def test_every_keyboard_badge_names_a_key_something_listens_for() -> None:
+    """A control can promise in its *label* as well as in its wiring, and this page had
+    three that did: `S` on the inspector's source button, `G` and `T` in the worklist. None
+    of the three keys was handled anywhere.
+
+    No check here could see it. The runtime self-check reads `data-*` attributes, and a
+    keyboard shortcut has none — worse, the two worklist buttons had no attributes at all,
+    which makes a control *invisible* to a check that enumerates attributes. Design rule 16
+    one more level out: a printed promise is a control too.
+    """
+    js = _read("shell.js")
+    body = re.sub(r"/\*.*?\*/|//[^\n]*|<!--.*?-->", "", js, flags=re.S)
+    badges = set(re.findall(r'class="k">([A-Za-z])</span>', body))
+    assert badges, "no keyboard badges at all -- this test is blind"
+    # Bounded to the handler's own block. Unbounded it was "everything after the keydown
+    # listener", which is most of the file -- so `"s"` matched a string somewhere else and
+    # the guard passed against its own defect. The same over-capture `_fn` had.
+    handler = js.split("document.addEventListener(\"keydown\"", 1)[1].split("\n});", 1)[0]
+    assert "e.key" in handler, "the keydown handler changed shape -- this test is blind"
+    missing = sorted(b for b in badges
+                     if f'"{b.lower()}"' not in handler and f'"{b}"' not in handler)
+    assert not missing, (
+        f"these keys are printed on controls and handled nowhere: {missing} -- the label "
+        "is a promise the page does not keep"
+    )
+
+
+def test_a_control_that_cannot_act_says_so_rather_than_looking_live() -> None:
+    """The worklist's two jump buttons were live-looking, attribute-less and wired to
+    nothing — the original design rule 16 defect, still on the page.
+
+    They are not simply wireable, and that is the interesting half: a finding carries the
+    *name* it found (`self._emit`), not a node id, and eleven routines share that name.
+    `queries.py` wrote the answer down before anything needed it — inventing an id to make a
+    row clickable is a link to nothing — so they are disabled with the reason, which is the
+    same choice `undo` makes: a control that vanishes leaves no clue the feature exists.
+    """
+    js = _read("shell.js")
+    jump = js.split('<div class="wl-jump">', 1)[1].split("</div>", 1)[0]
+    buttons = re.findall(r"<button[^>]*>", jump)
+    assert len(buttons) == 2, "the worklist jump pair changed shape -- this test is blind"
+    for b in buttons:
+        assert "disabled" in b, (
+            "a worklist jump button looks live and is wired to nothing -- if it has been "
+            "built, this guard should be replaced by one asserting it acts"
+        )
+        assert "title=" in b, "it is disabled and does not say why"

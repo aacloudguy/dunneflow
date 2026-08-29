@@ -85,13 +85,22 @@ traceability across both stores · named artefacts · the mirror · comments (18
 **Dashboard:** one application — the ratified shell (cover, navigator, worklist, table,
 document, glossary, naming, settings) with the 2.5D stack and the package overview as two
 layouts inside graph mode, one inspector reading `/api/node`, and the graph following the
-theme. The reading loop: the navigator is the routine list, hovering a node gives a card,
-picking one lights its hop and fills the inspector, threads lead sideways, and ⌘Z takes any
-of it back.
+theme. The reading loop: the navigator is the routine list grouped by package, hovering a
+node gives a card, picking one lights its hop and fills the inspector, threads lead sideways,
+and ⌘Z takes any of it back. **Finding and keeping your place**: an arrow at the plate's rim
+aimed at what you picked and clickable to go there, a reticule on it, a *focus* lock so only
+the lit set answers a hover or a click, and *you are here* to restore the view you found it
+in.
+
+**Code viewing:** `source.db` is a content-addressed, compressed sidecar (626 files, 7.8 MB
+of text in 3.1 MB). The inspector opens a definition ±3 lines from `/api/node`; the glossary's
+citation viewer opens any span from `/api/source`. Both say the source is *as measured*, not
+as the tree stands now. No file browser, no search inside source, no highlighting — see
+`HANDOFF.md` 5s.
 
 **Not built:** `dunneflow infer` (the model pass) · temporal layers · attestation · the
-project profile · document mode's narrative view · packaging as a binary · any language
-but Python.
+project profile · document mode's narrative view · a file browser or source search ·
+packaging as a binary · any language but Python.
 
 **Built but not on screen:** `CURIOSITIES`. `threads.py` computes the outlier family per
 package already — most commented, most called, deepest closure, most lopsided table — and
@@ -100,42 +109,51 @@ is not computed yet.
 
 ## What we are doing now
 
-**The navigator survives a long list — 2026-08-29.** See `HANDOFF.md` 5o. All three symptoms
-Tom gave at the keyboard, and the question behind them: what does the pane offer someone who
-arrives in the middle of 4,734 rows?
+**Paused 2026-08-29 with the graph's orientation work complete.** Four features and a
+stocktake, all from Tom at the keyboard; see `HANDOFF.md` 5o–5s.
 
-- **The notice reads before the list**, inside a sticky header, the same open or closed.
-- **The pane is a header row over a scrolling body**, with the group headings sticky inside
-  it — so the collapse control is always within reach of a wheel. Two grid rows rather than a
-  second sticky element, because a sticky element under another has to know its height.
-- **A jump strip** takes you to any group in one click and marks the group you are in,
-  generated from the same ordered table the groups are. The menu order moved out of
-  `render()`, where it was applied by shuffling DOM nodes the strip could not see.
-- **The routine list is grouped by package** — 47 rows a person can read — and by the package
-  the *stack* uses, so a heading names a plate. Packages too small for a plate of their own
-  say so and select the merged one; rule 30 from the far side.
-- **Three Settings, all counted** (design rule 2): how many groups stand open at once
-  (default one), how many routines a package lists (50 / 100 / 200 / 500 / All — Tom's, and
-  the reason is that `200 of 377` is a tease rather than a bound), and the menu order.
-- **Rules 45 and 46**, and a fourth CSS default that looks like absence.
+- **The navigator survives a long list** (5o): the notice reads before the list, the group
+  headings stick, a jump strip reaches any group in one click, and the routine list is 47
+  package rows rather than 200 arbitrary ones. Three Settings, all counted.
+- **You are here** (5p–5q): an arrow at the plate's rim on the node's own bearing, aimed by
+  a screen angle read out of deck's shader; clicking it selects that node and frames it. A
+  reticule marks what you picked. **Focus** limits hover and clicks to the lit set, so the
+  fog cannot answer a question you did not ask — it changes what may *answer*, never what is
+  *drawn*. And *you are here* restores the view the selection was found in.
+- **State you can see** (5r): every pressed control fills with the accent, and the
+  navigator's current row is unmissable.
+- **Code viewing, taken stock of** (5s), which turned up three printed promises the page was
+  not keeping.
 
 **Next, and named:**
 
 1. **`CURIOSITIES`** — `threads.py` already measures the outlier family per package, and
    design rule 15's panel is that computation run over the whole program. It is the last
    thing on screen that says "not computed yet".
-2. **The two vocabulary-lane precision defects**, still open and unchanged: a DASH_GLOSS
-   mined out of a field-constraint table counts as a definition, and the undefined list's
-   head is segments of SCREAMING_SNAKE constant names — `DDL` 57, `EXTRAS` 50, `REASON` 43 —
-   burying the words that matter (`witness`, `posture`, `claim`, `probe`). Rule 1.
-3. **Packaging as a binary**, which the briefing calls the product for a reason that has not
-   changed: the tool reads private source.
+2. **The worklist's two jump buttons**, now disabled with their reason. Building them is a
+   server change: `anomalies.py` carrying the node ids it already knows, so a finding stops
+   being known only by a name eleven routines share. Design rule 9 says the anomaly view is
+   a worklist, and a worklist you cannot act from is a report.
+3. **The two vocabulary-lane precision defects**, unchanged: a DASH_GLOSS mined out of a
+   field-constraint table counts as a definition, and the undefined list's head is segments
+   of SCREAMING_SNAKE constant names — `DDL` 57, `EXTRAS` 50, `REASON` 43 — burying the words
+   that matter. Rule 1.
+4. **Packaging as a binary**, for the reason that has not changed: the tool reads private
+   source.
 
-**Open on the navigator, and deliberately left to use rather than to argument:** whether 47
-closed packages is the right first screen, and whether the accordion should be the default.
-Both are Settings and both are counted, which is what design rule 2 is for.
+**Left to use rather than to argument**, all Settings and all counted: whether 47 closed
+packages is the right first screen, whether the accordion should be the default, where the
+pointer stands (rim or over the node), and whether focus should default on.
+
+**Owed, and it needs a real window**: nobody has seen the arrow, the reticule or the focus
+lock *drawn*. The automation tab renders no frames at all — canvas never resized, `frames 0`
+— so all of it is reasoned, guarded and structurally verified, and none of it is looked at.
+Rule 38.
 
 ## What we were doing before that
+
+**The navigator, before the orientation work — 2026-08-28/29.** The three symptoms Tom gave
+at the keyboard are `HANDOFF.md` 5o, and the two rules they earned are 45 and 46.
 
 **The glossary and naming pages are ported — 2026-08-28.** See `HANDOFF.md` 5n. They were the
 last two screens admitting to being unported: both lanes were computed, tested and served, and
@@ -294,6 +312,14 @@ standards and must yield **zero** naming rules.
   Rule 42.
 - **A check that cries wolf has already failed.** The runtime self-check reported four dead
   controls on every page load for two sessions and was wrong about all four. Rule 43.
+
+- **A promise can be printed rather than wired.** Three keyboard badges — `S`, `G`, `T` —
+  named keys nothing listened for, and two of them sat on buttons with *no attributes at
+  all*. The runtime self-check enumerates `data-*`, so a control carrying none is one it
+  cannot see. Design rule 16 one level further out than any check here was looking.
+- **A guard that reads past its subject vouches for the wrong thing.** `_fn` stopped at
+  `\nfunction` and swallowed the `async function` after it; a badge check took "everything
+  after the keydown listener" as the handler. Both passed against their own defects.
 
 Each of these looked like working code and passed every automated check.
 

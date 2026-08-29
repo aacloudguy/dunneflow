@@ -2003,6 +2003,43 @@ and the focus lock are reasoned and guarded but not driven. Rule 38, and rule 39
 not being able to test a change is a reason to describe it, never a reason to ship it and
 ask.
 
+**5s. Code viewing, as it stands — taken stock of 2026-08-29.** Asked at the end of the
+session, and answered by looking rather than by recalling.
+
+`source.db` is content-addressed by the `content_hash` already in `files`, so each unique
+body is stored once however many paths or revisions point at it, and compressed: Mensores'
+626 files are 7.8 MB of text in **3.1 MB on disk**. Two ways in, both live and both verified:
+`/api/node` carries a `source` block of the definition ±3 lines with `focus` marking the
+definition's own span (the inspector's *Show source* pane), and `/api/source?path&first&last`
+serves any span or a whole file (the glossary's citation viewer, a modal with a tab per
+sense). Both say on the page that this is the source **as measured when the map was built**,
+which is the whole point of content-addressing it. Three absences are told apart rather than
+blurred -- no sidecar, a sidecar without this file, and a node with no file at all.
+
+**Not built**: a file browser (source is reachable through a routine or a citation, never by
+opening a file); search inside source; syntax highlighting; and document mode's narrative
+view, which the ratified design specifies as serif prose read from `source.db` and scrolled
+to the selection -- a different thing from the eight structured documents behind
+`/api/document`, and both are wanted. The document corpus itself is scanned but not stored,
+so a docstring opens in context and a Markdown definition names its line and stops.
+
+**Three printed promises the page was not keeping**, found by taking that stock and by
+nothing else. The inspector's source button has advertised an `S` badge since it was written
+and nothing ever listened for the key; it works now. The worklist's two jump buttons -- *Go
+to the first occurrence in the graph*, *Show all N occurrences as a table* -- were
+live-looking buttons with **no attributes, no handler and a keyboard badge each**: the
+original design rule 16 defect, still on the page, and invisible to the runtime self-check
+for a reason worth keeping. **That check enumerates `data-*` attributes, so a control with
+none is one it cannot see at all.**
+
+They are not simply wireable, and that is the half that decided the fix. A finding carries
+the *name* it found -- `self._emit` -- and not a node id; eleven routines share that name,
+and resolving it is rule 5 exactly. `queries.py` had written the answer before anything
+needed it: inventing an id to make a row clickable is a link to nothing. So both are
+disabled with the reason on them, the choice `undo` already makes. **Building them is a
+server change** -- `anomalies.py` carrying the node ids it already knows -- and it is the
+obvious next thing in the worklist, which design rule 9 says is a worklist and not a report.
+
 ### Still open
 
 - Layer storage builds on the same sidecar: content-addressing is version-control

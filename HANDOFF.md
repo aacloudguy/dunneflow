@@ -1854,6 +1854,59 @@ session, which is the argument for the practice rather than against it.
 first screen, and whether the accordion should be the default, are both questions for use
 rather than for argument -- which is why both are Settings and both are counted.
 
+**5p. Built 2026-08-29: you are here.** Tom, on getting lost in a large stack: *I move the
+graph around and look at it from various points of view. I might click away, hover over
+other nodes, explore, and chase rabbits. I haven't actually decided to leave though.*
+
+**An arrow over what was picked.** A billboard, for rule 22's reason -- a picture of
+something with no orientation must not have one, and an arrow foreshortened by the tilt
+reads as a shape lying on a plate. Over the *picks*, never the one-hop neighbours: the
+neighbours are the answer, the picks are the question. Shaded from the same direction the
+spheres are lit, baked into the texture rather than a shader, because there are two dozen of
+these and fifteen thousand nodes, and `mask: true` would have thrown the shading away. Its
+colour is a Setting clamped at 3:1 against the *graph's* ground, re-asked when the ground
+moves; a refusal says why (design rule 6). Capped at 24 with the count stating what it left
+out, because a thread can select ninety-nine and ninety-nine arrows is weather.
+
+**A way back to the view it was found in.** Not `snap to fit`, which frames the selection --
+this restores the reader's own framing. Armed by a selection and *set* by the first view the
+selection can actually be seen in, because design rule 26 says picking never moves the camera
+and a view without the subject in it is not somewhere to be taken back to.
+
+Both halves of that were wrong first and neither failed loudly: it must be asked after
+`recomputeMembers` or it measures the previous selection, and `selectionOnScreen()`'s null
+means *cannot say* -- which on the commonest path of all, a pick that mounts the graph, is
+the answer it gives. Rule 42's distinction acted on rather than documented. The button's
+enabled state is written where the counts are and not where the HUD is rebuilt, since a
+selection never rebuilds the HUD: design rule 16 in the *state* of a control.
+
+**Deliberately not built, and a candidate Setting**: re-recording the anchor while the
+selection stays visible, so "back" means the *last* good view rather than the first. It is a
+real second answer and might be the better one; design rule 2 asks for use behind a pair
+before building both, and this does not have it yet.
+
+**And one word for a plate.** The fps line said "52 disks" while the size menu said "plates".
+Plate won -- rare enough that the product defines it, common enough to be guessed at. Scoped
+to what a reader sees; `disk` stays an identifier and **that is a debt, not a decision**:
+renaming the persisted keys discards every saved arrangement without a version bump, and the
+code has a second live meaning for "plate" (the polygon that draws a disk -- `showPlates`,
+`diskPlates`, `plateFill`), so renaming half the pair leaves the collision it was meant to
+remove. A guard keeps the reader-facing half honest.
+
+**On the Latin, since it was asked**: the word is **tabula** (pl. *tabulae*) -- a flat board,
+and also a picture, and also a register. Recognisable through *tabula rasa* without being an
+English word, so DunneFlow could define it in its own glossary the way Mensores defines
+`mensor`. *lamina* is more exact for a thin plate in a stack and collides with the temporal
+*layers*; *discus* is simply the etymon of "disk"; *orbis* reads as "orb", and the nodes are
+already spheres. Not adopted -- a reading tool for someone orienting in code they did not
+write should not open by teaching them a word -- but it is the right word if the flourish is
+ever wanted, and it is a one-line change now the vocabulary is consistent.
+
+**Not verified, and it needs a real window**: what the arrow looks like. The automation tab
+draws no frames at all -- canvas 300x150, `frames 0` -- so its shape, size and shading are
+for someone with a real window to judge. Rule 38, and rule 39's lesson: not being able to
+test a change is a reason to describe it, never a reason to ship it and ask.
+
 ### Still open
 
 - Layer storage builds on the same sidecar: content-addressing is version-control

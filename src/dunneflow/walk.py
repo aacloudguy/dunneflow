@@ -14,7 +14,7 @@ from __future__ import annotations
 import os
 from collections.abc import Callable, Iterator
 from concurrent.futures import ProcessPoolExecutor, as_completed
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from .docstore import DocStore
@@ -44,6 +44,27 @@ DOC_SKIP_DIRS = frozenset({
     ".benchmarks", ".git-crypt", "_build",
 })
 
+# A directory *below* the root carrying its own version-control marker is a checkout
+# of something, and not this program's documentation. `.claude` and `.groma` are kept in
+# deliberately -- that is where a project files its charter, its decisions and its naming
+# standard -- and admitting a directory for its documents must not admit a **copy of the
+# program** underneath it. Two stale agent worktrees under `.claude/worktrees/` put 335
+# May-era duplicates of Mensores' own governance documents into the corpus. The copy
+# detector caught 303 and every consumer filters `duplicate_of`, so most numbers were
+# protected; the 32 that had since drifted from their originals were no longer identical
+# and escaped it, putting ten definitions -- `mensor`, `mensores` and `Society of
+# Mensores` among them -- into the glossary from a directory that is not the project.
+#
+# The marker is read off the disk and is never a question asked of a VCS: a worktree
+# carries a `.git` *file*, a clone a `.git` *directory*, and `.hg` and `.svn` are the
+# same claim in another dialect. Version control must stay pluggable, and recognising a
+# directory by what is in it does not talk to one.
+#
+# The root's own marker is never consulted, because the corpus is itself a checkout and
+# that is the point. `discover` needs none of this: it already drops every dotted
+# directory, so a nested checkout was only ever reachable through the document walk.
+VCS_MARKERS = frozenset({".git", ".hg", ".svn"})
+
 # Matched at an edge of the filename, never as a substring -- see `is_test_path`.
 TEST_MARKERS = ("test_", "_test", "conftest")
 
@@ -57,6 +78,10 @@ class WalkStats:
     cached: int = 0
     removed: int = 0
     failed: int = 0
+    # Nested checkouts pruned by `discover_docs`. A count of documents *not* read is
+    # not derivable from `found`, and a corpus quietly 14% smaller than the tree is
+    # exactly the kind of silent filter design rule 1 exists to forbid.
+    nested: list[str] = field(default_factory=list)
 
 
 def is_test_path(path: Path) -> bool:
@@ -95,12 +120,23 @@ def discover(root: Path, include_tests: bool = False,
             yield p
 
 
-def discover_docs(root: Path, suffixes: frozenset[str] = DOC_SUFFIXES) -> Iterator[Path]:
-    """Every document under `root` that is plausibly about the program."""
+def discover_docs(root: Path, suffixes: frozenset[str] = DOC_SUFFIXES,
+                  nested: list[str] | None = None) -> Iterator[Path]:
+    """Every document under `root` that is plausibly about the program.
+
+    Nested checkouts are pruned and, when `nested` is given, named -- see `VCS_MARKERS`.
+    The test costs nothing: `os.walk` has already listed this directory, so the marker
+    is in `dirnames` (a clone) or in `filenames` (a worktree) and needs no `stat`.
+    """
     root = root.resolve()
     for dirpath, dirnames, filenames in os.walk(root):
-        dirnames[:] = [d for d in dirnames if d not in DOC_SKIP_DIRS]
         here = Path(dirpath)
+        if here != root and (VCS_MARKERS & (set(dirnames) | set(filenames))):
+            dirnames[:] = []
+            if nested is not None:
+                nested.append(str(here))
+            continue
+        dirnames[:] = [d for d in dirnames if d not in DOC_SKIP_DIRS]
         for fn in filenames:
             p = here / fn
             if p.suffix.lower() in suffixes:
@@ -128,7 +164,7 @@ def analyze_docs_tree(
     root = root.resolve()
     stats = WalkStats()
 
-    docs = sorted(discover_docs(root))
+    docs = sorted(discover_docs(root, nested=stats.nested))
     stats.found = len(docs)
 
     known = store.known_hashes()

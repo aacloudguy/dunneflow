@@ -28,6 +28,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs
 
+from .. import revisions
 from ..docstore import DocStore
 from ..sourcedb import SourceStore
 from ..store import Store
@@ -558,9 +559,13 @@ def _free_port(preferred: int) -> int:
 def serve(out_dir: Path, *, port: int = 8787, open_browser: bool = True,
           emit: Any = print) -> None:
     """Build the payload once, then serve it until interrupted."""
-    graph_db = out_dir / "graph.db"
-    if not graph_db.exists():
-        raise FileNotFoundError(f"no graph at {graph_db} -- run `dunneflow analyze` first")
+    # The newest revision, never a fixed name: a program written in the revision
+    # layout has no `graph.db` at all, and answering "no graph" for it would be
+    # rule 20's failure -- a reader confidently reporting nothing is there.
+    graph_db = revisions.newest(out_dir, revisions.GRAPH)
+    if graph_db is None or not graph_db.exists():
+        raise FileNotFoundError(
+            f"no graph in {out_dir} -- run `dunneflow analyze` first")
 
     live = _Live(graph_db, out_dir / "source.db")
     model = build(live.store)
@@ -577,9 +582,9 @@ def serve(out_dir: Path, *, port: int = 8787, open_browser: bool = True,
     # Documentation is optional by design (design rule 11): with no `docs.db` the glossary
     # keeps every code-derived term and loses only the tier that quotes a document. It is
     # never a prerequisite for a code-derived fact.
-    docs_db = out_dir / "docs.db"
+    docs_db = revisions.newest(out_dir, revisions.DOCS)
     docs = None
-    if docs_db.exists():
+    if docs_db is not None and docs_db.exists():
         try:
             docs = DocStore(docs_db, writable=False)
         except (ValueError, OSError):

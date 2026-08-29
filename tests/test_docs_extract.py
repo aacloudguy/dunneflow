@@ -285,3 +285,132 @@ def test_a_prose_rule_change_discards_only_the_document_store(tmp_path: Path) ->
             assert st.counts()["documents"] == 0
     finally:
         docstore.doc_rules_fingerprint = original
+
+
+# --------------------------------------------------------------------------- #
+# Nested checkouts
+#
+# `.claude` and `.groma` are admitted for documents because that is where a project
+# files its charter. Nothing scoped that admission below the top level, so two stale
+# agent worktrees under `.claude/worktrees/` put 335 May-era copies of Mensores' own
+# governance documents into the corpus -- 14% of it. The duplicate detector caught 303
+# and every consumer filters `duplicate_of`, so most numbers were protected. The 32
+# that had drifted from their originals were no longer identical and escaped it,
+# putting ten definitions into the glossary -- `mensor`, `mensores` and `Society of
+# Mensores` among them -- sourced from a directory that is not the project.
+#
+# Each test below is written against a specific way this can half-work, because a
+# guard that has only ever passed is a claim nobody has tested (rule 37).
+# --------------------------------------------------------------------------- #
+
+
+def _corpus(root: Path) -> Path:
+    """A tree shaped like the real one: a checkout, with documents, holding a worktree."""
+    (root / ".git").mkdir()                      # the corpus is itself a checkout
+    (root / "README.md").write_text("# The program\n")
+    (root / ".claude").mkdir()
+    (root / ".claude" / "CLAUDE.md").write_text("# The charter\n")
+    nest = root / ".claude" / "worktrees" / "agent-1"
+    nest.mkdir(parents=True)
+    (nest / ".git").write_text("gitdir: /elsewhere\n")   # a worktree: a .git *file*
+    (nest / "README.md").write_text("# A stale copy\n")
+    (nest / "deep").mkdir()
+    (nest / "deep" / "PLAN.md").write_text("# Also stale\n")
+    return root
+
+
+def test_a_nested_worktree_is_not_this_program(tmp_path: Path) -> None:
+    """A `.git` *file* marks a worktree, and everything under it is someone else's."""
+    from dunneflow.walk import discover_docs
+
+    root = _corpus(tmp_path)
+    found = {p.relative_to(root).as_posix() for p in discover_docs(root)}
+
+    assert "README.md" in found
+    assert ".claude/CLAUDE.md" in found, (
+        "the admission of `.claude` must survive -- skipping the whole directory would "
+        "pass the pruning test and lose the charter, which is why it is admitted at all"
+    )
+    assert not any("worktrees" in f for f in found), sorted(found)
+
+
+def test_a_nested_clone_is_not_this_program(tmp_path: Path) -> None:
+    """A `.git` *directory* marks a clone. Checking only for a file misses it."""
+    from dunneflow.walk import discover_docs
+
+    root = tmp_path
+    (root / "README.md").write_text("# The program\n")
+    nest = root / "docs" / "vendored"
+    nest.mkdir(parents=True)
+    (nest / ".git").mkdir()
+    (nest / "GUIDE.md").write_text("# Someone else's\n")
+
+    found = {p.relative_to(root).as_posix() for p in discover_docs(root)}
+    assert found == {"README.md"}, sorted(found)
+
+
+@pytest.mark.parametrize("marker", [".git", ".hg", ".svn"])
+def test_every_marker_is_a_checkout(tmp_path: Path, marker: str) -> None:
+    """Version control must stay pluggable: the same claim in three dialects."""
+    from dunneflow.walk import discover_docs
+
+    root = tmp_path
+    (root / "README.md").write_text("# The program\n")
+    nest = root / "sub"
+    nest.mkdir()
+    (nest / marker).mkdir()
+    (nest / "OTHER.md").write_text("# Not ours\n")
+
+    found = {p.relative_to(root).as_posix() for p in discover_docs(root)}
+    assert found == {"README.md"}, f"{marker}: {sorted(found)}"
+
+
+def test_the_root_is_never_treated_as_nested(tmp_path: Path) -> None:
+    """The corpus is itself a checkout, and that is the point.
+
+    The half-working version: test the marker without excepting the root, and the walk
+    prunes everything on its first step. It yields nothing, reports nothing, and looks
+    exactly like a program with no documentation -- which design rule 11 says is a
+    normal case, so nobody would question it.
+    """
+    from dunneflow.walk import discover_docs
+
+    root = tmp_path
+    (root / ".git").mkdir()
+    (root / "README.md").write_text("# The program\n")
+    (root / "docs").mkdir()
+    (root / "docs" / "guide.md").write_text("# A guide\n")
+
+    found = {p.relative_to(root).as_posix() for p in discover_docs(root)}
+    assert found == {"README.md", "docs/guide.md"}, sorted(found)
+
+
+def test_a_pruned_checkout_is_named(tmp_path: Path) -> None:
+    """Design rule 1: no filter is ever silent.
+
+    The half-working version prunes correctly and says nothing. A corpus 14% smaller
+    than the tree it was read from is indistinguishable from a smaller project -- and
+    across two points in time, from a project that deleted 335 documents.
+    """
+    from dunneflow.walk import discover_docs
+
+    root = _corpus(tmp_path)
+    nested: list[str] = []
+    list(discover_docs(root, nested=nested))
+
+    assert len(nested) == 1, nested
+    assert nested[0].endswith("worktrees/agent-1"), nested
+
+
+def test_the_walk_reports_what_it_skipped(tmp_path: Path) -> None:
+    """And the report must survive the trip to `WalkStats`, not stop at the generator."""
+    from dunneflow.docstore import DocStore
+    from dunneflow.walk import analyze_docs_tree
+
+    root = _corpus(tmp_path)
+    store = DocStore(tmp_path / "out.db")
+    stats = analyze_docs_tree(root, store)
+
+    assert stats.found == 2, stats.found          # README.md and .claude/CLAUDE.md
+    assert len(stats.nested) == 1, stats.nested
+    assert "agent-1" in stats.nested[0]

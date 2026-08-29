@@ -152,3 +152,95 @@ def test_standards_are_not_governance_tickets(tmp_path: Path) -> None:
     assert "AC-7" in values
     for noise in ("SHA-256", "UTF-8", "RFC-3161", "ISO-8601", "IEEE-29148"):
         assert noise not in values, f"{noise} was recorded as a governance ticket"
+
+
+# --------------------------------------------------------------------------- #
+# An f-string still names its table
+#
+# Mensores' migration 0028 creates `work_items` as `f"CREATE TABLE {_TABLE} (...)"`,
+# so the name interpolated to a placeholder and the table was never recorded: the
+# database map read 40 tables before the migration and 40 after, while a table had
+# arrived. The value was never missing -- rule 19 records `_TABLE = "work_items"` as a
+# module constant six lines above.
+#
+# Substituting is a *lexical binding in one file*, so rule 5 never arises: nothing
+# searches for the name anywhere else in the program. Everything ambiguous is refused,
+# and each test below is one of the refusals.
+# --------------------------------------------------------------------------- #
+
+
+def _sql(tmp_path: Path, body: str):
+    src = tmp_path / "m.py"
+    src.write_text(body)
+    return extract_file(src, tmp_path).sql
+
+
+def test_an_fstring_names_its_table_from_a_module_constant(tmp_path):
+    ops = _sql(tmp_path, '_TABLE = "work_items"\n'
+                         'DDL = f"CREATE TABLE {_TABLE} (id TEXT PRIMARY KEY)"\n')
+    named = [t for o in ops for t in o.tables]
+    assert named == ["work_items"], [(o.operation, o.tables) for o in ops]
+
+
+def test_a_name_bound_twice_resolves_to_nothing(tmp_path):
+    """Which binding reached the f-string is a question about control flow.
+
+    The half-working version keeps the last binding and is confident about it: the
+    statement would be recorded against `other_table`, which is a *wrong* name rather
+    than a missing one -- and rule 1 says a false fact is worse than an absent one.
+    """
+    ops = _sql(tmp_path, '_TABLE = "work_items"\n'
+                         '_TABLE = "other_table"\n'
+                         'DDL = f"CREATE TABLE {_TABLE} (id TEXT)"\n')
+    assert all(t != "other_table" for o in ops for t in o.tables), [o.tables for o in ops]
+    assert all(t != "work_items" for o in ops for t in o.tables), [o.tables for o in ops]
+
+
+def test_only_a_bare_name_substitutes(tmp_path):
+    """An attribute or a call is a value this pass cannot claim to know.
+
+    `TABLE` is bound here *deliberately*, because an implementation that reads
+    `node.value.attr` finds it and answers `work_items` for `cfg.TABLE` -- which is
+    somebody else's module's constant. A version that only ever returns None for an
+    attribute passes a test where nothing binds the attribute name, so the collision
+    is the whole test: this is rule 5 in an f-string, and the failure is a confident
+    wrong name rather than a missing one.
+    """
+    ops = _sql(tmp_path, 'import cfg\n'
+                         'TABLE = "work_items"\n'
+                         'DDL = f"CREATE TABLE {cfg.TABLE} (id TEXT)"\n'
+                         'DDL2 = f"CREATE TABLE {name()} (id TEXT)"\n')
+    assert all(t != "work_items" for o in ops for t in o.tables), [o.tables for o in ops]
+
+
+def test_a_format_spec_is_not_a_substitution(tmp_path):
+    """`{x:>10}` pads; `{x!r}` quotes. Neither yields the name as written."""
+    ops = _sql(tmp_path, '_TABLE = "work_items"\n'
+                         'DDL = f"CREATE TABLE {_TABLE:>20} (id TEXT)"\n'
+                         'DDL2 = f"CREATE TABLE {_TABLE!r} (id TEXT)"\n')
+    assert all(t != "work_items" for o in ops for t in o.tables), [o.tables for o in ops]
+
+
+def test_a_name_bound_to_a_non_string_resolves_to_nothing(tmp_path):
+    ops = _sql(tmp_path, '_TABLE = 17\n'
+                         'DDL = f"CREATE TABLE {_TABLE} (id TEXT)"\n')
+    assert all(t not in ("17", "_TABLE") for o in ops for t in o.tables), [o.tables for o in ops]
+
+
+def test_a_name_bound_inside_a_function_is_not_module_level(tmp_path):
+    """Module level means *runs at import*, and it is a property of position (rule 19).
+
+    The half-working version scans every Assign in the file, so a local in some
+    unrelated function silently names a table at module scope.
+    """
+    ops = _sql(tmp_path, 'def f():\n'
+                         '    _TABLE = "work_items"\n'
+                         'DDL = f"CREATE TABLE {_TABLE} (id TEXT)"\n')
+    assert all(t != "work_items" for o in ops for t in o.tables), [o.tables for o in ops]
+
+
+def test_an_unresolvable_placeholder_still_records_the_statement(tmp_path):
+    """Rule 8: never truncate at ingest. An unnamed table is not a discarded statement."""
+    ops = _sql(tmp_path, 'DDL = f"CREATE TABLE {whatever} (id TEXT PRIMARY KEY)"\n')
+    assert ops, "the statement itself must survive"
+    assert any("CREATE TABLE" in o.sql for o in ops), [o.sql for o in ops]

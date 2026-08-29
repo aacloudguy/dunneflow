@@ -189,6 +189,8 @@ class _Extractor(ast.NodeVisitor):
         self.indexes: list[IndexSchema] = []
         self.artefacts: list[Artefact] = []
         self.constants: list[Constant] = []
+        # Module-level `name -> string`, or None where the name is not one value.
+        self._module_strings: dict[str, str | None] = {}
         # An f-string is visited whole and then descended into, so `f"{root}/g.json"`
         # would name `g.json` twice -- once with the fuller literal, once from the
         # bare constant part. The same file named on the same line is one naming act;
@@ -238,6 +240,65 @@ class _Extractor(ast.NodeVisitor):
         return self._module_routine
 
     # -- module-level names ------------------------------------------------- #
+
+    def collect_module_strings(self, body: list[ast.stmt]) -> None:
+        """Module-level names bound to a plain string, for resolving f-strings.
+
+        `CREATE TABLE {_TABLE} (...)` in an f-string left the table unnamed, so
+        Mensores' migration 0028 created `work_items` and the database map went on
+        reading 40 tables at both points in time -- a table arrived and nothing said
+        so. The value was never missing: rule 19 records `_TABLE = "work_items"` as a
+        constant six lines above, in the same module.
+
+        This is a **lexical binding in one file**, not a name match across the program,
+        so rule 5 does not arise -- nothing here searches for `_TABLE` anywhere else.
+        Precision is bought by refusing everything ambiguous:
+
+        * a name bound more than once at module level resolves to nothing, because
+          which binding reached the f-string is a question about control flow and this
+          tool does not answer those (rule 10's argument, one scope down);
+        * only a bare `Name` substitutes -- an attribute, call or subscript is a value
+          this pass cannot claim to know;
+        * only a plain string constant, and only where the placeholder carries no
+          conversion and no format spec, because `{x:>10}` is not a substitution.
+
+        Run as its own pass rather than folded into `collect_module_names`, which
+        walks *after* the visitor and whose ordering claims comments depend on.
+        """
+        for stmt in body:
+            if isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                continue
+            if isinstance(stmt, (ast.If, ast.Try, ast.With, ast.For, ast.While)):
+                for attr in ("body", "orelse", "finalbody"):
+                    self.collect_module_strings(getattr(stmt, attr, []) or [])
+                for handler in getattr(stmt, "handlers", []) or []:
+                    self.collect_module_strings(handler.body)
+                continue
+            value: ast.expr | None
+            if isinstance(stmt, ast.Assign):
+                targets = [t.id for t in stmt.targets if isinstance(t, ast.Name)]
+                value = stmt.value
+            elif isinstance(stmt, ast.AnnAssign) and isinstance(stmt.target, ast.Name):
+                targets = [stmt.target.id]
+                value = stmt.value
+            else:
+                continue
+            text = (value.value
+                    if isinstance(value, ast.Constant) and isinstance(value.value, str)
+                    else None)
+            for name in targets:
+                # Seen before, however bound: the name is no longer one value.
+                self._module_strings[name] = (
+                    None if name in self._module_strings else text
+                )
+
+    def _interpolated(self, node: ast.FormattedValue) -> str | None:
+        """The string a placeholder stands for, or None when we cannot say."""
+        if node.conversion not in (-1, None) or node.format_spec is not None:
+            return None
+        if not isinstance(node.value, ast.Name):
+            return None
+        return self._module_strings.get(node.value.id)
 
     def collect_module_names(self, body: list[ast.stmt]) -> None:
         """Every value the module names at import, as a constant or as a type alias.
@@ -817,10 +878,14 @@ class _Extractor(ast.NodeVisitor):
 
     def visit_JoinedStr(self, node: ast.JoinedStr) -> None:
         """An f-string with interpolation still names its tables."""
-        parts = [
-            v.value if isinstance(v, ast.Constant) and isinstance(v.value, str) else "?"
-            for v in node.values
-        ]
+        parts = []
+        for v in node.values:
+            if isinstance(v, ast.Constant) and isinstance(v.value, str):
+                parts.append(v.value)
+            elif isinstance(v, ast.FormattedValue):
+                parts.append(self._interpolated(v) or "?")
+            else:
+                parts.append("?")
         joined = "".join(parts)
         self._scan_sql(joined, node.lineno)
         # `f"{root}/tabularium.db"` still names the file; `f"{name}.db"` does not, and
@@ -1078,6 +1143,9 @@ def extract_file(path: Path, root: Path, src: str | None = None) -> FileFacts:
     facts.doc = ast.get_docstring(tree) or ""
 
     ex = _Extractor(rel, module, src, load_rules("python"), _docstring_nodes(tree))
+    # Before the walk: an f-string is resolved as it is visited, and a name bound
+    # further down the module is still bound by the time the module runs.
+    ex.collect_module_strings(tree.body)
     try:
         for stmt in tree.body:
             ex.visit(stmt)

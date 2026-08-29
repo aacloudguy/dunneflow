@@ -5,7 +5,7 @@ It exists so a fresh context can be useful in a few minutes instead of an hour.
 
 | Read | For |
 |---|---|
-| `CLAUDE.md` | The rules. 55 engineering rules and 26 dashboard design rules, each earned from a false result on real code. **Binding.** |
+| `CLAUDE.md` | The rules. 57 engineering rules and 26 dashboard design rules, each earned from a false result on real code. **Binding.** |
 | `HANDOFF.md` | The chronological record — what was built when, what it cost, what broke. ~1,700 lines. Read *sections*, not the whole thing. |
 | **this file** | Where things are, what is done, what we are doing now, what not to re-open. |
 | Artifact `f993d319-d2b7-4217-9130-cdbba698d1bc` | The ratified dashboard design — a complete working UI, the source of truth for every view. Read it with the **Artifact tool**, not from a screenshot. |
@@ -154,6 +154,44 @@ running that program-wide is most of design rule 15's doorway panel. It says hon
 is not computed yet.
 
 ## What we are doing now
+
+**Paused 2026-08-29 with two points in time on disk and the change worklist's engine
+built, guarded and measured — but not yet on screen.** See `HANDOFF.md` 5w.
+
+The corpus is now a fair pair of clean clones, 27 commits apart:
+
+```
+../society-2026-08-26   e2e658b4   point A'   ─┐
+../society-2026-08-29   03ebbd93   point B    ─┘ output/mensores holds both revisions
+../mensores-overhaul               frozen, never written to
+```
+
+`output/mensores` holds `graph@<revision>.db` and `docs@<revision>.db` per revision beside
+one `source.db`, and `dunneflow revisions` lists both — the older sealed as
+FOR_COMPARISON. **Point A' reproduces the recorded figures exactly** (30,209 calls, 3,950
+boundary touches, 175 ways in).
+
+What the pair says: **53 routines added, 0 removed, 18 behaving differently, 15 edited
+without changing anything they do**, +23 documents, and `work_items` as a new table. Four
+of the eighteen have an **unchanged body** — they stopped resolving `queue.claim` because
+a new module brought a second routine of that name, which is the one thing here that
+`git diff` cannot say.
+
+Three rules earned: **56** (a file restored to disk is not a module restored to memory —
+a same-size mutation outlived its own restore via `__pycache__`), **57** (admitting a
+directory for its documents must not admit a copy of the program — 335 phantom
+documents), and the left-associative `EXCEPT`/`UNION ALL` defect that made the diff
+one-sided while nine guards passed over it.
+
+**Next: the worklist on screen** — `/api/changes`, the navigator's Changes group, the
+centre view, and the pair selector.
+
+**Owed from this session:** the rendered markdown is not revision-named, so a second
+analysis overwrites the first's map; `--revision` is still unimplemented; and whether
+`m.<module>` should appear as an added routine when a file gains its first module-level
+comment is Tom's call, not mine.
+
+## What we were doing before this
 
 **Paused 2026-08-29 with search inside the source built.** Three chunks — the server, the
 client, and the measurements — each verified against Mensores and driven in a real window;
@@ -362,6 +400,13 @@ Rules 28, 29 and 30.
 | Where a hit sits is a line range, innermost span first — never a name match | rule 5; rule 10 |
 | No index: FTS5 is token-based and cannot find `_emit` inside `self._emit` | `search.py` |
 | The inflate cache is **bounded and says so** — 64 MB, keyed by content hash | `sourcedb.py` |
+| A program dir holds `graph@<rev>.db` and `docs@<rev>.db` per revision, beside one `source.db` | `revisions.py`; `HANDOFF.md` 5w |
+| The filename is a convenience; the identity is `meta.revision` **inside** the file | rule 30; `revisions.py` |
+| A legacy bare `graph.db` is **read**, never rewritten into the new shape | rule 20; `revisions.py` |
+| The layer work leads with a **change worklist**, and the picture follows the list | Tom, 2026-08-29; design rule 9 |
+| No comparison key contains a **position** — one inserted import would move every fact | `make_id`; `changes.py` |
+| A routine that arrived is not also counted as behaving differently | rule 40; `changes.py` |
+| The search box is a **design-rule-2 pair**: sticky or scrolling, a Setting | Tom, 2026-08-29 |
 
 ## How to verify — all three, before saying anything is done
 

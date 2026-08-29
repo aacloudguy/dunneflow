@@ -271,7 +271,16 @@ every selection, so a lazy first call would stall the reading loop on the first 
 every session — two seconds where the reader is entitled to think the click failed. Paid at
 boot it is invisible, beside a payload build and a cover that were already being computed.
 
-Documentation (2,381 documents, 44 MB):
+Documentation (2,041 documents on Mensores, 44 MB):
+
+**These were 2,381 and 310 definitions, and the difference is not a change to Society.**
+335 of those documents were two stale agent worktrees under `.claude/worktrees/`, holding
+a May-era copy of the project's own governance documents under the old `.paul` name. See
+rule 57. The duplicate detector caught 303 and every consumer filters `duplicate_of`, so
+most recorded numbers were protected; the 32 that had drifted from their originals were
+no longer identical, escaped it, and put ten definitions — `mensor`, `mensores` and
+`Society of Mensores` among them — into the glossary from a directory that is not the
+project.
 
 | Measure | Budget | Measured |
 |---|---|---|
@@ -1038,6 +1047,53 @@ rule of that number — a blank canvas must say why it is blank — which does e
     and the fetch lived in another, so a file could be open without anything having opened
     it. **One truth about what is open, and whoever sets it does the work** — rule 51 again,
     and the version that looks identical on screen right up until it does not.
+
+56. **A file restored to disk is not a module restored to memory.** A mutation harness
+    wrote `revisions.py`, ran the tests, and wrote the original back in a `finally`. The
+    file was byte-identical to HEAD afterwards — `git status` clean, `grep` showing
+    `replace(":", "-")` — and the next analysis wrote
+    `graph@2026-08-29T23~43~25Z.db`. Python revalidates a `.pyc` on the source's
+    **(mtime, size)**, and a one-character-for-one-character mutation changes neither
+    when the restore lands in the same clock second, so the interpreter kept running the
+    mutant out of `__pycache__` while every way of inspecting the source said it was
+    fine.
+
+    Two things follow, and the second is the general one. A harness that edits source
+    must invalidate the bytecode it caused to be written, not merely put the text back.
+    And **the size-preserving mutation is the dangerous one** — every mutation in this
+    session that changed a line's length invalidated the cache by accident and hid the
+    defect, so the harness looked correct for as long as it was only used carelessly.
+
+    This is rule 43 in the instrument for the third time in two sessions: the first two
+    read pytest's output instead of its exit code and reported every mutation as
+    surviving. Here the harness reported honestly and **corrupted the next command
+    instead**. An instrument that modifies the thing it measures has to put it back at
+    the level the next reader looks at, and for Python that level is not the file.
+
+57. **Admitting a directory for its documents must not admit a copy of the program.**
+    `.claude` and `.groma` are kept in the document walk deliberately — that is where a
+    project files its charter, its decisions and its naming standard, and skipping every
+    dotted directory is right for code and hides the vocabulary. Nothing scoped that
+    admission below the top level, so two stale agent worktrees under
+    `.claude/worktrees/` put **335 of Mensores' 2,381 documents** — 14% of the corpus —
+    into the map: a complete second copy of the project's governance documents from May,
+    under the old `.paul` name, from before the rename this file's ground truth rests on.
+
+    The tool defended itself better than it had any right to. The copy detector caught
+    303 of the 335 and every consumer filters `duplicate_of = ''`, so the glossary, the
+    naming lanes, traceability and the mirror were all largely protected. **The 32 that
+    leaked are the ones that had drifted from their originals** and so were no longer
+    byte-identical — which is the general shape: a near-duplicate defeats an
+    exact-duplicate test precisely when it has become interesting.
+
+    The marker is read off the disk and is never a question asked of a VCS: a worktree
+    carries a `.git` *file*, a clone a `.git` *directory*. `os.walk` has already listed
+    the directory, so the test costs no `stat` at all. The root's own marker is never
+    consulted, because the corpus is itself a checkout and that is the point.
+
+    Found by pointing DunneFlow at two points in time for the first time. Neither number
+    was wrong on its own; the *difference* between them was 340 removed documents that
+    Society had never removed, and a phantom is only obvious once something makes it move.
 
 ## Anomalies: the discipline
 

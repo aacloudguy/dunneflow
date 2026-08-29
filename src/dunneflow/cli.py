@@ -18,6 +18,7 @@ import time
 from datetime import UTC, datetime
 from pathlib import Path
 
+from . import revisions
 from .anomalies import BROKEN, INFO, SUSPECT, detect
 from .docstore import DocStore
 from .render.markdown import render_all
@@ -54,10 +55,34 @@ def cmd_analyze(args: argparse.Namespace) -> int:
 
     source_root = target
     program, out_dir = _default_paths(target, args.name, Path(args.output))
-    db_path = Path(args.db) if args.db else out_dir / "graph.db"
+
+    # Which snapshot this analysis writes, decided before anything is opened because it
+    # names the files. The sidecar is the authority: `open_working` reuses the revision
+    # that is already open, so analysing twice without sealing rewrites one snapshot
+    # rather than leaving two half-filled ones -- and a sealed sidecar hands back a new
+    # id, which is how a second point in time comes to exist beside the first.
+    #
+    # `--no-source` leaves nothing to ask, so the clock answers instead. The layout is
+    # the same either way; what is missing is the state (WORKING / FOR_COMPARISON),
+    # which only the sidecar records.
+    out_dir.mkdir(parents=True, exist_ok=True)
+    source: SourceStore | None = None
+    if not args.no_source:
+        source = SourceStore(out_dir / "source.db")
+        source.set_meta("program", program)
+        source.set_meta("source_root", str(source_root))
+        revision = source.open_working()
+    else:
+        revision = revisions.stamp()
+
+    db_path = (Path(args.db) if args.db
+               else revisions.db_path(out_dir, revisions.GRAPH, revision))
 
     t0 = time.perf_counter()
     store = Store(db_path)
+    # The identity, inside the file. The name is derived from this and not the other way
+    # round, so a graph someone renamed can still say which snapshot it is (rule 30).
+    store.set_meta("revision", revision)
     store.set_meta("program", program)
     store.set_meta("source_root", str(source_root))
     # When this map was made. The cover says it out loud, because a map is a reading of
@@ -93,7 +118,8 @@ def cmd_analyze(args: argparse.Namespace) -> int:
     docs_root: Path | None = None
     if not args.no_docs:
         docs_root = Path(args.docs).resolve() if args.docs else pkg_root
-        doc_store = DocStore(out_dir / "docs.db")
+        doc_store = DocStore(revisions.db_path(out_dir, revisions.DOCS, revision))
+        doc_store.set_meta("revision", revision)
         doc_store.set_meta("program", program)
         doc_store.set_meta("docs_root", str(docs_root))
         doc_stats = analyze_docs_tree(docs_root, doc_store, jobs=args.jobs,
@@ -111,6 +137,15 @@ def cmd_analyze(args: argparse.Namespace) -> int:
                 + (f"; {duplicates:,} are copies of another document"
                    if duplicates else "")
             )
+            # Design rule 1: no filter is ever silent. A nested checkout can be most
+            # of a corpus -- two stale worktrees were 335 of Mensores' 2,381 documents
+            # -- and a reader comparing two points in time would otherwise read their
+            # absence as the project having deleted them.
+            for d in doc_stats.nested:
+                where = Path(d)
+                shown = (where.relative_to(docs_root)
+                         if where.is_relative_to(docs_root) else where)
+                _emit(f"  skipped {shown} — a checkout of its own, not this program")
         doc_store.optimize()
 
     t1 = time.perf_counter()
@@ -144,14 +179,11 @@ def cmd_analyze(args: argparse.Namespace) -> int:
     # re-analysis with nothing changed reads no source at all. Content-addressed, so this
     # is also the store the temporal layers will be built on.
     src_stats = None
-    if not args.no_source:
-        source = SourceStore(out_dir / "source.db")
-        source.set_meta("program", program)
-        source.set_meta("source_root", str(source_root))
+    if source is not None:
         src_stats = capture_source(store.known_hashes(), source,
-                                   langs=store.known_langs())
+                                   langs=store.known_langs(), revision=revision)
         sc = source.counts()
-        rev = source.current_revision()
+        rev = revision
         if not args.quiet:
             _emit(
                 f"source: {sc['blobs']:,} bodies for {sc['paths']:,} paths "
@@ -197,7 +229,7 @@ def cmd_analyze(args: argparse.Namespace) -> int:
     )
     print(f"graph: {db_path}")
     if doc_stats is not None:
-        print(f"docs:  {out_dir}/docs.db")
+        print(f"docs:  {revisions.db_path(out_dir, revisions.DOCS, revision)}")
     if not args.no_render:
         print(f"map:   {out_dir}/README.md")
     if doc_store is not None:
@@ -224,7 +256,11 @@ def _find_routine(store: Store, needle: str) -> list[dict]:
 def _open_store(args: argparse.Namespace) -> tuple[Store, Path] | None:
     target = Path(args.path).resolve()
     program, out_dir = _default_paths(target, args.name, Path(args.output))
-    db_path = Path(args.db) if args.db else out_dir / "graph.db"
+    db_path = (Path(args.db) if args.db
+               else revisions.newest(out_dir, revisions.GRAPH))
+    if db_path is None:
+        _emit(f"error: no graph in {out_dir} — run `dunneflow analyze` first")
+        return None
     if not db_path.exists():
         _emit(f"error: no graph at {db_path} — run `dunneflow analyze` first")
         return None
@@ -302,8 +338,8 @@ def cmd_impact(args: argparse.Namespace) -> int:
 def _open_docs(args: argparse.Namespace) -> DocStore | None:
     target = Path(args.path).resolve()
     _program, out_dir = _default_paths(target, args.name, Path(args.output))
-    path = out_dir / "docs.db"
-    if not path.exists():
+    path = revisions.newest(out_dir, revisions.DOCS)
+    if path is None or not path.exists():
         return None
     try:
         return DocStore(path, writable=False)
@@ -476,7 +512,7 @@ def cmd_revisions(args: argparse.Namespace) -> int:
         # The instant those bodies were measured is not in this store, and inventing one
         # would be provenance nobody can check (rule 13). The graph beside it recorded
         # `analysed_at` when it read them, so state that rather than today's date.
-        at = args.at or _analysed_at(out_dir / "graph.db")
+        at = args.at or _analysed_at(revisions.newest(out_dir, revisions.GRAPH))
         source = SourceStore(db)
         try:
             rev = source.seal(label=args.label or "", at=at)
@@ -522,13 +558,18 @@ def cmd_revisions(args: argparse.Namespace) -> int:
     return 0
 
 
-def _analysed_at(graph_db: Path) -> str:
+def _analysed_at(graph_db: Path | None) -> str:
     """When the graph beside this sidecar says it read the source, or "" if it cannot say.
 
     A separate store, opened here and nowhere else: `sourcedb` must not reach into
     `graph.db`, and the CLI is the one caller that legitimately holds both paths.
+
+    `None` -- no graph in the directory at all -- is the same answer as an unreadable
+    one and gets the same empty string, because `seal` may only ever *fill* an empty
+    `captured_at` and never overwrite a recorded instant. Stating today's date for a
+    snapshot measured on some other day is the invented provenance rule 13 forbids.
     """
-    if not graph_db.exists():
+    if graph_db is None or not graph_db.exists():
         return ""
     try:
         conn = sqlite3.connect(f"file:{graph_db}?mode=ro", uri=True)
@@ -547,8 +588,9 @@ def cmd_query(args: argparse.Namespace) -> int:
     # A claim this tool prints from both stores has to be re-runnable from both
     # stores, or rule 13 is satisfied only on paper.
     if getattr(args, "docs", False):
-        docs_path = Path(args.docs_db) if args.docs_db else db_path.parent / "docs.db"
-        if not docs_path.exists():
+        docs_path = (Path(args.docs_db) if args.docs_db
+                     else revisions.newest(db_path.parent, revisions.DOCS))
+        if docs_path is None or not docs_path.exists():
             _emit(f"error: no document store at {docs_path}")
             store.close()
             return 2

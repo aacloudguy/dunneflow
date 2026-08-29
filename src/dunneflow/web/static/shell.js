@@ -999,6 +999,7 @@ function viewTable() {
       : `<span class="tsub-none">Nothing selected — every row is shown, none is yours yet.</span>`;
 
   return `
+  <div class="tableview">
   <div class="tablesubject">
     <span class="tsub-label">Showing</span>${subject}
   </div>
@@ -1038,6 +1039,7 @@ function viewTable() {
       <span style="margin-left:auto">Lines, returns, params and touches want a routines
         endpoint of their own; until there is one they are absent rather than blank.</span>
     </div>
+  </div>
   </div>`;
 }
 
@@ -1852,16 +1854,9 @@ if (SYNC) {
        exactly like a hang, and neither window would be obviously at fault. */
     adopting = true;
     try {
+      /* `selectFromNav` moves the list itself now, for every caller rather than for this
+         one -- see the note there. */
       await selectFromNav({ nodes: [msg.id] });
-      /* **The list has to move to it.** `selectFromNav` deliberately does not reveal,
-       * because a row the reader clicked themselves is already under their eye -- but a
-       * selection arriving from the other window is like one arriving from the graph, and
-       * design rule 26 says the list and the picture are one instrument running both ways.
-       * A third driver is still that instrument. Without this the main window's inspector
-       * followed perfectly while its navigator sat on an unopened package, which is the
-       * half Tom asked for by name. */
-      buildNav();
-      revealSelectedRoutine();
       pushTrail(state.view, labelFor(msg.id), "followed the other window");
       render();
     } finally {
@@ -5348,6 +5343,21 @@ async function selectFromNav(want) {
   applyWanted();
   persist();
   recordSelection();
+  /* **The list follows, whoever drove.**
+   *
+   * `onGraphSelect` did this and `applySelectionStep` did this, and `selectFromNav` did not
+   * -- on the reasoning that a row the reader clicked is already under their eye. True of a
+   * navigator click and false of every other caller it has acquired since: a table row, a
+   * hop in the detail window, the arrow in the stack, the other browser window. All of them
+   * left the navigator marking whatever was clicked *last time*, which is worse than
+   * marking nothing -- a stale highlight is a confident wrong answer, and it was reported
+   * as one: the breadcrumb read `_script_of` while the left menu still said `main`.
+   *
+   * Here rather than at each call site, because that list will keep growing. A navigator
+   * click reveals a row that is already visible, which costs nothing and changes nothing
+   * (`revealSelectedRoutine` only moves what is out of sight). */
+  buildNav();
+  revealSelectedRoutine();
   render();
 }
 

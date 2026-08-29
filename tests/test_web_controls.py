@@ -1033,11 +1033,14 @@ def test_two_windows_follow_each_other_without_looping() -> None:
         "the flag is cleared on the happy path only -- one failed adopt and this window "
         "stops publishing for the rest of the session, silently"
     )
-    # Rule 26 with a third driver: the list must move to a selection it did not make.
-    assert "revealSelectedRoutine();" in handler and "buildNav();" in handler, (
-        "the window adopting a selection does not move its own routine list to it, so the "
-        "inspector follows perfectly while the navigator sits on an unopened package -- "
-        "which is the half that was asked for by name"
+    # Rule 26 with more drivers than anyone listed: the list must move to a selection it did
+    # not make, whoever made it. Asserted on `selectFromNav` rather than on this handler,
+    # because that is where it now happens *once* -- and because the alternative is one copy
+    # per caller, which is how the table, the detail window and the arrow each got it wrong.
+    sfn = _fn(shell, "selectFromNav")
+    assert "buildNav();" in sfn and "revealSelectedRoutine();" in sfn, (
+        "a selection made anywhere but the navigator leaves the navigator marking whatever "
+        "was clicked last time -- a stale highlight, which is a confident wrong answer"
     )
     # It is published wherever a selection settles, not at one call site that will drift.
     assert "publishSelection();" in _fn(shell, "recordSelection"), (
@@ -1154,6 +1157,85 @@ def test_a_column_can_actually_be_resized() -> None:
     assert "persist();" in up, (
         "a dragged column width is never stored, so design rule 17's 'widths persist per "
         "program' describes something that does not happen"
+    )
+
+
+def test_the_table_keeps_its_header_and_its_subject_on_screen() -> None:
+    """Reported at the keyboard: *scroll down just a bit and you can no longer see the column
+    headers, so you can't resize them either.* And it took the subject strip with it, so the
+    pane stopped saying what it was showing exactly when the reader had gone far enough to
+    need telling.
+
+    The sticky header was declared and could never have worked. `.tablewrap` carries
+    `overflow: auto`, which makes it a scroll container, and a sticky child sticks to its
+    nearest scrolling ancestor -- that one. Nothing bounded its height, so it grew to all
+    339,229px of the table and never scrolled a pixel: the header was stuck to a box that
+    does not move while the *pane* scrolled underneath. Position, offset, z-index and
+    background were all correct and all inert.
+    """
+    css = _read("tokens.css")
+    shell = _read("shell.js")
+
+    assert 'class="tableview"' in _fn(shell, "viewTable"), "the table view has no frame to fill"
+    view = css.split(".tableview {", 1)[1].split("}", 1)[0]
+    assert "flex-direction: column" in view and "height: 100%" in view, (
+        "the table view no longer fills the pane, so there is nothing for the body to "
+        "scroll inside of"
+    )
+    wrap = css.split(".tablewrap {", 1)[1].split("}", 1)[0]
+    assert "overflow: auto" in wrap and "flex: 1" in wrap, (
+        "the table body is not the scroller, so the header sticks to a box that never moves"
+    )
+    # A flex child is `min-height: auto` and refuses to shrink below its content, which
+    # hands the overflow back to the pane. Rule 29's companion, for the third time.
+    assert "min-height: 0" in wrap, (
+        "the body refuses to shrink below its 339,229px of rows, so it hands its overflow "
+        "to the pane and scrolls the header away again"
+    )
+    assert ".viewmount:has(.tableview) { overflow: hidden; }" in css, (
+        "the pane still scrolls too, and with two scrollers the outer one takes the wheel"
+    )
+    # Anchored to the start of a line: `table.grid td, table.grid th {` contains the same
+    # substring, and splitting on it read the `overflow-wrap` rule instead -- a check
+    # vouching for a rule three lines from the one it names.
+    th = css.split("\ntable.grid th {", 1)[1].split("}", 1)[0]
+    assert "position: sticky" in th and "top: 0" in th and "z-index" in th, (
+        "the header is not pinned, or is pinned with no offset, or is painted under the rows"
+    )
+    assert "background:" in th, "a transparent sticky header has the rows scrolling through it"
+    # One rule, once. An equal selector later in the file restating half of it is rule 29.
+    assert css.count("\ntable.grid th {") == 1, (
+        "the header rule is declared twice, and the later one wins on the properties it "
+        "names -- which is how a `position: sticky` with no `top` cancelled a working one"
+    )
+
+
+def test_the_navigator_follows_whoever_drove_the_selection() -> None:
+    """Reported as a question, which is the worst kind of finding: *the left menu still shows
+    `main`. Is that accurate or not? I can't tell.* It was not accurate. The breadcrumb read
+    `_script_of` and the navigator still marked whatever had been clicked last time.
+
+    `onGraphSelect` moved the list and `applySelectionStep` moved the list; `selectFromNav`
+    did not, on the reasoning that a row the reader clicked is already under their eye. True
+    of a navigator click and false of every caller it has since acquired -- a table row, a
+    hop in the detail window, the arrow in the stack, the other browser window. **A stale
+    highlight is worse than none**, because it is a confident wrong answer.
+    """
+    shell = _code(_read("shell.js"))
+    sfn = _fn(shell, "selectFromNav")
+    assert "buildNav();" in sfn and "revealSelectedRoutine();" in sfn, (
+        "a selection made anywhere but the navigator leaves the navigator marking whatever "
+        "was clicked last time"
+    )
+    # In one place, not one copy per caller -- which is how three of them got it wrong.
+    for driver in ("onGraphSelect", "applySelectionStep"):
+        assert "revealSelectedRoutine();" in _fn(shell, driver), (
+            f"{driver} no longer moves the list, so one of the ways in stopped syncing"
+        )
+    handler = shell.split('SYNC.addEventListener("message"', 1)[1].split("\n}\n", 1)[0]
+    assert "revealSelectedRoutine" not in handler, (
+        "the sync handler keeps its own copy of the reveal, which is a second place this "
+        "rule has to be remembered"
     )
 
 

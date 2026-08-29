@@ -1046,8 +1046,32 @@ body {
 .legend svg { display: inline-block; vertical-align: middle; }
 
 /* ═══ table ═══ */
+/* ── a fixed header over a scrolling body ──
+ *
+ * The same shape the navigator was given, for the same reason and after the same report:
+ * *scroll down just a bit and you can no longer see the column headers, so you can't resize
+ * them either.* A control that scrolls away is one the reader cannot reach from where they
+ * are, and here it takes the subject strip with it -- so the pane stops saying what it is
+ * showing exactly when the reader has scrolled far enough to need telling.
+ *
+ * The sticky header was already declared and could never have worked. `.tablewrap` carries
+ * `overflow: auto`, which makes it a **scroll container**, and a sticky child sticks to its
+ * nearest scrolling ancestor -- this one. Nothing bounded its height, so it grew to all
+ * 339,229px of the table and never scrolled a pixel: the header was stuck to a box that
+ * does not move, while the *pane* scrolled underneath. Position sticky, top zero, z-index,
+ * background, all correct, all inert.
+ *
+ * So the wrapper becomes the scroller it was already pretending to be. The view fills the
+ * pane, the wrapper takes what is left after the strip and the controls, and `min-height: 0`
+ * is load-bearing: a flex child defaults to `auto` and refuses to shrink below its content,
+ * which would hand the overflow straight back to the pane (rule 29's companion, third time).
+ */
+.tableview { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+/* The pane must stop scrolling, or there are two scrollers and the outer one wins. */
+.viewmount:has(.tableview) { overflow: hidden; }
 .tablewrap { background: var(--surface); border: 1px solid var(--border);
-  border-radius: .5rem; box-shadow: var(--shadow); overflow: auto; }
+  border-radius: .5rem; box-shadow: var(--shadow);
+  flex: 1; min-height: 0; overflow: auto; }
 /* `fixed`, and it is the whole reason the resize handle does anything.
  *
  * Under `table-layout: auto` a `width` on a `th` is a *suggestion* the browser weighs
@@ -1097,7 +1121,9 @@ table.grid th .arrow { font-size: .6rem; color: var(--accent); }
   cursor: col-resize; background: none;
 }
 .resizer:hover, .resizer.active { background: var(--accent); opacity: .55; }
-table.grid th { position: sticky; }
+/* The `position: sticky` this used to redeclare, without a `top`, is gone: an equal
+ * selector later in the file re-stating half a rule is exactly what rule 29 was written
+ * from. The whole rule lives once, above. */
 table.grid th > .thinner { position: relative; display: block; padding-right: .375rem; }
 table.grid td {
   padding: var(--row-pad) .5rem; border-bottom: 1px solid var(--border);

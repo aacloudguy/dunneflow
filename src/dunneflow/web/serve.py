@@ -545,7 +545,7 @@ def serve(out_dir: Path, *, port: int = 8787, open_browser: bool = True,
     # Shadows are never drawn -- they are placement devices, standing in on a plate so its
     # layout feels the pull of something living elsewhere. Reporting them as drawn would
     # overstate the picture by half.
-    emit(f"{s['nodes']:,} nodes across {s['disks']} disks (largest {s['largest_disk']:,}), "
+    emit(f"{s['nodes']:,} nodes across {s['disks']} plates (largest {s['largest_disk']:,}), "
          f"{s['edges']:,} edges, {s['shadows']:,} shadows for placement only")
 
     port = _free_port(port)

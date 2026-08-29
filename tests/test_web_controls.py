@@ -1646,3 +1646,220 @@ def test_the_routine_tree_is_computed_once_per_build() -> None:
         "the cache is never cleared, so the pane draws the previous answer -- which is far "
         "worse than computing it twice"
     )
+
+
+# ----------------------------------------------------------------- you are here --- #
+#
+# A selection of one node in nine thousand is a dot lit differently from its neighbours,
+# and "lit differently" is findable only by someone who already knows where to look. Two
+# halves: an arrow that stands over what was picked, and a way back to the view it was
+# found in after the reader has turned the stack around three times.
+
+
+def test_the_pointer_is_a_billboard_like_everything_else_in_the_stack() -> None:
+    """Rule 22: a picture of something with no orientation must not have one. An arrow that
+    foreshortened as the stack tilted would read as a shape lying on a plate rather than as
+    a pointer at the reader — the coin-seen-edge-on failure, in a signpost."""
+    engine = _read("graph.js")
+    layer = engine.split("new IconLayer({", 1)[1].split("}));", 1)[0]
+    assert "billboard: true" in layer, (
+        "the pointer is not billboarded, so tilting the stack lays it down on a plate"
+    )
+    assert "pickable: false" in layer, (
+        "the arrow is pickable, so clicking it means something the reader was not told"
+    )
+    assert "opts.scale" in layer, (
+        "the pointer is outside the scale multiplier -- design rule 3 says one slider "
+        "resizes the whole surface, and this would be the one thing it could not reach"
+    )
+
+
+def test_the_pointer_says_so_when_it_draws_nothing() -> None:
+    """This codebase has paid three times over for a shader effect that compiled, drew, and
+    silently did nothing. A texture that comes out empty is a pointer that renders perfectly
+    and points at nothing, with no error anywhere.
+
+    Checked once per colour, not once per frame, and stated on the diagnostics line as well
+    as in the console -- design rule 21: a developer cannot open a console in someone else's
+    browser, so what cannot be seen has to be said where the picture is.
+    """
+    engine = _read("graph.js")
+    icon = _fn(engine, "pointerIcon")
+    # The probe must be read *from the canvas*. Written as "getImageData appears somewhere
+    # and probe[3] is tested somewhere" this passed against its own defect: a `probe` filled
+    # with a constant beside an ignored `getImageData` call satisfied both halves. Rule 37 --
+    # check that the guard catches, not that it mentions.
+    assert re.search(r"const probe = x\.getImageData\(.*\)\.data;", icon), (
+        "the blank check reads something other than the canvas it just drew"
+    )
+    assert "probe[3] === 0" in icon, "the probe is taken and never tested"
+    assert "console.error" in icon, "a blank texture is discovered and not reported"
+    assert "texture ${icon.blank ? 'BLANK'" in _fn(engine, "diagnostics"), (
+        "the diagnostics line does not carry the pointer, so a blank one is invisible to "
+        "anyone who cannot open a console on the reader's machine"
+    )
+
+
+def test_the_pointer_stands_only_on_what_the_reader_picked() -> None:
+    """The one-hop neighbours are the *answer*; the picks are the question. An arrow over
+    every member would point at the haystack again.
+
+    And a shadow is never an endpoint (rules 23 and 31) -- an arrow over a stand-in would
+    put a routine somewhere it does not live, in the one mark on screen whose entire job is
+    to say where something is.
+    """
+    body = _fn(_read("graph.js"), "pointerData")
+    assert "g.picks" in body and "g.members" not in body, (
+        "the pointer stands on the whole selection rather than on what was picked"
+    )
+    assert "realIndex(d, p.index)" in body, (
+        "a shadow gets an arrow, which points at a routine that is not there"
+    )
+    assert "p.kind !== 'node'" in body, (
+        "a picked plate gets an arrow at the middle of 645 nodes, which is nowhere"
+    )
+    assert "POINTER_CAP" in body, (
+        "a thread selecting ninety-nine routines draws ninety-nine arrows, which is not a "
+        "signpost, it is weather"
+    )
+
+
+def test_the_pointer_count_states_what_it_left_out() -> None:
+    """Design rule 1, and rule 32: two dozen arrows over a selection of ninety-nine looks
+    exactly like a selection of two dozen."""
+    js = _read("shell.js")
+    line = _fn(js, "countLine")
+    assert "pointersWanted" in line and "pointers" in line, (
+        "the count line never says how many pointers were left undrawn"
+    )
+    assert "c.pointersWanted > c.pointers" in line, (
+        "it states the pointer count even when nothing was left out, which is noise where "
+        "design rule 1 wants a signal"
+    )
+
+
+def test_the_way_back_is_the_view_it_was_found_in() -> None:
+    """Design rule 26 says picking a routine must never move the camera, so a selection made
+    in the list usually happens while the thing is nowhere on screen -- and a view with the
+    subject outside it is not somewhere anyone wants taking back to.
+
+    So the anchor is *armed* by a selection and *set* by the first view the selection can
+    actually be seen in. Two details, both of which were wrong first time and neither of
+    which fails loudly: it must be asked **after** `recomputeMembers`, or it measures the
+    previous selection; and `selectionOnScreen()`'s null means "cannot say", which on the
+    commonest path of all -- a pick that mounts the graph -- is the answer it gives, because
+    deck has no viewport in the turn it is constructed in.
+    """
+    engine = _read("graph.js")
+    after = _fn(engine, "afterSelectionChange")
+    assert after.index("recomputeMembers") < after.index("rememberWhere"), (
+        "the anchor is taken before the selection is recomputed, so it asks whether the "
+        "*previous* selection was on screen"
+    )
+    capture = _fn(engine, "captureWhere")
+    assert "if (!where)" in capture and "anchorRetry" in capture, (
+        "a `cannot say` is treated as `no`, so a selection that mounts the graph never "
+        "arms an anchor and the button stays disabled for the session"
+    )
+    assert "if (!where.onScreen) return;" in capture, (
+        "the anchor is set to a view the selection is not in, which is not a way back"
+    )
+    # `toAnchor` is a method on the exported object, not a top-level function, so it is
+    # read by span rather than by `_fn` -- which stops at the next `function` at column 0.
+    to_anchor = engine.split("toAnchor() {", 1)[1].split("\n  },", 1)[0]
+    assert "if (!g.prepared || !g.anchor) return false;" in to_anchor, (
+        "toAnchor cannot report that there was nothing to go back to, so the shell has no "
+        "way to say why the button did nothing"
+    )
+
+
+def test_the_way_back_button_cannot_go_stale() -> None:
+    """Its enabled state changes with the selection, and the box that draws it is rebuilt
+    only by `renderGraphFurniture()` -- which a selection never calls.
+
+    Written as an attribute alone it would be disabled at first paint, when nothing is
+    selected, and stay that way for the whole session: design rule 16 in the *state* of a
+    control rather than in its wiring, which is a place none of the existing guards look.
+    """
+    body = _fn(_read("shell.js"), "updateGraphCounts")
+    assert 'data-gact="here"' in body and "here.disabled" in body, (
+        "the button's enabled state is decided only where the HUD is rebuilt, and a "
+        "selection does not rebuild the HUD"
+    )
+    assert "counts.anchored" in body, (
+        "the shell guesses whether there is a view to go back to instead of asking the "
+        "engine, which is the only thing that knows"
+    )
+
+
+def test_the_pointer_colour_is_clamped_and_says_why() -> None:
+    """Design rule 6: customisation is clamped, and a refusal states its reason. 3:1 rather
+    than 4.5:1 because a pointer is a large graphic object, not body text.
+
+    Measured against the *graph's* ground, which is not the page's -- with the stack forced
+    dark inside a light page they are different colours entirely. And re-asked when the
+    ground moves, because the bar moves with it: a colour that cleared 3:1 on near-black can
+    be invisible on the pale one, and a limit that was true once is not a limit.
+    """
+    js = _read("shell.js")
+    assert ">= 3" in _fn(js, "pointerPasses"), "the pointer colour is not clamped at all"
+    assert "graphPaletteNow()" in _fn(js, "pointerRatio"), (
+        "the contrast is measured against the page's ground rather than the graph's, so a "
+        "pointer nobody can see passes"
+    )
+    assert "Refused" in _fn(js, "updatePointerNote"), (
+        "a refused colour is silently ignored -- design rule 6 says a refusal states its "
+        "reason"
+    )
+    assert "pointerPasses(c) ? " in _fn(js, "pointerRgb"), (
+        "a stored colour below the bar is drawn anyway"
+    )
+    assert "Graph.setOptions({ pointerColor: pointerRgb() })" in _fn(js, "applyGraphPalette"), (
+        "changing the graph's ground does not re-ask the clamp, so a colour accepted "
+        "against one ground stays in force against another"
+    )
+    # The token is the only place the default colour is written down.
+    assert "--graph-pointer" in _read("tokens.css"), "the pointer colour is not a token"
+    assert "--graph-pointer" in _fn(js, "pointerToken"), (
+        "the picker's initial value is not read from the token, so it opens on a colour "
+        "the picture is not using"
+    )
+
+
+def test_one_word_for_a_plate_wherever_a_reader_can_see_it() -> None:
+    """The fps line said "52 disks" while the size menu said "plates" — two words for one
+    idea, in a tool whose entire subject is a program's vocabulary. Plate won: rare enough
+    that this product gets to define it, common enough to be guessed at.
+
+    Scoped to what a *reader* sees. `disk` survives as an identifier, and deliberately: the
+    persisted keys would discard every saved arrangement on a rename, and the code has a
+    second live meaning for "plate" — the polygon that *draws* a disk (rule 18: the stack is
+    an abstraction, and the plate is the drawing of it). That is written down as a debt.
+
+    Line-bounded on purpose. Written to span, it read whole functions as though they were
+    sentences and reported eleven leaks, none of them words on a screen — a check that cries
+    wolf has already failed (rule 43), and it failed before it was ever committed.
+    """
+    files = {"shell.js": _read("shell.js"), "settings.js": _read("settings.js")}
+    files["serve.py"] = (Path(__file__).resolve().parents[1] / "src" / "dunneflow" / "web"
+                         / "serve.py").read_text(encoding="utf-8")
+    # An identifier is not a word on screen. These are the machinery, all of it named.
+    machinery = re.compile(r"data-disk|dataset\.disk|diskColors|diskOrder|diskColorHex|"
+                           r"--graph-disk|selectedDisks|sortedDisks|Graph\.disks|dragDisk|"
+                           r"largest_disk|s\['disks'\]|want\.disks|\{ disks:|disks: \[|"
+                           r"h\.disk|d\.disk|n\.disk|\.disk\b|disk:|c\.disks|"
+                           + '"disks?"' + r"|'disks?'")
+    leaks = []
+    for name, text in files.items():
+        body = re.sub(r"/\*.*?\*/", "", text, flags=re.S)          # block comments
+        for i, line in enumerate(body.splitlines(), 1):
+            if line.lstrip().startswith(("//", "#", "*")):
+                continue
+            for m in re.finditer(r'"[^"\n]*\bdisks?\b[^"\n]*"|>[^<>\n]*\bdisks?\b[^<>\n]*<',
+                                 line):
+                if not machinery.search(m.group(0)):
+                    leaks.append(f"{name}:{i} {m.group(0).strip()}")
+    assert not leaks, (
+        "the reader is shown the word 'disk' here, and the product says plate:\n  "
+        + "\n  ".join(leaks)
+    )

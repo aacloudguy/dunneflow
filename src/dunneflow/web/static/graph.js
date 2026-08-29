@@ -42,7 +42,7 @@
 (function () {
 
 const {
-  Deck, OrbitView, ScatterplotLayer, LineLayer, TextLayer, PolygonLayer,
+  Deck, OrbitView, ScatterplotLayer, LineLayer, TextLayer, PolygonLayer, IconLayer,
   COORDINATE_SYSTEM, CollisionFilterExtension,
 } = deck;
 const Shading = window.DunneFlowShading;
@@ -89,6 +89,7 @@ const PALETTE = {
    * is lit up out of the background; on a light one it must darken away from the light,
    * and an additive white highlight vanishes. So they are parameters, not constants. */
   ambient: 0.42, diffuse: 0.72, specular: 0.5,
+  pointer: [251, 191, 36],           // "you are here" -- see `tokens.css` for why amber
 };
 
 function hslToRgb(h, sl, l) {
@@ -129,6 +130,12 @@ const g = {
   picks: [],              // [{kind:'disk', id} | {kind:'node', index}] -- ordered
   members: new Set(),
   selGeom: null,
+  /* The view the reader found this selection in, and whether we are still waiting for one.
+   * See `rememberWhere()`. Null when nothing is selected, and null while a selection has
+   * been made but never yet seen. */
+  anchor: null,
+  anchorArmed: false,
+  anchorRetry: 0,
   hiddenLabels: 0,
   benching: false,
   mounted: false,
@@ -156,6 +163,17 @@ const opts = {
    * Independent of `filterMode`, which decides whether those plates draw at all. */
   collapseUnused: false,
   showPlates: false,
+  /* The "you are here" pointer: an arrow standing over every node the reader picked.
+   *
+   * It exists because a selection of one node in nine thousand is a dot that is lit
+   * differently from its neighbours, and "lit differently" is not findable -- the reader
+   * has to already know where to look, which is the thing they do not know. Off is a real
+   * choice, so it is a Setting; the colour is theirs too, clamped (design rule 6).
+   *
+   * `pointerColor` null means "whatever the palette says", so a reader who never touches
+   * it follows the theme like everything else. */
+  pointerShown: true,
+  pointerColor: null,
   /* Keeping the links up while the camera turns is what makes a rotation *say* something:
    * relationships are what the stack is for, and stripping them the moment anyone moves
    * hides the thing they are moving to see. It was only ever a performance measure, and on
@@ -544,8 +562,68 @@ function togglePick(pick, mode = 'replace') {
   afterSelectionChange(d);
 }
 
+/* The view the reader **found this in**, kept so they can come back to it.
+ *
+ * The camera is theirs to move and moving it is not leaving: orbiting, panning and hovering
+ * are how the picture gets read, and a reader who has turned the stack around three times
+ * has not decided to go anywhere. They have lost the place they were standing, and until
+ * this nothing on screen could give it back. Design rule 20's rule -- nothing may strand
+ * the reader with no way back -- applied to the reader's *own* framing rather than to the
+ * stack's.
+ *
+ * "Found it in" is not "was looking at when it was selected", and the difference is the
+ * whole of why this is two functions. Design rule 26 says picking a routine must never move
+ * the camera, so a selection made in the list usually happens while the thing is nowhere on
+ * screen -- and a view with the subject outside it is not somewhere anyone wants taking
+ * back to. So the anchor is *armed* by a selection and *set* by the first view in which the
+ * selection can actually be seen, whether the reader got there by orbiting, by zooming, or
+ * by pressing `find it`.
+ *
+ * Then it stops. The alternative -- keep re-recording while the selection stays visible, so
+ * "back" means the last good view rather than the first -- is a real second answer and might
+ * be the better one; it is written down here rather than built, because two ways back is a
+ * Setting and this does not yet have the use behind it that design rule 2 asks for.
+ *
+ * `selectionOnScreen()` answers null for "cannot say" -- before there is a viewport at all
+ * -- and that must not be read as "no". Rule 42 is that mistake in the guard rather than in
+ * the answer, and the two are the same mistake. */
+function rememberWhere() {
+  if (!g.picks.length) { g.anchor = null; g.anchorArmed = false; return; }
+  g.anchor = null;
+  g.anchorArmed = true;
+  captureWhere();
+}
+
+function captureWhere() {
+  if (!g.anchorArmed) return;
+  const where = selectionOnScreen();
+  /* Three answers, not two, and treating the third as a "no" is what made this fail on the
+   * commonest path of all: picking a routine in the list *mounts* the graph, and deck has
+   * no viewport during the same turn it is constructed in. So the selection was plainly on
+   * screen, the question could not be answered yet, and nothing ever asked again -- because
+   * the reader had not moved the camera, so no settle came. Ask once more on the next tick
+   * when the answer was "cannot say"; a definite "no" needs no retry, since the settle path
+   * is exactly what a reader moving to look at it produces. Rule 42's distinction, acted on
+   * rather than merely documented. */
+  if (!where) {
+    if (!g.anchorRetry) {
+      g.anchorRetry = setTimeout(() => { g.anchorRetry = 0; captureWhere(); }, 0);
+    }
+    return;
+  }
+  if (!where.onScreen) return;
+  g.anchor = { ...g.viewState };
+  g.anchorArmed = false;
+  announceCounts();                            // the button is disabled until this happens
+}
+
 function afterSelectionChange(d) {
   recomputeMembers(d);
+  /* Strictly after `recomputeMembers`, and it was not, which is the whole of why a
+   * selection made in the list armed nothing: `selectionOnScreen()` measures the bounds of
+   * `g.members`, so asking it before they are recomputed asks about the *previous*
+   * selection. It answered honestly about a question nobody had asked. */
+  rememberWhere();
   /* Which plates are in play is a function of the selection, so collapsing has to be
    * recomputed here and not only when a control moves -- otherwise the stack keeps the
    * shape of the *previous* selection while confidently showing the current one.
@@ -818,6 +896,36 @@ function buildLayers(d) {
     }));
   }
 
+  /* Drawn after everything, and that is the point of it: a pointer buried behind the
+   * geometry it points at would be a signpost facing the wrong way. Same argument as the
+   * edges being drawn after the nodes -- information the reader asked for must not be
+   * occluded by decoration they also asked for.
+   *
+   * Not `pickable`: clicking the arrow would have to mean something, and the only honest
+   * meaning is "select the node under it", which is what clicking the node already does. */
+  if (opts.pointerShown) {
+    const pts = pointerData(d);
+    if (pts.length) {
+      const rgb = opts.pointerColor || PALETTE.pointer;
+      const icon = pointerIcon(rgb);
+      layers.push(new IconLayer({
+        id: `pointers-${icon.id}`, coordinateSystem: CARTESIAN, data: pts,
+        getPosition: (o) => o, getIcon: () => icon,
+        /* `opts.scale` and nothing else: design rule 3 says one multiplier resizes the
+         * whole surface together, and a pointer that stayed 26 px while the type and the
+         * nodes grew would be the one thing on screen the slider could not reach.
+         * Deliberately *not* tied to `nodeSize`: the arrow's job is to be findable, and it
+         * is needed most when the nodes are dots. */
+        getSize: POINTER_SIZE * opts.scale, sizeUnits: 'pixels',
+        /* Clear of the node it points at, in the direction the arrow already points. The
+         * apex is the icon's anchor, so this is the only gap that has to be reasoned
+         * about, and it scales with the arrow. */
+        getPixelOffset: [0, -Math.round(4 * opts.scale)],
+        billboard: true, pickable: false,
+      }));
+    }
+  }
+
   if (still && g.viewState.zoom >= NODE_LABEL_ZOOM) {
     const labels = pickLabels(d);
     if (labels.length) {
@@ -837,6 +945,125 @@ function buildLayers(d) {
     }
   }
   return layers;
+}
+
+/* ── the "you are here" pointer ─────────────────────────────────────────────────
+ *
+ * An arrow standing over each node the reader picked, so a selection of one in nine
+ * thousand can be *found* rather than merely being lit differently from its neighbours.
+ *
+ * Drawn as an icon rather than as geometry, for the reason rule 22 gives for the nodes: a
+ * billboard is a flat quad held facing the camera, and a picture of something with no
+ * orientation must not have one. An arrow that foreshortened as the stack tilted would
+ * read as a shape lying on a plate rather than as a pointer at the reader.
+ *
+ * The shading is baked into the texture rather than done in a shader, and that is the one
+ * place this deliberately differs from the nodes. The nodes are fifteen thousand instances
+ * of one quad and their shading has to be per-fragment arithmetic; there are at most a
+ * couple of dozen pointers, all one colour, so a texture drawn once per colour change is
+ * cheaper in every way that matters and is a thing anyone can look at and understand.
+ * Tinting with `mask: true` would have been simpler still and throws the shading away --
+ * a mask has no colour of its own to shade.
+ */
+const POINTER_W = 44;
+const POINTER_H = 62;
+const POINTER_SIZE = 26;            // pixels at scale 1; design rule 3 multiplies it
+/* How many pointers are drawn. A thread can select ninety-nine routines at once, and
+ * ninety-nine arrows is not a signpost, it is weather. The most recently picked come
+ * first, because the last thing clicked is the thing being looked at, and what is left
+ * out is stated (design rule 1) -- `announceCounts` carries the number. */
+const POINTER_CAP = 24;
+
+const pointerCache = new Map();
+
+function shade(rgb, f) {
+  return rgb.map((c) => Math.max(0, Math.min(255, Math.round(f > 0
+    ? c + (255 - c) * f
+    : c * (1 + f)))));
+}
+
+/* One arrow, drawn once per colour into a canvas and cached.
+ *
+ * Lit from the upper left, which is where `shading.js` puts the light on the spheres --
+ * two light sources in one picture is how a scene stops reading as a scene. The dark
+ * outline is not ornament: this must be findable against a pale ground and a near-black
+ * one, and a shape that relies on its fill for contrast is legible on exactly one of them. */
+function pointerIcon(rgb) {
+  const key = rgb.join(',');
+  const hit = pointerCache.get(key);
+  if (hit) return hit;
+
+  const c = document.createElement('canvas');
+  c.width = POINTER_W; c.height = POINTER_H;
+  const x = c.getContext('2d');
+  const [w, h] = [POINTER_W, POINTER_H];
+  const tip = h - 3, headTop = h * 0.52, halfHead = w * 0.42, halfStem = w * 0.15;
+
+  x.beginPath();
+  x.moveTo(w / 2, tip);                       // the point, at the bottom, at the node
+  x.lineTo(w / 2 - halfHead, headTop);
+  x.lineTo(w / 2 - halfStem, headTop);
+  x.lineTo(w / 2 - halfStem, 4);
+  x.lineTo(w / 2 + halfStem, 4);
+  x.lineTo(w / 2 + halfStem, headTop);
+  x.lineTo(w / 2 + halfHead, headTop);
+  x.closePath();
+
+  const grad = x.createLinearGradient(0, 0, w, h);
+  grad.addColorStop(0, `rgb(${shade(rgb, 0.45).join(',')})`);
+  grad.addColorStop(0.45, `rgb(${rgb.join(',')})`);
+  grad.addColorStop(1, `rgb(${shade(rgb, -0.42).join(',')})`);
+  x.fillStyle = grad;
+  x.fill();
+
+  x.lineWidth = 2.5;
+  x.strokeStyle = 'rgba(0,0,0,0.55)';
+  x.stroke();
+
+  // The lit edge, up the left side, so the arrow reads as a solid rather than a sticker.
+  x.beginPath();
+  x.moveTo(w / 2 - halfStem + 1.5, 6);
+  x.lineTo(w / 2 - halfStem + 1.5, headTop);
+  x.lineTo(w / 2 - halfHead + 4, headTop);
+  x.lineWidth = 1.6;
+  x.strokeStyle = `rgba(${shade(rgb, 0.75).join(',')},0.9)`;
+  x.stroke();
+
+  /* Did anything actually get drawn? A texture that comes out empty is a pointer that
+   * renders perfectly and points at nothing, with no error anywhere -- the exact family of
+   * failure the sphere shading produced three times. Sampled rather than scanned: one
+   * opaque pixel on the stem is all this needs to know, and it is checked once per colour
+   * rather than once per frame. */
+  const probe = x.getImageData(Math.round(w / 2), Math.round(h * 0.3), 1, 1).data;
+  const blank = probe[3] === 0;
+  if (blank) console.error("DunneFlow: the you-are-here pointer drew an empty texture");
+
+  const icon = { url: c.toDataURL(), width: w, height: h, anchorX: w / 2, anchorY: h,
+                 mask: false, id: `pointer-${key}`, blank };
+  pointerCache.set(key, icon);
+  return icon;
+}
+
+/* Where the pointers stand: the nodes the reader *picked*, never the one-hop neighbours
+ * those pulled in. The neighbours are the answer; the picks are the question, and an arrow
+ * over everything would point at the haystack again.
+ *
+ * A picked *disk* gets none. A plate is not a place -- pointing at the middle of 645 nodes
+ * says nothing about where any of them is, and rule 23 is the same argument for shadows. */
+function pointerData(d) {
+  const out = [];
+  for (let k = g.picks.length - 1; k >= 0 && out.length < POINTER_CAP; k--) {
+    const p = g.picks[k];
+    if (p.kind !== 'node') continue;
+    const i = realIndex(d, p.index);     // a shadow is never an endpoint (rules 23, 31)
+    if (i < 0 || i >= d.n) continue;
+    out.push([d.positions[i * 3], d.positions[i * 3 + 1], d.positions[i * 3 + 2]]);
+  }
+  return out;
+}
+
+function pointerCount() {
+  return g.picks.filter((p) => p.kind === 'node').length;
 }
 
 function pickLabels(d) {
@@ -859,6 +1086,10 @@ function pickLabels(d) {
 function setMoving(moving) {
   if (g.moving === moving) return;
   g.moving = moving;
+  /* Once the camera has come to rest, this may be the view the selection is finally
+   * visible in -- and that is the one worth keeping. Only on the way to *still*, because
+   * every frame of a drag is a view nobody chose. */
+  if (!moving) captureWhere();
   draw();
   announceCounts();
 }
@@ -893,6 +1124,15 @@ function announceCounts() {
     // reader has no other way to tell a short stack from a small program.
     collapsed: g.prepared?.collapsed.size ?? 0,
     hiddenLabels: g.hiddenLabels,
+    /* How many pointers stand in the picture, and how many were asked for. Two numbers
+     * because a thread can select ninety-nine routines and only two dozen get an arrow --
+     * design rule 1, and rule 32: the number has to say what it counts. */
+    pointers: opts.pointerShown ? Math.min(pointerCount(), POINTER_CAP) : 0,
+    pointersWanted: opts.pointerShown ? pointerCount() : 0,
+    /* Whether there is a view to go back to. The shell disables its own control from this
+     * rather than guessing, because "no anchor" and "the anchor is where you already are"
+     * are different states and only the engine can tell them apart. */
+    anchored: !!g.anchor,
     moving: g.moving && !g.benching,
     edgesInMotion: opts.edgesInMotion,
     names: g.picks.map((p) => p.kind === 'disk'
@@ -991,6 +1231,19 @@ function diagnostics() {
                ` · centre [${where.at}] ${where.onScreen ? 'ON' : 'OFF'} screen`);
   }
   lines.push(`layers ${g.deckgl?.props?.layers?.length ?? 0} · frames ${framesDrawn}`);
+  /* The pointer, on the page, because a texture that came out blank draws nothing and
+   * reports nothing -- and this codebase has paid three times for a shader effect that
+   * compiled, drew, and silently did nothing. Design rule 21's argument exactly: a
+   * developer cannot open a console in someone else's browser, so what cannot be seen has
+   * to be stated where the picture is. */
+  if (opts.pointerShown) {
+    const rgb = opts.pointerColor || PALETTE.pointer;
+    const icon = pointerIcon(rgb);
+    lines.push(`pointer rgb(${rgb}) · ${Math.min(pointerCount(), POINTER_CAP)} drawn` +
+               ` · texture ${icon.blank ? 'BLANK' : `${Math.round(icon.url.length / 1024)} KB`}` +
+               (g.anchor ? ' · anchored' : g.anchorArmed ? ' · waiting for a view of it'
+                                                         : ' · no anchor'));
+  }
   return lines;
 }
 
@@ -1174,6 +1427,9 @@ window.DunneFlowGraph = {
       recomputeMembers(g.prepared);
       buildSelectionGeometry(g.prepared);
     }
+    if (partial.pointerColor !== undefined || partial.pointerShown !== undefined) {
+      announceCounts();       // the readout states how many pointers are drawn
+    }
     paintNodes(g.prepared);
     draw();
     announceCounts();
@@ -1294,6 +1550,25 @@ window.DunneFlowGraph = {
    * and "snap to fit" before the stack exists is an ordinary thing to do -- not an error
    * to throw on. */
   fit(tilt) { if (g.prepared) onViewStateChange({ viewState: fitView(g.prepared, tilt ?? g.viewState.rotationX) }); },
+
+  /* Back to the view this selection was found in.
+   *
+   * Not `fit`, and the difference is the whole feature. `fit` frames the selection, which
+   * is a view nobody chose and which throws away the angle, the distance and the context
+   * the reader had arranged around it. This restores the framing they were actually
+   * standing in -- their own picture, not a computed one.
+   *
+   * Returns false when there is nothing to go back to, so the shell can say why rather
+   * than offering a control that does nothing (design rule 16). */
+  hasAnchor: () => !!g.anchor,
+  toAnchor() {
+    if (!g.prepared || !g.anchor) return false;
+    onViewStateChange({ viewState: { ...g.anchor } });
+    return true;
+  },
+  /* How many pointers are drawn and how many were asked for, so the count beside them can
+   * state what it left out rather than quietly showing two dozen of ninety-nine. */
+  pointers: () => ({ shown: Math.min(pointerCount(), POINTER_CAP), total: pointerCount() }),
   topDown() { if (g.prepared) onViewStateChange({ viewState: fitView(g.prepared, 90) }); },
   tilt() { if (g.prepared) onViewStateChange({ viewState: fitView(g.prepared, 35) }); },
 

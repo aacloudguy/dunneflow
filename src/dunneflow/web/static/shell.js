@@ -137,6 +137,8 @@ const state = {
    * moment there is something to show. An explicit fold by the reader outranks this. */
   inspectorAuto: true,
   navWidth: 21,           // rem; the routine list has to fit a qualified name
+  pointerShown: true,     // the "you are here" arrow over each picked node
+  pointerColor: "",       // "" = the token; anything else is the reader's, clamped
   navGroups: "one",       // "one" | "many" -- an accordion, or every group at once
   navCap: 200,            // routines listed per package; 0 is all of them
   navOpen: {},            // group id -> open; empty means "each group's own default"
@@ -1253,6 +1255,32 @@ function viewSettings() {
           <div class="seg" role="group" aria-label="Navigator groups">
             <button data-navgroups="one"  aria-pressed="${state.navGroups === "one"}">One at a time</button>
             <button data-navgroups="many" aria-pressed="${state.navGroups === "many"}">All at once</button>
+          </div>
+        </div>
+
+        <div class="setrow">
+          <div><div class="lbl">You are here</div>
+            <div class="desc">An arrow standing over every node you picked, so a selection of
+              one in nine thousand can be <i>found</i> rather than only lit differently from
+              its neighbours. It is a billboard like the nodes themselves — always facing you,
+              never foreshortened by the tilt — and shaded from the same direction the spheres
+              are lit, because two light sources in one picture is how a scene stops reading as
+              one. The colour is yours, within a limit: below <b>3:1</b> against the graph's own
+              ground it is refused and the pointer falls back to the theme's, because a signpost
+              nobody can see is worse than no signpost. 3:1 rather than 4.5:1 — it is a large
+              graphic object, not body text.</div></div>
+          <div>
+            <div class="seg" role="group" aria-label="You are here">
+              <button data-pointershown="1" aria-pressed="${state.pointerShown}">Shown</button>
+              <button data-pointershown="0" aria-pressed="${!state.pointerShown}">Off</button>
+            </div>
+            <div class="pointerpick">
+              <input type="color" id="pointerPick" aria-label="Pointer colour"
+                     value="${esc(state.pointerColor || pointerToken())}">
+              <span class="ratio" id="pointerRatio"></span>
+              <button class="gbtn" data-pointerreset="1">theme's</button>
+            </div>
+            <div id="pointerNote"></div>
           </div>
         </div>
 
@@ -2744,7 +2772,14 @@ function render() {
   else if (state.view === "inference") vp.innerHTML = viewInference();
   else if (state.view === "curiosities") vp.innerHTML = viewCuriosities();
   else if (state.view === "pins")       vp.innerHTML = viewPins();
-  else if (state.view === "settings")  vp.innerHTML = viewSettings();
+  else if (state.view === "settings")  {
+    vp.innerHTML = viewSettings();
+    /* Painted after the markup, never inside it. The ratio and the refusal are computed
+     * against the graph's *current* ground, which depends on the theme and on the graph's
+     * own ground setting -- so writing them into the template would freeze a judgment made
+     * before either was known, and a clamp stating a stale verdict is worse than none. */
+    updatePointerNote();
+  }
 
   $("#inspector").innerHTML = section("inspector", viewInspector);
   applyPanels();
@@ -2909,6 +2944,30 @@ function wire() {
     state.trailCap = parseInt(b.dataset.trailcap, 10);
     const cap = Math.max(2, state.trailCap);
     if (state.trail.length > cap) state.trail.splice(0, state.trail.length - cap);
+    render();
+  }));
+  $$("[data-pointershown]").forEach(b => b.addEventListener("click", () => {
+    state.pointerShown = b.dataset.pointershown === "1";
+    used("pointer:" + (state.pointerShown ? "shown" : "off"));
+    if (Graph.mounted()) Graph.setOptions({ pointerShown: state.pointerShown });
+    persist();
+    render();
+  }));
+  const pp = $("#pointerPick");
+  /* Live while dragging, like every other picker here, and for the same reason: `render()`
+     rewrites the pane the control lives in, so consulting it mid-drag destroys it. The
+     refusal is shown as the reader drags rather than after they commit, because a limit
+     that only speaks once the choice is made is a limit that wasted their time. */
+  if (pp) pp.addEventListener("input", () => {
+    state.pointerColor = pp.value;
+    updatePointerNote();
+    if (Graph.mounted()) Graph.setOptions({ pointerColor: pointerRgb() });
+    persist();
+  });
+  $$("[data-pointerreset]").forEach(b => b.addEventListener("click", () => {
+    state.pointerColor = "";
+    if (Graph.mounted()) Graph.setOptions({ pointerColor: null });
+    persist();
     render();
   }));
   $$("[data-navcap]").forEach(b => b.addEventListener("click", () => {
@@ -3229,7 +3288,7 @@ const WIRED_ATTRS = new Set([
   "aiop", "airun", "bound", "cite", "citeidx", "closeviewer", "col", "crumb", "curi",
   "cursor", "den", "disk", "drop", "edgesmotion", "egress", "ep", "fold", "gact", "gosev",
   "goto", "graphtheme", "insp", "jump", "layout", "legend", "manifest", "menuorder",
-  "mode", "nav", "nav2", "navcap", "navgroups", "pkgopen",
+  "mode", "nav", "nav2", "navcap", "navgroups", "pkgopen", "pointerreset", "pointershown",
   "navid", "node", "open", "pane", "pin", "pinnote", "pkgnode", "pkgpick", "resize", "row",
   "scale-set", "sec", "sev", "sevnav", "sort", "sqlshow", "start", "step", "theme",
   "term", "termuse", "theme-set", "thread", "threadlabel", "threadsall", "threadwhy",
@@ -3861,7 +3920,7 @@ const PERSISTED = [
   "diskOrder", "diskColors", "colorBy", "sortMode", "filterMode", "direction",
   "nodeSize", "spreadX", "spreadY", "spreadZ", "collapseUnused",
   "panels", "inspectorAuto", "navWidth", "navGroups", "navOpen", "navCap",
-  "showPlates", "picks", "graphTheme", "edgesInMotion",
+  "showPlates", "picks", "graphTheme", "edgesInMotion", "pointerShown", "pointerColor",
 ];
 
 let settings = null;      // the loaded blob; `state` is the live copy
@@ -3950,11 +4009,88 @@ function graphPaletteNow() {
   return cssPalette();
 }
 
+/* The reader's pointer colour as the engine wants it, or null for "use the token".
+ *
+ * Null rather than a resolved value on purpose: a colour resolved here would be frozen at
+ * the moment it was read, and the graph follows the theme -- so switching to the dark
+ * stack would keep a pointer chosen against the pale one. The engine already replaces its
+ * palette whole when the theme moves, and this stays out of that.
+ *
+ * A stored colour that no longer clears the bar is not used. That is not the same as
+ * refusing to store it: the bar moves with the theme, so an amber that passes on near-black
+ * and fails on the pale ground must fall back rather than either being deleted or drawn
+ * illegibly. `pointerNote()` says which of the two is happening. */
+function pointerRgb() {
+  const c = state.pointerColor;
+  if (!c || !/^#[0-9a-f]{6}$/i.test(c)) return null;
+  return pointerPasses(c) ? [1, 3, 5].map(i => parseInt(c.slice(i, i + 2), 16)) : null;
+}
+
+/* Design rule 6: customisation is clamped, and says why. 3:1 rather than 4.5:1 because
+ * the pointer is a large graphic object rather than body text -- the same line the rule
+ * draws for chrome. Measured against the graph's *own* ground, which is not the page's:
+ * with the stack forced dark inside a light page they are different colours entirely, and
+ * checking against the wrong one would pass a pointer nobody can see. */
+function pointerPasses(hex) {
+  return pointerRatio(hex) >= 3;
+}
+
+function pointerRatio(hex) {
+  const p = graphPaletteNow();
+  const ground = "#" + p.ground.map(v => v.toString(16).padStart(2, "0")).join("");
+  return contrast(hex, ground);
+}
+
+/* The token's own value, so the picker opens on the colour actually in force rather than
+   on black -- an empty `pointerColor` means "the theme's", and showing that as #000000
+   would be the swatch stating a colour the picture is not using. */
+function pointerToken() {
+  const v = getComputedStyle(document.documentElement)
+    .getPropertyValue("--graph-pointer").trim();
+  return /^#[0-9a-f]{6}$/i.test(v) ? v : "#fbbf24";
+}
+
+/* Design rule 6: a refusal states its reason. Three states, and the third is the one worth
+   writing down -- a colour that *was* accepted and no longer clears the bar because the
+   reader changed the graph's ground underneath it. It is not deleted, because the bar moves
+   with the theme and switching back would want it again; it simply is not used, and this
+   says so where the swatch is. */
+function updatePointerNote() {
+  const out = $("#pointerNote"), ratio = $("#pointerRatio");
+  const chosen = state.pointerColor;
+  const shown = chosen || pointerToken();
+  const r = pointerRatio(shown);
+  if (ratio) {
+    ratio.textContent = r.toFixed(2) + ":1";
+    ratio.className = "ratio " + (r >= 3 ? "pass" : "fail");
+  }
+  if (!out) return;
+  if (!chosen) {
+    out.innerHTML = `<span class="hint" style="font-size:.72rem">Following the theme.</span>`;
+  } else if (r >= 3) {
+    out.innerHTML = `<span class="hint" style="font-size:.72rem">Yours, and it clears
+      3:1 against this ground.</span>`;
+  } else {
+    out.innerHTML = `<span class="clampnote"><b>\u2715</b><span>Refused — ${r.toFixed(2)}:1
+      against the graph's ground is below the 3:1 minimum for a large graphic object, and a
+      pointer nobody can see is worse than no pointer. The theme's colour is being drawn
+      instead; lighten or darken this one and it will be used.</span></span>`;
+  }
+}
+
 function applyGraphPalette() {
   const p = graphPaletteNow();
   $("#graphMount").style.background =
     `rgb(${p.ground[0]},${p.ground[1]},${p.ground[2]})`;
-  if (Graph.mounted()) Graph.setPalette(p);
+  if (!Graph.mounted()) return;
+  Graph.setPalette(p);
+  /* The clamp is against the ground, so moving the ground moves the bar -- and a colour
+   * that cleared 3:1 on near-black can be invisible on the pale one. Re-asked here rather
+   * than only when the picker moves, which is the difference between a limit and a limit
+   * that was true once. This is the third state `pointerRgb()` documents, and without this
+   * line the documentation would have been the only place it happened. */
+  Graph.setOptions({ pointerColor: pointerRgb() });
+  updatePointerNote();
 }
 
 /* ── mounting ─────────────────────────────────────────────────────────────────
@@ -3995,6 +4131,7 @@ async function ensureGraph() {
     spreadX: state.spreadX, spreadY: state.spreadY, spreadZ: state.spreadZ,
     collapseUnused: state.collapseUnused, showPlates: state.showPlates, scale: state.scale,
     edgesInMotion: state.edgesInMotion, picks: state.picks,
+    pointerShown: state.pointerShown, pointerColor: pointerRgb(),
   });
   /* Read back the order the engine resolved. A saved order from a graph that has since
    * changed is discarded there, and the shell must not go on persisting the stale one --
@@ -4478,7 +4615,7 @@ function countLine(c) {
   // Never claim a filter that is not happening: with edges kept up, "nodes only" is false.
   if (c.moving && !c.edgesInMotion) return "nodes only while moving";
   if (!c.selected) {
-    return "nothing selected — all links hidden; pick two disks to see what crosses "
+    return "nothing selected — all links hidden; pick two plates to see what crosses "
          + "between them, or click a node";
   }
   const names = c.names || [];
@@ -4503,6 +4640,13 @@ function countLine(c) {
     /* Design rule 1: closing a plate's gap removes it from the picture, and a shorter
      * stack is indistinguishable from a smaller program by looking. */
     (c.collapsed ? ` · <b class="num">${c.collapsed.toLocaleString()}</b> plates collapsed` : "") +
+    /* Design rule 1 again, and rule 32: the number says what it counts. A thread can select
+     * ninety-nine routines and only two dozen get an arrow, and two dozen arrows over a
+     * selection of ninety-nine looks exactly like a selection of two dozen. Silent only
+     * when nothing was left out, because "24 of 24 pointers" is noise. */
+    (c.pointersWanted > c.pointers
+      ? ` · <b class="num">${c.pointers}</b> of <b class="num">${c.pointersWanted}</b> pointers`
+      : "") +
     /* A walked path that does not say how long it is, is a selection growing silently --
      * design rule 1, and the reason "keeps the path" needs a way back stated beside it.
      * Only while walking and only past the first step: on a single pick there is no path
@@ -4532,6 +4676,19 @@ function updateGraphCounts() {
   if (line) line.innerHTML = countLine(counts || {}) +
     (state.navNote ? ` · <span class="warnnote">${esc(state.navNote)}</span>` : "") +
     offScreenNote();
+  /* The one control here whose *enabled* state changes with the selection, updated on this
+   * narrow path because the box that draws it is rebuilt only by `renderGraphFurniture()`
+   * -- which a selection never calls. Written as an attribute alone it would have been
+   * disabled at first paint, when nothing is selected, and stayed that way for the whole
+   * session: a control that renders and does nothing, which is design rule 16 exactly, and
+   * this time in the *state* of a control rather than in its wiring. */
+  const here = $('[data-gact="here"]');
+  if (here) {
+    here.disabled = !(counts && counts.anchored);
+    here.title = here.disabled
+      ? "Nothing is selected, so there is no view to go back to"
+      : "Back to the view you found this in";
+  }
   const legend = $("#graphLegend");
   if (!legend) return;
   const on = new Set(state.picks.filter(p => p.kind === "disk").map(p => p.id));
@@ -4585,7 +4742,7 @@ function renderGraphFurniture() {
         <span class="chev">${hudOpen ? "▾" : "▸"}</span>
       <div><b class="num" id="gfps">${fps ? fps.toFixed(0) : "–"}</b> fps ·
         <b class="num">${(c.nodes || 0).toLocaleString()}</b> nodes ·
-        <b class="num">${c.disks || 0}</b> disks</div>
+        <b class="num">${c.disks || 0}</b> plates</div>
       </button>
       <div class="hudbody" id="panel-hud-body">
         <div class="muted" id="gcounts">${line}</div>
@@ -4597,6 +4754,16 @@ function renderGraphFurniture() {
                   title="Back to the previous selection (\u2318Z)">\u21b6 undo</button>
           <button class="gbtn" data-gact="redo" ${canRedoSelection() ? "" : "disabled"}
                   title="Forward again (\u21e7\u2318Z)">\u21b7</button>
+          <!-- The reader's own framing, not a computed one. Snap to fit, beside it,
+               answers a different question: that one frames the selection, this one
+               restores the view the selection was found in -- the angle, the distance and
+               whatever context they had arranged around it. Disabled with its reason when
+               there is nothing selected to have a view of. -->
+          <button class="gbtn" data-gact="here" ${c.anchored ? "" : "disabled"}
+                  title="${c.anchored
+                    ? "Back to the view you found this in"
+                    : "Nothing is selected, so there is no view to go back to"}"
+                  >\u2316 you are here</button>
           <button class="gbtn" data-gact="fit">snap to fit</button>
           <button class="gbtn" data-gact="top">top-down</button>
           <button class="gbtn" data-gact="tilt">tilt</button>
@@ -4804,6 +4971,16 @@ const GRAPH_ACTIONS = {
   // `fit` already frames the *selection* when there is one, so this is that, named
   // for what the reader wants rather than for what it does.
   findit: () => Graph.fit(),
+  /* Back to where the reader was standing when they found this.
+   *
+   * Silent about failure on purpose is exactly what this must not be, so it is disabled
+   * rather than inert when there is no anchor -- and if it is somehow pressed anyway, it
+   * says so where the reader is looking rather than in a console they do not have open. */
+  here: () => {
+    if (Graph.toAnchor()) return;
+    const out = $("#gbench");
+    if (out) out.textContent = "nothing is selected, so there is no view to go back to";
+  },
   undo: () => undoSelection(),
   redo: () => redoSelection(),
   sizereset: () => {

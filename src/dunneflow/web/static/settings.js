@@ -27,6 +27,19 @@ const SETTINGS_VERSION = 3;
 
 const DEFAULTS = {
   /* ── the graph ───────────────────────────────────────────────────────────── */
+  /* `disk` in the keys, **plate** in every word a reader sees.
+   *
+   * They are one thing under two names, and the reader's name is the one that had to be
+   * settled: the fps line said "52 disks" while the size menu said "plates", which is two
+   * words for one idea in a tool whose whole subject is a program's vocabulary. Plate won
+   * because it is rare enough that this product gets to define it and common enough to be
+   * guessed at, which is the same argument the glossary lane makes about any house word.
+   *
+   * The keys stay `disk` for now, and that is a debt rather than a decision: renaming a
+   * persisted key discards every reader's saved arrangement unless the version is bumped
+   * for it, and the code has a *second* live meaning for "plate" -- the polygon that draws
+   * a disk (`showPlates`, `diskPlates`, `plateFill`). Renaming half of that pair would
+   * leave the collision it was meant to remove. See `HANDOFF.md`. */
   diskOrder: null,        // null = the server's default order
   diskColors: {},         // diskId -> "#rrggbb"
   colorBy: 'kind',        // 'kind' | 'disk'
@@ -43,6 +56,19 @@ const DEFAULTS = {
   spreadZ: 0.35,
   collapseUnused: false,  // close the gap a plate nothing is looking at leaves behind
   showPlates: false,
+  /* The "you are here" pointer: an arrow standing over each node the reader picked.
+   *
+   * A selection of one node in nine thousand is a dot lit differently from its
+   * neighbours, and "lit differently" is only findable by someone who already knows where
+   * to look -- which is the thing they do not know. Off is a real choice, so it is here.
+   *
+   * `pointerColor` empty means "whatever `tokens.css` says", so a reader who never touches
+   * it follows the theme like everything else on the page. A colour they *do* choose is
+   * clamped: below 3:1 against the graph's own ground it is refused, and the refusal says
+   * why (design rule 6). 3:1 rather than 4.5:1 because this is a large graphic object
+   * rather than body text. */
+  pointerShown: true,
+  pointerColor: '',       // '' = the token, whichever theme is in force
   edgesInMotion: true,    // links stay up while the camera turns -- see graph.js
   graphLayout: 'stack',   // 'stack' | 'packages' -- both built, use retires the loser
   graphTheme: 'follow',   // 'follow' | 'dark' -- design rule 2; see the Settings page
@@ -193,12 +219,13 @@ function resetSettings(program, current) {
   const base = freshDefaults();
   const cleared = [];
   const named = {
-    diskOrder: 'disk order', diskColors: 'disk colours', colorBy: 'colour source',
+    diskOrder: 'plate order', diskColors: 'plate colours', colorBy: 'colour source',
     sortMode: 'sort', filterMode: 'filter mode', direction: 'direction',
     nodeSize: 'node size', picks: 'selection', followMode: 'following a neighbour',
     spreadX: 'spread across', spreadY: 'spread deep', spreadZ: 'spread between plates',
     collapseUnused: 'collapsed plates',
-    showPlates: 'disk plates', edgesInMotion: 'edges while moving',
+    showPlates: 'the plates themselves', edgesInMotion: 'edges while moving',
+    pointerShown: 'the you-are-here pointer', pointerColor: 'the pointer colour',
     mode: 'centre view', panels: 'panel layout',
     inspectorAuto: 'auto-collapse the inspector', navWidth: 'navigator width',
     navGroups: 'how many navigator groups open at once', navOpen: 'which groups are open',

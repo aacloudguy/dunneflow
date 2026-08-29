@@ -2040,6 +2040,93 @@ disabled with the reason on them, the choice `undo` already makes. **Building th
 server change** -- `anomalies.py` carrying the node ids it already knows -- and it is the
 obvious next thing in the worklist, which design rule 9 says is a worklist and not a report.
 
+**5t. Built 2026-08-29 (second session): the pop-up learned to be read, and four panes
+stopped lying.** Everything here came from Tom at the keyboard, most of it from screenshots,
+and the through-line is that **six defects were controls wired perfectly to a stylesheet or
+a layout that could not carry them**. Every automated check on the page passed for all six.
+
+**The cursor.** deck.gl's hand is opaque and drawn below-right of its own hotspot, so at dot
+sizes it covers the node being aimed at. A reticule with four ticks and a hole in the middle,
+hotspot dead centre — deliberately not the selection reticule, which is a ring *plus* ticks,
+because the two are on screen together in the ordinary case. White over a dark halo rather
+than the accent: design rule 4 spends colour on one dimension and the accent already means
+*in force*. Not keyed on `isHovering`, which would promise an answer from a fogged node under
+a focus lock. An honest exception to design rule 3 recorded as one — a cursor's size is the
+OS's.
+
+**The navigator's pop-up.** The tiny text was the native `title` attribute. It is the graph's
+card now — same markup, fetch, dwell and cache, one component with two hosts — anchored
+*beside* the pane rather than following the cursor, because in a list the row is the subject's
+position. Fixed to the window at body level, since the navigator is a scroller that would clip
+it. The `title` came off the rows, which is half the fix: a native tooltip renders on top.
+
+**The invocation line**, and the defect it uncovered. `Routine.signature()` handled the
+`*args` and `**kwargs` prefixes and never the bare separators between groups, so
+`def f(a, *, b)` rendered as `f(a, b)` — a different function. **998 of Mensores' 4,734
+routines**, and `render/markdown.py` uses the same function, so `03-routines.md` had been
+printing them wrong since it existed; it now carries 192 signatures with a bare `*`.
+Underneath it, rule 8 at its smallest: `_params` folded `posonlyargs` into `args`, destroying
+the `/` at ingest. Neither codebase here uses `/` in 4,724 definitions, which is the argument
+for fixing it while nothing depends on the old shape. One renderer, `schema.signature_parts`,
+reached from Python for the documents and over the wire for the card.
+
+**The detail window.** `Enter` over a card opens a destination: callers left, the routine and
+its invocation line between, callees right, what it touches beneath, threads leading away.
+Not a second set of facts — the same `/api/node` and `/api/threads` — and not a second state:
+every hop is an ordinary `selectFromNav`, so the stack lights up underneath, the trail records
+the journey once, and undo reaches every step. The card stays `pointer-events: none`; the key
+is what keeps that decision.
+
+**Detached, and the pattern for the code viewer.** `?view=detail` boots the same application
+and hides everything but the panel — not a second page, which would have been the third place
+this project draws one node. The two windows are **peers over a `BroadcastChannel`**, not
+parent and child: a `window.opener` protocol breaks when the reader closes the main window,
+reloads either, or opens the view by pasting its URL. Each publishes where it is looking and
+adopts where the other is, and adopting never republishes.
+
+**Table mode, three reports and three unrelated causes.** 2,418 ms to 46 (rule 45, and the
+budget table). A resize the browser was ignoring (`table-layout: auto`, where a `th` width is
+a suggestion it weighs against content and always loses). And a pane that was in sync with no
+way to tell — the selected row sat 238,401px down with the scroll at nought, so it now states
+`row 3,633 of 4,734` with a *Go to it*, and moves once per subject rather than once per
+repaint.
+
+**The header that could never have stuck**, and the scroller that never scrolled: rule 50.
+
+**The graph that came up blank**, and the fallback that hid it: rule 49.
+
+**Back kept the mode rather than the subject.** A step records the view it was made in, so a
+reader in the table pressing Back landed in the graph. Changed rather than documented,
+because the centre pane's settled rule already decides it: three modes are three ways of
+looking at one selection, so the mode is not part of where you were. Still restored for
+somewhere genuinely elsewhere — the glossary, the worklist, settings.
+
+**Rule 44's original, still live in the pane the whole design points at.** The inspector's
+demoted signature read `p.annotation` and `p.default` against a query sending `type` and
+`dflt`, so **every parameter had rendered as a bare name, no type and no default, since it
+was written**. Found by reading the code beside something else, not by any check.
+
+*What it cost in checks.* Sixty-odd mutations across the session; **twelve guards passed
+against their own defect first time**, every one a containment check taken over too wide a
+span or against a name rather than a behaviour. Three failed on the *comment explaining the
+defect they check*, which is what `_code()` is for — and its first version stripped string
+bodies too, which in this codebase is where the checked code lives, so every check passed
+against an empty string. `_fn`'s own docstring warns it reads past its subject, and it did
+that again here.
+
+*Not verified, and it needs a real window.* The blank-graph fix. The automation tab never
+mounts the graph at all — `canvas MISSING`, `frames 0` — so that diagnosis is from the code
+and the arithmetic. Rule 38.
+
+**Next: the code browser**, and Society will be pulled fresh first, which makes the temporal
+question concrete rather than hypothetical for the first time. What exists today: `source.db`
+holds 626 files content-addressed, `/api/source?path&first&last` serves any span, and every
+routine carries `file`, `line_start`, `line_end` — so a browser with clickable names in both
+directions is the detached-window pattern again. What does **not** exist: any second point in
+time. `source.db` holds one snapshot, so the time selector and the diff screen are the layer
+work, not a feature of the browser. Build the browser against today's snapshot first; the
+layers then add a selector to a working view rather than inventing both at once.
+
 ### Still open
 
 - Layer storage builds on the same sidecar: content-addressing is version-control

@@ -5,7 +5,7 @@ It exists so a fresh context can be useful in a few minutes instead of an hour.
 
 | Read | For |
 |---|---|
-| `CLAUDE.md` | The rules. 47 engineering rules and 26 dashboard design rules, each earned from a false result on real code. **Binding.** |
+| `CLAUDE.md` | The rules. 51 engineering rules and 26 dashboard design rules, each earned from a false result on real code. **Binding.** |
 | `HANDOFF.md` | The chronological record — what was built when, what it cost, what broke. ~1,700 lines. Read *sections*, not the whole thing. |
 | **this file** | Where things are, what is done, what we are doing now, what not to re-open. |
 | Artifact `f993d319-d2b7-4217-9130-cdbba698d1bc` | The ratified dashboard design — a complete working UI, the source of truth for every view. Read it with the **Artifact tool**, not from a screenshot. |
@@ -92,15 +92,25 @@ aimed at what you picked and clickable to go there, a reticule on it, a *focus* 
 the lit set answers a hover or a click, and *you are here* to restore the view you found it
 in.
 
+**Reading one node:** hovering a routine in the picture *or in the navigator* gives a card,
+painted in two stages, leading with the **invocation line** — the name, its arguments with
+their types, and what comes back. `Enter` over a card opens a **detail window**: callers left,
+the routine between, callees right, what it touches, threads leading away; every name is a
+hop, and every hop is an ordinary selection so the stack, the navigator, the trail and undo
+all follow. `?view=detail` puts that window in a **second tab or window**, two peers in
+bidirectional sync over a `BroadcastChannel`.
+
 **Code viewing:** `source.db` is a content-addressed, compressed sidecar (626 files, 7.8 MB
 of text in 3.1 MB). The inspector opens a definition ±3 lines from `/api/node`; the glossary's
 citation viewer opens any span from `/api/source`. Both say the source is *as measured*, not
 as the tree stands now. No file browser, no search inside source, no highlighting — see
-`HANDOFF.md` 5s.
+`HANDOFF.md` 5s, and the code browser is the next thing to be built.
 
-**Not built:** `dunneflow infer` (the model pass) · temporal layers · attestation · the
-project profile · document mode's narrative view · a file browser or source search ·
-packaging as a binary · any language but Python.
+**Not built:** `dunneflow infer` (the model pass) · temporal layers, and therefore **any
+second point in time**: `source.db` holds one snapshot, so a time selector and a diff screen
+belong to the layer work rather than to the code browser · attestation · the project profile ·
+document mode's narrative view · a file browser or source search · packaging as a binary ·
+any language but Python.
 
 **Built but not on screen:** `CURIOSITIES`. `threads.py` computes the outlier family per
 package already — most commented, most called, deepest closure, most lopsided table — and
@@ -109,46 +119,50 @@ is not computed yet.
 
 ## What we are doing now
 
-**Paused 2026-08-29 with the graph's orientation work complete.** Four features and a
-stocktake, all from Tom at the keyboard; see `HANDOFF.md` 5o–5s.
+**Paused 2026-08-29 with the reading surfaces worked over end to end.** Everything in this
+session came from Tom at the keyboard, most of it from screenshots; see `HANDOFF.md` 5t.
 
-- **The navigator survives a long list** (5o): the notice reads before the list, the group
-  headings stick, a jump strip reaches any group in one click, and the routine list is 47
-  package rows rather than 200 arbitrary ones. Three Settings, all counted.
-- **You are here** (5p–5q): an arrow at the plate's rim on the node's own bearing, aimed by
-  a screen angle read out of deck's shader; clicking it selects that node and frames it. A
-  reticule marks what you picked. **Focus** limits hover and clicks to the lit set, so the
-  fog cannot answer a question you did not ask — it changes what may *answer*, never what is
-  *drawn*. And *you are here* restores the view the selection was found in.
-- **State you can see** (5r): every pressed control fills with the accent, and the
-  navigator's current row is unmissable.
-- **Code viewing, taken stock of** (5s), which turned up three printed promises the page was
-  not keeping.
+- **A reticule to aim with** in place of deck.gl's hand, which covered the node being aimed
+  at. Deliberately not the selection reticule — that one has a ring.
+- **The navigator answers with a card**, not the browser's tiny `title` tooltip. One
+  component, two hosts; anchored beside the pane, because in a list the *row* is the
+  subject's position.
+- **The invocation line** — what moves in and what comes back out — on both cards, and one
+  renderer (`schema.signature_parts`) for it and the Markdown documents.
+- **A detail window**, opened with `Enter` over a card: callers, the routine, callees, what
+  it touches, threads. Every hop is an ordinary selection, so the stack, the trail and undo
+  all follow.
+- **Detached to a second window or tab** (`?view=detail`), two peers over a
+  `BroadcastChannel` in bidirectional sync. **This is the pattern the code viewer will use.**
+- **Table mode**: 2,418 ms → 46 ms, a resize that now resizes, a header that stays, and a
+  strip saying which row is yours.
 
-**Next, and named:**
+**Six of this session's defects were controls wired perfectly to a stylesheet or a layout
+that could not carry them**, and every automated check on the page passed for all six. That
+is the shape to watch for; rules 48–51 are what came out of it.
 
-1. **`CURIOSITIES`** — `threads.py` already measures the outlier family per package, and
-   design rule 15's panel is that computation run over the whole program. It is the last
-   thing on screen that says "not computed yet".
-2. **The worklist's two jump buttons**, now disabled with their reason. Building them is a
-   server change: `anomalies.py` carrying the node ids it already knows, so a finding stops
-   being known only by a name eleven routines share. Design rule 9 says the anomaly view is
-   a worklist, and a worklist you cannot act from is a report.
-3. **The two vocabulary-lane precision defects**, unchanged: a DASH_GLOSS mined out of a
-   field-constraint table counts as a definition, and the undefined list's head is segments
-   of SCREAMING_SNAKE constant names — `DDL` 57, `EXTRAS` 50, `REASON` 43 — burying the words
-   that matter. Rule 1.
-4. **Packaging as a binary**, for the reason that has not changed: the tool reads private
-   source.
+**Next, and named: the code browser.** Society is to be pulled fresh first, which makes the
+temporal question concrete for the first time.
 
-**Left to use rather than to argument**, all Settings and all counted: whether 47 closed
-packages is the right first screen, whether the accordion should be the default, where the
-pointer stands (rim or over the node), and whether focus should default on.
+- *What exists*: `source.db` holds 626 files content-addressed, `/api/source?path&first&last`
+  serves any span or a whole file, and every routine carries `file`, `line_start`,
+  `line_end`. A browser with clickable names syncing both ways is the detached-window
+  pattern again.
+- *What does not*: any second point in time. `source.db` holds **one** snapshot, so the
+  time selector and the diff screen are the layer work rather than a feature of the browser.
+  Build the browser against today's snapshot; the layers then add a selector to a working
+  view instead of inventing both at once.
 
-**Owed, and it needs a real window**: nobody has seen the arrow, the reticule or the focus
-lock *drawn*. The automation tab renders no frames at all — canvas never resized, `frames 0`
-— so all of it is reasoned, guarded and structurally verified, and none of it is looked at.
-Rule 38.
+**Still owed from before, unchanged:** `CURIOSITIES`; the worklist's two jump buttons (a
+server change — `anomalies.py` carrying the node ids it already knows, and I sized it: most
+detectors already select the id and three genuinely cannot, which gives those a *better*
+disabled reason); the two vocabulary-lane precision defects; packaging as a binary. One
+question is open on the worklist and was never answered: **what is an occurrence for
+LOST_EDGE** — the 142 callers, or the rival definitions? 93 of Mensores' 106 findings are
+LOST_EDGE, so it decides the feature.
+
+**Owed and still not looked at:** the blank-graph fix (rule 49). The automation tab never
+mounts the graph — `canvas MISSING`, `frames 0` — so it is reasoned and guarded, not seen.
 
 ## What we were doing before that
 
@@ -269,6 +283,12 @@ Rules 28, 29 and 30.
 | The routine list is grouped by package, and the package is the **plates'** package | `queries.py` `NAV_ROUTINES`; rule 30 |
 | How many routines a package lists is the reader's, `All` included | `HANDOFF.md` 5o |
 | A search opens what it matched only while the answer is small, and says when it did not | rule 45 |
+| The centre pane's **mode is not part of where you were** — Back restores the subject and leaves you in the mode you are reading in | `HANDOFF.md` 5t; `CENTRE_MODES` |
+| The pop-up stays `pointer-events: none`; drilling in is a **key**, never a click on the card | rule 48; `HANDOFF.md` 5l |
+| The detail window holds **open or not**, never *which* — it reads the one selection | rule 51 |
+| Two windows are **peers over a `BroadcastChannel`**, never opener and child | `HANDOFF.md` 5t |
+| A detached view is the **same application** under `?view=detail`, never a second page | `HANDOFF.md` 5t |
+| One renderer for a signature, `schema.signature_parts`, for the documents and the card alike | rule 13; `HANDOFF.md` 5t |
 
 ## How to verify — all three, before saying anything is done
 
@@ -313,6 +333,19 @@ standards and must yield **zero** naming rules.
 - **A check that cries wolf has already failed.** The runtime self-check reported four dead
   controls on every page load for two sessions and was wrong about all four. Rule 43.
 
+- **A scripted click proves the handler, not the path to it.** `element.click()` fires the
+  listener whatever is painted on top. A whole session's driving verified every control on
+  the detail window and could not see that its scrim was over it. Use `elementFromPoint`.
+  Rule 48.
+- **Three times now: a control correctly wired to a stylesheet that could not carry it.**
+  `[hidden]` beaten by a later `display`, a `th` width ignored under `table-layout: auto`,
+  a sticky header bound to a box that never scrolls. Markup and handlers both check out.
+- **A guard that passes first time has not been tested.** Twelve did this session. Every one
+  was a containment check over too wide a span, or against a name where the claim was about
+  a behaviour. Run every new guard against its own defect *and* a half-working version.
+- **A comment explaining a defect will trip the check for it.** Three did; `_code()` strips
+  comment lines. Its first version stripped string bodies too — which in this codebase is
+  where the checked code lives — so every check passed against an empty string.
 - **A promise can be printed rather than wired.** Three keyboard badges — `S`, `G`, `T` —
   named keys nothing listened for, and two of them sat on buttons with *no attributes at
   all*. The runtime self-check enumerates `data-*`, so a control carrying none is one it

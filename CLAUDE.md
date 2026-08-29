@@ -173,6 +173,21 @@ The filter was **412 ms** per keystroke until it stopped calling `render()`, whi
 the centre pane, the inspector, the navigator and the trail and then puts the caret back in
 the field it has just destroyed. The caret restoration was the tell.
 
+Table mode, all 4,734 routines with no bound (rule 8: a reference list is never bounded):
+
+| Measure | Budget | Measured 2026-08-29 |
+|---|---|---|
+| Build the whole table | < 100 ms | 46 ms |
+| Sort by Connections | < 100 ms | 18 ms |
+
+It was **2,418 ms**, and `Graph.connections` was the whole of it: `indexOfId` walked all
+15,601 nodes on every call, so 4,734 rows cost **73.8 million comparisons** — and sorting
+asked twice per comparison. Fine for the handful of lookups it was written for and
+catastrophic for the caller that arrived later, which is rule 45 in the engine rather than
+in a pane. A map built once with the payload is the whole fix. Reported as *lag that is not
+obvious*, and that is exactly right: two and a half seconds reads as a slow page, not as a
+defect.
+
 Both lanes are paid for **at start rather than on first use**, and that is a decision
 rather than an accident. A vocabulary thread is part of `/api/threads`, which is asked on
 every selection, so a lazy first call would stall the reading loop on the first click of
@@ -790,6 +805,78 @@ rule of that number — a blank canvas must say why it is blank — which does e
     rather than toggle it, because the node an arrow stands over is already picked and
     `replace` on a single pick is the deliberate toggle-off (rule 33). The one control whose
     entire purpose is *go there* would have cleared the selection instead.
+
+48. **A scripted click proves the handler; only a pointer proves the path to it.**
+    `element.click()` invokes the listener on the element it names, whatever is drawn on top
+    of it. So a session that drove the detail window through `.click()` — opening it,
+    hopping, going back, closing — verified every control on it and could not see that
+    **the scrim was painted over the whole window**: `.viewer-scrim` at z-index 90 above a
+    window at 88. It rendered greyed, and every click on it landed on the scrim and closed
+    it. Reported from a screenshot within minutes.
+
+    Two things follow. Hit-testing is a separate claim from wiring, and `elementFromPoint`
+    is how a script makes it — `el.contains(document.elementFromPoint(cx, cy))` is one line
+    and would have caught this at once. And **a scrim belongs to one window**: two windows at
+    different depths cannot share one, because a scrim must be under what it dims and over
+    everything else, and one element cannot be both. They are declared as pairs now.
+
+    This is the `[hidden]` defect and the `table-layout` defect in the same family: three
+    times now, a control has been correctly wired to a stylesheet that could not carry it,
+    and every check that reads markup or handlers passed. What the DOM says and what the
+    reader can reach are different questions.
+
+49. **A fallback that yields a plausible value has hidden the failure it was written for.**
+    `fitView` read `g.container?.clientWidth || window.innerWidth`. Mounted while its pane
+    was still hidden — a hidden container is 0×0 — it framed the stack for a 1275px window
+    and drew it into a 496px canvas, so the graph came up empty and stayed empty until the
+    reader found snap-to-fit. Nothing failed, nothing logged, and the number was entirely
+    reasonable; it was simply about a different box.
+
+    A fit against something not laid out is not computable, so it is **deferred** rather
+    than guessed: the view state is returned untouched and the debt is paid on the first
+    reveal that has a size. Deferring is what makes it recoverable; substituting is what
+    made it invisible.
+
+    Its companion, found the same hour and the reason the fallback ever ran: `ensureGraph()`
+    was called **before** `render()` on the mode toggle, so the engine measured a container
+    the next line was about to un-hide. `boot()` had the order right. **Paint, then measure**
+    — an order that is correct at one call site is not a property of the code.
+
+50. **A scroller is the element that scrolls, not the one that declares `overflow`.**
+    `.tablewrap` carries `overflow: auto` and looks like the scroller. Nothing bounded its
+    height, so it grew to all 339,229px of the table and never scrolled a pixel while the
+    *pane* scrolled underneath it. Two features were written against it and both failed
+    silently in the same way.
+
+    The sticky header — position, offset, z-index and background all correct — stuck to a
+    box that does not move, so it scrolled away and took the resize handles and the subject
+    strip with it. And the reveal moved a `scrollTop` with nowhere to go, while its own check
+    compared the row against a box extending far below the window, which made every row "in
+    view" and reported success. **A guard naming the right case and measuring the wrong box.**
+
+    Ask, do not assume: walk up until something genuinely overflows. And if a box is meant to
+    be the scroller, bound its height so it is one — the wrapper is a fixed header over a
+    scrolling body now, which is the shape the navigator was already given for the same
+    reason.
+
+51. **A rule kept at a call site rots as callers are added; move it to where they all pass.**
+    `selectFromNav` did not move the routine list to its selection, on the reasoning that a
+    row the reader clicked is already under their eye. True of its one caller, and false of
+    every caller it acquired since — a table row, a hop in the detail window, the arrow at
+    the plate's rim, the other browser window. All four left the navigator marking whatever
+    had been clicked last time, and **a stale highlight is worse than none**: it is a
+    confident wrong answer. It was reported as a question — *is that accurate? I can't tell*
+    — which is the most expensive way to find anything.
+
+    Its companion, the same shape in state rather than in behaviour: the detail window held
+    a node id **of its own** beside the selection, and the two drifted the first time
+    anything else moved one of them — the trail's Back stepped the app to the previous
+    routine and left the window on the one after it. Two answers to "what am I looking at",
+    in the window built to show how things connect. It holds *open or not* now and reads the
+    one selection, so it cannot disagree by construction.
+
+    Both are the same instruction. One truth, one place that owns it, and every caller
+    reaching it through the same door — because the list of callers is the thing that grows.
 
 ## Anomalies: the discipline
 

@@ -1965,6 +1965,37 @@ Eight guards, each run against its own defect. One passed against its own defect
 `RETICULE_SIZE * opts.scale * opts.nodeSize` -- and is fixed. That is rule 37 for the third
 time in one session, always the same shape: a containment check is not a check.
 
+**5r. Built 2026-08-29: state you can see, and the cap that hid the selection.** Feedback
+at the keyboard, and one item of it was a defect wearing a UI complaint's clothes.
+
+**"The left menu isn't jumping — bidirectional sync?"** It was, and then it silently was not.
+Pick `verify_timestamp` in the picture -- rank 400 in a package of 531 -- and the inspector
+filled, the package opened, and the list rendered **no row at all**: nothing marked, nothing
+scrolled. The per-package cap had dropped it. Identical on screen to the sync being broken,
+which is exactly what it was reported as. **The cap never hides what is selected** now; the
+row lands last among those shown, which is its right place, and the note counts it
+(`showing 201 of 531`). The bidirectional loop itself was never broken -- it failed only on
+the routines it is most needed for, which is the shape this project keeps paying for.
+
+**A toggle that is on must look it.** `focus` shipped with its label and its tooltip changing
+and nothing else, so the one control on the graph with two *modes* looked exactly like the
+six beside it that have none. Every pressed state on the page now fills with the accent --
+the same channel the navigator's current row and the legend's selected plate already use for
+*in force*, spent once (design rule 4). The guard is **derived from the stylesheet**, not from
+a list, and it immediately found a seventh control nobody had looked at: the source viewer's
+tabs.
+
+**The navigator's current row** was a soft tint with a 3px bar. It is a filled accent bar with
+white text now, its module path and fan counts carried with it -- a row that goes accent while
+its own contents stay grey is less legible than the state it replaced. And **redo** has a word
+on it: an arrow is a puzzle for one of the two controls a stranded reader is looking for.
+
+**Asked and already true**: the reticule follows every left-menu row that resolves to nodes --
+a routine (1 reticule), a way in (24 of 104), a table (24 of 57). A **package** gets none, and
+that is rule 47's own argument: a plate is not a place, and a mark in the middle of 645 nodes
+says nothing about where any of them is. The plate's version of the same answer already
+exists -- it is drawn faintly and named on the HUD (design rule 26).
+
 **Not verified, and it needs a real window**: what the arrow looks like. The automation tab
 draws no frames at all -- canvas 300x150, `frames 0` -- so its shape, size and shading are
 for someone with a real window to judge -- and so is deck's *picking*, so the arrow's click

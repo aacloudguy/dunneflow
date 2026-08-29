@@ -1625,9 +1625,13 @@ def test_a_broad_search_does_not_open_the_whole_program() -> None:
         "the pane closes every package and says nothing about why"
     )
     # Two passes, and the rows built only for what is drawn.
-    assert "g.open && g.rows.length < cap" in tree, (
+    assert "if (g.open && (g.rows.length < cap" in tree, (
         "rows are built for packages that are not drawn -- hidden is not absent, and it "
         "cost 341 ms a keystroke the first time"
+    )
+    assert "r.id === state.selected" in tree, (
+        "the cap can hide the selected routine, and then the list shows no row for it at "
+        "all -- no highlight, no scroll, indistinguishable from the sync being broken"
     )
 
 
@@ -2064,3 +2068,64 @@ def test_the_focus_lock_says_it_is_on() -> None:
         "are in"
     )
     assert 'used("focus:' in js, "the pair is not counted, so neither half can be retired"
+
+
+def test_every_toggle_shows_that_it_is_on() -> None:
+    """`focus` shipped with its label and its tooltip changing and nothing else, so the one
+    control on the graph that has two *modes* looked exactly like the six beside it that
+    have none — and a reader cannot be asked to read a tooltip to find out which mode they
+    are in.
+
+    Derived from the stylesheet rather than from a list: every selector in this shell that
+    styles a pressed or selected state must actually change something a person can see, and
+    "same surface, faint shadow" does not count on a pale theme where one shade sits against
+    another. The accent is the one channel this page spends on *in force* (design rule 4),
+    so a pressed control uses it.
+    """
+    css = re.sub(r"/\*.*?\*/", "", _read("tokens.css"), flags=re.S)
+    # Every rule whose selector mentions a pressed/selected state, with its body.
+    rules = re.findall(r"([^{}]*\[aria-(?:pressed|selected)=\"true\"\][^{}]*)\{([^}]*)\}", css)
+    assert rules, "nothing styles a pressed state at all -- this test is blind"
+    weak = []
+    for selector, body in rules:
+        # A rule may legitimately style only a *part* of a pressed control (the count inside
+        # a selected row, the knob on a switch); those name a descendant or a pseudo.
+        if "::" in selector or re.search(r'\[aria-\w+="true"\]\s+\S', selector):
+            continue
+        if ":hover" in selector:
+            continue
+        if "var(--accent)" not in body and "var(--accent-text)" not in body:
+            weak.append(selector.strip())
+    assert not weak, (
+        "these pressed states do not use the accent, so being on looks like being off: "
+        + "; ".join(weak)
+    )
+
+
+def test_the_row_you_are_on_is_unmissable() -> None:
+    """The whole reading loop turns on being able to answer "which one am I on" without
+    hunting for it, and arriving by wheel in a list of two hundred rows is the case that
+    decides whether the mark is loud enough."""
+    css = re.sub(r"/\*.*?\*/", "", _read("tokens.css"), flags=re.S)
+    rule = re.search(r'\.nav-item\[aria-current="true"\]\s*\{([^}]*)\}', css)
+    assert rule, "the current navigator row is not marked at all"
+    assert "background: var(--accent)" in rule.group(1), (
+        "the current row is tinted rather than filled -- at .78rem in a list of two hundred "
+        "that is not a mark the eye lands on"
+    )
+    # And what sits inside the row has to come with it.
+    assert re.search(r'\.nav-item\[aria-current="true"\] \.navsub', css), (
+        "the row goes accent and its module path stays grey on it, which is less legible "
+        "than the state it replaced"
+    )
+
+
+def test_the_undo_pair_both_say_what_they_do() -> None:
+    """Undo read "undo" and redo read a bare glyph. An arrow is a puzzle for the one control
+    a stranded reader is looking for — the same argument design rule 24 makes against an
+    icon rail."""
+    js = _read("shell.js")
+    for act in ("undo", "redo"):
+        m = re.search(rf'data-gact="{act}"[^>]*>([^<]*)</button>', js, re.S)
+        assert m, f"the {act} button is gone"
+        assert act in m.group(1), f"the {act} button is a glyph with no word on it"

@@ -3484,7 +3484,17 @@ function routineTree() {
   // the flat list cost 200. Hidden is not the same as absent, and the difference is the bill.
   for (const r of rows) {
     const g = by.get(r.pkg);
-    if (g.open && g.rows.length < cap) g.rows.push(r);
+    /* **The cap never hides what is selected.**
+     *
+     * Without this clause the back half of the reading loop failed silently on exactly the
+     * routines it is most needed for. Pick `verify_timestamp` in the picture -- rank 400 in
+     * a package of 531 -- and the inspector filled, the package opened, and the list showed
+     * no row at all: no highlight, no scroll, nothing marked. Identical on screen to the
+     * sync being broken, which is what it was reported as.
+     *
+     * It lands last among the rows shown, which is its right place: everything drawn comes
+     * before it in the same order, and the cut is between them. The note counts it. */
+    if (g.open && (g.rows.length < cap || r.id === state.selected)) g.rows.push(r);
   }
   const packages = [...by.values()].sort((a, b) => b.n - a.n || a.id.localeCompare(b.id));
   treeCache = { packages, total, filtered, autoOpen };
@@ -4803,7 +4813,7 @@ function renderGraphFurniture() {
           <button class="gbtn" data-gact="undo" ${canUndoSelection() ? "" : "disabled"}
                   title="Back to the previous selection (\u2318Z)">\u21b6 undo</button>
           <button class="gbtn" data-gact="redo" ${canRedoSelection() ? "" : "disabled"}
-                  title="Forward again (\u21e7\u2318Z)">\u21b7</button>
+                  title="Forward again (\u21e7\u2318Z)">\u21b7 redo</button>
           <!-- The reader's own framing, not a computed one. Snap to fit, beside it,
                answers a different question: that one frames the selection, this one
                restores the view the selection was found in -- the angle, the distance and

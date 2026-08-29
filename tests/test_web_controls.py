@@ -2051,6 +2051,77 @@ def test_the_reticule_is_a_fixed_size_billboard_drawn_last() -> None:
     )
 
 
+def test_the_cursor_over_the_picture_is_a_reticule_you_can_aim_with() -> None:
+    """deck.gl's default is a hand, and a hand cannot be aimed: it is opaque, it is drawn
+    below and right of its own hotspot, and at dot sizes it covers the node being pointed
+    at. Reported by Tom at the keyboard -- *the hand currently covers over the node I'm
+    trying to highlight, so it disappears behind the cursor at small scales.*"""
+    engine = _read("graph.js")
+
+    # Defined is not passed. The whole defect was an absent prop, so a guard that found
+    # the builder and stopped would pass against a version where deck.gl still draws a
+    # hand -- rule 37, and this is the half that catches it.
+    ctor = engine.split("g.deckgl = new Deck({", 1)[1].split("\n  });", 1)[0]
+    assert re.search(r"getCursor: \(\{ isDragging \}\)", ctor), (
+        "the Deck instance sets no cursor, so deck.gl's hand is what the reader aims with"
+    )
+    assert "CURSOR_RETICULE" in ctor and "'grabbing'" in ctor, (
+        "the cursor is not the reticule, or dragging the camera no longer says it is a grab"
+    )
+    # Keyed on `isHovering` it would promise that a click will answer -- which is false
+    # over a fogged node while focus is locked, since deck's picking pass knows nothing
+    # about `focusable()`.
+    #
+    # Read off the *expression*, not off the constructor. Written against the whole block
+    # this failed on the comment above `getCursor` explaining why `isHovering` is not used
+    # -- a guard tripped by the prose describing the decision it is checking. Rule 37's
+    # companion: a containment check is only as good as the span it is taken over.
+    found = re.search(r"^ +getCursor: .*$", ctor, re.M)
+    assert found, "the getCursor prop is no longer one line, so this reads nothing"
+    expr = found.group(0)
+    assert "isHovering" not in expr, (
+        "the cursor changes over anything deck considers pickable, which under a focus "
+        "lock promises an answer from nodes that will refuse one"
+    )
+
+    cur = _fn(engine, "reticuleCursor")
+
+    # The hole in the middle is the entire feature: it is what stops the mark covering the
+    # node. Assert the geometry, not the word -- a version with `inner = 0` draws a solid
+    # plus and passes every check that only looks for ticks.
+    gap = re.search(r"inner = (\d+), outer = (\d+)", cur)
+    assert gap, "the cursor no longer names its inner and outer radii, so nothing here reads"
+    inner, outer = int(gap.group(1)), int(gap.group(2))
+    assert 0 < inner < outer, (
+        f"the cursor's ticks reach the centre (inner={inner}, outer={outer}), so it covers "
+        f"the node it is aiming at -- which is the defect it was written from"
+    )
+    assert re.search(r"\[m, m - outer, m, m - inner\]", cur), (
+        "the ticks are not built from the gap outwards, so the geometry above proves nothing"
+    )
+
+    # Two marks that mean different things must not look alike. The selection reticule is a
+    # ring *plus* ticks; this is the ticks alone.
+    assert "circle" not in cur and "arc(" not in cur, (
+        "the cursor draws a ring, so it is the selection reticule -- one mark saying both "
+        "'you picked this' and 'you are pointing here'"
+    )
+    assert "ring(" in _fn(engine, "reticuleIcon"), (
+        "the selection reticule no longer has its ring, so the two marks are now the same "
+        "shape and the check above stopped meaning anything"
+    )
+
+    # The hotspot is the centre, or the mark sits below-right of what it points at, which
+    # is the hand's defect wearing a new shape.
+    assert re.search(r'\}"\) \$\{m\} \$\{m\}, crosshair`', cur), (
+        "the hotspot is not the centre of the mark, or the `crosshair` fallback is gone"
+    )
+    # Built once. `_updateCursor` runs on every change of deck's cursor state.
+    assert re.search(r"^const CURSOR_RETICULE = reticuleCursor\(\);", engine, re.M), (
+        "the data URI is composed per call rather than once"
+    )
+
+
 def test_the_focus_lock_says_it_is_on() -> None:
     """Nothing is removed from the picture, so there is no count to state — but a reader
     whose hover has gone quiet over most of the screen is owed the reason, and the reason is

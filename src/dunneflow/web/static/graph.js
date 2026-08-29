@@ -1061,6 +1061,66 @@ const POINTER_CAP = 24;
 const RETICULE_PX = 96;
 const RETICULE_SIZE = 34;
 
+/* ── the cursor over the picture ──
+ *
+ * deck.gl's default is a hand -- `grab` over the canvas, `pointer` over anything pickable
+ * -- and a hand is the one shape that cannot be used to aim. It is opaque, it is drawn
+ * *below and right* of the hotspot on every platform, and at dot sizes the node being
+ * aimed at disappears underneath it. The reader is pointing at a 3px dot; the instrument
+ * for that is a reticule with a hole in it.
+ *
+ * **Deliberately not the selection reticule.** That mark is a ring plus four ticks and it
+ * means *this is the one you picked*; this one means *this is where you are pointing*, and
+ * two marks saying different things must not look alike. So: the ticks alone, no ring.
+ * Related enough to read as the same family, different enough that neither can be mistaken
+ * for the other when both are on screen at once -- which is the ordinary case, since you
+ * hover with something already picked.
+ *
+ * White over a dark halo, and **not the accent**. Design rule 4 spends colour on one
+ * dimension at a time, and the accent is already spent: it is what every pressed control,
+ * the navigator's current row and the legend's selected plate use to say *in force*. A
+ * cursor is not a state, it is where the hand is. The halo is what makes it legible on
+ * both grounds, the same trick and the same reason as `reticuleIcon`.
+ *
+ * `crosshair` is the fallback and it is a real one, not a formality: if the data URI ever
+ * fails to load, the reader gets a thin plus rather than deck.gl's hand back.
+ *
+ * **It does not scale with the reader's multiplier, and cannot.** A cursor's size is the
+ * OS's, so design rule 3 does not reach it -- the second real exception after the media
+ * queries of rule 28, and written down here for the same reason: a dimension that looks
+ * like a member of the scaling family and is not one is worse than an obvious exception.
+ * 32x32 because that is the size every platform honours without argument.
+ */
+const CURSOR_PX = 32;
+
+function reticuleCursor() {
+  const m = CURSOR_PX / 2, inner = 5, outer = 14;
+  // Four ticks on the axes, with `inner` of clear space at the centre. The gap is the
+  // whole feature: at dot sizes the node is 1.4 to 3.6 pixels across, so a 10px hole
+  // leaves it visible with room to spare.
+  const ticks = [
+    [m, m - outer, m, m - inner], [m, m + inner, m, m + outer],
+    [m - outer, m, m - inner, m], [m + inner, m, m + outer, m],
+  ];
+  const line = ([x1, y1, x2, y2]) => `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"/>`;
+  /* `butt`, not `round`. A round cap on the halo overhangs the tick's inner end by half
+   * its width, which quietly eats 1.7px off each side of the gap and makes the clear disc
+   * radius 3.3 while every comment and guard here says 5. The selection reticule's ticks
+   * are butt for the same reason. */
+  const svg =
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${CURSOR_PX}" height="${CURSOR_PX}" ` +
+    `viewBox="0 0 ${CURSOR_PX} ${CURSOR_PX}">` +
+    `<g stroke="#000" stroke-opacity=".55" stroke-width="3.4" stroke-linecap="butt">` +
+    ticks.map(line).join('') + `</g>` +
+    `<g stroke="#fff" stroke-width="1.6" stroke-linecap="butt">` +
+    ticks.map(line).join('') + `</g></svg>`;
+  return `url("data:image/svg+xml,${encodeURIComponent(svg)}") ${m} ${m}, crosshair`;
+}
+
+/* Built once. `_updateCursor` runs on every change of deck's cursor state, so composing
+ * the data URI in there would rebuild the same string on every drag frame. */
+const CURSOR_RETICULE = reticuleCursor();
+
 const pointerCache = new Map();
 const reticuleCache = new Map();
 
@@ -1554,6 +1614,21 @@ function mount(container, raw, options = {}) {
     views: [new OrbitView({ orbitAxis: 'Z', orthographic: true })],
     viewState: g.viewState,
     controller: { inertia: 250 },
+    /* A reticule to aim with, and `grabbing` while the camera is actually being dragged --
+     * which is honest, because that gesture genuinely is a grab.
+     *
+     * **Never keyed on `isHovering`**, and that is a decision rather than an omission. A
+     * cursor that changed over a pickable node would be promising *this one will answer*,
+     * and with focus locked that promise is false: deck sets `isHovering` from its own
+     * picking pass, which knows nothing about `focusable()`, so it is true over a fogged
+     * node that the hover handler is about to refuse. A control that says a click will do
+     * something when it will not is the failure this codebase keeps paying for.
+     *
+     * Making it honest is possible -- `onHover` already knows, and could set a flag this
+     * reads -- and it would be the visible half of the focus lock. Not built: it is a
+     * second feature, and it wants a look at whether a cursor changing shape as the pointer
+     * crosses a crowded plate reads as information or as flicker. */
+    getCursor: ({ isDragging }) => (isDragging ? 'grabbing' : CURSOR_RETICULE),
     onViewStateChange,
     /* Routed by *layer*, not by index. Two pickable layers now report through one handler,
      * and `info.index` from the pointer layer is an index into two dozen arrows -- read as

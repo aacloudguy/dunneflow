@@ -5,7 +5,7 @@ It exists so a fresh context can be useful in a few minutes instead of an hour.
 
 | Read | For |
 |---|---|
-| `CLAUDE.md` | The rules. 51 engineering rules and 26 dashboard design rules, each earned from a false result on real code. **Binding.** |
+| `CLAUDE.md` | The rules. 53 engineering rules and 26 dashboard design rules, each earned from a false result on real code. **Binding.** |
 | `HANDOFF.md` | The chronological record — what was built when, what it cost, what broke. ~1,700 lines. Read *sections*, not the whole thing. |
 | **this file** | Where things are, what is done, what we are doing now, what not to re-open. |
 | Artifact `f993d319-d2b7-4217-9130-cdbba698d1bc` | The ratified dashboard design — a complete working UI, the source of truth for every view. Read it with the **Artifact tool**, not from a screenshot. |
@@ -59,6 +59,7 @@ no build step. deck.gl is vendored into `web/vendor/`.
 | `vocabulary.py` | the naming and glossary lanes, served and matched against one name |
 | `graph.py` · `layout.py` | the 2.5D model, and where things sit |
 | `packages.py` | the package overview — the other graph layout |
+| `code.py` | the code browser — a file, its clickable names and what each line *is* |
 | `static/shell.js` | **the application**: state, routing, every view, the self-check |
 | `static/graph.js` | **the engine**: payload to pixels, and nothing about this page |
 | `static/settings.js` | the store — per program, versioned |
@@ -100,17 +101,38 @@ hop, and every hop is an ordinary selection so the stack, the navigator, the tra
 all follow. `?view=detail` puts that window in a **second tab or window**, two peers in
 bidirectional sync over a `BroadcastChannel`.
 
-**Code viewing:** `source.db` is a content-addressed, compressed sidecar (626 files, 7.8 MB
-of text in 3.1 MB). The inspector opens a definition ±3 lines from `/api/node`; the glossary's
-citation viewer opens any span from `/api/source`. Both say the source is *as measured*, not
-as the tree stands now. No file browser, no search inside source, no highlighting — see
-`HANDOFF.md` 5s, and the code browser is the next thing to be built.
+**Code viewing — built 2026-08-29.** `source.db` is a content-addressed, compressed sidecar
+(626 files, 7.8 MB of text in 3.1 MB). The inspector opens a definition ±3 lines from
+`/api/node` and the glossary's citation viewer opens any span from `/api/source`; both say
+the source is *as measured*, not as the tree stands now.
+
+**The code browser** runs in three places over one `CODEFILE`: the **navigator's Code
+group**, stacked as a file list that collapses once a file is picked with that file's lines
+beneath it — so code and the stack are readable at once inside one window; **`Code` as a
+fourth centre mode**, the same file with room for the margin to say what a line *is* rather
+than stand for it; and **`?view=code`**, a peer over the same `BroadcastChannel` the detail
+window uses. Clicking a name is an ordinary `selectFromNav`, and selecting anything anywhere
+walks the code to the file it lives in. **No syntax colour, deliberately** — design rule 4.
+
+Links are lookups, never name matches: `calls.callee_id` is the resolver's own answer. What
+it does not carry is a *column*, so a call is underlined only where its expression occurs
+exactly once on its line, and the counts of what was and was not placed ride with the payload.
+
+Still not built: **search inside source** (its own loop, its own budget row) and syntax
+highlighting (a design-rule-2 pair if ever wanted, done server-side with stdlib `tokenize`).
 
 **Not built:** `dunneflow infer` (the model pass) · temporal layers, and therefore **any
-second point in time**: `source.db` holds one snapshot, so a time selector and a diff screen
-belong to the layer work rather than to the code browser · attestation · the project profile ·
-document mode's narrative view · a file browser or source search · packaging as a binary ·
-any language but Python.
+second point in time on screen** — the storage spine is laid (see below), so what is missing
+is the selector and the diff screen · attestation · the project profile · document mode's
+narrative view · source search · packaging as a binary · any language but Python.
+
+**The revision spine is in.** `WORKING` is a *state* rather than an id, and a revision is
+identified by when it was captured; `seal()` keeps the current snapshot under its own name so
+the next `analyze` opens a second one beside it rather than replacing it. `dunneflow
+revisions <dir>` lists them and `--seal` keeps one. Mensores' snapshot is sealed as
+**2026-08-29T19:43:39Z**, captured 2026-08-29 17:02 UTC, 626 files. **Nothing reads a second
+revision yet** — that is the layer work, and it now adds a selector to a working view rather
+than inventing both at once.
 
 **Built but not on screen:** `CURIOSITIES`. `threads.py` computes the outlier family per
 package already — most commented, most called, deepest closure, most lopsided table — and
@@ -119,44 +141,44 @@ is not computed yet.
 
 ## What we are doing now
 
-**Paused 2026-08-29 with the reading surfaces worked over end to end.** Everything in this
-session came from Tom at the keyboard, most of it from screenshots; see `HANDOFF.md` 5t.
+**Paused 2026-08-29 with the code browser built and the revision spine under it.** Three
+chunks, each verified against Mensores and each looked at in a real window; see `HANDOFF.md`
+5u.
 
-- **A reticule to aim with** in place of deck.gl's hand, which covered the node being aimed
-  at. Deliberately not the selection reticule — that one has a ring.
-- **The navigator answers with a card**, not the browser's tiny `title` tooltip. One
-  component, two hosts; anchored beside the pane, because in a list the *row* is the
-  subject's position.
-- **The invocation line** — what moves in and what comes back out — on both cards, and one
-  renderer (`schema.signature_parts`) for it and the Markdown documents.
-- **A detail window**, opened with `Enter` over a card: callers, the routine, callees, what
-  it touches, threads. Every hop is an ordinary selection, so the stack, the trail and undo
-  all follow.
-- **Detached to a second window or tab** (`?view=detail`), two peers over a
-  `BroadcastChannel` in bidirectional sync. **This is the pattern the code viewer will use.**
-- **Table mode**: 2,418 ms → 46 ms, a resize that now resizes, a header that stays, and a
-  strip saying which row is yours.
+- **`WORKING` is a state, not an id.** A revision is identified by when it was captured, and
+  `seal()` keeps the current snapshot so the next `analyze` opens a second one beside it.
+  Mensores is sealed as `2026-08-29T19:43:39Z`. Nothing reads a second revision yet.
+- **`/api/files` and `/api/file`**, with two layers beside the source: *links*, which are
+  lookups on `calls.callee_id` and never name matches, and *marks*, which say what a line is.
+- **The Code group in the navigator**, `Code` as a fourth centre mode, and `?view=code`
+  detached — all three over one `CODEFILE`, and the pane follows the selection into whatever
+  file it lives in.
+- **The navigator's width cap is what the window can spare**, not a fixed 44rem, and the
+  Code group keeps its own width.
 
-**Six of this session's defects were controls wired perfectly to a stylesheet or a layout
-that could not carry them**, and every automated check on the page passed for all six. That
-is the shape to watch for; rules 48–51 are what came out of it.
+**Four defects found by driving it and invisible to every test** — rules 52 and 53 came out
+of two of them. `buildNav()` cost 1,937 ms per selection with a large file open; a cache
+taking a value rather than a thunk did the work it existed to avoid; re-attaching a large
+subtree made `render()` *worse* than before the cache; and a pane bounded by
+`calc(100vh - 16rem)` showed one line of code on a 589px window.
 
-**Next, and named: the code browser.** Society is to be pulled fresh first, which makes the
-temporal question concrete for the first time.
+**Next, and open for you:**
 
-- *What exists*: `source.db` holds 626 files content-addressed, `/api/source?path&first&last`
-  serves any span or a whole file, and every routine carries `file`, `line_start`,
-  `line_end`. A browser with clickable names syncing both ways is the detached-window
-  pattern again.
-- *What does not*: any second point in time. `source.db` holds **one** snapshot, so the
-  time selector and the diff screen are the layer work rather than a feature of the browser.
-  Build the browser against today's snapshot; the layers then add a selector to a working
-  view instead of inventing both at once.
+- **Search inside source** — named as its own loop when the browser was planned, and now the
+  obvious next thing. 626 compressed blobs is a measurable job that deserves its own budget
+  row, not a bolt-on.
+- **The layer selection UI** — a time slider, a revision list, a two-point comparison, or all
+  three. The storage is ready and Mensores has a sealed snapshot to compare against as soon
+  as Society is pulled fresh. This is the conversation that was deferred, and it is now the
+  one thing standing between the spine and a second point in time on screen.
+- **Reported, not fixed, because it is your design and not mine:** the navigator's nine group
+  headings cost **306px** whether their groups are open or closed, so on a short window any
+  open group — the routine list as much as the code — gets about 200px. Measured at 589px
+  tall; I could not resize the automation window to check a realistic height (rule 38).
 
 **Still owed from before, unchanged:** `CURIOSITIES`; the worklist's two jump buttons (a
-server change — `anomalies.py` carrying the node ids it already knows, and I sized it: most
-detectors already select the id and three genuinely cannot, which gives those a *better*
-disabled reason); the two vocabulary-lane precision defects; packaging as a binary. One
+server change — `anomalies.py` carrying the node ids it already knows); the two vocabulary-lane
+precision defects; per-plate sphere scaling and stack orientation; packaging as a binary. One
 question is open on the worklist and was never answered: **what is an occurrence for
 LOST_EDGE** — the 142 callers, or the rival definitions? 93 of Mensores' 106 findings are
 LOST_EDGE, so it decides the feature.
@@ -289,6 +311,12 @@ Rules 28, 29 and 30.
 | Two windows are **peers over a `BroadcastChannel`**, never opener and child | `HANDOFF.md` 5t |
 | A detached view is the **same application** under `?view=detail`, never a second page | `HANDOFF.md` 5t |
 | One renderer for a signature, `schema.signature_parts`, for the documents and the card alike | rule 13; `HANDOFF.md` 5t |
+| A clickable name in source is `calls.callee_id`, **never** a name match; no column means no inline span | rule 1; rule 5; `code.py` |
+| **No syntax colour** in the code browser — kind is the dimension colour is spent on | design rule 4; `HANDOFF.md` 5u |
+| The code browser runs in three places over **one** `CODEFILE`; a file is not a node and selects nothing | rule 51; rule 30 |
+| `WORKING` is a **state**; a revision is identified by when it was captured | rule 20; `sourcedb.py` |
+| A read defaults to the newest revision, never only to WORKING — sealing must not blind the dashboard | `sourcedb.py` `current_revision` |
+| The navigator's width cap is what the window can spare; the Code group keeps its own width | rule 28; `HANDOFF.md` 5u |
 
 ## How to verify — all three, before saying anything is done
 

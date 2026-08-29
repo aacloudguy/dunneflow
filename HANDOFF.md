@@ -2182,3 +2182,100 @@ layers then add a selector to a working view rather than inventing both at once.
 
 Settled: this is a **reading tool** you open to understand something — not a working
 tool kept open while editing. Layers are how it stays true as the code moves.
+
+**5u. Built 2026-08-29 (third session): the code browser, and a snapshot that has a name.**
+Planned with Tom at the keyboard and built in four chunks. Every decision below is his;
+what follows each is what building it found.
+
+*The decisions.* The code viewer runs in **three** places — the left pane, a fourth centre
+mode "in greater detail with columns", and a detached window — because inside one window the
+left pane is the only place code can sit while the stack holds the centre. The Code group is
+**stacked**: a file list that collapses once a file is picked, and that file's lines beneath
+it. **No syntax colour**: things that are already database objects are clickable and that is
+enough. **Search inside source is its own loop.** And **prepare for versions now**: WORKING
+as a state, a timestamp on every snapshot, another state naming what is being compared.
+
+**The revision spine.** `source.db` held its paths under the empty string and had nowhere to
+record when the bodies were read, so the id and the state were one thing and a re-analysis
+replaced the only snapshot there was — the bodies surviving, because blobs are never pruned,
+and nothing left that could name them. A `revisions` table now says which snapshot the next
+capture writes into. Two columns that look like one and the difference is the point:
+`revision` is the identity and is always known, `captured_at` is a claim about the *source*.
+For an ordinary capture they are the same instant; for a sidecar migrated from before this
+existed they are not, because nothing in the store knows when its bodies were measured — so
+`captured_at` is left empty rather than filled with a plausible lie, and `dunneflow revisions
+--seal --at` states it from the graph's own `analysed_at`, which the CLI legitimately holds
+both halves of. Mensores is sealed as `2026-08-29T19:43:39Z`, captured 2026-08-29 17:02 UTC,
+626 files.
+
+Three things found writing it. **Reading and writing are different questions**: a read that
+resolved only to WORKING would answer "no source" for every file between a seal and the next
+analysis, which is precisely when someone opens the dashboard to see what they are about to
+replace. **Rule 20 in the store that must survive everything**: a writable open migrates an
+un-stamped sidecar and a read-only open reports it as un-stamped and changes nothing —
+verified on the real sidecar, byte-identical after listing. And **rule 37**: five guards run
+against their own defect, one missed, because the mutation removed a redundant inner check
+while `__init__`'s early return did the real protecting.
+
+**A file, and what the map knows about every line of it.** Nearly every fact table carries a
+`file` *and* a `line`. Links are inline spans carrying the node id they select, and there is
+no name matching anywhere in them — `calls.callee_id` is the resolver's own answer, so rule 5
+never arises. What the resolver does *not* record is a **column**, so a call is underlined
+only where its expression occurs exactly once on that line; guessing a column is inventing a
+position, and both counts ride with the payload.
+
+**The margin was wrong when first read, and reading it is the only reason I know.** It
+printed `int` on its own line labelled *leaves the program*. `calls.external` covers three
+different things — 11,256 builtins, 3,943 boundary touches, 8,630 calls into someone else's
+code — and only the third earns a mark. A builtin is not rule 26's case, and `len(x)` is
+internal computation, which this tool exists not to report; a boundary touch already has a
+boundary row and often a `sql_ops` row on the same line, so marking it here states one act a
+third time (rule 40, in the same function as the test written for it); and the first segment
+must be a name the file imported, or `out.append` and `payload.get` read as libraries. 1,642
+marks on `audit.py` became 1,054.
+
+**Four defects found by driving the thing, and none of them visible to any test.**
+
+`buildNav()` cost **1,937 ms** and `render()` **1,358 ms**, both on every selection and every
+keystroke with a 5,838-line file open — worse than the 2,418 ms table defect that earned rule
+45, and a slow page reads as a slow page rather than as a defect. Two things that looked like
+fixes and were not: `codeCached(slot, codeTable())` evaluates its argument before the call, so
+the cache rebuilt 1.37 MB on every hit and threw it away; and re-attaching the built node
+still forces a layout over 17,500 elements, which made `render()` *worse* than before the
+cache, 155 ms to 1,370. The only way not to pay a layout is not to detach. **Rule 52.**
+
+The pane bounded itself with `calc(100vh - 16rem)`, where 16rem stood for the chrome above
+it. On a 589px window that chrome came to 185px, the box overflowed its own scroller, and
+**one line of code was on screen** — while every check passed, because the box did declare
+`overflow` and did have a height. **Rule 53**, and rule 49's shape in a stylesheet.
+
+The mark column was 15rem and left-aligned. 1,054 marks over 4,820 lines means four rows in
+five carry nothing, so most of the pane was a blank column holding the code out past the
+middle of the window. 12rem, right-aligned against the code.
+
+And **my own route filed its trail step before awaiting the selection**, so the step carried
+`subject: null` — rule 33's defect in a new route, caught by reading a real step rather than
+by the guard I had just written for it. `openDetail` had the order right and this did not.
+
+*What it cost in checks.* Thirty-odd mutations across the three chunks. Five missed on the
+first pass and every one was a name where the claim was about a behaviour, or a fixture
+smaller than the defect: the bounded-list guard ran against a one-file program, so a `[:2]`
+that would hide 624 of 626 changed nothing; rule 40's companion had no boundary the other
+detectors had not also seen; and the module-scope guard passed because `<module>` never
+appears in ordinary source, so the placement rule protected it by coincidence and the filter
+could have been deleted freely. The persisted-settings guard caught `state[widthKey()]` for
+exactly the reason it exists — a dynamic lookup is how a setting slips past a search for its
+name — so both widths are read as named properties now.
+
+*Verified in a real window.* Links reachable by `elementFromPoint` (rule 48), the file header
+stays while the code scrolls to line 1,189 (rule 50), columns aligned to a single x, the
+self-check reporting every control wired, and the console otherwise clean.
+
+*Not fixed, and reported instead because it is Tom's design and not mine.* The navigator's
+nine group headings cost **306px** whether their groups are open or closed, so on a short
+window any open group — the routine list as much as the code — gets about 200px. Measured at
+589px tall; the automation window could not be resized to check a realistic height (rule 38).
+
+**Next: search inside source**, named as its own loop when this was planned, and **the layer
+selection UI** — the storage is ready and there is now a sealed snapshot to compare against
+as soon as Society is pulled fresh.

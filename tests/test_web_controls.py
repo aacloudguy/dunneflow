@@ -1225,3 +1225,174 @@ def test_a_lane_says_which_of_the_four_states_it_is_in() -> None:
     assert "has not been asked for yet" in body, (
         "laneState cannot say a lane was never asked for, so it looks like an empty one"
     )
+
+
+# ------------------------------------------------------- the navigator's furniture --- #
+#
+# Written from feedback at the keyboard, 2026-08-28: the routine list is 4,734 rows, the
+# notice saying so was under all of them, and scrolling in trapped the reader because the
+# collapse control scrolled away with its heading. Every check below is against one of
+# those three symptoms, and each was run against the defect it came from before it was
+# kept (rule 37) -- a guard that has never failed is a claim nobody has tested.
+
+
+def _build_nav() -> str:
+    return _fn(_read("shell.js"), "buildNav")
+
+
+def test_the_truncation_notice_reads_before_the_list_it_describes() -> None:
+    """`showing 200 of 4,734` was emitted after the items, so the only ways to see it were
+    to scroll past the two hundred rows it describes or to collapse the group -- at which
+    point it appeared at once, which is what gave it away.
+
+    Design rule 1 says a filter is never silent about what it removed. It was satisfied in
+    letter and defeated in fact, and the fix is a position rather than a wording.
+    """
+    body = _build_nav()
+    note, items = body.find("nav-note"), body.find('class="nav-items"')
+    assert note != -1 and items != -1, "buildNav changed shape -- this test is blind"
+    assert note < items, (
+        "the truncation notice is emitted after the list it describes -- a reader sees it "
+        "only after scrolling past everything it is warning them about"
+    )
+    # And it must read the same open or closed, which means living outside the element the
+    # stylesheet hides. `.nav-items` is what collapsing hides; the note is in the header.
+    head = body.find("nav-headwrap")
+    assert head != -1 and head < note < items, (
+        "the notice is no longer inside the sticky header, so it does not travel with the "
+        "heading and does not survive the group being collapsed"
+    )
+    css = _read("tokens.css")
+    assert '.nav-group[data-open="false"] .nav-items { display: none; }' in css, (
+        "collapsing hides something other than `.nav-items`; if it hides the header the "
+        "notice goes with it and the closed group states nothing"
+    )
+
+
+def test_the_collapse_control_stays_in_reach_of_a_long_list() -> None:
+    """Symptom 2, and the reason the whole pane was restructured.
+
+    The collapse control is *on* the group heading, so a heading that scrolls away is a
+    group the reader cannot close from inside it. 5g had already written this down and
+    applied it to the panebar only, leaving the headings -- which carry the same control --
+    to scroll. `.nav-headwrap` is sticky now.
+
+    Checked for the *last* declaration, not for any: a media query contributes no
+    specificity and an equal selector declared later simply wins, which is how the narrow
+    layout's `display: none` lost to a rule 350 lines further down (rule 29).
+    """
+    css = re.sub(r"/\*.*?\*/", "", _read("tokens.css"), flags=re.S)
+    blocks = re.findall(r"\.nav-headwrap\s*\{([^}]*)\}", css)
+    assert blocks, ".nav-headwrap has no rule at all -- the headings do not stick"
+    positions = [m for b in blocks for m in re.findall(r"position:\s*(\w+)", b)]
+    assert positions and positions[-1] == "sticky", (
+        f"the last `position` declared for .nav-headwrap is {positions[-1:] or ['none']} -- "
+        "a later equal selector wins, so the heading scrolls away with the list"
+    )
+    tops = [m for b in blocks for m in re.findall(r"top:\s*([\w.]+)", b)]
+    assert tops and tops[-1] == "0", (
+        "a sticky heading with no `top` sticks nowhere -- it is a no-op that looks fixed"
+    )
+
+
+def test_the_navigator_scrolls_inside_itself_and_not_the_document() -> None:
+    """The pane is a header that stays over a body that scrolls, as two grid rows.
+
+    A grid item is `min-height: auto` and refuses to shrink below its content, so without
+    `minmax(0, 1fr)` and `min-height: 0` the 4,734-row body holds the row open at its full
+    height and hands the overflow to the document -- which does not scroll panes. That is
+    rule 29's companion, and it has already cost this project one session.
+    """
+    css = re.sub(r"/\*.*?\*/", "", _read("tokens.css"), flags=re.S)
+    # Anchored at the start of a line, so this reads the pane's own rule and not the tail
+    # of `.body > .navigator { display: none }` in the narrow layout -- which is a different
+    # rule about a different question, and matching it made this guard fail on prose.
+    nav = re.search(r"^\.navigator\s*\{([^}]*)\}", css, re.M)
+    scroll = re.search(r"^\.nav-scroll\s*\{([^}]*)\}", css, re.M)
+    assert nav and scroll, "the navigator is no longer a header over a scroller"
+    assert "minmax(0, 1fr)" in nav.group(1), (
+        "the navigator's body track can refuse to shrink, which sends the overflow to the "
+        "document instead of to the pane that knows how to scroll"
+    )
+    assert "min-height: 0" in scroll.group(1), "the scroller inherits `min-height: auto`"
+    assert "overflow-y: auto" in scroll.group(1), "the scroller does not scroll"
+
+
+def test_the_jump_strip_and_the_list_are_generated_from_one_order() -> None:
+    """Symptom 3: getting between groups without traversing one.
+
+    The invariant is not that the strip exists -- it is that the strip and the groups are
+    the *same* set in the *same* order, both derived. A hand-kept second list agrees with
+    itself and disagrees with the pane, which is how `FOLDABLE` and the panel loop both
+    went quietly wrong (rule 36); and the menu order used to be applied by moving DOM nodes
+    in `render()`, where the strip could not see it at all.
+    """
+    js = _read("shell.js")
+    body = _build_nav()
+    chips = re.search(r"jumpChips\((\w+)\)", body)
+    groups = re.search(r"(\w+)\.map\(g => \{", body)
+    assert chips and groups, "buildNav changed shape -- this test is blind"
+    assert chips.group(1) == groups.group(1), (
+        f"the strip is built from `{chips.group(1)}` and the groups from "
+        f"`{groups.group(1)}` -- two orders, and the reader is offered the one the pane "
+        "does not use"
+    )
+    assert re.search(r"function jumpChips\(order\) \{\s*return order\.map", js), (
+        "jumpChips no longer maps the order it is handed, so a group can exist with no chip"
+    )
+    # Routed from the table, not from a branch: an id naming no group is a named error.
+    assert re.search(r"NAV_GROUPS\.some\(g => g\.id === id\)", js), (
+        "the jump route does not check its subject against NAV_GROUPS, so a stale chip "
+        "would scroll nowhere and report nothing -- design rule 16"
+    )
+    # And `render()` must not still be shuffling the groups behind the strip's back.
+    assert "insertBefore(first, firstGroup)" not in js, (
+        "render() still reorders the navigator in the DOM, so the strip and the pane can "
+        "disagree about which group comes first"
+    )
+
+
+def test_a_group_left_open_or_closed_survives_a_rebuild() -> None:
+    """The toggle used to write `data-open` on the element and nothing else.
+
+    `buildNav()` re-renders from `NAV_GROUPS` on every keystroke of the search box and on
+    every graph selection, so a group collapsed by hand sprang open again the moment
+    anything was typed. A toggle whose state lives only in the DOM lasts exactly as long as
+    that DOM. This is rule 35's family: the state was assigned, and to the wrong thing.
+    """
+    js = _read("shell.js")
+    assert re.search(r'data-open="\$\{groupOpen\(', _build_nav()), (
+        "the group's open state is written from the table rather than from what the reader "
+        "arranged, so every rebuild throws their arrangement away"
+    )
+    toggle = js.split('const b = ev.target.closest("[data-toggle]");', 1)[1].split("});", 1)[0]
+    assert "setGroupOpen(" in toggle and "dataset.open =" not in toggle, (
+        "the toggle writes the DOM directly; the next rebuild discards it"
+    )
+
+
+def test_the_accordion_is_a_setting_and_both_halves_are_built() -> None:
+    """Design rule 2: when two options are genuinely interchangeable, build both and let
+    usage retire the loser. One at a time keeps the pane shorter than a single list; all at
+    once keeps the whole index visible, which is the better answer on a small program.
+
+    Both must be *reachable* and both must be *read*. A pair where only the default is
+    consulted is a setting that renders and does nothing -- design rule 16 with a control.
+    """
+    js, settings = _read("shell.js"), _read("settings.js")
+    assert re.search(r"navGroups:\s*'one'", settings), (
+        "navGroups is not a persisted setting, so the choice does not survive a reload"
+    )
+    for value in ("one", "many"):
+        assert f'data-navgroups="{value}"' in js, f"no control offers navGroups={value!r}"
+    # Read, not merely stored: the accordion branch and the fallback branch both consult it.
+    assert 'state.navGroups === "one"' in _fn(js, "groupOpen"), (
+        "groupOpen ignores the setting, so `all at once` and `one at a time` open the same "
+        "groups and the control is dead"
+    )
+    assert 'state.navGroups === "one"' in _fn(js, "setGroupOpen"), (
+        "setGroupOpen ignores the setting, so opening a group never closes the others"
+    )
+    assert 'used("navgroups:' in js, (
+        "the pair is not counted, so neither half can ever be retired on evidence"
+    )

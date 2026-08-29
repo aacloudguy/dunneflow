@@ -70,6 +70,25 @@ const DEFAULTS = {
    * precisely so that a group gaining one keeps its default for it. */
   panels: { navigator: true, inspector: true, legend: true, hud: true, controls: true },
   inspectorAuto: true,    // rail the inspector while nothing is selected
+  /* How many navigator groups may stand open at once. Design rule 2: both are genuinely
+   * good, so both are built and usage retires the loser.
+   *
+   * `one` is an accordion -- opening a group closes the rest, so the pane is never longer
+   * than a single list and the group headings stay within a wheel's reach of the top.
+   * `many` is what the navigator always did: every group open, the whole index visible at
+   * a glance, and 4,734 routines between the top of the pane and everything under them.
+   *
+   * The default is `one` because the failure it fixes was observed: scrolling into
+   * Routines put the reader two hundred rows away from every menu below it. */
+  navGroups: 'one',       // 'one' | 'many'
+  /* Which groups are open, by the id in the shell's `NAV_GROUPS` table. An arrangement
+   * rather than a question being asked right now, so unlike the search box it is kept.
+   *
+   * Empty means "not chosen yet", not "all closed": the shell falls back to each group's
+   * own default, which is the only way a group added later can arrive open. A blob from an
+   * older session carrying an id this build has dropped is harmless -- `buildNav` reads by
+   * id and never enumerates this. */
+  navOpen: {},
   /* Navigator width, in rem so the scale multiplier reaches it (design rule 3).
      Wider than the old fixed 14.5: it holds the routine list now, and a qualified
      name is the thing it has to be able to show. */
@@ -171,6 +190,7 @@ function resetSettings(program, current) {
     showPlates: 'disk plates', edgesInMotion: 'edges while moving',
     mode: 'centre view', panels: 'panel layout',
     inspectorAuto: 'auto-collapse the inspector', navWidth: 'navigator width',
+    navGroups: 'how many navigator groups open at once', navOpen: 'which groups are open',
     graphLayout: 'graph layout', graphTheme: 'graph theme',
     theme: 'theme', scale: 'interface scale', startup: 'startup screen',
     menuOrder: 'menu order', trailShown: 'the trail', trailCap: 'trail length',

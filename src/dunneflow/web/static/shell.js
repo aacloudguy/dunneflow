@@ -133,6 +133,8 @@ const state = {
    * moment there is something to show. An explicit fold by the reader outranks this. */
   inspectorAuto: true,
   navWidth: 21,           // rem; the routine list has to fit a qualified name
+  navGroups: "one",       // "one" | "many" -- an accordion, or every group at once
+  navOpen: {},            // group id -> open; empty means "each group's own default"
   pkgPick: null,          // which package the overview is showing everything for
   graphLayout: "stack",   // "stack" | "packages" -- a layout inside graph mode,
                           // never a fourth mode. Both built; use retires the loser.
@@ -198,6 +200,11 @@ const state = {
  * `render()` rebuilds the navigator on every keystroke, and 4,734 buttons per keystroke is
  * a filter that fights the reader. What is left out is always stated (design rule 1). */
 const NAV_ROUTINE_CAP = 200;
+
+/* What was typed in the search box the last time the navigator was built. The scroller
+ * keeps its place across a rebuild, and this is how "the same list again" is told from
+ * "a different question, answered from the top". */
+let navBuiltFor = null;
 
 const $  = (s, r) => (r || document).querySelector(s);
 const $$ = (s, r) => Array.from((r || document).querySelectorAll(s));
@@ -347,7 +354,24 @@ document.addEventListener("click", (ev) => {
   const b = ev.target.closest("[data-toggle]");
   if (!b) return;
   const g = b.closest(".nav-group");
-  g.dataset.open = g.dataset.open === "true" ? "false" : "true";
+  if (!g) return;
+  setGroupOpen(g.id, g.dataset.open !== "true");
+});
+
+/* The jump strip, routed from the same table the strip is generated from (design rule 16):
+ * an id that names no group is a named error rather than a click that does nothing. */
+document.addEventListener("click", (ev) => {
+  const b = ev.target.closest("[data-jump]");
+  if (!b) return;
+  const id = b.dataset.jump;
+  if (!NAV_GROUPS.some(g => g.id === id)) {
+    console.error("DunneFlow: no navigator group for jump", id, b);
+    return;
+  }
+  /* Open it as well as go to it. Under the accordion the group being jumped to is usually
+   * closed, and arriving at a closed heading is indistinguishable from nothing happening. */
+  setGroupOpen(id, true);
+  jumpToGroup(id);
 });
 /* Every nav kind routes explicitly. An unhandled kind used to fall through to
    `state.view = state.mode`, which silently showed the graph instead of the page
@@ -1167,6 +1191,20 @@ function viewSettings() {
           <div class="seg" role="group" aria-label="Menu order">
             <button data-menuorder="waysin"  aria-pressed="${state.menuOrder === "waysin"}">Ways in first</button>
             <button data-menuorder="explore" aria-pressed="${state.menuOrder === "explore"}">Explore first</button>
+          </div>
+        </div>
+
+        <div class="setrow">
+          <div><div class="lbl">Navigator groups</div>
+            <div class="desc">The navigator holds 4,734 routines in one of its groups, and
+              scrolling into that list used to put every menu below it two hundred rows out
+              of reach. <b>One at a time</b> closes the others when you open one, so the pane
+              is never longer than a single list. <b>All at once</b> keeps the whole index
+              visible, which is the better answer on a small program and the worse one on a
+              large. Genuinely arguable, so both exist and the usage counter decides.</div></div>
+          <div class="seg" role="group" aria-label="Navigator groups">
+            <button data-navgroups="one"  aria-pressed="${state.navGroups === "one"}">One at a time</button>
+            <button data-navgroups="many" aria-pressed="${state.navGroups === "many"}">All at once</button>
           </div>
         </div>
 
@@ -2670,17 +2708,13 @@ function render() {
     ne.textContent = posture().label.toLowerCase();
     ne.className = "n" + (state.egress === "off" ? "" : " sevcount info");
   }
-  const ex = $("#navExplore"), wi = $("#navWaysIn");
-  if (ex && wi && ex.parentNode) {
-    const first = state.menuOrder === "explore" ? ex : wi;
-    /* Before the first *group*, not before the first element. The navigator also carries
-     * chrome now -- the fold button -- and `firstElementChild` swept the chosen group in
-     * front of it, which put the collapse control a third of the way down the pane. An
-     * ordering rule that names a position rather than an identity breaks the moment
-     * anything else is added beside it. */
-    const firstGroup = ex.parentNode.querySelector(".nav-group");
-    if (firstGroup !== first) ex.parentNode.insertBefore(first, firstGroup);
-  }
+  /* The menu order used to be applied here, by moving one group in front of another in the
+   * DOM. It is `navGroupsInOrder()` now, read by `buildNav()` and by the jump strip
+   * together -- a second place that decides an order is a second answer to the question,
+   * and the strip would have offered the groups in an order the pane did not use. The
+   * lesson that was recorded here still holds and now has nothing to trip over: an
+   * ordering rule that names a *position* rather than an identity breaks the moment
+   * anything is added beside it. */
 
   const tm = $("#trailMount");
   if (tm) {
@@ -2829,9 +2863,20 @@ function wire() {
     if (state.trail.length > cap) state.trail.splice(0, state.trail.length - cap);
     render();
   }));
+  $$("[data-navgroups]").forEach(b => b.addEventListener("click", () => {
+    state.navGroups = b.dataset.navgroups;
+    used("navgroups:" + state.navGroups);
+    /* Forget which groups were open rather than reconciling two arrangements: switching to
+       the accordion with four groups open would otherwise leave four groups open until
+       something was clicked, which reads as a control that did nothing. */
+    state.navOpen = {};
+    buildNav();
+    render();
+  }));
   $$("[data-menuorder]").forEach(b => b.addEventListener("click", () => {
     state.menuOrder = b.dataset.menuorder;
     used("menu:" + state.menuOrder);
+    buildNav();               // the order lives in the navigator now, not in render()
     render();
   }));
   $$("[data-start]").forEach(b => b.addEventListener("click", () => {
@@ -3129,7 +3174,8 @@ document.addEventListener("keydown", (e) => {
 const WIRED_ATTRS = new Set([
   "aiop", "airun", "bound", "cite", "citeidx", "closeviewer", "col", "crumb", "curi",
   "cursor", "den", "disk", "drop", "edgesmotion", "egress", "ep", "fold", "gact", "gosev",
-  "goto", "graphtheme", "insp", "layout", "legend", "manifest", "menuorder", "mode", "nav", "nav2",
+  "goto", "graphtheme", "insp", "jump", "layout", "legend", "manifest", "menuorder",
+  "mode", "nav", "nav2", "navgroups",
   "navid", "node", "open", "pane", "pin", "pinnote", "pkgnode", "pkgpick", "resize", "row",
   "scale-set", "sec", "sev", "sevnav", "sort", "sqlshow", "start", "step", "theme",
   "term", "termuse", "theme-set", "thread", "threadlabel", "threadsall", "threadwhy",
@@ -3343,21 +3389,137 @@ function vocabCount(key) {
   return v && v[key] != null ? Number(v[key]).toLocaleString() : "";
 }
 
+/* The groups in the order the pane shows them.
+ *
+ * The order used to be applied by moving DOM nodes in `render()`, which worked and was
+ * invisible to everything else -- including the jump strip, which is generated from this
+ * table and would have listed the groups in an order the pane did not use. One ordering,
+ * asked for by both, is the only way the strip and the list cannot disagree.
+ *
+ * Design rule 2: `waysin` and `explore` are a genuine tie, so both exist and usage decides. */
+function navGroupsInOrder() {
+  const first = state.menuOrder === "explore" ? "navExplore" : "navWaysIn";
+  const chosen = NAV_GROUPS.find(g => g.id === first);
+  if (!chosen) return NAV_GROUPS.slice();
+  return [chosen, ...NAV_GROUPS.filter(g => g !== chosen)];
+}
+
+/* Is this group open?
+ *
+ * `state.navOpen` is what the reader has arranged and it wins; a group it says nothing
+ * about falls back to the table's own default. Under the accordion that fallback is
+ * narrowed to the first group alone, because "several groups open" is precisely the state
+ * the accordion exists to prevent -- and a pane that opens four groups on the first paint
+ * and then refuses to open two reads as a broken control rather than as a setting. */
+function groupOpen(g, order) {
+  if (g.id in state.navOpen) return !!state.navOpen[g.id];
+  if (state.navGroups === "one") return g === (order || navGroupsInOrder())[0];
+  return !!g.open;
+}
+
+/* Opening a group under the accordion closes the rest.
+ *
+ * Written through `state` rather than through `data-open` on the element, which is what it
+ * used to be: `buildNav()` re-renders from the table on every keystroke of the search box,
+ * so a group collapsed by hand sprang open again the moment anything was typed. A toggle
+ * whose state lives only in the DOM lasts until the next render of that DOM. */
+function setGroupOpen(id, open) {
+  if (open && state.navGroups === "one") {
+    for (const g of NAV_GROUPS) state.navOpen[g.id] = false;
+  }
+  state.navOpen[id] = open;
+  used("navgroups:" + state.navGroups);
+  persist();
+  buildNav();
+}
+
+/* The jump strip: every group, one click away, from anywhere in a list of any length.
+ *
+ * This is the third symptom of the navigator feedback and the one neither sticky headings
+ * nor the accordion answers on its own -- from row 150 of Routines, *Packages* was a scroll
+ * through the whole list away. Generated from the same table the groups are, so a group
+ * added to `NAV_GROUPS` gets a chip without anyone remembering to add one: a hand-kept
+ * second list is how `FOLDABLE` and the panel loop both went quietly wrong.
+ *
+ * The chips also say where you are. A reader arriving in the middle of four thousand rows
+ * by wheel has nothing on screen naming the group they are inside; `markJump()` marks the
+ * chip whose group is at the top of the pane. */
+function jumpChips(order) {
+  return order.map(g => `
+    <button class="navjump" data-jump="${esc(g.id)}" aria-controls="${esc(g.id)}"
+            title="Go to ${esc(g.title)}">${esc(g.title)}</button>`).join("");
+}
+
+/* Which group the reader is looking at: the last one whose heading has reached the top of
+ * the scroller. Computed from `offsetTop` against `scrollTop` rather than from bounding
+ * rectangles, so it is arithmetic over static layout and needs no rendered frame -- rule 38
+ * says anything needing one cannot be observed in an automation tab, and "which chip is
+ * lit" is exactly the kind of claim that would then be untestable. */
+function markJump() {
+  const sc = $("#navScroll");
+  if (!sc) return;
+  let here = null;
+  for (const g of sc.querySelectorAll(".nav-group")) {
+    if (g.offsetTop - sc.scrollTop <= 4) here = g.id;
+  }
+  if (!here) {
+    const first = sc.querySelector(".nav-group");
+    here = first ? first.id : null;
+  }
+  $$(".navjump").forEach(b => {
+    if (b.dataset.jump === here) b.setAttribute("aria-current", "true");
+    else b.removeAttribute("aria-current");
+  });
+}
+
+function jumpToGroup(id) {
+  const sc = $("#navScroll"), g = document.getElementById(id);
+  if (!sc || !g) return;
+  /* Set `scrollTop` rather than calling `scrollIntoView`, for the same reason `markJump`
+     does its own arithmetic: this must land in one step, with no frame and no smooth
+     scroll, or a jump taken while the pane is being rebuilt lands somewhere else. */
+  sc.scrollTop = g.offsetTop;
+  markJump();
+}
+
 function buildNav() {
   const nav = $("#navigator");
   if (!nav) return;
+  /* Keep the reader's place across a rebuild. `buildNav()` runs on every graph selection
+   * as well as on every keystroke, and rewriting `innerHTML` sends the scroller back to the
+   * top -- so clicking a node in the picture threw the list to row 1 and then scrolled back
+   * down to the row it had just thrown away. An automatic move may not fight a deliberate
+   * one (rule 24, and design rule 26). A *new question* is different: when what is typed in
+   * the search box changes, the answer starts at the top. */
+  const prev = $("#navScroll");
+  const keep = prev && navBuiltFor === state.routineQ ? prev.scrollTop : 0;
+  navBuiltFor = state.routineQ;
+  const order = navGroupsInOrder();
   nav.innerHTML = `<div class="panebar">
+      <div class="navjumps" role="group" aria-label="Jump to a group of the navigator">
+        ${jumpChips(order)}
+      </div>
       <button class="panefold" data-fold="navigator"
               title="Collapse the navigator" aria-label="Collapse the navigator">&#x00AB;</button>
-    </div>` + NAV_GROUPS.map(g => {
+    </div>
+    <div class="nav-scroll" id="navScroll">` + order.map(g => {
     const items = g.items();
     const total = groupCount(g);
     return `
-    <div class="nav-group" data-open="${g.open}" id="${esc(g.id)}">
-      <button class="nav-head" data-toggle>
-        <span class="caret">▼</span> ${esc(g.title)}
-        <span class="count">${total.toLocaleString()}</span>
-      </button>
+    <div class="nav-group" data-open="${groupOpen(g, order)}" id="${esc(g.id)}">
+      <div class="nav-headwrap">
+        <button class="nav-head" data-toggle>
+          <span class="caret">▼</span> ${esc(g.title)}
+          <span class="count">${total.toLocaleString()}</span>
+        </button>
+        ${/* Above the list, not under it. It used to sit after the items, so
+             "showing 200 of 4,734" was reachable only by scrolling past the two hundred
+             rows it describes -- or by collapsing the group, at which point it appeared
+             at once, which is what gave it away. Design rule 1 was satisfied in letter
+             and defeated in fact. Outside `.nav-items` so it reads the same open or
+             closed, and inside the sticky header so it stays with its heading. */
+          g.note ? `<div class="nav-note">${g.note()}</div>` : ""}
+      </div>
       <div class="nav-items">
         ${items.map(i => `
           <button class="nav-item" data-nav="${esc(i.nav)}"
@@ -3374,10 +3536,15 @@ function buildNav() {
               ${i.id ? `id="${esc(i.id)}"` : ""}>${esc(String(i.n))}</span>
           </button>`).join("")}
       </div>
-      ${g.note ? `<div class="nav-note">${g.note()}</div>` : ""}
     </div>`;
-  }).join("");
+  }).join("") + `</div>`;
   dressNavItems();
+  const sc = $("#navScroll");
+  if (sc) {
+    sc.scrollTop = keep;
+    sc.addEventListener("scroll", markJump);   // the element is new on every build
+  }
+  markJump();
 }
 
 /* ════════════════════════════════════════════════════════════
@@ -3490,7 +3657,7 @@ const PERSISTED = [
   "egress", "aiOps", "triage", "pins", "usage", "graphLayout",
   "diskOrder", "diskColors", "colorBy", "sortMode", "filterMode", "direction",
   "nodeSize", "spreadX", "spreadY", "spreadZ", "collapseUnused",
-  "panels", "inspectorAuto", "navWidth",
+  "panels", "inspectorAuto", "navWidth", "navGroups", "navOpen",
   "showPlates", "picks", "graphTheme", "edgesInMotion",
 ];
 
@@ -3666,12 +3833,31 @@ function onGraphSelect(sel) {
  * the row is genuinely out of sight. */
 function revealSelectedRoutine() {
   if (!state.selected) return;
-  const row = $(`#navRoutines .nav-item[data-navid="${CSS.escape(state.selected)}"]`);
+  const sel = `#navRoutines .nav-item[data-navid="${CSS.escape(state.selected)}"]`;
+  let row = $(sel);
   if (!row) return;           // filtered out, or past the cap; the note already says so
-  const pane = row.closest(".navigator");
-  if (!pane) return;
-  const r = row.getBoundingClientRect(), p = pane.getBoundingClientRect();
-  if (r.top >= p.top && r.bottom <= p.bottom) return;      // already visible; leave it
+  /* Open Routines if it is closed, which under the accordion it usually is. A row inside a
+   * collapsed group is marked `current` and rendered `display: none`, so the list would
+   * look exactly as it did before the click -- the back half of the loop dead while the
+   * front half worked. This does close whatever else the reader had open, and that is the
+   * deliberate call: the row is the answer to the node they just clicked. */
+  const grp = row.closest(".nav-group");
+  if (grp && grp.dataset.open !== "true") {
+    setGroupOpen(grp.id, true);            // rebuilds the pane
+    row = $(sel);
+    if (!row) return;
+  }
+  const sc = $("#navScroll");
+  if (!sc) return;
+  /* Measured against the *scroller*, and below its sticky heading. Against the pane as a
+   * whole, a row sitting under the heading counted as visible and was left there -- which
+   * looks identical to a row that was never found. The heading's height is asked of the
+   * element rather than written down, because it changes with the scale multiplier. */
+  const head = row.closest(".nav-group")?.querySelector(".nav-headwrap");
+  const p = sc.getBoundingClientRect();
+  const top = p.top + (head ? head.offsetHeight : 0);
+  const r = row.getBoundingClientRect();
+  if (r.top >= top && r.bottom <= p.bottom) return;        // already visible; leave it
   row.scrollIntoView({ block: "nearest" });
 }
 

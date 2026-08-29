@@ -413,14 +413,36 @@ body {
 .rail:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .railtext { writing-mode: vertical-rl; transform: rotate(180deg); white-space: nowrap; }
 
-/* Sticky, because the navigator scrolls its own 1,151px of content and a collapse control
- * that scrolls away is one the reader cannot reach from the bottom of the list. */
+/* The pane's own header: it does not scroll at all.
+ *
+ * It was `position: sticky`, which held the fold button at the top and cost a magic number
+ * the moment anything else needed to stick under it -- a second sticky element has to know
+ * this one's height, and this one's height changes with the scale multiplier and with how
+ * many jump chips wrap. A grid row needs no number: the bar takes whatever height it wants
+ * and the scroller takes the rest. */
 .panebar {
-  position: sticky; top: 0; z-index: 1;
-  display: flex; justify-content: flex-end;
-  padding: .15rem .25rem 0;
+  display: flex; align-items: flex-start; gap: .35rem;
+  padding: .3rem .35rem .25rem .5rem;
   background: var(--surface);
+  border-bottom: 1px solid var(--border);
 }
+
+/* Every group, one click away from anywhere in a list of any length.
+ *
+ * Wrapping rather than scrolling sideways: a horizontal scroller is the one thing a reader
+ * navigating by wheel cannot operate, and this exists for exactly that reader. */
+.navjumps { display: flex; flex-wrap: wrap; gap: .2rem; flex: 1; min-width: 0; }
+.navjump {
+  font: inherit; font-size: .6rem; letter-spacing: .04em; text-transform: uppercase;
+  color: var(--text-muted); background: var(--raised);
+  border: 1px solid transparent; border-radius: .8rem;
+  padding: .12rem .4rem; cursor: pointer; white-space: nowrap;
+}
+.navjump:hover { color: var(--text); border-color: var(--border); }
+.navjump[aria-current="true"] {
+  color: var(--accent-text); background: var(--accent-soft); border-color: var(--accent);
+}
+.navjump:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
 /* The button that sends a pane to its rail, sitting in the pane's own header. */
 .panefold {
@@ -431,13 +453,35 @@ body {
 .panefold:hover { background: var(--raised); color: var(--text); }
 
 /* ═══ navigator ═══ */
+/* A header that stays and a body that scrolls, as two grid rows.
+ *
+ * `minmax(0, 1fr)` and `min-height: 0`, because a grid item defaults to `min-height: auto`
+ * and refuses to shrink below its content: with 4,734 rows in it, the body would hold the
+ * row open at its full height and hand the overflow to the document, which does not scroll
+ * panes -- rule 29's companion, which cost a session once already. */
 .navigator {
   background: var(--surface);
   border-right: 1px solid var(--border);
-  overflow-y: auto;
-  padding: .5rem 0 2rem;
+  display: grid; grid-template-rows: auto minmax(0, 1fr);
+  overflow: hidden;
+}
+.nav-scroll {
+  overflow-y: auto; min-height: 0;
+  padding: .25rem 0 2rem;
+  position: relative;      /* so a group's offsetTop is measured against this, not the page */
 }
 .nav-group { border-bottom: 1px solid var(--border); }
+/* The heading and its truncation notice stick together, at the top of the scroller.
+ *
+ * The reason is the whole navigator feedback: the collapse control is *on* the heading, so
+ * a heading that scrolls away is a group the reader cannot close from inside it -- and with
+ * two hundred routine rows below it, every menu under Routines cost a traversal of the
+ * whole list to reach. One sticky wrapper rather than two sticky children, so neither has
+ * to know the other's height. */
+.nav-headwrap {
+  position: sticky; top: 0; z-index: 1;
+  background: var(--surface);
+}
 .nav-head {
   width: 100%; display: flex; align-items: center; gap: .4rem;
   font: inherit; font-size: .68rem; font-weight: 600; letter-spacing: .075em;
@@ -452,6 +496,9 @@ body {
 .nav-head .count { margin-left: auto; font-size: .66rem; color: var(--text-faint); font-weight: 500; }
 .nav-items { padding-bottom: .4rem; }
 .nav-item {
+  /* Clear of the sticky heading when `revealSelectedRoutine()` scrolls to a row: without
+     this the row it scrolls to lands *under* the heading and reads as not found. */
+  scroll-margin-top: 3.5rem;
   width: 100%; text-align: left; font: inherit; font-size: .78rem;
   background: none; border: 0; cursor: pointer; color: var(--text);
   padding: .26rem .75rem .26rem 1.5rem;

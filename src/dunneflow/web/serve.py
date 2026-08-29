@@ -32,6 +32,7 @@ from ..docstore import DocStore
 from ..sourcedb import SourceStore
 from ..store import Store
 from . import packages, queries
+from .code import build_file, build_files
 from .cover import anomalies as build_anomalies
 from .cover import build as build_cover
 from .detail import describe, hover_card
@@ -177,10 +178,24 @@ class _Live:
         # open and a per-request GROUP BY over every file would be a cost paid for nothing.
         self.root: str = root_package(self.store)
 
+        # The tree that was analysed, so a path can be shown relative to it. Absolute paths
+        # are right for a store that must find the bytes again and wrong for a screen: they
+        # are one machine's directory layout, identical on all 626 rows, and they cost a
+        # column's width to say nothing. Read from the store, never assumed.
+        self.source_root: str = self.store.get_meta("source_root") or ""
+
         # The two lanes of the naming standard, filled at start rather than here -- see
         # `serve()`, which pays for them where it can say so.
         self.naming: dict[str, Any] = {}
         self.glossary: dict[str, Any] = {}
+
+        # The file list, filled at start for the same reason the two lanes are: it cannot
+        # change while the map is open, the navigator asks for it on load, and its cost is
+        # all in the first touch of two databases on a slow volume -- 550 ms cold against
+        # 23 ms warm. Paid at boot it sits inside a start that is already building a
+        # payload, a cover and two vocabulary passes; paid lazily it is half a second of
+        # the reader's first click.
+        self.files: dict[str, Any] = {}
 
     def close(self) -> None:
         self.store.close()
@@ -368,6 +383,24 @@ class _Handler(BaseHTTPRequestHandler):
         # They are different answers and the client shows different things for each.
         self._json({"found": True, "table": name, "nodes": nodes})
 
+    def _r_files(self, q: dict[str, list[str]]) -> None:
+        """Every analysed file, complete. Rule 8: a reference list is never bounded."""
+        with self._live.lock:
+            self._json(self._live.files)
+
+    def _r_file(self, q: dict[str, list[str]]) -> None:
+        """One file, whole, with what the map knows about every line of it.
+
+        Separate from `/api/source`, which serves a *span* and is what a citation and a
+        definition open. This answers a different question -- what is this file, all of it,
+        and what is on each line -- and sending the margin with every citation would put a
+        file's worth of facts behind a click that wanted fifteen lines.
+        """
+        path = (q.get("path") or [""])[0]
+        with self._live.lock:
+            self._json(build_file(self._live.store, self._live.source, path,
+                                  self._live.source_root))
+
     def _r_source(self, q: dict[str, list[str]]) -> None:
         """A span of one file, straight out of the sidecar.
 
@@ -429,6 +462,8 @@ class _Handler(BaseHTTPRequestHandler):
         "/api/glossary": "_r_glossary",
         "/api/table": "_r_table",
         "/api/source": "_r_source",
+        "/api/files": "_r_files",
+        "/api/file": "_r_file",
         "/favicon.ico": "_r_favicon",
     }
 
@@ -518,10 +553,12 @@ def serve(out_dir: Path, *, port: int = 8787, open_browser: bool = True,
             docs = DocStore(docs_db, writable=False)
         except (ValueError, OSError):
             docs = None
+    live.files = build_files(live.store, live.source, live.source_root)
     live.naming = measure_naming(live.store)
     live.glossary = bind_glossary(live.store, docs)
     if docs is not None:
         docs.close()
+    emit(f"{live.files['total']:,} files listed for the code browser")
     emit(f"{len(live.naming['conventions'])} naming conventions measured; "
          f"{live.glossary['coverage'][0]:,} of {live.glossary['coverage'][1]:,} "
          f"terms defined somewhere")

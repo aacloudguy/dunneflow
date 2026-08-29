@@ -1177,3 +1177,182 @@ FROM routines
 GROUP BY pkg
 ORDER BY n DESC
 """
+
+
+# ── the code browser ─────────────────────────────────────────────────────────────── #
+#
+# What separates this from `less` is that almost every fact table here carries a `file`
+# *and* a `line`. A file drawn with those beside it is the map and the code in one place.
+#
+# Counted per file rather than correlated per row: five small aggregates merged in Python
+# beat one query with five correlated subqueries over 4,734 routines, and each of these is
+# a plain index scan. `<module>` is excluded from the routine count because it is the
+# synthetic scope that owns what no function does (rule 18) -- real to the graph, and not a
+# routine anybody wrote.
+
+CODE_FILES = """
+SELECT f.path AS path, f.module AS module, f.lang AS lang, f.errors AS errors
+FROM files f
+ORDER BY f.path
+"""
+
+CODE_FILE_ROUTINE_COUNTS = """
+SELECT file, COUNT(*) AS n FROM routines WHERE name <> '<module>' GROUP BY file
+"""
+
+CODE_FILE_BOUNDARY_COUNTS = """
+SELECT file, COUNT(*) AS n FROM boundaries GROUP BY file
+"""
+
+# Governance ids per file, over both owners. An annotation hangs off a routine or a
+# structure, never off a file, so the file has to be reached through its owner -- and
+# leaving either side out would under-count a file whose ids all sit on class bodies.
+CODE_FILE_ID_COUNTS = """
+SELECT file, COUNT(DISTINCT value) AS n FROM (
+  SELECT r.file AS file, a.value AS value
+    FROM annotations a JOIN routines r ON r.id = a.owner_id
+   WHERE a.owner_kind = 'routine'
+  UNION ALL
+  SELECT s.file AS file, a.value AS value
+    FROM annotations a JOIN structures s ON s.id = a.owner_id
+   WHERE a.owner_kind = 'structure'
+)
+GROUP BY file
+"""
+
+CODE_FILE_COMMENT_COUNTS = """
+SELECT r.file AS file, COUNT(*) AS n
+FROM comments c JOIN routines r ON r.id = c.routine_id
+GROUP BY r.file
+"""
+
+# ── one file, and what every line of it is ───────────────────────────────────────── #
+
+CODE_DEFS_ROUTINES = """
+SELECT r.id AS id, r.name AS name, r.qualname AS qualname,
+       r.line_start AS line, r.line_end AS line_end,
+       r.is_method AS is_method, COALESCE(r.class_name, '') AS class_name,
+       r.visibility AS visibility, r.is_nested AS is_nested
+FROM routines r
+WHERE r.file = :file
+ORDER BY r.line_start
+"""
+
+CODE_DEFS_STRUCTURES = """
+SELECT s.id AS id, s.name AS name, s.kind AS kind, s.line AS line
+FROM structures s
+WHERE s.file = :file
+ORDER BY s.line
+"""
+
+# The clickable half. `callee_id` is the whole reason a name in the source can be a link
+# without matching on a name (rule 5): the resolver already decided which routine this call
+# reaches, and this only has to find where on the line it was written.
+CODE_CALLS = """
+SELECT c.line AS line, c.callee_expr AS expr, c.callee_id AS id,
+       c.confidence AS confidence, c.external AS external,
+       c.at_boundary AS at_boundary, c.ambiguous AS ambiguous
+FROM calls c
+WHERE c.file = :file
+ORDER BY c.line
+"""
+
+CODE_BOUNDARIES = """
+SELECT b.line AS line, b.kind AS kind, b.direction AS direction,
+       b.target AS target, b.evidence AS evidence
+FROM boundaries b
+WHERE b.file = :file
+ORDER BY b.line
+"""
+
+CODE_SQL_OPS = """
+SELECT o.line AS line, o.operation AS operation, o.direction AS direction,
+       COALESCE(o.tbl, '') AS tbl
+FROM sql_ops o
+WHERE o.file = :file
+ORDER BY o.line
+"""
+
+CODE_CONSTANTS = """
+SELECT k.line AS line, k.name AS name, k.module AS module,
+       COALESCE(k.type, '') AS type, k.is_final AS is_final
+FROM constants k
+WHERE k.file = :file
+ORDER BY k.line
+"""
+
+CODE_IMPORTS = """
+SELECT i.line AS line, i.module AS module, i.name AS name,
+       COALESCE(i.alias, '') AS alias, i.is_from AS is_from
+FROM imports i
+WHERE i.file = :file
+ORDER BY i.line
+"""
+
+CODE_ARTEFACTS = """
+SELECT a.line AS line, a.name AS name, a.ext AS ext, a.kind AS kind,
+       a.is_pattern AS is_pattern
+FROM artefacts a
+WHERE a.file = :file
+ORDER BY a.line
+"""
+
+CODE_NET_CALLS = """
+SELECT n.line AS line, n.protocol AS protocol, COALESCE(n.verb, '') AS verb,
+       COALESCE(n.destination, '') AS destination,
+       COALESCE(n.timeout, '') AS timeout, COALESCE(n.retries, '') AS retries
+FROM net_calls n
+WHERE n.file = :file
+ORDER BY n.line
+"""
+
+CODE_DB_TABLES = """
+SELECT t.line AS line, t.name AS name, t.temporary AS temporary
+FROM db_tables t
+WHERE t.file = :file
+ORDER BY t.line
+"""
+
+# Reached through the owner for the same reason the per-file counts are: an annotation
+# hangs off a routine or a structure, and a file whose ids all sit on class bodies would
+# show none of them if only one side were asked.
+# A call that left this program, pinned by an import rather than guessed.
+#
+# `calls.external` is set for three genuinely different things and only one of them earns a
+# mark in the gutter. **Builtins**: 11,256 of Mensores' 23,829, and `len(x)` is internal
+# computation, which CLAUDE.md says in as many words is not the subject. **Boundary
+# touches**: 3,943, every one of which already has a boundary or a `sql_ops` row on the same
+# line, so marking them here is rule 40 for the third time. What is left is a call into
+# somebody else's code, and that is worth saying.
+#
+# The first segment must be a name this file imported. Without that test `out.append`,
+# `payload.get` and `super.__init__` read as library calls -- they are methods on local
+# variables, and telling them apart from `json.loads` by shape alone is impossible. Rule 5:
+# match on something pinned, never on a bare name. It takes 8,630 down to 3,086, and every
+# one of the 5,544 dropped is a method on something local.
+CODE_LIBRARY_CALLS = """
+SELECT c.line AS line, c.callee_expr AS expr,
+       substr(c.callee_expr, 1, instr(c.callee_expr, '.') - 1) AS via
+FROM calls c
+WHERE c.file = :file
+  AND c.external = 1
+  AND c.at_boundary = 0
+  AND c.callee_expr LIKE '%.%'
+  AND EXISTS (SELECT 1 FROM imports i
+              WHERE i.file = c.file
+                AND i.alias = substr(c.callee_expr, 1, instr(c.callee_expr, '.') - 1))
+ORDER BY c.line
+"""
+
+CODE_ANNOTATIONS = """
+SELECT line, kind, value FROM (
+  SELECT a.line AS line, a.kind AS kind, a.value AS value
+    FROM annotations a JOIN routines r ON r.id = a.owner_id
+   WHERE a.owner_kind = 'routine' AND r.file = :file
+  UNION
+  SELECT a.line, a.kind, a.value
+    FROM annotations a JOIN structures s ON s.id = a.owner_id
+   WHERE a.owner_kind = 'structure' AND s.file = :file
+)
+ORDER BY line
+"""

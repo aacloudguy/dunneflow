@@ -99,6 +99,12 @@ CREATE TABLE IF NOT EXISTS paths (
 );
 CREATE INDEX IF NOT EXISTS ix_paths_hash ON paths(hash);
 
+-- Covering, and that is the whole point of it. `lines` sits in a row that also holds a
+-- compressed body, so reading it off the table drags several kilobytes of blob through the
+-- page cache per file -- 1,370 ms cold on 626 files, to learn something already written
+-- down. With hash and lines in the index the body is never touched.
+CREATE INDEX IF NOT EXISTS ix_blobs_lines ON blobs(hash, lines);
+
 -- One row per snapshot. Additive: an older sidecar gains this table and loses nothing.
 --
 -- Two columns that look like one. `revision` is the identity and is always known -- the
@@ -291,8 +297,13 @@ class SourceStore:
             return None
         return None if row is None else str(row["revision"])
 
-    def _resolve(self, revision: str | None) -> str:
-        """Reading: `None` means the current revision; anything else is taken at its word."""
+    def resolve_revision(self, revision: str | None) -> str:
+        """Reading: `None` means the current revision; anything else is taken at its word.
+
+        Public because callers outside this module legitimately need to name the revision
+        they are reading -- the code browser lists what the current one holds. A private
+        resolver reached from another file is a boundary that exists only in its name.
+        """
         if revision is not None:
             return revision
         current = self.current_revision()
@@ -487,7 +498,7 @@ class SourceStore:
         row = self.conn.execute(
             "SELECT b.body FROM paths p JOIN blobs b ON b.hash = p.hash "
             "WHERE p.revision = ? AND p.path = ?",
-            (self._resolve(revision), path),
+            (self.resolve_revision(revision), path),
         ).fetchone()
         if row is None:
             return None
@@ -509,6 +520,21 @@ class SourceStore:
         hi = min(len(rows), max(lo, last))
         return [(i, rows[i - 1]) for i in range(lo, hi + 1)]
 
+    def held_paths(self) -> dict[str, int]:
+        """Every path this revision holds, with how many lines its body has.
+
+        One query rather than a path list and then a `text()` per file: the line count is
+        already recorded on the blob, and decompressing 626 bodies to count newlines in
+        them would be seven megabytes of work to learn something the store wrote down.
+        """
+        return {
+            str(r["path"]): int(r["lines"]) for r in self.conn.execute(
+                "SELECT p.path AS path, b.lines AS lines FROM paths p "
+                "JOIN blobs b ON b.hash = p.hash WHERE p.revision = ?",
+                (self.resolve_revision(None),),
+            )
+        }
+
     def counts(self) -> dict[str, int]:
         """What this sidecar holds, for the line `analyze` prints."""
         blobs, raw = self.conn.execute(
@@ -522,7 +548,7 @@ class SourceStore:
         # "how many path-revision rows are stored" are different numbers, and the line
         # `analyze` prints wants the first. Rule 32: a count must say what it counts.
         paths = self.conn.execute(
-            "SELECT COUNT(*) FROM paths WHERE revision = ?", (self._resolve(None),)
+            "SELECT COUNT(*) FROM paths WHERE revision = ?", (self.resolve_revision(None),)
         ).fetchone()[0]
         mapped = self.conn.execute("SELECT COUNT(*) FROM paths").fetchone()[0]
         revs = self.conn.execute("SELECT COUNT(*) FROM revisions").fetchone()[0]
@@ -570,6 +596,12 @@ def capture(store_hashes: dict[str, str], source: SourceStore, *,
         stats["stored"] += 1
     source.prune_missing(list(store_hashes), revision=revision)
     source.commit()
+    # Statistics, or `ix_blobs_lines` is never chosen and the file list reads a compressed
+    # body per file to learn a line count that is already indexed beside it. An index
+    # SQLite has no reason to prefer is an index that does nothing -- which looks exactly
+    # like an index that works. `store.py` warms the graph for the same reason.
+    source.conn.execute("ANALYZE")
+    source.commit()
     return stats
 
 
@@ -578,6 +610,6 @@ def iter_paths(source: SourceStore, *,
     """Every path this sidecar can serve, in order."""
     for row in source.conn.execute(
         "SELECT path FROM paths WHERE revision = ? ORDER BY path",
-        (source._resolve(revision),),
+        (source.resolve_revision(revision),),
     ):
         yield str(row["path"])

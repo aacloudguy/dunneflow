@@ -78,6 +78,21 @@ const DEFAULTS = {
    * rim is the width of a plate away from it. `node` stands the arrow directly over the
    * node: exact at any zoom, and at full node size swallowed by its own neighbours. */
   pointerPlace: 'rim',    // 'rim' | 'node'
+  /* A ring with four ticks around every node the reader picked.
+   *
+   * Rule 19 dims the rest of the program rather than hiding it, and that is right: a subset
+   * is only legible inside the shape it belongs to. But dimming answers "what is not mine"
+   * and leaves *which one is mine* to be read off a colour difference among nine thousand
+   * dots, with a dimmed node in front of or behind the lit one looking much the same. */
+  reticuleShown: true,
+  /* Whether the dimmed nine thousand answer a hover or a click.
+   *
+   * Locked, they do not: only the picks and the one hop drawn around them. Exploring wants
+   * the opposite -- point at anything, learn what it is -- so this is a switch and it sits
+   * on the HUD rather than in here, because it is a mode a reader flips while reading and
+   * not a preference they set once. With nothing selected everything answers, or the lock
+   * would be a mode nobody could click their way out of. */
+  focusLocked: true,
   edgesInMotion: true,    // links stay up while the camera turns -- see graph.js
   graphLayout: 'stack',   // 'stack' | 'packages' -- both built, use retires the loser
   graphTheme: 'follow',   // 'follow' | 'dark' -- design rule 2; see the Settings page
@@ -236,6 +251,7 @@ function resetSettings(program, current) {
     showPlates: 'the plates themselves', edgesInMotion: 'edges while moving',
     pointerShown: 'the you-are-here pointer', pointerColor: 'the pointer colour',
     pointerPlace: 'where the pointer stands',
+    reticuleShown: 'the focus reticule', focusLocked: 'focus locked to the selection',
     mode: 'centre view', panels: 'panel layout',
     inspectorAuto: 'auto-collapse the inspector', navWidth: 'navigator width',
     navGroups: 'how many navigator groups open at once', navOpen: 'which groups are open',

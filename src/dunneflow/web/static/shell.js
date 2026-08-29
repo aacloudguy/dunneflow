@@ -140,6 +140,8 @@ const state = {
   pointerShown: true,     // the "you are here" arrow over each picked node
   pointerColor: "",       // "" = the token; anything else is the reader's, clamped
   pointerPlace: "rim",    // "rim" | "node" -- at the side of the stack, or over it
+  reticuleShown: true,    // a ring and four ticks around what was picked
+  focusLocked: true,      // only the lit set answers a hover or a click
   navGroups: "one",       // "one" | "many" -- an accordion, or every group at once
   navCap: 200,            // routines listed per package; 0 is all of them
   navOpen: {},            // group id -> open; empty means "each group's own default"
@@ -1277,11 +1279,23 @@ function viewSettings() {
               fit frames the selection and the rim is a plate's width away from it.
               <b>Over the node</b> is exact at any zoom, and at full node size it can be
               swallowed by the neighbours it stands among. Genuinely arguable, so both exist
-              and the usage counter decides.</div></div>
+              and the usage counter decides.<br><br>
+              The <b>reticule</b> is a ring with four ticks around each node you picked, the
+              same size at every zoom. Dimming the other nine thousand says what is
+              <i>not</i> yours; it does not say which of the lit dots is the one you meant,
+              and a dimmed node in front of or behind it looks much the same. The reticule
+              says it outright. <b>Focus</b> — the button on the graph itself — goes further:
+              with it on, only the lit set answers a hover or a click, so pointing at the fog
+              cannot tell you about a routine you did not mean to ask about.</div></div>
           <div>
             <div class="seg" role="group" aria-label="You are here">
               <button data-pointershown="1" aria-pressed="${state.pointerShown}">Shown</button>
               <button data-pointershown="0" aria-pressed="${!state.pointerShown}">Off</button>
+            </div>
+            <div class="seg" role="group" aria-label="The focus reticule"
+                 style="margin-top:.3rem">
+              <button data-reticule="1" aria-pressed="${state.reticuleShown}">Reticule</button>
+              <button data-reticule="0" aria-pressed="${!state.reticuleShown}">No reticule</button>
             </div>
             <div class="seg" role="group" aria-label="Where the pointer stands"
                  style="margin-top:.3rem">
@@ -2980,6 +2994,13 @@ function wire() {
     if (Graph.mounted()) Graph.setOptions({ pointerColor: pointerRgb() });
     persist();
   });
+  $$("[data-reticule]").forEach(b => b.addEventListener("click", () => {
+    state.reticuleShown = b.dataset.reticule === "1";
+    used("reticule:" + (state.reticuleShown ? "shown" : "off"));
+    if (Graph.mounted()) Graph.setOptions({ reticuleShown: state.reticuleShown });
+    persist();
+    render();
+  }));
   $$("[data-pointerplace]").forEach(b => b.addEventListener("click", () => {
     state.pointerPlace = b.dataset.pointerplace;
     used("pointerplace:" + state.pointerPlace);
@@ -3311,7 +3332,7 @@ const WIRED_ATTRS = new Set([
   "aiop", "airun", "bound", "cite", "citeidx", "closeviewer", "col", "crumb", "curi",
   "cursor", "den", "disk", "drop", "edgesmotion", "egress", "ep", "fold", "gact", "gosev",
   "goto", "graphtheme", "insp", "jump", "layout", "legend", "manifest", "menuorder",
-  "mode", "nav", "nav2", "navcap", "navgroups", "pkgopen", "pointerplace", "pointerreset", "pointershown",
+  "mode", "nav", "nav2", "navcap", "navgroups", "pkgopen", "pointerplace", "pointerreset", "pointershown", "reticule",
   "navid", "node", "open", "pane", "pin", "pinnote", "pkgnode", "pkgpick", "resize", "row",
   "scale-set", "sec", "sev", "sevnav", "sort", "sqlshow", "start", "step", "theme",
   "term", "termuse", "theme-set", "thread", "threadlabel", "threadsall", "threadwhy",
@@ -3943,7 +3964,7 @@ const PERSISTED = [
   "diskOrder", "diskColors", "colorBy", "sortMode", "filterMode", "direction",
   "nodeSize", "spreadX", "spreadY", "spreadZ", "collapseUnused",
   "panels", "inspectorAuto", "navWidth", "navGroups", "navOpen", "navCap",
-  "showPlates", "picks", "graphTheme", "edgesInMotion", "pointerShown", "pointerColor", "pointerPlace",
+  "showPlates", "picks", "graphTheme", "edgesInMotion", "pointerShown", "pointerColor", "pointerPlace", "reticuleShown", "focusLocked",
 ];
 
 let settings = null;      // the loaded blob; `state` is the live copy
@@ -4155,7 +4176,8 @@ async function ensureGraph() {
     collapseUnused: state.collapseUnused, showPlates: state.showPlates, scale: state.scale,
     edgesInMotion: state.edgesInMotion, picks: state.picks,
     pointerShown: state.pointerShown, pointerColor: pointerRgb(),
-    pointerPlace: state.pointerPlace,
+    pointerPlace: state.pointerPlace, reticuleShown: state.reticuleShown,
+    focusLocked: state.focusLocked,
   });
   /* Read back the order the engine resolved. A saved order from a graph that has since
    * changed is discarded there, and the shell must not go on persisting the stale one --
@@ -4668,6 +4690,10 @@ function countLine(c) {
      * ninety-nine routines and only two dozen get an arrow, and two dozen arrows over a
      * selection of ninety-nine looks exactly like a selection of two dozen. Silent only
      * when nothing was left out, because "24 of 24 pointers" is noise. */
+    /* Not a filter on the picture -- nothing is removed, so there is no count to state --
+     * but a reader whose hover has stopped answering over most of the screen is owed the
+     * reason, and the reason is a mode they turned on. */
+    (c.focusLocked ? ` · <span class="muted">focus: only what is lit answers</span>` : "") +
     (c.pointersWanted > c.pointers
       ? ` · <b class="num">${c.pointers}</b> of <b class="num">${c.pointersWanted}</b> pointers`
       : "") +
@@ -4788,6 +4814,15 @@ function renderGraphFurniture() {
                     ? "Back to the view you found this in"
                     : "Nothing is selected, so there is no view to go back to"}"
                   >\u2316 you are here</button>
+          <!-- A mode, not a preference: it is flipped while reading, so it lives where the
+               reading happens. Pressed state on the button *is* the statement design rule 1
+               wants -- nothing is removed from the picture, but a hover that has gone quiet
+               over most of the screen is owed its reason. -->
+          <button class="gbtn" data-gact="focus" aria-pressed="${!!state.focusLocked}"
+                  title="${state.focusLocked
+                    ? "Only what is lit answers a hover or a click. Click to let the whole program answer again."
+                    : "Every node answers a hover or a click. Click to limit it to what is lit."}"
+                  >\u25ce focus</button>
           <button class="gbtn" data-gact="fit">snap to fit</button>
           <button class="gbtn" data-gact="top">top-down</button>
           <button class="gbtn" data-gact="tilt">tilt</button>
@@ -5000,6 +5035,15 @@ const GRAPH_ACTIONS = {
    * Silent about failure on purpose is exactly what this must not be, so it is disabled
    * rather than inert when there is no anchor -- and if it is somehow pressed anyway, it
    * says so where the reader is looking rather than in a console they do not have open. */
+  /* Locked, only the lit set answers. It is the difference between reading and browsing,
+   * and both are real, so it is a switch rather than a decision (design rule 2). */
+  focus: () => {
+    state.focusLocked = !state.focusLocked;
+    used("focus:" + (state.focusLocked ? "locked" : "open"));
+    Graph.setOptions({ focusLocked: state.focusLocked });
+    persist();
+    renderGraphFurniture();
+  },
   here: () => {
     if (Graph.toAnchor()) return;
     const out = $("#gbench");

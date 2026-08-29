@@ -764,6 +764,33 @@ rule of that number — a blank canvas must say why it is blank — which does e
 
     Found by looking at the pane, not by any of the six guards written that hour.
 
+47. **Dimming says what is not yours; it does not say which one is.** Design rule 19 dims
+    the other nine thousand rather than hiding them, and that is right -- a subset is only
+    legible inside the shape it belongs to. But a reader looking for *one* routine among
+    9,874 dots then has to read their answer off a colour difference, with a dimmed node in
+    front of or behind the lit one looking much the same at two pixels across. Worse, the
+    picture answers questions about whichever dot the cursor lands on: hovering a neighbour
+    by a pixel produces a confident card about a routine nobody asked about, and it is
+    indistinguishable from a card about the one they did.
+
+    So identification is its own channel -- a reticule on what was picked, fixed in screen
+    size because a mark that shrinks with the picture stops working exactly when the picture
+    gets crowded -- and *what may answer* is separated from *what is drawn*. Locked, only
+    the lit set replies to a hover or a click; the fog stays on screen, because rule 19's
+    reason for drawing it has not changed. **The moment that separation collapses the
+    feature is a filter on the picture**, and then rule 19 forbids it and design rule 1
+    wants a count for it. Exploring wants the opposite of all this, so it is a switch and it
+    sits where the reading happens rather than in Settings.
+
+    Its companion, and the sharper lesson: **two pickable layers reporting through one
+    handler is an index that means two things.** `info.index` from the pointer layer is an
+    index into two dozen arrows; read as a node index it selects a different routine,
+    plausibly and in silence. Route by layer, which is design rule 16 one level below where
+    it is usually applied -- and note that the arrow's click had to *set* the selection
+    rather than toggle it, because the node an arrow stands over is already picked and
+    `replace` on a single pick is the deliberate toggle-off (rule 33). The one control whose
+    entire purpose is *go there* would have cleared the selection instead.
+
 ## Anomalies: the discipline
 
 `anomalies.py` reports what looks wrong. It exists under one rule:

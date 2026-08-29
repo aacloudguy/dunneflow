@@ -1665,8 +1665,9 @@ def test_the_pointer_is_a_billboard_like_everything_else_in_the_stack() -> None:
     assert "billboard: true" in layer, (
         "the pointer is not billboarded, so tilting the stack lays it down on a plate"
     )
-    assert "pickable: false" in layer, (
-        "the arrow is pickable, so clicking it means something the reader was not told"
+    assert "pickable: true" in layer, (
+        "the arrow is inert -- an arrow that says `it is over there` and cannot take you "
+        "there is half a control"
     )
     assert "opts.scale" in layer, (
         "the pointer is outside the scale multiplier -- design rule 3 says one slider "
@@ -1941,3 +1942,125 @@ def test_where_the_pointer_stands_is_a_pair_and_both_are_read() -> None:
         "the Setting does not say that the rim pointer leaves the frame when fit runs, "
         "which is design rule 1 about the reader's own control"
     )
+
+
+# ----------------------------------------------------------------------- focus --- #
+#
+# From Tom, with two screenshots: "Is that the right node? There are so many, and if I
+# hover over the wrong one, I get the wrong information." Dimming answers what is *not*
+# yours; it does not say which of the lit dots is the one you meant, and a dimmed node in
+# front of or behind it looks much the same.
+
+
+def test_clicking_the_arrow_goes_to_what_it_points_at() -> None:
+    """An arrow that says "it is over there" and cannot take you there is half a control.
+
+    Two things had to be right and both fail silently. The click must route by **layer**:
+    two pickable layers report through one handler now, and an `info.index` from the pointer
+    layer is an index into two dozen arrows — read as a node index it selects a different
+    routine, plausibly and without complaint. And it must *set* the selection rather than
+    toggle it: the node an arrow stands over is by definition already picked, and `replace`
+    on an already-single pick is the deliberate toggle-off (rule 33), so the one control
+    whose entire purpose is `go there` would have cleared the selection instead.
+    """
+    engine = _read("graph.js")
+    click = engine.split("onClick: (info, event) => {", 1)[1].split("\n    },", 1)[0]
+    assert "startsWith('pointers-')" in click, (
+        "the click does not route by layer, so an arrow's index is read as a node's"
+    )
+    assert "g.picks = [{ kind: 'node', index: node.index }]" in click, (
+        "the arrow toggles rather than selects -- on the single pick it points at, that is "
+        "the toggle-off, so `go there` clears the selection (rule 33)"
+    )
+    assert "fitView(g.prepared)" in click, "the arrow selects without framing what it found"
+    layer = engine.split("new IconLayer({", 1)[1].split("}));", 1)[0]
+    assert "pickable: true" in layer, "the arrow cannot be clicked at all"
+
+
+def test_the_arrow_reports_the_node_it_points_at() -> None:
+    """It stands a plate's width from its subject. A card naming that subject is how the
+    reader learns the two are connected — and what the click will do."""
+    hover = _read("graph.js").split("onHover: (info) => {", 1)[1].split("\n    },", 1)[0]
+    assert "startsWith('pointers-')" in hover and "i = info.object.index" in hover, (
+        "hovering the arrow reports whichever node shares its index, which is a different "
+        "routine and a confident one"
+    )
+
+
+def test_focus_lets_only_the_lit_answer_and_removes_nothing() -> None:
+    """The half that is easy to get wrong is the *second* one.
+
+    Rule 19 keeps the other nine thousand on screen deliberately: a subset is only legible
+    inside the shape it belongs to. Focus is about what answers a question, not about what
+    is drawn — the moment it became a draw filter it would be hiding context rule 19 refused
+    to hide, and design rule 1 would demand a count for it.
+    """
+    engine = _read("graph.js")
+    body = _fn(engine, "focusable")
+    assert "!g.members.size) return true" in body, (
+        "with nothing selected the lock locks everything, which is a mode nobody can click "
+        "their way out of"
+    )
+    assert "g.members.has(realIndex(d, i))" in body, (
+        "the lock tests the raw index, so a shadow of a lit node is treated as fog "
+        "(rules 23 and 31)"
+    )
+    click = engine.split("onClick: (info, event) => {", 1)[1].split("\n    },", 1)[0]
+    hover = engine.split("onHover: (info) => {", 1)[1].split("\n    },", 1)[0]
+    assert "focusable(g.prepared" in click, "focus does not stop a click into the fog"
+    assert "focusable(g.prepared" in hover, "focus does not stop a card about the fog"
+    # And it must not reach the drawing.
+    for fn in ("buildLayers", "paintNodes", "recomputeMembers", "buildSelectionGeometry"):
+        assert "focusable(" not in _fn(engine, fn), (
+            f"{fn} consults focus, so the lock has become a filter on the picture -- rule 19 "
+            "keeps the rest of the program drawn, and design rule 1 would want a count"
+        )
+
+
+def test_the_reticule_is_a_fixed_size_billboard_drawn_last() -> None:
+    """Its job is identification, so it is the same size at every zoom — a mark that shrank
+    with the picture would stop working exactly when the picture got crowded — and it is
+    drawn over everything, because a ring buried behind the mass it is identifying inside
+    would be pointing at nothing."""
+    engine = _read("graph.js")
+    ret = engine.split("if (opts.reticuleShown) {", 1)[1].split("\n  }", 1)[0]
+    # The *whole* expression, not a substring of it. Written as a containment check this
+    # passed against its own defect: `RETICULE_SIZE * opts.scale * opts.nodeSize` contains
+    # the string it was looking for. Rule 37, for the third time this session.
+    assert re.search(r"getSize: RETICULE_SIZE \* opts\.scale,", ret), (
+        "the reticule is not sized by the scale multiplier alone -- tied to the node size "
+        "it shrinks to nothing at dot sizes, which is where it is needed most"
+    )
+    assert "billboard: true" in ret and "pickable: false" in ret, (
+        "the reticule is not a screen-facing mark, or it steals clicks from its own node"
+    )
+    assert "getPosition: (o) => o.at" in ret, (
+        "the reticule stands where the *arrow* stands rather than on the node, which at the "
+        "rim placement is a plate's width from the thing it is meant to identify"
+    )
+    assert engine.index("id: `nodes${shadingId}`") < engine.index("id: `reticules-"), (
+        "the reticule is built before the nodes, so it draws underneath them"
+    )
+    icon = _fn(engine, "reticuleIcon")
+    assert re.search(r"const probe = x\.getImageData\(.*\)\.data;", icon), (
+        "nothing checks the reticule texture has any pixels in it"
+    )
+
+
+def test_the_focus_lock_says_it_is_on() -> None:
+    """Nothing is removed from the picture, so there is no count to state — but a reader
+    whose hover has gone quiet over most of the screen is owed the reason, and the reason is
+    a mode they turned on. Design rule 1 in the only form that fits."""
+    js, engine = _read("shell.js"), _read("graph.js")
+    assert "c.focusLocked ?" in _fn(js, "countLine"), (
+        "the counts line never says the fog has stopped answering"
+    )
+    assert "focusLocked: opts.focusLocked && g.members.size > 0" in _fn(engine, "announceCounts"), (
+        "the engine reports the lock as on when it is locking nothing, so the line claims a "
+        "restriction that is not happening"
+    )
+    assert 'data-gact="focus"' in js and 'aria-pressed="${!!state.focusLocked}"' in js, (
+        "the toggle does not carry its own state, so the reader cannot see which mode they "
+        "are in"
+    )
+    assert 'used("focus:' in js, "the pair is not counted, so neither half can be retired"

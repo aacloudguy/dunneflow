@@ -181,6 +181,9 @@ const opts = {
   /* Where the arrow stands. `rim` is at the side of the stack on the node's own bearing,
    * `node` is directly over it. Design rule 2: both are good and usage decides. */
   pointerPlace: 'rim',
+  /* The reticule, and the focus it names. See `focusable()`. */
+  reticuleShown: true,
+  focusLocked: true,
   /* Keeping the links up while the camera turns is what makes a rotation *say* something:
    * relationships are what the stack is for, and stripping them the moment anyone moves
    * hides the thing they are moving to see. It was only ever a performance measure, and on
@@ -552,6 +555,27 @@ function recomputeMembers(d) {
 }
 
 function pickKey(p) { return p.kind === 'disk' ? `d:${p.id}` : `n:${p.index}`; }
+
+/* May this node be hovered or clicked?
+ *
+ * With focus locked, only the lit set answers -- the picks and the one hop rule 19 draws
+ * around them. The dimmed nine thousand are *context*: rule 19 keeps them on screen so a
+ * subset stays legible inside the shape it belongs to, and that is a reason to draw them,
+ * not a reason to let them answer questions. A card about a routine the reader did not
+ * mean to point at is worse than no card, because it is indistinguishable from one about
+ * the routine they did.
+ *
+ * With nothing selected, everything is focusable. That is not an exception to the rule but
+ * the rule read honestly: the lit set is the whole program until someone lights part of
+ * it, and a lock that made an empty selection uninteractable would be a mode nobody could
+ * get out of by clicking.
+ *
+ * Not a filter on what is *drawn* -- design rule 1 would demand a count for that, and
+ * removing the context is precisely what rule 19 refused to do. */
+function focusable(d, i) {
+  if (!opts.focusLocked || !g.members.size) return true;
+  return g.members.has(realIndex(d, i));
+}
 
 function togglePick(pick, mode = 'replace') {
   const d = g.prepared;
@@ -941,13 +965,40 @@ function buildLayers(d) {
          * gap is world-space distance already and a pixel nudge there would fight the
          * geometry rather than help it. */
         getPixelOffset: (o) => (o.pos === o.at ? [0, -Math.round(4 * opts.scale)] : [0, 0]),
-        billboard: true, pickable: false,
+        billboard: true,
+        /* Clickable, because an arrow that says "it is over there" and cannot take you
+         * there is half a control. The click routes by *layer*, in `onClick` below: an
+         * `info.index` from this layer is an index into two dozen pointers and would
+         * otherwise be read as a node index -- which is a different node, silently. */
+        pickable: true,
         /* Every frame of an orbit changes where these point, so the accessors have to be
          * re-read. The data array is rebuilt per draw anyway -- two dozen items -- and
          * without this deck would keep the first frame's angles and the arrows would swing
          * with the stack instead of staying aimed at it. */
         updateTriggers: { getAngle: pts.map(o => o.angle).join(','),
                           getPosition: opts.pointerPlace },
+      }));
+    }
+  }
+
+  /* The reticule, over everything including the pointers.
+   *
+   * Rule 19 dims the rest of the program rather than hiding it, which is right -- a subset
+   * is only legible inside the shape it belongs to. But dimming answers "what is not mine"
+   * and leaves "*which* one is mine" to be inferred from a colour difference among nine
+   * thousand dots, with a dimmed node in front of or behind the lit one looking much the
+   * same. This says it outright. */
+  if (opts.reticuleShown) {
+    const marks = pointerData(d);
+    if (marks.length) {
+      const icon = reticuleIcon(opts.pointerColor || PALETTE.pointer);
+      layers.push(new IconLayer({
+        id: `reticules-${icon.id}`, coordinateSystem: CARTESIAN, data: marks,
+        getPosition: (o) => o.at, getIcon: () => icon,
+        // Fixed on screen, not scaled by node size: it identifies rather than decorates,
+        // and it is needed most at dot sizes where the nodes are two pixels across.
+        getSize: RETICULE_SIZE * opts.scale, sizeUnits: 'pixels',
+        billboard: true, pickable: false,
       }));
     }
   }
@@ -1000,7 +1051,18 @@ const POINTER_SIZE = 26;            // pixels at scale 1; design rule 3 multipli
  * out is stated (design rule 1) -- `announceCounts` carries the number. */
 const POINTER_CAP = 24;
 
+/* The reticule: a ring with four ticks, standing on the node the reader is actually
+ * researching. Same size at every zoom, because its job is *identification* and a mark that
+ * shrinks with the picture stops doing it exactly when the picture gets crowded.
+ *
+ * Transparent in the middle, so it frames the node rather than replacing it -- the reader
+ * has to be able to see the thing they are being pointed at, including its colour and its
+ * size relative to its neighbours. */
+const RETICULE_PX = 96;
+const RETICULE_SIZE = 34;
+
 const pointerCache = new Map();
+const reticuleCache = new Map();
 
 function shade(rgb, f) {
   return rgb.map((c) => Math.max(0, Math.min(255, Math.round(f > 0
@@ -1070,6 +1132,49 @@ function pointerIcon(rgb) {
   return icon;
 }
 
+function reticuleIcon(rgb) {
+  const key = rgb.join(',');
+  const hit = reticuleCache.get(key);
+  if (hit) return hit;
+
+  const c = document.createElement('canvas');
+  c.width = RETICULE_PX; c.height = RETICULE_PX;
+  const x = c.getContext('2d');
+  const m = RETICULE_PX / 2, r = RETICULE_PX * 0.33;
+  const stroke = `rgb(${rgb.join(',')})`;
+
+  /* A dark halo under every stroke. The ground is the reader's -- pale or near-black -- and
+   * a ring that relies on its own colour for contrast is legible against one of them.
+   * Same reasoning as the arrow's outline, and the same two grounds. */
+  const ring = (w, colour) => {
+    x.beginPath(); x.arc(m, m, r, 0, Math.PI * 2);
+    x.lineWidth = w; x.strokeStyle = colour; x.stroke();
+  };
+  const ticks = (w, colour, from, to) => {
+    x.lineWidth = w; x.strokeStyle = colour; x.lineCap = 'butt';
+    for (let k = 0; k < 4; k++) {
+      const t = (k * Math.PI) / 2;
+      x.beginPath();
+      x.moveTo(m + Math.cos(t) * from, m + Math.sin(t) * from);
+      x.lineTo(m + Math.cos(t) * to, m + Math.sin(t) * to);
+      x.stroke();
+    }
+  };
+  ring(7, 'rgba(0,0,0,0.5)');
+  ticks(7, 'rgba(0,0,0,0.5)', r * 1.12, r * 1.75);
+  ring(3.5, stroke);
+  ticks(3.5, stroke, r * 1.12, r * 1.75);
+
+  const probe = x.getImageData(Math.round(m + r), Math.round(m), 1, 1).data;
+  const blank = probe[3] === 0;
+  if (blank) console.error("DunneFlow: the focus reticule drew an empty texture");
+
+  const icon = { url: c.toDataURL(), width: RETICULE_PX, height: RETICULE_PX,
+                 anchorX: m, anchorY: m, mask: false, id: `reticule-${key}`, blank };
+  reticuleCache.set(key, icon);
+  return icon;
+}
+
 /* Where the pointers stand: the nodes the reader *picked*, never the one-hop neighbours
  * those pulled in. The neighbours are the answer; the picks are the question, and an arrow
  * over everything would point at the haystack again.
@@ -1096,7 +1201,10 @@ function pointerData(d) {
     const i = realIndex(d, p.index);     // a shadow is never an endpoint (rules 23, 31)
     if (i < 0 || i >= d.n) continue;
     const at = [d.positions[i * 3], d.positions[i * 3 + 1], d.positions[i * 3 + 2]];
-    out.push({ at, pos: opts.pointerPlace === 'node' ? at : rimPoint(d, i, at) });
+    /* `index` is the whole reason the arrow can be clicked. Rule 30: a control that
+     * renders and carries no identity is a control that resolves to nothing, and an arrow
+     * knowing only where it stands could take the reader nowhere. */
+    out.push({ index: i, at, pos: opts.pointerPlace === 'node' ? at : rimPoint(d, i, at) });
   }
   return out;
 }
@@ -1219,6 +1327,11 @@ function announceCounts() {
      * rather than guessing, because "no anchor" and "the anchor is where you already are"
      * are different states and only the engine can tell them apart. */
     anchored: !!g.anchor,
+    /* Whether the fog is answering. Design rule 1 in the only form that fits: this removes
+     * nothing from the picture, so there is no count to state -- but a reader whose hover
+     * has gone quiet over most of the screen is owed the reason, and "it is a mode you
+     * turned on" is that reason. */
+    focusLocked: opts.focusLocked && g.members.size > 0,
     moving: g.moving && !g.benching,
     edgesInMotion: opts.edgesInMotion,
     names: g.picks.map((p) => p.kind === 'disk'
@@ -1442,8 +1555,27 @@ function mount(container, raw, options = {}) {
     viewState: g.viewState,
     controller: { inertia: 250 },
     onViewStateChange,
+    /* Routed by *layer*, not by index. Two pickable layers now report through one handler,
+     * and `info.index` from the pointer layer is an index into two dozen arrows -- read as
+     * a node index it would select a different routine, silently and plausibly. Design
+     * rule 16's argument one level down: route from a table, and let an unknown case be
+     * an error rather than a default that looks deliberate. */
     onClick: (info, event) => {
-      if (info.index < 0) return;
+      if (info.index < 0 || !g.prepared) return;
+      if (String(info.layer?.id || '').startsWith('pointers-')) {
+        /* The arrow taking the reader to what it points at: select that node alone, then
+         * frame it. `setSelection` rather than `togglePick`, because the node the arrow
+         * stands over is by definition already picked -- and `replace` on an already-single
+         * pick is the deliberate toggle-off (rule 33), so the one control whose whole
+         * purpose is *go there* would have cleared the selection instead. */
+        const node = info.object;
+        if (!node) return;
+        g.picks = [{ kind: 'node', index: node.index }];
+        afterSelectionChange(g.prepared);
+        onViewStateChange({ viewState: fitView(g.prepared) });
+        return;
+      }
+      if (!focusable(g.prepared, info.index)) return;
       const mode = event?.srcEvent?.altKey ? 'remove'
                  : (event?.srcEvent?.shiftKey || event?.srcEvent?.metaKey) ? 'add'
                  : 'replace';
@@ -1469,8 +1601,21 @@ function mount(container, raw, options = {}) {
      * what a thing is. `shadow` still travels, because the reader is entitled to know they
      * are pointing at a stand-in. */
     onHover: (info) => {
-      const i = info.index;
+      let i = info.index;
       if (i < 0 || !g.prepared) { emit('hover', null); return; }
+      /* Pointing at the arrow says what the arrow points at. It is a control that stands a
+       * long way from its subject, and a card naming that subject is how the reader learns
+       * the two are connected -- as well as what the arrow will do if they click it. */
+      if (String(info.layer?.id || '').startsWith('pointers-')) {
+        if (!info.object) { emit('hover', null); return; }
+        i = info.object.index;
+      } else if (!focusable(g.prepared, i)) {
+        /* The fog answers nothing while focus is locked. Silent rather than a card saying
+         * "not in your selection": the reader's cursor crosses hundreds of these on the way
+         * anywhere, and a message that fires hundreds of times is noise, not information. */
+        emit('hover', null);
+        return;
+      }
       const raw2 = g.data.nodes;
       const real = raw2.shadow[i] ? raw2.real[i] : i;
       emit('hover', {
@@ -1528,8 +1673,9 @@ window.DunneFlowGraph = {
       recomputeMembers(g.prepared);
       buildSelectionGeometry(g.prepared);
     }
-    if (partial.pointerColor !== undefined || partial.pointerShown !== undefined) {
-      announceCounts();       // the readout states how many pointers are drawn
+    if (partial.pointerColor !== undefined || partial.pointerShown !== undefined ||
+        partial.focusLocked !== undefined || partial.reticuleShown !== undefined) {
+      announceCounts();       // the readout states the pointers and whether focus is on
     }
     paintNodes(g.prepared);
     draw();

@@ -1931,10 +1931,46 @@ English word, so DunneFlow could define it in its own glossary the way Mensores 
 already spheres. Not adopted: a reading tool for someone orienting in code they did not
 write should not open by teaching them a word.
 
+**5q. Built 2026-08-29: focus.** Tom, with two screenshots of `assert_manifest_fidelity`
+lit among 9,871 dimmed nodes: *Is that the right node? There are so many, and if I hover
+over the wrong one, I get the wrong information. That's nice for exploring, but not for
+targeted research.*
+
+Three things, and they are one feature.
+
+**The arrow is clickable.** It selects the node it points at and frames it. Two ways to get
+that wrong, both silent: the click must route by **layer**, because `info.index` from the
+pointer layer is an index into two dozen arrows and reads as a different routine entirely;
+and it must *set* the selection rather than toggle it, because the node an arrow stands over
+is already picked and `replace` on a single pick is the deliberate toggle-off (rule 33) --
+the one control whose purpose is *go there* would have cleared the selection. Hovering the
+arrow reports the node it points at, which is how a reader learns the two are connected.
+
+**A reticule** -- a ring with four ticks, fixed in screen size, drawn over everything, on
+each picked node. Dimming answers *what is not mine*; this answers *which one is mine*.
+
+**Focus, a switch on the HUD.** Locked, only the lit set answers a hover or a click. The fog
+stays drawn, because rule 19's reason for drawing it has not changed -- what changed is what
+may answer, and keeping those separate is the whole discipline of it (rule 47). With nothing
+selected everything answers, or the lock would be a mode nobody could click out of. Default
+**on**, which is a judgment: the behaviour it replaces is the one Tom reported as wrong for
+research, and the toggle is one click away with its state on its face.
+
+Consequence worth knowing: clicking the arrow frames the selection, and the rim pointer is a
+plate's width away from it, so the arrow leaves the view on its way to doing its job. The
+reticule is what stays.
+
+Eight guards, each run against its own defect. One passed against its own defect first time
+-- `"RETICULE_SIZE * opts.scale" in ret` is still true of
+`RETICULE_SIZE * opts.scale * opts.nodeSize` -- and is fixed. That is rule 37 for the third
+time in one session, always the same shape: a containment check is not a check.
+
 **Not verified, and it needs a real window**: what the arrow looks like. The automation tab
 draws no frames at all -- canvas 300x150, `frames 0` -- so its shape, size and shading are
-for someone with a real window to judge. Rule 38, and rule 39's lesson: not being able to
-test a change is a reason to describe it, never a reason to ship it and ask.
+for someone with a real window to judge -- and so is deck's *picking*, so the arrow's click
+and the focus lock are reasoned and guarded but not driven. Rule 38, and rule 39's lesson:
+not being able to test a change is a reason to describe it, never a reason to ship it and
+ask.
 
 ### Still open
 

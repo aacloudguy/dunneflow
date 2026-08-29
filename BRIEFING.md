@@ -5,7 +5,7 @@ It exists so a fresh context can be useful in a few minutes instead of an hour.
 
 | Read | For |
 |---|---|
-| `CLAUDE.md` | The rules. 46 engineering rules and 26 dashboard design rules, each earned from a false result on real code. **Binding.** |
+| `CLAUDE.md` | The rules. 47 engineering rules and 26 dashboard design rules, each earned from a false result on real code. **Binding.** |
 | `HANDOFF.md` | The chronological record — what was built when, what it cost, what broke. ~1,700 lines. Read *sections*, not the whole thing. |
 | **this file** | Where things are, what is done, what we are doing now, what not to re-open. |
 | Artifact `f993d319-d2b7-4217-9130-cdbba698d1bc` | The ratified dashboard design — a complete working UI, the source of truth for every view. Read it with the **Artifact tool**, not from a screenshot. |
@@ -245,6 +245,8 @@ Rules 28, 29 and 30.
 | **Plate**, never disk or plane, in every word a reader sees | `HANDOFF.md` 5p; a guard |
 | The you-are-here arrow is a billboard at the plate's rim, aimed by a screen angle | `HANDOFF.md` 5p; rule 22 |
 | The way back restores the view the selection was *found* in, not a computed fit | `HANDOFF.md` 5p |
+| Clicking the arrow selects that node alone and frames it — it **sets**, never toggles | rule 47; rule 33 |
+| Focus separates *what may answer* from *what is drawn*; the fog stays on screen | rule 47; design rule 19 |
 | The navigator is a fixed header over a scrolling body; group headings are sticky | rule 45's session; `HANDOFF.md` 5o |
 | The routine list is grouped by package, and the package is the **plates'** package | `queries.py` `NAV_ROUTINES`; rule 30 |
 | How many routines a package lists is the reader's, `All` included | `HANDOFF.md` 5o |

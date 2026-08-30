@@ -2513,3 +2513,91 @@ their capture time and carry the meaning in their label.
 **Next: the worklist on screen.** The engine is built, guarded and measured; what is
 missing is `/api/changes`, the navigator's Changes group, and the centre view — and the
 pair selector, which now has two real revisions to choose between.
+
+
+**5x. Built 2026-08-29 (fifth session, second half): the change worklist on screen.**
+
+`/api/revisions` lists every point in time the program directory holds — state, capture
+instant, label, and **whether a graph exists to read it with**, because a revision whose
+bodies are held and whose graph was never written cannot be compared and saying so is the
+difference between an empty answer and an honest one. `/api/changes` compares a pair,
+defaulting to the two newest, and names both ends in its answer.
+
+**Rule 58, and it is the session's best find.** The diff attached both graphs with
+`mode=ro`, for the best reason there is: rule 20 says a read may refuse but never repair,
+and one of the two is a snapshot somebody sealed. A read-only connection has no write
+access to the `-shm`, so it cannot join the shared-memory WAL index the dashboard's own
+handle maintains and re-derives it on every query. One `calls` comparison:
+
+| | |
+|---|---|
+| `mode=ro`, dashboard running | **8,855 ms** |
+| `mode=ro`, dashboard stopped | 242 ms |
+| attached onto the connection that already had it | **137 ms** |
+
+Same query, same files, same page cache. The trap is not the number, it is that **every
+timing of this module before that one was taken with the server stopped**, where it is
+242 ms and perfectly healthy. It would have been recorded as fast, shipped, and been 84
+seconds behind the reader's first click. `Store(shared=True)` already existed for exactly
+this. `PRAGMA query_only` buys the guarantee back and buys the slowdown with it, so the
+guarantee is kept rule 25's way instead: a test asserting the module contains no write
+statement, over its **string literals via `ast`** rather than by grep, because the prose
+explaining why there are none contains the word `DROP`.
+
+End to end: 317 ms warm, 13–28 s on the first comparison of a session, 1 ms cached. The
+cold figure is the external volume reading a 31 MB graph the server has never touched —
+13.1 s, 2.5 s, 317 ms across three runs — and is the caveat this file already carries for
+the first search of a session.
+
+**Rule 59, from the harness.** A mutation run scored **7/7** while one guard was already
+failing on an unrelated attribute: the suite was red before any mutation, so every
+mutation "went red" and the single genuine survivor was invisible inside the perfect
+score. The honest number was 6/7. That is rule 43 in the instrument for the fourth time in
+two sessions, and no two of the four look alike — two read pytest's output instead of its
+exit code, one left the mutant running out of `__pycache__` (rule 56), this one measured
+against a red baseline.
+
+**The view.** A `Changes` navigator group — absent entirely from a program with one
+revision, because a group that is always empty is a control that always fails — and a
+centre worklist. Four bands in the order they are worth reading: what arrived, what went,
+what behaves differently, and last and largest, **what was edited without changing
+anything it does**. That band is listed rather than dropped, because leaving it out
+entirely is a silent filter (design rule 1) — and it is last because a routine whose
+internal computation changed is precisely what this tool exists not to report.
+
+Every row carries the node id, so clicking one is the same `selectFromNav` every other row
+makes: the stack lights its hop, the inspector fills, the trail records it and undo takes
+it back, none of which this view had to build (rule 30 from the useful side).
+
+**Three guards widened, each after being wrong first.**
+
+* `_nav_kinds_built()` scanned only inside the `NAV_GROUPS` literal, so rows built by a
+  group's `body:` function — the routine list, the code list — were invisible to it. It
+  had never checked the navigator's most-clicked row kinds and passed the whole time by
+  having nothing to compare. Rule 54 in the guard itself.
+* A new loading-placeholder guard (rule 55's shape: `{loading: true}` that nothing
+  overwrites renders "…" for ever) fired on `SEARCH`, which handles failure perfectly by
+  building the shape into a local and assigning that. It checks for the handler now rather
+  than for the shape of its result — a guard that fires on correct code is one nobody
+  reads (rule 43). Its first version also passed against its own defect, because a greedy
+  `\s*` before a negative lookahead lets the lookahead be tested against a space.
+* A new written-control guard — the build-time counterpart to the runtime self-check,
+  which cannot run in a test — named **four working controls dead**. `codeback`,
+  `codedetach` and `codeopen` are keys of `CODE_ROUTES`, dispatched through a selector
+  built at runtime so the literal never appears; `triaged` is read by the **stylesheet**.
+  Rule 43 repeating exactly. It knows all four ways this codebase reads a control now, and
+  states plainly what it cannot prove: that the read is *reachable*.
+
+It found one real thing: `data-col` on the table header, written, rostered as wired, and
+read by nothing at all. Removed rather than exempted.
+
+**Not seen, and that is the gap.** Every claim above about the worklist is static —
+guards, mutations, and the endpoints driven with `curl`. **Nobody has looked at it.** Rule
+38: the automation tab gets no animation frames, and the three habits this project paid
+for lead with *look, don't only test*. The layout, the band accordion, whether the four
+figures read as figures, and whether a row is reachable by pointer rather than by
+`element.click()` (rule 48) all want a real window.
+
+**Owed, unchanged:** the rendered markdown is not revision-named, so the second analysis
+overwrites the first's map; `--revision` is still unimplemented, so both revisions here are
+stamped with their capture time and carry their meaning in a label.

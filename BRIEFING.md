@@ -5,7 +5,7 @@ It exists so a fresh context can be useful in a few minutes instead of an hour.
 
 | Read | For |
 |---|---|
-| `CLAUDE.md` | The rules. 57 engineering rules and 26 dashboard design rules, each earned from a false result on real code. **Binding.** |
+| `CLAUDE.md` | The rules. 59 engineering rules and 26 dashboard design rules, each earned from a false result on real code. **Binding.** |
 | `HANDOFF.md` | The chronological record — what was built when, what it cost, what broke. ~1,700 lines. Read *sections*, not the whole thing. |
 | **this file** | Where things are, what is done, what we are doing now, what not to re-open. |
 | Artifact `f993d319-d2b7-4217-9130-cdbba698d1bc` | The ratified dashboard design — a complete working UI, the source of truth for every view. Read it with the **Artifact tool**, not from a screenshot. |
@@ -183,8 +183,25 @@ directory for its documents must not admit a copy of the program — 335 phantom
 documents), and the left-associative `EXCEPT`/`UNION ALL` defect that made the diff
 one-sided while nine guards passed over it.
 
-**Next: the worklist on screen** — `/api/changes`, the navigator's Changes group, the
-centre view, and the pair selector.
+**The worklist is on screen — see `HANDOFF.md` 5x.** `/api/revisions` and `/api/changes`
+are served; the navigator has a Changes group (absent from a program with one revision) and
+the centre pane a worklist of four bands, every row carrying the node id so a click is the
+same selection every other row makes.
+
+**Rule 58 is the session's best find.** The diff opened a second read-only handle to a
+graph the dashboard already holds open — 8,855 ms against 137 ms attached onto the
+connection that already had it. Every earlier timing was taken with the server stopped,
+where it is 242 ms and healthy, so it would have shipped as fast and been 84 s behind the
+first click. **Rule 59** came from the harness: a mutation run scored 7/7 over an
+already-red suite; the honest score was 6/7.
+
+**Nobody has looked at the worklist.** Everything above is guards, mutations and `curl`.
+Rule 38 — the automation tab gets no frames — so the layout, the band accordion and
+whether a row is reachable by pointer (rule 48) all want a real window. **That is the
+first thing to do next.**
+
+**Next after that: the pair selector** — two revisions exist and the comparison is
+hard-wired to the newest two.
 
 **Owed from this session:** the rendered markdown is not revision-named, so a second
 analysis overwrites the first's map; `--revision` is still unimplemented; and whether

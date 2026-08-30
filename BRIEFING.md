@@ -5,7 +5,7 @@ It exists so a fresh context can be useful in a few minutes instead of an hour.
 
 | Read | For |
 |---|---|
-| `CLAUDE.md` | The rules. 62 engineering rules and 26 dashboard design rules, each earned from a false result on real code. **Binding.** |
+| `CLAUDE.md` | The rules. 65 engineering rules and 26 dashboard design rules, each earned from a false result on real code. **Binding.** |
 | `HANDOFF.md` | The chronological record — what was built when, what it cost, what broke. ~1,700 lines. Read *sections*, not the whole thing. |
 | **this file** | Where things are, what is done, what we are doing now, what not to re-open. |
 | Artifact `f993d319-d2b7-4217-9130-cdbba698d1bc` | The ratified dashboard design — a complete working UI, the source of truth for every view. Read it with the **Artifact tool**, not from a screenshot. |
@@ -155,6 +155,43 @@ running that program-wide is most of design rule 15's doorway panel. It says hon
 is not computed yet.
 
 ## What we are doing now
+
+**Base and compared — built 2026-08-30.** A comparison is **two directories**, and the tool
+makes no claim about which is older. One is the **base** (what the whole map shows,
+unchanged) and the other is the **compared**; it may be higher, lower, or identical, and
+identical is reported as *no differences found* rather than as four empty bands.
+
+That replaces the ordering question rather than answering it. The store only records when
+*we* read the bytes, so `captured first` was an honest label on a claim the tool should not
+have been making. `changes.py` now reports **`only_in_base` / `only_in_compared`** — named
+for where a thing is, which is a fact — and *added* / *deleted* are an interpretation laid
+over that by the reader's own assumption.
+
+- **`comparedIsNewer`** is a Setting, default true, surfaced **on the strip** rather than
+  buried in Settings. Flipping it costs **zero fetches** — the sets are already held.
+- **A persistent strip** in its own `.app` grid row, on every screen, including a
+  one-version program where it says *"on its own, nothing compared"*. It names both trees,
+  each version with its provenance tier, the assumption in force, and — as a plain
+  observation beside it, never a correction — what capture order we can actually see.
+- **Version detection in tiers**: `pyproject.toml [project] version` → module-scope
+  `__version__` (routing *around* the deliberate dunder filter, not removing it) → a guess
+  off the directory leaf, marked `INFERRED` and rendered faint and italic.
+- **`revisions.tree`** records the **package root's** leaf, and `README.md` now documents
+  what a handed-over program directory contains about your machine.
+
+**On screen today, and it is the assumption working rather than a defect:** with the default
+pairing and default polarity, Mensores' 53 new routines read as *deleted*, while the strip
+says both *"assuming the compared version is the newer one"* and *"captured: compared first"*.
+**A better default is available and is Tom's call** — when both versions carry a version, even
+an inferred one, comparing them is "a more obvious version available" in his own words.
+
+**Next, and the seam this stopped at: switching the base.** Tom chose *rebuild every switch*.
+`serve()` builds the payload, the code list, both vocabulary lanes and the cover from one
+graph at boot and `_Handler` holds that payload from construction, so this is a server
+lifecycle change plus a client progress state. `revB` was never settable from the UI, so it
+is new capability rather than a rewiring.
+
+## What we were doing immediately before
 
 **Paths are stored relative — done 2026-08-30, and it moved the ground under the layer
 work.** Tom's ask, and his three reasons: an absolute path leaks one machine's directory

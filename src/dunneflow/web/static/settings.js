@@ -177,16 +177,29 @@ const DEFAULTS = {
    * keeps all four band headings in reach at once, which is a real preference and not an
    * obviously worse one, so both exist and usage retires the loser (design rule 2). */
   bandScroll: false,
-  /* The two points in time. `revB` is the one being read — the whole map shows it — and
-   * `revA` is the other end of the comparison, "" for none. Empty means "whatever is
-   * being served", which is the only honest default before any revision has been read.
+  /* The two versions. `baseRev` is the one being read — the whole map shows it — and
+   * `comparedRev` is the version it is held against, "" for none. Empty means "whatever
+   * is being served", which is the only honest default before any version has been read.
    *
    * Here as well as in `PERSISTED`, and that pairing is the point: `loadSettings` merges
    * only keys this object declares, so a key saved but not declared here is written on
    * every change and dropped on every load. That is exactly what these two did — the
-   * chosen pair survived a reload in `localStorage` and never once came back. */
-  revB: '',
-  revA: '',
+   * chosen pair survived a reload in `localStorage` and never once came back.
+   *
+   * They were `revB` and `revA` until 2026-08-30. The rename orphans whatever those held
+   * in `localStorage`, which is deliberate and harmless: the value is a revision id, the
+   * merge above simply will not see it, and the pair falls back to the served default. */
+  baseRev: '',
+  comparedRev: '',
+  /* Which of the two versions the reader takes to be the newer one.
+   *
+   * Not something this tool can see. The only instant it records is when the bytes were
+   * read, so "newer" is an assumption, and it decides whether what the base has and the
+   * compared lacks reads as deleted or as added. Default: the compared is newer — the
+   * case the feature exists for, reading a copy somebody handed you and asking what has
+   * happened since. Stated on the strip, because an assumption nobody can see is one
+   * they cannot correct. */
+  comparedIsNewer: true,
   /* How a search decides a match — not what is being looked for, which is a question
    * being asked right now and never an arrangement. `shell.js` has said these are
    * persisted since the day they were written and they were not: listed in `PERSISTED`,
@@ -292,7 +305,8 @@ function resetSettings(program, current) {
     theme: 'theme', scale: 'interface scale', startup: 'startup screen',
     menuOrder: 'menu order', trailShown: 'the trail', trailCap: 'trail length',
     density: 'row density', bandScroll: 'scrolling change bands',
-    revB: 'which point in time is being read', revA: 'what it is compared with',
+    baseRev: 'which version is being read', comparedRev: 'what it is compared with',
+    comparedIsNewer: 'which version is assumed newer',
     searchCase: 'case-sensitive search', searchWord: 'whole-word search',
     searchRegex: 'regular-expression search',
     ambient: 'ambient badges', hideInferred: 'inferred edges',

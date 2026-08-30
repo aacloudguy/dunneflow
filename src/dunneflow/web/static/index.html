@@ -88,6 +88,23 @@
     </div>
   </header>
 
+  <!-- ══════════ THE VERSION STRIP ══════════ -->
+  <!-- Which version is on screen, and what it is being held against. **Always present**,
+       on every screen and whether or not a comparison is running, because the one thing a
+       reader must never have to infer from an absence is whether they are looking at a
+       comparison. With one version it says so in as many words.
+
+       Its own grid row rather than a band inside `.centre`, because it is about the whole
+       screen: the navigator's counts, the inspector's figures and the code browser's lines
+       all belong to the base, and a strip spanning only the middle would be a claim about
+       the middle. Not in the toolbar either -- that is a single-line flex row that does not
+       wrap, and two unbounded selects once made a 1,278px window carry a 2,068px toolbar.
+
+       Filled by `versionStrip()`; empty here so nothing can pin one program's versions into
+       the markup (rule 34), and a static shell that says nothing is better than one that
+       says something false before the first fetch. -->
+  <div class="verstrip" id="verStrip"></div>
+
   <div class="body">
 
     <!-- ══════════ NAVIGATOR ══════════ -->

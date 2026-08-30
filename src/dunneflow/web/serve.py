@@ -470,6 +470,36 @@ class _Handler(BaseHTTPRequestHandler):
                     "first": lines[0][0], "last": lines[-1][0],
                     "lines": [{"n": n, "text": t} for n, t in lines]})
 
+    def _version_of(self, graph: Path) -> dict[str, str]:
+        """What one version says its own version is, or nothing at all.
+
+        Three meta keys, written by `analyze` from `resolve/version.py`. Absent is a real
+        answer -- most programs assert no version, and an empty string here means the page
+        shows nothing rather than an empty box beside a label (rule 44).
+
+        The served graph is read off the connection this process already holds. Rule 58:
+        a second read-only handle to a database open in WAL mode cannot join the
+        shared-memory WAL index and re-derives it per query -- 36x on a real comparison.
+        Three rows is not 36x of anything, but the rule is about the *habit*, and the
+        cheap path is also the shorter code.
+        """
+        keys = ("program_version", "program_version_tier", "program_version_where")
+        if graph == self._live.graph_db:
+            with self._live.lock:
+                got = {k: self._live.store.get_meta(k) for k in keys}
+        elif graph.exists():
+            try:
+                other = Store(graph, writable=False)
+            except Exception:                       # noqa: BLE001 -- a version is not
+                return {}                           # worth failing the whole listing for
+            try:
+                got = {k: other.get_meta(k) for k in keys}
+            finally:
+                other.close()
+        else:
+            return {}
+        return {k.replace("program_", ""): (v or "") for k, v in got.items() if v}
+
     def _r_revisions(self, q: dict[str, list[str]]) -> None:
         """Every point in time this program directory holds, newest first.
 
@@ -491,6 +521,11 @@ class _Handler(BaseHTTPRequestHandler):
                 "state": r.get("state", ""),
                 "captured": r.get("captured_at", ""),
                 "label": r.get("label", ""),
+                # The leaf of the directory this version was read from. Two versions of a
+                # program are two directories, so this is what the strip names them by --
+                # an instant says when we read the bytes and nothing about which tree.
+                "tree": r.get("tree", ""),
+                **self._version_of(graph),
                 "files": r.get("paths", r.get("files", 0)),
                 "comparable": graph.exists(),
                 "serving": graph == self._live.graph_db,
@@ -507,25 +542,32 @@ class _Handler(BaseHTTPRequestHandler):
             for g in revisions.known(self._live.out_dir, revisions.GRAPH):
                 rows.append({
                     "revision": revisions.revision_of(g) or "",
-                    "state": "", "captured": "", "label": "", "files": 0,
+                    "state": "", "captured": "", "label": "", "tree": "", "files": 0,
                     "comparable": True, "serving": g == self._live.graph_db,
                 })
         self._json({"revisions": rows,
                     "comparable": sum(1 for r in rows if r["comparable"])})
 
     def _r_changes(self, q: dict[str, list[str]]) -> None:
-        """What moved between two points in time.
+        """What differs between two versions of this program.
 
-        Defaults to the two newest comparable revisions, because that is the question
-        someone opening this view is asking. Both ends are named in the answer, so a
-        reader can never be looking at a comparison without knowing which one.
+        `base` is the version the map is showing and `compared` is the one it is held
+        against. **Neither is claimed to be older** -- the only instant this tool records
+        is when the bytes were read, which says nothing about when the code is from.
+
+        The defaults are the served graph as the base and the next comparable one as the
+        compared end, because that is the question someone opening this view is asking.
+        That the second happens to be the next one *captured* is a convenience for
+        picking a default and is not a claim about it; the strip names both ends and
+        states the reader's own assumption about which is newer, so nobody can be looking
+        at a comparison without knowing which one and which way round.
         """
         graphs = revisions.known(self._live.out_dir, revisions.GRAPH)
         if len(graphs) < 2:
             self._json({
                 "available": False,
-                "reason": ("this program has one point in time — analyse it again after "
-                           "sealing the current revision, and there will be two"),
+                "reason": ("this program has one version — analyse another copy of the "
+                           "source after sealing this one, and there will be two"),
                 "revisions": len(graphs),
             })
             return
@@ -537,18 +579,23 @@ class _Handler(BaseHTTPRequestHandler):
             p = revisions.db_path(self._live.out_dir, revisions.GRAPH, asked)
             return p if p.exists() else None
 
-        after = _pick("to", graphs[0])
-        before = _pick("from", graphs[1])
-        if before is None or after is None:
+        # The base defaults to the graph actually being served rather than to
+        # `graphs[0]`. They are the same file today, and writing it this way is what
+        # keeps them the same thing when the reader picks a different base: the map and
+        # the comparison must never disagree about which version is on screen (rule 51).
+        base = _pick("base", self._live.graph_db)
+        compared = _pick("compared", next(
+            (g for g in graphs if g != self._live.graph_db), graphs[1]))
+        if base is None or compared is None:
             self._json({"available": False,
-                        "reason": "no graph for one of the revisions asked for"})
+                        "reason": "no graph for one of the versions asked for"})
             return
-        if before == after:
+        if base == compared:
             self._json({"available": False,
-                        "reason": "a revision compared with itself has nothing to say"})
+                        "reason": "a version compared with itself has nothing to say"})
             return
 
-        key = (before.name, after.name)
+        key = (compared.name, base.name)
         with self._live.lock:
             built = self._live.changes.get(key)
         if built is None:
@@ -558,13 +605,13 @@ class _Handler(BaseHTTPRequestHandler):
             # open in WAL mode cannot share the `-shm` WAL index and re-derives it per
             # query: 8,855 ms against 137 ms on one `calls` comparison. The lock is held
             # for the build because that connection belongs to every other request too.
-            rode = after == self._live.graph_db
+            rode = base == self._live.graph_db
             if rode:
                 with self._live.lock:
-                    built = changes.build(before, after,
+                    built = changes.build(base, compared,
                                           serving=self._live.store.conn)
             else:
-                built = changes.build(before, after)
+                built = changes.build(base, compared)
             built["ms"] = round((time.perf_counter() - t) * 1000)
             # Which path produced the number beside it. Rule 13: a measurement that does
             # not say how it was taken cannot be checked, and these two differ by 36x.
@@ -573,8 +620,8 @@ class _Handler(BaseHTTPRequestHandler):
                 self._live.changes[key] = built
         self._json({
             "available": True,
-            "from": revisions.revision_of(before),
-            "to": revisions.revision_of(after),
+            "base": revisions.revision_of(base),
+            "compared": revisions.revision_of(compared),
             **built,
         })
 

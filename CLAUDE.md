@@ -1241,6 +1241,58 @@ rule of that number — a blank canvas must say why it is blank — which does e
     from the rows** -- an empty store holds no absolute path to find, and "nothing to see"
     is not the same claim as "already converted".
 
+63. **A store's reader must read the columns that exist, not the ones this version of the
+    code knows about.** Rule 20 says a read may refuse but may never repair, so a
+    read-only open never runs an additive migration -- and the dashboard opens `source.db`
+    read-only every time it starts. Adding a column and naming it unconditionally in the
+    reader's SELECT made that SELECT raise, a pre-existing blanket `except sqlite3.Error`
+    turned the raise into `rows = []`, and a two-revision program was **served as holding
+    no revisions at all**: state, label, capture instant and file counts blank, with no
+    error anywhere.
+
+    Rule 49 in a schema: a fallback yielding a plausible value hides the failure it was
+    written for, and this one consumed the evidence on the way past. The reader asks
+    `PRAGMA table_info` and selects what is there; a column the file does not have reads
+    as empty, which is the honest answer -- *captured before we recorded this* rather than
+    *we recorded nothing*. This bites hardest on the one store that is never rebuilt (rule
+    25), because there is no re-analysis that would repair it.
+
+    Found by reading the served JSON and noticing four fields had gone empty since the
+    previous request. **No test compares two runs of a server**, and every unit test opened
+    the store for writing, where the migration always ran.
+
+64. **The leaf that identifies a tree is the package root's, not the analysed
+    directory's.** Two versions of one program are two directories, so the directory's
+    name is what a reader recognises them by -- an instant only says when we read the
+    bytes. But `target.name` for a `src/` layout is the string `src`, which names every
+    src-layout program ever analysed and therefore identifies none of them.
+
+    The right leaf is the one the upward walk for `pyproject.toml` already finds, so the
+    fix hoists that walk above the sidecar open and retires a duplicate of it. **Invisible
+    to every fixture in the suite**, because none of them has a `src/` to be wrong about,
+    and correct on the first real run only by accident of where the fixtures put things --
+    which is the same shape as rule 61: the sample program had no `pyproject.toml`, so
+    nothing exercised the writer at all.
+
+65. **Name a set for where it is, not for what befell it.** The change worklist reported
+    `added` and `removed` -- both of which are claims about *time*, from a store whose only
+    instant is when it read the bytes. They were correct only because the default pairing
+    happened to make the base the newer capture; analysing an older copy inverted the whole
+    view, confidently, with no symptom.
+
+    The bands are `only_in_base` and `only_in_compared` now, which is a fact about set
+    membership, and *added* / *deleted* are an interpretation the **reader** owns, stated
+    on a strip that is always on screen. Two things fall out and both are load-bearing.
+    Flipping the interpretation costs **zero queries**, because nothing was baked in. And
+    the tool stops asserting something it cannot see, which is the whole of design rule 1
+    applied to a vocabulary rather than to a filter.
+
+    Its guard is worth copying: assert over the **keys the answer carries**, not over the
+    source, because what misleads a reader is what reaches them. And assert over the
+    *parts* of each name -- the first version tested whole keys, and `routines_after`
+    contains the forbidden word rather than equalling it, so the one mutation that survived
+    did so because the guard was weak rather than because the mutation was (rule 59).
+
 ## Anomalies: the discipline
 
 `anomalies.py` reports what looks wrong. It exists under one rule:

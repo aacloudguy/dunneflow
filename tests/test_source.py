@@ -360,3 +360,137 @@ def test_sealing_twice_says_so_rather_than_sealing_nothing(tmp_path: Path) -> No
 
     empty = SourceStore(tmp_path / "empty" / "source.db")
     assert empty.seal() is None
+
+
+# --------------------------------------------------------------------------- #
+# The tree a version was read from — the leaf, and only the leaf.
+# --------------------------------------------------------------------------- #
+
+
+def test_a_revision_records_the_leaf_of_the_tree_it_was_read_from(tmp_path):
+    """Two versions of one program are two directories, so the leaf is what names them.
+
+    Only the leaf. The path that led to it is one machine's layout and is deliberately
+    recorded nowhere (rule 60); the leaf is a name somebody chose for the source, it
+    travels with the map, and it survives a move.
+    """
+    s = SourceStore(tmp_path / "source.db")
+    rev = s.open_working(tree="society-2026-08-26")
+    s.commit()
+    rows = {r["revision"]: r for r in s.revisions()}
+    assert rows[rev]["tree"] == "society-2026-08-26"
+    s.close()
+
+
+def test_the_tree_is_never_a_path(tmp_path):
+    """A separator here would mean a path had been stored under a column meaning a name.
+
+    The store cannot police what it is handed, so this pins the *caller*: `cmd_analyze`
+    passes `target.name`, and a change that passed `target` instead would put an absolute
+    path into a map built to be handed over — silently, since it would look like a longer
+    label.
+    """
+    import re
+    src = Path("src/dunneflow/cli.py").read_text()
+    call = re.search(r"source\.open_working\((.*?)\)", src, re.S)
+    assert call, "cmd_analyze no longer opens a working revision"
+    assert "tree=tree_leaf" in call.group(1).replace(" ", ""), (
+        f"the tree passed to open_working is {call.group(1)!r}, not the identifying leaf"
+    )
+    # And that leaf must be the **package root's**, not the analysed directory's.
+    # `target.name` for a `src/` layout is the string `src`, which names every src-layout
+    # program ever analysed and therefore identifies none of them. Invisible to every toy
+    # fixture here, because none of them has a `src/` to be wrong about.
+    assert "tree_leaf = pkg_root.name" in src, (
+        "the recorded tree is no longer the package root's leaf -- for a src/ layout that "
+        "records the string 'src' for every program"
+    )
+
+
+def test_an_older_sidecar_gains_the_column_and_loses_nothing(tmp_path):
+    """`CREATE TABLE IF NOT EXISTS` does nothing to a table that already exists.
+
+    This is the store that is never rebuilt (rule 25), so there is no re-analysis that
+    would fix a missing column. The migration is **add only** — it must not touch a row,
+    and a version captured before the column existed keeps an empty tree, which is the
+    honest answer rather than a guessed one.
+    """
+    db = tmp_path / "source.db"
+    s = SourceStore(db)
+    rev = s.open_working(tree="original")
+    s.commit()
+    s.close()
+
+    # Put the table back the way it looked before `tree` existed, rows and all.
+    conn = sqlite3.connect(db)
+    conn.executescript(
+        "ALTER TABLE revisions RENAME TO revisions_old;"
+        "CREATE TABLE revisions ("
+        "  revision TEXT PRIMARY KEY, state TEXT NOT NULL, captured_at TEXT NOT NULL,"
+        "  label TEXT NOT NULL DEFAULT '', note TEXT NOT NULL DEFAULT '');"
+        "INSERT INTO revisions SELECT revision, state, captured_at, label, note"
+        "  FROM revisions_old;"
+        "DROP TABLE revisions_old;"
+    )
+    conn.commit()
+    conn.close()
+    assert "tree" not in {
+        r[1] for r in sqlite3.connect(db).execute("PRAGMA table_info(revisions)")
+    }
+
+    reopened = SourceStore(db)
+    rows = {r["revision"]: r for r in reopened.revisions()}
+    assert rev in rows, "the migration lost a row"
+    assert rows[rev]["tree"] == "", (
+        "a version captured before the column existed was given a tree it never had"
+    )
+    reopened.close()
+
+
+def test_a_read_only_open_of_an_older_sidecar_still_lists_its_revisions(tmp_path):
+    """The defect this was written from, and it reached the served JSON.
+
+    A read may refuse but may never repair (rule 20), so a read-only open does not run
+    the additive migration — and the dashboard opens the sidecar read-only every time it
+    starts. Naming `tree` unconditionally made the SELECT raise, a blanket `except`
+    turned that into "no rows", and a two-revision program was served as holding **no
+    revisions at all**: state, label, capture instant and file counts all blank, with no
+    error anywhere.
+
+    That is rule 49 exactly — a fallback yielding a plausible value hides the failure it
+    was written for — and it consumed the evidence on the way past. Asserted on the
+    *values*, not on the row count, because an empty list and a list of empty rows were
+    both available and only one of them is the defect.
+    """
+    db = tmp_path / "source.db"
+    s = SourceStore(db)
+    rev = s.open_working(tree="a-tree")
+    s.seal(label="a label")
+    s.commit()
+    s.close()
+
+    # Put the table back the way a sidecar written before `tree` existed holds it.
+    conn = sqlite3.connect(db)
+    conn.executescript(
+        "ALTER TABLE revisions RENAME TO revisions_old;"
+        "CREATE TABLE revisions ("
+        "  revision TEXT PRIMARY KEY, state TEXT NOT NULL, captured_at TEXT NOT NULL,"
+        "  label TEXT NOT NULL DEFAULT '', note TEXT NOT NULL DEFAULT '');"
+        "INSERT INTO revisions SELECT revision, state, captured_at, label, note"
+        "  FROM revisions_old;"
+        "DROP TABLE revisions_old;"
+    )
+    conn.commit()
+    conn.close()
+
+    reader = SourceStore(db, writable=False)
+    rows = reader.revisions()
+    assert [r["revision"] for r in rows] == [rev], "the reader lost the revision entirely"
+    assert rows[0]["label"] == "a label", "the reader answered out of an empty hole"
+    assert rows[0]["state"] == sourcedb.STATE_FOR_COMPARISON
+    assert rows[0]["tree"] == "", "a column this sidecar never had was filled in anyway"
+    # And it repaired nothing on the way past (rule 20).
+    assert "tree" not in {
+        r[1] for r in sqlite3.connect(db).execute("PRAGMA table_info(revisions)")
+    }, "a read-only open added a column — a read may refuse, but never repair"
+    reader.close()

@@ -219,21 +219,38 @@ const state = {
   hideInferred: false,
   density: "comfortable",
   bandScroll: false,       // a change band scrolls in place, or runs its full length
-  /* The two points in time, and which of them the screen is showing.
+  /* The two versions, and which of them the screen is showing.
    *
-   * A pair has a **reading end**. `revB` is the point being read — the cover, the routine
-   * list, the code browser, the glossary and the stack all show that one — and `revA` is
-   * the other end of the comparison, or "" for no comparison at all. So "what am I looking
-   * at" has one answer while a comparison is running, which it would not if every view
-   * tried to show two points at once.
+   * `baseRev` is the version being read — the cover, the routine list, the code browser,
+   * the glossary and the stack all show that one — and `comparedRev` is the version it is
+   * held against, or "" for no comparison at all. So "what am I looking at" has one
+   * answer while a comparison is running, which it would not if every view tried to show
+   * two versions at once.
    *
-   * `revB` is pinned to the served revision until the server can open a second graph and
-   * rebuild the payload, the file list, both vocabulary lanes and the cover against it —
-   * that is the next chunk, and the control says so rather than offering a choice it
-   * cannot honour. Empty means "whatever is being served", which is the only honest
-   * default before any revision has been read. */
-  revB: "",
-  revA: "",
+   * **Neither is claimed to be older.** The only instant this tool records is when the
+   * bytes were read, which says nothing about when the code is from: these two were
+   * captured twenty-nine seconds apart and hold trees three days apart. Which is newer is
+   * the reader's assumption, and it lives in `comparedIsNewer` where they can see and
+   * change it.
+   *
+   * `baseRev` is pinned to the served version until the server can open a second graph
+   * and rebuild the payload, the file list, both vocabulary lanes and the cover against
+   * it. Empty means "whatever is being served", which is the only honest default before
+   * any version has been read. */
+  baseRev: "",
+  comparedRev: "",
+  /* The reader's assumption about which of the two versions is the newer one.
+   *
+   * It decides one thing and it is not a small one: whether a routine the base has and
+   * the compared does not reads as **deleted** or as **added**. The sets themselves are
+   * facts and are computed once; this is the interpretation laid over them, so flipping
+   * it costs no re-query.
+   *
+   * Default: the compared version is the newer one. That is the case the feature is for
+   * — here is the copy somebody handed me, what has happened since — and it is an
+   * assumption rather than a finding, which is why it is stated on the strip rather than
+   * buried here. */
+  comparedIsNewer: true,
   followMode: "replace",   // "replace" | "walk" -- what following a neighbour does
   threadsAll: false,       // the threads panel bounded (rule 8) or opened whole
   selected: null,          // the node id under inspection, or null for nothing picked
@@ -583,23 +600,29 @@ const NAV_ROUTES = {
  * whole worklist, and the Changes group beside it went on saying "two points in time —
  * open to compare them" with a blank count and no rows -- one question, two answers,
  * which is rule 51. Every caller goes through this door so neither half can be forgotten. */
-function refreshChanges(from, to) {
-  const pair = from === undefined && to === undefined ? chosenPair() : { from, to };
+function refreshChanges(base, compared) {
+  const pair = base === undefined && compared === undefined
+    ? chosenPair() : { base, compared };
   /* A result computed for a different pair is not a stale copy of this one, it is an
      answer to another question. Dropped before the load rather than left to be overwritten,
      so the view spends the fetch saying "comparing…" instead of showing the old pair's
      figures under the new pair's heading. */
   if (CHANGES && !CHANGES.loading
-      && (CHANGES.from !== pair.from || CHANGES.to !== pair.to)) CHANGES = null;
-  return loadChanges(pair.from, pair.to).then(() => { buildNav(); render(); });
+      && (CHANGES.base !== pair.base || CHANGES.compared !== pair.compared)) CHANGES = null;
+  return loadChanges(pair.base, pair.compared).then(() => { buildNav(); render(); });
 }
 
-/* Which two points in time are in play. One place decides, and everything asks it.
+/* Which two versions are in play. One place decides, and everything asks it.
  *
- * The reading end (`revB`) is the revision the whole map is showing, and the comparison
- * end (`revA`) is the other one. Both fall back to the server's own default — the two
- * newest comparable revisions — which is what `/api/changes` does with no arguments, so
- * an empty choice and an unmade choice produce the same answer rather than two.
+ * The **base** is the version the whole map is showing; the **compared** is the one it
+ * is held against. Neither is claimed to be older than the other -- the only instant
+ * this tool records is when the bytes were read, which says nothing about when the code
+ * is from, and a tree handed over on a memory stick has no history to ask. Which one is
+ * newer is the reader's assumption, held in `comparedIsNewer` and stated on the strip.
+ *
+ * Both fall back to the server's own default -- the served graph, and the next
+ * comparable one -- which is what `/api/changes` does with no arguments, so an empty
+ * choice and an unmade choice produce the same answer rather than two.
  *
  * A stored revision that no longer exists is **dropped and reported**, never quietly
  * honoured: re-analysing a program can retire a snapshot, and a comparison silently
@@ -609,20 +632,24 @@ function refreshChanges(from, to) {
 function chosenPair() {
   const live = (id) => REVISIONS.some(r => r.revision === id && r.comparable);
   return {
-    from: live(state.revA) ? state.revA : undefined,
-    to:   live(state.revB) ? state.revB : undefined,
+    base:     live(state.baseRev) ? state.baseRev : undefined,
+    compared: live(state.comparedRev) ? state.comparedRev : undefined,
   };
 }
 
 /* What the reader chose but cannot have, said out loud rather than swallowed. */
 function pairLost() {
   const gone = [];
-  if (state.revA && !REVISIONS.some(r => r.revision === state.revA)) gone.push(state.revA);
-  if (state.revB && !REVISIONS.some(r => r.revision === state.revB)) gone.push(state.revB);
+  if (state.comparedRev && !REVISIONS.some(r => r.revision === state.comparedRev)) {
+    gone.push(state.comparedRev);
+  }
+  if (state.baseRev && !REVISIONS.some(r => r.revision === state.baseRev)) {
+    gone.push(state.baseRev);
+  }
   return gone;
 }
 
-/* What moved between two points in time.
+/* What differs between the two versions.
  *
  * Asked for on demand rather than with the cover, for the reason the anomalies list is:
  * most sessions never open it, and on a large program the comparison is seconds of work
@@ -632,13 +659,13 @@ function pairLost() {
  * three answers here are genuinely different -- not asked yet, being computed, and computed
  * with nothing in it -- and collapsing any two of them puts a blank pane where a sentence
  * belongs (design rule 1, and rule 35's invariant one layer up). */
-async function loadChanges(from, to) {
+async function loadChanges(base, compared) {
   if (CHANGES && CHANGES.loading) return CHANGES;
   CHANGES = { loading: true };
   render();
   const qs = [];
-  if (from) qs.push("from=" + encodeURIComponent(from));
-  if (to) qs.push("to=" + encodeURIComponent(to));
+  if (base) qs.push("base=" + encodeURIComponent(base));
+  if (compared) qs.push("compared=" + encodeURIComponent(compared));
   try {
     const r = await fetch("/api/changes" + (qs.length ? "?" + qs.join("&") : ""));
     CHANGES = await r.json();
@@ -691,6 +718,93 @@ function revLabel(r) {
   if (r.label) bits.push(r.label);
   bits.push(revWhen(r));
   return bits.join(" · ");
+}
+
+/* How a version is named to a reader: the tree it came from first, then a label somebody
+ * wrote, then the instant we read it.
+ *
+ * The **tree** leads because two versions of one program are two directories, and that is
+ * what a person recognises. The instant is last and never alone if anything better exists:
+ * it says when the bytes were read, which is a fact about us rather than about the code --
+ * these two were captured twenty-nine seconds apart and hold trees three days apart. */
+function versionName(r) {
+  if (!r) return "?";
+  const bits = [];
+  if (r.tree) bits.push(r.tree);
+  if (r.label) bits.push(r.label);
+  if (!bits.length) bits.push(revWhen(r));
+  return bits.join(" · ");
+}
+
+/* The version strip: what is on screen, and what it is being held against.
+ *
+ * **Always rendered, on every screen.** Tom's decision, and his reason is the right one --
+ * orientation of context is what makes the rest of the page readable, and a strip that
+ * appears only during a comparison teaches a reader to read its *absence*, which is the
+ * one thing an absence must never mean (design rule 1). With one version it says so.
+ *
+ * It carries four things, and each is a different kind of claim:
+ *
+ *   - **which two versions**, named by their trees. A fact the store holds.
+ *   - **the version each asserts about itself**, with the tier it was learned at, so a
+ *     number read out of `pyproject.toml` and one guessed from a directory name do not
+ *     look alike (design rule 13).
+ *   - **the reader's assumption** about which is newer -- an assumption, stated as one,
+ *     and clickable, because it decides whether every red row means gone or arrived.
+ *   - **what we can actually see about capture order**, as a plain observation beside the
+ *     assumption and never as a correction to it. We may infer, so long as we say we did.
+ */
+function versionStrip() {
+  const usable = REVISIONS.filter(r => r.comparable);
+  const lost = state.revNote
+    ? `<span class="verstrip-lost">${esc(state.revNote)}</span>` : "";
+  const base = REVISIONS.find(r => r.revision === (CHANGES && CHANGES.base))
+            || REVISIONS.find(r => r.serving)
+            || usable[0];
+
+  const ver = (r) => {
+    if (!r || !r.version) return "";
+    /* A class rather than a `data-` attribute: this marks how well the claim is known,
+       which is presentation, and `data-` in this shell means a control something listens
+       for. The roster guard is right to refuse it. */
+    const tier = r.version_tier === "INFERRED" ? " inferred" : "";
+    return `<span class="verstrip-ver${tier}"
+      title="${esc(r.version_where || "")}">${esc(r.version)}</span>`;
+  };
+
+  /* One version, and it says so rather than showing an empty half. */
+  if (usable.length < 2) {
+    return `${lost}<span class="verstrip-k">version</span>
+      <span class="verstrip-v">${esc(versionName(base))}</span> ${ver(base)}
+      <span class="verstrip-alone">— on its own, nothing compared</span>`;
+  }
+
+  const compared = REVISIONS.find(r => r.revision === (CHANGES && CHANGES.compared))
+                || usable.find(r => r.revision !== (base && base.revision));
+  const w = diffWords();
+
+  /* What the store can actually see about order, said as the observation it is. The
+     revision id is the instant the bytes were read, so this is a fact about the capture
+     and not about the code -- which is exactly why it sits beside the assumption rather
+     than deciding it. */
+  let observed = "";
+  if (base && compared && base.revision && compared.revision) {
+    const baseFirst = base.revision < compared.revision;
+    observed = `<span class="verstrip-sep" title="When we read the bytes, which is not
+      when the code is from. Stated because it is the only order this store can see."
+      >captured: ${baseFirst ? "base first" : "compared first"}</span>`;
+  }
+
+  return `${lost}<span class="verstrip-k">base</span>
+    <span class="verstrip-v">${esc(versionName(base))}</span> ${ver(base)}
+    <span class="verstrip-sep">compared with</span>
+    <span class="verstrip-v">${esc(versionName(compared))}</span> ${ver(compared)}
+    <button class="verstrip-assume" data-assumenewer
+      aria-pressed="${state.comparedIsNewer}"
+      title="Which version is newer is an assumption -- nothing here can see it. It
+decides whether what only the base has reads as deleted or as added. Click to flip."
+      >${esc(w.assumption)}</button>
+    ${observed}`;
 }
 
 /* The toolbar's temporal control, built from the store rather than written into the markup.
@@ -1490,7 +1604,45 @@ const TRIAGE_LABELS = {
   tooldefect: { label: "DunneFlow defect",    cls: "broken"  }
 };
 
-/* What moved between two points in time, as a page rather than as a pane.
+/* The reader's assumption about which version is newer, turned into the two words the
+ * whole page uses for the two sets.
+ *
+ * The server reports **where** a thing is -- `only_in_base`, `only_in_compared` -- which
+ * is a fact it read. *Added* and *deleted* are an interpretation laid over that, and the
+ * interpretation belongs to whoever holds the assumption. One place turns one into the
+ * other, so no view can label the same set two ways (rule 51).
+ *
+ * With the compared version taken to be the newer one: something the base has and the
+ * compared does not was **deleted** on the way to it, and something only the compared has
+ * was **added**. Flip the assumption and the two words swap. Nothing else moves -- not the
+ * counts, not the rows, not a query.
+ *
+ * `tone` is the colour class, and it follows the word rather than the side: red is always
+ * gone and green is always arrived, whichever set each happens to be.
+ */
+function diffWords() {
+  const newer = state.comparedIsNewer;
+  return {
+    base:     { word: newer ? "deleted" : "added",   tone: newer ? "gone" : "new" },
+    compared: { word: newer ? "added" : "deleted",   tone: newer ? "new" : "gone" },
+    /* Said in full wherever there is room for it, because a reader who does not know
+       which way round the assumption runs cannot read the colours at all. */
+    assumption: newer
+      ? "assuming the compared version is the newer one"
+      : "assuming the compared version is the older one",
+  };
+}
+
+/* Which sets the two words are actually over, for a view that wants to iterate them
+ * rather than name them. Ordered as they are worth reading, arrivals first. */
+function diffBands() {
+  const w = diffWords();
+  return w.base.tone === "new"
+    ? [["only_in_base", w.base], ["only_in_compared", w.compared]]
+    : [["only_in_compared", w.compared], ["only_in_base", w.base]];
+}
+
+/* What differs between two versions, as a page rather than as a pane.
  *
  * The navigator's Changes group is the list you click through; this is the same comparison
  * with room to say what it is a comparison *of*. Both read one `CHANGES`, so they cannot
@@ -1505,19 +1657,23 @@ const TRIAGE_LABELS = {
 function viewChanges() {
   if (!CHANGES || CHANGES.loading) {
     return `<div class="panel" style="padding:1.25rem">
-      <h2 style="margin:0 0 .5rem">Comparing two points in time…</h2>
+      <h2 style="margin:0 0 .5rem">Comparing two versions…</h2>
       <p class="hint">Reading both graphs. On a large program held on a slow volume this
          is seconds the first time and immediate afterwards.</p></div>`;
   }
   if (!CHANGES.available) {
     return `<div class="panel" style="padding:1.25rem">
       <h2 style="margin:0 0 .5rem">Nothing to compare.</h2>
-      <p>${esc(CHANGES.reason || "this program holds one point in time")}</p>
-      <p class="hint">A second point appears when the current revision is sealed
-         (<code>dunneflow revisions &lt;dir&gt; --seal</code>) and the program is analysed
-         again — the sealed snapshot stays readable beside the new one.</p></div>`;
+      <p>${esc(CHANGES.reason || "this program holds one version")}</p>
+      <p class="hint">A second version appears when the current one is sealed
+         (<code>dunneflow revisions &lt;dir&gt; --seal</code>) and another copy of the
+         source is analysed — the sealed snapshot stays readable beside the new one.</p>
+      </div>`;
   }
   const c = CHANGES.counts;
+  const words = diffWords();
+  const [first, second] = diffBands();
+  const cap = (w) => w.charAt(0).toUpperCase() + w.slice(1);
   const rev = (id) => {
     const r = REVISIONS.find(x => x.revision === id);
     return r && r.label ? `${esc(id)} — ${esc(r.label)}` : esc(id || "?");
@@ -1563,13 +1719,18 @@ function viewChanges() {
     </section>`;
 
   const pres = CHANGES.presence || {};
+  /* `+` is whichever side the assumption calls arrivals, never a fixed side. The names
+     shown are that same side's, so the sign and the examples under it cannot disagree
+     (rule 13). */
   const presLine = (name, label) => {
-    const v = pres[name] || { added: [], removed: [] };
-    if (!v.added.length && !v.removed.length) return "";
+    const v = pres[name] || { only_in_base: [], only_in_compared: [] };
+    const arrived = v[words.base.tone === "new" ? "only_in_base" : "only_in_compared"];
+    const gone = v[words.base.tone === "new" ? "only_in_compared" : "only_in_base"];
+    if (!arrived.length && !gone.length) return "";
     const bits = [];
-    if (v.added.length) bits.push(`+${v.added.length}`);
-    if (v.removed.length) bits.push(`\u2212${v.removed.length}`);
-    const named = v.added.slice(0, 6).map(x => `<code>${esc(String(x))}</code>`).join(" ");
+    if (arrived.length) bits.push(`+${arrived.length}`);
+    if (gone.length) bits.push(`\u2212${gone.length}`);
+    const named = arrived.slice(0, 6).map(x => `<code>${esc(String(x))}</code>`).join(" ");
     return `<li>${label} <b class="num">${bits.join(" ")}</b> ${named}</li>`;
   };
 
@@ -1584,23 +1745,30 @@ function viewChanges() {
    * and scroll each in place; usage decides which survives. */
   return `
   <div class="panel changes${state.bandScroll ? " bands-capped" : ""}" style="padding:1rem 1.25rem">
-    <h2 style="margin:0 0 .25rem">What moved</h2>
+    <h2 style="margin:0 0 .25rem">What differs</h2>
     <p class="hint" style="margin:0 0 .9rem">
-      <code>${rev(CHANGES.from)}</code> &rarr; <code>${rev(CHANGES.to)}</code>
+      base <code>${rev(CHANGES.base)}</code> &middot;
+      compared with <code>${rev(CHANGES.compared)}</code>
+      &middot; ${esc(words.assumption)}
       ${CHANGES.ms != null ? ` · compared in ${Number(CHANGES.ms).toLocaleString()} ms` : ""}
     </p>
 
+    ${CHANGES.identical ? `<p class="chgsame">No differences found. Every routine, call,
+       boundary, table, way in and constant the map can see is the same in both — which is
+       an answer, and not the same thing as an empty comparison.</p>` : ""}
+
     <div class="chgstats">
-      ${stat(c.added, "added", "")}
-      ${stat(c.removed, "removed", "")}
+      ${stat(c[first[0]], first[1].word, "")}
+      ${stat(c[second[0]], second[1].word, "")}
       ${stat(c.behaves, "behave differently", "something they do has moved")}
       ${stat(c.edited_only, "edited only", "and nothing they do changed")}
     </div>
 
     <p class="hint" style="margin:.6rem 0 0">
-      ${c.routines_before.toLocaleString()} routines before, ${c.routines_after.toLocaleString()} after.
-      A rename reads as a removal plus an addition — nothing in the source says the two are
-      the same thing.</p>
+      ${c.routines_base.toLocaleString()} routines in the base,
+      ${c.routines_compared.toLocaleString()} in the compared.
+      A rename reads as one of each — nothing in the source says the two are the same
+      thing.</p>
 
     ${Object.keys(pres).length ? `<ul class="chgpresence">
       ${presLine("db_tables", "Tables")}
@@ -1612,8 +1780,10 @@ function viewChanges() {
     ${band("behaves", "Behaving differently", CHANGES.behaves,
            "The same routine, and something it <em>does</em> has moved — what it calls, "
            + "what it touches, what it takes or what it returns. The tag says which.")}
-    ${band("added", "Added", CHANGES.added)}
-    ${band("removed", "Removed", CHANGES.removed)}
+    ${band(first[0], cap(first[1].word), CHANGES[first[0]],
+           `Only in the ${first[0] === "only_in_base" ? "base" : "compared"} version.`)}
+    ${band(second[0], cap(second[1].word), CHANGES[second[0]],
+           `Only in the ${second[0] === "only_in_base" ? "base" : "compared"} version.`)}
     ${band("edited", "Edited, behaving the same", CHANGES.edited_only,
            "The body changed and nothing it does did. Internal computation — what this tool "
            + "exists not to report — listed here so leaving it out is not a silent filter.")}
@@ -3952,6 +4122,13 @@ function render() {
    * ordering rule that names a *position* rather than an identity breaks the moment
    * anything is added beside it. */
 
+  /* The strip is painted on every render, because what it names can move on any of them:
+     a comparison arriving, a version dropped, the assumption flipped. It is cheap -- one
+     line of text -- and the alternative is a surface that is stale exactly when the reader
+     most needs it (rule 51). */
+  const vs = $("#verStrip");
+  if (vs) vs.innerHTML = versionStrip();
+
   const tm = $("#trailMount");
   if (tm) {
     tm.innerHTML = trailBar();
@@ -4114,6 +4291,22 @@ function wire() {
     if (state.trail.length > cap) state.trail.splice(0, state.trail.length - cap);
     render();
   }));
+  /* Flip which version the reader takes to be newer.
+   *
+   * **No re-query.** The two sets are facts the server already sent; this changes only the
+   * words and the colours laid over them, which is why `changes.py` reports `only_in_base`
+   * and `only_in_compared` rather than `added` and `removed`. `render()` and `buildNav()`
+   * both, because the words appear in the centre pane *and* in the navigator's Changes
+   * group -- repainting one leaves the other stating the opposite (rule 51, and the exact
+   * defect that made the worklist unreachable the first time). */
+  $$("[data-assumenewer]").forEach(b => b.addEventListener("click", () => {
+    state.comparedIsNewer = !state.comparedIsNewer;
+    used("assume:" + (state.comparedIsNewer ? "compared-newer" : "compared-older"));
+    persist();
+    buildNav();
+    render();
+  }));
+
   $$("[data-pointershown]").forEach(b => b.addEventListener("click", () => {
     state.pointerShown = b.dataset.pointershown === "1";
     used("pointer:" + (state.pointerShown ? "shown" : "off"));
@@ -4356,7 +4549,7 @@ function wire() {
   if (rev && !rev.dataset.bound) {
     rev.dataset.bound = "1";
     rev.addEventListener("change", () => {
-      state.revA = rev.value;
+      state.comparedRev = rev.value;
       /* Cleared here, deliberately, because the reader has just answered it. It used to
          disappear by falling out of the one `changeNote` branch that did not prepend it,
          which looked right and was an accident: three returns carried the notice and the
@@ -4368,7 +4561,7 @@ function wire() {
       /* Only when there is something to compare. "On its own" is a real answer and must
          not spend seconds fetching a comparison nobody asked for -- but it must still
          repaint, or the Changes group keeps the figures of the pair just dropped. */
-      if (state.revA) refreshChanges();
+      if (state.comparedRev) refreshChanges();
       else { CHANGES = null; buildNav(); render(); }
     });
   }
@@ -4524,6 +4717,10 @@ const WIRED_ATTRS = new Set([
      `CODE_ROUTES` is what listens for all of them -- one table, checked by the guard that
      reads it, so a fourth kind added there without a listener fails by name. */
   "codeback", "codedetach", "codelink", "codeopen", "codemode",
+  /* The version strip's one control: which version the reader assumes is newer. It is on
+     the strip rather than in Settings because it decides what every red row means, and a
+     colour a reader cannot account for is worse than no colour. */
+  "assumenewer",
   /* The change worklist's one control: which band is open. */
   "changeband",
   /* The search's four. `searchline` rides with `searchgo` on the same button and carries no
@@ -5567,7 +5764,7 @@ function groupCount(g) {
 
 /* How many routines this comparison has something to say about.
  *
- * Added plus removed plus behaves-differently, and **not** `edited_only`: a routine whose
+ * Both presence bands plus behaves-differently, and **not** `edited_only`: a routine whose
  * body moved and whose behaviour did not is exactly what this tool exists not to report,
  * and putting it in the headline number would make an ordinary refactor look like an
  * upheaval. It is still listed, under its own band, because leaving it out entirely would
@@ -5577,7 +5774,7 @@ function groupCount(g) {
 function changeCount() {
   if (!CHANGES || CHANGES.loading || !CHANGES.available) return "";
   const c = CHANGES.counts;
-  return c.added + c.removed + c.behaves;
+  return c.only_in_base + c.only_in_compared + c.behaves;
 }
 
 /* What the group says above its rows, and the three states it must keep apart.
@@ -5589,15 +5786,16 @@ function changeNote() {
      the reader is looking at a different pair from the one they left, and every figure
      below is about the new one. */
   const lost = state.revNote ? `${esc(state.revNote)} · ` : "";
-  if (!CHANGES) return lost + "two points in time — open to compare them";
+  if (!CHANGES) return lost + "two versions — open to compare them";
   if (CHANGES.loading) return lost + "comparing…";
-  if (!CHANGES.available) return lost + esc(CHANGES.reason || "no second point in time");
+  if (!CHANGES.available) return lost + esc(CHANGES.reason || "no second version");
   const c = CHANGES.counts;
-  const moved = c.added + c.removed + c.behaves;
-  if (!moved && !c.edited_only) return lost + "nothing moved between these two points";
+  const moved = c.only_in_base + c.only_in_compared + c.behaves;
+  if (!moved && !c.edited_only) return lost + "no differences found";
   const bits = lost ? [state.revNote] : [];
-  if (c.added) bits.push(`${c.added} added`);
-  if (c.removed) bits.push(`${c.removed} removed`);
+  for (const [key, w] of diffBands()) {
+    if (c[key]) bits.push(`${c[key]} ${w.word}`);
+  }
   if (c.behaves) bits.push(`${c.behaves} behaving differently`);
   /* Stated even when it is the only thing that happened, and stated as what it is: the
      largest band in ordinary work, and the least interesting. */
@@ -5612,9 +5810,15 @@ function changeNote() {
  * makes. The band is *why* it is worth looking at; the identity is what the router acts on. */
 function changeList() {
   if (!CHANGES) return `<p class="hint">Not compared yet.</p>`;
-  if (CHANGES.loading) return `<p class="hint">Comparing two points in time…</p>`;
+  if (CHANGES.loading) return `<p class="hint">Comparing two versions…</p>`;
   if (!CHANGES.available) {
-    return `<p class="hint">${esc(CHANGES.reason || "no second point in time")}</p>`;
+    return `<p class="hint">${esc(CHANGES.reason || "no second version")}</p>`;
+  }
+  /* Stated here as well as on the page, because this group is where a reader lands first
+     and four empty bands are the one outcome that reads as a broken comparison. */
+  if (CHANGES.identical) {
+    return `<p class="hint">No differences found — the two versions are the same
+       everywhere this map can see.</p>`;
   }
   const band = (key, title, rows, why) => {
     if (!rows.length) return "";
@@ -5637,16 +5841,20 @@ function changeList() {
     </div>`;
   };
   const c = CHANGES;
+  const cap = (w) => w.charAt(0).toUpperCase() + w.slice(1);
   /* The way into the full comparison. The group's rows are for clicking through; the page
-     has room to say which two points are being compared and what moved besides routines --
-     tables, ways in, named files. Both read one `CHANGES` (rule 51). */
+     has room to say which two versions are being compared and what differs besides
+     routines -- tables, ways in, named files. Both read one `CHANGES` (rule 51). */
   const open = navItemHtml({
     nav: "changes", label: "The whole comparison", n: "open",
     current: state.view === "changes",
   });
+  const presence = diffBands()
+    .map(([key, w]) => band(key, cap(w.word), c[key],
+          `Only in the ${key === "only_in_base" ? "base" : "compared"} version.`))
+    .join("");
   return open
-       + band("added", "Added", c.added)
-       + band("removed", "Removed", c.removed)
+       + presence
        + band("behaves", "Behaving differently", c.behaves,
               "The same routine, and something it <em>does</em> has moved — what it calls, "
               + "what it touches, what it takes or returns.")
@@ -5976,7 +6184,7 @@ const Settings = window.DunneFlowSettings;
  * block is expanded. */
 const PERSISTED = [
   "theme", "scale", "startup", "mode", "menuOrder", "trailShown", "trailCap",
-  "density", "bandScroll", "revB", "revA",
+  "density", "bandScroll", "baseRev", "comparedRev", "comparedIsNewer",
   "ambient", "hideInferred", "colWidths", "insp", "sortKey", "sortAsc",
   "egress", "aiOps", "triage", "pins", "usage", "graphLayout",
   "diskOrder", "diskColors", "colorBy", "sortMode", "filterMode", "direction",
@@ -7892,7 +8100,7 @@ async function boot() {
     state.revNote = `The revision${lost.length > 1 ? "s" : ""} you were comparing `
       + `(${lost.join(", ")}) ${lost.length > 1 ? "are" : "is"} no longer here, `
       + `so that choice was dropped.`;
-    state.revA = state.revB = "";
+    state.comparedRev = state.baseRev = "";
     persist();
   }
   buildNav();

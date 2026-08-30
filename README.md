@@ -52,6 +52,27 @@ Point it at itself for a worked example:
 uv run dunneflow analyze src --name dunneflow
 ```
 
+## What a program directory contains about your machine
+
+A program directory is built to be **handed over** — copied to a colleague, kept after
+the source tree has moved on, read on a machine that has never held the code. So what it
+records about where it came from is a deliberate, short list.
+
+**Not recorded:** the path to the analysed tree. Every stored path is relative, and the
+root is never written down — it is one machine's directory layout, it is wrong the moment
+anything moves, and it is wrong on every machine a copy reaches. Nothing at read time
+needs it: file bodies are held by content hash, never fetched by opening a path.
+
+**Recorded:** the **leaf** of the directory each version was read from — `society-2026-08-26`,
+not the path that led to it. Two versions of one program are two directories, so the leaf
+is what a reader recognises them by; a capture instant only says when we read the bytes.
+
+**Recorded:** the version the program **states about itself**, if it states one — from
+`pyproject.toml [project] version`, or a module-scope `__version__`, each with the file
+that proves it. Where the source says nothing, a version may be guessed from the
+directory's own name (`app-1.2.3`, `society-2026-08-26`) and is then marked as inferred
+wherever it appears. DunneFlow never asks a version control system anything.
+
 ## How it works
 
 ```

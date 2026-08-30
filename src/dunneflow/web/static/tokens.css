@@ -30,6 +30,18 @@
   --sev-suspect-bg:#fbeedc;
   --sev-info-bg:   #e2e9fd;
 
+  /* The difference channel: what one version has and the other does not.
+     Red is always gone and green is always arrived, whichever *side* each happens to be --
+     which side is decided by the reader's assumption about which version is newer, so the
+     colour follows the word rather than the side (see `diffWords` in shell.js).
+     Measured against `--surface`: gone 6.47:1, new 6.61:1, both clear of 4.5:1 for body
+     text. Design rule 4 holds: these are spent on one dimension -- presence in a comparison
+     -- and never at the same time as anything else. */
+  --diff-gone:     #b91c1c;
+  --diff-gone-bg:  #fdeaea;
+  --diff-new:      #116b33;
+  --diff-new-bg:   #e4f3e9;
+
   --external:      #6d28d9;
   --external-bg:   #ede4fb;
 
@@ -126,6 +138,12 @@
     --sev-suspect-bg:#3a2c12;
     --sev-info-bg:   #17233f;
 
+    /* Measured against the dark `--surface` #161e29: gone 6.06:1, new 9.63:1. */
+    --diff-gone:     #f87171;
+    --diff-gone-bg:  #3b1618;
+    --diff-new:      #4ade80;
+    --diff-new-bg:   #10301c;
+
     --external:      #c4b5fd;
     --external-bg:   #291f45;
 
@@ -176,6 +194,12 @@
   --sev-broken-bg: #3a1a1a;
   --sev-suspect-bg:#3a2c12;
   --sev-info-bg:   #17233f;
+
+  /* Measured against the dark `--surface` #161e29: gone 6.06:1, new 9.63:1. */
+  --diff-gone:     #f87171;
+  --diff-gone-bg:  #3b1618;
+  --diff-new:      #4ade80;
+  --diff-new-bg:   #10301c;
 
   --external:      #c4b5fd;
   --external-bg:   #291f45;
@@ -247,7 +271,9 @@ body {
  * not. */
 .app {
   display: grid;
-  grid-template-rows: auto 1fr;
+  /* Toolbar, version strip, body. The strip is `auto` so it costs exactly the height of
+     what it says and nothing when it is a single line. */
+  grid-template-rows: auto auto 1fr;
   height: 100vh;
   min-height: 0;
 }
@@ -260,6 +286,48 @@ body {
   border-bottom: 1px solid var(--border);
 }
 .brand { display: flex; flex-direction: column; line-height: 1.12; flex: none; }
+
+/* ── The version strip ──────────────────────────────────────────────────────────
+   Which version is on screen and what it is held against. Always present: a reader
+   must never have to infer from an absence whether they are in a comparison.
+
+   Every dimension in rem (design rule 3), so the scale slider moves it with everything
+   else. It wraps, unlike the toolbar, because it is prose rather than a row of controls
+   and the alternative to wrapping is truncating the thing it exists to say. */
+.verstrip {
+  display: flex; align-items: center; flex-wrap: wrap;
+  gap: .25rem .6rem;
+  padding: .3rem .875rem;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  font-size: .74rem;
+  color: var(--text-muted);
+}
+.verstrip-k {
+  text-transform: uppercase; letter-spacing: .04em;
+  font-size: .64rem; color: var(--text-faint);
+}
+.verstrip-v { font-family: var(--f-mono); color: var(--text); }
+/* The version a program asserts about itself, with the tier it was learned at. A quoted
+   one and a guessed one must not look alike (design rule 13). */
+.verstrip-ver { font-family: var(--f-mono); color: var(--accent); }
+.verstrip-ver.inferred { color: var(--text-faint); font-style: italic; }
+.verstrip-sep { color: var(--text-faint); }
+/* The assumption in force. A control, because it is the reader's to change -- and it is
+   here rather than in Settings because a colour nobody can account for is worse than no
+   colour. */
+.verstrip-assume {
+  font: inherit; cursor: pointer;
+  padding: .1rem .45rem; border-radius: .25rem;
+  border: 1px solid var(--border);
+  background: var(--raised); color: var(--text-muted);
+}
+.verstrip-assume:hover { border-color: var(--border-strong); color: var(--text); }
+.verstrip-assume[aria-pressed="true"] { border-color: var(--accent); color: var(--accent-text); }
+.verstrip-alone { color: var(--text-faint); }
+/* A choice that could not be honoured. Never quiet: the strip is the one surface that
+   is always on screen, so it is where a dropped version has to be said. */
+.verstrip-lost { color: var(--sev-suspect); }
 .brand b { font-size: .95rem; font-weight: 700; letter-spacing: -.01em; }
 .brand span { font-size: .54rem; color: var(--chrome-muted); letter-spacing: .06em;
   text-transform: uppercase; margin-top: .1rem; }

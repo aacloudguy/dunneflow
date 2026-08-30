@@ -23,6 +23,7 @@ from .anomalies import BROKEN, INFO, SUSPECT, detect
 from .docstore import DocStore
 from .migrate import MigrationRefused, migrate_program
 from .render.markdown import render_all
+from .resolve import version as program_version
 from .resolve.calls import resolve_calls
 from .resolve.cli import resolve_cli
 from .resolve.entrypoints import entrypoints_from_packaging
@@ -66,12 +67,31 @@ def cmd_analyze(args: argparse.Namespace) -> int:
     # `--no-source` leaves nothing to ask, so the clock answers instead. The layout is
     # the same either way; what is missing is the state (WORKING / FOR_COMPARISON),
     # which only the sidecar records.
+    # Where `pyproject.toml` lives, which may be above `src/`. Found once, here, because
+    # three things want it: the entrypoint reader, the version reader, and the name of the
+    # tree recorded below.
+    pkg_root = target
+    for candidate in (target, *target.parents):
+        if (candidate / "pyproject.toml").exists():
+            pkg_root = candidate
+            break
+
+    # The leaf that **identifies this tree**, and only the leaf: `target` is an absolute
+    # path, and recording it would put one machine's directory layout into a map built to
+    # be handed over (rule 60).
+    #
+    # The *package* root's leaf, not the analysed directory's. Analysing a `src/` layout
+    # means `target` is `.../society-2026-08-26/src`, whose leaf is `src` -- which names
+    # every src-layout program ever analysed and so identifies none of them. Measured on
+    # the real corpus, which is the only place it shows: the toy fixtures have no `src/`
+    # and recorded the right answer by having nowhere else to go.
+    tree_leaf = pkg_root.name
     out_dir.mkdir(parents=True, exist_ok=True)
     source: SourceStore | None = None
     if not args.no_source:
         source = SourceStore(out_dir / "source.db")
         source.set_meta("program", program)
-        revision = source.open_working()
+        revision = source.open_working(tree=tree_leaf)
     else:
         revision = revisions.stamp()
 
@@ -110,16 +130,20 @@ def cmd_analyze(args: argparse.Namespace) -> int:
     )
     t_extract = time.perf_counter() - t0
 
-    # The package root is where pyproject.toml lives, which may be above src/.
-    pkg_root = source_root
-    for candidate in (source_root, *source_root.parents):
-        if (candidate / "pyproject.toml").exists():
-            pkg_root = candidate
-            break
     # Relative to the analysed tree, like every other stored path -- which for a
     # `src/` layout means `../pyproject.toml`, because packaging metadata sits
     # above the code. See the note there.
     entrypoints_from_packaging(pkg_root, store, relative_to=source_root)
+
+    # What the program says its own version is, with the tier it was learned at. Recorded
+    # even when it is nothing: two versions of a program are two directories, and a reader
+    # holding both is entitled to whatever each one claims about itself -- or to being told
+    # plainly that it claims nothing. Never asked of a VCS; see `resolve/version.py`.
+    found = program_version.detect(source_root, package_root=pkg_root, leaf=tree_leaf)
+    if found is not None:
+        store.set_meta("program_version", found.value)
+        store.set_meta("program_version_tier", str(found.provenance))
+        store.set_meta("program_version_where", found.where)
 
     # Documentation is a parallel input, read from the package root because that is
     # where prose lives relative to `src/`. It is never a prerequisite: a program with

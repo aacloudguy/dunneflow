@@ -3958,10 +3958,15 @@ def test_a_chosen_revision_that_is_gone_is_dropped_and_said_out_loud() -> None:
         "chosenPair no longer checks the stored ids against the revisions that exist"
     )
     # Both ends, named individually. Asked as "does the function mention the check" this
-    # passed against its own mutation: dropping the guard from `from` alone leaves `to`
-    # still using it, and the containment check cannot tell one end from two. Rule 37 in
-    # a guard, which is where it keeps turning up.
-    for end in ("from", "to"):
+    # passed against its own mutation: dropping the guard from one end alone leaves the
+    # other still using it, and the containment check cannot tell one end from two. Rule
+    # 37 in a guard, which is where it keeps turning up.
+    #
+    # The ends were `from` and `to` until 2026-08-30, which named a direction in time the
+    # store cannot see. They are `base` (the version being read) and `compared` (the one
+    # it is held against), and neither is claimed to be older -- so this guard is updated
+    # deliberately rather than loosened to match whatever the code now says.
+    for end in ("base", "compared"):
         line = re.search(rf"^\s*{end}:\s*(.+)$", chosen, re.M)
         assert line, f"chosenPair no longer returns a {end!r} end"
         assert "live(" in line.group(1), (

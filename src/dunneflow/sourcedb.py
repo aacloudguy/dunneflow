@@ -52,7 +52,7 @@ from typing import Any
 
 from .migrate import META_PATHS, PATHS_RELATIVE
 
-SOURCE_SCHEMA_VERSION = 2
+SOURCE_SCHEMA_VERSION = 3
 
 # A revision is identified by **when it was captured**, and by nothing else. Not "HEAD",
 # not a commit, not a tag: this store is deliberately version-control agnostic and never
@@ -136,7 +136,22 @@ CREATE TABLE IF NOT EXISTS revisions (
     state       TEXT NOT NULL,      -- one of STATES
     captured_at TEXT NOT NULL,      -- the same instant, or empty when it is not known
     label       TEXT NOT NULL DEFAULT '',
-    note        TEXT NOT NULL DEFAULT ''
+    note        TEXT NOT NULL DEFAULT '',
+    -- The **leaf** of the directory this version was read from, and only the leaf:
+    -- `society-2026-08-26`, never the path that led to it. Two versions of one program
+    -- are two directories, so this is what a reader recognises them by -- an instant
+    -- says when we read the bytes and nothing about which tree they came from.
+    --
+    -- A leaf and a path are not the same disclosure. The path is one machine's layout
+    -- and is deliberately not recorded anywhere (rule 60); the leaf is a name somebody
+    -- chose for the source, travels with the map, and survives a move. It is written
+    -- down in `README.md` as something a handed-over program directory contains,
+    -- because a reader is entitled to know what they are passing on.
+    --
+    -- Distinct from `label`, which is what a person called a snapshot at `seal` time.
+    -- One meaning per column: `seal --label` must not overwrite where the code came
+    -- from, and a directory name must not masquerade as a considered description.
+    tree        TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS ix_revisions_state ON revisions(state);
 """
@@ -172,6 +187,7 @@ class SourceStore:
         if not writable:
             return
         self.conn.executescript(SCHEMA_SQL)
+        self._add_missing_columns()
         self.set_meta("kind", "source")
         self.set_meta("schema_version", str(SOURCE_SCHEMA_VERSION))
         # Paths here are relative to the tree each revision was read from, and that tree
@@ -180,6 +196,30 @@ class SourceStore:
         # same claim as "already relative".
         self.set_meta(META_PATHS, PATHS_RELATIVE)
         self._stamp_legacy_paths()
+
+    # -------------------------------------------------------------- additive --- #
+
+    # Columns added to an existing table after the fact. `CREATE TABLE IF NOT EXISTS`
+    # does nothing to a table that already exists, so a sidecar written before a column
+    # existed never gains it -- and this is the one store that is never rebuilt (rule
+    # 25), so there is no re-analysis that would fix it.
+    #
+    # **Add only.** Nothing here drops, renames or rewrites a column, and the test that
+    # this module contains no `DROP` covers it. A column that is no longer wanted is left
+    # alone: unused space in a file nobody can regenerate is the cheapest thing here.
+    _ADDED_COLUMNS: tuple[tuple[str, str, str], ...] = (
+        ("revisions", "tree", "TEXT NOT NULL DEFAULT ''"),
+    )
+
+    def _add_missing_columns(self) -> None:
+        for table, column, decl in self._ADDED_COLUMNS:
+            have = {str(r[1]) for r in
+                    self.conn.execute(f"PRAGMA table_info({table})")}
+            if not have:
+                continue                        # no such table yet; the schema owns it
+            if column not in have:
+                self.conn.execute(
+                    f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
 
     # ------------------------------------------------------------------ kind --- #
 
@@ -351,22 +391,34 @@ class SourceStore:
             return revision
         return self.open_working()
 
-    def open_working(self, *, at: str | None = None) -> str:
+    def open_working(self, *, at: str | None = None, tree: str = "") -> str:
         """The revision new bodies are mapped into, created and stamped if there is none.
 
         Reused rather than recreated, so analysing twice in one day does not leave two
         half-filled snapshots behind: a capture replaces the working revision's path map,
         which is what `prune_missing` has always done.
+
+        `tree` is the **leaf** of the directory the source was read from -- the name a
+        reader recognises this version by, since two versions of one program are two
+        directories. It is filled on a revision that has none rather than overwritten on
+        every open: re-analysing the same working revision from the same tree writes the
+        same value, and the one case where they differ -- re-analysing a working revision
+        from a *different* tree -- is the reader replacing what the snapshot is of, so the
+        newer answer is the true one.
         """
         self._require_writable("open a revision")
         open_already = self.working_revision()
         if open_already is not None:
+            if tree:
+                self.conn.execute(
+                    "UPDATE revisions SET tree = ? WHERE revision = ?",
+                    (tree, open_already))
             return open_already
         stamp = at or _now()
         rev = self._free_revision_id(stamp)
         self.conn.execute(
-            "INSERT INTO revisions(revision, state, captured_at) VALUES(?, ?, ?)",
-            (rev, STATE_WORKING, stamp),
+            "INSERT INTO revisions(revision, state, captured_at, tree) VALUES(?, ?, ?, ?)",
+            (rev, STATE_WORKING, stamp, tree),
         )
         return rev
 
@@ -416,18 +468,37 @@ class SourceStore:
         `stamped: False`. Reporting is not repairing: nothing is written, and the row says
         plainly that it has no identity yet rather than being given one behind the reader.
         """
-        try:
+        # Which columns this sidecar actually has, rather than which ones this version of
+        # the code knows about. **A read may refuse but may never repair** (rule 20), so a
+        # read-only open never runs the additive migration -- and a sidecar written before
+        # `tree` existed is opened read-only every time the dashboard starts.
+        #
+        # Naming the column unconditionally cost exactly what that rule warns about: the
+        # SELECT raised, the blanket `except` below turned it into `rows = []`, and the
+        # server reported a two-revision program as holding **no revisions at all** --
+        # state, label, capture instant and file counts all blank. A plausible answer, no
+        # error anywhere, and it consumed the evidence on its way past (rule 49). Found by
+        # reading the served JSON, which no test does.
+        have = {str(r[1]) for r in self.conn.execute("PRAGMA table_info(revisions)")}
+        if not have:
+            rows = []                       # no such table: a sidecar older than revisions
+        else:
+            optional = [c for c in ("label", "note", "tree") if c in have]
+            cols = ", ".join(f"r.{c}" for c in ["revision", "state", "captured_at"] + optional)
             rows = self.conn.execute(
-                "SELECT r.revision, r.state, r.captured_at, r.label, r.note, "
+                f"SELECT {cols}, "
                 "       (SELECT COUNT(*) FROM paths p WHERE p.revision = r.revision) files "
                 "FROM revisions r ORDER BY r.revision DESC"
             ).fetchall()
-        except sqlite3.Error:
-            rows = []
         out: list[dict[str, Any]] = [
             {"revision": str(r["revision"]), "state": str(r["state"]),
-             "captured_at": str(r["captured_at"]), "label": str(r["label"]),
-             "note": str(r["note"]), "files": int(r["files"]), "stamped": True}
+             "captured_at": str(r["captured_at"]),
+             # A column this sidecar does not have is empty, and empty is the honest
+             # answer: it was captured before we recorded this, not "we recorded nothing".
+             "label": str(r["label"]) if "label" in have else "",
+             "note": str(r["note"]) if "note" in have else "",
+             "tree": str(r["tree"]) if "tree" in have else "",
+             "files": int(r["files"]), "stamped": True}
             for r in rows
         ]
         legacy = self.conn.execute(
@@ -436,7 +507,7 @@ class SourceStore:
         if legacy is not None and int(legacy[0]):
             out.append({
                 "revision": LEGACY_REVISION, "state": STATE_WORKING, "captured_at": "",
-                "label": "", "files": int(legacy[0]), "stamped": False,
+                "label": "", "tree": "", "files": int(legacy[0]), "stamped": False,
                 "note": "captured before revisions were recorded; open this sidecar for "
                         "writing, or run `dunneflow revisions --seal`, to give it a name",
             })

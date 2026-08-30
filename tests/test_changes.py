@@ -1,8 +1,15 @@
-"""What moved between two points in time.
+"""What differs between two versions of a program.
 
 Every test here is a way the diff can be wrong while looking right. The expensive one
 is the last: a comparison key containing a line number turns one inserted import into
 thousands of false differences, and the view still renders perfectly.
+
+**Every call names its ends.** `build(base=..., compared=...)` is written with keywords
+throughout, because the two are not interchangeable and swapping them silently inverts
+every band -- which is the exact defect this vocabulary was introduced to make
+impossible. `base` is the version under the reader's eye; `compared` is the other one.
+Neither is claimed to be older, so the bands say **where** a thing is and never what
+befell it.
 """
 
 from __future__ import annotations
@@ -39,19 +46,22 @@ def beta():
 '''
 
 
-def test_a_new_routine_is_added_and_nothing_else_moves(tmp_path):
-    after = BEFORE + "\ndef gamma():\n    return 1\n"
-    d = changes.build(_graph(tmp_path, "a", BEFORE), _graph(tmp_path, "b", after))
-    assert [r["name"] for r in d["added"]] == ["gamma"]
-    assert d["removed"] == []
+def test_a_routine_only_the_base_has_is_reported_against_the_base(tmp_path):
+    grown = BEFORE + "\ndef gamma():\n    return 1\n"
+    d = changes.build(base=_graph(tmp_path, "b", grown),
+                      compared=_graph(tmp_path, "a", BEFORE))
+    assert [r["name"] for r in d["only_in_base"]] == ["gamma"]
+    assert d["only_in_compared"] == []
     assert d["counts"]["behaves"] == 0, d["behaves"]
+    assert d["identical"] is False
 
 
-def test_a_deleted_routine_is_removed(tmp_path):
-    after = BEFORE.replace("def beta():\n    alpha()\n", "")
-    d = changes.build(_graph(tmp_path, "a", BEFORE), _graph(tmp_path, "b", after))
-    assert [r["name"] for r in d["removed"]] == ["beta"]
-    assert d["added"] == []
+def test_a_routine_only_the_compared_has_is_reported_against_the_compared(tmp_path):
+    shrunk = BEFORE.replace("def beta():\n    alpha()\n", "")
+    d = changes.build(base=_graph(tmp_path, "b", shrunk),
+                      compared=_graph(tmp_path, "a", BEFORE))
+    assert [r["name"] for r in d["only_in_compared"]] == ["beta"]
+    assert d["only_in_base"] == []
 
 
 def test_an_edit_that_changes_nothing_it_does_is_not_a_behaviour_change(tmp_path):
@@ -60,25 +70,28 @@ def test_an_edit_that_changes_nothing_it_does_is_not_a_behaviour_change(tmp_path
     `beta` gains a local and some arithmetic. Its body hash moves; what it *does* --
     what it calls, touches, takes and returns -- does not.
     """
-    after = BEFORE.replace("def beta():\n    alpha()\n",
-                           "def beta():\n    n = 2 + 2\n    alpha()\n")
-    d = changes.build(_graph(tmp_path, "a", BEFORE), _graph(tmp_path, "b", after))
+    edited = BEFORE.replace("def beta():\n    alpha()\n",
+                            "def beta():\n    n = 2 + 2\n    alpha()\n")
+    d = changes.build(base=_graph(tmp_path, "b", edited),
+                      compared=_graph(tmp_path, "a", BEFORE))
     assert [r["name"] for r in d["edited_only"]] == ["beta"], d["edited_only"]
     assert d["counts"]["behaves"] == 0, d["behaves"]
 
 
 def test_a_new_call_is_a_behaviour_change(tmp_path):
-    after = BEFORE.replace("def beta():\n    alpha()\n",
-                           "def beta():\n    alpha()\n    os.getcwd()\n")
-    d = changes.build(_graph(tmp_path, "a", BEFORE), _graph(tmp_path, "b", after))
+    calling_more = BEFORE.replace("def beta():\n    alpha()\n",
+                                  "def beta():\n    alpha()\n    os.getcwd()\n")
+    d = changes.build(base=_graph(tmp_path, "b", calling_more),
+                      compared=_graph(tmp_path, "a", BEFORE))
     names = {r["name"]: r["moved"] for r in d["behaves"]}
     assert "beta" in names, d["behaves"]
     assert "calls" in names["beta"]
 
 
 def test_a_changed_signature_is_a_behaviour_change(tmp_path):
-    after = BEFORE.replace("def alpha():", "def alpha(flag: bool = False):")
-    d = changes.build(_graph(tmp_path, "a", BEFORE), _graph(tmp_path, "b", after))
+    signed = BEFORE.replace("def alpha():", "def alpha(flag: bool = False):")
+    d = changes.build(base=_graph(tmp_path, "b", signed),
+                      compared=_graph(tmp_path, "a", BEFORE))
     names = {r["name"]: r["moved"] for r in d["behaves"]}
     assert "params" in names.get("alpha", []), d["behaves"]
 
@@ -86,13 +99,14 @@ def test_a_changed_signature_is_a_behaviour_change(tmp_path):
 def test_a_routine_that_arrived_is_not_also_counted_as_behaving_differently(tmp_path):
     """One act, one number. Rule 40 in a diff.
 
-    A new routine's calls are all "new", so a diff that does not restrict the fact
-    comparison to routines present in *both* reports every addition twice -- once as
-    added and once as changed -- and the two counts never add up to anything.
+    A routine only one side has has all its calls on that side too, so a diff that does
+    not restrict the fact comparison to routines present in *both* reports it twice --
+    once for its presence and once as changed -- and the two counts never add up.
     """
-    after = BEFORE + "\ndef gamma():\n    alpha()\n"
-    d = changes.build(_graph(tmp_path, "a", BEFORE), _graph(tmp_path, "b", after))
-    assert [r["name"] for r in d["added"]] == ["gamma"]
+    grown = BEFORE + "\ndef gamma():\n    alpha()\n"
+    d = changes.build(base=_graph(tmp_path, "b", grown),
+                      compared=_graph(tmp_path, "a", BEFORE))
+    assert [r["name"] for r in d["only_in_base"]] == ["gamma"]
     assert all(r["name"] != "gamma" for r in d["behaves"]), d["behaves"]
 
 
@@ -104,10 +118,12 @@ def test_inserting_a_line_above_everything_changes_nothing(tmp_path):
     as the program having been rewritten. This is `make_id`'s own argument one level
     down, and the view looks completely normal while it happens.
     """
-    after = "import sys\n" + BEFORE
-    d = changes.build(_graph(tmp_path, "a", BEFORE), _graph(tmp_path, "b", after))
+    shifted = "import sys\n" + BEFORE
+    d = changes.build(base=_graph(tmp_path, "b", shifted),
+                      compared=_graph(tmp_path, "a", BEFORE))
     assert d["counts"]["behaves"] == 0, d["behaves"]
-    assert d["added"] == [] and d["removed"] == [], (d["added"], d["removed"])
+    assert d["only_in_base"] == [] and d["only_in_compared"] == [], (
+        d["only_in_base"], d["only_in_compared"])
 
 
 def test_the_module_scope_arrives_when_it_first_owns_something(tmp_path):
@@ -123,17 +139,19 @@ def test_the_module_scope_arrives_when_it_first_owns_something(tmp_path):
     evidence, which is why this test states the behaviour rather than asserting a
     preference about it.
     """
-    after = "# the first module-level comment\n" + BEFORE
-    d = changes.build(_graph(tmp_path, "a", BEFORE), _graph(tmp_path, "b", after))
-    assert [r["qualname"] for r in d["added"]] == ["m.<module>"], d["added"]
+    commented = "# the first module-level comment\n" + BEFORE
+    d = changes.build(base=_graph(tmp_path, "b", commented),
+                      compared=_graph(tmp_path, "a", BEFORE))
+    assert [r["qualname"] for r in d["only_in_base"]] == ["m.<module>"], d["only_in_base"]
     assert all(r["name"] != "<module>" for r in d["behaves"])
 
 
 def test_every_row_carries_the_id_the_dashboard_selects_by(tmp_path):
     """Rule 30: a worklist whose rows carry a label and no subject is forty dead controls."""
-    after = BEFORE + "\ndef gamma():\n    alpha()\n"
-    d = changes.build(_graph(tmp_path, "a", BEFORE), _graph(tmp_path, "b", after))
-    for band in ("added", "removed", "behaves", "edited_only"):
+    grown = BEFORE + "\ndef gamma():\n    alpha()\n"
+    d = changes.build(base=_graph(tmp_path, "b", grown),
+                      compared=_graph(tmp_path, "a", BEFORE))
+    for band in ("only_in_base", "only_in_compared", "behaves", "edited_only"):
         for row in d[band]:
             assert row.get("id"), (band, row)
 
@@ -149,23 +167,26 @@ def test_every_row_carries_the_id_the_dashboard_selects_by(tmp_path):
 
 
 def test_a_call_that_stopped_happening_is_a_behaviour_change(tmp_path):
-    after = BEFORE.replace("def beta():\n    alpha()\n", "def beta():\n    pass\n")
-    d = changes.build(_graph(tmp_path, "a", BEFORE), _graph(tmp_path, "b", after))
+    hollowed = BEFORE.replace("def beta():\n    alpha()\n", "def beta():\n    pass\n")
+    d = changes.build(base=_graph(tmp_path, "b", hollowed),
+                      compared=_graph(tmp_path, "a", BEFORE))
     names = {r["name"]: r["moved"] for r in d["behaves"]}
     assert "calls" in names.get("beta", []), d["behaves"]
 
 
 def test_a_parameter_that_went_away_is_a_behaviour_change(tmp_path):
-    before = BEFORE.replace("def alpha():", "def alpha(flag: bool = False):")
-    d = changes.build(_graph(tmp_path, "a", before), _graph(tmp_path, "b", BEFORE))
+    signed = BEFORE.replace("def alpha():", "def alpha(flag: bool = False):")
+    d = changes.build(base=_graph(tmp_path, "b", BEFORE),
+                      compared=_graph(tmp_path, "a", signed))
     names = {r["name"]: r["moved"] for r in d["behaves"]}
     assert "params" in names.get("alpha", []), d["behaves"]
 
 
 def test_a_boundary_that_is_no_longer_touched_is_a_behaviour_change(tmp_path):
-    before = BEFORE.replace("def beta():\n    alpha()\n",
-                            "def beta():\n    alpha()\n    open('/tmp/x').read()\n")
-    d = changes.build(_graph(tmp_path, "a", before), _graph(tmp_path, "b", BEFORE))
+    touching = BEFORE.replace("def beta():\n    alpha()\n",
+                              "def beta():\n    alpha()\n    open('/tmp/x').read()\n")
+    d = changes.build(base=_graph(tmp_path, "b", BEFORE),
+                      compared=_graph(tmp_path, "a", touching))
     names = {r["name"]: r["moved"] for r in d["behaves"]}
     assert "beta" in names, d["behaves"]
 
@@ -186,27 +207,33 @@ def test_a_diff_can_ride_a_connection_that_already_holds_one_end(tmp_path):
     """
     import sqlite3
 
-    before = _graph(tmp_path, "a", BEFORE)
-    after = _graph(tmp_path, "b", BEFORE + "\ndef gamma():\n    alpha()\n")
+    compared = _graph(tmp_path, "a", BEFORE)
+    base = _graph(tmp_path, "b", BEFORE + "\ndef gamma():\n    alpha()\n")
 
-    standalone = changes.build(before, after)
+    standalone = changes.build(base=base, compared=compared)
 
+    # **The connection is open on the base**, and that is the whole shape of the
+    # optimisation: the base is the version the dashboard is serving, so it is the graph
+    # this process already holds. A connection on the compared end is no use — it is the
+    # one nothing has opened.
+    #
     # Exactly as `Store` opens it: **no** `uri=True`, because that is the connection
     # this rides in the dashboard. With URI handling on, a `file:...?mode=ro` attach
     # quietly works here and fails in the server, where the URI is taken as a literal
     # filename — the guard would then pass against the defect it exists for (rule 37).
-    conn = sqlite3.connect(after)
+    conn = sqlite3.connect(base)
     conn.row_factory = sqlite3.Row
     try:
-        ridden = changes.build(before, after, serving=conn)
+        ridden = changes.build(base=base, compared=compared, serving=conn)
         # Identical answers, or the fast path is a different measurement wearing the
         # same label (rule 24).
         assert ridden["counts"] == standalone["counts"]
-        assert [r["id"] for r in ridden["added"]] == [r["id"] for r in standalone["added"]]
+        assert ([r["id"] for r in ridden["only_in_base"]]
+                == [r["id"] for r in standalone["only_in_base"]])
         # And the connection is handed back as it was found: a left-behind alias makes
         # the *next* comparison fail, which is the kind of breakage that only shows up
         # on the second click.
-        again = changes.build(before, after, serving=conn)
+        again = changes.build(base=base, compared=compared, serving=conn)
         assert again["counts"] == standalone["counts"]
     finally:
         conn.close()
@@ -255,3 +282,67 @@ def test_the_diff_contains_no_write_statement():
             assert verb not in upper, f"{verb} in a string literal: {node.value[:70]!r}"
     # The check must have had something to look at, or it passes by finding nothing.
     assert seen > 5, f"only {seen} literals examined — the instrument is not looking"
+
+
+# --------------------------------------------------------------------------- #
+# Two versions, and no claim about which is older.
+# --------------------------------------------------------------------------- #
+
+
+def test_two_identical_versions_report_no_differences_rather_than_nothing(tmp_path):
+    """"Identical" is an answer, and four empty bands are not the same claim.
+
+    A reader who compares a tree with a copy of it has asked a real question and is
+    entitled to a real answer. Empty bands read as a comparison that *failed* -- design
+    rule 1 says a view must say what it is not showing, and "nothing here" and "nothing
+    differs" are opposite claims (rule 35, one layer up).
+    """
+    d = changes.build(base=_graph(tmp_path, "b", BEFORE),
+                      compared=_graph(tmp_path, "a", BEFORE))
+    assert d["identical"] is True
+    assert d["only_in_base"] == [] and d["only_in_compared"] == []
+    assert d["counts"]["behaves"] == 0 and d["counts"]["edited_only"] == 0
+
+
+def test_a_single_difference_anywhere_is_enough_to_not_be_identical(tmp_path):
+    """The half that makes the flag worth having.
+
+    `identical` must fall to *any* band, including the presence tables nothing else
+    counts. A constant added at module scope is the cheapest thing that is invisible to
+    the four routine bands on a graph where the module scope already exists.
+    """
+    grown = BEFORE + "\nLIMIT = 5\n"
+    d = changes.build(base=_graph(tmp_path, "b", grown),
+                      compared=_graph(tmp_path, "a", BEFORE))
+    assert d["identical"] is False
+    assert d["presence"]["constants"]["only_in_base"] == ["m.LIMIT"], d["presence"]
+
+
+def test_no_band_or_count_is_named_for_a_point_in_time(tmp_path):
+    """The vocabulary guard, and it is the point of the whole change.
+
+    The store records when *we* read the bytes and nothing else, so a key called
+    `before`, `after`, `earlier`, `later`, `added` or `removed` is this module claiming
+    a chronology it cannot see. Every one of them was here, and the labels were correct
+    only because the default pairing happened to make the base the newer capture.
+
+    Asserted over the **keys the answer actually carries**, not over the source, because
+    what a reader can be misled by is what reaches them (rule 13).
+    """
+    grown = BEFORE + "\ndef gamma():\n    return 1\n"
+    d = changes.build(base=_graph(tmp_path, "b", grown),
+                      compared=_graph(tmp_path, "a", BEFORE))
+
+    forbidden = {"before", "after", "earlier", "later", "added", "removed"}
+    keys = set(d) | set(d["counts"])
+    for table in d["presence"].values():
+        keys |= set(table)
+    # Over the **parts** of each name, not the whole name. `routines_after` is the same
+    # claim as `after` and an exact-match test sails straight past it -- which is not a
+    # hypothetical: it was the one mutation that survived the first version of this
+    # guard, and it survived because the guard was weak rather than because the
+    # mutation was (rule 59's companion).
+    parts = {part for key in keys for part in key.split("_")}
+    assert not (parts & forbidden), sorted(parts & forbidden)
+    # And the ends it does name are the two it is allowed to name.
+    assert {"only_in_base", "only_in_compared"} <= keys

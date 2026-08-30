@@ -3076,3 +3076,140 @@ rather than hidden: the migration is verified, idempotent, and re-derivable — 
 trees still exist, so the worst case is a re-analysis rather than a loss. `source.db`'s
 bodies were never at risk; `prune_missing` leaves blobs alone and the migration only
 rewrote the `paths` mapping.
+
+**6b. Built 2026-08-30: base and compared — two directories, and no claim about which is
+older.** Tom's decision, and it replaces the question the previous pause was going to
+answer rather than answering it.
+
+> *"I don't want to show the pair as 'captured first' or 'written first'. We just have a
+> 'base version' and a 'compared version', and that second version might be higher or
+> lower, doesn't matter. It might even be identical, and we'll report that there are no
+> differences found."*
+
+The four-step ordering plan is **superseded**. Step 3 — "state capture order as capture
+order" — is gone and better than gone: it was an honest label on a claim the tool should
+never have been making. There is no *earlier* end and no *later* end. There is the
+version the map is showing and the version it is held against.
+
+*What the vocabulary was, and what it is.* Not `earlier`/`later` — those never reached a
+reader. Four overlapping layers: `build(before, after)` with SQL aliases `A`/`B`; the wire's
+`from`/`to` and `routines_before`/`routines_after`; the bands `added`/`removed`; and the
+client's `state.revB` (reading end) and `state.revA`. All of it is now `base` and
+`compared`, and the presence bands are **`only_in_base` and `only_in_compared`** — named
+for *where a thing is*, which is a fact, rather than for what befell it, which is not.
+
+*The correction that mattered, and it inverted my first reading.* `state.revB` was already
+the base concept, so `changes.build`'s 36x serving-connection ride (rule 58) **already rode
+the base** and needed no re-pointing. But it also means today's `added` band was
+*"in base, not in compared"* — which under the settled default polarity is **deleted**. The
+labels were correct only because the default pairing happened to make the base the newer
+capture. That accident is exactly what this removes.
+
+*Added and deleted are an interpretation, and the store does not hold one.* The polarity is
+`state.comparedIsNewer`, default true — Tom's default, and the case the feature exists for:
+*here is the copy somebody handed me, what has happened since?* `diffWords()` turns it into
+the two words the whole page uses, so no view can label one set two ways (rule 51). **Driven
+and measured: flipping it costs zero fetches** — 53 deleted becomes 53 added, in the
+navigator and the centre pane together, with no query. That is the whole payoff of naming
+the sets by side.
+
+*The strip.* Its own `.app` grid row, because it is about the whole screen — the navigator's
+counts, the inspector's figures and the code browser's lines all belong to the base, and a
+band inside `.centre` would be a claim about the middle only. Not the toolbar: that is a
+single-line flex row whose width caps exist because two unbounded selects once made a
+1,278px window carry a 2,068px toolbar. **Always present**, including on a one-version
+program, where it reads *"on its own, nothing compared"* — Tom's call, and the right one: an
+absence must never be the thing that tells a reader they are not comparing.
+
+It carries four claims of different kinds, and keeping them apart is the point: which two
+versions (a fact), what each asserts about its own version and at which tier (design rule
+13), the reader's assumption (stated as one, and clickable), and **what we can actually see
+about capture order, as a plain observation beside the assumption and never as a correction
+to it.** We may infer, so long as we say we did.
+
+*Version detection, in tiers.* `pyproject.toml [project] version` reusing the entrypoint
+reader's parse — `os.path.relpath`, so a `src/` layout honestly says `../pyproject.toml`
+(rule 61); then a module-scope `__version__` with its file and line; then a guess off the
+directory leaf, marked `INFERRED` and rendered faint and italic so it cannot pass for
+something read. `__version__` is read by `resolve/version.py` directly rather than out of
+the constants table, **routing around the deliberate dunder filter rather than removing
+it** — that filter is right for the glossary, and its own comment says why.
+
+Verified against the corpus rather than assumed: Society's `[project]` genuinely has **no**
+`version` key and no module-scope `__version__` — read, not guessed — so both its versions
+fall to the inferred tier, and DunneFlow's own tree correctly yields `0.1.0` from
+`../pyproject.toml` at the declared tier.
+
+*The leaf of the tree, recorded — and documented.* `revisions.tree`, an additive column,
+add-only (rule 25 means this store is never rebuilt, so there is no re-analysis that would
+repair a missing column). Two versions of one program are two directories, so the leaf is
+what a reader recognises them by. Distinct from `label`, which is what a person called a
+snapshot at `seal` time: one meaning per column, so `seal --label` cannot overwrite where
+the code came from. `README.md` gains **"What a program directory contains about your
+machine"**, because a thing built to be handed over must say what it carries.
+
+*Two defects found by running it on real code, neither visible to any test.*
+
+- **A read-only open of an older sidecar reported a two-revision program as holding no
+  revisions at all.** A read may refuse but never repair (rule 20), so a read-only open
+  does not run the additive migration — and the dashboard opens the sidecar read-only every
+  time it starts. Naming `tree` unconditionally made the SELECT raise, a pre-existing
+  blanket `except sqlite3.Error` turned that into `rows = []`, and state, label, capture
+  instant and file counts all came back blank with **no error anywhere**. Rule 49 exactly: a
+  fallback yielding a plausible value hides the failure it was written for, and it consumed
+  the evidence on its way past. `revisions()` now reads the columns the sidecar has. Found
+  by reading the served JSON and noticing four fields had gone empty since the previous
+  request — no test compares two runs of a server.
+- **The recorded tree was `src`.** `target.name` for a `src/` layout is the string `src`,
+  which names every src-layout program ever analysed and therefore identifies none of them.
+  The leaf that identifies a tree is the **package root's**, found by the same upward walk
+  `pkg_root` already did — hoisted above the sidecar open, which also retired a duplicate
+  walk. **Invisible to every fixture in the suite, because none of them has a `src/` to be
+  wrong about**; visible on the first real run.
+
+*Guards.* `test_version.py` (11), plus tests for the tree column, the read-only path, and
+the vocabulary itself — `test_no_band_or_count_is_named_for_a_point_in_time`, asserted over
+the **keys the answer carries** rather than over the source, because what misleads a reader
+is what reaches them. Run against the defects they were written from with the baseline
+proved green first (rule 59): **5/5 mutations killed**. One survived the first attempt —
+renaming `routines_base` to `routines_after` — and the guard was the weak half, not the
+mutation: it tested exact key names, and `routines_after` *contains* the forbidden word
+rather than equalling it. It tests the parts of each name now.
+
+*Verified on the corpus.* Same totals under the new key names — 53 / 0 / 18 / 15, 4,786
+routines base against 4,733 compared, `work_items` as the new table — with
+`rode_serving_connection: true`, so the rule 58 fast path still fires. Swapping the ends
+explicitly inverts the two presence bands and correctly reports `rode: false`, because the
+base is then not the served graph. A fresh analysis of `../society-2026-08-26/src`
+reproduces the recorded ground truth exactly: **30,209 calls, 3,950 boundary touches, 175
+ways in**, in 74 s. The runtime self-check prints *every control is wired*.
+
+*Driven in a real window*, which is where all of this was checked: the strip on one version
+and on two, `elementFromPoint` on the assumption control (rule 48 — wiring and reachability
+are different claims), the flip with `fetch` counted, and the console read.
+
+**The flagged consequence, and it is on screen.** With the default pairing and the default
+polarity, Mensores' 53 genuinely-new routines render as **deleted**. That is the assumption
+doing its job visibly rather than a defect — and the strip says both *"assuming the compared
+version is the newer one"* and *"captured: compared first"*, so the reader has what they need
+to flip it. **But there is now a better default available and it is Tom's call, not mine:**
+when both versions carry a version — even an inferred one — comparing them is "a more
+obvious version available" in his own words, and the default could be derived from that and
+said to be derived. He set the default explicitly, so it stands until he moves it.
+
+**Not built, and it is the seam this stops at: switching the base.** Tom chose *rebuild
+every switch* (one payload set live, always). `serve()` builds the payload, the 628-file
+code list, both vocabulary lanes and the cover from one graph opened at boot, and `_Handler`
+holds the payload from construction — so a base switch is a server-lifecycle change (swap
+the store under the lock, rebuild the payload in place, invalidate the diff cache) plus a
+client progress state and its guards. `revB` was never settable from the UI, so this is new
+capability rather than a rewiring. Everything else in the chunk stands without it: the
+default base is the served graph, and `_r_changes` now defaults from `self._live.graph_db`
+rather than `graphs[0]` so the map and the comparison cannot disagree about which version is
+on screen.
+
+*The scratch corpus used for this was removed* — 250 MB, and Tom manages disk. Rebuild:
+`analyze ../society-2026-08-26/src --name verifycheck`, `revisions output/verifycheck --seal
+--label "handed over, undocumented"`, `analyze ../society-2026-08-29/src --name verifycheck`.
+It is the only program directory whose revisions carry a `tree`; `output/mensores` predates
+the column and honestly reports empty for both.

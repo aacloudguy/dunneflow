@@ -103,13 +103,25 @@ SELECT y.id AS o FROM {A}.routines x JOIN {B}.routines y ON y.id = x.id
  WHERE IFNULL(x.returns, '') <> IFNULL(y.returns, '')
 """
 
-# Presence-only tables. Each is keyed by the thing a reader would name it by, never by a
-# row id, because an id that includes a position moves for the same reason routines' did.
-PRESENCE: dict[str, str] = {
-    "db_tables":   "name",
-    "entrypoints": "id",
-    "artefacts":   "name",
-    "constants":   "module || '.' || name",
+# Presence-only tables, as `(key, label)`.
+#
+# The **key** decides identity across the two revisions and is the thing a reader would
+# name it by, never a row id — an id that includes a position moves for the same reason
+# routines' did. `entrypoints` is the exception and has to be: `name` is not unique there
+# (Mensores has fourteen ways in and a great many of them are called `main`), so identity
+# needs the id.
+#
+# The **label** is what is printed. Those two came apart exactly once and it was visible
+# from the first look at the page: keying entrypoints on `id` also *printed* the id, so
+# "Ways in +3" listed three sixteen-character hashes while Tables printed `work_items` and
+# Named files printed real filenames. A label is not an identity (rule 30) and neither is
+# an identity a label; where they differ, both are named here rather than one standing in
+# for the other.
+PRESENCE: dict[str, tuple[str, str]] = {
+    "db_tables":   ("name", "name"),
+    "entrypoints": ("id", "name || ' — ' || module"),
+    "artefacts":   ("name", "name"),
+    "constants":   ("module || '.' || name", "module || '.' || name"),
 }
 
 
@@ -206,13 +218,15 @@ def build(before: Path, after: Path,
         edited_only = [row for rid, row in edited.items() if rid not in behaves]
 
         presence = {}
-        for table, key in PRESENCE.items():
+        for table, (key, label) in PRESENCE.items():
+            # Compared on the key, printed as the label. One row in, one label out, so the
+            # count beside a line and the names under it cannot disagree (rule 13).
             presence[table] = {
                 "added": [r[0] for r in conn.execute(
-                    f"SELECT {key} FROM {B}.{table} "
+                    f"SELECT {label} FROM {B}.{table} "
                     f"WHERE {key} NOT IN (SELECT {key} FROM {A}.{table}) ORDER BY 1")],
                 "removed": [r[0] for r in conn.execute(
-                    f"SELECT {key} FROM {A}.{table} "
+                    f"SELECT {label} FROM {A}.{table} "
                     f"WHERE {key} NOT IN (SELECT {key} FROM {B}.{table}) ORDER BY 1")],
             }
 

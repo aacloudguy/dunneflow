@@ -171,6 +171,12 @@ const DEFAULTS = {
   trailShown: true,
   trailCap: 12,
   density: 'comfortable', // 'compact' | 'comfortable' | 'spacious'
+  /* Whether a change-worklist band scrolls inside itself instead of running its full
+   * length. Off, because rule 8 says a reference list is never bounded and the cap put a
+   * 512px scroller inside the page's own 401px one -- scrolling a box to find a box. On
+   * keeps all four band headings in reach at once, which is a real preference and not an
+   * obviously worse one, so both exist and usage retires the loser (design rule 2). */
+  bandScroll: false,
   ambient: false,         // anomaly badges wherever a thing appears
   hideInferred: false,
   colWidths: { q: 26, why: 30, fan: 5 },   // the columns the routine list can fill
@@ -267,7 +273,8 @@ function resetSettings(program, current) {
     graphLayout: 'graph layout', graphTheme: 'graph theme',
     theme: 'theme', scale: 'interface scale', startup: 'startup screen',
     menuOrder: 'menu order', trailShown: 'the trail', trailCap: 'trail length',
-    density: 'row density', ambient: 'ambient badges', hideInferred: 'inferred edges',
+    density: 'row density', bandScroll: 'scrolling change bands',
+    ambient: 'ambient badges', hideInferred: 'inferred edges',
     colWidths: 'column widths', insp: 'inspector sections',
     sortKey: 'table sort', sortAsc: 'table sort direction',
     egress: 'egress posture', aiOps: 'model operations',

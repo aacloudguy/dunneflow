@@ -218,6 +218,7 @@ const state = {
   ambient: false,         // anomaly badges on nodes
   hideInferred: false,
   density: "comfortable",
+  bandScroll: false,       // a change band scrolls in place, or runs its full length
   followMode: "replace",   // "replace" | "walk" -- what following a neighbour does
   threadsAll: false,       // the threads panel bounded (rule 8) or opened whole
   selected: null,          // the node id under inspection, or null for nothing picked
@@ -344,8 +345,17 @@ const esc = (s) => String(s).replace(/[&<>"]/g, c => ({ "&":"&amp;","<":"&lt;","
  * collapses its grid *track* and leaves a rotated rail (design rule 24). An overlay box
  * floating on the canvas collapses to a horizontal ribbon -- its own header strip, still
  * stating its summary. Merging them would give one of the two the wrong furniture. */
+/* `attr` is written as `data-<attr>` and must not collide with an attribute that already
+ * means something else. `navigator` wrote **`data-nav`** -- the same attribute `NAV_ROUTES`
+ * is keyed on -- so `.body` carried `data-nav="on"` as grid-track state while every routed
+ * control carried `data-nav="chg"`, `"pkg"`, `"routine"` as a route. One name, two
+ * unrelated meanings, and it went unnoticed for as long as the click handler happened to
+ * select on a class instead: broadening it to the attribute made `.body` the nearest
+ * routed ancestor of every stray click, and the self-check reported `nav "on" has no
+ * route` on the first page load. Rule 47's companion -- one channel meaning two things --
+ * one layer below where that rule found it. A test keeps the two sets disjoint. */
 const PANELS = {
-  navigator: { how: "track", grid: ".body",       attr: "nav",    rail: "#navigatorRail" },
+  navigator: { how: "track", grid: ".body",       attr: "navtrack", rail: "#navigatorRail" },
   inspector: { how: "track", grid: ".body",       attr: "insp",   rail: "#inspectorRail" },
   legend:    { how: "track", grid: "#graphMount", attr: "legend", rail: "#legendRail" },
   hud:       { how: "class", box: "#panel-hud" },
@@ -543,8 +553,20 @@ const NAV_ROUTES = {
      had to build. Rule 30 from the useful side: the row carries an identity, and the route
      is the only place that knows what to do with one. */
   chg:     (b) => selectFromNav({ nodes: navIds(b) }),
-  changes: () => { state.view = "changes"; loadChanges().then(render); },
+  changes: () => { state.view = "changes"; refreshChanges(); },
 };
+
+/* Load the comparison, then repaint **both** places that show it.
+ *
+ * `loadChanges().then(render)` was not enough and the gap was invisible from either side
+ * on its own: `render()` rebuilds the centre, the inspector, the trail and the filters,
+ * and does not touch the navigator. So the comparison arrived, the centre painted the
+ * whole worklist, and the Changes group beside it went on saying "two points in time —
+ * open to compare them" with a blank count and no rows -- one question, two answers,
+ * which is rule 51. Every caller goes through this door so neither half can be forgotten. */
+function refreshChanges(from, to) {
+  return loadChanges(from, to).then(() => { buildNav(); render(); });
+}
 
 /* What moved between two points in time.
  *
@@ -720,8 +742,28 @@ document.addEventListener("click", (ev) => {
   }
 });
 
+/* Every control that carries a route, wherever it lives and whatever it is styled as.
+ *
+ * `NAV_SELECTOR` is the attribute the route table is keyed on, and that is the whole
+ * point of it. This handler selected on `.nav-item` -- a **class** -- while the routes
+ * are looked up by `data-nav`, so a control could carry a perfectly good route and a
+ * class this listener had never heard of, and nothing anywhere would say so. The change
+ * worklist's rows were exactly that: `class="wl-item" data-nav="chg" data-navid="…"`,
+ * with a real route, a real id, and no listener. Clicking one did nothing at all, and
+ * adding the missing class to a single row made it work exactly as documented.
+ *
+ * Neither guard could see it. The runtime self-check scanned `.nav-item` for a missing
+ * route -- a `.wl-item` is not one -- and `data-nav` sits in `WIRED_ATTRS` because it *is*
+ * wired, elsewhere; that check states plainly that it cannot prove a read is reachable.
+ *
+ * Selecting on the attribute makes the whole class of defect unreachable rather than
+ * merely detectable, which is why the constant exists and why a test asserts it is still
+ * an attribute selector: narrowing this back to a class is rule 36's defect exactly -- a
+ * generic match narrowed to a literal, and a feature disappearing without a trace. */
+const NAV_SELECTOR = "[data-nav]";
+
 document.addEventListener("click", (ev) => {
-  const b = ev.target.closest(".nav-item");
+  const b = ev.target.closest(NAV_SELECTOR);
   if (!b) return;
   const kind = b.dataset.nav;
   const route = NAV_ROUTES[kind];
@@ -729,7 +771,7 @@ document.addEventListener("click", (ev) => {
     console.error("DunneFlow: no route for nav kind", kind, b);
     return;
   }
-  $$(".nav-item").forEach(x => x.setAttribute("aria-current", "false"));
+  $$(NAV_SELECTOR).forEach(x => x.setAttribute("aria-current", "false"));
   b.setAttribute("aria-current", "true");
   route(b);
   const lbl = b.querySelector(".navlabel");
@@ -1349,11 +1391,28 @@ function viewChanges() {
       ${why ? `<span class="hint">${why}</span>` : ""}
     </div>`;
 
+  /* `chg-item`, and not `wl-item`, because they are two different rows.
+   *
+   * `.wl-item` is the **anomaly** worklist's row and its grid says so:
+   * `grid-template-columns: .1875rem 1fr auto auto`, whose first cell is a `.wl-stripe` --
+   * a three-pixel severity bar. These rows have no severity and emitted only two children,
+   * so the *name* landed in the stripe column and `overflow: hidden; text-overflow:
+   * ellipsis` erased it, while the module path took the 1fr and 786 pixels. Every routine
+   * in every band rendered as an ellipsis followed by its module. Measured: a title whose
+   * `scrollWidth` is 188px inside a box 3px wide.
+   *
+   * Wired correctly to a stylesheet that could not carry it, which is the family rules 44
+   * and 48 both belong to, and invisible to every check because the markup and the routes
+   * were right. Found by looking at it.
+   *
+   * `.navlabel` on the name for a second reason: the click handler falls back to the whole
+   * button's text when there is no label, so the trail step read
+   * "claim_status_cmd mensores.cli.scribe boundariescallssql_ops". */
   const rows = (list) => list.map(r => `
-    <li><button class="wl-item" data-nav="chg" data-navid="${esc(r.id)}">
-      <span class="wl-title">${esc(r.name)}</span>
-      <span class="wl-meta">
-        <span class="mono" style="font-size:.7rem;color:var(--text-faint)">${esc(r.module)}</span>
+    <li><button class="chg-item" data-nav="chg" data-navid="${esc(r.id)}">
+      <span class="chg-title navlabel">${esc(r.name)}</span>
+      <span class="chg-meta">
+        <span class="mono chg-mod">${esc(r.module)}</span>
         ${(r.moved || []).map(m => `<span class="kind-tag">${esc(m)}</span>`).join("")}
       </span>
     </button></li>`).join("");
@@ -1362,7 +1421,7 @@ function viewChanges() {
     <section class="chgsection">
       <h3>${title} <span class="num">${list.length.toLocaleString()}</span></h3>
       ${why ? `<p class="hint">${why}</p>` : ""}
-      <ol class="wl-list">${rows(list)}</ol>
+      <ol class="chg-list">${rows(list)}</ol>
     </section>`;
 
   const pres = CHANGES.presence || {};
@@ -1376,8 +1435,17 @@ function viewChanges() {
     return `<li>${label} <b class="num">${bits.join(" ")}</b> ${named}</li>`;
   };
 
+  /* Whether a band caps its own height and scrolls inside itself, or runs its full
+   * length inside the one scroller the page already has. Design rule 2, and a real pair.
+   *
+   * Off by default, because rule 8 decides it: a reference list is never bounded, and
+   * there is no mandate to save space. A cap of 32rem put the Added band -- 53 rows, the
+   * largest and the first thing anyone wants -- into a 512px box nested inside a 401px
+   * page scroller on an ordinary window, so reaching row 40 meant scrolling one box to
+   * find another. On for a reader who would rather see all four band headings at once
+   * and scroll each in place; usage decides which survives. */
   return `
-  <div class="panel changes" style="padding:1rem 1.25rem">
+  <div class="panel changes${state.bandScroll ? " bands-capped" : ""}" style="padding:1rem 1.25rem">
     <h2 style="margin:0 0 .25rem">What moved</h2>
     <p class="hint" style="margin:0 0 .9rem">
       <code>${rev(CHANGES.from)}</code> &rarr; <code>${rev(CHANGES.to)}</code>
@@ -1777,6 +1845,18 @@ function viewSettings() {
               a signal that is always on stops being a signal. Turn it on when you are working through the
               worklist and want to see where the findings actually live; turn it off to read the program.</div></div>
           <button class="toggle" id="ambientToggle" aria-pressed="${state.ambient}" aria-label="Ambient anomaly badges"></button>
+        </div>
+
+        <div class="setrow">
+          <div><div class="lbl">Scroll change bands in place</div>
+            <div class="desc">On the change worklist, each band — added, removed, behaving differently,
+              edited only — keeps to <b>32rem</b> and scrolls inside itself, so all four headings stay
+              within reach of one another.<br><br>
+              <b>Off by default.</b> Rule 8 says a reference list is never bounded, and on an ordinary
+              window the cap put the largest band, 53 rows, into a 512px box nested inside the page's own
+              401px scroller — scrolling one box to find another. Turn it on if you would rather compare the
+              bands than read one through.</div></div>
+          <button class="toggle" id="bandScrollToggle" aria-pressed="${state.bandScroll}" aria-label="Scroll change bands in place"></button>
         </div>
 
         <div class="setrow">
@@ -3957,6 +4037,12 @@ function wire() {
   }));
   const amb = $("#ambientToggle");
   if (amb) amb.addEventListener("click", () => { state.ambient = !state.ambient; render(); });
+  const bsc = $("#bandScrollToggle");
+  if (bsc) bsc.addEventListener("click", () => {
+    state.bandScroll = !state.bandScroll;
+    used("bandscroll:" + state.bandScroll);   // design rule 2: the loser is retired on evidence
+    render();
+  });
   const inf = $("#inferredToggle");
   if (inf) inf.addEventListener("click", () => { state.hideInferred = !state.hideInferred; render(); });
   const fgp = $("#fgPick"), bgp = $("#bgPick");
@@ -4289,7 +4375,7 @@ const WIRED_ATTRS = new Set([
      handler of its own -- it is the line the click is about, and the roster is a list of
      attributes the shell writes, not only of the ones that are clicked. */
   "searchopen", "searchgo", "searchline", "searchflag",
-  "navid", "node", "open", "pane", "pin", "pinnote", "pkgnode", "pkgpick", "qual",
+  "navid", "navtrack", "node", "open", "pane", "pin", "pinnote", "pkgnode", "pkgpick", "qual",
   "resize", "row",
   "scale-set", "sec", "sev", "sevnav", "sort", "sqlshow", "start", "step", "theme",
   "term", "termuse", "theme-set", "thread", "threadlabel", "threadsall", "threadwhy",
@@ -4298,7 +4384,10 @@ const WIRED_ATTRS = new Set([
 
 function selfCheck() {
   const problems = [];
-  document.querySelectorAll(".nav-item").forEach(el => {
+  /* The handler's own selector, not a class that usually accompanies it. Scanning
+   * `.nav-item` meant a routed control living anywhere else -- a worklist row, say -- was
+   * never checked at all, and passed by being invisible rather than by being right. */
+  document.querySelectorAll(NAV_SELECTOR).forEach(el => {
     if (!NAV_ROUTES[el.dataset.nav]) problems.push(`nav "${el.dataset.nav}" has no route`);
   });
   document.querySelectorAll(".app *, #viewerMount *").forEach(el => {
@@ -5241,10 +5330,23 @@ const NAV_GROUPS = [
   /* Changes: what moved between two points in time. Closed by default and absent
      entirely from a program with one revision -- a group that is always empty is a
      control that always fails. */
+  /* `onOpen`: the rows are not in memory, so opening the group has to fetch them.
+   *
+   * It was not here, and the result was a closed loop with no way in. `changeList()`
+   * builds the row that emits the `changes` route -- and it only builds anything once
+   * `CHANGES` is loaded; `CHANGES` was only ever loaded *by* that route. So the control
+   * that starts the comparison came into existence only after the comparison had started,
+   * and opening the group gave "Not compared yet." with nothing to click. Eighty-seven nav
+   * controls on the page and not one of them emitting `changes`.
+   *
+   * The fix is rule 55's companion stated once more: **one truth about what is open, and
+   * whoever sets it does the work.** A group that needs fetching declares it here, beside
+   * the body that needs it, rather than in a handler that would have to remember. */
   { id: "navChanges", title: "Changes", open: false,
     when: () => REVISIONS.filter(r => r.comparable).length >= 2,
     count: () => changeCount(),
     note: () => changeNote(),
+    onOpen: () => refreshChanges(),
     body: () => changeList() },
   /* Code: the file list, and the file. Stacked, which is the accordion one level down --
      the same shape `navRoutines` uses, for the same reason. */
@@ -5462,6 +5564,12 @@ function setGroupOpen(id, open) {
   state.navOpen[id] = open;
   used("navgroups:" + state.navGroups);
   persist();
+  /* A group whose rows are not in memory fetches them here, from the table rather than
+   * from a branch (design rule 16). Called *before* the rebuild so the loading state is
+   * what the reader sees -- `loadChanges` sets `{ loading: true }` synchronously, and its
+   * own completion rebuilds the pane again with the answer. */
+  const g = NAV_GROUPS.find(x => x.id === id);
+  if (open && g && g.onOpen) g.onOpen();
   buildNav();
 }
 
@@ -5715,7 +5823,7 @@ const Settings = window.DunneFlowSettings;
  * block is expanded. */
 const PERSISTED = [
   "theme", "scale", "startup", "mode", "menuOrder", "trailShown", "trailCap",
-  "density", "ambient", "hideInferred", "colWidths", "insp", "sortKey", "sortAsc",
+  "density", "bandScroll", "ambient", "hideInferred", "colWidths", "insp", "sortKey", "sortAsc",
   "egress", "aiOps", "triage", "pins", "usage", "graphLayout",
   "diskOrder", "diskColors", "colorBy", "sortMode", "filterMode", "direction",
   "nodeSize", "spreadX", "spreadY", "spreadZ", "collapseUnused",

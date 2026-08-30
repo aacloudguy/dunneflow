@@ -322,10 +322,10 @@ body {
  * property of the grid. A pane hidden with `display:none` while its column stayed 22rem
  * would leave a 22rem hole -- which is the shape of the defect this shell already had once,
  * from the other direction. */
-.body[data-nav="off"]  { grid-template-columns: var(--rail) 1fr 22rem; }
+.body[data-navtrack="off"]  { grid-template-columns: var(--rail) 1fr 22rem; }
 .body[data-insp="off"] { grid-template-columns: var(--nav-w, 21rem) 1fr var(--rail); }
-.body[data-nav="off"][data-insp="off"] { grid-template-columns: var(--rail) 1fr var(--rail); }
-.body[data-nav="off"]  > .navigator,
+.body[data-navtrack="off"][data-insp="off"] { grid-template-columns: var(--rail) 1fr var(--rail); }
+.body[data-navtrack="off"]  > .navigator,
 .body[data-insp="off"] > .inspector { display: none; }
 
 .body {
@@ -401,7 +401,7 @@ body {
 }
 .navgrip:hover::after, .navgrip.active::after { background: var(--accent); }
 .navgrip:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
-.body[data-nav="off"] > .navgrip { display: none; }
+.body[data-navtrack="off"] > .navgrip { display: none; }
 @media (max-width: 768px) { .navgrip { display: none; } }
 
 /* The rail: what a collapsed pane leaves behind.
@@ -1988,6 +1988,41 @@ body.detached-code #trailMount { display: none !important; }
   font-size: 0.72rem;
   color: var(--text-muted);
 }
+
+/* ── the change worklist's rows, which are not the anomaly worklist's ──────────────
+ *
+ * These reused `.wl-item`, whose grid is `.1875rem 1fr auto auto` -- four columns, the
+ * first of them a `.wl-stripe` severity bar three pixels wide. A change row has no
+ * severity and emits two children, so the **routine name** was laid into the stripe
+ * column and ellipsised out of existence while the module path took the 1fr. Every row
+ * of every band showed a module and no name.
+ *
+ * Two columns, and the name is the one that gets the room: `max-content` so a short name
+ * takes only what it needs, `minmax(0, …)` on both so either can truncate rather than
+ * forcing the row wider than the pane. A grid child will not shrink below its content
+ * without `min-width: 0`, which is the same default that held the navigator open at
+ * 700px inside a 446px box (rule 29's companion). */
+.chg-list { list-style: none; margin: 0; padding: 0;
+  background: var(--surface); border: 1px solid var(--border); border-radius: .5rem;
+  box-shadow: var(--shadow); }
+/* Capped only when the reader asks for it -- see `viewChanges`. Rule 8: a reference list
+   is never bounded, and the cap nested a 512px scroller inside the page's own. */
+.changes.bands-capped .chg-list { max-height: 32rem; overflow-y: auto; }
+
+.chg-item { width: 100%; display: grid;
+  grid-template-columns: minmax(0, max-content) minmax(0, 1fr); gap: .5rem;
+  align-items: baseline; font: inherit; text-align: left; background: none; border: 0;
+  border-bottom: 1px solid var(--border); cursor: pointer; color: var(--text);
+  padding: .3rem .55rem; }
+.chg-item:last-child { border-bottom: 0; }
+.chg-item:hover { background: var(--raised); }
+.chg-item[aria-current="true"] { background: var(--accent-soft); }
+.chg-title { min-width: 0; font-size: .78rem;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chg-meta { min-width: 0; display: flex; align-items: baseline; gap: .3rem;
+  font-size: .66rem; color: var(--text-faint); overflow: hidden; }
+.chg-mod { min-width: 0; font-size: .7rem; color: var(--text-faint);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* The page. Four figures, and each says what it counts (rule 32) rather than leaving the
    reader to infer it from position. */

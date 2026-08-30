@@ -2601,3 +2601,152 @@ figures read as figures, and whether a row is reachable by pointer rather than b
 **Owed, unchanged:** the rendered markdown is not revision-named, so the second analysis
 overwrites the first's map; `--revision` is still unimplemented, so both revisions here are
 stamped with their capture time and carry their meaning in a label.
+
+### Two decisions taken 2026-08-30, before any of it was built
+
+Both are Tom's, both were questions this file had been carrying, and both are recorded
+here rather than acted on immediately because the session's first job is to *look* at
+the change worklist.
+
+**1. The navigator's search box is pinned, and collapses to an icon.** The question at
+the last pause was whether to make it sticky, and the objection was the vertical budget:
+~64 px of always-visible navigator, in a pane where nine group headings already cost
+306 px open or closed. The answer resolves the trade rather than paying it. **Open, the
+box is sticky and takes the real estate it needs** — input, its three switches, and the
+answer line, all held in view while the list under it scrolls. **Closed, it is an icon on
+the toolbar**, costing nothing. So the reader pays for the box only while they are using
+it, and the state that costs 64 px is one they chose.
+
+That is the same shape as design rule 24 — a pane folds and leaves a rail — with one
+deliberate difference worth writing down, because rule 24 says in as many words that *an
+icon rail is a puzzle*. It says that about a **pane**, whose identity a reader cannot
+guess from a glyph; a search box is one of the few controls whose icon is genuinely read,
+and it collapses to a *toolbar*, which is where a reader already looks for one. If it
+turns out to be a puzzle in use, the remedy is a labelled control rather than an
+un-pinning, because scrolling away was the defect being fixed.
+
+It also settles what the collapsed state must not do: **a search with an answer on screen
+may not collapse into silence.** Rule 1 — a filter that says nothing about what it removed
+is a filter the reader mistakes for the whole. The icon has to carry that the search is
+live, and the answer line has to survive the fold.
+
+**2. `m.<module>` is a language feature, and is reported as one.** The question was
+whether the synthetic module routine appearing — because a file gained its first
+module-level comment — should be reported as an added routine, or suppressed as noise.
+Neither. **It is a fact about Python**, and the tool's reader reads code without writing
+it, so the thing that serves them is not a hidden row and not a bare one: it is the row
+*with its explanation attached*.
+
+Three consequences, and the third is the reason to decide it now rather than when it
+irritates someone:
+
+- It is **not noise**, so it is not filtered. A file acquiring module-level behaviour it
+  did not have is a real change, and design rule 1 forbids removing it quietly.
+- It is **a curiosity**, in design rule 15's sense — a doorway rather than a problem. A
+  reader who has never written Python does not know that a module body runs at import,
+  and this is the row that teaches them. It carries extra documentation, not a badge.
+- It is **language-scoped**, and must be built that way. Every extractor emits the same
+  `FileFacts`, and the resolver knows nothing about any language; a rule that says *this
+  particular appearance means something specific about how this language loads code*
+  belongs beside the extractor that produced it, tagged with its language, so the next
+  extractor either supplies its own or supplies none. **Do not special-case Python in the
+  diff.** Swift's answer will not be Python's, and a hard-coded one here is a false claim
+  about every language added later.
+
+**Research owed before building it:** how other tools present a construct that exists in
+the graph because the language put it there rather than because an author wrote it. That
+is a real question with prior art — it is the same problem as a synthesized default
+constructor, an implicit `main`, a generated accessor — and the answer decides whether
+this is one row with a note or a small family of them.
+
+**5y. Built 2026-08-30: the change worklist, looked at for the first time.** 5x said it
+plainly — *nobody has looked at it* — and every claim in it was guards, mutations and
+`curl`. Looking found six things in an hour. **None of them was visible to any check, and
+four of them meant the feature did not work at all.**
+
+*What was wrong.*
+
+1. **The worklist could not be reached.** A closed loop: `changeList()` builds the row
+   that emits the `changes` route, and only once `CHANGES` is loaded; `CHANGES` was only
+   ever loaded *by* that route. The control that starts the comparison existed only after
+   the comparison had started. Opening the Changes group gave "Not compared yet." with
+   nothing to click — eighty-seven routed controls on the page, none emitting `changes`.
+   The group declares `onOpen` now, run by `setGroupOpen` from the table rather than from
+   a branch naming it. Rule 55's companion by a route its own precedent did not cover.
+
+2. **Once compared, the navigator never learnt.** `loadChanges().then(render)` — and
+   `render()` repaints the centre, inspector, trail and filters, never the navigator. So
+   the comparison arrived, the worklist painted in full, and the group beside it went on
+   saying "two points in time — open to compare them" with a blank count. One question,
+   two answers, drifting on the first click (rule 51). `refreshChanges()` is the one door
+   both callers use.
+
+3. **Every routine name was three pixels wide.** The rows reused `.wl-item`, whose grid is
+   `.1875rem 1fr auto auto` — four columns written for the **anomaly** worklist, the first
+   of them a `.wl-stripe` severity bar. A change row has no severity and emitted two
+   children, so the *name* was laid into the 3px stripe column and `text-overflow:
+   ellipsis` erased it, while the module path took the `1fr` and 786 pixels. Measured: a
+   title of `scrollWidth` 188 inside a box 3px wide, on all 86 rows of all four bands.
+   Rules 44 and 48's family — wired correctly to a stylesheet that could not carry it.
+
+4. **Clicking a row did nothing.** Rows carried `class="wl-item" data-nav="chg"
+   data-navid=…` while the delegated handler selected `.nav-item` — a **class**, when
+   `NAV_ROUTES` is keyed on `data-nav`. Adding the class to one row live made it work
+   exactly as 5x describes. The handler selects on the attribute now, which makes the
+   defect unreachable rather than merely detectable.
+
+5. **"Ways in +3" printed raw node ids** — three sixteen-character hashes where Tables
+   printed `work_items`. `PRESENCE` keyed entrypoints on `id` (correctly: `name` is not
+   unique there) and *printed the key*. Key and label are separate columns now.
+
+6. **The trail step was the whole row** — "claim_status_cmd mensores.cli.scribe
+   boundariescallssql_ops" — because `pushTrail` falls back to the button's text with no
+   `.navlabel` present. There is one on the name.
+
+*And one the fix itself created, which is the most useful thing here.* Broadening the
+click handler from `.nav-item` to `[data-nav]` immediately reported `nav "on" has no
+route` on the first page load. `PANELS` writes each pane's fold state as `data-<attr>`
+from a name of its own, and the navigator's was **`nav`** — so `.body` carried
+`data-nav="on"` as grid-track state while every routed control carried `data-nav="chg"`,
+`"pkg"`, `"routine"` as a route. **One attribute, two unrelated meanings**, harmless only
+for as long as the handler happened to match a class instead; on the attribute, `.body`
+became the nearest routed ancestor of every stray click in the application. Rule 47's
+companion — one channel meaning two things — a layer below where that rule found it. The
+track is `data-navtrack`, and a test keeps the two sets disjoint.
+
+Found by widening a check and then **reading the console**, which no test does.
+
+*The one judgment, and it is now a Setting.* `.wl-list` capped a band at `32rem`, so the
+Added band — 53 rows, the largest and the first thing anyone wants — was a 512px scroller
+nested inside the page's own 401px one. Rule 8 decides the default: a reference list is
+never bounded and there is no mandate to save space, so bands run their full length and
+the page is the only scroller. **`bandScroll` turns the caps back on** for a reader who
+would rather compare the four bands than read one through — design rule 2, counted, and
+retired later on evidence. Measured both ways: capped, the Added band is 512px of a
+1,505px list inside a 2,018px page; uncapped it is 1,507px inside 3,015px and nothing
+scrolls in place.
+
+*What the guards cost.* Three written, then a fourth for the collision, and **run against
+the defects they were written from**: 8 of 8 mutations killed after one was fixed. The
+survivor was mine — a containment check taken over "200 characters after `.chg-title`",
+which passed against its own mutation by reading the `min-width: 0` on the `.chg-meta`
+rule three lines below. A guard vouching for its neighbour, rule 37 inside a check written
+*because of* rule 37. And `_nav_kinds_built()` then failed on the **comment explaining the
+collision**: it read raw source, so prose naming an attribute counted as markup writing
+one. That is the third guard in this file to trip on the sentence describing the thing it
+checks; `_code()` exists for exactly that and this helper predated it.
+
+*What could not be driven, and how it was verified instead.* The extension's click
+dispatch died mid-session — pointer *moves* reached the page and `click` events did not,
+in two tabs, with `elementFromPoint` still answering. So rule 48's two halves were taken
+separately and are reported as two claims: **reachability** by `elementFromPoint` at each
+control's centre (chip, "the whole comparison" row, a worklist row, the new toggle — all
+four reachable), and **wiring** by `element.click()`. That is weaker than one pointer
+doing both, and it is said here rather than glossed. The rest was looked at: names now
+render at 196–228px and nothing is clipped, the group reads `71` and its note, the fold
+still collapses the track to a rail and back, and the self-check prints *every control is
+wired*.
+
+*Owed, unchanged:* the rendered markdown is not revision-named; `--revision` is still
+unimplemented. **Next: the pair selector** — two revisions exist and `/api/changes` is
+still hard-wired to the newest two.

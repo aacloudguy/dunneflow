@@ -195,18 +195,39 @@ where it is 242 ms and healthy, so it would have shipped as fast and been 84 s b
 first click. **Rule 59** came from the harness: a mutation run scored 7/7 over an
 already-red suite; the honest score was 6/7.
 
-**Nobody has looked at the worklist.** Everything above is guards, mutations and `curl`.
-Rule 38 — the automation tab gets no frames — so the layout, the band accordion and
-whether a row is reachable by pointer (rule 48) all want a real window. **That is the
-first thing to do next.**
+**The worklist has now been looked at, and it did not work — `HANDOFF.md` 5y.** Six
+defects in an hour, none visible to any check, four of them meaning the feature was dead:
+it **could not be reached at all** (a closed loop — the row that starts the comparison was
+built only after the comparison had started); the navigator never learnt the answer once
+it arrived; **every routine name rendered three pixels wide**, laid into the anomaly
+worklist's severity-stripe column; and **clicking a row did nothing**, because the handler
+matched a class while the routes are keyed on an attribute. Also: "Ways in" printed raw
+node ids, and the trail step was the whole row. All fixed and driven.
 
-**Next after that: the pair selector** — two revisions exist and the comparison is
-hard-wired to the newest two.
+**The best find came from the fix.** Matching on `data-nav` immediately reported `nav "on"
+has no route`: `.body` carried `data-nav` as pane-fold *grid-track state* while every
+routed control carried it as a *route* — one attribute, two meanings, harmless only while
+the handler matched a class. It is `data-navtrack` now, with a test keeping the two
+disjoint. Found by reading the console, which no test does.
+
+**New Setting: `bandScroll`** (design rule 2). A change band capped at `32rem` put the
+largest band inside a scroller nested in the page's own; rule 8 sets the default to
+uncapped, and the Setting turns the caps back on.
+
+**Next: the pair selector** — two revisions exist and the comparison is hard-wired to the
+newest two.
 
 **Owed from this session:** the rendered markdown is not revision-named, so a second
-analysis overwrites the first's map; `--revision` is still unimplemented; and whether
-`m.<module>` should appear as an added routine when a file gains its first module-level
-comment is Tom's call, not mine.
+analysis overwrites the first's map; `--revision` is still unimplemented.
+
+**Two decisions taken 2026-08-30, recorded and not yet built** — `HANDOFF.md`, "Two
+decisions taken 2026-08-30". The navigator's search box is **pinned when open and an icon
+on the toolbar when closed**, so the 64 px is paid only by a reader using it. And
+`m.<module>` appearing because a file gained its first module-level comment is **a
+language feature reported as one** — not filtered, not bare: a curiosity in design rule
+15's sense, carrying its own explanation, and **scoped to the language that produced it**
+rather than special-cased in the diff. Research owed on how other tools present a
+construct the language put there rather than an author.
 
 ## What we were doing before this
 
@@ -238,12 +259,13 @@ last.
 mutation as surviving because they were reading pytest's output rather than its exit code.
 Rule 43 in the instrument, twice in one session.
 
-**Reported, not fixed, because it is Tom's design.** The search box scrolls away with the
-list — the group note is sticky and carries the whole answer, but the input and its three
-switches are ordinary content in a group 1,900px tall on a broad search. Making them sticky
-costs ~64px of always-visible navigator, which is the vertical budget already flagged at the
-last pause (nine group headings cost ~306px open or closed). **That is one question waiting
-for you.**
+**Reported, then decided.** The search box scrolls away with the list — the group note is
+sticky and carries the whole answer, but the input and its three switches are ordinary
+content in a group 1,900px tall on a broad search. Making them sticky costs ~64px of
+always-visible navigator, which is the vertical budget already flagged at the last pause
+(nine group headings cost ~306px open or closed). **Answered 2026-08-30: pinned when open,
+an icon on the toolbar when closed** — the reader pays the 64px only while using it. Not
+yet built.
 
 **Next: the layer selection UI** — a time slider, a revision list, a two-point comparison, or
 all three. Nothing else stands between the spine and a second point in time on screen, and

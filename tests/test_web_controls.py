@@ -67,7 +67,13 @@ def _nav_kinds_built() -> set[str]:
     no check. `\b` still matters — `sevnav: "broken"` is a severity, not a nav kind, and
     without the boundary this reported three dead routes that were never routes.
     """
-    js = _read("shell.js")
+    # Comment lines removed first. This read the raw source, so a *comment* naming an
+    # attribute counted as markup writing one -- and the prose explaining why the pane
+    # track was renamed away from `data-nav` reported the renamed value as a live nav kind
+    # with no route. Rule 43 in the instrument, and the third guard in this file to fail on
+    # the sentence describing the very thing it checks; `_code` exists for exactly that and
+    # this helper predates it.
+    js = _code(_read("shell.js"))
     # Both spellings. A row built through `navItemHtml` carries `nav: "x"`; one written
     # straight into a template literal carries `data-nav="x"`, and the code list does
     # exactly that — so matching only the first left `file` unchecked as well.
@@ -3679,3 +3685,173 @@ def test_every_control_the_shell_writes_is_read_somewhere() -> None:
         if not read:
             unread.append(attr)
     assert not unread, f"controls the shell writes and nothing reads: {unread}"
+
+
+# ------------------------------------------------- the change worklist, on screen --- #
+#
+# Three guards, one per defect found by *looking* at the change worklist for the first
+# time. Every one of them was invisible to the checks that already existed, and every one
+# of them rendered perfectly while doing nothing — which is the failure this file is for.
+
+
+def test_a_routed_control_is_found_by_its_route_and_not_by_its_class() -> None:
+    """The delegated nav handler selects on `data-nav`, the attribute the routes are keyed on.
+
+    It selected on `.nav-item` — a class — while `NAV_ROUTES` is looked up by `data-nav`.
+    So a control could carry a real route and a real id and simply never be matched, which
+    is what the change worklist's rows did: `class="wl-item" data-nav="chg" data-navid=…`,
+    clicked by a pointer, nothing at all. Adding the class to one row made it work.
+
+    Neither existing guard could see it. `test_every_generated_nav_item_has_a_route` asks
+    whether a *kind* has a route — `chg` does — and the roster check passes because
+    `data-nav` is genuinely wired, elsewhere. Reachability was the claim nobody made.
+
+    So this asserts the shape that makes the defect impossible rather than detectable:
+    narrowing the selector back to a class is rule 36 exactly — a generic match replaced by
+    a literal, and a feature disappearing with no symptom.
+    """
+    js = _code(_read("shell.js"))
+    m = re.search(r'const NAV_SELECTOR = "([^"]+)"', js)
+    assert m, "NAV_SELECTOR is gone; this guard cannot see the handler's selector"
+    assert m.group(1) == "[data-nav]", (
+        f"the nav handler selects on {m.group(1)!r}. It must select on the attribute the "
+        "route table is keyed on: a class is a second, silent condition on being routed."
+    )
+
+    # And the handler actually uses it, rather than declaring it beside a literal. Bounded
+    # to the one listener that follows the declaration: taken any wider this reads the
+    # pane-folding and code listeners too, and a check over the wrong span is no check
+    # (rule 37).
+    handler = js[js.index("const NAV_SELECTOR"):]
+    handler = handler[:handler.index("\n});") + 4]
+    assert "closest(NAV_SELECTOR)" in handler, "the handler no longer selects with NAV_SELECTOR"
+    assert not re.search(r'closest\("\.[\w-]+"\)', handler), (
+        "the nav handler is matching a class literal again"
+    )
+    # The self-check must scan the same population, or it goes on vouching for a subset.
+    assert "querySelectorAll(NAV_SELECTOR)" in js, (
+        "selfCheck no longer scans every routed control -- it scanned `.nav-item` while "
+        "the worklist's rows carried routes it never looked at"
+    )
+
+
+def test_a_worklist_row_has_as_many_cells_as_its_grid_has_columns() -> None:
+    """A row laid into a grid written for a different row loses whatever falls off the end.
+
+    The change rows reused `.wl-item`, whose four columns begin with a `.wl-stripe`
+    severity bar `.1875rem` wide. A change row has no severity and emitted two children, so
+    the **routine name** was laid into the 3px stripe column and ellipsised out of
+    existence, while the module path took the `1fr` and 786 pixels. Every row of every band
+    showed a module and no name, measured as a title of `scrollWidth` 188 inside a box 3px
+    wide, and confirmed by eye.
+
+    Nothing static could have caught that, because the markup and the routes were both
+    right — so this checks the one thing that was wrong: the row and its grid have to agree
+    about how many cells there are.
+    """
+    js = _read("shell.js")
+    css = _read("tokens.css")
+
+    m = re.search(r"\.chg-item\s*\{[^}]*?grid-template-columns:\s*([^;]+);", css, re.S)
+    assert m, ".chg-item no longer declares its columns; this guard is blind"
+    # Count tracks, not commas: `minmax(0, max-content)` is one track containing a comma.
+    tracks = re.sub(r"\([^()]*\)", "", m.group(1)).split()
+    assert len(tracks) == 2, f".chg-item declares {len(tracks)} columns: {tracks}"
+
+    # The cells the row template actually emits, taken from the template literal.
+    row = js[js.index('<li><button class="chg-item"'):]
+    row = row[:row.index("</button></li>")]
+    cells = re.findall(r'<span class="chg-(title|meta)\b', row)
+    assert len(cells) == len(tracks), (
+        f"the change row emits {len(cells)} cells into {len(tracks)} columns: {cells}. "
+        "A cell with no column falls into whatever track is left, which is how the name "
+        "ended up three pixels wide."
+    )
+    # And the name must be the cell that can shrink, never one pinned to a fixed size: a
+    # grid child is `min-width: auto` and refuses to go below its content, which is the
+    # same default that held the navigator open at 700px inside a 446px box.
+    #
+    # Bounded to `.chg-title`'s own braces. Taken as "within 200 characters" this passed
+    # against its own mutation, reading the `min-width: 0` on the `.chg-meta` rule three
+    # lines below — a guard vouching for a neighbour, which is rule 37 in the check itself
+    # and the reason every one of these was run against the defect it was written from.
+    title = re.search(r"\.chg-title\s*\{([^}]*)\}", css)
+    assert title, ".chg-title has no rule of its own; this guard is blind"
+    assert re.search(r"min-width:\s*0\b", title.group(1)), (
+        ".chg-title must be allowed to shrink below its content, or the row forces the "
+        f"pane wider than it is. Declared: {title.group(1).strip()!r}"
+    )
+
+
+def test_opening_a_navigator_group_fetches_what_its_rows_need() -> None:
+    """A group whose body needs data must fetch it, and both panes must learn the answer.
+
+    The Changes group was a closed loop with no way in. `changeList()` builds the row that
+    emits the `changes` route — and only once `CHANGES` is loaded; `CHANGES` was only ever
+    loaded *by* that route. So the control that starts the comparison existed only after
+    the comparison had started, and opening the group gave "Not compared yet." with nothing
+    to click: eighty-seven routed controls on the page, none of them emitting `changes`.
+
+    Its companion, and the reason both halves are asserted here: `loadChanges().then(render)`
+    repainted the centre and not the navigator, so the comparison arrived, the worklist
+    painted, and the group beside it went on saying "open to compare them" with a blank
+    count. One question, two answers (rule 51).
+    """
+    js = _code(_read("shell.js"))
+
+    # The group declares the work, beside the body that needs it (design rule 16).
+    grp = js[js.index('{ id: "navChanges"'):]
+    grp = grp[:grp.index("body:") + 40]
+    assert re.search(r"onOpen:\s*\(\)\s*=>", grp), (
+        "navChanges no longer declares onOpen -- opening it cannot fetch its own rows"
+    )
+
+    # And opening a group runs it. From the table, never a branch naming this one group.
+    opener = _fn(js, "setGroupOpen")
+    assert "onOpen" in opener, "setGroupOpen no longer runs a group's onOpen"
+    assert "navChanges" not in opener, (
+        "setGroupOpen names a specific group. Route from the table, or the next group "
+        "needing a fetch is one nobody remembers to add here."
+    )
+
+    # Both panes are repainted, through one door so neither can be forgotten.
+    refresh = _fn(js, "refreshChanges")
+    assert "buildNav()" in refresh and "render()" in refresh, (
+        "refreshChanges must repaint the navigator and the centre: render() alone left the "
+        "Changes group saying 'open to compare them' beside a fully painted worklist"
+    )
+    # Nothing may go round it.
+    assert "loadChanges().then(render)" not in js, (
+        "a caller is loading the comparison and repainting only the centre again"
+    )
+
+
+def test_a_pane_track_attribute_is_never_also_a_route_attribute() -> None:
+    """`data-nav` may mean one thing. It meant two, and only the second broke.
+
+    `PANELS` writes each pane's fold state as `data-<attr>`, taken from a name of its own,
+    and the navigator's was `nav` — so `.body` carried `data-nav="on"` as a grid-track
+    state while every routed control carried `data-nav="chg"`, `"pkg"`, `"routine"` as a
+    route. Two unrelated meanings under one name, invisible for as long as the click
+    handler happened to select on `.nav-item`: matching on the attribute instead made
+    `.body` the nearest routed ancestor of every stray click in the application, and the
+    self-check reported `nav "on" has no route` on the first page load.
+
+    Rule 47's companion — one channel carrying two meanings — a layer below where that rule
+    found it. Caught by widening the self-check and then *looking at the console*, which is
+    the only reason it was found at all.
+    """
+    js = _code(_read("shell.js"))
+    body = js[js.index("const PANELS = {"):]
+    body = body[:body.index("\n};")]
+    track_attrs = set(re.findall(r'attr:\s*"([^"]+)"', body))
+    assert track_attrs, "PANELS no longer declares its attributes; this guard is blind"
+
+    routed = re.search(r'const NAV_SELECTOR = "\[data-([^\]"]+)\]"', js)
+    assert routed, "NAV_SELECTOR is not an attribute selector; see the guard above"
+    clash = track_attrs & {routed.group(1)}
+    assert not clash, (
+        f"a pane writes data-{clash.pop()} as fold state, and that is also the attribute "
+        "routed controls are matched by. One name, two meanings: every click that misses a "
+        "real control walks up to the pane and is routed as one."
+    )

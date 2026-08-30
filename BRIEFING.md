@@ -186,8 +186,11 @@ is free: `setOptions` repaints the nodes and never rebuilds the selection geomet
   flipping the assumption swapped the words and left the dots red) and a map that made every
   unchanged routine read as *not compared*. Guards mutation-tested at **23/23**, after two
   rounds in which every survivor was the guard being weak.
-- **Owed: a real window.** The automation tab gets no animation frames (rule 38), so the
-  data, the palette and the counts were driven end to end and **the pixels were not seen**.
+- **Looked at, and approved** — see `HANDOFF.md`, "Looked at, at the keyboard". Tom's
+  verdict: *"the colors are a reasonable differentiating factor, and the edges do seem to
+  make sense"*, and *"an absolute delight to work with so far"*. Three problems came out of
+  it and they are **one line of work: the stack is legible enough to say what changed and
+  not yet legible enough to explore.**
 
 ### Before that, in the same session: the routine marks (2026-08-30)
 
@@ -225,8 +228,28 @@ Guards mutation-tested at **20/20** over a proved-green baseline, after a first 
 with **all three survivors the guard being weak** — the eleventh, twelfth and thirteenth time
 in four sessions.
 
-**Paused here 2026-08-30 with chunk C complete.** See `HANDOFF.md` `6h`, `6g` and `6f`.
-**Next: the anomaly worklist overlay, and it is blocked on a question** — what makes two
+**Paused here 2026-08-30 with chunk C complete and looked at.**
+See `HANDOFF.md` `6h`, `6g`, `6f`, and "Looked at, at the keyboard" for what driving it
+found.
+
+**Next, and it now outranks the worklist because Tom hit it at the keyboard: exploring the
+stack.** Three problems, one line of work:
+
+1. **← Back cannot reverse a click in the stack.** `onGraphSelect` records to the ⌘Z
+   selection history and **never calls `pushTrail`**, so the visible Back button steps a
+   trail that has no record of the commonest act there is. Read from the code, not yet
+   reproduced. **Do not just add the `pushTrail` call** — the trail is capped at 12 and
+   every graph click would flush the step the reader detoured *from*. Whether the trail and
+   the selection history should be one history is a design decision, and it is Tom's.
+2. **A click to look is also a click that filters.** `togglePick`'s toggle-off means
+   clicking the node you are looking at clears the selection — and with edges on demand the
+   selection *is* the filter, so a stray click empties the picture. Rule 33 kept the toggle
+   because *undo makes it recoverable*, which is the recovery problem 1 says is invisible.
+   The two are one problem.
+3. **10,015 nodes is hard to comprehend**, which is what the two recorded feature requests
+   exist to answer — sizing a plate by its density, and the readable plate diagram.
+
+**After that: the anomaly worklist overlay, blocked on a question** — what makes two
 findings in two versions the same finding. A finding carries no id today and 93 of Mensores'
 106 are `LOST_EDGE`, so pairing them would invent an identity (rule 1). Answer that first.
 

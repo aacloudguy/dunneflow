@@ -3723,6 +3723,82 @@ warning, and markup another function rewrites is not the markup that renders.
 **Next: tables and the worklist**, then the graph as `colorBy: 'change'` — and that one
 still wants Tom's decision on the colour channel before it is built. Read `6f`.
 
+## Looked at, at the keyboard — Tom, 2026-08-30, after the stack's change colours
+
+The pixels `6h` said it owed a real window. Read as a verdict *and* as a worklist.
+
+**What works.** *"The colors are a reasonable differentiating factor, and the edges do seem
+to make sense."* That closes the item `6h` left open: the palette, the tones and the
+crossings were driven as data and are now confirmed as a picture. *"An absolute delight to
+work with so far"*, and the chunk is approved.
+
+**What does not, and it is one sentence with three problems in it.** *"A graph with this
+many nodes and edges is hard to comprehend… It may take some additional work to get the
+view filtering improved for exploring, especially when manipulating the filtered stack and
+trying to understand it without accidentally changing the filter by clicking on and off
+nodes, which changes the focus. I have to use Back too often, and it doesn't always do what
+I expect."*
+
+### 1. Back is two histories, and the visible one is blind to the commonest act
+
+**Read from the code rather than reproduced, and it is structural rather than behavioural.**
+`onGraphSelect` (`shell.js:8298`) calls `recordSelection()` — the ⌘Z selection history — and
+**never `pushTrail`**. So clicking a node in the picture leaves no trail step at all.
+
+The visible **← Back** button (`shell.js:5893`) pops `state.trail`, and `pushTrail` is called
+from fifteen places: mode toggles, layout changes, navigator rows, glossary terms, threads,
+the inspector, the detail window, the other browser window. **Not from a click in the stack.**
+
+So there are two answers to *where have I been*:
+
+| the act | recorded in `selHistory` (⌘Z) | recorded in `state.trail` (← Back) |
+|---|---|---|
+| click a node in the picture | yes | **no** |
+| click a row in the navigator | yes | yes |
+| change mode or layout | no | yes |
+
+A reader exploring the stack does almost nothing but click nodes, so the button labelled
+Back is precisely the control that cannot reverse what they just did — while ⌘Z, which can,
+is invisible. That is rule 51's shape (two places each holding their own answer to one
+question) crossed with rule 30's (the visible control's subject is not what the reader takes
+it to be). It matches the report exactly and it was never designed; it accumulated.
+
+**Do not simply make `onGraphSelect` call `pushTrail`.** Every graph click would become a
+trail step, and the trail is capped at `state.trailCap` (12 by default) — chasing a thread
+across a plate would flush every earlier step, so the feature design rule 15 says makes a
+detour free would lose the thing the reader detoured *from*. The question to answer first is
+whether the trail and the selection history should be **one** history with one visible
+control, or stay two with the second one named and reachable. That is a design decision and
+it is Tom's.
+
+### 2. Clicking to look changes the filter
+
+*"…without accidentally changing the filter by clicking on and off nodes, which changes the
+focus."*
+
+This is `togglePick`'s deliberate toggle-off meeting the fact that a click is also how you
+*move*. Rule 33's companion records the trade already: clicking the node you are looking at
+clears the whole selection, the toggle is kept because clearing by clicking is right, and
+*undo makes it recoverable* — which is exactly the recovery that finding 1 says is behind an
+invisible key. The two problems are one problem.
+
+With edges on demand (design rule 19) the selection **is** the filter, so a stray click does
+not merely deselect: it empties the picture. Worth considering: a separate *inspect* gesture
+that answers "what is this" without moving the selection, or making the selection sticky
+until something explicitly clears it. Neither is decided.
+
+### 3. The picture is too dense to comprehend, and that is not new
+
+*"A graph with this many nodes and edges is hard to comprehend."* 10,015 nodes and 14,254
+edges. Rule 18 already says the plates are not drawn and the dots are 1.4–3.6 px precisely
+because anything larger fuses; rule 22 records that at 14× they occlude the edges they are
+drawn with. **This is the observation the two recorded feature requests exist to answer** —
+sizing a plate by its density, and drawing a plate as a readable diagram — and it is the
+reason Tom's bar for the second one is *"they must be easy to read or we have failed"*.
+
+So the three are one line of work rather than three: **the stack is legible enough to say
+what changed and not yet legible enough to explore.**
+
 ### Paused 2026-08-30, after the stack's change colours
 
 Working tree clean; all three gates green; `output/mensores` untouched and still serving
@@ -3738,8 +3814,11 @@ lost. The measurement that was expected to block the chunk did not: a third diff
 colour clears rule 69 comfortably in every set, and the finding is that the *shipped*
 red/green pair is the weakest thing in the product at ΔE 9.5.
 
-**Owed: a real window.** The automation tab gets no animation frames, so the data, the
-palette and the counts were driven end to end and **the pixels were not seen**. Read `6h`.
+**The real window has now happened**, and the verdict is in the section above: the colours
+and the edges work, the chunk is approved, and the picture is *hard to comprehend at this
+density*. Three things came out of it, and they are one line of work — see "Looked at, at
+the keyboard". The sharpest is that **← Back cannot reverse a click in the stack**: graph
+selections go to the ⌘Z history and never to the trail. Read `6h`.
 
 ### The colour channel, decided 2026-08-30 — the graph as `colorBy: 'change'`
 

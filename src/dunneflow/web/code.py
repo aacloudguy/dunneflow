@@ -58,7 +58,8 @@ def _rows(store: Store, sql: str, args: dict[str, Any]) -> list[dict[str, Any]]:
 # The file list
 # --------------------------------------------------------------------------- #
 
-def build_files(store: Store, source: SourceStore | None) -> dict[str, Any]:
+def build_files(store: Store, source: SourceStore | None, *,
+                revision: str | None = None) -> dict[str, Any]:
     """Every analysed file, complete and unbounded, with the counts that earn a column.
 
     The spine is the graph's `files` table rather than the sidecar's paths, because the
@@ -66,8 +67,15 @@ def build_files(store: Store, source: SourceStore | None) -> dict[str, Any]:
     able to answer it. Whether the sidecar can *open* each one is a separate flag, and the
     two absences are told apart: no sidecar at all, and a sidecar that does not hold this
     file. Rule 8 -- there is no `LIMIT` here and there is not meant to be one.
+
+    `revision` is **which version's bytes**, and it is the caller's to name. There is one
+    sidecar per program holding every revision, so its own default is the newest snapshot
+    -- which is the right answer only while the newest is also the version being read. It
+    stopped being that the day a reader could switch the base, and this list would then
+    have stated the newest snapshot's line counts beside an older version's routine and
+    boundary counts: two versions in one row, agreeing about nothing (rule 51).
     """
-    lines_by_path = source.held_paths() if source is not None else {}
+    lines_by_path = source.held_paths(revision=revision) if source is not None else {}
 
     def counts(sql: str) -> dict[str, int]:
         return {str(r["file"]): int(r["n"]) for r in _rows(store, sql, {})}
@@ -99,7 +107,9 @@ def build_files(store: Store, source: SourceStore | None) -> dict[str, Any]:
         "files": files,
         "total": len(files),
         "sidecar": source is not None,
-        "revision": (source.current_revision() if source is not None else None),
+        # The revision these counts are *of*, resolved rather than asked for. Rule 13: the
+        # number beside a claim and the claim have to be about the same thing.
+        "revision": (source.resolve_revision(revision) if source is not None else None),
     }
 
 
@@ -174,12 +184,19 @@ def _link_spans(lines: list[str], calls: list[dict[str, Any]],
 
 
 def build_file(store: Store, source: SourceStore | None,
-               asked: str) -> dict[str, Any]:
+               asked: str, *, revision: str | None = None) -> dict[str, Any]:
     """One file, whole, with its links and its margin.
 
     Three absences, told apart rather than blurred, exactly as `/api/source` tells them
     apart: no sidecar beside this map, a sidecar that does not hold this file, and a path
     the map never analysed.
+
+    `revision` names which version's bytes to lay the map over, and getting it wrong is
+    not a subtle failure. Serving Mensores' older graph while the sidecar defaulted to its
+    newest snapshot returned `_queue.py` at **674 lines with the 595-line version's marks
+    on it** -- every link past the first divergence underlining the wrong characters, and
+    a footer naming the revision the bytes came from while the margin came from another.
+    Nothing raised, and the page looked exactly like a page that worked.
     """
     if not asked:
         return {"available": False, "reason": "no path asked for"}
@@ -195,7 +212,7 @@ def build_file(store: Store, source: SourceStore | None,
         return {"available": False, "file": full,
                 "module": str(meta["module"]),
                 "reason": "no source sidecar beside this map"}
-    body = source.text(full)
+    body = source.text(full, revision=revision)
     if body is None:
         return {"available": False, "file": full,
                 "module": str(meta["module"]),
@@ -250,7 +267,7 @@ def build_file(store: Store, source: SourceStore | None,
         "unplaced": unplaced,
         "resolved": sum(1 for c in calls if c.get("id")),
         "calls": len(calls),
-        "revision": source.current_revision(),
+        "revision": source.resolve_revision(revision),
     }
 
 

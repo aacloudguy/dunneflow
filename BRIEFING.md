@@ -5,7 +5,7 @@ It exists so a fresh context can be useful in a few minutes instead of an hour.
 
 | Read | For |
 |---|---|
-| `CLAUDE.md` | The rules. 69 engineering rules and 26 dashboard design rules, each earned from a false result on real code. **Binding.** |
+| `CLAUDE.md` | The rules. 71 engineering rules and 26 dashboard design rules, each earned from a false result on real code. **Binding.** |
 | `HANDOFF.md` | The chronological record — what was built when, what it cost, what broke. ~1,700 lines. Read *sections*, not the whole thing. |
 | **this file** | Where things are, what is done, what we are doing now, what not to re-open. |
 | Artifact `f993d319-d2b7-4217-9130-cdbba698d1bc` | The ratified dashboard design — a complete working UI, the source of truth for every view. Read it with the **Artifact tool**, not from a screenshot. |
@@ -136,9 +136,8 @@ search. FTS5 was rejected on evidence: token-based, so it cannot find `_emit` in
 Still not built: syntax highlighting (a design-rule-2 pair if ever wanted, done server-side
 with stdlib `tokenize`).
 
-**Not built:** `dunneflow infer` (the model pass) · the temporal **overlays** — a second
-point in time is on screen as a *worklist* and as the base itself, but nothing is layered
-over the code, the tables or the stack yet · attestation · the project profile · document
+**Not built:** `dunneflow infer` (the model pass) · the rest of the temporal **overlays**
+— the code browser is layered (2026-08-30), the tables and the stack are not · attestation · the project profile · document
 mode's narrative view · packaging as a binary · any language but Python.
 
 **The revision spine is in, and both ends of a pair are readable.** `WORKING` is a *state*
@@ -158,6 +157,50 @@ running that program-wide is most of design rule 15's doorway panel. It says hon
 is not computed yet.
 
 ## What we are doing now
+
+**The comparison over the code — built 2026-08-30 (chunk C, the code browser).** The first
+of the overlays. Two lanes: the **text** lane marks the lines of the open file the compared
+version does not have and draws the ones it has and this one does not where they belong, in
+their own numbering; the **fact** lane beside it names the routines here that *behave*
+differently, which is the half a text diff cannot state. The file list marks all 628 files.
+
+```
+628 files:  613 same · 12 with different text · 3 on one side only
+                       …and pairing them reads no bodies at all
+```
+
+The sidecar is content-addressed, so an unchanged file holds the **same hash** at both
+revisions and comparing two path maps *is* the file-level diff — 37 ms warm, 1 ms cached.
+That is what makes `difflib` affordable: it runs only on a file the reader opened, and only
+where the hashes already say it differs. The worst file in the corpus is 42 ms.
+
+**Rule 70 is the find, and it was a prerequisite rather than a discovery.** The code browser
+did not read the version the map was showing. One sidecar holds every revision and its own
+default is the newest — right only while the newest is also the base, which stopped being
+true the day the base became switchable. Serving Mensores' older graph returned `_queue.py`
+at **674 lines with the 595-line version's marks over it**, and nothing raised. Six readers
+had it; the base names the revision now and hands it to all of them.
+
+- **Nothing is elided** (rule 8) — four hundred inserted lines is four hundred rows, and the
+  overlay switches off, which is a different thing from a summary.
+- **A routine only the other version has is listed, never marked**: its line number belongs
+  to the other version (rule 1), and the page says so.
+- **The tone comes from `diffWords()`**, so flipping which version is assumed newer swaps
+  the colours with the words, for zero fetches.
+- **Rule 71**: `.chg-mod` was already the worklist's module label, so every *modified* file
+  row rendered fainter than the unchanged ones; and `dressNavItems` moved the chip in front
+  of the file name. Both found by looking.
+
+Guards mutation-tested at **17/17** over a proved-green baseline, after a first run at
+11/13 — both survivors the guard being weak, one of them over the headline defect.
+
+**Paused here 2026-08-30.** See `HANDOFF.md` `6f`. **Next: tables and the worklist**, then
+the graph as `colorBy: 'change'` — **which still wants Tom's decision on the colour
+channel**, because design rule 4 says colour carries one dimension at a time and a
+comparison should take the channel over rather than paint red and green across fifty-two
+plate hues.
+
+## Before that: colour sets in Settings (2026-08-30)
 
 **Colour sets in Settings — built 2026-08-30.** Tom's call: colour decisions are personal
 and belong in Settings, offered as broad sets rather than a picker per token, each with a
@@ -204,9 +247,8 @@ axis that always works.
 Guards mutation-tested at **13/13** over a proved-green baseline, after a first run at 8/13;
 three of the five survivors were the *guard* being weak.
 
-**Paused here 2026-08-30.** See `HANDOFF.md` `6e`. **Next: the overlays (chunk C)** — code
-browser first, then tables and the worklist, then the graph as `colorBy: 'change'`, which
-still wants Tom's decision on the colour channel.
+**Paused 2026-08-30.** See `HANDOFF.md` `6e`. Its "next" — the overlays, code browser
+first — is the section above.
 
 ## Before that: switching the base (2026-08-30)
 

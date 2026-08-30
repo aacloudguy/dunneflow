@@ -446,6 +446,6 @@ def test_the_cover_counts_lines_in_the_revision_it_is_reading(tmp_path: Path) ->
         "SELECT SUM(b.lines) FROM paths p JOIN blobs b ON b.hash = p.hash"
         " WHERE p.revision = ?", (rev,)).fetchone()[0]
     assert held > 0
-    assert _lines(src) == held
+    assert _lines(src, None) == held
     store.close()
     src.close()

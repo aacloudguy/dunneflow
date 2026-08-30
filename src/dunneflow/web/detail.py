@@ -199,7 +199,8 @@ def _artefact(store: Store, node_id: str, params: dict[str, Any]) -> dict[str, A
 # Source
 # --------------------------------------------------------------------------- #
 
-def attach_source(detail: dict[str, Any], source: SourceStore | None) -> None:
+def attach_source(detail: dict[str, Any], source: SourceStore | None,
+                  *, revision: str | None = None) -> None:
     """Add the lines a node was read from, or say plainly why they are not here.
 
     Three different absences, and they are not the same thing to a reader:
@@ -229,7 +230,7 @@ def attach_source(detail: dict[str, Any], source: SourceStore | None) -> None:
         return
     first = max(1, int(where["first"] or 1) - SOURCE_MARGIN)
     last = int(where["last"] or where["first"] or 1) + SOURCE_MARGIN
-    lines = source.lines(where["file"], first, last)
+    lines = source.lines(where["file"], first, last, revision=revision)
     if not lines:
         detail["source"] = {
             "available": False,
@@ -449,7 +450,8 @@ def hover_card(store: Store, node_id: str) -> dict[str, Any]:
 # --------------------------------------------------------------------------- #
 
 def describe(store: Store, node_id: str,
-             source: SourceStore | None = None) -> dict[str, Any]:
+             source: SourceStore | None = None, *,
+             revision: str | None = None) -> dict[str, Any]:
     """Everything the inspector shows about one node.
 
     An id that finds nothing returns `found: False` rather than an empty shape that
@@ -475,5 +477,5 @@ def describe(store: Store, node_id: str,
                 "reason": "no such node in this map"}
 
     detail["found"] = True
-    attach_source(detail, source)
+    attach_source(detail, source, revision=revision)
     return detail

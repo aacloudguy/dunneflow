@@ -10,6 +10,7 @@ checks has not checked anything.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -124,8 +125,10 @@ def test_the_row_count_and_the_lines_beneath_it_come_from_one_matcher(
     Asserted for every row of every query rather than in total, because a total can agree
     while two files are wrong in opposite directions.
     """
-    for q, kw in [("conn", {}), ("WIDGET", {}), ("widget", {"case": True}),
-                  ("execute", {"word": True}), (r"def\s+\w+", {"regex": True})]:
+    cases: list[tuple[str, dict[str, Any]]] = [
+        ("conn", {}), ("WIDGET", {}), ("widget", {"case": True}),
+        ("execute", {"word": True}), (r"def\s+\w+", {"regex": True})]
+    for q, kw in cases:
         out = search_files(analyzed, sidecar, q, **kw)
         assert out["ok"], out.get("reason")
         assert sum(int(r["n"]) for r in out["rows"]) == out["total"]
@@ -196,7 +199,9 @@ def test_an_unusable_pattern_is_named_and_never_answered_with_no_rows(
     matching nothing, and they are opposite claims. Run against a version that caught
     `re.error` and returned an empty answer -- which passes every other test here.
     """
-    for q, kw in [("[unclosed", {"regex": True}), ("*", {"regex": True}), ("", {})]:
+    bad: list[tuple[str, dict[str, Any]]] = [
+        ("[unclosed", {"regex": True}), ("*", {"regex": True}), ("", {})]
+    for q, kw in bad:
         out = search_files(analyzed, sidecar, q, **kw)
         assert out["ok"] is False
         assert out["reason"]

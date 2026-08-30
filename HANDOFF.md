@@ -3506,6 +3506,125 @@ whether the row was inside the **window** when the question is whether it is ins
 **scroller**. Rule 50 exactly — a guard naming the right case and measuring the wrong box —
 in the driving rather than in the code.
 
+**6f. Built 2026-08-30: the comparison over the code (chunk C, the code browser).** The
+first of the overlays, and the one the pairing work had already made nearly free.
+
+*What it is.* Two lanes, and only one of them is ordinary. The **text lane** marks the
+lines of the open file that the compared version does not have, and draws the lines it has
+and this one does not where they belong, in their own numbering. The **fact lane** beside
+it says which routines in this file *behave differently* — which is the half a text diff
+cannot state at all, and the whole reason the tool exists. And the file list marks every
+one of 628 files as same, different, or on one side only.
+
+*The file-level answer costs no body reads.* `source.db` is content-addressed —
+`paths(revision, path) -> hash`, one blob per unique body — so an unchanged file holds the
+**same hash** at both revisions and comparing two path maps *is* the file-level diff. Two
+indexed queries over 628 rows each, 37 ms warm and 1 ms cached, and it is what makes the
+expensive lane affordable: `difflib` runs only on a file the reader opened, and only where
+the hashes already say it differs. Twelve of Mensores' 628.
+
+**The prerequisite was a defect, and it is rule 70.** The code browser did not read the
+version the map was showing. There is one sidecar per program holding every revision and
+its own default is the *newest* snapshot — right only while the newest is also the version
+being read, which stopped being true the day the base became switchable. Serving Mensores'
+older graph returned `_queue.py` at **674 lines with the 595-line version's marks over
+it**: every link past the first divergence underlining the wrong characters, and a footer
+naming the revision the bytes came from while the margin came from another. Nothing raised.
+
+Six readers had the same shape — the code browser, the file list, the search,
+`/api/source`, the inspector's definition and the cover's line count — and the fix is rule
+51's: the **base** names the revision, `_Base.source_revision`, and every reader is handed
+it rather than asking a store that cannot know what the reader is looking at. A sidecar
+that does not hold that revision answers `None` and a stated absence, never the newest
+bytes substituted for the ones asked for. Verified through a live base switch: 595 lines,
+625 files, one revision id on every payload.
+
+Found by pointing DunneFlow at its own two revisions and reading what came back. No test
+covered it because every unit test opens one revision, where the default is right.
+
+*Decisions worth keeping.*
+
+- **The base end is the server's, not a parameter.** Every other pair here is two
+  arguments; this one is drawn over the bytes on screen, and those are the base's. A caller
+  free to name a base the browser is not showing could put one version's marks on another's
+  lines, which is the defect above wearing a query string — so the parameter does not exist
+  rather than being validated.
+- **Nothing is elided.** A run of four hundred inserted lines is four hundred rows (rule
+  8). The reader can switch the overlay off, which is a different thing from being handed a
+  summary of it.
+- **A `replace` is a deletion and an insertion, never a third kind.** Two rewritten lines
+  are not "one changed line" in any way this can defend — their contents may share nothing
+  — and pairing them would invent an identity.
+- **The tone comes from `diffWords()`**, so flipping which version is assumed newer swaps
+  the marks' colours with the words. Driven, with `fetch` counted at **zero**.
+- **A routine only the *other* version has is listed, never marked.** Its line number
+  belongs to the other version, and drawing it in this file's margin would put it at a line
+  that means something else here (rule 1 — the same argument `code.py` makes about a call
+  whose column it cannot honestly give). It says so on the page.
+- **`autojunk=False`, measured.** 10 ms with difflib's junk heuristic and 59 ms without,
+  and with it `scribe.py` reports 60 removed lines rather than 57. Its guard asserts the
+  *answer* over a 480-line fixture, because the string is in that module's docstring too
+  and a grep for it passes over a mutation of the call.
+
+*Rule 71, and it is two defects with one shape.* The file rows were marked `chg-same` /
+`chg-mod` / `chg-one`, and `.chg-mod` already existed — the worklist's *module* label,
+faint and two sizes down — so every **modified** file rendered smaller and greyer than the
+unchanged ones. And `dressNavItems` re-inserts a row's gathered text immediately before
+`.n`, so the chip written between the name and the count came out *in front of the name*:
+`mensores/scriba/ ○ _queue.py`, a glyph inside a path. Both are what this function writes
+against what the reader sees, and every check that reads markup or handlers passed both.
+Found by looking at the pane — the fourth consecutive session that has paid for itself.
+
+*One more find, in the guards rather than in the code.* `_code()` blanks comment *lines*
+and could not see the continuation lines of a block comment, because this codebase indents
+them as plain prose. `HANDOFF` records that costing four sessions — three guards tripping
+on their own explanation and one selector check missing the shape it was written from — and
+it tripped again here on the sentence explaining the tone rule. It is a small state machine
+now, starting a block only at a line whose first characters are `/*`, which is what keeps
+it safe from the template literals a general stripper once ate. No other guard was resting
+on prose.
+
+*Guards.* Eighteen in a new `tests/test_filediff.py` plus seven on the shell, mutation-tested
+at **17/17** over a proved-green baseline (rule 59) — after a first run at 11/13 with four
+anchors that matched nothing. **Both survivors were the guard being weak**, which is now the
+ninth and tenth time in four sessions, and one of them was the *headline* defect: the file
+guard asked for the newest revision, where a `build_file` that dropped the revision entirely
+answers identically. It asks for the older one now. The other could not tell a pure insert's
+`i1` from its `i2` — only a `replace` has a range wide enough to be wrong about — and a third,
+found on the re-run, counted `repaintCode` anywhere in a handler that has two paths and needs
+both.
+
+*Driven in a real window*, which is where rule 71 and the fact lane's closed loop were found:
+both directions of the pair, a live base switch, the switch on and off, the assumption flipped
+through all three states with fetches counted at zero, `elementFromPoint` on the controls, and
+the console read — clean, self-check green.
+
+*One false finding I nearly reported.* A control measured 0×0 and `elementFromPoint` said the
+topbar, which reads as a covered control. It was inside a **closed** accordion group — and I
+had checked "open" by asking whether `#codeQ` existed, which is rule 45's own lesson pointed
+at my instrument: hidden is not absent.
+
+### Paused 2026-08-30, after the code browser's overlay
+
+Working tree clean; all three gates green; `output/mensores` untouched and still serving
+both revisions.
+
+**The first overlay is on screen, and the thing it needed first was a defect.** The code
+browser now draws the difference from the compared version over the file it is showing —
+lines the other version does not have, lines it has and this one does not, and beside them
+the routines that *behave* differently, which is the half a text diff cannot state. The
+file list marks all 628 files, for no body reads at all.
+
+Underneath it, **rule 70**: every reader of the sidecar asked the *store* which bytes to
+give rather than the base, so the newest snapshot's text was served under whatever version's
+map was on screen. 674 lines with a 595-line file's marks on them, and nothing raised.
+
+**Rule 71** came out of driving it: a class name is global and a stylesheet gives no
+warning, and markup another function rewrites is not the markup that renders.
+
+**Next: tables and the worklist**, then the graph as `colorBy: 'change'` — and that one
+still wants Tom's decision on the colour channel before it is built. Read `6f`.
+
 ### Paused 2026-08-30, after the colour sets
 
 Working tree clean; all three gates green; `output/mensores` untouched.
@@ -3601,6 +3720,16 @@ against the graph's own ground, while a set is a fixed choice validated at build
 test. Two different questions, and one clamp answering both would have made the pointer's
 bar speak for colours nobody can pick.
 
+**3. The overlays (chunk C) — the code browser is done, 2026-08-30, see `6f`.** What
+follows was the plan, and it held: the file-level pairing was free (613 identical, 12
+modified, 3 added, 0 removed, zero body reads) and it is what says which twelve files are
+worth `difflib`. What the plan did not know is that the code browser was reading the
+*wrong version's bytes* — see rule 70 — so the chunk began with a fix rather than with an
+overlay. **Tables and the worklist are next**, then the graph, and the colour-channel
+question below is still owed to Tom before that last one.
+
+<details><summary>the plan as it stood</summary>
+
 **3. The overlays (chunk C) — next.** Code browser first — nearly free, because
 `SourceStore.text(path, revision=…)` and `hash_of(path, revision=…)` already take a
 revision and the file-level pairing is one query with zero body reads (613 identical, 12
@@ -3621,6 +3750,8 @@ the stack** — it deliberately does not today, because `cssPalette()` reads no 
 overrides and a repaint that changes nothing is waste.
 `test_a_palette_token_the_graph_reads_must_reach_the_graph` derives that implication from
 both sides and will fail the moment it becomes true, so it cannot be forgotten (rule 36).
+
+</details>
 
 *Unchanged from before, and none of it blocked by the above:* the rendered markdown is not
 revision-named, so a second analysis overwrites the first's map; `--revision` on `analyze`

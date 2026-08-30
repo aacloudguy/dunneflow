@@ -98,6 +98,22 @@ let CODEFILE = null; // { path, lines, links, marks, defs, ... } for the one fil
 let SEARCH = null;        // { ok, q, total, files, rows, ... } | { loading: true } | null
 let SEARCHHITS = {};      // path -> { ok, hits: [...] } | { loading: true }, this query only
 
+/* The comparison, laid over the code. Two stores, and they are split for exactly the
+ * reason `SEARCH` and `SEARCHHITS` are: one is cheap and about every file, the other is
+ * expensive and about the file that is open.
+ *
+ * `FILEPAIR` is the **file-level** answer -- which of the 628 files are the same, which
+ * differ, which exist on one side only -- and it costs the server no body reads at all,
+ * because `source.db` is content-addressed and equal hashes are equal bytes. `FILEDIFF`
+ * is one file's line difference, and it is the only place `difflib` runs.
+ *
+ * `null` means nobody has asked; `{loading: true}` means it is coming. Rule 35's
+ * invariant: *not computed yet* and *nothing to report* are opposite claims, and one
+ * shape that cannot tell them apart puts an unmarked file beside a marked one and calls
+ * them both unchanged. */
+let FILEPAIR = null;      // { available, base, compared, counts, rows } | { loading } | null
+let FILEDIFF = null;      // { available, file, status, base_only, inserts } | { loading } | null
+
 /* A line to reveal once the file it is in has arrived. Not in `state`: it is a debt owed
  * across one fetch, not a place the reader is, and persisting it would restore a scroll to
  * a hit from a search nobody remembers making. Cleared as soon as it is paid, so a later
@@ -204,6 +220,13 @@ const state = {
    * drags it, and the cap is whatever the window can spare. */
   codeWidth: 44,          // rem
   codeFile: "",           // which file the Code group has open, "" for the list
+  /* Whether the code browser draws the difference from the compared version over the
+   * lines it shows. On, because setting a compared version is already the reader saying
+   * what they came for -- and off is a real want rather than a concession, because four
+   * hundred marked lines is a file whose *code* is harder to read than it was. With one
+   * version it governs nothing, and the switch is not drawn: a control that cannot change
+   * anything is design rule 16's defect wearing a checkbox. */
+  codeOverlay: true,
   codeQ: "",              // one box, two lanes: file names, and the text inside them
   /* How a match is decided. Persisted, because they are how this reader searches rather
      than what they are looking for right now -- the same line `termFilter` and `routineQ`
@@ -714,6 +737,199 @@ async function loadChanges(base, compared) {
     CHANGES = { available: false, reason: "the comparison could not be read: " + err.message };
   }
   return CHANGES;
+}
+
+/* ══ the comparison over the code ═══════════════════════════════════════════════════════
+ *
+ * Both loaders answer the same three states the rest of this file does -- not asked,
+ * loading, answered -- and both drop an answer computed for a *different* pair rather
+ * than letting it be overwritten. An answer to another question shown under this one's
+ * heading is the worst outcome available here, and it is invisible: the marks look
+ * exactly like marks.
+ */
+
+/* Which version the code is being held against, or "" for none.
+ *
+ * Read from `chosenPair()` and never from a second copy, so the overlay and the worklist
+ * cannot be about different versions (rule 51). The base end is deliberately absent: the
+ * overlay is drawn over the bytes on screen and those are the server's base, which is why
+ * `/api/filechanges` does not take one.
+ *
+ * `CHANGES` is preferred when it has answered, because it carries the pair the server
+ * actually used -- the reader's stored choice may name a revision that no longer exists,
+ * and `chosenPair()` drops it. Falling back to the choice is what makes the file rows mark
+ * themselves before anyone has opened the worklist. */
+function comparedRevInForce() {
+  if (CHANGES && !CHANGES.loading && CHANGES.available && CHANGES.compared) {
+    return CHANGES.compared;
+  }
+  const chosen = chosenPair().compared;
+  if (chosen) return chosen;
+  /* Nothing chosen: the server's own default is the next comparable version after the one
+     being served, which is what `/api/changes` would pick. Named here rather than left
+     empty so the file list marks itself on a first visit — and derived from `REVISIONS`
+     rather than assumed, so a one-version program gets "" and no overlay at all. */
+  const usable = REVISIONS.filter(r => r.comparable);
+  if (usable.length < 2) return "";
+  const serving = usable.find(r => r.serving) || usable[0];
+  const other = usable.find(r => r.revision !== serving.revision);
+  return other ? other.revision : "";
+}
+
+/* Whether there is a comparison to draw at all. One test, so a control, a note and a mark
+   cannot disagree about whether the overlay exists (rule 51). */
+function comparing() {
+  return REVISIONS.filter(r => r.comparable).length >= 2 && !!comparedRevInForce();
+}
+
+/* Whether the overlay is actually being drawn: a comparison, and the reader's switch. */
+function overlayOn() {
+  return comparing() && !!state.codeOverlay;
+}
+
+/* The **fact** lane's data, asked for once per pair.
+ *
+ * `refreshChanges()` fetches unconditionally, which is right for a reader who clicked
+ * Compare and wrong for a file being opened -- so this is the idempotent door onto it.
+ *
+ * It is asked for by the code browser at all because of what it carries: *this routine
+ * behaves differently*, which no text diff can state and which is the half of a comparison
+ * this tool exists for. Without it the lane appeared only for a reader who had opened the
+ * worklist first — a feature that works by luck, which is the closed loop the Changes
+ * group's own `onOpen` was written to close (rule 55's companion).
+ *
+ * It does not block anything. The lines paint from `/api/filechanges`, which is cheap; this
+ * is 317 ms warm and can be tens of seconds on the first comparison of a session against a
+ * cold volume, and the lane says it is coming rather than showing a blank (rule 35). */
+function ensureChanges() {
+  if (!comparing()) return Promise.resolve(null);
+  /* **Any** answer counts as asked, including one that refused. Testing
+     `CHANGES.compared === compared` looked more careful and was wrong: a refusal carries
+     no `compared` at all, so every call would have re-asked a question already answered
+     — and answered "no". Whoever moves the pair drops `CHANGES`, and that is the one
+     place that decides this is stale (rule 51). */
+  if (CHANGES) return Promise.resolve(CHANGES);
+  const pair = chosenPair();
+  return loadChanges(pair.base, comparedRevInForce())
+    .then((c) => { buildNav(); render(); return c; });
+}
+
+/* The file-level pairing. Idempotent: every caller asks, and only the first one fetches.
+ *
+ * Asked when the Code group opens or a file is opened rather than at boot, for the reason
+ * the worklist is: a reader who never opens the code never pays for it. It is one request
+ * and no body reads — 325 ms on the first touch of a cold external volume, 12 ms after —
+ * so there is nothing here to be clever about. */
+function ensureFilePair() {
+  const compared = comparedRevInForce();
+  if (!comparing()) { FILEPAIR = null; return Promise.resolve(null); }
+  if (FILEPAIR && FILEPAIR.loading) return Promise.resolve(FILEPAIR);
+  if (FILEPAIR && FILEPAIR.compared === compared) return Promise.resolve(FILEPAIR);
+  return loadFilePair(compared);
+}
+
+async function loadFilePair(compared) {
+  FILEPAIR = { loading: true, compared };
+  try {
+    const r = await fetch("/api/filechanges?compared=" + encodeURIComponent(compared));
+    FILEPAIR = await r.json();
+  } catch (err) {
+    /* Named, never swallowed. "The pairing could not be read" and "no file changed" are
+       opposite claims, and an unmarked list states the second one. */
+    FILEPAIR = { available: false, compared,
+                 reason: "the file comparison could not be read: " + err.message };
+  }
+  return FILEPAIR;
+}
+
+/* What one file's status is, or "" when nothing has been compared.
+ *
+ * "" rather than "same", and the difference is the whole of design rule 1: a file nobody
+ * has compared and a file that did not change look identical on screen unless one of them
+ * says which it is. */
+function fileStatus(path) {
+  if (!overlayOn() || !FILEPAIR || FILEPAIR.loading || !FILEPAIR.available) return "";
+  if (!FILEPAIR._by) {
+    /* Built once and hung on the answer, because the file list draws 628 rows and a
+       `find` per row is rule 45's shape — the same defect `Graph.connections` cost 2,418
+       ms for. It rides on the answer rather than in a module variable so it cannot
+       outlive the pair it was built from. */
+    FILEPAIR._by = new Map((FILEPAIR.rows || []).map(r => [r.path, r]));
+  }
+  const row = FILEPAIR._by.get(path);
+  return row ? row.status : "";
+}
+
+/* One file's line difference. Held for the open file only, exactly as `CODEFILE` is.
+ *
+ * Dropped and re-asked when the file or the compared version moves. There is no cache of
+ * many: an insert carries the *other* version's text, so remembering every file a reader
+ * visited would be a second copy of the program held against someone who has moved on. */
+function ensureFileDiff(path) {
+  const compared = comparedRevInForce();
+  if (!path || !overlayOn()) { FILEDIFF = null; return Promise.resolve(null); }
+  if (FILEDIFF && FILEDIFF.loading
+      && FILEDIFF.file === path && FILEDIFF.compared === compared) {
+    return Promise.resolve(FILEDIFF);
+  }
+  if (FILEDIFF && !FILEDIFF.loading
+      && FILEDIFF.file === path && FILEDIFF.compared === compared) {
+    return Promise.resolve(FILEDIFF);
+  }
+  return loadFileDiff(path, compared);
+}
+
+async function loadFileDiff(path, compared) {
+  FILEDIFF = { loading: true, file: path, compared };
+  try {
+    const r = await fetch("/api/filechanges?path=" + encodeURIComponent(path)
+                          + "&compared=" + encodeURIComponent(compared));
+    const d = await r.json();
+    FILEDIFF = { ...d, file: path, compared, loading: false };
+  } catch (err) {
+    FILEDIFF = { available: false, file: path, compared, loading: false,
+                 reason: "the difference could not be read: " + err.message };
+  }
+  return FILEDIFF;
+}
+
+/* The overlay the panes actually draw, or null.
+ *
+ * One function, so the navigator's pane and the centre's table cannot disagree about
+ * which lines are marked — they are the same file and there is one answer about it.
+ * Returns null for every reason there is not one, and the callers show that as nothing
+ * rather than as "unchanged": `overlayNote()` is where the reason is said out loud. */
+function codeOverlay() {
+  if (!overlayOn() || !CODEFILE || CODEFILE.loading || CODEFILE.available === false) {
+    return null;
+  }
+  if (!FILEDIFF || FILEDIFF.loading || !FILEDIFF.available) return null;
+  if (FILEDIFF.file !== CODEFILE.file) return null;   // an answer about another file
+  const w = diffWords();
+  const gone = new Set(FILEDIFF.base_only || []);
+  const after = new Map();
+  for (const ins of FILEDIFF.inserts || []) {
+    if (!after.has(ins.after)) after.set(ins.after, []);
+    after.get(ins.after).push(ins);
+  }
+  return {
+    status: FILEDIFF.status,
+    /* The two words themselves, carried whole rather than flattened into a tone and a word
+       apiece. Written first as `baseTone` / `comparedTone`, and the guard was right to
+       refuse it: a field named for the **side** is one edit from being *set* from the side,
+       which is precisely what
+       `test_the_tone_follows_the_word_and_not_the_side` exists to catch. Passing the
+       objects through means every `tone-${…}` in this file still ends in the word’s own
+       `.tone`, and the check can see that it does rather than taking it on trust (rule 37).
+
+       The tone follows the **word**, never the side: a line only the base has was deleted
+       on the way to the compared version or added on the way from it, depending on which
+       the reader takes to be newer. `diffWords()` is the one place that assumption becomes
+       a colour. */
+    base: w.base, compared: w.compared,
+    gone, after,
+    counts: FILEDIFF.counts || { base_only: 0, compared_only: 0, same: 0 },
+  };
 }
 
 /* Every point in time this program directory holds. One small query, asked at boot,
@@ -1344,6 +1560,23 @@ const CODE_ROUTES = {
     used("code:detached");
   },
   codeopen: () => { state.mode = "code"; state.view = "code"; persist(); render(); },
+  /* The change overlay on or off. It repaints rather than re-renders, because the marked
+     rows and the other version's lines are *inside* the built subtree -- `render()` alone
+     would hand back the cached page and the switch would do nothing visible, which is the
+     failure design rule 16 is about. `codeDomKey()` carries the overlay for the same
+     reason, so this is belt and braces rather than the only defence. */
+  codeoverlay: () => {
+    state.codeOverlay = !state.codeOverlay;
+    persist();
+    used("code:overlay:" + (state.codeOverlay ? "on" : "off"));
+    if (!state.codeOverlay) { repaintCode(); return; }
+    /* Turned back on with nothing fetched: the file was opened while it was off, so the
+       difference was never asked for. Fetch, then repaint — rather than repainting an
+       overlay that is not there and leaving the switch looking broken. */
+    ensureFilePair();
+    ensureChanges();
+    ensureFileDiff(state.codeFile).then(repaintCode);
+  },
 };
 
 document.addEventListener("click", (ev) => {
@@ -3071,6 +3304,7 @@ function viewCode() {
           CODEFILE.lines.length.toLocaleString()} lines · ${
           CODEFILE.defs.length} definitions · ${CODEFILE.marks.length.toLocaleString()} marks</div>
       </div>
+      ${overlaySwitchHtml()}
       <button class="linkbtn" data-codedetach="1"
               title="Open the code in a window of its own, in sync with this one">detach ⧉</button>
       <button class="linkbtn" data-codeback="1" title="Back to the list of files">files ›</button>
@@ -3084,6 +3318,9 @@ function viewCode() {
         names are clickable. ${CODEFILE.unplaced} more resolved to a routine but occur more
         than once on their line, so there is no column to underline — they are listed in the
         margin instead.</div>` : ""}
+
+    ${comparing() ? `<div class="codeview-note chgnote">${overlayNote()}</div>` : ""}
+    ${factLaneHtml(state.codeFile)}
 
     <div class="codeview-body" id="codeTableMount"></div>
 
@@ -3115,17 +3352,56 @@ function codeTable() {
    * resolve them all before it can size a column. Fixed-width inline-blocks give the same
    * three columns with none of that, and the alignment is exactly as reliable because every
    * width is declared rather than negotiated. */
-  return `<pre class="codetable" id="codeTable">${
-    CODEFILE.lines.map((text, i) => {
-      const n = i + 1;
-      const ms = marks.get(n) || [];
-      return `<span class="crow" id="crow-${n}"><span class="cnum">${n}</span>` +
-        `<span class="cmark">${ms.map(m => `<span class="mk mk-${esc(m.kind)}"` +
-              ` title="${esc(m.kind)}${m.note ? " · " + esc(m.note) : ""}"` +
-              `>${esc(m.label)}${m.detail ? `<i>${esc(m.detail)}</i>` : ""}</span>`).join("")}</span>` +
-        `<span class="ccode">${codeLineHtml(text, links.get(n))}</span></span>`;
-    }).join("\n")
-  }</pre>`;
+  const ov = codeOverlay();
+  const rows = [];
+  if (ov) rows.push(...ghostRows(ov, 0, "crow-wide"));
+  CODEFILE.lines.forEach((text, i) => {
+    const n = i + 1;
+    const ms = marks.get(n) || [];
+    const gone = ov && ov.gone.has(n);
+    rows.push(`<span class="crow${gone ? ` chg tone-${ov.base.tone}` : ""}" id="crow-${n}">` +
+      `<span class="cnum">${n}</span>` +
+      (ov ? `<span class="csign" aria-hidden="true">${gone ? signOf(ov.base.tone) : ""}</span>` : "") +
+      `<span class="cmark">${ms.map(m => `<span class="mk mk-${esc(m.kind)}"` +
+            ` title="${esc(m.kind)}${m.note ? " · " + esc(m.note) : ""}"` +
+            `>${esc(m.label)}${m.detail ? `<i>${esc(m.detail)}</i>` : ""}</span>`).join("")}</span>` +
+      `<span class="ccode">${codeLineHtml(text, links.get(n))}</span></span>`);
+    if (ov) rows.push(...ghostRows(ov, n, "crow-wide"));
+  });
+  return `<pre class="codetable" id="codeTable">${rows.join("\n")}</pre>`;
+}
+
+/* The sign beside a marked line. It follows the **tone**, which follows the word, which
+   follows the reader's assumption about which version is newer -- so it cannot say `+`
+   beside a line the strip is calling deleted. */
+function signOf(tone) { return tone === "gone" ? "\u2212" : "+"; }
+
+/* The other version's lines, drawn where they belong and marked as not being here.
+ *
+ * They carry **their own** line numbers, not this file's, and the number is styled and
+ * titled as belonging to the other version. Renumbering them into this file would be
+ * inventing a position for lines that have none here (rule 1), and leaving the column
+ * blank would throw away the one thing that says where they actually are.
+ *
+ * Rule 8, and it is worth saying out loud: nothing is elided. A run of four hundred
+ * inserted lines is four hundred rows. The reader can turn the overlay off, which is a
+ * different thing from being shown a summary of it.
+ */
+function ghostRows(ov, after, cls) {
+  const runs = ov.after.get(after);
+  if (!runs) return [];
+  const out = [];
+  for (const run of runs) {
+    run.lines.forEach((text, k) => {
+      const n = run.first + k;
+      out.push(`<span class="crow ghost chg tone-${ov.compared.tone} ${cls}">` +
+        `<span class="cnum ghostn" title="line ${n} of the compared version">${n}</span>` +
+        `<span class="csign" aria-hidden="true">${signOf(ov.compared.tone)}</span>` +
+        `<span class="cmark"></span>` +
+        `<span class="ccode">${esc(text) || "&nbsp;"}</span></span>`);
+    });
+  }
+  return out;
 }
 
 function viewCuriosities() {
@@ -4950,8 +5226,12 @@ function wire() {
     state.comparedIsNewer = next[state.comparedIsNewer] || "auto";
     used("assume:" + state.comparedIsNewer);
     persist();
-    buildNav();
-    render();
+    /* `repaintCode`, not `buildNav(); render()`. The assumption decides the *tone* of every
+       marked line, and those live inside the built subtree — so re-rendering alone hands
+       back the cached page and the code keeps the colours of the previous assumption while
+       every heading beside it has swapped. One control, two answers (rule 51), and the
+       lines are the half nobody would think to check. */
+    repaintCode();
   }));
 
   $$("[data-pointershown]").forEach(b => b.addEventListener("click", () => {
@@ -5222,11 +5502,23 @@ function wire() {
       }
       state.baseRev = serving || wantBase || "";
       persist();
+      /* The overlay is an answer about *this pair* and about nothing else, so it goes with
+         the pair rather than being left to be overwritten. Dropped rather than re-fetched
+         here: the code marks then repaint from whatever the new pair says, and a reader
+         who is not in the code browser has paid nothing. */
+      FILEPAIR = null; FILEDIFF = null;
       /* Only when there is something to compare. "On its own" is a real answer and must
          not spend seconds fetching a comparison nobody asked for -- but it must still
          repaint, or the Changes group keeps the figures of the pair just dropped. */
-      if (state.comparedRev) refreshChanges();
-      else { CHANGES = null; buildNav(); render(); }
+      if (state.comparedRev) {
+        refreshChanges();
+        if (state.codeFile && overlayOn()) {
+          ensureFilePair();
+          ensureFileDiff(state.codeFile).then(repaintCode);
+        } else {
+          ensureFilePair().then(repaintCode);
+        }
+      } else { CHANGES = null; repaintCode(); }
     });
   }
 
@@ -5380,7 +5672,7 @@ const WIRED_ATTRS = new Set([
   /* The code browser's three. `codelink` is on every clickable name in the source and
      `CODE_ROUTES` is what listens for all of them -- one table, checked by the guard that
      reads it, so a fourth kind added there without a listener fails by name. */
-  "codeback", "codedetach", "codelink", "codeopen", "codemode",
+  "codeback", "codedetach", "codelink", "codeopen", "codemode", "codeoverlay",
   /* The version strip's one control: which version the reader assumes is newer. It is on
      the strip rather than in Settings because it decides what every red row means, and a
      colour a reader cannot account for is worse than no colour. */
@@ -5713,6 +6005,21 @@ async function loadCodeFile(path) {
   codePaintedFor = "";
   buildNav();
   render();
+  /* The overlay is a **second** fetch and it arrives after the code, deliberately. The
+   * lines are what the reader asked for; the difference over them is worth a repaint and
+   * is not worth holding the file back for. Both are dropped by their own key check if the
+   * reader has moved on, so an answer about the previous file cannot land on this one. */
+  if (overlayOn()) {
+    FILEDIFF = null;
+    ensureFilePair();
+    ensureChanges();
+    ensureFileDiff(path).then(() => {
+      if (state.codeFile !== path) return;
+      repaintCode();
+    });
+  } else {
+    FILEDIFF = null;
+  }
   /* **Paint, then measure** -- rule 49's companion, and the reason this is not two lines
    * higher. A reveal is a `scrollTop` against a box that must already hold the lines, so
    * moving it before `render()` scrolls a pane whose content is about to be replaced. Paid
@@ -5732,6 +6039,191 @@ function openCodeFile(path) {
   persist();
   loadCodeFile(state.codeFile);
   buildNav();
+}
+
+/* The switch, drawn only where it can do something.
+ *
+ * With one version there is no overlay to suppress, so there is no control -- design rule
+ * 16's defect is a control that renders and changes nothing, and a disabled switch beside
+ * a program that will never have a second version is that with an excuse attached.
+ */
+function overlaySwitchHtml() {
+  if (!comparing()) return "";
+  const on = !!state.codeOverlay;
+  return `<button class="linkbtn chgswitch" data-codeoverlay="1" aria-pressed="${on}"
+            data-titled="1" title="${on
+              ? "Stop drawing the difference from the compared version over these lines"
+              : "Draw the difference from the compared version over these lines"}"
+          >${on ? "◆" : "◇"} changes</button>`;
+}
+
+/* The fact lane, beside the text lane, and it is the half nothing else can give.
+ *
+ * A text diff says these lines moved. This says **this routine behaves differently** --
+ * it calls something it did not, writes a table it did not, has a parameter it did not --
+ * which is what the whole tool exists to report and what `git diff` cannot state at all.
+ * Four of Mensores' eighteen changed routines have an *unchanged body*: they stopped
+ * resolving `queue.claim` because a new module brought a second routine of that name.
+ *
+ * Every row is an ordinary selection, so clicking one lights the stack, moves the
+ * navigator and records a step in the trail -- the same door every other row uses.
+ */
+function factLaneHtml(path) {
+  if (!overlayOn() || !path) return "";
+  const f = fileFactChanges(path);
+  const n = f.behaves.length + f.base_only.length + f.compared_only.length;
+  if (!n) {
+    /* Three states, and collapsing any two of them states the wrong one. "Nobody has asked
+       yet", "it is being computed" and "nothing here behaves differently" are different
+       claims, and only the last of them is an answer (rule 35). The middle one matters
+       most here: this is the request that can take tens of seconds on a cold volume, and
+       silence for that long reads as a lane that failed. */
+    if (!CHANGES) return "";
+    if (CHANGES.loading) {
+      return `<div class="codeview-note factlane">reading what behaves differently…</div>`;
+    }
+    if (!CHANGES.available) return "";
+    return `<div class="codeview-note factlane"><b>Nothing in this file behaves
+      differently.</b> Its text may still differ — that is the lane above.</div>`;
+  }
+  const w = diffWords();
+  /* The glyph is passed rather than derived from the tone, because there are **three**
+     things here and only two of them have a direction. A routine present in both and
+     behaving differently was neither added nor deleted, and `signOf` would have printed
+     `+` beside it for want of a third answer — a sign that means nothing, in the channel
+     that means direction. */
+  const row = (r, tone, glyph, why) => `<button class="factrow nav-item" data-nav="routine"
+      data-navid="${esc(r.id)}" data-titled="1" title="${esc(r.qualname)} — ${esc(why)}">
+      <span class="factdot tone-${tone}" aria-hidden="true">${glyph}</span>
+      <span class="mono">${esc(r.name)}</span>
+      <span class="factwhy">${esc(why)}</span></button>`;
+  const moved = (r) => (r.moved || []).join(", ") || "differently";
+  return `<div class="codeview-note factlane">
+    <b>${n} routine${n === 1 ? "" : "s"} here the comparison has something to say about.</b>
+    This is the lane a text diff cannot give: what a routine <i>does</i>, not which of its
+    lines moved.
+    <div class="factrows">
+      ${f.behaves.map(r => row(r, "mod", "\u25cb",
+          "behaves differently — " + moved(r))).join("")}
+      ${f.base_only.map(r => row(r, w.base.tone, signOf(w.base.tone),
+          w.base.word)).join("")}
+      ${f.compared_only.map(r => row(r, w.compared.tone, signOf(w.compared.tone),
+          w.compared.word + " — its lines are in the other version")).join("")}
+    </div>
+    ${f.compared_only.length ? `<div class="hint">The ${f.compared_only.length} ${
+      w.compared.word} routine${f.compared_only.length === 1 ? " is" : "s are"} listed
+      rather than marked: ${f.compared_only.length === 1 ? "its line number belongs" :
+      "their line numbers belong"} to the other version, and drawing ${
+      f.compared_only.length === 1 ? "it" : "them"} in this file's margin would put ${
+      f.compared_only.length === 1 ? "it" : "them"} at a line that means something else
+      here.</div>` : ""}
+  </div>`;
+}
+
+/* What the overlay is showing, in words, and what it could not show.
+ *
+ * Design rule 1 in the place it matters most here. Four things a reader cannot see by
+ * looking at marked lines: which version this is held against, how many lines went each
+ * way, that a routine the *other* version has could not be placed on these lines at all,
+ * and — the one with no visible symptom — that this file did not change. An unmarked file
+ * under a running comparison and an unmarked file with no comparison look identical.
+ *
+ * Returns "" when there is nothing to say, which is only when nothing is being compared.
+ */
+function overlayNote() {
+  if (!comparing()) return "";
+  const rev = comparedRevInForce();
+  const shortRev = rev.replace("T", " ").replace("Z", "");
+  if (!state.codeOverlay) {
+    return `Not showing the difference from <code>${esc(shortRev)}</code>.`;
+  }
+  if (!FILEPAIR || FILEPAIR.loading) return "comparing the files…";
+  if (!FILEPAIR.available) {
+    return `<b>No file comparison.</b> ${esc(FILEPAIR.reason || "")}`;
+  }
+  if (!state.codeFile) {
+    const c = FILEPAIR.counts || {};
+    const w = diffWords();
+    const one = (n, side) => n
+      ? `<b class="tone-${side.tone}">${n.toLocaleString()} ${side.word}</b>`
+      : "";
+    const bits = [
+      c.modified ? `<b>${c.modified.toLocaleString()}</b> with different text` : "",
+      one(c.only_in_base, w.base), one(c.only_in_compared, w.compared),
+    ].filter(Boolean);
+    /* **The rows below are the version being read, and the other version's files are not
+       among them.** Design rule 1: a count stated beside a list that cannot contain it has
+       to say where those went, or the reader counts the rows, counts the claim, and finds
+       the tool wrong about its own arithmetic. There is nothing to open for such a file —
+       the map, the margin and the bytes here are all this version's — so it is named as an
+       absence rather than drawn as a row that would fail on being clicked (the same
+       argument `queries.py` makes about inventing an id to make a row clickable). */
+    const missing = c.only_in_compared
+      ? ` The ${c.only_in_compared.toLocaleString()} ${w.compared.word} ${
+          c.only_in_compared === 1 ? "file is" : "files are"} not listed below: ${
+          c.only_in_compared === 1 ? "it is" : "they are"} in the other version, and this
+          map has no lines, margin or names for ${
+          c.only_in_compared === 1 ? "it" : "them"} — switch the base to read ${
+          c.only_in_compared === 1 ? "it" : "them"}.`
+      : "";
+    return `Held against <code>${esc(shortRev)}</code>: ${
+      bits.length ? bits.join(", ") : "nothing differs"}, of ${
+      (FILEPAIR.total || 0).toLocaleString()} files. ${
+      (c.same || 0).toLocaleString()} are byte for byte the same.${missing}`;
+  }
+  if (!FILEDIFF || FILEDIFF.loading) return "reading the difference…";
+  if (!FILEDIFF.available) {
+    return `<b>No difference to show.</b> ${esc(FILEDIFF.reason || "")}`;
+  }
+  const w = diffWords();
+  const c = FILEDIFF.counts || {};
+  if (FILEDIFF.status === "same") {
+    return `Byte for byte the same as <code>${esc(shortRev)}</code>.`;
+  }
+  const parts = [];
+  if (c.base_only) {
+    parts.push(`<b class="tone-${w.base.tone}">${c.base_only.toLocaleString()} line${
+      c.base_only === 1 ? "" : "s"} ${w.base.word}</b>`);
+  }
+  if (c.compared_only) {
+    parts.push(`<b class="tone-${w.compared.tone}">${c.compared_only.toLocaleString()} line${
+      c.compared_only === 1 ? "" : "s"} ${w.compared.word}</b>`);
+  }
+  const other = c.compared_only
+    ? ` The ${w.compared.word} lines are shown where they belong, with their own numbers — `
+      + `they are not in the file you are reading.`
+    : "";
+  return `Against <code>${esc(shortRev)}</code>: ${
+    parts.join(" and ") || "nothing"}.${other}`;
+}
+
+/* Which routines in the open file the *fact* diff has something to say about.
+ *
+ * The other lane, and the half nothing else can give: `changes.py` knows that a routine
+ * stopped resolving a call, or writes a table it did not write, which no text diff can
+ * state. Read straight off `CHANGES` — already fetched, no request of its own — and
+ * narrowed to this file.
+ *
+ * **`only_in_compared` is deliberately not placed.** Those rows carry the *compared*
+ * version's file and line, so putting them in this file's margin would be drawing a
+ * routine at a line number that means something else here. They are listed instead, with
+ * the reason said: rule 1, and the identical argument `code.py` makes about a call whose
+ * column it cannot honestly give.
+ */
+function fileFactChanges(path) {
+  const empty = { behaves: [], base_only: [], compared_only: [] };
+  if (!path || !overlayOn()) return empty;
+  if (!CHANGES || CHANGES.loading || !CHANGES.available) return empty;
+  const here = (rows) => (rows || []).filter(r => r.file === path);
+  return {
+    behaves: here(CHANGES.behaves),
+    base_only: here(CHANGES.only_in_base),
+    /* Not narrowed by line, and not placeable — see above. Kept because a routine the
+       other version has and this one does not is exactly what someone reading this file
+       wants to know, and the only honest place for it is beside the file rather than in
+       it. */
+    compared_only: here(CHANGES.only_in_compared),
+  };
 }
 
 /* Every file whose path or module matches what is typed. Flat and complete: 626 rows is a
@@ -6016,6 +6508,7 @@ function codeFileList() {
   const inside = searchList();
   return `
     ${searchBoxHtml()}
+    ${comparing() ? `<div class="nav-note chgnote">${overlayNote()}</div>` : ""}
     <div class="lane-head">Files<span class="n" id="codeFilesCount">${
       fileLaneCount()}</span></div>
     <div class="nav-items" id="codeFileRows">${fileRowsHtml(rows)}</div>
@@ -6076,14 +6569,65 @@ function markTitle(m) {
 /* One renderer for a file row, because the full build and the narrow filter refresh both
  * draw it. Two copies would agree until the day one of them was edited. */
 function fileRowsHtml(rows) {
-  return rows.map(f => `
-    <button class="nav-item codefile" data-nav="file" data-navid="${esc(f.path)}"
+  return rows.map(f => {
+    const chg = fileChip(f.path);
+    return `
+    <button class="nav-item codefile${chg.cls}" data-nav="file" data-navid="${esc(f.path)}"
             data-titled="1" title="${esc(f.module)} — ${f.lines.toLocaleString()} lines, ${
-              f.routines} routines, ${f.boundaries} boundaries, ${f.ids} governance ids"
+              f.routines} routines, ${f.boundaries} boundaries, ${f.ids} governance ids${
+              chg.title ? " — " + esc(chg.title) : ""}"
             ${f.path === state.codeFile ? 'aria-current="true"' : ""}>
       <span class="navsub">${esc(dirOf(f.path))}</span>${esc(baseOf(f.path))}
       <span class="n">${f.lines.toLocaleString()}</span>
-    </button>`).join("");
+      ${/* **After the count, and that is not a style choice.** `dressNavItems` gathers a
+            row's loose text nodes into a `.navlabel` and re-inserts it immediately before
+            `.n` — so an element written between the file name and the count ends up
+            *between the directory and the name*: `mensores/scriba/ ○ _queue.py`. It read
+            as a glyph inside the path, and every check passed, because the markup this
+            function writes is correct and something else moves it afterwards.
+
+            Placed last it survives that move and lands in a column of its own down the
+            right-hand edge, which is the better row anyway. Found by looking at the pane
+            (rule 51's cousin: a rule about markup that another function silently
+            rewrites). */""}
+      ${chg.glyph ? `<span class="filechg" aria-hidden="true">${chg.glyph}</span>` : ""}
+    </button>`;
+  }).join("");
+}
+
+/* What one file row says about the comparison, in a glyph and a sentence.
+ *
+ * **A file that did not change gets no glyph and says so in its title**, which is the only
+ * way a reader can tell "nothing happened to this one" from "nobody compared this one" --
+ * design rule 1, and the state that has no visible mark is exactly the one that needs the
+ * words. `same` with an overlay running is a fact; `same` with no comparison is not a
+ * claim anyone has made.
+ *
+ * The words come from `diffWords()`, so a file only the base has reads as *deleted* or as
+ * *added* according to the same assumption every other view is under. The glyph is the
+ * tone's own sign for a one-sided file and a neutral mark for a modified one, because
+ * "this file differs" is not a direction. */
+function fileChip(path) {
+  const st = fileStatus(path);
+  if (!st) return { cls: "", glyph: "", title: "" };
+  const w = diffWords();
+  /* **Every class here begins `filechg-`, and that is not tidiness.** The first version
+     used `chg-same` / `chg-mod` / `chg-one`, and `.chg-mod` already existed: it is the
+     change worklist's *module* label, styled faint and two sizes down. So every modified
+     file in the list quietly rendered smaller and greyer than the unchanged ones — the
+     opposite of what a mark is for, in a global stylesheet where nothing warns you. No
+     check could see it and no page threw; found by looking at the pane. */
+  if (st === "same") {
+    return { cls: " filechg-same", glyph: "",
+             title: "unchanged between the two versions" };
+  }
+  if (st === "modified") {
+    return { cls: " filechg-diff", glyph: "\u25cb", title: "the text differs" };
+  }
+  const side = st === "only_in_base" ? w.base : w.compared;
+  return { cls: ` filechg-one tone-${side.tone}`, glyph: signOf(side.tone),
+           title: `${side.word} — only in the ${
+             st === "only_in_base" ? "version being read" : "version it is compared with"}` };
 }
 
 function baseOf(p) { const i = String(p).lastIndexOf("/"); return i < 0 ? p : p.slice(i + 1); }
@@ -6170,7 +6714,29 @@ let codeDom = { pane: { key: "", node: null }, centre: { key: "", node: null } }
 let codePaintedFor = "";     // which file the centre pane currently holds
 
 function codeDomKey() {
-  return CODEFILE ? `${CODEFILE.file}#${CODEFILE.loading ? "…" : CODEFILE.available}` : "";
+  if (!CODEFILE) return "";
+  /* The overlay is in the key, and it has to be. The built subtree carries the marked rows
+   * and the other version's inserted lines *inside* it, so a diff that arrives after the
+   * file, a compared version that moves, or the switch being turned off all produce a
+   * different page from the same file -- and a cache keyed on the file alone would hand
+   * back the page from before, correct-looking and about the wrong question. Rule 52's
+   * companion inverted: the cheap check is what makes it safe not to repaint. */
+  const o = codeOverlay();
+  const overlay = o ? `${FILEDIFF.compared}:${o.status}:${o.base.tone}` : "-";
+  return `${CODEFILE.file}#${CODEFILE.loading ? "…" : CODEFILE.available}#${overlay}`;
+}
+
+/* Drop the built subtrees and draw again. What `loadCodeFile` does at the end, minus the
+ * fetch -- for whoever changes what is *drawn over* the file rather than which file it is.
+ *
+ * Named rather than repeated at each call site, because there are three of them already
+ * (the diff arriving, the overlay switch, the compared version moving) and the list of
+ * callers is the thing that grows (rule 51). */
+function repaintCode() {
+  codeDom = { pane: { key: "", node: null }, centre: { key: "", node: null } };
+  codePaintedFor = "";
+  buildNav();
+  render();
 }
 
 /* Build a node once per key, and hand back the same node after.
@@ -6241,17 +6807,44 @@ function codeBody() {
     if (!marksBy.has(m.line)) marksBy.set(m.line, []);
     marksBy.get(m.line).push(m);
   }
+  /* The same overlay the centre draws, from the same function. Two panes showing one file
+   * must not be able to disagree about which of its lines changed -- and they would, the
+   * first time either of them was edited alone (rule 51). */
+  const ov = codeOverlay();
+  const rows = [];
+  const ghost = (after) => {
+    const runs = ov && ov.after.get(after);
+    if (!runs) return;
+    for (const run of runs) {
+      run.lines.forEach((text, k) => {
+        const n = run.first + k;
+        rows.push(`<span class="cl ghost chg tone-${ov.compared.tone}">` +
+          `<span class="cn ghostn" title="line ${n} of the compared version">${n}</span>` +
+          `<span class="cm">${signOf(ov.compared.tone)}</span>` + (esc(text) || "&nbsp;") +
+          `</span>`);
+      });
+    }
+  };
+  ghost(0);
+  CODEFILE.lines.forEach((text, i) => {
+    const n = i + 1;
+    const ms = marksBy.get(n) || [];
+    const glyphs = [...new Set(ms.map(m => MARK_GLYPH[m.kind] || "·"))].join("");
+    const title = ms.map(markTitle).join("\n");
+    const gone = ov && ov.gone.has(n);
+    /* The sign takes the mark column when a line is marked, because the pane's gutter is
+       one glyph wide and there is no room for both. The marks are still on the row's title
+       and in the centre's margin, which has the width for them -- what a narrow pane can
+       say is *this line is not in the other version*, which is the thing being asked. */
+    rows.push(`<span class="cl${gone ? ` chg tone-${ov.base.tone}` : ""}" id="codeline-${n}">` +
+      `<span class="cn">${n}</span>` +
+      `<span class="cm"${title ? ` title="${esc(title)}" data-titled="1"` : ""}>${
+        gone ? signOf(ov.base.tone) : glyphs}</span>` +
+      codeLineHtml(text, byLine.get(n)) + `</span>`);
+    if (ov) ghost(n);
+  });
   return `<div class="codescroll" id="codeScroll"><pre class="codepane">${
-    CODEFILE.lines.map((text, i) => {
-      const n = i + 1;
-      const ms = marksBy.get(n) || [];
-      const glyphs = [...new Set(ms.map(m => MARK_GLYPH[m.kind] || "·"))].join("");
-      const title = ms.map(markTitle).join("\n");
-      return `<span class="cl" id="codeline-${n}"><span class="cn">${n}</span>` +
-             `<span class="cm"${title ? ` title="${esc(title)}" data-titled="1"` : ""}>${glyphs}</span>` +
-             codeLineHtml(text, byLine.get(n)) + `</span>`;
-    }).join("\n")
-  }</pre></div>`;
+    rows.join("\n")}</pre></div>`;
 }
 
 /* The span of the current selection inside the file on screen, or null.
@@ -6324,9 +6917,11 @@ function codeList() {
       ${back}
       <span class="codepath mono" title="${esc(state.codeFile)}">${esc(baseOf(state.codeFile))}</span>
       ${f ? `<span class="codemod">${esc(f.module)}</span>` : ""}
+      ${overlaySwitchHtml()}
       <button class="linkbtn" data-codeopen="1"
               title="Open this file in the centre pane, with its columns">open ▸</button>
     </div>
+    ${comparing() ? `<div class="nav-note chgnote">${overlayNote()}</div>` : ""}
     <div id="codePaneMount"></div>`;
 }
 
@@ -6378,9 +6973,14 @@ const NAV_GROUPS = [
     body: () => changeList() },
   /* Code: the file list, and the file. Stacked, which is the accordion one level down --
      the same shape `navRoutines` uses, for the same reason. */
+  /* `onOpen`: the file-level pairing is not in memory, so opening the group fetches it --
+     the same declaration the Changes group makes, and rule 55's companion for the same
+     reason. Without it the marks would appear only for a reader who had opened the
+     worklist first, which is a feature that works by luck. */
   { id: "navCode", title: "Code", open: false,
     count: () => FILES.length,
     note: () => codeNote(),
+    onOpen: () => ensureFilePair().then(() => { buildNav(); render(); }),
     body: () => codeList() },
   { id: "navExplore", title: "Explore", open: true, items: () => [
       { nav: "curiosities", label: "Worth a look", n: "" },
@@ -6899,7 +7499,8 @@ const PERSISTED = [
   "diskOrder", "diskColors", "colorBy", "sortMode", "filterMode", "direction",
   "nodeSize", "spreadX", "spreadY", "spreadZ", "collapseUnused",
   "searchCase", "searchWord", "searchRegex",
-  "panels", "inspectorAuto", "navWidth", "codeWidth", "codeFile", "navGroups",
+  "panels", "inspectorAuto", "navWidth", "codeWidth", "codeFile", "codeOverlay",
+  "navGroups",
   "navOpen", "navCap",
   "showPlates", "picks", "graphTheme", "edgesInMotion", "pointerShown", "pointerColor", "pointerPlace", "reticuleShown", "focusLocked",
 ];

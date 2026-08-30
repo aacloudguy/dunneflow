@@ -35,7 +35,7 @@ from ..docstore import DocStore
 from ..resolve import version as version_order
 from ..sourcedb import SourceStore
 from ..store import Store
-from . import changes, packages, queries
+from . import changes, filediff, packages, queries
 from .code import build_file, build_files
 from .cover import anomalies as build_anomalies
 from .cover import build as build_cover
@@ -166,6 +166,23 @@ class _Base:
 
     graph_db: Path
     store: Store
+    # What this version is called -- the id the graph's filename claims, `""` for a legacy
+    # bare `graph.db` that predates the layout. Held rather than re-derived at each use:
+    # `revision_of` was called in four routes already, and a fifth caller is how a rule
+    # kept at a call site starts to rot (rule 51).
+    revision: str
+    # **Which revision of the bodies belongs to this version**, which is a different
+    # question and occasionally a different answer. There is one `source.db` per program
+    # holding every revision, and its own default is the newest snapshot -- right only
+    # while the newest is also the version being read. Every sidecar read in this file
+    # names this rather than letting the store decide, because the store cannot know which
+    # version the reader is looking at.
+    #
+    # `None` means the sidecar cannot serve this version at all: no sidecar, or one that
+    # holds no path at this revision. That is stated, never substituted (rule 49) -- the
+    # bodies of some other version under this version's map is the failure this field
+    # exists to make impossible.
+    source_revision: str | None
     # The 2.5D stack, columnar. Named with the program so the browser can key stored
     # settings per program: a disk order and a set of colours worked out for one codebase
     # mean nothing in another, and silently applying one to the other would be the worst
@@ -236,6 +253,12 @@ class _Live:
         # opened deliberately, so paying for it at boot would add seconds to a start that
         # is already 10 s and buy nothing for a reader who never opens the view.
         self.changes: dict[tuple[str, str], dict[str, Any]] = {}
+        # The file-level pairing, per pair of revisions. **Not cleared on a base switch**,
+        # unlike `changes` above, and the difference is worth stating: a diff is keyed on
+        # two graphs, which a switch replaces one of, while this is keyed on two snapshots
+        # of the one sidecar -- and `source.db` is the store that is never rebuilt (rule
+        # 25). The pairing of two revisions is the same fact before and after a switch.
+        self.filepairs: dict[tuple[str, str], dict[str, Any]] = {}
         # A sidecar is optional by design -- `--no-source`, or a map handed over without
         # it. Absent is a state the inspector states plainly, never one it hides.
         #
@@ -288,6 +311,8 @@ class _Live:
         # repaired (rule 20), and `revisions.known` will list it as comparable regardless
         # -- so this is a real outcome of a real switch, not a defensive branch.
         store = Store(graph_db, writable=False, shared=True)
+        revision = revisions.revision_of(graph_db) or ""
+        source_revision = self._source_revision(revision)
         try:
             _step(1)
             payload = columnar(build(store))
@@ -295,7 +320,7 @@ class _Live:
             root = root_package(store)
 
             _step(2)
-            files = build_files(store, self.source)
+            files = build_files(store, self.source, revision=source_revision)
 
             _step(3)
             naming = measure_naming(store)
@@ -319,16 +344,18 @@ class _Live:
 
             _step(5)
             defined, total = glossary["coverage"]
-            cover = build_cover(store, self.source, self.out_dir.name, vocabulary={
-                "conventions": len(naming["conventions"]),
-                "terms": total,
-                "defined": defined,
-            })
+            cover = build_cover(store, self.source, self.out_dir.name,
+                                revision=source_revision, vocabulary={
+                                    "conventions": len(naming["conventions"]),
+                                    "terms": total,
+                                    "defined": defined,
+                                })
         except BaseException:
             store.close()
             raise
 
-        fresh = _Base(graph_db=graph_db, store=store, payload=payload, root=root,
+        fresh = _Base(graph_db=graph_db, store=store, revision=revision,
+                      source_revision=source_revision, payload=payload, root=root,
                       files=files, naming=naming, glossary=glossary, cover=cover)
         with self.lock:
             outgoing = self.current
@@ -340,6 +367,27 @@ class _Live:
             # so no request can be holding this connection.
             if outgoing is not None:
                 outgoing.store.close()
+
+    def _source_revision(self, revision: str) -> str | None:
+        """Which revision of the bodies this version can be read at, or nothing.
+
+        The graph's own revision when the sidecar holds it. A legacy bare `graph.db` has
+        no revision to claim, and a sidecar written before revisions existed maps its
+        paths under the empty id -- so falling through to `current_revision()` there is
+        the *same* answer arrived at honestly, not a substitute for one we could not get.
+
+        A named revision the sidecar does not hold is `None`, and every reader shows that
+        as an absence. It is the one case where guessing would be silent and wrong: the
+        newest snapshot's bytes under an older version's map look exactly like a file, and
+        the marks in the margin land on whatever line has since moved under them.
+        """
+        if self.source is None:
+            return None
+        if revision and self.source.holds_revision(revision):
+            return revision
+        if revision:
+            return None
+        return self.source.current_revision()
 
     def _docs_for(self, graph_db: Path) -> DocStore | None:
         """The document store captured beside this graph, or nothing at all."""
@@ -520,7 +568,9 @@ class _Handler(BaseHTTPRequestHandler):
             self._json({"found": False, "reason": "no id asked for"})
             return
         with self._live.lock:
-            body = describe(self._live.current.store, node_id, self._live.source)
+            base = self._live.current
+            body = describe(base.store, node_id, self._live.source,
+                            revision=base.source_revision)
         self._json(body)
 
     def _r_hover(self, q: dict[str, list[str]]) -> None:
@@ -623,7 +673,9 @@ class _Handler(BaseHTTPRequestHandler):
         """
         path = (q.get("path") or [""])[0]
         with self._live.lock:
-            self._json(build_file(self._live.current.store, self._live.source, path))
+            base = self._live.current
+            self._json(build_file(base.store, self._live.source, path,
+                                  revision=base.source_revision))
 
     def _r_search(self, q: dict[str, list[str]]) -> None:
         """Search the text of the source, which is the one thing the graph cannot do.
@@ -643,14 +695,15 @@ class _Handler(BaseHTTPRequestHandler):
         flag = lambda k: (q.get(k) or ["0"])[0] in ("1", "true", "on")  # noqa: E731
         case, word, regex = flag("case"), flag("word"), flag("regex")
         with self._live.lock:
+            base = self._live.current
             if path:
                 self._json(search_in_file(
-                    self._live.current.store, self._live.source, term, path,
-                    case=case, word=word, regex=regex))
+                    base.store, self._live.source, term, path,
+                    case=case, word=word, regex=regex, revision=base.source_revision))
             else:
                 self._json(search_files(
-                    self._live.current.store, self._live.source, term,
-                    case=case, word=word, regex=regex))
+                    base.store, self._live.source, term,
+                    case=case, word=word, regex=regex, revision=base.source_revision))
 
     def _r_source(self, q: dict[str, list[str]]) -> None:
         """A span of one file, straight out of the sidecar.
@@ -675,11 +728,12 @@ class _Handler(BaseHTTPRequestHandler):
                         "reason": "line numbers must be numbers"})
             return
         with self._live.lock:
+            rev = self._live.current.source_revision
             if last <= 0:
-                whole = self._live.source.text(path)
+                whole = self._live.source.text(path, revision=rev)
                 lines = list(enumerate((whole or "").split("\n"), 1)) if whole else []
             else:
-                lines = self._live.source.lines(path, first, last)
+                lines = self._live.source.lines(path, first, last, revision=rev)
         if not lines:
             self._json({"available": False, "file": path,
                         "reason": "the sidecar does not hold this file"})
@@ -868,6 +922,48 @@ class _Handler(BaseHTTPRequestHandler):
             **built,
         })
 
+    def _r_filechanges(self, q: dict[str, list[str]]) -> None:
+        """Which files differ between two versions, and where inside one of them.
+
+        Two answers behind one route, and the difference is `path` -- the same shape
+        `/api/search` has, for the same reason. Without it: every file with its status,
+        complete, and it costs **no body reads at all**, because the sidecar is
+        content-addressed and equal hashes are equal bytes. With it: that one file's
+        lines, which is the only place `difflib` ever runs.
+
+        Split that way because the cheap half says which files the expensive half is
+        worth running on: twelve of Mensores' 628. Running the text lane over all of them
+        behind one request would be rule 45 exactly -- work proportional to the whole
+        program for an answer about one file.
+
+        **The base end is the server's, not the caller's.** Every other pair in this
+        dashboard is two arguments, but this one is drawn *over the bytes on screen*, and
+        those are the base's. A caller free to name a base the code browser is not showing
+        could put one version's difference marks on another version's lines, which is the
+        defect the revision pinning above exists to remove -- so the parameter does not
+        exist rather than being validated (rule 51: one truth, one place that owns it).
+        """
+        compared = (q.get("compared") or [""])[0]
+        path = (q.get("path") or [""])[0]
+        with self._live.lock:
+            base = self._live.current.source_revision
+            source = self._live.source
+        if path:
+            # Uncached, deliberately. The worst file in the corpus is 40 ms and every
+            # body it reads is already in the sidecar's inflate cache from having been
+            # opened; holding the compared version's text for every file a reader visits
+            # would be a second copy of the program in memory to save that.
+            with self._live.lock:
+                self._json(filediff.lines(source, path, base, compared))
+            return
+        key = (base or "", compared)
+        with self._live.lock:
+            built = self._live.filepairs.get(key)
+            if built is None:
+                built = filediff.pair(source, base, compared)
+                self._live.filepairs[key] = built
+            self._json(built)
+
     def _r_base(self, q: dict[str, list[str]]) -> None:
         """Which version is the base, and what a switch to another one is doing.
 
@@ -974,6 +1070,7 @@ class _Handler(BaseHTTPRequestHandler):
         "/api/search": "_r_search",
         "/api/revisions": "_r_revisions",
         "/api/changes": "_r_changes",
+        "/api/filechanges": "_r_filechanges",
         "/api/base": "_r_base",
         "/favicon.ico": "_r_favicon",
     }

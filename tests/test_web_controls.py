@@ -2007,14 +2007,43 @@ def _code(js: str) -> str:
     Whole lines only, which is the conservative half of the job and the only half that is
     safe. A general comment stripper has to track string state, and a first attempt at one
     ate the bodies of the template literals -- which in this codebase is where the code
-    being checked actually lives, so every check passed on an empty string. Every false
-    positive here came from a doc block, and every doc-block line begins with `/*`, `*` or
-    `*/` after its indent.
+    being checked actually lives, so every check passed on an empty string.
+
+    **And the continuation lines of a block, which is what this missed for four sessions.**
+    The premise above -- "every doc-block line begins with `/*`, `*` or `*/` after its
+    indent" -- is false of this codebase's own house style, which indents continuations as
+    plain prose:
+
+        /* The first line, which this did blank
+           the second, which it did not */
+
+    So a guard could trip on the sentence explaining the thing it checks, which is exactly
+    the failure this function was written to prevent, arriving one line lower down. It has
+    cost four sessions: three guards tripping on their own prose, and one selector check
+    that missed the shape it was written from.
+
+    The state machine starts a block **only** at a line whose first non-space characters
+    are `/*`, which is what keeps it safe from the hazard above: a template literal holding
+    the characters `/*` does not begin a line with them, and this never looks inside a
+    line. Ending is any `*/` on the line, for the same reason -- conservative in the
+    direction of blanking too little rather than too much.
     """
-    return "\n".join(
-        "" if re.match(r"\s*(/\*|\*/?|//)", line) else line
-        for line in js.split("\n")
-    )
+    out, in_block = [], False
+    for line in js.split("\n"):
+        if in_block:
+            out.append("")
+            if "*/" in line:
+                in_block = False
+            continue
+        if re.match(r"\s*(/\*|\*/?|//)", line):
+            out.append("")
+            # A one-line `/* … */` closes itself; a `*` or `*/` continuation is already
+            # inside a block this loop has either seen the start of or never will.
+            if line.lstrip().startswith("/*") and "*/" not in line:
+                in_block = True
+            continue
+        out.append(line)
+    return "\n".join(out)
 
 
 def _served_keys(py: str, fn: str) -> set[str]:
@@ -4717,3 +4746,197 @@ def test_a_palette_token_the_graph_reads_must_reach_the_graph() -> None:
             "applyPalette() must push the palette to the stack, or choosing a set moves "
             "every surface except the picture"
         )
+
+
+# ═══ the comparison, laid over the code ═══════════════════════════════════════════════
+#
+# Six guards, and each is written from a way this fails while looking like it works. An
+# overlay is the worst shape for that: a marked line looks exactly like a marked line
+# whatever it is marking, and an unmarked one looks exactly like an unchanged one.
+
+
+def test_the_overlay_is_drawn_from_one_answer_in_both_panes() -> None:
+    """The navigator's pane and the centre's table show the same file, so they must not be
+    able to disagree about which of its lines changed.
+
+    Two copies of the marking logic would agree until the day either was edited alone,
+    which is rule 51 exactly -- and the symptom would be one pane's marks, which nobody
+    compares against the other's.
+    """
+    js = _code(_read("shell.js"))
+    for fn in ("codeTable", "codeBody"):
+        body = _fn(js, fn)
+        assert "codeOverlay()" in body, (
+            f"`{fn}` no longer reads `codeOverlay()` — if it marks lines from anything "
+            "else, the two panes are two answers about one file"
+        )
+
+
+def test_the_built_subtree_is_keyed_on_the_overlay_as_well_as_the_file() -> None:
+    """`codeCached` hands back a node built earlier when the key matches.
+
+    The marked rows and the other version's inserted lines live *inside* that node, so a
+    key naming only the file returns the page from before the diff arrived, from before
+    the compared version moved, or from before the switch was thrown -- correct-looking,
+    and about a different question. This is the cheap check that makes it safe not to
+    repaint on every render (rule 52's companion).
+    """
+    key = _fn(_code(_read("shell.js")), "codeDomKey")
+    assert "codeOverlay()" in key, (
+        "codeDomKey() no longer consults the overlay, so a cached page outlives the "
+        "difference it was drawn from"
+    )
+    assert "FILEDIFF.compared" in key, (
+        "the key does not name which version the overlay is against, so moving the "
+        "compared end hands back the previous pair's marks"
+    )
+
+
+def test_every_control_that_moves_the_overlay_repaints_it() -> None:
+    """Three things change what is drawn over a file without changing which file it is:
+    the switch, the assumption about which version is newer, and the pair itself.
+
+    All three must go through `repaintCode()`. `render()` alone is not enough and the
+    failure is silent -- the headings swap and the code keeps the previous colours, which
+    is one page giving two answers (rule 51). Named as a list here because the list of
+    callers is the thing that grows.
+    """
+    js = _code(_read("shell.js"))
+    # Anchored on the **handler**, not on the name. `js.index("assumenewer")` finds the
+    # markup that writes the attribute, which is a different place entirely and always
+    # comes first — a guard reading the wrong span is rule 37 in the check itself.
+    for anchor, why, wanted in [
+        ("codeoverlay: () =>", "the change switch",
+         # **Both paths, named.** The switch has two: turning it off repaints what is
+         # already known, and turning it on has to fetch first and repaint after. A guard
+         # asking only whether `repaintCode` appears in the handler stayed green over a
+         # mutation that deleted the second — the off path kept the word (rule 59's
+         # companion: when a mutation survives, ask whether the guard is weak first).
+         ["repaintCode(); return;", ".then(repaintCode)"]),
+        ('$$("[data-assumenewer]")', "the assumption about which version is newer",
+         ["repaintCode()"]),
+        ('rev.addEventListener("change"', "moving the pair",
+         ["repaintCode"]),
+    ]:
+        assert anchor in js, f"{why}: the handler `{anchor}` is gone; this guard is blind"
+        i = js.index(anchor)
+        window = js[i:i + 1800]
+        for want in wanted:
+            assert want in window, (
+                f"{why} does not repaint the code (`{want}` is gone) — the built subtree "
+                "keeps what it had, so the control appears to do nothing to the lines"
+            )
+
+
+def test_a_line_from_the_other_version_is_never_given_this_file_s_numbering() -> None:
+    """Rule 1 in the gutter: the inserted lines carry the *compared* version's numbers.
+
+    Renumbering them into this file would invent a position for lines that have none
+    here, and the result reads as ordinary source. `ghostRows` must take its number from
+    the run's own `first`, never from a counter over this file's lines.
+    """
+    body = _fn(_code(_read("shell.js")), "ghostRows")
+    assert "run.first" in body, (
+        "a ghost row's number is no longer the compared version's own — it is claiming a "
+        "position in a file it is not in"
+    )
+    assert "ghostn" in body, (
+        "the borrowed number is no longer marked as borrowed, so two numbering systems "
+        "share one gutter with nothing to tell them apart"
+    )
+
+
+def test_the_overlay_says_what_it_could_not_show() -> None:
+    """Design rule 1, in the place with no visible symptom.
+
+    Four things a reader cannot see by looking at marked lines: which version this is
+    held against, how many lines went each way, that a routine the *other* version has
+    could not be placed on these lines at all, and — worst — that this file did not
+    change. An unmarked file under a running comparison and an unmarked file with no
+    comparison look identical.
+    """
+    js = _code(_read("shell.js"))
+    note = _fn(js, "overlayNote")
+    assert "Byte for byte the same" in note, (
+        "an unchanged file says nothing, so it cannot be told from a file nobody compared"
+    )
+    assert "Not showing the difference" in note, (
+        "the overlay switched off says nothing, so an unmarked file reads as an unchanged "
+        "one"
+    )
+    # Whitespace-normalised, because this sentence is written across lines in a template
+    # literal and a guard that can only see it on one line is a guard the next reflow
+    # breaks (rule 37 -- check that it catches, not that it mentions).
+    fact = re.sub(r"\s+", " ", _fn(js, "factLaneHtml"))
+    assert "listed rather than marked" in fact, (
+        "a routine only the other version has is drawn without saying why it could not be "
+        "placed — which is a line number from another file, silently"
+    )
+
+
+def test_the_switch_is_not_drawn_where_it_can_do_nothing() -> None:
+    """Design rule 16: a control that renders and changes nothing looks exactly like one
+    that works. With one version there is no overlay to suppress."""
+    body = _fn(_code(_read("shell.js")), "overlaySwitchHtml")
+    assert "comparing()" in body and "return \"\"" in body, (
+        "the change switch is drawn without asking whether there is a comparison — a "
+        "program with one version gets a control that can never do anything"
+    )
+
+
+def test_the_change_chip_does_not_land_inside_a_file_s_name() -> None:
+    """`dressNavItems` rewrites every nav row after it is built, and that is the trap.
+
+    It gathers a row's loose text nodes into a `.navlabel` and re-inserts it immediately
+    before `.n` — so an element written between the file name and the count is *moved in
+    front of the name*, and the row renders `mensores/scriba/ ○ _queue.py`: a glyph inside
+    the path. The markup `fileRowsHtml` writes is correct; something else moves it.
+
+    Nothing that reads markup can see this, which is why it is asserted as an ordering
+    over the one function's source. Found by looking at the pane.
+    """
+    body = _fn(_code(_read("shell.js")), "fileRowsHtml")
+    assert 'class="n"' in body and "filechg" in body, "this guard has lost its subject"
+    assert body.index('class="n"') < body.index("filechg"), (
+        "the change chip is written before the line count, so `dressNavItems` will insert "
+        "the file name after it and the glyph will render inside the path"
+    )
+
+
+def test_a_file_row_s_change_classes_cannot_collide_with_another_component() -> None:
+    """The collision this was written from, made general.
+
+    `fileChip` first wrote `chg-same` / `chg-mod` / `chg-one`. `.chg-mod` already existed
+    — it is the change worklist's *module* label, `font-size: .7rem; color: text-faint` —
+    so every **modified** file in the list rendered smaller and greyer than the unchanged
+    ones. The exact inverse of what a mark is for, in a stylesheet where a class is global
+    and nothing warns you, and invisible to every check that reads markup or handlers.
+    Found by looking at the pane.
+
+    Two things are asserted, and the second is what makes this survive the next class
+    added here. Every class the chip writes is prefixed, **and** every rule in the
+    stylesheet that mentions one is scoped to `.codefile` — so a name that another
+    component later takes cannot reach these rows, and one of these cannot reach another
+    component's.
+    """
+    js = _code(_read("shell.js"))
+    body = _fn(js, "fileChip")
+    written = set(re.findall(r'cls:\s*[`" ]+([a-z-]+)', body))
+    written |= set(re.findall(r'\bfilechg-[a-z]+', body))
+    written = {c for c in written if c.startswith("filechg")} | {
+        c for c in written if c.startswith("chg")}
+    assert written, "fileChip writes no classes any more; this guard has lost its subject"
+    for cls in written:
+        assert cls.startswith("filechg-"), (
+            f"`{cls}` is not prefixed for this row. A bare name is global: `chg-mod` was "
+            "already the worklist's module label, and borrowing it restyled every "
+            "modified file row"
+        )
+
+    css = _css_code(_read("tokens.css"))
+    for cls in written:
+        for rule in re.findall(rf"[^{{}}]*\.{re.escape(cls)}[^{{}}]*\{{", css):
+            assert "codefile" in rule, (
+                f"`{rule.strip().rstrip('{').strip()}` styles `{cls}` without scoping it "
+                "to `.codefile` — the rule reaches anything else that ever takes the name"
+            )

@@ -461,6 +461,23 @@ class SourceStore:
         self.conn.commit()
         return rev
 
+    def holds_revision(self, revision: str) -> bool:
+        """Does this sidecar map any path at that revision?
+
+        Asked by whoever is about to *read* one. `current_revision()` answers "what would
+        this file give me if I did not say", which is a different question from "can it
+        give me the version on screen" -- and answering the second with the first is how a
+        reader ends up looking at one version's bytes under another version's map.
+
+        A `bool` rather than a resolved revision, because the two outcomes are not
+        interchangeable: the caller that cannot have what it asked for has to say so
+        rather than be handed a plausible substitute (rule 49).
+        """
+        row = self.conn.execute(
+            "SELECT 1 FROM paths WHERE revision = ? LIMIT 1", (revision,)
+        ).fetchone()
+        return row is not None
+
     def revisions(self) -> list[dict[str, Any]]:
         """Every snapshot this sidecar holds, newest first, with how many paths it maps.
 
@@ -704,18 +721,23 @@ class SourceStore:
                 continue
             yield path, content_hash, lines
 
-    def held_paths(self) -> dict[str, int]:
-        """Every path this revision holds, with how many lines its body has.
+    def held_paths(self, *, revision: str | None = None) -> dict[str, int]:
+        """Every path one revision holds, with how many lines its body has.
 
         One query rather than a path list and then a `text()` per file: the line count is
         already recorded on the blob, and decompressing 626 bodies to count newlines in
         them would be seven megabytes of work to learn something the store wrote down.
+
+        `revision` like every other read here: `None` is the current one. It took a
+        keyword the day a reader could choose which version the map shows, because a file
+        list built from the newest snapshot beside a map of an older one states line
+        counts for bytes nobody is looking at.
         """
         return {
             str(r["path"]): int(r["lines"]) for r in self.conn.execute(
                 "SELECT p.path AS path, b.lines AS lines FROM paths p "
                 "JOIN blobs b ON b.hash = p.hash WHERE p.revision = ?",
-                (self.resolve_revision(None),),
+                (self.resolve_revision(revision),),
             )
         }
 

@@ -2205,6 +2205,68 @@ kbd { font-family: var(--f-mono); font-size: .66rem; background: var(--sunken);
 .codepane .cm { display: inline-block; width: 2.4rem; padding-right: .5rem;
   color: var(--text-muted); user-select: none; font-size: .66rem; }
 
+/* ── the comparison, laid over the code ────────────────────────────────────────────────
+ *
+ * Design rule 4: colour carries one dimension at a time, and here that dimension is the
+ * **difference channel** — the same `--diff-gone` / `--diff-new` the worklist, the bands
+ * and the presence lines already spend, so the reader's chosen colour set governs this
+ * with nothing declared of its own. There is no second palette here, deliberately: a table
+ * of colours in this stylesheet or in a script would be the second answer `tokens.css`
+ * opens by refusing.
+ *
+ * A background rather than a foreground, because the code's own colour is already spoken
+ * for — a link is the accent, an inferred link is a dashed underline, and recolouring the
+ * source text would take a channel two other things are using. The sign in the gutter is
+ * the part that survives being printed, photographed, or read by someone who cannot
+ * separate the two hues at all: rule 69's lesson is that a colour pair is never the whole
+ * of an answer.
+ */
+.crow.chg, .cl.chg { background: var(--diff-new-bg); }
+.crow.chg.tone-gone, .cl.chg.tone-gone { background: var(--diff-gone-bg); }
+.crow.chg .csign, .cl.chg .cm { color: var(--diff-new); font-weight: 700; }
+.crow.chg.tone-gone .csign, .cl.chg.tone-gone .cm { color: var(--diff-gone); }
+/* The sign column exists only while an overlay is drawn, so the code does not sit one
+   column further right for every reader who is not comparing anything. */
+.codetable .csign { display: inline-block; width: 1rem; text-align: center;
+  user-select: none; vertical-align: top; color: var(--text-faint); }
+/* A line from the *other* version. Its number is that version's, so it is marked as
+   borrowed rather than left to read as a line of this file — two numbering systems in one
+   gutter with nothing to tell them apart is an invented position (rule 1). */
+.crow.ghost .ccode, .cl.ghost { opacity: .92; }
+.crow.ghost .cnum, .cl.ghost .cn { font-style: italic; opacity: .7; }
+.crow.ghost .cnum::after, .cl.ghost .cn::after { content: "\2032"; }
+/* The `here` highlight must outrank a change background, because it answers a different
+   question — *this is what you selected* — and a selection the reader cannot find on a
+   heavily marked file is the reveal failing silently. Specificity, never source order
+   (rule 29). */
+.codetable .crow.chg.here, .codepane .cl.chg.here { background: var(--accent-soft); }
+
+/* One file's row in the list, and what the comparison says about it. The chip is a glyph
+   because the lane is a name and a line count already; the sentence is on the title. */
+/* Last in the row, after the count — see `fileRowsHtml`. `flex: none` so it keeps its
+   column when a long path squeezes everything else. */
+.codefile .filechg { margin-left: .3rem; font-weight: 700; flex: none; width: .7rem;
+  text-align: center; }
+.codefile.tone-gone .filechg { color: var(--diff-gone); }
+.codefile.tone-new  .filechg { color: var(--diff-new); }
+/* `filechg-diff`, not `chg-mod`: that name is the change worklist's module label, faint
+   and two sizes down, and borrowing it made every modified file row render smaller and
+   greyer than the unchanged ones. Every class this row writes is scoped to `.codefile`
+   and prefixed `filechg-`, and a guard checks both. */
+.codefile.filechg-diff .filechg { color: var(--text-muted); }
+
+.chgnote code { font-size: .95em; }
+/* The fact lane: what a routine *does* differently, which no text diff can state. */
+.factlane .factrows { display: flex; flex-direction: column; gap: .1rem;
+  margin-top: .4rem; }
+.factrow { display: flex; align-items: baseline; gap: .4rem; width: 100%;
+  text-align: left; background: none; border: 0; padding: .15rem .3rem;
+  cursor: pointer; border-radius: .25rem; color: var(--text); font: inherit; }
+.factrow:hover, .factrow:focus-visible { background: var(--accent-soft); }
+.factdot { width: .8rem; text-align: center; font-weight: 700; flex: none; }
+.factdot.tone-mod { color: var(--text-muted); }
+.factwhy { color: var(--text-muted); font-size: .9em; }
+
 .codelink { font: inherit; background: none; border: 0; padding: 0; cursor: pointer;
   color: var(--accent-text); border-bottom: 1px solid var(--accent-soft); }
 .codelink:hover, .codelink:focus-visible { background: var(--accent-soft);

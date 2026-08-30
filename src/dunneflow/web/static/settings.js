@@ -161,6 +161,14 @@ const DEFAULTS = {
    * not an arrangement. */
   codeWidth: 44,
   codeFile: '',
+  /* Whether the code browser draws the difference from the compared version over the
+   * lines it is showing. On, because a reader who has set a compared version has already
+   * said what they are here for -- and off is a real want, because a file with four
+   * hundred marked lines is a file whose *code* is harder to read than it was.
+   *
+   * It says nothing when there is no comparison: with one version there is no overlay to
+   * suppress, and a switch that governs nothing is design rule 16's dead control. */
+  codeOverlay: true,
 
   /* ── the shell ───────────────────────────────────────────────────────────── */
   theme: 'system',        // 'system' | 'light' | 'dark'
@@ -312,6 +320,7 @@ function resetSettings(program, current) {
     mode: 'centre view', panels: 'panel layout',
     inspectorAuto: 'auto-collapse the inspector', navWidth: 'navigator width',
     codeWidth: 'code pane width', codeFile: 'which file the code pane has open',
+    codeOverlay: 'the change overlay on the code',
     navGroups: 'how many navigator groups open at once', navOpen: 'which groups are open',
     navCap: 'how many routines a package lists',
     graphLayout: 'graph layout', graphTheme: 'graph theme',

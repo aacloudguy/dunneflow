@@ -25,7 +25,7 @@ from ..store import Store
 from . import queries
 
 
-def _lines(source: SourceStore | None) -> int | None:
+def _lines(source: SourceStore | None, revision: str | None) -> int | None:
     """How many lines were read, from the sidecar that holds them.
 
     None when there is no sidecar -- `--no-source`, or a map handed over without it. The
@@ -34,13 +34,19 @@ def _lines(source: SourceStore | None) -> int | None:
     """
     if source is None:
         return None
-    # The revision this sidecar reads by default, **asked for** rather than assumed.
-    # This was `WHERE p.revision = ''` -- the legacy revision, from before a snapshot had
-    # a name -- so from the day revisions landed the cover has said "0 lines" about every
-    # program analysed since. Mensores is 186,786. Nothing failed and nothing was empty:
-    # a zero on the first screen reads as a program with no source, which is a claim, and
-    # a wrong one. Found by serving a copied program directory and looking at the cover.
-    revision = source.current_revision()
+    # Which version's lines, named by the caller -- the version the cover is *of*, never
+    # whichever snapshot happens to be newest. This was `WHERE p.revision = ''` -- the
+    # legacy revision, from before a snapshot had a name -- so from the day revisions
+    # landed the cover said "0 lines" about every program analysed since. Mensores is
+    # 186,786. Nothing failed and nothing was empty: a zero on the first screen reads as a
+    # program with no source, which is a claim, and a wrong one. Found by serving a copied
+    # program directory and looking at the cover.
+    #
+    # `resolve_revision` is deliberately **not** used: it answers `''` for a sidecar that
+    # holds nothing, which would put that same zero back. A sidecar with nothing in it and
+    # a program with no lines are different claims, and only one of them is ever true here.
+    if revision is None:
+        revision = source.current_revision()
     if revision is None:
         return None
     row = source.conn.execute(
@@ -51,7 +57,8 @@ def _lines(source: SourceStore | None) -> int | None:
 
 
 def build(store: Store, source: SourceStore | None, program: str, *,
-          vocabulary: dict[str, int] | None = None) -> dict[str, Any]:
+          vocabulary: dict[str, int] | None = None,
+          revision: str | None = None) -> dict[str, Any]:
     """Everything the first screen shows.
 
     `vocabulary` is the two lanes' *sizes* only -- how many conventions were measured, how
@@ -100,7 +107,7 @@ def build(store: Store, source: SourceStore | None, program: str, *,
         "program": program,
         "stats": {
             "files": counts["files"],
-            "lines": _lines(source),
+            "lines": _lines(source, revision),
             "routines": counts["routines"],
             "boundaries": counts["boundaries"],
             "structures": counts["structures"],

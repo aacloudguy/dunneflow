@@ -304,6 +304,34 @@ every selection, so a lazy first call would stall the reading loop on the first 
 every session — two seconds where the reader is entitled to think the click failed. Paid at
 boot it is invisible, beside a payload build and a cover that were already being computed.
 
+The comparison over the code, on the same pair (628 files against 625):
+
+| Measure | Budget | Measured 2026-08-30 |
+|---|---|---|
+| `/api/filechanges`, the whole pairing | < 500 ms | 37 ms, and 325 ms cold — it is the disk |
+| …the same, cached | < 50 ms | 1 ms |
+| One file's lines, the worst in the corpus | < 200 ms | 42 ms (`_server.py`, 5,903 v 5,838) |
+| …a file that did not change | < 50 ms | 0.1 ms — answered from the hashes |
+| …an ordinary modified file | < 100 ms | 1 ms (`_queue.py`) |
+
+**No body is read to pair 628 files.** `paths(revision, path) -> hash` with one blob per
+unique body means an unchanged file holds the *same hash* at both revisions, so two indexed
+queries answer "which twelve of these 628 are worth reading". The cold row is the external
+volume and nothing else, the same caveat every other cold row here carries.
+
+**`autojunk=False`, and it is measured.** `SequenceMatcher`'s heuristic calls a line
+appearing in more than 1% of a sequence longer than 200 lines junk — which in source is
+every blank line, every bare `)` and every `return`, so it aligns worst exactly where source
+is most repetitive. Across the twelve modified files it is 10 ms with the heuristic and 59 ms
+without; and with it, `cli/scribe.py` reports **60 removed lines rather than 57** and
+`_migrations.py` 15 rather than 13. Three false removals in one file is not worth 49 ms. Its
+guard asserts the *answer* over a 480-line fixture, not the flag — the string `autojunk=False`
+is in that module's docstring too, so a grep for it passes over a mutation of the call.
+
+Nothing here is cached per file. The worst file is 42 ms and every body it reads is already
+in the sidecar's inflate cache from having been opened; holding the compared version's text
+for every file a reader visits would be a second copy of the program in memory to save that.
+
 The change worklist, comparing two revisions of Mensores (4,733 routines against 4,786):
 
 | Measure | Budget | Measured 2026-08-29 |
@@ -384,6 +412,12 @@ docs   ──► extract ──► docs.db  (SQLite) ─────────
 - `web/vocabulary.py` — the two naming lanes served, and matched against one name. The
   membership test is `Convention.glob`, which is the same string the exceptions query is
   built from, so the claim and the population cannot drift (rule 41).
+- `web/filediff.py` — the **text lane** of a comparison, beside `changes.py`'s fact lane.
+  The file-level answer costs **no body reads at all**: the sidecar is content-addressed,
+  so equal hashes are equal bytes and comparing two path maps *is* the file-level diff.
+  That is what makes the expensive lane affordable — `difflib` runs only on a file the
+  reader opened, and only where the hashes already say it differs. `autojunk=False`,
+  measured rather than preferred (see the budget below).
 - `web/search.py` — searching the **text**, which is the one question the graph cannot
   answer: `touches`, `impact` and the glossary search names and meanings, and none of them
   can find a word inside a comment or a string. **Files first** — 626 rows with a count on
@@ -1408,6 +1442,49 @@ rule of that number — a blank canvas must say why it is blank — which does e
     both colours of a pair to the same contrast ratio throws away the one axis that always
     works. The shipped dark pair is separable partly because it sits at 6.06:1 and 9.63:1,
     which nobody intended.
+
+70. **The version on screen decides which bytes, and the sidecar cannot know which that
+    is.** There is one `source.db` per program holding every revision, and its own default
+    is the newest snapshot -- which is the right answer only while the newest is also the
+    version being read. It stopped being that the day a reader could switch the base, and
+    six readers went on asking the store rather than the base: the code browser, the file
+    list, the search, `/api/source`, the inspector's definition and the cover's line count.
+
+    Serving Mensores' older graph returned `_queue.py` at **674 lines with the 595-line
+    version's marks laid over it** -- every link past the first divergence underlining the
+    wrong characters, a margin describing lines that had moved under it, and a footer
+    naming the revision the *bytes* came from while the facts came from another. Nothing
+    raised. The page looked exactly like a page that works, which is what a file always
+    looks like.
+
+    Rule 51 in the shape that rule was written for: a default that was correct while there
+    was one version and one graph, and wrong for every caller acquired since. The base
+    names the revision and every reader is handed it; a sidecar that does not hold that
+    revision is `None` and a **stated absence**, never the newest bytes substituted for the
+    ones asked for (rule 49 -- the plausible value is what hides the failure).
+
+    Found by pointing the tool at its own two revisions and comparing what came back, not
+    by any test: every unit test opened one revision, where the default is right.
+
+71. **A class name is global, and a stylesheet gives no warning.** The code browser's file
+    rows were marked `chg-same` / `chg-mod` / `chg-one`. `.chg-mod` already existed -- it is
+    the change worklist's *module* label, `font-size: .7rem; color: text-faint` -- so every
+    **modified** file rendered smaller and greyer than the unchanged ones, which is the exact
+    inverse of what a mark is for. Every check passed: the markup is right, the handler is
+    right, the class is written, and nothing anywhere is dead.
+
+    Its companion, found in the same row and the same way: **markup another function
+    rewrites is not the markup that renders.** `dressNavItems` gathers a row's loose text
+    nodes into a `.navlabel` and re-inserts it immediately before `.n` -- so an element
+    written between the file name and the count is moved *in front of the name*, and the row
+    read `mensores/scriba/ ○ _queue.py`, a glyph inside a path.
+
+    Both are the same instruction one level below where the checks look: what this function
+    writes and what the reader sees are different questions, because a stylesheet and a
+    later pass both get a say. The classes are prefixed and every rule that styles one is
+    scoped to `.codefile`, asserted in both directions so a name taken later cannot reach
+    these rows. Found by looking at the pane, which is now the fourth consecutive session
+    that has paid for itself.
 
 ## Anomalies: the discipline
 

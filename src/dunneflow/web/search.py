@@ -114,7 +114,7 @@ def word_applies(q: str) -> bool:
 
 def search_files(store: Store, source: SourceStore | None, q: str, *,
                  case: bool = False, word: bool = False,
-                 regex: bool = False) -> dict[str, Any]:
+                 regex: bool = False, revision: str | None = None) -> dict[str, Any]:
     """Which files hold a match, and how many lines each.
 
     **Complete and unbounded** -- rule 8 bounds diagrams, and 626 rows with a count on each
@@ -141,7 +141,7 @@ def search_files(store: Store, source: SourceStore | None, q: str, *,
     total = scanned = lines_seen = 0
     bodies: set[str] = set()
     search = pattern.search
-    for path, content_hash, lines in source.bodies():
+    for path, content_hash, lines in source.bodies(revision=revision):
         scanned += 1
         lines_seen += len(lines)
         bodies.add(content_hash)
@@ -168,7 +168,10 @@ def search_files(store: Store, source: SourceStore | None, q: str, *,
         "total": total, "files": len(rows), "broad": total > BROAD,
         "scanned": scanned, "analysed": analysed, "unheld": max(0, analysed - scanned),
         "lines": lines_seen, "bodies": len(bodies),
-        "revision": source.current_revision(),
+        # Which version's text was scanned. The sidecar holds every revision, so a search
+        # that did not name one searched the newest snapshot -- and answered about it while
+        # the reader was reading another (rule 51).
+        "revision": source.resolve_revision(revision),
         "rows": rows,
         "ms": round((time.perf_counter() - started) * 1000, 1),
     }
@@ -205,7 +208,7 @@ def containing_routine(defs: list[dict[str, Any]], line: int) -> dict[str, Any] 
 
 def search_in_file(store: Store, source: SourceStore | None, q: str, asked: str, *,
                    case: bool = False, word: bool = False,
-                   regex: bool = False) -> dict[str, Any]:
+                   regex: bool = False, revision: str | None = None) -> dict[str, Any]:
     """One file's matching lines, each with its margin, its links and its routine.
 
     The three absences `/api/file` and `/api/source` already tell apart are told apart here
@@ -221,7 +224,7 @@ def search_in_file(store: Store, source: SourceStore | None, q: str, asked: str,
     if not _rows(store, "SELECT 1 FROM files WHERE path = :p", {"p": full}):
         return {"ok": False, "q": q, "file": asked,
                 "reason": "this map did not analyse that file"}
-    lines = source.path_lines(full)
+    lines = source.path_lines(full, revision=revision)
     if lines is None:
         return {"ok": False, "q": q, "file": full,
                 "reason": "the sidecar does not hold this file"}
@@ -281,6 +284,6 @@ def search_in_file(store: Store, source: SourceStore | None, q: str, asked: str,
     return {
         "ok": True, "q": q, "file": full,
         "n": len(out), "lines": len(lines), "hits": out,
-        "revision": source.current_revision(),
+        "revision": source.resolve_revision(revision),
         "ms": round((time.perf_counter() - started) * 1000, 1),
     }

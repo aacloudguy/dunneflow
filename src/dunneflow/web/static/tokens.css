@@ -324,6 +324,10 @@ body {
 }
 .verstrip-assume:hover { border-color: var(--border-strong); color: var(--text); }
 .verstrip-assume[aria-pressed="true"] { border-color: var(--accent); color: var(--accent-text); }
+/* Deciding on nothing but a default. Marked, because a guess that looks like a reading is
+   the one thing design rule 13 forbids — and it is the state where the colours below mean
+   least. */
+.verstrip-assume.guessed { border-style: dashed; }
 .verstrip-alone { color: var(--text-faint); }
 /* A choice that could not be honoured. Never quiet: the strip is the one surface that
    is always on screen, so it is where a dropped version has to be said. */

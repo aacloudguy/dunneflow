@@ -191,15 +191,19 @@ const DEFAULTS = {
    * merge above simply will not see it, and the pair falls back to the served default. */
   baseRev: '',
   comparedRev: '',
-  /* Which of the two versions the reader takes to be the newer one.
+  /* Which of the two versions is the newer one. `'auto' | 'yes' | 'no'`.
    *
-   * Not something this tool can see. The only instant it records is when the bytes were
-   * read, so "newer" is an assumption, and it decides whether what the base has and the
-   * compared lacks reads as deleted or as added. Default: the compared is newer — the
-   * case the feature exists for, reading a copy somebody handed you and asking what has
-   * happened since. Stated on the strip, because an assumption nobody can see is one
-   * they cannot correct. */
-  comparedIsNewer: true,
+   * Not something the *store* can see: the only instant it records is when the bytes were
+   * read. But the **program** often says, and Tom's rule is that an inference is used only
+   * when nothing more obvious is available — so `auto` compares the two versions where
+   * both state one, and falls back to "the compared is newer" where they do not. Either
+   * way the strip prints which of the two happened.
+   *
+   * Three states rather than a boolean, and the third is the point: `auto` re-derives when
+   * the reader moves to a different pair, where an explicit choice made about one pair
+   * would be carried silently onto another (rule 51). Design rule 24's shape — an
+   * automatic rule may decide, and an explicit choice outranks it. */
+  comparedIsNewer: 'auto',
   /* How a search decides a match — not what is being looked for, which is a question
    * being asked right now and never an arrangement. `shell.js` has said these are
    * persisted since the day they were written and they were not: listed in `PERSISTED`,
@@ -306,7 +310,7 @@ function resetSettings(program, current) {
     menuOrder: 'menu order', trailShown: 'the trail', trailCap: 'trail length',
     density: 'row density', bandScroll: 'scrolling change bands',
     baseRev: 'which version is being read', comparedRev: 'what it is compared with',
-    comparedIsNewer: 'which version is assumed newer',
+    comparedIsNewer: 'which version is taken to be newer',
     searchCase: 'case-sensitive search', searchWord: 'whole-word search',
     searchRegex: 'regular-expression search',
     ambient: 'ambient badges', hideInferred: 'inferred edges',

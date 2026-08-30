@@ -1293,6 +1293,28 @@ rule of that number — a blank canvas must say why it is blank — which does e
     contains the forbidden word rather than equalling it, so the one mutation that survived
     did so because the guard was weak rather than because the mutation was (rule 59).
 
+66. **An order the tool cannot defend is not an order.** Which of two versions is newer is
+    often knowable -- a program states a version, and comparing two of them beats any
+    default. Three things make that a false claim if they are skipped, and none of them has
+    a symptom.
+
+    **`1.10.0` sorts below `1.2.0` as a string**, so the comparison is over integer tuples
+    and is computed where it can be tested rather than in a template. **A date and a
+    release number are both orderable and are not orderable against each other** -- the
+    keys compare perfectly happily, so the *kind* travels with the key and the caller
+    refuses across kinds. And two versions that are **equal**, or one carrying a
+    prerelease suffix, rank *nothing*: `1.0.0-rc1` precedes `1.0.0` under semver and
+    follows it under other conventions in the wild, so choosing would state an order
+    nobody can defend. Rule 1 three times over, in a place where every wrong answer looks
+    exactly like a right one.
+
+    Its companion, about the *setting* rather than the ordering: an answer that is
+    sometimes derived and sometimes chosen is **three states, never a boolean**. `auto`
+    must re-derive when the subject changes, or an explicit choice made about one pair is
+    carried silently onto the next -- rule 51 with the reader's own decision as the thing
+    that drifts. And each state must say which it is: derived, chosen, or assumed for want
+    of anything to read. A colour a reader cannot account for is worse than no colour.
+
 ## Anomalies: the discipline
 
 `anomalies.py` reports what looks wrong. It exists under one rule:

@@ -3213,3 +3213,59 @@ on screen.
 --label "handed over, undocumented"`, `analyze ../society-2026-08-29/src --name verifycheck`.
 It is the only program directory whose revisions carry a `tree`; `output/mensores` predates
 the column and honestly reports empty for both.
+
+**6c. Built 2026-08-30: the default is read from the versions, not guessed.** Tom's call,
+taken on the evidence of 6b's flagged consequence — with a fixed default, Mensores' 53
+genuinely-new routines rendered as *deleted* on first open.
+
+His own rule decided it: *"we may infer a version from a directory name or date, but have
+to say that we did. It would only be used when no other, more obvious version is
+available."* Two versions that each state a version **are** more obvious than a blind
+default, so they decide — and the strip says which of the two happened.
+
+*Three states, and the third is the point.* `comparedIsNewer` is `'auto' | 'yes' | 'no'`,
+not a boolean. `auto` re-derives when the reader moves to a different pair; an explicit
+choice made about *one* pair would otherwise be carried silently onto another, which is
+rule 51 with the reader's own decision as the thing that drifts. Design rule 24's shape —
+an automatic rule may decide, and an explicit choice outranks it. The control cycles
+auto → newer → older → auto, and **the label always states the state in full**:
+
+```
+the compared version is older — from their versions (inferred)
+you chose: the compared version is newer
+assuming the compared version is newer — no versions to compare     ← dashed border
+```
+
+*The comparison is the server's, and that is not fussiness.* `/api/revisions` carries
+`version_kind` and `version_key` per version; the page only compares two keys of one kind.
+Two reasons, both of which a template would get wrong. **`1.10.0` sorts below `1.2.0` as a
+string** — the oldest version-sorting bug there is. And **a date and a release number are
+both orderable and are not orderable against each other**: the keys are integer tuples and
+would compare perfectly happily, so ranking `1.2.3` against `2026-08-26` is a confident
+wrong answer with no symptom. The kind travels with the key so the page can refuse.
+
+*Two refusals, both rule 1.* A prerelease suffix makes a version un-orderable — `1.0.0-rc1`
+precedes `1.0.0` under semver's own rules and follows it under other conventions in the
+wild, so picking one would state an order the tool cannot defend. And two **equal**
+versions rank neither end rather than falling through to a direction.
+
+*Driven on the real corpus.* `society-2026-08-26` against `society-2026-08-29`, both
+versions inferred from their directory leaves: the strip reads *"the compared version is
+older — from their versions (inferred)"* and the worklist opens on **53 added** with no
+click. Cycled through all three states and back, each stating itself in full; the choice
+survives a reload, which is the defect that bit `revA`/`revB` and the three search switches.
+On `output/mensores`, whose versions predate the column, it falls back and says so with a
+dashed border and *"no versions to compare"*.
+
+*One wording defect found by driving it.* In the assumed state the button offered *"Click
+for: the compared version is newer"* — which was already the direction in force, so the
+control read as a no-op. From `auto` what the next click changes is the **basis**, not the
+direction, and it says that now.
+
+*Guards.* Four new ones, mutation-tested at **6/6 over a proved-green baseline** — after
+the first run scored 5/6. The survivor is worth keeping: replacing `: derived` with
+`: true` leaves the `derived === null` test standing, so a guard asking "does `derived`
+appear on the auto path" passed while the value was thrown away. It strikes the null-test
+out before looking now. **That is the second time in this session a guard was the weak half
+rather than the mutation** — the first was `routines_after` containing `after` rather than
+equalling it — and both were found only by running the mutation.

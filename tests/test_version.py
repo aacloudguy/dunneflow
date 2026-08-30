@@ -158,3 +158,69 @@ def test_the_real_corpus_answers_are_the_ones_recorded():
         "DunneFlow declares its own version in pyproject.toml; reporting it as a guess "
         "would understate a claim the source actually makes"
     )
+
+
+# --------------------------------------------------------------------------- #
+# Ordering — which of two versions is the newer, where that can be said at all
+# --------------------------------------------------------------------------- #
+
+
+def test_versions_sort_by_number_and_not_by_string():
+    """`1.10.0` is above `1.2.0`, and as a string it is below it.
+
+    The oldest version-sorting bug there is, and the reason this is computed in Python and
+    served as a key rather than compared in a template.
+    """
+    assert v.order_key("1.10.0")[1] > v.order_key("1.2.0")[1]
+    assert "1.10.0" < "1.2.0", "the string comparison this exists to avoid"
+
+
+def test_dates_sort_as_dates():
+    a, b = v.order_key("2026-08-26"), v.order_key("2026-08-29")
+    assert a[0] == b[0] == "date"
+    assert b[1] > a[1]
+
+
+def test_a_date_and_a_release_number_are_not_ranked_against_each_other():
+    """Both orderable, and not orderable against **each other**.
+
+    A tool that ranked `1.2.3` against `2026-08-26` would be inventing a fact. The kind
+    travels with the key precisely so the caller cannot compare across kinds by accident.
+    """
+    assert v.order_key("1.2.3")[0] == "semver"
+    assert v.order_key("2026-08-26")[0] == "date"
+    assert v.order_key("1.2.3")[0] != v.order_key("2026-08-26")[0]
+
+
+def test_a_prerelease_suffix_is_not_ranked_at_all():
+    """Rule 1, not laziness.
+
+    `1.0.0-rc1` precedes `1.0.0` under semver's own rules and follows it under several
+    conventions in the wild. Picking one would be stating an order the tool cannot defend,
+    so it declines and the reader decides.
+    """
+    assert v.order_key("1.0.0-rc1") is None
+    assert v.order_key("2.0.0+build7") is None
+
+
+def test_a_leading_v_is_the_same_version():
+    assert v.order_key("v2.0")[1] == v.order_key("2.0")[1] == (2, 0, 0)
+
+
+def test_nothing_shaped_like_a_version_orders_nothing():
+    for junk in ("", "   ", "nonsense", "main", "HEAD", "2026-13-99x"):
+        assert v.order_key(junk) is None, junk
+
+
+def test_the_two_corpus_trees_order_correctly():
+    """The pair this is actually for: `society-2026-08-26` against `society-2026-08-29`.
+
+    Both versions are inferred from their directory names, and an inferred version is
+    still more obvious evidence than no evidence — so it decides the default, and says
+    that it was inferred wherever it appears.
+    """
+    older = v.from_directory_name("society-2026-08-26")
+    newer = v.from_directory_name("society-2026-08-29")
+    assert older.inferred and newer.inferred
+    ko, kn = v.order_key(older.value), v.order_key(newer.value)
+    assert ko[0] == kn[0] and kn[1] > ko[1]

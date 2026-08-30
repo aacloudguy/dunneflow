@@ -31,6 +31,7 @@ from urllib.parse import parse_qs
 
 from .. import revisions
 from ..docstore import DocStore
+from ..resolve import version as version_order
 from ..sourcedb import SourceStore
 from ..store import Store
 from . import changes, packages, queries
@@ -470,7 +471,7 @@ class _Handler(BaseHTTPRequestHandler):
                     "first": lines[0][0], "last": lines[-1][0],
                     "lines": [{"n": n, "text": t} for n, t in lines]})
 
-    def _version_of(self, graph: Path) -> dict[str, str]:
+    def _version_of(self, graph: Path) -> dict[str, Any]:
         """What one version says its own version is, or nothing at all.
 
         Three meta keys, written by `analyze` from `resolve/version.py`. Absent is a real
@@ -498,7 +499,18 @@ class _Handler(BaseHTTPRequestHandler):
                 other.close()
         else:
             return {}
-        return {k.replace("program_", ""): (v or "") for k, v in got.items() if v}
+        out: dict[str, Any] = {
+            k.replace("program_", ""): (v or "") for k, v in got.items() if v
+        }
+        # How this version sorts, and against what it may be sorted. Computed here rather
+        # than in the page for two reasons: `1.10.0` sorts *below* `1.2.0` as a string,
+        # which is the oldest version-sorting bug there is; and a date and a release
+        # number are both orderable and are not orderable against **each other**, so the
+        # kind has to travel with the key or the page will happily rank them.
+        key = version_order.order_key(out.get("version", ""))
+        if key is not None:
+            out["version_kind"], out["version_key"] = key[0], list(key[1])
+        return out
 
     def _r_revisions(self, q: dict[str, list[str]]) -> None:
         """Every point in time this program directory holds, newest first.

@@ -250,7 +250,7 @@ const state = {
    * — here is the copy somebody handed me, what has happened since — and it is an
    * assumption rather than a finding, which is why it is stated on the strip rather than
    * buried here. */
-  comparedIsNewer: true,
+  comparedIsNewer: "auto",   // 'auto' | 'yes' | 'no' -- see settings.js
   followMode: "replace",   // "replace" | "walk" -- what following a neighbour does
   threadsAll: false,       // the threads panel bounded (rule 8) or opened whole
   selected: null,          // the node id under inspection, or null for nothing picked
@@ -754,6 +754,29 @@ function versionName(r) {
  *   - **what we can actually see about capture order**, as a plain observation beside the
  *     assumption and never as a correction to it. We may infer, so long as we say we did.
  */
+/* Why the control says what it says, and what clicking it will do next. Three states
+   need three sentences: a reader who cannot tell a derived answer from a default cannot
+   tell whether the colours are evidence or a guess. */
+function assumeTitle(w) {
+  /* What the *next* click does, said as a change the reader will notice. From `auto` the
+     direction may not move at all -- what moves is the basis, from a derived or assumed
+     answer to the reader's own -- and offering "the compared version is newer" when that
+     is already in force reads as a control that does nothing (design rule 16's defect
+     wearing a label). */
+  const next = { auto: "your own choice, overriding this",
+                 yes: "your own choice: the compared version is older",
+                 no: "back to deciding from the versions" };
+  const why = w.basis === "chosen"
+    ? "You set this. It overrides whatever the versions say."
+    : w.basis === "assumed"
+    ? "Neither version says enough to compare, so this is the default assumption."
+    : w.fromInferred
+    ? "Read from the two versions — at least one of which was inferred from a directory name."
+    : "Read from the two versions each program states about itself.";
+  return `${why} It decides whether what only the base has reads as deleted or as added.`
+       + ` Click for: ${next[state.comparedIsNewer] || "the compared version is newer"}.`;
+}
+
 function versionStrip() {
   const usable = REVISIONS.filter(r => r.comparable);
   const lost = state.revNote
@@ -799,11 +822,10 @@ function versionStrip() {
     <span class="verstrip-v">${esc(versionName(base))}</span> ${ver(base)}
     <span class="verstrip-sep">compared with</span>
     <span class="verstrip-v">${esc(versionName(compared))}</span> ${ver(compared)}
-    <button class="verstrip-assume" data-assumenewer
-      aria-pressed="${state.comparedIsNewer}"
-      title="Which version is newer is an assumption -- nothing here can see it. It
-decides whether what only the base has reads as deleted or as added. Click to flip."
-      >${esc(w.assumption)}</button>
+    <button class="verstrip-assume${w.basis === "assumed" ? " guessed" : ""}"
+      data-assumenewer aria-pressed="${state.comparedIsNewer !== "auto"}"
+      title="${esc(assumeTitle(w))}"
+      >${esc(w.assumption)}${w.fromInferred ? " (inferred)" : ""}</button>
     ${observed}`;
 }
 
@@ -1604,6 +1626,48 @@ const TRIAGE_LABELS = {
   tooldefect: { label: "DunneFlow defect",    cls: "broken"  }
 };
 
+/* Which of the two versions is the newer one — **derived where the program says enough
+ * to derive it, and assumed only where it does not.**
+ *
+ * Tom's rule about inference decides the shape: we may infer from a version or a date,
+ * provided we say that we did, and an inference is used *only when nothing more obvious
+ * is available*. Two versions carrying versions are more obvious than a blind default, so
+ * they win — and the strip states which of the two happened.
+ *
+ * Returns the basis as well as the answer, because they are different claims and the
+ * strip prints both:
+ *
+ *   from-versions   both versions parsed, same kind, one is greater
+ *   assumed         nothing to compare, or two kinds that cannot be ranked
+ *
+ * The comparison itself is the **server's** — `version_kind` and `version_key` come off
+ * `/api/revisions`. `1.10.0` sorts below `1.2.0` as a string, and a date and a release
+ * number are both orderable and not orderable against each other; neither of those is a
+ * thing to re-derive in a template. This function only compares two keys of one kind.
+ */
+function comparedIsNewerFrom(base, compared) {
+  const bk = base && base.version_kind, ck = compared && compared.version_kind;
+  if (!bk || !ck || bk !== ck) return null;      // nothing to compare, or two kinds
+  const a = base.version_key || [], b = compared.version_key || [];
+  for (let i = 0; i < Math.max(a.length, b.length); i++) {
+    const x = a[i] || 0, y = b[i] || 0;
+    if (x !== y) return y > x;                   // true: the compared end is the newer
+  }
+  return null;                                   // equal versions rank neither end
+}
+
+/* The pair the strip and the words are both about. One place decides, so a control and
+   the colours it governs cannot be about different versions (rule 51). */
+function versionPair() {
+  const usable = REVISIONS.filter(r => r.comparable);
+  const base = REVISIONS.find(r => r.revision === (CHANGES && CHANGES.base))
+            || REVISIONS.find(r => r.serving)
+            || usable[0];
+  const compared = REVISIONS.find(r => r.revision === (CHANGES && CHANGES.compared))
+                || usable.find(r => r.revision !== (base && base.revision));
+  return { base, compared, usable };
+}
+
 /* The reader's assumption about which version is newer, turned into the two words the
  * whole page uses for the two sets.
  *
@@ -1621,15 +1685,38 @@ const TRIAGE_LABELS = {
  * gone and green is always arrived, whichever set each happens to be.
  */
 function diffWords() {
-  const newer = state.comparedIsNewer;
+  const { base, compared } = versionPair();
+  const derived = comparedIsNewerFrom(base, compared);
+  /* Three states, and the third is why this is not a boolean. `auto` re-derives when the
+     reader moves to a different pair; an explicit choice made about *one* pair would
+     otherwise be silently carried onto another, which is rule 51's failure. Design rule
+     24's shape as well: an automatic rule may decide, and an explicit choice outranks it. */
+  const chosen = state.comparedIsNewer;                 // 'auto' | 'yes' | 'no'
+  const newer = chosen === "auto"
+    ? (derived === null ? true : derived)                // Tom's default where nothing says
+    : chosen === "yes";
+  const basis = chosen !== "auto" ? "chosen"
+              : derived === null ? "assumed"
+              : "versions";
+  const inferredEnds = ["base", "compared"]
+    .filter((_, i) => [base, compared][i] &&
+                      [base, compared][i].version_tier === "INFERRED").length;
   return {
+    basis,
+    /* Whether the derivation rests on a version nobody stated. It still decides, because
+       an inferred version is more obvious than no evidence at all -- but it says so. */
+    fromInferred: basis === "versions" && inferredEnds > 0,
     base:     { word: newer ? "deleted" : "added",   tone: newer ? "gone" : "new" },
     compared: { word: newer ? "added" : "deleted",   tone: newer ? "new" : "gone" },
     /* Said in full wherever there is room for it, because a reader who does not know
-       which way round the assumption runs cannot read the colours at all. */
-    assumption: newer
-      ? "assuming the compared version is the newer one"
-      : "assuming the compared version is the older one",
+       which way round this runs cannot read the colours at all -- and it must say whether
+       it was *read* or *assumed*, which is the difference between evidence and a default. */
+    assumption: (() => {
+      const which = newer ? "the compared version is newer" : "the compared version is older";
+      if (basis === "chosen") return `you chose: ${which}`;
+      if (basis === "assumed") return `assuming ${which} — no versions to compare`;
+      return `${which} — from their versions`;
+    })(),
   };
 }
 
@@ -4300,8 +4387,12 @@ function wire() {
    * group -- repainting one leaves the other stating the opposite (rule 51, and the exact
    * defect that made the worklist unreachable the first time). */
   $$("[data-assumenewer]").forEach(b => b.addEventListener("click", () => {
-    state.comparedIsNewer = !state.comparedIsNewer;
-    used("assume:" + (state.comparedIsNewer ? "compared-newer" : "compared-older"));
+    /* auto -> the compared is newer -> the compared is older -> auto. Three clicks return
+       the reader to where they started, and the label always states the state in full
+       rather than leaving them to work it out from a glyph. */
+    const next = { auto: "yes", yes: "no", no: "auto" };
+    state.comparedIsNewer = next[state.comparedIsNewer] || "auto";
+    used("assume:" + state.comparedIsNewer);
     persist();
     buildNav();
     render();

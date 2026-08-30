@@ -5,7 +5,7 @@ It exists so a fresh context can be useful in a few minutes instead of an hour.
 
 | Read | For |
 |---|---|
-| `CLAUDE.md` | The rules. 65 engineering rules and 26 dashboard design rules, each earned from a false result on real code. **Binding.** |
+| `CLAUDE.md` | The rules. 66 engineering rules and 26 dashboard design rules, each earned from a false result on real code. **Binding.** |
 | `HANDOFF.md` | The chronological record — what was built when, what it cost, what broke. ~1,700 lines. Read *sections*, not the whole thing. |
 | **this file** | Where things are, what is done, what we are doing now, what not to re-open. |
 | Artifact `f993d319-d2b7-4217-9130-cdbba698d1bc` | The ratified dashboard design — a complete working UI, the source of truth for every view. Read it with the **Artifact tool**, not from a screenshot. |
@@ -179,11 +179,17 @@ over that by the reader's own assumption.
 - **`revisions.tree`** records the **package root's** leaf, and `README.md` now documents
   what a handed-over program directory contains about your machine.
 
-**On screen today, and it is the assumption working rather than a defect:** with the default
-pairing and default polarity, Mensores' 53 new routines read as *deleted*, while the strip
-says both *"assuming the compared version is the newer one"* and *"captured: compared first"*.
-**A better default is available and is Tom's call** — when both versions carry a version, even
-an inferred one, comparing them is "a more obvious version available" in his own words.
+**The default is read from the versions, not guessed** (Tom's call, taken on the evidence).
+`comparedIsNewer` is `'auto' | 'yes' | 'no'`: `auto` compares the two versions where both
+state one — even an inferred one, because that is still more obvious than no evidence — and
+falls back to "the compared is newer" where they do not, saying so with a dashed border.
+Three states rather than a boolean so `auto` re-derives on a change of pair. The comparison
+is the **server's**: `version_kind` and `version_key` ride with each version, because
+`1.10.0` sorts below `1.2.0` as a string and a date and a release number must never be
+ranked against each other. A prerelease suffix and an equal pair both rank nothing (rule 1).
+
+On the two Society trees this opens on **53 added** with no click; on `output/mensores`,
+whose versions predate the column, it says *"no versions to compare"*.
 
 **Next, and the seam this stopped at: switching the base.** Tom chose *rebuild every switch*.
 `serve()` builds the payload, the code list, both vocabulary lanes and the cover from one

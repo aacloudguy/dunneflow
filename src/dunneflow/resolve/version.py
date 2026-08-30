@@ -141,6 +141,37 @@ def from_directory_name(leaf: str) -> ProgramVersion | None:
                           f"the directory name {leaf!r}")
 
 
+# How a version string sorts, and against what it may be sorted.
+#
+# **Kind first, and it is not decoration.** `2026-08-26` and `1.2.3` are both orderable and
+# are not orderable *against each other*: one is a date and one is a release number, and a
+# tool that ranked them would be inventing a fact. Comparison is offered only within a kind.
+_DATE = re.compile(r"^(\d{4})-(\d{2})-(\d{2})$")
+_SEMVER = re.compile(r"^v?(\d+)(?:\.(\d+))?(?:\.(\d+))?(.*)$")
+
+
+def order_key(value: str) -> tuple[str, tuple[int, ...]] | None:
+    """`("date", (2026, 8, 26))` or `("semver", (1, 2, 3))`, or None for un-orderable.
+
+    Returned as a kind and a tuple of integers so the caller compares numbers rather than
+    strings: `1.10.0` sorts *below* `1.2.0` lexically, which is the oldest version-sorting
+    bug there is and the reason this is computed here rather than in the page.
+
+    **A suffix makes a version un-orderable, and that is rule 1 rather than laziness.**
+    `1.0.0-rc1` precedes `1.0.0` under semver's own rules and follows it under several
+    other conventions in the wild; a tool that picked one would be stating an order it
+    cannot defend. Un-orderable is reported honestly and the reader decides.
+    """
+    value = (value or "").strip()
+    m = _DATE.match(value)
+    if m:
+        return ("date", tuple(int(g) for g in m.groups()))
+    m = _SEMVER.match(value)
+    if m and not (m.group(4) or "").strip():
+        return ("semver", tuple(int(g or 0) for g in m.groups()[:3]))
+    return None
+
+
 def detect(tree: Path, *, package_root: Path | None = None,
            leaf: str = "") -> ProgramVersion | None:
     """The best-proven version this program states about itself, or None.

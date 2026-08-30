@@ -4045,3 +4045,84 @@ def test_the_source_directory_is_a_readout_and_does_not_present_as_a_button() ->
     # alive; they were removed with the button rather than left behind.
     assert '.srcpath[aria-expanded="true"]' not in styles
     assert ".srcpath-was" not in styles
+
+
+# --------------------------------------------------------------------------- #
+# Which version is newer: derived where the program says, assumed where it does not
+# --------------------------------------------------------------------------- #
+
+def test_the_polarity_is_three_states_and_auto_is_the_default() -> None:
+    """`auto` is not a nicety, it is what makes the answer survive a change of pair.
+
+    A boolean carries an explicit choice made about *one* pair silently onto the next,
+    which is rule 51's failure with the reader's own decision as the thing that drifts.
+    Both defaults must be `auto` — the store's and the running state's — or the two
+    disagree on the first load and only one of them is visible.
+    """
+    settings = _read("settings.js")
+    shell = _read("shell.js")
+    assert re.search(r"^  comparedIsNewer: 'auto',", settings, re.M), (
+        "the stored default is no longer `auto`; a pair change would keep a stale choice"
+    )
+    assert re.search(r'^  comparedIsNewer: "auto",', shell, re.M), (
+        "the running state's default disagrees with the stored default"
+    )
+
+
+def test_the_default_is_read_from_the_versions_rather_than_guessed() -> None:
+    """Tom's rule: infer only when nothing more obvious is available.
+
+    Two versions that each state a version *are* more obvious than a blind default, so
+    `auto` must actually consult them. A `diffWords` that ignores the derivation is the
+    feature dead inside a live key — it renders, it is correct-looking, and it answers
+    from a constant (rule 36's shape).
+    """
+    js = _code(_read("shell.js"))
+    words = _fn(js, "diffWords")
+    assert "comparedIsNewerFrom(" in words, (
+        "diffWords no longer derives from the versions; `auto` would be a fixed guess"
+    )
+    # …and the derived answer must be the *value* `auto` resolves to, not merely a word
+    # appearing near it. Asked as "does `derived` appear on the auto path" this guard
+    # passed against its own mutation: replacing `: derived` with `: true` leaves the
+    # `derived === null` test standing, so the name is still there and the value is
+    # thrown away. Rule 59's companion — a mutation that leaves any read of the thing
+    # standing has not removed it — so the null-test is struck out before looking.
+    newer = re.search(r"const newer = [\s\S]*?;", words)
+    assert newer, "diffWords no longer resolves a single `newer`"
+    without_null_test = newer.group(0).replace("derived === null", "")
+    assert "derived" in without_null_test, (
+        "the `auto` path tests the derived answer and then discards it — the versions are "
+        "consulted and the result is a constant"
+    )
+
+
+def test_a_date_and_a_release_number_are_never_ranked_against_each_other() -> None:
+    """The kind is checked before the key, or the page ranks `1.2.3` against `2026-08-26`.
+
+    The keys are integer tuples and would compare perfectly happily across kinds, which is
+    exactly what makes this silent: a confident, wrong ordering with no symptom. The server
+    sends the kind for this reason and the page must refuse on it.
+    """
+    js = _code(_read("shell.js"))
+    fn = _fn(js, "comparedIsNewerFrom")
+    guard = re.search(r"if \(!bk \|\| !ck \|\| bk !== ck\) return null", fn)
+    assert guard, "the kind check is gone; two kinds would be ranked by their raw keys"
+    # The refusal must come before any comparison of the keys.
+    assert guard.start() < fn.index("version_key"), (
+        "the keys are compared before the kinds are checked"
+    )
+
+
+def test_an_equal_pair_ranks_neither_end() -> None:
+    """Two identical versions say nothing about order, and saying nothing is the answer.
+
+    Falling through to "the compared is newer" here would be the tool inventing a
+    direction out of evidence that explicitly has none.
+    """
+    js = _code(_read("shell.js"))
+    fn = _fn(js, "comparedIsNewerFrom")
+    tail = fn[fn.rindex("for ("):]
+    assert "return null" in tail, (
+        "an equal pair falls through to a direction; equal versions rank neither end"
+    )

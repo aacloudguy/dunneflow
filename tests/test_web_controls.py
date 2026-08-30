@@ -4940,3 +4940,381 @@ def test_a_file_row_s_change_classes_cannot_collide_with_another_component() -> 
                 f"`{rule.strip().rstrip('{').strip()}` styles `{cls}` without scoping it "
                 "to `.codefile` — the rule reaches anything else that ever takes the name"
             )
+
+
+# --------------------------------------------------------------------------- #
+# The comparison over the routines: the navigator's rows and the table's column.
+#
+# The same overlay the code browser draws over files and lines, drawn over the things the
+# map is actually about. Every guard here was written from something that went wrong while
+# building it or from a rule that had already been paid for once.
+# --------------------------------------------------------------------------- #
+
+
+def test_the_routine_change_cell_is_written_after_the_count() -> None:
+    """`dressNavItems` moves what is written before `.n`, and it moved the file chip once.
+
+    It gathers a row's loose text into a `.navlabel` and re-inserts that span **immediately
+    before** the `.n` count -- so an element emitted between the label and the count comes
+    out in front of the name. The file list learnt this the expensive way: the chip landed
+    inside the directory and the row read `mensores/scriba/ ○ _queue.py`, a glyph inside a
+    path (rule 71). Every check that reads markup or handlers passed, because what this
+    function writes and what the reader sees are different questions.
+
+    Asserted on position within the one renderer every navigator row goes through.
+    """
+    js = _code(_read("shell.js"))
+    row = _fn(js, "navItemHtml")
+    assert "i.chg" in row, "navItemHtml no longer writes a change cell; this guard is blind"
+    count_at = row.index('<span class="n${')
+    chg_at = row.index("i.chg")
+    assert chg_at > count_at, (
+        "the change cell is emitted before the `.n` count, so `dressNavItems` re-inserts "
+        "the label in front of it and the glyph lands inside the module path"
+    )
+
+
+def test_every_routine_mark_class_is_prefixed_and_scoped() -> None:
+    """A class name is global and a stylesheet gives no warning (rule 71).
+
+    `chg-mod` was already the change worklist's *module* label -- faint and two sizes down
+    -- so the file rows' first version made every modified file render quieter than the
+    unchanged ones, the exact inverse of what a mark is for. Nothing threw.
+
+    Both directions, so this survives the next class added here: every class the chip writes
+    is prefixed `rtnchg`, and every rule in the stylesheet that mentions one is scoped to
+    the element that carries it -- a nav row, a table cell, or the hover card.
+    """
+    js = _code(_read("shell.js"))
+    body = _fn(js, "routineChip")
+    # **Every class the function writes, not every class already prefixed.** The first
+    # version of this collected `rtnchg[a-z-]*`, which can only ever find names that
+    # already pass — so renaming one to `chg-behaves` left it green, which is the whole
+    # defect. A guard that cannot see the mutation is a claim nobody has tested (rule 37).
+    written: set[str] = set()
+    for lit in re.findall(r'cls:\s*"([^"]*)"', body):
+        written |= {c for c in lit.split() if not c.startswith("tone-")}
+    assert written, "routineChip writes no classes any more; this guard has lost its subject"
+    assert len(written) >= 4, f"only {sorted(written)} written; this guard is blind"
+    for cls in written:
+        assert cls == "rtnchg" or cls.startswith("rtnchg-"), (
+            f"`{cls}` is not prefixed for these rows. A bare name is global, and that is "
+            "how `chg-mod` restyled every modified file row"
+        )
+
+    css = _css_code(_read("tokens.css"))
+    scopes = (".nav-item", "table.grid", ".hc-chg")
+    for cls in written:
+        for rule in re.findall(rf"[^{{}}]*\.{re.escape(cls)}\b[^{{}}]*\{{", css):
+            assert any(s in rule for s in scopes), (
+                f"`{rule.strip().rstrip('{').strip()}` styles `{cls}` without scoping it to "
+                f"one of {scopes} — the rule reaches anything else that takes the name"
+            )
+
+
+def test_the_navigator_never_asks_for_the_comparison_itself() -> None:
+    """The routine group is open by default, so asking there costs every session the wait.
+
+    317 ms warm, and 13-28 s on the first comparison of a session against the external
+    volume. The Code group's precedent -- whoever opens the group does the work -- is right
+    for a group that is closed by default and wrong for the one that is not. So these rows
+    are *drawn* from an answer something else fetched, and the group's note says which of
+    the three states it is in rather than looking like a list that did not mark itself.
+    """
+    js = _code(_read("shell.js"))
+    for fn in ("routineList", "routineChip", "routineChange", "routineChangeNote"):
+        body = _fn(js, fn)
+        for asker in ("ensureChanges", "loadChanges", "ensureTableOverlay", "refreshChanges"):
+            assert asker not in body, (
+                f"`{fn}` calls `{asker}`. The routine list opens by default, so that makes "
+                "every session pay for a comparison nobody asked for"
+            )
+    nav = js[js.index('{ id: "navRoutines"'):]
+    nav = nav[:nav.index('{ id: "navChanges"')]
+    assert "onOpen" not in nav, (
+        "the Routines group declares an `onOpen`, which is how the Code group fetches — "
+        "and this one is open before the reader has done anything"
+    )
+
+
+def test_the_table_asks_for_the_comparison_before_it_paints() -> None:
+    """Asking after the paint renders a note telling the reader to open the pane they are in.
+
+    `viewTable()` reads `CHANGES` to decide what its note says. Called before the fetch is
+    started it sees `null`, so the page said *"not compared yet — open the table and these
+    rows will mark themselves"* to a reader sitting in the table, and left it there for the
+    thirty seconds a cold comparison takes, because nothing re-renders in between. Rule 68:
+    a note telling someone to do the thing they have already done.
+
+    `loadChanges` sets its loading flag synchronously, so asking first makes the very first
+    paint say "comparing…". Found by driving a base switch, not by any check.
+    """
+    js = _code(_read("shell.js"))
+    branch = js[js.index('else if (state.view === "table")'):]
+    branch = branch[:branch.index('else if (state.view === "doc")')]
+    assert "ensureTableOverlay()" in branch, (
+        "the table branch no longer asks for the comparison, so the marks appear only for "
+        "a reader who opened the worklist first — the closed loop rule 55's companion names"
+    )
+    assert branch.index("ensureTableOverlay()") < branch.index("viewTable()"), (
+        "the comparison is asked for after the paint, so the first paint states that "
+        "nobody has asked for it — while the request is in flight"
+    )
+    assert ".then(" not in branch.split("ensureTableOverlay()")[0][-200:], (
+        "a promise is chained onto the paint that starts the fetch"
+    )
+
+
+def test_the_routine_marks_take_their_tone_from_the_word_and_not_the_side() -> None:
+    """The colour has to move with the word when the reader flips which version is newer.
+
+    `diffWords()` decides both, so the only way they come apart is a mark taking its tone
+    from the band key or from the side it is on. Written as a `w.<side>.tone` read, never as
+    a literal -- and the check is over the *concatenated* form as well as the interpolated
+    one, because `routineChip` builds its class with `+` and the existing guard on the
+    template form cannot see that.
+    """
+    js = _code(_read("shell.js"))
+    body = _fn(js, "routineChip")
+    tones = re.findall(r'"[^"]*tone-"\s*\+\s*([\w.]+)', body)
+    assert len(tones) == 2, (
+        f"{len(tones)} of the two one-sided marks build a tone; expected the base's and the "
+        "compared's. A mark pinned to a literal keeps its colour while the words swap"
+    )
+    for expr in tones:
+        assert expr.endswith(".tone"), (
+            f"a mark's tone comes from `{expr}` rather than from the word's own `.tone`"
+        )
+    literal = re.findall(r'cls:\s*"[^"]*tone-(gone|new)', body)
+    assert not literal, (
+        f"a mark hard-codes the tone {literal} — flip the assumption and it says 'added' "
+        "in the colour of gone"
+    )
+
+
+def test_the_table_columns_and_their_widths_and_labels_are_one_list() -> None:
+    """Three hand-kept lists of the same columns is two places to forget one (rule 36).
+
+    A column in `TABLE_COLS` with no width contributes `undefined` to the table's own width
+    and renders at whatever is left; a width with no column is a setting nothing spends. The
+    heading is the third: a column with no label draws a blank button that still sorts.
+    """
+    js = _code(_read("shell.js"))
+    st = _code(_read("settings.js"))
+
+    m = re.search(r"const TABLE_COLS = \[(.*?)\]", js, re.S)
+    assert m, "TABLE_COLS is no longer a list literal; this guard is blind"
+    cols = set(re.findall(r'"(\w+)"', m.group(1)))
+    assert len(cols) >= 4, f"only {len(cols)} columns; this guard is blind"
+
+    m = re.search(r"const TABLE_LABELS = \{(.*?)\}", js, re.S)
+    assert m, "TABLE_LABELS is no longer an object literal; this guard is blind"
+    labels = set(re.findall(r"(\w+):", m.group(1)))
+
+    # **Each file separately.** Unioned, a key present in one and missing from the other
+    # still appears — and the two are two copies of one default: `settings.js` is what the
+    # store hands a fresh reader and `shell.js` is the live state. A column missing from
+    # either renders at `undefined` rem for exactly one of those two readers.
+    widths = {}
+    for name, src in (("shell.js", js), ("settings.js", st)):
+        m = re.search(r"colWidths:\s*\{(.*?)\}", src, re.S)
+        assert m, f"colWidths is no longer an object literal in {name}; this guard is blind"
+        widths[name] = set(re.findall(r"(\w+):", m.group(1)))
+
+    for name, keys in widths.items():
+        assert cols == keys, (
+            f"the columns {sorted(cols)} and the widths in {name} {sorted(keys)} disagree"
+        )
+    assert cols == labels, (
+        f"the columns {sorted(cols)} and their labels {sorted(labels)} disagree"
+    )
+
+
+def test_every_change_band_the_server_sends_becomes_a_status() -> None:
+    """A band added on the wire and forgotten in the client reads as *unchanged*.
+
+    That is the worst outcome available here and it is silent: the routines in it get the
+    same em dash and the same "unchanged between these two versions" as everything the
+    comparison genuinely found nothing about. Rule 44's shape -- a view reading the fields a
+    server sends -- pointed the other way, at the fields it must not ignore.
+
+    The four presence and behaviour bands only. `counts`, `presence` and `identical` are
+    about the comparison rather than about one routine, and nothing here should map them.
+    """
+    js = _code(_read("shell.js"))
+    py = (Path(__file__).resolve().parents[1] / "src" / "dunneflow" / "web"
+          / "changes.py").read_text(encoding="utf-8")
+
+    m = re.search(r"const CHANGE_BANDS = \{(.*?)\n\};", js, re.S)
+    assert m, "CHANGE_BANDS is no longer an object literal; this guard is blind"
+    mapped = set(re.findall(r"(\w+):", m.group(1)))
+
+    ret = py[py.index("        return {"):]
+    served = set(re.findall(r'^\s*"(\w+)": ', ret, re.M))
+    bands = {k for k in served
+             if k in {"only_in_base", "only_in_compared", "behaves", "edited_only"}}
+    assert len(bands) == 4, f"changes.py sends {sorted(bands)}; this guard is blind"
+    assert bands <= mapped, (
+        f"the bands {sorted(bands - mapped)} reach no status, so every routine in them "
+        "renders as unchanged"
+    )
+    assert mapped <= served, (
+        f"{sorted(mapped - served)} is mapped and never sent"
+    )
+
+
+def test_a_routine_only_the_compared_version_has_is_counted_and_never_marked() -> None:
+    """Both surfaces list the routines of the version on screen, so it has no row here.
+
+    Marking one would need a row, and inventing a row would name a routine among what this
+    version contains -- the same argument the code overlay makes about a line whose number
+    belongs to another file (rule 1). So it is *stated*: counted, named as the other
+    version's, and said to be absent from the list. Design rule 1's own case, and the state
+    with no visible symptom.
+    """
+    js = _code(_read("shell.js"))
+    counts = _fn(js, "routineChangeCounts")
+    assert "only_in_compared" in counts, (
+        "the count of routines only the compared version has is not taken from the band, "
+        "so it cannot be stated — and it can never be counted from the rows"
+    )
+    note = _fn(js, "routineChangeNote")
+    assert "only_compared" in note and "not listed here" in note, (
+        "the note does not say that the compared version's own routines are absent from "
+        "this list; an unstated absence is design rule 1's defect"
+    )
+    # The table says it in two places -- above the rows and in the footer, because 4,733
+    # rows is further than a reader can see -- and **both come from one function**. Written
+    # out twice they drifted at once: the note omitted a band with nothing in it and the
+    # footer printed `0 deleted`, one answer stated two ways in one pane (rule 51).
+    view = _fn(js, "viewTable")
+    says = view.count("routineChangeNote()")
+    assert says == 2, (
+        f"the table states the comparison from {says} calls to `routineChangeNote()`; it "
+        "needs one above the rows and one in the footer, and a second copy of the sentence "
+        "is a second answer to what the comparison found"
+    )
+
+
+def test_the_change_column_sorts_what_changed_to_the_top() -> None:
+    """A first click on a column sorts descending, so the weights have to run that way.
+
+    Written as a rank where 0 was best, the first click on Changed opened on four thousand
+    unchanged routines -- a control that looks like it did nothing. `fan` already sets the
+    convention: bigger is more interesting.
+
+    The order is the change worklist's, and it is a constant rather than derived from
+    `diffBands()`. An earlier version derived it, which read as though it had been thought
+    about and was a difference that cannot occur: both surfaces list the base's routines, so
+    `only_in_compared` never owns a row and only one presence band is ever populated.
+    """
+    js = _code(_read("shell.js"))
+    m = re.search(r"const CHANGE_WEIGHT = \{(.*?)\};", js, re.S)
+    assert m, "CHANGE_WEIGHT is no longer an object literal; this guard is blind"
+    w = {k: int(v) for k, v in re.findall(r"(\w+):\s*(\d+)", m.group(1))}
+    assert set(w) >= {"behaves", "only_base", "edited", "same"}, f"weights are {w}"
+    assert w["behaves"] > w["only_base"] > w["edited"] > w["same"] > 0, (
+        f"the weights {w} do not run in the worklist's order, heaviest first"
+    )
+    body = _fn(js, "changeWeight")
+    assert "diffBands" not in body, (
+        "the sort order is derived from which version the reader assumes is newer. It "
+        "cannot be: only one presence band ever owns a row in a list of the base's "
+        "routines, so the assumption changes the words and never the order"
+    )
+    assert "|| 0" in body, "a routine with no status must weigh nothing, not `undefined`"
+
+
+def test_the_routine_overlay_is_a_setting_that_something_reads() -> None:
+    """Four halves, each of which passes alone while the switch is dead.
+
+    Declared in the store, persisted, named in the reset dialog, and actually consulted.
+    `panels` sat in `settings.js` for months -- persisted, versioned, named in the reset as
+    "panel layout" -- with nothing anywhere reading it (design rule 16's second half).
+    """
+    st = _read("settings.js")
+    js = _code(_read("shell.js"))
+    assert re.search(r"^\s*tableOverlay:\s*true", st, re.M), (
+        "tableOverlay is not a default, so `loadSettings` drops it on every load"
+    )
+    assert "tableOverlay: 'the change overlay" in st, (
+        "the reset would clear the routine overlay without mentioning it"
+    )
+    # **Parsed out of `PERSISTED`, not looked for anywhere in the file.** A containment
+    # check passed the mutation that deleted the key from the list, because the name is
+    # also a quoted string in `OVERLAY_SWITCHES` — a guard that checks a name appears has
+    # not checked that anything happens (rule 37).
+    m = re.search(r"const PERSISTED = \[(.*?)\];", js, re.S)
+    assert m, "PERSISTED is no longer a list literal; this guard is blind"
+    persisted = set(re.findall(r'"(\w+)"', m.group(1)))
+    assert len(persisted) > 20, f"PERSISTED holds {len(persisted)} keys; this guard is blind"
+    assert "tableOverlay" in persisted, (
+        "tableOverlay is not in PERSISTED, so the reader's choice is dropped on every load"
+    )
+    assert "state.tableOverlay" in _fn(js, "tableOverlayOn"), (
+        "tableOverlayOn does not read the setting"
+    )
+    assert "comparing()" in _fn(js, "tableOverlayOn"), (
+        "the switch governs the marks without asking whether there is a comparison at all, "
+        "so it would draw for a program holding one version"
+    )
+    sw = _fn(js, "overlaySwitchHtml")
+    assert "if (!comparing()) return" in sw, (
+        "the switch is drawn where it cannot act — design rule 16's dead control with an "
+        "excuse attached"
+    )
+
+
+def test_the_edited_glyph_is_not_the_separator_it_sits_beside() -> None:
+    """A glyph that is also the punctuation around it is not a glyph.
+
+    The `edited` mark was `\\u00b7`, and the note that states the counts separates them with
+    `\\u00b7` too — so the line read "18 behave differently · · 15 edited only", two dots
+    running together with nothing to say which was a word and which was punctuation. Found
+    by reading the pane, not by any check.
+    """
+    js = _code(_read("shell.js"))
+    body = _fn(js, "routineChip")
+    m = re.search(r'rtnchg-edited[^}]*?glyph:\s*"([^"]+)"', body, re.S)
+    assert m, "the edited mark no longer carries a glyph; this guard is blind"
+    glyph = m.group(1).encode().decode("unicode_escape")
+
+    note = _fn(js, "routineChangeNote")
+    seps = set(re.findall(r"\}</b>\s*([^<{\s])", note)) | set(
+        re.findall(r"`\s*([·|])\s*", note))
+    assert glyph not in seps, (
+        f"the edited glyph `{glyph}` is also the separator between the counts, so the note "
+        "prints it twice in a row and neither reads as the other"
+    )
+    assert glyph in note, (
+        "the note states a count for edited routines without their own glyph beside it, so "
+        "the legend and the mark are two vocabularies"
+    )
+
+
+def test_the_routine_list_landing_repaints_both_things_that_read_it() -> None:
+    """`ROUTINES` feeds two panes and only one of them was repainted when it arrived.
+
+    A reader whose centre view was the table when the page opened got a table of nought
+    rows under *"Reading the routine list…"* — permanently. The list had arrived, the
+    navigator showed all 4,733 of them, and nothing ever asked the centre again. A message
+    that is true at the instant it is written and never comes back is worse than a blank.
+
+    Predates the change marks; found by driving those and confirmed against `HEAD` rather
+    than assumed. Rule 35's family: the array is assigned, and a view that reads it is
+    never repainted.
+    """
+    js = _code(_read("shell.js"))
+    call = js[js.index("loadRoutines()."):]
+    call = call[:call.index("\n}")]
+    assert "buildNav()" in call, "the navigator is not rebuilt when the routine list lands"
+    assert "render()" in call, (
+        "the centre pane is not repainted when the routine list lands, so table mode holds "
+        "nought rows under 'Reading the routine list…' for the rest of the session"
+    )
+    # Both halves, on the failure path too: a list that could not be read must leave both
+    # panes stating that rather than one of them still waiting.
+    assert call.count("render()") >= 2 and call.count("buildNav()") >= 2, (
+        "only one of the two paths repaints both panes; the other leaves a pane waiting "
+        "for something that has already failed"
+    )

@@ -137,7 +137,8 @@ Still not built: syntax highlighting (a design-rule-2 pair if ever wanted, done 
 with stdlib `tokenize`).
 
 **Not built:** `dunneflow infer` (the model pass) · the rest of the temporal **overlays**
-— the code browser is layered (2026-08-30), the tables and the stack are not · attestation · the project profile · document
+— the code browser and the routine views are layered (2026-08-30), the stack is not, and the
+anomaly worklist is blocked on finding identity · attestation · the project profile · document
 mode's narrative view · packaging as a binary · any language but Python.
 
 **The revision spine is in, and both ends of a pair are readable.** `WORKING` is a *state*
@@ -157,6 +158,50 @@ running that program-wide is most of design rule 15's doorway panel. It says hon
 is not computed yet.
 
 ## What we are doing now
+
+**Two overlays are on screen — the routines, and the code.** The routines came second and
+lead here; the code browser's own section follows it.
+
+**The routines are marked too — built 2026-08-30 (chunk C, tables and the list).** The
+second overlay, and it needed no server: `/api/changes` already carries every band with the
+node id on every row, so table mode and the navigator's routine list say what the comparison
+found about each routine — **arrived**, **went**, **behaves differently**, **edited and
+behaving the same**, **unchanged** — from an answer the page already holds.
+
+```
+4,786 routines:  53 −  ·  18 ○ behave differently  ·  15 ≈ edited only  ·  4,700 unchanged
+   …and from the other end of the pair, 53 stated and not listed: they have no row here
+```
+
+Three of Tom's decisions settled it. **Routines only** — the change worklist already *is*
+the comparison, and the *anomaly* worklist is blocked on a question rather than on work
+(what makes two findings in two versions the same finding; a finding has no id and 93 of
+106 are `LOST_EDGE`). **Two switches**, because the code overlay fetches per file and these
+marks are free. **The navigator never fetches** — its routine group is open by default, so
+asking there would cost every session 13–28 s cold; it draws the marks when something else
+has asked and says which of three states it is in.
+
+- **A routine only the compared version has is counted and never marked** (rule 1). It has
+  no row — both surfaces list the version on screen — so inventing one would name a routine
+  among what this version contains. It is stated instead.
+- **The counts are walked from the rows that are drawn**, never read off the band lengths
+  (rule 32), so no number here names something no scrolling could find.
+- **Four defects found by looking**, none by any check: a glyph that was also its own
+  punctuation; a pane telling the reader to open the pane they were in (rule 68); one answer
+  stated twice and differently in one view (rule 51); and — older than this chunk — a table
+  left empty for ever by a routine list that had already arrived (rule 35's family). No new
+  numbered rule: every one is an existing rule in a new costume.
+
+Guards mutation-tested at **20/20** over a proved-green baseline, after a first run at 14/17
+with **all three survivors the guard being weak** — the eleventh, twelfth and thirteenth time
+in four sessions.
+
+**Paused here 2026-08-30.** See `HANDOFF.md` `6g`. **Next: the graph as `colorBy: 'change'`**
+— **which still wants Tom's decision on the colour channel**, because design rule 4 says
+colour carries one dimension at a time and a comparison should take the channel over rather
+than paint red and green across fifty-two plate hues.
+
+### Before that, in the same session: the comparison over the code (2026-08-30)
 
 **The comparison over the code — built 2026-08-30 (chunk C, the code browser).** The first
 of the overlays. Two lanes: the **text** lane marks the lines of the open file the compared
@@ -193,12 +238,6 @@ had it; the base names the revision now and hands it to all of them.
 
 Guards mutation-tested at **17/17** over a proved-green baseline, after a first run at
 11/13 — both survivors the guard being weak, one of them over the headline defect.
-
-**Paused here 2026-08-30.** See `HANDOFF.md` `6f`. **Next: tables and the worklist**, then
-the graph as `colorBy: 'change'` — **which still wants Tom's decision on the colour
-channel**, because design rule 4 says colour carries one dimension at a time and a
-comparison should take the channel over rather than paint red and green across fifty-two
-plate hues.
 
 ## Before that: colour sets in Settings (2026-08-30)
 

@@ -169,6 +169,15 @@ const DEFAULTS = {
    * It says nothing when there is no comparison: with one version there is no overlay to
    * suppress, and a switch that governs nothing is design rule 16's dead control. */
   codeOverlay: true,
+  /* The same question asked of the routine list and the table: do these rows say what the
+   * comparison found about them. A **second** switch rather than one governing both, and
+   * the reason is what each costs. The code overlay fetches a per-file difference and
+   * marks up to four hundred lines; these marks are free, drawn from an answer already
+   * held. Wanting the cheap ones in the list while reading clean code is ordinary, and one
+   * switch cannot express it.
+   *
+   * Like its neighbour it governs nothing with one version, and the switch is not drawn. */
+  tableOverlay: true,
 
   /* ── the shell ───────────────────────────────────────────────────────────── */
   theme: 'system',        // 'system' | 'light' | 'dark'
@@ -231,7 +240,7 @@ const DEFAULTS = {
   searchRegex: false,
   ambient: false,         // anomaly badges wherever a thing appears
   hideInferred: false,
-  colWidths: { q: 26, why: 30, fan: 5 },   // the columns the routine list can fill
+  colWidths: { q: 26, why: 30, fan: 5, chg: 7 },  // the columns the routine list can fill
   // today; lines/returns/params/touches come back with an endpoint that serves them
   insp: { in: true, out: true, touches: true, gov: true, sig: false },
   sortKey: 'fan',
@@ -321,6 +330,7 @@ function resetSettings(program, current) {
     inspectorAuto: 'auto-collapse the inspector', navWidth: 'navigator width',
     codeWidth: 'code pane width', codeFile: 'which file the code pane has open',
     codeOverlay: 'the change overlay on the code',
+    tableOverlay: 'the change overlay on the routine list and the table',
     navGroups: 'how many navigator groups open at once', navOpen: 'which groups are open',
     navCap: 'how many routines a package lists',
     graphLayout: 'graph layout', graphTheme: 'graph theme',

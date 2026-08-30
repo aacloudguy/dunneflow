@@ -2256,6 +2256,51 @@ kbd { font-family: var(--f-mono); font-size: .66rem; background: var(--sunken);
 .codefile.filechg-diff .filechg { color: var(--text-muted); }
 
 .chgnote code { font-size: .95em; }
+
+/* ── the same comparison, over the routines ───────────────────────────────────────
+ *
+ * The mark on a routine row in the navigator, and in the table's own column. Two surfaces,
+ * one vocabulary, because they are drawing one answer.
+ *
+ * **Every class here is prefixed `rtnchg-` and scoped to the element that carries it**, and
+ * that is rule 71 rather than tidiness. A class name is global and a stylesheet gives no
+ * warning: the file rows' first version reached for `chg-mod`, which was already the change
+ * worklist's *module* label -- faint and two sizes down -- so every modified file rendered
+ * quieter than the unchanged ones, the exact inverse of what a mark is for. Nothing threw
+ * and every check passed.
+ *
+ * The colour comes from `--diff-gone` / `--diff-new` through `.tone-gone` / `.tone-new`, so
+ * the colour set the reader chose in Settings reaches these without either surface knowing
+ * a palette exists. `behaves` and `edited` are deliberately **not** in that channel: they
+ * have no direction, and design rule 4 says colour carries one dimension at a time.
+ */
+.nav-item .rtnchg { margin-left: .3rem; font-weight: 700; flex: none; width: .7rem;
+  text-align: center; }
+.nav-item .rtnchg-behaves { color: var(--text-muted); }
+.nav-item .rtnchg-edited  { color: var(--text-faint); }
+
+/* The note under the routine group's own count, and above the table. A second line rather
+   than more words on the first: how many routines are here and what the comparison says
+   about them are two questions (rule 32). */
+.nav-chgnote { margin-top: .25rem; }
+
+/* The table's column. Centred, because the glyph is the whole cell and a ragged left edge
+   down four thousand rows reads as a column that failed to fill. */
+table.grid td.chgcell { text-align: center; font-weight: 700;
+  font-variant-numeric: tabular-nums; }
+table.grid td.chgcell.rtnchg-behaves { color: var(--text-muted); }
+table.grid td.chgcell.rtnchg-edited  { color: var(--text-faint); }
+/* An em dash for `same`, and it is the quietest thing on the row on purpose: it says the
+   comparison ran and found nothing here, which is a fact and not a finding. */
+table.grid td.chgcell.rtnchg-same    { color: var(--text-faint); font-weight: 400; }
+.tfoot-chg { color: var(--text-muted); }
+
+/* The mark's sentence inside the navigator's hover card. A routine row is `data-card`, so
+   it has no native title to hang the words on -- and a title on the glyph itself would put
+   the tiny unreadable tooltip the card replaced on top of the card. */
+.hc-chg { margin-top: .35rem; font-size: .74rem; color: var(--text-muted); }
+.hc-chg.tone-gone { color: var(--diff-gone); }
+.hc-chg.tone-new  { color: var(--diff-new); }
 /* The fact lane: what a routine *does* differently, which no text diff can state. */
 .factlane .factrows { display: flex; flex-direction: column; gap: .1rem;
   margin-top: .4rem; }

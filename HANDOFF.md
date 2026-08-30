@@ -3604,6 +3604,104 @@ topbar, which reads as a covered control. It was inside a **closed** accordion g
 had checked "open" by asking whether `#codeQ` existed, which is rule 45's own lesson pointed
 at my instrument: hidden is not absent.
 
+**6g. Built 2026-08-30: the comparison over the routines (chunk C, tables and the list).**
+The second overlay, and the one that needed no server at all.
+
+*What it is.* Every routine in table mode and in the navigator's routine list carries what
+the comparison says about it: **arrived**, **went**, **behaves differently**, **edited and
+behaving the same**, or **unchanged**. `/api/changes` already returns all four bands with
+the node id on every row -- a worklist whose rows cannot be acted on is a dead control with
+a count beside it (rule 30) -- so the whole chunk is a `Map` hung on the answer and a glyph.
+
+Three decisions of Tom's settled the shape before any of it was written.
+
+- **Routines only.** The change worklist already *is* the comparison. The **anomaly**
+  worklist is a separate piece and is blocked on a question rather than on work: a finding
+  carries no id (`state.triage` is keyed by the array index), so "new since the compared
+  version" would have to pair findings on `kind` plus `subject` -- and 93 of Mensores' 106
+  are `LOST_EDGE`, while `DEAD_CODE` carries no subject at all. A false *new* is rule 1's
+  defect with a colour on it.
+- **Two switches, not one.** `codeOverlay` fetches a difference per file and can mark four
+  hundred lines; `tableOverlay` reads an answer already held. Wanting the cheap marks in the
+  list while reading clean code is ordinary, and one control cannot say it.
+- **The navigator never pays.** Its routine group is open by default, so asking there would
+  cost every session 13-28 s against the cold volume. It *draws* the marks and never fetches
+  them, and its note says which of three states it is in -- not compared, comparing, or the
+  counts -- because an unmarked list and a list of things that did not change are identical
+  to look at and only one of them is a claim (design rule 1).
+
+*Decisions worth keeping.*
+
+- **A routine only the *compared* version has is counted and never marked.** Both surfaces
+  list the routines of the version on screen, so it has no row -- and inventing one would
+  name a routine among what this version contains. It is stated instead: *"53 added -- in
+  2026-08-29 23:46:53 only, so not listed here"*. Serving the other end of the pair is the
+  case that exercises it, and it is the whole design-rule-1 point of the chunk.
+- **The counts are taken by walking the rows that are drawn**, never from the band lengths
+  (rule 32). The bands are the server's answer about two graphs; a count read off them could
+  name routines no amount of scrolling would find. `only_compared` is the one exception and
+  says so.
+- **The tone follows the word.** Flipping which version the reader assumes is newer swaps
+  the glyph, the colour and the sentence together, driven through all three states with
+  `fetch` counted at **zero**.
+- **The sort is a constant, and an earlier version pretended otherwise.** It was derived
+  from `diffBands()` so the order would flip with the assumption -- a difference that cannot
+  occur, because only one presence band ever owns a row here. Deriving it read as though it
+  had been thought about, which is worse than a constant.
+
+*Four defects found by looking, and none of them by any check.*
+
+1. **The `edited` glyph was `·`, and so is the separator between the counts.** The note read
+   "18 behave differently · · 15 edited only" -- two dots running together, one a word and
+   one punctuation, with nothing to tell them apart. It is `≈` now, which says the thing
+   anyway: the text moved and the behaviour did not. *A mark that is also the punctuation
+   around it is not a mark* -- rule 32's family, and not worth a number of its own.
+2. **The table asked for the comparison after painting**, so `viewTable()` read `CHANGES`
+   while it was still null and rendered *"not compared yet — open the table and these rows
+   will mark themselves"* **to a reader sitting in the table**, for the thirty seconds a cold
+   comparison takes. Rule 68 exactly: a note telling someone to do the thing they have
+   already done. `loadChanges` sets its loading flag synchronously, so asking first makes the
+   first paint say "comparing…". The navigator had the same lag one pane over, because its
+   note is built by `buildNav()` rather than by `render()`.
+3. **The footer stated the same answer a second way** and the two drifted immediately: the
+   note omits a band with nothing in it and the footer printed `0 deleted`. One answer, twice,
+   differently, four thousand rows apart. Both call one function now (rule 51). It is repeated
+   at the bottom deliberately -- 4,733 rows is further than a reader can see, and a count they
+   have to scroll back for is a count they do not have.
+4. **`ROUTINES` feeds two panes and only one was repainted when it arrived.** A reader whose
+   centre view was the table when the list landed got nought rows under *"Reading the routine
+   list…"*, permanently -- the navigator showing all 4,733 of them beside it. `loadRoutines()
+   .then(buildNav)` and no `render()`. **Predates this chunk**, and stated carefully: the empty
+   state was observed directly, and that `HEAD` shares it is read from the code rather than
+   reproduced, because the attempt to reproduce it there measured the cover instead of the
+   table. Rule 35's family -- the array is assigned, and a view that reads it is never asked
+   again.
+
+*One infinite loop caught before it ran.* `ensureTableOverlay().then(render)` inside
+`render()`'s own table branch: `ensureChanges()` resolves immediately once `CHANGES` is held,
+so every paint would have scheduled the next. It already repaints itself when the answer
+lands, which is the only repaint wanted.
+
+*Guards.* Twelve new ones in `tests/test_web_controls.py`, mutation-tested at **20/20** over
+a proved-green baseline (rule 59) -- after a first run at 14/17 with **all three survivors
+the guard being weak**, the eleventh, twelfth and thirteenth time in four sessions. They are
+worth listing, because none of the three looked weak:
+
+- the prefix guard collected `rtnchg[a-z-]*` and so could only ever find names that already
+  passed -- renaming one to `chg-behaves` left it green, which is the entire defect it exists
+  for;
+- the column guard unioned the widths across `shell.js` and `settings.js`, so a key deleted
+  from one still appeared;
+- "is persisted" was a containment check for `"tableOverlay"` anywhere in the file, and the
+  name is also a quoted key in `OVERLAY_SWITCHES`. Rule 37, verbatim: a guard that checks a
+  name appears has not checked that anything happens. It parses `PERSISTED` now.
+
+*Driven in a real window*: both ends of the pair, a live base switch, the switch on and off,
+the assumption through all three states with fetches counted, `elementFromPoint` on the switch
+and on a mark, the hover card carrying the mark's sentence, and the console read -- clean,
+self-check green. Ground truth held both ways: 18 + 53 + 15 + 4,700 = 4,786 from the newer
+base, and 18 + 15 + 4,700 = 4,733 with the 53 stated-and-not-listed from the older one.
+
 ### Paused 2026-08-30, after the code browser's overlay
 
 Working tree clean; all three gates green; `output/mensores` untouched and still serving
@@ -3624,6 +3722,25 @@ warning, and markup another function rewrites is not the markup that renders.
 
 **Next: tables and the worklist**, then the graph as `colorBy: 'change'` — and that one
 still wants Tom's decision on the colour channel before it is built. Read `6f`.
+
+### Paused 2026-08-30, after the routine marks
+
+Working tree clean; all three gates green; `output/mensores` untouched and still serving
+both revisions.
+
+**The second overlay is on screen and it cost no server work.** Table mode and the routine
+list say what the comparison found about every routine, from an answer the page already
+holds -- and say, where it applies, that the compared version's own routines are counted
+and cannot be listed here.
+
+Four defects found by looking, one of them older than this chunk: a glyph that was also its
+own punctuation, a pane that told the reader to open the pane they were in, a count stated
+twice and differently in one view, and a table left empty for ever by a list that had
+arrived. No new numbered rule -- every one of them is an existing rule in a new costume,
+which is what the numbering is for.
+
+**Next: the graph as `colorBy: 'change'`** — and it still wants Tom's decision on the
+colour channel before it is built. Read `6g`.
 
 ### Paused 2026-08-30, after the colour sets
 
@@ -3720,13 +3837,23 @@ against the graph's own ground, while a set is a fixed choice validated at build
 test. Two different questions, and one clamp answering both would have made the pointer's
 bar speak for colours nobody can pick.
 
-**3. The overlays (chunk C) — the code browser is done, 2026-08-30, see `6f`.** What
-follows was the plan, and it held: the file-level pairing was free (613 identical, 12
-modified, 3 added, 0 removed, zero body reads) and it is what says which twelve files are
-worth `difflib`. What the plan did not know is that the code browser was reading the
-*wrong version's bytes* — see rule 70 — so the chunk began with a fix rather than with an
-overlay. **Tables and the worklist are next**, then the graph, and the colour-channel
-question below is still owed to Tom before that last one.
+**3. The overlays (chunk C) — the code browser and the routines are done, 2026-08-30, see
+`6f` and `6g`.** What follows was the plan, and it held: the file-level pairing was free
+(613 identical, 12 modified, 3 added, 0 removed, zero body reads) and it is what says which
+twelve files are worth `difflib`. What the plan did not know is that the code browser was
+reading the *wrong version's bytes* — see rule 70 — so the chunk began with a fix rather
+than with an overlay.
+
+The routines followed and needed no server at all. **"The worklist" turned out to be two
+questions, and Tom took the first**: the change worklist already *is* the comparison, so
+this was table mode and the navigator's routine list. The **anomaly** worklist is a
+separate piece and is blocked on a question rather than on effort — *what makes two
+findings in two versions the same finding* — because a finding carries no id and 93 of
+Mensores' 106 are `LOST_EDGE`. Answer that before building it; a false *new* is rule 1's
+defect with a colour on it.
+
+**The graph as `colorBy: 'change'` is what remains, and the colour-channel question below
+is still owed to Tom before it is built.**
 
 <details><summary>the plan as it stood</summary>
 

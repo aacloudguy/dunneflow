@@ -227,6 +227,11 @@ const state = {
    * version it governs nothing, and the switch is not drawn: a control that cannot change
    * anything is design rule 16's defect wearing a checkbox. */
   codeOverlay: true,
+  /* The same switch for the routine list and the table. Two switches rather than one,
+   * because what they cost differs: the code overlay fetches a difference per file and can
+   * mark four hundred lines, while these marks are read off an answer the page already
+   * holds. See `settings.js`. */
+  tableOverlay: true,
   codeQ: "",              // one box, two lanes: file names, and the text inside them
   /* How a match is decided. Persisted, because they are how this reader searches rather
      than what they are looking for right now -- the same line `termFilter` and `routineQ`
@@ -307,7 +312,7 @@ const state = {
      reader may never open, and where this notice was invisible for its first hour. */
   revNote: "",
   colourBy: "none",
-  colWidths: { q: 26, why: 30, fan: 5 },
+  colWidths: { q: 26, why: 30, fan: 5, chg: 7 },
   // No filter can be applied yet, so none is claimed. The prototype carried three
   // pinned chips and the strip announced "showing 187 of 4,568 routines" over a view
   // that was filtering nothing -- a silent filter is bad, and an *announced* filter
@@ -787,6 +792,13 @@ function overlayOn() {
   return comparing() && !!state.codeOverlay;
 }
 
+/* The same question for the routine list and the table, which have their own switch.
+ * `comparing()` is shared, so the two surfaces can differ about whether to draw the marks
+ * and can never differ about whether there is a comparison at all (rule 51). */
+function tableOverlayOn() {
+  return comparing() && !!state.tableOverlay;
+}
+
 /* The **fact** lane's data, asked for once per pair.
  *
  * `refreshChanges()` fetches unconditionally, which is right for a reader who clicked
@@ -858,6 +870,232 @@ function fileStatus(path) {
   }
   const row = FILEPAIR._by.get(path);
   return row ? row.status : "";
+}
+
+/* ── the same comparison, over the routines ──────────────────────────────────────────
+ *
+ * The code browser marks files and lines. This marks the things the map is actually about:
+ * a routine that arrived, one that went, one that behaves differently, one that was merely
+ * edited. It needs no endpoint of its own -- `/api/changes` already carries every band with
+ * the node id on every row, because a worklist whose rows cannot be acted on is a dead
+ * control with a count beside it (rule 30).
+ */
+
+/* The bands the server sends, and the status each becomes. A table rather than a chain of
+ * comparisons, so a band added on the wire and forgotten here is a named error rather than
+ * a routine that quietly reads as unchanged (design rule 16). */
+const CHANGE_BANDS = {
+  only_in_base:     "only_base",
+  only_in_compared: "only_compared",
+  behaves:          "behaves",
+  edited_only:      "edited",
+};
+
+/* id -> status, built once and **hung on the answer** rather than kept in a module
+ * variable, exactly as `FILEPAIR._by` is and for the same two reasons. The table draws
+ * 4,734 rows, so a `find` per row is work proportional to the whole program on every
+ * repaint -- rule 45's shape, and the defect `Graph.connections` cost 2,418 ms for. And
+ * riding the answer means it cannot outlive the pair it was built from.
+ *
+ * The four bands are a partition: `edited_only` excludes `behaves` by construction, and
+ * both require the routine to be in *both* versions, which the one-sided bands cannot be.
+ * An id in two of them would therefore be the server disagreeing with itself, and it is
+ * said out loud rather than resolved by whichever loop ran last. */
+function routineIndex() {
+  if (CHANGES._byId) return CHANGES._byId;
+  const by = new Map();
+  for (const [band, status] of Object.entries(CHANGE_BANDS)) {
+    for (const r of CHANGES[band] || []) {
+      if (!r || !r.id) continue;
+      const had = by.get(r.id);
+      if (had && had.status !== status) {
+        console.error("DunneFlow: one routine in two change bands:",
+                      r.id, had.status, status);
+      }
+      /* The `moved` kinds ride in the index rather than being looked up when a row is
+         drawn. `find` over the behaves band per row is rule 45's shape again -- fine at
+         Mensores' eighteen and quadratic on a program where a thousand routines moved. */
+      by.set(r.id, { status, moved: (r.moved || []).join(", ") });
+    }
+  }
+  CHANGES._byId = by;
+  return by;
+}
+
+/* What the comparison says about one routine, or "" when nothing has been compared.
+ *
+ * **"" rather than "same"**, and that is the whole of design rule 1 here: a routine nobody
+ * has compared and a routine that did not change look identical on screen unless one of
+ * them says which it is. `same` is a fact about two versions; an unmarked row under no
+ * comparison is not a claim anyone has made.
+ */
+function routineStatus(id) {
+  return routineChange(id).status;
+}
+
+/* The whole entry -- the status and what moved -- for a caller that wants both without
+ * asking the Map twice. `same` is the answer for a routine in no band, but only once
+ * there *is* an answer: "" until then. */
+function routineChange(id) {
+  if (!tableOverlayOn()) return { status: "", moved: "" };
+  if (!CHANGES || CHANGES.loading || !CHANGES.available) return { status: "", moved: "" };
+  return routineIndex().get(id) || { status: "same", moved: "" };
+}
+
+/* What one routine's mark says, in a glyph, a class and a sentence.
+ *
+ * **Every class begins `rtnchg-`**, and that is not tidiness. The file rows' first version
+ * used `chg-same` / `chg-mod` / `chg-one`, and `.chg-mod` already existed: it is the change
+ * worklist's *module* label, faint and two sizes down, so every modified file rendered
+ * smaller and greyer than the unchanged ones -- the opposite of what a mark is for. A class
+ * name is global and a stylesheet gives no warning (rule 71).
+ *
+ * The tone comes from `diffWords()` and never from the band or the side, so flipping which
+ * version the reader takes to be newer swaps the colour with the word. A page saying
+ * "added" in the colour of *gone* is worse than one with no colour at all.
+ *
+ * There are **three** things here and only two have a direction: a routine present in both
+ * and behaving differently was neither added nor deleted, so it gets a mark of its own
+ * rather than a sign that means nothing (the argument `factLaneHtml` makes about `signOf`).
+ */
+function routineChip(id) {
+  const { status: st, moved } = routineChange(id);
+  if (!st) return { cls: "", glyph: "", title: "" };
+  const w = diffWords();
+  if (st === "only_base") {
+    return { cls: " rtnchg tone-" + w.base.tone, glyph: signOf(w.base.tone),
+             title: w.base.word + " \u2014 only the version on screen has it" };
+  }
+  if (st === "behaves") {
+    return { cls: " rtnchg rtnchg-behaves", glyph: "\u25cb",
+             title: "behaves differently" + (moved ? " \u2014 " + moved : "") };
+  }
+  if (st === "edited") {
+    /* `\u2248`, and it was `\u00b7` until someone looked at the note it appears in. The
+       middle dot is also the separator between the counts there, so the line read
+       "18 behave differently \u00b7 \u00b7 15 edited only" -- two dots running together, one
+       of them a word and one of them punctuation, and nothing to tell them apart.
+       Approximately-equal says the thing anyway: the text moved and the behaviour did
+       not. */
+    return { cls: " rtnchg rtnchg-edited", glyph: "\u2248",
+             title: "edited, and nothing it does changed" };
+  }
+  /* A routine only the *compared* version has. It has no row in either surface -- both
+     list the routines of the version on screen -- so this is reached only if something
+     asks about an id it found elsewhere. It answers honestly rather than falling through
+     to `same`, which would call a routine that is not in this version unchanged. */
+  if (st === "only_compared") {
+    return { cls: " rtnchg tone-" + w.compared.tone, glyph: signOf(w.compared.tone),
+             title: w.compared.word + " \u2014 only the compared version has it" };
+  }
+  /* No glyph, and the words carry it instead. This is the state with no visible mark, so
+     it is the one that needs the sentence: unmarked-and-compared and unmarked-and-not-
+     compared are opposite claims that look the same. */
+  return { cls: " rtnchg rtnchg-same", glyph: "",
+           title: "unchanged between these two versions" };
+}
+
+/* The counts, **taken by walking the rows that are drawn** rather than from the bands.
+ *
+ * A count must be produced by the thing it measures (rule 32): the bands are the server's
+ * answer about two graphs, and this list is what reached the page. Reading the band lengths
+ * would print a number that no amount of scrolling could find.
+ *
+ * `only_compared` is the exception and cannot be otherwise -- see `routineChip`'s caller in
+ * the table. Those routines have no row here at all, so their number comes from the band,
+ * and it is reported as what it is: a count of things that are not in this list.
+ */
+function routineChangeCounts() {
+  const c = { only_base: 0, behaves: 0, edited: 0, same: 0, total: ROUTINES.length,
+              only_compared: 0 };
+  if (!tableOverlayOn() || !CHANGES || CHANGES.loading || !CHANGES.available) return null;
+  for (const r of ROUTINES) {
+    const st = routineStatus(r.id);
+    if (st && st in c) c[st] += 1;
+  }
+  c.only_compared = (CHANGES.only_in_compared || []).length;
+  return c;
+}
+
+/* The one door that asks for the comparison on the routines' behalf.
+ *
+ * Called from the table branch of `render()` and from nowhere else. That is the door
+ * rather than the mode toggle because there are five ways into table mode -- the toggle,
+ * `Enter` on a hovered row, two crumb routes and the code browser's own hand-off -- and a
+ * call at each is the list rule 51 says will grow. Every one of them passes through
+ * `render()`.
+ *
+ * **The navigator is deliberately not a caller.** Its routine group is open by default, so
+ * asking here would make every session pay for a comparison nobody requested: 317 ms warm
+ * and 13-28 s on the first comparison of a session against a cold external volume. It
+ * draws the marks when this has answered and says so when it has not, which is design rule
+ * 1 rather than a silence.
+ */
+function ensureTableOverlay() {
+  if (!tableOverlayOn()) return Promise.resolve(null);
+  const fresh = !CHANGES;
+  const asked = ensureChanges();
+  /* **The navigator's note is built by `buildNav()`, not by `render()`**, so without this
+     it goes on saying "open the table and these rows will mark themselves" to a reader who
+     is already in the table with the request in flight -- rule 68's shape, in the other
+     pane, for the thirty seconds a cold comparison takes.
+     Only on the paint that *starts* the fetch. Rebuilding the navigator on every repaint
+     would be work proportional to the whole program for a note that has not changed. */
+  if (fresh && CHANGES) buildNav();
+  return asked;
+}
+
+/* What the marks are saying, in words, wherever they are drawn.
+ *
+ * Design rule 1, and here it has four things to say that no glyph can. Which version this
+ * is held against. That the comparison **has not been asked for yet** -- an unmarked
+ * routine list and a list of routines that did not change are identical to look at, and
+ * only one of them is a claim. That the marks are switched off. And the legend, because a
+ * navigator row shows a hover card rather than a tooltip, so the glyph on it has nowhere of
+ * its own to say what it means.
+ *
+ * Returns "" only when there is nothing to say, which is when there is no second version.
+ */
+function routineChangeNote() {
+  if (!comparing()) return "";
+  const shortRev = comparedRevInForce().replace("T", " ").replace("Z", "");
+  if (!state.tableOverlay) {
+    return `not marking the difference from <code>${esc(shortRev)}</code>`;
+  }
+  if (!CHANGES) {
+    /* Named rather than blank, and it names the two doors that do the work. The list
+       itself must not open one: this group is open by default and the comparison is
+       13-28 s cold. */
+    return `not compared with <code>${esc(shortRev)}</code> yet — open the table or the
+            Changes group and these rows will mark themselves`;
+  }
+  if (CHANGES.loading) return `comparing with <code>${esc(shortRev)}</code>…`;
+  if (!CHANGES.available) {
+    return `<b>no comparison.</b> ${esc(CHANGES.reason || "")}`;
+  }
+  const c = routineChangeCounts();
+  if (!c) return "";
+  const w = diffWords();
+  const bits = [];
+  if (c.only_base) {
+    bits.push(`<b class="tone-${w.base.tone}">${signOf(w.base.tone)}${
+      c.only_base.toLocaleString()}</b> ${esc(w.base.word)}`);
+  }
+  if (c.behaves) bits.push(`<b>○ ${c.behaves.toLocaleString()}</b> behave differently`);
+  if (c.edited) bits.push(`<b>≈ ${c.edited.toLocaleString()}</b> edited only`);
+  /* The unchanged are counted out loud. It is the largest number here and the least
+     interesting, and leaving it out would make the marked ones read as the whole list. */
+  bits.push(`${c.same.toLocaleString()} unchanged`);
+  /* **Counted and never marked.** A routine only the compared version has is not in this
+     list at all -- the list is the base's routines -- so there is no row to put a glyph on,
+     and inventing one would name a routine among what this version contains. The same
+     argument the code overlay makes about a line whose number belongs to another file
+     (rule 1). */
+  const other = c.only_compared
+    ? ` · ${c.only_compared.toLocaleString()} ${esc(w.compared.word)} — in
+        ${esc(shortRev)} only, so not listed here`
+    : "";
+  return `against <code>${esc(shortRev)}</code>: ${bits.join(" · ")}${other}`;
 }
 
 /* One file's line difference. Held for the open file only, exactly as `CODEFILE` is.
@@ -2054,13 +2292,51 @@ function sortedRoutines() {
       const d = (Number(routineFan(a.id)) || 0) - (Number(routineFan(b.id)) || 0);
       if (d) return d * dir;
     }
-    return qual(a).localeCompare(qual(b)) * (k === "fan" ? 1 : dir);
+    if (k === "chg") {
+      const d = changeWeight(a.id) - changeWeight(b.id);
+      if (d) return d * dir;
+    }
+    return qual(a).localeCompare(qual(b)) * (k === "fan" || k === "chg" ? 1 : dir);
   });
+}
+
+/* How interesting a routine is when the reader sorts by what changed about it.
+ *
+ * **Bigger is more interesting**, which is the convention `fan` already sets: a fresh click
+ * on a column sorts descending, so a first click on Changed has to put what changed at the
+ * top. Written the other way round first -- a rank where 0 was best -- and the first click
+ * on the column then opened on four thousand unchanged routines, which is a control that
+ * looks like it did nothing.
+ *
+ * The order is the change worklist's: what behaves differently, then what is on one side
+ * only, then what was merely edited, then the unchanged. Same reasoning there and here --
+ * the bands are ordered by what is worth reading first, and the largest is last because it
+ * is the least interesting, which is the whole thesis of the tool.
+ *
+ * **The reader's assumption does not enter into it, and an earlier version pretended it
+ * did.** This was derived from `diffBands()` so that flipping which version is taken to be
+ * newer would reorder the rows -- but both surfaces list the routines of the version on
+ * screen, so `only_in_compared` can never own a row here and only one of the two presence
+ * bands is ever populated. The assumption changes what those rows are *called*, never
+ * which of them exist. Deriving an order from it was deriving a difference that cannot
+ * occur, which is worse than a constant: it reads as though it had been thought about.
+ *
+ * A routine with no status at all weighs nothing. Under no comparison every row scores the
+ * same, the sort falls through to the name, and the column honestly does nothing. */
+const CHANGE_WEIGHT = { behaves: 4, only_base: 3, only_compared: 3, edited: 2, same: 1 };
+
+function changeWeight(id) {
+  return CHANGE_WEIGHT[routineStatus(id)] || 0;
 }
 
 /* The columns, in order, in one place. The table's own width is their sum -- see the note
  * on `table.grid` -- and a hand-kept second list of them is how the two would drift. */
-const TABLE_COLS = ["q", "why", "fan"];
+const TABLE_COLS = ["q", "why", "fan", "chg"];
+
+/* What each column is called at the top of it. In the same object the widths are keyed by,
+ * because a heading kept in a second list beside the keys is a second place to forget one
+ * (rule 36) -- and the guard that pairs `TABLE_COLS` against `colWidths` reads both. */
+const TABLE_LABELS = { q: "Routine", why: "WHY", fan: "Connections", chg: "Changed" };
 
 function viewTable() {
   const cw = state.colWidths;
@@ -2117,23 +2393,42 @@ function viewTable() {
       <button data-den="spacious"    aria-pressed="${state.density === "spacious"}">Spacious</button>
     </div>
     <span style="font-size:.72rem;color:var(--text-muted)">Drag a column edge to resize — widths store in <code class="mono">rem</code>, so the scale control moves them too.</span>
+    ${overlaySwitchHtml("table")}
   </div>
+  ${/* What the marks say, in words, above the table rather than under it. The same
+        sentence the navigator's group carries, from the same function, so the two surfaces
+        that draw these marks cannot disagree about what they mean (rule 51). */""}
+  ${(() => { const n = routineChangeNote();
+             return n ? `<p class="hint chgnote">${n}</p>` : ""; })()}
 
   <div class="tablewrap">
     <table class="grid" style="width:${TABLE_COLS.reduce((n, k) => n + cw[k], 0)}rem">
       <caption class="sr-only">Every routine in ${esc(STATS ? STATS.program : "this program")}</caption>
       <thead><tr>
-        ${col("q", "Routine")}
-        ${col("why", "WHY")}
-        ${col("fan", "Connections", true)}
+        ${col("q", TABLE_LABELS.q)}
+        ${col("why", TABLE_LABELS.why)}
+        ${col("fan", TABLE_LABELS.fan, true)}
+        ${col("chg", TABLE_LABELS.chg)}
       </tr></thead>
       <tbody>
-        ${rows.map(r => `
+        ${rows.map(r => {
+          /* The chip once per row, not three times. It reads a Map, but the row also wants
+             its glyph, its class and its sentence, and asking three times is three lookups
+             for one answer. */
+          const chg = routineChip(r.id);
+          return `
           <tr data-row="${esc(r.id)}" aria-selected="${state.selected === r.id}" tabindex="0">
             <td><span class="qual"><span class="dim">${esc(r.module)}.</span>${esc(r.name)}</span></td>
             <td style="font-size:.72rem;color:var(--text-muted)">${esc(r.why)}</td>
             <td class="numeric">${esc(String(routineFan(r.id)))}</td>
-          </tr>`).join("")}
+            ${/* A table row carries no hover card, so the sentence goes on a native title
+                  and is the only place the reader is told what a glyph means -- including
+                  for the state that has no glyph. `same` under a comparison and unmarked
+                  under no comparison are opposite claims that look identical. */""}
+            <td class="chgcell${esc(chg.cls)}"${chg.title ? ` title="${esc(chg.title)}"` : ""}
+              >${chg.glyph || (chg.title ? "\u2014" : "")}</td>
+          </tr>`;
+        }).join("")}
       </tbody>
     </table>
     <div class="tfoot">
@@ -2141,6 +2436,17 @@ function viewTable() {
         ? `All <b>${ROUTINES.length.toLocaleString()}</b> routines — this is the complete list the
            navigator abbreviates.`
         : "Reading the routine list\u2026"}</span>
+      ${/* **The same sentence as above the table, from the same function.** It was written
+            out a second time here and the two drifted immediately: the note omits a band
+            with nothing in it and this one printed `0 deleted`, so one answer appeared
+            twice in one pane, differently, four thousand rows apart. Rule 51 -- one truth,
+            one place that owns it.
+
+            Repeated at the bottom rather than only at the top because the table is 4,733
+            rows: a reader who has scrolled into it cannot see the note it started with,
+            and a count they have to scroll back for is a count they do not have. */""}
+      ${(() => { const n = routineChangeNote();
+                 return n ? `<span class="tfoot-chg">${n}</span>` : ""; })()}
       <span style="margin-left:auto">Lines, returns, params and touches want a routines
         endpoint of their own; until there is one they are absent rather than blank.</span>
     </div>
@@ -3304,7 +3610,7 @@ function viewCode() {
           CODEFILE.lines.length.toLocaleString()} lines · ${
           CODEFILE.defs.length} definitions · ${CODEFILE.marks.length.toLocaleString()} marks</div>
       </div>
-      ${overlaySwitchHtml()}
+      ${overlaySwitchHtml("code")}
       <button class="linkbtn" data-codedetach="1"
               title="Open the code in a window of its own, in sync with this one">detach ⧉</button>
       <button class="linkbtn" data-codeback="1" title="Back to the list of files">files ›</button>
@@ -4972,6 +5278,30 @@ function render() {
      * row one. Without this the reveal below could never be conditional either -- the row
      * would be off screen after every repaint, so "only when it is out of sight" would
      * mean "always", and an automatic move would fight every deliberate one. */
+    /* **The one door onto the comparison, for the routines**, and it runs *before* the
+     * paint rather than after it.
+     *
+     * After it, the note this pane draws is a step behind its own fetch: `viewTable()`
+     * reads `CHANGES` while it is still null, so the page rendered "not compared yet --
+     * open the table and these rows will mark themselves" **to a reader sitting in the
+     * table**, and left it there for the thirty seconds a cold comparison takes. Nothing
+     * re-renders in between. That is rule 68 exactly: a note telling someone to do the
+     * thing they have already done. `loadChanges` sets the loading flag synchronously, so
+     * asking first means the very first paint says "comparing…".
+     *
+     * Here rather than on the mode toggle because there are five ways into table mode --
+     * the toggle, `Enter` on a hovered navigator row, two crumb routes and the code
+     * browser's hand-off -- and a call at each is exactly the list rule 51 says grows.
+     * Every one of them arrives here.
+     *
+     * Idempotent and cheap: `ensureChanges()` hands back the held promise the moment
+     * `CHANGES` is anything at all, so this fetches once per pair and then costs a
+     * property read on every repaint. It repaints when the answer lands, and that repaint
+     * is `ensureChanges`' own, deliberately. Chaining a `.then(render)` here is an infinite
+     * loop: this runs *inside* `render()`, and the promise resolves immediately once
+     * `CHANGES` is held, so every paint would schedule the next one. */
+    ensureTableOverlay();
+
     const mount = $("#viewMount");
     const keep = mount ? mount.scrollTop : 0;
     vp.innerHTML = viewTable();
@@ -5142,6 +5472,20 @@ function wire() {
   }));
   $$("[data-den]").forEach(b => b.addEventListener("click", () => {
     state.density = b.dataset.den; render();
+  }));
+  /* The marks on or off, for the routine list and the table together.
+   *
+   * An ordinary `render()` is enough here, unlike the code overlay's repaint: this pane is
+   * rebuilt from `ROUTINES` on every render and holds no cached subtree. Turned back **on**
+   * it may have to fetch, for the same reason its neighbour does -- the reader may have
+   * opened the table with the switch off, in which case nobody has ever asked. */
+  $$("[data-tableoverlay]").forEach(b => b.addEventListener("click", () => {
+    state.tableOverlay = !state.tableOverlay;
+    persist();
+    used("table:overlay:" + (state.tableOverlay ? "on" : "off"));
+    ensureTableOverlay();      // repaints itself when an answer arrives
+    buildNav();                // the navigator draws these marks too
+    render();
   }));
   /* Selection is keyed by qualname, never by row index -- sorting reorders the array,
      and a revision change reorders it again. Same rule the temporal layers depend on. */
@@ -5673,6 +6017,11 @@ const WIRED_ATTRS = new Set([
      `CODE_ROUTES` is what listens for all of them -- one table, checked by the guard that
      reads it, so a fourth kind added there without a listener fails by name. */
   "codeback", "codedetach", "codelink", "codeopen", "codemode", "codeoverlay",
+  /* The routine list and the table's own overlay switch. A second switch rather than one
+     governing both surfaces: the code overlay fetches a difference per file and these
+     marks are read off an answer already held, so wanting one without the other is
+     ordinary and one control cannot say it. */
+  "tableoverlay",
   /* The version strip's one control: which version the reader assumes is newer. It is on
      the strip rather than in Settings because it decides what every red row means, and a
      colour a reader cannot account for is worse than no colour. */
@@ -5916,6 +6265,11 @@ function routineList() {
             nav: "routine", label: r.name, sub: moduleTail(r.module), sel: r.id,
             n: routineFan(r.id), qual: `${r.module}.${r.name}`, card: true,
             current: state.selected === r.id,
+            /* Read, never asked for. `routineChip` answers "" until something else has
+               fetched the comparison, and nothing on this path fetches it -- see
+               `ensureTableOverlay`. This group is open by default, so asking here would
+               make every session pay up to 28 s for a question nobody put. */
+            chg: routineChip(r.id),
           })).join("")}
       </div>
     </div>`;
@@ -6047,13 +6401,26 @@ function openCodeFile(path) {
  * 16's defect is a control that renders and changes nothing, and a disabled switch beside
  * a program that will never have a second version is that with an excuse attached.
  */
-function overlaySwitchHtml() {
+const OVERLAY_SWITCHES = {
+  code: { key: "codeOverlay", attr: "data-codeoverlay",
+          on:  "Stop drawing the difference from the compared version over these lines",
+          off: "Draw the difference from the compared version over these lines" },
+  table: { key: "tableOverlay", attr: "data-tableoverlay",
+           on:  "Stop marking what the comparison says about these routines",
+           off: "Mark what the comparison says about these routines" },
+};
+
+/* One renderer, two switches, and a table rather than a parameter chain -- an unknown
+ * surface is a named error rather than a switch that renders and governs nothing (design
+ * rule 16). Two switches because what they cost differs: the code overlay fetches a
+ * difference per file, and these marks are read off an answer already held. */
+function overlaySwitchHtml(which) {
+  const spec = OVERLAY_SWITCHES[which];
+  if (!spec) { console.error("DunneFlow: no such overlay switch:", which); return ""; }
   if (!comparing()) return "";
-  const on = !!state.codeOverlay;
-  return `<button class="linkbtn chgswitch" data-codeoverlay="1" aria-pressed="${on}"
-            data-titled="1" title="${on
-              ? "Stop drawing the difference from the compared version over these lines"
-              : "Draw the difference from the compared version over these lines"}"
+  const on = !!state[spec.key];
+  return `<button class="linkbtn chgswitch" ${spec.attr}="1" aria-pressed="${on}"
+            data-titled="1" title="${on ? spec.on : spec.off}"
           >${on ? "◆" : "◇"} changes</button>`;
 }
 
@@ -6917,7 +7284,7 @@ function codeList() {
       ${back}
       <span class="codepath mono" title="${esc(state.codeFile)}">${esc(baseOf(state.codeFile))}</span>
       ${f ? `<span class="codemod">${esc(f.module)}</span>` : ""}
-      ${overlaySwitchHtml()}
+      ${overlaySwitchHtml("code")}
       <button class="linkbtn" data-codeopen="1"
               title="Open this file in the centre pane, with its columns">open ▸</button>
     </div>
@@ -6940,12 +7307,21 @@ const NAV_GROUPS = [
          The third state is the one worth writing down -- a search too broad to open
          anything must say that is why nothing opened, or the closed packages read as a
          control that failed. */
-      if (!filtered) return `${total.toLocaleString()} in ${pkgs} — open one, or search`;
+      /* The comparison's own line, beneath the count and never folded into it. Two
+         different questions -- how many routines are here, and what the comparison says
+         about them -- and rule 32 says a number must be named after what it measures. */
+      const chg = routineChangeNote();
+      /* `chgnote` beside it, which is the class every other place the comparison speaks in
+         words already carries -- so the inline `<code>` sizing is one rule rather than two
+         answers. `nav-chgnote` adds only the spacing, because this one sits *inside* a
+         `.nav-note` and a second one would double its padding. */
+      const also = chg ? `<div class="nav-chgnote chgnote">${chg}</div>` : "";
+      if (!filtered) return `${total.toLocaleString()} in ${pkgs} — open one, or search${also}`;
       const q = esc(state.routineQ.trim());
-      return autoOpen
+      return (autoOpen
         ? `${total.toLocaleString()} match “${q}”, in ${pkgs}`
         : `${total.toLocaleString()} match “${q}” — too many to open, in ${pkgs}. `
-          + `Keep typing, or open one.`;
+          + `Keep typing, or open one.`) + also;
     },
     /* A body rather than items, because these rows are two levels deep. Routed through the
        same `navItemHtml`, so a routine row in a package looks like every other row. */
@@ -7340,6 +7716,16 @@ function navItemHtml(i) {
         i.sub ? `<span class="navsub">${esc(i.sub)}</span>` : ""}
       ${esc(i.label)}<span class="n${i.dot && i.n ? " num sevcount " + esc(i.dot) : ""}"
         ${i.id ? `id="${esc(i.id)}"` : ""}>${esc(String(i.n))}</span>
+      ${/* **After the count, and that is not a style choice.** `dressNavItems` gathers a
+            row's loose text into a `.navlabel` and re-inserts it immediately *before* the
+            `.n` span -- so an element written between the label and the count comes out in
+            front of the name. The file rows learnt this the expensive way: the chip landed
+            inside the path and the row read `mensores/scriba/ \u25cb _queue.py`, a glyph
+            inside a directory (rule 71). Placed last it survives that move and lands in a
+            column of its own down the right-hand edge. */""}
+      ${i.chg && i.chg.glyph
+        ? `<span class="${esc(i.chg.cls.trim())}" aria-hidden="true">${i.chg.glyph}</span>`
+        : ""}
     </button>`;
 }
 
@@ -7500,6 +7886,7 @@ const PERSISTED = [
   "nodeSize", "spreadX", "spreadY", "spreadZ", "collapseUnused",
   "searchCase", "searchWord", "searchRegex",
   "panels", "inspectorAuto", "navWidth", "codeWidth", "codeFile", "codeOverlay",
+  "tableOverlay",
   "navGroups",
   "navOpen", "navCap",
   "showPlates", "picks", "graphTheme", "edgesInMotion", "pointerShown", "pointerColor", "pointerPlace", "reticuleShown", "focusLocked",
@@ -8025,6 +8412,7 @@ function navHoverSkeleton(row) {
   const plate = pkgBtn
     ? ((pkgBtn.querySelector('[data-nav="pkg"]') || {}).dataset || {}).navid || ""
     : "";
+  const chg = routineChip(row.dataset.navid || "");
 
   return `
     <div class="hc-head">
@@ -8036,6 +8424,13 @@ function navHoverSkeleton(row) {
       ${fan ? `<span class="hc-fan" title="callers and callees, one hop">${esc(fan)}</span>` : ""}
       ${plate ? `<span class="hc-plate">${esc(plate.replace(/^pkg:/, ""))}</span>` : ""}
     </div>
+    ${/* Where the mark's sentence lives, and it has to live somewhere. A routine row is
+          `data-card`, so `dressNavItems` leaves its `title` alone and there is no native
+          tooltip to hang the words on -- and putting one on the glyph itself would render
+          the tiny unreadable thing this card replaced, on top of the card. It is free: the
+          chip is read from an answer the page already holds, so it paints in the same frame
+          as the pointer event like everything else in this skeleton. */""}
+    ${chg.title ? `<div class="hc-chg${esc(chg.cls)}">${esc(chg.title)}</div>` : ""}
     <div class="hc-rest"></div>`;
 }
 
@@ -9440,9 +9835,22 @@ async function boot() {
   loadFiles().then(() => { if (state.codeFile) return loadCodeFile(state.codeFile); })
              .then(buildNav)
              .catch(err => { state.navNote = `could not read the file list: ${err.message}`; });
-  loadRoutines().then(buildNav).catch(err => {
+  /* **`render()` as well as `buildNav()`, and the centre is the half that was missing.**
+   *
+   * `ROUTINES` feeds two things -- the navigator's routine list and table mode -- and only
+   * the first of them was repainted when it arrived. So a reader whose centre view is the
+   * table when the page opens got a table of nought rows under "Reading the routine
+   * list…", permanently: the list had arrived, the navigator showed all 4,733 of them, and
+   * nothing ever repainted the pane that was waiting. A message that is true at the
+   * instant it is written and never comes back is worse than a blank.
+   *
+   * Predates the change marks and was found by driving those, then confirmed against
+   * `HEAD` rather than assumed. Rule 35's family: the array is assigned, and the view that
+   * reads it is never asked again. */
+  loadRoutines().then(() => { buildNav(); render(); }).catch(err => {
     console.error("DunneFlow: the routine list could not be read:", err);
     buildNav();
+    render();
   });
 }
 

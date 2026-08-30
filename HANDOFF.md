@@ -2993,3 +2993,86 @@ whole-block strip that is unsafe in JavaScript is exact there.
 unimplemented. **Next:** the ordering — `--revision`, an explicit direction control, and
 capture order stated *as* capture order — then the reading end, then the code viewer's diff
 view, whose file-level half the pairing above has already made free.
+
+### Paused 2026-08-30, after the path work
+
+`output/mensores` is migrated and verified; working tree clean; all three gates green.
+
+**The next chunk is the ordering, and it is a wrong answer on screen today.** Tom settled
+its shape this session, in answer to "who says which of two trees is older":
+
+> *"I agree with 3 — Both. If the reader doesn't declare, we do our best and say that, and
+> allow them to choose otherwise for a future run if they don't like the results. Sometimes
+> the code will be so poorly documented that the user just can't tell which is older or
+> newer — that's ok. The difference is the important part, and we can call that out on
+> every screen."*
+
+So: the reader may declare, the tool defaults to what it can actually see, and it never
+claims more than that. Concretely, and in the order they unblock each other.
+
+1. **Demonstrate the inversion.** Read from the code and still not run:
+   `revisions.known()` sorts by *filename* — the instant the snapshot was captured, newest
+   first — and `_r_changes` takes `graphs[0]` as the later end. Analyse an old copy this
+   afternoon and it becomes the *later* revision, so the worklist reports the old code's
+   absences as **added** and its presences as **removed**, inverted, confidently, with no
+   symptom. Analyse `../society-2026-08-26/src` into a scratch copy of a program directory
+   that already holds the 29th and read `/api/changes`.
+
+2. **`--revision` on `analyze`.** Still unimplemented, and it is where a reader declares
+   which point in time a tree *is* — as opposed to when it was captured, which is all the
+   store records. The two Mensores revisions were captured twenty-nine seconds apart and
+   hold trees three days apart, which is the whole argument in one line.
+
+3. **State capture order as capture order.** The menu must say "captured first", never
+   "earlier": one is a fact this store holds and the other is an inference it cannot make.
+   Design rule 1 — a claim the tool cannot support is a filter on the truth.
+
+4. **A direction control on the pair.** The pair becomes `A → B` with reversing as a
+   control rather than a re-analysis. This is the same control the reading end needs, which
+   is why it comes before it rather than after.
+
+**Then the reading end**, unchanged and still opening with its cost decision: `serve()`
+builds the payload, the 628-file code list, both vocabulary lanes and the cover from one
+graph opened at boot — the measured 10.2 s — so switching the displayed revision means
+paying that per switch or holding two sets live.
+
+**Then the code viewer's diff view.** Tom asked for it this session and said it can wait.
+It is **two lanes and only one of them is faked**:
+
+| Lane | What it diffs | How |
+|---|---|---|
+| **Source** | the bodies, line by line | genuine `difflib` — `source.db` holds both revisions' bodies whole |
+| **Facts** | routines, calls, boundaries, SQL, params | `changes.py`, already built |
+
+The second is the one nothing else can give you — `changes.py` says so in its own preamble,
+and the four routines that stopped resolving `queue.claim` without being edited are
+invisible to a text diff. The **file-level** half is now free: 613 identical, 12 modified,
+3 added, 0 removed from one query with zero body reads, which also says which twelve files
+are worth the expensive lane.
+
+**One question of Tom's is open and was never answered.** *"The difference is the important
+part, and we can call that out on every screen"* — I asked what shape that takes (a
+persistent strip in the toolbar naming both ends and the direction, visible in the glossary
+and code browser as much as the worklist; or something lighter that appears only where a
+number could be misread) and the conversation moved to absolute paths before he answered.
+**Ask before building it.**
+
+**One earlier ask is now reshaped rather than owed.** *Selecting a version from the
+source-directory control* was on the list; that control is a **readout** now and a path is
+not a key, so the ask should be put back to Tom rather than built as originally stated.
+
+*Still owed, unchanged:* the rendered markdown is not revision-named, so a second analysis
+overwrites the first's map; the navigator's search box pinned-when-open / icon-when-closed
+(decided 2026-08-30, not built); `m.<module>` as a language feature, with research owed on
+prior art first; `CURIOSITIES`; the worklist's two jump buttons; the two vocabulary-lane
+precision defects; per-plate sphere scaling and stack orientation; packaging as a binary.
+One question never answered: **what is an occurrence for LOST_EDGE** — the 142 callers, or
+the rival definitions? 93 of Mensores' 106 findings are LOST_EDGE, so it decides the
+feature. And the blank-graph fix (rule 49) is still reasoned and guarded rather than seen.
+
+*One practical note.* The pre-flight backup of the un-migrated stores was written to this
+session's scratchpad, which is ephemeral and will be gone. That is acceptable and is said
+rather than hidden: the migration is verified, idempotent, and re-derivable — both source
+trees still exist, so the worst case is a re-analysis rather than a loss. `source.db`'s
+bodies were never at risk; `prune_missing` leaves blobs alone and the migration only
+rewrote the `paths` mapping.

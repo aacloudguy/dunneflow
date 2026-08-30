@@ -210,10 +210,22 @@ file from disk. Removing the served root turned its filler into rule 44 exactly 
 control reading a field nothing sends, painting an empty box beside its own label — which
 is what looking caught.
 
-**Next, unchanged and now unblocked:** the ordering (`--revision`, an explicit direction
-control, capture-order stated *as* capture order), then the reading end, then the code
-viewer's diff view — text lane and fact lane, with the file-level pairing above already
-free.
+**Paused here. The next chunk is the ordering, and it is a wrong answer on screen today** —
+see `HANDOFF.md`, "Paused 2026-08-30, after the path work", which carries the four steps in
+the order they unblock each other. In short: demonstrate the inversion (capture order is
+not code chronology, and `_r_changes` takes the newest *capture* as the later end), then
+`--revision` so a reader can declare, then say "captured first" and never "earlier", then a
+direction control on the pair — which is the control the reading end needs anyway.
+
+Then the reading end, with its 10.2 s-per-switch cost decision. Then the code viewer's diff
+view: **two lanes, and only one is faked** — real `difflib` over the bodies `source.db`
+already holds, beside `changes.py`'s fact diff, which is the half nothing else can give.
+
+**Open, and never answered:** Tom said *"the difference is the important part, and we can
+call that out on every screen."* What shape that takes was asked and not answered before the
+conversation moved on. **Ask before building it.** And *selecting a version from the
+source-directory control* is reshaped rather than owed — that control is a readout now and a
+path is not a key, so put it back to him rather than building the original ask.
 
 ## What we were doing immediately before
 

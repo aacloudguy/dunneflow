@@ -3610,6 +3610,18 @@ colour-channel decision to Tom before building that one**; design rule 4 says co
 carries one dimension at a time, so a comparison should *take over* the channel rather than
 paint red and green over fifty-two plate hues.
 
+*What `6e` hands this chunk.* The difference channel is a real colour now, chosen by the
+reader as one of three sets, so anything an overlay draws in `--diff-gone` / `--diff-new`
+gets that choice for free and needs no palette of its own — which is the whole reason the
+sets are CSS rather than a table in a script. Two things follow. The **tone must come from
+`diffWords()`**, never from the band key or the side: `.tone-gone` / `.tone-new` are the
+classes, and a guard asserts both sides derive their tone from which version is newer.
+And when the graph starts reading `--diff-*`, **`applyPalette()` must push the palette to
+the stack** — it deliberately does not today, because `cssPalette()` reads no token a set
+overrides and a repaint that changes nothing is waste.
+`test_a_palette_token_the_graph_reads_must_reach_the_graph` derives that implication from
+both sides and will fail the moment it becomes true, so it cannot be forgotten (rule 36).
+
 *Unchanged from before, and none of it blocked by the above:* the rendered markdown is not
 revision-named, so a second analysis overwrites the first's map; `--revision` on `analyze`
 is still unimplemented (and is now a smaller question than it was — a version is read from

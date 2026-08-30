@@ -3915,6 +3915,21 @@ foreshortens into the same coin-on-edge rule 22 rejects, and text on it foreshor
 it. There is no third option that is obviously right, which is why this is `To be
 determined` and should stay that way until something is on screen.
 
+***The bar it has to clear, and Tom set it:*** *"The goal of the Mermaid diagrams is to aid
+in understanding, so they must be easy to read or we have failed."* That is the acceptance
+test, and it is stated before any renderer exists on purpose. A diagram that is
+technically drawn and cannot be read has not half-succeeded — by this bar it has failed,
+and it should be withdrawn rather than shipped with a caveat. It is `CLAUDE.md`'s own
+opening applied to a view: judge the change by whether it helps someone orient, not by
+whether it emits a picture.
+
+Two consequences follow immediately. **Legibility outranks completeness here**, which is
+the one place in this tool that is true — rule 8 bounds a *diagram* precisely because a
+picture of 4,500 routines is not a picture, and the complete list sits beside it. And it
+settles the billboarding question empirically rather than by argument: whichever of the
+two can be read wins, and if neither can at a useful number of nodes, the answer is that
+the number of nodes is wrong rather than that the projection is.
+
 *The constraint that shapes the whole thing.* Rule 18 keeps nodes at **1.4 to 3.6 pixels**,
 and the reason is measured rather than aesthetic: any radius that reads as a disc fuses
 9,874 of them into a solid mass, and rule 22's own note records that at 14x they occlude

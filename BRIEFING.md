@@ -625,7 +625,9 @@ rectangles or circles (a Setting), linking between plates, with the dimming and 
 card carried over unchanged. Its projection question is already answered by design rule 20
 (orthographic, for Tom's own reason); whether to billboard a *labelled* rectangle the way
 rule 22 billboards a dot is open, and Tom says so. Rule 18 is the constraint that shapes
-it: a node that carries readable text cannot be all 9,874 at once.
+it: a node that carries readable text cannot be all 9,874 at once. **Tom's bar, and it is
+the acceptance test:** *"they must be easy to read or we have failed"* — so a diagram that
+is drawn and cannot be read is withdrawn, not shipped with a caveat.
 
 **Still owed from before, unchanged:** `CURIOSITIES`; the worklist's two jump buttons (a
 server change — `anomalies.py` carrying the node ids it already knows); the two

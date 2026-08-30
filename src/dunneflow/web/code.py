@@ -47,24 +47,18 @@ def _rows(store: Store, sql: str, args: dict[str, Any]) -> list[dict[str, Any]]:
     return [dict(r) for r in store.query(sql, args)]
 
 
-def _short(path: str, root: str) -> str:
-    """The path as a reader should see it: relative to the tree that was analysed.
-
-    Stored paths are absolute, which is right for a store that must find the bytes again
-    and wrong for a screen -- it is one machine's directory layout, and it is the same for
-    all 626 rows, so it costs a column's width to say nothing.
-    """
-    if root and path.startswith(root):
-        return path[len(root):].lstrip("/")
-    return path
+# There is no `_short` here any more, and no `_resolve_path` either. Both existed to
+# reconcile a stored absolute path with the relative one a reader should see -- one
+# shortening it for the screen, the other guessing which spelling a request meant. Paths
+# are stored relative to the tree they were read from, so there is one spelling, it is the
+# one a reader wants, and the reconciliation has nothing left to reconcile.
 
 
 # --------------------------------------------------------------------------- #
 # The file list
 # --------------------------------------------------------------------------- #
 
-def build_files(store: Store, source: SourceStore | None,
-                source_root: str = "") -> dict[str, Any]:
+def build_files(store: Store, source: SourceStore | None) -> dict[str, Any]:
     """Every analysed file, complete and unbounded, with the counts that earn a column.
 
     The spine is the graph's `files` table rather than the sidecar's paths, because the
@@ -87,8 +81,7 @@ def build_files(store: Store, source: SourceStore | None,
     for row in _rows(store, queries.CODE_FILES, {}):
         full = str(row["path"])
         files.append({
-            "path": _short(full, source_root),
-            "full": full,
+            "path": full,
             "module": str(row["module"]),
             "lang": str(row["lang"]),
             "lines": lines_by_path.get(full, 0),
@@ -105,7 +98,6 @@ def build_files(store: Store, source: SourceStore | None,
     return {
         "files": files,
         "total": len(files),
-        "root": source_root,
         "sidecar": source is not None,
         "revision": (source.current_revision() if source is not None else None),
     }
@@ -114,23 +106,6 @@ def build_files(store: Store, source: SourceStore | None,
 # --------------------------------------------------------------------------- #
 # One file
 # --------------------------------------------------------------------------- #
-
-def _resolve_path(store: Store, asked: str, source_root: str) -> str | None:
-    """Take a short path or an absolute one, and answer with the one the store holds.
-
-    Two spellings reach here -- the short path this module hands the client, and the
-    absolute one every other endpoint uses because that is what the store records. Guessing
-    which was meant would be a branch on a heuristic; asking the store is one query and
-    cannot be wrong.
-    """
-    if _rows(store, "SELECT 1 FROM files WHERE path = :p", {"p": asked}):
-        return asked
-    if source_root:
-        joined = source_root.rstrip("/") + "/" + asked.lstrip("/")
-        if _rows(store, "SELECT 1 FROM files WHERE path = :p", {"p": joined}):
-            return joined
-    return None
-
 
 def _place(text: str, needle: str) -> int | None:
     """The column of `needle` in `text`, but only when there is exactly one of it.
@@ -198,8 +173,8 @@ def _link_spans(lines: list[str], calls: list[dict[str, Any]],
     return placed, dropped
 
 
-def build_file(store: Store, source: SourceStore | None, asked: str,
-               source_root: str = "") -> dict[str, Any]:
+def build_file(store: Store, source: SourceStore | None,
+               asked: str) -> dict[str, Any]:
     """One file, whole, with its links and its margin.
 
     Three absences, told apart rather than blurred, exactly as `/api/source` tells them
@@ -208,21 +183,21 @@ def build_file(store: Store, source: SourceStore | None, asked: str,
     """
     if not asked:
         return {"available": False, "reason": "no path asked for"}
-    full = _resolve_path(store, asked, source_root)
-    if full is None:
+    full = asked
+    rows = _rows(store, "SELECT module, lang, errors FROM files WHERE path = :p",
+                 {"p": full})
+    if not rows:
         return {"available": False, "file": asked,
                 "reason": "this map did not analyse that file"}
-    meta = _rows(store, "SELECT module, lang, errors FROM files WHERE path = :p",
-                 {"p": full})[0]
-    short = _short(full, source_root)
+    meta = rows[0]
 
     if source is None:
-        return {"available": False, "file": short, "full": full,
+        return {"available": False, "file": full,
                 "module": str(meta["module"]),
                 "reason": "no source sidecar beside this map"}
     body = source.text(full)
     if body is None:
-        return {"available": False, "file": short, "full": full,
+        return {"available": False, "file": full,
                 "module": str(meta["module"]),
                 "reason": "the sidecar does not hold this file"}
 
@@ -261,7 +236,7 @@ def build_file(store: Store, source: SourceStore | None, asked: str,
 
     return {
         "available": True,
-        "file": short, "full": full,
+        "file": full,
         "module": str(meta["module"]), "lang": str(meta["lang"]),
         "errors": str(meta["errors"] or "[]"),
         "first": 1,

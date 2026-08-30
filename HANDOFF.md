@@ -2870,3 +2870,126 @@ pair has a reading end and the map shows it; nothing in that says the reading en
 later one. Reading an old copy and comparing it forward to the current tree is the same
 feature pointed the other way, and it is the shape Tom's case actually wants: *this is what
 we were handed — what has happened since?*
+
+**6a. Built 2026-08-30: stored paths are relative, and the root is not recorded.** Tom's
+ask, arriving in the middle of a conversation about the reading end and displacing it —
+correctly, because it turned out to be underneath the layer work rather than beside it.
+
+*His three reasons.* An absolute path leaks information about a system; users move files
+to manage disk space; and copying a directory from one system to another breaks
+everything. All three are about a program directory being a thing somebody can **hand
+over**, which is what this tool produces.
+
+*The fourth, found by surveying before proposing, and the one that mattered here.* Two
+revisions read from two different trees give the same file two unrelated keys. Joined as
+stored, Mensores' pair read **0 identical, 0 modified, 628 added, 625 removed**. Stripped,
+it is **613 identical, 12 modified, 3 added, 0 removed** — one query, zero body reads,
+because the sidecar is content-addressed and a hash comparison *is* the file-level diff.
+The one question two revisions exist to ask could not be asked.
+
+*A fifth, in the store nobody can rebuild.* The tree a revision was read from was recorded
+**only** in `graph.meta.source_root` and `docs.meta.docs_root` — the two stores that get
+discarded on a fingerprint change — while the bodies live in the one that never is (rule
+25). One schema bump from unrecoverable, for exactly the sealed snapshots sealing exists
+to protect.
+
+*The origin was one line, and it had been announcing itself for as long as it existed:*
+
+```python
+rel = str(path)                     # named `rel`, holding the absolute path
+module = module_name(path, root)    # the next line already computes the relative form
+```
+
+`FileFacts.path` flows through one choke point, `store.write_file_facts()`, into eighteen
+tables. `extractors/docs/__init__.py` had the identical shape — `rel` computed, `str(path)`
+stored.
+
+*Three things made it cheaper than it looked, and all three were checked rather than
+assumed.* **Identity is safe**: `make_id` derives from module and qualname and
+`module_name` was already root-relative, so a move changes no id and this is a
+representation change, not a re-interpretation. **Nothing at read time opens a stored
+path**: bodies come from `source.db` by content hash. And **the strip already existed ten
+times** — nine identical `_rel()` clones plus `_short()` — so storing the relative form
+was a *net deletion*. Those clones were not the harmless no-ops they looked like:
+`Path("a/b.py").resolve()` resolves against the working directory, so run from inside the
+analysed tree they would have silently prepended the intervening directories to every path
+on every page.
+
+*Tom's two decisions.* **Migrate in place** — a sealed snapshot is kept precisely so it
+can be read after its tree is gone, and re-analysis would orphan exactly those. And
+**record nothing**, his reasoning being that only the repo-named directory is stable while
+the rest carry dates or version suffixes and are ephemeral, so compelling the reader to
+name one is expected. Asked whether to build a binding now or defer it, he chose defer:
+nothing opens a file from disk, so nothing needs one.
+
+*What it cost and what it bought.* `dunneflow migrate` rewrote **115,546 paths across five
+stores in 1.2 s**. A move became free — **0 cache hits and 628 files pruned** under the old
+key, **628 cached and nothing pruned** under the new one, measured both ways rather than
+argued. And the acceptance test that no unit test can give: `output/mensores` copied to a
+path that has never existed on this machine and served from there — cover, routine list,
+code browser, search, citations, both revisions and the change worklist, no root bound and
+none needed.
+
+*Rules 60, 61 and 62.* **61 is the one to read.** `entrypoints_from_packaging` reads
+`[project.scripts]` and writes rows directly, never through the extractor — so making the
+extractor relative moved 54,746 rows and left **four** absolute, in the one place
+`CLAUDE.md`'s own ground truth lives. 54,746 of 54,750 looks exactly like success, and no
+unit test covered it because the sample program has no `pyproject.toml`. Found by scanning
+**every column of every table in every store** for the analysed root rather than the
+columns the change had touched. The same scan proved the only absolute strings left
+anywhere are paths quoted inside Society's own handoff documents, which are content and
+stay whole (rule 8). Its companion: those rows land in `COALESCE(r.file, e.file)`, the same
+column as a routine's file, and a `src/` layout puts `pyproject.toml` *above* the code — so
+the answer is `../pyproject.toml`, and the migration needed `relpath`, not a prefix strip
+that cannot express `..`. The first version stripped only, and reported a five-figure
+success over four rows it had missed.
+
+**62** is the delicate one and is written down as such: editing the extractors moves
+`rules_fingerprint()`, so a correctly migrated graph is one no reader will open. The
+migration re-stamps `meta.extractor` — defensible **only** because it performs exactly the
+transformation the new fingerprint stands for, and gated on one specific named prior value
+so it never becomes a general licence. The *paths are relative* marker is its own meta key
+rather than the schema version, because bumping that discards the graph, which is the
+outcome migrating in place exists to avoid.
+
+*Two defects found by looking, neither caused by this work.*
+
+- **The cover has reported `0 lines` for every program since revisions landed.** `_lines`
+  asked `WHERE p.revision = ''` — the legacy revision, from before a snapshot had a name.
+  Mensores is 186,786. Nothing failed and nothing was empty: a zero on the first screen
+  reads as "this program has no source", which is a claim and a wrong one. Found by serving
+  a copied program directory and reading the cover.
+- **The `source directory` control was filled by nothing and listened to by nothing.** It
+  is a **readout** now — `not bound — none needed here` — and becomes the binding when
+  something genuinely opens a file from disk. A `<div>`, with no `aria-expanded` to toggle
+  and no pointer cursor, because a control that looks pressable and changes nothing is
+  design rule 16's defect.
+
+*And one I introduced, which is the most useful thing here.* Removing the served root left
+`applySourcePath()` reading `STATS.source_root` and writing `""` into that readout on every
+load — **rule 44 exactly**, an empty box beside a label still reading SOURCE DIRECTORY,
+nothing thrown. I had cleared it as safe on a `grep` of `shell.js` that returned nothing.
+
+**`grep` had silently decided the 412 KB file was binary.** `file` calls it UTF-8 text;
+without `-a`, `grep` answered "no matches" for `srcPath`, `getElementById` and
+`source_root`, all three of which are in it. Rule 43 in the instrument for the fifth time
+in three sessions, and the cheapest one yet to have avoided — the fix is `grep -a` and
+treating "no matches" in a large file as a claim to check. Caught by driving the page and
+looking at the toolbar, which is the habit that has now paid for itself in three
+consecutive sessions.
+
+*Guards.* A new `tests/test_migrate.py` — fifteen — plus two on the readout. Run against
+the defects they were written from and against half-working versions, with the baseline
+proved green first (rule 59): **9/9** and then **5/5** mutations killed. Two of the readout
+guards had to be fixed before they caught anything: one tripped on the prose explaining the
+defect (`_code()` blanks comment *lines*, and a `/* */` block with plain indented
+continuation is invisible to it — the fourth time in this file), and one matched a selector
+only where it sat immediately before its `{`, so it missed
+`.srcpath[aria-expanded="true"] .srcpath-v { … }`, which is the exact shape that was there.
+CSS now has its own `_css_code()`: with no template literals and no nested comments, the
+whole-block strip that is unsafe in JavaScript is exact there.
+
+*Owed, unchanged:* the rendered markdown is not revision-named; `--revision` is still
+unimplemented. **Next:** the ordering — `--revision`, an explicit direction control, and
+capture order stated *as* capture order — then the reading end, then the code viewer's diff
+view, whose file-level half the pairing above has already made free.

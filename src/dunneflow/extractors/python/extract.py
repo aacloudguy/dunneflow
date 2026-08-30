@@ -1128,9 +1128,32 @@ def extract_file(path: Path, root: Path, src: str | None = None) -> FileFacts:
     """
     if src is None:
         src = path.read_text(encoding="utf-8", errors="replace")
-    rel = str(path)
+    # **Relative to the analysed root, and stored that way.** An absolute path is one
+    # machine's directory layout: it leaks that layout to anyone the store is handed to,
+    # it breaks when the tree is moved to free disk space, and it breaks outright when a
+    # program directory is copied to another machine. Worse for this tool specifically,
+    # two revisions read from two different trees give the same file two unrelated keys,
+    # so nothing can pair a file across points in time -- which is the one question two
+    # revisions exist to ask.
+    #
+    # Nothing needs the absolute form back. Bodies are read from `source.db` by content
+    # hash, never by opening a path, and the only step that touches the disk is analysis,
+    # which is handed the root as an argument. `module_name` below has computed the same
+    # relative path since the day it was written; this line said `rel` and did not.
+    outside = ""
+    try:
+        rel = str(path.resolve().relative_to(root.resolve()))
+    except ValueError:
+        # Unreachable via `discover()`, which only yields files under `root`. Recorded
+        # rather than swallowed: a fallback that quietly stores the absolute path again
+        # would reintroduce the defect with no symptom, which is the shape this project
+        # keeps paying for.
+        rel = str(path)
+        outside = f"outside the analysed root {root}: stored absolute"
     module = module_name(path, root)
     facts = FileFacts(path=rel, lang="python", module=module, content_hash=hash_source(src))
+    if outside:
+        facts.errors.append(outside)
 
     try:
         tree = ast.parse(src, filename=str(path))

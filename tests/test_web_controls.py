@@ -37,6 +37,19 @@ def _attrs(html: str, attr: str) -> set[str]:
     return set(re.findall(rf'{attr}="([^"]+)"', html))
 
 
+def _css_code(css: str) -> str:
+    """CSS with its comments removed, so a check reads rules and not prose.
+
+    The JavaScript `_code()` blanks comment *lines* and deliberately goes no further: a
+    general stripper there has to track template literals, and a first attempt ate their
+    bodies -- which is where the code being checked lives. **CSS has neither template
+    literals nor nested comments**, so the whole-block strip that is unsafe there is exact
+    here, and it catches the case line-blanking cannot: a comment whose continuation lines
+    are plain indented prose naming the selector it is saying was removed.
+    """
+    return re.sub(r"/\*.*?\*/", "", css, flags=re.S)
+
+
 def _js_set(name: str) -> set[str]:
     """Read a `new Set([...])` literal out of the shell without executing it."""
     js = _read("shell.js")
@@ -3974,3 +3987,56 @@ def test_a_chosen_revision_that_is_gone_is_dropped_and_said_out_loud() -> None:
         "revNote is set and never rendered. The Changes group's note is where the pair "
         "lives; a note nothing paints is the silent filter design rule 1 forbids."
     )
+
+
+# --------------------------------------------------------------------------- #
+# The source-directory readout
+# --------------------------------------------------------------------------- #
+
+def test_the_source_directory_readout_is_not_overwritten_by_the_client() -> None:
+    """Rule 44, and this one was introduced and then found by *looking*.
+
+    `applySourcePath()` read `STATS.source_root` and each revision's `source_root` and
+    wrote the result into `#srcPathV` with `innerHTML`. When the server stopped sending
+    those fields — because a stored root is one machine's directory layout — the function
+    went on running and wrote `""`: an empty box beside a label still reading SOURCE
+    DIRECTORY, on every load. Nothing threw, no test failed, and the markup was correct
+    the whole time.
+
+    Both halves are asserted, because either alone passes while the box is blank: the
+    static text must be *in* the markup, and nothing may write over it.
+    """
+    html, shell = _read("index.html"), _code(_read("shell.js"))
+    assert 'id="srcPathV">not bound' in html, "the readout must state its state, not blank"
+    assert "applySourcePath" not in shell
+    assert "source_root" not in shell, "the client must not read a field nothing sends"
+    for writer in ("#srcPathV", "srcPathV"):
+        assert writer not in shell, f"{writer} is written by the client again"
+
+
+def test_the_source_directory_is_a_readout_and_does_not_present_as_a_button() -> None:
+    """Design rule 16: a control that renders but does nothing looks like one that works.
+
+    Nothing binds a source tree yet — nothing at read time opens a file from disk — so
+    this must not offer the affordances of a control. It was a `<button>` with
+    `aria-expanded` and a pointer cursor, all three of which promise a press.
+    """
+    html, css = _read("index.html"), _read("tokens.css")
+    block = html.split('id="srcPath"', 1)[1].split(">", 1)[0]
+    assert "aria-expanded" not in block, "nothing expands; the attribute is a promise"
+    assert '<div class="srcpath" id="srcPath"' in html, "a readout, not a button"
+
+    # Read over the *rules*, never the whole file. The first version of this asserted the
+    # bare selector was absent and failed on the comment saying it had been removed; the
+    # second matched only a selector sitting immediately before its `{`, and so missed
+    # `.srcpath[aria-expanded="true"] .srcpath-v { … }` — a descendant selector, which is
+    # the exact shape that was there. Both are rule 37 in the check rather than the code:
+    # run it against the defect, and against a version where only half the feature works.
+    styles = _css_code(css)
+    rule = styles.split(".srcpath {", 1)[1].split("}", 1)[0]
+    assert "cursor: pointer" not in rule, "a pointer cursor promises a press"
+    assert ".srcpath:hover" not in styles, "a hover lift promises a press"
+    # Styles for states this element no longer has are how a dead control keeps looking
+    # alive; they were removed with the button rather than left behind.
+    assert '.srcpath[aria-expanded="true"]' not in styles
+    assert ".srcpath-was" not in styles

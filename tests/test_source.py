@@ -87,15 +87,15 @@ def test_capture_never_reads_a_body_it_already_holds(tmp_path: Path) -> None:
     s.add_blob(body, h)
     s.commit()
 
-    stats = capture({"/gone/from/disk.py": h}, s)
+    stats = capture({"gone/from/disk.py": h}, s, root=tmp_path)
     assert stats == {"stored": 0, "cached": 1, "missing": 0}
-    assert s.text("/gone/from/disk.py") == body
+    assert s.text("gone/from/disk.py") == body
 
 
 def test_capture_counts_an_unreadable_file_rather_than_raising(tmp_path: Path) -> None:
     """Ingest must never fail on a broken program -- but the shortfall is never silent."""
     s = _store(tmp_path)
-    stats = capture({"/does/not/exist.py": "deadbeef"}, s)
+    stats = capture({"does/not/exist.py": "deadbeef"}, s, root=tmp_path)
     assert stats["missing"] == 1
     assert stats["stored"] == 0
 
@@ -104,9 +104,12 @@ def test_capture_reads_and_stores_a_real_file(tmp_path: Path) -> None:
     f = tmp_path / "real.py"
     f.write_text("value = 42\n", encoding="utf-8")
     s = _store(tmp_path)
-    stats = capture({str(f): hash_source(f.read_text(encoding="utf-8"))}, s)
+    # The key is relative and the root finds the bytes -- the two spellings a capture
+    # legitimately holds at once, and the reason `capture` takes a root it never records.
+    stats = capture({"real.py": hash_source(f.read_text(encoding="utf-8"))}, s,
+                    root=tmp_path)
     assert stats["stored"] == 1
-    assert s.text(str(f)) == "value = 42\n"
+    assert s.text("real.py") == "value = 42\n"
 
 
 def test_prune_forgets_paths_but_keeps_bodies(tmp_path: Path) -> None:
@@ -196,7 +199,7 @@ def test_a_first_capture_opens_a_working_revision_with_an_instant(tmp_path: Path
     bodies had been read, and re-analysing replaced the only snapshot there was.
     """
     s = _store(tmp_path)
-    capture({"/a.py": hash_source("x = 1\n")}, s)          # the file does not exist: fine
+    capture({"a.py": hash_source("x = 1\n")}, s, root=tmp_path)   # no such file: fine
     rows = s.revisions()
     assert len(rows) == 1
     assert rows[0]["state"] == sourcedb.STATE_WORKING

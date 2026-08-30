@@ -5,7 +5,7 @@ It exists so a fresh context can be useful in a few minutes instead of an hour.
 
 | Read | For |
 |---|---|
-| `CLAUDE.md` | The rules. 59 engineering rules and 26 dashboard design rules, each earned from a false result on real code. **Binding.** |
+| `CLAUDE.md` | The rules. 62 engineering rules and 26 dashboard design rules, each earned from a false result on real code. **Binding.** |
 | `HANDOFF.md` | The chronological record — what was built when, what it cost, what broke. ~1,700 lines. Read *sections*, not the whole thing. |
 | **this file** | Where things are, what is done, what we are doing now, what not to re-open. |
 | Artifact `f993d319-d2b7-4217-9130-cdbba698d1bc` | The ratified dashboard design — a complete working UI, the source of truth for every view. Read it with the **Artifact tool**, not from a screenshot. |
@@ -37,6 +37,7 @@ docs   ──► extract ──► docs.db  ──────ATTACH──┘
 | `store.py` | SQLite. **The spine, not an export format.** Nothing holds the program in memory. |
 | `docstore.py` | `docs.db` — parallel to the graph, never inside it. |
 | `sourcedb.py` | `source.db` — file bodies. The one store that is never discarded (rule 25). |
+| `migrate.py` | Stored paths absolute → relative, in place. The prior state it can speak for, named (rules 60–62). |
 | `extractors/python/` | stdlib `ast` + `tokenize` only. No third-party parser. |
 | `extractors/docs/` | Markdown / rST / text, scanned by hand. No markdown library. |
 | `detectors/*.yaml` | **The extension point.** Teach a framework here, not in code. |
@@ -154,6 +155,67 @@ running that program-wide is most of design rule 15's doorway panel. It says hon
 is not computed yet.
 
 ## What we are doing now
+
+**Paths are stored relative — done 2026-08-30, and it moved the ground under the layer
+work.** Tom's ask, and his three reasons: an absolute path leaks one machine's directory
+layout, breaks when a tree is moved to free disk space, and breaks when a program
+directory is copied to another machine. A survey found a fourth that mattered more here —
+two revisions read from two different trees gave the same file **two unrelated keys**, so
+nothing could pair a file with itself across two points in time.
+
+```
+Mensores' pair, joined as stored:  0 identical · 0 modified · 628 added · 625 removed
+                    …and now:    613 identical · 12 modified · 3 added · 0 removed
+```
+
+One query, **zero body reads** — the sidecar is content-addressed, so a hash comparison
+*is* the file-level diff. That is the code viewer's diff view most of the way built, and
+it also says which twelve files are worth the expensive text lane.
+
+**Two decisions of Tom's settle the shape.** Migrate **in place**, not by re-analysis: a
+sealed snapshot exists to be readable after its source tree is gone, and rebuilding would
+orphan exactly those. And **record nothing** — the original root does not ship, because
+only the repo-named directory is stable and everything else is dated or version-suffixed
+and therefore ephemeral, so compelling the reader to name one is expected. Nothing at read
+time needs one anyway: bodies come from `source.db` by content hash, never by opening a
+path.
+
+- **The origin was one line**, and it had been announcing itself: `rel = str(path)`, with
+  `module_name(path, root)` computing the genuine relative form on the next line. One
+  choke point carried it into all eighteen graph tables.
+- **A net deletion.** Nine identical `_rel()` clones plus `_short()` and `_resolve_path()`
+  retired — and they were not the no-ops they looked like: `Path("a/b.py").resolve()`
+  resolves against the *working directory*.
+- **`dunneflow migrate`** rewrote 115,546 paths across five stores in 1.2 s. `output/mensores`
+  is migrated; both revisions open, the worklist still reports 53 added / 0 removed / 18
+  behaving differently, and the ground truth holds both ways.
+- **A move is now free**: 0 cache hits and 628 files pruned under the old key, 628 cached
+  and nothing pruned under the new one.
+- **Verified by handing it over** — `output/mensores` copied to a path that has never
+  existed on this machine and served from there: cover, routine list, code browser, search,
+  citations, both revisions and the change worklist, with no root bound and none needed.
+
+**Rules 60, 61 and 62** came out of it. 61 is the one worth reading: `entrypoints_from_packaging`
+is a second way into the store that never goes through the extractor, so four rows stayed
+absolute — in the one place the ground truth lives — while 54,746 moved, which looks exactly
+like success. Found by scanning **every column of every table in every store**, not the
+columns the change had touched.
+
+**Two defects found by looking, neither caused by the path work.** The cover has reported
+**0 lines** for every program since revisions landed (`_lines` asked for the legacy revision
+`''`; Mensores is 186,786) — fixed. And the `source directory` control had been filled by
+nothing and listened to by nothing since it was written; it is a **readout** now, stating
+`not bound — none needed here`, and becomes the binding when something actually opens a
+file from disk. Removing the served root turned its filler into rule 44 exactly — a live
+control reading a field nothing sends, painting an empty box beside its own label — which
+is what looking caught.
+
+**Next, unchanged and now unblocked:** the ordering (`--revision`, an explicit direction
+control, capture-order stated *as* capture order), then the reading end, then the code
+viewer's diff view — text lane and fact lane, with the file-level pairing above already
+free.
+
+## What we were doing immediately before
 
 **Paused 2026-08-29 with two points in time on disk and the change worklist's engine
 built, guarded and measured — but not yet on screen.** See `HANDOFF.md` 5w.
@@ -475,6 +537,9 @@ Rules 28, 29 and 30.
 | No comparison key contains a **position** — one inserted import would move every fact | `make_id`; `changes.py` |
 | A routine that arrived is not also counted as behaving differently | rule 40; `changes.py` |
 | The search box is a **design-rule-2 pair**: sticky or scrolling, a Setting | Tom, 2026-08-29 |
+| Stored paths are **relative to the tree that was read**; the root is used and never recorded | Tom, 2026-08-30; rule 60 |
+| Legacy stores are migrated **in place**, never rebuilt — rebuilding orphans a snapshot whose tree is gone | Tom, 2026-08-30; rule 62 |
+| A binding is **deferred** until something opens a file from disk; the control says `not bound` | Tom, 2026-08-30; design rule 16 |
 
 ## How to verify — all three, before saying anything is done
 
@@ -506,6 +571,20 @@ standards and must yield **zero** naming rules.
   confident, reproducible and entirely false finding came out of measuring through one.
   Static DOM facts (grid tracks, widths, classes) survive; everything else must be driven
   by a human in a real window. Rule 38.
+- **`grep` can silently answer "no matches" about a file it has decided is binary.**
+  `shell.js` is 412 KB of UTF-8 and `file` calls it text, but `grep` without `-a` returned
+  *nothing* for `srcPath`, `getElementById` and `source_root` — all three of which are in
+  it. Acting on that false negative, a live control reading a field the server no longer
+  sent was declared safe; it rendered an empty box on every load (rule 44). **Use `grep -a`
+  on the client sources**, and treat "no matches" in a large file as a claim to check
+  rather than an answer. Rule 43 in the instrument, and the cheapest one yet to avoid.
+- **A `/* */` block whose continuation lines are plain indented prose is invisible to
+  `_code()`.** It blanks comment *lines* — those starting `/*`, `*` or `//` — and this
+  codebase uses both that style and bare indented continuation. A new guard tripped on the
+  paragraph explaining the defect it was written from, which is the fourth time in this
+  file. Write client comments in the `*`-prefixed style. CSS has its own `_css_code()`:
+  with no template literals and no nested comments, the whole-block strip that is unsafe
+  in JavaScript is exact there.
 - **A guard that checks a name appears has not checked anything happens.** Three guards
   written this session passed against their own defect first time. Run every new one against
   the defect it came from *and* against a half-working version. Rule 37.

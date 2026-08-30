@@ -31,7 +31,14 @@ uv run dunneflow glossary <path>                    # what its words mean, and w
 uv run dunneflow naming   <path>                    # the naming standard, stated and measured
 uv run dunneflow mirror   <path>                    # words the docs define that the code never uses
 uv run dunneflow query    <path> --sql "..."        # ask the graph directly
+uv run dunneflow migrate  <dir>                     # stored paths: absolute -> relative
 ```
+
+`migrate` rewrites a program directory written before paths were relative (rule 60), **in
+place** — 115,546 paths across five stores in 1.2 s on Mensores. In place rather than by
+re-analysis, because a sealed snapshot exists to be readable after its source tree is
+gone and rebuilding would orphan exactly those. A reader refuses an unmigrated store and
+names this command; it never repairs one on the way past (rule 20).
 
 `analyze` reads documentation as well as source, from the package root by default
 (`--docs <path>`, `--no-docs`, `--recheck-docs`).
@@ -1159,6 +1166,80 @@ rule of that number — a blank canvas must say why it is blank — which does e
     so the guard passes, correctly, on a claim narrower than the one being tested. When a
     mutation survives, ask whether the guard is weak or the *mutation* was, before
     changing either.
+
+60. **A stored path is a key before it is a location, and an absolute one is a bad key.**
+    Every path in all three stores was absolute -- 55,434 rows in one graph alone. Three
+    of the costs are about a program directory being a thing somebody can *hand over*: it
+    publishes one machine's directory layout to whoever receives it, it is wrong the
+    moment a tree is moved to free disk space, and it is wrong on every other machine a
+    copy reaches.
+
+    The fourth is the one that mattered here. Two revisions read from two different trees
+    give the same file **two unrelated keys**, so nothing can pair a file with itself
+    across two points in time -- which is the one question two revisions exist to ask.
+    Joined as stored, Mensores' pair read **0 identical, 628 added, 625 removed**. The
+    truth is 613 identical, 12 modified, 3 added, 0 removed, and it costs one query and
+    **zero body reads**, because the sidecar is content-addressed: a hash comparison *is*
+    the file-level diff.
+
+    The origin was one line, and it had been announcing itself: `rel = str(path)`, with
+    `module_name(path, root)` computing the genuine relative form on the very next line.
+    Nothing needed the absolute form back -- bodies are fetched by content hash, never by
+    opening a path, and the only step that touches the disk is analysis, which is handed
+    the root as an argument. So the root is **used and never recorded**, and the reader
+    binds one only when something actually opens a file.
+
+    Two things fell out that say the shape was right. The strip already existed **ten
+    times** -- nine identical `_rel()` clones across the renderers plus `_short()` in the
+    code browser -- so storing the relative form was a net deletion; and those clones were
+    not the harmless no-ops they looked like, because `Path("a/b.py").resolve()` resolves
+    against the *working directory*, so run from inside the analysed tree they would have
+    silently prepended the intervening directories to every path on the page. And a move
+    became free: **0 cache hits and 628 files pruned** under the old key, 628 cached and
+    nothing pruned under the new one, for a move that changed no byte.
+
+61. **A second way into the store must obey the rule the first one was taught.**
+    `entrypoints_from_packaging` reads `[project.scripts]` and writes rows directly; it
+    never goes through the extractor. So making the extractor's paths relative moved
+    54,746 rows and left **four** absolute -- in the one place `CLAUDE.md`'s own ground
+    truth lives, the four declared executables. Nothing failed. 54,746 of 54,750 moving
+    looks exactly like success, and every unit test passed, because the sample program has
+    no `pyproject.toml` and nothing exercised that writer at all.
+
+    Found by scanning **every column of every table in every store** for the analysed root
+    rather than by checking the columns the change had touched. That is the difference
+    between a check that confirms what you did and one that can tell you what you missed;
+    the same scan is what proved the only absolute strings left anywhere are paths quoted
+    inside Society's own handoff documents, which are content and stay whole (rule 8).
+
+    Its companion, and the reason it is a rule about *one meaning per column*: those rows
+    land in `COALESCE(r.file, e.file)`, the same payload column as a routine's file. A
+    `src/` layout puts `pyproject.toml` one directory *above* the code, so the honest
+    answer is `../pyproject.toml` -- and the migration needed the same transform, not a
+    prefix strip, which cannot express `..`. A first version stripped only, and left those
+    four rows absolute in every graph while reporting a five-figure success.
+
+62. **A migration may re-stamp the fingerprint it satisfies, and only that one.**
+    Making paths relative meant editing the extractors, which moves `rules_fingerprint()`,
+    which makes every existing store stale -- so a correctly migrated graph is one no
+    reader will open. The migration therefore re-stamps `meta.extractor` too, and that is
+    defensible **only because it performs exactly the transformation the new fingerprint
+    stands for**: no rule about what counts as a call, a boundary or a constant moved,
+    only the spelling of a column.
+
+    Left general that is a licence to vouch for changes it did not make, so it is **gated
+    on the stored fingerprint being one specific prior value**, named as a constant. Any
+    other is stale for reasons this migration cannot speak to and is refused, naming
+    re-analysis instead. The marker for *have the paths been converted* is its own meta
+    key rather than the schema version, because bumping that **discards** the graph -- and
+    the whole reason to migrate in place is that a sealed snapshot is kept precisely so it
+    can be read after its source tree is gone. Rebuilding would orphan exactly those.
+
+    Two smaller things it settles. A reader must name **which** fix applies: telling
+    someone to re-analyse a snapshot whose tree no longer exists is telling them to do the
+    impossible. And *"the paths are relative"* is **stated in a marker, never inferred
+    from the rows** -- an empty store holds no absolute path to find, and "nothing to see"
+    is not the same claim as "already converted".
 
 ## Anomalies: the discipline
 

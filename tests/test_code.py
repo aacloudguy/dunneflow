@@ -13,38 +13,36 @@ from dunneflow.web.code import _link_spans, _margin, _place, build_file, build_f
 
 
 @pytest.fixture
-def sidecar(analyzed: Store, tmp_path: Path) -> SourceStore:
-    """A sidecar holding every file the sample program was analysed from."""
+def sidecar(analyzed: Store, sample_tree: Path, tmp_path: Path) -> SourceStore:
+    """A sidecar holding every file the sample program was analysed from.
+
+    Two spellings, as `capture` itself has: the stored key is relative, and the tree is
+    joined onto it to find the bytes. The fixture needs `sample_tree` for exactly the
+    reason `capture` needs a root -- reading a body is the one step that touches the disk.
+    """
     src = SourceStore(tmp_path / "source.db")
     for row in analyzed.query("SELECT path FROM files", ()):
-        body = Path(str(row["path"])).read_text(encoding="utf-8")
+        rel = str(row["path"])
+        body = (sample_tree / rel).read_text(encoding="utf-8")
         h = hash_source(body)
         src.add_blob(body, h)
-        src.map_path(str(row["path"]), h, lang="python")
+        src.map_path(rel, h, lang="python")
     src.commit()
     return src
 
 
-def _root(store: Store) -> str:
-    """The analysed tree, from the store where it is recorded and otherwise from the files.
-
-    `analyze` writes `source_root` into the graph's meta; the fixture here calls
-    `analyze_tree` directly and does not, which is worth handling rather than working
-    around — a map built by anything but the CLI is a map with no root, and a browser that
-    only worked with one would be a browser that worked on one caller's output.
-    """
-    recorded = store.get_meta("source_root")
-    if recorded:
-        return recorded
-    paths = [str(r["path"]) for r in store.query("SELECT path FROM files", ())]
-    return str(Path(paths[0]).parent) if paths else ""
+# There was a `_root(store)` here, reading `source_root` out of the graph's meta and
+# falling back to the first file's parent. Nothing records a root any more and no reader
+# needs one: paths are stored relative to the tree they were read from, which is the
+# spelling the screen wants and the spelling that pairs a file with itself across two
+# revisions read from two different trees.
 
 
 # ------------------------------------------------------------------ the list --- #
 
 def test_the_file_list_is_every_analysed_file(
         analyzed: Store, sidecar: SourceStore) -> None:
-    out = build_files(analyzed, sidecar, _root(analyzed))
+    out = build_files(analyzed, sidecar)
     in_store = analyzed.query("SELECT COUNT(*) AS n FROM files", ())[0]["n"]
     assert out["total"] == in_store == len(out["files"])
     assert all(f["held"] for f in out["files"])
@@ -62,9 +60,9 @@ def test_the_file_list_is_not_bounded(tmp_path: Path) -> None:
     for i in range(200):
         store.conn.execute(
             "INSERT INTO files(path, lang, module, content_hash) VALUES(?,?,?,?)",
-            (f"/tree/pkg/mod{i:03d}.py", "python", f"pkg.mod{i:03d}", f"h{i}"))
+            (f"pkg/mod{i:03d}.py", "python", f"pkg.mod{i:03d}", f"h{i}"))
     store.conn.commit()
-    out = build_files(store, None, "/tree")
+    out = build_files(store, None)
     assert out["total"] == 200 == len(out["files"])
     assert out["files"][0]["path"] == "pkg/mod000.py"
 
@@ -75,21 +73,33 @@ def test_the_list_survives_a_map_handed_over_without_its_source(analyzed: Store)
     "This map has no source" and "this map has no files" are opposite claims, and a list
     that went empty without one would state the wrong one.
     """
-    out = build_files(analyzed, None, _root(analyzed))
+    out = build_files(analyzed, None)
     assert out["total"] > 0
     assert out["sidecar"] is False
     assert all(f["held"] is False for f in out["files"])
     assert all(f["lines"] == 0 for f in out["files"])
 
 
-def test_a_path_is_shown_relative_to_the_tree_that_was_analysed(
+def test_a_path_is_stored_relative_to_the_tree_that_was_analysed(
         analyzed: Store, sidecar: SourceStore) -> None:
-    """An absolute path is one machine's directory layout, identical on every row."""
-    out = build_files(analyzed, sidecar, _root(analyzed))
-    f = out["files"][0]
-    assert not f["path"].startswith("/")
-    assert f["full"].startswith("/")
-    assert f["full"].endswith(f["path"])
+    """Relative in the **store**, not merely on the screen — and that is the change.
+
+    It used to be shortened for display over an absolute path in the store, which read the
+    same on this page and was wrong underneath it in three ways: it leaked one machine's
+    layout to anyone the map was handed to, it broke when the tree moved, and it gave the
+    same file two unrelated keys across two revisions read from two different trees.
+
+    Asserted over **every** row rather than the first, because a shortening that worked on
+    one path and not another is exactly what a spot check misses (rule 18: assert the
+    total, not the case).
+    """
+    out = build_files(analyzed, sidecar)
+    assert out["files"]
+    assert all(not f["path"].startswith("/") for f in out["files"])
+    # Nothing hands back an absolute spelling beside it any more. `full` was that spelling.
+    assert all("full" not in f for f in out["files"])
+    stored = [str(r["path"]) for r in analyzed.query("SELECT path FROM files", ())]
+    assert stored and all(not p.startswith("/") for p in stored)
 
 
 # --------------------------------------------------------- placing a link --- #
@@ -160,7 +170,7 @@ def _sample(analyzed: Store) -> str:
 def test_a_file_comes_back_whole_with_its_lines_in_order(
         analyzed: Store, sidecar: SourceStore) -> None:
     """Whole, never a window -- the client bounds what it draws (rule 8)."""
-    d = build_file(analyzed, sidecar, _sample(analyzed), _root(analyzed))
+    d = build_file(analyzed, sidecar, _sample(analyzed))
     assert d["available"] is True
     assert d["first"] == 1
     body = sidecar.text(_sample(analyzed))
@@ -172,7 +182,7 @@ def test_every_link_carries_an_id_the_graph_actually_holds(
         analyzed: Store, sidecar: SourceStore) -> None:
     """Rule 30 from the other side: a control that emits no identity cannot act, and one
     that emits an identity nothing holds is a link to nothing."""
-    d = build_file(analyzed, sidecar, _sample(analyzed), _root(analyzed))
+    d = build_file(analyzed, sidecar, _sample(analyzed))
     assert d["links"], "the sample program has resolvable calls"
     known = {str(r["id"]) for r in analyzed.query("SELECT id FROM routines", ())}
     known |= {str(r["id"]) for r in analyzed.query("SELECT id FROM structures", ())}
@@ -187,7 +197,7 @@ def test_a_link_sits_exactly_on_the_text_it_names(
     A column that is merely plausible looks identical to a correct one, and every guard
     that reads markup would pass on either.
     """
-    d = build_file(analyzed, sidecar, _sample(analyzed), _root(analyzed))
+    d = build_file(analyzed, sidecar, _sample(analyzed))
     for link in d["links"]:
         line = d["lines"][link["line"] - 1]
         a = link["col"] - 1
@@ -199,7 +209,7 @@ def test_the_margin_does_not_state_one_act_twice(
     """Rule 40. A DATABASE boundary already named by a `sql_ops` row on the same line is
     the same act seen by two detectors -- two correct numbers, neither saying what it
     counted."""
-    d = build_file(analyzed, sidecar, _sample(analyzed), _root(analyzed))
+    d = build_file(analyzed, sidecar, _sample(analyzed))
     sql_lines = {m["line"] for m in d["marks"] if m["kind"] == "sql"}
     assert sql_lines, "the sample program runs SQL"
     doubled = [m for m in d["marks"]
@@ -253,7 +263,7 @@ def test_only_a_real_library_call_is_marked_as_leaving(
     The first segment must be a name the file imported, or `out.append` and `payload.get`
     read as libraries. Rule 5: match on something pinned, never on a bare name.
     """
-    d = build_file(analyzed, sidecar, _sample(analyzed), _root(analyzed))
+    d = build_file(analyzed, sidecar, _sample(analyzed))
     lib = {m["label"] for m in d["marks"] if m["kind"] == "library"}
 
     # Exactly one, and every exclusion is visible in what is missing beside it.
@@ -294,7 +304,7 @@ def test_a_definition_is_a_link_and_the_module_scope_is_not(
     held for a reason that had nothing to do with the rule. Rule 42 -- check that the guard
     catches, not that it mentions.
     """
-    d = build_file(analyzed, sidecar, _sample(analyzed), _root(analyzed))
+    d = build_file(analyzed, sidecar, _sample(analyzed))
     assert any(x["kind"] == "module" for x in d["defs"])
     assert any(x["kind"] == "def" and x["label"] == "load_config" for x in d["links"])
 
@@ -307,7 +317,7 @@ def test_a_definition_is_a_link_and_the_module_scope_is_not(
     trap.map_path(path, hash_source(doctored), lang="python")
     trap.commit()
 
-    d = build_file(analyzed, trap, path, _root(analyzed))
+    d = build_file(analyzed, trap, path)
     assert "<module>" in d["lines"][0], "the trap is on the line the module scope claims"
     assert all(x["label"] != "<module>" for x in d["links"])
 
@@ -315,7 +325,7 @@ def test_a_definition_is_a_link_and_the_module_scope_is_not(
 def test_a_definition_span_is_the_whole_routine(
         analyzed: Store, sidecar: SourceStore) -> None:
     """The pane scrolls to a selection and shades its extent, so it needs both ends."""
-    d = build_file(analyzed, sidecar, _sample(analyzed), _root(analyzed))
+    d = build_file(analyzed, sidecar, _sample(analyzed))
     load = next(x for x in d["defs"] if x["name"] == "load_config")
     assert load["line_end"] > load["line"]
     assert "def load_config" in d["lines"][load["line"] - 1]
@@ -330,28 +340,34 @@ def test_the_three_absences_are_told_apart(
     Blurring them is how "we cannot show you this" becomes indistinguishable from "there
     is nothing here", which are opposite claims about the map.
     """
-    root = _root(analyzed)
-    assert "no path asked for" in build_file(analyzed, sidecar, "", root)["reason"]
-    assert "did not analyse" in build_file(analyzed, sidecar, "nope.py", root)["reason"]
-    assert "no source sidecar" in build_file(analyzed, None, _sample(analyzed), root)["reason"]
+    assert "no path asked for" in build_file(analyzed, sidecar, "")["reason"]
+    assert "did not analyse" in build_file(analyzed, sidecar, "nope.py")["reason"]
+    assert "no source sidecar" in build_file(analyzed, None, _sample(analyzed))["reason"]
 
     empty = SourceStore(tmp_path / "empty" / "source.db")
-    d = build_file(analyzed, empty, _sample(analyzed), root)
+    d = build_file(analyzed, empty, _sample(analyzed))
     assert d["available"] is False
     assert "does not hold this file" in d["reason"]
 
 
-def test_either_spelling_of_a_path_finds_the_same_file(
-        analyzed: Store, sidecar: SourceStore) -> None:
-    """The short path this module hands out, and the absolute one the store records.
+def test_there_is_one_spelling_of_a_path_and_an_absolute_one_is_not_it(
+        analyzed: Store, sidecar: SourceStore, sample_tree: Path) -> None:
+    """This replaces a test that two spellings reconciled, because now there is one.
 
-    Guessing which was meant would be a branch on a heuristic; asking the store is one
-    query and cannot be wrong.
+    `_resolve_path` existed to take either the short path the browser hands out or the
+    absolute one the store recorded, and ask the store which was meant. With paths stored
+    relative there is nothing to reconcile — and the guard that matters is the opposite
+    one: an absolute path must be **honestly refused**, not quietly re-joined. A lookup
+    that accepted both spellings again would be the same defect returning by the door it
+    left through.
     """
-    root = _root(analyzed)
-    full = _sample(analyzed)
-    short = build_files(analyzed, sidecar, root)["files"][0]["path"]
-    a = build_file(analyzed, sidecar, full, root)
-    b = build_file(analyzed, sidecar, short, root)
-    assert a["available"] and b["available"]
-    assert a["full"] == b["full"] == full
+    rel = _sample(analyzed)
+    assert not rel.startswith("/")
+    assert build_files(analyzed, sidecar)["files"][0]["path"] == rel
+
+    ok = build_file(analyzed, sidecar, rel)
+    assert ok["available"] and ok["file"] == rel
+
+    absolute = build_file(analyzed, sidecar, str(sample_tree / rel))
+    assert absolute["available"] is False
+    assert "did not analyse" in absolute["reason"]

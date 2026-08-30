@@ -34,9 +34,18 @@ def _lines(source: SourceStore | None) -> int | None:
     """
     if source is None:
         return None
+    # The revision this sidecar reads by default, **asked for** rather than assumed.
+    # This was `WHERE p.revision = ''` -- the legacy revision, from before a snapshot had
+    # a name -- so from the day revisions landed the cover has said "0 lines" about every
+    # program analysed since. Mensores is 186,786. Nothing failed and nothing was empty:
+    # a zero on the first screen reads as a program with no source, which is a claim, and
+    # a wrong one. Found by serving a copied program directory and looking at the cover.
+    revision = source.current_revision()
+    if revision is None:
+        return None
     row = source.conn.execute(
         "SELECT COALESCE(SUM(b.lines), 0) FROM paths p JOIN blobs b ON b.hash = p.hash "
-        "WHERE p.revision = ''"
+        "WHERE p.revision = ?", (revision,)
     ).fetchone()
     return int(row[0]) if row else None
 
@@ -97,7 +106,6 @@ def build(store: Store, source: SourceStore | None, program: str, *,
             "structures": counts["structures"],
             "entrypoints": counts["entrypoints"],
             "analysed": store.get_meta("analysed_at"),
-            "source_root": store.get_meta("source_root"),
         },
         "entrypoints": entrypoints,
         "boundaries": boundaries,

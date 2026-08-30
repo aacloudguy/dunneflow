@@ -24,11 +24,15 @@ def _esc(text: str | None) -> str:
     return " ".join(str(text).split()).replace("|", "\\|")
 
 
-def _rel(path: str, root: Path) -> str:
-    try:
-        return str(Path(path).resolve().relative_to(root.resolve()))
-    except ValueError:
-        return path
+# There was a `path` here, and in eight other renderers -- nine copies of the
+# same four lines, each stripping the analysed root off a stored absolute path so a reader
+# would not be shown one machine's directory layout. Paths are stored relative now, so
+# every one of them had nothing left to strip.
+#
+# They were removed rather than left as harmless no-ops, because they were not harmless:
+# `Path("mensores/cli.py").resolve()` resolves against the *working directory*, so run from
+# anywhere inside the analysed tree the strip would succeed and silently prepend the
+# intervening directories to every path on the page.
 
 
 def render_database(store: Store, out: Path, root: Path, program: str, stamp: str) -> Path | None:
@@ -107,7 +111,7 @@ def render_database(store: Store, out: Path, root: Path, program: str, stamp: st
                 "SELECT * FROM db_columns WHERE tbl = ? AND file = ? ORDER BY idx",
                 (name, t["file"]),
             )
-            where = f"{_rel(t['file'], root)}:{t['line']}"
+            where = f"{t['file']}:{t['line']}"
             if cols:
                 lines.append("| Column | Type | Constraints |\n|---|---|---|")
                 for c in cols:
@@ -124,7 +128,7 @@ def render_database(store: Store, out: Path, root: Path, program: str, stamp: st
                 lines.append(
                     f"| `{_esc(i['name'])}` | `{_esc(i['columns'])}` "
                     f"| {'yes' if i['uniq'] else '—'} "
-                    f"| {_esc(_rel(i['file'], root) + ':' + str(i['line']))} |"
+                    f"| {_esc(i['file'] + ':' + str(i['line']))} |"
                 )
             lines.append("")
 
@@ -157,7 +161,7 @@ def render_database(store: Store, out: Path, root: Path, program: str, stamp: st
         lines.append("<details><summary>Show all</summary>\n")
         lines.append("| Table | Routine | Statement | Where |\n|---|---|---|---|")
         for h in hits:
-            where = f"{_rel(h['file'], root)}:{h['line']}"
+            where = f"{h['file']}:{h['line']}"
             lines.append(
                 f"| `{_esc(h['tbl'])}` | `{_esc(h['qualname'])}` "
                 f"| `{_esc(h['sql'])}` | {_esc(where)} |"

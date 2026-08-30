@@ -20,7 +20,6 @@ from __future__ import annotations
 
 import json
 import socket
-import sqlite3
 import threading
 import time
 import webbrowser
@@ -191,12 +190,6 @@ class _Live:
         # reader is standing on. Computed here because it cannot change while the map is
         # open and a per-request GROUP BY over every file would be a cost paid for nothing.
         self.root: str = root_package(self.store)
-
-        # The tree that was analysed, so a path can be shown relative to it. Absolute paths
-        # are right for a store that must find the bytes again and wrong for a screen: they
-        # are one machine's directory layout, identical on all 626 rows, and they cost a
-        # column's width to say nothing. Read from the store, never assumed.
-        self.source_root: str = self.store.get_meta("source_root") or ""
 
         # The two lanes of the naming standard, filled at start rather than here -- see
         # `serve()`, which pays for them where it can say so.
@@ -412,8 +405,7 @@ class _Handler(BaseHTTPRequestHandler):
         """
         path = (q.get("path") or [""])[0]
         with self._live.lock:
-            self._json(build_file(self._live.store, self._live.source, path,
-                                  self._live.source_root))
+            self._json(build_file(self._live.store, self._live.source, path))
 
     def _r_search(self, q: dict[str, list[str]]) -> None:
         """Search the text of the source, which is the one thing the graph cannot do.
@@ -436,13 +428,11 @@ class _Handler(BaseHTTPRequestHandler):
             if path:
                 self._json(search_in_file(
                     self._live.store, self._live.source, term, path,
-                    case=case, word=word, regex=regex,
-                    source_root=self._live.source_root))
+                    case=case, word=word, regex=regex))
             else:
                 self._json(search_files(
                     self._live.store, self._live.source, term,
-                    case=case, word=word, regex=regex,
-                    source_root=self._live.source_root))
+                    case=case, word=word, regex=regex))
 
     def _r_source(self, q: dict[str, list[str]]) -> None:
         """A span of one file, straight out of the sidecar.
@@ -480,34 +470,6 @@ class _Handler(BaseHTTPRequestHandler):
                     "first": lines[0][0], "last": lines[-1][0],
                     "lines": [{"n": n, "text": t} for n, t in lines]})
 
-    def _source_root_of(self, graph: Path) -> str:
-        """The tree a revision's graph records, read from that graph's own `meta`.
-
-        The served revision is answered from the connection already open — a second
-        read-only handle to a database this process holds open in WAL mode is the 36x
-        slowdown rule 58 came from, and this route is asked at boot before the reader has
-        clicked anything. Every other revision is a file nothing has open, so a plain
-        read-only connection is both correct and cheap; a graph that cannot be read yields
-        the empty string, because "we could not say" and "no source tree" are different
-        answers and only one of them belongs in a toolbar.
-        """
-        if graph == self._live.graph_db:
-            return self._live.source_root
-        if not graph.exists():
-            return ""
-        try:
-            conn = sqlite3.connect(f"file:{graph.resolve()}?mode=ro", uri=True)
-        except sqlite3.Error:
-            return ""
-        try:
-            row = conn.execute(
-                "SELECT value FROM meta WHERE key = 'source_root'").fetchone()
-            return str(row[0]) if row and row[0] else ""
-        except sqlite3.Error:
-            return ""
-        finally:
-            conn.close()
-
     def _r_revisions(self, q: dict[str, list[str]]) -> None:
         """Every point in time this program directory holds, newest first.
 
@@ -532,11 +494,12 @@ class _Handler(BaseHTTPRequestHandler):
                 "files": r.get("paths", r.get("files", 0)),
                 "comparable": graph.exists(),
                 "serving": graph == self._live.graph_db,
-                # The tree this revision was read from, and it is genuinely per revision:
-                # the two here are `society-2026-08-26/src` and `society-2026-08-29/src`.
-                # The toolbar shows one source directory, so with two points in play it
-                # would otherwise name one of them and imply it was both.
-                "source_root": self._source_root_of(graph),
+                # No `source_root`. It used to ride here so the toolbar could name the tree
+                # each revision was read from -- which was a real observation, two points in
+                # play and one path shown implying it was both. The answer turned out to be
+                # that the path should not be stored at all: it is one machine's layout,
+                # wrong the moment anything moves, and a revision is identified by its label
+                # and its instant rather than by where it happened to sit. See `migrate.py`.
             })
         # With no sidecar there is still a directory, and it may hold graphs. Never
         # answer "no revisions" out of a store that simply was not asked.
@@ -546,7 +509,6 @@ class _Handler(BaseHTTPRequestHandler):
                     "revision": revisions.revision_of(g) or "",
                     "state": "", "captured": "", "label": "", "files": 0,
                     "comparable": True, "serving": g == self._live.graph_db,
-                    "source_root": self._source_root_of(g),
                 })
         self._json({"revisions": rows,
                     "comparable": sum(1 for r in rows if r["comparable"])})
@@ -739,7 +701,7 @@ def serve(out_dir: Path, *, port: int = 8787, open_browser: bool = True,
             docs = DocStore(docs_db, writable=False)
         except (ValueError, OSError):
             docs = None
-    live.files = build_files(live.store, live.source, live.source_root)
+    live.files = build_files(live.store, live.source)
     live.naming = measure_naming(live.store)
     live.glossary = bind_glossary(live.store, docs)
     if docs is not None:

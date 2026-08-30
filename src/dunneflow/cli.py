@@ -21,6 +21,7 @@ from pathlib import Path
 from . import revisions
 from .anomalies import BROKEN, INFO, SUSPECT, detect
 from .docstore import DocStore
+from .migrate import MigrationRefused, migrate_program
 from .render.markdown import render_all
 from .resolve.calls import resolve_calls
 from .resolve.cli import resolve_cli
@@ -70,7 +71,6 @@ def cmd_analyze(args: argparse.Namespace) -> int:
     if not args.no_source:
         source = SourceStore(out_dir / "source.db")
         source.set_meta("program", program)
-        source.set_meta("source_root", str(source_root))
         revision = source.open_working()
     else:
         revision = revisions.stamp()
@@ -84,7 +84,15 @@ def cmd_analyze(args: argparse.Namespace) -> int:
     # round, so a graph someone renamed can still say which snapshot it is (rule 30).
     store.set_meta("revision", revision)
     store.set_meta("program", program)
-    store.set_meta("source_root", str(source_root))
+    #
+    # `source_root` is **not** recorded here, and its absence is the decision. It is one
+    # machine's directory layout: it leaks that layout to whoever the map is handed to, it
+    # is wrong the moment the tree is moved, and it is wrong on every machine a copy
+    # reaches. Every path in this graph is relative to it, and nothing at read time needs
+    # it back -- bodies come from `source.db` by content hash, never by opening a path.
+    # The one step that touches the disk is this one, and it is holding the root already.
+    # See `migrate.py`.
+    #
     # When this map was made. The cover says it out loud, because a map is a reading of
     # a program at a moment and a reader who cannot see the moment cannot judge the map.
     store.set_meta("analysed_at",
@@ -108,7 +116,10 @@ def cmd_analyze(args: argparse.Namespace) -> int:
         if (candidate / "pyproject.toml").exists():
             pkg_root = candidate
             break
-    entrypoints_from_packaging(pkg_root, store)
+    # Relative to the analysed tree, like every other stored path -- which for a
+    # `src/` layout means `../pyproject.toml`, because packaging metadata sits
+    # above the code. See the note there.
+    entrypoints_from_packaging(pkg_root, store, relative_to=source_root)
 
     # Documentation is a parallel input, read from the package root because that is
     # where prose lives relative to `src/`. It is never a prerequisite: a program with
@@ -121,7 +132,6 @@ def cmd_analyze(args: argparse.Namespace) -> int:
         doc_store = DocStore(revisions.db_path(out_dir, revisions.DOCS, revision))
         doc_store.set_meta("revision", revision)
         doc_store.set_meta("program", program)
-        doc_store.set_meta("docs_root", str(docs_root))
         doc_stats = analyze_docs_tree(docs_root, doc_store, jobs=args.jobs,
                                       recheck=args.recheck_docs)
         duplicates = doc_store.mark_duplicates()
@@ -180,7 +190,7 @@ def cmd_analyze(args: argparse.Namespace) -> int:
     # is also the store the temporal layers will be built on.
     src_stats = None
     if source is not None:
-        src_stats = capture_source(store.known_hashes(), source,
+        src_stats = capture_source(store.known_hashes(), source, root=source_root,
                                    langs=store.known_langs(), revision=revision)
         sc = source.counts()
         rev = revision
@@ -698,12 +708,62 @@ def build_parser() -> argparse.ArgumentParser:
     rv.add_argument("--at", help="when its bodies were measured, if the graph cannot say")
     rv.set_defaults(func=cmd_revisions)
 
+    mg = sub.add_parser(
+        "migrate", help="rewrite a program directory's stored paths as relative, in place")
+    mg.add_argument("out_dir", help="an analysed program's output directory")
+    mg.set_defaults(func=cmd_migrate)
+
     sv = sub.add_parser("serve", help="open the interactive map in a browser")
     sv.add_argument("out_dir", help="an analysed program's output directory")
     sv.add_argument("--port", type=int, default=8787)
     sv.add_argument("--no-open", action="store_true", help="do not open a browser")
     sv.set_defaults(func=cmd_serve)
     return p
+
+
+def cmd_migrate(args: argparse.Namespace) -> int:
+    """Make every stored path in one program directory relative to its own tree.
+
+    In place, rather than by re-analysis, and that is the point rather than a shortcut: a
+    sealed snapshot is kept so it can be read after its source tree is gone, and rebuilding
+    would orphan exactly those. Nothing about what a fact *is* changes -- only the spelling
+    of a path column -- so this is rule 25's argument applied to a derived store.
+
+    Says what it did per store, because a migration that reports only "done" is one nobody
+    can check, and this one rewrites tens of thousands of rows in a file the reader cannot
+    rebuild.
+    """
+    out_dir = Path(args.out_dir)
+    if not out_dir.is_dir():
+        _emit(f"error: {out_dir} is not a directory")
+        return 2
+    try:
+        report = migrate_program(out_dir)
+    except MigrationRefused as exc:
+        _emit(f"refused: {exc}")
+        return 2
+
+    if not report.stores:
+        _emit(f"no stores in {out_dir} — nothing to migrate")
+        return 1
+    for st in report.stores:
+        if st.already:
+            _emit(f"  {st.path.name}: already relative")
+            continue
+        _emit(f"  {st.path.name}: {st.total:,} paths rewritten "
+              f"across {len(st.rewritten)} columns")
+        for col, n in sorted(st.rewritten.items(), key=lambda kv: -kv[1]):
+            _emit(f"      {n:>8,}  {col}")
+        for col, n in sorted(st.above.items(), key=lambda kv: -kv[1]):
+            _emit(f"      {n:>8,}  {col} — above the analysed tree, now `../…`")
+    done = report.migrated
+    if done:
+        _emit(f"\n{report.total:,} paths are now relative to the tree each store was read "
+              f"from, across {len(done)} stores. The tree itself is no longer recorded "
+              f"anywhere — nothing at read time needs it.")
+    else:
+        _emit("\nnothing to do: every store here already holds relative paths")
+    return 0
 
 
 def cmd_serve(args: argparse.Namespace) -> int:

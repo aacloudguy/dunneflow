@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Any
 
 from .detectors.prose import doc_rules_fingerprint
+from .migrate import META_PATHS, PATHS_RELATIVE, paths_are_relative
 from .schema import DOC_SCHEMA_VERSION, DocFacts
 from .store import StaleGraphError
 
@@ -154,6 +155,10 @@ class DocStore:
         self.set_meta("kind", "docs")
         self.set_meta("doc_schema_version", str(DOC_SCHEMA_VERSION))
         self.set_meta("extractor", self._want())
+        # Relative to the tree this store was read from, and that tree is not
+        # recorded -- see `migrate.py`. Stated rather than inferred from the rows,
+        # because an empty store has no absolute path to find.
+        self.set_meta(META_PATHS, PATHS_RELATIVE)
 
     @staticmethod
     def _want() -> str:
@@ -188,12 +193,19 @@ class DocStore:
         return str(row[0]) != self._want()
 
     def _refuse_if_stale(self) -> None:
-        """A reader never drops. See `Store._refuse_if_stale`."""
-        if self._is_stale():
+        """A reader never drops, and it names **which** fix. See `Store._refuse_if_stale`."""
+        if not self._is_stale():
+            return
+        if not paths_are_relative(self.conn):
             raise StaleGraphError(
-                f"{self.path} was written by a different version of DunneFlow and "
-                f"cannot be read safely -- re-run `dunneflow analyze` to rebuild it"
+                f"{self.path} stores absolute paths, from before DunneFlow made them "
+                f"relative to the tree they were read from -- run "
+                f"`dunneflow migrate {self.path.parent}` to rewrite it in place"
             )
+        raise StaleGraphError(
+            f"{self.path} was written by a different version of DunneFlow and "
+            f"cannot be read safely -- re-run `dunneflow analyze` to rebuild it"
+        )
 
     def _discard_if_stale(self) -> bool:
         """Rule 12, applied to prose.

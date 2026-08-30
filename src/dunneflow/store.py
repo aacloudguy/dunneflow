@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Any
 
 from .detectors import rules_fingerprint
+from .migrate import META_PATHS, PATHS_RELATIVE, paths_are_relative
 from .schema import (
     SCHEMA_VERSION,
     Annotation,
@@ -386,6 +387,11 @@ class Store:
         self.set_meta("kind", "graph")
         self.set_meta("schema_version", str(SCHEMA_VERSION))
         self.set_meta("extractor", f"{SCHEMA_VERSION}:{rules_fingerprint()}")
+        # Paths in this graph are relative to the tree it was read from, and the tree is
+        # deliberately not recorded -- see `migrate.py`. Stated rather than assumed,
+        # because a store with no rows has no absolute path to find and "empty" must not
+        # be read as "already relative".
+        self.set_meta(META_PATHS, PATHS_RELATIVE)
 
     def _refuse_wrong_kind(self) -> bool:
         """Refuse to open a database that is not a code graph.
@@ -431,12 +437,26 @@ class Store:
         return str(row[0]) != want
 
     def _refuse_if_stale(self) -> None:
-        """A reader never drops. It says the map is stale and how to rebuild it."""
-        if self._is_stale():
+        """A reader never drops. It says the map is stale and **which** fix applies.
+
+        Two different fixes, and naming the wrong one is expensive. A graph written before
+        paths became relative needs `dunneflow migrate`, which rewrites it in place and
+        keeps a sealed snapshot whose source tree may be long gone; telling that reader to
+        re-analyse would ask them to rebuild from a tree they do not have. Anything else
+        is stale for reasons no migration can speak for, and does need re-analysis.
+        """
+        if not self._is_stale():
+            return
+        if not paths_are_relative(self.conn):
             raise StaleGraphError(
-                f"{self.path} was written by a different version of DunneFlow and "
-                f"cannot be read safely -- re-run `dunneflow analyze` to rebuild it"
+                f"{self.path} stores absolute paths, from before DunneFlow made them "
+                f"relative to the tree they were read from -- run "
+                f"`dunneflow migrate {self.path.parent}` to rewrite it in place"
             )
+        raise StaleGraphError(
+            f"{self.path} was written by a different version of DunneFlow and "
+            f"cannot be read safely -- re-run `dunneflow analyze` to rebuild it"
+        )
 
     def _discard_if_stale(self) -> bool:
         """Drop a graph written by a different version of DunneFlow.

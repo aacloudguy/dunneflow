@@ -50,6 +50,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from .migrate import META_PATHS, PATHS_RELATIVE
+
 SOURCE_SCHEMA_VERSION = 2
 
 # A revision is identified by **when it was captured**, and by nothing else. Not "HEAD",
@@ -172,6 +174,11 @@ class SourceStore:
         self.conn.executescript(SCHEMA_SQL)
         self.set_meta("kind", "source")
         self.set_meta("schema_version", str(SOURCE_SCHEMA_VERSION))
+        # Paths here are relative to the tree each revision was read from, and that tree
+        # is not recorded anywhere -- see `migrate.py`. Marked rather than inferred: an
+        # empty sidecar holds no absolute path to find, and "nothing to see" is not the
+        # same claim as "already relative".
+        self.set_meta(META_PATHS, PATHS_RELATIVE)
         self._stamp_legacy_paths()
 
     # ------------------------------------------------------------------ kind --- #
@@ -666,9 +673,16 @@ class SourceStore:
 
 
 def capture(store_hashes: dict[str, str], source: SourceStore, *,
+            root: Path | str,
             langs: dict[str, str] | None = None,
             revision: str | None = None) -> dict[str, int]:
     """Store every body the graph measured that this sidecar does not already hold.
+
+    `root` is the tree the graph was read from. It is **used and not recorded**: the keys
+    in `store_hashes` are relative, which is what this sidecar stores so that a file can
+    be paired with itself across two revisions read from two different trees, and the root
+    exists here only to find the bytes on disk one last time. Nothing at read time needs
+    it back -- a body is fetched by content hash, never by opening a path.
 
     Driven by `Store.known_hashes()` -- path to content hash for every live file -- rather
     than by walking the tree again, which gives the property that matters: a file whose
@@ -682,6 +696,7 @@ def capture(store_hashes: dict[str, str], source: SourceStore, *,
     paying for.
     """
     langs = langs or {}
+    base = Path(root)
     # Resolved once. The working revision is created here if this is a first capture, so
     # that every path row below lands in a snapshot that has a name and an instant.
     revision = revision if revision is not None else source.open_working()
@@ -693,7 +708,7 @@ def capture(store_hashes: dict[str, str], source: SourceStore, *,
             stats["cached"] += 1
             continue
         try:
-            text = Path(path).read_text(encoding="utf-8", errors="replace")
+            text = (base / path).read_text(encoding="utf-8", errors="replace")
         except OSError:
             stats["missing"] += 1
             continue

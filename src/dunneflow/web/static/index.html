@@ -35,12 +35,25 @@
     <label class="sr-only" for="prog">Program</label>
     <select class="tb-select" id="prog"></select>
 
-    <!-- The title is filled from the served root by loadCover(); pinning one here put
-         one developer's disk in a tooltip on every other machine. -->
-    <button class="srcpath" id="srcPath" aria-expanded="false">
+    <!-- The source directory is where the **binding** will live: the tree this
+         installation points a program directory at. It is a readout and not a button,
+         because nothing binds one yet and a control that looks settable and is not is the
+         dead control design rule 16 exists to catch. It becomes interactive when something
+         needs to open a file from disk.
+
+         Nothing at read time needs one today. Bodies come out of `source.db` by content
+         hash, never by opening a path, so the dashboard is complete with no tree in sight.
+
+         **Not bound is stated, never left blank.** A blank readout and "we could not say"
+         are indistinguishable, and design rule 21 says a blank must say why it is blank.
+
+         It used to be filled from `meta.source_root` -- one developer's disk in a tooltip
+         on every other machine, which its own comment said and which is exactly why the
+         root is no longer recorded at all. See `migrate.py`. -->
+    <div class="srcpath" id="srcPath">
       <span class="srcpath-k">source directory</span>
-      <span class="srcpath-v" id="srcPathV"></span>
-    </button>
+      <span class="srcpath-v" id="srcPathV">not bound — none needed here</span>
+    </div>
 
     <!-- Filled from /api/revisions by buildRevControls(). Empty here on purpose: an
          option written into the markup is a claim about a program this page has not read

@@ -35,13 +35,15 @@ def _esc(text: str | None) -> str:
     return " ".join(str(text).split()).replace("|", "\\|")
 
 
-def _rel(path: str, root: Path | None) -> str:
-    if root is None:
-        return path
-    try:
-        return str(Path(path).resolve().relative_to(root.resolve()))
-    except ValueError:
-        return path
+# There was a `path` here, and in eight other renderers -- nine copies of the
+# same four lines, each stripping the analysed root off a stored absolute path so a reader
+# would not be shown one machine's directory layout. Paths are stored relative now, so
+# every one of them had nothing left to strip.
+#
+# They were removed rather than left as harmless no-ops, because they were not harmless:
+# `Path("mensores/cli.py").resolve()` resolves against the *working directory*, so run from
+# anywhere inside the analysed tree the strip would succeed and silently prepend the
+# intervening directories to every path on the page.
 
 
 CONSTANTS_SQL = """
@@ -141,7 +143,7 @@ def _aliases(aliases: list, root: Path | None) -> list[str]:
             target = str(a["bases"])
         lines.append(
             f"| `{_esc(a['name'])}` | `{_esc(target)}` | `{_esc(a['module'])}` "
-            f"| `{_rel(str(a['file']), root)}:{a['line']}` |"
+            f"| `{str(a['file'])}:{a['line']}` |"
         )
     lines.append("")
     return lines
@@ -184,7 +186,7 @@ def _constants(rows: list, root: Path | None) -> list[str]:
                 f"| `{_esc(r['type']) or '—'}` | {_esc(r['comment']) or '—'} |"
             )
         first = group[0]
-        lines.append(f"\n`{_rel(str(first['file']), root)}`\n")
+        lines.append(f"\n`{str(first['file'])}`\n")
     return lines
 
 

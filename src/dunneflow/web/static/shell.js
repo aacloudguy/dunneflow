@@ -731,29 +731,23 @@ function buildRevControls() {
      sentence as a revision id. */
   ).join("") + `<option value="" disabled>— reading a past revision arrives next —</option>`;
 
-  /* The served root belongs to the revision being read, and the other end has a root of
-     its own -- the two here are `society-2026-08-26/src` and `society-2026-08-29/src`.
-     One path shown while two points are in play names one of them and implies it is both,
-     which is the key-and-label confusion the presence lines already had to be cured of. */
-  applySourcePath();
 }
 
-/* What tree, or trees, the screen is reading. Written in one place because it is one
- * question, and it now has two possible answers at once. */
-function applySourcePath() {
-  const el = $("#srcPathV"), btn = $("#srcPath");
-  if (!el) return;
-  const full = (STATS && STATS.source_root) || "";
-  const short = (p) => p.split("/").filter(Boolean).slice(-2).join("/");
-  const long = btn && btn.getAttribute("aria-expanded") === "true";
-  const other = REVISIONS.find(r => r.revision === chosenPair().from);
-  const otherRoot = other && other.source_root ? other.source_root : "";
-  el.innerHTML = esc(long ? full : short(full))
-    + (otherRoot && otherRoot !== full
-        ? `<span class="srcpath-was">was ${esc(long ? otherRoot : short(otherRoot))}</span>`
-        : "");
-  if (btn) btn.title = otherRoot && otherRoot !== full ? `${full}\nwas ${otherRoot}` : full;
-}
+/* There was an `applySourcePath()` here, and it is gone with the root it displayed.
+ *
+ * It read the served root and each revision's, shortened them to the last two segments,
+ * and offered a click to see them in full. Every one of those values is one machine's
+ * directory layout, which is why the tree is no longer recorded at all -- see
+ * `migrate.py`. Left in place it became rule 44 exactly: a live control reading a field
+ * the server does not send, overwriting the readout's own text with `""` and rendering an
+ * empty box beside a label that still said SOURCE DIRECTORY. Nothing threw.
+ *
+ * The markup states `not bound` and nothing overwrites it. When a binding exists -- for
+ * something that genuinely opens a file from disk -- this is where it comes back.
+ *
+ * Written in this continuation style on purpose: the guards strip comment *lines*, and a
+ * block whose continuation lines are plain indented prose is one they cannot see. This
+ * paragraph names the very thing it is asserting the absence of. */
 
 /* The identities a navigator row carries, as written into `data-navid`. Space separated
  * because ids here are hex digests, plate ids and table names -- none of which contain a
@@ -3500,7 +3494,11 @@ function followSelectionIntoCode() {
   if (!codeOnScreen()) return;
   const w = SPECIMEN && SPECIMEN.where;
   if (!w || !w.file) return;
-  const f = FILES.find(x => w.file === x.full || String(w.file).endsWith("/" + x.path));
+  /* One spelling. This read an absolute path the file list used to carry beside the short
+   * one, and fell back to an `endsWith` on the short one -- a name match wearing a suffix
+   * (rule 5): `cli/audit.py` also ends `/audit.py`. Both ends are the store's own relative
+   * path now, so it is an equality. */
+  const f = FILES.find(x => w.file === x.path);
   if (!f || f.path === state.codeFile) return;
   state.codeFile = f.path;
   persist();
@@ -4348,19 +4346,10 @@ function wire() {
     state.threadsAll = !state.threadsAll; render();
   }));
 
-  const sp = $("#srcPath");
-  if (sp && !sp.dataset.bound) {
-    sp.dataset.bound = "1";
-    sp.addEventListener("click", () => {
-      const open = sp.getAttribute("aria-expanded") === "true";
-      sp.setAttribute("aria-expanded", String(!open));
-      /* Long form and short form of whatever trees are in play. It used to toggle between
-         two literals naming one developer's disk, which is a confident lie on any other --
-         and then between one root while two revisions were being compared, which names one
-         end and implies it is both. `applySourcePath` is the one place that decides. */
-      applySourcePath();
-    });
-  }
+  /* No handler on the source-directory readout. It was a disclosure toggle over a tree
+   * that is no longer recorded, and it is a readout now -- a `<div>`, with nothing to
+   * expand and no pointer cursor to promise one. A listener kept here would have been a
+   * control that looks pressable, responds to a press, and changes nothing. */
 
   /* The pair. Its value is the comparison end, "" for none -- see `buildRevControls`. */
   const rev = $("#rev");
@@ -4376,7 +4365,6 @@ function wire() {
       state.revNote = "";
       used("pair:" + (rev.value ? "compared" : "alone"));
       persist();
-      applySourcePath();
       /* Only when there is something to compare. "On its own" is a real answer and must
          not spend seconds fetching a comparison nobody asked for -- but it must still
          repaint, or the Changes group keeps the figures of the pair just dropped. */
@@ -5917,10 +5905,6 @@ async function loadCover() {
   if (prog) {
     prog.innerHTML = `<option>${esc(d.program)} — ${Number(d.stats.files).toLocaleString()} files</option>`;
   }
-  /* Through the one function that decides, not written a second time here. This wrote the
-     served root directly and the disclosure handler wrote it again, so a third caller --
-     the comparison, which adds a second tree -- had two places to go wrong in. */
-  applySourcePath();
 }
 
 /* The routine list, from the document backend that already carries what is needed.

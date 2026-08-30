@@ -53,11 +53,15 @@ def _esc(text: str | None, limit: int | None = None) -> str:
     return " ".join(str(text).split()).replace("|", "\\|")
 
 
-def _rel(path: str, root: Path) -> str:
-    try:
-        return str(Path(path).resolve().relative_to(root.resolve()))
-    except ValueError:
-        return path
+# There was a `path` here, and in eight other renderers -- nine copies of the
+# same four lines, each stripping the analysed root off a stored absolute path so a reader
+# would not be shown one machine's directory layout. Paths are stored relative now, so
+# every one of them had nothing left to strip.
+#
+# They were removed rather than left as harmless no-ops, because they were not harmless:
+# `Path("mensores/cli.py").resolve()` resolves against the *working directory*, so run from
+# anywhere inside the analysed tree the strip would succeed and silently prepend the
+# intervening directories to every path on the page.
 
 
 # --------------------------------------------------------------------------- #
@@ -329,7 +333,7 @@ def _flow_inventory(store: Store, way_in: dict, root: Path) -> str:
     ]
     for r in rows:
         touches = "; ".join(bounds.get(r["id"], [])) or "—"
-        where = f"{_rel(r['file'], root)}:{r['line_start']}"
+        where = f"{r['file']}:{r['line_start']}"
         out.append(f"| `{_esc(r['qualname'])}` | {_esc(touches)} | {_esc(where)} |")
     out.append("\n</details>\n")
     return "\n".join(out)
@@ -364,7 +368,7 @@ def _routines(store: Store, out: Path, root: Path, program: str, stamp: str) -> 
             why_parts.extend(c.text for c in rt.comments if c.text)
             why = " · ".join(dict.fromkeys(p for p in why_parts if p))
             marker = "async " if rt.is_async else ""
-            where = f"{_rel(rt.file, root)}:{rt.line_start}"
+            where = f"{rt.file}:{rt.line_start}"
             lines.append(
                 f"| `{_esc(rt.name)}` | `{marker}{_esc(rt.signature())}` "
                 f"| {_esc(why)} | {_esc(where)} |"
@@ -414,7 +418,7 @@ def _data(store: Store, out: Path, root: Path, program: str, stamp: str) -> Path
                         f"| `{_esc(f.name)}` | `{_esc(f.type) or '—'}` "
                         f"| {_esc(f.default) or '—'} | {_esc(f.comment)} |"
                     )
-            lines.append(f"\n`{_rel(s.file, root)}:{s.line}`\n")
+            lines.append(f"\n`{s.file}:{s.line}`\n")
 
     path = out / "04-data.md"
     path.write_text("\n".join(lines), encoding="utf-8")
@@ -440,7 +444,7 @@ def _boundaries(store: Store, out: Path, root: Path, program: str, stamp: str) -
         lines.append("<details><summary>Routines involved</summary>\n")
         lines.append("| Routine | Target | Via | Where |\n|---|---|---|---|")
         for h in hits:
-            where = f"{_rel(h['file'], root)}:{h['line']}"
+            where = f"{h['file']}:{h['line']}"
             lines.append(
                 f"| `{_esc(h['qualname'])}` | `{_esc(h['target'])}` "
                 f"| `{_esc(h['evidence'])}` | {_esc(where)} |"
@@ -494,7 +498,7 @@ def _governance(store: Store, out: Path, root: Path, program: str, stamp: str) -
             lines.append(f"### {value} — {len(hits)} place(s)\n")
             lines.append("| Where | Says |\n|---|---|")
             for h in hits:
-                where = f"{_rel(h['file'] or '', root)}:{h['line']}"
+                where = f"{h['file'] or ''}:{h['line']}"
                 lines.append(f"| `{_esc(h['owner'])}` <br>{_esc(where)} "
                              f"| {_esc(h['text'])} |")
             lines.append("")

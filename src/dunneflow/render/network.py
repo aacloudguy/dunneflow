@@ -33,11 +33,15 @@ def _esc(text: str | None) -> str:
     return " ".join(str(text).split()).replace("|", "\\|")
 
 
-def _rel(path: str, root: Path) -> str:
-    try:
-        return str(Path(path).resolve().relative_to(root.resolve()))
-    except ValueError:
-        return path
+# There was a `path` here, and in eight other renderers -- nine copies of the
+# same four lines, each stripping the analysed root off a stored absolute path so a reader
+# would not be shown one machine's directory layout. Paths are stored relative now, so
+# every one of them had nothing left to strip.
+#
+# They were removed rather than left as harmless no-ops, because they were not harmless:
+# `Path("mensores/cli.py").resolve()` resolves against the *working directory*, so run from
+# anywhere inside the analysed tree the strip would succeed and silently prepend the
+# intervening directories to every path on the page.
 
 
 # When no URL is written down, the library being called still names the destination.
@@ -161,7 +165,7 @@ def render_network(store: Store, out: Path, root: Path, program: str, stamp: str
         lines.append("| Endpoint | Kind | Runs in | Module | Where |\n|---|---|---|---|---|")
         for i in inbound:
             z = zone_of(i["routine_id"]) if i["routine_id"] else "—"
-            where = f"{_rel(i['file'] or '', root)}:{i['line_start'] or 0}"
+            where = f"{i['file'] or ''}:{i['line_start'] or 0}"
             lines.append(
                 f"| `{_esc(i['name'])}` | {i['kind']} | `{_esc(z)}` "
                 f"| `{_esc(i['module'])}` | {_esc(where)} |"
@@ -187,7 +191,7 @@ def render_network(store: Store, out: Path, root: Path, program: str, stamp: str
         lines.append("<details><summary>Every outbound call</summary>\n")
         lines.append("| Routine | Destination | Via | Where |\n|---|---|---|---|")
         for o in outbound:
-            where = f"{_rel(o['file'], root)}:{o['line']}"
+            where = f"{o['file']}:{o['line']}"
             lines.append(
                 f"| `{_esc(o['qualname'])}` "
                 f"| `{_esc(o['target'] or _host_of(o['target'], o['evidence']))}` "
@@ -248,7 +252,7 @@ def render_network(store: Store, out: Path, root: Path, program: str, stamp: str
             "|---|---|---|---|---|---|---|---|---|---|"
         )
         for n in net:
-            where = f"{_rel(n['rfile'], root)}:{n['line']}"
+            where = f"{n['rfile']}:{n['line']}"
             if n["is_async"] and n["awaited"]:
                 blocking_label = "no (awaited)"
             elif n["is_async"]:
@@ -288,7 +292,7 @@ def render_network(store: Store, out: Path, root: Path, program: str, stamp: str
                 "| Blocking | Where |\n|---|---|---|---|---|---|---|"
             )
             for n in msg:
-                where = f"{_rel(n['rfile'], root)}:{n['line']}"
+                where = f"{n['rfile']}:{n['line']}"
                 msg_blocking = "no (awaited)" if (n["is_async"] and n["awaited"]) else "yes"
                 lines.append(
                     f"| `{_esc(n['qualname'])}` | {n['protocol']} "
@@ -307,7 +311,7 @@ def render_network(store: Store, out: Path, root: Path, program: str, stamp: str
             lines.append("<details><summary>Every queue operation</summary>\n")
             lines.append("| Direction | Routine | Target | Via | Where |\n|---|---|---|---|---|")
             for q in queue_hits:
-                where = f"{_rel(q['rfile'], root)}:{q['line']}"
+                where = f"{q['rfile']}:{q['line']}"
                 arrow = {"OUT": "produces", "IN": "consumes"}.get(q["direction"], q["direction"])
                 lines.append(
                     f"| {arrow} | `{_esc(q['qualname'])}` | `{_esc(q['target'])}` "

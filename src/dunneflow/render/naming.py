@@ -33,11 +33,15 @@ def _slug(text: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")
 
 
-def _rel(path: str, root: Path) -> str:
-    try:
-        return str(Path(path).resolve().relative_to(root.resolve()))
-    except ValueError:
-        return path
+# There was a `path` here, and in eight other renderers -- nine copies of the
+# same four lines, each stripping the analysed root off a stored absolute path so a reader
+# would not be shown one machine's directory layout. Paths are stored relative now, so
+# every one of them had nothing left to strip.
+#
+# They were removed rather than left as harmless no-ops, because they were not harmless:
+# `Path("mensores/cli.py").resolve()` resolves against the *working directory*, so run from
+# anywhere inside the analysed tree the strip would succeed and silently prepend the
+# intervening directories to every path on the page.
 
 
 def _esc(text: str | None) -> str:
@@ -106,7 +110,7 @@ def render_naming(store: Store, docs: DocStore | None, out_dir: Path, root: Path
     n = 0
     for rule in stated:
         n += 1
-        src = f"{_rel(rule.doc, doc_root)}:{rule.line}"
+        src = f"{rule.doc}:{rule.line}"
         lines.append(f"{n}. {_esc(_first_sentence(rule.text))}  \n"
                      f"    `STATED · {rule.lane.lower()} · {src}` "
                      f"→ [the rule in full](#{_slug(src)})\n")
@@ -205,7 +209,7 @@ def _convention_detail(c: Convention, root: Path) -> list[str]:
     lines.append("| Name | Where |")
     lines.append("|---|---|")
     for e in c.exceptions:
-        lines.append(f"| `{_esc(e.name)}` | {_esc(_rel(e.where, root))} |")
+        lines.append(f"| `{_esc(e.name)}` | {_esc(e.where)} |")
     lines.append("")
     return lines
 
@@ -227,7 +231,7 @@ def _vocabulary_section(stated: list[StatedRule], root: Path) -> list[str]:
         )
         return lines
     for r in vocab:
-        src = f"{_rel(r.doc, root)}:{r.line}"
+        src = f"{r.doc}:{r.line}"
         lines.append(f"\n#### {src}\n")
         lines.append(f"> {_esc(r.text)}\n")
         heading = _esc(r.heading) or "—"

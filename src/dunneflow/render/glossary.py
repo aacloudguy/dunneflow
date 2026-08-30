@@ -26,11 +26,15 @@ BADGE = {
 }
 
 
-def _rel(path: str, root: Path) -> str:
-    try:
-        return str(Path(path).resolve().relative_to(root.resolve()))
-    except ValueError:
-        return path
+# There was a `path` here, and in eight other renderers -- nine copies of the
+# same four lines, each stripping the analysed root off a stored absolute path so a reader
+# would not be shown one machine's directory layout. Paths are stored relative now, so
+# every one of them had nothing left to strip.
+#
+# They were removed rather than left as harmless no-ops, because they were not harmless:
+# `Path("mensores/cli.py").resolve()` resolves against the *working directory*, so run from
+# anywhere inside the analysed tree the strip would succeed and silently prepend the
+# intervening directories to every path on the page.
 
 
 def _esc(text: str | None) -> str:
@@ -104,7 +108,7 @@ def _term_entry(term: Term, root: Path) -> list[str]:
     lines.append(f"*Used {term.uses:,} time{'s' if term.uses != 1 else ''} — "
                  f"{term.used_as()}. For example: {_esc(examples)}.*\n")
     for sense in term.senses:
-        where = f"{_rel(sense.source, root)}:{sense.line}"
+        where = f"{sense.source}:{sense.line}"
         lines.append(f"> {_esc(sense.definition)}\n")
         form = f", {sense.form}" if sense.form else ""
         heading = f" under “{_esc(sense.heading)}”" if sense.heading else ""

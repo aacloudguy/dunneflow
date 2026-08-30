@@ -113,14 +113,17 @@ def test_source_is_absent_with_a_reason_when_there_is_no_sidecar(analyzed: Store
 
 
 def test_source_opens_on_the_definition_when_the_sidecar_holds_it(
-    analyzed: Store, tmp_path: Path,
+    analyzed: Store, sample_tree: Path, tmp_path: Path,
 ) -> None:
     """Design rule 13: provenance must open, with the thing itself in its own context."""
     rid = _a_routine(analyzed, "load_config")
     row = analyzed.query(
         "SELECT file, line_start, line_end FROM routines WHERE id = ?", (rid,)
     )[0]
-    body = Path(row["file"]).read_text(encoding="utf-8")
+    # `routines.file` is relative to the analysed tree, as every stored path is. Joining
+    # the tree back on is what reading a body from disk costs, and nothing but a test
+    # fixture and `analyze` itself ever has to do it.
+    body = (sample_tree / str(row["file"])).read_text(encoding="utf-8")
 
     src = SourceStore(tmp_path / "source.db")
     src.add_blob(body, hash_source(body))

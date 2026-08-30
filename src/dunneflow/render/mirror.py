@@ -41,13 +41,15 @@ def _esc(text: str | None) -> str:
     return " ".join(str(text).split()).replace("|", "\\|")
 
 
-def _rel(path: str, root: Path | None) -> str:
-    if root is None:
-        return path
-    try:
-        return str(Path(path).resolve().relative_to(root.resolve()))
-    except ValueError:
-        return path
+# There was a `path` here, and in eight other renderers -- nine copies of the
+# same four lines, each stripping the analysed root off a stored absolute path so a reader
+# would not be shown one machine's directory layout. Paths are stored relative now, so
+# every one of them had nothing left to strip.
+#
+# They were removed rather than left as harmless no-ops, because they were not harmless:
+# `Path("mensores/cli.py").resolve()` resolves against the *working directory*, so run from
+# anywhere inside the analysed tree the strip would succeed and silently prepend the
+# intervening directories to every path on the page.
 
 
 def _slug(key: str) -> str:
@@ -179,7 +181,7 @@ def _definition_cell(t: MirroredTerm, docs_root: Path | None) -> str:
     """
     parts = []
     for d in t.definitions:
-        where = f"`{_esc(_rel(d.doc, docs_root))}`:{d.line}"
+        where = f"`{_esc(d.doc)}`:{d.line}"
         parts.append(f"{_esc(d.definition)} — {where}")
     return "<br>".join(parts)
 

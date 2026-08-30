@@ -47,7 +47,7 @@ from typing import Any
 from ..sourcedb import SourceStore
 from ..store import Store
 from . import queries
-from .code import _link_spans, _margin, _resolve_path, _rows, _short
+from .code import _link_spans, _margin, _rows
 
 # What a search will open by itself, and it is the same number the routine list uses for
 # the same reason. See `SEARCH_OPEN_MAX` in `shell.js`: opening every package a broad query
@@ -113,8 +113,8 @@ def word_applies(q: str) -> bool:
 # --------------------------------------------------------------------------- #
 
 def search_files(store: Store, source: SourceStore | None, q: str, *,
-                 case: bool = False, word: bool = False, regex: bool = False,
-                 source_root: str = "") -> dict[str, Any]:
+                 case: bool = False, word: bool = False,
+                 regex: bool = False) -> dict[str, Any]:
     """Which files hold a match, and how many lines each.
 
     **Complete and unbounded** -- rule 8 bounds diagrams, and 626 rows with a count on each
@@ -150,7 +150,7 @@ def search_files(store: Store, source: SourceStore | None, q: str, *,
             continue
         total += len(hits)
         rows.append({
-            "path": _short(path, source_root), "full": path,
+            "path": path,
             "module": modules.get(path, ""), "n": len(hits), "first": hits[0],
         })
 
@@ -204,8 +204,8 @@ def containing_routine(defs: list[dict[str, Any]], line: int) -> dict[str, Any] 
 
 
 def search_in_file(store: Store, source: SourceStore | None, q: str, asked: str, *,
-                   case: bool = False, word: bool = False, regex: bool = False,
-                   source_root: str = "") -> dict[str, Any]:
+                   case: bool = False, word: bool = False,
+                   regex: bool = False) -> dict[str, Any]:
     """One file's matching lines, each with its margin, its links and its routine.
 
     The three absences `/api/file` and `/api/source` already tell apart are told apart here
@@ -217,22 +217,22 @@ def search_in_file(store: Store, source: SourceStore | None, q: str, asked: str,
     if source is None:
         return {"ok": False, "q": q, "file": asked,
                 "reason": "no source sidecar beside this map"}
-    full = _resolve_path(store, asked, source_root)
-    if full is None:
+    full = asked
+    if not _rows(store, "SELECT 1 FROM files WHERE path = :p", {"p": full}):
         return {"ok": False, "q": q, "file": asked,
                 "reason": "this map did not analyse that file"}
     lines = source.path_lines(full)
     if lines is None:
-        return {"ok": False, "q": q, "file": _short(full, source_root),
+        return {"ok": False, "q": q, "file": full,
                 "reason": "the sidecar does not hold this file"}
     try:
         pattern = matcher(q, case=case, word=word, regex=regex)
     except BadPattern as err:
-        return {"ok": False, "q": q, "file": _short(full, source_root), "reason": str(err)}
+        return {"ok": False, "q": q, "file": full, "reason": str(err)}
 
     hits = [n for n, text in enumerate(lines, 1) if pattern.search(text)]
     if not hits:
-        return {"ok": True, "q": q, "file": _short(full, source_root), "full": full,
+        return {"ok": True, "q": q, "file": full,
                 "n": 0, "hits": [], "ms": round((time.perf_counter() - started) * 1000, 1)}
 
     # Everything below is `build_file`'s own machinery, narrowed to the matching lines.
@@ -279,7 +279,7 @@ def search_in_file(store: Store, source: SourceStore | None, q: str, asked: str,
         })
 
     return {
-        "ok": True, "q": q, "file": _short(full, source_root), "full": full,
+        "ok": True, "q": q, "file": full,
         "n": len(out), "lines": len(lines), "hits": out,
         "revision": source.current_revision(),
         "ms": round((time.perf_counter() - started) * 1000, 1),

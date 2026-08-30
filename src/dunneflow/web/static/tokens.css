@@ -296,21 +296,17 @@ body {
 .srcpath { display: flex; flex-direction: column; align-items: flex-start; gap: .02rem;
   font: inherit; background: rgba(255,255,255,.09); color: var(--chrome-text);
   border: 1px solid rgba(255,255,255,.18); border-radius: .3125rem;
-  padding: .16rem .5rem; cursor: pointer; text-align: left; min-width: 0; }
-.srcpath:hover { background: rgba(255,255,255,.17); }
+  padding: .16rem .5rem; text-align: left; min-width: 0; }
+/* No `cursor: pointer` and no hover lift: this is a readout, and both of those are the
+   affordances of a thing you can press. Restore them with the binding, not before. */
 .srcpath-k { font-size: .52rem; letter-spacing: .09em; text-transform: uppercase;
   color: var(--chrome-muted); }
 .srcpath-v { font-family: var(--f-mono); font-size: .72rem; white-space: nowrap;
   overflow: hidden; text-overflow: ellipsis; max-width: 16rem; }
-.srcpath[aria-expanded="true"] .srcpath-v { white-space: normal; word-break: break-all;
-  max-width: 26rem; }
-/* The other end's tree, when two points in time are being compared. Its own line, quieter
-   than the one being read, because the reader is *at* one of these and merely comparing
-   against the other -- and blank when there is one point in time, since a second line
-   saying nothing is worse than no second line. */
-.srcpath-was { display: block; font-size: .62rem; color: var(--chrome-muted);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.srcpath[aria-expanded="true"] .srcpath-was { white-space: normal; word-break: break-all; }
+/* Three rules were removed here with the button: two `[aria-expanded="true"]` states for
+   an element that no longer expands, and `.srcpath-was`, which showed the *other* end's
+   tree while two points in time were being compared. All three styled a root that is no
+   longer recorded. Dead CSS is how a control keeps looking wired (rules 44 and 48). */
 .tb-select[hidden] { display: none; }
 .tb-right { margin-left: auto; display: flex; align-items: center; gap: .35rem; }
 .tb-btn {

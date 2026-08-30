@@ -172,7 +172,8 @@ def analyze_docs_tree(
     todo: list[Path] = []
     live: list[str] = []
     for p in docs:
-        key = str(p)
+        # Relative for the key, absolute for the read -- see `analyze_tree`.
+        key = str(p.relative_to(root))
         live.append(key)
         try:
             st = p.stat()
@@ -231,7 +232,10 @@ def analyze_docs_tree(
     with store.batch():
         for df in results:
             try:
-                mtime_ns = Path(df.path).stat().st_mtime_ns
+                # `df.path` is the key, relative to `root`. Joined back onto the root to
+                # touch the disk, because the warm gate is `(mtime, size)` and a stat of
+                # a relative path resolves against the working directory instead.
+                mtime_ns = (root / df.path).stat().st_mtime_ns
             except OSError:
                 mtime_ns = 0
             store.write_doc_facts(df, mtime_ns)
@@ -265,7 +269,12 @@ def analyze_tree(
     todo: list[Path] = []
     live: list[str] = []
     for p in files:
-        key = str(p)
+        # Two spellings, and they are not interchangeable. The **key** is relative to the
+        # analysed root, because that is what the store holds and what pairs a file with
+        # itself across two revisions read from two different trees. The **path** stays
+        # absolute, because that is what opens the file. Keying on the absolute form is
+        # what made moving a tree a full re-parse and a churned graph rather than a no-op.
+        key = str(p.relative_to(root))
         live.append(key)
         try:
             src = p.read_text(encoding="utf-8", errors="replace")

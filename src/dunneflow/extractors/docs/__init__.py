@@ -68,7 +68,13 @@ def extract_doc(path: Path, root: Path) -> DocFacts:
     try:
         text = path.read_text(encoding="utf-8", errors="replace")
     except OSError as exc:
-        return DocFacts(path=str(path), fmt=DocFormat.TEXT, content_hash="",
+        # Keyed the same way as a document that *was* read. An unreadable file recorded
+        # under a different spelling of its own name is a row nothing else can join to.
+        try:
+            unread = str(path.resolve().relative_to(root.resolve()))
+        except ValueError:
+            unread = str(path)
+        return DocFacts(path=unread, fmt=DocFormat.TEXT, content_hash="",
                         errors=[f"unreadable: {exc}"])
 
     try:
@@ -76,16 +82,22 @@ def extract_doc(path: Path, root: Path) -> DocFacts:
     except ValueError:
         rel = path
 
+    # `rel` is the key as well as the classifier's input. It was computed here from the
+    # first day and then thrown away, with `str(path)` -- one machine's absolute layout --
+    # stored as the identity of every document. See `extract_file` for why that is wrong
+    # in three separate ways; the argument is the same for prose as for code.
+    key = str(rel)
+
     fmt = FORMATS.get(path.suffix.lower(), DocFormat.TEXT)
     try:
         if fmt is DocFormat.MARKDOWN:
-            facts = scan_markdown(str(path), rel, text, fmt)
+            facts = scan_markdown(key, rel, text, fmt)
         elif fmt is DocFormat.RST:
-            facts = scan_with(str(path), rel, text, fmt, _rst_headings)
+            facts = scan_with(key, rel, text, fmt, _rst_headings)
         else:
-            facts = scan_with(str(path), rel, text, fmt, _no_headings)
+            facts = scan_with(key, rel, text, fmt, _no_headings)
     except Exception as exc:  # a malformed document is a fact, not a crash
-        facts = DocFacts(path=str(path), fmt=fmt, content_hash=hash_source(text))
+        facts = DocFacts(path=key, fmt=fmt, content_hash=hash_source(text))
         facts.errors.append(f"{type(exc).__name__}: {exc}")
     return facts
 

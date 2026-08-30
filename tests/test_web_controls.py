@@ -19,6 +19,7 @@ implementation, which is the failure it was supposed to detect.
 
 from __future__ import annotations
 
+import math
 import re
 import shutil
 import subprocess
@@ -5317,4 +5318,453 @@ def test_the_routine_list_landing_repaints_both_things_that_read_it() -> None:
     assert call.count("render()") >= 2 and call.count("buildNav()") >= 2, (
         "only one of the two paths repaints both panes; the other leaves a pane waiting "
         "for something that has already failed"
+    )
+
+
+# --------------------------------------------------------------------------- #
+# The comparison over the stack: `colorBy: 'change'`.
+#
+# The last of the temporal overlays. Colour carries one dimension at a time (design rule 4),
+# so this one *takes the channel over* rather than tinting the changed nodes and leaving the
+# rest on plate hue -- a red dot would otherwise mean either "deleted" or "the plate whose
+# golden-angle hue landed on red". Every guard here was written from something that went
+# wrong while building it.
+# --------------------------------------------------------------------------- #
+
+
+def _sim(hexv: str, kind: str) -> tuple[float, float, float]:
+    """Viénot, Brettel & Mollon 1999, the same transform `simulate()` runs in the page."""
+    dich = {"deuteranopia": ((1, 0, 0), (0.494207, 0, 1.24827), (0, 0, 1)),
+            "protanopia":   ((0, 2.02344, -2.52581), (0, 1, 0), (0, 0, 1))}[kind]
+    r2l = ((17.8824, 43.5161, 4.11935), (3.45565, 27.1554, 3.86714),
+           (0.0299566, 0.184309, 1.46709))
+    l2r = ((0.0809444479, -0.130504409, 0.116721066),
+           (-0.0102485335, 0.0540193266, -0.113614708),
+           (-0.000365296938, -0.00412161469, 0.693511405))
+
+    def lin(c: int) -> float:
+        x = c / 255
+        return x / 12.92 if x <= 0.03928 else ((x + 0.055) / 1.055) ** 2.4
+
+    def mul(m: tuple, v: tuple) -> tuple[float, float, float]:
+        return tuple(sum(m[i][j] * v[j] for j in range(3)) for i in range(3))
+
+    v = tuple(lin(int(hexv[i:i + 2], 16)) * 255 for i in (1, 3, 5))
+    out = mul(l2r, mul(dich, mul(r2l, v)))
+    res = []
+    for c in out:
+        x = max(0.0, min(1.0, c / 255))
+        y = (12.92 * x if x <= 0.0031308 else 1.055 * x ** (1 / 2.4) - 0.055) * 255
+        res.append(float(max(0, min(255, round(y)))))
+    return tuple(res)  # type: ignore[return-value]
+
+
+def _lab(rgb: tuple[float, float, float]) -> tuple[float, float, float]:
+    def lin(c: float) -> float:
+        x = c / 255
+        return x / 12.92 if x <= 0.03928 else ((x + 0.055) / 1.055) ** 2.4
+    r, g, b = (lin(c) for c in rgb)
+
+    def f(t: float) -> float:
+        return t ** (1 / 3) if t > 0.008856 else 7.787 * t + 16 / 116
+    fx = f((0.4124 * r + 0.3576 * g + 0.1805 * b) / 0.95047)
+    fy = f(0.2126 * r + 0.7152 * g + 0.0722 * b)
+    fz = f((0.0193 * r + 0.1192 * g + 0.9505 * b) / 1.08883)
+    return (116 * fy - 16, 500 * (fx - fy), 200 * (fy - fz))
+
+
+def _sep(a: str, b: str) -> float:
+    """The **worst** of normal vision, deuteranopia and protanopia -- never an average."""
+    def rgb(h: str) -> tuple[float, float, float]:
+        return tuple(float(int(h[i:i + 2], 16)) for i in (1, 3, 5))  # type: ignore[return-value]
+
+    def d(x: tuple[float, float, float], y: tuple[float, float, float]) -> float:
+        la, lb = _lab(x), _lab(y)
+        return math.dist(la, lb)
+    return min(d(rgb(a), rgb(b)),
+               d(_sim(a, "deuteranopia"), _sim(b, "deuteranopia")),
+               d(_sim(a, "protanopia"), _sim(b, "protanopia")))
+
+
+def _diff_triples() -> dict[str, tuple[str, str, str]]:
+    """Every set and variant, as (gone, new, moved). Derived from the stylesheet."""
+    css = _read("tokens.css")
+    out: dict[str, tuple[str, str, str]] = {}
+    base = _base_tokens(css)
+    for variant, toks in base.items():
+        out[f"default {variant}"] = (toks["--diff-gone"], toks["--diff-new"],
+                                     toks["--diff-moved"])
+    for name, blocks in _blocks(css).items():
+        for sel, toks in blocks:
+            if "--diff-moved" not in toks:
+                continue
+            # **Keyed by the selector, not by a guessed variant.** Written as
+            # `"dark" if "dark" in sel else "light"` the `@media` block --
+            # `:root[data-palette="muted"]:not([data-theme="light"])`, which contains no
+            # "dark" at all -- was keyed as *light* and silently overwrote the real light
+            # block. A mutation to the light colours then survived, because the guard was
+            # measuring a different block under its name (rule 37).
+            out[f"{name} {sel}"] = (toks["--diff-gone"], toks["--diff-new"],
+                                    toks["--diff-moved"])
+    return out
+
+
+def test_every_colour_set_declares_the_third_difference() -> None:
+    """A set that gains a difference and a set that misses one both fail here.
+
+    The difference channel has three colours now -- arrived, went, and *behaves
+    differently*, which is the half a text diff cannot state. A set that declares two of
+    them leaves the third falling back to the base block, so a reader who chose `safe`
+    would get its orange and blue with the default's violet: a set that is not the set.
+    """
+    css = _read("tokens.css")
+    sets = _blocks(css)
+    assert len(sets) >= 2, f"only {sorted(sets)} palette sets; this guard is blind"
+    for _name, blocks in sets.items():
+        for sel, toks in blocks:
+            declared = {t for t in toks if t.startswith("--diff-")}
+            assert declared >= {"--diff-gone", "--diff-new", "--diff-moved"}, (
+                f"`{sel}` declares {sorted(declared)} — a set missing a difference colour "
+                "falls back to the base block, so the reader gets half of two sets"
+            )
+    for variant, toks in _base_tokens(css).items():
+        assert "--diff-moved" in toks, f"the base {variant} block has no --diff-moved"
+
+
+def test_the_third_difference_is_never_the_least_separable_colour_shipped() -> None:
+    """Rule 69: contrast says a colour can be read, separation says two can be told apart.
+
+    The bar is **derived, not chosen**. A fixed one would fail colours already in use: the
+    default set's own `gone`/`new` pair measures ΔE 9.5 on dark and 12.7 on light, which is
+    rule 69's own conclusion that red and green cannot be rescued by tuning. So what is
+    asserted is that the colour being *added* is never worse than the weakest thing already
+    shipped — it may not become the new floor.
+    """
+    triples = _diff_triples()
+    assert len(triples) >= 6, f"only {sorted(triples)}; this guard is blind"
+    floor = min(_sep(g, n) for g, n, _ in triples.values())
+    assert 5 < floor < 25, f"the shipped floor is ΔE {floor:.1f}; this guard is blind"
+    for name, (gone, new, moved) in triples.items():
+        for other, label in ((gone, "gone"), (new, "new")):
+            got = _sep(moved, other)
+            assert got >= floor, (
+                f"{name}: `--diff-moved` is ΔE {got:.1f} from `--diff-{label}`, below the "
+                f"ΔE {floor:.1f} floor already shipped — it would be the least separable "
+                "pair in the product"
+            )
+
+
+def test_the_two_grounds_are_two_colours_and_both_can_be_seen() -> None:
+    """"Nobody asked about this" and "we looked and found nothing" are opposite claims.
+
+    More than half the stack is in the first state — it draws boundaries, constants,
+    structures and artefacts, and the comparison's id-carrying bands are routines only. One
+    tone for both would assert that the tool checked a boundary and found it unchanged,
+    which it never did (design rule 1).
+
+    Both must also clear **3:1 against the graph's own ground**, which is the bar the
+    pointer's picker is clamped at. Below it a dot is not quiet, it is absent — and an
+    invisible node is a silent filter.
+    """
+    css = _css_code(_read("tokens.css"))
+    for label, block in (("light", css.split(":root {", 1)[1].split("\n}", 1)[0]),
+                         ("dark", css.split(':root[data-theme="dark"] {', 1)[1]
+                                     .split("\n}", 1)[0])):
+        toks = dict(re.findall(r"(--[a-z0-9-]+)\s*:\s*(#[0-9a-f]{6})", block))
+        for t in ("--graph-unchanged", "--graph-unclaimed", "--graph-ground", "--graph-dim"):
+            assert t in toks, f"{label}: {t} is not declared"
+        unch, uncl = toks["--graph-unchanged"], toks["--graph-unclaimed"]
+        ground, dim = toks["--graph-ground"], toks["--graph-dim"]
+        assert unch != uncl, (
+            f"{label}: the two grounds are one colour, so 'not compared' and 'unchanged' "
+            "are drawn as the same claim"
+        )
+        assert _sep(unch, uncl) >= 15, (
+            f"{label}: the two grounds are ΔE {_sep(unch, uncl):.1f} apart — a reader "
+            "cannot tell what was checked from what was not"
+        )
+        for t, v in (("unchanged", unch), ("unclaimed", uncl)):
+            assert _ratio(v, ground) >= 3.0, (
+                f"{label}: --graph-{t} is {_ratio(v, ground):.2f}:1 on the ground; below "
+                "3:1 the node is invisible rather than quiet, which is a silent filter"
+            )
+        assert _sep(uncl, dim) >= 15, (
+            f"{label}: 'not compared' is ΔE {_sep(uncl, dim):.1f} from `--graph-dim`, which "
+            "means *not in your selection* — one grey saying two things"
+        )
+
+
+def test_the_stack_takes_its_tone_from_the_word_and_not_from_the_band() -> None:
+    """A routine only the base has was *deleted* or *added* depending on the assumption.
+
+    Written as `only_base: hex("--diff-gone")` the palette pinned a side to a colour, so
+    flipping which version the reader takes to be newer swapped every word in the key and
+    left the dots red — a picture saying "added" in the colour of gone, which rule 69's
+    neighbour calls worse than no colour at all. Found by flipping it and reading the
+    numbers back, not by any check.
+
+    The palette is keyed by **tone** and the band-to-tone map comes from `diffWords()`.
+    """
+    js = _code(_read("shell.js"))
+    palette = _fn(js, "cssPalette")
+    block = palette[palette.index("change: {"):]
+    block = block[:block.index("},")]
+    for band in ("only_base", "only_compared"):
+        assert band not in block, (
+            f"`cssPalette` keys the stack's change palette by `{band}` — a side pinned to a "
+            "colour cannot follow the word when the assumption flips"
+        )
+    assert "gone:" in block and "new:" in block and "moved:" in block, (
+        "the change palette is no longer keyed by tone; this guard is blind"
+    )
+    tones = _fn(js, "changeTones")
+    assert "diffWords()" in tones, (
+        "the band-to-tone map is not derived from `diffWords()`, which is the one place the "
+        "reader's assumption becomes a colour"
+    )
+    assert "w.base.tone" in tones and "w.compared.tone" in tones, (
+        "a side's tone is written from something other than the word's own `.tone`"
+    )
+
+
+def test_flipping_the_assumption_repaints_the_stack_and_its_key() -> None:
+    """The tone changes, and the nodes are inside a buffer as much as the code is in a cache.
+
+    The handler already repainted the code for exactly this reason. It did not repaint the
+    stack, so the key swapped its words while every dot kept the colour of the previous
+    assumption — one control, two answers (rule 51), one layer out from where that lesson
+    was learnt.
+    """
+    js = _code(_read("shell.js"))
+    body = js[js.index('$$("[data-assumenewer]")'):]
+    body = body[:body.index("}));")]
+    for call in ("repaintCode()", "pushGraphChange()", "renderLegend()"):
+        assert call in body, (
+            f"flipping the assumption does not call `{call}`, so one surface keeps the "
+            "colours of the assumption the reader has just left"
+        )
+
+
+def test_the_crossings_keep_their_plate_colour() -> None:
+    """The decision the whole chunk rests on, and it is held by what `setOptions` omits.
+
+    A crossing's colour walks from its source plate's hue to its target's (rule 23), because
+    a line passing through plates it has nothing to do with cannot be read in one flat
+    colour. That gradient is built in `buildSelectionGeometry`, and `setOptions` repaints
+    the nodes without rebuilding it — which is what makes "the dots say what changed, the
+    lines say which plate each end is on" free rather than a feature.
+    """
+    js = _code(_read("graph.js"))
+    opts = js[js.index("setOptions(partial)"):]
+    opts = opts[:opts.index("\n  },")]
+    assert "paintNodes(" in opts, "setOptions no longer repaints the nodes; this is blind"
+
+    # **The claim is about the guard around it, not about the call.** `setOptions` may
+    # rebuild the selection geometry — it does, for a direction change — so what must hold
+    # is that the *only* condition reaching it is that one. A first version asserted
+    # `"diskColor(" in build`, which the mutation that replaced one of the two ends with a
+    # flat colour walked straight past: the other end still said `diskColor`. A guard that
+    # checks a name appears has not checked that anything happens (rule 37).
+    # Split on the conditions themselves rather than matching a shape: every `if (` in this
+    # function opens a block that runs to the next one, so the chunk a call sits in carries
+    # its own guard. A regex over `if (…) {` looked more careful and matched nothing useful.
+    chunks = opts.split("if (")
+    assert len(chunks) >= 4, f"setOptions has {len(chunks) - 1} guards; this is blind"
+    seen = 0
+    for chunk in chunks[1:]:
+        if "buildSelectionGeometry" not in chunk:
+            continue
+        seen += 1
+        cond = chunk.split(") {", 1)[0]
+        assert "direction" in cond, (
+            f"`buildSelectionGeometry` runs under `{cond.strip()[:60]}` — a colorBy switch "
+            "would recolour the crossings, and they are the one thing that still says "
+            "which plate each end of a link is on"
+        )
+    assert seen == 1, (
+        f"{seen} guarded paths reach `buildSelectionGeometry`; expected exactly the "
+        "direction change"
+    )
+
+    build = _fn(js, "buildSelectionGeometry")
+    ends = re.findall(r"const (c[ab]) = diskColor\(", build)
+    assert set(ends) == {"ca", "cb"}, (
+        f"the crossing gradient takes {sorted(set(ends))} from the plates — **both** ends "
+        "must, or the line no longer says which end you are looking at. One end pinned to "
+        "a flat colour is the defect this guard exists for"
+    )
+
+
+def test_the_change_key_counts_what_the_picture_draws() -> None:
+    """A count must be named after the thing it measures (rule 32), and there are two
+    populations here.
+
+    `routineChangeCounts()` walks `ROUTINES` — 4,786 routines. The stack draws 10,015 nodes,
+    more than half of which are not routines at all, and 5,855 shadows besides that are
+    never drawn (rule 23). The key is about the picture, so it counts the picture.
+
+    And it reads the payload **columnar**: `serve.py` transposes nodes into parallel arrays
+    for the engine's typed buffers. Written as `for (const n of nodes)` this threw
+    `nodes is not iterable` on the first paint and the key sat at "comparing…" for ever
+    while the answer had long since arrived. Found by reading the console.
+    """
+    js = _code(_read("shell.js"))
+    key = _fn(js, "changeKeyHtml")
+    assert "routineChangeCounts" not in key, (
+        "the key counts `ROUTINES`, which is not the population the stack draws"
+    )
+    assert "nodes.id" in key and "nodes.shadow" in key, (
+        "the key does not read the payload's columnar arrays — `graphPayload.nodes` is an "
+        "object of parallel arrays, not an array of nodes"
+    )
+    assert "shadow[i] === 1" in key or "shadow[i]" in key, (
+        "shadows are counted, and they are never drawn"
+    )
+    assert "only_in_compared" in key, (
+        "the routines only the compared version has are not stated — they have no node in "
+        "this version, so no tally can find them and they must come from the band"
+    )
+
+
+def test_every_routine_the_stack_draws_carries_a_verdict() -> None:
+    """An absent id means *unclaimed*, so a routine left out reads as never having been asked.
+
+    `routineIndex()` holds only the ids that are in a band — 86 of them on Mensores — and
+    `routineStatus` supplies `same` for a routine in none. Built by copying that index, the
+    map left every unchanged routine absent and the key read *15 unchanged · 9,929 not
+    compared* over a program with 4,700 unchanged routines. Both numbers wrong, nothing
+    thrown.
+
+    So the map is walked over the payload and the node's **kind** decides which ground it
+    gets.
+    """
+    js = _code(_read("shell.js"))
+    fn = _fn(js, "changeByNodeId")
+    assert "graphPayload" in fn, (
+        "the map is not built from the payload, so it cannot know which nodes are routines"
+    )
+    assert 'kinds[i] !== "ROUTINE"' in fn or '"ROUTINE"' in fn, (
+        "the map does not consult a node's kind, so it cannot tell a routine the comparison "
+        "found nothing about from a boundary it was never asked about"
+    )
+    assert "routineStatus(" in fn, (
+        "the map does not ask for a status per routine, so a routine in no band is absent "
+        "— and an absent id is drawn as `unclaimed`, which is a different claim"
+    )
+    assert "shadow[i] === 1" in fn, "shadows are given a verdict, and they are never drawn"
+
+
+def test_the_stack_asks_for_the_comparison_when_it_is_the_restored_mode() -> None:
+    """`colorBy` is persisted, so a reader comes back into the mode — and nothing fetched.
+
+    The mount hands the engine `changeByNodeId()`, which is `null` until something has
+    asked. Nothing had, so the stack came up in change mode having requested nothing while
+    the key said *comparing…* over a request that did not exist. Rule 55's companion: one
+    truth about what is on, and whoever sets it does the work.
+    """
+    js = _code(_read("shell.js"))
+    mount = _fn(js, "ensureGraph")
+    assert "ensureGraphChange()" in mount, (
+        "mounting the stack does not ask for the comparison, so a restored `change` mode "
+        "colours nothing and says it is comparing"
+    )
+    assert "resolveColorBy()" in mount, (
+        "a stored `change` on a program with one version is not resolved before the mode "
+        "reaches the engine"
+    )
+    door = _fn(js, "ensureGraphChange")
+    assert "ensureChanges()" in door, "the stack's door onto the comparison does not fetch"
+
+
+def test_the_key_tells_not_asked_from_being_computed() -> None:
+    """Three states, and collapsing any two states the wrong one (rule 35).
+
+    Written as one `!CHANGES || CHANGES.loading` branch, the key said *comparing…* over a
+    mode that had asked for nothing at all — for ever, and convincingly. The same trap
+    `factLaneHtml` already carries a note about.
+    """
+    js = _code(_read("shell.js"))
+    key = _fn(js, "changeKeyHtml")
+    assert "if (!CHANGES) {" in key, (
+        "the key does not distinguish 'nobody has asked' from 'it is being computed'"
+    )
+    assert "CHANGES.loading" in key, "the key has no computing state"
+    assert key.index("if (!CHANGES) {") < key.index("CHANGES.loading"), (
+        "the loading branch is tested first, so it swallows the not-asked case"
+    )
+
+
+def test_the_change_mode_is_offered_only_where_it_can_act() -> None:
+    """A control whose only effect is to make the picture say nothing is a dead control.
+
+    And the stored value is the other half: `colorBy` is persisted per program, so a reader
+    who used the mode on a two-version program and opened a one-version one would arrive in
+    a mode that can colour nothing. It falls back and **says so** — a silent fallback paints
+    the stack one tone and reads as a broken picture (design rule 1, rule 66).
+    """
+    js = _code(_read("shell.js"))
+    legend = _fn(js, "renderLegend")
+    opt = legend[legend.index('id="gcolorby"'):]
+    opt = opt[:opt.index("</select>")]
+    assert '"change"' in opt, "the third option is gone; this guard is blind"
+    assert "comparing()" in opt, (
+        "the change option is drawn on a program with nothing to compare"
+    )
+    resolve = _fn(js, "resolveColorBy")
+    assert "comparing()" in resolve and 'state.colorBy = "kind"' in resolve, (
+        "a stored `change` with nothing to compare is not resolved back to a real mode"
+    )
+    assert "changeModeDropped = true" in resolve, "the fallback is silent"
+    key = _fn(js, "changeKeyHtml")
+    assert "changeModeDropped" in key, "nothing states that the mode was dropped"
+
+
+def test_choosing_a_plate_colour_tells_the_selector_it_changed_the_mode() -> None:
+    """One control, two claims, and the markup is the one that loses (rule 67).
+
+    Picking a colour for a plate is a statement that colour should mean *plate*, so the
+    branch forces `colorBy` to `disk` — and it returned without re-rendering, so the select
+    went on displaying the mode the reader had just left. Harmless while there were two
+    modes and `disk` was always the destination; with a third it is a control disagreeing
+    with the state that owns it.
+    """
+    js = _code(_read("shell.js"))
+    # **The second `.sw` test, not the first.** `js.index` found the row-click handler's
+    # own guard (`ev.target.classList.contains("sw")`, which ignores a click on the
+    # swatch) and asserted against a branch that was never the subject. A guard anchored
+    # on the wrong span has not checked what it names (rule 37).
+    branch = js[js.index('state.diskColors[row.dataset.disk] = t.value;'):]
+    branch = branch[:branch.index("return;")]
+    assert 'state.colorBy = "disk"' in branch, "the branch no longer forces the mode"
+    assert "renderLegend()" in branch, (
+        "forcing the mode does not re-render the control that displays it, so the selector "
+        "keeps naming a mode the stack is no longer in"
+    )
+    assert "nodeChange: null" in branch, (
+        "leaving change mode does not drop the map, so the engine holds data it no longer "
+        "reads"
+    )
+
+
+def test_edited_and_unchanged_reach_one_tone_and_the_key_says_so() -> None:
+    """The fold is a decision, and design rule 1 says a fold that is not stated is a filter.
+
+    "The body changed and nothing it does did" is internal computation, which `CLAUDE.md`'s
+    opening says this tool exists not to report — so on the stack it is drawn as unchanged.
+    The table still lists it, and the key names the number that was folded in.
+    """
+    js = _code(_read("shell.js"))
+    tones = _fn(js, "changeTones")
+    assert 'edited: "quiet"' in tones and 'same: "quiet"' in tones, (
+        "edited and unchanged no longer share a tone; if that is deliberate the key's "
+        "sentence about the fold is now a lie"
+    )
+    key = _fn(js, "changeKeyHtml")
+    assert "tally.edited + tally.same" in key, (
+        "the unchanged count does not include the edited ones, so the folded rows are drawn "
+        "in a colour no number accounts for"
+    )
+    assert "edited without" in key and "tally.edited.toLocaleString()" in key, (
+        "the key does not say how many were folded into unchanged — an unstated fold is a "
+        "silent filter"
     )

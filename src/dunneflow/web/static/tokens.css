@@ -42,6 +42,19 @@
   --diff-new:      #116b33;
   --diff-new-bg:   #e4f3e9;
 
+  /* **A third difference, and it has no direction.** Arrived and went are the two ends of a
+     journey; *behaves differently* is neither -- the same routine, in both versions, doing
+     something else. It reaches the stack as `colorBy: 'change'`, and it is in the difference
+     channel because that is what it is (design rule 6).
+
+     Violet in every set, so the idea reads as one idea. In `default` and `muted` it clears
+     the pair by a mile because it leaves the red-green axis entirely; in `safe`, whose
+     `--diff-new` is already blue, it separates by **lightness** instead -- rule 69's own
+     lesson, that a lightness difference survives colour blindness where a hue difference
+     does not. Every number is in the Settings table beside the set. */
+  --diff-moved:    #6d28d9;
+  --diff-moved-bg: #f0eafb;
+
   --external:      #6d28d9;
   --external-bg:   #ede4fb;
 
@@ -67,6 +80,22 @@
   --graph-artefact:  #a16207;
   --graph-dim:       #c2cad6;
   --graph-dim-alpha: 150;
+  /* The two grounds `colorBy: 'change'` draws on, and they are two because they are two
+     claims. **unchanged** is the comparison having looked and found nothing; **unclaimed**
+     is nothing having been asked -- the stack draws boundaries, constants, structures and
+     artefacts, and the comparison's id-carrying bands are routines only, so on Mensores
+     about 5,300 of 10,015 drawn nodes are in the second state. An unstated absence is
+     design rule 1's defect, and these two must never be one colour.
+
+     Not part of a colour set: a set covers the channels where colour separates one
+     *meaning* from another, and these are the ground rather than a difference. Both quiet
+     -- so the eighty-six that changed carry the eye -- and both **at least 3:1 against the
+     ground**, which is the bar the pointer's own picker is clamped at. Below that a dot is
+     invisible, and invisible is a silent filter. Told apart by lightness, not by hue
+     (rule 69), and both clear of `--graph-dim`, which means something else entirely: *not
+     in your selection*. */
+  --graph-unchanged: #61666b;   /* 5.12:1 on the ground */
+  --graph-unclaimed: #738aab;   /* 3.11:1 on the ground */
   --graph-edge:      #0d7f75;
   --graph-edge-alpha: 150;
   --graph-plate-fill: #dfe5ee;
@@ -143,6 +172,8 @@
     --diff-gone-bg:  #3b1618;
     --diff-new:      #4ade80;
     --diff-new-bg:   #10301c;
+    --diff-moved:    #a78bfa;
+    --diff-moved-bg: #241b3d;
 
     --external:      #c4b5fd;
     --external-bg:   #291f45;
@@ -158,6 +189,22 @@
     --graph-artefact:  #fbbf24;
     --graph-dim:       #344052;
     --graph-dim-alpha: 110;
+    /* The two grounds `colorBy: 'change'` draws on, and they are two because they are two
+       claims. **unchanged** is the comparison having looked and found nothing; **unclaimed**
+       is nothing having been asked -- the stack draws boundaries, constants, structures and
+       artefacts, and the comparison's id-carrying bands are routines only, so on Mensores
+       about 5,300 of 10,015 drawn nodes are in the second state. An unstated absence is
+       design rule 1's defect, and these two must never be one colour.
+
+       Not part of a colour set: a set covers the channels where colour separates one
+       *meaning* from another, and these are the ground rather than a difference. Both quiet
+       -- so the eighty-six that changed carry the eye -- and both **at least 3:1 against the
+       ground**, which is the bar the pointer's own picker is clamped at. Below that a dot is
+       invisible, and invisible is a silent filter. Told apart by lightness, not by hue
+       (rule 69), and both clear of `--graph-dim`, which means something else entirely: *not
+       in your selection*. */
+    --graph-unchanged: #728597;   /* 4.98:1 on the ground */
+    --graph-unclaimed: #5973a6;   /* 3.99:1 on the ground */
     --graph-edge:      #5eead4;
     --graph-edge-alpha: 150;
     --graph-plate-fill: #161e29;
@@ -200,6 +247,8 @@
   --diff-gone-bg:  #3b1618;
   --diff-new:      #4ade80;
   --diff-new-bg:   #10301c;
+  --diff-moved:    #a78bfa;
+  --diff-moved-bg: #241b3d;
 
   --external:      #c4b5fd;
   --external-bg:   #291f45;
@@ -215,6 +264,22 @@
   --graph-artefact:  #fbbf24;
   --graph-dim:       #344052;
   --graph-dim-alpha: 110;
+  /* The two grounds `colorBy: 'change'` draws on, and they are two because they are two
+     claims. **unchanged** is the comparison having looked and found nothing; **unclaimed**
+     is nothing having been asked -- the stack draws boundaries, constants, structures and
+     artefacts, and the comparison's id-carrying bands are routines only, so on Mensores
+     about 5,300 of 10,015 drawn nodes are in the second state. An unstated absence is
+     design rule 1's defect, and these two must never be one colour.
+
+     Not part of a colour set: a set covers the channels where colour separates one
+     *meaning* from another, and these are the ground rather than a difference. Both quiet
+     -- so the eighty-six that changed carry the eye -- and both **at least 3:1 against the
+     ground**, which is the bar the pointer's own picker is clamped at. Below that a dot is
+     invisible, and invisible is a silent filter. Told apart by lightness, not by hue
+     (rule 69), and both clear of `--graph-dim`, which means something else entirely: *not
+     in your selection*. */
+  --graph-unchanged: #728597;   /* 4.98:1 on the ground */
+  --graph-unclaimed: #5973a6;   /* 3.99:1 on the ground */
   --graph-edge:      #5eead4;
   --graph-edge-alpha: 150;
   --graph-plate-fill: #161e29;
@@ -311,6 +376,8 @@ body {
   --diff-gone-bg:  #faf2ed;
   --diff-new:      #006ea9;
   --diff-new-bg:   #edf5fa;
+  --diff-moved:    #7f00ff;
+  --diff-moved-bg: #f3eafd;
   --sev-broken:    #cd2011;
   --sev-broken-bg: #faeeed;
   --sev-suspect:   #cb1064;
@@ -324,6 +391,8 @@ body {
     --diff-gone-bg:  #321e13;
     --diff-new:      #009bef;
     --diff-new-bg:   #132732;
+    --diff-moved:    #d9c2f5;
+    --diff-moved-bg: #241b3d;
     --sev-broken:    #f2685c;
     --sev-broken-bg: #321613;
     --sev-suspect:   #f25fa1;
@@ -337,6 +406,8 @@ body {
   --diff-gone-bg:  #321e13;
   --diff-new:      #009bef;
   --diff-new-bg:   #132732;
+  --diff-moved:    #d9c2f5;
+  --diff-moved-bg: #241b3d;
   --sev-broken:    #f2685c;
   --sev-broken-bg: #321613;
   --sev-suspect:   #f25fa1;
@@ -353,6 +424,8 @@ body {
   --diff-gone-bg:  #faeded;
   --diff-new:      #1c7842;
   --diff-new-bg:   #edfaf2;
+  --diff-moved:    #6d28d9;
+  --diff-moved-bg: #f0eafb;
   --sev-broken:    #c52e2e;
   --sev-broken-bg: #faeded;
   --sev-suspect:   #7e4e1e;
@@ -366,6 +439,8 @@ body {
     --diff-gone-bg:  #321313;
     --diff-new:      #60da92;
     --diff-new-bg:   #133220;
+    --diff-moved:    #c4b5fd;
+    --diff-moved-bg: #241b3d;
     --sev-broken:    #df7575;
     --sev-broken-bg: #321313;
     --sev-suspect:   #dea973;
@@ -379,6 +454,8 @@ body {
   --diff-gone-bg:  #321313;
   --diff-new:      #60da92;
   --diff-new-bg:   #133220;
+  --diff-moved:    #c4b5fd;
+  --diff-moved-bg: #241b3d;
   --sev-broken:    #df7575;
   --sev-broken-bg: #321313;
   --sev-suspect:   #dea973;
@@ -1199,6 +1276,27 @@ body {
 .leg .ct { font-family: var(--f-mono); color: var(--text-faint); flex: none; }
 .legfoot { font-size: .66rem; color: var(--text-muted); padding: .3rem .1rem 0;
            border-top: 1px solid var(--border); margin-top: .35rem; }
+
+/* The key for `colour by: what changed`. There is no key for the other two colourings and
+   that is a gap rather than a precedent -- under "what it is" the reader gets five colours
+   and nothing on the page names them. This mode cannot afford that: two of its five states
+   are folds, and a colour a reader cannot account for is worse than no colour.
+
+   Its tones come from the same tokens the stack is drawing with, so a colour set chosen in
+   Settings moves the key and the picture together. `tone-quiet` and `tone-unclaimed` are
+   the two grounds -- one says the comparison looked and found nothing, the other that
+   nothing was asked -- and they are never the same colour. */
+.legkey { border-top: 1px solid var(--border); padding: .35rem .1rem 0; margin-top: .3rem;
+  display: flex; flex-direction: column; gap: .12rem; }
+.legkey-row { display: flex; align-items: baseline; gap: .35rem; font-size: .68rem; }
+.legkey-row .num { font-variant-numeric: tabular-nums; }
+.legkey-row .hint { font-size: .64rem; }
+.legkey-dot { width: .7rem; text-align: center; font-weight: 700; flex: none; }
+.legkey-dot.tone-gone      { color: var(--diff-gone); }
+.legkey-dot.tone-new       { color: var(--diff-new); }
+.legkey-dot.tone-moved     { color: var(--diff-moved); }
+.legkey-dot.tone-quiet     { color: var(--graph-unchanged); }
+.legkey-dot.tone-unclaimed { color: var(--graph-unclaimed); }
 
 /* ═══ cover ═══ */
 .cover-grid { display: grid; grid-template-columns: 1fr; gap: .875rem; max-width: 62rem; }

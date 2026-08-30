@@ -72,6 +72,20 @@ const PALETTE = {
     // authors made, touching is something the code does. Different act, different colour.
     ARTEFACT:  [251, 191,  36],
   },
+  /* What the comparison says about a node, in the shape `kind` already uses so
+     `setPalette`'s merge treats the two the same way.
+     **Keyed by tone, not by band.** Which band is drawn in which of the two directional
+     tones is the reader's assumption about which version is newer, and that assumption
+     belongs to the page rather than to the engine -- it arrives as `opts.changeTone`. Five
+     bands and four tones: `edited` and `same` share `quiet`, because "the body changed and
+     nothing it does did" is internal computation, which this tool exists not to report. */
+  change: {
+    gone:      [248, 113, 113],
+    new:       [ 74, 222, 128],
+    moved:     [167, 139, 250],
+    quiet:     [114, 133, 151],
+    unclaimed: [ 89, 115, 166],
+  },
   dim:        [ 52,  64,  82],
   dimAlpha:   110,
   edge:       [ 94, 234, 212, 150],
@@ -153,6 +167,19 @@ const opts = {
   diskOrder: null,
   diskColors: {},
   colorBy: 'kind',
+  /* id -> status, for `colorBy: 'change'`. Id-keyed rather than an array in this engine's
+     index order, following `diskColors` exactly: the shell has no API that would let it
+     confirm that order, and a caller asserting an index space it cannot check is how a
+     silent mismatch gets built. An id the map does not carry is `unclaimed` -- nothing was
+     claimed about it -- which is a different answer from `same`. */
+  nodeChange: null,
+  /* band -> tone, from `diffWords()`. Here rather than baked into `PALETTE.change` so that
+     flipping which version is assumed newer costs this table and not a walk over every
+     node -- and so that the engine holds no opinion about which side is which. */
+  changeTone: null,
+  /* Moves whenever `nodeChange` does, because a deck update trigger is compared by value
+     and a mutated map is the same object. */
+  changeStamp: 0,
   filterMode: 'dim',
   direction: 'both',
   nodeSize: 1,
@@ -481,10 +508,18 @@ function diskColor(diskId) {
 }
 
 function paintNodes(d) {
-  /* Colour carries one dimension at a time (design rule 4): either what a thing *is*, or
-   * which disk it sits on -- never both at once. Selection state is carried by dimming,
-   * a separate channel, so it never competes with either. */
+  /* Colour carries one dimension at a time (design rule 4): what a thing *is*, or which
+   * disk it sits on, or what a comparison says about it -- never two at once. Selection
+   * state is carried by dimming, a separate channel, so it never competes with any of
+   * them: dim means *not in your selection* and the hue means *what this is*, and the two
+   * never answer the same question.
+   *
+   * `change` takes the channel over rather than tinting the changed nodes and leaving the
+   * rest on plate colour. That was refused deliberately: it puts two meanings in one
+   * channel, and a red dot would then mean either *deleted* or *the plate whose
+   * golden-angle hue landed on red*. */
   const byDisk = opts.colorBy === 'disk';
+  const byChange = opts.colorBy === 'change' && !!opts.nodeChange;
   const hide = opts.filterMode === 'hide';
   const sel = g.members.size ? g.members : null;
   const size = opts.nodeSize * opts.scale;
@@ -505,8 +540,19 @@ function paintNodes(d) {
     if (out && hide) { c = PALETTE.dim; a = 0; }
     else if (out) { c = PALETTE.dim; a = PALETTE.dimAlpha; }
     else {
-      c = byDisk ? diskColor(d.raw.nodes.disk[i])
-                 : (PALETTE.kind[d.raw.nodes.kind[i]] || PALETTE.kind.ROUTINE);
+      if (byChange) {
+        /* An id the map does not carry is `unclaimed`, never `same`. The stack draws
+           boundaries, constants, structures and artefacts and the comparison speaks about
+           routines only, so "nothing was asked about this" is the answer for more than
+           half the nodes -- and it is a different claim from "we looked and found
+           nothing" (design rule 1). */
+        const band = opts.nodeChange[d.raw.nodes.id[i]];
+        const tone = band && opts.changeTone ? opts.changeTone[band] : null;
+        c = PALETTE.change[tone || 'unclaimed'] || PALETTE.change.unclaimed;
+      } else {
+        c = byDisk ? diskColor(d.raw.nodes.disk[i])
+                   : (PALETTE.kind[d.raw.nodes.kind[i]] || PALETTE.kind.ROUTINE);
+      }
       a = 255;
     }
     d.colors[i * 4] = c[0]; d.colors[i * 4 + 1] = c[1];
@@ -897,7 +943,14 @@ function buildLayers(d) {
     extensions: spheres ? [Shading.SphereShadingExtension({
       ambient: PALETTE.ambient, diffuse: PALETTE.diffuse, specular: PALETTE.specular,
     })] : [],
-    updateTriggers: { getFillColor: [opts.colorBy, opts.filterMode] },
+    /* `opts.changeStamp` rather than `opts.nodeChange`: deck compares trigger values with
+       shallow equality, so a map whose identity has not moved would not fire. `paintNodes`
+       setting `d.gpu = null` is the stronger mechanism and does the real work; this is
+       belt and braces. */
+    updateTriggers: {
+      getFillColor: [opts.colorBy, opts.filterMode, opts.changeStamp,
+                     opts.changeTone && opts.changeTone.only_base],
+    },
     /* No depth writing. A billboard is a flat quad held facing the camera, so two of them
      * at slightly different depths intersect along a straight line -- which renders as a
      * clean slice taken out of a ball and looks like a clipping bug, because it is one.

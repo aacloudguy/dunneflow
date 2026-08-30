@@ -42,7 +42,10 @@ const DEFAULTS = {
    * leave the collision it was meant to remove. See `HANDOFF.md`. */
   diskOrder: null,        // null = the server's default order
   diskColors: {},         // diskId -> "#rrggbb"
-  colorBy: 'kind',        // 'kind' | 'disk'
+  /* What colour means in the stack. `change` appears only where there are two versions
+     to compare, and a stored `change` on a program with one falls back to `kind` and
+     says so -- see `resolveColorBy` in shell.js. */
+  colorBy: 'kind',        // 'kind' | 'disk' | 'change'
   sortMode: 'nodes',      // 'nodes' | 'name' | 'kind' | 'manual'
   filterMode: 'dim',      // 'dim' | 'hide'
   direction: 'both',      // 'callers' | 'callees' | 'both'

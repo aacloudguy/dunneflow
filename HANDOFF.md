@@ -3723,6 +3723,24 @@ warning, and markup another function rewrites is not the markup that renders.
 **Next: tables and the worklist**, then the graph as `colorBy: 'change'` — and that one
 still wants Tom's decision on the colour channel before it is built. Read `6f`.
 
+### Paused 2026-08-30, after the stack's change colours
+
+Working tree clean; all three gates green; `output/mensores` untouched and still serving
+both revisions.
+
+**The overlays are complete.** Code, routines, and now the stack. Colour by *what changed*
+takes the channel over, the crossings keep their plate gradient, and the key states all five
+bands — including the two a reader could not otherwise account for: the 15 edited routines
+folded into unchanged, and the 5,229 nodes the comparison was never asked about.
+
+Six defects found by driving and one by a guard catching an edit that had been silently
+lost. The measurement that was expected to block the chunk did not: a third difference
+colour clears rule 69 comfortably in every set, and the finding is that the *shipped*
+red/green pair is the weakest thing in the product at ΔE 9.5.
+
+**Owed: a real window.** The automation tab gets no animation frames, so the data, the
+palette and the counts were driven end to end and **the pixels were not seen**. Read `6h`.
+
 ### The colour channel, decided 2026-08-30 — the graph as `colorBy: 'change'`
 
 Asked and answered at the keyboard, and both halves are Tom's.
@@ -3764,6 +3782,109 @@ the cost of no longer being able to tell which end of a line you are looking at.
   plate colour is the only answer to "where am I". Colouring by change removes it. Whether
   that wants the plates drawn while this mode is on is a question for when it is on screen,
   not before.
+
+**6h. Built 2026-08-30: the comparison over the stack (chunk C, `colorBy: 'change'`).**
+The last of the temporal overlays, and the one that needed a decision before it needed work.
+
+*What it is.* A third value in the stack's "colour by" selector, beside *what it is* and
+*which plate*. Every node is drawn by what the comparison says about it, with a key under
+the legend stating each band and its count.
+
+*Four decisions, and the first two are Tom's.*
+
+- **Change takes the channel over.** Plate hue steps aside while it is on. Tinting only the
+  changed nodes was refused: two meanings in one channel means a red dot could be *deleted*
+  or *the plate whose golden-angle hue landed on red* (design rule 4).
+- **Crossings keep their plate gradient** (rule 23) — and it costs nothing, because
+  `setOptions` repaints the nodes and never rebuilds the selection geometry, which is where
+  that gradient lives. The dots say what changed; the lines go on saying which plate each
+  end is on.
+- **Three colours and a ground.** *Edited only* folds into unchanged **on principle**: "the
+  body changed and nothing it does did" is internal computation, which `CLAUDE.md`'s opening
+  says this tool exists not to report. The fold is stated in the key, never hidden.
+- **"Not compared" is its own tone.** The stack draws boundaries, constants, structures and
+  artefacts, and `changes.py`'s id-carrying bands are routines only (`PRESENCE` compares the
+  rest by name and returns no ids). On Mensores that is **5,229 of 10,015 drawn nodes** with
+  no claim either way, and "nobody asked" must not look like "we looked and found nothing".
+
+*The measurement that was expected to be the risk, and was not.* A third difference colour
+has to be separable from both existing ones under normal vision, deuteranopia and
+protanopia. A grid search found candidates at ΔE 66–151; violet serves every set, and in
+`safe` — whose `--diff-new` is already blue — it separates by **lightness**, which is rule
+69's own lesson. **The finding is the opposite one**: the *existing* pairs are the weak link.
+
+```
+  --diff-gone vs --diff-new, worst of three vision models
+  default (red/green)   light 12.7 · dark  9.5      ← the weakest thing shipped
+  safe (blue/orange)    light 82.2 · dark 106.8
+  muted                 light 14.0 · dark 12.8
+```
+
+So the guard's bar is **derived, not chosen**: the new colour may never become the least
+separable pair in the product. A fixed bar would have failed colours already in use, which
+is rule 69's conclusion that red and green cannot be rescued by tuning.
+
+*Six defects found by driving, none by any check.*
+
+1. **`nodes is not iterable`** on the first paint. `serve.py` transposes the payload into
+   parallel arrays for the engine's typed buffers, so `graphPayload.nodes` is an object of
+   columns and not an array of nodes. The key sat at *comparing…* for ever while the answer
+   had long since arrived. Found by reading the console.
+2. **The palette pinned a side to a colour.** Written as `only_base: hex("--diff-gone")`,
+   flipping which version the reader assumes is newer swapped every word in the key and left
+   the dots red — a picture saying "added" in the colour of gone. The palette is keyed by
+   **tone** now and the band-to-tone map comes from `diffWords()`, so the two cannot come
+   apart. Found by flipping it and reading the numbers back.
+3. **The flip repainted the code and not the stack.** The handler already knew to repaint
+   the code for exactly this reason; the stack is the same argument one layer out.
+4. **A restored mode never asked for its data.** `colorBy` is persisted, so a reader comes
+   back into `change` — and the mount hands the engine a map that is `null` until something
+   has fetched. Nothing had. Rule 55's companion again: whoever sets the state does the work.
+5. **Every unchanged routine read as *not compared*.** The map was copied out of
+   `routineIndex()`, which holds only the 86 ids that are *in a band*; `routineStatus`
+   supplies `same` for the rest, and an absent id is drawn as `unclaimed`. The key read
+   *15 unchanged · 9,929 not compared* over a program with 4,700 unchanged routines — two
+   wrong numbers, nothing thrown. It walks the payload and consults each node's **kind** now.
+6. **The plate swatch left the selector stale.** Picking a colour for a plate forces
+   `colorBy` to `disk` and returned without re-rendering, so the control went on naming the
+   mode the reader had just left (rule 67). Predicted while planning, and confirmed by
+   driving it.
+
+*One caught by a guard rather than by looking, and it is the better story.* The three-state
+fix — "nobody has asked", "it is being computed", an answer — was written and then **lost**:
+the script carrying it asserted on a later anchor, aborted before writing, and only the
+second half was re-applied. Nothing on screen said so. `test_the_key_tells_not_asked_from_
+being_computed` failed on the next run and named it exactly. A guard written from a defect
+caught the same defect re-entering by an entirely different route.
+
+*One false alarm I nearly reported.* The one-version fallback appeared not to state itself.
+It states itself perfectly; my seeded `localStorage` key used the wrong `SETTINGS_VERSION`,
+so the stored mode never applied and there was nothing to fall back from. Checked before
+reporting.
+
+*Guards.* Thirteen new ones, mutation-tested at **23/23** over a proved-green baseline
+(rule 59) — after 19/22 and then 21/23, and **all three survivors were the guard being
+weak**, which is now the fourteenth, fifteenth and sixteenth time in five sessions:
+
+- the crossings guard asserted `"diskColor(" in build`, which a mutation replacing *one* of
+  the gradient's two ends walked straight past, because the other end still said it;
+- `_diff_triples()` keyed blocks as `"dark" if "dark" in sel else "light"`, and the `@media`
+  selector `:root[data-palette="muted"]:not([data-theme="light"])` contains no "dark" — so
+  it was keyed *light* and silently overwrote the real light block, and a mutation to the
+  light colours survived because the guard was measuring a different block under its name;
+- the swatch guard anchored on `js.index('t.classList.contains("sw")')`, which finds the
+  row-click handler's own guard first and asserted against a branch that was never the
+  subject.
+
+*What was verified, and what was not.* The data and the palette resolution were driven end
+to end: the map covers all 4,786 routines (53 · 18 · 15 · 4,700), the key's five bands sum
+to **10,015** — the drawn-node count exactly — the tones follow the words through all three
+assumption states, all three colour sets reach the stack with the measured values, the
+one-version fallback drops the mode and says so, and the console is clean with the
+self-check green. **The rendered pixels were not seen.** The automation tab reports 0 fps
+and is given no animation frames (rule 38), so what the stack actually looks like in these
+colours is described here and has not been looked at. That is the one thing this chunk
+owes a real window.
 
 ### Paused 2026-08-30, after the routine marks
 
@@ -4008,8 +4129,11 @@ findings in two versions the same finding* — because a finding carries no id a
 Mensores' 106 are `LOST_EDGE`. Answer that before building it; a false *new* is rule 1's
 defect with a colour on it.
 
-**The graph as `colorBy: 'change'` is what remains, and the colour-channel question is
-answered — see "The colour channel, decided 2026-08-30" below. It is unblocked.**
+**The graph is done too — 2026-08-30, see `6h`.** The colour-channel question was answered
+at the keyboard (see "The colour channel, decided 2026-08-30" below) and built the same day.
+**Chunk C is complete**: the code browser, the routine views and the stack all draw the
+comparison. What is left of the overlays is the **anomaly worklist**, and it is blocked on a
+question rather than on effort — what makes two findings in two versions the same finding.
 
 <details><summary>the plan as it stood</summary>
 

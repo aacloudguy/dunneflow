@@ -137,7 +137,7 @@ Still not built: syntax highlighting (a design-rule-2 pair if ever wanted, done 
 with stdlib `tokenize`).
 
 **Not built:** `dunneflow infer` (the model pass) · the rest of the temporal **overlays**
-— the code browser and the routine views are layered (2026-08-30), the stack is not, and the
+— the code browser, the routine views and the stack are all layered (2026-08-30); the
 anomaly worklist is blocked on finding identity · attestation · the project profile · document
 mode's narrative view · packaging as a binary · any language but Python.
 
@@ -159,8 +159,37 @@ is not computed yet.
 
 ## What we are doing now
 
-**Two overlays are on screen — the routines, and the code.** The routines came second and
-lead here; the code browser's own section follows it.
+**All three overlays are on screen — the stack, the routines, and the code.** Chunk C is
+complete. The stack came last and leads here; the routines and the code browser follow.
+
+**The comparison over the stack — built 2026-08-30 (`colorBy: 'change'`).** A third value in
+the "colour by" selector beside *what it is* and *which plate*. Colour **takes the channel
+over** (Tom's call) rather than tinting the changed nodes and leaving the rest on plate hue,
+because two meanings in one channel makes a red dot mean either *deleted* or *the plate whose
+golden-angle hue landed on red*. **Crossings keep their plate gradient** (rule 23), and that
+is free: `setOptions` repaints the nodes and never rebuilds the selection geometry.
+
+```
+10,015 drawn nodes:  53 +  ·  18 ○ behave differently
+                     4,715 unchanged (15 of them edited without changing what they do)
+                     5,229 not compared — the comparison speaks about routines
+```
+
+- **Three colours and a ground.** *Edited only* folds into unchanged on principle — internal
+  computation is what this tool exists not to report — and the key states the fold.
+- **"Not compared" is its own tone**, because more than half the stack is boundaries,
+  constants, structures and artefacts that nothing claimed anything about.
+- **A third difference colour clears rule 69 comfortably** (violet, ΔE 66–151). The finding
+  is the opposite one: the *shipped* red/green pair is the weakest thing in the product at
+  **ΔE 9.5**, so the guard's bar is derived — the new colour may never become the new floor.
+- **Six defects found by driving**, including a palette that pinned a side to a colour (so
+  flipping the assumption swapped the words and left the dots red) and a map that made every
+  unchanged routine read as *not compared*. Guards mutation-tested at **23/23**, after two
+  rounds in which every survivor was the guard being weak.
+- **Owed: a real window.** The automation tab gets no animation frames (rule 38), so the
+  data, the palette and the counts were driven end to end and **the pixels were not seen**.
+
+### Before that, in the same session: the routine marks (2026-08-30)
 
 **The routines are marked too — built 2026-08-30 (chunk C, tables and the list).** The
 second overlay, and it needed no server: `/api/changes` already carries every band with the
@@ -196,8 +225,14 @@ Guards mutation-tested at **20/20** over a proved-green baseline, after a first 
 with **all three survivors the guard being weak** — the eleventh, twelfth and thirteenth time
 in four sessions.
 
-**Paused here 2026-08-30.** See `HANDOFF.md` `6g`. **Next: the graph as `colorBy: 'change'`,
-and it is unblocked.** The colour channel was decided at the keyboard: **change takes the
+**Paused here 2026-08-30 with chunk C complete.** See `HANDOFF.md` `6h`, `6g` and `6f`.
+**Next: the anomaly worklist overlay, and it is blocked on a question** — what makes two
+findings in two versions the same finding. A finding carries no id today and 93 of Mensores'
+106 are `LOST_EDGE`, so pairing them would invent an identity (rule 1). Answer that first.
+
+<details><summary>the colour-channel decision, now built</summary>
+
+**Next: the graph as `colorBy: 'change'`, and it is unblocked.** The colour channel was decided at the keyboard: **change takes the
 channel over** — a third value beside *what it is* and *which plate*, with plate hue stepping
 aside while it is on, because tinting only the changed nodes would put two meanings in one
 channel and a red dot would mean either *deleted* or *the plate whose hue landed on red*.
@@ -205,6 +240,8 @@ channel and a red dot would mean either *deleted* or *the plate whose hue landed
 the dots can say what changed while the lines go on saying which plate each end is on. See
 `HANDOFF.md`, "The colour channel, decided 2026-08-30", for the three things that follow
 from it.
+
+</details>
 
 ### Before that, in the same session: the comparison over the code (2026-08-30)
 

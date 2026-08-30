@@ -527,15 +527,24 @@ function applyTheme() {
  * *is* the default, so a stamp for it would need a fourth and fifth copy of every value it
  * already declares. Absent means "the blocks above", which is what they are.
  *
- * **The graph is deliberately not repainted here**, unlike `applyTheme()`. A set covers
- * `--diff-*` and `--sev-*`, and `cssPalette()` reads neither -- so a push to the stack
- * today would be a repaint that changes nothing. The moment it reads one (the comparison
- * as `colorBy: "change"` is where that arrives), the push belongs here, and a guard
- * asserts the implication so it cannot be forgotten rather than being remembered. */
+ * **The graph is repainted here, and it did not used to be.** A set covers `--diff-*` and
+ * `--sev-*`; `cssPalette()` read neither, so a push to the stack would have been a repaint
+ * that changed nothing. The comparison arriving as `colorBy: "change"` is what made it read
+ * `--diff-gone`, `--diff-new` and `--diff-moved` -- and from that moment a set chosen in
+ * Settings would have moved every surface except the one the reader is looking at.
+ *
+ * That implication was **asserted rather than remembered** (rule 36):
+ * `test_a_palette_token_the_graph_reads_must_reach_the_graph` derives both halves from the
+ * files and was vacuous until the read landed, then failed by name. It is the reason this
+ * line exists rather than being noticed later by someone switching sets with the stack
+ * open. */
 function applyPalette() {
   const r = document.documentElement;
   if (state.palette === "default") r.removeAttribute("data-palette");
   else r.setAttribute("data-palette", state.palette);
+  /* After the stamp, never before: `cssPalette()` reads the computed value off `:root`, so
+     pushing first would read the set the reader has just left. */
+  if (typeof applyGraphPalette === "function") applyGraphPalette();
 }
 
 function applyScale() {
@@ -935,9 +944,17 @@ function routineStatus(id) {
 
 /* The whole entry -- the status and what moved -- for a caller that wants both without
  * asking the Map twice. `same` is the answer for a routine in no band, but only once
- * there *is* an answer: "" until then. */
+ * there *is* an answer: "" until then.
+ *
+ * **The fact, and no surface's switch.** This was gated on `tableOverlayOn()`, which was
+ * right while the table and the routine list were the only readers and wrong the moment
+ * the stack became one: asking "what does the comparison say about this routine" would
+ * have answered "nothing" because a switch about *another pane* was off. The fact has one
+ * owner and every surface applies its own switch over it -- `routineChip` keeps
+ * `tableOverlayOn()`, the stack uses `colorBy === 'change'`. Rule 51, and the version of it
+ * that is invisible until a second caller arrives. */
 function routineChange(id) {
-  if (!tableOverlayOn()) return { status: "", moved: "" };
+  if (!comparing()) return { status: "", moved: "" };
   if (!CHANGES || CHANGES.loading || !CHANGES.available) return { status: "", moved: "" };
   return routineIndex().get(id) || { status: "same", moved: "" };
 }
@@ -959,6 +976,10 @@ function routineChange(id) {
  * rather than a sign that means nothing (the argument `factLaneHtml` makes about `signOf`).
  */
 function routineChip(id) {
+  /* The table's and the navigator's switch, applied here rather than inside
+     `routineChange` -- see the note there. Without it this pane would draw marks the
+     reader has switched off. */
+  if (!tableOverlayOn()) return { cls: "", glyph: "", title: "" };
   const { status: st, moved } = routineChange(id);
   if (!st) return { cls: "", glyph: "", title: "" };
   const w = diffWords();
@@ -1031,6 +1052,118 @@ function routineChangeCounts() {
  * draws the marks when this has answered and says so when it has not, which is design rule
  * 1 rather than a silence.
  */
+/* ── the same comparison, over the stack ─────────────────────────────────────────────
+ *
+ * The third thing colour can mean in the 2.5D view, beside *what a thing is* and *which
+ * plate it sits on*. It takes the channel over rather than tinting the changed nodes and
+ * leaving the rest on plate hue: two meanings in one channel would make a red dot mean
+ * either *deleted* or *the plate whose golden-angle hue landed on red* (design rule 4).
+ * The crossings keep their plate gradient, which costs nothing -- `setOptions` repaints
+ * the nodes and never rebuilds the selection geometry, where that gradient lives.
+ */
+
+/* Whether the stack is drawing the comparison. Its own gate, separate from the table's,
+ * because `colorBy` *is* the switch here -- a fourth setting would be a second answer to
+ * a question this one already asks. */
+function graphChangeOn() {
+  return comparing() && state.colorBy === "change";
+}
+
+/* Set when a stored `colorBy: "change"` was dropped because this program has nothing to
+ * compare. One-shot, and read by the legend: `colorBy` is persisted per program, so a
+ * reader who used the mode on a two-version program and then opened a one-version one
+ * would arrive in a mode that can colour nothing. Falling back silently would paint the
+ * whole stack one tone and look like a broken picture; falling back and saying so is
+ * design rule 1, and re-deriving rather than carrying the old choice is rule 66's lesson
+ * about a state that must not outlive its subject. */
+let changeModeDropped = false;
+
+function resolveColorBy() {
+  if (state.colorBy !== "change" || comparing()) return;
+  state.colorBy = "kind";
+  changeModeDropped = true;
+  persist();
+}
+
+/* id -> status, in the shape the engine wants, built once and **hung on the answer**
+ * exactly as `routineIndex()` is -- so it cannot outlive the pair it was built from.
+ *
+ * A plain object rather than a `Map` because that is what `opts.diskColors` is and the
+ * engine indexes it the same way. It is id-keyed rather than an array in the engine's own
+ * index order for a reason worth keeping: the shell has no API that would let it *confirm*
+ * that order, and a caller asserting an index space it cannot check is how a silent
+ * mismatch gets built. Never assembled with `Graph.indexOfId` per row -- that is the linear
+ * scan that cost 2,418 ms (rule 45).
+ *
+ * Only routines appear in it. Everything else the stack draws -- boundaries, constants,
+ * structures, artefacts -- is absent, and the engine reads an absent id as `unclaimed`,
+ * which is a different claim from `same` and is drawn as one.
+ */
+function changeByNodeId() {
+  if (!CHANGES || CHANGES.loading || !CHANGES.available) return null;
+  if (!graphPayload) return null;
+  if (CHANGES._byNode) return CHANGES._byNode;
+  /* **Walked over the payload, not copied out of `routineIndex()`.**
+   *
+   * The index holds only the ids that are *in a band* -- 86 of them on Mensores -- and
+   * `routineStatus` supplies `same` for a routine in none. Copying the index alone
+   * therefore left every unchanged routine absent, and an absent id is `unclaimed`: the
+   * key read *15 unchanged · 9,929 not compared* over a program with 4,700 unchanged
+   * routines. Both numbers were wrong and neither threw.
+   *
+   * So the population is the one the engine actually draws, and the *kind* is what decides
+   * which of the two grounds a node gets: a routine the comparison says nothing about is
+   * `same`, and anything that is not a routine is left out and reads as `unclaimed`,
+   * because the comparison was never asked about it. That is the distinction the second
+   * ground tone exists for (design rule 1). */
+  const nodes = graphPayload.nodes || {};
+  const ids = nodes.id || [], kinds = nodes.kind || [], shadow = nodes.shadow || [];
+  const out = Object.create(null);
+  for (let i = 0; i < ids.length; i++) {
+    if (shadow[i] === 1) continue;              // never drawn, so never coloured (rule 23)
+    if (kinds[i] !== "ROUTINE") continue;       // absent, and the engine reads that as
+    out[ids[i]] = routineStatus(ids[i]);        // `unclaimed` rather than as `same`
+  }
+  CHANGES._byNode = out;
+  return out;
+}
+
+/* Push it, with a stamp. The stamp moves so deck's update trigger fires: it compares
+ * trigger values by shallow equality, and a map whose identity has not moved is the same
+ * map to it. */
+/* Which tone each band is drawn in, and it is **`diffWords()`'s answer, never the band's**.
+ *
+ * A routine only the base has was deleted on the way to the compared version, or added on
+ * the way from it, depending on which the reader takes to be newer -- so the colour has to
+ * move with the word. Small enough to rebuild on every flip, which is why the per-node map
+ * carries a *band* and not a tone: flipping the assumption then costs this table rather
+ * than a walk over ten thousand nodes. */
+function changeTones() {
+  const w = diffWords();
+  return { only_base: w.base.tone, only_compared: w.compared.tone,
+           behaves: "moved", edited: "quiet", same: "quiet" };
+}
+
+function pushGraphChange() {
+  if (!Graph.mounted()) return;
+  Graph.setOptions({
+    colorBy: state.colorBy,
+    nodeChange: graphChangeOn() ? changeByNodeId() : null,
+    changeTone: changeTones(),
+    changeStamp: Date.now(),
+  });
+}
+
+/* The stack's own door onto the comparison, beside the table's.
+ *
+ * Choosing this mode *is* the reader asking, so unlike the navigator this one fetches --
+ * the graph is a deliberate destination and a reader who picked "what changed" has asked
+ * for the wait. It repaints when the answer lands, and the legend's key comes with it. */
+function ensureGraphChange() {
+  if (!graphChangeOn()) { pushGraphChange(); return Promise.resolve(null); }
+  return ensureChanges().then((c) => { pushGraphChange(); renderLegend(); return c; });
+}
+
 function ensureTableOverlay() {
   if (!tableOverlayOn()) return Promise.resolve(null);
   const fresh = !CHANGES;
@@ -2326,6 +2459,7 @@ function sortedRoutines() {
 const CHANGE_WEIGHT = { behaves: 4, only_base: 3, only_compared: 3, edited: 2, same: 1 };
 
 function changeWeight(id) {
+  if (!tableOverlayOn()) return 0;      // this column is the table's, and so is its switch
   return CHANGE_WEIGHT[routineStatus(id)] || 0;
 }
 
@@ -5576,6 +5710,12 @@ function wire() {
        every heading beside it has swapped. One control, two answers (rule 51), and the
        lines are the half nobody would think to check. */
     repaintCode();
+    /* And the stack, for exactly the same reason one layer out: the assumption decides
+       which of the two directional tones each band is drawn in, and the nodes are as much
+       inside a cache as the code's lines are. Found by flipping it and reading the
+       numbers -- the key said "added" while the dots stayed the colour of gone. */
+    pushGraphChange();
+    renderLegend();
   }));
 
   $$("[data-pointershown]").forEach(b => b.addEventListener("click", () => {
@@ -7942,6 +8082,30 @@ function cssPalette() {
       BOUNDARY:  hex("--graph-boundary"),
       ARTEFACT:  hex("--graph-artefact"),
     },
+    /* What the comparison says, for `colorBy: 'change'`. Read through the same `hex(...)`
+       helper as everything else here on purpose: the guard that requires a colour set to
+       reach the stack greps this function for exactly that call shape, so reading these
+       any other way would leave the guard asleep while the bug is real (rule 37).
+
+       **Keyed by tone, not by band**, and that is the correction rather than the design:
+       written as `only_base: hex("--diff-gone")` it pinned a *side* to a colour, so
+       flipping which version the reader assumes is newer swapped every word in the key and
+       left the dots red — a picture saying "added" in the colour of gone, which is worse
+       than one with no colour at all. The band-to-tone mapping is `diffWords()`'s, pushed
+       as `changeTone`, so the two cannot come apart. Found by flipping it and looking at
+       the numbers.
+
+       `quiet` serves both `edited` and `same`: "the body changed and nothing it does did"
+       is internal computation, which this tool exists not to report. `unclaimed` is not a
+       difference and is not part of a colour set -- it is the ground for everything the
+       comparison was never asked about. */
+    change: {
+      gone:      hex("--diff-gone"),
+      new:       hex("--diff-new"),
+      moved:     hex("--diff-moved"),
+      quiet:     hex("--graph-unchanged"),
+      unclaimed: hex("--graph-unclaimed"),
+    },
     dim: hex("--graph-dim"),
     dimAlpha: num("--graph-dim-alpha"),
     edge: [...hex("--graph-edge"), num("--graph-edge-alpha")],
@@ -8094,8 +8258,14 @@ async function ensureGraph() {
   });
   Graph.on("error", (e) => { graphError = e; renderGraphFurniture(); });
 
+  /* Before the mode reaches the engine, not after: mounting in `change` on a program with
+     nothing to compare would paint every node one tone for a frame and then correct
+     itself, which reads as a flicker rather than as a decision. */
+  resolveColorBy();
   Graph.mount($("#graphStage"), graphPayload, {
     diskOrder: state.diskOrder, diskColors: state.diskColors, colorBy: state.colorBy,
+    nodeChange: graphChangeOn() ? changeByNodeId() : null, changeTone: changeTones(),
+    changeStamp: Date.now(),
     filterMode: state.filterMode, direction: state.direction, nodeSize: state.nodeSize,
     spreadX: state.spreadX, spreadY: state.spreadY, spreadZ: state.spreadZ,
     collapseUnused: state.collapseUnused, showPlates: state.showPlates, scale: state.scale,
@@ -8107,6 +8277,13 @@ async function ensureGraph() {
   /* Read back the order the engine resolved. A saved order from a graph that has since
    * changed is discarded there, and the shell must not go on persisting the stale one --
    * that is how a setting outlives the thing it described. */
+  /* **A restored mode has to ask for its data.** `colorBy` is persisted, so a reader who
+     left in `change` comes back in it — and the mount hands the engine `changeByNodeId()`,
+     which is `null` until something has fetched. Nothing had, so the stack came up in
+     change mode having asked for nothing while the key said *comparing…* over a request
+     that did not exist. Rule 55's companion once more: whoever sets the state does the
+     work. */
+  ensureGraphChange();
   state.diskOrder = Graph.diskOrder();
   state.picks = Graph.selection();
   // A choice made while the stack was not on screen is adopted now rather than lost.
@@ -9225,6 +9402,14 @@ function renderLegend() {
               aria-label="Colour nodes by">
         <option value="kind" ${state.colorBy === "kind" ? "selected" : ""}>what it is</option>
         <option value="disk" ${state.colorBy === "disk" ? "selected" : ""}>which plate</option>
+        ${/* Drawn only where it can act. With one version there is nothing to colour by,
+              and an option whose only effect is to make the picture say nothing is design
+              rule 16's dead control with an excuse attached -- the same shape
+              `overlaySwitchHtml` uses. */""}
+        ${comparing()
+          ? `<option value="change" ${state.colorBy === "change" ? "selected" : ""}
+             >what changed</option>`
+          : ""}
       </select>
       · unselected
       <select class="gsel" id="gfilter"
@@ -9245,7 +9430,92 @@ function renderLegend() {
                aria-label="Close the gap left by plates nothing is looking at">
         <span class="muted">collapse gaps</span>
       </label>
+    </div>
+    ${changeKeyHtml()}`;
+}
+
+/* What the colours mean while the stack is coloured by change, and how many nodes are in
+ * each.
+ *
+ * **There is no key for any other colouring, and that is a gap rather than a precedent.**
+ * Under `colorBy: 'kind'` a reader gets five colours and nothing on the page names them.
+ * This mode cannot afford that: three of its five states are folded or absent-by-default,
+ * and a colour a reader cannot account for is worse than no colour.
+ *
+ * **Counted from the payload, never from `routineChangeCounts()`.** That function walks
+ * `ROUTINES` -- 4,733 routines -- and this picture draws 10,015 nodes of which more than
+ * half are boundaries, constants, structures and artefacts. Two populations, and a count
+ * must be named after the thing it measures (rule 32).
+ */
+function changeKeyHtml() {
+  if (changeModeDropped) {
+    return `<div class="legkey"><span class="hint">Colouring by what changed needs two
+      versions, and this program holds one — showing <b>what it is</b> instead.</span></div>`;
+  }
+  if (!graphChangeOn()) return "";
+  /* **Three states, and collapsing any two of them states the wrong one** (rule 35).
+     "Nobody has asked yet", "it is being computed" and an answer are different claims, and
+     only the last is an answer. Written as one `!CHANGES || CHANGES.loading` branch this
+     said *comparing…* over a mode that had asked for nothing at all — for ever, and
+     convincingly. The same trap `factLaneHtml` already carries a note about. */
+  if (!CHANGES) {
+    return `<div class="legkey"><span class="hint">not compared yet</span></div>`;
+  }
+  if (CHANGES.loading) {
+    return `<div class="legkey"><span class="hint">comparing…</span></div>`;
+  }
+  if (!CHANGES.available) {
+    return `<div class="legkey"><span class="hint">no comparison: ${
+      esc(CHANGES.reason || "")}</span></div>`;
+  }
+  const by = changeByNodeId() || {};
+  /* **Columnar, not an array of objects.** `serve.py` transposes the payload into parallel
+     arrays -- `nodes.id`, `nodes.shadow` and the rest -- because that is what the engine
+     uploads as typed buffers. Written as `for (const n of nodes)` this threw
+     `nodes is not iterable` on the first paint, and the key sat at "comparing…" for ever
+     while the answer had long since arrived. Found by reading the console.
+
+     **Shadows are skipped**, because they are never drawn (rule 23) and a count beside a
+     picture must count what is in it (rule 32). On Mensores that is 5,855 of them. */
+  const nodes = (graphPayload && graphPayload.nodes) || {};
+  const ids = nodes.id || [];
+  const shadow = nodes.shadow || [];
+  const tally = { only_base: 0, only_compared: 0, behaves: 0, edited: 0, same: 0,
+                  unclaimed: 0 };
+  for (let i = 0; i < ids.length; i++) {
+    if (shadow[i] === 1) continue;
+    const st = by[ids[i]];
+    if (st && st in tally) tally[st] += 1;
+    else tally.unclaimed += 1;
+  }
+  const w = diffWords();
+  const row = (tone, glyph, n, label, why) => !n ? "" : `
+    <div class="legkey-row">
+      <span class="legkey-dot ${tone}" aria-hidden="true">${glyph}</span>
+      <b class="num">${n.toLocaleString()}</b>
+      <span>${label}</span>${why ? `<span class="hint">${why}</span>` : ""}
     </div>`;
+  /* The two folds are stated, not hidden. `edited` reaches the same colour as `same`
+     because "the body changed and nothing it does did" is internal computation, which this
+     tool exists not to report -- and `unclaimed` is its own tone because "nothing was asked
+     about this" and "we looked and found nothing" are opposite claims (design rule 1). */
+  return `<div class="legkey">
+    ${row("tone-" + w.base.tone, signOf(w.base.tone), tally.only_base, w.base.word, "")}
+    ${/* Taken from the band, not from the tally, and it is the one number here that has to
+          be: a routine only the *compared* version has is not in this version's payload at
+          all, so no node could carry it. Counted and never drawn — the same answer the
+          table gives, for the same reason (rule 1). */""}
+    ${row("tone-" + w.compared.tone, signOf(w.compared.tone),
+          (CHANGES.only_in_compared || []).length, w.compared.word,
+          "not drawn — this version has no node for them")}
+    ${row("tone-moved", "\u25cb", tally.behaves, "behave differently", "")}
+    ${row("tone-quiet", "\u00b7", tally.edited + tally.same, "unchanged",
+          tally.edited ? `including ${tally.edited.toLocaleString()} edited without
+                          changing what they do` : "")}
+    ${row("tone-unclaimed", "\u00b7", tally.unclaimed, "not compared",
+          "boundaries, constants, structures and named files — the comparison speaks about "
+          + "routines")}
+  </div>`;
 }
 
 function sortedDisks() {
@@ -9382,8 +9652,18 @@ function wireGraphOnce() {
       const row = t.closest(".leg");
       state.diskColors[row.dataset.disk] = t.value;
       // Choosing a colour for a disk is a statement that colour should mean *disk*.
+      const wasChange = state.colorBy === "change";
       state.colorBy = "disk";
-      Graph.setOptions({ diskColors: state.diskColors, colorBy: "disk" });
+      Graph.setOptions({ diskColors: state.diskColors, colorBy: "disk", nodeChange: null,
+                         changeTone: null, changeStamp: Date.now() });
+      /* **The select has to be told.** This forces `colorBy` and used to return without
+         re-rendering, so the control went on displaying the mode the reader had just left
+         -- one control, two claims, and the markup was the one that lost (rule 67).
+         Harmless while there were two modes and `disk` was always the destination; with a
+         third it is a control disagreeing with the state that owns it. Re-rendered only
+         when the mode actually moved, because a rebuild here would destroy the colour
+         input mid-drag. */
+      if (wasChange) renderLegend();
       return;                        // the graph repaints; the swatch is left alone
     }
     if (t.id === "gsize") {
@@ -9422,7 +9702,17 @@ function wireGraphOnce() {
       return;
     }
     if (t.id === "gsort") { state.sortMode = t.value; renderLegend(); persist(); }
-    if (t.id === "gcolorby") { state.colorBy = t.value; Graph.setOptions({ colorBy: t.value }); persist(); }
+    if (t.id === "gcolorby") {
+      state.colorBy = t.value;
+      persist();
+      /* `ensureGraphChange` pushes the mode either way -- with the map when it is `change`
+         and with `null` when it is not, so leaving the mode drops the data with it rather
+         than leaving a map the engine no longer reads. It is also the one place that
+         fetches: the graph is a deliberate destination, so a reader who chose "what
+         changed" has asked for the wait (unlike the navigator, which never asks). */
+      ensureGraphChange();
+      renderLegend();          // the key appears, goes, or says it is still comparing
+    }
     if (t.id === "gfilter") { state.filterMode = t.value; Graph.setOptions({ filterMode: t.value }); persist(); }
     /* Nothing to push to the engine: this changes what the *shell* does next time it
        follows something, not how the picture is drawn. A `setOptions` call here would be

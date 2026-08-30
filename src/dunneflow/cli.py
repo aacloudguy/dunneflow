@@ -741,6 +741,10 @@ def build_parser() -> argparse.ArgumentParser:
     sv.add_argument("out_dir", help="an analysed program's output directory")
     sv.add_argument("--port", type=int, default=8787)
     sv.add_argument("--no-open", action="store_true", help="do not open a browser")
+    sv.add_argument("--revision", default=None,
+                    help="which point in time to open as the base (default: the newest). "
+                         "The reader can switch it from the page; this is how a chosen "
+                         "base survives a restart of the server.")
     sv.set_defaults(func=cmd_serve)
     return p
 
@@ -795,7 +799,7 @@ def cmd_serve(args: argparse.Namespace) -> int:
     from .web.serve import serve
     try:
         serve(Path(args.out_dir), port=args.port,
-              open_browser=not args.no_open, emit=_emit)
+              open_browser=not args.no_open, revision=args.revision, emit=_emit)
     except (FileNotFoundError, StaleGraphError) as exc:
         _emit(f"error: {exc}")
         return 2

@@ -4126,3 +4126,273 @@ def test_an_equal_pair_ranks_neither_end() -> None:
     assert "return null" in tail, (
         "an equal pair falls through to a direction; equal versions rank neither end"
     )
+
+
+# ------------------------------------------------------- switching the base --- #
+#
+# Seven guards. The base is what the navigator counts, the inspector reports, the code
+# browser reads and the stack draws; changing it is the server rebuilding all of that from
+# another graph, which is seconds the reader has to be able to watch. Every failure here
+# looks exactly like a working page.
+
+
+def test_the_pair_control_offers_every_pair_and_no_dead_row() -> None:
+    """The reading end used to be pinned, with a disabled row saying so.
+
+    `— reading a past revision arrives next —` was honest and is now false, and a row that
+    cannot be chosen sitting under a menu of rows that can is the shape design rule 16 was
+    written from wearing an apology. Removing it *is* this chunk.
+
+    Asserted as a nested walk over the same list, not as a count: what makes every pair
+    reachable is that the options are built from `usable` inside a loop over `usable`, and
+    a version of this that mapped one list and hard-coded the other end would produce the
+    right number of options for two revisions and the wrong ones for three.
+    """
+    js = _code(_read("shell.js"))
+    fn = _fn(js, "buildRevControls")
+    assert "disabled" not in fn, (
+        "the pair control still ships a row that cannot be chosen; the reading end is "
+        "settable now and the row that said otherwise is what this work removes"
+    )
+    outer = re.search(r"usable\.map\(\s*(\w+)\s*=>", fn)
+    assert outer, "the options are no longer built from the list of usable revisions"
+    b = outer.group(1)
+    assert re.search(rf"usable\.filter\(\s*(\w+)\s*=>\s*\1\.revision\s*!==\s*{b}\.revision",
+                     fn), (
+        "the comparison ends are not walked against every reading end, so some pairs the "
+        "program holds cannot be reached from the control at all"
+    )
+
+
+def test_the_pair_control_names_both_ends_on_every_option() -> None:
+    """A closed `<select>` shows the selected option's text and never its group's.
+
+    So an option reading only "on its own" would leave the one control that answers "which
+    two points am I looking at" saying nothing until it was opened. The `<optgroup>` is a
+    grouping aid; the option is the answer.
+    """
+    js = _code(_read("shell.js"))
+    fn = _fn(js, "buildRevControls")
+    opts = re.findall(r"<option[^>]*>(.*?)</option>", fn, re.S)
+    assert len(opts) >= 2, "the control no longer writes options; this guard is blind"
+    for text in opts:
+        assert text.count("pairName(") >= 1 or "on its own" in text, text
+    paired = [t for t in opts if "←" in t]
+    assert paired, "no option names a pair"
+    for text in paired:
+        assert text.count("pairName(") == 2, (
+            "an option naming a pair names only one of its two ends: closed, the control "
+            f"would not say what it is compared with -- {text.strip()}"
+        )
+
+
+def test_the_pair_control_shows_the_pair_that_is_actually_in_force() -> None:
+    """Two ways this went wrong, and neither threw.
+
+    It read `chosenPair().from` — a key `chosenPair()` has never returned; it returns
+    `{base, compared}` — so the marker was the empty string on every build and the menu
+    opened on the wrong row after every reload.
+
+    And the `selected` attribute is not the last word: **Chrome restores a `<select>`'s
+    value across a reload**, which outranks it. After a base switch the control showed the
+    pair the reader had been on *before* the switch while the strip beside it named the new
+    one — one control, two claims. The value is state, so it is assigned.
+    """
+    js = _code(_read("shell.js"))
+    fn = _fn(js, "buildRevControls")
+    chosen = _fn(js, "chosenPair")
+    keys = set(re.findall(r"^\s*(\w+):", chosen, re.M))
+    read = set(re.findall(r"pair\.(\w+)", fn))
+    assert read, "buildRevControls no longer reads the chosen pair at all"
+    assert read <= keys, (
+        f"buildRevControls reads {sorted(read - keys)} off chosenPair(), which returns "
+        f"{sorted(keys)}. The control would silently mark nothing."
+    )
+    assert re.search(r"rev\.value\s*=", fn), (
+        "the control's value is never assigned, so a browser restoring its pre-reload "
+        "value outranks the markup and the control names a pair that is not in force"
+    )
+
+
+def test_moving_the_reading_end_asks_the_server_and_moving_the_other_does_not() -> None:
+    """Two acts, two costs, and only one of them is a rebuild.
+
+    The comparison end is a query the server already holds the stores for. The reading end
+    is the payload, the file list, both vocabulary lanes and the cover, rebuilt from another
+    graph. Sending both down one path would either spend ten seconds on a question that
+    costs a query, or move a label and not the map — which is what the disabled row existed
+    to admit.
+    """
+    js = _code(_read("shell.js"))
+    handler = js.split('rev.addEventListener("change"', 1)
+    assert len(handler) == 2, "nothing listens to the pair control"
+    body = handler[1].split("\n  }\n", 1)[0]
+    assert "switchBase(" in body, "choosing a different reading end asks the server nothing"
+    assert "servingRevision()" in body, (
+        "the handler decides what changed from stored state rather than from what the "
+        "server says it is serving -- the two disagree exactly when it matters"
+    )
+    assert "refreshChanges()" in body, "moving only the comparison end no longer compares"
+
+
+def test_a_switch_takes_the_new_base_up_only_when_the_server_has_one() -> None:
+    """Reloading on anything short of `done` puts the reader in front of the old map
+    wearing the new version's label — the two claims this whole chunk keeps in step.
+
+    And a refusal is an answer. The server refuses by name — already the base, no graph for
+    it, a switch already running — and swallowing that leaves an overlay spinning against a
+    rebuild that was never started (rule 35: "working" and "it failed" are opposite claims).
+    """
+    js = _code(_read("shell.js"))
+    poll = _fn(js, "pollBase")
+    assert poll.count("location.reload") == 1, (
+        f"{poll.count('location.reload')} reloads in the poll -- there is one moment the "
+        "new base exists, and more than one route to it is more than one claim about when"
+    )
+    # The condition guarding it, found by walking back to the nearest `if (` rather than by
+    # a regex spanning braces: the reload sits inside a `try`, and a pattern that cannot
+    # cross a `}` matched nothing at all while reporting it as "no reload here" (rule 37 --
+    # a guard that names the right case and measures the wrong span).
+    before = poll[:poll.index("location.reload")]
+    cond = before[before.rindex("if (") + 4:].split(")")[0]
+    assert 'state === "done"' in cond, (
+        f"the page reloads on `{cond.strip()}` -- anything but `done` means the server is "
+        "still serving the version the reader was trying to leave"
+    )
+    start = _fn(js, "switchBase")
+    assert "d.started" in start, "a refused switch is not distinguished from a started one"
+    assert 'state: "failed"' in start, "a refusal leaves the overlay claiming to be working"
+    # Every failure path puts the control back. A switch that did not happen leaving the
+    # control naming the pair the reader chose is one control and one strip giving two
+    # answers -- and the control is the one they will believe, because it is the one they
+    # touched. Counted, not merely present: it was `render()` on two of the three paths and
+    # the third would have been added without it.
+    for fn_name in ("switchBase", "pollBase"):
+        body = _fn(js, fn_name)
+        fails = len(re.findall(r'state:\s*"failed"', body))
+        assert fails == body.count("switchFailed()"), (
+            f"{fn_name} reports {fails} failures and restores the control "
+            f"{body.count('switchFailed()')} times -- a path that leaves it naming a pair "
+            "that is not in force"
+        )
+    assert "buildRevControls()" in _fn(js, "switchFailed"), (
+        "a failed switch does not rebuild the control from the pair actually in force"
+    )
+    assert 'method: "POST"' in start, (
+        "the switch is asked for with a GET -- one a browser prefetch or a bookmark reload "
+        "fires by itself"
+    )
+
+
+def test_the_rebuild_overlay_names_the_version_and_sits_over_its_own_scrim() -> None:
+    """A blocking surface that does not say what it is waiting for is a frozen page.
+
+    And rule 48: a scrim must sit under the thing it dims and over everything else, so one
+    element cannot serve two windows at different depths. The detail window was rendered
+    perfectly, greyed, and swallowed every click into "close" for exactly this.
+    """
+    js = _code(_read("shell.js"))
+    panel = _fn(js, "rebuildPanel")
+    assert "versionName(" in panel, "the overlay does not name the version being built"
+    # `\b(?!s)`, not a containment check: `REBUILD.steps` *contains* `REBUILD.step`, so the
+    # obvious spelling passed while the step name had been replaced by a literal and only
+    # the count was still read. That is the same shape as `routines_after` containing
+    # `after` -- twice now, the guard has been the weak half rather than the mutation
+    # (rule 59), and both times only running the mutation found it.
+    assert re.search(r"REBUILD\.step\b(?!s)", panel), (
+        "the overlay does not say which step is running -- a blocking surface that names "
+        "no work is a frozen page"
+    )
+    assert "REBUILD.reason" in panel, "a failed switch does not say why"
+    assert "REBUILD.steps" in panel and "done_steps" in panel, (
+        "the overlay does not report progress against the server's own step count"
+    )
+
+    css = _css_code(_read("tokens.css"))
+    z = {name: int(m) for name, m in
+         re.findall(r"\.(\w[\w-]*)\s*\{[^}]*z-index:\s*(\d+)", css)}
+    for scrim, win in (("rebuild-scrim", "rebuild"),
+                       ("detail-scrim", "detailwin"),
+                       ("viewer-scrim", "srcviewer")):
+        if scrim in z and win in z:
+            assert z[scrim] < z[win], (
+                f".{scrim} is above .{win}, so every click on the window lands on the scrim"
+            )
+    # Above every other **modal**, named rather than compared against the whole stylesheet:
+    # `.skip-link` legitimately sits at 200 and is off-screen until focused, so "the highest
+    # number anywhere" is a claim about the wrong set. What matters is that nothing a reader
+    # can open lands in front of the switch -- a source viewer over it would be reading a
+    # store that is about to close.
+    for other in ("detailwin", "srcviewer", "detail-scrim", "viewer-scrim"):
+        if other in z:
+            assert z["rebuild"] > z[other], (
+                f".{other} sits above the base switch's overlay, so it can be opened over "
+                "a map that is being replaced"
+            )
+
+
+def test_the_served_version_decides_what_is_being_read() -> None:
+    """One payload set is live, so `baseRev` is the server's answer and not a stored choice.
+
+    Three things follow and each was a defect first. A stored base that disagrees with what
+    is served is **said and never acted on** — ten uninvited seconds on every open is not a
+    thing to do to someone. A version cannot be compared with itself, and a reader reaches
+    that state by choosing `A ← B` and then having the server come back up on B. And the
+    field is persisted *after* the switch lands, not when it is asked for: written when
+    asked, it records an intention as a fact and a reader who reloads mid-rebuild has a
+    stored base naming a version nothing is serving.
+    """
+    js = _code(_read("shell.js"))
+    fn = _fn(js, "reconcileBase")
+    assert "servingRevision()" in fn, "the reconciliation does not ask what is being served"
+    assert re.search(r"state\.baseRev\s*=\s*serving", fn), (
+        "the served version does not decide `baseRev`, so the strip can name a version "
+        "that is not the one on screen"
+    )
+    assert "switchBase(" not in fn, (
+        "boot switches the base by itself -- ten seconds nobody asked for, on every open"
+    )
+    assert "revNote" in fn, "a disagreement about which version is being read is silent"
+    assert re.search(r"comparedRev\s*===\s*state\.baseRev", fn), (
+        "a version can be left compared with itself, which has nothing to say"
+    )
+    assert "persist()" in fn, (
+        "the reconciled base is not stored, so its notice fires again on every reload -- "
+        "a check that cries wolf"
+    )
+
+    handler = js.split('rev.addEventListener("change"', 1)[1].split("\n  }\n", 1)[0]
+    switching = handler[handler.index("switchBase("):] if "switchBase(" in handler else ""
+    before = handler[:handler.index("switchBase(")] if switching else handler
+    assert "state.baseRev = wantBase" not in before, (
+        "the handler stores a base before the switch has landed -- an intention recorded "
+        "as a fact, and wrong for as long as the rebuild runs"
+    )
+
+
+def test_a_group_restored_open_fetches_what_its_rows_need() -> None:
+    """`onOpen` fired from the toggle only, so it ran on the open and never on the restore.
+
+    `navOpen` is persisted, so the second visit is the one that breaks: open the Changes
+    group, reload, and it sits open under "two versions — open to compare them" with
+    nothing to open — the note telling the reader to do what they have already done. Rule
+    55's companion, with the *restore* as the half that sets the state and does none of the
+    work.
+
+    It has been there since the group was built and takes a reload to reach; a base switch
+    reloads, so every switch out of an open Changes group landed on it.
+    """
+    js = _code(_read("shell.js"))
+    fn = _fn(js, "openGroupsFetchWhatTheyNeed")
+    assert "NAV_GROUPS" in fn or "navGroupsInOrder()" in fn, (
+        "the boot fetch names its own list of groups rather than reading the table -- "
+        "rule 36, and a group added later would be missed in silence"
+    )
+    assert "groupOpen(" in fn, (
+        "openness is read off `state.navOpen` directly. That map is empty on a fresh "
+        "profile while the group still renders open, because `groupOpen()` also knows the "
+        "table's default -- so this would fetch nothing for a group that says it has rows"
+    )
+    assert "onOpen" in fn, "the boot fetch does not call what a group declares it needs"
+    boot = js[js.index("async function boot("):]
+    assert "openGroupsFetchWhatTheyNeed()" in boot, "nothing calls it at boot"

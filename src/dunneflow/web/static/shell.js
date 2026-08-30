@@ -119,6 +119,20 @@ let codeGoto = 0;
 let REVISIONS = [];       // [{ revision, state, captured, label, files, comparable, serving }]
 let CHANGES = null;       // { available, counts, added, removed, behaves, ... } | { loading: true } | null
 
+/* A base switch in progress, or `null` for none.
+ *
+ * `null` rather than an idle object, for rule 35's reason one more time: "nobody has asked
+ * for a switch" and "a switch is running and has done nothing yet" are opposite claims,
+ * and a shape that cannot tell them apart puts a blocking overlay on a page where nothing
+ * is happening.
+ *
+ * It carries the server's own progress verbatim — `state`, `revision`, `step`,
+ * `done_steps`, `steps`, `ms`, and `reason` when it failed — because the steps and their
+ * count are the server's to name. A client-side list of what the server builds is two
+ * answers to one question, and the day a step is added the overlay counts to the wrong
+ * total (rule 32). */
+let REBUILD = null;
+
 const AI_OPS = [
   { id: "harvest", label: "Harvest definitions from documentation", needs: "docs",
     desc: "Reads only documents whose shape suggests a definition \u2014 a bold term, a heading, a table row, a term-dash-gloss. Returns quotations with a file and line you can check.",
@@ -233,10 +247,13 @@ const state = {
    * the reader's assumption, and it lives in `comparedIsNewer` where they can see and
    * change it.
    *
-   * `baseRev` is pinned to the served version until the server can open a second graph
-   * and rebuild the payload, the file list, both vocabulary lanes and the cover against
-   * it. Empty means "whatever is being served", which is the only honest default before
-   * any version has been read. */
+   * **The server is the truth about `baseRev`, not this.** One payload set is live at a
+   * time: asking for another base makes the server open that graph and rebuild the
+   * payload, the file list, both vocabulary lanes and the cover from it, which is the
+   * ten seconds the reader watches. So this field is set from `/api/revisions` at boot
+   * and only ever *proposes* a change. A stored value that disagrees with what is being
+   * served is said out loud and never acted on by itself — ten uninvited seconds on
+   * every open is not a thing to do to someone (design rule 1). */
   baseRev: "",
   comparedRev: "",
   /* The reader's assumption about which of the two versions is the newer one.
@@ -639,12 +656,14 @@ function chosenPair() {
 
 /* What the reader chose but cannot have, said out loud rather than swallowed. */
 function pairLost() {
+  /* The comparison end only. The reading end cannot be lost any more: `reconcileBase()`
+     sets it from `/api/revisions`'s own `serving` flag, so it names a revision that exists
+     by construction — and when a *stored* reading end disagrees with what is served, that
+     is a different message with a different remedy, said there. Two places reporting one
+     kind of loss would be two answers (rule 51). */
   const gone = [];
   if (state.comparedRev && !REVISIONS.some(r => r.revision === state.comparedRev)) {
     gone.push(state.comparedRev);
-  }
-  if (state.baseRev && !REVISIONS.some(r => r.revision === state.baseRev)) {
-    gone.push(state.baseRev);
   }
   return gone;
 }
@@ -692,6 +711,260 @@ async function loadRevisions() {
   return REVISIONS;
 }
 
+/* Make `state.baseRev` agree with the server, and say so when it did not.
+ *
+ * **The server owns which version is on screen.** One payload set is live at a time, so a
+ * stored `baseRev` is a choice made in an earlier session and may be about a server that
+ * has since been restarted onto a different version — `dunneflow serve` opens the newest
+ * unless `--revision` says otherwise. Honouring the stored value by *acting* on it would
+ * mean ten uninvited seconds on every open; honouring it silently by *displaying* it would
+ * be a label over a map that is not that version, which is the one failure this whole
+ * chunk exists to prevent. So: the served version wins, and the disagreement is stated
+ * with the switch one click away (design rule 1).
+ *
+ * It also picks up the note left by a switch that has just reloaded the page. That note is
+ * the only thing the reload cannot carry in `state`, and it is the thing worth saying: the
+ * map has changed underneath, so a selection that survived in `picks` may honestly report
+ * "Not in this map". */
+function reconcileBase() {
+  const serving = servingRevision();
+
+  let switched = null;
+  try {
+    const raw = window.sessionStorage.getItem("dunneflow:switched");
+    if (raw) {
+      switched = JSON.parse(raw);
+      window.sessionStorage.removeItem("dunneflow:switched");   // one shot, always
+    }
+  } catch { /* a private window refuses storage; the switch still happened */ }
+
+  if (switched && switched.to === serving) {
+    const was = REVISIONS.find(r => r.revision === switched.from);
+    state.revNote = `Now reading ${versionName(REVISIONS.find(r => r.revision === serving))}`
+      + (was ? `, switched from ${versionName(was)}` : "")
+      + `. Anything you had selected that only exists in the other version will say “Not `
+      + `in this map”.`;
+  } else if (state.baseRev && serving && state.baseRev !== serving
+             && REVISIONS.some(r => r.revision === state.baseRev && r.comparable)) {
+    const wanted = REVISIONS.find(r => r.revision === state.baseRev);
+    state.revNote = `You were last reading ${versionName(wanted)}; this server is serving `
+      + `${versionName(REVISIONS.find(r => r.revision === serving))}. Nothing was switched `
+      + `— pick that version in the toolbar to read it, or start the server with `
+      + `--revision ${state.baseRev}.`;
+  }
+  /* Set unconditionally. Whatever the note says, the field has to agree with what is
+     actually being served before anything reads it -- `buildRevControls` and the strip
+     both do, immediately. */
+  if (serving) state.baseRev = serving;
+
+  /* A version cannot be compared with itself, and this is a state the reader can reach
+     without doing anything wrong: choose `A ← B`, then have the server come back up on B
+     -- `serve` opens the newest unless `--revision` says otherwise -- and the comparison
+     end is now the thing being read. The server refuses the query by name; asking it at
+     all would be spending a fetch to be told something we can see. Said rather than
+     silently dropped (design rule 1). */
+  if (state.comparedRev && state.comparedRev === state.baseRev) {
+    state.revNote = (state.revNote ? state.revNote + " " : "")
+      + `You were comparing this version with itself, which has nothing to say, so that `
+      + `comparison was dropped.`;
+    state.comparedRev = "";
+  }
+  /* Persisted, so the field records what is actually being read. Without this the stored
+     base stays at a version nobody is serving, and the note above fires again on every
+     reload -- a check that cries wolf (rule 43), about a disagreement the reader has
+     already been told about and has already implicitly settled by carrying on. */
+  persist();
+}
+
+/* Which version the server is actually serving. The one answer to "what am I looking at".
+ *
+ * Read off `/api/revisions` rather than out of `state`, because the two can disagree: a
+ * stored `baseRev` is a choice made in an earlier session, possibly against a server that
+ * has since been restarted onto a different version. The server wins, always. */
+function servingRevision() {
+  const r = REVISIONS.find(x => x.serving);
+  return r ? r.revision : "";
+}
+
+/* ── switching the base ───────────────────────────────────────────────────────────────
+ *
+ * One payload set is live at a time — Tom's call, and the alternative was holding two of
+ * everything for a program whose payload, file list, vocabulary lanes and cover are ten
+ * seconds and a few hundred megabytes of reading. So asking for a different base is asking
+ * the **server** to rebuild, and the reader watches it happen.
+ *
+ * A POST, and that is not ceremony: it is the one request in this application that
+ * replaces what is on screen, and a GET that does that is one a browser prefetch or a
+ * bookmark reload fires by itself.
+ *
+ * **The page reloads when it lands**, and that is the design rather than a shortcut. Every
+ * module-level array here is derived from the base — the routines, the files, the cover,
+ * the plates, the conventions, the terms, the anomalies, the packages, the graph payload,
+ * the code pane's cache, the search results — and a hand-kept list of what to invalidate is
+ * exactly the defect rule 36 was written from: a generic sweep narrowed to a literal, with
+ * whatever it forgot staying live inside a page that looks correct. Settings are keyed per
+ * program, so the theme, the scale, the panel layout, the disk colours, the column widths,
+ * the chosen pair and the polarity all survive; what is lost — the trail's steps, the undo
+ * stack, a camera framing a stack of a different size — was about the old base anyway. */
+async function switchBase(rev) {
+  /* `since` is the client's own clock, and it is deliberately not the server's `ms`.
+     The server stamps its elapsed when a *step* changes, so between steps it stands still
+     -- and a step can take two seconds. The reader watching a frozen "0.0 s" reads a
+     stalled process, not a fast one. This measures the thing they actually care about,
+     which is how long they have been waiting, and it cannot be stale. */
+  REBUILD = { revision: rev, state: "asking", step: "", done_steps: 0, steps: 0,
+              since: Date.now() };
+  render();
+  let d;
+  try {
+    const r = await fetch("/api/base?revision=" + encodeURIComponent(rev), { method: "POST" });
+    d = await r.json();
+  } catch (err) {
+    REBUILD = { revision: rev, state: "failed",
+                reason: "the server could not be asked: " + err.message };
+    switchFailed();
+    return;
+  }
+  /* A refusal is an answer, and it is rendered. The server refuses by name — already the
+     base, no graph for it, a switch already running — and swallowing that would leave an
+     overlay spinning against a rebuild that was never started. */
+  if (!d.started) {
+    REBUILD = { revision: rev, state: "failed",
+                reason: d.reason || "the switch was refused, with no reason given" };
+    switchFailed();
+    return;
+  }
+  REBUILD = Object.assign({ revision: rev, since: REBUILD.since }, d);
+  render();
+  pollBase(rev);
+}
+
+/* A switch that did not happen must leave the control naming the pair that did.
+ *
+ * The overlay says what went wrong, and the strip goes on naming the real base -- but the
+ * *control* was still showing the pair the reader had just chosen, which is now a claim
+ * about a state the page is not in. One control, one strip, two answers, and the control
+ * is the one a reader will believe because it is the one they touched.
+ *
+ * `buildRevControls()` puts it back rather than any remembered previous value, because it
+ * derives the selection from `state`, and `state.baseRev` was deliberately never written
+ * for a switch that had not landed. So the pair in force is what it rebuilds to, by
+ * construction rather than by bookkeeping (rule 51). */
+function switchFailed() {
+  buildRevControls();
+  render();
+}
+
+/* Watch a switch, and take the new base up only when the server says it has one.
+ *
+ * Reloading on anything short of `done` would put the reader in front of the *old* map
+ * wearing the new version's label — the two claims this whole chunk exists to keep in
+ * step. So `done` reloads, `failed` states the reason and stays, and anything else keeps
+ * watching.
+ *
+ * The overlay is repainted rather than the page: `render()` rewrites four panes and the
+ * navigator, and running that twice a second for ten seconds is work nobody can see. */
+function pollBase(rev) {
+  const since = REBUILD ? REBUILD.since : Date.now();
+  const tick = async () => {
+    let d;
+    try {
+      d = await fetch("/api/base").then(r => r.json());
+    } catch (err) {
+      REBUILD = { revision: rev, state: "failed",
+                  reason: "lost contact with the server: " + err.message };
+      switchFailed();
+      return;
+    }
+    REBUILD = Object.assign({ revision: rev, since: since }, d);
+    if (d.state === "done") {
+      /* One shot, read and cleared on the next boot. The reload is what makes the switch
+         clean, and it also throws away the one thing worth saying afterwards: that this is
+         a different version from the one the reader was just looking at, so anything they
+         had selected may honestly report "Not in this map". Session storage rather than
+         the settings blob, because it belongs to this reload and not to this program. */
+      try {
+        window.sessionStorage.setItem("dunneflow:switched",
+          JSON.stringify({ from: servingRevision(), to: rev }));
+      } catch { /* private windows refuse storage; the reload is still right */ }
+      window.location.reload();
+      return;
+    }
+    paintRebuild();
+    if (d.state === "failed") return;
+    window.setTimeout(tick, 400);
+  };
+  window.setTimeout(tick, 300);
+}
+
+/* The overlay a base switch runs behind.
+ *
+ * **Blocking, over the whole application**, and that is the honest state rather than a
+ * heavy hand. Every count in the navigator, every figure in the inspector, every line in
+ * the code pane and every dot in the stack belongs to the version being replaced — so a
+ * click during those ten seconds buys a confident answer to a question about a map that is
+ * on its way out. It says so, because a reader who cannot use the page is entitled to know
+ * the page underneath is still real and still the old one.
+ *
+ * Its scrim is its own. Rule 48: a scrim must sit under the thing it dims and over
+ * everything else, and one element cannot do that for two windows at different depths —
+ * which is how the detail window came to swallow every click into "close".
+ *
+ * The step names and the step *count* are the server's, printed as sent. A list here would
+ * be a second answer to "what does building a base involve", and the day a step is added
+ * this one would count to the wrong total (rule 32). */
+function rebuildPanel() {
+  if (!REBUILD) return "";
+  const r = REVISIONS.find(x => x.revision === REBUILD.revision);
+  const name = r ? versionName(r) : REBUILD.revision;
+  const failed = REBUILD.state === "failed";
+  const secs = (Date.now() - (REBUILD.since || Date.now())) / 1000;
+  /* No bar while the step count is unknown — the answer to the POST arrives before the
+     first step is reported, and a bar drawn against a total of zero is a bar at 100%
+     claiming the work is done (rule 44's shape: a live control reading a field nothing
+     has sent yet). */
+  const steps = Number(REBUILD.steps) || 0;
+  const done = Number(REBUILD.done_steps) || 0;
+  const pct = steps ? Math.round((done / steps) * 100) : 0;
+
+  const body = failed
+    ? `<p class="rebuild-why">${esc(REBUILD.reason || "the switch did not happen")}</p>
+       <p class="hint">Nothing changed. The version you were reading is still the one on
+          screen — a switch that cannot finish leaves the map it found.</p>
+       <button class="btn" data-rebuilddismiss>Close</button>`
+    : `<div class="rebuild-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100"
+            aria-valuenow="${pct}"><i style="width:${steps ? pct : 0}%"></i></div>
+       <p class="rebuild-step">${
+          steps ? `${esc(REBUILD.step || "")} — step ${done + 1} of ${steps}`
+                : "asking the server…"} · ${secs.toFixed(1)} s</p>
+       <p class="hint">The version you were reading stays on screen underneath until this
+          finishes. Nothing here is answering for the new one yet.</p>`;
+
+  return `<div class="rebuild-scrim"></div>
+    <div class="rebuild" role="dialog" aria-modal="true" aria-live="polite"
+         aria-label="Switching the version being read">
+      <h2 class="rebuild-title">${failed ? "That switch did not happen"
+                                         : "Rebuilding the map for"}</h2>
+      <p class="rebuild-name">${esc(name)}</p>
+      ${body}
+    </div>`;
+}
+
+/* Painted on its own, so a poll twice a second does not drag `render()` behind it — and
+ * from `render()` too, so no repaint can leave a stale overlay on screen. One function owns
+ * the markup either way (rule 51). */
+function paintRebuild() {
+  let m = document.getElementById("rebuildMount");
+  if (!m) {
+    m = document.createElement("div");
+    m.id = "rebuildMount";
+    document.body.appendChild(m);
+  }
+  m.innerHTML = rebuildPanel();
+  const x = m.querySelector("[data-rebuilddismiss]");
+  if (x) x.addEventListener("click", () => { REBUILD = null; render(); });
+}
+
 /* How a revision reads to someone who did not capture it.
  *
  * **The instant is when the snapshot was captured, not when the code is from**, and here
@@ -709,16 +982,18 @@ function revWhen(r) {
   return `${iso.slice(0, 10)} ${iso.slice(11, 19)}`.trim();
 }
 
-/* Label first where there is one, because that is the half a person wrote and the half
-   that says which point in time this is; the instant always follows it, because the label
-   is optional and two unlabelled revisions must still be tellable apart. */
-function revLabel(r) {
-  const bits = [];
-  if (r.serving) bits.push("current");
-  if (r.label) bits.push(r.label);
-  bits.push(revWhen(r));
-  return bits.join(" · ");
-}
+/* There was a `revLabel()` here and it is gone, with the world it was written for.
+ *
+ * It prefixed the served revision with the word **current**, which was honest while the
+ * reading end was pinned to whatever the server had opened. It is false now, and falsest
+ * exactly where it matters: in `Society at e2e658b4 ← current`, the word names the
+ * *compared* end — the one that would stop being current the moment the reader chose that
+ * row. A label that is true of a thing's present state and printed beside an offer to
+ * change it is a label about the wrong moment.
+ *
+ * `versionName()` is the one naming now, everywhere a version is named to a reader. See
+ * `pairName()` in `buildRevControls`, which is that plus the instant where two versions
+ * would otherwise read alike. */
 
 /* How a version is named to a reader: the tree it came from first, then a label somebody
  * wrote, then the instant we read it.
@@ -831,17 +1106,21 @@ function versionStrip() {
 
 /* The toolbar's temporal control, built from the store rather than written into the markup.
  *
- * **One control whose options are the pairs.** Its value is the comparison end — the empty
- * string for none — and its text names both ends, so what is on screen reads as the answer
- * to "which two points am I looking at" rather than as two menus to combine.
+ * **One control whose options are the pairs.** Its value names both ends —
+ * `base|compared`, the compared end empty for none — and its text names both, so what is
+ * on screen reads as the answer to "which two points am I looking at" rather than as two
+ * menus to combine. A revision id is an ISO instant and cannot contain a pipe.
  *
- * The reading end is the served revision and is not offered as a choice yet: the server
- * opens one graph at boot and builds the payload, the 628-file code list, both vocabulary
- * lanes and the cover from it, so choosing another would move a label and not the map. A
- * trailing disabled row says exactly that. An option offered and not honoured is the defect
- * this dashboard has paid for more than any other, so it is not offered — and the reason is
- * on screen rather than in a commit message. That row is where the ratified design put its
- * own `— layers not built yet —`, and it is the same device kept honest.
+ * **Both ends are real now.** The reading end used to be pinned to whatever the server had
+ * opened at boot, with a trailing disabled row saying so in as many words, because the
+ * payload, the 628-file code list, both vocabulary lanes and the cover were built from one
+ * graph opened once. The server rebuilds them on request now, so that row is gone — an
+ * option offered and not honoured is the defect this dashboard has paid for more than any
+ * other, and the fix was never to phrase it better.
+ *
+ * Grouped by reading end rather than flattened: with three versions this is nine options,
+ * and nine lines that all begin with a different word is a list nobody can scan. The group
+ * heading carries the half that decides what the whole screen shows.
  *
  * Absent entirely when the program holds one point in time: a control whose only option is
  * the state you are already in is a control that always fails. */
@@ -852,21 +1131,59 @@ function buildRevControls() {
   rev.hidden = usable.length < 2;
   if (usable.length < 2) return;
 
-  const served = REVISIONS.find(r => r.serving) || usable[0];
-  const chosen = chosenPair().from || "";
-  const here = served.serving ? "current" : revWhen(served);
-  rev.innerHTML = [
-    `<option value="" ${chosen ? "" : "selected"}>${esc(here)} · on its own</option>`,
-  ].concat(usable
-    .filter(r => r.revision !== served.revision)
-    .map(r => `<option value="${esc(r.revision)}" ${r.revision === chosen ? "selected" : ""}
-      >${esc(here)} ← ${esc(revLabel(r))}</option>`)
-  /* `value=""` even though it is disabled and cannot be chosen: an `<option>` with no
-     value carries its own text as one, so this row's value was the sentence itself, and
-     anything that ever reads the control without checking `disabled` would have stored a
-     sentence as a revision id. */
-  ).join("") + `<option value="" disabled>— reading a past revision arrives next —</option>`;
+  /* `chosenPair()` returns `{base, compared}` and always has. This read `.from` — a key it
+     has never carried — so `chosen` was the empty string on every build and the control
+     never marked the reader's own pair as selected. Nothing threw; the menu simply opened
+     on the wrong row after every reload. Rule 44's family, one step further in: not a field
+     the server does not send, but a field *this file* does not send itself. */
+  const pair = chosenPair();
+  const base = pair.base || servingRevision() || usable[0].revision;
+  const compared = pair.compared || "";
 
+  /* As short as it can be while still telling two versions apart. `versionName()` is the
+     tree and the label -- what a person recognises -- and it drops the instant, which is
+     right until two revisions carry the same label or neither carries anything. Then the
+     instant is the only thing that separates them, and two options a reader cannot tell
+     apart are worse than one long one. Computed against the *other* rows rather than
+     assumed, so the long form appears only where it is earning its length. */
+  const pairName = (r) => {
+    const n = versionName(r);
+    return usable.filter(o => versionName(o) === n).length > 1
+      ? `${n} · ${revWhen(r)}` : n;
+  };
+
+  /* Each option names **both** ends, even though its group already names one of them. A
+     closed `<select>` shows the selected option's text and not its group's, so an option
+     reading only "on its own" would leave the one control that answers "which two points
+     am I looking at" saying nothing at all until it is opened. The group is a grouping
+     aid; the option is the answer. */
+  rev.innerHTML = usable.map(b => {
+    const on = b.revision === base;
+    const rows = [
+      `<option value="${esc(b.revision)}|"${on && !compared ? " selected" : ""}
+        >${esc(pairName(b))} · on its own</option>`,
+    ].concat(usable.filter(c => c.revision !== b.revision).map(c =>
+      `<option value="${esc(b.revision)}|${esc(c.revision)}"${
+        on && c.revision === compared ? " selected" : ""
+        }>${esc(pairName(b))} ← ${esc(pairName(c))}</option>`));
+    return `<optgroup label="reading ${esc(pairName(b))}">${rows.join("")}</optgroup>`;
+  }).join("");
+
+  /* And then set the value, because the `selected` attribute above is not the last word.
+   *
+   * Chrome restores a `<select>`'s value across a reload, and that restoration outranks
+   * the attribute — so after a base switch the control showed the pair the reader had
+   * been on *before* the switch, while the strip beside it correctly named the new one.
+   * One control, two claims, and the markup was the one that lost. Rule 44's family with
+   * the browser as the thing writing the field: what the DOM says and what the reader
+   * sees are different questions.
+   *
+   * Assigned rather than defended against, because the value *is* state: `state.baseRev`
+   * and `state.comparedRev` decide it, and a control that derives its value from state
+   * has nothing left for a restoration to disagree with. An unmatched pair leaves the
+   * value empty rather than silently landing on row one — see `reconcileBase`, which is
+   * where a pair that no longer makes sense is resolved and said. */
+  rev.value = `${base}|${compared}`;
 }
 
 /* There was an `applySourcePath()` here, and it is gone with the root it displayed.
@@ -4196,6 +4513,10 @@ function render() {
   let vw = document.getElementById("viewerMount");
   if (!vw) { vw = document.createElement("div"); vw.id = "viewerMount"; document.body.appendChild(vw); }
   vw.innerHTML = viewerPanel() + detailPanel();
+  /* The base switch's overlay, on every render as well as on every poll. A repaint that
+     left it out would clear a blocking surface while the rebuild it belongs to is still
+     running -- and the page underneath is answering for a version that is being replaced. */
+  paintRebuild();
   const ne = $("#navEgress");
   if (ne) {
     ne.textContent = posture().label.toLowerCase();
@@ -4635,19 +4956,41 @@ function wire() {
    * expand and no pointer cursor to promise one. A listener kept here would have been a
    * control that looks pressable, responds to a press, and changes nothing. */
 
-  /* The pair. Its value is the comparison end, "" for none -- see `buildRevControls`. */
+  /* The pair. Its value names both ends -- `base|compared` -- see `buildRevControls`. */
   const rev = $("#rev");
   if (rev && !rev.dataset.bound) {
     rev.dataset.bound = "1";
     rev.addEventListener("change", () => {
-      state.comparedRev = rev.value;
+      const [wantBase, wantCompared] = String(rev.value).split("|");
+      state.comparedRev = wantCompared || "";
       /* Cleared here, deliberately, because the reader has just answered it. It used to
          disappear by falling out of the one `changeNote` branch that did not prepend it,
          which looked right and was an accident: three returns carried the notice and the
          fourth did not, so it survived every state except a successful comparison. A
          message that clears itself in one arm of a conditional clears itself at random. */
       state.revNote = "";
-      used("pair:" + (rev.value ? "compared" : "alone"));
+      used("pair:" + (state.comparedRev ? "compared" : "alone"));
+
+      /* Moving the reading end is a different act from moving the comparison end, and it
+         costs a different amount. The comparison end is a query the server already has the
+         stores for; the reading end is the payload, the file list, both vocabulary lanes
+         and the cover, rebuilt from another graph -- ten seconds the reader has to be able
+         to watch. So they are two branches, and which one this is depends on the server's
+         answer about what it is serving rather than on what `state` last stored. */
+      const serving = servingRevision();
+      if (wantBase && serving && wantBase !== serving) {
+        /* `baseRev` is **not** written here, and that is the point of it being the
+           server's answer rather than the reader's. Writing it now would record an
+           intention as a fact: a reader who reloads mid-rebuild, or whose switch fails,
+           would have a stored base naming a version nothing is serving. `switchBase`
+           carries the intent; `reconcileBase` records the outcome, once there is one. The
+           comparison end is different -- it is a client-side choice that costs nothing and
+           is true the moment it is made -- so it is persisted here. */
+        persist();
+        switchBase(wantBase);
+        return;
+      }
+      state.baseRev = serving || wantBase || "";
       persist();
       /* Only when there is something to compare. "On its own" is a real answer and must
          not spend seconds fetching a comparison nobody asked for -- but it must still
@@ -4814,6 +5157,10 @@ const WIRED_ATTRS = new Set([
   "assumenewer",
   /* The change worklist's one control: which band is open. */
   "changeband",
+  /* The base switch's one control: dismiss a switch that failed. Only ever rendered in the
+     failed state -- there is nothing to dismiss while a rebuild is running, and offering a
+     cancel that cannot stop the server would be a control that looks live and is not. */
+  "rebuilddismiss",
   /* The search's four. `searchline` rides with `searchgo` on the same button and carries no
      handler of its own -- it is the line the click is about, and the roster is a list of
      attributes the shell writes, not only of the ones that are clicked. */
@@ -4833,7 +5180,11 @@ function selfCheck() {
   document.querySelectorAll(NAV_SELECTOR).forEach(el => {
     if (!NAV_ROUTES[el.dataset.nav]) problems.push(`nav "${el.dataset.nav}" has no route`);
   });
-  document.querySelectorAll(".app *, #viewerMount *").forEach(el => {
+  /* `#rebuildMount` is in the list for the reason the list exists: it is a body-level
+     surface like `#viewerMount`, so a scan naming only the app and the viewer would have
+     been blind to a whole modal -- which is the defect this check is for, wearing the
+     costume of a container nobody remembered to name. */
+  document.querySelectorAll(".app *, #viewerMount *, #rebuildMount *").forEach(el => {
     for (const a of el.attributes) {
       if (!a.name.startsWith("data-")) continue;
       const k = a.name.slice(5);
@@ -6029,6 +6380,36 @@ function setGroupOpen(id, open) {
   const g = NAV_GROUPS.find(x => x.id === id);
   if (open && g && g.onOpen) g.onOpen();
   buildNav();
+}
+
+/* A group restored **open** at boot still needs its rows.
+ *
+ * `onOpen` fired from `setGroupOpen` only, so it ran on the toggle and never on the
+ * restore -- and `navOpen` is persisted, so the second visit is the one that breaks. Open
+ * the Changes group, reload, and the group sits open under "two versions — open to compare
+ * them" with nothing to open: the note is telling the reader to do the thing they have
+ * already done. It is rule 55's companion once more -- **one truth about what is open, and
+ * whoever sets it does the work** -- with the *restore* as the half that sets it and does
+ * nothing.
+ *
+ * It has been there since the group was built and was easy to miss, because reaching it
+ * takes a reload. A base switch reloads, so every switch out of an open Changes group
+ * landed on it.
+ *
+ * From the table, never a list of groups that need it (rule 36): a group added to
+ * `NAV_GROUPS` with an `onOpen` is covered without anyone remembering. */
+function openGroupsFetchWhatTheyNeed() {
+  /* `groupOpen()`, never `state.navOpen[id]`. Openness has two expressions -- what the
+     reader arranged and the table's own default for a group they have arranged nothing
+     about -- and `groupOpen` is the one place that knows both. Reading the map directly
+     asks only the first, so on a fresh profile, where `navOpen` is `{}`, this fetched
+     nothing for a group that renders open. Written that way first, and caught by driving
+     it: rule 51 in the fix for rule 51. */
+  const order = navGroupsInOrder();
+  for (const g of order) {
+    if (!g.onOpen || !groupOpen(g, order)) continue;
+    g.onOpen();
+  }
 }
 
 /* The jump strip: every group, one click away, from anywhere in a list of any length.
@@ -8162,6 +8543,7 @@ async function boot() {
    * rather than fired and forgotten, or the first `buildNav()` runs against an empty list
    * and the group is missing until something else happens to rebuild the pane. */
   await loadRevisions();
+  reconcileBase();
   /* The two toolbar controls, from the list that has just arrived. Before `buildNav`,
      because a revision the reader chose in an earlier session may since have been retired
      and the pane's Changes note has to state the pair it is actually going to compare. */
@@ -8188,13 +8570,19 @@ async function boot() {
        the group is opened, so the sentence promised a comparison that was not running and
        then sat directly above a note saying "open to compare them". Rule 13 in a sentence
        — the claim has to be the thing that actually happened. */
+    /* Prepended rather than assigned. `reconcileBase()` may already have put a sentence
+       here about which version is being read, and the two are about different things --
+       overwriting one with the other would drop a true statement to make room for another
+       true statement. */
     state.revNote = `The revision${lost.length > 1 ? "s" : ""} you were comparing `
       + `(${lost.join(", ")}) ${lost.length > 1 ? "are" : "is"} no longer here, `
-      + `so that choice was dropped.`;
-    state.comparedRev = state.baseRev = "";
+      + `so that choice was dropped.`
+      + (state.revNote ? ` ${state.revNote}` : "");
+    state.comparedRev = "";
     persist();
   }
   buildNav();
+  openGroupsFetchWhatTheyNeed();
   wireGraphOnce();
   wireSearchOnce();
   wireNavGripOnce();

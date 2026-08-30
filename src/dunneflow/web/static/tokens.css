@@ -1568,6 +1568,37 @@ kbd { font-family: var(--f-mono); font-size: .66rem; background: var(--sunken);
 .detail-scrim { position: fixed; inset: 0; background: rgba(8,12,18,.55); z-index: 87; }
 .viewer-scrim { position: fixed; inset: 0; background: rgba(8,12,18,.55); z-index: 90; }
 
+/* ── the base switch, and why it is the top pair ──
+ *
+ * A third pair, above both, because it is the only one that is about the *whole* page
+ * rather than about one thing on it: while it is up, every count, figure and line
+ * underneath belongs to a version that is being replaced. A source viewer opened over it
+ * would be reading a file out of a store that is about to close.
+ *
+ * Opaque enough to read the words over a busy stack, transparent enough that the map
+ * underneath is visibly still there -- which is the claim the panel makes in words, and a
+ * scrim that hid the page would contradict it.
+ */
+.rebuild-scrim { position: fixed; inset: 0; background: rgba(8,12,18,.62); z-index: 96; }
+.rebuild {
+  position: fixed; z-index: 97; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  width: min(34rem, 92vw); padding: 1.2rem 1.4rem;
+  background: var(--surface); color: var(--text);
+  border: 1px solid var(--border-strong); border-radius: .4rem; box-shadow: var(--shadow);
+}
+.rebuild-title { font-size: .78rem; font-weight: 600; letter-spacing: .04em;
+                 text-transform: uppercase; color: var(--text-muted); margin: 0 0 .2rem; }
+.rebuild-name { font-size: 1.05rem; font-weight: 600; margin: 0 0 .9rem; }
+/* A track that is always drawn and a fill that is not: an empty track says "this has a
+ * length and none of it is done", where no track at all says nothing. */
+.rebuild-bar { height: .4rem; border-radius: .2rem; background: var(--border);
+               overflow: hidden; }
+.rebuild-bar i { display: block; height: 100%; background: var(--accent);
+                 transition: width .25s ease; }
+.rebuild-step { font-size: .8rem; margin: .5rem 0 .3rem; }
+.rebuild-why { font-size: .85rem; margin: 0 0 .5rem; color: var(--diff-gone); }
+.rebuild .hint { margin: 0 0 .6rem; }
+
 /* ── the detail window ──
  *
  * A destination, not a pane: one node, what flows in, what flows out, what it touches, and

@@ -3270,6 +3270,152 @@ out before looking now. **That is the second time in this session a guard was th
 rather than the mutation** — the first was `routines_after` containing `after` rather than
 equalling it — and both were found only by running the mutation.
 
+**6d. Built 2026-08-30: switching the base.** The reading end is settable. `buildRevControls`'
+trailing disabled row — `— reading a past revision arrives next —` — is gone, and removing it
+was the work.
+
+*One owner for everything a version decides.* `_Live` held `store`, `graph_db`, `root`,
+`cover`, `files`, `naming` and `glossary` as separate attributes and the payload lived on
+`_Handler`, arriving as a constructor argument from a local in `serve()`. Eight places to
+keep in step across a swap. They are a frozen `_Base` now, swapped in **one binding** under
+the lock, so a request sees the old version entirely or the new one entirely — never a cover
+from one and a payload from the other. It is also what the guard reads: *a switch rebuilt
+everything* derives its field list from `__dataclass_fields__` rather than restating it
+(rule 36).
+
+*Built outside the lock, committed inside it.* Nothing touches the live base until the last
+three statements, so the rebuild costs other requests nothing and a failure costs them
+nothing at all: the new store is private to the building thread until it is committed, and
+on any exception it is closed and the reader keeps the map they had. That is rule 20 applied
+to a swap — a switch may refuse, it may never leave a broken base behind. **Exercised rather
+than read**: the lock is asked for from inside each build step, because a separate thread
+would race the build of a fixture program and pass by finishing first (rule 37).
+
+*One door.* `_Live.open(graph_db, step)` is the boot **and** the switch. A second builder
+would be two ways to produce one thing, and the day they disagree the map after a switch is
+not the map `serve` would have shown for that version. A guard asserts `serve()` calls none
+of the five builders itself.
+
+*A POST, and that is not ceremony.* Every other route here is a read, and a GET that
+replaces the map is one a browser prefetch, a bookmark reload or a link preview fires by
+itself — this codebase spends rule 20 on a *read* that repaired. `do_POST` routes from its
+own table for the same reason `do_GET` does (design rule 16). The guard is over the two
+tables and the handlers they name rather than over the paths, because `/api/base` is
+legitimately in **both** — the GET reports the base and the progress, the POST changes it —
+so a guard comparing paths would have to allow the very thing it is for.
+
+*Progress behind its own lock*, never `live.lock`: the whole point is answering **while** the
+big work runs. Six steps, named by the server and printed as sent, because a client-side list
+of what building a base involves is a second answer and would count to the wrong total the
+day a step is added (rule 32).
+
+*`serve --revision`*, which is where "which version does this server open" honestly lives.
+Without it a reader's chosen base survives a reload and not a restart, and the alternative —
+a server reading the browser's stored settings — does not exist.
+
+*The client: the options are the pairs, and all of them are real.* Grouped by reading end,
+each option naming **both** ends even though its group names one of them — a closed
+`<select>` shows the option's text and never its group's, so an option reading only "on its
+own" would leave the one control that answers *which two points am I looking at* saying
+nothing until it was opened. `revLabel()` is retired with the world it was written for: it
+prefixed the served revision with **current**, which was honest while the base was pinned and
+is falsest exactly where it matters — in `Society at e2e658b4 ← current`, naming the end that
+would stop being current if the reader chose that row.
+
+*On `done`, the page reloads*, and that is Tom's call and the right one. Every module-level
+array here is base-derived — routines, plates, files, cover, conventions, terms, anomalies,
+packages, the graph payload, the code pane's cache, the search results — and a hand-kept
+invalidation list is the defect rule 36 was written from. Settings are keyed per program, so
+the theme, scale, panel layout, disk colours, column widths, chosen pair and polarity all
+survive; what is lost was about the old base anyway. **On `failed`, it does not reload** and
+the overlay states the reason.
+
+*The overlay is blocking, over the whole application*, and Tom chose that too. Every count in
+the navigator, every figure in the inspector, every line in the code pane and every dot in
+the stack belongs to the version being replaced, so a click during those seconds buys a
+confident answer about a map on its way out. It says so, because a reader who cannot use the
+page is entitled to know the page underneath is still real and still the old one. Its own
+scrim, at the top pair (rule 48), checked with `elementFromPoint`.
+
+*Six defects found by driving, and not one of them by a test.*
+
+- **Chrome restores a `<select>`'s value across a reload, and that outranks the `selected`
+  attribute the code writes.** After a switch the control named the pair the reader had been
+  on *before* it while the strip named the new one — one control, two claims. **Rule 67.**
+- **`buildRevControls` read `chosenPair().from`**, a key it has never carried, so the marker
+  was the empty string on every build and the menu opened on the wrong row after every
+  reload. Rule 44 one step further in: not a field the server does not send, but one this
+  file does not send itself. Same rule 67.
+- **A group restored open at boot never fired its `onOpen`.** Open Changes, reload, and it
+  sits open under *"two versions — open to compare them"* with nothing to open. Present since
+  the group was built and reachable only by reloading — and a base switch reloads. **Rule
+  68**, and the fix went wrong once on the way: written as `state.navOpen[g.id]` it fetched
+  nothing on a fresh profile, because `groupOpen()` is the one place that knows openness'
+  *two* expressions. Rule 51 inside the fix for rule 51.
+- **A version left compared with itself.** Choose `A ← B`, then have the server come back up
+  on B — reachable without doing anything wrong. Said and dropped, rather than spending a
+  fetch to be told.
+- **The stored base recorded an intention as a fact.** Written when the switch was *asked
+  for*, it named a version nothing was serving for as long as the rebuild ran. `switchBase`
+  carries the intent; `reconcileBase` records the outcome, once there is one.
+- **A failed switch left the control naming the pair that failed**, while the strip went on
+  naming the real base. `buildRevControls()` puts it back — from `state`, which was
+  deliberately never written, so the pair in force is what it rebuilds to by construction.
+
+*And one found by reading the served JSON*, which is the second time this session that has
+been the only way: **a refusal carried the previous switch's progress**, so declining a
+switch to a version with no graph replied `started: false` beside `state: "done"` and another
+revision's name. Three fields about three different things under one answer (rule 13).
+
+*The elapsed clock is the client's, deliberately.* The server stamps its elapsed when a
+**step** changes, so between steps it stands still — and a cold step takes seconds. A reader
+watching a frozen `0.0 s` reads a stalled process. The client measures how long they have
+been waiting, which is the number they care about and cannot be stale.
+
+*Guards.* Fourteen server (`tests/test_base_switch.py`) and eight client, mutation-tested
+over proved-green baselines (rule 59) at **12/12** and **20/20**. Two survivors on the first
+run, and **both times the guard was the weak half, not the mutation** — which is now the
+fourth and fifth occurrence in two sessions:
+
+- `if False: _step(5)` survived an `ast` guard collecting `_step(N)` calls, because the call
+  still *appears*. Reachability is not a thing a source read can answer; the guard runs
+  `open()` with a recording callback now.
+- `"REBUILD.step" in panel` passed on `REBUILD.steps`. That is `routines_after` containing
+  `after` for the third time. It is `\b(?!s)` now.
+
+*Verified on the corpus.* `output/mensores`, both revisions, driven in a real window.
+Switched both ways; the cover, file list, routine list, glossary, naming lane and stack all
+move together — 628 / 4,786 / 10,015 nodes against 625 / 4,733 / 9,873 — and the older base
+reproduces the recorded ground truth exactly: **175 ways in, 3,950 boundary touches**, with
+all four declared executables in *Where to start* at 1,366 / 421 / 265 / 111. The worklist
+inverts across the switch, 53 added becoming 53 deleted with no re-query, and
+`rode_serving_connection` stays `true` — rule 58's fast path survives the thing it was never
+tested against, because `changes.build` rides whichever end is the base. `--revision` opens
+the older one at boot and refuses an unknown one by name. A switch to a version with no graph
+leaves the old base serving and answering. The console is clean and the self-check prints
+*every control is wired* on every load.
+
+*The measurement, honestly.* **1.2 s, 2.1 s and 3.0 s warm; 35 s with the other revision's
+stores cold on the external volume.** Same caveat as the change worklist's cold row, and it
+is why the overlay names its step: a reader waiting thirty-five seconds is owed *the
+glossary* rather than a bar.
+
+### Paused 2026-08-30, after switching the base
+
+Working tree clean; all three gates green; `output/mensores` untouched and still serving
+both revisions.
+
+**The base is settable and the seam is closed.** A comparison is two directions now, not
+one: the reader picks which version the whole map shows and which it is held against, the
+server rebuilds, and the worklist's interpretation follows without a re-query. Everything
+that was prepared for it held — `_r_changes` defaulting its base from the served graph, and
+`changes.build` riding the serving connection on whichever end is the base (rule 58).
+
+Read `6d` for what was built and what driving it found. Two rules came out of it, **67**
+and **68**, and both are about a state that was set somewhere the code was not looking: a
+value the *browser* wrote back over the markup, and a restore that set a flag without doing
+the work the setter does.
+
 ### Paused 2026-08-30, after base and compared
 
 Working tree clean; all three gates green; `output/mensores` untouched and still serving
@@ -3284,6 +3430,17 @@ particular ("state capture order as capture order") is gone, and that is an impr
 it was an honest label on a claim the tool should never have been making.
 
 ## Still open, in the order agreed
+
+**1. Switching the base — done 2026-08-30, see `6d`.** What follows was the plan and is kept
+because two of its five bullets turned out differently. The `_Handler`-holds-the-payload
+shape is gone rather than worked around — the payload lives in `_Base` with everything else
+a version decides — and the selection-survival worry resolved into something smaller than
+expected: `state.selected` is not persisted, `describe()` already answers `found: false` with
+a reason, and the inspector already renders it. What the reload could not carry is the
+*knowledge that a switch happened*, so that is a one-shot in `sessionStorage`, read into the
+strip's note.
+
+<details><summary>the plan as it stood</summary>
 
 **1. Switching the base — next, and as proposed.** Tom chose *rebuild every switch*: one
 payload set live, always. The shape of the work:
@@ -3309,7 +3466,9 @@ payload set live, always. The shape of the work:
   the old base had does not, and "selected something that is not there" must be a stated
   outcome rather than a blank inspector.
 
-**2. The diff palette (chunk B).** `--diff-gone` / `--diff-new` exist in all three
+</details>
+
+**2. The diff palette (chunk B) — next.** `--diff-gone` / `--diff-new` exist in all three
 `tokens.css` blocks and are used by the strip's vocabulary already. What is owed is the
 **Setting** and its a11y clamp — and design rule 6 is **already implemented**: `contrast()`
 (`shell.js:1734`) is a correct WCAG ratio and `pointerPasses()` clamps at 3:1 against the

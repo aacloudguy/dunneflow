@@ -32,7 +32,14 @@ uv run dunneflow naming   <path>                    # the naming standard, state
 uv run dunneflow mirror   <path>                    # words the docs define that the code never uses
 uv run dunneflow query    <path> --sql "..."        # ask the graph directly
 uv run dunneflow migrate  <dir>                     # stored paths: absolute -> relative
+uv run dunneflow serve    <dir> [--revision <rev>]  # the dashboard, on one version
 ```
+
+`serve --revision` chooses which point in time the server opens as the **base** -- the
+version the cover, the routine list, the code browser, the glossary and the stack all
+show. It defaults to the newest. The reader can switch it from the toolbar, and that
+switch survives a page reload; this is how it survives a restart of the server, because
+the base is the server's state and not the browser's.
 
 `migrate` rewrites a program directory written before paths were relative (rule 60), **in
 place** — 115,546 paths across five stores in 1.2 s on Mensores. In place rather than by
@@ -170,6 +177,25 @@ of which the two vocabulary lanes are 2.5 s:
 | `serve` start to first request | < 15 s | 10.2 s |
 | …of which the naming pass | | 0.4 s |
 | …of which the glossary pass | | 2.1 s |
+
+**Switching the base pays that start again**, because one payload set is live at a time.
+Measured 2026-08-30 on Mensores' two revisions, six steps reported by name as they run:
+
+| Measure | Budget | Measured 2026-08-30 |
+|---|---|---|
+| Switch to a version whose stores are warm | < 15 s | 1.2 s · 2.1 s · 3.0 s |
+| …the same, cold on the external volume | < 60 s | **35 s** |
+
+**The cold figure is the disk and nothing else** — the other revision's 148 MB document
+store and 31 MB graph, never touched this session. It is the same caveat the change
+worklist's cold row carries, and it is why the overlay names the step it is on rather than
+showing a bar alone: a reader waiting thirty-five seconds is owed *the glossary* rather
+than a claim that something is happening.
+
+Two things make the wait cost other requests nothing. The new base is built **outside** the
+lock and committed inside it, so only the commit blocks a reader; and the progress lives
+behind its own lock, because a poll that queued behind the rebuild would report nothing
+until there was nothing left to report.
 
 The two lanes' **bodies** are fetched when their page is opened — 44 KB and 190 KB — while
 their sizes ride with the cover, because the navigator states a count beside every other row
@@ -1314,6 +1340,42 @@ rule of that number — a blank canvas must say why it is blank — which does e
     carried silently onto the next -- rule 51 with the reader's own decision as the thing
     that drifts. And each state must say which it is: derived, chosen, or assumed for want
     of anything to read. A colour a reader cannot account for is worse than no colour.
+
+67. **A control's value is state, and the browser will supply one if you do not.**
+    A `<select>` rebuilt by script has its pre-reload value **restored by the browser**,
+    and that restoration outranks the `selected` attribute the code wrote. So after a base
+    switch the pair control named the pair the reader had been on *before* the switch,
+    while the strip beside it correctly named the new one -- one control, two claims, and
+    the markup was the one that lost. Every source-reading check passes: the attribute is
+    written, on the right option, for the right reason.
+
+    Assign the value from state rather than defending against the restoration. A control
+    that derives its value from state has nothing left for a restoration to disagree with.
+    This is rule 48's lesson in a form `elementFromPoint` cannot reach -- what the DOM says
+    and what the browser has since done to it are different questions -- and like rule 48
+    it was found only by driving the thing.
+
+    Its companion, and why it could hide as long as it did: `chosenPair()` returns
+    `{base, compared}` and the control read `.from`, a key it has never carried. Undefined
+    is not an error, so the marker was the empty string on **every** build and the menu
+    opened on the wrong row after every reload. Rule 44 one step further in -- not a field
+    the *server* does not send, but a field this file does not send itself.
+
+68. **A restore is a setter, and it must do what the setter does.**
+    Rule 55's companion says *one truth about what is open, and whoever sets it does the
+    work*. `setGroupOpen` did the work; the boot that restores `navOpen` from storage did
+    not. So a reader who left the Changes group open reloaded into a group sitting open
+    under *"two versions -- open to compare them"* with nothing to open: a note telling
+    them to do the thing they had already done. It had been there since the group was
+    built and takes a reload to reach, so it was invisible -- until a base switch, which
+    reloads, so every switch out of an open group landed on it.
+
+    The fix routes from the table (rule 36), so a group that declares an `onOpen` is
+    covered without anyone remembering. And it went wrong once on the way, which is the
+    part worth keeping: written as `state.navOpen[g.id]` it fetched nothing on a fresh
+    profile, because openness has **two** expressions -- what the reader arranged, and the
+    table's own default for a group they have arranged nothing about -- and `groupOpen()`
+    is the one place that knows both. Rule 51 inside the fix for rule 51.
 
 ## Anomalies: the discipline
 

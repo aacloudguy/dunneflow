@@ -23,6 +23,7 @@ import socket
 import threading
 import time
 import webbrowser
+from dataclasses import dataclass
 from functools import partial
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -147,6 +148,66 @@ def columnar(model: GraphModel) -> dict[str, Any]:
     }
 
 
+@dataclass(frozen=True)
+class _Base:
+    """Everything one version of the program decides, in one binding.
+
+    Not eight attributes on `_Live`, and the reason is the whole of this chunk: a base
+    switch has to replace *all* of these together, and eight places to keep in step is
+    rule 51's defect with eight opportunities to make it. Frozen and swapped whole, so a
+    request either sees the old version entirely or the new one entirely -- never a cover
+    from one and a payload from the other.
+
+    It is also what the guard reads: "a switch rebuilt everything" derives its list from
+    `__dataclass_fields__` rather than restating it, so a field added later is covered
+    without anyone remembering (rule 36 -- route from a table, never from a hand-kept
+    list).
+    """
+
+    graph_db: Path
+    store: Store
+    # The 2.5D stack, columnar. Named with the program so the browser can key stored
+    # settings per program: a disk order and a set of colours worked out for one codebase
+    # mean nothing in another, and silently applying one to the other would be the worst
+    # kind of persistence.
+    payload: dict[str, Any]
+    # The program's own root package, read from the data rather than assumed -- one
+    # aggregate over `files`, and it is what scopes an outlier thread to the plate the
+    # reader is standing on. Computed once because it cannot change while this version is
+    # the base, and a per-request GROUP BY over every file would be a cost paid for
+    # nothing.
+    root: str
+    # The file list. Its cost is all in the first touch of two databases on a slow
+    # volume -- 550 ms cold against 23 ms warm -- so it is paid where a payload, a cover
+    # and two vocabulary passes are already being paid for.
+    files: dict[str, Any]
+    # The two lanes of the naming standard. Not lazily, and the reason is where they are
+    # *used*: a vocabulary thread is part of `/api/threads`, which is asked on every
+    # selection, so a lazy first call would stall the reading loop on the first click of
+    # every session. Measured on Mensores at 0.4 s for the naming pass and 2.1 s for the
+    # glossary, which reads a 176 MB document store.
+    naming: dict[str, Any]
+    glossary: dict[str, Any]
+    # The first screen. 175 reachability queries on every navigation would make it the
+    # slowest one.
+    cover: dict[str, Any]
+
+
+# What building a base costs, in the order it is paid, so a reader watching a switch is
+# told where the ten seconds are going rather than watching a bar. Named here rather than
+# inside `_Live.open` because the count has to be knowable before the work starts -- "step
+# 4 of 6" needs the 6 up front, and a hand-counted 6 beside a six-branch function is two
+# numbers about one thing (rule 32).
+BUILD_STEPS: tuple[str, ...] = (
+    "opening the graph",
+    "the 2.5D model and its payload",
+    "the file list",
+    "the naming standard",
+    "the glossary",
+    "the cover",
+)
+
+
 class _Live:
     """The read-only stores the dashboard queries while it is open.
 
@@ -156,25 +217,31 @@ class _Live:
     reading tool with one reader, contention is not a thing that happens. The lock is the
     smaller of the two mistakes to have made.
 
+    **Every use of `current.store` happens under `self.lock`**, and that is load-bearing
+    rather than tidy: it is what makes closing the outgoing store at a base switch safe.
+    A request that took the store out from under the lock and used it afterwards would be
+    using a connection the switch had already closed. A guard reads this off the source.
+
     Both stores are opened `writable=False`. Rule 20: serving may refuse, it may never
     repair, and it must never be able to damage the map it came to show.
     """
 
-    def __init__(self, graph_db: Path, source_db: Path,
-                 out_dir: Path | None = None) -> None:
+    def __init__(self, source_db: Path, out_dir: Path) -> None:
         self.lock = threading.Lock()
         # The program directory, so a second point in time can be found. The graph being
         # served is one revision of it; every other revision is a file beside this one.
-        self.out_dir = out_dir or graph_db.parent
-        self.graph_db = graph_db
+        self.out_dir = out_dir
         # One computed diff per pair, keyed by (before, after). Lazily, unlike the two
         # vocabulary lanes: a thread is asked on every selection and a change list is
         # opened deliberately, so paying for it at boot would add seconds to a start that
         # is already 10 s and buy nothing for a reader who never opens the view.
         self.changes: dict[tuple[str, str], dict[str, Any]] = {}
-        self.store = Store(graph_db, writable=False, shared=True)
         # A sidecar is optional by design -- `--no-source`, or a map handed over without
         # it. Absent is a state the inspector states plainly, never one it hides.
+        #
+        # It survives a base switch untouched: there is **one** `source.db` per program
+        # directory holding every revision's bodies, content-addressed, so it is not a
+        # thing a version owns. That is also why it is not a field of `_Base`.
         self.source: SourceStore | None = None
         if source_db.exists():
             try:
@@ -182,31 +249,170 @@ class _Live:
             except (ValueError, OSError):
                 self.source = None
 
-        # Built once: nothing here changes while the map is open, and 175 reachability
-        # queries on every navigation would make the first screen the slowest one.
-        self.cover: dict[str, Any] = {}
+        # Filled by `open()`, which every caller goes through -- boot included. Typed as
+        # the real thing rather than `| None` because a server with no base has never
+        # existed: `serve()` opens one before it binds a port, and a failed open raises
+        # rather than leaving a half-built server answering.
+        self.current: _Base = None                     # type: ignore[assignment]
 
-        # The program's own root package, read from the data rather than assumed -- one
-        # aggregate over `files`, and it is what scopes an outlier thread to the plate the
-        # reader is standing on. Computed here because it cannot change while the map is
-        # open and a per-request GROUP BY over every file would be a cost paid for nothing.
-        self.root: str = root_package(self.store)
+        # What a switch is doing, for the reader watching it. Behind its own lock, never
+        # `self.lock`: the whole point of a progress report is answering *while* the big
+        # work runs, and a poll that queued behind the rebuild would report nothing until
+        # there was nothing left to report.
+        self.build_lock = threading.Lock()
+        self.build: dict[str, Any] = {"state": "idle"}
 
-        # The two lanes of the naming standard, filled at start rather than here -- see
-        # `serve()`, which pays for them where it can say so.
-        self.naming: dict[str, Any] = {}
-        self.glossary: dict[str, Any] = {}
+    # -- the one door onto a version -------------------------------------- #
 
-        # The file list, filled at start for the same reason the two lanes are: it cannot
-        # change while the map is open, the navigator asks for it on load, and its cost is
-        # all in the first touch of two databases on a slow volume -- 550 ms cold against
-        # 23 ms warm. Paid at boot it sits inside a start that is already building a
-        # payload, a cover and two vocabulary passes; paid lazily it is half a second of
-        # the reader's first click.
-        self.files: dict[str, Any] = {}
+    def open(self, graph_db: Path,
+             step: Any = None) -> None:
+        """Make `graph_db` the base: build everything from it, then swap it in.
+
+        The same method at boot and at a switch, deliberately. A second builder would be
+        two ways to produce one thing, and the day they disagree the map on screen after a
+        switch is not the map `serve` would have shown for that version (rule 51).
+
+        **Built outside the lock, committed inside it.** Nothing here touches the live
+        base until the last three statements, so the ten seconds of work cost other
+        requests nothing and a failure costs them nothing at all: the new store is private
+        to this thread until it is committed, and on any exception it is closed and the
+        reader keeps the map they had. That is rule 20's shape applied to a swap -- a
+        switch may refuse, it may never leave a broken base behind.
+        """
+        def _step(i: int) -> None:
+            if step is not None:
+                step(BUILD_STEPS[i], i, len(BUILD_STEPS))
+
+        _step(0)
+        # A graph written by an older DunneFlow refuses to open rather than being
+        # repaired (rule 20), and `revisions.known` will list it as comparable regardless
+        # -- so this is a real outcome of a real switch, not a defensive branch.
+        store = Store(graph_db, writable=False, shared=True)
+        try:
+            _step(1)
+            payload = columnar(build(store))
+            payload["program"] = self.out_dir.name
+            root = root_package(store)
+
+            _step(2)
+            files = build_files(store, self.source)
+
+            _step(3)
+            naming = measure_naming(store)
+
+            _step(4)
+            # Documentation is optional by design (design rule 11): with no `docs.db` the
+            # glossary keeps every code-derived term and loses only the tier that quotes a
+            # document. It is never a prerequisite for a code-derived fact. Per revision,
+            # because a version's documents are that version's.
+            #
+            # Closed as soon as the lane is built, and only the lane holds anything from it.
+            # `serve()` did this when it was the only caller; opening one per switch and
+            # never closing it would leak a 148 MB store every time the reader moved
+            # between two versions -- which is a thing they are now expected to do often.
+            docs = self._docs_for(graph_db)
+            try:
+                glossary = bind_glossary(store, docs)
+            finally:
+                if docs is not None:
+                    docs.close()
+
+            _step(5)
+            defined, total = glossary["coverage"]
+            cover = build_cover(store, self.source, self.out_dir.name, vocabulary={
+                "conventions": len(naming["conventions"]),
+                "terms": total,
+                "defined": defined,
+            })
+        except BaseException:
+            store.close()
+            raise
+
+        fresh = _Base(graph_db=graph_db, store=store, payload=payload, root=root,
+                      files=files, naming=naming, glossary=glossary, cover=cover)
+        with self.lock:
+            outgoing = self.current
+            self.current = fresh
+            # Every cached diff is keyed on a pair one end of which has just moved. Not a
+            # stale copy of this answer -- an answer to a different question (rule 51).
+            self.changes.clear()
+            # Safe here and nowhere else: every use of a base's store is under this lock,
+            # so no request can be holding this connection.
+            if outgoing is not None:
+                outgoing.store.close()
+
+    def _docs_for(self, graph_db: Path) -> DocStore | None:
+        """The document store captured beside this graph, or nothing at all."""
+        rev = revisions.revision_of(graph_db)
+        docs_db = (revisions.db_path(self.out_dir, revisions.DOCS, rev) if rev
+                   else revisions.newest(self.out_dir, revisions.DOCS))
+        if docs_db is None or not docs_db.exists():
+            return None
+        try:
+            return DocStore(docs_db, writable=False)
+        except (ValueError, OSError):
+            return None
+
+    # -- what a switch is doing, for whoever is watching ------------------- #
+
+    def claim(self, revision: str) -> bool:
+        """Take the build slot, or say it is taken.
+
+        Test and set inside one hold of the lock. Two requests arriving together must not
+        both start a ten-second rebuild -- and the second one must be *told* it was
+        refused rather than appearing to have worked (design rule 1).
+        """
+        with self.build_lock:
+            if self.build.get("state") == "working":
+                return False
+            self.build = {"state": "working", "revision": revision,
+                          "step": BUILD_STEPS[0], "done_steps": 0,
+                          "steps": len(BUILD_STEPS), "ms": 0}
+            return True
+
+    def switch(self, graph_db: Path, revision: str) -> None:
+        """Make `graph_db` the base, reporting each step. Runs on its own thread.
+
+        A failure is **reported**, never raised into a thread nobody is reading. The
+        reader asked for a switch and is watching a progress report; a rebuild that ends
+        by writing a traceback to the terminal and leaving the report saying "working"
+        for ever is the same defect as a spinner that never stops.
+        """
+        t = time.perf_counter()
+
+        def ms() -> int:
+            return round((time.perf_counter() - t) * 1000)
+
+        def step(name: str, i: int, n: int) -> None:
+            self.note(state="working", revision=revision, step=name,
+                      done_steps=i, steps=n, ms=ms())
+
+        try:
+            self.open(graph_db, step)
+        except Exception as exc:                  # noqa: BLE001 -- see the docstring:
+            self.note(state="failed", revision=revision,   # this is a report, not a swallow
+                      steps=len(BUILD_STEPS), ms=ms(),
+                      reason=f"{type(exc).__name__}: {exc}")
+            return
+        self.note(state="done", revision=revision, step="",
+                  done_steps=len(BUILD_STEPS), steps=len(BUILD_STEPS), ms=ms())
+
+    def note(self, **fields: Any) -> None:
+        """Replace the progress report. Whole, never field by field.
+
+        A half-updated report is a state the reader can be shown -- "the glossary" beside
+        a step count from the previous step -- and it costs one dict to make impossible.
+        """
+        with self.build_lock:
+            self.build = dict(fields)
+
+    def progress(self) -> dict[str, Any]:
+        with self.build_lock:
+            return dict(self.build)
 
     def close(self) -> None:
-        self.store.close()
+        if self.current is not None:
+            self.current.store.close()
         if self.source is not None:
             self.source.close()
 
@@ -222,9 +428,11 @@ class _Handler(BaseHTTPRequestHandler):
 
     server_version = "DunneFlow"
 
-    def __init__(self, *args: Any, payload: dict[str, Any], live: _Live,
-                 **kw: Any) -> None:
-        self._payload = payload
+    def __init__(self, *args: Any, live: _Live, **kw: Any) -> None:
+        # The base is not held here. It used to be -- the payload arrived as a
+        # constructor argument, from a local in `serve()` -- and that was one truth in two
+        # places the moment a base could be switched. `_Live.current` owns every part of
+        # a version and is swapped whole, so a handler reads it and never caches it.
         self._live = live
         super().__init__(*args, **kw)
 
@@ -237,7 +445,8 @@ class _Handler(BaseHTTPRequestHandler):
         self._file(STATIC / "index.html")
 
     def _r_graph(self, q: dict[str, list[str]]) -> None:
-        self._json(self._payload)
+        with self._live.lock:
+            self._json(self._live.current.payload)
 
     def _r_packages(self, q: dict[str, list[str]]) -> None:
         """The overview altitude: every package as a box, and what passes between them.
@@ -247,11 +456,12 @@ class _Handler(BaseHTTPRequestHandler):
         it would trade a measurable startup cost for a saving nobody can perceive.
         """
         with self._live.lock:
-            self._json(packages.build(self._live.store))
+            self._json(packages.build(self._live.current.store))
 
     def _r_cover(self, q: dict[str, list[str]]) -> None:
-        """The first screen. Built once at startup -- see `cover.py`."""
-        self._json(self._live.cover)
+        """The first screen. Built once per base -- see `cover.py`."""
+        with self._live.lock:
+            self._json(self._live.current.cover)
 
     def _r_routines(self, q: dict[str, list[str]]) -> None:
         """Every routine, with the package the stack puts it on.
@@ -265,15 +475,20 @@ class _Handler(BaseHTTPRequestHandler):
         On demand rather than with the cover: 4,734 rows is a real payload and a session
         that reads only the overview never asks for it.
         """
+        # Both under one lock, and one read of `current`: the rows and the plates are two
+        # halves of one answer, so taking them from two different bases -- which is what a
+        # switch landing between them would do -- is rule 13 in a payload.
         with self._live.lock:
-            rows = [dict(r) for r in self._live.store.query(
-                queries.NAV_ROUTINES, pkg_params(self._live.root))]
-        # Which packages actually have a plate. `graph.py` merges any package below
-        # `MIN_DISK` into `pkg:<small>`, so 47 packages become 45 plates -- and a list row
-        # offering `pkg:_version` would be selecting a plate that is not in the stack.
-        # `queries.py` wrote down why that is the wrong fix before anything needed it:
-        # inventing an id to make a row clickable is a link to nothing.
-        plates = [d["id"] for d in self._payload["disks"] if d["id"].startswith("pkg:")]
+            base = self._live.current
+            rows = [dict(r) for r in base.store.query(
+                queries.NAV_ROUTINES, pkg_params(base.root))]
+            # Which packages actually have a plate. `graph.py` merges any package below
+            # `MIN_DISK` into `pkg:<small>`, so 47 packages become 45 plates -- and a list
+            # row offering `pkg:_version` would be selecting a plate that is not in the
+            # stack. `queries.py` wrote down why that is the wrong fix before anything
+            # needed it: inventing an id to make a row clickable is a link to nothing.
+            plates = [d["id"] for d in base.payload["disks"]
+                      if d["id"].startswith("pkg:")]
         self._json({"routines": rows, "plates": plates})
 
     def _r_anomalies(self, q: dict[str, list[str]]) -> None:
@@ -284,7 +499,7 @@ class _Handler(BaseHTTPRequestHandler):
         the cover would put that weight behind the first paint of every map.
         """
         with self._live.lock:
-            self._json({"findings": build_anomalies(self._live.store)})
+            self._json({"findings": build_anomalies(self._live.current.store)})
 
     def _r_documents(self, q: dict[str, list[str]]) -> None:
         """What document mode can show."""
@@ -296,7 +511,7 @@ class _Handler(BaseHTTPRequestHandler):
         from .documents import build as build_doc
         doc_id = (q.get("id") or [""])[0]
         with self._live.lock:
-            self._json(build_doc(self._live.store, doc_id))
+            self._json(build_doc(self._live.current.store, doc_id))
 
     def _r_node(self, q: dict[str, list[str]]) -> None:
         """Everything the inspector shows about one node."""
@@ -305,7 +520,7 @@ class _Handler(BaseHTTPRequestHandler):
             self._json({"found": False, "reason": "no id asked for"})
             return
         with self._live.lock:
-            body = describe(self._live.store, node_id, self._live.source)
+            body = describe(self._live.current.store, node_id, self._live.source)
         self._json(body)
 
     def _r_hover(self, q: dict[str, list[str]]) -> None:
@@ -322,7 +537,7 @@ class _Handler(BaseHTTPRequestHandler):
             self._json({"found": False, "reason": "no id asked for"})
             return
         with self._live.lock:
-            body = hover_card(self._live.store, node_id)
+            body = hover_card(self._live.current.store, node_id)
         self._json(body)
 
     def _r_threads(self, q: dict[str, list[str]]) -> None:
@@ -338,13 +553,13 @@ class _Handler(BaseHTTPRequestHandler):
             self._json({"found": False, "reason": "no id asked for", "threads": []})
             return
         with self._live.lock:
-            row = self._live.store.query(
+            row = self._live.current.store.query(
                 "SELECT module, name FROM routines WHERE id = :id", {"id": node_id})
             module = str(row[0]["module"]) if row else ""
             name = str(row[0]["name"]) if row else ""
-            body = for_node(self._live.store, node_id,
-                            module=module, root=self._live.root, name=name,
-                            naming=self._live.naming, glossary=self._live.glossary)
+            body = for_node(self._live.current.store, node_id,
+                            module=module, root=self._live.current.root, name=name,
+                            naming=self._live.current.naming, glossary=self._live.current.glossary)
         self._json(body)
 
     def _r_thread(self, q: dict[str, list[str]]) -> None:
@@ -361,16 +576,18 @@ class _Handler(BaseHTTPRequestHandler):
                         "reason": "a thread needs both a kind and a key"})
             return
         with self._live.lock:
-            body = cohort(self._live.store, kind, key)
+            body = cohort(self._live.current.store, kind, key)
         self._json(body)
 
     def _r_naming(self, q: dict[str, list[str]]) -> None:
         """The Form lane: what this program does about names, counted."""
-        self._json(self._live.naming)
+        with self._live.lock:
+            self._json(self._live.current.naming)
 
     def _r_glossary(self, q: dict[str, list[str]]) -> None:
         """The Vocabulary lane: the program's words and who says what they mean."""
-        self._json(self._live.glossary)
+        with self._live.lock:
+            self._json(self._live.current.glossary)
 
     def _r_table(self, q: dict[str, list[str]]) -> None:
         """The routines that touch one table.
@@ -385,7 +602,7 @@ class _Handler(BaseHTTPRequestHandler):
             self._json({"found": False, "reason": "no table asked for", "nodes": []})
             return
         with self._live.lock:
-            rows = self._live.store.query(queries.TABLE_ROUTINES, {"name": name})
+            rows = self._live.current.store.query(queries.TABLE_ROUTINES, {"name": name})
         nodes = [r["node"] for r in rows]
         # `found: False` for a real table nothing touches would read as "no such table".
         # They are different answers and the client shows different things for each.
@@ -394,7 +611,7 @@ class _Handler(BaseHTTPRequestHandler):
     def _r_files(self, q: dict[str, list[str]]) -> None:
         """Every analysed file, complete. Rule 8: a reference list is never bounded."""
         with self._live.lock:
-            self._json(self._live.files)
+            self._json(self._live.current.files)
 
     def _r_file(self, q: dict[str, list[str]]) -> None:
         """One file, whole, with what the map knows about every line of it.
@@ -406,7 +623,7 @@ class _Handler(BaseHTTPRequestHandler):
         """
         path = (q.get("path") or [""])[0]
         with self._live.lock:
-            self._json(build_file(self._live.store, self._live.source, path))
+            self._json(build_file(self._live.current.store, self._live.source, path))
 
     def _r_search(self, q: dict[str, list[str]]) -> None:
         """Search the text of the source, which is the one thing the graph cannot do.
@@ -428,11 +645,11 @@ class _Handler(BaseHTTPRequestHandler):
         with self._live.lock:
             if path:
                 self._json(search_in_file(
-                    self._live.store, self._live.source, term, path,
+                    self._live.current.store, self._live.source, term, path,
                     case=case, word=word, regex=regex))
             else:
                 self._json(search_files(
-                    self._live.store, self._live.source, term,
+                    self._live.current.store, self._live.source, term,
                     case=case, word=word, regex=regex))
 
     def _r_source(self, q: dict[str, list[str]]) -> None:
@@ -485,10 +702,15 @@ class _Handler(BaseHTTPRequestHandler):
         cheap path is also the shorter code.
         """
         keys = ("program_version", "program_version_tier", "program_version_where")
-        if graph == self._live.graph_db:
-            with self._live.lock:
-                got = {k: self._live.store.get_meta(k) for k in keys}
-        elif graph.exists():
+        # One read of `current` and one decision from it. Asking "is this the served
+        # graph?" outside the lock and then reading the store inside it is two questions
+        # about a thing that can move between them -- which is the whole failure mode a
+        # base switch introduces.
+        with self._live.lock:
+            base = self._live.current
+            got = ({k: base.store.get_meta(k) for k in keys}
+                   if graph == base.graph_db else None)
+        if got is None and graph.exists():
             try:
                 other = Store(graph, writable=False)
             except Exception:                       # noqa: BLE001 -- a version is not
@@ -497,7 +719,7 @@ class _Handler(BaseHTTPRequestHandler):
                 got = {k: other.get_meta(k) for k in keys}
             finally:
                 other.close()
-        else:
+        elif got is None:
             return {}
         out: dict[str, Any] = {
             k.replace("program_", ""): (v or "") for k, v in got.items() if v
@@ -523,6 +745,7 @@ class _Handler(BaseHTTPRequestHandler):
         """
         rows: list[dict[str, Any]] = []
         with self._live.lock:
+            serving = self._live.current.graph_db
             listed = (self._live.source.revisions()
                       if self._live.source is not None else [])
         for r in listed:
@@ -540,7 +763,7 @@ class _Handler(BaseHTTPRequestHandler):
                 **self._version_of(graph),
                 "files": r.get("paths", r.get("files", 0)),
                 "comparable": graph.exists(),
-                "serving": graph == self._live.graph_db,
+                "serving": graph == serving,
                 # No `source_root`. It used to ride here so the toolbar could name the tree
                 # each revision was read from -- which was a real observation, two points in
                 # play and one path shown implying it was both. The answer turned out to be
@@ -555,7 +778,7 @@ class _Handler(BaseHTTPRequestHandler):
                 rows.append({
                     "revision": revisions.revision_of(g) or "",
                     "state": "", "captured": "", "label": "", "tree": "", "files": 0,
-                    "comparable": True, "serving": g == self._live.graph_db,
+                    "comparable": True, "serving": g == serving,
                 })
         self._json({"revisions": rows,
                     "comparable": sum(1 for r in rows if r["comparable"])})
@@ -592,12 +815,15 @@ class _Handler(BaseHTTPRequestHandler):
             return p if p.exists() else None
 
         # The base defaults to the graph actually being served rather than to
-        # `graphs[0]`. They are the same file today, and writing it this way is what
-        # keeps them the same thing when the reader picks a different base: the map and
-        # the comparison must never disagree about which version is on screen (rule 51).
-        base = _pick("base", self._live.graph_db)
+        # `graphs[0]`: the map and the comparison must never disagree about which version
+        # is on screen (rule 51). Read once, because a switch can land between two reads
+        # and then the default base and the `rode` decision below would be about two
+        # different versions.
+        with self._live.lock:
+            serving = self._live.current.graph_db
+        base = _pick("base", serving)
         compared = _pick("compared", next(
-            (g for g in graphs if g != self._live.graph_db), graphs[1]))
+            (g for g in graphs if g != serving), graphs[1]))
         if base is None or compared is None:
             self._json({"available": False,
                         "reason": "no graph for one of the versions asked for"})
@@ -617,12 +843,17 @@ class _Handler(BaseHTTPRequestHandler):
             # open in WAL mode cannot share the `-shm` WAL index and re-derives it per
             # query: 8,855 ms against 137 ms on one `calls` comparison. The lock is held
             # for the build because that connection belongs to every other request too.
-            rode = base == self._live.graph_db
-            if rode:
-                with self._live.lock:
+            # Decided under the lock and acted on under the same one, so a base switch
+            # cannot land between "is this the served graph?" and the connection the
+            # answer licenses -- which would hand `changes.build` a connection that has
+            # just been closed.
+            built = None
+            with self._live.lock:
+                rode = base == self._live.current.graph_db
+                if rode:
                     built = changes.build(base, compared,
-                                          serving=self._live.store.conn)
-            else:
+                                          serving=self._live.current.store.conn)
+            if built is None:
                 built = changes.build(base, compared)
             built["ms"] = round((time.perf_counter() - t) * 1000)
             # Which path produced the number beside it. Rule 13: a measurement that does
@@ -636,6 +867,82 @@ class _Handler(BaseHTTPRequestHandler):
             "compared": revisions.revision_of(compared),
             **built,
         })
+
+    def _r_base(self, q: dict[str, list[str]]) -> None:
+        """Which version is the base, and what a switch to another one is doing.
+
+        Two answers in one place on purpose. A page that has just loaded needs the first
+        -- the **server** is the truth about which version is on screen, not a value the
+        browser stored in a previous session -- and a page watching a switch needs the
+        second. Splitting them would mean two requests to answer "what am I looking at,
+        and is it about to change".
+
+        It never takes `live.lock` for the progress: that is the whole point of a separate
+        one. A poll that queued behind the rebuild would report nothing until there was
+        nothing left to report.
+        """
+        with self._live.lock:
+            graph = self._live.current.graph_db
+        self._json({
+            "base": revisions.revision_of(graph) or "",
+            "steps": list(BUILD_STEPS),
+            **self._live.progress(),
+        })
+
+    def _p_base(self, q: dict[str, list[str]]) -> None:
+        """Make another version the base. **A POST, and that is not ceremony.**
+
+        Every other route on this server is a read. A GET that swaps the whole map is one
+        a browser prefetch, a bookmark reload or a link preview fires by itself -- and
+        this codebase spends rule 20 on a *read* that repaired. The one route that
+        replaces what is on screen is the one route that is not a GET.
+
+        Refuses by name in four cases, because "nothing happened" and "that is already
+        what you are looking at" are different answers and a reader must not have to guess
+        which one they got.
+        """
+        asked = (q.get("revision") or [""])[0]
+        if not asked:
+            self._started(False, "no version was named")
+            return
+        graph = revisions.db_path(self._live.out_dir, revisions.GRAPH, asked)
+        if not graph.exists():
+            self._started(False, f"there is no graph for {asked} in this program directory")
+            return
+        with self._live.lock:
+            already = graph == self._live.current.graph_db
+        if already:
+            self._started(False, f"{asked} is already the version being read")
+            return
+        # Claimed before the thread is started, so two requests arriving together cannot
+        # both begin a rebuild -- and the loser is told, rather than being answered as
+        # though its own switch were the one now running.
+        if not self._live.claim(asked):
+            running = self._live.progress().get("revision", "")
+            self._started(False, f"a switch to {running} is already running")
+            return
+        threading.Thread(target=self._live.switch, args=(graph, asked),
+                         name=f"dunneflow-base-{asked}", daemon=True).start()
+        self._started(True, "")
+
+    def _started(self, ok: bool, reason: str) -> None:
+        """The answer to a switch request, and the progress **only when one started**.
+
+        200 either way, with one field saying whether anything started. Not a 409 for the
+        refusal: the client has to render the *reason* in both cases, and a status code
+        beside a reason is two ways to say one thing -- one of which nothing reads.
+
+        The progress rides only on the `started` answer, and that is rule 13 rather than
+        neatness. A refusal used to carry it too, so declining a switch to a version with
+        no graph replied `started: false` beside `state: "done"` and the *previous*
+        switch's revision -- three fields about three different things under one answer.
+        A refusal is about the request; it has no progress, because nothing is running.
+        """
+        body: dict[str, Any] = {"started": ok, "reason": reason,
+                                "steps": list(BUILD_STEPS)}
+        if ok:
+            body.update(self._live.progress())
+        self._json(body)
 
     def _r_favicon(self, q: dict[str, list[str]]) -> None:
         # Browsers always ask. Answering "nothing here" is quieter than a 404 in
@@ -667,7 +974,16 @@ class _Handler(BaseHTTPRequestHandler):
         "/api/search": "_r_search",
         "/api/revisions": "_r_revisions",
         "/api/changes": "_r_changes",
+        "/api/base": "_r_base",
         "/favicon.ico": "_r_favicon",
+    }
+
+    # The one route that changes what this server is showing. Its own table for the same
+    # reason `ROUTES` is one (design rule 16): an unhandled path fails by name rather than
+    # through a default that looks deliberate. Kept separate from `ROUTES` rather than
+    # flagged inside it, so "does a GET ever swap the base" is a question about a list.
+    POST_ROUTES: dict[str, str] = {
+        "/api/base": "_p_base",
     }
 
     # Served directories, checked in order. Kept beside the route table rather than
@@ -685,6 +1001,19 @@ class _Handler(BaseHTTPRequestHandler):
                 self._file(root / raw[len(prefix):])
                 return
         self.send_error(404, f"no route for {raw}")
+
+    def do_POST(self) -> None:                    # noqa: N802  (stdlib's spelling)
+        raw, _, query = self.path.partition("?")
+        # Drained whether or not anything is sent. An unread body sits in the socket and
+        # the next request on a kept-alive connection starts reading in the middle of it.
+        length = int(self.headers.get("Content-Length") or 0)
+        if length:
+            self.rfile.read(length)
+        handler = self.POST_ROUTES.get(raw)
+        if handler is None:
+            self.send_error(404, f"nothing here takes a POST: {raw}")
+            return
+        getattr(self, handler)(parse_qs(query))
 
     def _json(self, obj: dict[str, Any]) -> None:
         body = json.dumps(obj, separators=(",", ":")).encode("utf-8")
@@ -728,72 +1057,56 @@ def _free_port(preferred: int) -> int:
 
 
 def serve(out_dir: Path, *, port: int = 8787, open_browser: bool = True,
-          emit: Any = print) -> None:
-    """Build the payload once, then serve it until interrupted."""
-    # The newest revision, never a fixed name: a program written in the revision
-    # layout has no `graph.db` at all, and answering "no graph" for it would be
-    # rule 20's failure -- a reader confidently reporting nothing is there.
-    graph_db = revisions.newest(out_dir, revisions.GRAPH)
+          revision: str | None = None, emit: Any = print) -> None:
+    """Open one version of a program and serve it until interrupted.
+
+    `revision` chooses which one, defaulting to the newest -- never a fixed `graph.db`
+    name, because a program written in the revision layout has none at all and answering
+    "no graph" for it would be rule 20's failure, a reader confidently reporting nothing
+    is there.
+
+    It exists because **the base is the server's state, not the browser's.** The reader
+    can switch it from the page, and that choice survives a reload; without this flag it
+    could not survive a restart of `serve`, and the alternative -- a server reading the
+    browser's stored settings -- does not exist.
+    """
+    graph_db = revisions.resolve(out_dir, revisions.GRAPH, revision)
     if graph_db is None or not graph_db.exists():
         raise FileNotFoundError(
+            f"no graph for {revision} in {out_dir}" if revision else
             f"no graph in {out_dir} -- run `dunneflow analyze` first")
 
-    live = _Live(graph_db, out_dir / "source.db", out_dir)
-    model = build(live.store)
-    payload = columnar(model)
+    live = _Live(out_dir / "source.db", out_dir)
+    # The same door a base switch goes through, and the whole reason it takes a `step`
+    # callback: the terminal gets the boot, a watching page gets a switch, and neither is
+    # a second way of building a version (rule 51).
+    #
+    # Naming the cost of each step here rather than only in the browser, because someone
+    # who runs this on a large program and waits ten seconds at a prompt is entitled to
+    # the same answer as someone watching the overlay.
+    t0 = time.perf_counter()
+    live.open(graph_db, lambda name, i, n: emit(f"  [{i + 1}/{n}] {name}…"))
 
-    # The program's own words, both lanes, computed once.
-    #
-    # Not lazily, and the reason is where they are *used*: a vocabulary thread is part of
-    # `/api/threads`, which is asked on every selection, so a lazy first call would stall
-    # the reading loop on the first click of every session. Measured on Mensores at 0.4 s
-    # for the naming pass and 2.1 s for the glossary -- the latter reads a 176 MB document
-    # store -- against a start that is already building a payload and a cover.
-    #
-    # Documentation is optional by design (design rule 11): with no `docs.db` the glossary
-    # keeps every code-derived term and loses only the tier that quotes a document. It is
-    # never a prerequisite for a code-derived fact.
-    docs_db = revisions.newest(out_dir, revisions.DOCS)
-    docs = None
-    if docs_db is not None and docs_db.exists():
-        try:
-            docs = DocStore(docs_db, writable=False)
-        except (ValueError, OSError):
-            docs = None
-    live.files = build_files(live.store, live.source)
-    live.naming = measure_naming(live.store)
-    live.glossary = bind_glossary(live.store, docs)
-    if docs is not None:
-        docs.close()
-    emit(f"{live.files['total']:,} files listed for the code browser")
-    emit(f"{len(live.naming['conventions'])} naming conventions measured; "
-         f"{live.glossary['coverage'][0]:,} of {live.glossary['coverage'][1]:,} "
+    files = live.current.files
+    naming = live.current.naming
+    glossary = live.current.glossary
+    emit(f"{files['total']:,} files listed for the code browser")
+    emit(f"{len(naming['conventions'])} naming conventions measured; "
+         f"{glossary['coverage'][0]:,} of {glossary['coverage'][1]:,} "
          f"terms defined somewhere")
 
-    # After the two lanes, not before, so the first screen can state their sizes. The
-    # bodies stay where they are -- a quarter of a megabyte between them, fetched when
-    # their pages are opened -- and only the three counts travel with the cover.
-    defined, total = live.glossary["coverage"]
-    live.cover = build_cover(live.store, live.source, out_dir.name, vocabulary={
-        "conventions": len(live.naming["conventions"]),
-        "terms": total,
-        "defined": defined,
-    })
-
-    # Named so the browser can key stored settings per program. A disk order and a set of
-    # colours worked out for one codebase mean nothing in another, and silently applying
-    # one to the other would be the worst kind of persistence.
-    payload["program"] = out_dir.name
-
-    s = payload["stats"]
+    st = live.current.payload["stats"]
     # Shadows are never drawn -- they are placement devices, standing in on a plate so its
     # layout feels the pull of something living elsewhere. Reporting them as drawn would
     # overstate the picture by half.
-    emit(f"{s['nodes']:,} nodes across {s['disks']} plates (largest {s['largest_disk']:,}), "
-         f"{s['edges']:,} edges, {s['shadows']:,} shadows for placement only")
+    emit(f"{st['nodes']:,} nodes across {st['disks']} plates "
+         f"(largest {st['largest_disk']:,}), {st['edges']:,} edges, "
+         f"{st['shadows']:,} shadows for placement only")
+    emit(f"{revisions.revision_of(graph_db) or 'this version'} is the base, "
+         f"built in {time.perf_counter() - t0:.1f} s")
 
     port = _free_port(port)
-    handler = partial(_Handler, payload=payload, live=live)
+    handler = partial(_Handler, live=live)
     httpd = ThreadingHTTPServer(("127.0.0.1", port), handler)
     url = f"http://127.0.0.1:{port}/"
     emit(f"serving {url}  (ctrl-c to stop)")

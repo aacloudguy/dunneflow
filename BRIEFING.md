@@ -5,7 +5,7 @@ It exists so a fresh context can be useful in a few minutes instead of an hour.
 
 | Read | For |
 |---|---|
-| `CLAUDE.md` | The rules. 66 engineering rules and 26 dashboard design rules, each earned from a false result on real code. **Binding.** |
+| `CLAUDE.md` | The rules. 68 engineering rules and 26 dashboard design rules, each earned from a false result on real code. **Binding.** |
 | `HANDOFF.md` | The chronological record — what was built when, what it cost, what broke. ~1,700 lines. Read *sections*, not the whole thing. |
 | **this file** | Where things are, what is done, what we are doing now, what not to re-open. |
 | Artifact `f993d319-d2b7-4217-9130-cdbba698d1bc` | The ratified dashboard design — a complete working UI, the source of truth for every view. Read it with the **Artifact tool**, not from a screenshot. |
@@ -53,7 +53,7 @@ no build step. deck.gl is vendored into `web/vendor/`.
 
 | File | What it is |
 |---|---|
-| `serve.py` | the server — a route table, one handler per endpoint |
+| `serve.py` | the server — two route tables (GET reads, the one POST switches the base), and `_Base`: everything one version decides, swapped whole |
 | `queries.py` | every dashboard query as **SQL text**, in one place |
 | `cover.py` · `detail.py` · `documents.py` | the cover · the inspector and the hover card · document mode |
 | `threads.py` | adjacency by *interest* — why a neighbour is worth a detour |
@@ -136,18 +136,21 @@ search. FTS5 was rejected on evidence: token-based, so it cannot find `_emit` in
 Still not built: syntax highlighting (a design-rule-2 pair if ever wanted, done server-side
 with stdlib `tokenize`).
 
-**Not built:** `dunneflow infer` (the model pass) · temporal layers, and therefore **any
-second point in time on screen** — the storage spine is laid (see below), so what is missing
-is the selector and the diff screen · attestation · the project profile · document mode's
-narrative view · packaging as a binary · any language but Python.
+**Not built:** `dunneflow infer` (the model pass) · the temporal **overlays** — a second
+point in time is on screen as a *worklist* and as the base itself, but nothing is layered
+over the code, the tables or the stack yet · the diff palette · attestation · the project
+profile · document mode's narrative view · packaging as a binary · any language but Python.
 
-**The revision spine is in.** `WORKING` is a *state* rather than an id, and a revision is
-identified by when it was captured; `seal()` keeps the current snapshot under its own name so
-the next `analyze` opens a second one beside it rather than replacing it. `dunneflow
-revisions <dir>` lists them and `--seal` keeps one. Mensores' snapshot is sealed as
-**2026-08-29T19:43:39Z**, captured 2026-08-29 17:02 UTC, 626 files. **Nothing reads a second
-revision yet** — that is the layer work, and it now adds a selector to a working view rather
-than inventing both at once.
+**The revision spine is in, and both ends of a pair are readable.** `WORKING` is a *state*
+rather than an id, and a revision is identified by when it was captured; `seal()` keeps the
+current snapshot under its own name so the next `analyze` opens a second one beside it rather
+than replacing it. `dunneflow revisions <dir>` lists them and `--seal` keeps one.
+
+**A comparison is two directories**: the **base** is what the whole map shows and the
+**compared** is what it is held against, neither claimed to be older — *added* / *deleted* is
+an interpretation the reader owns, derived from the two versions where they say enough. Both
+ends are settable from the toolbar; changing the base makes the server rebuild everything
+from that graph (1.2–3.0 s warm, 35 s cold), and `serve --revision` chooses it at boot.
 
 **Built but not on screen:** `CURIOSITIES`. `threads.py` computes the outlier family per
 package already — most commented, most called, deepest closure, most lopsided table — and
@@ -155,6 +158,48 @@ running that program-wide is most of design rule 15's doorway panel. It says hon
 is not computed yet.
 
 ## What we are doing now
+
+**Switching the base — built 2026-08-30.** The reading end is settable. `buildRevControls`'
+trailing disabled row — `— reading a past revision arrives next —` — is gone, and removing
+it was the work.
+
+One payload set is live, always (Tom's call), so a switch is the **server** opening another
+graph and rebuilding the payload, the file list, both vocabulary lanes and the cover from
+it. Measured **1.2–3.0 s warm and 35 s cold** on the external volume.
+
+- **`_Base`**, a frozen record holding everything one version decides — graph, store,
+  payload, root, files, naming, glossary, cover — swapped in **one binding** under the lock.
+  Built *outside* the lock and committed inside it, so the rebuild costs other requests
+  nothing and a failure leaves the reader the map they had (rule 20 applied to a swap).
+- **One door.** `_Live.open()` is the boot *and* the switch; a second builder would be two
+  ways to produce one thing.
+- **`POST /api/base`** with its own route table, because every other route here is a read
+  and a GET that replaces the map is one a browser prefetch fires by itself. **`GET
+  /api/base`** is the progress, behind its own lock, naming each of six steps as it runs.
+- **`serve --revision <rev>`** — where "which version does this server open" honestly lives.
+- **The overlay is blocking, over the whole application**, and says the version underneath
+  is still the one on screen. On `done` the page **reloads**: every module-level array in
+  `shell.js` is base-derived, and a hand-kept invalidation list is rule 36's defect.
+- **The options are the pairs, and all of them are real**, grouped by reading end, each
+  naming both ends because a closed `<select>` never shows its group's label.
+
+**Six defects found by driving and one by reading the served JSON, none by any test.** Two
+became rules. **67**: Chrome restores a `<select>`'s value across a reload and that outranks
+the `selected` attribute the code wrote — so the control named the pair the reader had been
+on *before* the switch while the strip named the new one. **68**: a group restored open at
+boot never fired its `onOpen`, so Changes sat open saying *"open to compare them"* with
+nothing to open — present since the group was built, reachable only by reloading, and a base
+switch reloads.
+
+**Guards** mutation-tested at 12/12 and 20/20 over proved-green baselines. Both first-run
+survivors were the *guard* being weak rather than the mutation — the fourth and fifth time
+in two sessions.
+
+**Paused here 2026-08-30.** See `HANDOFF.md` `6d` and "Paused 2026-08-30, after switching the
+base". **Next: the diff palette (chunk B)** — design rule 6 is already implemented, so
+generalise `pointerPasses` rather than rebuilding it — then the overlays, code browser first.
+
+## Before that: base and compared (2026-08-30)
 
 **Base and compared — built 2026-08-30.** A comparison is **two directories**, and the tool
 makes no claim about which is older. One is the **base** (what the whole map shows,
@@ -191,23 +236,10 @@ ranked against each other. A prerelease suffix and an equal pair both rank nothi
 On the two Society trees this opens on **53 added** with no click; on `output/mensores`,
 whose versions predate the column, it says *"no versions to compare"*.
 
-**Paused here 2026-08-30.** See `HANDOFF.md`, "Paused 2026-08-30, after base and compared",
-which carries the open list in the order agreed.
+See `HANDOFF.md`, "Paused 2026-08-30, after base and compared". Everything it named as next
+— switching the base — is built; see above.
 
-**Next: switching the base.** Tom chose *rebuild every switch* — one payload set live,
-always. `serve()` builds the payload, the code list, both vocabulary lanes and the cover
-from one graph at boot and `_Handler` holds that payload from construction, so this is a
-server lifecycle change (swap the store under the lock, rebuild the payload in place, clear
-the diff cache) plus a client progress state for the measured 10.2 s. `baseRev` was never
-settable from the UI — the pair control's trailing disabled row says so, and removing that
-row is the work. Two things already prepared for it: `_r_changes` defaults its base from
-the served graph rather than from capture order, and `changes.build` rides the serving
-connection on whichever end is the base, so rule 58's 36x survives the switch.
-
-Then the diff palette (design rule 6 is **already implemented** — generalise
-`pointerPasses`, do not rebuild it), then the overlays, code browser first.
-
-## What we were doing immediately before
+## Before that: paths stored relative (2026-08-30)
 
 **Paths are stored relative — done 2026-08-30, and it moved the ground under the layer
 work.** Tom's ask, and his three reasons: an absolute path leaks one machine's directory
@@ -280,7 +312,7 @@ conversation moved on. **Ask before building it.** And *selecting a version from
 source-directory control* is reshaped rather than owed — that control is a readout now and a
 path is not a key, so put it back to him rather than building the original ask.
 
-## What we were doing immediately before
+## Before that: two points in time, and the worklist (2026-08-29)
 
 **Paused 2026-08-29 with two points in time on disk and the change worklist's engine
 built, guarded and measured — but not yet on screen.** See `HANDOFF.md` 5w.
@@ -385,7 +417,7 @@ language feature reported as one** — not filtered, not bare: a curiosity in de
 rather than special-cased in the diff. Research owed on how other tools present a
 construct the language put there rather than an author.
 
-## What we were doing before this
+## Before that: search inside the source (2026-08-29)
 
 **Paused 2026-08-29 with search inside the source built.** Three chunks — the server, the
 client, and the measurements — each verified against Mensores and driven in a real window;
@@ -457,7 +489,7 @@ findings are LOST_EDGE, so it decides the feature.
 **Owed and still not looked at:** the blank-graph fix (rule 49). The automation tab never
 mounts the graph — `canvas MISSING`, `frames 0` — so it is reasoned and guarded, not seen.
 
-## What we were doing before that
+## Before that: the navigator (2026-08-28/29)
 
 **The navigator, before the orientation work — 2026-08-28/29.** The three symptoms Tom gave
 at the keyboard are `HANDOFF.md` 5o, and the two rules they earned are 45 and 46.
@@ -624,8 +656,18 @@ uv run dunneflow serve output/mensores
 
 **`../mensores-overhaul` is read-only.** All output belongs in `output/`.
 
+**Do not re-analyse into `output/mensores` while verifying two versions.** It holds the two
+revisions everything temporal is checked against — `2026-08-29T23:46:53Z` (WORKING, 628
+files) and `2026-08-29T23:46:24Z` (FOR_COMPARISON, *Society at e2e658b4 — 2026-08-26*, 625
+files) — and a third would change the setup the recorded figures belong to. It is enough on
+its own to verify a base switch, both directions, with no scratch corpus.
+
 Ground truth is in `CLAUDE.md` — both halves. Positive: the four executables must all
-appear in "Where to start" with plausible reach. Negative, and it matters more:
+appear in "Where to start" with plausible reach, **and they must still be there after a base
+switch**, which is the cheapest check that a switch rebuilt everything rather than most
+things. On the older revision that is 175 ways in and 3,950 boundary touches, with
+`mensores` / `mensores-mcp` / `mensores-scriba` / `mensores-signator` at 1,366 / 421 / 265 /
+111. Negative, and it matters more:
 `.groma/research/v0.2/conventions-naming-and-documentation.md` is a paper *about* naming
 standards and must yield **zero** naming rules.
 
@@ -650,6 +692,11 @@ standards and must yield **zero** naming rules.
   file. Write client comments in the `*`-prefixed style. CSS has its own `_css_code()`:
   with no template literals and no nested comments, the whole-block strip that is unsafe
   in JavaScript is exact there.
+- **The browser writes to your controls.** Chrome restores a `<select>`'s value across a
+  reload, outranking the `selected` attribute the code wrote — so a control can name a state
+  the page is not in while every source-reading check passes. Rule 67: assign the value from
+  state. More generally, `elementFromPoint` answers *can the reader reach it*; nothing in a
+  test answers *what has the browser since done to it*, and only driving does.
 - **A guard that checks a name appears has not checked anything happens.** Three guards
   written this session passed against their own defect first time. Run every new one against
   the defect it came from *and* against a half-working version. Rule 37.

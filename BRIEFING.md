@@ -196,10 +196,15 @@ Guards mutation-tested at **20/20** over a proved-green baseline, after a first 
 with **all three survivors the guard being weak** — the eleventh, twelfth and thirteenth time
 in four sessions.
 
-**Paused here 2026-08-30.** See `HANDOFF.md` `6g`. **Next: the graph as `colorBy: 'change'`**
-— **which still wants Tom's decision on the colour channel**, because design rule 4 says
-colour carries one dimension at a time and a comparison should take the channel over rather
-than paint red and green across fifty-two plate hues.
+**Paused here 2026-08-30.** See `HANDOFF.md` `6g`. **Next: the graph as `colorBy: 'change'`,
+and it is unblocked.** The colour channel was decided at the keyboard: **change takes the
+channel over** — a third value beside *what it is* and *which plate*, with plate hue stepping
+aside while it is on, because tinting only the changed nodes would put two meanings in one
+channel and a red dot would mean either *deleted* or *the plate whose hue landed on red*.
+**Crossings keep their plate gradient** (rule 23): nodes and links are separate buffers, so
+the dots can say what changed while the lines go on saying which plate each end is on. See
+`HANDOFF.md`, "The colour channel, decided 2026-08-30", for the three things that follow
+from it.
 
 ### Before that, in the same session: the comparison over the code (2026-08-30)
 

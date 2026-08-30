@@ -3723,6 +3723,48 @@ warning, and markup another function rewrites is not the markup that renders.
 **Next: tables and the worklist**, then the graph as `colorBy: 'change'` — and that one
 still wants Tom's decision on the colour channel before it is built. Read `6f`.
 
+### The colour channel, decided 2026-08-30 — the graph as `colorBy: 'change'`
+
+Asked and answered at the keyboard, and both halves are Tom's.
+
+**Change takes the channel over.** A third value in the existing "colour by" selector
+beside *what it is* and *which plate*, so turning it on colours every node by its change
+status and plate hue steps aside while it is on. Design rule 4 stays literal, which is how
+`paintNodes` already reads: either kind or disk, never both, with selection carried by
+dimming so it never competes.
+
+The option refused, and why it is worth writing down: **tinting only the changed nodes**
+and leaving the other 9,788 on plate colour. It reads well — 86 changed out of 9,874 — and
+it puts two meanings in one channel, so a red dot would mean either *deleted* or *the plate
+whose golden-angle hue landed on red*. That is precisely the ambiguity rule 4 exists to
+prevent, and the fact that it looks fine on Mensores is not evidence, because Mensores'
+changed set is small.
+
+**Crossings keep their plate gradient.** Rule 23 walks a crossing's colour from its source
+plate's hue to its target's, because a line passing through plates it has nothing to do with
+cannot be read in one flat colour. Nodes and links are already separate buffers, so the dots
+can say *what changed* while the lines go on saying *which plate each end is on* — and
+"this deleted routine on `cli` was calling into `storage`" stays a readable sentence. An
+edge's colour is its own channel; the alternative was strictly one dimension everywhere at
+the cost of no longer being able to tell which end of a line you are looking at.
+
+*Three things this chunk will have to handle, none of them decided by the above.*
+
+- **Three states, not two.** Arrived and went have a direction; *behaves differently* has
+  none, and *edited only* and *unchanged* have neither. `signOf` must not be reached for a
+  fourth answer — the same trap `factLaneHtml` already documented.
+- **`applyPalette()` must start pushing to the stack.** It deliberately does not today,
+  because `cssPalette()` reads no token a colour set overrides, so a push would be a repaint
+  that changes nothing. The moment the graph reads `--diff-*` that stops being true, and
+  `test_a_palette_token_the_graph_reads_must_reach_the_graph` is already written to fail
+  when it does — the implication is derived from both sides so it cannot be forgotten
+  (rule 36).
+- **There is no plate outline to fall back on.** Rule 18 keeps the plates undrawn and design
+  rule 26 draws faintly only the two or three a *selection* touches, so with nothing selected
+  plate colour is the only answer to "where am I". Colouring by change removes it. Whether
+  that wants the plates drawn while this mode is on is a question for when it is on screen,
+  not before.
+
 ### Paused 2026-08-30, after the routine marks
 
 Working tree clean; all three gates green; `output/mensores` untouched and still serving
@@ -3739,8 +3781,8 @@ twice and differently in one view, and a table left empty for ever by a list tha
 arrived. No new numbered rule -- every one of them is an existing rule in a new costume,
 which is what the numbering is for.
 
-**Next: the graph as `colorBy: 'change'`** — and it still wants Tom's decision on the
-colour channel before it is built. Read `6g`.
+**Next: the graph as `colorBy: 'change'`, and it is unblocked** — the colour channel was
+decided at the keyboard after this pause; see the section above. Read `6g`.
 
 ### Paused 2026-08-30, after the colour sets
 
@@ -3852,8 +3894,8 @@ findings in two versions the same finding* — because a finding carries no id a
 Mensores' 106 are `LOST_EDGE`. Answer that before building it; a false *new* is rule 1's
 defect with a colour on it.
 
-**The graph as `colorBy: 'change'` is what remains, and the colour-channel question below
-is still owed to Tom before it is built.**
+**The graph as `colorBy: 'change'` is what remains, and the colour-channel question is
+answered — see "The colour channel, decided 2026-08-30" below. It is unblocked.**
 
 <details><summary>the plan as it stood</summary>
 

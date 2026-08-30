@@ -168,3 +168,90 @@ def test_a_boundary_that_is_no_longer_touched_is_a_behaviour_change(tmp_path):
     d = changes.build(_graph(tmp_path, "a", before), _graph(tmp_path, "b", BEFORE))
     names = {r["name"]: r["moved"] for r in d["behaves"]}
     assert "beta" in names, d["behaves"]
+
+
+def test_a_diff_can_ride_a_connection_that_already_holds_one_end(tmp_path):
+    """The 36x, and the reason it is not a micro-optimisation.
+
+    A second read-only handle to a database this process already has open in WAL mode
+    cannot join the shared-memory WAL index — it has no write access to the `-shm` — and
+    re-derives it on every query. One `calls` comparison on Mensores measured 8,855 ms
+    with the dashboard holding the graph open and 137 ms attached onto the connection
+    that already had it. Same query, same files, same page cache.
+
+    The trap is that the slow path is only slow *while the tool is doing what it exists
+    to do*. Measured standalone it is 242 ms, which is how it would have been recorded
+    as fast and shipped — every measurement in this module before that one was taken
+    with the server stopped.
+    """
+    import sqlite3
+
+    before = _graph(tmp_path, "a", BEFORE)
+    after = _graph(tmp_path, "b", BEFORE + "\ndef gamma():\n    alpha()\n")
+
+    standalone = changes.build(before, after)
+
+    # Exactly as `Store` opens it: **no** `uri=True`, because that is the connection
+    # this rides in the dashboard. With URI handling on, a `file:...?mode=ro` attach
+    # quietly works here and fails in the server, where the URI is taken as a literal
+    # filename — the guard would then pass against the defect it exists for (rule 37).
+    conn = sqlite3.connect(after)
+    conn.row_factory = sqlite3.Row
+    try:
+        ridden = changes.build(before, after, serving=conn)
+        # Identical answers, or the fast path is a different measurement wearing the
+        # same label (rule 24).
+        assert ridden["counts"] == standalone["counts"]
+        assert [r["id"] for r in ridden["added"]] == [r["id"] for r in standalone["added"]]
+        # And the connection is handed back as it was found: a left-behind alias makes
+        # the *next* comparison fail, which is the kind of breakage that only shows up
+        # on the second click.
+        again = changes.build(before, after, serving=conn)
+        assert again["counts"] == standalone["counts"]
+    finally:
+        conn.close()
+
+
+def test_the_diff_contains_no_write_statement():
+    """Rule 25's guarantee, kept rule 25's way.
+
+    The pair is computed on the connection the dashboard already holds open, which
+    cannot be read-only without spreading a 36x slowdown to every other query on it. So
+    the read-only promise is not enforced by a flag but asserted here — because what it
+    guards against is a future edit, not a present bug, and one of the two graphs is a
+    snapshot somebody sealed precisely so it would stop changing.
+
+    Over the module's **string literals**, via `ast`, with docstrings excluded. A grep
+    would fire on the prose above the moment someone wrote `DROP` into a comment
+    explaining why there is none, and a check that cries wolf is a check nobody reads
+    (rule 43).
+    """
+    import ast
+
+    from dunneflow.web import changes as mod
+
+    tree = ast.parse(Path(mod.__file__).read_text())
+    docstrings = set()
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Module, ast.FunctionDef, ast.AsyncFunctionDef,
+                             ast.ClassDef)):
+            body = getattr(node, "body", [])
+            if (body and isinstance(body[0], ast.Expr)
+                    and isinstance(body[0].value, ast.Constant)
+                    and isinstance(body[0].value.value, str)):
+                docstrings.add(id(body[0].value))
+
+    WRITES = ("INSERT", "UPDATE", "DELETE", "DROP", "CREATE", "ALTER",
+              "REPLACE", "VACUUM", "REINDEX")
+    seen = 0
+    for node in ast.walk(tree):
+        if not (isinstance(node, ast.Constant) and isinstance(node.value, str)):
+            continue
+        if id(node) in docstrings:
+            continue
+        seen += 1
+        upper = node.value.upper()
+        for verb in WRITES:
+            assert verb not in upper, f"{verb} in a string literal: {node.value[:70]!r}"
+    # The check must have had something to look at, or it passes by finding nothing.
+    assert seen > 5, f"only {seen} literals examined — the instrument is not looking"

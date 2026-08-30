@@ -1973,3 +1973,63 @@ body.detached-code #trailMount { display: none !important; }
 .mk-id       { background: var(--sev-suspect-bg); color: var(--sev-suspect); }
 
 .codeempty { padding: 1.25rem; }
+
+/* ── The change worklist ───────────────────────────────────────────────────────
+   What moved between two points in time. Every dimension in rem (design rule 3),
+   and no colour declared outside the tokens above. */
+
+/* The navigator's bands. A wrapper class of its own rather than `.navsub`, which is
+   already the sub-label *inside* an item -- one selector naming both a container and a
+   label is rule 54's shape, and it is how a guard ends up vouching for the wrong node. */
+.chgband { border-top: 0.0625rem solid var(--border); }
+.chgband:first-child { border-top: 0; }
+.chgband .nav-head.sub {
+  padding-left: 1.1rem;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+/* The page. Four figures, and each says what it counts (rule 32) rather than leaving the
+   reader to infer it from position. */
+.chgstats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: 0.5rem;
+  margin: 0.5rem 0 0;
+}
+.chgstat {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  padding: 0.55rem 0.7rem;
+  background: var(--raised);
+  border: 0.0625rem solid var(--border);
+  border-radius: 0.35rem;
+}
+.chgstat b { font-size: 1.35rem; line-height: 1.1; }
+.chgstat span { font-size: 0.74rem; color: var(--text-muted); }
+.chgstat .hint { font-size: 0.68rem; color: var(--text-faint); }
+
+.chgsection { margin-top: 1.1rem; }
+.chgsection h3 {
+  margin: 0 0 0.25rem;
+  font-size: 0.85rem;
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+}
+.chgsection .hint { margin: 0 0 0.4rem; font-size: 0.72rem; }
+/* Each band scrolls inside itself. The page must not grow to 4,700 rows on a comparison
+   six months wide -- a pane that hands its overflow to the document is the defect rule 29's
+   companion is about, and here it would also take the four figures off the top of the
+   screen, which are the only part a reader needs at a glance. */
+.chgsection .wl-list { max-height: 24rem; }
+
+.chgpresence {
+  margin: 0.8rem 0 0;
+  padding: 0 0 0 1.1rem;
+  font-size: 0.76rem;
+  color: var(--text-muted);
+}
+.chgpresence li { margin: 0.15rem 0; }
+.chgpresence code { font-size: 0.72rem; }

@@ -21,6 +21,7 @@ from __future__ import annotations
 import json
 import socket
 import threading
+import time
 import webbrowser
 from functools import partial
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -32,7 +33,7 @@ from .. import revisions
 from ..docstore import DocStore
 from ..sourcedb import SourceStore
 from ..store import Store
-from . import packages, queries
+from . import changes, packages, queries
 from .code import build_file, build_files
 from .cover import anomalies as build_anomalies
 from .cover import build as build_cover
@@ -158,8 +159,18 @@ class _Live:
     repair, and it must never be able to damage the map it came to show.
     """
 
-    def __init__(self, graph_db: Path, source_db: Path) -> None:
+    def __init__(self, graph_db: Path, source_db: Path,
+                 out_dir: Path | None = None) -> None:
         self.lock = threading.Lock()
+        # The program directory, so a second point in time can be found. The graph being
+        # served is one revision of it; every other revision is a file beside this one.
+        self.out_dir = out_dir or graph_db.parent
+        self.graph_db = graph_db
+        # One computed diff per pair, keyed by (before, after). Lazily, unlike the two
+        # vocabulary lanes: a thread is asked on every selection and a change list is
+        # opened deliberately, so paying for it at boot would add seconds to a start that
+        # is already 10 s and buy nothing for a reader who never opens the view.
+        self.changes: dict[tuple[str, str], dict[str, Any]] = {}
         self.store = Store(graph_db, writable=False, shared=True)
         # A sidecar is optional by design -- `--no-source`, or a map handed over without
         # it. Absent is a state the inspector states plainly, never one it hides.
@@ -468,6 +479,108 @@ class _Handler(BaseHTTPRequestHandler):
                     "first": lines[0][0], "last": lines[-1][0],
                     "lines": [{"n": n, "text": t} for n, t in lines]})
 
+    def _r_revisions(self, q: dict[str, list[str]]) -> None:
+        """Every point in time this program directory holds, newest first.
+
+        The sidecar is the authority on *what a revision is* -- its state, when it was
+        captured, what it was labelled -- and the directory is the authority on whether
+        a **graph** exists to read it with. A revision whose bodies are held but whose
+        graph was never written cannot be compared, and saying so is the difference
+        between an empty answer and an honest one (rule 20).
+        """
+        rows: list[dict[str, Any]] = []
+        with self._live.lock:
+            listed = (self._live.source.revisions()
+                      if self._live.source is not None else [])
+        for r in listed:
+            rev = str(r.get("revision") or "")
+            graph = revisions.db_path(self._live.out_dir, revisions.GRAPH, rev)
+            rows.append({
+                "revision": rev,
+                "state": r.get("state", ""),
+                "captured": r.get("captured_at", ""),
+                "label": r.get("label", ""),
+                "files": r.get("paths", r.get("files", 0)),
+                "comparable": graph.exists(),
+                "serving": graph == self._live.graph_db,
+            })
+        # With no sidecar there is still a directory, and it may hold graphs. Never
+        # answer "no revisions" out of a store that simply was not asked.
+        if not rows:
+            for g in revisions.known(self._live.out_dir, revisions.GRAPH):
+                rows.append({
+                    "revision": revisions.revision_of(g) or "",
+                    "state": "", "captured": "", "label": "", "files": 0,
+                    "comparable": True, "serving": g == self._live.graph_db,
+                })
+        self._json({"revisions": rows,
+                    "comparable": sum(1 for r in rows if r["comparable"])})
+
+    def _r_changes(self, q: dict[str, list[str]]) -> None:
+        """What moved between two points in time.
+
+        Defaults to the two newest comparable revisions, because that is the question
+        someone opening this view is asking. Both ends are named in the answer, so a
+        reader can never be looking at a comparison without knowing which one.
+        """
+        graphs = revisions.known(self._live.out_dir, revisions.GRAPH)
+        if len(graphs) < 2:
+            self._json({
+                "available": False,
+                "reason": ("this program has one point in time — analyse it again after "
+                           "sealing the current revision, and there will be two"),
+                "revisions": len(graphs),
+            })
+            return
+
+        def _pick(name: str, default: Path) -> Path | None:
+            asked = (q.get(name) or [""])[0]
+            if not asked:
+                return default
+            p = revisions.db_path(self._live.out_dir, revisions.GRAPH, asked)
+            return p if p.exists() else None
+
+        after = _pick("to", graphs[0])
+        before = _pick("from", graphs[1])
+        if before is None or after is None:
+            self._json({"available": False,
+                        "reason": "no graph for one of the revisions asked for"})
+            return
+        if before == after:
+            self._json({"available": False,
+                        "reason": "a revision compared with itself has nothing to say"})
+            return
+
+        key = (before.name, after.name)
+        with self._live.lock:
+            built = self._live.changes.get(key)
+        if built is None:
+            t = time.perf_counter()
+            # Ride the connection that already holds the served graph open when it is one
+            # end of the pair. A second read-only handle to a database this process has
+            # open in WAL mode cannot share the `-shm` WAL index and re-derives it per
+            # query: 8,855 ms against 137 ms on one `calls` comparison. The lock is held
+            # for the build because that connection belongs to every other request too.
+            rode = after == self._live.graph_db
+            if rode:
+                with self._live.lock:
+                    built = changes.build(before, after,
+                                          serving=self._live.store.conn)
+            else:
+                built = changes.build(before, after)
+            built["ms"] = round((time.perf_counter() - t) * 1000)
+            # Which path produced the number beside it. Rule 13: a measurement that does
+            # not say how it was taken cannot be checked, and these two differ by 36x.
+            built["rode_serving_connection"] = rode
+            with self._live.lock:
+                self._live.changes[key] = built
+        self._json({
+            "available": True,
+            "from": revisions.revision_of(before),
+            "to": revisions.revision_of(after),
+            **built,
+        })
+
     def _r_favicon(self, q: dict[str, list[str]]) -> None:
         # Browsers always ask. Answering "nothing here" is quieter than a 404 in
         # everyone's console.
@@ -496,6 +609,8 @@ class _Handler(BaseHTTPRequestHandler):
         "/api/files": "_r_files",
         "/api/file": "_r_file",
         "/api/search": "_r_search",
+        "/api/revisions": "_r_revisions",
+        "/api/changes": "_r_changes",
         "/favicon.ico": "_r_favicon",
     }
 
@@ -567,7 +682,7 @@ def serve(out_dir: Path, *, port: int = 8787, open_browser: bool = True,
         raise FileNotFoundError(
             f"no graph in {out_dir} -- run `dunneflow analyze` first")
 
-    live = _Live(graph_db, out_dir / "source.db")
+    live = _Live(graph_db, out_dir / "source.db", out_dir)
     model = build(live.store)
     payload = columnar(model)
 

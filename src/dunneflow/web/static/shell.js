@@ -104,6 +104,21 @@ let SEARCHHITS = {};      // path -> { ok, hits: [...] } | { loading: true }, th
  * `render()` cannot move the pane a second time under someone reading it. */
 let codeGoto = 0;
 
+/* Two points in time.
+ *
+ * `REVISIONS` is every snapshot this program directory holds, asked for once at boot
+ * because it is one small query and the navigator states a count beside every other row
+ * — a blank there reads as *nothing here* rather than as *not asked yet*.
+ *
+ * `CHANGES` is the comparison itself, and it is **not** an array on purpose: `null` means
+ * nobody has asked for it and `{ ... }` means it has been computed, and those are opposite
+ * claims that a `[]` cannot tell apart (rule 35). It is fetched when the reader first opens
+ * the worklist rather than at boot: a change list is opened deliberately, unlike the two
+ * vocabulary lanes, which are asked for on every selection and are therefore paid for at
+ * start. */
+let REVISIONS = [];       // [{ revision, state, captured, label, files, comparable, serving }]
+let CHANGES = null;       // { available, counts, added, removed, behaves, ... } | { loading: true } | null
+
 const AI_OPS = [
   { id: "harvest", label: "Harvest definitions from documentation", needs: "docs",
     desc: "Reads only documents whose shape suggests a definition \u2014 a bold term, a heading, a table row, a term-dash-gloss. Returns quotations with a file and line you can check.",
@@ -227,6 +242,11 @@ const state = {
   usage: {},
   sev: "suspect",          // which severity tab the worklist is on
   cursor: 0,               // position in the worklist
+  /* Which band of the change worklist is open, "" for none. Runtime state rather than a
+   * setting: it is where the reader is in one comparison, not a preference about how the
+   * tool should behave, and persisting it would reopen a band of a comparison that may
+   * not exist in the next program opened. */
+  changeBand: "added",
   triage: {},              // finding id -> "ack" | "notbug" | "tooldefect"
   insp: { in: true, out: true, touches: true, gov: true, sig: false },
   aiOps: { harvest: true },
@@ -517,7 +537,57 @@ const NAV_ROUTES = {
      answer about it, so this opens a pane rather than making a selection. What the reader
      picks *inside* it is a node, and that is the click that selects. */
   file: (b) => openCodeFile(b.dataset.navid || ""),
+  /* A changed routine is a routine. The band it sits in says *why* it is worth looking at;
+     the click is the same selection every other row makes, so the stack lights its hop, the
+     inspector fills, the trail records it and undo takes it back -- none of which this view
+     had to build. Rule 30 from the useful side: the row carries an identity, and the route
+     is the only place that knows what to do with one. */
+  chg:     (b) => selectFromNav({ nodes: navIds(b) }),
+  changes: () => { state.view = "changes"; loadChanges().then(render); },
 };
+
+/* What moved between two points in time.
+ *
+ * Asked for on demand rather than with the cover, for the reason the anomalies list is:
+ * most sessions never open it, and on a large program the comparison is seconds of work
+ * that the reader would pay for on a screen they are not looking at.
+ *
+ * `{ loading: true }` is a state the view renders, not a gap it renders nothing into. The
+ * three answers here are genuinely different -- not asked yet, being computed, and computed
+ * with nothing in it -- and collapsing any two of them puts a blank pane where a sentence
+ * belongs (design rule 1, and rule 35's invariant one layer up). */
+async function loadChanges(from, to) {
+  if (CHANGES && CHANGES.loading) return CHANGES;
+  CHANGES = { loading: true };
+  render();
+  const qs = [];
+  if (from) qs.push("from=" + encodeURIComponent(from));
+  if (to) qs.push("to=" + encodeURIComponent(to));
+  try {
+    const r = await fetch("/api/changes" + (qs.length ? "?" + qs.join("&") : ""));
+    CHANGES = await r.json();
+  } catch (err) {
+    /* Named, never swallowed. A comparison that failed and a program that did not change
+       are opposite claims, and an empty worklist states the second one. */
+    CHANGES = { available: false, reason: "the comparison could not be read: " + err.message };
+  }
+  return CHANGES;
+}
+
+/* Every point in time this program directory holds. One small query, asked at boot,
+ * because the navigator states a count beside every other row and a blank there reads as
+ * *nothing here* rather than as *not asked for yet* -- the same argument that put the
+ * vocabulary lane sizes on the cover. */
+async function loadRevisions() {
+  try {
+    const r = await fetch("/api/revisions");
+    const d = await r.json();
+    REVISIONS = d.revisions || [];
+  } catch {
+    REVISIONS = [];
+  }
+  return REVISIONS;
+}
 
 /* The identities a navigator row carries, as written into `data-navid`. Space separated
  * because ids here are hex digests, plate ids and table names -- none of which contain a
@@ -540,6 +610,18 @@ document.addEventListener("click", (ev) => {
   const term = b.dataset.term;
   pushTrail(state.view, term, b.dataset.termuse || "");
   followThread({ type: "cohort", kind: "term", key: term, label: term });
+});
+
+/* Which band of the change worklist is open. One at a time, and clicking the open one
+ * closes it -- the accordion the routine list already uses, for the same reason: 53
+ * additions and 15 edits at once is the haystack the bands exist to break up. */
+document.addEventListener("click", (ev) => {
+  const b = ev.target.closest("[data-changeband]");
+  if (!b) return;
+  const key = b.dataset.changeband;
+  state.changeBand = state.changeBand === key ? "" : key;
+  buildNav();
+  render();
 });
 
 /* Routed from the DOM, delegated, because `render()` rewrites this window on every hop --
@@ -1097,7 +1179,7 @@ const TABLE_COLS = ["q", "why", "fan"];
 function viewTable() {
   const cw = state.colWidths;
   const col = (k, label, numeric) =>
-    `<th style="width:${cw[k]}rem" class="${numeric ? "numeric" : ""}" data-col="${k}" scope="col">
+    `<th style="width:${cw[k]}rem" class="${numeric ? "numeric" : ""}" scope="col">
        <span class="thinner">
          <button class="sortbtn" data-sort="${k}"
                  aria-sort="${state.sortKey === k ? (state.sortAsc ? "ascending" : "descending") : "none"}">${label}${
@@ -1227,6 +1309,110 @@ const TRIAGE_LABELS = {
   notbug:     { label: "Not a bug \u2014 blind spot applies", cls: "certain" },
   tooldefect: { label: "DunneFlow defect",    cls: "broken"  }
 };
+
+/* What moved between two points in time, as a page rather than as a pane.
+ *
+ * The navigator's Changes group is the list you click through; this is the same comparison
+ * with room to say what it is a comparison *of*. Both read one `CHANGES`, so they cannot
+ * disagree about what changed — the failure rule 51 is about, where two places each hold
+ * their own answer to "what am I looking at".
+ *
+ * Design rule 9's shape, not design rule 1's: this is a worklist, and the first move on
+ * opening one is to start clearing it. So the bands are ordered by what is worth reading
+ * first — what arrived, what went, what behaves differently — and the largest band is last
+ * because it is the least interesting, which is the whole thesis of the tool.
+ */
+function viewChanges() {
+  if (!CHANGES || CHANGES.loading) {
+    return `<div class="panel" style="padding:1.25rem">
+      <h2 style="margin:0 0 .5rem">Comparing two points in time…</h2>
+      <p class="hint">Reading both graphs. On a large program held on a slow volume this
+         is seconds the first time and immediate afterwards.</p></div>`;
+  }
+  if (!CHANGES.available) {
+    return `<div class="panel" style="padding:1.25rem">
+      <h2 style="margin:0 0 .5rem">Nothing to compare.</h2>
+      <p>${esc(CHANGES.reason || "this program holds one point in time")}</p>
+      <p class="hint">A second point appears when the current revision is sealed
+         (<code>dunneflow revisions &lt;dir&gt; --seal</code>) and the program is analysed
+         again — the sealed snapshot stays readable beside the new one.</p></div>`;
+  }
+  const c = CHANGES.counts;
+  const rev = (id) => {
+    const r = REVISIONS.find(x => x.revision === id);
+    return r && r.label ? `${esc(id)} — ${esc(r.label)}` : esc(id || "?");
+  };
+  const stat = (n, label, why) => `
+    <div class="chgstat">
+      <b class="num">${n.toLocaleString()}</b>
+      <span>${label}</span>
+      ${why ? `<span class="hint">${why}</span>` : ""}
+    </div>`;
+
+  const rows = (list) => list.map(r => `
+    <li><button class="wl-item" data-nav="chg" data-navid="${esc(r.id)}">
+      <span class="wl-title">${esc(r.name)}</span>
+      <span class="wl-meta">
+        <span class="mono" style="font-size:.7rem;color:var(--text-faint)">${esc(r.module)}</span>
+        ${(r.moved || []).map(m => `<span class="kind-tag">${esc(m)}</span>`).join("")}
+      </span>
+    </button></li>`).join("");
+
+  const band = (key, title, list, why) => !list.length ? "" : `
+    <section class="chgsection">
+      <h3>${title} <span class="num">${list.length.toLocaleString()}</span></h3>
+      ${why ? `<p class="hint">${why}</p>` : ""}
+      <ol class="wl-list">${rows(list)}</ol>
+    </section>`;
+
+  const pres = CHANGES.presence || {};
+  const presLine = (name, label) => {
+    const v = pres[name] || { added: [], removed: [] };
+    if (!v.added.length && !v.removed.length) return "";
+    const bits = [];
+    if (v.added.length) bits.push(`+${v.added.length}`);
+    if (v.removed.length) bits.push(`\u2212${v.removed.length}`);
+    const named = v.added.slice(0, 6).map(x => `<code>${esc(String(x))}</code>`).join(" ");
+    return `<li>${label} <b class="num">${bits.join(" ")}</b> ${named}</li>`;
+  };
+
+  return `
+  <div class="panel changes" style="padding:1rem 1.25rem">
+    <h2 style="margin:0 0 .25rem">What moved</h2>
+    <p class="hint" style="margin:0 0 .9rem">
+      <code>${rev(CHANGES.from)}</code> &rarr; <code>${rev(CHANGES.to)}</code>
+      ${CHANGES.ms != null ? ` · compared in ${Number(CHANGES.ms).toLocaleString()} ms` : ""}
+    </p>
+
+    <div class="chgstats">
+      ${stat(c.added, "added", "")}
+      ${stat(c.removed, "removed", "")}
+      ${stat(c.behaves, "behave differently", "something they do has moved")}
+      ${stat(c.edited_only, "edited only", "and nothing they do changed")}
+    </div>
+
+    <p class="hint" style="margin:.6rem 0 0">
+      ${c.routines_before.toLocaleString()} routines before, ${c.routines_after.toLocaleString()} after.
+      A rename reads as a removal plus an addition — nothing in the source says the two are
+      the same thing.</p>
+
+    ${Object.keys(pres).length ? `<ul class="chgpresence">
+      ${presLine("db_tables", "Tables")}
+      ${presLine("entrypoints", "Ways in")}
+      ${presLine("artefacts", "Named files")}
+      ${presLine("constants", "Constants")}
+    </ul>` : ""}
+
+    ${band("behaves", "Behaving differently", CHANGES.behaves,
+           "The same routine, and something it <em>does</em> has moved — what it calls, "
+           + "what it touches, what it takes or what it returns. The tag says which.")}
+    ${band("added", "Added", CHANGES.added)}
+    ${band("removed", "Removed", CHANGES.removed)}
+    ${band("edited", "Edited, behaving the same", CHANGES.edited_only,
+           "The body changed and nothing it does did. Internal computation — what this tool "
+           + "exists not to report — listed here so leaving it out is not a silent filter.")}
+  </div>`;
+}
 
 function viewAnomalies() {
   const counts = sevCounts();
@@ -3511,6 +3697,7 @@ function render() {
     }
   }
   else if (state.view === "anomalies") vp.innerHTML = viewAnomalies();
+  else if (state.view === "changes")   vp.innerHTML = viewChanges();
   else if (state.view === "glossary")  { ensureVocabulary(); vp.innerHTML = viewGlossary(); }
   else if (state.view === "naming")    { ensureVocabulary(); vp.innerHTML = viewNaming(); }
   else if (state.view === "inference") vp.innerHTML = viewInference();
@@ -4087,7 +4274,7 @@ document.addEventListener("keydown", (e) => {
  * from the source, generated markup included, which is the direction the existing guard
  * could not see: it reads `index.html`, and all four of these are written by JavaScript. */
 const WIRED_ATTRS = new Set([
-  "aiop", "airun", "bound", "card", "cite", "citeidx", "closeviewer", "col", "crumb", "curi",
+  "aiop", "airun", "bound", "card", "cite", "citeidx", "closeviewer", "crumb", "curi",
   "cursor", "den", "disk", "drop", "edgesmotion", "egress", "ep", "fold", "gact", "gosev",
   "goto", "graphtheme", "insp", "jump", "layout", "legend", "manifest", "menuorder",
   "mode", "nav", "nav2", "navcap", "navgroups", "pkgopen", "pointerplace", "pointerreset", "pointershown", "reticule",
@@ -4096,6 +4283,8 @@ const WIRED_ATTRS = new Set([
      `CODE_ROUTES` is what listens for all of them -- one table, checked by the guard that
      reads it, so a fourth kind added there without a listener fails by name. */
   "codeback", "codedetach", "codelink", "codeopen", "codemode",
+  /* The change worklist's one control: which band is open. */
+  "changeband",
   /* The search's four. `searchline` rides with `searchgo` on the same button and carries no
      handler of its own -- it is the line the click is about, and the roster is a list of
      attributes the shell writes, not only of the ones that are clicked. */
@@ -5049,6 +5238,14 @@ const NAV_GROUPS = [
     /* A body rather than items, because these rows are two levels deep. Routed through the
        same `navItemHtml`, so a routine row in a package looks like every other row. */
     body: () => routineList() },
+  /* Changes: what moved between two points in time. Closed by default and absent
+     entirely from a program with one revision -- a group that is always empty is a
+     control that always fails. */
+  { id: "navChanges", title: "Changes", open: false,
+    when: () => REVISIONS.filter(r => r.comparable).length >= 2,
+    count: () => changeCount(),
+    note: () => changeNote(),
+    body: () => changeList() },
   /* Code: the file list, and the file. Stacked, which is the accordion one level down --
      the same shape `navRoutines` uses, for the same reason. */
   { id: "navCode", title: "Code", open: false,
@@ -5111,6 +5308,92 @@ function groupCount(g) {
   return items.length;
 }
 
+/* How many routines this comparison has something to say about.
+ *
+ * Added plus removed plus behaves-differently, and **not** `edited_only`: a routine whose
+ * body moved and whose behaviour did not is exactly what this tool exists not to report,
+ * and putting it in the headline number would make an ordinary refactor look like an
+ * upheaval. It is still listed, under its own band, because leaving it out entirely would
+ * be a silent filter (design rule 1).
+ *
+ * Rule 32: the number is produced by, and named after, the thing it measures. */
+function changeCount() {
+  if (!CHANGES || CHANGES.loading || !CHANGES.available) return "";
+  const c = CHANGES.counts;
+  return c.added + c.removed + c.behaves;
+}
+
+/* What the group says above its rows, and the three states it must keep apart.
+ *
+ * "Not asked for yet", "being computed" and "computed, and nothing moved" are different
+ * answers, and a blank note states the last one whichever is true. */
+function changeNote() {
+  if (!CHANGES) return "two points in time — open to compare them";
+  if (CHANGES.loading) return "comparing…";
+  if (!CHANGES.available) return esc(CHANGES.reason || "no second point in time");
+  const c = CHANGES.counts;
+  const moved = c.added + c.removed + c.behaves;
+  if (!moved && !c.edited_only) return "nothing moved between these two points";
+  const bits = [];
+  if (c.added) bits.push(`${c.added} added`);
+  if (c.removed) bits.push(`${c.removed} removed`);
+  if (c.behaves) bits.push(`${c.behaves} behaving differently`);
+  /* Stated even when it is the only thing that happened, and stated as what it is: the
+     largest band in ordinary work, and the least interesting. */
+  if (c.edited_only) bits.push(`${c.edited_only} edited without changing what they do`);
+  return bits.join(" · ");
+}
+
+/* The rows. Grouped by band, and each band collapses -- 53 additions is a list a reader
+ * can hold, and a program six months apart is not.
+ *
+ * Every row carries the node id, so clicking one is the same selection the routine list
+ * makes. The band is *why* it is worth looking at; the identity is what the router acts on. */
+function changeList() {
+  if (!CHANGES) return `<p class="hint">Not compared yet.</p>`;
+  if (CHANGES.loading) return `<p class="hint">Comparing two points in time…</p>`;
+  if (!CHANGES.available) {
+    return `<p class="hint">${esc(CHANGES.reason || "no second point in time")}</p>`;
+  }
+  const band = (key, title, rows, why) => {
+    if (!rows.length) return "";
+    const open = state.changeBand === key;
+    return `<div class="chgband">
+      <button class="nav-head sub" data-changeband="${key}" aria-expanded="${open}">
+        <span class="nav-title">${title}</span>
+        <span class="n num">${rows.length}</span>
+      </button>
+      ${open ? `<div class="nav-items">
+        ${why ? `<p class="hint" style="margin:.2rem .5rem .4rem">${why}</p>` : ""}
+        ${rows.map(r => navItemHtml({
+            nav: "chg",
+            label: r.name,
+            sub: r.module,
+            n: (r.moved || []).join(" "),
+            sel: r.id,
+          })).join("")}
+      </div>` : ""}
+    </div>`;
+  };
+  const c = CHANGES;
+  /* The way into the full comparison. The group's rows are for clicking through; the page
+     has room to say which two points are being compared and what moved besides routines --
+     tables, ways in, named files. Both read one `CHANGES` (rule 51). */
+  const open = navItemHtml({
+    nav: "changes", label: "The whole comparison", n: "open",
+    current: state.view === "changes",
+  });
+  return open
+       + band("added", "Added", c.added)
+       + band("removed", "Removed", c.removed)
+       + band("behaves", "Behaving differently", c.behaves,
+              "The same routine, and something it <em>does</em> has moved — what it calls, "
+              + "what it touches, what it takes or returns.")
+       + band("edited", "Edited, behaving the same", c.edited_only,
+              "The body changed and nothing it does did. Internal computation, which this "
+              + "tool exists not to report — listed so its absence is not a silent filter.");
+}
+
 /* The size of a vocabulary lane, from the cover. Empty rather than 0 when the server sent
    no vocabulary block at all: a map analysed by an older DunneFlow has no such counts, and
    printing 0 there would state a measurement nobody took. */
@@ -5128,10 +5411,16 @@ function vocabCount(key) {
  *
  * Design rule 2: `waysin` and `explore` are a genuine tie, so both exist and usage decides. */
 function navGroupsInOrder() {
+  /* A group may declare itself inapplicable. Only Changes does: a program with one point
+   * in time has nothing to compare, and a group that is permanently empty is a control
+   * that permanently fails. Filtered here rather than in `buildNav`, so the jump strip --
+   * which is built from this same list -- cannot offer a chip for a group that is not in
+   * the pane. Two places deciding this is two answers, which is why this function exists. */
+  const live = NAV_GROUPS.filter(g => (g.when ? g.when() : true));
   const first = state.menuOrder === "explore" ? "navExplore" : "navWaysIn";
-  const chosen = NAV_GROUPS.find(g => g.id === first);
-  if (!chosen) return NAV_GROUPS.slice();
-  return [chosen, ...NAV_GROUPS.filter(g => g !== chosen)];
+  const chosen = live.find(g => g.id === first);
+  if (!chosen) return live.slice();
+  return [chosen, ...live.filter(g => g !== chosen)];
 }
 
 /* Is this group open?
@@ -7307,6 +7596,11 @@ async function boot() {
     state.view = "code";
     state.mode = "code";
   }
+  /* Which points in time exist. One small query, and `navGroupsInOrder` needs the answer
+   * before it can decide whether the Changes group applies at all -- so it is awaited
+   * rather than fired and forgotten, or the first `buildNav()` runs against an empty list
+   * and the group is missing until something else happens to rebuild the pane. */
+  await loadRevisions();
   buildNav();
   wireGraphOnce();
   wireSearchOnce();

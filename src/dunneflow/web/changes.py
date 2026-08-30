@@ -67,40 +67,40 @@ FACTS: dict[str, tuple[str, str]] = {
 # the query say what its name says.
 MOVED = """
 SELECT o FROM (
-    SELECT {owner} AS o, {cols} FROM a.{table}
+    SELECT {owner} AS o, {cols} FROM {A}.{table}
     EXCEPT
-    SELECT {owner} AS o, {cols} FROM b.{table}
+    SELECT {owner} AS o, {cols} FROM {B}.{table}
 )
 UNION
 SELECT o FROM (
-    SELECT {owner} AS o, {cols} FROM b.{table}
+    SELECT {owner} AS o, {cols} FROM {B}.{table}
     EXCEPT
-    SELECT {owner} AS o, {cols} FROM a.{table}
+    SELECT {owner} AS o, {cols} FROM {A}.{table}
 )
 """
 
 ADDED = """
 SELECT id, name, qualname, module, file, line_start
-  FROM b.routines WHERE id NOT IN (SELECT id FROM a.routines)
+  FROM {B}.routines WHERE id NOT IN (SELECT id FROM {A}.routines)
  ORDER BY module, qualname
 """
 
 REMOVED = """
 SELECT id, name, qualname, module, file, line_start
-  FROM a.routines WHERE id NOT IN (SELECT id FROM b.routines)
+  FROM {A}.routines WHERE id NOT IN (SELECT id FROM {B}.routines)
  ORDER BY module, qualname
 """
 
 EDITED = """
-SELECT b.id, b.name, b.qualname, b.module, b.file, b.line_start
-  FROM a.routines a_r JOIN b.routines b ON b.id = a_r.id
- WHERE a_r.body_hash <> b.body_hash
- ORDER BY b.module, b.qualname
+SELECT y.id, y.name, y.qualname, y.module, y.file, y.line_start
+  FROM {A}.routines x JOIN {B}.routines y ON y.id = x.id
+ WHERE x.body_hash <> y.body_hash
+ ORDER BY y.module, y.qualname
 """
 
 RETURNS_MOVED = """
-SELECT b.id AS o FROM a.routines a_r JOIN b.routines b ON b.id = a_r.id
- WHERE IFNULL(a_r.returns, '') <> IFNULL(b.returns, '')
+SELECT y.id AS o FROM {A}.routines x JOIN {B}.routines y ON y.id = x.id
+ WHERE IFNULL(x.returns, '') <> IFNULL(y.returns, '')
 """
 
 # Presence-only tables. Each is keyed by the thing a reader would name it by, never by a
@@ -114,15 +114,22 @@ PRESENCE: dict[str, str] = {
 
 
 def _attach(a: Path, b: Path) -> sqlite3.Connection:
-    """Both graphs, read-only, in one connection. Neither is opened for writing."""
-    # `uri=True` so the two ATTACHes below can carry `mode=ro`. Read-only is not a
-    # nicety here: rule 20 says a read may refuse but may never repair, and a diff is
-    # the most purely read-only thing this tool does — it must not so much as leave a
-    # journal file beside a snapshot someone sealed.
+    """Both graphs, read-only, in one connection. Neither is opened for writing.
+
+    `uri=True` so the ATTACHes can carry `mode=ro`. Read-only is not a nicety: rule 20
+    says a read may refuse but may never repair, and a diff is the most purely
+    read-only thing this tool does — it must not leave so much as a journal file beside
+    a snapshot someone sealed.
+
+    **Only for graphs this process does not already hold open.** See `build`.
+    """
     conn = sqlite3.connect(":memory:", uri=True)
     conn.row_factory = sqlite3.Row
-    conn.execute("ATTACH DATABASE ? AS a", (f"file:{a}?mode=ro",))
-    conn.execute("ATTACH DATABASE ? AS b", (f"file:{b}?mode=ro",))
+    # Absolute, because a relative path inside a `file:` URI is not the same path --
+    # it produced `unable to open database: file:output/mensores/graph@...db`, which
+    # names the file it could not open and still does not say why.
+    conn.execute("ATTACH DATABASE ? AS a", (f"file:{a.resolve()}?mode=ro",))
+    conn.execute("ATTACH DATABASE ? AS b", (f"file:{b.resolve()}?mode=ro",))
     return conn
 
 
@@ -130,36 +137,66 @@ def _rows(conn: sqlite3.Connection, sql: str, **kw: Any) -> list[sqlite3.Row]:
     return conn.execute(sql.format(**kw)).fetchall()
 
 
-def build(before: Path, after: Path) -> dict[str, Any]:
+def build(before: Path, after: Path,
+          *, serving: sqlite3.Connection | None = None) -> dict[str, Any]:
     """The whole change list, both directions, with every row carrying its subject.
 
     Every row carries the node **id** the rest of the dashboard selects by, never a
     label -- a worklist whose rows cannot be acted on is design rule 16's dead control
     with a count beside it (rule 30).
+
+    `serving` is a connection this process **already holds open on `after`**, and passing
+    it is worth 36x. A second, read-only handle to a database this process has open in
+    WAL mode cannot join the shared-memory WAL index -- it has no write access to the
+    `-shm` -- so it re-derives it on every query. Measured on Mensores, one `calls`
+    comparison: **8,855 ms with the dashboard holding the graph open, 242 ms with it
+    stopped, 137 ms attached onto the connection that already had it.** Same query, same
+    files, same page cache.
+
+    That is worth stating plainly because the slow path is the *careful* one, and it is
+    only slow while the tool is doing the thing it exists to do. Opened standalone it
+    measures fine, which is exactly how it would have been recorded as fast and shipped:
+    every measurement in this module before this one was taken with the server stopped.
     """
-    conn = _attach(before, after)
+    conn = serving if serving is not None else _attach(before, after)
+    # When we are riding the server's connection, the graph it serves is already `main`;
+    # only the other end needs attaching, and it is one this process does not hold open.
+    A, B = ("chgbefore", "main") if serving is not None else ("a", "b")
+    if serving is not None:
+        # A plain path, not a `mode=ro` URI, and both halves of that are deliberate.
+        # `Store` opens without `uri=True`, so a URI here is taken as a literal filename
+        # -- and read-only is what made this slow in the first place, so buying it back
+        # on the connection the whole dashboard shares would spread the 36x to every
+        # other query rather than remove it.
+        #
+        # The guarantee is kept the way rule 25 keeps it for `sourcedb`: by a test that
+        # this module contains no write statement at all, because what is being guarded
+        # against is a future edit rather than a present bug. Nothing here is conditional
+        # and nothing here migrates; it is SELECTs and one DETACH.
+        conn.execute("ATTACH DATABASE ? AS chgbefore", (str(before.resolve()),))
     try:
-        added = [dict(r) for r in conn.execute(ADDED)]
-        removed = [dict(r) for r in conn.execute(REMOVED)]
-        edited = {r["id"]: dict(r) for r in conn.execute(EDITED)}
+        added = [dict(r) for r in conn.execute(ADDED.format(A=A, B=B))]
+        removed = [dict(r) for r in conn.execute(REMOVED.format(A=A, B=B))]
+        edited = {r["id"]: dict(r) for r in conn.execute(EDITED.format(A=A, B=B))}
 
         moved: dict[str, set[str]] = {}
         for table, (owner, cols) in FACTS.items():
-            for r in _rows(conn, MOVED, table=table, owner=owner, cols=cols):
+            for r in _rows(conn, MOVED, table=table, owner=owner, cols=cols,
+                           A=A, B=B):
                 if r["o"]:
                     moved.setdefault(r["o"], set()).add(table)
-        for r in conn.execute(RETURNS_MOVED):
+        for r in conn.execute(RETURNS_MOVED.format(A=A, B=B)):
             moved.setdefault(r["o"], set()).add("returns")
 
         # Only routines present in BOTH. A fact belonging to a routine that arrived or
         # went is already stated by its own band, and counting it here would report one
         # change twice -- rule 40's defect, in a diff.
         both = {r["id"] for r in conn.execute(
-            "SELECT id FROM a.routines INTERSECT SELECT id FROM b.routines")}
+            f"SELECT id FROM {A}.routines INTERSECT SELECT id FROM {B}.routines")}
         behaves = {rid: sorted(k) for rid, k in moved.items() if rid in both}
 
         named = {r["id"]: dict(r) for r in conn.execute(
-            "SELECT id, name, qualname, module, file, line_start FROM b.routines")}
+            f"SELECT id, name, qualname, module, file, line_start FROM {B}.routines")}
         behaves_rows = [
             {**named[rid], "moved": kinds}
             for rid, kinds in sorted(behaves.items(),
@@ -172,11 +209,11 @@ def build(before: Path, after: Path) -> dict[str, Any]:
         for table, key in PRESENCE.items():
             presence[table] = {
                 "added": [r[0] for r in conn.execute(
-                    f"SELECT {key} FROM b.{table} "
-                    f"WHERE {key} NOT IN (SELECT {key} FROM a.{table}) ORDER BY 1")],
+                    f"SELECT {key} FROM {B}.{table} "
+                    f"WHERE {key} NOT IN (SELECT {key} FROM {A}.{table}) ORDER BY 1")],
                 "removed": [r[0] for r in conn.execute(
-                    f"SELECT {key} FROM a.{table} "
-                    f"WHERE {key} NOT IN (SELECT {key} FROM b.{table}) ORDER BY 1")],
+                    f"SELECT {key} FROM {A}.{table} "
+                    f"WHERE {key} NOT IN (SELECT {key} FROM {B}.{table}) ORDER BY 1")],
             }
 
         return {
@@ -186,9 +223,9 @@ def build(before: Path, after: Path) -> dict[str, Any]:
                 "behaves": len(behaves_rows),
                 "edited_only": len(edited_only),
                 "routines_before": conn.execute(
-                    "SELECT COUNT(*) FROM a.routines").fetchone()[0],
+                    f"SELECT COUNT(*) FROM {A}.routines").fetchone()[0],
                 "routines_after": conn.execute(
-                    "SELECT COUNT(*) FROM b.routines").fetchone()[0],
+                    f"SELECT COUNT(*) FROM {B}.routines").fetchone()[0],
             },
             "added": added,
             "removed": removed,
@@ -197,4 +234,10 @@ def build(before: Path, after: Path) -> dict[str, Any]:
             "presence": presence,
         }
     finally:
-        conn.close()
+        # The server's connection outlives this call and must be handed back exactly as
+        # it was found: an alias left attached makes the next comparison fail, and a
+        # connection closed here would take the whole dashboard down with it.
+        if serving is not None:
+            conn.execute("DETACH DATABASE chgbefore")
+        else:
+            conn.close()

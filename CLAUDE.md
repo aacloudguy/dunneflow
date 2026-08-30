@@ -271,6 +271,20 @@ every selection, so a lazy first call would stall the reading loop on the first 
 every session — two seconds where the reader is entitled to think the click failed. Paid at
 boot it is invisible, beside a payload build and a cover that were already being computed.
 
+The change worklist, comparing two revisions of Mensores (4,733 routines against 4,786):
+
+| Measure | Budget | Measured 2026-08-29 |
+|---|---|---|
+| `/api/changes`, warm | < 500 ms | 317 ms |
+| …first comparison of a session | < 5 s | **13 s – 28 s, and it is the disk** |
+| …the same, cached | < 50 ms | 1 ms |
+
+**The cold row is the external volume**, reading a 31 MB graph the server has never
+touched: 13.1 s, then 2.5 s, then 317 ms on three runs of the same comparison. It was
+**84 s** until the diff stopped opening a second read-only handle to a database the
+dashboard already holds open — see rule 58, and note that measured standalone it was
+242 ms the whole time.
+
 Documentation (2,041 documents on Mensores, 44 MB):
 
 **These were 2,381 and 310 definitions, and the difference is not a change to Society.**
@@ -1094,6 +1108,57 @@ rule of that number — a blank canvas must say why it is blank — which does e
     Found by pointing DunneFlow at two points in time for the first time. Neither number
     was wrong on its own; the *difference* between them was 340 removed documents that
     Society had never removed, and a phantom is only obvious once something makes it move.
+
+58. **A second read-only handle to a database this process already holds open is 36x
+    slower, and it is only slow while the tool is doing its job.** The change diff
+    attached both graphs with `mode=ro`, for the best reason there is: rule 20 says a
+    read may refuse but may never repair, and one of the two is a snapshot somebody
+    sealed. One `calls` comparison on Mensores measured **8,855 ms with the dashboard
+    running and 242 ms with it stopped** — same query, same files, same page cache. A
+    read-only connection has no write access to the `-shm`, so it cannot join the
+    shared-memory WAL index the open handle maintains and re-derives it per query.
+
+    The trap is the shape of the measurement, not the number. Every timing taken of this
+    module before that one was taken with the server stopped, where it is 242 ms and
+    perfectly healthy — so it would have been recorded as fast, shipped, and been 87
+    seconds behind the reader's first click. **A component measured in isolation has not
+    been measured in the state it runs in**, and for a server the state it runs in is
+    "holding its own files open". Rule 24's family: the benchmark must submit the frame
+    the product actually draws.
+
+    The fix is to attach the *other* graph onto the connection that already has one —
+    137 ms — which is what `Store(shared=True)` was already for. And the read-only
+    guarantee is then kept the way rule 25 keeps `sourcedb`'s: by a test asserting the
+    module contains no write statement, over its **string literals via `ast`** rather
+    than by grep, because the prose explaining why there are no writes contains the word
+    `DROP` and a check that cries wolf is a check nobody reads (rule 43).
+
+    Two smaller things fell out of it, both silent. `PRAGMA query_only` buys the
+    guarantee back and buys the slowdown with it, so it is not an escape. And a
+    **relative path inside a `file:` URI is not that path** — `file:output/mensores/…`
+    reports "unable to open database", naming the file it could not open and never
+    saying why.
+
+59. **A mutation harness must prove its baseline is green, or every mutation reads as
+    caught.** A run scored **7/7** while one guard was already failing on an unrelated
+    attribute: the suite was red before any mutation, so each one "went red" and the
+    single mutation that genuinely survived was invisible inside the perfect score. The
+    honest score was 6/7. A harness that only knows *red after* cannot tell a mutation it
+    killed from a suite that was already dead.
+
+    Rule 43 in the instrument for the fourth time in two sessions, and the four are worth
+    listing together because no two look alike: two read pytest's **output** instead of
+    its exit code and reported everything as surviving; one restored a file of identical
+    size within the same second and left the mutant running out of `__pycache__` (rule
+    56); this one measured against a red baseline. Every one of them was a check about
+    checks, and every one reported confidently.
+
+    Its companion, from the same run: **a mutation that leaves any read of the thing
+    standing has not removed it.** Deleting a handler's `closest("[data-x]")` while its
+    `dataset.x` line remains keeps the attribute "read" by code that can no longer run —
+    so the guard passes, correctly, on a claim narrower than the one being tested. When a
+    mutation survives, ask whether the guard is weak or the *mutation* was, before
+    changing either.
 
 ## Anomalies: the discipline
 

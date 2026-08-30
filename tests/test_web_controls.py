@@ -54,12 +54,29 @@ def _nav_routes() -> set[str]:
 
 
 def _nav_kinds_built() -> set[str]:
-    """Every `nav` kind the generated navigator can produce."""
+    """Every `nav` kind the generated navigator can produce.
+
+    Scanned over the **whole shell**, not over the `NAV_GROUPS` literal. A group that
+    builds its rows with `body:` — the routine list, the code list, the change worklist —
+    calls `navItemHtml` from a function declared far outside that block, so a scan bounded
+    to the literal could not see `nav: "routine"` or `nav: "file"` at all. It had been
+    blind to the navigator's three most-clicked row kinds since those groups were written,
+    and passed the whole time by having nothing to compare.
+
+    Rule 54 in the guard itself: naming the wrong container is not a narrower check, it is
+    no check. `\b` still matters — `sevnav: "broken"` is a severity, not a nav kind, and
+    without the boundary this reported three dead routes that were never routes.
+    """
     js = _read("shell.js")
-    body = js.split("const NAV_GROUPS = [", 1)[1].split("\n];", 1)[0]
-    # `\b` matters: `sevnav: "broken"` is a severity, not a nav kind, and without the
-    # boundary this test reported three dead routes that were never routes.
-    return set(re.findall(r'\bnav:\s*"([^"]+)"', body))
+    # Both spellings. A row built through `navItemHtml` carries `nav: "x"`; one written
+    # straight into a template literal carries `data-nav="x"`, and the code list does
+    # exactly that — so matching only the first left `file` unchecked as well.
+    # Interpolated values (`data-nav="${...}"`) are skipped: they are not literals and
+    # this instrument cannot say what they will be, which it should admit rather than
+    # guess at.
+    kinds = set(re.findall(r'\bnav:\s*"([^"]+)"', js))
+    kinds |= {k for k in re.findall(r'data-nav="([^"]+)"', js) if "$" not in k}
+    return kinds
 
 
 # --------------------------------------------------------------- dead controls --- #
@@ -3486,3 +3503,179 @@ def test_the_navigator_width_is_asked_of_the_window() -> None:
     assert "navCode" in _fn(js, "codeWidthInForce"), (
         "the width is chosen without asking which group is open"
     )
+
+
+
+def _without_catch_blocks(js: str) -> str:
+    """The source with every `catch (...) { ... }` body removed, braces matched.
+
+    Needed because "there is an answer somewhere" and "there is an answer when the request
+    works" are different claims, and only the second is the one that matters: a loader
+    whose success path stops assigning still has its handler, and the pane then reads
+    "…" for ever on a request that returned 200.
+    """
+    out: list[str] = []
+    i = 0
+    while True:
+        m = re.compile(r"\bcatch\b[^{]*\{").search(js, i)
+        if not m:
+            out.append(js[i:])
+            return "".join(out)
+        out.append(js[i:m.start()])
+        depth, j = 1, m.end()
+        while j < len(js) and depth:
+            if js[j] == "{":
+                depth += 1
+            elif js[j] == "}":
+                depth -= 1
+            j += 1
+        i = j
+
+
+def _catch_blocks(js: str) -> str:
+    """Just the `catch (...) { ... }` bodies — the inverse of `_without_catch_blocks`."""
+    out: list[str] = []
+    i = 0
+    while True:
+        m = re.compile(r"\bcatch\b[^{]*\{").search(js, i)
+        if not m:
+            return "".join(out)
+        depth, j = 1, m.end()
+        while j < len(js) and depth:
+            if js[j] == "{":
+                depth += 1
+            elif js[j] == "}":
+                depth -= 1
+            j += 1
+        out.append(js[m.end(): j])
+        i = j
+
+def test_every_loading_placeholder_is_replaced_by_an_answer() -> None:
+    """`{ loading: true }` that nothing ever overwrites renders "…" for ever.
+
+    Rule 55's defect exactly: eighty-four files sat at `opening…` because the open state
+    was computed in one place and the fetch lived in another, so a thing could be marked
+    in flight without anything having put it in flight. On screen that is
+    indistinguishable from a slow disk, which this project has plenty of — so nobody
+    would report it for a long time.
+
+    The claim is checked **inside the enclosing function**: the holder set to loading must
+    also be set to something else there, and that function must have a `catch`, or a fetch
+    that throws leaves the placeholder standing.
+
+    Written first as "some other assignment must mention a failure shape", which reported
+    `SEARCH` — a loader that handles failure perfectly by building the shape into a local
+    and assigning that. A guard that fires on correct code is a guard nobody reads
+    (rule 43), so it checks for the handler rather than for the shape of its result.
+    """
+    js = _read("shell.js")
+    hits = list(re.finditer(r"^\s*([A-Z][A-Z_]+)\s*=\s*\{\s*loading:\s*true", js, re.M))
+    assert hits, "no loading placeholders found -- this test is blind"
+
+    for m in hits:
+        name = m.group(1)
+        # The rest of the enclosing top-level function: up to the next `}` in column 1.
+        end = js.find("\n}\n", m.end())
+        scope = js[m.start(): end if end > 0 else len(js)]
+        others = [a for a in re.findall(rf"^\s*{name}\s*=\s*(.+)$", scope, re.M)
+                  if "loading: true" not in a]
+        assert others, (
+            f"{name} is set to {{loading: true}} and never to anything else in the same "
+            "function -- the view it feeds says '…' for as long as the page is open"
+        )
+        # And the answer must be on the **success** path, not only in the handler. Losing
+        # the assignment that reads the response leaves the `catch` one standing, so a
+        # request that succeeds is the one that renders "…" for ever -- which is the
+        # harder failure to notice, because the network tab shows a 200.
+        happy = _without_catch_blocks(scope)
+        # The lookahead sits directly after `=`, never after a `\s*`: a greedy `\s*` will
+        # happily match zero characters and then test the lookahead against a space, which
+        # is not `{`, so the assertion passed against the loading line itself. This guard
+        # was green against its own defect until that was fixed (rule 37).
+        assert re.search(rf"^\s*{name}\s*=(?!\s*\{{\s*loading)", happy, re.M), (
+            f"{name} is only ever answered inside a catch -- a request that SUCCEEDS "
+            "leaves the placeholder standing"
+        )
+        # And the handler must answer as well as exist. A `catch` that logs and returns
+        # leaves the placeholder standing exactly as no `catch` would, and reads on screen
+        # as a slow disk rather than as a failure.
+        handlers = re.findall(r"\bcatch\b[^{]*\{", scope)
+        assert handlers, (
+            f"{name} is set to {{loading: true}} in a function with no catch -- a fetch "
+            "that throws leaves the placeholder standing"
+        )
+        # The handler must answer, and there are two correct idioms for that. `loadChanges`
+        # assigns the holder in the try and again in the catch; the search assigns a local
+        # in both and the holder after the whole try/catch. Either reaches an answer on a
+        # failing request; a `catch` that logs and returns reaches neither, and on screen
+        # that is a slow disk rather than a failure.
+        in_catch = re.search(rf"\b{name}\s*=", _catch_blocks(scope))
+        tail = scope[scope.rfind("catch"):] if "catch" in scope else ""
+        after = re.search(rf"^\s*{name}\s*=(?!\s*\{{\s*loading)",
+                          _without_catch_blocks(tail), re.M)
+        assert in_catch or after, (
+            f"{name} has a catch that never answers and nothing assigns it afterwards -- "
+            "a failed request is indistinguishable from a slow one"
+        )
+        assert "catch" in scope, (
+            f"{name} is set to {{loading: true}} in a function with no catch -- a fetch "
+            "that throws leaves the placeholder standing and the pane reads as a slow disk"
+        )
+
+
+def test_every_control_the_shell_writes_is_read_somewhere() -> None:
+    """A promise can be printed rather than wired.
+
+    `test_every_static_control_is_listened_for` reads `index.html`, so it sees only the
+    controls that ship in the markup. Most of this application's controls are written by
+    JavaScript — every navigator row, every band header, every code link — and for those
+    the only check was the *runtime* self-check, which cannot run in a test and reports
+    from inside the page nobody has open.
+
+    Three keyboard badges once named keys nothing listened for, and two of them sat on
+    buttons with no attributes at all. This is that failure's build-time counterpart: an
+    attribute the shell writes and never reads is a control that renders, looks
+    deliberate, and does nothing.
+
+    Read means read in any of the four ways this codebase actually uses, and finding all
+    four took being wrong first: the guard named `codeback`, `codedetach`, `codeopen` and
+    `triaged` as dead, and every one of them works. The three code ones are **keys of
+    `CODE_ROUTES`**, dispatched through a selector built at runtime, so the literal
+    `[data-codeback]` appears nowhere; `triaged` is read by the **stylesheet**
+    (`.wl-item[data-triaged]`). That is rule 43 repeating precisely — the last check to
+    report dead controls was wrong about all five, for the same reason.
+
+    So: matched with `closest("[data-x]")`, taken off `dataset.x`, selected by the
+    stylesheet, or a key in a routing table. All of them pass, so the invariant is stated
+    rather than exempted — a list of exceptions grows until the guard catches nothing
+    (rule 35's lesson).
+
+    **What this does not prove**, stated because a check whose reach is unstated gets
+    trusted past it: that the read is *reachable*. Deleting the `closest` line of a
+    handler while leaving its `dataset.x` line standing keeps the attribute "read" by
+    code that can no longer run, and this guard passes. It catches a control nothing was
+    ever written for; it cannot catch one whose listener was hollowed out. That is the
+    runtime self-check's job, and it is why both exist.
+    """
+    js = _read("shell.js")
+    written = set(re.findall(r'data-([a-z][\w-]*)="', js))
+    assert len(written) > 40, f"only {len(written)} found -- this test has gone blind"
+    # The roster is removed before looking, because `WIRED_ATTRS` is a list of these very
+    # names as strings: leaving it in makes every attribute vouch for itself, and the
+    # guard passes for a control whose listener has been deleted. That is rule 43's shape
+    # inverted -- not a check that cries wolf, a check that never can.
+    js = re.sub(r"const WIRED_ATTRS = new Set\(\[.*?\]\)", "", js, flags=re.S)
+
+    css = _read("tokens.css")
+    unread = []
+    for attr in sorted(written):
+        camel = re.sub(r"-(\w)", lambda m: m.group(1).upper(), attr)
+        read = (
+            f"[data-{attr}]" in js                       # matched with `closest`
+            or f"dataset.{camel}" in js                  # taken off the element
+            or f"[data-{attr}]" in css                   # read by the stylesheet
+            or re.search(rf"^\s*{camel}:\s", js, re.M)   # a key in a routing table
+        )
+        if not read:
+            unread.append(attr)
+    assert not unread, f"controls the shell writes and nothing reads: {unread}"

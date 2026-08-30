@@ -3830,6 +3830,105 @@ not. The four-step ordering plan from the previous pause is superseded; step 3 i
 particular ("state capture order as capture order") is gone, and that is an improvement —
 it was an honest label on a claim the tool should never have been making.
 
+## Two feature requests, recorded 2026-08-30 (Tom, at the keyboard)
+
+Recorded, not planned. Neither is scheduled and neither has been costed; they are written
+down here so they survive the session with their reasoning intact.
+
+### A. Size a plate by its density — a Setting
+
+**Tom's ask, in his words:** *"A plate with just a few nodes will have a small radius
+because all the nodes will fit easily. A plate with many nodes will have a much larger
+radius so all the nodes can comfortably spread out."*
+
+**It reverses a decision that is written down, and that is the first thing to know.**
+`layout.py` states the opposite in as many words, at `DISK_RADIUS`:
+
+> Disks are drawn the same size regardless of how much they hold, so a plate with 900
+> nodes and one with 30 read as the same kind of object; density then carries the
+> information rather than area.
+
+Tom's request is that **area** carry it instead. That is a legitimate reversal — the
+existing note is a judgment, not a measurement, and it has never been tested against a
+reader — but it must be made as a reversal, with `layout.py`'s comment rewritten rather
+than left standing to contradict the code. Half of every defect in this file's record is a
+rule that stayed in place after the thing it described had moved.
+
+*What does not exist today, despite the ask assuming it does.* There is **no per-plate
+size** of any kind. `DISK_RADIUS` (1000, server, for placement) and `PLATE_R` (1060,
+client, for the outline) are single constants, and `spreadX` / `spreadY` are **global**
+multipliers applied to every plate equally — that is what rule 22's three axes are. So this
+is a new dimension in the model, not a Setting over an existing one. A disk record already
+carries `nodes`, `shadows` and `edges` (`graph.py:269`), which is everything needed to size
+it, so the payload needs no new query.
+
+*The arithmetic is already half-written.* `phyllotaxis` places points with `sqrt` spacing
+precisely so **area per point stays constant** within a disk. Extending that across disks
+is the same identity one level up: `r = DISK_RADIUS * sqrt(n / n_ref)` makes area
+proportional to count and node density equal on every plate, which is exactly what the ask
+describes.
+
+*Three things to settle when it is built, none of them decided here.*
+
+- **The range is 31x and that is not usable raw.** Mensores' largest plate holds 991 and
+  its smallest holds 1, so `sqrt` gives a radius range of about thirty-one to one — the
+  small plates become specks, and a plate nobody can see is a plate that is not in the
+  picture (design rule 1). It wants a floor, a clamp, or a gentler exponent, and whichever
+  it is should be stated as the judgment it is.
+- **Does the shadow count count?** A plate's shadows are placement devices and are never
+  drawn (rule 23), but they *do* take room in the layout. Sizing on `nodes` and sizing on
+  `nodes + shadows` are different pictures and only one of them is about what the reader
+  can see.
+- **Framing still works, and should be checked rather than assumed.** Design rule 20 frames
+  the bounding **cylinder** at the tilt in force, on the reasoning that orbiting about Z
+  leaves the footprint circular. Variable radii keep it circular — the stack becomes a
+  stepped vase rather than a cylinder — so the fit is the *largest* radius and the
+  arithmetic survives. Worth confirming with a measurement, because "should still work" is
+  how rule 49 got written.
+
+### B. Draw a plate as a diagram, not as a field of dots
+
+**Tom's ask, in his words:** *"render each plate not as the existing plates with round
+nodes, but rather as Mermaid diagrams with rectangular or circular nodes (Setting), each
+with text on them just like a normal diagram. The fun part is when diagrams link between
+plates."* The reading furniture carries over unchanged: *"the same concepts — greyed out or
+transparent nodes that are not in focus, hover panels with more details (same as
+existing)."*
+
+*Where the rendering question already has an answer.* Tom: *"I am thinking that perspective
+view is appropriate — angled, orthogonal. Not true perspective, the simpler version."*
+**That is the projection already in force**, and for his reason: design rule 20 chose
+orthographic because under perspective the near plates magnify and the far ones shrink,
+rendering a stack of equal disks as a tapered cylinder — the exact shape the model exists
+not to be. So nothing changes there, and the instinct and the existing decision agree.
+
+*Where it is genuinely undecided, and Tom says so.* Whether to billboard the rectangles the
+way rule 22 billboards the node quads: *"we might also try the same trick as our circles —
+tilt the rectangles up so they face the screen. That might make it hard to read the
+connections between them, though, so I'm not at all sure. To be determined…"*
+
+The tension he names is real and rule 22 says why. A sphere **has no orientation**, so a
+picture of one must not either, and the billboard is free. A labelled rectangle *does* have
+an orientation — it has a top, and a reading direction — and a lozenge floating at an angle
+to the plate it belongs to is a box that has stopped being on the plate. Held flat it
+foreshortens into the same coin-on-edge rule 22 rejects, and text on it foreshortens with
+it. There is no third option that is obviously right, which is why this is `To be
+determined` and should stay that way until something is on screen.
+
+*The constraint that shapes the whole thing.* Rule 18 keeps nodes at **1.4 to 3.6 pixels**,
+and the reason is measured rather than aesthetic: any radius that reads as a disc fuses
+9,874 of them into a solid mass, and rule 22's own note records that at 14x they occlude
+the edges they are drawn with. A rectangle carrying readable text is an order of magnitude
+larger than that. **So this cannot be the whole stack at once**, and pretending otherwise
+is the same picture-of-nothing rule 8 forbids in a diagram. It is a view of *one plate*, or
+of a selection, and "the fun part" — the links between diagrams — is then a question about
+two or three plates rather than fifty-two. Deciding what the reader is looking at when they
+turn it on is the first design question, before any renderer.
+
+*What already exists to build on.* A collision-filtered `TextLayer` is in the engine
+(`graph.js:1026`, `pickLabels`), so labelled nodes are not new ground — what is new is a
+node that *is* its label rather than a dot with one beside it.
+
 ## Still open, in the order agreed
 
 **1. Switching the base — done 2026-08-30, see `6d`.** What follows was the plan and is kept
@@ -3921,6 +4020,13 @@ overrides and a repaint that changes nothing is waste.
 both sides and will fail the moment it becomes true, so it cannot be forgotten (rule 36).
 
 </details>
+
+*Two feature requests recorded 2026-08-30 and not scheduled:* **sizing a plate by its
+density** (a Setting; it reverses `layout.py`'s written decision that every disk is drawn
+the same size, and there is no per-plate size in the model today) and **drawing a plate as
+a diagram** — labelled rectangles or circles rather than dots, linking between plates, with
+the dimming and the hover card carried over unchanged. See "Two feature requests, recorded
+2026-08-30" above for both, with what is already decided and what is not.
 
 *Unchanged from before, and none of it blocked by the above:* the rendered markdown is not
 revision-named, so a second analysis overwrites the first's map; `--revision` on `analyze`

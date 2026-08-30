@@ -614,6 +614,19 @@ Four things about that, verified rather than assumed at the pause:
   snapshot until it is pulled. Its tree is `../mensores-overhaul/src`, which is what
   `source_root` in the graph records. All output belongs in `output/`.
 
+**Two feature requests, recorded 2026-08-30 and not scheduled.** Both are Tom's and both
+are written up in `HANDOFF.md`, "Two feature requests, recorded 2026-08-30". **Size a plate
+by its density** — a Setting, so a plate holding thirty nodes is small and one holding nine
+hundred is large enough for them to spread; note that this *reverses* `layout.py`'s written
+decision that every disk is drawn the same size so density rather than area carries the
+information, and that no per-plate size exists in the model today (`spreadX`/`spreadY` are
+global). And **draw a plate as a diagram** rather than a field of dots — labelled
+rectangles or circles (a Setting), linking between plates, with the dimming and the hover
+card carried over unchanged. Its projection question is already answered by design rule 20
+(orthographic, for Tom's own reason); whether to billboard a *labelled* rectangle the way
+rule 22 billboards a dot is open, and Tom says so. Rule 18 is the constraint that shapes
+it: a node that carries readable text cannot be all 9,874 at once.
+
 **Still owed from before, unchanged:** `CURIOSITIES`; the worklist's two jump buttons (a
 server change — `anomalies.py` carrying the node ids it already knows); the two
 vocabulary-lane precision defects; per-plate sphere scaling and stack orientation; packaging

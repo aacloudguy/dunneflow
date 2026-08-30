@@ -2832,3 +2832,41 @@ again with the search box and the right-hand group on screen; and the self-check
 628-file code list, both vocabulary lanes and the cover from it — the whole of the measured
 10.2 s start. Switching the point in time the screen displays means paying that per switch
 or holding two sets live, and that is the decision the next chunk opens with.
+
+### The next chunk's framing, from Tom at the 2026-08-30 pause
+
+> *"We need to be able to compare to an older or newer version, by analysis. This isn't
+> just taking github as the source of truth, it is our own analysis so it works with any
+> version control or just an old source code copy that was never properly documented."*
+
+This sharpens *Version control must stay pluggable* above rather than repeating it. That
+section says DunneFlow must never shell out to a VCS to fetch code, and names Lore,
+Perforce and a nightly cron as the reason. Tom's case is stronger and is the one to build
+for: **no version control at all.** A directory of source somebody hands you, with no
+history, no documentation and no way to ask where it came from — and the question is how
+it differs from what is running now. That is his own experience and it is the case the
+comparison has to serve, because it is the case where nothing else can answer.
+
+Two consequences, and the first is concrete enough to break something today.
+
+**Capture order is not code chronology, and the pair is currently ordered by capture.**
+`revisions.known()` sorts by *filename*, which encodes the instant the snapshot was taken,
+newest first; `_r_changes` then takes `graphs[0]` as the later end and `graphs[1]` as the
+earlier one. Analyse an old copy this afternoon and its capture instant is the newest one
+in the directory, so it becomes the *later* end — and the worklist reports the old code's
+absences as **added** and its presences as **removed**, the whole comparison inverted,
+confidently, with no symptom. This is read from the code and the ordering is certain; the
+run that demonstrates it has not been done, and it is the first thing to do next.
+
+It is also today's finding one level up. The revision id is when the snapshot was
+*captured*, not when the code is from — the two revisions here were captured twenty-nine
+seconds apart and hold trees three days apart — so **which end is earlier is a fact about
+the source, and nothing in the store records it.** `--revision` is where a reader supplies
+it and is still unimplemented; a label ("Society at e2e658b4 - 2026-08-26") carries it
+today only as prose.
+
+**And "older or newer" means the reading end can be either.** The settled model is that a
+pair has a reading end and the map shows it; nothing in that says the reading end is the
+later one. Reading an old copy and comparing it forward to the current tree is the same
+feature pointed the other way, and it is the shape Tom's case actually wants: *this is what
+we were handed — what has happened since?*

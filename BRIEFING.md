@@ -228,9 +228,19 @@ merges only what `DEFAULTS` declares); the guard for that found the **three sear
 with the identical defect since the day they were built**; and the notice about a dropped
 revision was rendered only in the graph HUD, which a reader may never open.
 
-**Next: the reading end.** `serve()` builds the payload, the 628-file code list, both
-vocabulary lanes and the cover from one graph opened at boot — the whole 10.2 s start — so
-switching the displayed revision means paying that per switch or holding two sets live.
+**Next: the reading end** — and Tom's framing at the pause decides its shape. See
+`HANDOFF.md`, "The next chunk's framing". The comparison must run to an **older or newer**
+version, **by our own analysis**, so it works with any version control or with none at all:
+*a source copy somebody hands you that was never documented*, which is the case where
+nothing else can answer.
+
+Two consequences. `serve()` builds the payload, the 628-file code list, both vocabulary
+lanes and the cover from one graph opened at boot — the whole 10.2 s start — so switching
+the displayed revision means paying that per switch or holding two sets live. And, more
+urgently: **capture order is not code chronology.** `revisions.known()` sorts by filename —
+the instant the snapshot was taken — and `_r_changes` takes the newest as the later end, so
+analysing an old copy today makes it the *later* revision and inverts the whole worklist
+with no symptom. Read from the code, not yet demonstrated; it is the first thing to try.
 
 **Owed, and it is Tom's ask:** selecting a version *from* the source-directory control. A
 path is a label, not a key — analyse the same tree twice and both revisions carry the same

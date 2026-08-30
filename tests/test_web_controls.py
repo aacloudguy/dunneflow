@@ -3855,3 +3855,122 @@ def test_a_pane_track_attribute_is_never_also_a_route_attribute() -> None:
         "routed controls are matched by. One name, two meanings: every click that misses a "
         "real control walks up to the pane and is routed as one."
     )
+
+
+def test_every_persisted_key_is_a_setting_the_store_knows() -> None:
+    """A key saved by the shell and unknown to the store is written and thrown away.
+
+    `PERSISTED` in `shell.js` names what is written to storage; `DEFAULTS` in
+    `settings.js` names what `loadSettings` will read back, and it merges **only keys it
+    declares** — deliberately, so adding a setting never has to migrate an older blob. The
+    two must therefore agree, and nothing checked that they did.
+
+    The chosen pair of revisions went in `PERSISTED` and not in `DEFAULTS`. It saved
+    perfectly on every change and came back as the default on every load, so the toolbar
+    forgot which two points in time were being compared between one visit and the next.
+    Nothing failed and nothing was logged; `localStorage` held the right answer the whole
+    time and no one ever read it.
+
+    Its neighbour above asks whether a *setting* is read by anything. This asks the other
+    direction — whether something written is a setting at all — and neither implies the
+    other: `panels` was declared and unread, these two were undeclared and eagerly read.
+    """
+    shell = _code(_read("shell.js"))
+    block = shell.split("const PERSISTED = [", 1)[1].split("];", 1)[0]
+    persisted = set(re.findall(r'"([^"]+)"', block))
+    assert len(persisted) > 20, "PERSISTED changed shape -- this test is blind"
+
+    defaults = _read("settings.js").split("const DEFAULTS = {", 1)[1].split("\n};", 1)[0]
+    declared = set(re.findall(r"^\s{2}([a-zA-Z][\w]*):", defaults, re.M))
+    assert len(declared) > 20, "DEFAULTS changed shape -- this test is blind"
+
+    orphans = persisted - declared
+    assert not orphans, (
+        f"written to storage and unknown to the store: {sorted(orphans)}. "
+        "loadSettings merges only keys DEFAULTS declares, so these are saved on every "
+        "change and dropped on every load -- the reader's choice silently forgotten."
+    )
+
+
+# --------------------------------------------- the pair of points in time, chosen --- #
+
+def test_the_revision_control_is_built_from_the_store() -> None:
+    """An option in the markup is a claim about a program the page has not read yet.
+
+    The toolbar carried `<option>current</option>` hard-coded, on every map, whether or not
+    the store had ever heard of such a revision — the same family as the pinned figures the
+    prose guards were written for, in the chrome where it is least visible. It is filled
+    from `/api/revisions` now, and the markup is empty.
+    """
+    html = _read("index.html")
+    sel = html.split('id="rev"', 1)[1].split("</select>", 1)[0]
+    assert "<option" not in sel, (
+        "the revision control ships options written into the markup; they must come from "
+        "/api/revisions, or the toolbar states a revision this program may not have"
+    )
+    js = _code(_read("shell.js"))
+    assert 'rev.innerHTML' in js, "nothing fills the revision control"
+
+
+def test_a_revision_reads_by_the_whole_instant_that_makes_it_unique() -> None:
+    """Two options a reader cannot tell apart are worse than one long one.
+
+    The revision id is when the snapshot was **captured**, not when the code is from. The
+    two snapshots here hold a Society tree from 2026-08-26 and one from 2026-08-29, and
+    both were captured on the same evening twenty-nine seconds apart — so abbreviated to
+    the day both options read `2026-08-29`, and to the minute both read `2026-08-29 23:46`.
+    Each shortening looked reasonable until it was on screen beside its neighbour.
+    """
+    js = _code(_read("shell.js"))
+    fn = _fn(js, "revWhen")
+    ends = [int(m) for m in re.findall(r"iso\.slice\(\s*\d+\s*,\s*(\d+)\s*\)", fn)]
+    assert ends, "revWhen no longer slices the instant; this guard is blind"
+    assert max(ends) >= 19, (
+        f"the revision label stops at character {max(ends)} of the instant. Two revisions "
+        "captured in the same minute then read identically in the menu."
+    )
+
+
+def test_a_chosen_revision_that_is_gone_is_dropped_and_said_out_loud() -> None:
+    """Re-analysing can retire a snapshot the reader had chosen.
+
+    Honouring a stored id that no longer exists is impossible; honouring it *silently* by
+    falling back to a different pair is worse than either, because the toolbar goes on
+    naming the pair the reader picked while the worklist compares another one. Design
+    rule 1, and rule 13 — the answer has to be the one the claim beside it names.
+    """
+    js = _code(_read("shell.js"))
+    chosen = _fn(js, "chosenPair")
+    assert "comparable" in chosen and "REVISIONS.some" in chosen, (
+        "chosenPair no longer checks the stored ids against the revisions that exist"
+    )
+    # Both ends, named individually. Asked as "does the function mention the check" this
+    # passed against its own mutation: dropping the guard from `from` alone leaves `to`
+    # still using it, and the containment check cannot tell one end from two. Rule 37 in
+    # a guard, which is where it keeps turning up.
+    for end in ("from", "to"):
+        line = re.search(rf"^\s*{end}:\s*(.+)$", chosen, re.M)
+        assert line, f"chosenPair no longer returns a {end!r} end"
+        assert "live(" in line.group(1), (
+            f"the {end!r} end is taken straight from storage. A revision retired by a "
+            "re-analysis would be compared against silently, under a toolbar still naming it."
+        )
+    lost = _fn(js, "pairLost")
+    assert "REVISIONS.some" in lost, "pairLost no longer checks anything"
+    # And the boot path must actually say so rather than just computing it.
+    assert re.search(r"pairLost\(\)", js), "nothing asks which chosen revisions are gone"
+    boot = js[js.index("await loadRevisions();"):]
+    boot = boot[:boot.index("buildNav();", boot.index("buildRevControls();"))]
+    assert "state.revNote" in boot, (
+        "a retired revision is dropped without telling the reader -- the toolbar would name "
+        "one pair while the worklist compared another"
+    )
+    # And the sentence must reach a surface a reader is actually looking at. Its first
+    # home was `state.navNote`, which is rendered in exactly one place: the graph HUD's
+    # count line, absent until the graph is mounted. The revision was correctly dropped
+    # and the explanation went nowhere -- a notice written and never shown, which is the
+    # defect it exists to prevent. Assigned is not shown.
+    assert "state.revNote" in _fn(js, "changeNote"), (
+        "revNote is set and never rendered. The Changes group's note is where the pair "
+        "lives; a note nothing paints is the silent filter design rule 1 forbids."
+    )

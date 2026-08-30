@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import json
 import socket
+import sqlite3
 import threading
 import time
 import webbrowser
@@ -479,6 +480,34 @@ class _Handler(BaseHTTPRequestHandler):
                     "first": lines[0][0], "last": lines[-1][0],
                     "lines": [{"n": n, "text": t} for n, t in lines]})
 
+    def _source_root_of(self, graph: Path) -> str:
+        """The tree a revision's graph records, read from that graph's own `meta`.
+
+        The served revision is answered from the connection already open — a second
+        read-only handle to a database this process holds open in WAL mode is the 36x
+        slowdown rule 58 came from, and this route is asked at boot before the reader has
+        clicked anything. Every other revision is a file nothing has open, so a plain
+        read-only connection is both correct and cheap; a graph that cannot be read yields
+        the empty string, because "we could not say" and "no source tree" are different
+        answers and only one of them belongs in a toolbar.
+        """
+        if graph == self._live.graph_db:
+            return self._live.source_root
+        if not graph.exists():
+            return ""
+        try:
+            conn = sqlite3.connect(f"file:{graph.resolve()}?mode=ro", uri=True)
+        except sqlite3.Error:
+            return ""
+        try:
+            row = conn.execute(
+                "SELECT value FROM meta WHERE key = 'source_root'").fetchone()
+            return str(row[0]) if row and row[0] else ""
+        except sqlite3.Error:
+            return ""
+        finally:
+            conn.close()
+
     def _r_revisions(self, q: dict[str, list[str]]) -> None:
         """Every point in time this program directory holds, newest first.
 
@@ -503,6 +532,11 @@ class _Handler(BaseHTTPRequestHandler):
                 "files": r.get("paths", r.get("files", 0)),
                 "comparable": graph.exists(),
                 "serving": graph == self._live.graph_db,
+                # The tree this revision was read from, and it is genuinely per revision:
+                # the two here are `society-2026-08-26/src` and `society-2026-08-29/src`.
+                # The toolbar shows one source directory, so with two points in play it
+                # would otherwise name one of them and imply it was both.
+                "source_root": self._source_root_of(graph),
             })
         # With no sidecar there is still a directory, and it may hold graphs. Never
         # answer "no revisions" out of a store that simply was not asked.
@@ -512,6 +546,7 @@ class _Handler(BaseHTTPRequestHandler):
                     "revision": revisions.revision_of(g) or "",
                     "state": "", "captured": "", "label": "", "files": 0,
                     "comparable": True, "serving": g == self._live.graph_db,
+                    "source_root": self._source_root_of(g),
                 })
         self._json({"revisions": rows,
                     "comparable": sum(1 for r in rows if r["comparable"])})

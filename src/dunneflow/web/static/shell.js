@@ -219,6 +219,21 @@ const state = {
   hideInferred: false,
   density: "comfortable",
   bandScroll: false,       // a change band scrolls in place, or runs its full length
+  /* The two points in time, and which of them the screen is showing.
+   *
+   * A pair has a **reading end**. `revB` is the point being read — the cover, the routine
+   * list, the code browser, the glossary and the stack all show that one — and `revA` is
+   * the other end of the comparison, or "" for no comparison at all. So "what am I looking
+   * at" has one answer while a comparison is running, which it would not if every view
+   * tried to show two points at once.
+   *
+   * `revB` is pinned to the served revision until the server can open a second graph and
+   * rebuild the payload, the file list, both vocabulary lanes and the cover against it —
+   * that is the next chunk, and the control says so rather than offering a choice it
+   * cannot honour. Empty means "whatever is being served", which is the only honest
+   * default before any revision has been read. */
+  revB: "",
+  revA: "",
   followMode: "replace",   // "replace" | "walk" -- what following a neighbour does
   threadsAll: false,       // the threads panel bounded (rule 8) or opened whole
   selected: null,          // the node id under inspection, or null for nothing picked
@@ -227,6 +242,10 @@ const state = {
    * the centre pane is showing a table or a document is still a real choice. */
   wanted: null,            // {nodes: [id], disks: [id]} | null
   navNote: "",             // what that choice could not draw, stated (design rule 1)
+  /* A stored pair of revisions that no longer exists, said in the Changes group's
+     note. Not `navNote`, which is rendered only in the graph HUD -- a surface the
+     reader may never open, and where this notice was invisible for its first hour. */
+  revNote: "",
   colourBy: "none",
   colWidths: { q: 26, why: 30, fan: 5 },
   // No filter can be applied yet, so none is claimed. The prototype carried three
@@ -565,7 +584,42 @@ const NAV_ROUTES = {
  * open to compare them" with a blank count and no rows -- one question, two answers,
  * which is rule 51. Every caller goes through this door so neither half can be forgotten. */
 function refreshChanges(from, to) {
-  return loadChanges(from, to).then(() => { buildNav(); render(); });
+  const pair = from === undefined && to === undefined ? chosenPair() : { from, to };
+  /* A result computed for a different pair is not a stale copy of this one, it is an
+     answer to another question. Dropped before the load rather than left to be overwritten,
+     so the view spends the fetch saying "comparing…" instead of showing the old pair's
+     figures under the new pair's heading. */
+  if (CHANGES && !CHANGES.loading
+      && (CHANGES.from !== pair.from || CHANGES.to !== pair.to)) CHANGES = null;
+  return loadChanges(pair.from, pair.to).then(() => { buildNav(); render(); });
+}
+
+/* Which two points in time are in play. One place decides, and everything asks it.
+ *
+ * The reading end (`revB`) is the revision the whole map is showing, and the comparison
+ * end (`revA`) is the other one. Both fall back to the server's own default — the two
+ * newest comparable revisions — which is what `/api/changes` does with no arguments, so
+ * an empty choice and an unmade choice produce the same answer rather than two.
+ *
+ * A stored revision that no longer exists is **dropped and reported**, never quietly
+ * honoured: re-analysing a program can retire a snapshot, and a comparison silently
+ * carried out against a different pair than the one named in the toolbar is the worst
+ * outcome available here (design rule 1, and rule 13 -- the answer must be the one the
+ * claim beside it names). */
+function chosenPair() {
+  const live = (id) => REVISIONS.some(r => r.revision === id && r.comparable);
+  return {
+    from: live(state.revA) ? state.revA : undefined,
+    to:   live(state.revB) ? state.revB : undefined,
+  };
+}
+
+/* What the reader chose but cannot have, said out loud rather than swallowed. */
+function pairLost() {
+  const gone = [];
+  if (state.revA && !REVISIONS.some(r => r.revision === state.revA)) gone.push(state.revA);
+  if (state.revB && !REVISIONS.some(r => r.revision === state.revB)) gone.push(state.revB);
+  return gone;
 }
 
 /* What moved between two points in time.
@@ -609,6 +663,96 @@ async function loadRevisions() {
     REVISIONS = [];
   }
   return REVISIONS;
+}
+
+/* How a revision reads to someone who did not capture it.
+ *
+ * **The instant is when the snapshot was captured, not when the code is from**, and here
+ * the two are nothing alike: these snapshots hold a Society tree from 2026-08-26 and one
+ * from 2026-08-29, and *both* were captured on the evening of the 29th, twenty-nine
+ * seconds apart. So the instant is a serial number that happens to contain a date, and
+ * the **label** is where "which point in time is this" actually lives.
+ *
+ * Which is why the whole instant is shown, seconds included. Abbreviated to the day both
+ * options read `2026-08-29`; abbreviated to the minute both read `2026-08-29 23:46`. Two
+ * menu entries a reader cannot tell apart are worse than a long one, and each shortening
+ * looked reasonable until it was put on screen beside its neighbour. */
+function revWhen(r) {
+  const iso = String(r.revision || "");
+  return `${iso.slice(0, 10)} ${iso.slice(11, 19)}`.trim();
+}
+
+/* Label first where there is one, because that is the half a person wrote and the half
+   that says which point in time this is; the instant always follows it, because the label
+   is optional and two unlabelled revisions must still be tellable apart. */
+function revLabel(r) {
+  const bits = [];
+  if (r.serving) bits.push("current");
+  if (r.label) bits.push(r.label);
+  bits.push(revWhen(r));
+  return bits.join(" · ");
+}
+
+/* The toolbar's temporal control, built from the store rather than written into the markup.
+ *
+ * **One control whose options are the pairs.** Its value is the comparison end — the empty
+ * string for none — and its text names both ends, so what is on screen reads as the answer
+ * to "which two points am I looking at" rather than as two menus to combine.
+ *
+ * The reading end is the served revision and is not offered as a choice yet: the server
+ * opens one graph at boot and builds the payload, the 628-file code list, both vocabulary
+ * lanes and the cover from it, so choosing another would move a label and not the map. A
+ * trailing disabled row says exactly that. An option offered and not honoured is the defect
+ * this dashboard has paid for more than any other, so it is not offered — and the reason is
+ * on screen rather than in a commit message. That row is where the ratified design put its
+ * own `— layers not built yet —`, and it is the same device kept honest.
+ *
+ * Absent entirely when the program holds one point in time: a control whose only option is
+ * the state you are already in is a control that always fails. */
+function buildRevControls() {
+  const rev = $("#rev");
+  if (!rev) return;
+  const usable = REVISIONS.filter(r => r.comparable);
+  rev.hidden = usable.length < 2;
+  if (usable.length < 2) return;
+
+  const served = REVISIONS.find(r => r.serving) || usable[0];
+  const chosen = chosenPair().from || "";
+  const here = served.serving ? "current" : revWhen(served);
+  rev.innerHTML = [
+    `<option value="" ${chosen ? "" : "selected"}>${esc(here)} · on its own</option>`,
+  ].concat(usable
+    .filter(r => r.revision !== served.revision)
+    .map(r => `<option value="${esc(r.revision)}" ${r.revision === chosen ? "selected" : ""}
+      >${esc(here)} ← ${esc(revLabel(r))}</option>`)
+  /* `value=""` even though it is disabled and cannot be chosen: an `<option>` with no
+     value carries its own text as one, so this row's value was the sentence itself, and
+     anything that ever reads the control without checking `disabled` would have stored a
+     sentence as a revision id. */
+  ).join("") + `<option value="" disabled>— reading a past revision arrives next —</option>`;
+
+  /* The served root belongs to the revision being read, and the other end has a root of
+     its own -- the two here are `society-2026-08-26/src` and `society-2026-08-29/src`.
+     One path shown while two points are in play names one of them and implies it is both,
+     which is the key-and-label confusion the presence lines already had to be cured of. */
+  applySourcePath();
+}
+
+/* What tree, or trees, the screen is reading. Written in one place because it is one
+ * question, and it now has two possible answers at once. */
+function applySourcePath() {
+  const el = $("#srcPathV"), btn = $("#srcPath");
+  if (!el) return;
+  const full = (STATS && STATS.source_root) || "";
+  const short = (p) => p.split("/").filter(Boolean).slice(-2).join("/");
+  const long = btn && btn.getAttribute("aria-expanded") === "true";
+  const other = REVISIONS.find(r => r.revision === chosenPair().from);
+  const otherRoot = other && other.source_root ? other.source_root : "";
+  el.innerHTML = esc(long ? full : short(full))
+    + (otherRoot && otherRoot !== full
+        ? `<span class="srcpath-was">was ${esc(long ? otherRoot : short(otherRoot))}</span>`
+        : "");
+  if (btn) btn.title = otherRoot && otherRoot !== full ? `${full}\nwas ${otherRoot}` : full;
 }
 
 /* The identities a navigator row carries, as written into `data-navid`. Space separated
@@ -4210,11 +4354,34 @@ function wire() {
     sp.addEventListener("click", () => {
       const open = sp.getAttribute("aria-expanded") === "true";
       sp.setAttribute("aria-expanded", String(!open));
-      /* Long form and short form of the *served* root. It used to toggle between two
-         literals naming one developer's disk, which is a confident lie on any other. */
-      const full = (STATS && STATS.source_root) || "";
-      const parts = full.split("/").filter(Boolean);
-      $("#srcPathV").textContent = open ? parts.slice(-2).join("/") : full;
+      /* Long form and short form of whatever trees are in play. It used to toggle between
+         two literals naming one developer's disk, which is a confident lie on any other --
+         and then between one root while two revisions were being compared, which names one
+         end and implies it is both. `applySourcePath` is the one place that decides. */
+      applySourcePath();
+    });
+  }
+
+  /* The pair. Its value is the comparison end, "" for none -- see `buildRevControls`. */
+  const rev = $("#rev");
+  if (rev && !rev.dataset.bound) {
+    rev.dataset.bound = "1";
+    rev.addEventListener("change", () => {
+      state.revA = rev.value;
+      /* Cleared here, deliberately, because the reader has just answered it. It used to
+         disappear by falling out of the one `changeNote` branch that did not prepend it,
+         which looked right and was an accident: three returns carried the notice and the
+         fourth did not, so it survived every state except a successful comparison. A
+         message that clears itself in one arm of a conditional clears itself at random. */
+      state.revNote = "";
+      used("pair:" + (rev.value ? "compared" : "alone"));
+      persist();
+      applySourcePath();
+      /* Only when there is something to compare. "On its own" is a real answer and must
+         not spend seconds fetching a comparison nobody asked for -- but it must still
+         repaint, or the Changes group keeps the figures of the pair just dropped. */
+      if (state.revA) refreshChanges();
+      else { CHANGES = null; buildNav(); render(); }
     });
   }
 
@@ -5430,13 +5597,17 @@ function changeCount() {
  * "Not asked for yet", "being computed" and "computed, and nothing moved" are different
  * answers, and a blank note states the last one whichever is true. */
 function changeNote() {
-  if (!CHANGES) return "two points in time — open to compare them";
-  if (CHANGES.loading) return "comparing…";
-  if (!CHANGES.available) return esc(CHANGES.reason || "no second point in time");
+  /* A choice that could not be honoured leads, whatever else the note would have said:
+     the reader is looking at a different pair from the one they left, and every figure
+     below is about the new one. */
+  const lost = state.revNote ? `${esc(state.revNote)} · ` : "";
+  if (!CHANGES) return lost + "two points in time — open to compare them";
+  if (CHANGES.loading) return lost + "comparing…";
+  if (!CHANGES.available) return lost + esc(CHANGES.reason || "no second point in time");
   const c = CHANGES.counts;
   const moved = c.added + c.removed + c.behaves;
-  if (!moved && !c.edited_only) return "nothing moved between these two points";
-  const bits = [];
+  if (!moved && !c.edited_only) return lost + "nothing moved between these two points";
+  const bits = lost ? [state.revNote] : [];
   if (c.added) bits.push(`${c.added} added`);
   if (c.removed) bits.push(`${c.removed} removed`);
   if (c.behaves) bits.push(`${c.behaves} behaving differently`);
@@ -5746,12 +5917,10 @@ async function loadCover() {
   if (prog) {
     prog.innerHTML = `<option>${esc(d.program)} — ${Number(d.stats.files).toLocaleString()} files</option>`;
   }
-  const sp = $("#srcPathV"), spb = $("#srcPath");
-  if (sp && d.stats.source_root) {
-    const parts = String(d.stats.source_root).split("/").filter(Boolean);
-    sp.textContent = parts.slice(-2).join("/");
-    if (spb) spb.title = d.stats.source_root;
-  }
+  /* Through the one function that decides, not written a second time here. This wrote the
+     served root directly and the disclosure handler wrote it again, so a third caller --
+     the comparison, which adds a second tree -- had two places to go wrong in. */
+  applySourcePath();
 }
 
 /* The routine list, from the document backend that already carries what is needed.
@@ -5823,7 +5992,8 @@ const Settings = window.DunneFlowSettings;
  * block is expanded. */
 const PERSISTED = [
   "theme", "scale", "startup", "mode", "menuOrder", "trailShown", "trailCap",
-  "density", "bandScroll", "ambient", "hideInferred", "colWidths", "insp", "sortKey", "sortAsc",
+  "density", "bandScroll", "revB", "revA",
+  "ambient", "hideInferred", "colWidths", "insp", "sortKey", "sortAsc",
   "egress", "aiOps", "triage", "pins", "usage", "graphLayout",
   "diskOrder", "diskColors", "colorBy", "sortMode", "filterMode", "direction",
   "nodeSize", "spreadX", "spreadY", "spreadZ", "collapseUnused",
@@ -7709,6 +7879,38 @@ async function boot() {
    * rather than fired and forgotten, or the first `buildNav()` runs against an empty list
    * and the group is missing until something else happens to rebuild the pane. */
   await loadRevisions();
+  /* The two toolbar controls, from the list that has just arrived. Before `buildNav`,
+     because a revision the reader chose in an earlier session may since have been retired
+     and the pane's Changes note has to state the pair it is actually going to compare. */
+  buildRevControls();
+  const lost = pairLost();
+  if (lost.length) {
+    /* Design rule 1 in the place it matters most: a stored choice that can no longer be
+       honoured is announced, never silently replaced by a different pair under the same
+       heading.
+   *
+   * Said in the **Changes group's note**, not in `state.navNote`. That was the first
+   * home for it and it was the wrong one: `navNote` is rendered in exactly one place,
+   * the graph HUD's count line, which does not exist until the reader mounts the graph.
+   * The revision was correctly dropped and the sentence explaining it went to a surface
+   * nobody had opened — a notice written and never shown, which is the defect it was
+   * written to prevent, wearing the other uniform.
+   *
+   * Its limit, stated rather than hidden: with fewer than two comparable revisions the
+   * Changes group is absent by design and this has nowhere to appear. That is the case
+   * where there is no comparison to be wrong about, but it is not nothing, and it is the
+   * next place to put a line if the cover ever grows one. */
+    /* What happened, and no more than that. It first ended "showing the two most recent
+       instead", which was not true: the choice is dropped and nothing is compared until
+       the group is opened, so the sentence promised a comparison that was not running and
+       then sat directly above a note saying "open to compare them". Rule 13 in a sentence
+       — the claim has to be the thing that actually happened. */
+    state.revNote = `The revision${lost.length > 1 ? "s" : ""} you were comparing `
+      + `(${lost.join(", ")}) ${lost.length > 1 ? "are" : "is"} no longer here, `
+      + `so that choice was dropped.`;
+    state.revA = state.revB = "";
+    persist();
+  }
   buildNav();
   wireGraphOnce();
   wireSearchOnce();

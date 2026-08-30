@@ -42,11 +42,21 @@
       <span class="srcpath-v" id="srcPathV"></span>
     </button>
 
-    <label class="sr-only" for="rev">Revision</label>
-    <select class="tb-select" id="rev">
-      <option>current</option>
-      <option disabled>— layers not built yet —</option>
-    </select>
+    <!-- Filled from /api/revisions by buildRevControls(). Empty here on purpose: an
+         option written into the markup is a claim about a program this page has not read
+         yet, and the one that used to sit here said "current" on every map whether or not
+         the store had ever heard of such a revision.
+
+         **One control, and its options are the pairs** — "current", or "current ← the
+         2026-08-26 tree" — so the thing on screen reads which two points are being shown
+         rather than leaving the reader to combine two menus. It was briefly two selects,
+         one per end, and they were 448px of a 1,278px window between them: a `<select>` is
+         as wide as its longest option, and these are filled with a label and an instant
+         apiece. Together they pushed the search box and the whole right-hand group off the
+         screen. Two controls for one question was the wrong shape as well as the wide
+         one. -->
+    <label class="sr-only" for="rev">Which point in time, and what it is compared with</label>
+    <select class="tb-select" id="rev"></select>
 
     <label class="sr-only" for="search">Search routines, boundaries, tables</label>
     <input class="tb-search" id="search" type="search" placeholder="Search routines, tables, boundaries…   /">

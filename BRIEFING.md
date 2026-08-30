@@ -214,8 +214,27 @@ disjoint. Found by reading the console, which no test does.
 largest band inside a scroller nested in the page's own; rule 8 sets the default to
 uncapped, and the Setting turns the caps back on.
 
-**Next: the pair selector** — two revisions exist and the comparison is hard-wired to the
-newest two.
+**The pair selector is built — `HANDOFF.md` 5z.** The toolbar's revision control is real:
+**one control whose options are the pairs** (`current · on its own`, `current ← Society at
+e2e658b4 · 2026-08-29 23:46:24`), and the source-directory control shows both trees, because
+the two revisions genuinely have different roots. Two decisions of Tom's settle the shape: **a
+pair has a reading end** — `revB` is what the whole map shows, `revA` is what it is compared
+with, so "what am I looking at" keeps one answer — and **pair first, then the switch**.
+
+Four things found by driving it, all invisible to the code: both revisions read `2026-08-29`
+because the id is the *capture* instant and these were captured 29 seconds apart; **the chosen
+pair never survived a reload** (`PERSISTED` had it, `DEFAULTS` did not, and `loadSettings`
+merges only what `DEFAULTS` declares); the guard for that found the **three search switches
+with the identical defect since the day they were built**; and the notice about a dropped
+revision was rendered only in the graph HUD, which a reader may never open.
+
+**Next: the reading end.** `serve()` builds the payload, the 628-file code list, both
+vocabulary lanes and the cover from one graph opened at boot — the whole 10.2 s start — so
+switching the displayed revision means paying that per switch or holding two sets live.
+
+**Owed, and it is Tom's ask:** selecting a version *from* the source-directory control. A
+path is a label, not a key — analyse the same tree twice and both revisions carry the same
+one — so it needs a decision about what two identical rows should look like.
 
 **Owed from this session:** the rendered markdown is not revision-named, so a second
 analysis overwrites the first's map; `--revision` is still unimplemented.

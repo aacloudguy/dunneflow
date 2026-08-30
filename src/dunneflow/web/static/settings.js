@@ -177,6 +177,24 @@ const DEFAULTS = {
    * keeps all four band headings in reach at once, which is a real preference and not an
    * obviously worse one, so both exist and usage retires the loser (design rule 2). */
   bandScroll: false,
+  /* The two points in time. `revB` is the one being read — the whole map shows it — and
+   * `revA` is the other end of the comparison, "" for none. Empty means "whatever is
+   * being served", which is the only honest default before any revision has been read.
+   *
+   * Here as well as in `PERSISTED`, and that pairing is the point: `loadSettings` merges
+   * only keys this object declares, so a key saved but not declared here is written on
+   * every change and dropped on every load. That is exactly what these two did — the
+   * chosen pair survived a reload in `localStorage` and never once came back. */
+  revB: '',
+  revA: '',
+  /* How a search decides a match — not what is being looked for, which is a question
+   * being asked right now and never an arrangement. `shell.js` has said these are
+   * persisted since the day they were written and they were not: listed in `PERSISTED`,
+   * absent from here, therefore saved on every keystroke and dropped on every load. Found
+   * by the guard written for the revision pair, which had the identical defect. */
+  searchCase: false,
+  searchWord: false,
+  searchRegex: false,
   ambient: false,         // anomaly badges wherever a thing appears
   hideInferred: false,
   colWidths: { q: 26, why: 30, fan: 5 },   // the columns the routine list can fill
@@ -274,6 +292,9 @@ function resetSettings(program, current) {
     theme: 'theme', scale: 'interface scale', startup: 'startup screen',
     menuOrder: 'menu order', trailShown: 'the trail', trailCap: 'trail length',
     density: 'row density', bandScroll: 'scrolling change bands',
+    revB: 'which point in time is being read', revA: 'what it is compared with',
+    searchCase: 'case-sensitive search', searchWord: 'whole-word search',
+    searchRegex: 'regular-expression search',
     ambient: 'ambient badges', hideInferred: 'inferred edges',
     colWidths: 'column widths', insp: 'inspector sections',
     sortKey: 'table sort', sortAsc: 'table sort direction',

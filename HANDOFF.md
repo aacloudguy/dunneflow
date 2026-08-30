@@ -2750,3 +2750,85 @@ wired*.
 *Owed, unchanged:* the rendered markdown is not revision-named; `--revision` is still
 unimplemented. **Next: the pair selector** — two revisions exist and `/api/changes` is
 still hard-wired to the newest two.
+
+**5z. Built 2026-08-30: choosing which two points in time.** Tom's design, settled at the
+keyboard before anything was written, and it started with him asking what the toolbar's
+revision control was *for*.
+
+*The two decisions.* **A pair has a reading end.** `revB` is the point being read — cover,
+routine list, code browser, glossary and stack all show that one — and `revA` is the other
+end of the comparison. So "what am I looking at" keeps one answer while a comparison runs,
+which it could not if every view tried to show two points at once. The alternative, every
+view learning to diff, is a much larger idea and would change what those views *are*.
+And **pair first, then the switch**: the selector is client-side, because `/api/changes`
+already took `from` and `to`; making the reading end actually switch is the server work
+and is next.
+
+*One control, not two.* It was briefly two selects, one per end, and driving it settled the
+question: a `<select>` is as wide as its longest option, and these are filled with a label
+and an instant apiece, so the pair came to **448px of a 1,278px window** and pushed the
+search box and the whole right-hand group off the screen. They did not overflow, they
+displaced everything beside them. One control whose *options are the pairs* — `current · on
+its own`, `current ← Society at e2e658b4 · 2026-08-29 23:46:24` — is narrower, reads as the
+answer to "which two am I looking at", and is what Tom asked for in the first place.
+
+*What looking found, and none of it was visible from the code.*
+
+- **Both revisions read `2026-08-29`.** The id is when the snapshot was **captured**, not
+  when the code is from: these hold a Society tree from the 26th and one from the 29th, and
+  both were captured on the evening of the 29th **twenty-nine seconds apart**. Abbreviated
+  to the day the two menu entries were identical; shortened to the minute they were still
+  identical, `2026-08-29 23:46`. Each shortening looked reasonable until it sat beside its
+  neighbour. The whole instant is shown, and the *label* is where "which point in time is
+  this" actually lives.
+- **The chosen pair never survived a reload.** `revA`/`revB` went into `PERSISTED` and not
+  into `DEFAULTS`, and `loadSettings` merges only keys `DEFAULTS` declares — so the choice
+  was written to storage on every change and dropped on every load. `localStorage` held the
+  right answer the whole time and nothing ever read it.
+- **The guard written for that immediately found three more.** `searchCase`, `searchWord`
+  and `searchRegex` have the identical defect and have had it since the search was built:
+  `shell.js` says in a comment that they are persisted, and they are not. The invariant is
+  **`PERSISTED` ⊆ `DEFAULTS`**, and nothing had ever checked the two lists agreed.
+- **The notice about a dropped revision went to a surface nobody had opened.** A stored
+  revision that no longer exists is dropped and said out loud — except `state.navNote` is
+  rendered in exactly one place, the graph HUD's count line, which does not exist until the
+  reader mounts the graph. Correct drop, invisible explanation: the defect it was written to
+  prevent, wearing the other uniform. It is the Changes group's note now.
+- **And that notice then cleared itself at random.** Three of `changeNote`'s four returns
+  prepended it and the success path did not, so it survived every state except a working
+  comparison — which looked like deliberate behaviour and was an accident. It is cleared
+  where the reader answers it, in the control's own handler.
+- **`data-rev` was a marker nothing read.** The control is found by its id. Removed rather
+  than exempted, the same call `data-col` got.
+
+*The source directory shows both trees*, which was Tom's own observation and is backed by a
+fact: the two revisions genuinely have different roots, `society-2026-08-26/src` and
+`society-2026-08-29/src`. One path shown while two points are in play names one end and
+implies it is both. `/api/revisions` carries `source_root` per revision now, read from each
+graph's own `meta` — and the served one is answered from the connection already open, because
+a second read-only handle to a database this process holds open is rule 58's 36x and this
+route is asked at boot.
+
+*Not built, and it is Tom's ask.* Selecting a version *from* the source-directory control.
+A path is a label, not a key: analyse the same tree twice and both revisions carry the same
+one, and a menu with two identical rows selects nothing in particular. It can be done backed
+by the revision id — which is exactly the key-and-label separation the presence lines needed
+— but it wants a decision about what two identical rows should look like.
+
+*Guards.* Four new, plus the `PERSISTED ⊆ DEFAULTS` one, each run against the defect it was
+written from: **7 of 7** after one was strengthened. The survivor was mine again — "does
+`chosenPair` mention the check" passed when the check was dropped from one of its two ends,
+because a containment test cannot tell one end from two. That is rule 37 inside a guard for
+the second session running.
+
+*Verified by driving it.* The chosen pair is what is requested
+(`/api/changes?from=2026-08-29T23%3A46%3A24Z`, not the default); "on its own" issues **no**
+request and clears the group; the choice survives a reload; a planted retired revision is
+dropped, explained, and the explanation clears when answered; the toolbar fits its window
+again with the search box and the right-hand group on screen; and the self-check prints
+*every control is wired*.
+
+**Next: the reading end.** `serve()` opens one graph at boot and builds the payload, the
+628-file code list, both vocabulary lanes and the cover from it — the whole of the measured
+10.2 s start. Switching the point in time the screen displays means paying that per switch
+or holding two sets live, and that is the decision the next chunk opens with.

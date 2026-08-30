@@ -4396,3 +4396,324 @@ def test_a_group_restored_open_fetches_what_its_rows_need() -> None:
     assert "onOpen" in fn, "the boot fetch does not call what a group declares it needs"
     boot = js[js.index("async function boot("):]
     assert "openGroupsFetchWhatTheyNeed()" in boot, "nothing calls it at boot"
+
+
+# ------------------------------------------------------------- the colour sets --- #
+#
+# Colour decisions live in Settings and are personal — Tom's call, and his bound is the
+# accessibility one. A set covers the two channels where colour separates one *meaning*
+# from another, and they are the two that both spend red: the difference channel and
+# severity. Every guard here is a way a set can look chosen and be unusable.
+
+_PAL_ROLES = ("--diff-gone", "--diff-new", "--sev-broken", "--sev-suspect", "--sev-info")
+
+
+def _blocks(css: str) -> dict[str, list[tuple[str, dict[str, str]]]]:
+    """Every `:root…{…}` rule that mentions a palette, as (selector, tokens) per set."""
+    out: dict[str, list[tuple[str, dict[str, str]]]] = {}
+    for sel, body in re.findall(r"(:root\[[^{}]*?)\s*\{([^{}]*)\}",
+                                _css_code(css)):
+        sel = sel.strip()
+        m = re.search(r'data-palette="([a-z]+)"', sel)
+        if not m:
+            continue
+        toks = dict(re.findall(r"(--[a-z0-9-]+)\s*:\s*(#[0-9a-f]{6})", body))
+        out.setdefault(m.group(1), []).append((sel, toks))
+    return out
+
+
+def _base_tokens(css: str) -> dict[str, dict[str, str]]:
+    """The default set: the light `:root` block, and the explicit dark one."""
+    code = _css_code(css)
+    light = dict(re.findall(r"(--[a-z0-9-]+)\s*:\s*(#[0-9a-f]{6})",
+                            code.split(":root {", 1)[1].split("}", 1)[0]))
+    dark = dict(re.findall(r"(--[a-z0-9-]+)\s*:\s*(#[0-9a-f]{6})",
+                           code.split(':root[data-theme="dark"] {', 1)[1].split("}", 1)[0]))
+    return {"light": light, "dark": dark}
+
+
+def _lum(hexv: str) -> float:
+    def chan(c: int) -> float:
+        x = c / 255
+        return x / 12.92 if x <= 0.03928 else ((x + 0.055) / 1.055) ** 2.4
+    r, g, b = (int(hexv[i:i + 2], 16) for i in (1, 3, 5))
+    return 0.2126 * chan(r) + 0.7152 * chan(g) + 0.0722 * chan(b)
+
+
+def _ratio(a: str, b: str) -> float:
+    la, lb = _lum(a), _lum(b)
+    return (max(la, lb) + 0.05) / (min(la, lb) + 0.05)
+
+
+def test_every_colour_set_clears_the_contrast_bar_on_every_ground() -> None:
+    """The guard the whole feature rests on.
+
+    A set is offered as a choice, so every colour in it is drawn as text — on the surface,
+    and on its own tinted chip. Both grounds are real and a set that clears one and fails
+    the other is a set that is legible in half the places it appears.
+
+    Computed from `tokens.css` itself rather than from a list here, so a hex edited to
+    something prettier fails the build instead of reaching a reader. That is the whole
+    difference between a stated bound and an enforced one.
+    """
+    css = _read("tokens.css")
+    sets = _blocks(css)
+    assert set(sets) >= {"safe", "muted"}, f"the palettes have gone: {sorted(sets)}"
+
+    base = _base_tokens(css)
+    grounds = {"light": base["light"]["--surface"], "dark": base["dark"]["--surface"]}
+
+    # The default is one of the three and is measured with them: the bar it is held to is
+    # the same bar, and a set exempt from its own guard is the set that drifts.
+    everything: list[tuple[str, list[tuple[str, dict[str, str]]]]] = [
+        ("default", []), *sets.items()]
+    problems = []
+    for name, blocks in everything:
+        for theme, surface in grounds.items():
+            if name == "default":
+                toks = base[theme]
+            else:
+                picked = [t for sel, t in blocks
+                          if (theme == "light") == ("data-theme" not in sel
+                                                    and ":not(" not in sel)]
+                assert picked, f"{name} has no {theme} block"
+                toks = picked[0]
+            for role in _PAL_ROLES:
+                fg, bg = toks.get(role), toks.get(role + "-bg")
+                assert fg and bg, f"{name}/{theme} is missing {role}"
+                for ground, what in ((surface, "the surface"), (bg, "its own chip")):
+                    r = _ratio(fg, ground)
+                    if r < 4.5:
+                        problems.append(
+                            f"{name}/{theme} {role} {fg} on {what} {ground}: "
+                            f"{r:.2f}:1, below the 4.5:1 minimum for body text")
+    assert not problems, "\n".join(problems)
+
+
+def test_every_set_declares_the_same_tokens_as_the_default() -> None:
+    """A set missing one token silently inherits the default's, which is two palettes.
+
+    And it is the worst kind of two: the reader picked *blue and orange* and got one green
+    among them, with nothing on screen saying a colour came from somewhere else. Asserted
+    against the base block rather than a list here, so a token added to the default has to
+    be added to every set (rule 36 — from the table, never from memory).
+    """
+    css = _read("tokens.css")
+    base = _base_tokens(css)["light"]
+    want = {r for r in _PAL_ROLES} | {r + "-bg" for r in _PAL_ROLES}
+    assert want <= set(base), f"the default is missing {sorted(want - set(base))}"
+    for name, blocks in _blocks(css).items():
+        for sel, toks in blocks:
+            missing = want - set(toks)
+            assert not missing, (
+                f"the `{name}` set's `{sel}` block does not declare {sorted(missing)} — "
+                "those tokens would silently fall back to the default's, so the reader "
+                "would be looking at two palettes at once"
+            )
+
+
+def test_a_sets_dark_block_outranks_its_light_one_by_specificity() -> None:
+    """Rule 29: a media query contributes no specificity, so equal selectors go to source
+    order — and the fix is specificity, never order, or the next rule takes it back.
+
+    The ladder has to be base < a set's light block < a set's dark blocks. Counted rather
+    than asserted by eye, because the whole failure mode is that it *looks* right.
+    """
+    def spec(sel: str) -> int:
+        return len(re.findall(r"\[[^\]]+\]", sel)) + len(re.findall(r":(?!not)[a-z-]+", sel))
+
+    css = _css_code(_read("tokens.css"))
+    base_light = spec(":root")
+    for name, blocks in _blocks(_read("tokens.css")).items():
+        light = [spec(s) for s, _ in blocks if "data-theme" not in s and ":not(" not in s]
+        dark = [spec(s) for s, _ in blocks if "data-theme" in s or ":not(" in s]
+        assert light and dark, f"{name} does not have both a light and a dark block"
+        assert min(light) > base_light, (
+            f"the `{name}` set's light block is no more specific than the base tokens; "
+            "which wins would be decided by source order"
+        )
+        assert min(dark) > max(light), (
+            f"the `{name}` set's dark block is not more specific than its light one, so "
+            "in dark mode the light colours would win or lose on position alone"
+        )
+    assert "data-palette" in css
+
+
+def test_the_difference_channel_is_actually_drawn() -> None:
+    """A palette setting whose colours nothing spends is a swatch, not a control.
+
+    `--diff-gone` and `--diff-new` were declared in all three token blocks from the day the
+    comparison vocabulary landed, carried through `diffWords()` as a `tone` per side, and
+    drawn by **nothing**. Design rule 16 in a stylesheet: it renders, it looks deliberate,
+    and it changes no pixel.
+    """
+    css = _css_code(_read("tokens.css"))
+    # The *tone classes themselves*, not a count of the token anywhere. Counting
+    # occurrences passed on a mutation that pointed `.tone-gone` at `--text` and left the
+    # token spent elsewhere -- the guard was measuring the wrong thing, which is rule 37's
+    # own lesson pointed at a stylesheet.
+    for cls, tok in ((".tone-gone", "--diff-gone"), (".tone-new", "--diff-new")):
+        # The rule whose selector is *exactly* the class, not any rule mentioning it. A
+        # looser match survived a mutation that pointed the bare class at `--text` while a
+        # compound `.chgstat.tone-gone` kept the token: the colour would then hold in the
+        # stat tiles and be lost in the band headings and the navigator's note. A partial
+        # loss is the hardest kind to see, and it passed.
+        rules = re.findall(r"(?:^|[},])\s*" + re.escape(cls) + r"\s*\{([^}]*)\}",
+                           css, re.M)
+        assert rules, f"{cls} is written by the views and no rule defines it on its own"
+        assert any(f"var({tok})" in r for r in rules), (
+            f"{cls} does not resolve to {tok} -- the difference channel would be declared, "
+            "carried through the vocabulary as a word, and drawn in the ordinary text "
+            "colour, which is where it started"
+        )
+    js = _code(_read("shell.js"))
+    assert 'tone-" + ' in js or "tone-${" in js, "nothing writes a tone class"
+
+
+def test_the_tone_follows_the_word_and_not_the_side() -> None:
+    """Flipping the assumption swaps which set is called arrivals, and the colour must go
+    with it. A page saying "added" in the colour of *gone* is worse than one with none.
+
+    `diffWords()` decides both, so the only way they come apart is a view taking its tone
+    from the band key rather than from the word. Asserted by requiring every tone the views
+    write to be read off the same object the word is.
+    """
+    js = _code(_read("shell.js"))
+    # Both sides, counted. One `tone: newer ?` left standing while the other was pinned to
+    # a literal passed a containment check -- the same shape as `REBUILD.steps` matching
+    # `REBUILD.step`, and the third time in two sessions the guard was the weak half.
+    derived = len(re.findall(r"tone:\s*newer\s*\?", js))
+    assert derived == 2, (
+        f"{derived} of the two sides derive their tone from which version is newer. A side "
+        "pinned to a literal keeps its colour while the words swap, so the page says "
+        "'added' in the colour of gone"
+    )
+    bad = re.findall(r'tone-\$\{(?!.*?\.tone)([^}]*)\}', js)
+    bad = [b for b in bad if "tone" not in b]
+    assert not bad, (
+        f"a tone is written from {bad} rather than from the word's own `.tone` — flip the "
+        "assumption and the colours stay where they were while the words move"
+    )
+
+
+def test_the_colour_set_is_a_setting_that_something_reads() -> None:
+    """Four halves, each of which passes alone while the setting is dead: declared,
+    persisted, named in the reset, and acted on."""
+    st = _read("settings.js")
+    js = _code(_read("shell.js"))
+    assert re.search(r"^\s*palette:\s*'default'", st, re.M), "palette is not a default"
+    assert "palette: 'the colour set'" in st, (
+        "the reset would clear the colour set and not mention it"
+    )
+    assert '"palette"' in js, "palette is not persisted"
+    fn = _fn(js, "applyPalette")
+    assert "data-palette" in fn and "state.palette" in fn, "applyPalette reads nothing"
+    assert "removeAttribute" in fn, (
+        "the default does not remove the stamp, so it needs a fourth copy of every token "
+        "the base block already declares"
+    )
+    assert js.count("applyPalette()") >= 2, (
+        "applyPalette is called fewer times than applyTheme — settings are adopted after "
+        "the cover names the program, so a single call at the top of boot runs against "
+        "defaults the reader may have overridden"
+    )
+
+
+def test_the_palette_route_is_not_the_palette_stamp() -> None:
+    """One attribute meaning both a route and a piece of state is what `data-nav` cost.
+
+    `data-palette` is the stamp on `:root`; the control is `data-palette-set`, exactly as
+    `data-theme-set` sits beside `data-theme`. A handler matching the stamp would fire on
+    the document element.
+    """
+    js = _read("shell.js")
+    assert "[data-palette-set]" in js, "nothing listens for the colour-set control"
+    assert not re.search(r'\[data-palette\](?!-)', js), (
+        "something selects on `[data-palette]`, which is the stamp on the root element "
+        "rather than a control"
+    )
+    assert '"palette-set"' in js, "the control is not in the wired roster"
+
+
+def test_the_settings_page_measures_the_colours_it_is_showing() -> None:
+    """Design rule 13: a claim carries the evidence, and the evidence must be the claim's.
+
+    Every number beside a set is computed from the tokens the page resolves, not written
+    into the markup — a hex typed beside a swatch is a claim nobody can check and the first
+    thing to go stale. And the *separation* number is the one that matters here: contrast
+    answers "can this be read", not "can these two be told apart", and red and green are
+    both perfectly legible and, to a deuteranope, the same colour.
+    """
+    js = _code(_read("shell.js"))
+    fn = _fn(js, "paletteRow")
+    assert "paletteColours(" in fn, "the row does not read the tokens it is showing"
+    assert "contrast(" in fn and "separation(" in fn, (
+        "the row states one of the two measurements and not the other"
+    )
+    assert not re.search(r"#[0-9a-f]{6}", fn), (
+        "a colour is written into the Settings row; it must come from the stylesheet, or "
+        "the page can state a colour it is not drawing"
+    )
+    read = _fn(js, "paletteColours")
+    assert "getComputedStyle" in read and "data-palette" in read, (
+        "the colours are not read back off the stylesheet"
+    )
+    # The *restore*, named by the variable that holds the previous value. Asking whether
+    # `setAttribute` appears passed on a mutation that deleted the restore outright, since
+    # the function also stamps the set it is about to measure.
+    assert re.search(r"had\s*===\s*null.*?removeAttribute|removeAttribute.*?had\s*===\s*null",
+                     read, re.S) and re.search(r'setAttribute\("data-palette",\s*had\)', read), (
+        "the stamp is not put back after reading, so opening Settings would leave the page "
+        "wearing whichever set was measured last"
+    )
+    sep = _fn(js, "separation")
+    assert "Math.min" in sep, (
+        "separation averages rather than taking the worst — a pair obvious to most readers "
+        "and invisible to some is not a pair that works"
+    )
+    assert "deuteranopia" in sep and "protanopia" in sep
+
+
+def test_the_dead_contrast_demo_is_gone() -> None:
+    """Two colour pickers, a live WCAG ratio and a verdict — reading `state._fg` and
+    `state._bg`, which were in no `DEFAULTS`, persisted nowhere, and read by nothing but
+    their own preview chip. It rendered, it responded to every drag, and it changed no
+    colour anywhere.
+
+    Invisible to both guards that exist for this: the dead-setting one walks `DEFAULTS` and
+    these keys were never in it, and the dead-control one asks whether an attribute is read,
+    and these were `id`s rather than routes.
+    """
+    js = _code(_read("shell.js"))
+    for dead in ("state._fg", "state._bg", "fgPick", "bgPick", "previewChip"):
+        assert dead not in js, (
+            f"`{dead}` is back — a Settings control that computes a correct answer and "
+            "applies it to nothing"
+        )
+
+
+def test_a_palette_token_the_graph_reads_must_reach_the_graph() -> None:
+    """The implication that can rot, asserted rather than remembered.
+
+    `applyPalette()` deliberately does not repaint the stack: a set covers `--diff-*` and
+    `--sev-*`, `cssPalette()` reads neither, and a push that changes nothing is waste. The
+    moment the comparison arrives in the graph as `colorBy: "change"` it will read
+    `--diff-*` — and then a set chosen in Settings would move every surface except the one
+    the reader is looking at, silently.
+
+    Derived from both sides, so chunk C cannot forget (rule 36).
+    """
+    js = _code(_read("shell.js"))
+    owned = set()
+    for _name, blocks in _blocks(_read("tokens.css")).items():
+        for _sel, toks in blocks:
+            owned |= set(toks)
+    graph_reads = set(re.findall(r'hex\("(--[a-z0-9-]+)"\)', _fn(js, "cssPalette")))
+    graph_reads |= set(re.findall(r'num\("(--[a-z0-9-]+)"\)', _fn(js, "cssPalette")))
+    overlap = owned & graph_reads
+    if overlap:
+        assert "applyGraphPalette()" in _fn(js, "applyPalette"), (
+            f"the graph now reads {sorted(overlap)}, which a colour set overrides — so "
+            "applyPalette() must push the palette to the stack, or choosing a set moves "
+            "every surface except the picture"
+        )

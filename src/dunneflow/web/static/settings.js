@@ -204,6 +204,15 @@ const DEFAULTS = {
    * would be carried silently onto another (rule 51). Design rule 24's shape — an
    * automatic rule may decide, and an explicit choice outranks it. */
   comparedIsNewer: 'auto',
+  /* Which colour set carries the two channels where colour separates one *meaning* from
+   * another: the difference channel and severity. Tom's call — colour decisions are
+   * personal and belong here, offered as broad sets rather than as a picker per token.
+   *
+   * `'default'` stamps no attribute at all, so the shipped look is the base token block
+   * rather than a special case of itself. The values and the reasoning are in
+   * `tokens.css`; nothing about a colour is written down in JavaScript, because the graph
+   * already reads its palette off the same tokens and a second table is a second answer. */
+  palette: 'default',      // 'default' | 'safe' | 'muted'
   /* How a search decides a match — not what is being looked for, which is a question
    * being asked right now and never an arrangement. `shell.js` has said these are
    * persisted since the day they were written and they were not: listed in `PERSISTED`,
@@ -306,7 +315,8 @@ function resetSettings(program, current) {
     navGroups: 'how many navigator groups open at once', navOpen: 'which groups are open',
     navCap: 'how many routines a package lists',
     graphLayout: 'graph layout', graphTheme: 'graph theme',
-    theme: 'theme', scale: 'interface scale', startup: 'startup screen',
+    theme: 'theme', palette: 'the colour set', scale: 'interface scale',
+    startup: 'startup screen',
     menuOrder: 'menu order', trailShown: 'the trail', trailCap: 'trail length',
     density: 'row density', bandScroll: 'scrolling change bands',
     baseRev: 'which version is being read', comparedRev: 'what it is compared with',

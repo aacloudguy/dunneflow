@@ -375,6 +375,12 @@ docs   ──► extract ──► docs.db  (SQLite) ─────────
   detour: shares a plan, the other end of a table you write, the most commented routine on
   your plate, named like ninety-eight others. Every thread carries a *subject* the router
   can act on, never a label (rule 30), and states its size so the reader can weigh it.
+- `static/tokens.css` — every colour, and the three **colour sets**. A set covers the two
+  channels where colour separates one meaning from another — a difference, and severity —
+  and carries a light and a dark variant; `data-palette` on `:root` chooses one. In CSS
+  rather than in a script because `cssPalette()` already reads the stack's colours off
+  these tokens, so a second table would be a second answer. Each set states its contrast
+  **and** its separation (rule 69).
 - `web/vocabulary.py` — the two naming lanes served, and matched against one name. The
   membership test is `Convention.glob`, which is the same string the exceptions query is
   built from, so the claim and the population cannot drift (rule 41).
@@ -1377,6 +1383,32 @@ rule of that number — a blank canvas must say why it is blank — which does e
     table's own default for a group they have arranged nothing about -- and `groupOpen()`
     is the one place that knows both. Rule 51 inside the fix for rule 51.
 
+69. **Contrast says whether a colour can be *read*; it says nothing about whether two
+    colours can be told *apart*.** Design rule 6 clamps customisation at a contrast ratio
+    and that is right and insufficient: it is a claim about one colour against its ground,
+    and a channel that separates two meanings is making a claim about a *pair*.
+
+    The dashboard's own palette passed the first bar and failed the second for its whole
+    life. `--sev-broken` `#b91c1c` and `--sev-suspect` `#92400e` are 6.47:1 and 7.09:1 on
+    white — comfortably legible, and **to a deuteranope the same colour**: simulated, they
+    are ΔE 5.3 apart, the worst number in the product. The difference pair was little
+    better at 12.7. Every check that existed passed, because every check asked the
+    answerable question rather than the useful one.
+
+    So a set states both: contrast against each ground it is drawn on, and **separation**
+    as the worst CIE Lab ΔE across normal vision, deuteranopia and protanopia (Viénot,
+    Brettel & Mollon 1999). The worst, never an average — a pair obvious to most readers
+    and invisible to some is not a pair that works, and averaging is the arithmetic form of
+    not caring.
+
+    Two things the arithmetic settled that guessing would not have. **Red and green cannot
+    be rescued by tuning**: every chroma and every lightness inside that hue family measures
+    between 4 and 14, so only changing the hues changes the answer. And **a difference in
+    lightness survives colour blindness where a difference in hue does not** — so forcing
+    both colours of a pair to the same contrast ratio throws away the one axis that always
+    works. The shipped dark pair is separable partly because it sits at 6.06:1 and 9.63:1,
+    which nobody intended.
+
 ## Anomalies: the discipline
 
 `anomalies.py` reports what looks wrong. It exists under one rule:
@@ -1444,6 +1476,14 @@ bought a rewrite of settled CSS, neither of which serves the thing the tool is f
    limits that keep text legible — 4.5:1 for body text, 3:1 for large text and chrome,
    computed live and shown beside the swatch. A refusal states its reason, the same way a
    finding states its blind spot.
+
+   **Colour is offered as broad sets, not as a picker per token** — Tom's call, and his
+   reason is that colour decisions are personal. A set covers the channels where colour
+   separates one *meaning* from another and carries a light and a dark variant; the reader
+   chooses between sets rather than mixing their own, so every combination that can be
+   reached is one that has been measured. What each set states is its contrast **and** its
+   separation (rule 69), because a set that clears the first bar and fails the second is
+   the shipped palette's own history.
 
 7. **Accessibility limits are documented in the product, not apologised for.** A node
    graph stops being meaningfully screen-reader navigable past roughly fifty nodes; the

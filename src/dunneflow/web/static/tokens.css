@@ -244,6 +244,149 @@ body {
   outline-offset: 2px;
   border-radius: 3px;
 }
+/* ═══════════════════════════════════════════════════════════════════
+   COLOUR SETS — the meaning channels, chosen in Settings
+
+   Tom's call: colour decisions are personal and belong in Settings, offered as broad
+   sets rather than as a picker per token, each with a light and a dark variant.
+
+   A set covers the two channels where colour separates one *meaning* from another, and
+   they are the two that both spend red: the **difference** channel (what only one version
+   has) and **severity** (the anomaly worklist). Accent and external are single colours
+   with no partner to be confused with, so they follow the theme and are not in a set.
+
+   **Here rather than in JavaScript**, and that is the same decision the graph already
+   rests on: `cssPalette()` reads the stack's colours through `getComputedStyle` so there
+   is exactly one place a colour is written down. A palette table in a script would be the
+   second place, and the day the two disagree the page and the stack are two products.
+
+   **Overrides only.** The dark values are already written twice -- once for the un-stamped
+   system-dark state and once for the explicit toggle -- so three sets written out whole
+   would be six copies of a block nobody could keep in step. Each set declares only what
+   differs; `default` declares nothing at all and stamps no attribute, so the shipped look
+   is not a special case of itself.
+
+   **The ladder is specificity, never source order** (rule 29, earned by a `display: none`
+   inside a media query losing to an equal selector 350 lines later). A media query
+   contributes nothing, so: base `:root` (0,1,0) < a set's light block (0,2,0) < a set's
+   dark blocks (0,3,0). The same ladder the blocks above already climb, one rung up.
+
+   ── how the values were arrived at ────────────────────────────────────────────────
+   Not chosen and then checked. A hue and a saturation were chosen, and the **lightness**
+   was then walked until the colour cleared 5.5:1 against the ground it is actually drawn
+   on -- the surface for text, and its own `-bg` for a chip. 5.5 rather than AA's 4.5
+   because the shipped set sits near 6.5 and a bar met exactly is a bar failed by the next
+   edit. Worst anywhere: **4.86:1** (`safe`), **4.84:1** (`muted`), both on a chip.
+
+   Separation is measured too, and it is the number that decides `safe`. Simulating
+   deuteranopia and protanopia (Viénot, Brettel & Mollon 1999) and taking the worst CIE Lab
+   ΔE across normal vision and both:
+
+     the shipped pair       gone/new     12.7 light   9.5 dark
+     the shipped severity   broken/susp   5.3 light  -- red against amber, and the worst
+                                             number in the product: to a deuteranope
+                                             #b91c1c and #92400e are the same colour
+     `safe`                 gone/new     82.2 light 106.8 dark
+     `safe` severity        worst        42.7 light  35.7 dark
+
+   **Red-and-green cannot be fixed by tuning.** Every chroma and every lightness inside
+   that hue family measures between 4 and 14 -- which is why `muted` is a *quieter* option
+   and not a safer one, and why it says so on the Settings page beside its own numbers
+   rather than being offered as though the three were interchangeable. Only changing the
+   hues changes the answer, and that is the whole of `safe`.
+
+   One thing worth keeping from the arithmetic: **a difference in lightness survives colour
+   blindness when a difference in hue does not.** Forcing both colours of a pair to the
+   same contrast ratio throws that axis away -- the shipped dark pair sits at 6.06:1 and
+   9.63:1 and is separable partly for that reason, by accident. `muted`'s dark variant
+   keeps the spread deliberately.
+   ═══════════════════════════════════════════════════════════════ */
+
+/* Blue and orange. Okabe-Ito's vermillion and blue, moved along their own hue until they
+   clear the bar -- as published, vermillion is 3.87:1 on white and fails outright.
+   Severity cannot be red/amber/blue here, because red against amber is the pair this set
+   exists to replace; a red -> magenta -> blue ramp keeps the warm-to-cool ordering. */
+:root[data-palette="safe"] {
+  --diff-gone:     #b74300;
+  --diff-gone-bg:  #faf2ed;
+  --diff-new:      #006ea9;
+  --diff-new-bg:   #edf5fa;
+  --sev-broken:    #cd2011;
+  --sev-broken-bg: #faeeed;
+  --sev-suspect:   #cb1064;
+  --sev-suspect-bg:#faedf3;
+  --sev-info:      #304ce8;
+  --sev-info-bg:   #edeffa;
+}
+@media (prefers-color-scheme: dark) {
+  :root[data-palette="safe"]:not([data-theme="light"]) {
+    --diff-gone:     #ff5f02;
+    --diff-gone-bg:  #321e13;
+    --diff-new:      #009bef;
+    --diff-new-bg:   #132732;
+    --sev-broken:    #f2685c;
+    --sev-broken-bg: #321613;
+    --sev-suspect:   #f25fa1;
+    --sev-suspect-bg:#321321;
+    --sev-info:      #7c8df0;
+    --sev-info-bg:   #131832;
+  }
+}
+:root[data-theme="dark"][data-palette="safe"] {
+  --diff-gone:     #ff5f02;
+  --diff-gone-bg:  #321e13;
+  --diff-new:      #009bef;
+  --diff-new-bg:   #132732;
+  --sev-broken:    #f2685c;
+  --sev-broken-bg: #321613;
+  --sev-suspect:   #f25fa1;
+  --sev-suspect-bg:#321321;
+  --sev-info:      #7c8df0;
+  --sev-info-bg:   #131832;
+}
+
+/* Muted. The shipped hues at lower chroma -- for a reader who finds the default loud, and
+   *not* a second answer to colour blindness: it is the same red and the same green, so it
+   measures where they measure. The Settings page states that beside it. */
+:root[data-palette="muted"] {
+  --diff-gone:     #c52e2e;
+  --diff-gone-bg:  #faeded;
+  --diff-new:      #1c7842;
+  --diff-new-bg:   #edfaf2;
+  --sev-broken:    #c52e2e;
+  --sev-broken-bg: #faeded;
+  --sev-suspect:   #7e4e1e;
+  --sev-suspect-bg:#faf4ed;
+  --sev-info:      #3963c6;
+  --sev-info-bg:   #edf1fa;
+}
+@media (prefers-color-scheme: dark) {
+  :root[data-palette="muted"]:not([data-theme="light"]) {
+    --diff-gone:     #df7575;
+    --diff-gone-bg:  #321313;
+    --diff-new:      #60da92;
+    --diff-new-bg:   #133220;
+    --sev-broken:    #df7575;
+    --sev-broken-bg: #321313;
+    --sev-suspect:   #dea973;
+    --sev-suspect-bg:#322213;
+    --sev-info:      #bfcdec;
+    --sev-info-bg:   #131c32;
+  }
+}
+:root[data-theme="dark"][data-palette="muted"] {
+  --diff-gone:     #df7575;
+  --diff-gone-bg:  #321313;
+  --diff-new:      #60da92;
+  --diff-new-bg:   #133220;
+  --sev-broken:    #df7575;
+  --sev-broken-bg: #321313;
+  --sev-suspect:   #dea973;
+  --sev-suspect-bg:#322213;
+  --sev-info:      #bfcdec;
+  --sev-info-bg:   #131c32;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: .01ms !important;
@@ -1827,6 +1970,64 @@ kbd { font-family: var(--f-mono); font-size: .66rem; background: var(--sunken);
 .ratio { font-family: var(--f-mono); font-size: .74rem; font-variant-numeric: tabular-nums;
   padding: .1rem .35rem; border-radius: .1875rem; }
 .ratio.pass { background: var(--accent-soft); color: var(--accent-text); }
+/* ── the difference channel, spent ───────────────────────────────────────────────
+ *
+ * `--diff-gone` and `--diff-new` were declared in all three token blocks from the day the
+ * comparison vocabulary landed and drawn by nothing: a channel that existed as a token and
+ * as a word and never as a colour.
+ *
+ * **The tone follows the word, never the side.** Which set is called arrivals is the
+ * reader's assumption about which version is newer, and flipping it must move the colour
+ * with the word -- a page saying "added" in the colour of *gone* is worse than one with no
+ * colour at all. `diffWords()` decides both, so they cannot come apart.
+ *
+ * A class rather than an inline colour, so a set chosen in Settings reaches every one of
+ * these without any of them knowing a palette exists.
+ */
+.tone-gone { color: var(--diff-gone); }
+.tone-new  { color: var(--diff-new); }
+.chgstat.tone-gone .num, .chgstat.tone-gone > span { color: var(--diff-gone); }
+.chgstat.tone-new  .num, .chgstat.tone-new  > span { color: var(--diff-new); }
+.chgstat.tone-gone { border-color: var(--diff-gone); background: var(--diff-gone-bg); }
+.chgstat.tone-new  { border-color: var(--diff-new);  background: var(--diff-new-bg); }
+/* The hint underneath stays the muted text colour: it is prose about the number, not the
+   number, and colouring it would spend the channel on a second thing (design rule 4). */
+.chgstat .hint { color: var(--text-muted); }
+
+/* ── the colour sets, on the Settings page ────────────────────────────────────────
+ *
+ * Each row is the set, the sentence that says what it is for, and the two numbers that
+ * decide whether it is any good -- then every measurement behind them, one click away.
+ * Rule 8: the summary is allowed only because the whole sits beside it. */
+.palettes { display: flex; flex-direction: column; gap: .75rem; }
+.pal { border: 1px solid var(--border); border-radius: .4rem; padding: .7rem .8rem;
+       background: var(--surface); }
+.pal.on { border-color: var(--accent); box-shadow: inset .1875rem 0 0 var(--accent); }
+.pal-pick { display: flex; align-items: center; gap: .75rem; flex-wrap: wrap;
+            width: 100%; background: none; border: 0; padding: 0; cursor: pointer;
+            color: var(--text); font: inherit; text-align: left; }
+.pal-name { font-weight: 600; font-size: .88rem; min-width: 9rem; }
+.pal-swatches { display: flex; gap: .3rem; flex-wrap: wrap; }
+/* A chip rather than a bare square, because that is how these colours are actually spent:
+   a word on a tinted ground. A square would state a colour the page never draws alone. */
+.pal-sw { font-size: .66rem; padding: .1rem .35rem; border-radius: .1875rem;
+          border: 1px solid; font-weight: 600; }
+.pal-why { font-size: .74rem; color: var(--text-muted); margin: .5rem 0 .4rem; }
+.pal-nums { display: flex; align-items: baseline; gap: .5rem; margin: .25rem 0; }
+/* The figure never wraps. `ΔE 5` broke across two lines in a narrow pane, which put
+   the Greek letter on one row and the number on the next -- a measurement rendered as
+   two things. */
+.pal-nums .ratio { white-space: nowrap; flex: none; }
+.pal-numlabel { font-size: .7rem; color: var(--text-muted); }
+.pal-detail { margin-top: .5rem; }
+.pal-detail summary { font-size: .72rem; color: var(--text-muted); cursor: pointer; }
+.pal-table { width: 100%; border-collapse: collapse; margin: .4rem 0; font-size: .7rem; }
+.pal-table th { text-align: left; font-weight: 600; color: var(--text-faint);
+                border-bottom: 1px solid var(--border); padding: .2rem .4rem .2rem 0; }
+.pal-table td { padding: .18rem .4rem .18rem 0; font-family: var(--f-mono);
+                border-bottom: 1px solid var(--border); }
+.pal-table td.fail { color: var(--sev-broken); font-weight: 700; }
+
 .ratio.fail { background: var(--sev-broken-bg); color: var(--sev-broken); }
 .preview-chip { padding: .25rem .5rem; border-radius: .25rem; font-size: .78rem; border: 1px solid var(--border); }
 .clampnote { font-size: .72rem; color: var(--sev-broken); display: flex; gap: .35rem; align-items: baseline; }

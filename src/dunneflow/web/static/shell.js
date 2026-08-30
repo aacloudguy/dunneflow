@@ -229,6 +229,9 @@ const state = {
   trailShown: true,
   trailCap: 12,          // pruned to this on every step, seen or not
   menuOrder: "waysin",   // waysin | explore  — a genuine tie, so both exist       // cover | graph   ← the Setting standing in for a decision
+  /* Which colour set carries the difference channel and severity. See `settings.js`, and
+   * `tokens.css` for the values and how they were measured. */
+  palette: "default",     // 'default' | 'safe' | 'muted'
   ambient: false,         // anomaly badges on nodes
   hideInferred: false,
   density: "comfortable",
@@ -490,6 +493,23 @@ function applyTheme() {
    * a WebGL canvas that a CSS custom property changed -- so the palette is pushed. */
   if (typeof applyGraphPalette === "function") applyGraphPalette();
 }
+/* Stamp the chosen colour set, or take the stamp off for the default.
+ *
+ * Off rather than `data-palette="default"`, and that is not tidiness: the base token block
+ * *is* the default, so a stamp for it would need a fourth and fifth copy of every value it
+ * already declares. Absent means "the blocks above", which is what they are.
+ *
+ * **The graph is deliberately not repainted here**, unlike `applyTheme()`. A set covers
+ * `--diff-*` and `--sev-*`, and `cssPalette()` reads neither -- so a push to the stack
+ * today would be a repaint that changes nothing. The moment it reads one (the comparison
+ * as `colorBy: "change"` is where that arrives), the push belongs here, and a guard
+ * asserts the implication so it cannot be forgotten rather than being remembered. */
+function applyPalette() {
+  const r = document.documentElement;
+  if (state.palette === "default") r.removeAttribute("data-palette");
+  else r.setAttribute("data-palette", state.palette);
+}
+
 function applyScale() {
   document.documentElement.style.setProperty("--scale", state.scale);
   const pct = Math.round(state.scale * 100);
@@ -2082,8 +2102,16 @@ function viewChanges() {
     const r = REVISIONS.find(x => x.revision === id);
     return r && r.label ? `${esc(id)} — ${esc(r.label)}` : esc(id || "?");
   };
-  const stat = (n, label, why) => `
-    <div class="chgstat">
+  /* `tone` is `gone`, `new`, or nothing at all -- and it is the difference channel finally
+     being spent. It was defined in `tokens.css` from the day the vocabulary landed, carried
+     through `diffWords()` as a `tone` per side, and drawn by nothing: a channel that
+     existed as tokens and as a word and never as a colour.
+     **It follows the word, never the side.** Flipping the assumption swaps which set is
+     called arrivals, and the colour has to go with it or the page states one thing in
+     English and the opposite in red -- which is worse than no colour at all. Nothing here
+     caches a class for that reason. */
+  const stat = (n, label, why, tone) => `
+    <div class="chgstat${tone ? " tone-" + tone : ""}">
       <b class="num">${n.toLocaleString()}</b>
       <span>${label}</span>
       ${why ? `<span class="hint">${why}</span>` : ""}
@@ -2115,9 +2143,10 @@ function viewChanges() {
       </span>
     </button></li>`).join("");
 
-  const band = (key, title, list, why) => !list.length ? "" : `
+  const band = (key, title, list, why, tone) => !list.length ? "" : `
     <section class="chgsection">
-      <h3>${title} <span class="num">${list.length.toLocaleString()}</span></h3>
+      <h3${tone ? ` class="tone-${tone}"` : ""}>${title}
+        <span class="num">${list.length.toLocaleString()}</span></h3>
       ${why ? `<p class="hint">${why}</p>` : ""}
       <ol class="chg-list">${rows(list)}</ol>
     </section>`;
@@ -2132,10 +2161,10 @@ function viewChanges() {
     const gone = v[words.base.tone === "new" ? "only_in_compared" : "only_in_base"];
     if (!arrived.length && !gone.length) return "";
     const bits = [];
-    if (arrived.length) bits.push(`+${arrived.length}`);
-    if (gone.length) bits.push(`\u2212${gone.length}`);
+    if (arrived.length) bits.push(`<b class="tone-new">+${arrived.length}</b>`);
+    if (gone.length) bits.push(`<b class="tone-gone">\u2212${gone.length}</b>`);
     const named = arrived.slice(0, 6).map(x => `<code>${esc(String(x))}</code>`).join(" ");
-    return `<li>${label} <b class="num">${bits.join(" ")}</b> ${named}</li>`;
+    return `<li>${label} <span class="num">${bits.join(" ")}</span> ${named}</li>`;
   };
 
   /* Whether a band caps its own height and scrolls inside itself, or runs its full
@@ -2162,8 +2191,8 @@ function viewChanges() {
        an answer, and not the same thing as an empty comparison.</p>` : ""}
 
     <div class="chgstats">
-      ${stat(c[first[0]], first[1].word, "")}
-      ${stat(c[second[0]], second[1].word, "")}
+      ${stat(c[first[0]], first[1].word, "", first[1].tone)}
+      ${stat(c[second[0]], second[1].word, "", second[1].tone)}
       ${stat(c.behaves, "behave differently", "something they do has moved")}
       ${stat(c.edited_only, "edited only", "and nothing they do changed")}
     </div>
@@ -2185,9 +2214,11 @@ function viewChanges() {
            "The same routine, and something it <em>does</em> has moved — what it calls, "
            + "what it touches, what it takes or what it returns. The tag says which.")}
     ${band(first[0], cap(first[1].word), CHANGES[first[0]],
-           `Only in the ${first[0] === "only_in_base" ? "base" : "compared"} version.`)}
+           `Only in the ${first[0] === "only_in_base" ? "base" : "compared"} version.`,
+           first[1].tone)}
     ${band(second[0], cap(second[1].word), CHANGES[second[0]],
-           `Only in the ${second[0] === "only_in_base" ? "base" : "compared"} version.`)}
+           `Only in the ${second[0] === "only_in_base" ? "base" : "compared"} version.`,
+           second[1].tone)}
     ${band("edited", "Edited, behaving the same", CHANGES.edited_only,
            "The body changed and nothing it does did. Internal computation — what this tool "
            + "exists not to report — listed here so leaving it out is not a silent filter.")}
@@ -2305,6 +2336,206 @@ function viewAnomalies() {
   </div>`;
 }
 
+/* The colour sets, and what each is *for*.
+ *
+ * The values are in `tokens.css` and nothing about a colour is written down here. This is
+ * the roster and the prose: which sets exist, what each is called, and the sentence a
+ * reader needs before choosing one. The swatches and every number beside them are read
+ * back off the stylesheet at render, so the page cannot state a colour the page is not
+ * using (rule 13, and rule 44's family -- a view describing data it does not have).
+ *
+ * `default` is first and stamps nothing. */
+const PALETTES = [
+  { id: "default", name: "Red and green",
+    why: "What the dashboard has always used. Familiar, and the weakest of the three when "
+       + "red and green cannot be told apart — the numbers below say by how much." },
+  { id: "safe", name: "Blue and orange",
+    why: "Built to stay separable when red and green do not: Okabe-Ito's vermillion and "
+       + "blue for a difference, and a red-to-magenta-to-blue ramp for severity. Named "
+       + "for the colours rather than for the reader, because the colours are the fact "
+       + "and the rest is the claim underneath." },
+  { id: "muted", name: "Muted",
+    why: "The same hues as the default, at lower chroma, for a reader who finds it loud. "
+       + "Quieter is not safer — it is the same red and the same green, so it measures "
+       + "where they measure." },
+];
+
+/* Every token a set owns, as the pairs they are actually drawn in: a colour, and the
+ * ground it sits on. Two grounds each, because both are real on screen -- these are used
+ * as text on the surface and as text on their own tinted chip. */
+const PALETTE_ROLES = [
+  { token: "--diff-gone",    bg: "--diff-gone-bg",    label: "gone",    of: "a difference" },
+  { token: "--diff-new",     bg: "--diff-new-bg",     label: "arrived", of: "a difference" },
+  { token: "--sev-broken",   bg: "--sev-broken-bg",   label: "broken",  of: "severity" },
+  { token: "--sev-suspect",  bg: "--sev-suspect-bg",  label: "suspect", of: "severity" },
+  { token: "--sev-info",     bg: "--sev-info-bg",     label: "info",    of: "severity" },
+];
+
+/* What a set's tokens actually resolve to, for the set that is **not** currently stamped.
+ *
+ * The same device `graphPaletteNow()` uses to read the dark stack from inside a light
+ * page: stamp, read, put it back. Reading the stylesheet is the only way to state a
+ * colour the page is genuinely using -- a table here would be a second place a colour is
+ * written down, and the first thing to drift. */
+function paletteColours(id) {
+  const r = document.documentElement;
+  const had = r.getAttribute("data-palette");
+  if (id === "default") r.removeAttribute("data-palette");
+  else r.setAttribute("data-palette", id);
+  const cs = getComputedStyle(r);
+  const out = {};
+  for (const role of PALETTE_ROLES) {
+    out[role.token] = cs.getPropertyValue(role.token).trim();
+    out[role.bg] = cs.getPropertyValue(role.bg).trim();
+  }
+  out["--surface"] = cs.getPropertyValue("--surface").trim();
+  if (had === null) r.removeAttribute("data-palette");
+  else r.setAttribute("data-palette", had);
+  return out;
+}
+
+/* One set as a row: what it is, what it costs to read, and the evidence for both claims.
+ *
+ * Rule 8 decides the shape. Ten ratios and four separations is the whole of what is known
+ * about a set, and it is not hidden to save space -- the worst of each leads, because that
+ * is the number a bar is actually met at, and the full table sits directly beneath it. */
+function paletteRow(pal) {
+  const c = paletteColours(pal.id);
+  const on = state.palette === pal.id;
+  const surface = c["--surface"];
+
+  const rows = PALETTE_ROLES.map(role => {
+    const fg = c[role.token], bg = c[role.bg];
+    return { role, fg, bg, onSurface: contrast(fg, surface), onOwn: contrast(fg, bg) };
+  });
+  const worst = Math.min(...rows.map(r => Math.min(r.onSurface, r.onOwn)));
+  const passes = worst >= 4.5;
+
+  const seps = [
+    { what: "gone from arrived", v: separation(c["--diff-gone"], c["--diff-new"]) },
+    { what: "broken from suspect", v: separation(c["--sev-broken"], c["--sev-suspect"]) },
+    { what: "broken from info", v: separation(c["--sev-broken"], c["--sev-info"]) },
+    { what: "suspect from info", v: separation(c["--sev-suspect"], c["--sev-info"]) },
+  ];
+  const worstSep = Math.min(...seps.map(s => s.v));
+
+  const swatches = rows.map(r => `<span class="pal-sw" style="background:${esc(r.bg)};
+      color:${esc(r.fg)};border-color:${esc(r.fg)}">${esc(r.role.label)}</span>`).join("");
+
+  return `<div class="pal ${on ? "on" : ""}">
+    <button class="pal-pick" data-palette-set="${esc(pal.id)}" aria-pressed="${on}">
+      <span class="pal-name">${esc(pal.name)}</span>
+      <span class="pal-swatches">${swatches}</span>
+    </button>
+    <p class="pal-why">${esc(pal.why)}</p>
+    <div class="pal-nums">
+      <span class="ratio ${passes ? "pass" : "fail"}">${worst.toFixed(2)}:1</span>
+      <span class="pal-numlabel">worst contrast, over every colour and both the surface
+        and its own chip. ${passes ? "Clears" : "<b>Below</b>"} the 4.5:1 minimum for body
+        text.</span>
+    </div>
+    <div class="pal-nums">
+      <span class="ratio ${worstSep >= 20 ? "pass" : "fail"}">ΔE ${worstSep.toFixed(0)}</span>
+      <span class="pal-numlabel">worst separation between two colours of one channel, taken
+        as the least of normal vision, deuteranopia and protanopia.
+        ${worstSep >= 20 ? "Distinct at a glance."
+          : "<b>Close</b> — these two are hard to tell apart without the words beside them."}</span>
+    </div>
+    <details class="pal-detail"><summary>every measurement</summary>
+      <table class="pal-table"><thead><tr><th>colour</th><th>of</th>
+        <th>on the surface</th><th>on its own chip</th></tr></thead><tbody>
+        ${rows.map(r => `<tr><td>${esc(r.role.label)}</td><td>${esc(r.role.of)}</td>
+          <td class="${r.onSurface >= 4.5 ? "" : "fail"}">${r.onSurface.toFixed(2)}:1</td>
+          <td class="${r.onOwn >= 4.5 ? "" : "fail"}">${r.onOwn.toFixed(2)}:1</td></tr>`).join("")}
+      </tbody></table>
+      <table class="pal-table"><thead><tr><th>told apart</th><th>ΔE, worst of three
+        kinds of vision</th></tr></thead><tbody>
+        ${seps.map(x => `<tr><td>${esc(x.what)}</td>
+          <td class="${x.v >= 20 ? "" : "fail"}">${x.v.toFixed(1)}</td></tr>`).join("")}
+      </tbody></table>
+      <p class="hint">Measured against this theme. Switch the theme above and these change
+        — a set is two variants, and only the one in force is being drawn.</p>
+    </details>
+  </div>`;
+}
+
+/* How far apart two colours are **to someone who cannot see the difference we do**.
+ *
+ * Contrast answers "can this be read"; it says nothing about "can these two be told
+ * apart", and the second is the whole question a difference channel turns on. Red and
+ * green are both perfectly legible on white and, to a deuteranope, the same colour: the
+ * shipped pair simulates to #6c6c03 and #5b5b36, which is a ΔE of 12.7.
+ *
+ * Viénot, Brettel & Mollon (1999) for the simulation -- the standard reduction that
+ * projects onto the dichromat's plane in LMS -- and CIE Lab ΔE76 for the distance, which
+ * is coarse and is the right coarseness here: the question is "obviously different or
+ * not", not "which is closer".
+ *
+ * Computed in the page rather than written into it, for rule 13's reason. A number typed
+ * beside a swatch is a claim nobody can check and the first thing to go stale when a hex
+ * moves; this one is produced by the colours the page is actually drawing. */
+const _DICHROMAT = {
+  deuteranopia: [[1, 0, 0], [0.494207, 0, 1.24827], [0, 0, 1]],
+  protanopia:   [[0, 2.02344, -2.52581], [0, 1, 0], [0, 0, 1]],
+};
+const _RGB2LMS = [[17.8824, 43.5161, 4.11935],
+                  [3.45565, 27.1554, 3.86714],
+                  [0.0299566, 0.184309, 1.46709]];
+const _LMS2RGB = [[0.0809444479, -0.130504409, 0.116721066],
+                  [-0.0102485335, 0.0540193266, -0.113614708],
+                  [-0.000365296938, -0.00412161469, 0.693511405]];
+
+function _rgb(hex) {
+  const h = String(hex).replace("#", "").trim();
+  return [0, 2, 4].map(i => parseInt(h.substr(i, 2), 16));
+}
+function _toLinear(c) {
+  const x = c / 255;
+  return x <= 0.03928 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4);
+}
+function _mul(m, v) {
+  return m.map(row => row[0] * v[0] + row[1] * v[1] + row[2] * v[2]);
+}
+
+function simulate(hex, kind) {
+  const lin = _rgb(hex).map(c => _toLinear(c) * 255);
+  const out = _mul(_LMS2RGB, _mul(_DICHROMAT[kind], _mul(_RGB2LMS, lin)));
+  /* Rounded to eight bits, because that is the colour a screen would actually show. The
+     unrounded float is a more precise answer to a question nobody is asking -- a reader
+     looks at the quantised one, so the measurement is taken there. */
+  return out.map(c => {
+    const x = Math.max(0, Math.min(1, c / 255));
+    const v = (x <= 0.0031308 ? 12.92 * x : 1.055 * Math.pow(x, 1 / 2.4) - 0.055) * 255;
+    return Math.max(0, Math.min(255, Math.round(v)));
+  });
+}
+
+function _lab(rgb255) {
+  const [r, g, b] = rgb255.map(_toLinear);
+  const f = (t) => t > 0.008856 ? Math.cbrt(t) : 7.787 * t + 16 / 116;
+  const fx = f((0.4124 * r + 0.3576 * g + 0.1805 * b) / 0.95047);
+  const fy = f(0.2126 * r + 0.7152 * g + 0.0722 * b);
+  const fz = f((0.0193 * r + 0.1192 * g + 0.9505 * b) / 1.08883);
+  return [116 * fy - 16, 500 * (fx - fy), 200 * (fy - fz)];
+}
+
+function _deltaE(a, b) {
+  const [la, lb] = [_lab(a), _lab(b)];
+  return Math.hypot(la[0] - lb[0], la[1] - lb[1], la[2] - lb[2]);
+}
+
+/* The **worst** of the three, never an average. A pair that is obvious to most readers and
+ * invisible to some is not a pair that works; averaging would let the majority case pay
+ * for the minority one, which is the arithmetic version of not caring. */
+function separation(hexA, hexB) {
+  const A = _rgb(hexA), B = _rgb(hexB);
+  return Math.min(
+    _deltaE(A, B),
+    _deltaE(simulate(hexA, "deuteranopia"), simulate(hexB, "deuteranopia")),
+    _deltaE(simulate(hexA, "protanopia"), simulate(hexB, "protanopia")),
+  );
+}
+
 function contrast(hex1, hex2) {
   const lum = (h) => {
     const c = h.replace("#", "");
@@ -2318,11 +2549,21 @@ function contrast(hex1, hex2) {
   return ((Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05));
 }
 
+/* There were two colour pickers and a live contrast readout here, and they are gone.
+ *
+ * They were the ratified prototype's *demonstration* of design rule 6 -- a swatch pair, a
+ * WCAG ratio, a pass/fail verdict -- carried into the product whole. `state._fg` and
+ * `state._bg` were in no `DEFAULTS`, persisted nowhere, and read by nothing but their own
+ * preview chip: the control rendered, responded to every drag, computed a correct ratio,
+ * and changed no colour anywhere on the page.
+ *
+ * Invisible to both guards that exist for exactly this. The dead-setting guard walks
+ * `DEFAULTS` and these keys were never in it; the dead-control guard asks whether an
+ * attribute is read, and these were `id`s rather than routes. Rule 44's family with
+ * nothing missing on either side -- a control wired to itself.
+ *
+ * What replaced it does the thing it was demonstrating. */
 function viewSettings() {
-  const fg = state._fg || "#0d7f75";
-  const bg = state._bg || "#ffffff";
-  const r = contrast(fg, bg);
-  const pass = r >= 4.5;
   return `
   <div class="settings">
 
@@ -2352,22 +2593,16 @@ function viewSettings() {
     </section>
 
     <section class="panel">
-      <div class="panel-head"><h2>Colour</h2><span class="hint">clamped so text stays legible</span></div>
+      <div class="panel-head"><h2>Colour</h2>
+        <span class="hint">the two channels where colour carries a meaning</span></div>
       <div class="panel-body">
-        <div class="contrast-demo">
-          <div class="swatchrow">
-            <label for="fgPick" style="font-size:.78rem;min-width:5rem">Accent</label>
-            <input type="color" id="fgPick" value="${fg}">
-            <label for="bgPick" style="font-size:.78rem;min-width:5rem">On surface</label>
-            <input type="color" id="bgPick" value="${bg}">
-            <span class="ratio ${pass ? "pass" : "fail"}" id="ratioOut">${r.toFixed(2)}:1</span>
-            <span class="preview-chip" id="previewChip" style="background:${bg};color:${fg}">Sample text</span>
-          </div>
-          <div id="clampOut">${pass
-            ? `<span style="font-size:.72rem;color:var(--text-muted)">Passes WCAG AA for body text — 4.5:1 required.</span>`
-            : `<span class="clampnote"><b>✕</b><span>Rejected — ${r.toFixed(2)}:1 is below the 4.5:1 AA minimum for body text.
-                 Darken the accent or lighten the surface. The setting says why rather than silently refusing.</span></span>`}</div>
-        </div>
+        <p class="hint" style="margin:0 0 .6rem">Colour separates one meaning from another
+          in two places: <b>a difference</b> — what only one version has — and
+          <b>severity</b> in the anomaly worklist. Both spend red, so both are here. Each
+          set has a light and a dark variant and follows the theme; the accent and the
+          external mark are single colours with nothing to be confused with, so they are
+          not part of a set.</p>
+        <div class="palettes">${PALETTES.map(paletteRow).join("")}</div>
       </div>
     </section>
 
@@ -4792,25 +5027,20 @@ function wire() {
   });
   const inf = $("#inferredToggle");
   if (inf) inf.addEventListener("click", () => { state.hideInferred = !state.hideInferred; render(); });
-  const fgp = $("#fgPick"), bgp = $("#bgPick");
-  const liveContrast = () => {
-    if (!fgp || !bgp) return;
-    state._fg = fgp.value; state._bg = bgp.value;
-    const r = contrast(fgp.value, bgp.value);
-    const pass = r >= 4.5;
-    const out = $("#ratioOut"), chip = $("#previewChip"), verdict = $("#clampOut");
-    if (out)  { out.textContent = r.toFixed(2) + ":1"; out.className = "ratio " + (pass ? "pass" : "fail"); }
-    if (chip) { chip.style.background = bgp.value; chip.style.color = fgp.value; }
-    if (verdict) {
-      verdict.innerHTML = pass
-        ? `<span style="font-size:.72rem;color:var(--text-muted)">Passes WCAG AA for body text \u2014 4.5:1 required.</span>`
-        : `<span class="clampnote"><b>\u2715</b><span>Rejected \u2014 ${r.toFixed(2)}:1 is below the 4.5:1 AA minimum for body text.
-             Darken the accent or lighten the surface. The setting says why rather than silently refusing.</span></span>`;
-    }
-  };
-  /* update in place while dragging; only commit to state on release */
-  if (fgp) fgp.addEventListener("input", liveContrast);
-  if (bgp) bgp.addEventListener("input", liveContrast);
+  /* The colour set. A `data-palette-set` route, never `data-palette` -- that name is the
+     stamp on `:root`, and one attribute meaning both a route and a piece of state is the
+     defect `data-nav` cost a session to find. `data-theme-set` sits beside `data-theme`
+     for the same reason, and a test keeps the two families disjoint. */
+  $$("[data-palette-set]").forEach(b => b.addEventListener("click", () => {
+    state.palette = b.dataset.paletteSet;
+    applyPalette();
+    used("palette:" + state.palette);
+    persist();
+    /* A full render, because a set changes what is on screen everywhere it is spent -- the
+       change bands, the worklist, the badges -- and the Settings page has to redraw its own
+       swatches and every number beside them against the set now in force. */
+    render();
+  }));
 
   /* worklist */
   $$("[data-sev]").forEach(b => b.addEventListener("click", () => {
@@ -5167,6 +5397,10 @@ const WIRED_ATTRS = new Set([
   "searchopen", "searchgo", "searchline", "searchflag",
   "navid", "navtrack", "node", "open", "pane", "pin", "pinnote", "pkgnode", "pkgpick", "qual",
   "resize", "row",
+  /* `palette-set`, beside `theme-set` and for the same reason: `data-palette` and
+     `data-theme` are stamps on `:root`, and an attribute that is both a route and a piece
+     of state is what `data-nav` cost a session to find. */
+  "palette-set",
   "scale-set", "sec", "sev", "sevnav", "sort", "sqlshow", "start", "step", "theme",
   "term", "termuse", "theme-set", "thread", "threadlabel", "threadsall", "threadwhy",
   "titled", "toggle",
@@ -6235,8 +6469,11 @@ function changeNote() {
   const moved = c.only_in_base + c.only_in_compared + c.behaves;
   if (!moved && !c.edited_only) return lost + "no differences found";
   const bits = lost ? [state.revNote] : [];
+  /* The note is the one place these words appear before the bands do, so it wears the same
+     colours -- a reader who reads "53 added" in red and then finds the band in green has
+     been told two things (rule 13, in a sentence). */
   for (const [key, w] of diffBands()) {
-    if (c[key]) bits.push(`${c[key]} ${w.word}`);
+    if (c[key]) bits.push(`<span class="tone-${w.tone}">${c[key]} ${w.word}</span>`);
   }
   if (c.behaves) bits.push(`${c.behaves} behaving differently`);
   /* Stated even when it is the only thing that happened, and stated as what it is: the
@@ -6262,13 +6499,13 @@ function changeList() {
     return `<p class="hint">No differences found — the two versions are the same
        everywhere this map can see.</p>`;
   }
-  const band = (key, title, rows, why) => {
+  const band = (key, title, rows, why, tone) => {
     if (!rows.length) return "";
     const open = state.changeBand === key;
     return `<div class="chgband">
       <button class="nav-head sub" data-changeband="${key}" aria-expanded="${open}">
-        <span class="nav-title">${title}</span>
-        <span class="n num">${rows.length}</span>
+        <span class="nav-title${tone ? " tone-" + tone : ""}">${title}</span>
+        <span class="n num${tone ? " tone-" + tone : ""}">${rows.length}</span>
       </button>
       ${open ? `<div class="nav-items">
         ${why ? `<p class="hint" style="margin:.2rem .5rem .4rem">${why}</p>` : ""}
@@ -6293,7 +6530,7 @@ function changeList() {
   });
   const presence = diffBands()
     .map(([key, w]) => band(key, cap(w.word), c[key],
-          `Only in the ${key === "only_in_base" ? "base" : "compared"} version.`))
+          `Only in the ${key === "only_in_base" ? "base" : "compared"} version.`, w.tone))
     .join("");
   return open
        + presence
@@ -6655,7 +6892,7 @@ const Settings = window.DunneFlowSettings;
  * the visit: which severity tab is open, what is typed in the search box, whether a SQL
  * block is expanded. */
 const PERSISTED = [
-  "theme", "scale", "startup", "mode", "menuOrder", "trailShown", "trailCap",
+  "theme", "palette", "scale", "startup", "mode", "menuOrder", "trailShown", "trailCap",
   "density", "bandScroll", "baseRev", "comparedRev", "comparedIsNewer",
   "ambient", "hideInferred", "colWidths", "insp", "sortKey", "sortAsc",
   "egress", "aiOps", "triage", "pins", "usage", "graphLayout",
@@ -8484,6 +8721,7 @@ function wireSearchOnce() {
 
 async function boot() {
   applyTheme();
+  applyPalette();
   applyScale();
   state.view = state.startup;
   try {
@@ -8507,6 +8745,7 @@ async function boot() {
    * call at the top of boot ran against defaults the reader may have overridden. */
   adoptSettings(STATS.program);
   applyTheme();
+  applyPalette();
   applyScale();
   state.view = state.startup;
 

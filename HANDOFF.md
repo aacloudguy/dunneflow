@@ -3400,7 +3400,130 @@ stores cold on the external volume.** Same caveat as the change worklist's cold 
 is why the overlay names its step: a reader waiting thirty-five seconds is owed *the
 glossary* rather than a bar.
 
+**6e. Built 2026-08-30: colour sets in Settings (chunk B).** Tom's call, in his words:
+*"Color decisions should reside in Settings — they tend to be personal. Offer a light and
+dark mode set, and permit customization within the a11y bounds. It can be broad sets, does
+not have to permit individual color settings."*
+
+*Scope, settled with him.* A set covers **difference and severity** — the two channels where
+colour separates one meaning from another, and the two that both spend red. A reader who
+cannot separate red from green cannot separate red from amber either, so a safe diff pair
+beside a red/amber worklist would fix half a problem. Accent and external are single colours
+with no partner to be confused with and keep following the theme. Three sets: **Red and
+green** (what shipped), **Blue and orange**, **Muted**.
+
+*Two things were wrong before any of it was built, and the second is worse.*
+
+**The difference channel was defined and never spent.** `--diff-gone` and `--diff-new` sat
+in all three token blocks from the day the comparison vocabulary landed, `diffWords()`
+carried a `tone` per side, and the only thing that drew with either was `.rebuild-why`,
+added the day before. A palette setting alone would have been a swatch that changed nothing
+— design rule 16 wearing a colour picker — so the channel is now spent: the worklist's stat
+tiles, its band headings, the navigator's bands and its note, and the presence lines' `+`
+and `−`.
+
+**The Settings "Colour" panel was a live-looking demo.** Two colour pickers, a live WCAG
+ratio, a pass/fail verdict — and `state._fg` / `state._bg` were in no `DEFAULTS`, persisted
+nowhere, and read by nothing but their own preview chip. It rendered, responded to every
+drag, computed a correct ratio and applied it to nothing, since the ratified prototype.
+Invisible to *both* guards written for this family: the dead-setting one walks `DEFAULTS`
+and these keys were never in it, and the dead-control one asks whether an attribute is read,
+and these were `id`s. A control wired to itself.
+
+*The sets are CSS; JavaScript stamps `data-palette`.* `tokens.css` opens by saying no
+component declares a colour outside that block, and it is load-bearing — `cssPalette()`
+reads the stack's colours through `getComputedStyle` so there is one place a colour is
+written down. A palette table in a script would be the second. **Overrides only**: the dark
+values are already written twice, so three sets written whole would be six copies nobody
+could keep in step; each set declares what differs and `default` declares nothing and stamps
+nothing. The ladder is **specificity, never source order** (rule 29) — base `:root` (0,1,0)
+< a set's light block (0,2,0) < its dark blocks (0,3,0) — and a guard counts it rather than
+trusting it.
+
+*The route is `data-palette-set`, never `data-palette`.* One attribute meaning both a route
+and a piece of state is what `data-nav` cost a session; `data-theme-set` already sits beside
+`data-theme` for the same reason, and a guard keeps them disjoint.
+
+**Rule 69 came out of the arithmetic, and it is the find.** Contrast says whether a colour
+can be *read* and nothing about whether two can be told *apart* — and the shipped palette
+passed the first bar and failed the second for its whole life. `--sev-broken` and
+`--sev-suspect` are 6.47:1 and 7.09:1 on white and, simulated for deuteranopia, **ΔE 5.3
+apart**: the same colour. The difference pair was 12.7. Every check that existed passed,
+because they all asked the answerable question rather than the useful one.
+
+So a set states both, computed in the page from the tokens it is actually drawing (rule 13 —
+a hex typed beside a swatch is a claim nobody can check). `separation()` implements Viénot,
+Brettel & Mollon 1999 and takes the **worst** of normal vision, deuteranopia and protanopia,
+never an average: a pair obvious to most readers and invisible to some is not a pair that
+works. Measured:
+
+```
+                      contrast (worst)   separation (worst)
+  Red and green            5.34:1              ΔE  5     ← broken against suspect
+  Blue and orange          4.86:1              ΔE 43
+  Muted                    4.84:1              ΔE 10
+```
+
+*Two things the arithmetic settled that guessing would not have.* **Red and green cannot be
+rescued by tuning** — every chroma and every lightness inside that hue family measures
+between 4 and 14, which is why `muted` is a *quieter* option and not a safer one and says so
+beside its own numbers. And **a difference in lightness survives colour blindness where a
+difference in hue does not**, so forcing both colours of a pair to the same contrast ratio
+throws away the one axis that always works; the shipped dark pair is separable partly
+because it sits at 6.06:1 and 9.63:1, which nobody intended. `muted`'s dark variant keeps
+that spread deliberately.
+
+*How the values were arrived at.* Not chosen and checked — a hue and a saturation were
+chosen and the **lightness walked** until the colour cleared 5.5:1 against the ground it is
+actually drawn on (5.5 rather than AA's 4.5, because the shipped set sits near 6.5 and a bar
+met exactly is a bar failed by the next edit). `safe` starts from Okabe-Ito: as published,
+its vermillion is 3.87:1 on white and fails outright, so it moves along its own hue until it
+passes. Severity there cannot be red/amber/blue — that is the pair the set exists to replace
+— so it is a red → magenta → blue ramp, keeping a warm-to-cool ordering.
+
+*Guards.* Nine, mutation-tested at **13/13** over a proved-green baseline (rule 59) — after a
+first run at 8/13. **Three of the five survivors were the guard being weak**, which is now
+the sixth, seventh and eighth time in three sessions:
+
+- counting `var(--diff-gone)` anywhere passed on a mutation that pointed the bare
+  `.tone-gone` at `--text` while a compound `.chgstat.tone-gone` kept it — a *partial* loss,
+  the hardest kind to see. It anchors to the bare class now;
+- `tone: newer ?` appearing passed with one of the two sides pinned to a literal. It counts
+  both;
+- `setAttribute` appearing passed on a mutation that deleted the *restore* outright, because
+  the same function stamps the set it is about to measure. It names the saved variable now.
+
+*Driven in a real window*, which is where the rest of it was checked: every set in light and
+in dark against a live 53/0/18/15 comparison; the polarity flipped through all three states
+with `fetch` counted at **zero** and the colours following the words (`53 deleted` red →
+`53 added` green → back); the set switched from Settings with the worklist, the navigator's
+note and the anomaly badges all moving together; `elementFromPoint` on the chooser; and the
+console read — clean, self-check green.
+
+*One false finding I nearly reported.* `elementFromPoint` said the first chooser row landed
+on the trail bar, and the geometry says the two panes do not overlap at all: my check asked
+whether the row was inside the **window** when the question is whether it is inside the
+**scroller**. Rule 50 exactly — a guard naming the right case and measuring the wrong box —
+in the driving rather than in the code.
+
+### Paused 2026-08-30, after the colour sets
+
+Working tree clean; all three gates green; `output/mensores` untouched.
+
+**Colour is a Setting, and the sets are measured rather than asserted.** Three of them, each
+with a light and a dark variant, covering the two channels where colour separates one
+meaning from another. The difference channel is finally spent, so the setting changes
+something. **Rule 69** is the find: contrast says whether a colour can be read and nothing
+about whether two can be told apart, and the shipped palette had been failing that second
+bar since the day it was written — `broken` and `suspect` are the same colour to a
+deuteranope, at ΔE 5.3.
+
+Read `6e`.
+
+
 ### Paused 2026-08-30, after switching the base
+
+
 
 Working tree clean; all three gates green; `output/mensores` untouched and still serving
 both revisions.
@@ -3468,15 +3591,17 @@ payload set live, always. The shape of the work:
 
 </details>
 
-**2. The diff palette (chunk B) — next.** `--diff-gone` / `--diff-new` exist in all three
-`tokens.css` blocks and are used by the strip's vocabulary already. What is owed is the
-**Setting** and its a11y clamp — and design rule 6 is **already implemented**: `contrast()`
-(`shell.js:1734`) is a correct WCAG ratio and `pointerPasses()` clamps at 3:1 against the
-graph's own ground. Generalise `pointerPasses` into a shared clamp over (colour, ground,
-bar), keep `pointerColor` as a caller so there is one clamp rather than two, and add a
-colourblind-safe pair beside red/green with the computed ratio shown against both themes.
+**2. The diff palette (chunk B) — done 2026-08-30, see `6e`, and it grew.** The plan was a
+Setting and an a11y clamp beside the existing `pointerPasses`. What it became, on Tom's
+instruction, is three colour **sets** covering difference *and* severity — and the reason it
+grew is rule 69: generalising the contrast clamp would have shipped a red/green pair that
+clears every contrast bar and is one colour to a deuteranope. `pointerPasses` was **not**
+generalised in the end, and that is the part worth keeping: it clamps a *free picker* at 3:1
+against the graph's own ground, while a set is a fixed choice validated at build time by a
+test. Two different questions, and one clamp answering both would have made the pointer's
+bar speak for colours nobody can pick.
 
-**3. The overlays (chunk C).** Code browser first — nearly free, because
+**3. The overlays (chunk C) — next.** Code browser first — nearly free, because
 `SourceStore.text(path, revision=…)` and `hash_of(path, revision=…)` already take a
 revision and the file-level pairing is one query with zero body reads (613 identical, 12
 modified, 3 added, 0 removed), which also says which twelve files are worth `difflib`.

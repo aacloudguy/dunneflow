@@ -5,7 +5,7 @@ It exists so a fresh context can be useful in a few minutes instead of an hour.
 
 | Read | For |
 |---|---|
-| `CLAUDE.md` | The rules. 68 engineering rules and 26 dashboard design rules, each earned from a false result on real code. **Binding.** |
+| `CLAUDE.md` | The rules. 69 engineering rules and 26 dashboard design rules, each earned from a false result on real code. **Binding.** |
 | `HANDOFF.md` | The chronological record — what was built when, what it cost, what broke. ~1,700 lines. Read *sections*, not the whole thing. |
 | **this file** | Where things are, what is done, what we are doing now, what not to re-open. |
 | Artifact `f993d319-d2b7-4217-9130-cdbba698d1bc` | The ratified dashboard design — a complete working UI, the source of truth for every view. Read it with the **Artifact tool**, not from a screenshot. |
@@ -66,7 +66,7 @@ no build step. deck.gl is vendored into `web/vendor/`.
 | `static/graph.js` | **the engine**: payload to pixels, and nothing about this page |
 | `static/settings.js` | the store — per program, versioned |
 | `static/shading.js` | the sphere shading, one extension class per lighting |
-| `static/tokens.css` | the tokens; **no colour is declared outside this file** |
+| `static/tokens.css` | the tokens and the three colour sets; **no colour is declared outside this file** |
 
 > **The boundary that matters** is the container. The engine draws inside the element it is
 > handed and touches no DOM outside it; what it has to say — selection, counts, fps,
@@ -138,8 +138,8 @@ with stdlib `tokenize`).
 
 **Not built:** `dunneflow infer` (the model pass) · the temporal **overlays** — a second
 point in time is on screen as a *worklist* and as the base itself, but nothing is layered
-over the code, the tables or the stack yet · the diff palette · attestation · the project
-profile · document mode's narrative view · packaging as a binary · any language but Python.
+over the code, the tables or the stack yet · attestation · the project profile · document
+mode's narrative view · packaging as a binary · any language but Python.
 
 **The revision spine is in, and both ends of a pair are readable.** `WORKING` is a *state*
 rather than an id, and a revision is identified by when it was captured; `seal()` keeps the
@@ -158,6 +158,57 @@ running that program-wide is most of design rule 15's doorway panel. It says hon
 is not computed yet.
 
 ## What we are doing now
+
+**Colour sets in Settings — built 2026-08-30.** Tom's call: colour decisions are personal
+and belong in Settings, offered as broad sets rather than a picker per token, each with a
+light and a dark variant, customisable within the a11y bounds.
+
+A set covers the two channels where colour separates one *meaning* from another, and they
+are the two that both spend red: **the difference channel** and **severity**. Three sets —
+**Red and green** (what shipped), **Blue and orange**, **Muted**.
+
+**Rule 69 is the find, and it is why the chunk grew.** Contrast says whether a colour can be
+*read* and nothing about whether two can be told *apart* — and the shipped palette had been
+failing that second bar since the day it was written. `--sev-broken` and `--sev-suspect` are
+6.47:1 and 7.09:1 on white and, simulated for deuteranopia, **ΔE 5.3 apart**: the same
+colour. Every check that existed passed, because they all asked the answerable question.
+
+```
+                      contrast (worst)   separation (worst)
+  Red and green            5.34:1              ΔE  5     ← broken against suspect
+  Blue and orange          4.86:1              ΔE 43
+  Muted                    4.84:1              ΔE 10
+```
+
+- **The sets are CSS; JavaScript stamps `data-palette`.** `tokens.css` says no component
+  declares a colour outside it, and the graph already depends on that. Overrides only, and
+  the ladder is **specificity, never source order** (rule 29), counted by a guard.
+- **`separation()`** implements Viénot, Brettel & Mollon 1999 and takes the **worst** of
+  normal vision, deuteranopia and protanopia — never an average. Computed in the page from
+  the tokens it is drawing, so no number beside a swatch is a claim nobody can check.
+- **The difference channel is finally spent.** `--diff-gone` / `--diff-new` had sat in all
+  three token blocks since the comparison vocabulary landed, with `diffWords()` carrying a
+  `tone` per side and *nothing* drawing it. Without this the setting would have been a
+  swatch that changed nothing.
+- **The dead "Colour" demo is gone** — two pickers, a live ratio and a verdict, reading
+  `state._fg` / `state._bg`, which were in no `DEFAULTS`, persisted nowhere and applied to
+  nothing since the ratified prototype. A control wired to itself, invisible to both guards
+  written for that family.
+
+Two things the arithmetic settled: **red and green cannot be rescued by tuning** (every
+chroma and lightness in that hue family measures 4–14, so `muted` is quieter and not safer,
+and says so beside its own numbers), and **a lightness difference survives colour blindness
+where a hue difference does not** — so forcing a pair to equal contrast throws away the one
+axis that always works.
+
+Guards mutation-tested at **13/13** over a proved-green baseline, after a first run at 8/13;
+three of the five survivors were the *guard* being weak.
+
+**Paused here 2026-08-30.** See `HANDOFF.md` `6e`. **Next: the overlays (chunk C)** — code
+browser first, then tables and the worklist, then the graph as `colorBy: 'change'`, which
+still wants Tom's decision on the colour channel.
+
+## Before that: switching the base (2026-08-30)
 
 **Switching the base — built 2026-08-30.** The reading end is settable. `buildRevControls`'
 trailing disabled row — `— reading a past revision arrives next —` — is gone, and removing
@@ -195,9 +246,7 @@ switch reloads.
 survivors were the *guard* being weak rather than the mutation — the fourth and fifth time
 in two sessions.
 
-**Paused here 2026-08-30.** See `HANDOFF.md` `6d` and "Paused 2026-08-30, after switching the
-base". **Next: the diff palette (chunk B)** — design rule 6 is already implemented, so
-generalise `pointerPasses` rather than rebuilding it — then the overlays, code browser first.
+See `HANDOFF.md` `6d` and "Paused 2026-08-30, after switching the base".
 
 ## Before that: base and compared (2026-08-30)
 

@@ -191,11 +191,21 @@ ranked against each other. A prerelease suffix and an equal pair both rank nothi
 On the two Society trees this opens on **53 added** with no click; on `output/mensores`,
 whose versions predate the column, it says *"no versions to compare"*.
 
-**Next, and the seam this stopped at: switching the base.** Tom chose *rebuild every switch*.
-`serve()` builds the payload, the code list, both vocabulary lanes and the cover from one
-graph at boot and `_Handler` holds that payload from construction, so this is a server
-lifecycle change plus a client progress state. `revB` was never settable from the UI, so it
-is new capability rather than a rewiring.
+**Paused here 2026-08-30.** See `HANDOFF.md`, "Paused 2026-08-30, after base and compared",
+which carries the open list in the order agreed.
+
+**Next: switching the base.** Tom chose *rebuild every switch* — one payload set live,
+always. `serve()` builds the payload, the code list, both vocabulary lanes and the cover
+from one graph at boot and `_Handler` holds that payload from construction, so this is a
+server lifecycle change (swap the store under the lock, rebuild the payload in place, clear
+the diff cache) plus a client progress state for the measured 10.2 s. `baseRev` was never
+settable from the UI — the pair control's trailing disabled row says so, and removing that
+row is the work. Two things already prepared for it: `_r_changes` defaults its base from
+the served graph rather than from capture order, and `changes.build` rides the serving
+connection on whichever end is the base, so rule 58's 36x survives the switch.
+
+Then the diff palette (design rule 6 is **already implemented** — generalise
+`pointerPasses`, do not rebuild it), then the overlays, code browser first.
 
 ## What we were doing immediately before
 

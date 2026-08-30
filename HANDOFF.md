@@ -3269,3 +3269,84 @@ appear on the auto path" passed while the value was thrown away. It strikes the 
 out before looking now. **That is the second time in this session a guard was the weak half
 rather than the mutation** — the first was `routines_after` containing `after` rather than
 equalling it — and both were found only by running the mutation.
+
+### Paused 2026-08-30, after base and compared
+
+Working tree clean; all three gates green; `output/mensores` untouched and still serving
+both revisions.
+
+**The vocabulary is settled and the ordering problem is gone rather than solved.** There is
+no earlier end and no later end — there is the **base** (what the map shows) and the
+**compared** (what it is held against), and *added* / *deleted* is an interpretation the
+reader owns, derived from the two versions where they say enough and assumed where they do
+not. The four-step ordering plan from the previous pause is superseded; step 3 in
+particular ("state capture order as capture order") is gone, and that is an improvement —
+it was an honest label on a claim the tool should never have been making.
+
+## Still open, in the order agreed
+
+**1. Switching the base — next, and as proposed.** Tom chose *rebuild every switch*: one
+payload set live, always. The shape of the work:
+
+- `serve()` builds the payload, the 628-file code list, both vocabulary lanes and the cover
+  from **one graph opened at boot**, and `_Handler` receives that payload at construction.
+  So a base switch is a server-lifecycle change: swap `live.store` under `live.lock`,
+  rebuild the payload **in place** (the handler holds it by reference), rebuild
+  `live.files`, `live.naming`, `live.glossary`, `live.cover` and `live.root`, and clear
+  `live.changes` — every cached diff is keyed on a pair that no longer applies.
+- A **new endpoint** to ask for it, and a client **progress state**. The measured cost is
+  10.2 s of which the glossary is 2.1 s; design rule 1 and rule 35 both say the reader must
+  see "rebuilding for <version>…" rather than a page that appears to have frozen.
+- **`baseRev` was never settable from the UI** — `buildRevControls` sets only the compared
+  end, and its trailing disabled row says so in as many words. That row is the thing this
+  work removes.
+- Two things already prepared for it: `_r_changes` defaults its base from
+  `self._live.graph_db` rather than `graphs[0]`, so the map and the comparison cannot
+  disagree about which version is on screen; and `changes.build` rides the serving
+  connection on whichever end is the base, so the 36x (rule 58) survives the switch.
+- Watch for: a rebuild that leaves `state.selected` pointing at a node id the new base does
+  not have. Ids are position-independent (`make_id`), so most survive — but a routine only
+  the old base had does not, and "selected something that is not there" must be a stated
+  outcome rather than a blank inspector.
+
+**2. The diff palette (chunk B).** `--diff-gone` / `--diff-new` exist in all three
+`tokens.css` blocks and are used by the strip's vocabulary already. What is owed is the
+**Setting** and its a11y clamp — and design rule 6 is **already implemented**: `contrast()`
+(`shell.js:1734`) is a correct WCAG ratio and `pointerPasses()` clamps at 3:1 against the
+graph's own ground. Generalise `pointerPasses` into a shared clamp over (colour, ground,
+bar), keep `pointerColor` as a caller so there is one clamp rather than two, and add a
+colourblind-safe pair beside red/green with the computed ratio shown against both themes.
+
+**3. The overlays (chunk C).** Code browser first — nearly free, because
+`SourceStore.text(path, revision=…)` and `hash_of(path, revision=…)` already take a
+revision and the file-level pairing is one query with zero body reads (613 identical, 12
+modified, 3 added, 0 removed), which also says which twelve files are worth `difflib`.
+Then tables and the worklist. Then the graph as `colorBy: 'change'` — **put the
+colour-channel decision to Tom before building that one**; design rule 4 says colour
+carries one dimension at a time, so a comparison should *take over* the channel rather than
+paint red and green over fifty-two plate hues.
+
+*Unchanged from before, and none of it blocked by the above:* the rendered markdown is not
+revision-named, so a second analysis overwrites the first's map; `--revision` on `analyze`
+is still unimplemented (and is now a smaller question than it was — a version is read from
+the program, so what `--revision` would add is a reader's *declaration* where the program
+says nothing); the navigator's search box pinned-when-open / icon-when-closed (decided
+2026-08-30, not built); `m.<module>` as a language feature, with research owed on prior art
+first; `CURIOSITIES`; the worklist's two jump buttons; the two vocabulary-lane precision
+defects; per-plate sphere scaling and stack orientation; packaging as a binary. One question
+never answered: **what is an occurrence for LOST_EDGE** — the 142 callers, or the rival
+definitions? 93 of Mensores' 106 findings are LOST_EDGE, so it decides the feature. And the
+blank-graph fix (rule 49) is still reasoned and guarded rather than seen.
+
+*Practical note.* The two-version corpus used to verify this work was **removed** — 250 MB,
+and Tom manages disk. Rebuild it with:
+
+```bash
+uv run dunneflow analyze ../society-2026-08-26/src --name verifycheck
+uv run dunneflow revisions output/verifycheck --seal --label "handed over, undocumented"
+uv run dunneflow analyze ../society-2026-08-29/src --name verifycheck
+```
+
+It is the only program directory whose revisions carry a `tree` and a version;
+`output/mensores` predates both columns and honestly reports empty, which is what makes it
+the useful test of the *fallback* path.

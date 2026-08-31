@@ -202,7 +202,9 @@ _authorization.py            18 routines · 36 flows within · 0 unlinked
 
 **Tom, after the last fix: _"Fixed! I love this, thank you!"_**
 
-**Next, from the approved plan** (`~/.claude/plans/squishy-conjuring-kay.md`), chunks 3 and 4:
+**Next, confirmed by Tom at the pause — _"Call site arguments and edges will be next."_**
+From the approved plan (`~/.claude/plans/squishy-conjuring-kay.md`), chunks 3 and 4, in that
+order: the panel in 2 wants what 1 records.
 
 1. **The call-site arguments, as written** — Tom's call over approximating them from the
    callee's declaration. `CallSite` gains `args`, the Python extractor reads each argument's

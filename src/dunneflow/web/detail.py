@@ -58,6 +58,12 @@ def _one(store: Store, sql: str, args: dict[str, Any]) -> dict[str, Any] | None:
 
 def classify(node_id: str) -> tuple[str, dict[str, Any]]:
     """The kind of thing an id names, and the parameters that will find it."""
+    if node_id.startswith("mod:"):
+        # The stack's other altitude. A dotted module name holds no colon, so this needs
+        # none of `bnd:`'s care about splitting.
+        return "MODULE", {"module": node_id[len("mod:"):]}
+    if node_id.startswith("outside:"):
+        return "OUTSIDE", {"kind": node_id[len("outside:"):]}
     if node_id.startswith("const:"):
         rest = node_id[len("const:"):]
         module, _, name = rest.rpartition(".")
@@ -178,6 +184,109 @@ def _boundary(store: Store, node_id: str, params: dict[str, Any]) -> dict[str, A
         "identity": {"bkind": params["kind"], "target": params["target"],
                      "source_status": "OPAQUE"},
         "in": {"callers": touchers, "entrypoints": []},
+        "where": None,
+    }
+
+
+def _module(store: Store, node_id: str, params: dict[str, Any]) -> dict[str, Any] | None:
+    """One file, as the module level draws it: what it declares and who it talks to.
+
+    Neighbours are **modules, not routines**, and that is the altitude rather than a
+    summary: at this height "who calls this" is answered by 85 names a reader can act on,
+    where the 1,400 calls under them are the haystack (rule 45). The routines are listed
+    in full beneath -- rule 8, a reference list is never bounded -- and each one is an
+    ordinary node id, so opening it is the same selection every other row makes.
+
+    A module the fold invented but the store has never heard of returns `None`, the same
+    as any other id that finds nothing: `found: false` and an empty shape are different
+    claims and only one of them means the map is wrong.
+    """
+    args = {"module": params["module"]}
+    routines = _rows(store, queries.MODULE_ROUTINES, args)
+    structures = _rows(store, queries.MODULE_STRUCTURES, args)
+    constants = _rows(store, queries.MODULE_CONSTANTS, args)
+    if not (routines or structures or constants):
+        return None
+
+    ident = _one(store, queries.MODULE_DETAIL, args) or {}
+    inner = _one(store, queries.MODULE_INNER_CALLS, args) or {}
+    return {
+        "kind": "MODULE",
+        "id": node_id,
+        "label": params["module"].rpartition(".")[2] or params["module"],
+        "identity": {
+            "module": params["module"],
+            "file": ident.get("file") or "",
+            "doc": ident.get("doc") or "",
+            # What the node on the plate stands for. Stated rather than left to be counted
+            # off the lists below, because the lists are what the reader scrolls and the
+            # number is what the picture drew (design rule 1).
+            #
+            # **A kind it holds none of is absent, never zero**, and the two are one shape
+            # because `graph.py` builds the same map by counting what is there. Written
+            # with three fixed keys it disagreed with the picture on the first module that
+            # declares only routines -- which is rule 13 between a card and a node, and the
+            # guard caught it.
+            "holds": {k: v for k, v in (("ROUTINE", len(routines)),
+                                        ("STRUCTURE", len(structures)),
+                                        ("CONSTANT", len(constants))) if v},
+            "folded": len(routines) + len(structures) + len(constants),
+            # The calls that never leave: counted here and drawn nowhere, which is the
+            # same decision `_add_edges` makes and the same number.
+            "inner_calls": int(inner.get("calls") or 0),
+        },
+        "holds": {"routines": routines, "structures": structures,
+                  "constants": constants},
+        "in": {"callers": _rows(store, queries.MODULE_CALLERS, args), "entrypoints": []},
+        "out": {"calls": _rows(store, queries.MODULE_CALLEES, args)},
+        "touches": {
+            "boundaries": _rows(store, queries.MODULE_BOUNDARIES, args),
+            "sql": [], "net": [],
+            "artefacts": _rows(store, queries.MODULE_ARTEFACTS, args),
+        },
+        # The whole file, so the code browser opens it rather than a span inside it.
+        "where": {"file": ident.get("file") or "", "first": 0, "last": 0},
+    }
+
+
+def _outside(store: Store, node_id: str, params: dict[str, Any]) -> dict[str, Any] | None:
+    """One boundary kind, as the module level draws it: everything the program touches
+    through this door.
+
+    A different question from `bnd:`, which answers for **one endpoint**. This node stands
+    for 991 of them, so it counts them and lists them in full rather than borrowing the
+    endpoint card with a wildcard -- a card saying "3 callers" where the truth is 214 is
+    worse than one saying nothing (rule 32).
+    """
+    kind = params["kind"]
+    artefacts = kind == "ARTEFACT"
+    row = _one(store, queries.OUTSIDE_ARTEFACT_DETAIL if artefacts
+               else queries.OUTSIDE_DETAIL, params) or {}
+    if not int(row.get("hits") or 0):
+        return None
+    targets = _rows(store, queries.OUTSIDE_ARTEFACT_TOP if artefacts
+                    else queries.OUTSIDE_TOP_TARGETS, params)
+    modules = _rows(store, queries.OUTSIDE_ARTEFACT_MODULES if artefacts
+                    else queries.OUTSIDE_MODULES, params)
+    return {
+        # ARTEFACT keeps its own kind here as it does on the plate: naming a file is a
+        # choice the authors made and touching one is something the code does, and rule 17
+        # is why the difference is worth a separate node.
+        "kind": "ARTEFACT" if artefacts else "BOUNDARY",
+        "id": node_id,
+        "label": kind,
+        "identity": {
+            "bkind": kind,
+            # Design rule 8: nothing out here was analysed, so nothing out here may claim
+            # to have been.
+            "source_status": "OPAQUE",
+            "folded": int(row.get("targets") or 0),
+            "hits": int(row.get("hits") or 0),
+            "callers": int(row.get("callers") or 0),
+            "direction": row.get("direction") or "",
+        },
+        "holds": {"targets": targets},
+        "in": {"callers": modules, "entrypoints": []},
         "where": None,
     }
 
@@ -353,6 +462,43 @@ def hover_card(store: Store, node_id: str) -> dict[str, Any]:
     """
     kind, params = classify(node_id)
 
+    if kind == "MODULE":
+        detail = _module(store, node_id, params)
+        if detail is None:
+            return {"found": False, "id": node_id, "reason": "no such node in this map"}
+        ident = detail["identity"]
+        return {"found": True, "id": node_id, "kind": "MODULE",
+                "name": detail["label"], "module": ident["module"],
+                "file": ident["file"],
+                "holds": ident["holds"], "folded": ident["folded"],
+                "inner_calls": ident["inner_calls"],
+                "callers": len(detail["in"]["callers"]),
+                "callees": len(detail["out"]["calls"]),
+                # Grouped by kind with the targets counted, which is the same shape
+                # `_hover_touches` sends for a routine so the card renders one way.
+                "touches": [{"kind": str(b["kind"]), "n": int(b["targets"] or 0)}
+                            for b in detail["touches"]["boundaries"]],
+                "gov": [],
+                # A module's docstring is the one thing here that says *why the file
+                # exists*, and it is the only WHY at this altitude -- a module has no
+                # leading comment of its own.
+                "why": ({"text": str(ident["doc"]).strip().split("\n")[0],
+                         "source": "module docstring", "line": 1}
+                        if str(ident.get("doc") or "").strip() else None)}
+
+    if kind == "OUTSIDE":
+        detail = _outside(store, node_id, params)
+        if detail is None:
+            return {"found": False, "id": node_id, "reason": "no such node in this map"}
+        ident = detail["identity"]
+        return {"found": True, "id": node_id, "kind": detail["kind"],
+                "source_status": "OPAQUE",
+                "bkind": ident["bkind"], "target": "",
+                "folded": ident["folded"],
+                "hits": ident["hits"], "callers": ident["callers"],
+                "direction": ident["direction"],
+                "touches": [], "gov": [], "why": None}
+
     if kind == "BOUNDARY":
         row = _one(store, queries.HOVER_BOUNDARY_NODE, params) or {}
         return {"found": True, "id": node_id, "kind": "BOUNDARY",
@@ -461,7 +607,11 @@ def describe(store: Store, node_id: str,
     kind, params = classify(node_id)
 
     detail: dict[str, Any] | None
-    if kind == "CONSTANT":
+    if kind == "MODULE":
+        detail = _module(store, node_id, params)
+    elif kind == "OUTSIDE":
+        detail = _outside(store, node_id, params)
+    elif kind == "CONSTANT":
         detail = _constant(store, params)
     elif kind == "BOUNDARY":
         detail = _boundary(store, node_id, params)

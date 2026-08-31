@@ -282,6 +282,176 @@ WHERE routine_id = :id
 ORDER BY line
 """
 
+# --------------------------------------------------------------------------- #
+# MODULES -- the stack's other altitude
+#
+# `graph.py` at `level="module"` folds every routine, constant and structure a file
+# declares into one node. These answer for that node, and they all key on the dotted
+# module rather than on a path: `routines.module` is what the fold itself grouped by,
+# so the card and the picture cannot come apart (rule 13).
+#
+# Every one of them scopes *out of* the module as well as into it. "Who calls this
+# module" means a caller somewhere else -- a routine calling its neighbour in the same
+# file is the module talking to itself, which is the same thing `_add_edges` counts and
+# does not draw. Reported as a count, never as an edge.
+# --------------------------------------------------------------------------- #
+
+MODULE_DETAIL = """
+SELECT :module AS module, MIN(path) AS file, MIN(doc) AS doc
+FROM files
+WHERE module = :module
+"""
+
+# What it declares, in one pass per kind. Three statements rather than a union, because
+# each table names its rows differently and a union would have to blank the columns the
+# others do not have -- which is the routine-shaped object with fields missing that
+# `describe()` refuses to return.
+MODULE_ROUTINES = """
+SELECT id, name, qualname, line_start AS line, visibility, is_async, class_name
+FROM routines
+WHERE module = :module
+ORDER BY line_start
+"""
+
+MODULE_STRUCTURES = """
+SELECT id, name, kind, line
+FROM structures
+WHERE module = :module
+ORDER BY line
+"""
+
+MODULE_CONSTANTS = """
+SELECT name, value, type, line, private
+FROM constants
+WHERE module = :module
+ORDER BY line
+"""
+
+# Who reaches in, by module rather than by routine. 85 modules calling one is a list a
+# reader can act on; the 1,400 individual calls under it are the haystack again (rule 45).
+MODULE_CALLERS = """
+SELECT src.module          AS module,
+       COUNT(*)            AS calls,
+       COUNT(DISTINCT src.id) AS routines,
+       MAX(c.confidence = 'CERTAIN') AS certain
+FROM calls c
+JOIN routines src ON src.id = c.caller_id
+JOIN routines dst ON dst.id = c.callee_id
+WHERE dst.module = :module AND src.module <> :module AND c.at_boundary = 0
+GROUP BY src.module
+ORDER BY calls DESC, src.module
+"""
+
+MODULE_CALLEES = """
+SELECT dst.module          AS module,
+       COUNT(*)            AS calls,
+       COUNT(DISTINCT dst.id) AS routines,
+       MAX(c.confidence = 'CERTAIN') AS certain
+FROM calls c
+JOIN routines src ON src.id = c.caller_id
+JOIN routines dst ON dst.id = c.callee_id
+WHERE src.module = :module AND dst.module <> :module AND c.at_boundary = 0
+GROUP BY dst.module
+ORDER BY calls DESC, dst.module
+"""
+
+# What it touches, grouped the way the folded plate groups it: by kind, with the
+# distinct targets counted rather than listed. The targets themselves are one click
+# away on the routine that touches them, which is the level that knows the line.
+MODULE_BOUNDARIES = """
+SELECT b.kind                        AS kind,
+       MIN(b.direction)              AS direction,
+       COUNT(*)                      AS hits,
+       COUNT(DISTINCT b.target)      AS targets,
+       COUNT(DISTINCT b.routine_id)  AS routines
+FROM boundaries b
+JOIN routines r ON r.id = b.routine_id
+WHERE r.module = :module
+GROUP BY b.kind
+ORDER BY hits DESC, b.kind
+"""
+
+MODULE_ARTEFACTS = """
+SELECT a.name AS name, MIN(a.ext) AS ext, MIN(a.kind) AS kind, COUNT(*) AS mentions
+FROM artefacts a
+JOIN routines r ON r.id = a.routine_id
+WHERE r.module = :module
+GROUP BY a.name
+ORDER BY mentions DESC, a.name
+"""
+
+# How much of this module never leaves it. The number `_add_edges` counts and refuses to
+# draw, asked of the store so the card and the picture agree about one program.
+MODULE_INNER_CALLS = """
+SELECT COUNT(*) AS calls
+FROM calls c
+JOIN routines src ON src.id = c.caller_id
+JOIN routines dst ON dst.id = c.callee_id
+WHERE src.module = :module AND dst.module = :module AND c.at_boundary = 0
+"""
+
+# --------------------------------------------------------------------------- #
+# OUTSIDE -- one boundary kind, folded
+#
+# The module level draws all of `STDIO`'s 991 targets as one node, so the card has to
+# answer for the kind rather than for a target. `bnd:` already answers for one endpoint
+# and this is deliberately not that query with a wildcard: the counts differ (991 targets
+# against one) and a card that says "3 callers" where the truth is 214 is worse than one
+# that says nothing.
+# --------------------------------------------------------------------------- #
+
+OUTSIDE_DETAIL = """
+SELECT COUNT(*)                     AS hits,
+       COUNT(DISTINCT target)       AS targets,
+       COUNT(DISTINCT routine_id)   AS callers,
+       MIN(direction)               AS direction
+FROM boundaries
+WHERE kind = :kind
+"""
+
+OUTSIDE_TOP_TARGETS = """
+SELECT target, COUNT(*) AS hits, COUNT(DISTINCT routine_id) AS callers
+FROM boundaries
+WHERE kind = :kind AND target <> ''
+GROUP BY target
+ORDER BY hits DESC, target
+"""
+
+OUTSIDE_MODULES = """
+SELECT r.module AS module, COUNT(*) AS hits
+FROM boundaries b
+JOIN routines r ON r.id = b.routine_id
+WHERE b.kind = :kind
+GROUP BY r.module
+ORDER BY hits DESC, r.module
+"""
+
+# The artefact plate folds too, and it is not a boundary kind -- naming a file is not
+# touching one (rule 17). Its own pair, for the same reason `ARTEFACT_NODES` is separate.
+OUTSIDE_ARTEFACT_DETAIL = """
+SELECT COUNT(*) AS hits, COUNT(DISTINCT name) AS targets,
+       COUNT(DISTINCT routine_id) AS callers
+FROM artefacts
+WHERE name <> ''
+"""
+
+OUTSIDE_ARTEFACT_TOP = """
+SELECT name AS target, COUNT(*) AS hits, COUNT(DISTINCT routine_id) AS callers
+FROM artefacts
+WHERE name <> ''
+GROUP BY name
+ORDER BY hits DESC, name
+"""
+
+OUTSIDE_ARTEFACT_MODULES = """
+SELECT r.module AS module, COUNT(*) AS hits
+FROM artefacts a
+JOIN routines r ON r.id = a.routine_id
+WHERE a.name <> ''
+GROUP BY r.module
+ORDER BY hits DESC, r.module
+"""
+
 # GOVERNANCE and WHY. Comments carry `line` so the inspector can place each one
 # against the thing it explains rather than pooling them in a block -- which is
 # the whole reason the comment gap was worth closing.

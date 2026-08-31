@@ -23,7 +23,7 @@ import socket
 import threading
 import time
 import webbrowser
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import partial
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -40,7 +40,16 @@ from .code import build_file, build_files
 from .cover import anomalies as build_anomalies
 from .cover import build as build_cover
 from .detail import describe, hover_card
-from .graph import GraphModel, build, pkg_params, root_package
+from .graph import (
+    LEVELS,
+    MIN_DISK_BY_LEVEL,
+    MIN_DISK_CEILING,
+    MIN_DISK_FLOOR,
+    GraphModel,
+    build,
+    pkg_params,
+    root_package,
+)
 from .layout import structural
 from .search import search_files, search_in_file
 from .threads import cohort, for_node
@@ -145,7 +154,59 @@ def columnar(model: GraphModel) -> dict[str, Any]:
                   "confidence": e_conf, "disk": e_disk, "weight": e_weight},
         "disks": model.disks,
         "stats": stats,
+        # Which altitude these arrays are. The page holds one payload per level and has to
+        # be able to ask what it is holding rather than remember what it asked for -- a
+        # request that was clamped or refused would otherwise leave the control naming one
+        # thing while the picture drew another (rule 67).
+        "level": model.level,
     }
+
+
+def default_level() -> tuple[str, int]:
+    """The altitude a session opens at: every thing the program declares.
+
+    Named rather than written out, because it is the seed of the payload cache *and* the
+    fallback for a request that asks for nothing, and two spellings of one default is how
+    the two come apart (rule 51).
+    """
+    return ("routine", MIN_DISK_BY_LEVEL["routine"])
+
+
+def read_level(q: dict[str, list[str]]) -> tuple[str, int]:
+    """Which altitude a request is asking for, refusing anything it cannot serve.
+
+    A level it does not know is an error rather than the default. A silent fallback here
+    would answer a question nobody asked with a picture that looks exactly right -- design
+    rule 16's dead control, in a query string.
+
+    `minDisk` is clamped rather than refused, and the two are different because they are
+    different mistakes: an unknown level is a caller that is wrong, a threshold of 400 is a
+    reader dragging a slider. The clamp is stated in the payload the answer carries, so
+    nothing on screen is a number the page cannot account for.
+    """
+    level = (q.get("level") or [default_level()[0]])[0]
+    if level not in LEVELS:
+        raise ValueError(f"unknown level {level!r}; expected one of {', '.join(LEVELS)}")
+    raw = (q.get("minDisk") or [""])[0]
+    if not raw:
+        return (level, MIN_DISK_BY_LEVEL[level])
+    try:
+        wanted = int(raw)
+    except ValueError:
+        raise ValueError(f"minDisk must be a whole number, not {raw!r}") from None
+    return (level, max(MIN_DISK_FLOOR, min(MIN_DISK_CEILING, wanted)))
+
+
+def build_payload(store: Store, program: str,
+                  level: str = "routine", min_disk: int | None = None) -> dict[str, Any]:
+    """One level of the stack, positioned and columnar.
+
+    The program's name rides with it because the browser keys stored settings per program:
+    a plate order and a set of colours worked out for one codebase mean nothing in another.
+    """
+    payload = columnar(build(store, level=level, min_disk=min_disk))
+    payload["program"] = program
+    return payload
 
 
 @dataclass(frozen=True)
@@ -208,6 +269,17 @@ class _Base:
     # The first screen. 175 reachability queries on every navigation would make it the
     # slowest one.
     cover: dict[str, Any]
+    # Every level of detail this version has been asked for, keyed `(level, min_disk)`.
+    #
+    # **`payload` is in here too, under its own key, and it is the same object** -- one
+    # truth with an index over it rather than two copies that can disagree (rule 51). The
+    # routine default is still built at boot, so the start cost does not move; a module
+    # payload is ~120 ms and is built the first time somebody climbs to it.
+    #
+    # It is a field rather than a cache on `_Live` because it is a *fact about this
+    # version*: a base switch must throw all of it away, and a frozen record swapped whole
+    # does that for free.
+    payloads: dict[tuple[str, int], dict[str, Any]] = field(default_factory=dict)
 
 
 # What building a base costs, in the order it is paid, so a reader watching a switch is
@@ -315,8 +387,7 @@ class _Live:
         source_revision = self._source_revision(revision)
         try:
             _step(1)
-            payload = columnar(build(store))
-            payload["program"] = self.out_dir.name
+            payload = build_payload(store, self.out_dir.name)
             root = root_package(store)
 
             _step(2)
@@ -356,7 +427,10 @@ class _Live:
 
         fresh = _Base(graph_db=graph_db, store=store, revision=revision,
                       source_revision=source_revision, payload=payload, root=root,
-                      files=files, naming=naming, glossary=glossary, cover=cover)
+                      files=files, naming=naming, glossary=glossary, cover=cover,
+                      # The default under its own key, and the *same object*: `payload` and
+                      # `payloads[default_level()]` are one truth with an index over it.
+                      payloads={default_level(): payload})
         with self.lock:
             outgoing = self.current
             self.current = fresh
@@ -493,8 +567,38 @@ class _Handler(BaseHTTPRequestHandler):
         self._file(STATIC / "index.html")
 
     def _r_graph(self, q: dict[str, list[str]]) -> None:
+        """The stack, at the altitude asked for.
+
+        Two levels of one model, never two models: `?level=module` folds each file into one
+        node and each boundary kind into one, which takes Mensores from 10,015 nodes to 578
+        without dropping a single fact -- every folded node says what it stands for. It is a
+        second way to look at the same program, so both are cached side by side and the
+        reader moves between them.
+
+        Built **under the lock**, unlike a base switch, and the difference is which store it
+        reads. A switch opens its own private connection and can therefore build outside the
+        lock; this one reads `current.store`, and every use of that is under the lock or a
+        request could be querying a connection a switch has already closed. So the first
+        climb to a level holds the lock for the ~120 ms it takes -- worth writing down as
+        the cost it is rather than leaving as a claim the code contradicts.
+        """
+        try:
+            key = read_level(q)
+        except ValueError as exc:
+            # A status rather than a JSON body with a reason in it, which is what the
+            # routes that can partly answer do. There is no partial stack: a payload the
+            # page cannot draw is worse than none, and `ensureGraph` reads this message.
+            self.send_error(400, str(exc))
+            return
         with self._live.lock:
-            self._json(self._live.current.payload)
+            base = self._live.current
+            payload = base.payloads.get(key)
+            if payload is None:
+                level, min_disk = key
+                payload = build_payload(base.store, self._live.out_dir.name,
+                                        level=level, min_disk=min_disk)
+                base.payloads[key] = payload
+        self._json(payload)
 
     def _r_packages(self, q: dict[str, list[str]]) -> None:
         """The overview altitude: every package as a box, and what passes between them.

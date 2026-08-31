@@ -1119,6 +1119,46 @@ function changeByNodeId() {
   const nodes = graphPayload.nodes || {};
   const ids = nodes.id || [], kinds = nodes.kind || [], shadow = nodes.shadow || [];
   const out = Object.create(null);
+
+  if (graphPayload.level === "module") {
+    /* Three states, and the third is why this is `null` rather than an empty map: "nobody
+       has asked for the routine list yet" is not "no module changed". An empty map paints
+       every module as *not compared*, confidently and for ever (rule 35). */
+    if (!ROUTINES.length) return null;
+    /* **A module takes the band of what it holds**, and where it holds more than one it
+       says `mixed` rather than picking one -- a file where a routine arrived *and* another
+       started behaving differently is not either of those things, and drawing it as one
+       would be a confident wrong answer with no symptom.
+
+       `same` is the ground and not a competing claim: a file with 63 unchanged routines and
+       one arrival is a file something arrived in. Written the other way -- any two distinct
+       bands make it mixed -- every changed module on Mensores reads `mixed` and the colour
+       says nothing at all. With `same` as the ground, 14 modules carry the whole comparison
+       and 7 of them are genuinely mixed.
+
+       Folded from `ROUTINES`, which carries a module per routine, rather than from the
+       routine-level payload: the reader may never have visited that altitude, and a map
+       that needed a payload it does not have would be a colour that silently gives up. */
+    const bands = new Map();
+    for (const r of ROUTINES) {
+      if (!r.module) continue;
+      const st = routineStatus(r.id);
+      const held = bands.get(r.module) || new Set();
+      held.add(st === "edited" ? "same" : st);   // one tone, so one claim (see `changeTones`)
+      bands.set(r.module, held);
+    }
+    for (let i = 0; i < ids.length; i++) {
+      if (shadow[i] === 1) continue;
+      if (kinds[i] !== "MODULE") continue;       // an `outside:` node was never asked about
+      const held = bands.get(String(ids[i]).slice(4));
+      if (!held) continue;                       // a file declaring no routine at all
+      const real = [...held].filter(b => b !== "same");
+      out[ids[i]] = real.length === 0 ? "same" : real.length === 1 ? real[0] : "mixed";
+    }
+    CHANGES._byNode = out;
+    return out;
+  }
+
   for (let i = 0; i < ids.length; i++) {
     if (shadow[i] === 1) continue;              // never drawn, so never coloured (rule 23)
     if (kinds[i] !== "ROUTINE") continue;       // absent, and the engine reads that as
@@ -1140,8 +1180,12 @@ function changeByNodeId() {
  * than a walk over ten thousand nodes. */
 function changeTones() {
   const w = diffWords();
+  /* `mixed` is here and does **not** come from `diffWords()`, and that is the point of the
+     band: "more than one thing happened in this file" is the same claim whichever version
+     the reader takes to be newer, so flipping the assumption must not move it. Everything
+     above it is directional and everything below it is a ground. */
   return { only_base: w.base.tone, only_compared: w.compared.tone,
-           behaves: "moved", edited: "quiet", same: "quiet" };
+           behaves: "moved", mixed: "mixed", edited: "quiet", same: "quiet" };
 }
 
 function pushGraphChange() {
@@ -1161,7 +1205,25 @@ function pushGraphChange() {
  * for the wait. It repaints when the answer lands, and the legend's key comes with it. */
 function ensureGraphChange() {
   if (!graphChangeOn()) { pushGraphChange(); return Promise.resolve(null); }
-  return ensureChanges().then((c) => { pushGraphChange(); renderLegend(); return c; });
+  /* **The module level needs the routine list as well**, because a module's band is folded
+     from the routines it holds and `ROUTINES` is what carries a module per routine. Asked
+     here rather than left to whoever happens to have loaded it: rule 55's companion --
+     whoever sets the state does the work, or the map is a colour that silently gives up. */
+  const fresh = !ROUTINES.length;
+  const also = graphPayload && graphPayload.level === "module"
+    ? loadRoutines().catch(() => {}) : Promise.resolve();
+  return Promise.all([ensureChanges(), also]).then(([c]) => {
+    /* **Both readers of `ROUTINES`, not just the one that asked.** The navigator and table
+       mode read the same array, and a caller that loads it and repaints only itself leaves
+       the other saying *"reading the routine list…"* over an answer that arrived — true at
+       the instant it was written and never coming back. The guard for that was written from
+       the table; this is the same defect arriving by a route it did not cover, which is
+       rule 55 exactly. */
+    if (fresh && ROUTINES.length) { buildNav(); render(); }
+    pushGraphChange();
+    renderLegend();
+    return c;
+  });
 }
 
 function ensureTableOverlay() {
@@ -8148,6 +8210,7 @@ const PERSISTED = [
   "ambient", "hideInferred", "colWidths", "insp", "sortKey", "sortAsc",
   "egress", "aiOps", "triage", "pins", "usage", "graphLayout",
   "diskOrder", "diskColors", "colorBy", "sortMode", "filterMode", "direction",
+  "level", "minDisk",
   "nodeSize", "spreadX", "spreadY", "spreadZ", "collapseUnused",
   "searchCase", "searchWord", "searchRegex",
   "panels", "inspectorAuto", "navWidth", "codeWidth", "codeFile", "codeOverlay",
@@ -8159,7 +8222,15 @@ const PERSISTED = [
 
 let settings = null;      // the loaded blob; `state` is the live copy
 let program = null;
+/* The payload on screen, and every one this session has fetched, keyed by the question it
+ * answers -- `graphKey(level, minDisk)`. `graphPayload` is one of the values in the map,
+ * never a second copy: one truth with an index over it (rule 51). */
 let graphPayload = null;
+const graphPayloads = new Map();
+/* What the last change of altitude did to the selection, in a sentence. A reader whose
+ * routine became the file holding it has been moved, and being moved without being told is
+ * design rule 1's silent filter wearing a different coat. */
+let levelNote = "";
 let graphLoading = false;
 let graphError = null;
 let counts = null;        // the engine's last count report
@@ -8206,6 +8277,7 @@ function cssPalette() {
       CONSTANT:  hex("--graph-constant"),
       BOUNDARY:  hex("--graph-boundary"),
       ARTEFACT:  hex("--graph-artefact"),
+      MODULE:    hex("--graph-module"),
     },
     /* What the comparison says, for `colorBy: 'change'`. Read through the same `hex(...)`
        helper as everything else here on purpose: the guard that requires a colour set to
@@ -8230,6 +8302,7 @@ function cssPalette() {
       moved:     hex("--diff-moved"),
       quiet:     hex("--graph-unchanged"),
       unclaimed: hex("--graph-unclaimed"),
+      mixed:     hex("--graph-mixed"),
     },
     dim: hex("--graph-dim"),
     dimAlpha: num("--graph-dim-alpha"),
@@ -8351,6 +8424,207 @@ function applyGraphPalette() {
   updatePointerNote();
 }
 
+/* ── the stack's altitude ──────────────────────────────────────────────────────
+ *
+ * Two levels of one program. `routine` is every thing it declares -- 10,015 nodes and
+ * 14,254 edges on Mensores -- and `module` folds each file into one node and each boundary
+ * kind into one: 578 and 1,505. It is a second way to look at the same facts and not a
+ * filter, so nothing is dropped and every folded node says what it stands for.
+ *
+ * Both are held once fetched. 4.9 MB and 0.3 MB, which is what makes moving between them
+ * instant and, more to the point, what makes the selection able to travel: the translation
+ * below is a lookup in a payload the page already has rather than a request. */
+
+/* One door onto the two settings that are per level.
+ *
+ * `diskOrder` is per level because the two levels genuinely hold different plates, and
+ * `mount` throws a saved order away when it does not match the plate set -- so one shared
+ * array would mean a reader who arranged the routine stack lost it the moment they looked
+ * at modules and came back. `minDisk` is per level because what a plate *holds* changes
+ * with the level. Written inline at each of six call sites this would be six places to keep
+ * one shape in step, which is rule 51 with six chances to get it wrong. */
+function plateOrder() { return (state.diskOrder || {})[state.level] ?? null; }
+function setPlateOrder(order) {
+  state.diskOrder = { ...(state.diskOrder || {}), [state.level]: order };
+}
+/* `null` is a third state and not a number: "whatever the server's default for this level
+ * is". A stored 8 would silently become an explicit choice about a level the reader has
+ * never visited, which is rule 66's companion -- an answer that is sometimes derived and
+ * sometimes chosen has three states, never two. */
+function minDiskNow(level = state.level) { return (state.minDisk || {})[level] ?? null; }
+function setMinDiskNow(n) {
+  state.minDisk = { ...(state.minDisk || {}), [state.level]: n };
+}
+
+/* The key **is** the question, so a cache hit and a fetch can never answer different ones. */
+function graphKey(level, min) { return `${level}:${min ?? ""}`; }
+
+function graphUrl(level, min) {
+  const q = new URLSearchParams({ level });
+  if (min != null) q.set("minDisk", String(min));
+  return `/api/graph?${q}`;
+}
+
+async function fetchPayload(level, min) {
+  const key = graphKey(level, min);
+  const held = graphPayloads.get(key);
+  if (held) return held;
+  const r = await fetch(graphUrl(level, min));
+  /* The server puts its reason in the status line -- an unknown level, a threshold that is
+     not a number -- because there is no partial stack to send instead. A payload the page
+     cannot draw is worse than none. */
+  if (!r.ok) {
+    throw new Error(r.statusText || `the server answered ${r.status} for /api/graph`);
+  }
+  const payload = await r.json();
+  graphPayloads.set(key, payload);
+  return payload;
+}
+
+/* Carrying a selection between altitudes.
+ *
+ * A pick is an index into *one* payload, so the same number means a different routine in
+ * the next one -- which is why `setPayload` drops them and the shell re-resolves from ids.
+ * But an id does not survive either: `mod:mensores.cli.audit` is not a routine and no
+ * routine id is a module. So the translation is explicit and it is **stated**, because
+ * "showing the file your routine lives in" is a different answer from the one asked for and
+ * a reader who is not told has been quietly moved.
+ *
+ * Both directions read the **routine-level payload**, the only one carrying a node's module
+ * and the plate it came from. `home ?? disk` is the plate *before* small ones were merged,
+ * which is exactly what the server folds on -- so this cannot disagree with it by drifting
+ * over a threshold the reader moved. */
+function foldedIdFor(fine, i) {
+  const det = (fine.nodes.detail || [])[i] || {};
+  if (det.module) return `mod:${det.module}`;
+  const plate = det.home || (fine.nodes.disk || [])[i] || "";
+  return plate.startsWith("ext:") ? `outside:${plate.slice(4)}` : null;
+}
+
+function translateIds(ids, toLevel, fine) {
+  if (!fine || !ids.length) return [];
+  const out = [];
+  const seen = new Set();
+  const keep = (id) => { if (id && !seen.has(id)) { seen.add(id); out.push(id); } };
+
+  if (toLevel === "module") {
+    const at = new Map();
+    (fine.nodes.id || []).forEach((id, i) => { if (!at.has(id)) at.set(id, i); });
+    for (const id of ids) {
+      const i = at.get(id);
+      if (i !== undefined) keep(foldedIdFor(fine, i));
+    }
+    return out;
+  }
+  // Down: one folded node is many. `selectFromNav`'s table case does the same thing for
+  // the same reason -- selecting a table means selecting the code that reads and writes it
+  // (rule 30) -- and like that one it states how many it turned into.
+  const wanted = new Set(ids);
+  (fine.nodes.id || []).forEach((id, i) => {
+    if ((fine.nodes.shadow || [])[i] === 1) return;     // never drawn (rule 23)
+    if (wanted.has(foldedIdFor(fine, i))) keep(id);
+  });
+  return out;
+}
+
+/* What is picked, in id space. The engine answers in indices, and an index is the one form
+ * that means something different in the other payload. */
+function selectedIds() {
+  if (!Graph.mounted() || !graphPayload) return { nodes: [], disks: [] };
+  const nodes = [], disks = [];
+  for (const p of Graph.selection()) {
+    if (p.kind === "disk") { disks.push(p.id); continue; }
+    const raw = graphPayload.nodes;
+    const i = raw.shadow[p.index] ? raw.real[p.index] : p.index;
+    if (i >= 0) nodes.push(raw.id[i]);
+  }
+  return { nodes, disks };
+}
+
+/* Move the stack to another altitude, or to another `<small>` threshold.
+ *
+ * The camera refits, because the stack is a different size and a different height -- design
+ * rule 20's own reason for a snap-to-fit. The tilt is kept, so the reader's sense of which
+ * way they were looking survives.
+ */
+async function setGraphDetail({ level = state.level, minDisk } = {}) {
+  const changingLevel = level !== state.level;
+  const before = selectedIds();
+  const fine = graphPayloads.get(graphKey("routine", minDiskNow("routine")));
+  (window.__lvl = window.__lvl || []).push({ step: window.__lvl ? window.__lvl.length : 0,
+    changingLevel, from: state.level, to: level,
+    beforeNodes: before.nodes.length, beforeDisks: before.disks.length,
+    rawSel: Graph.selection().map(p => p.kind + ":" + (p.id ?? p.index)),
+    payloadLevel: graphPayload && graphPayload.level,
+    hasFine: !!fine, keys: [...graphPayloads.keys()],
+    minRoutine: minDiskNow("routine"), stateLevel: state.level,
+    minDiskObj: JSON.stringify(state.minDisk) });
+
+  if (changingLevel) { state.level = level; used("level:" + level); }
+  if (minDisk !== undefined) setMinDiskNow(minDisk);
+  persist();
+
+  // Not on screen yet: the choice is real, and `ensureGraph` will honour it on mount.
+  if (!Graph.mounted()) { render(); return; }
+
+  levelNote = "";
+  graphLoading = true;
+  renderGraphFurniture();
+  let payload;
+  try {
+    payload = await fetchPayload(state.level, minDiskNow());
+  } catch (err) {
+    graphError = { message: err.message };
+    graphLoading = false;
+    renderGraphFurniture();
+    return;
+  }
+  graphPayload = payload;
+  Graph.setPayload(payload);
+  /* **The engine resolves the plate order and the shell records what it resolved.** This
+     used to push `plateOrder()` back in first, which is one truth in two places (rule 51)
+     and worse than untidy: `adoptPayload` had *just* worked out whether the saved order
+     still describes this payload, and on a fresh session there is no saved order at all --
+     so the push handed `setOptions` a `null` and `applyLayout` threw on it, every switch,
+     from the first one.
+     Everything after the throw was skipped, so the selection never travelled and the note
+     that would have said so was never written. Silent in the page and shouting in the
+     console, which is where it was found. */
+  setPlateOrder(Graph.diskOrder());
+
+  /* The comparison's per-node map is a fact about *this* payload -- a module takes the band
+     of what it holds -- so it is dropped rather than reused. Rule 51: whoever changes the
+     subject does the work of invalidating what was said about the old one. */
+  if (CHANGES) CHANGES._byNode = null;
+
+  if (changingLevel) {
+    const moved = translateIds(before.nodes, state.level,
+                               state.level === "module" ? fine : payload);
+    if (before.nodes.length && !moved.length) {
+      levelNote = `nothing that was selected exists at this level`;
+    } else if (moved.length && state.level === "module") {
+      levelNote = `${before.nodes.length.toLocaleString()} selected → the ${
+        moved.length.toLocaleString()} ${moved.length === 1 ? "node" : "nodes"} holding them`;
+    } else if (moved.length) {
+      levelNote = `${before.nodes.length.toLocaleString()} selected → the ${
+        moved.length.toLocaleString()} ${moved.length === 1 ? "thing" : "things"} inside`;
+    }
+    state.wanted = { nodes: moved, disks: before.disks };
+    state.selected = moved[0] || null;
+    if (state.selected) loadNode(state.selected); else { inspectorFor = null; SPECIMEN = null; }
+  } else {
+    state.wanted = { nodes: before.nodes, disks: before.disks };
+  }
+  applyWanted();
+  state.picks = Graph.selection();
+
+  graphLoading = false;
+  ensureGraphChange();
+  persist();
+  applyGraphPalette();
+  render();
+}
+
 /* ── mounting ─────────────────────────────────────────────────────────────────
  *
  * Lazily, on first entry to graph mode. The payload is nine thousand nodes and the cover
@@ -8363,9 +8637,7 @@ async function ensureGraph() {
   graphLoading = true;
   renderGraphFurniture();
   try {
-    const r = await fetch("/api/graph");
-    if (!r.ok) throw new Error(`the server answered ${r.status} for /api/graph`);
-    graphPayload = await r.json();
+    graphPayload = await fetchPayload(state.level, minDiskNow());
   } catch (err) {
     graphError = { message: err.message };
     graphLoading = false;
@@ -8388,7 +8660,7 @@ async function ensureGraph() {
      itself, which reads as a flicker rather than as a decision. */
   resolveColorBy();
   Graph.mount($("#graphStage"), graphPayload, {
-    diskOrder: state.diskOrder, diskColors: state.diskColors, colorBy: state.colorBy,
+    diskOrder: plateOrder(), diskColors: state.diskColors, colorBy: state.colorBy,
     nodeChange: graphChangeOn() ? changeByNodeId() : null, changeTone: changeTones(),
     changeStamp: Date.now(),
     filterMode: state.filterMode, direction: state.direction, nodeSize: state.nodeSize,
@@ -8409,7 +8681,7 @@ async function ensureGraph() {
      that did not exist. Rule 55's companion once more: whoever sets the state does the
      work. */
   ensureGraphChange();
-  state.diskOrder = Graph.diskOrder();
+  setPlateOrder(Graph.diskOrder());
   state.picks = Graph.selection();
   // A choice made while the stack was not on screen is adopted now rather than lost.
   applyWanted();
@@ -9489,6 +9761,52 @@ function updateControlsSummary() {
  * index beside it. Three columns interleaved so rows nest rather than share baselines --
  * fifty-one disks in a third of the height one column needs. Each row is a button, a
  * swatch and a drag handle. */
+/* **How much detail the stack draws, and what that costs the reader.**
+ *
+ * Two altitudes of one program, and the numbers are always both stated: a picture that got
+ * seventeen times smaller without saying so is a filter, and design rule 1 does not allow a
+ * silent one. So the row says what is drawn, what it stands for, and what the `<small>`
+ * threshold merged -- because a shorter stack and a smaller program are indistinguishable
+ * by looking.
+ *
+ * The threshold fires on `change` rather than `input`: every value is a request, and a
+ * dragged slider would ask the server for every number it passes through. */
+function detailControlHtml() {
+  const st = (graphPayload && graphPayload.stats) || {};
+  const level = (graphPayload && graphPayload.level) || state.level;
+  const drawn = Number(st.nodes || 0);
+  const folded = Number(st.folded_from || 0);
+  const merged = Number(st.disks_merged || 0);
+  const movedOn = Number(st.disks_merged_nodes || 0);
+  const opt = (v, label) =>
+    `<option value="${v}" ${state.level === v ? "selected" : ""}>${label}</option>`;
+  return `<div class="legfoot">Detail
+    <select class="gsel" id="glevel" aria-label="How much detail the stack draws">
+      ${opt("routine", "every routine")}
+      ${opt("module", "one node per file")}
+    </select>
+    <label style="display:inline-flex;align-items:center;gap:.25rem;margin-left:.4rem">
+      <span class="muted">smallest plate</span>
+      <input id="gmindisk" type="range" min="1" max="24" step="1"
+             style="width:5rem" value="${Number(st.min_disk || 1)}"
+             aria-label="How few things a plate may hold before it is merged into small">
+      <span class="muted num">${Number(st.min_disk || 1)}</span>
+    </label>
+    <div class="hint" style="width:100%;margin-top:.15rem">
+      <b class="num">${drawn.toLocaleString()}</b> drawn${
+        level === "module" && folded
+          ? ` — standing for <b class="num">${folded.toLocaleString()}</b> things`
+          : ""}${
+        merged
+          ? ` · <b class="num">${merged.toLocaleString()}</b> ${
+              merged === 1 ? "plate" : "plates"} merged into <code>&lt;small&gt;</code>,
+              holding <b class="num">${movedOn.toLocaleString()}</b>`
+          : " · no plate merged"}${
+        levelNote ? ` · ${esc(levelNote)}` : ""}
+    </div>
+  </div>`;
+}
+
 function renderLegend() {
   const host = $("#graphLegend");
   if (!host) return;
@@ -9522,6 +9840,7 @@ function renderLegend() {
           <span class="ct">${d.nodes}</span>
         </div>`).join("")}
     </div>
+    ${detailControlHtml()}
     <div class="legfoot">Colour by
       <select class="gsel" id="gcolorby"
               aria-label="Colour nodes by">
@@ -9606,13 +9925,18 @@ function changeKeyHtml() {
   const ids = nodes.id || [];
   const shadow = nodes.shadow || [];
   const tally = { only_base: 0, only_compared: 0, behaves: 0, edited: 0, same: 0,
-                  unclaimed: 0 };
+                  mixed: 0, unclaimed: 0 };
   for (let i = 0; i < ids.length; i++) {
     if (shadow[i] === 1) continue;
     const st = by[ids[i]];
     if (st && st in tally) tally[st] += 1;
     else tally.unclaimed += 1;
   }
+  /* **The word for what is drawn**, and it changes with the altitude. At module level the
+     dots are files, so "53 arrived" would be a routine count printed over 4 nodes -- rule
+     32 exactly: the number must be named after the thing it measures. */
+  const at = (graphPayload && graphPayload.level) === "module" ? "module" : "routine";
+  const many = at === "module" ? "files" : "routines";
   const w = diffWords();
   const row = (tone, glyph, n, label, why) => !n ? "" : `
     <div class="legkey-row">
@@ -9625,29 +9949,50 @@ function changeKeyHtml() {
      tool exists not to report -- and `unclaimed` is its own tone because "nothing was asked
      about this" and "we looked and found nothing" are opposite claims (design rule 1). */
   return `<div class="legkey">
-    ${row("tone-" + w.base.tone, signOf(w.base.tone), tally.only_base, w.base.word, "")}
+    ${at === "module" ? `<div class="legkey-row"><span class="hint">one dot is a file, and
+       it says what happened <i>inside</i> it — every count here is files, never
+       routines</span></div>` : ""}
+    ${row("tone-" + w.base.tone, signOf(w.base.tone), tally.only_base,
+          at === "module" ? `with something ${w.base.word}` : w.base.word, "")}
     ${/* Taken from the band, not from the tally, and it is the one number here that has to
           be: a routine only the *compared* version has is not in this version's payload at
           all, so no node could carry it. Counted and never drawn — the same answer the
           table gives, for the same reason (rule 1). */""}
     ${row("tone-" + w.compared.tone, signOf(w.compared.tone),
-          (CHANGES.only_in_compared || []).length, w.compared.word,
-          "not drawn — this version has no node for them")}
+          (CHANGES.only_in_compared || []).length,
+          at === "module" ? `routines ${w.compared.word}` : w.compared.word,
+          at === "module"
+            ? "counted, not drawn — the comparison lists routines and this level draws files"
+            : "not drawn — this version has no node for them")}
     ${row("tone-moved", "\u25cb", tally.behaves, "behave differently", "")}
+    ${/* Only the module level can hold more than one band at once: a routine is in one band
+          or none, and a file holding sixty-three of them is not. Drawing such a file as any
+          single band would be a confident wrong answer with no symptom, so it gets its own
+          tone — measured against every colour in every set (see `tokens.css`).
+
+          `same` is the ground rather than a competing claim. Counted the other way, a file
+          with 63 unchanged routines and one arrival reads *mixed*, every changed file on
+          Mensores reads mixed, and the tone says nothing at all. */""}
+    ${row("tone-mixed", "\u25c6", tally.mixed, "more than one of the above",
+          "different things happened to different routines in one file")}
     ${row("tone-quiet", "\u00b7", tally.edited + tally.same, "unchanged",
           tally.edited ? `including ${tally.edited.toLocaleString()} edited without
                           changing what they do` : "")}
     ${row("tone-unclaimed", "\u00b7", tally.unclaimed, "not compared",
-          "boundaries, constants, structures and named files — the comparison speaks about "
-          + "routines")}
+          at === "module"
+            ? "what the program touches, and files that declare no routine — the "
+              + "comparison speaks about routines"
+            : "boundaries, constants, structures and named files — the comparison "
+              + "speaks about routines")}
   </div>`;
 }
 
 function sortedDisks() {
   const disks = Graph.disks();
   const byId = new Map(disks.map(d => [d.id, d]));
-  if (state.sortMode === "manual" && Array.isArray(state.diskOrder)) {
-    return state.diskOrder.map(id => byId.get(id)).filter(Boolean);
+  const arranged = plateOrder();
+  if (state.sortMode === "manual" && Array.isArray(arranged)) {
+    return arranged.map(id => byId.get(id)).filter(Boolean);
   }
   const list = disks.slice();
   if (state.sortMode === "name") list.sort((a, b) => a.name.localeCompare(b.name));
@@ -9826,6 +10171,21 @@ function wireGraphOnce() {
       persist();
       return;
     }
+    /* **The altitude, and the threshold.**
+     *
+     * Both go through one function, because both are a request for a different payload and
+     * two doors onto one act is rule 51 waiting to happen. The threshold fires on `change`
+     * below rather than here: `input` is every value a dragged slider passes through, which
+     * would be twenty requests for one decision -- rule 45's shape in a control.
+     *
+     * The number beside the slider follows the thumb immediately, though, because a control
+     * that shows nothing until it is released reads as a control that is not working. */
+    if (t.id === "glevel") { setGraphDetail({ level: t.value }); return; }
+    if (t.id === "gmindisk") {
+      const out = t.parentElement && t.parentElement.querySelector(".num");
+      if (out) out.textContent = t.value;
+      return;
+    }
     if (t.id === "gsort") { state.sortMode = t.value; renderLegend(); persist(); }
     if (t.id === "gcolorby") {
       state.colorBy = t.value;
@@ -9848,6 +10208,10 @@ function wireGraphOnce() {
   mount.addEventListener("change", (ev) => {
     // Committed, not live: a localStorage write per frame of a slider drag is waste, and
     // the value is already in `state` -- this only decides when it reaches disk.
+    if (ev.target.id === "gmindisk") {
+      setGraphDetail({ minDisk: parseInt(ev.target.value, 10) });
+      return;
+    }
     if (ev.target.classList.contains("sw") ||
         ["gsize", "gspreadx", "gspready", "gspreadz"].includes(ev.target.id)) persist();
   });
@@ -9872,10 +10236,10 @@ function wireGraphOnce() {
     const row = ev.target.closest(".leg");
     $$(".leg").forEach(r => r.classList.remove("over", "dragging"));
     if (!row || !dragDisk || row.dataset.disk === dragDisk) return;
-    const order = state.diskOrder.slice();
+    const order = (plateOrder() || Graph.diskOrder()).slice();
     order.splice(order.indexOf(dragDisk), 1);
     order.splice(order.indexOf(row.dataset.disk), 0, dragDisk);
-    state.diskOrder = order;
+    setPlateOrder(order);
     // A hand-made order is only visible under manual sort, so say so by switching to it.
     state.sortMode = "manual";
     dragDisk = null;

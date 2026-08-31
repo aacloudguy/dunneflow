@@ -1193,9 +1193,20 @@ def test_finding_a_node_by_id_is_a_lookup_and_not_a_scan() -> None:
         "routine it stands for"
     )
     # And it must not outlive the payload it describes.
-    assert "g.idIndex = null;" in _fn(engine, "mount"), (
+    #
+    # **Asserted on `adoptPayload`, and on both doors into it.** It used to be asserted on
+    # `mount`, which was the whole story while `mount` was the only way a payload arrived.
+    # The module level added a second -- `setPayload` -- and a guard naming one function
+    # would have passed while a lookup answered about the altitude the reader had just left.
+    adopt = _fn(engine, "adoptPayload")
+    assert "g.idIndex = null;" in adopt, (
         "the index survives a new payload, so every lookup answers about the previous program"
     )
+    for door in ("mount", "setPayload"):
+        assert "adoptPayload(" in _fn(engine, door), (
+            f"`{door}` takes a payload without going through `adoptPayload`, so half of what "
+            "a payload decides is left describing the previous one"
+        )
 
 
 def test_a_column_can_actually_be_resized() -> None:
@@ -5314,18 +5325,38 @@ def test_the_routine_list_landing_repaints_both_things_that_read_it() -> None:
     Predates the change marks; found by driving those and confirmed against `HEAD` rather
     than assumed. Rule 35's family: the array is assigned, and a view that reads it is
     never repainted.
+
+    **Every call site, not the first one in the file.** Written as `js.index(...)` this
+    guarded whichever caller happened to be written earliest, and the module level's fold
+    -- which loads the same list to colour a plate by what changed -- arrived above it and
+    inherited a guard that was looking somewhere else. That is rule 55 in the test rather
+    than in the code: a bound kept at one call site rots as callers are added.
     """
     js = _code(_read("shell.js"))
-    call = js[js.index("loadRoutines()."):]
-    call = call[:call.index("\n}")]
-    assert "buildNav()" in call, "the navigator is not rebuilt when the routine list lands"
-    assert "render()" in call, (
-        "the centre pane is not repainted when the routine list lands, so table mode holds "
-        "nought rows under 'Reading the routine list…' for the rest of the session"
-    )
+    sites = []
+    at = js.find("loadRoutines().")
+    while at != -1:
+        sites.append(js[at:js.index("\n}", at)])
+        at = js.find("loadRoutines().", at + 1)
+    assert len(sites) >= 2, f"only {len(sites)} call sites -- this guard has gone blind"
+    for call in sites:
+        assert "buildNav()" in call, (
+            "a caller of loadRoutines does not rebuild the navigator when the list lands"
+        )
+        assert "render()" in call, (
+            "a caller of loadRoutines does not repaint the centre pane, so table mode holds "
+            "nought rows under 'Reading the routine list…' for the rest of the session"
+        )
     # Both halves, on the failure path too: a list that could not be read must leave both
-    # panes stating that rather than one of them still waiting.
-    assert call.count("render()") >= 2 and call.count("buildNav()") >= 2, (
+    # panes stating that rather than one of them still waiting. Named by the branch that
+    # has a failure path rather than by being the longest or the first -- rule 46, an
+    # opening rule that names a position breaks the moment anything is added beside it.
+    with_failure = [c for c in sites if ".catch(err" in c]
+    assert len(with_failure) == 1, (
+        f"{len(with_failure)} call sites handle a failed read; the guard cannot tell which"
+    )
+    boot = with_failure[0]
+    assert boot.count("render()") >= 2 and boot.count("buildNav()") >= 2, (
         "only one of the two paths repaints both panes; the other leaves a pane waiting "
         "for something that has already failed"
     )
@@ -5974,3 +6005,298 @@ def test_the_trail_steps_cannot_paint_over_the_controls_beside_them() -> None:
         "the cursor is scrolled into its lane with the singular selector — the bar is "
         "rendered twice, and that is exactly how its controls were once wired to one of them"
     )
+
+
+# --------------------------------------------------------------------------- #
+# The stack's second altitude.
+#
+# Two levels of one program: `routine` is every thing it declares, `module` folds each file
+# into one node and each boundary kind into one. It is a second way to look at the same
+# facts and not a filter, so nothing is dropped and every folded node says what it stands
+# for. Every guard here was written from something that went wrong while building it.
+# --------------------------------------------------------------------------- #
+
+
+def test_a_payload_swap_rebuilds_everything_the_payload_decides() -> None:
+    """The engine could `mount` and had no way to replace a payload, and `mount` returns
+    early once mounted. A second setter doing nine tenths of what the first does is rule 68
+    waiting to happen, so the payload-adoption half is one function and both doors call it.
+
+    The tenth it would forget is the id index -- a lookup that answers confidently about the
+    altitude the reader has just left.
+    """
+    engine = _code(_read("graph.js"))
+    adopt = _fn(engine, "adoptPayload")
+    for step in ("prepare(raw)", "diskPlates(raw)", "g.idIndex = null",
+                 "applyLayout", "recomputeMembers", "buildSelectionGeometry",
+                 "paintNodes", "fitView"):
+        assert step in adopt, f"`adoptPayload` no longer does `{step}`"
+    for door in ("mount", "setPayload"):
+        assert "adoptPayload(" in _fn(engine, door), (
+            f"`{door}` takes a payload without going through `adoptPayload`"
+        )
+    # A pick is an index into *one* payload, so the same number means a different routine in
+    # the next one. `setPayload` must drop them; the shell re-resolves from ids.
+    assert "adoptPayload(raw, [])" in _fn(engine, "setPayload"), (
+        "a level switch carries the old payload's indices into the new one, so the "
+        "selection lands on whatever happens to sit at those positions"
+    )
+
+
+def test_the_console_diagnostics_follow_the_payload() -> None:
+    """Design rule 21 puts diagnostics where a developer can reach them, because "drawn
+    off-screen" and "not drawn" are indistinguishable by looking.
+
+    They were written once in `mount`, so after a change of level `window.__d` went on
+    describing 15,870 routine-level rows while the engine drew 2,069 module-level ones. A
+    diagnostic that lies is worse than none: it cost half an hour chasing a defect that was
+    not there.
+    """
+    engine = _code(_read("graph.js"))
+    assert "window.__d = g.prepared;" in _fn(engine, "adoptPayload"), (
+        "`window.__d` is not refreshed when the payload changes, so it describes the "
+        "altitude the reader has left"
+    )
+    # **One writer.** Asserted over the whole engine rather than over `mount`'s span,
+    # because `mount` is the last function in the file and `_fn` therefore hands back
+    # everything after it -- and because `window.__deck` contains `window.__d`, which is the
+    # substring trap that made the first version of this line fail on code that was right.
+    assert engine.count("window.__d = ") == 1, (
+        f"`window.__d` is assigned {engine.count('window.__d = ')} times; two places writing "
+        "one diagnostic means one of them goes stale, which is the defect this was written "
+        "from"
+    )
+
+
+def test_the_shell_never_pushes_a_plate_order_the_engine_just_resolved() -> None:
+    """**The defect that ate the whole feature, and it was silent in the page.**
+
+    `adoptPayload` works out whether a saved plate order still describes this payload. The
+    switch then pushed `plateOrder()` back in -- one truth in two places (rule 51) -- and on
+    a fresh session there is no saved order at all, so it handed `setOptions` a `null` and
+    `applyLayout` threw on it. Every switch, from the first one.
+
+    Everything after the throw was skipped, so the selection never travelled and the note
+    that would have said so was never written. The page looked like a page that works. The
+    console had said so from the first attempt.
+    """
+    js = _code(_read("shell.js"))
+    fn = _fn(js, "setGraphDetail")
+    assert "Graph.setPayload(payload)" in fn, "the switch no longer hands over the payload"
+    assert "diskOrder: plateOrder()" not in fn, (
+        "the switch pushes the shell's plate order back into an engine that has just "
+        "resolved one -- `null` on a fresh session, and `applyLayout` throws on it"
+    )
+    assert "setPlateOrder(Graph.diskOrder())" in fn, (
+        "the shell does not record the order the engine resolved, so a switch loses it"
+    )
+
+
+def test_the_two_per_level_settings_go_through_one_door() -> None:
+    """`diskOrder` and `minDisk` are per level, and written inline at each call site that
+    would be six places to keep one shape in step (rule 51 with six chances to get it
+    wrong)."""
+    js = _code(_read("shell.js"))
+    for fn in ("plateOrder", "setPlateOrder", "minDiskNow", "setMinDiskNow"):
+        assert f"function {fn}(" in js, f"`{fn}` is gone; the accessors have been inlined"
+    # Nothing outside the accessors indexes the maps by hand.
+    body = js.replace(_fn(js, "plateOrder"), "").replace(_fn(js, "setPlateOrder"), "")
+    body = body.replace(_fn(js, "minDiskNow"), "").replace(_fn(js, "setMinDiskNow"), "")
+    assert "state.diskOrder[" not in body and "state.minDisk[" not in body, (
+        "a caller indexes a per-level setting directly instead of going through the "
+        "accessor, which is how the two levels start disagreeing about one arrangement"
+    )
+
+
+def test_the_detail_control_states_what_the_altitude_costs() -> None:
+    """Design rule 1: no filter is ever silent, and a picture that got seventeen times
+    smaller without saying so reads as one. So the row states what is drawn, what it stands
+    for, and what the `<small>` threshold merged -- because a shorter stack and a smaller
+    program are indistinguishable by looking."""
+    js = _code(_read("shell.js"))
+    fn = _fn(js, "detailControlHtml")
+    assert 'id="glevel"' in fn and 'id="gmindisk"' in fn, "the two controls are not both here"
+    # **The exact assignments, not the substring.** `st.disks_merged` is a substring of
+    # `st.disks_merged_nodes`, so a version that stopped reading the first and kept the
+    # second passed a containment check while the row said "no plate merged" over 23 of
+    # them. The same trap as `window.__d` inside `window.__deck`, one guard apart.
+    for claim in ("Number(st.nodes || 0)", "Number(st.folded_from || 0)",
+                  "Number(st.disks_merged || 0)", "Number(st.disks_merged_nodes || 0)",
+                  "Number(st.min_disk || 1)"):
+        assert claim in fn, f"the row no longer reads `{claim}` from the payload"
+    assert "levelNote" in fn, (
+        "the row does not say what the last switch did to the selection, so a reader whose "
+        "routine became the file holding it has been moved without being told"
+    )
+    # And it is rendered, or it is a function nobody calls (rule 35's family).
+    assert "detailControlHtml()" in _fn(js, "renderLegend"), (
+        "the legend does not render the detail control"
+    )
+
+
+def test_the_level_control_and_the_threshold_are_wired_and_the_slider_waits() -> None:
+    """`input` is every value a dragged slider passes through -- twenty requests for one
+    decision, which is rule 45's shape in a control. The threshold commits on `change`;
+    the number beside it follows the thumb immediately, because a control that shows
+    nothing until it is released reads as one that is not working."""
+    js = _code(_read("shell.js"))
+    assert 'if (t.id === "glevel") { setGraphDetail({ level: t.value }); return; }' in js, (
+        "the altitude control is not wired to the one function that changes altitude"
+    )
+    assert 'ev.target.id === "gmindisk"' in js, "the threshold never commits"
+    # The commit is in the `change` listener and the live readout in the `input` one.
+    after_input = js.split('mount.addEventListener("input"', 1)[1]
+    live, _, committed = after_input.partition('mount.addEventListener("change"')
+    assert 'setGraphDetail({ minDisk:' in committed, (
+        "the threshold asks the server from the `input` handler, so a dragged slider "
+        "fetches every value it passes through"
+    )
+    assert 'setGraphDetail({ minDisk:' not in live
+    assert 't.id === "gmindisk"' in live, (
+        "the number beside the slider does not follow the thumb, so the control looks dead "
+        "until it is released"
+    )
+
+
+def test_a_selection_travels_between_altitudes_in_id_space() -> None:
+    """An index means a different routine in the other payload, and an id does not survive
+    either: `mod:mensores.cli.audit` is not a routine and no routine id is a module.
+
+    So the translation is explicit and it reads the **routine-level** payload, the only one
+    carrying a node's module and the plate it came from. `home ?? disk` is the plate
+    *before* small ones were merged, which is what the server folds on -- so the two cannot
+    drift apart over a threshold the reader moved.
+    """
+    js = _code(_read("shell.js"))
+    fold = _fn(js, "foldedIdFor")
+    assert "det.module" in fold and "mod:" in fold, "a module node is no longer addressed"
+    assert "outside:" in fold, "an external node is no longer addressed"
+    assert "det.home ||" in fold, (
+        "the fold reads the drawn plate rather than the plate before `<small>` merged it, "
+        "so moving the threshold silently re-homes what the reader had selected"
+    )
+    move = _fn(js, "translateIds")
+    assert "shadow" in move, (
+        "the downward translation admits shadows, which are never drawn (rule 23)"
+    )
+    fn = _fn(js, "setGraphDetail")
+    assert "state.wanted =" in fn and "applyWanted()" in fn, (
+        "the switch does not re-resolve the selection, so it is dropped with the payload"
+    )
+    # **Assigned once as a reset and then written**, not merely mentioned. Asserted this way
+    # because a mutation that cleared it again after the branches left `levelNote =` in the
+    # source and the note off the screen -- rule 37 in the shape it keeps taking: check that
+    # the guard catches, not that it mentions.
+    assert fn.count('levelNote = "";') == 1, (
+        f"`levelNote` is cleared {fn.count(chr(39) + chr(39))} times in the switch; a second "
+        "reset after the translation is a note that is written and never seen"
+    )
+    for phrase in ("nothing that was selected exists at this level",
+                   "selected \u2192 the", "holding them"):
+        assert phrase in fn, f"the switch cannot say `{phrase}`"
+    assert fn.index('levelNote = "";') < fn.index("nothing that was selected"), (
+        "the reset runs after the note is written, so the reader is never told"
+    )
+
+
+def test_a_module_takes_the_band_of_what_it_holds_with_same_as_the_ground() -> None:
+    """Written the other way -- any two distinct bands make it mixed -- every changed file
+    on Mensores reads `mixed` and the colour says nothing at all. With `same` as the ground,
+    14 modules carry the whole comparison and 7 of them are genuinely mixed.
+
+    Measured before it was built, which is why the rule is this way round.
+    """
+    js = _code(_read("shell.js"))
+    fn = _fn(js, "changeByNodeId")
+    assert 'graphPayload.level === "module"' in fn, "the fold no longer knows the altitude"
+    assert 'b !== "same"' in fn, (
+        "`same` competes with the other bands instead of being the ground, so a file with "
+        "63 unchanged routines and one arrival reads as mixed"
+    )
+    assert '"mixed"' in fn, "there is no mixed band"
+    assert 'st === "edited" ? "same" : st' in fn, (
+        "`edited` is not folded into `same`, so a file edited without changing what it does "
+        "reads as mixed against its own unchanged neighbours -- two bands, one tone"
+    )
+    # Three states, and the third is why it is `null`: "nobody has asked for the routine
+    # list yet" is not "no module changed" (rule 35).
+    assert "if (!ROUTINES.length) return null;" in fn, (
+        "an empty routine list yields an empty map, which paints every module as *not "
+        "compared*, confidently and for ever"
+    )
+    # And whoever needs it does the work of loading it (rule 55's companion).
+    assert "loadRoutines()" in _fn(js, "ensureGraphChange"), (
+        "the module level's fold needs the routine list and nothing asks for it"
+    )
+
+
+def test_mixed_is_not_directional_and_has_its_own_colour() -> None:
+    """"More than one thing happened in this file" is the same claim whichever version the
+    reader takes to be newer, so flipping the assumption must not move it -- unlike every
+    band above it, whose tone comes from `diffWords()`.
+
+    The colour is measured rather than picked. It sits with `--graph-unchanged` and
+    `--graph-unclaimed` rather than in the colour sets, because a set covers the
+    *directions* of difference and "more than one direction" is not one of them.
+    """
+    js = _code(_read("shell.js"))
+    tones = _fn(js, "changeTones")
+    assert 'mixed: "mixed"' in tones, "the mixed band reaches no tone"
+    assert "w.base.tone" in tones and "w.compared.tone" in tones
+    assert "mixed: w." not in tones, (
+        "`mixed` is taken from `diffWords()`, so flipping which version is newer moves a "
+        "claim that does not depend on it"
+    )
+    css = _css_code(_read("tokens.css"))
+    assert css.count("--graph-mixed:") == 3, (
+        f"--graph-mixed is declared {css.count('--graph-mixed:')} times, not once per theme "
+        "block; a colour with no dark value borrows the light one"
+    )
+    assert ".legkey-dot.tone-mixed" in css, "the key's swatch has no colour"
+    # It must reach the stack, through the same `hex(...)` read as every other tone -- the
+    # shape the colour-set guard greps for.
+    assert 'mixed:     hex("--graph-mixed")' in js, (
+        "the mixed tone never reaches the engine, so seven nodes draw as `unclaimed`"
+    )
+    # And the engine carries its own fallback beside the other five, or a palette that has
+    # not been pushed yet draws the band as nothing at all.
+    engine = _code(_read("graph.js"))
+    fallback = engine.split("change: {", 1)[1].split("},", 1)[0]
+    assert "mixed:" in fallback, "the engine has no fallback colour for the mixed tone"
+
+
+def test_the_change_key_names_what_it_counts_at_each_altitude() -> None:
+    """Rule 32: the number must be named after the thing it measures. At module level the
+    dots are files, so "53 arrived" would be a routine count printed over 4 nodes."""
+    js = _code(_read("shell.js"))
+    fn = _fn(js, "changeKeyHtml")
+    assert 'graphPayload && graphPayload.level) === "module"' in fn, (
+        "the key does not know which altitude it is describing"
+    )
+    assert 'at === "module"' in fn, "the key says the same words at both altitudes"
+    assert "tally.mixed" in fn, "the mixed band is counted nowhere"
+    # Walked from the drawn nodes, never read off the band lengths (rule 32).
+    assert "shadow[i] === 1" in fn, (
+        "shadows are counted, and they are never drawn -- so the key states a number no "
+        "scrolling could find"
+    )
+
+
+def test_the_settings_version_moved_with_the_shape_that_changed() -> None:
+    """`level` and `minDisk` are new keys and would merge safely on their own. `diskOrder`
+    is the reason for the bump: it was one array and is now one per level, and a v3 blob
+    merged into that shape hands `mount` a list of plate ids where it expects a map."""
+    st = _read("settings.js")
+    assert "const SETTINGS_VERSION = 4;" in st, (
+        "the version did not move with the shape of `diskOrder`"
+    )
+    code = _code(st)
+    assert "diskOrder: { routine: null, module: null }" in code
+    assert "minDisk: { routine: null, module: null }" in code, (
+        "the threshold is not per level, so a value chosen for one altitude is applied to "
+        "the other, where it means something else"
+    )
+    js = _code(_read("shell.js"))
+    persisted = js.split("const PERSISTED = [", 1)[1].split("];", 1)[0]
+    for key in ("level", "minDisk"):
+        assert f'"{key}"' in persisted, f"`{key}` is never written to storage"

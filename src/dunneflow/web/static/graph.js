@@ -71,6 +71,11 @@ const PALETTE = {
     // A file the program names is not a boundary it touches: naming is a choice the
     // authors made, touching is something the code does. Different act, different colour.
     ARTEFACT:  [251, 191,  36],
+    // The module level's node: one file, standing for everything it declares. Its own
+    // colour rather than the routine's, because a file is not a routine -- and measured
+    // rather than picked (rule 69): worst separation ΔE 51.7 dark and 42.7 light against
+    // the other five, across normal vision, deuteranopia and protanopia.
+    MODULE:    [107, 107, 255],
   },
   /* What the comparison says about a node, in the shape `kind` already uses so
      `setPalette`'s merge treats the two the same way.
@@ -85,6 +90,9 @@ const PALETTE = {
     moved:     [167, 139, 250],
     quiet:     [114, 133, 151],
     unclaimed: [ 89, 115, 166],
+    // More than one direction of difference in one node, which only the module level can
+    // be in. Not part of a colour set -- see `tokens.css`, where the arithmetic is.
+    mixed:     [ 71,  71, 245],
   },
   dim:        [ 52,  64,  82],
   dimAlpha:   110,
@@ -1628,12 +1636,23 @@ function selectionOnScreen() {
 
 /* -------------------------------------------------------------------- mount --- */
 
-function mount(container, raw, options = {}) {
-  if (g.mounted) return;
-  g.container = container;
+/* **Adopting a payload, in one place.** Everything here is a fact about *these arrays*
+ * rather than about the page or the canvas -- the prepared buffers, the plate polygons,
+ * the id index, which of a saved plate order still applies, which picks still point at
+ * something, and where the camera has to be to see it.
+ *
+ * It is one function because there are now two callers: the first mount, and a change of
+ * level. A second setter doing nine tenths of what the first does is rule 68 exactly --
+ * `setGroupOpen` did the work and the boot that restored the same state did not -- and the
+ * tenth it forgot would be a stale `idIndex`, which is a lookup that answers confidently
+ * about a payload that is no longer here.
+ *
+ * `picks` are filtered rather than carried: an index is a position in *one* payload, so
+ * the same number means a different routine in the next one. The shell re-resolves the
+ * selection from ids afterwards, which is the only form that survives a swap. */
+function adoptPayload(raw, picks) {
   g.data = raw;
   g.idIndex = null;          // a fact about this payload; see `indexOfId`
-  Object.assign(opts, options);
 
   g.prepared = prepare(raw);
   g.prepared.plates = diskPlates(raw);
@@ -1645,7 +1664,7 @@ function mount(container, raw, options = {}) {
                  saved.every((id) => ids.has(id)) && saved.length === ids.size;
   opts.diskOrder = usable ? saved : defaultOrder(raw);
 
-  g.picks = (options.picks || []).filter((p) =>
+  g.picks = (picks || []).filter((p) =>
     p.kind === 'disk' ? ids.has(p.id) : p.index >= 0 && p.index < g.prepared.n);
 
   applyLayout(g.prepared);
@@ -1653,7 +1672,42 @@ function mount(container, raw, options = {}) {
   buildSelectionGeometry(g.prepared);
   paintNodes(g.prepared);
 
-  g.viewState = fitView(g.prepared, 35);
+  g.viewState = fitView(g.prepared);
+
+  /* **The diagnostics follow the payload.** These are set for looking at the engine from a
+   * console -- design rule 21 puts diagnostics where a developer can reach them, because
+   * "drawn off-screen" and "not drawn" are indistinguishable by looking. They were written
+   * once in `mount`, so after a change of level `window.__d` went on describing 15,870
+   * routine-level rows while the engine drew 2,069 module-level ones: a diagnostic that
+   * lies is worse than none, and it cost half an hour of chasing a defect that was not
+   * there. Rule 43's family -- an instrument nobody can trust is an instrument nobody
+   * reads. */
+  window.__d = g.prepared;
+  window.__graph = g;
+}
+
+/* A different altitude of the same program: 10,015 nodes and 52 plates, or 578 and 38.
+ *
+ * The camera is **refit** rather than kept, and the tilt is the one in force. The stack is
+ * a different size and a different height, so holding the old view state frames the new
+ * one at a scale worked out for something else -- which is design rule 20's own reasoning
+ * about why a snap-to-fit exists at all. Keeping the tilt keeps the reader's sense of
+ * which way they were looking. */
+function setPayload(raw) {
+  if (!g.mounted) return false;
+  adoptPayload(raw, []);
+  draw();
+  announceSelection();
+  announceCounts();
+  emit('ready', { disks: raw.disks, stats: raw.stats });
+  return true;
+}
+
+function mount(container, raw, options = {}) {
+  if (g.mounted) return;
+  g.container = container;
+  Object.assign(opts, options);
+  adoptPayload(raw, options.picks);
 
   g.deckgl = new Deck({
     parent: container,
@@ -1789,7 +1843,7 @@ function mount(container, raw, options = {}) {
   });
 
   g.mounted = true;
-  window.__deck = g.deckgl; window.__d = g.prepared; window.__graph = g;
+  window.__deck = g.deckgl;
   if (!ticking) { ticking = true; tick(); }
   announceSelection();
   emit('ready', { disks: raw.disks, stats: raw.stats });
@@ -1801,6 +1855,11 @@ function mount(container, raw, options = {}) {
  * happens to be on. */
 window.DunneFlowGraph = {
   mount,
+  /* A different altitude of the same program. Everything payload-derived is rebuilt and
+   * the selection is not carried, because a pick is an index into one payload -- the shell
+   * re-resolves it from ids, which is the only form that means the same thing in both. */
+  setPayload,
+  level: () => g.data?.level ?? null,
   mounted: () => g.mounted,
   on,
 

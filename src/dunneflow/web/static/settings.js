@@ -23,7 +23,13 @@
  * reload while a disk order nobody remembered setting survived. A blob written by v1 is
  * discarded whole rather than merged, which is the rule this file already stated: a
  * half-applied layout is harder to recognise as wrong than a reset one. */
-const SETTINGS_VERSION = 3;
+/* Bumped to 4 for the second level of detail. `level` and `minDisk` are new keys and would
+ * merge safely on their own -- `loadSettings` gives a key `DEFAULTS` declares and storage
+ * does not its default. `diskOrder` is the reason: it was one array and is now one array
+ * *per level*, and a v3 blob merged into that shape would hand `mount` a list of plate ids
+ * where it expects a map. A half-applied layout is harder to recognise as wrong than a
+ * reset one, which is this file's own rule. */
+const SETTINGS_VERSION = 4;
 
 const DEFAULTS = {
   /* ── the graph ───────────────────────────────────────────────────────────── */
@@ -40,8 +46,30 @@ const DEFAULTS = {
    * for it, and the code has a *second* live meaning for "plate" -- the polygon that draws
    * a disk (`showPlates`, `diskPlates`, `plateFill`). Renaming half of that pair would
    * leave the collision it was meant to remove. See `HANDOFF.md`. */
-  diskOrder: null,        // null = the server's default order
+  /* **Per level**, and the two are genuinely different lists: the module level holds
+   * different plates and merges different ones into `<small>`, so an order worked out for
+   * one does not describe the other. Kept apart rather than discarded on every switch,
+   * because `mount` validates a saved order against the plate set and throws it away when
+   * it does not match -- so one shared array would mean a reader who arranged the routine
+   * stack lost the arrangement the moment they looked at modules and came back. */
+  diskOrder: { routine: null, module: null },   // null = the server's default order
   diskColors: {},         // diskId -> "#rrggbb"
+  /* Which altitude the stack is drawn at, and how small a plate may be before it is
+   * merged into `<small>`.
+   *
+   * `routine` is every thing the program declares -- 10,015 nodes on Mensores. `module`
+   * folds each file into one node and each boundary kind into one: 578. It is a second way
+   * to look at the same facts and not a filter, so nothing is dropped and every folded
+   * node says what it stands for.
+   *
+   * `minDisk` is per level for the same reason the server's default is (design rule 2, and
+   * `graph.py` states the arithmetic): what a plate *holds* changes with the level, so 8
+   * is right for routines and folds 21 of Mensores' 45 packages away at module level. Null
+   * means "whatever the server's default for this level is", which is a third state and
+   * not a number -- a stored 8 would silently become an explicit choice about a level the
+   * reader had never visited. */
+  level: 'routine',       // 'routine' | 'module'
+  minDisk: { routine: null, module: null },
   /* What colour means in the stack. `change` appears only where there are two versions
      to compare, and a stored `change` on a program with one falls back to `kind` and
      says so -- see `resolveColorBy` in shell.js. */
@@ -321,6 +349,7 @@ function resetSettings(program, current) {
   const cleared = [];
   const named = {
     diskOrder: 'plate order', diskColors: 'plate colours', colorBy: 'colour source',
+    level: 'how much detail the stack draws', minDisk: 'the smallest plate drawn',
     sortMode: 'sort', filterMode: 'filter mode', direction: 'direction',
     nodeSize: 'node size', picks: 'selection', followMode: 'following a neighbour',
     spreadX: 'spread across', spreadY: 'spread deep', spreadZ: 'spread between plates',

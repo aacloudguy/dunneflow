@@ -78,6 +78,7 @@
   --graph-constant:  #5a6675;
   --graph-boundary:  #6d28d9;
   --graph-artefact:  #a16207;
+  --graph-module:    #1b286a;
   --graph-dim:       #c2cad6;
   --graph-dim-alpha: 150;
   /* The two grounds `colorBy: 'change'` draws on, and they are two because they are two
@@ -96,6 +97,25 @@
      in your selection*. */
   --graph-unchanged: #61666b;   /* 5.12:1 on the ground */
   --graph-unclaimed: #738aab;   /* 3.11:1 on the ground */
+  /* **More than one thing happened in this file**, and only the module level can be in
+     that state: a routine is in one band or none, a file holding 63 of them is not. On
+     Mensores 14 modules carry the whole comparison and 7 of those are mixed, so this is
+     a small population saying something no single band can.
+
+     Here rather than in the colour sets, on the same argument as the two above: a set
+     covers the *directions* of difference, and "more than one direction" is not one of
+     them. It is also what the arithmetic allowed. Measured against every colour in every
+     set, in normal vision, deuteranopia and protanopia, no hue clears a useful bar in
+     both themes -- the difference channel is at capacity, which is worth knowing before
+     anyone tries to add a seventh meaning to it. This pair is the best available: worst
+     ΔE 29.8 light and 45.3 dark **within the difference channel**, against the shipped
+     red/green pair's 12.7 and 9.5.
+
+     The nearest colour to the dark value overall is `--graph-module` at ΔE 20.8, and the
+     two are never on screen together: `colorBy` spends the channel on one dimension at a
+     time (design rule 4), so a node is drawn for its kind or for what changed, never
+     both. */
+  --graph-mixed:     #00007a;   /* 14.47:1 on the ground */
   --graph-edge:      #0d7f75;
   --graph-edge-alpha: 150;
   --graph-plate-fill: #dfe5ee;
@@ -187,6 +207,7 @@
     --graph-constant:  #94a3b8;
     --graph-boundary:  #c4b5fd;
     --graph-artefact:  #fbbf24;
+    --graph-module:    #6b6bff;
     --graph-dim:       #344052;
     --graph-dim-alpha: 110;
     /* The two grounds `colorBy: 'change'` draws on, and they are two because they are two
@@ -205,6 +226,7 @@
        in your selection*. */
     --graph-unchanged: #728597;   /* 4.98:1 on the ground */
     --graph-unclaimed: #5973a6;   /* 3.99:1 on the ground */
+    --graph-mixed:     #4747f5;   /* 3.15:1 on the ground */
     --graph-edge:      #5eead4;
     --graph-edge-alpha: 150;
     --graph-plate-fill: #161e29;
@@ -262,6 +284,7 @@
   --graph-constant:  #94a3b8;
   --graph-boundary:  #c4b5fd;
   --graph-artefact:  #fbbf24;
+  --graph-module:    #6b6bff;
   --graph-dim:       #344052;
   --graph-dim-alpha: 110;
   /* The two grounds `colorBy: 'change'` draws on, and they are two because they are two
@@ -280,6 +303,7 @@
      in your selection*. */
   --graph-unchanged: #728597;   /* 4.98:1 on the ground */
   --graph-unclaimed: #5973a6;   /* 3.99:1 on the ground */
+  --graph-mixed:     #4747f5;   /* 3.15:1 on the ground */
   --graph-edge:      #5eead4;
   --graph-edge-alpha: 150;
   --graph-plate-fill: #161e29;
@@ -1297,6 +1321,7 @@ body {
 .legkey-dot.tone-moved     { color: var(--diff-moved); }
 .legkey-dot.tone-quiet     { color: var(--graph-unchanged); }
 .legkey-dot.tone-unclaimed { color: var(--graph-unclaimed); }
+.legkey-dot.tone-mixed     { color: var(--graph-mixed); }
 
 /* ═══ cover ═══ */
 .cover-grid { display: grid; grid-template-columns: 1fr; gap: .875rem; max-width: 62rem; }

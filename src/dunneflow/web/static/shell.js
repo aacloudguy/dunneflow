@@ -204,6 +204,10 @@ const state = {
   diagram: false,         // what is lit, drawn as labelled boxes rather than as dots
   diagramId: null,        // which compartment Diagram mode has open
   diagramPorts: false,    // draw the crossings to other compartments -- see diagram.py
+  /* Which **box** is open, or null for the compartment. The second altitude of the same
+   * picture: a box is a class at one level and a routine at the next, and `Compartment`
+   * says "boxes, and the flow among them" at both. */
+  diagramBox: null,
   nodeShapes: "kind",     // a shape *set*, never a shape per kind -- see settings.js
   /* Which panes are open. This existed in `settings.js` from the start -- persisted,
    * named in the reset dialog -- and nothing anywhere read it: the pre-merge graph had
@@ -2183,14 +2187,30 @@ async function ensureDiagram() {
       if (!r.ok) throw new Error(`the compartment list came back ${r.status}`);
       DIAGRAM = (await r.json()).compartments;
     }
-    const want = diagramWanted();
+    /* **Two altitudes, one fetch and one drawing.** `state.diagramBox` says which one:
+       unset is the compartment, set is that box opened into its own routines. The answer
+       comes back in the same shape from either endpoint -- `dot`, `by_id`, `names`, the
+       same stats -- so everything below this line, and everything in `renderDiagram`, is
+       written once. A second renderer for the second level is how the two would drift
+       into being two views of two things (rule 51). */
+    const want = state.diagramBox || diagramWanted();
     if (!want) throw new Error("this program has no compartments to draw");
     if (!diagramNow || diagramNow.id !== want
         || !!diagramNow.portsDrawn !== !!state.diagramPorts) {
-      const r = await fetch(`/api/diagram?id=${encodeURIComponent(want)}`
-                            + (state.diagramPorts ? "&ports=1" : ""));
+      const url = state.diagramBox
+        ? `/api/inside?id=${encodeURIComponent(want)}`
+        : `/api/diagram?id=${encodeURIComponent(want)}`;
+      const r = await fetch(url + (state.diagramPorts ? "&ports=1" : ""));
       if (!r.ok) throw new Error(`${want} came back ${r.status}`);
-      diagramNow = await r.json();
+      const got = await r.json();
+      /* A refusal is a *stated* answer, not an empty drawing. `/api/inside` says no for a
+         port and for a boundary cylinder -- neither holds routines -- and a blank picture
+         there is indistinguishable from a box that genuinely holds nothing (design rule 1). */
+      if (got.found === false) {
+        state.diagramBox = null;
+        throw new Error(got.reason || "that box does not open");
+      }
+      diagramNow = got;
       diagramNow.svg = null;
     }
     if (!diagramNow.svg) {
@@ -2224,22 +2244,40 @@ function renderDiagram() {
     return;
   }
   const c = diagramNow;
+  /* The picker names the *compartment*, at either altitude. At the second level that is
+     the compartment the open box lives on, read off the box id rather than off `c.id` --
+     which is the box. A control naming one thing while the drawing shows another is one
+     control with two claims (rule 67). */
+  const onPlate = state.diagramBox ? String(state.diagramBox).split("|")[0] : c.id;
   const opts = (DIAGRAM || []).map(x =>
-    `<option value="${esc(x.id)}" ${x.id === c.id ? "selected" : ""}>${
+    `<option value="${esc(x.id)}" ${x.id === onPlate ? "selected" : ""}>${
       esc(x.name)} — ${x.boxes} boxes</option>`).join("");
+  const inside = !!state.diagramBox;
   /* Design rule 1: what is drawn and what it stands for, always. A diagram of 83 boxes over
-     487 routines is a fold, and a fold that does not say what it folded is a filter. */
+     487 routines is a fold, and a fold that does not say what it folded is a filter.
+     At the second level the same sentence describes routines rather than boxes, and it
+     says which box they are inside -- otherwise the drawing is a compartment nobody
+     recognises, with no way to tell it is one level down. */
   host.innerHTML = `
     <div class="dgm-head">
       <select id="dgmPick" aria-label="Which compartment to draw">${opts}</select>
-      <span class="hint"><b class="num">${c.boxes}</b> boxes over
-        <b class="num">${(c.routines || 0).toLocaleString()}</b> routines ·
-        <b class="num">${c.inside}</b> flows within ·
-        <b class="num">${c.crossing}</b> crossing to
-        <b class="num">${c.ports}</b> other compartments${
+      ${inside ? `<button class="gbtn" data-dgmup="1"
+            title="Back out to the whole compartment">‹ out</button>
+          <b class="num">${esc(c.name)}</b>` : ""}
+      <span class="hint">${inside
+        ? `<b class="num">${c.routines}</b> routines ·
+           <b class="num">${c.inside}</b> flows within ·
+           <b class="num">${c.crossing}</b> crossing to
+           <b class="num">${c.ports}</b> other boxes`
+        : `<b class="num">${c.boxes}</b> boxes over
+           <b class="num">${(c.routines || 0).toLocaleString()}</b> routines ·
+           <b class="num">${c.inside}</b> flows within ·
+           <b class="num">${c.crossing}</b> crossing to
+           <b class="num">${c.ports}</b> other compartments`}${
         c.portsDrawn ? "" : ` <span class="muted">(not drawn)</span>`}${
         c.unlinked ? ` · <b class="num">${c.unlinked}</b> with no flow either way` : ""}
-        <span class="muted">· drawn in ${c.drawMs} ms</span></span>
+        <span class="muted">· drawn in ${c.drawMs} ms${
+        inside ? "" : " · double-click a box to open it"}</span></span>
       ${/* Rule 19's own switch, one level up. Drawn, the crossings connect what was
             disconnected so nothing packs, and in a small compartment they outnumber the
             subject -- 8 boxes to 29 ports on `pkg:mcp`. Off by default, always counted. */""}
@@ -2402,6 +2440,8 @@ $$("#modes button").forEach(b => b.addEventListener("click", () => {
 document.addEventListener("click", (ev) => {
   const fit = ev.target.closest("[data-dgm]");
   if (fit) { dgmFit(); return; }
+  const up = ev.target.closest("[data-dgmup]");
+  if (up) { openDiagramBox(null); return; }
   const mount = $("#diagramMount");
   if (!mount || mount.hidden || !ev.target.closest("#diagramMount")) return;
   const g = ev.target.closest("g.node");
@@ -2413,11 +2453,31 @@ document.addEventListener("click", (ev) => {
      dashboard shares, so the inspector fills and the stack lights without this view owning
      a second answer to "what am I looking at" (rule 51). */
   if (box.kind === "port") {
-    state.diagramId = box.plate;
+    /* A port names a **plate** at the first level and a **box** at the second, because
+       that is what it stands for at each, and clicking it goes to whichever that is. Both
+       are the same act -- *take me to the other end* -- and doing anything less precise at
+       the second level would throw away the one thing the port there knows. */
+    if (box.box) {
+      state.diagramId = String(box.box).split("|")[0];
+      state.diagramBox = String(box.box);
+    } else {
+      state.diagramId = box.plate;
+      state.diagramBox = null;
+    }
     diagramNow = null;
     pushTrail("diagram", box.label);
     used("diagram:port");
     ensureDiagram();
+    return;
+  }
+  /* **At the second level a box is a routine**, and a routine is a node: it selects as
+     itself, through the path every other node in the product uses. Told apart by the kind
+     the server put on it rather than by which endpoint we happen to have called -- the
+     drawing is the same shape either way, and a flag about *how we got here* is a second
+     answer to what is on screen (rule 51). */
+  if (box.kind === "routine") {
+    used("diagram:routine");
+    selectFromNav({ nodes: [g.id] }).then(markDiagramSelection);
     return;
   }
   if (box.members && box.members.length) {
@@ -2444,6 +2504,52 @@ document.addEventListener("click", (ev) => {
   }
 });
 
+/* **Double-click opens a box into its own routines.** Tom asked for both: a click says
+ * what the box *is*, a double-click goes inside it. They are different questions and a
+ * single control cannot ask both -- which is design rule 2's shape, except that here the
+ * two are not alternatives to choose between, they are two acts on one thing.
+ *
+ * The single click still fires first, and that is deliberate rather than tolerated: it
+ * fills the inspector with the fold, which is exactly the context a reader wants beside
+ * the drawing they have just opened. Nothing is undone by the second click.
+ *
+ * A box with nothing to open says so rather than doing nothing -- a port is a place and a
+ * boundary is the bottom of the flow, and design rule 16's defect is a control that
+ * responds to a gesture by silently declining it. */
+document.addEventListener("dblclick", (ev) => {
+  const mount = $("#diagramMount");
+  if (!mount || mount.hidden || !ev.target.closest("#diagramMount")) return;
+  const g = ev.target.closest("g.node");
+  if (!g || !diagramNow) return;
+  const box = diagramNow.by_id[g.id];
+  if (!box) return;
+  if (box.kind === "port" || box.kind === "routine" || !(box.members || []).length) {
+    state.navNote = box.kind === "port"
+      ? `${box.label} is another compartment — one click goes there`
+      : `${box.label} holds no routines of its own to open`;
+    render();
+    return;
+  }
+  openDiagramBox(g.id, box.label);
+});
+
+/* One owner for *which* altitude the drawing is at, because three controls reach it: the
+ * double-click, the way back up, and the compartment picker (which must come home to the
+ * first level, or choosing a compartment would leave the last box open under it). */
+function openDiagramBox(boxId, label) {
+  state.diagramBox = boxId || null;
+  diagramNow = null;
+  used(boxId ? "diagram:open" : "diagram:up");
+  /* Named for the *act*, not for the thing. Selecting the box and opening it are two steps
+     with the same subject-name and different subjects, so two rows reading `KernelDecl`
+     leave the reader guessing which is which -- rule 30 in a label rather than in a
+     control. */
+  pushTrail("diagram", boxId ? `inside ${label || "box"}` : "out",
+            boxId ? "opened the box" : "back out to the compartment");
+  persist();
+  ensureDiagram();
+}
+
 document.addEventListener("change", (ev) => {
   if (ev.target.id === "dgmPorts") {
     state.diagramPorts = ev.target.checked;
@@ -2454,6 +2560,10 @@ document.addEventListener("change", (ev) => {
   }
   if (ev.target.id !== "dgmPick") return;
   state.diagramId = ev.target.value;
+  /* Choosing a compartment comes home to the first level. Without this the picker would
+     name one compartment while the drawing showed a box inside another -- one control,
+     two claims, and the markup is the one that loses (rule 67). */
+  state.diagramBox = null;
   diagramNow = null;
   pushTrail("diagram", ev.target.selectedOptions[0].textContent.split("—")[0].trim());
   used("diagram:pick");
@@ -4107,12 +4217,22 @@ function selectionSnapshot() {
      scrolls exactly as it should and can take nobody back (rule 33, in the view that rule
      was written for). */
   return { picks: (state.picks || []).slice(), selected: state.selected,
-           fold: state.fold || null };
+           fold: state.fold || null,
+           /* **Where the drawing is** is part of the subject in Diagram mode, and leaving it
+              out made three acts unreversible: switching compartment, opening a box, and
+              backing out of one. None of them changes the *selection*, so every step they
+              filed was deduplicated against the one before it and Back skipped straight past
+              -- rule 33 with the field simply missing, and design rule 15's whole argument
+              is that a detour is only free if you can get back from it. */
+           diagramId: state.diagramId || null,
+           diagramBox: state.diagramBox || null };
 }
 
 function sameSelection(a, b) {
   return a && b && a.selected === b.selected &&
          (a.fold || null) === (b.fold || null) &&
+         (a.diagramId || null) === (b.diagramId || null) &&
+         (a.diagramBox || null) === (b.diagramBox || null) &&
          a.picks.length === b.picks.length &&
          a.picks.every((p, i) => {
            const q = b.picks[i];
@@ -4172,6 +4292,16 @@ function applySelectionStep(step) {
     state.picks = step.picks.slice();
     if (Graph.mounted()) Graph.setSelection(state.picks);
     setSubject({ node: step.selected, fold: step.fold });
+    /* Restore where the drawing was, and redraw only when it actually moved: `ensureDiagram`
+       refetches, and calling it on every Back would make stepping through a trail of
+       selections re-request a compartment that never changed. */
+    if ((step.diagramId || null) !== (state.diagramId || null)
+        || (step.diagramBox || null) !== (state.diagramBox || null)) {
+      state.diagramId = step.diagramId || null;
+      state.diagramBox = step.diagramBox || null;
+      diagramNow = null;
+      ensureDiagram();
+    }
     persist();
     buildNav();
     revealSelectedRoutine();
@@ -5614,6 +5744,23 @@ function subjectLabel() {
     return (box && box.label) || state.fold;
   }
   return state.selected ? labelFor(state.selected) : "nothing selected";
+}
+
+/* **Which rows the routine list marks.** One node when a node is selected; *every member*
+ * when a fold is. Design rule 26 says the list and the picture are one instrument and it has
+ * to run both ways -- and the diagram half of that was dead: a fold sets no `state.selected`
+ * at all, so `current: state.selected === r.id` matched nothing and the navigator went on
+ * marking whatever had been clicked before. A stale highlight is worse than none (rule 51),
+ * and this was worse again: nothing moved, so the click read as having failed.
+ *
+ * Marking sixty-one rows is the honest answer rather than an unfortunate one. They are what
+ * the reader picked; the number is stated in the pane beside them; and picking one of them
+ * narrows it to that one, which is the loop working. Tom raised it as a worry -- "some boxes
+ * say 3 functions, so highlighting all three might be problematic" -- and the alternative is
+ * electing a member, which is exactly the defect the fold exists to undo. */
+function selectedRowIds() {
+  if (state.fold) return new Set(((state.wanted || {}).nodes) || []);
+  return new Set(state.selected ? [state.selected] : []);
 }
 
 /* **Look at this box.** Two callers -- a click on the drawing, and a neighbour row in a
@@ -7107,7 +7254,7 @@ const WIRED_ATTRS = new Set([
      because `data-fold` has collapsed a pane since design rule 24 -- a class name and a
      data attribute are both global, and the obvious spelling here would have railed the
      inspector on every neighbour row (rule 71). */
-  "box", "gotocode", "gotoline", "label",
+  "box", "gotocode", "gotoline", "label", "dgmup",
   /* The base switch's one control: dismiss a switch that failed. Only ever rendered in the
      failed state -- there is nothing to dismiss while a rebuild is running, and offering a
      cancel that cannot stop the server would be a control that looks live and is not. */
@@ -7249,6 +7396,10 @@ function matchingRoutines() {
 let treeCache = null;
 
 function routineTree() {
+  /* The same set the pane marks with. Past the cap, a *member of a fold* has to survive for
+     the same reason the selected routine does: the alternative is a package that opens onto
+     rows with nothing marked, which is identical on screen to the sync being broken. */
+  const keep = selectedRowIds();
   if (treeCache) return treeCache;
   const { rows, total, filtered } = matchingRoutines();
   const cap = navCap();
@@ -7289,7 +7440,7 @@ function routineTree() {
      *
      * It lands last among the rows shown, which is its right place: everything drawn comes
      * before it in the same order, and the cut is between them. The note counts it. */
-    if (g.open && (g.rows.length < cap || r.id === state.selected)) g.rows.push(r);
+    if (g.open && (g.rows.length < cap || keep.has(r.id))) g.rows.push(r);
   }
   const packages = [...by.values()].sort((a, b) => b.n - a.n || a.id.localeCompare(b.id));
   treeCache = { packages, total, filtered, autoOpen };
@@ -7313,6 +7464,9 @@ function pkgOpen(id) {
 }
 
 function routineList() {
+  /* Once for the whole pane. A `Set` per row is one allocation per routine on a list that
+     rebuilds on every keystroke -- rule 45's shape, in the pane that already earned it. */
+  const rowMarks = selectedRowIds();
   const { packages, total } = routineTree();
   if (!ROUTINES.length) return "";
   if (!total) return "";
@@ -7341,10 +7495,13 @@ function routineList() {
         open && cut > 0 ? `<div class="nav-note">showing ${g.rows.length} of ${g.n.toLocaleString()}
           — search, or open the table for all of them</div>` : ""}
       <div class="nav-items">
+        ${/* Computed once for the whole list rather than per row: a `Set` built inside the
+             map is one allocation per routine, which is rule 45's shape on the pane that
+             repaints on every keystroke. */""}
         ${g.rows.map(r => navItemHtml({
             nav: "routine", label: r.name, sub: moduleTail(r.module), sel: r.id,
             n: routineFan(r.id), qual: `${r.module}.${r.name}`, card: true,
-            current: state.selected === r.id,
+            current: rowMarks.has(r.id),
             /* Read, never asked for. `routineChip` answers "" until something else has
                fetched the comparison, and nothing on this path fetches it -- see
                `ensureTableOverlay`. This group is open by default, so asking here would
@@ -9550,12 +9707,21 @@ function revealSelectedRow(force) {
 }
 
 function revealSelectedRoutine() {
-  if (!state.selected) return;
+  /* **A fold reveals its first member.** There is no single selected node, so the node-only
+     guard returned immediately and the list never moved -- which, with nothing marked
+     either, is indistinguishable from the diagram not being wired to the navigator at all.
+     Reported as exactly that.
+
+     The *first* rather than the whole set, because a reveal is a scroll and a scroll has one
+     destination. Every member is marked (`selectedRowIds`), so what the reader lands on is
+     the top of a marked run rather than a lone highlight. */
+  const want = state.selected || ((state.wanted || {}).nodes || [])[0] || null;
+  if (!want) return;
   /* From the routine, not from the row. A closed package draws no rows at all now, so
    * looking the element up first and giving up when it is missing would have quietly
    * retired the back half of the loop -- and it would have looked exactly like a routine
    * that genuinely is not in the list. The data knows which package holds it either way. */
-  const r = ROUTINES.find(x => x.id === state.selected);
+  const r = ROUTINES.find(x => x.id === want);
   if (!r) return;             // not a routine, or the list has not been fetched yet
   const group = NAV_GROUPS.find(g => g.id === "navRoutines");
   const wantGroup = group && !groupOpen(group);
@@ -9566,7 +9732,7 @@ function revealSelectedRoutine() {
   if (wantGroup) setGroupOpen("navRoutines", true);     // persists and rebuilds
   else if (wantPkg) { persist(); buildNav(); }
 
-  const row = $(`#navRoutines .nav-item[data-navid="${CSS.escape(state.selected)}"]`);
+  const row = $(`#navRoutines .nav-item[data-navid="${CSS.escape(want)}"]`);
   if (!row) return;           // past the package's cap; its own notice already says so
   const sc = $("#navScroll");
   if (!sc) return;

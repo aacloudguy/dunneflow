@@ -3401,9 +3401,11 @@ def test_a_broad_search_does_not_open_the_whole_program() -> None:
         "rows are built for packages that are not drawn -- hidden is not absent, and it "
         "cost 341 ms a keystroke the first time"
     )
-    assert "r.id === state.selected" in tree, (
+    assert "keep.has(r.id)" in tree and "selectedRowIds()" in tree, (
         "the cap can hide the selected routine, and then the list shows no row for it at "
-        "all -- no highlight, no scroll, indistinguishable from the sync being broken"
+        "all -- no highlight, no scroll, indistinguishable from the sync being broken. It "
+        "is a *set* now rather than one id, because a fold selects every member it holds "
+        "and each of them has the same claim to survive the cap"
     )
 
 
@@ -7369,4 +7371,185 @@ def test_there_is_one_way_from_the_inspector_to_the_code() -> None:
     assert "gotocode" in _read("shell.js").split("const WIRED_ATTRS = new Set([", 1)[1] \
                                           .split("]);", 1)[0], (
         "`gotocode` is missing from the wired roster, so the self-check calls it dead"
+    )
+
+
+def test_the_routine_list_follows_a_fold() -> None:
+    """Design rule 26 runs both ways, and the diagram half of it was dead.
+
+    Tom, at the keyboard: *"if I click inside the Diagram, neither of the other two syncs to
+    it at all."* Half right on the build he had -- the inspector did follow. The navigator
+    did not, and could not: it marks `state.selected === r.id` and reveals the same field,
+    and a fold leaves that null. So the list went on marking whatever had been clicked
+    before, and nothing moved. A stale highlight is a confident wrong answer (rule 51), and
+    a list that does not move is indistinguishable from a list that is not wired.
+    """
+    js = _code(_read("shell.js"))
+    marks = _fn(js, "selectedRowIds")
+    assert "state.fold" in marks and "state.wanted" in marks, (
+        "the list marks by node id only, so a fold marks nothing at all"
+    )
+    assert "current: rowMarks.has(r.id)" in js, (
+        "a routine row is marked by comparing against one id again, which a fold never sets"
+    )
+    reveal = _fn(js, "revealSelectedRoutine")
+    assert "state.wanted" in reveal, (
+        "the reveal gives up when no single node is selected, so the list never moves to a "
+        "fold -- with nothing marked either, that is exactly 'it does not sync at all'"
+    )
+    # Past the cap, a member has to survive for the same reason the selected routine does.
+    tree = _fn(js, "routineTree")
+    assert "keep.has(r.id)" in tree, (
+        "a fold's members are dropped past a package's row cap, so the package opens onto "
+        "rows with nothing marked"
+    )
+
+
+def test_a_box_opens_into_its_own_routines() -> None:
+    """The second altitude of one picture, not a second picture.
+
+    A `Compartment` is "boxes, and the flow among them". At the first level a box is a class
+    or a file; at the second it is a routine. `dot()` and `mermaid()` take a `Compartment`
+    and neither knows which level built it, so a shape or a fix applied to one is applied to
+    both -- rule 51, and the reason there is no second renderer.
+    """
+    py = (Path(__file__).resolve().parents[1]
+          / "src/dunneflow/web/diagram.py").read_text(encoding="utf-8")
+    assert "def build_inside(" in py, "nothing opens a box"
+    inside = py.split("def build_inside(", 1)[1].split("\ndef ", 1)[0]
+    assert "Compartment(" in inside, (
+        "the second level builds something other than a `Compartment`, so it cannot be "
+        "drawn by `dot()` and needs a renderer of its own"
+    )
+    assert 'Box(mid, _clip(str(m["name"])), "routine"' in inside, (
+        "a routine at the second level is no longer its own kind, so `dot()` cannot tell it "
+        "from a class and draws it as whatever the fallback is"
+    )
+    # The **fallthrough**, not the lookup. `box_of.get(other_id) or other_id` keeps the
+    # lookup and destroys the refusal, and a check for the call alone passes on it.
+    assert re.search(r"far = box_of\.get\(other_id\)\s*\n\s*if not far:\s*\n\s*return None",
+                     inside), (
+        "a callee this compartment cannot place gets a port labelled with a raw id -- a "
+        "control carrying no identity resolves to nothing (rule 30)"
+    )
+    # Both emitters know the kind, or one of them draws a routine as a store.
+    assert 'elif b.kind == "routine":' in py.split("def dot(", 1)[1].split("\ndef ", 1)[0], (
+        "`dot()` does not know a routine box, so the second level draws every routine as a "
+        "cylinder -- the shape this product spends on a boundary (design rule 4)"
+    )
+    assert 'elif b.kind == "routine":' in py.split("def mermaid(", 1)[1].split("\ndef ", 1)[0], (
+        "the exported source and the drawing disagree about what a routine is (rule 13)"
+    )
+
+    serve = (Path(__file__).resolve().parents[1]
+             / "src/dunneflow/web/serve.py").read_text(encoding="utf-8")
+    route = serve.split("def _r_inside(", 1)[1].split("\n    def ", 1)[0]
+    assert 'if box.kind == "port" or not box.members:' in route, (
+        "a port or a boundary cylinder is opened into an empty drawing, which is "
+        "indistinguishable from a box that genuinely holds nothing (design rule 1)"
+    )
+    assert '"found": False' in route, (
+        "a box that does not open answers with an empty diagram rather than a stated reason"
+    )
+
+    js = _code(_read("shell.js"))
+    dbl = js.split('document.addEventListener("dblclick", (ev) => {', 1)[1] \
+            .split("\n});", 1)[0]
+    assert "openDiagramBox(" in dbl, "double-clicking a box no longer opens it"
+    assert 'box.kind === "port"' in dbl and "state.navNote" in dbl, (
+        "a box with nothing to open declines the gesture in silence, which is design rule "
+        "16's defect arriving through a gesture rather than through a control"
+    )
+    # The click at the second level is an ordinary node selection, told apart by the kind
+    # the server sent -- never by which endpoint the page happened to call.
+    # **The routine branch alone.** Sliced to the end of the handler it takes in the port
+    # branch, which legitimately writes `state.diagramBox` -- and the absence check below
+    # then passes on code that has nothing to do with it (rule 37: check the span, not the
+    # file).
+    click = js.split('const box = diagramNow.by_id[g.id];', 1)[1]
+    assert 'box.kind === "routine"' in click, (
+        "a routine box at the second level is treated as a fold, so the click asks "
+        "`/api/fold` for a node id and gets a refusal"
+    )
+    # It routes on what was clicked, never on which endpoint the page happened to call.
+    # The port branch legitimately *writes* `state.diagramBox`; nothing here may *read* it
+    # to decide what a click means -- a flag about how we got here is a second answer to
+    # what is on screen (rule 51).
+    assert "if (state.diagramBox" not in click, (
+        "the click routes on the fetch that produced the drawing rather than on the kind "
+        "of thing that was clicked"
+    )
+    routine_branch = click.split('if (box.kind === "routine") {', 1)[1].split("\n  }", 1)[0]
+    assert "selectFromNav({ nodes: [g.id] })" in routine_branch, (
+        "a routine box does not select as itself, so the second level cannot reach the "
+        "one selection the rest of the dashboard shares"
+    )
+
+
+def test_moving_the_drawing_is_a_step_the_trail_can_reverse() -> None:
+    """Three acts in Diagram mode change no selection at all.
+
+    Switching compartment, opening a box, and backing out of one. A step's subject was
+    `{picks, selected, fold}`, so every one of them deduplicated against the step before it
+    and Back skipped straight past -- rule 33 with the field simply missing, in the view
+    design rule 15's argument is strongest about: nobody chases a rabbit if they might not
+    find their way back.
+    """
+    js = _code(_read("shell.js"))
+    snap = _fn(js, "selectionSnapshot")
+    # The **value**, not the key. Written as `field in snap` this passed a mutation that
+    # left `diagramId: null` -- the key was there and the fact was gone (rule 59's
+    # companion, and the fifth time in two sessions).
+    for field in ("diagramId", "diagramBox"):
+        assert f"state.{field}" in snap, (
+            f"a step does not read `state.{field}`, so moving the drawing files a step "
+            "indistinguishable from the one before it"
+        )
+    same = _fn(js, "sameSelection")
+    for field in ("diagramId", "diagramBox"):
+        assert field in same, (
+            f"two steps that differ only by `{field}` compare equal, so the second is "
+            "deduplicated away and Back cannot reverse it"
+        )
+    step = _fn(js, "applySelectionStep")
+    assert "state.diagramBox = step.diagramBox" in step, (
+        "Back restores the selection but not the drawing, so it takes the reader to a "
+        "subject while leaving a different picture on screen"
+    )
+    assert "ensureDiagram()" in step, (
+        "the restored drawing is never refetched, so Back changes the state and not the page"
+    )
+    # Guarded, or every Back through a trail of selections refetches a compartment that
+    # never moved.
+    assert "!==" in step.split("state.diagramBox = step.diagramBox", 1)[0][-400:], (
+        "the redraw is unconditional, so stepping through selections refetches the diagram "
+        "on every one of them"
+    )
+
+
+def test_the_diagram_head_says_which_altitude_it_is_at() -> None:
+    """A compartment and an opened box are the same drawing with different contents.
+
+    Without a word saying which, the second level is a compartment the reader does not
+    recognise -- design rule 1: what is drawn and what it stands for, always.
+    """
+    js = _code(_read("shell.js"))
+    head = _fn(js, "renderDiagram")
+    assert "data-dgmup" in head, "there is no way back out of an opened box"
+    assert "routines ·" in head, "the second level does not say what it is showing"
+    assert "double-click a box to open it" in head, (
+        "nothing on screen says the gesture exists, so the feature is reachable only by "
+        "someone who already knows it is there"
+    )
+    # The picker names the compartment at both levels, read off the box id rather than off
+    # the drawing's own id -- which at the second level is the box.
+    assert "String(state.diagramBox).split(\"|\")[0]" in head, (
+        "the compartment picker has nothing to name the compartment with at the second level"
+    )
+    # And the option must actually be compared against it. Asserting only that the constant
+    # is computed passes with the comparison left on the drawing's own id -- which at the
+    # second level is the box.
+    assert "x.id === onPlate" in head, (
+        "the compartment picker names the open *box* at the second level, so one control "
+        "makes two claims and the markup is the one that loses (rule 67)"
     )

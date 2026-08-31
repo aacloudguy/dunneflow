@@ -1613,3 +1613,39 @@ FROM comments c
 JOIN json_each(:ids) j ON j.value = c.routine_id
 GROUP BY c.routine_id
 """
+
+
+# What a fold looks like from the inside: the calls among its own members, and the
+# calls that leave it. The second level of the diagram is drawn from these two.
+#
+# `NOT IN (SELECT value FROM json_each(:ids))` rather than a second join, because the
+# question is about *absence* from the set and a join cannot express that. Both are
+# grouped, so what comes back is one row per connection rather than one per call site --
+# a picture wants the connection, and the call sites are what `/api/flow` is for.
+FOLD_INNER_CALLS = """
+SELECT c.caller_id AS src, c.callee_id AS dst, COUNT(*) AS weight,
+       MAX(c.confidence = 'CERTAIN') AS certain
+FROM calls c
+JOIN json_each(:ids) a ON a.value = c.caller_id
+JOIN json_each(:ids) b ON b.value = c.callee_id
+WHERE c.at_boundary = 0 AND c.caller_id <> c.callee_id
+GROUP BY c.caller_id, c.callee_id
+"""
+
+FOLD_CALLS_OUT = """
+SELECT c.caller_id AS mine, c.callee_id AS other, COUNT(*) AS weight
+FROM calls c
+JOIN json_each(:ids) a ON a.value = c.caller_id
+WHERE c.callee_id IS NOT NULL AND c.at_boundary = 0
+  AND c.callee_id NOT IN (SELECT value FROM json_each(:ids))
+GROUP BY c.caller_id, c.callee_id
+"""
+
+FOLD_CALLS_IN = """
+SELECT c.callee_id AS mine, c.caller_id AS other, COUNT(*) AS weight
+FROM calls c
+JOIN json_each(:ids) b ON b.value = c.callee_id
+WHERE c.at_boundary = 0
+  AND c.caller_id NOT IN (SELECT value FROM json_each(:ids))
+GROUP BY c.callee_id, c.caller_id
+"""

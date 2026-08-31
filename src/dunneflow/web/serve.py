@@ -286,6 +286,11 @@ class _Base:
     # with everything else. One pass over the model builds all fifty-three, so this is
     # keyed by nothing -- it is the whole set or it is empty.
     compartments: dict[str, Any] = field(default_factory=dict)
+    # Which box each node lives in, and what each box is called -- derived from the
+    # compartments above, so the second level places a crossing in exactly the box the
+    # first level drew it in. Filled beside them and thrown away with them.
+    box_of: dict[str, str] = field(default_factory=dict)
+    box_label: dict[str, str] = field(default_factory=dict)
 
 
 # What building a base costs, in the order it is paid, so a reader watching a switch is
@@ -439,8 +444,11 @@ class _Live:
                       payloads={default_level(): payload},
                       # Empty rather than built: fifty-three diagrams cost a model build,
                       # and a session that never opens Diagram mode must not pay for it at
-                      # every switch. The route fills it on first ask.
-                      compartments={})
+                      # every switch. The route fills all three on first ask, together --
+                      # the index is derived from the compartments, so a base carrying one
+                      # without the other would place this version's crossings in the last
+                      # version's boxes.
+                      compartments={}, box_of={}, box_label={})
         with self.lock:
             outgoing = self.current
             self.current = fresh
@@ -627,6 +635,9 @@ class _Handler(BaseHTTPRequestHandler):
                 # replaces every field together, and the payload cache above earns its
                 # mutability the same way.
                 base.compartments.update(diagram.build(model))
+                by_node, by_box = diagram.box_index(base.compartments)
+                base.box_of.update(by_node)
+                base.box_label.update(by_box)
             return base.compartments
 
     def _r_fold(self, q: dict[str, list[str]]) -> None:
@@ -669,6 +680,70 @@ class _Handler(BaseHTTPRequestHandler):
                                diagram.flow_of(comp, box_id),
                                self._live.source, revision=base.source_revision)
         self._json(body)
+
+    def _r_inside(self, q: dict[str, list[str]]) -> None:
+        """One box, opened: the routines it holds and the flow among them.
+
+        **The second level of the same picture, not a second picture.** It comes back in
+        exactly the shape `/api/diagram` returns -- `dot`, `mermaid`, `by_id`, `names` and
+        the same stats -- so the page draws it with the code that already draws a
+        compartment, and a fix to one is a fix to both.
+
+        Asked on demand and never cached. A compartment is fifty-three drawings built in one
+        pass, so building them together is the cheap way round; a *box* is one of nine
+        thousand, and building all of them to answer a double-click would be rule 45 exactly.
+        Three grouped queries over indexed columns is what it costs instead.
+
+        A box holding nothing the store has a routine for -- a boundary cylinder -- is
+        refused rather than drawn empty: a blank picture is indistinguishable from a thing
+        that genuinely holds nothing, and this level has none of those.
+        """
+        box_id = (q.get("id") or [""])[0]
+        if not box_id:
+            self._json({"found": False, "reason": "no id asked for"})
+            return
+        found = diagram.find_box(self._compartments(), box_id)
+        if found is None:
+            self._json({"found": False, "id": box_id,
+                        "reason": "no such box in this diagram"})
+            return
+        _, box = found
+        if box.kind == "port" or not box.members:
+            self._json({"found": False, "id": box_id,
+                        "reason": "a port stands for another compartment, and a boundary "
+                                  "is the bottom of the flow -- neither opens"})
+            return
+
+        args = {"ids": json.dumps(list(box.members))}
+        with self._live.lock:
+            base = self._live.current
+            rows = base.store.query
+            members = [dict(r) for r in rows(queries.FOLD_MEMBERS, args)]
+            inner = [dict(r) for r in rows(queries.FOLD_INNER_CALLS, args)]
+            out = [dict(r) for r in rows(queries.FOLD_CALLS_OUT, args)]
+            into = [dict(r) for r in rows(queries.FOLD_CALLS_IN, args)]
+            touches = [dict(r) for r in rows(queries.FOLD_BOUNDARIES, args)]
+            box_of, box_label = dict(base.box_of), dict(base.box_label)
+
+        for t in touches:
+            t["weight"] = 1
+        c = diagram.build_inside(box_id, box, members, inner, out, into, touches,
+                                 box_of, box_label)
+        ports = (q.get("ports") or ["0"])[0] == "1"
+        self._json({
+            "id": c.id, "name": c.name, **c.stats,
+            "inside_of": box_id, "plate": box_id.partition("|")[0],
+            "dot": diagram.dot(c, ports=ports),
+            "portsDrawn": ports,
+            "mermaid": diagram.mermaid(c),
+            "by_id": {b.id: {"label": b.label, "kind": b.kind, "holds": b.holds,
+                             "members": b.members, **b.detail}
+                      for b in c.boxes + c.ports},
+            "names": {nid: lbl
+                      for b in c.boxes
+                      for nid, lbl in zip(b.members, b.labels, strict=True)},
+            "found": True,
+        })
 
     def _r_diagram(self, q: dict[str, list[str]]) -> None:
         """A compartment as a diagram, or the list of compartments there are.
@@ -1290,6 +1365,7 @@ class _Handler(BaseHTTPRequestHandler):
         "/api/graph": "_r_graph",
         "/api/diagram": "_r_diagram",
         "/api/fold": "_r_fold",
+        "/api/inside": "_r_inside",
         "/api/cover": "_r_cover",
         "/api/routines": "_r_routines",
         "/api/packages": "_r_packages",

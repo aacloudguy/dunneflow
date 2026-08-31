@@ -303,6 +303,13 @@ def dot(c: Compartment, *, rankdir: str = "TB", ports: bool = False) -> str:
                        f'shape=box, style="rounded,bold"];')
         elif b.kind == "file":
             out.append(f'  {n} [id="{_quote(b.id)}", label="{_quote(b.label)}{held}"];')
+        elif b.kind == "routine":
+            # The second level. A routine says what it is called and nothing else: it
+            # holds only itself, so "1 functions" would be a count of the box rather
+            # than a fact about the program (rule 32). What it takes and what it gives
+            # back is the hover card's invocation line, one glance away.
+            out.append(f'  {n} [id="{_quote(b.id)}", label="{_quote(b.label)}", '
+                       f'shape=box, style=rounded];')
         else:
             # What it touches: a cylinder, which is the shape a diagram has always spent on
             # a store, and the bottom of the flow.
@@ -341,6 +348,8 @@ def mermaid(c: Compartment) -> str:
         held = f"<br>{b.holds} {'methods' if b.kind == 'class' else 'functions'}"
         if b.kind == "touch":
             out.append(f'  {n}[("{lab}")]')
+        elif b.kind == "routine":
+            out.append(f'  {n}["{lab}"]')
         else:
             out.append(f'  {n}["{lab}{held}"]')
     for b in c.ports:
@@ -420,3 +429,109 @@ def box_payload(b: Box) -> dict[str, Any]:
     """A box as the wire carries it -- the shape the drawing's `by_id` map already uses."""
     return {"id": b.id, "label": b.label, "kind": b.kind, "holds": b.holds,
             "members": list(b.members), "labels": list(b.labels), **b.detail}
+
+
+# ── the second level: one box, opened ───────────────────────────────────────────────
+
+def build_inside(box_id: str, box: Box, members: list[dict[str, Any]],
+                 inner: list[dict[str, Any]], out: list[dict[str, Any]],
+                 into: list[dict[str, Any]], touches: list[dict[str, Any]],
+                 box_of: dict[str, str], label_of: dict[str, str]) -> Compartment:
+    """A fold's own routines as a compartment, so the same drawing code renders it.
+
+    **Not a new picture, a second altitude of the one there is.** A `Compartment` is
+    "boxes, and the flow among them"; at the first level a box is a class and at the
+    second it is a routine. `dot()` and `mermaid()` take a `Compartment` and neither
+    knows or needs to know which level it came from -- so a shape, a colour or a fix
+    applied to one is applied to both, and the two cannot drift into being two views
+    (rule 51, and design rule 2's reasoning about one instrument).
+
+    **The data bounds it and no rule has to.** A class holds a median of 4 to 6 routines
+    across Mensores' 623 files, and exactly one module exceeds a hundred. That is a
+    diagram either way; the count is stated regardless, because a picture that is
+    complete and a picture that was cut look the same (design rule 1).
+
+    A crossing ends at a **port** named for the box on the other side rather than for the
+    routine, exactly as the first level does -- one routine calling forty elsewhere is the
+    whole program again (rule 19), and a port is a place to click.
+    """
+    c = Compartment(id=box_id, name=box.label)
+    seen: dict[str, Box] = {}
+
+    for m in members:
+        mid = str(m["id"])
+        b = Box(mid, _clip(str(m["name"])), "routine", holds=1,
+                members=[mid], labels=[str(m["name"])],
+                detail={"qualname": m.get("qualname"), "line": m.get("line_start"),
+                        "is_async": m.get("is_async"), "returns": m.get("returns")})
+        seen[mid] = b
+        c.boxes.append(b)
+
+    # What the routines touch, folded per kind exactly as the first level folds it: a
+    # cylinder is the bottom of the flow, and twelve separate SELECTs against one table
+    # is a picture of a query log rather than of a program.
+    for t in touches:
+        what = str(t.get("kind") or "")
+        tid = _box_id(box_id, "touch", what)
+        tb = seen.get(tid)
+        if tb is None:
+            tb = Box(tid, _clip(what), "touch", detail={"what": what})
+            seen[tid] = tb
+            c.boxes.append(tb)
+        src = seen.get(str(t.get("routine_id") or ""))
+        if src is not None:
+            c.inside[(src.id, tid)] += int(t.get("weight") or 1)
+
+    for e in inner:
+        a, b2 = seen.get(str(e["src"])), seen.get(str(e["dst"]))
+        if a is not None and b2 is not None:
+            c.inside[(a.id, b2.id)] += int(e["weight"])
+
+    ports: dict[str, Box] = {}
+
+    def port(other_id: str) -> Box | None:
+        """The box on the far side, as a place. `None` when we cannot name one.
+
+        A callee this compartment cannot place -- an external, or something merged away --
+        gets no port at all rather than one labelled with a raw id. Rule 30: a control
+        that carries no identity resolves to nothing, and a port is a control.
+        """
+        far = box_of.get(other_id)
+        if not far:
+            return None
+        if far not in ports:
+            p = Box(_box_id(box_id, "port", far), _clip(label_of.get(far, far)),
+                    "port", detail={"box": far})
+            ports[far] = p
+            c.ports.append(p)
+        return ports[far]
+
+    for e in out:
+        mine, far = seen.get(str(e["mine"])), port(str(e["other"]))
+        if mine is not None and far is not None:
+            c.out[(mine.id, far.id)] += int(e["weight"])
+    for e in into:
+        mine, far = seen.get(str(e["mine"])), port(str(e["other"]))
+        if mine is not None and far is not None:
+            c.into[(far.id, mine.id)] += int(e["weight"])
+
+    c.boxes.sort(key=lambda x: (x.kind, int(x.detail.get("line") or 0), x.label.lower()))
+    c.ports.sort(key=lambda x: (x.label.lower(), x.id))
+    return c
+
+
+def box_index(comps: dict[str, Compartment]) -> tuple[dict[str, str], dict[str, str]]:
+    """Which box each node lives in, and what each box is called.
+
+    Built from the compartments rather than from a second walk over the store, so the
+    second level places a crossing in exactly the box the first level drew it in. Two
+    passes over ten thousand members, held on the base beside the compartments.
+    """
+    box_of: dict[str, str] = {}
+    label_of: dict[str, str] = {}
+    for c in comps.values():
+        for b in c.boxes:
+            label_of[b.id] = b.label
+            for m in b.members:
+                box_of[m] = b.id
+    return box_of, label_of

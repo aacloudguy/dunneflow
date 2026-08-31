@@ -5,7 +5,7 @@ It exists so a fresh context can be useful in a few minutes instead of an hour.
 
 | Read | For |
 |---|---|
-| `CLAUDE.md` | The rules. 71 engineering rules and 26 dashboard design rules, each earned from a false result on real code. **Binding.** |
+| `CLAUDE.md` | The rules. 74 engineering rules and 26 dashboard design rules, each earned from a false result on real code. **Binding.** |
 | `HANDOFF.md` | The chronological record — what was built when, what it cost, what broke. ~1,700 lines. Read *sections*, not the whole thing. |
 | **this file** | Where things are, what is done, what we are doing now, what not to re-open. |
 | Artifact `f993d319-d2b7-4217-9130-cdbba698d1bc` | The ratified dashboard design — a complete working UI, the source of truth for every view. Read it with the **Artifact tool**, not from a screenshot. |
@@ -158,6 +158,41 @@ running that program-wide is most of design rule 15's doorway panel. It says hon
 is not computed yet.
 
 ## What we are doing now
+
+**Chunk 3 landed 2026-08-31: the call-site arguments, as written.** Tom's call over
+approximating a call from the callee's declaration. `CallArg` is `{idx, expr, keyword,
+splat}`, a call site has an identity, and `SCHEMA_VERSION` is 6.
+
+```
+43,926 arguments over 30,544 call sites    14,222 keywords · 49 splats · 0 blank ids
+287 sites where (caller, expression, line) would have merged two calls into one
+235 of 44,344 arguments a character slice would have got wrong -- col_offset is bytes
+```
+
+**Recorded as written and not re-rendered**: `ast.unparse` was one line away and returns
+something equivalent rather than identical (`d["k"]` comes back `d['k']`), so a reader who
+goes looking in the file for the string the panel showed them does not find it. The
+expression is sliced out of the file's own text, on **byte** offsets — rule 75, measured
+over the real tree, and the 235 it catches are all messages with a symbol in them.
+
+**The corpus was rebuilt, both ends, and both reproduce their figures exactly** —
+625/4,733/175/3,950 and 628/4,786/178/4,070, with zero naming rules from the research
+paper. On the way it turned out this file and `CLAUDE.md` **both named the wrong tree** to
+verify against; see "How to verify", which now names the pair.
+
+Honestly absent: the change worklist does not yet see an argument change (`changes.FACTS`
+compares `calls` without them), and the boot figure is withdrawn for this session rather
+than reported — four runs of identical work spanning 16 s to 135 s at 3% CPU is not a
+measurement (rule 24). Every request timing against the running server is inside budget.
+
+**Next: chunk 4 — an edge says what flows.** `dot()` writes `id=` on every edge, the
+compartment keeps the edge *kind* beside the weight (dropped today, so a TOUCH and a CALL
+are indistinguishable), and `/api/flow?from=&to=` answers on demand: every call site with
+its arguments and the callee's declared parameters, or the SQL and network operations for
+an edge into a boundary. A third specimen shape in the same pane, every call site carrying
+`data-gotocode` — Tom's *"ultimately where it all goes"*.
+
+### Before that: Diagram mode reading both ways (2026-08-31)
 
 **Paused 2026-08-31, with Diagram mode reading both ways and at two levels.** Tom drove the
 approved mode and reported three things over two rounds; all three were defects, and the
@@ -1105,6 +1140,9 @@ Rules 28, 29 and 30.
 | Stored paths are **relative to the tree that was read**; the root is used and never recorded | Tom, 2026-08-30; rule 60 |
 | Legacy stores are migrated **in place**, never rebuilt — rebuilding orphans a snapshot whose tree is gone | Tom, 2026-08-30; rule 62 |
 | A binding is **deferred** until something opens a file from disk; the control says `not bound` | Tom, 2026-08-30; design rule 16 |
+| A call site has an **identity**, and it holds no position — an ordinal among identical expressions in one caller | Tom, 2026-08-31; `call_site_id`; `make_id` |
+| An argument is recorded **as the caller wrote it**, never `ast.unparse`, never shortened | Tom, 2026-08-31; rule 8; rule 75 |
+| The temporal pair is the **two society clones**; `mensores-overhaul` is a third tree | 2026-08-31; "How to verify" |
 
 ## How to verify — all three, before saying anything is done
 
@@ -1118,16 +1156,20 @@ Then against real code, because unit tests on a toy program cannot catch a resol
 defect that only appears at scale:
 
 ```bash
-uv run dunneflow analyze ../mensores-overhaul/src --name mensores
+uv run dunneflow analyze ../society-2026-08-29/src --name mensores
 uv run dunneflow serve output/mensores
 ```
 
-**`../mensores-overhaul` is read-only.** All output belongs in `output/`.
+**The pair is the two society clones, not `../mensores-overhaul`.** That is a third copy
+of 626 files and is neither end of the comparison; this file and `CLAUDE.md` both named it
+here and it cost a wasted analysis. All three trees are read-only; all output belongs in
+`output/`. Rebuilding the pair after a schema bump is in `CLAUDE.md` — two analyses and a
+seal, in that order, because a sealed snapshot is never re-analysed in place.
 
 **Do not re-analyse into `output/mensores` while verifying two versions.** It holds the two
-revisions everything temporal is checked against — `2026-08-29T23:46:53Z` (WORKING, 628
-files) and `2026-08-29T23:46:24Z` (FOR_COMPARISON, *Society at e2e658b4 — 2026-08-26*, 625
-files) — and a third would change the setup the recorded figures belong to. It is enough on
+revisions everything temporal is checked against — `2026-08-31T22:53:57Z` (WORKING, 628
+files, from `../society-2026-08-29`) and `2026-08-31T22:53:15Z` (FOR_COMPARISON, *Society at
+e2e658b4 — 2026-08-26*, 625 files, from `../society-2026-08-26`) — and a third would change the setup the recorded figures belong to. It is enough on
 its own to verify a base switch, both directions, with no scratch corpus.
 
 Ground truth is in `CLAUDE.md` — both halves. Positive: the four executables must all

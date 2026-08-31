@@ -3845,6 +3845,146 @@ question answered first — what makes two findings in two versions the same fin
 carries no id and 93 of Mensores' 106 are `LOST_EDGE`, so pairing them would invent an
 identity (rule 1).
 
+## The arguments, as written — 2026-08-31
+
+Chunk 3 of the approved plan, and the one Tom chose over approximating a call from the
+callee's declaration: **record what the caller actually passes.**
+
+`schema.CallArg` is `{idx, expr, keyword, splat}` and `CallSite` gains `args` and a
+`site_id`. The store gains a `call_args` table hanging off that id, and `SCHEMA_VERSION`
+goes to 6, which invalidates every cached fact by itself (rule 12).
+
+**As written, not re-rendered, and that is the whole of the decision.** `ast.unparse` was
+sitting right there in `_literal` and would have been one line. It gives back an
+expression that is equivalent and not identical: `d["k"]` comes back as `d['k']`, a
+wrapped list comes back on one line, and a reader who goes looking in the file for the
+string the panel showed them does not find it. So the expression is sliced out of the
+file's own text. Measured on the corpus: **43,926 arguments across 30,544 call sites**,
+14,222 of them keywords and 49 splats.
+
+### The column offset is a byte offset, and 235 arguments prove it
+
+`ast`'s `col_offset` is an offset into the **UTF-8 encoding** of its line, not a character
+index. On `emit("naïve ✓", timeout=5.0)` a character slice returns `)` for the second
+argument — a perfectly plausible expression, and not the one that is there.
+
+Measured over the real tree rather than argued: **235 of 44,344 single-line arguments
+would differ**, and they are the interesting ones —
+
+    f"must be a positive int ≤ {_TTL_MAX_SECONDS} (1 day)"     char slice keeps the comma
+    f"  [red]•[/red] [{kind}] {msg}"                            char slice keeps the paren
+    f"Society 5-layer reconstruction — {framework} {version}"   char slice keeps the comma
+
+Every one of them a message with a symbol in it, which is exactly what a reader opens a
+flow panel to read. Rule 75.
+
+`ast.get_source_segment` gets this right and re-splits the whole file on every call, which
+over 184k lines and 30k call sites is the file split a hundred thousand times. The lines
+are already in the extractor.
+
+### Two identical expressions on one line, and 287 of them are real
+
+`site_id` exists so the arguments of one call do not land on another. The old key
+available — `(caller_id, callee_expr, line)` — is ambiguous for **287 call sites on
+Mensores**, so this is not a theoretical case: `emit(x); emit(y)` is ordinary code and
+merging the two loses one of the two argument lists.
+
+**No position in the id**, per `make_id`, which is explicit that a line number would
+retire every fact below an inserted import. The only discriminator left is an ordinal
+among identical expressions in the same caller, and **the residue is written down rather
+than hidden**: adding a *third* `emit()` between the first two re-numbers the ones after
+it, so those sites read as changed when nothing about them did. That is narrower than a
+line number, which moves everything below anything, and it is bounded by how often one
+routine calls one name twice. 30,544 sites, 30,544 distinct ids, none blank.
+
+### One door, and a second one deleted
+
+Two places appended a `CallSite`, so identity is assigned in neither of them — it is
+assigned in `_record_call`, which both go through. Rule 51: the list of callers is the
+thing that grows, and the next one added forgets the ordinal.
+
+`Store.set_call_target` was deleted on the way past. **Nothing called it** — the resolver
+updates by `rowid` — and it keyed on `(caller_id, callee_expr, line)`, which is the key
+`site_id` exists because it is ambiguous. A dead second door onto the table that would
+have been wrong the moment anyone opened it.
+
+The argument purge had one ordering to get right: `call_args` has no `file` column, so
+`forget_file` has to delete through `calls` **before** emptying it, or the rows sit in the
+store for ever attached to a site that no longer exists. 0 orphans on the corpus.
+
+### What is honestly absent
+
+- **The change worklist does not see an argument change yet.** `changes.FACTS` compares
+  `calls` on `(callee_id, callee_expr, external, at_boundary)`; a call whose arguments
+  were rewritten and whose target was not reads as unchanged. That is a real gap and it
+  is left open rather than closed quietly, because adding a column there moves the
+  recorded worklist figures and is a decision about what "behaves differently" means.
+- **One argument is 91,224 characters over 1,347 lines** — a `frozenset` literal in
+  `quaestor/_envelope.py`. Kept whole, because rule 8 says a value shortened at ingest is
+  lost for good. It is a constraint on chunk 4's panel rather than on the store: the
+  complete content has to sit beside any abbreviation of it, never instead of it.
+
+### The corpus, rebuilt — and the tree this file named wrongly
+
+A `SCHEMA_VERSION` bump makes both stored revisions refuse to open (rule 20), so both were
+rebuilt on Tom's call. **`CLAUDE.md` and `BRIEFING.md` both name `../mensores-overhaul` as
+the tree to verify against, and it is not either end of the temporal pair** — the pair is
+`../society-2026-08-26` (625 files) and `../society-2026-08-29` (628), pulled as sister
+clones and recorded as such 1,400 lines up this file. `mensores-overhaul` is a third tree
+of 626 files. Analysing it produced a perfectly healthy revision that was not the one every
+recorded temporal figure belongs to, and the tell was the sidecar: *"1 read, 625 already
+held"*, one file different where the record says twelve.
+
+Rebuilt, both ends reproduce their recorded figures exactly:
+
+    625 files · 4,733 routines · 175 ways in · 3,950 boundary touches   FOR_COMPARISON
+    628 files · 4,786 routines · 178 ways in · 4,070 boundary touches   WORKING
+
+Ground truth holds at both ends: the four executables resolved with their command trees,
+five STATED naming rules all from `NAMING.md`, `mensor` glossed from *mētior*, and **zero**
+naming rules from `conventions-naming-and-documentation.md`, which is the half that
+matters. Cold analysis 32 s against a 90 s budget. The worklist reads 53 only-in-base,
+18 behaving differently, 15 edited only, over 4,786 against 4,733.
+
+### The boot figure is withdrawn for this session rather than reported
+
+`serve` on the rebuilt stores was timed four times on identical work: **57.2 s, 16.1 s,
+50.0 s and 135.3 s**, at around 3% CPU throughout. Reading the three stores with `cat`
+takes 11.5 s for 135 MB — about 12 MB/s — so the volume is certainly part of it, and
+priming the page cache produced the *slowest* run of the four, so the volume is not all of
+it either. An eight-fold spread on one measurement is not a measurement (rule 24), and
+picking the good number would be worse than posting none.
+
+What can be said soundly: nothing at boot reads the new table, the graph is *smaller* than
+the one that recorded 10.2 s (28.0 MB against 31.4 MB), and the request timings taken
+against the running server are all inside budget — cover 1 ms, `/api/graph` 33 ms,
+`/api/changes` 4.5 ms cached, `/api/filechanges` 0.6 ms, search 45 ms warm. The 12 s first
+search and the 40 s first comparison are the external-volume caveat this file already
+carries in five places.
+
+### Guards
+
+`tests/test_call_args.py`, twelve of them, mutation-tested **7/7 over the extractor and
+4/4 over the store**, on a baseline proved green before any mutation ran (rule 59) and with
+`__pycache__` cleared around every restore (rule 56). Each was written from a defect and
+run against it: a character slice, a single-line-only segment, `ast.unparse` in place of
+the source, an ordinal frozen at zero, splats dropped, `**x` read as a keyword named
+nothing, a synthetic dispatch bypassing the one door, the purge never reaching `call_args`,
+a blank `site_id`, arguments never written, and `keyword`/`expr` swapped on the way in.
+
+One of the twelve passed for the wrong reason first time and is worth keeping: the
+"identity survives an edit above it" guard extracted the two versions as `a.py` and `b.py`,
+which are two *modules* and so two callers, so the ids differed for a reason that had
+nothing to do with the claim. It edits one file now.
+
+Gates: 703 tests, mypy clean, ruff clean.
+
+**Next: chunk 4** — `dot()` writes `id=` on every edge, `Compartment` keeps the edge *kind*
+beside the weight (dropped today, so a TOUCH and a CALL are indistinguishable), and
+`/api/flow?from=&to=` answers on demand with every call site, its arguments, the callee's
+declared parameters, and the `data-gotocode` button on each — Tom's *"ultimately where it
+all goes"*.
+
 ## A box answers about itself, and the click that never arrived — 2026-08-31
 
 Tom drove the approved Diagram mode and reported three things over two rounds. All three

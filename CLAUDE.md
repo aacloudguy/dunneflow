@@ -87,11 +87,28 @@ Then verify against real code, because unit tests on a toy program cannot catch 
 resolution defect that only appears at scale:
 
 ```bash
-uv run dunneflow analyze ../mensores-overhaul/src --name mensores
+uv run dunneflow analyze ../society-2026-08-29/src --name mensores
 ```
 
-**`../mensores-overhaul` is read-only.** It is a copy kept for documentation. Never
-write to it. All output belongs in `output/`.
+**Three trees, and only two of them are the pair.** `../society-2026-08-26` (e2e658b4,
+625 files) and `../society-2026-08-29` (03ebbd93, 628 files) are the sister clones every
+recorded temporal figure belongs to; `../mensores-overhaul` is a third copy of 626 files
+and is neither end of it. This file named it here for a year and it cost a wasted analysis
+in the session that bumped `SCHEMA_VERSION` — the result looked perfectly healthy, and the
+tell was the sidecar reporting *"1 read, 625 already held"* where the record says twelve
+files differ.
+
+**All three are read-only.** They are copies kept for documentation. Never write to any of
+them. All output belongs in `output/`.
+
+Rebuilding the pair after a schema bump is two analyses and a seal, in this order — a
+sealed snapshot is never re-analysed in place, by design (rules 25 and 62):
+
+```bash
+uv run dunneflow analyze ../society-2026-08-26/src --name mensores
+uv run dunneflow revisions output/mensores --seal --label "Society at e2e658b4 - 2026-08-26"
+uv run dunneflow analyze ../society-2026-08-29/src --name mensores
+```
 
 Ground truth for documentation: the pantheon table in
 `.groma/milestones/v1.1-harness-ownership/NAMING.md` yields `groma`, `disceptator`,
@@ -426,6 +443,11 @@ docs   ──► extract ──► docs.db  (SQLite) ─────────
 ```
 
 - `schema.py` — the fact contract. Every extractor, in any language, emits these types.
+  A **call site has an identity** (`call_site_id`) and carries the arguments the caller
+  wrote (`CallArg`), because two identical expressions in one routine are two calls and
+  the arguments of one must not land on the other — 287 such pairs on Mensores. The id
+  holds no position, like every other id here: an ordinal among identical expressions in
+  the same caller, with the residue stated in the docstring rather than hidden.
 - `store.py` — SQLite. **The spine, not an export format.** Nothing holds the whole
   program in memory; reachability is recursive SQL over indexed edges. This is the one
   decision that lets the tool survive growth — do not replace it with in-memory graphs.
@@ -436,6 +458,12 @@ docs   ──► extract ──► docs.db  (SQLite) ─────────
   never touches `graph.db`, code-only analysis stays cheap, and the corpus stays a
   separately handable artifact — many will hand over a charter and never a line of
   source. The join is one `ATTACH DATABASE` away.
+- `call_args` — what a caller passed, **as written**, hanging off `calls.site_id` rather
+  than off a rowid: an argument has to stay attached to its call site across two versions
+  of the same program. Sliced out of the file's own text on **byte** offsets (rule 75),
+  never re-rendered by `ast.unparse`, and never shortened — one argument on Mensores is a
+  1,347-line `frozenset` and is stored whole (rule 8). 43,926 arguments over 30,544 call
+  sites. `forget_file` deletes them *through* `calls`, before emptying it.
 - `detectors/*.yaml` — **the extension point.** Teaching the tool a new framework is a
   config edit here, not a code change. Prefer adding a rule over adding a branch.
 - `resolve/` — call graph, CLI command trees, flows, naming conventions, glossary.
@@ -1655,6 +1683,34 @@ rule of that number — a blank canvas must say why it is blank — which does e
     the fold outlives its selection at whichever of the four call sites was forgotten
     (rule 51). Assert the writers as an **absence** over the whole file: the failure is a new
     hand-written site, not a change to an existing one.
+
+75. **A column offset is a *byte* offset, and a character slice is silently short.**
+    `ast`'s `col_offset` and `end_col_offset` index the **UTF-8 encoding** of their line,
+    not its characters. Slicing the line as a string is right on every ASCII line and
+    wrong by one position per multi-byte character on every other, and what comes back is
+    not an error: it is a plausible expression carrying a stray `,` or `)`.
+
+    Measured on the real tree rather than argued: **235 of 44,344 single-line call
+    arguments would differ**, and they are the interesting ones —
+    `f"must be a positive int ≤ {_TTL_MAX_SECONDS} (1 day)"`,
+    `f"  [red]•[/red] [{kind}] {msg}"`, `f"Society 5-layer reconstruction — {framework}"`.
+    Every one a message with a symbol in it, which is exactly what a reader opens a flow
+    panel to read. 613 of Mensores' 628 files hold a non-ASCII character somewhere.
+
+    Rule 27 in a different alphabet — there a marker had to sit at an *edge* of a name;
+    here an offset has to be measured in the units it was written in. And rule 8 at
+    ingest: the value that reaches the store is the value for good, so a slice that is
+    two characters adrift is not "close", it is a different expression.
+
+    `ast.get_source_segment` is correct and re-splits the whole file on every call, which
+    over 184k lines and 30k call sites is the file split a hundred thousand times. Slice
+    the lines the extractor is already holding, on their encoded bytes.
+
+    Its companion, from the same edit: **`ast.unparse` is a re-rendering, not the
+    source.** It returns something equivalent and not identical — `d["k"]` comes back as
+    `d['k']`, a wrapped argument comes back on one line — and a reader who goes looking in
+    the file for the string the product showed them does not find it. Recording what a
+    caller passes means recording what the caller *wrote*.
 
 ## Anomalies: the discipline
 

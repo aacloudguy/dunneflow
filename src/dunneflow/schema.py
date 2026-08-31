@@ -25,7 +25,7 @@ from typing import Literal
 # Bump whenever the stored shape or the meaning of an extracted fact changes.
 # A mismatch discards the graph and re-extracts: graph.db is derived data, and a
 # stale map that answers confidently is worse than no map at all.
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 
 
 # --------------------------------------------------------------------------- #
@@ -243,6 +243,28 @@ class Routine:
 
 
 @dataclass(slots=True)
+class CallArg:
+    """One argument of one call, as the caller wrote it.
+
+    The expression and nothing more. We do not record what it evaluates to, what type
+    it is, or which parameter it lands on -- those are three different claims and only
+    the first is visible in the source. Binding an argument to a declared parameter is
+    the reader's question and is answered where the two are shown together, only where
+    the alignment is unambiguous (rule 1: a false binding is worse than none).
+
+    `idx` is the ordinal in the call **as written**, positional and keyword together,
+    because that is the order a reader sees. `keyword` is set for `k=v` and nothing
+    else. `splat` marks `*x` and `**x`, where what is passed is not one argument at all
+    and no binding by position is possible.
+    """
+
+    idx: int
+    expr: str
+    keyword: str | None = None
+    splat: bool = False
+
+
+@dataclass(slots=True)
 class CallSite:
     """One routine calling another. Resolution happens later, in the resolver."""
 
@@ -253,6 +275,11 @@ class CallSite:
     confidence: Confidence = Confidence.INFERRED
     external: bool = False
     at_boundary: bool = False  # already identified as a call OUT of the program
+    # Identity of this one call, so two identical expressions on one line stay two
+    # call sites and the arguments of each hang off the right one. Derived by
+    # `call_site_id` -- from names and an ordinal, never from a position (`make_id`).
+    site_id: str = ""
+    args: list[CallArg] = field(default_factory=list)
 
 
 @dataclass(slots=True)
@@ -704,6 +731,23 @@ def make_id(*parts: str) -> str:
     """
     raw = "\x00".join(parts)
     return hashlib.blake2b(raw.encode("utf-8"), digest_size=8).hexdigest()
+
+
+def call_site_id(caller_id: str, callee_expr: str, ordinal: int) -> str:
+    """Identity of one call site -- position-free, like every other id here.
+
+    Two identical expressions in one routine are two call sites and have to stay two,
+    or the arguments of one land on the other. The only discriminator available that is
+    not a position is an **ordinal among identical expressions in the same caller**:
+    `make_id` is explicit that a line number would retire every fact below an inserted
+    import.
+
+    The residue is stated rather than hidden. Adding a *third* `emit()` between the
+    first two re-numbers the ones after it, so those sites read as changed when nothing
+    about them did. That is a narrower loss than a line number, which moves everything
+    below anything, and it is bounded by how often one routine calls one name twice.
+    """
+    return make_id("site", caller_id, callee_expr, str(ordinal))
 
 
 def hash_source(text: str) -> str:

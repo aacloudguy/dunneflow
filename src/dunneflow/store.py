@@ -30,7 +30,6 @@ from .schema import (
     BoundaryHit,
     BoundaryKind,
     Comment,
-    Confidence,
     DataStructure,
     Direction,
     Entrypoint,
@@ -122,7 +121,19 @@ CREATE TABLE IF NOT EXISTS calls (
     confidence  TEXT NOT NULL,
     external    INTEGER NOT NULL DEFAULT 0,
     at_boundary INTEGER NOT NULL DEFAULT 0,
-    ambiguous   INTEGER NOT NULL DEFAULT 0
+    ambiguous   INTEGER NOT NULL DEFAULT 0,
+    site_id     TEXT NOT NULL DEFAULT ''
+);
+
+-- What one caller actually passed, as written. Hangs off `calls.site_id` rather than
+-- off a rowid, because a rowid is a position in this file and an argument has to stay
+-- attached to its call site across two versions of the same program.
+CREATE TABLE IF NOT EXISTS call_args (
+    site_id TEXT NOT NULL,
+    idx     INTEGER NOT NULL,
+    expr    TEXT NOT NULL,
+    keyword TEXT,
+    splat   INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS boundaries (
@@ -304,6 +315,8 @@ CREATE INDEX IF NOT EXISTS ix_routines_qual    ON routines(qualname);
 CREATE INDEX IF NOT EXISTS ix_calls_caller     ON calls(caller_id);
 CREATE INDEX IF NOT EXISTS ix_calls_callee     ON calls(callee_id);
 CREATE INDEX IF NOT EXISTS ix_calls_file       ON calls(file);
+CREATE INDEX IF NOT EXISTS ix_calls_site       ON calls(site_id);
+CREATE INDEX IF NOT EXISTS ix_callargs_site    ON call_args(site_id);
 CREATE INDEX IF NOT EXISTS ix_bound_routine    ON boundaries(routine_id);
 CREATE INDEX IF NOT EXISTS ix_bound_kind       ON boundaries(kind);
 CREATE INDEX IF NOT EXISTS ix_bound_sal        ON boundaries(salience);
@@ -560,6 +573,14 @@ class Store:
             "DELETE FROM fields WHERE structure_id IN (SELECT id FROM structures WHERE file = ?)",
             (path,),
         )
+        # Arguments hang off a call site, not off a file, so they have to go before the
+        # call sites do -- once `calls` is emptied of this file there is nothing left to
+        # name them by and they would sit in the store for ever, attached to a site that
+        # no longer exists.
+        c.execute(
+            "DELETE FROM call_args WHERE site_id IN (SELECT site_id FROM calls WHERE file = ?)",
+            (path,),
+        )
         for table in ("routines", "structures", "calls", "boundaries", "imports",
                       "entrypoints", "cli_apps", "cli_mounts", "sql_ops", "db_tables",
                       "db_columns", "db_indexes", "net_calls", "classes",
@@ -630,10 +651,15 @@ class Store:
             )
         c.executemany(
             "INSERT INTO calls"
-            "(file,caller_id,callee_expr,line,callee_id,confidence,external,at_boundary)"
-            " VALUES(?,?,?,?,?,?,?,?)",
+            "(file,caller_id,callee_expr,line,callee_id,confidence,external,at_boundary,"
+            "site_id) VALUES(?,?,?,?,?,?,?,?,?)",
             [(ff.path, k.caller_id, k.callee_expr, k.line, k.callee_id, k.confidence.value,
-              int(k.external), int(k.at_boundary)) for k in ff.calls],
+              int(k.external), int(k.at_boundary), k.site_id) for k in ff.calls],
+        )
+        c.executemany(
+            "INSERT INTO call_args(site_id,idx,expr,keyword,splat) VALUES(?,?,?,?,?)",
+            [(k.site_id, a.idx, a.expr, a.keyword, int(a.splat))
+             for k in ff.calls for a in k.args],
         )
         c.executemany(
             "INSERT INTO boundaries(file,routine_id,kind,direction,target,line,evidence,salience)"
@@ -721,14 +747,6 @@ class Store:
             " VALUES(?,?,?,?,?,?,?,?,?,?)",
             (e.id, e.kind.value, e.name, e.routine_id, e.module, file, e.evidence,
              e.group, e.parent_id, e.target_expr),
-        )
-
-    def set_call_target(self, caller_id: str, expr: str, line: int,
-                        callee_id: str | None, confidence: Confidence, external: bool) -> None:
-        self.conn.execute(
-            "UPDATE calls SET callee_id = ?, confidence = ?, external = ?"
-            " WHERE caller_id = ? AND callee_expr = ? AND line = ?",
-            (callee_id, confidence.value, int(external), caller_id, expr, line),
         )
 
     # -- reads ------------------------------------------------------------- #

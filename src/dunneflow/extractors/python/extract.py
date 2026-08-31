@@ -25,6 +25,7 @@ from ...detectors import RuleSet, load_rules, mine_annotations
 from ...schema import (
     Artefact,
     BoundaryHit,
+    CallArg,
     CallSite,
     ClassDef_,
     CliApp,
@@ -45,6 +46,7 @@ from ...schema import (
     SqlStatement,
     StructureKind,
     TableSchema,
+    call_site_id,
     hash_source,
     make_id,
 )
@@ -163,6 +165,15 @@ class _Extractor(ast.NodeVisitor):
         self.rules = rules
         self.comments = collect_comments(src)
         self.lines = src.splitlines()
+        # Kept because an argument is recorded **as written** rather than re-rendered,
+        # and `ast.unparse` is a re-rendering: it normalises spacing, drops line breaks,
+        # and would put a different string on screen from the one a reader will go
+        # looking for in the file.
+        self.src = src
+        # How many times this caller has already called this exact expression. The
+        # discriminator in `call_site_id`, and the only one available that is not a
+        # position.
+        self._call_ordinal: dict[tuple[str, str], int] = {}
         # Documentation is never code. Code-shaped detectors must not read it -- a
         # docstring that opens "Insert candidate into capture_queue..." is a sentence
         # about a statement, not a statement.
@@ -678,6 +689,88 @@ class _Extractor(ast.NodeVisitor):
 
     # -- the things that move ---------------------------------------------- #
 
+    def _segment(self, node: ast.AST) -> str | None:
+        """The expression exactly as it is written in the file.
+
+        Not `ast.unparse`, which is a re-rendering: it normalises spacing, canonicalises
+        quotes and flattens a wrapped argument onto one line. What a caller passes is
+        what the reader will go looking for in the source, so it is the source that is
+        recorded -- whole, never shortened (rule 8).
+
+        `col_offset` is a byte offset into the UTF-8 encoding of its line rather than a
+        character index, so the slice is taken on the encoded bytes. On a line holding
+        any non-ASCII character -- a name, a comment, a string -- a character slice is
+        silently short, and produces a plausible expression that is not the one written.
+
+        `ast.get_source_segment` does this correctly and re-splits the whole file on
+        every call, which over 184k lines and 30k call sites is the file split a hundred
+        thousand times. The lines are already here.
+        """
+        start = getattr(node, "lineno", None)
+        end = getattr(node, "end_lineno", None)
+        col = getattr(node, "col_offset", None)
+        end_col = getattr(node, "end_col_offset", None)
+        if start is None or end is None or col is None or end_col is None:
+            return None
+        if start < 1 or end > len(self.lines) or end < start:
+            return None
+        if start == end:
+            return self.lines[start - 1].encode()[col:end_col].decode(errors="replace")
+        first = self.lines[start - 1].encode()[col:].decode(errors="replace")
+        last = self.lines[end - 1].encode()[:end_col].decode(errors="replace")
+        return "\n".join([first, *self.lines[start : end - 1], last])
+
+    def _call_args(self, node: ast.Call) -> list[CallArg]:
+        """Every argument of one call, in the order it is written.
+
+        Positional and keyword arguments live in two lists on the node and may interleave
+        in the source -- `f(*a, b=1, c)` is legal -- so the order is taken from where each
+        one sits, not from which list it came out of. `idx` is that written ordinal,
+        because it is the order the reader sees.
+
+        A `*x` or `**x` is recorded and marked. What it passes is not one argument and
+        cannot be bound to a parameter by position at all; dropping it would leave a call
+        looking as though it passed less than it does.
+        """
+        pieces: list[tuple[tuple[int, int], str | None, bool, ast.AST]] = []
+        for a in node.args:
+            splat = isinstance(a, ast.Starred)
+            pieces.append(((a.lineno, a.col_offset), None, splat, a))
+        for kw in node.keywords:
+            # `**x` arrives as a keyword whose `arg` is None. It is a splat, not a
+            # keyword named nothing.
+            pos = (kw.lineno, kw.col_offset)
+            pieces.append((pos, kw.arg, kw.arg is None, kw.value if kw.arg else kw))
+        pieces.sort(key=lambda t: t[0])
+
+        out: list[CallArg] = []
+        for i, (_, keyword, splat, expr_node) in enumerate(pieces):
+            text = self._segment(expr_node)
+            if text is None:
+                continue
+            out.append(CallArg(idx=i, expr=text, keyword=keyword, splat=splat))
+        return out
+
+    def _record_call(self, caller_id: str, expr: str, line: int, *,
+                     at_boundary: bool = False,
+                     args: list[CallArg] | None = None) -> None:
+        """The one door onto `self.calls`, because identity is assigned here.
+
+        Rule 51: every caller reaches it through the same door, or the next one added
+        forgets the ordinal and two call sites share an id. The ordinal is per
+        `(caller, expression)` and is what keeps two `emit()` calls in one routine apart
+        without recording where either of them sits.
+        """
+        key = (caller_id, expr)
+        ordinal = self._call_ordinal.get(key, 0)
+        self._call_ordinal[key] = ordinal + 1
+        self.calls.append(CallSite(
+            caller_id=caller_id, callee_expr=expr, line=line,
+            confidence=Confidence.INFERRED, at_boundary=at_boundary,
+            site_id=call_site_id(caller_id, expr, ordinal),
+            args=args or [],
+        ))
+
     def visit_Call(self, node: ast.Call) -> None:
         owner = self._owner()
         self._maybe_registration(node)
@@ -712,10 +805,8 @@ class _Extractor(ast.NodeVisitor):
                 ))
         if expr:
             rule = self.rules.match_call(expr)
-            self.calls.append(CallSite(
-                caller_id=owner.id, callee_expr=expr, line=node.lineno,
-                confidence=Confidence.INFERRED, at_boundary=rule is not None,
-            ))
+            self._record_call(owner.id, expr, node.lineno,
+                              at_boundary=rule is not None, args=self._call_args(node))
             self._maybe_network(node, expr)
             if rule is not None:
                 self.boundaries.append(BoundaryHit(
@@ -747,11 +838,10 @@ class _Extractor(ast.NodeVisitor):
                 break
         if not handler:
             return
-        # Record the dispatch as a real edge so reachability follows it.
-        self.calls.append(CallSite(
-            caller_id=self._owner().id, callee_expr=handler, line=node.lineno,
-            confidence=Confidence.INFERRED,
-        ))
+        # Record the dispatch as a real edge so reachability follows it. It carries no
+        # arguments, and that is the honest answer rather than an omission: `args.func(
+        # args)` is the call this stands for and it is nowhere in the source to read.
+        self._record_call(self._owner().id, handler, node.lineno)
         name = self._argparse_var.get(expr.rsplit(".", 1)[0])
         ep = self._argparse_ep.get(name) if name else None
         if ep is not None and not ep.target_expr:

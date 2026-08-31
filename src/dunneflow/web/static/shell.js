@@ -2289,9 +2289,15 @@ function renderDiagram() {
       <div class="hovercard" id="dgmCard" hidden aria-hidden="true"></div></div>`;
   const svg = host.querySelector("#dgmPan svg");
   if (svg) {
+    /* Its own natural size in pixels, taken from the viewBox Graphviz wrote. `width:100%`
+       hands the fitting to the browser, which then redoes it whenever the pane changes
+       width -- see `dgmFit` for what that cost. */
+    const vb = (svg.getAttribute("viewBox") || "").trim().split(/[\s,]+/).map(Number);
     svg.removeAttribute("width");
     svg.removeAttribute("height");
-    svg.style.cssText = "width:100%;height:100%;display:block";
+    svg.style.cssText = vb.length === 4 && vb[2] > 0
+      ? `width:${vb[2]}px;height:${vb[3]}px;display:block`
+      : "width:100%;height:100%;display:block";
     svg.setAttribute("preserveAspectRatio", "xMidYMid meet");
   }
   dgmFit();
@@ -2371,7 +2377,49 @@ function dgmApply() {
   if (pan) pan.style.transform =
     `translate(${dgmView.x}px, ${dgmView.y}px) scale(${dgmView.k})`;
 }
-function dgmFit() { dgmView.x = 0; dgmView.y = 0; dgmView.k = 1; dgmApply(); }
+/* **Fit is arithmetic we do, not something the browser redoes behind us.**
+ *
+ * The SVG used to be `width:100%` with `preserveAspectRatio`, so the *browser* fitted it --
+ * and re-fitted it on every container resize. Opening the inspector narrows the centre
+ * column, so the first click on a box moved the whole drawing **139 pixels** out from under
+ * the reader's cursor, and their second click landed on a different box. That is why
+ * opening a box could not be built on the browser's `dblclick`, and it is a nuisance far
+ * beyond that gesture: any pane folding or unfolding threw away where you were looking.
+ *
+ * With an explicit pixel size on the SVG and the fit expressed as our own transform, a
+ * resize changes nothing at all -- and `fit` stays one click away, which is design rule 20's
+ * requirement rather than a convenience.
+ *
+ * **Deferred, never guessed** (rule 49). A canvas that has not been laid out measures 0x0,
+ * and fitting to a plausible substitute is what hides the failure -- the stack paid for that
+ * exact mistake, framing itself for a 1275px window inside a 496px one. It returns false and
+ * `render()` tries again; there is always another render, and it costs two reads. */
+let dgmNeedsFit = false;
+
+function dgmSize() {
+  const svg = $("#dgmPan svg");
+  if (!svg) return null;
+  const vb = (svg.getAttribute("viewBox") || "").trim().split(/[\s,]+/).map(Number);
+  const w = vb.length === 4 && vb[2] > 0 ? vb[2] : svg.getBoundingClientRect().width;
+  const h = vb.length === 4 && vb[3] > 0 ? vb[3] : svg.getBoundingClientRect().height;
+  return (w > 0 && h > 0) ? { svg, w, h } : null;
+}
+
+function dgmFit() {
+  const c = $("#dgmCanvas");
+  const size = dgmSize();
+  if (!c || !size) { dgmNeedsFit = true; return false; }
+  const cw = c.clientWidth, ch = c.clientHeight;
+  if (!cw || !ch) { dgmNeedsFit = true; return false; }
+  // A hair inside the pane, so a box on the rim is not clipped by its own stroke.
+  const k = Math.min(cw / size.w, ch / size.h) * 0.97;
+  dgmView.k = k;
+  dgmView.x = (cw - size.w * k) / 2;
+  dgmView.y = (ch - size.h * k) / 2;
+  dgmNeedsFit = false;
+  dgmApply();
+  return true;
+}
 
 /* Which box the shared selection is in, marked on the drawing.
  *
@@ -2434,6 +2482,37 @@ $$("#modes button").forEach(b => b.addEventListener("click", () => {
   if (state.mode === "diagram") ensureDiagram();
 }));
 
+/* How long a second click on the same box still counts as opening it. Chrome's own
+ * threshold is 500 ms; this is deliberately the same order, and it is ours because the
+ * browser's `dblclick` cannot be used here -- see the click handler. */
+const DGM_DOUBLE_MS = 500;
+let dgmClickedBox = null;
+let dgmClickedAt = 0;
+
+/* **The box under the pointer, asked rather than assumed.**
+ *
+ * `ev.target` is the right answer almost always and is not the right answer here: anything
+ * that captures the pointer -- this view's own pan gesture did, on every press -- retargets
+ * the compatibility mouse events, so a click on a box arrives naming the canvas. The
+ * capture is fixed above; this makes the question unanswerable-by-accident rather than
+ * merely answered correctly today, because the next thing to capture a pointer will not
+ * come with a note attached.
+ *
+ * `elementFromPoint` is the same tool rule 48 names for proving a control is reachable, used
+ * here to *be* reachable. It is one hit test on a click, not on a move, so it costs nothing
+ * worth measuring. */
+function diagramBoxAt(ev) {
+  let el = ev.target;
+  let g = el && el.closest ? el.closest("g.node") : null;
+  if (!g && ev.clientX != null) {
+    const under = document.elementFromPoint(ev.clientX, ev.clientY);
+    g = under && under.closest ? under.closest("g.node") : null;
+  }
+  if (!g || !diagramNow) return null;
+  const box = diagramNow.by_id[g.id];
+  return box ? { g, box } : null;
+}
+
 /* The diagram's own controls, delegated from the mount because that mount is rewritten
  * whenever a different compartment is drawn -- handlers bound to elements would stop working
  * silently the moment they were replaced. */
@@ -2444,10 +2523,42 @@ document.addEventListener("click", (ev) => {
   if (up) { openDiagramBox(null); return; }
   const mount = $("#diagramMount");
   if (!mount || mount.hidden || !ev.target.closest("#diagramMount")) return;
-  const g = ev.target.closest("g.node");
-  if (!g || !diagramNow) return;
-  const box = diagramNow.by_id[g.id];
-  if (!box) return;
+  const at = diagramBoxAt(ev);
+  if (!at) return;
+  const { g, box } = at;
+
+  /* **Opening a box is a second click on the same box, not a `dblclick` event.**
+   *
+   * Tom asked for both gestures -- a click says what the box *is*, a double-click goes
+   * inside it -- and the browser's own `dblclick` cannot deliver the second one here.
+   * The first click fills the inspector, which un-rails a pane 352px wide, which narrows
+   * the centre column, which reflows an SVG sized at `width:100%`: **the drawing moves
+   * under the reader's cursor between their two clicks.** The second lands on a different
+   * box, so the browser fires two clicks and no `dblclick` at all -- and it fails exactly
+   * once per session, on the first double-click, which is the one a reader tries.
+   *
+   * Keyed on the **box id** rather than on the element or the position, so a reflow between
+   * the two clicks changes nothing about what was asked for. Same instruction as everywhere
+   * else in this view: identity, never position (rule 30).
+   *
+   * A box with nothing to open says so rather than declining a gesture in silence, which is
+   * design rule 16's defect arriving through a gesture rather than through a control. */
+  const now = performance.now();
+  const again = dgmClickedBox === g.id && (now - dgmClickedAt) < DGM_DOUBLE_MS;
+  dgmClickedBox = g.id;
+  dgmClickedAt = now;
+  if (again) {
+    if (box.kind === "port" || box.kind === "routine" || !(box.members || []).length) {
+      state.navNote = box.kind === "port"
+        ? `${box.label} is another compartment — one click goes there`
+        : `${box.label} holds no routines of its own to open`;
+      render();
+      return;
+    }
+    openDiagramBox(g.id, box.label);
+    return;
+  }
+
   /* **A port is a place, a box is a thing.** Clicking a port flips the book to that
      compartment; clicking a box selects what it holds in the one selection the whole
      dashboard shares, so the inspector fills and the stack lights without this view owning
@@ -2504,35 +2615,6 @@ document.addEventListener("click", (ev) => {
   }
 });
 
-/* **Double-click opens a box into its own routines.** Tom asked for both: a click says
- * what the box *is*, a double-click goes inside it. They are different questions and a
- * single control cannot ask both -- which is design rule 2's shape, except that here the
- * two are not alternatives to choose between, they are two acts on one thing.
- *
- * The single click still fires first, and that is deliberate rather than tolerated: it
- * fills the inspector with the fold, which is exactly the context a reader wants beside
- * the drawing they have just opened. Nothing is undone by the second click.
- *
- * A box with nothing to open says so rather than doing nothing -- a port is a place and a
- * boundary is the bottom of the flow, and design rule 16's defect is a control that
- * responds to a gesture by silently declining it. */
-document.addEventListener("dblclick", (ev) => {
-  const mount = $("#diagramMount");
-  if (!mount || mount.hidden || !ev.target.closest("#diagramMount")) return;
-  const g = ev.target.closest("g.node");
-  if (!g || !diagramNow) return;
-  const box = diagramNow.by_id[g.id];
-  if (!box) return;
-  if (box.kind === "port" || box.kind === "routine" || !(box.members || []).length) {
-    state.navNote = box.kind === "port"
-      ? `${box.label} is another compartment — one click goes there`
-      : `${box.label} holds no routines of its own to open`;
-    render();
-    return;
-  }
-  openDiagramBox(g.id, box.label);
-});
-
 /* One owner for *which* altitude the drawing is at, because three controls reach it: the
  * double-click, the way back up, and the compartment picker (which must come home to the
  * first level, or choosing a compartment would leave the last box open under it). */
@@ -2572,21 +2654,67 @@ document.addEventListener("change", (ev) => {
 });
 
 /* Drag to pan, wheel to zoom. On the wrapper's transform, so neither costs a re-layout. */
+/* How far the pointer must travel before a press becomes a drag. Below it the gesture is
+ * a click and the canvas never captures; above it the canvas captures and the click that
+ * would follow is swallowed. Three pixels rather than none, because a press is never
+ * perfectly still. */
+const DGM_DRAG_SLOP = 3;
+
 (function dgmGestures() {
-  let from = null;
+  let from = null, dragging = false, capture = null;
   document.addEventListener("pointerdown", (ev) => {
     const c = ev.target.closest("#dgmCanvas");
     if (!c) return;
-    from = { x: ev.clientX - dgmView.x, y: ev.clientY - dgmView.y };
-    c.setPointerCapture?.(ev.pointerId);
+    from = { x: ev.clientX - dgmView.x, y: ev.clientY - dgmView.y,
+             ox: ev.clientX, oy: ev.clientY, id: ev.pointerId, el: c };
+    dragging = false;
+    /* **The capture is NOT taken here, and that is the whole of this fix.**
+     *
+     * It was, on every press, and a captured pointer retargets the compatibility mouse
+     * events with it: `click` and `dblclick` then arrive with `target` set to the canvas,
+     * so `ev.target.closest("g.node")` is null and every handler in this view returns
+     * having done nothing. Clicking a box did nothing, double-clicking did nothing, and
+     * nothing anywhere failed -- the handlers were perfect and were being handed the
+     * wrong element.
+     *
+     * It survived two rounds of verification because a *dispatched* event goes straight to
+     * the element it names and never touches the pointer path at all. Rule 48 in its
+     * purest form: a scripted click proves the handler, and only a pointer proves the way
+     * to it. The previous session filed the same symptom under "the feedback was in a
+     * railed pane", which was also true and was not this.
+     *
+     * Capture is taken on the first move past the slop instead -- which is when a drag
+     * actually begins, and is the only moment it is needed. */
   });
   document.addEventListener("pointermove", (ev) => {
     if (!from) return;
+    if (!dragging) {
+      if (Math.abs(ev.clientX - from.ox) + Math.abs(ev.clientY - from.oy) < DGM_DRAG_SLOP) return;
+      dragging = true;
+      capture = from.el;
+      /* `setPointerCapture` **throws** `NotFoundError` for a pointerId that is no longer
+         active, and a throw here would leave the drag half-started -- `dragging` set, the
+         pan never applied, and the click after it swallowed for nothing. The capture is an
+         improvement to panning (it keeps tracking when the pointer leaves the pane), not a
+         requirement of it, so failing to get one must cost the pan nothing. */
+      try { capture.setPointerCapture(from.id); } catch { capture = null; }
+    }
     dgmView.x = ev.clientX - from.x;
     dgmView.y = ev.clientY - from.y;
     dgmApply();
   });
-  document.addEventListener("pointerup", () => { from = null; });
+  document.addEventListener("pointerup", () => {
+    /* A drag ends in a `click` on whatever the press started over, so panning across the
+       drawing would select the box you set off from. Swallowed for one event, in the
+       capture phase, so no handler downstream has to know a drag happened. */
+    if (dragging) {
+      const eat = (e) => { e.stopPropagation(); e.preventDefault(); };
+      document.addEventListener("click", eat, { capture: true, once: true });
+    }
+    if (capture) { capture.releasePointerCapture?.(from.id); capture = null; }
+    from = null;
+    dragging = false;
+  });
   document.addEventListener("wheel", (ev) => {
     const c = ev.target.closest("#dgmCanvas");
     if (!c) return;
@@ -6389,7 +6517,13 @@ function render() {
     renderGraphFurniture();
     vp.innerHTML = "";
   }
-  if (diagramOn) { vp.innerHTML = ""; markDiagramSelection(); }
+  if (diagramOn) {
+    vp.innerHTML = "";
+    /* The deferred fit (rule 49). A first draw into a pane that has not been laid out
+       measures nothing, and there is always another render to pay it on. */
+    if (dgmNeedsFit) dgmFit();
+    markDiagramSelection();
+  }
   /* No early return. The graph is a view in the centre pane, not a page -- the inspector,
    * the trail, the filter strip and the navigator counts all still belong on screen, and
    * returning here would quietly empty three panes whenever the stack was showing. */

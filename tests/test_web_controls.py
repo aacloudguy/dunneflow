@@ -7453,9 +7453,26 @@ def test_a_box_opens_into_its_own_routines() -> None:
     )
 
     js = _code(_read("shell.js"))
-    dbl = js.split('document.addEventListener("dblclick", (ev) => {', 1)[1] \
-            .split("\n});", 1)[0]
-    assert "openDiagramBox(" in dbl, "double-clicking a box no longer opens it"
+    # **Not the browser's `dblclick`.** The first click un-rails the inspector, which
+    # narrows the centre column, which reflows an SVG sized at `width:100%` -- so the
+    # drawing moves under the cursor between the two clicks and the second lands on a
+    # different box. The browser then fires two clicks and no `dblclick`, once per session,
+    # on the first double-click a reader tries.
+    assert 'document.addEventListener("dblclick"' not in js, (
+        "opening a box is back on the browser's `dblclick`, which cannot survive the "
+        "inspector opening between the two clicks"
+    )
+    # **The `if (again)` block alone.** Sliced on a comment that `_code()` has already
+    # stripped, this ran to the end of the file and matched `openDiagramBox` in its own
+    # definition -- so removing the call from the handler changed nothing the guard could
+    # see. A containment check is only as good as the span it is taken over (rule 37).
+    gate = js.split("const again = ", 1)[1].split("\n", 1)[0]
+    assert "dgmClickedBox === g.id" in gate and "DGM_DOUBLE_MS" in gate, (
+        "the second click is not matched on the same box, or not bounded in time -- so two "
+        "clicks anywhere, however far apart, open whatever was last pressed"
+    )
+    dbl = js.split("  if (again) {", 1)[1].split("\n  }", 1)[0]
+    assert "openDiagramBox(" in dbl, "a second click on a box no longer opens it"
     assert 'box.kind === "port"' in dbl and "state.navNote" in dbl, (
         "a box with nothing to open declines the gesture in silence, which is design rule "
         "16's defect arriving through a gesture rather than through a control"
@@ -7552,4 +7569,106 @@ def test_the_diagram_head_says_which_altitude_it_is_at() -> None:
     assert "x.id === onPlate" in head, (
         "the compartment picker names the open *box* at the second level, so one control "
         "makes two claims and the markup is the one that loses (rule 67)"
+    )
+
+
+def test_a_click_in_the_diagram_survives_a_captured_pointer() -> None:
+    """The defect two rounds of verification could not see.
+
+    `dgmGestures` captured the pointer on **every** press inside the canvas. A captured
+    pointer retargets the compatibility mouse events with it, so `click` arrived naming the
+    canvas rather than the box: `ev.target.closest("g.node")` was null and every handler in
+    this view returned having done nothing. Clicking a box did nothing, opening one did
+    nothing, and nothing anywhere failed -- the handlers were correct and were being handed
+    the wrong element.
+
+    It survived because a *dispatched* event goes straight to the element it names and never
+    touches the pointer path. Rule 48, in its purest form: a scripted click proves the
+    handler, and only a pointer proves the way to it. This asserts both halves of the fix,
+    because either alone leaves the view working by luck.
+    """
+    js = _code(_read("shell.js"))
+
+    # 1. The capture is taken on the first *move*, not on the press.
+    gestures = js.split("(function dgmGestures() {", 1)[1].split("\n})();", 1)[0]
+    down = gestures.split('document.addEventListener("pointerdown"', 1)[1] \
+                   .split('document.addEventListener("pointermove"', 1)[0]
+    assert "setPointerCapture" not in down, (
+        "the canvas captures the pointer on press, which retargets `click` to the canvas -- "
+        "so no click in the diagram can ever find the box it landed on"
+    )
+    move = gestures.split('document.addEventListener("pointermove"', 1)[1] \
+                   .split('document.addEventListener("pointerup"', 1)[0]
+    assert "setPointerCapture" in move and "DGM_DRAG_SLOP" in move, (
+        "panning no longer captures once a drag begins, so a drag that leaves the canvas "
+        "stops tracking"
+    )
+    # The flag itself, not just the machinery around it. A mutation leaving `dragging`
+    # permanently false kept every line this guard named and turned every pan into a click.
+    assert "dragging = true;" in move, (
+        "a drag never marks itself as one, so the click it ends in is not swallowed and "
+        "panning across the drawing selects whatever it set off from"
+    )
+
+    # 2. And the handler asks what is under the pointer rather than trusting the target,
+    #    so the next thing to capture a pointer cannot break this again.
+    at = _fn(js, "diagramBoxAt")
+    assert "elementFromPoint(ev.clientX, ev.clientY)" in at, (
+        "the box is read from `ev.target` alone, which anything holding a pointer capture "
+        "is free to have replaced"
+    )
+    assert "closest(\"g.node\")" in at, "the hit test does not resolve to a box"
+    for handler in ("const at = diagramBoxAt(ev);",):
+        assert js.count(handler) >= 1, "no diagram handler resolves its box by hit test"
+
+    # 3. A drag must not select what it set off from.
+    up = gestures.split('document.addEventListener("pointerup"', 1)[1]
+    assert "stopPropagation" in up and "once: true" in up, (
+        "panning across the drawing ends in a click on the box the drag started over, so "
+        "every pan selects something"
+    )
+
+
+def test_the_diagram_does_not_move_when_a_pane_opens() -> None:
+    """The second half of "double-click does nothing", and a nuisance well beyond it.
+
+    The SVG was `width: 100%` with `preserveAspectRatio`, so the *browser* fitted it -- and
+    re-fitted it on every container resize. The first click on a box un-rails the inspector,
+    which narrows the centre column, which moved the whole drawing **139 pixels** out from
+    under the reader's cursor. Their second click landed on a different box, so no gesture
+    could be built on it and any pane folding threw away where they were looking.
+
+    Fit is our own transform now, which is what design rule 20 already requires of the
+    stack: framing is arithmetic, and there is always a way back.
+    """
+    css = _css_code(_read("tokens.css"))
+    rule = re.search(r"\.dgm-pan svg\s*\{([^}]*)\}", css)
+    assert rule, "the drawing's sizing rule is gone"
+    assert "width" not in rule.group(1), (
+        "the SVG is sized by its container again, so the browser re-fits the drawing "
+        "whenever a pane changes width and the picture jumps under the reader"
+    )
+
+    js = _code(_read("shell.js"))
+    fit = _fn(js, "dgmFit")
+    assert "clientWidth" in fit and "dgmView.k" in fit, (
+        "fit no longer computes a transform, so nothing frames the drawing at all"
+    )
+    # Rule 49: a canvas that has not been laid out measures 0x0, and a plausible substitute
+    # is what hides the failure. Defer, and pay it on a render that can measure.
+    # **Both** early returns, because there are two ways to be unmeasurable -- no drawing
+    # and no pane -- and remembering only one of them defers a fit that is never paid.
+    assert fit.count("dgmNeedsFit = true") >= 2 and fit.count("return false") >= 2, (
+        "fit against an unmeasured pane guesses instead of deferring -- the stack framed "
+        "itself for a 1275px window inside a 496px one on exactly this mistake"
+    )
+    render = _fn(js, "render")
+    assert "if (dgmNeedsFit) dgmFit();" in render, (
+        "a deferred fit is never paid, so a diagram first drawn into a hidden pane stays "
+        "unframed for the rest of the session"
+    )
+    draw = _fn(js, "renderDiagram")
+    assert 'width:${vb[2]}px' in draw, (
+        "the drawing no longer carries its own pixel size, so the transform scales "
+        "something whose size the container is still deciding"
     )

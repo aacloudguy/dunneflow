@@ -2213,7 +2213,11 @@ kbd { font-family: var(--f-mono); font-size: .66rem; background: var(--sunken);
    inspector being open. */
 .dgm-pan g.node.dgm-on > :is(polygon, ellipse, path) { stroke: var(--accent); stroke-width: 3; }
 .dgm-pan g.node.dgm-on > text { font-weight: 700; }
-.dgm-pan svg { width: 100%; height: 100%; }
+/* **No size here.** The drawing carries its own pixel size and `dgmFit()` scales it with
+   a transform, so a pane opening beside it does not re-fit the picture and throw away where
+   the reader was looking. `width: 100%` handed the fit to the browser, which redid it on
+   every resize -- 139 pixels of movement from opening the inspector alone. */
+.dgm-pan svg { display: block; }
 /* A node is a thing to click, and says so. The port is dashed in the DOT already; this is
    the affordance rather than the meaning. */
 .dgm-pan g.node { cursor: pointer; }

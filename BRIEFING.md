@@ -182,11 +182,20 @@ measured, and dropped on his call: shadows are the better model (they name the f
 class, and 79% are degree-1 leaves) and the worse picture drawn all at once — `mcp` at 9.5:1
 against 7.7:1 for ports and 1.26:1 for neither.
 
-**Next: the second level** — opening a box into its own routines, bounded at 4–6 median —
-and the **Mermaid export** (of what is rendered, a complete set, or per compartment), which
-Tom deferred. The source is already emitted and served; nothing surfaces it yet.
+**Looked at and approved — Tom, 2026-08-31: _"Diagrams look great, love it!"_** Three things
+came out of driving it and all three are fixed: the drawing blurred when zoomed (a
+`will-change: transform` layer rasterised once and scaled as a bitmap), there was no hover
+card, and a click had no visible effect because its only feedback was in a pane he had
+railed. A click now marks the box on the drawing and pushes a trail step, so Back and Forward
+mean what they say.
 
-See `HANDOFF.md`, "Diagram mode — built 2026-08-31".
+**Next: the second level** — opening a box into its own routines, bounded at 4–6 median and
+106 at the very worst — and the **Mermaid export** (of what is rendered, a complete set, or
+per compartment), which Tom deferred. The source is already emitted and served on every
+compartment; nothing surfaces it yet.
+
+See `HANDOFF.md`, "Diagram mode — built 2026-08-31" and "Looked at, at the keyboard — Tom,
+2026-08-31, on Diagram mode".
 
 ### Before that: the plate diagram, withdrawn (2026-08-31)
 

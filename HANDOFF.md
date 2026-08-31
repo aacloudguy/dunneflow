@@ -3919,6 +3919,32 @@ three shape sets rendering. Guards mutation-tested at **10/10** over a proved-gr
 
 Still unseen: the pixels. Rule 38 is unchanged.
 
+## Paused 2026-08-31, with Diagram mode approved
+
+Tom, after the three fixes below: **_"Diagrams look great, love it!"_**
+
+Working tree clean; all three gates green; both mutation suites at 100%; `output/mensores`
+untouched and serving on 8899.
+
+**What stands:** the stack at two altitudes with plate widths by content; the comparison over
+the code, the routines and the stack; and **Diagram mode** — a compartment drawn by Graphviz
+as a real diagram, with Mermaid emitted beside it for export.
+
+**Next, in the order they were left:**
+
+1. **The second level** — opening a box into its own routines. The data bounds it without a
+   rule: median 4 to 6, and one module in 623 files exceeds a hundred.
+2. **The Mermaid export** Tom deferred — *"a Mermaid drawing of what is rendered, a complete
+   set, or per selected plate."* `diagram.mermaid()` already emits it and `/api/diagram`
+   already serves it on every compartment; nothing surfaces it yet.
+3. **The anomaly worklist overlay**, still blocked on one question — what makes two findings
+   in two versions the same finding. A finding carries no id and 93 of Mensores' 106 are
+   `LOST_EDGE`, so pairing them would invent an identity (rule 1).
+
+**Withdrawn and not to be rebuilt without reading why:** boxes drawn on the stack at
+phyllotaxis positions (a sunflower is not a diagram), and shadows for cross-compartment
+edges (the better model, the worse picture — measured, and dropped on Tom's call).
+
 ## Looked at, at the keyboard — Tom, 2026-08-31, on Diagram mode
 
 *"Nice progress!"* — and three things, all real.

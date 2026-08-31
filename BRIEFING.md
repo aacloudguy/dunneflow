@@ -159,8 +159,39 @@ is not computed yet.
 
 ## What we are doing now
 
-**Paused 2026-08-31. Chunk 3 was built, driven by Tom, and WITHDRAWN.** Plate sizing
-(chunk 2) stands; the plate diagram does not.
+**Paused 2026-08-31 with Diagram mode built and driven.** A fifth centre mode beside Graph,
+Table, Document and Code — a compartment drawn as a real diagram by **Graphviz**, with
+**Mermaid kept to emit source** a reader can copy elsewhere.
+
+```
+53 compartments · boxes median 10, p90 54, max 107
+pkg:mcp         8 boxes over 134 routines   1.26:1   40 ms
+pkg:governance 40 boxes over 202 routines   1.13:1   31 ms
+pkg:quaestor   83 boxes over 487 routines   1.98:1   49 ms
+```
+
+A box is a **class**, or a **file's loose functions**, or a boundary kind. Clicking one
+reaches the shared selection so the inspector fills and the stack lights; clicking a port
+flips to that compartment. Pan and zoom move a transform, never a re-layout. Graphviz 15.1.0
+via `@hpcc-js/wasm`, one UMD script tag, loaded lazily.
+
+**Crossings are off by default** — rule 19 one level up. Drawn, they connect what was
+disconnected so `pack` has nothing to pack, and on a small compartment they outnumber the
+subject (`mcp` is 8 boxes to 29 ports). Tom's **shadow** proposal was built as a probe,
+measured, and dropped on his call: shadows are the better model (they name the far-side
+class, and 79% are degree-1 leaves) and the worse picture drawn all at once — `mcp` at 9.5:1
+against 7.7:1 for ports and 1.26:1 for neither.
+
+**Next: the second level** — opening a box into its own routines, bounded at 4–6 median —
+and the **Mermaid export** (of what is rendered, a complete set, or per compartment), which
+Tom deferred. The source is already emitted and served; nothing surfaces it yet.
+
+See `HANDOFF.md`, "Diagram mode — built 2026-08-31".
+
+### Before that: the plate diagram, withdrawn (2026-08-31)
+
+**Chunk 3's first attempt was built, driven by Tom, and WITHDRAWN.** Plate sizing (chunk 2)
+stands; boxes-on-the-stack did not.
 
 *"This is just nodes that are boxes, that's totally different. Mermaid diagrams have
 completely different layouts than graph plates, they use a different layout algorithm."* He

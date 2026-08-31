@@ -52,15 +52,17 @@ A port is drawn differently from a box because it is **not a thing in this compa
 it stands for somewhere else, and a reader who cannot tell those apart is reading a lie
 about where code lives (rule 23's argument, one level up).
 
-## Shadows, measured against ports, and why neither is drawn by default
+## Shadows: proposed, measured, and dropped
 
-Tom proposed the stack's own device: let a crossing end at a **shadow** of the actual
+Tom proposed the stack's own device -- let a crossing end at a **shadow** of the actual
 far-side class or file, greyed, so a compartment is self-contained and needs no navigation
-to be understood. It is the better *model* -- a port says only *which compartment*, a shadow
-names the thing -- and 79% of shadows would be degree-1 leaves, which layout engines handle
+to be understood. It is the better *model*: a port says only *which compartment*, a shadow
+names the thing, and 79% of shadows would be degree-1 leaves, which layout engines handle
 far better than a port's hubs.
 
-It does not survive being drawn all at once, and neither do ports:
+**It was built as a probe, measured, and dropped on his call** -- *"stick with what works,
+drop the shadow idea"* -- and the measurement is kept because it is the reason, and because
+the idea is good enough that someone will think of it again:
 
 ```
                 no crossings     ports         shadows      nodes: boxes / +ports / +shadows
@@ -74,10 +76,10 @@ supposed to be about. That is **rule 19 exactly**, one level up from the stack: 
 edges at once do not describe a program, they erase it. So crossings are off by default and
 counted, and the shape that is left -- 1.1:1 to 2:1 -- is a diagram a reader can read.
 
-What rule 19 also prescribes is the way to have them: **on demand, for what is selected**.
-A box reaches 3 to 6 far-side boxes on average, so a shadow set drawn for *one* box is a
-handful rather than eighty. That is the shape to build next; it takes Tom's model, which is
-the right one, and spends it where the reader has asked rather than everywhere at once.
+Ports stay as an opt-in switch because they are what makes the flip-book work -- a port is
+a place to click, and clicking one moves the reader to that compartment. Shadows have no
+such second job: they were only ever a better way to draw the same crossings, and the
+crossings are not what this view is for.
 """
 
 from __future__ import annotations

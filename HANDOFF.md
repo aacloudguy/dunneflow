@@ -3975,10 +3975,11 @@ only which compartment; a shadow names the actual far-side class or file, and 79
 would be degree-1 leaves, which layout engines handle far better than a port's hubs. But
 either way a single enormous row crosses the picture and swamps the compartment it is about.
 
-What rule 19 also prescribes is how to have them: **on demand, for what is selected.** A box
-reaches 3 to 6 far-side boxes on average, so a shadow set for *one* box is a handful rather
-than eighty. That is the next thing to build and it takes Tom's model, spent where the reader
-asked rather than everywhere at once.
+**Dropped on his call** -- *"stick with what works, drop the shadow idea"* -- with the
+measurement kept as the reason, because the idea is good enough that someone will have it
+again. Ports remain as an opt-in switch, because a port has a second job a shadow does not:
+it is a **place to click**, and clicking one moves the reader to that compartment. That is
+the flip-book, and it is the only navigation between compartments other than the picker.
 
 ### One bug worth the name
 
@@ -3995,10 +3996,11 @@ toggle changing the fetch and the picture (8 nodes to 37), a **port click flippi
 `mensores.storage._graph_backend.BackendCapabilityError`, the counts, and **no console
 errors**. The compartment index is 140 ms; a compartment is 31–76 ms to fetch and draw.
 
-Still to build: the second level -- opening a box into its own routines, which is bounded at
-4 to 6 median -- shadows on demand, and the Mermaid export Tom deferred (*"a Mermaid drawing
-of what is rendered, a complete set, or per selected plate"*). The source is already emitted
-and served on every compartment; nothing surfaces it yet.
+Still to build: **the second level** -- opening a box into its own routines, bounded at 4 to 6
+median and 106 at the very worst -- and the **Mermaid export** Tom deferred (*"a Mermaid
+drawing of what is rendered, a complete set, or per selected plate"*). The source is already
+emitted and served on every compartment; nothing surfaces it yet. Shadows are not on this
+list: see above.
 
 ## The ribbon, diagnosed and fixed — 2026-08-31
 

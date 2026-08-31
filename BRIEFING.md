@@ -159,6 +159,20 @@ is not computed yet.
 
 ## What we are doing now
 
+**Paused 2026-08-30, after one history. Next is density — Tom named it at the pause.**
+
+*"A graph with this many nodes and edges is hard to comprehend."* 10,015 nodes, 14,254 edges.
+Nothing is blocked and everything needed to start is written down: the two feature requests
+in Tom's own words (**size a plate by its density**, **draw a plate as a readable diagram**),
+his acceptance test for the second — *"they must be easy to read or we have failed"* — and
+rule 18, which is the constraint that shapes it. See `HANDOFF.md`, "Next: density".
+
+**Chunk C is complete and has been looked at**, and the exploration work it uncovered is
+two-thirds done: Back is one history with ⌘Z (`6i`), and the toggle-off that empties the
+picture is recoverable through a visible control. Density is the third.
+
+---
+
 **All three overlays are on screen — the stack, the routines, and the code.** Chunk C is
 complete. The stack came last and leads here; the routines and the code browser follow.
 

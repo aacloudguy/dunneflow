@@ -3797,6 +3797,54 @@ guard being weak** — the seventeenth and eighteenth time in five sessions:
   a bar with the whole ahead-counter deleted still contains, because `const ahead = …`
   declares one. It asserts the rendered output now.
 
+### Paused 2026-08-30, after one history
+
+Working tree clean; all three gates green; `output/mensores` untouched and still serving both
+revisions.
+
+**Chunk C is complete and has been looked at.** All three overlays are on screen — the code
+browser, the routine views, and the stack — and Tom drove the stack and approved it: *"the
+colors are a reasonable differentiating factor, and the edges do seem to make sense"*, *"an
+absolute delight to work with so far"*.
+
+**The exploration work is two-thirds done.** Of the three problems that came out of driving
+it (see "Looked at, at the keyboard" below), two are closed by `6i`: Back is one history with
+the ⌘Z one, and the toggle-off that empties the picture is recoverable through a visible
+control. **The third is next, and Tom named it at the pause: density.**
+
+### Next: density
+
+*"A graph with this many nodes and edges is hard to comprehend."* 10,015 nodes, 14,254 edges.
+Everything needed to start is already written down and nothing is blocked.
+
+- **The two feature requests** are recorded whole, in Tom's own words, with what is already
+  decided and what is not: "Two feature requests, recorded 2026-08-30" below. **Size a plate
+  by its density** — and note it *reverses* `layout.py`'s written decision that every disk is
+  drawn the same size, so that comment must be rewritten rather than left to contradict the
+  code; there is no per-plate size in the model today, `spreadX`/`spreadY` being global. And
+  **draw a plate as a readable diagram** rather than a field of dots.
+- **The bar is Tom's and it is an acceptance test, not an aspiration**: *"they must be easy to
+  read or we have failed."* A diagram that is drawn and cannot be read is withdrawn, not
+  shipped with a caveat.
+- **Rule 18 is the constraint that shapes it.** Nodes are 1.4–3.6 px because anything larger
+  fuses 10,015 of them into a mass, and rule 22 records that at 14× they occlude the edges
+  they are drawn with. A node carrying readable text is an order of magnitude bigger, so the
+  first design question is *what is the reader looking at when they turn it on* — one plate, a
+  selection — before any renderer.
+- **The projection question is already answered** and agrees with Tom's instinct: design rule
+  20 chose orthographic, because under perspective a stack of equal disks renders as a tapered
+  cylinder. Whether to billboard a *labelled* rectangle the way rule 22 billboards a dot is
+  open, and Tom said so — a sphere has no orientation and a labelled box does.
+- **The third of the three problems is also a filtering question**, in Tom's framing: *"it may
+  take some additional work to get the view filtering improved for exploring."* Worth deciding
+  whether density is answered by drawing less, drawing bigger, or drawing differently, before
+  building any of the three.
+
+**Also still open, unblocked and unstarted:** the anomaly worklist overlay, which needs one
+question answered first — what makes two findings in two versions the same finding. A finding
+carries no id and 93 of Mensores' 106 are `LOST_EDGE`, so pairing them would invent an
+identity (rule 1).
+
 ## Looked at, at the keyboard — Tom, 2026-08-30, after the stack's change colours
 
 The pixels `6h` said it owed a real window. Read as a verdict *and* as a worklist.

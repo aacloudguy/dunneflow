@@ -3919,6 +3919,84 @@ three shape sets rendering. Guards mutation-tested at **10/10** over a proved-gr
 
 Still unseen: the pixels. Rule 38 is unchanged.
 
+## The ribbon, diagnosed and fixed — 2026-08-31
+
+Tom: *"Give up the plate image - let's render what's real and not force it to comply to a
+predetermined concept. Is there a better method available for rendering?"*
+
+### The mechanism, measured
+
+The width was never about node count. dagre reserves a horizontal slot **per rank for every
+edge crossing that rank**, so long-span edges push neighbours apart:
+
+```
+                rows  widest row   median gap between neighbours in a row
+weight>=1        21        5 nodes      419 px   (max 1,317)
+weight>=5        13        9 nodes      517 px   (max 2,431)
+weight>=50        5       14 nodes      178 px   (max   421)
+```
+
+Five to fourteen nodes in a row, spread over eight thousand pixels. And the research
+confirms the missing lever: **dagre has no component-packing, aspect-ratio or width option
+at all** — its entire documented surface is `rankdir`, `align`, `nodesep`, `edgesep`,
+`ranksep`, `ranker`, `acyclicer`, `marginx/y`. Graphviz and ELK both have one.
+
+### The fix: Graphviz `dot` with `pack=true`
+
+`@hpcc-js/wasm` 2.35.0, one UMD script tag, 822 KB, **Graphviz 15.1.0** (the research said
+16.0.0; the build actually reports 15.1.0), loads in 888 ms, and all seven engines are
+compiled in — `dot`, `neato`, `fdp`, `circo`, `twopi`, `osage`, `patchwork`.
+
+```
+                      Mermaid / dagre          Graphviz dot, pack=true
+pkg:quaestor    15544x1993   7.8:1  3.9 s      1746x1098   1.6:1   62 ms
+pkg:cli         11991x 514  23.3:1  2.5 s       782x 744   1.1:1   83 ms
+```
+
+**A 37:1 ribbon becomes a 1.1:1 square, thirty times faster.** All 83 boxes are drawn: the
+connected flow in the middle, the isolated boxes packed into tidy rows above and below.
+
+**The first attempt at this failed and the failure was mine.** `pack=true` was tested
+alongside `ratio=compress, size="14,10"` and the aspect barely moved — because `size` merely
+*scales* the finished drawing (1008 px is 14 inches at 72 dpi) and `ratio` fought the pack.
+`pack=true` **alone** is the whole fix. A probe that changes two things at once measures
+neither.
+
+Other engines on the same input, for the record: `neato` and `fdp` give 1:1 but are
+force-directed (hairball risk at scale), `osage` 3.7:1, and `pack` plus `ratio=1.6`
+overshoots to 0.6:1.
+
+### What else the research settled
+
+- **Mermaid v11 *can* swap dagre for ELK** — `@mermaid-js/layout-elk`, `layout: elk` in the
+  frontmatter — and ELK's defaults are already `separateConnectedComponents: true` and
+  `aspectRatio: 1.6`. But mermaid exposes **none** of those options in its config schema, so
+  the defaults are all you get; the build is **ESM-only** (no UMD), 1.64 MB; it covers
+  flowcharts and state diagrams only; and `maxEdges` defaults to 500, which a whole-program
+  view exceeds. Cheap to try, not worth building on.
+- **Above about twenty nodes, a matrix beats a node-link diagram on nearly every task except
+  path-finding** — Ghoniem, Fekete & Castagliola 2005, replicated at scale since. The
+  software form is the Dependency Structure Matrix (Sangal et al., OOPSLA 2005; the basis of
+  Lattix, Structure101, NDepend). **An isolate costs one empty row in a matrix and a slot in
+  a 23:1 ribbon**, which is precisely this data's problem.
+- **Hierarchical edge bundling** (Holten 2006) is the literature's answer for the
+  *between*-compartment layer: it bundles adjacency along the containment tree and makes
+  implicit parent-to-parent relations visible, which is this tool's subject exactly.
+- **Motif simplification** (Dunne & Shneiderman, CHI 2013) is the named answer to "half my
+  boxes have no within-compartment edge": collapse the fan into one glyph and state the
+  count. That is rule 8 arriving from the literature.
+
+### A correction to my own prediction, caught by testing
+
+From a longest-path count I predicted the between-compartment graph would lay out tall and
+narrow — 17 ranks, at most 10 per rank. It *does* rank deeply (21 rows, widest row 5) and
+still came out **4.6:1**, for the same edge-slot reason. I was one step from reporting the
+prediction as a result.
+
+And a second: a render I recorded as a **failure** (10x10 SVG) was my own regex requiring
+`viewBox="0 0 …"` against an actual `viewBox="-35 0 …"`. The render was fine. Rule 24's
+family, twice in one session, in the instrument rather than the product.
+
 ## The compartment diagram — designed with Tom, and measured before building, 2026-08-31
 
 Tom's design, in his words: *"each set of classes, procedures, and functions be graphed as

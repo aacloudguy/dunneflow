@@ -116,6 +116,10 @@ class Box:
     # rest of the dashboard shares. A box that cannot name what it holds is a shape (rule
     # 30), and the fold is only honest if the reader can get back through it (design rule 1).
     members: list[str] = field(default_factory=list)
+    # What those members are called, in the same order. Carried rather than looked up later
+    # because the fold is the only place that knows both -- a second pass to recover a name
+    # for an id would be a second answer to what a box holds (rule 13).
+    labels: list[str] = field(default_factory=list)
     detail: dict[str, Any] = field(default_factory=dict)
 
 
@@ -213,6 +217,7 @@ def build(model: GraphModel) -> dict[str, Compartment]:
             comp(n.disk).boxes.append(box)
         box.holds += 1
         box.members.append(n.id)
+        box.labels.append(n.label)
         box_of[n.id] = bid
 
     disk_of = {n.id: n.disk for n in model.nodes}

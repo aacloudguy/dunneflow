@@ -2231,7 +2231,8 @@ function renderDiagram() {
         c.portsDrawn ? "checked" : ""}> <span class="muted">show crossings</span></label>
       <button class="gbtn" data-dgm="fit">fit</button>
     </div>
-    <div class="dgm-canvas" id="dgmCanvas"><div class="dgm-pan" id="dgmPan">${c.svg}</div></div>`;
+    <div class="dgm-canvas" id="dgmCanvas"><div class="dgm-pan" id="dgmPan">${c.svg}</div>
+      <div class="hovercard" id="dgmCard" hidden aria-hidden="true"></div></div>`;
   const svg = host.querySelector("#dgmPan svg");
   if (svg) {
     svg.removeAttribute("width");
@@ -2240,7 +2241,72 @@ function renderDiagram() {
     svg.setAttribute("preserveAspectRatio", "xMidYMid meet");
   }
   dgmFit();
+  markDiagramSelection();
 }
+
+/* What a box says when the reader points at it.
+ *
+ * Everything here is already in the payload the drawing came from, so the card is complete
+ * the moment it appears -- no dwell, no fetch, no second stage. That is the one place this
+ * differs from the stack's card, and it differs because a box is a *fold*: the subject is
+ * "this class and its four methods", which the server has already sent, not a node the
+ * server could be asked about.
+ *
+ * It names what it holds, up to a handful, because "4 methods" is a count and the reader
+ * wants to know *which* -- and the count is stated beside them so an elision is never
+ * silent (rule 8: bound a listing, and say what was left out). */
+const DGM_CARD_NAMES = 6;
+
+function diagramCard(box) {
+  const what = box.kind === "class" ? "class"
+             : box.kind === "file" ? "file"
+             : box.kind === "port" ? "another compartment" : "what it touches";
+  const held = box.holds
+    ? `<div class="hc-sub">${box.holds} ${box.kind === "class" ? "methods" : "functions"}</div>`
+    : "";
+  const names = (box.members || []).slice(0, DGM_CARD_NAMES)
+    .map(id => (diagramNow.names || {})[id] || id.split(".").slice(-1)[0]);
+  const more = (box.members || []).length - names.length;
+  return `
+    <div class="hc-head">
+      <b class="hc-name">${esc(box.label)}</b>
+      <span class="kind-tag">${esc(what)}</span>
+    </div>
+    ${box.module ? `<div class="hc-sub mono">${breakable(box.module)}</div>` : ""}
+    ${held}
+    ${names.length ? `<div class="hc-list mono">${names.map(esc).join("<br>")}${
+      more > 0 ? `<div class="hint">…and ${more} more</div>` : ""}</div>` : ""}
+    ${box.kind === "port"
+      ? `<div class="hint">Click to open this compartment.</div>`
+      : box.members && box.members.length
+        ? `<div class="hint">Click to select what it holds.</div>` : ""}`;
+}
+
+/* Dwell is not wanted here and the reason is the same as the fetch: there is nothing to
+ * wait for. The card is built from data already in the page, so showing it on entry costs
+ * one `innerHTML` write and a placement. */
+document.addEventListener("pointermove", (ev) => {
+  const mount = $("#diagramMount");
+  if (!mount || mount.hidden) return;
+  const canvas = ev.target.closest(".dgm-canvas");
+  if (!canvas) { if (hoverHost === "diagram") hideHoverCard(); return; }
+  const g = ev.target.closest("g.node");
+  if (!g || !diagramNow || !diagramNow.by_id[g.id]) {
+    if (hoverHost === "diagram") hideHoverCard();
+    return;
+  }
+  const r = canvas.getBoundingClientRect();
+  const at = { x: ev.clientX - r.left, y: ev.clientY - r.top };
+  /* Moving within the same box is a move, not a new subject -- the stack's card makes the
+     same distinction, and for the same reason: re-rendering would flicker a card that is
+     already correct. */
+  if (g.id === hoverAt && hoverHost === "diagram") {
+    hoverAnchor = at;
+    placeHoverCard();
+    return;
+  }
+  showHoverCard("diagram", g.id, at, diagramCard(diagramNow.by_id[g.id]));
+});
 
 /* Pan and zoom, on a transform rather than a viewBox: the SVG is laid out once and only the
  * wrapper moves, so a drag costs a compositor transform and never a re-layout of eighty
@@ -2252,6 +2318,41 @@ function dgmApply() {
     `translate(${dgmView.x}px, ${dgmView.y}px) scale(${dgmView.k})`;
 }
 function dgmFit() { dgmView.x = 0; dgmView.y = 0; dgmView.k = 1; dgmApply(); }
+
+/* Which box the shared selection is in, marked on the drawing.
+ *
+ * The five modes are five ways of looking at **one** selection, so a routine picked in the
+ * navigator or the stack has to be visible here too -- and a box clicked here has to stay
+ * marked when the reader's eye comes back to it. Two class changes, never a repaint: the SVG
+ * is laid out once, and rebuilding it to move a highlight is the defect that cost the code
+ * browser 1,370 ms (rule 52's companion).
+ *
+ * Silent when the selection is not in this compartment, which is the honest answer -- the
+ * reader is looking at something that does not live here. */
+function markDiagramSelection() {
+  const host = $("#dgmPan");
+  if (!host || !diagramNow) return 0;
+  /* **`state.selected` first, and the engine's picks only if it has any.**
+   *
+   * `selectedIds()` reads the *graph engine's* picks and translates indices to ids, so it
+   * answers `{nodes: [], disks: []}` for a session that has never opened the stack -- which
+   * is every session that goes straight to Diagram mode. The mark was correct code reading
+   * the wrong source: the selection was real, the inspector had it, and nothing lit.
+   *
+   * `state.selected` is the id the inspector reads, and it does not depend on a renderer
+   * being mounted. Rule 51 -- one truth about what is selected, and the one that does not
+   * go blank when a different view happens to be closed. */
+  const want = new Set(selectedIds().nodes || []);
+  if (state.selected) want.add(state.selected);
+  let marked = 0;
+  host.querySelectorAll("g.node").forEach(g => {
+    const box = diagramNow.by_id[g.id];
+    const on = !!(box && box.members && box.members.some(m => want.has(m)));
+    g.classList.toggle("dgm-on", on);
+    if (on) marked++;
+  });
+  return marked;
+}
 
 /* ═══ mode toggle ═══ */
 $$("#modes button").forEach(b => b.addEventListener("click", () => {
@@ -2300,7 +2401,15 @@ document.addEventListener("click", (ev) => {
   }
   if (box.members && box.members.length) {
     used("diagram:box");
+    /* **A trail step, and the mark on the box.** The click reached the shared selection from
+       the first version and the inspector filled -- but a reader with the inspector railed
+       saw *nothing at all* happen, and Back could not reverse it. Both are the same defect
+       in different clothes: an act with no visible consequence and no way back. Rule 33 says
+       a trail step must carry its subject; design rule 15 says nobody chases a rabbit if
+       they might not find their way back. */
+    pushTrail("diagram", box.label, { nodes: box.members });
     selectFromNav({ nodes: box.members });
+    markDiagramSelection();
   }
 });
 
@@ -5879,7 +5988,7 @@ function render() {
     renderGraphFurniture();
     vp.innerHTML = "";
   }
-  if (diagramOn) vp.innerHTML = "";
+  if (diagramOn) { vp.innerHTML = ""; markDiagramSelection(); }
   /* No early return. The graph is a view in the centre pane, not a page -- the inspector,
    * the trail, the filter strip and the navigator counts all still belong on screen, and
    * returning here would quietly empty three panes whenever the stack was showing. */
@@ -9233,7 +9342,32 @@ const HOVER_HOSTS = {
     el: () => $("#navCard"),
     place: (el, row) => hoverPlaceBesideNav(el, row),
   },
+  /* The diagram's card asks the server for **nothing**. A box is a *fold* -- a class and its
+     methods, or a file and its functions -- so there is no node id to ask about, and
+     everything a card would say is already in the payload the drawing came from. `fetches:
+     false` is what stops `showHoverCard` starting a request for an id the server has never
+     heard of, which would have been a 404 per hover and a card that filled with an error. */
+  diagram: {
+    el: () => $("#dgmCard"),
+    place: (el, at) => hoverPlaceInBox(el, at.x, at.y, $(".dgm-canvas")),
+    fetches: false,
+  },
 };
+
+/* The same arithmetic as `hoverPlaceInCanvas`, against whichever box is asking. That one
+ * reads `el.parentElement` and calls it `.graphcanvas`, which is true of exactly one caller
+ * -- a rule kept at a call site rots as callers are added (rule 51), so the box is a
+ * parameter here. */
+function hoverPlaceInBox(el, x, y, box) {
+  if (!box) return;
+  const pad = 14;
+  const w = el.offsetWidth, h = el.offsetHeight;
+  let left = x + pad, top = y + pad;
+  if (left + w > box.clientWidth) left = Math.max(0, x - pad - w);
+  if (top + h > box.clientHeight) top = Math.max(0, y - pad - h);
+  el.style.left = `${left}px`;
+  el.style.top = `${top}px`;
+}
 
 function hoverEl() {
   const host = HOVER_HOSTS[hoverHost];
@@ -9568,6 +9702,7 @@ function showHoverCard(host, id, anchor, skeleton) {
   el.innerHTML = skeleton;
   placeHoverCard();
 
+  if (spec.fetches === false) return;   // the skeleton *is* the card -- see `diagram` above
   const cached = hoverCache.get(id);
   if (cached !== undefined) { hoverFill(id, cached); return; }
   hoverTimer = setTimeout(() => hoverAsk(id), HOVER_DWELL);

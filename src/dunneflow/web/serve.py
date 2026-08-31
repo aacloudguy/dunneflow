@@ -668,6 +668,17 @@ class _Handler(BaseHTTPRequestHandler):
             "by_id": {b.id: {"label": b.label, "kind": b.kind, "holds": b.holds,
                              "members": b.members, **b.detail}
                       for b in c.boxes + c.ports},
+            # What each member is called, so a hover card can name what a box holds rather
+            # than counting it. Sent with the diagram rather than fetched per hover: it is a
+            # few hundred short strings against a request per box, and a card that is
+            # complete the moment it appears has nothing to wait for.
+            #
+            # `strict=True`: the two lists are appended in one place in one loop, so a
+            # mismatch is impossible today and would silently truncate every box after it
+            # if that ever stopped being true.
+            "names": {nid: lbl
+                      for b in c.boxes
+                      for nid, lbl in zip(b.members, b.labels, strict=True)},
         })
 
     def _r_packages(self, q: dict[str, list[str]]) -> None:

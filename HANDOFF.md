@@ -3919,6 +3919,61 @@ three shape sets rendering. Guards mutation-tested at **10/10** over a proved-gr
 
 Still unseen: the pixels. Rule 38 is unchanged.
 
+## Looked at, at the keyboard — Tom, 2026-08-31, on Diagram mode
+
+*"Nice progress!"* — and three things, all real.
+
+### 1. Unreadable zoomed in, then crisp when the inspector opened
+
+`will-change: transform` on the pan wrapper. It promotes the element to its own compositor
+layer, which is rasterised **once at the scale it had** and then scaled as a bitmap — so
+zooming in enlarged a picture of the text rather than redrawing it, and any unrelated
+re-layout (opening the inspector) rasterised the layer again and made it crisp. Reported
+precisely as it behaves, including the accidental cure.
+
+The property is a performance hint and it is the wrong one here: a **pan** wants the layer,
+a **zoom** wants the vector, and the zoom is what a reader does in order to read. Removed.
+
+### 2. No hover card
+
+The stack has one; this had none. It is a fourth entry in `HOVER_HOSTS` (rule 36 — the table
+was already there), with one difference that is worth its own flag: **it asks the server for
+nothing.** A box is a *fold* — a class and its methods, a file and its functions — so there
+is no node id to ask about, and everything a card would say is already in the payload the
+drawing came from. `fetches: false` is what stops `showHoverCard` starting a request for an
+id the server has never heard of, which would have been a 404 per hover and a card that
+filled itself with an error. The card names what a box holds, up to six, and says how many
+it left out (rule 8).
+
+### 3. Clicking did nothing visible, and Back could not undo it
+
+The click **did** reach the shared selection and the inspector **did** fill — from the first
+version, and I verified it. Tom had the inspector railed, so he saw nothing at all happen.
+Design rule 24 lets a reader fold any pane, which makes *"the feedback is in another pane"*
+the same as no feedback. The clicked box is marked on the drawing now, two class changes and
+never a repaint.
+
+And nothing pushed a trail step, so Back could not reverse the commonest act in the view —
+rule 33, and design rule 15's whole argument. Both directions now work: click marks and
+selects, Back clears, Forward restores.
+
+**The mark was then correct code reading the wrong source.** `selectedIds()` translates the
+*graph engine's* picks, so it answers `{nodes: [], disks: []}` for a session that has never
+opened the stack — which is every session that goes straight to Diagram mode. The selection
+was real, the inspector had it, and nothing lit. `state.selected` is what the inspector reads
+and does not depend on a renderer being mounted (rule 51). Found by driving it, not by any
+check.
+
+### Guards
+
+Mutation-tested at **10/10** over a proved-green baseline, after 7/10 — **all three survivors
+the guard being weak, and all three the same shape**: a check that accepts *any* occurrence
+of a name has not checked the one that matters. One tripped on the comment explaining the
+line it was testing; one accepted a second CSS rule mentioning the class after the rule that
+draws it was renamed away; one sliced from the port branch, which pushes a trail step of its
+own, so removing the box's passed. That is the twenty-first through twenty-third time in this
+record, and the fourth in this session.
+
 ## Diagram mode — built 2026-08-31
 
 Tom: *"Keep Mermaid as emitted source, but switch to Graphviz for drawing… Add this as

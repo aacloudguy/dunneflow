@@ -1386,6 +1386,111 @@ def test_a_diagram_box_carries_what_it_stands_for() -> None:
     )
 
 
+def test_a_click_in_the_diagram_has_a_consequence_the_reader_can_see() -> None:
+    """A click that only fills a pane the reader has collapsed has done nothing.
+
+    The first version reached the shared selection and the inspector filled — and it was
+    reported as *"clicking on them doesn't do anything visible"*, because the inspector was
+    railed. Design rule 24 lets a reader fold any pane, so a view whose only feedback is in
+    another pane has no feedback at all. And Back could not reverse it, because nothing
+    pushed a step: rule 33, a trail step must carry its subject, and design rule 15's whole
+    argument is that nobody chases a rabbit if they might not find their way back.
+
+    Three claims, and the third is the one that was actually broken twice over.
+    """
+    js = _read("shell.js")
+    assert "function markDiagramSelection(" in js, "nothing marks the selected box"
+    mark = _fn(js, "markDiagramSelection")
+    assert 'classList.toggle("dgm-on"' in mark, "the mark is no longer applied to the box"
+    assert "state.selected" in _code(mark), (
+        "the mark reads only `selectedIds()`, which translates the *graph engine's* picks — "
+        "it answers empty for a session that never opened the stack, which is every session "
+        "that goes straight to Diagram mode. `state.selected` is what the inspector reads "
+        "and it does not depend on a renderer being mounted (rule 51)"
+    )
+    # The *line*, not a mention: the comment above it explains `state.selected` at length,
+    # and a containment check over the whole function passes on the explanation once the
+    # code is gone. Fourth time this session (rule 59's companion).
+    assert re.search(r"want\.add\(state\.selected\)", _code(mark)), (
+        "nothing adds the inspector's own selection to the marked set"
+    )
+    css = _css_code(_read("tokens.css"))
+    # The rule that actually draws it. `.dgm-on` appears twice, so asking whether the class
+    # is mentioned passes with the stroke rule renamed away and only the font-weight left.
+    stroke = re.search(r"\.dgm-on\s*>\s*:is\([^)]*\)\s*\{([^}]*)\}", css)
+    assert stroke and "stroke" in stroke.group(1), (
+        "nothing strokes the marked box, so a click marks something the reader cannot see"
+    )
+
+    # The trail, so Back and Forward mean what the reader expects.
+    # **The box branch only.** Slicing from the port test keeps the port branch, which
+    # pushes a trail step of its own -- so the obvious check passes with the box's removed.
+    click = js.split("if (box.members && box.members.length) {", 1)[1].split("\n  }", 1)[0]
+    assert "pushTrail(" in _code(click), (
+        "a box click pushes no trail step, so Back cannot reverse the commonest act in "
+        "this view"
+    )
+    port = js.split('if (box.kind === "port") {', 1)[1].split("\n    return;", 1)[0]
+    assert "pushTrail(" in _code(port), "a port click pushes no trail step either"
+    assert "selectFromNav({ nodes: box.members })" in click, (
+        "the click no longer reaches the shared selection"
+    )
+
+
+def test_the_diagram_is_not_promoted_to_its_own_compositor_layer() -> None:
+    """`will-change: transform` blurs a vector drawing when it is zoomed.
+
+    It promotes the wrapper to its own layer, which is rasterised **once at the scale it
+    had** and then scaled as a bitmap — so zooming in enlarged a picture of the text instead
+    of redrawing it. Reported exactly as it behaves: unreadable zoomed in, and crisp the
+    moment the inspector was opened, because that forced an unrelated re-layout and the
+    layer was rasterised again.
+
+    The property is a performance hint and it is the wrong one here: a pan wants the layer,
+    a zoom wants the vector. The zoom is what a reader does to read.
+    """
+    css = _css_code(_read("tokens.css"))
+    rule = css.split(".dgm-pan {", 1)
+    assert len(rule) == 2, "the diagram's pan wrapper is gone -- this test is blind"
+    body = rule[1].split("}", 1)[0]
+    assert "will-change" not in body, (
+        f"will-change is back on the diagram wrapper: {body.strip()!r} — it rasterises the "
+        "drawing once and scales the bitmap, so zooming in blurs the text"
+    )
+    assert "transform-origin" in body, (
+        "the pan wrapper has no transform origin, so zoom would not anchor where it is told"
+    )
+
+
+def test_the_diagram_card_asks_the_server_for_nothing() -> None:
+    """A box is a **fold**, so there is no node id for the server to be asked about.
+
+    Everything a card would say is already in the payload the drawing came from, so the card
+    is complete the moment it appears — no dwell, no request, no second stage. Routed through
+    the same host table as the other two cards (rule 36), with `fetches: false` as the thing
+    that stops `showHoverCard` starting a request for an id the server has never heard of:
+    that would be a 404 per hover and a card that filled itself with an error.
+    """
+    js = _read("shell.js")
+    hosts = js.split("const HOVER_HOSTS = {", 1)[1].split("\n};", 1)[0]
+    assert "diagram:" in hosts, "the diagram is not a hover host, so it has no card at all"
+    assert "fetches: false" in hosts, (
+        "the diagram's card is not marked as fetching nothing, so a hover would ask the "
+        "server about a fold id it has never heard of"
+    )
+    show = _fn(js, "showHoverCard")
+    assert "spec.fetches === false" in show, (
+        "showHoverCard ignores the flag, so the host table says one thing and the code does "
+        "another"
+    )
+    assert "function diagramCard(" in js, "there is no card to show"
+    card = _fn(js, "diagramCard")
+    assert "fetch(" not in card, "the diagram card fetches; it is built from the payload"
+    assert "more > 0" in card, (
+        "the card lists what a box holds without saying how many it left out (rule 8)"
+    )
+
+
 def test_every_declared_data_array_is_assigned_somewhere() -> None:
     """`let X = []` that nothing ever writes to is an empty view with no symptom.
 

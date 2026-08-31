@@ -1,4 +1,6 @@
 {
   "deck.gl": "9.3.10",
-  "license": "MIT"
+  "mermaid": "11.17.2",
+  "license": "MIT",
+  "note": "mermaid is vendored for the plate diagram and is not yet loaded by any page. It must be initialised with htmlLabels:false -- an SVG carrying <foreignObject> refuses to rasterise into a canvas, so a plate image built from one is silently blank. Measured 2026-08-31: plain <text> gives ink, foreignObject never decodes."
 }

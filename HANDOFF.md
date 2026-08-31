@@ -3919,6 +3919,86 @@ three shape sets rendering. Guards mutation-tested at **10/10** over a proved-gr
 
 Still unseen: the pixels. Rule 38 is unchanged.
 
+## The compartment diagram — designed with Tom, and measured before building, 2026-08-31
+
+Tom's design, in his words: *"each set of classes, procedures, and functions be graphed as
+Mermaid diagrams that showed the flow within a grouped set such as mensores.quaestor, and
+that would be one plate… we might have a summary diagram for each plate that is shown until
+you select that plate, and then you go into a Mermaid detail view that allows you pan and
+zoom around that plate only… with controls to easily follow links to other plates - sort of
+flip-book effect… It's not the same level of detail as the node stack, and that's ok."*
+
+Compartmentalisation, and the stack becomes an **index** into the diagrams rather than the
+place the reading happens.
+
+### Settled
+
+- **A new centre mode**, a peer of Table / Document / Code — not a toggle inside Graph.
+- **One box per class, plus one box per file's loose functions.** The first form he chose
+  was a box per class *and per loose function*; the table I had given him showed classes
+  (≤71) and modules (≤83) and he reasonably read those as the box count. They are not:
+  Mensores is function-oriented, and quaestor's 42 classes hold only 89 of its 531
+  routines, so a box per loose function is **432 boxes**. Gathering a file's loose functions
+  into one box restores his ≤100 premise exactly — median **14**, p90 57, max 107, with one
+  plate over 100.
+- **Real Mermaid, vendored** — 11.17.2, 3.5 MB, fetched with his go-ahead.
+
+### Measured, and the second level is the happy surprise
+
+```
+level 1, a package     median  14 boxes   p90  57   max 107
+level 2, opening one   median   4-6       p90  14   max 106  (one module in 623 files)
+```
+
+The drill-down is bounded at every level *without a rule to bound it*, because the code is
+already compartmented. That is what makes the design work and it was not obvious before
+counting.
+
+### Three things established by testing rather than by reasoning
+
+- **`deck.BitmapLayer` is in the vendored build and constructs.** A bitmap on a quad in the
+  plate's own XY plane at the plate's Z is the diagram lying flat — Tom's "rendered
+  orthogonally" exactly, and undistorted under this projection apart from the tilt.
+- **An SVG carrying `<foreignObject>` will not rasterise into a canvas.** Plain `<text>`
+  gave 623 ink pixels; the `foreignObject` version never decoded at all, in the same tab, so
+  it is the markup and not the environment. Mermaid uses `foreignObject` for labels by
+  default, so it **must** be initialised `htmlLabels: false` or every plate image is
+  silently blank. Recorded in `vendor/VERSIONS.json` where the next reader will meet it.
+- **Mermaid renders these, and the small ones are excellent.** `pkg:mcp` at 8 boxes is a
+  proper diagram — routed edges, arrowheads, labels reading *"4 methods"* and *"3
+  functions"*.
+
+### And the finding that stops the build: the diagrams are ribbons
+
+```
+                boxes  ports  isolated   svg size      aspect   render
+pkg:quaestor       83     41        27   15544×1993     7.8:1    3.9 s
+pkg:storage        90     32        27   17433×1296    13.5:1    2.6 s
+pkg:cli            57     35         5   11991× 514    23.3:1    2.5 s
+pkg:disceptator   107     26        35   16453×1296    12.7:1    3.3 s
+```
+
+**It is not a Mermaid failure, it is the shape of the data.** Half of each package's boxes
+have no within-package edge at all — quaestor has 83 internal edges against 221 outbound —
+and `flowchart TD` puts everything with no inbound edge on rank 0, side by side. The
+verification that this is real rather than a folding bug: the drawn model and the store's own
+`calls` rows agree to the edge, on every plate.
+
+Adding Tom's cross-plate links as **ports** was the obvious fix and it is not one. It
+improved connectivity (quaestor 41 isolated → 27) and left the aspect ratio no better,
+because a package's call graph is inherently **wide and shallow**: two to four ranks, dozens
+of boxes per rank.
+
+Two consequences, and both are for Tom:
+
+- **A 23:1 ribbon cannot be a plate image.** A plate wants something near square.
+- **2.5–3.9 s per plate** means the stack of 53 costs minutes to build, so the summaries want
+  caching on disk rather than rendering per session — if they are kept at all.
+
+Nothing further is built. The next decision is his: whether the plate summary survives in
+some other form, whether the diagram accepts being a wide thing you pan (which is how a real
+Mermaid diagram of this size is normally read), or whether the level-1 grain moves again.
+
 ## Withdrawn — Tom, 2026-08-31, on the plate diagram
 
 > *"Diagram mode is unreadable, and inconsistent… My original concept for this was a valid

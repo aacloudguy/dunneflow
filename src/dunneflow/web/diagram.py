@@ -350,3 +350,73 @@ def mermaid(c: Compartment) -> str:
     for src, dst in sorted(list(c.out) + list(c.into)):
         out.append(f"  {ids[src]} -.-> {ids[dst]}")
     return "\n".join(out)
+
+
+# ── asking a compartment about one box ──────────────────────────────────────────────
+
+def find_box(comps: dict[str, Compartment], box_id: str) -> tuple[Compartment, Box] | None:
+    """The compartment a box belongs to, and the box, or `None` for neither.
+
+    A box id begins with its plate, so the compartment is read off the id rather than
+    searched for -- fifty-three compartments times a hundred boxes is a scan nobody
+    needs to do to answer a click. A port is findable too: it is a real thing in the
+    drawing, and refusing to look one up here would push that distinction into every
+    caller (rule 51).
+    """
+    c = comps.get(box_id.partition("|")[0])
+    if c is None:
+        return None
+    for b in (*c.boxes, *c.ports):
+        if b.id == box_id:
+            return c, b
+    return None
+
+
+def flow_of(c: Compartment, box_id: str) -> dict[str, list[dict[str, Any]]]:
+    """What reaches a box, and what it reaches -- named, counted, and kept apart.
+
+    Both halves are read off the counters the compartment already built, never
+    recomputed from the model: the diagram's picture and the inspector's answer are
+    then the same arithmetic, so a reader who counts the arrows and reads the number
+    cannot find them disagreeing (rule 13).
+
+    `inside` and the two crossing counters are merged here on purpose and marked with
+    `crosses`. The picture keeps them apart because they answer different questions
+    about the *drawing* -- what does this do among itself, what does it hang off. The
+    inspector's question is the reader's: **what talks to this thing**, and an answer
+    that splits one routine's neighbours by whether they happened to be drawn on the
+    same plate would be an answer about the layout.
+    """
+    label: dict[str, str] = {b.id: b.label for b in (*c.boxes, *c.ports)}
+    kind: dict[str, str] = {b.id: b.kind for b in (*c.boxes, *c.ports)}
+
+    def rows(pairs: list[tuple[tuple[str, str], int]], mine: int, theirs: int,
+             crosses: bool) -> list[dict[str, Any]]:
+        out = []
+        for pair, weight in pairs:
+            if pair[mine] != box_id:
+                continue
+            other = pair[theirs]
+            out.append({
+                "id": other,
+                "label": label.get(other, other),
+                "box_kind": kind.get(other, ""),
+                "weight": int(weight),
+                # A crossing does not end where it appears to: the far end is a port
+                # standing for a whole compartment, not the thing that was called
+                # (rule 23's argument, one level up). Marked rather than hidden.
+                "crosses": crosses,
+            })
+        return sorted(out, key=lambda r: (-r["weight"], r["label"].lower()))
+
+    inside = list(c.inside.items())
+    return {
+        "in": rows(inside, 1, 0, False) + rows(list(c.into.items()), 1, 0, True),
+        "out": rows(inside, 0, 1, False) + rows(list(c.out.items()), 0, 1, True),
+    }
+
+
+def box_payload(b: Box) -> dict[str, Any]:
+    """A box as the wire carries it -- the shape the drawing's `by_id` map already uses."""
+    return {"id": b.id, "label": b.label, "kind": b.kind, "holds": b.holds,
+            "members": list(b.members), "labels": list(b.labels), **b.detail}

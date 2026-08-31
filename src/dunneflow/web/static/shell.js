@@ -308,6 +308,16 @@ const state = {
   followMode: "replace",   // "replace" | "walk" -- what following a neighbour does
   threadsAll: false,       // the threads panel bounded (rule 8) or opened whole
   selected: null,          // the node id under inspection, or null for nothing picked
+  /* A **fold** under inspection -- a diagram box, which is a class and its methods or a
+   * file and its loose functions. It has no node id, because it is not a node.
+   *
+   * Beside `selected` rather than inside it, and the pair is governed by one accessor
+   * (`inspectorSubject`) rather than by a convention. The alternative was to keep
+   * nominating `members[0]`, which is what shipped and what Tom reported: a box labelled
+   * `KernelDecl` filled the inspector with `KernelDecl._profile_name_or_none`, a true
+   * answer about something nobody clicked (rule 32). The stack has never made that
+   * mistake -- picking a plate clears the selection rather than electing a member of it. */
+  fold: null,              // the box id under inspection, or null
   /* What the reader asked for, in id space, before it is resolved to drawn indices.
    * Held here rather than only in the engine so a choice made from the navigator while
    * the centre pane is showing a table or a document is still a real choice. */
@@ -457,8 +467,14 @@ function panelIsOpen(name) {
     /* Auto only ever *closes*, and only when the inspector genuinely has nothing to say.
      * An explicit fold is recorded in `panels.inspector` and outranks this, so the reader
      * can keep it shut with something selected -- what they cannot do is have it silently
-     * reopen underneath them. */
-    return Boolean(state.selected);
+     * reopen underneath them.
+     *
+     * **`inspectorSubject()`, not `state.selected`.** A diagram box sets no `selected` at
+     * all -- it is not a node -- so reading the narrower field railed the pane shut over a
+     * fully rendered answer: sixty-one members, eight neighbours and the way to the code,
+     * all painted, in a column zero pixels wide. That is the exact symptom Tom reported
+     * ("perhaps it selects, but the view does not change"), arriving from the other end. */
+    return Boolean(inspectorSubject());
   }
   return Boolean(state.panels[name]);
 }
@@ -2091,7 +2107,7 @@ document.addEventListener("click", (ev) => {
   /* Opening the inspector by hand with nothing selected is a deliberate act, so the auto
    * rule stops overriding it until something is picked again. Without this the rail would
    * be unclickable: it would reopen and immediately re-collapse, which reads as broken. */
-  if (name === "inspector" && opening && !state.selected) state.inspectorAuto = false;
+  if (name === "inspector" && opening && !inspectorSubject()) state.inspectorAuto = false;
   if (name === "inspector" && !opening) state.inspectorAuto = true;
   persist();
   applyPanels();
@@ -2344,10 +2360,15 @@ function markDiagramSelection() {
    * go blank when a different view happens to be closed. */
   const want = new Set(selectedIds().nodes || []);
   if (state.selected) want.add(state.selected);
+  /* A **fold** is marked by its own id, not by what it holds. Two boxes can hold the same
+     routine -- a class and the file its module folds -- and matching only on members would
+     light both when the reader picked one. The box the reader clicked is the box that is
+     marked; the members still light in the stack, which is a different picture. */
   let marked = 0;
   host.querySelectorAll("g.node").forEach(g => {
     const box = diagramNow.by_id[g.id];
-    const on = !!(box && box.members && box.members.some(m => want.has(m)));
+    const on = !!box && (g.id === state.fold
+      || (!state.fold && !!box.members && box.members.some(m => want.has(m))));
     g.classList.toggle("dgm-on", on);
     if (on) marked++;
   });
@@ -2406,10 +2427,20 @@ document.addEventListener("click", (ev) => {
        saw *nothing at all* happen, and Back could not reverse it. Both are the same defect
        in different clothes: an act with no visible consequence and no way back. Rule 33 says
        a trail step must carry its subject; design rule 15 says nobody chases a rabbit if
-       they might not find their way back. */
-    pushTrail("diagram", box.label, { nodes: box.members });
-    selectFromNav({ nodes: box.members });
-    markDiagramSelection();
+       they might not find their way back.
+
+       **And what filled the inspector was the wrong thing**, which is what Tom reported
+       next: this passed `box.members` and `selectFromNav` elected `members[0]`, so a box
+       labelled `KernelDecl` holding sixty-one methods described
+       `KernelDecl._profile_name_or_none`. `selectFold` asks about the box.
+
+       Two smaller repairs on the way. The trail step was pushed *before* the selection
+       settled, so it filed the previous subject; and its third argument was an object where
+       a `note` string belongs, which `trailBar` renders through `esc(t.note || t.label)`. */
+    /* `g.id`, not `box.id`. `by_id` is a *map keyed by* the box id and its values carry no
+       `id` of their own, so the obvious spelling is `undefined` -- caught here by the
+       identity guard rather than by a click that silently did nothing (rule 16). */
+    selectFold(g.id).then(markDiagramSelection);
   }
 });
 
@@ -4070,11 +4101,18 @@ let trailAt = -1;
 let restoringSelection = false;
 
 function selectionSnapshot() {
-  return { picks: (state.picks || []).slice(), selected: state.selected };
+  /* The **fold** rides with the selection, or Back cannot reverse the commonest act in
+     Diagram mode. A box click sets no `selected` at all -- it is not a node -- so a step
+     without this field is a step whose subject is `null`, which renders, highlights and
+     scrolls exactly as it should and can take nobody back (rule 33, in the view that rule
+     was written for). */
+  return { picks: (state.picks || []).slice(), selected: state.selected,
+           fold: state.fold || null };
 }
 
 function sameSelection(a, b) {
   return a && b && a.selected === b.selected &&
+         (a.fold || null) === (b.fold || null) &&
          a.picks.length === b.picks.length &&
          a.picks.every((p, i) => {
            const q = b.picks[i];
@@ -4110,7 +4148,7 @@ function recordSelection(label, note, view) {
        "you cleared the picture" came out labelled *graph*, which reads as a mode change.
        It is the step a reader is most likely to want back (clicking the node you are on is
        the toggle-off that empties everything), so it says what it is. */
-    label: label || (state.selected ? labelFor(state.selected) : "nothing selected"),
+    label: label || subjectLabel(),
     note: note || "",
     subject: selectionSnapshot(),
   };
@@ -4132,10 +4170,8 @@ function applySelectionStep(step) {
   restoringSelection = true;
   try {
     state.picks = step.picks.slice();
-    state.selected = step.selected;
     if (Graph.mounted()) Graph.setSelection(state.picks);
-    if (state.selected) loadNode(state.selected);
-    else { inspectorFor = null; SPECIMEN = null; }
+    setSubject({ node: step.selected, fold: step.fold });
     persist();
     buildNav();
     revealSelectedRoutine();
@@ -5549,23 +5585,102 @@ function glossUndefined(undef) {
  * again, and the graph repaints on every camera stop. */
 let inspectorFor = null;
 
-async function loadNode(id) {
-  if (id === inspectorFor) return;
-  inspectorFor = id;
+/* **The one place a subject is installed**, and therefore the one place a stale one is
+ * cleared. Four callers set what the inspector answers about -- a click in the stack, a
+ * click in the navigator or the diagram, a step restored from the trail, and a change of
+ * altitude -- and every one of them used to write `state.selected` and load a node by hand.
+ * Adding a second kind of subject to four hand-written sites is precisely the list rule 51
+ * says grows: the fold would have outlived its selection at whichever site was forgotten,
+ * and a pane confidently describing a class the reader left ten clicks ago is worse than a
+ * blank one.
+ *
+ * Exclusive by construction, which is what lets `inspectorSubject()` be an accessor rather
+ * than a rule every caller has to remember. */
+function setSubject({ node = null, fold = null } = {}) {
+  state.fold = fold;
+  state.selected = fold ? null : node;
+  if (fold) loadFold(fold);
+  else if (node) loadNode(node);
+  else { inspectorFor = null; SPECIMEN = null; }
+}
+
+/* What to call the current subject on a trail step. A fold has no `selected` at all, so the
+ * node-only version filed every box click as **"nothing selected"** -- a step that is
+ * perfectly reversible and names nothing, which is a trail with no map on it. Beside
+ * `inspectorSubject()` because it answers the same question in words. */
+function subjectLabel() {
+  if (state.fold) {
+    const box = diagramNow && diagramNow.by_id[state.fold];
+    return (box && box.label) || state.fold;
+  }
+  return state.selected ? labelFor(state.selected) : "nothing selected";
+}
+
+/* **Look at this box.** Two callers -- a click on the drawing, and a neighbour row in a
+ * fold's own pane -- and it goes through `selectFromNav` like every other selection, so the
+ * stack lights what the box holds, the navigator follows, the trail records it and undo can
+ * reverse it. A second path that only filled the inspector would be a selection the rest of
+ * the dashboard never heard about (rule 51).
+ *
+ * `await`ed before the trail step, because a step captures the subject as it stands: pushing
+ * first files a step whose subject is the *previous* one, which renders and highlights
+ * perfectly and takes the reader somewhere else. `codelink` documents this and the diagram's
+ * own handler had it the other way round. */
+async function selectFold(boxId) {
+  if (!boxId) { console.error("DunneFlow: a box row with no identity"); return; }
+  const box = diagramNow && diagramNow.by_id[boxId];
+  /* No `pushTrail` of its own. `selectFromNav` already records the step, and a second one
+     with a better label is deduplicated away by subject -- so the pane kept the *first*
+     one, which is why every box click filed itself as "nothing selected" until
+     `subjectLabel()` existed. One place makes a step; it has to be able to name what it
+     made (rule 51, and rule 30 -- a step whose label is not its subject). */
+  await selectFromNav({ nodes: (box && box.members) || [], fold: boxId });
+}
+
+/* **What the inspector is answering about, in one place.**
+ *
+ * There are two kinds of subject now -- a node and a fold -- and exactly one of them is
+ * ever set. Expressed as an accessor rather than as a convention, because a convention is
+ * what every caller has to remember and rule 51 is a list of the times one of them did not.
+ * Everything that asks "what is being inspected" asks here. */
+function inspectorSubject() {
+  return state.fold || state.selected || null;
+}
+
+/* One fetch-and-paint, two subjects. `loadNode` and `loadFold` differ in the endpoint they
+ * ask and in whether threads apply -- a thread is adjacency for one node, and a class has
+ * no threads of its own -- and in nothing else. Written once so the two cannot drift in the
+ * cache guard, the in-flight check or the order of the two renders. */
+async function loadSpecimen(key, url) {
+  if (key === inspectorFor) return false;
+  inspectorFor = key;
   SPECIMEN = null;
   render();
   try {
-    const r = await fetch(`/api/node?id=${encodeURIComponent(id)}`);
+    const r = await fetch(url);
     if (!r.ok) throw new Error(`the server answered ${r.status}`);
     const d = await r.json();
-    if (inspectorFor !== id) return;        // the reader moved on while this was in flight
-    SPECIMEN = d.found ? d : { notFound: true, id, reason: d.reason };
+    if (inspectorFor !== key) return false;   // the reader moved on while this was in flight
+    SPECIMEN = d.found ? d : { notFound: true, id: key, reason: d.reason };
   } catch (err) {
-    if (inspectorFor === id) SPECIMEN = { notFound: true, id, reason: err.message };
+    if (inspectorFor === key) SPECIMEN = { notFound: true, id: key, reason: err.message };
   }
   followSelectionIntoCode();
   render();
-  loadThreads(id);
+  return true;
+}
+
+async function loadNode(id) {
+  if (await loadSpecimen(id, `/api/node?id=${encodeURIComponent(id)}`)) loadThreads(id);
+}
+
+/* A diagram box, asked about as the thing it stands for.
+ *
+ * No `loadThreads`: `threads.py` answers adjacency *by interest* for one node, and there is
+ * no node here. Asking with a box id would 404 on every click -- which is exactly what
+ * `fetches: false` was added to the hover card to prevent, one surface over. */
+async function loadFold(boxId) {
+  await loadSpecimen(boxId, `/api/fold?id=${encodeURIComponent(boxId)}`);
 }
 
 /* **The other direction.** Design rule 26 says the list and the picture are one instrument
@@ -5654,6 +5769,164 @@ function cut(shown, total, what) {
     ${total.toLocaleString()} ${what}.</div>`;
 }
 
+/* What a thing reaches outside itself, as rows. One renderer, because a routine and a
+ * **fold** answer the same question with the same rows -- a class's boundaries are its
+ * methods' boundaries -- and a second copy here would be a second answer to what a touch
+ * looks like the first time either was edited (rule 51).
+ *
+ * **Both the table and the destination were blank, on every row, since the day this was
+ * written.** It read `q.table || q.statement` against `ROUTINE_SQL_OPS`, which sends `tbl`
+ * and `sql`, and `nc.target || nc.host` against `ROUTINE_NET_CALLS`, which sends
+ * `destination` -- so a SQL row rendered as `▤ SELECT :214` with nothing between the
+ * operation and the line, and a network row named no host. Nothing failed and nothing was
+ * `undefined` on screen: `esc(undefined || undefined || "")` is the empty string, and a
+ * missing table is indistinguishable from a statement with no table in it. Rule 44, in the
+ * same pane and the same shape as the parameters that rendered without their types. */
+function touchRows(t) {
+  const row = (glyph, kind, text, line) => `
+      <div class="touchrow">
+        <span class="gl" aria-hidden="true">${glyph}</span>
+        <span class="k">${esc(kind)}</span>
+        <span class="t">${text}${line != null
+          ? ` <span class="dim" style="color:var(--text-faint)">:${line}</span>` : ""}</span>
+      </div>`;
+  return [
+    ...(t.boundaries || []).map(b => row(BKIND_GLYPH[b.kind] || "◇", b.kind,
+        `${esc(b.target)} <span class="dim">${esc(b.direction || "")}</span>`, b.line)),
+    /* Direction is the point of a SQL row: a table written twice as often as it is read is
+     * a doorway, and read/write is the distinction the database report is built on.
+     * A statement with no table of its own -- BEGIN, COMMIT -- says so rather than
+     * rendering as a blank subject beside an operation (rule 40's companion). */
+    ...(t.sql || []).map(q => row("▤", q.operation || "SQL",
+        `${q.tbl ? esc(q.tbl) : `<span class="dim">no table</span>`}
+         <span class="dim">${esc(q.direction || "")}</span>`, q.line)),
+    /* The full network record, because design rule 8 says an external is a first-class
+     * node badged as outside our control, and what makes that useful is knowing the verb,
+     * the destination and whether anyone set a timeout. */
+    ...(t.net || []).map(nc => row("◆", nc.protocol || "NET",
+        `${esc(nc.verb || "")} ${esc(nc.destination || "")}${nc.port
+          ? `<span class="dim">:${esc(String(nc.port))}</span>` : ""} <span class="dim">${
+          nc.timeout ? `timeout ${esc(String(nc.timeout))}` : "no timeout"}${
+          nc.retries ? `, ${esc(String(nc.retries))} retries` : ""}</span>`, nc.line)),
+    /* A file the program names is not a boundary it touches: naming is a choice the
+     * authors made, touching is something the code does. */
+    ...(t.artefacts || []).map(a => row("▣", a.kind || "ARTEFACT",
+        esc(a.name || a.path || ""), a.line)),
+  ];
+}
+
+/* ── a fold, described as the thing it stands for ──────────────────────────────────
+ *
+ * A diagram box is a class and its methods, or a file and its loose functions. It is not a
+ * node, and the pane says so in every line: the head names the class, `Holds` lists what is
+ * in it, and `In` / `Out` name **boxes** rather than routines, because at this grain the
+ * neighbours are the other boxes on the drawing.
+ *
+ * Its own function rather than a branch threaded through the routine path. The two share
+ * `touchRows`, `sec` and `cut` -- everything where one answer is right for both -- and
+ * differ everywhere the *subject* differs, which is most of it. Threading it through would
+ * have put five `s.kind === "FOLD"` tests inside a function that currently has none, and
+ * the routine path is the one thing this change must leave exactly as it was.
+ *
+ * There is no Signature section and no threads panel, and both absences are the same fact:
+ * a class has no invocation line, and `threads.py` answers adjacency by interest for one
+ * node. Rendering either would be a control that looks finished and says nothing (rule 44).
+ */
+function viewInspectorFold(s) {
+  const id = s.identity || {};
+  const held = (s.holds && s.holds.routines) || [];
+  const t = s.touches || {};
+  const anns = (s.governance || {}).annotations || [];
+
+  /* A neighbour of a fold is a box, so the button selects a **box**. Handing `data-node` a
+     box id would be a link to nothing -- the id space is the drawing's, not the store's --
+     which is the mistake `queries.py` wrote down before anything needed it.
+     `data-box`, **not** `data-fold`: that attribute has collapsed a pane since design rule
+     24, so the obvious name here would have made every neighbour row rail the inspector.
+     Rule 71 -- a name is global -- caught on the way in rather than on the screen. */
+  const flowRow = (arrow, r) => `
+      <div class="flowitem">
+        <span class="arrow">${arrow}</span>
+        <button class="gotonode" data-box="${esc(r.id || "")}"
+          title="${esc(r.id || "")}"><code>${esc(r.label || r.id || "")}${
+          r.box_kind ? `<span class="dim">  ${esc(r.box_kind)}</span>` : ""}</code></button>
+        <span class="conf badge ${r.crosses ? "" : "certain"}">${
+          r.weight}${r.crosses ? " · crosses" : ""}</span>
+      </div>`;
+
+  const inRows = ((s.in || {}).callers) || [];
+  const outRows = ((s.out || {}).calls) || [];
+  const inBody = inRows.length ? inRows.map(r => flowRow("←", r)).join("")
+    : `<div class="hint">Nothing on this diagram reaches it. That is either a way in, or a
+       caller that lives on another plate and is drawn as a crossing rather than a box.</div>`;
+  const outBody = outRows.length ? outRows.map(r => flowRow("→", r)).join("")
+    : `<div class="hint">It reaches nothing else on this diagram.</div>`;
+
+  /* **Never bounded** (rule 8). Sixty-one methods is sixty-one rows: the reader opened a
+     class in order to find one of them, and a list cut at forty hides exactly the case
+     where the cut matters. Each row is an ordinary node id, so opening one is the same
+     selection every other row in this pane makes. */
+  const holdsBody = held.length ? held.map(m => `
+      <div class="flowitem">
+        <span class="arrow">${m.is_async ? "≈" : "▸"}</span>
+        <button class="gotonode" data-node="${esc(m.id || "")}"
+          data-label="${esc(m.name || "")}"
+          title="${esc(m.qualname || m.name || "")}"><code>${esc(m.name || "")}(${
+          (m.params || []).map(pp => esc(pp.text)).join(", ")})${m.returns
+            ? ` <span class="dim">→ ${esc(m.returns)}</span>` : ""}</code></button>
+        <span class="dim" style="margin-left:auto">${gotoCodeBtn(id.file, m.line_start)
+          }<span class="ln">:${m.line_start}</span></span>
+      </div>`).join("")
+    : `<div class="hint">This box folds nothing the store has a routine for.</div>`;
+
+  const govBody = anns.length
+    ? `<div class="govchips">${anns.map(a =>
+        `<span class="govchip ${esc(String(a.kind || "").toLowerCase())}"
+          >${esc(a.value)}</span>`).join("")}</div>`
+    : `<div class="hint">No governance ids in anything it holds.</div>`;
+
+  const touches = touchRows(t);
+  const what = { class: "class", file: "file", touch: "boundary" }[id.fold] || id.fold || "box";
+  return `
+    <div class="insp-head">
+      <h2>${breakable(id.qualname || s.label || s.id)}</h2>
+      <div class="loc">${esc(id.file || "")}${(s.where || {}).first
+        ? `:${s.where.first}–${s.where.last}` : ""} ${gotoCodeBtn(id.file, (s.where || {}).first)}</div>
+      <div class="tags">
+        <span class="badge certain">ANALYZED</span>
+        <span class="kind-tag">${esc(what.toUpperCase())}</span>
+        <span class="kind-tag">${id.folded} folded</span>
+        <span style="margin-left:auto;display:flex;gap:.3rem">
+          ${pinBtn(id.qualname || s.id, `${id.folded} routines, ${touches.length} touches`)}
+          <button class="linkbtn" id="collapseAll">Collapse all</button>
+        </span>
+      </div>
+    </div>
+    ${sec("holds", what === "boundary" ? "Reached by" : "Holds", held.length, holdsBody)}
+    ${sec("in", "In", inRows.length, inBody)}
+    ${sec("out", "Out", outRows.length, outBody)}
+    ${sec("touches", "Touches", touches.length, touches.length ? touches.join("")
+        : `<div class="hint">Nothing it holds touches a boundary, a table, a remote or a
+           named file.</div>`)}
+    ${sec("gov", "Governance", anns.length, govBody)}
+
+    <div class="insp-actions">
+      <button class="actbtn" id="srcBtn">${s.source && s.source.available
+        ? `Show source · ${(s.source.lines || []).length} lines`
+        : "Source not stored"} <span class="k">S</span></button>
+      <div id="srcPane" hidden>${srcPane(s)}</div>
+    </div>`;
+}
+
+/* The one button that goes to the code, wherever it is drawn. A file with no line still
+ * opens the file; a fold with neither renders nothing at all rather than a control that
+ * cannot do anything (design rule 16). */
+function gotoCodeBtn(file, line) {
+  if (!file) return "";
+  return `<button class="linkbtn gotocode" data-gotocode="${esc(file)}"
+    data-gotoline="${line || 0}" title="Open ${esc(file)} in the code browser">code ▸</button>`;
+}
+
 function viewInspector() {
   const s = SPECIMEN;
   /* Nothing selected is the ordinary state, not an error. The prototype could not reach
@@ -5675,6 +5948,12 @@ function viewInspector() {
       <p class="hint"><code>${esc(s.id)}</code><br>${esc(s.reason || "")}</p>
     </div>`;
   }
+
+  /* A fold answers in the same skeleton as everything else -- `in`, `out`, `touches`,
+     `governance`, `where` -- but its `in` and `out` name *boxes*, so the rows below would
+     render a box id into `data-node` and link to nothing. Routed on the kind, above the
+     first line that reads a routine's shape. */
+  if (s.kind === "FOLD") return viewInspectorFold(s);
 
   const id = s.identity || {};
   const inn = s.in || { callers: [], entrypoints: [] };
@@ -5743,32 +6022,7 @@ function viewInspector() {
         : "");
 
   /* ── TOUCHES: what it reaches outside itself ── */
-  const touchRow = (glyph, kind, text, line) => `
-      <div class="touchrow">
-        <span class="gl" aria-hidden="true">${glyph}</span>
-        <span class="k">${esc(kind)}</span>
-        <span class="t">${text}${line != null
-          ? ` <span class="dim" style="color:var(--text-faint)">:${line}</span>` : ""}</span>
-      </div>`;
-  const touches = [
-    ...(t.boundaries || []).map(b => touchRow(BKIND_GLYPH[b.kind] || "◇", b.kind,
-        `${esc(b.target)} <span class="dim">${esc(b.direction || "")}</span>`, b.line)),
-    /* Direction is the point of a SQL row: a table written twice as often as it is read is
-     * a doorway, and read/write is the distinction the database report is built on. */
-    ...(t.sql || []).map(q => touchRow("▤", q.operation || "SQL",
-        `${esc(q.table || q.statement || "")}`, q.line)),
-    /* The full network record, because design rule 8 says an external is a first-class
-     * node badged as outside our control, and what makes that useful is knowing the verb,
-     * the destination and whether anyone set a timeout. */
-    ...(t.net || []).map(nc => touchRow("◆", nc.protocol || "NET",
-        `${esc(nc.verb || "")} ${esc(nc.target || nc.host || "")} <span class="dim">${
-          nc.timeout ? `timeout ${esc(String(nc.timeout))}` : "no timeout"}${
-          nc.retries ? `, ${esc(String(nc.retries))} retries` : ""}</span>`, nc.line)),
-    /* A file the program names is not a boundary it touches: naming is a choice the
-     * authors made, touching is something the code does. */
-    ...(t.artefacts || []).map(a => touchRow("▣", a.kind || "ARTEFACT",
-        esc(a.name || a.path || ""), a.line)),
-  ];
+  const touches = touchRows(t);
   const touchBody = touches.length ? touches.join("")
     : `<div class="hint">It touches no boundary, table, remote or named file. Everything it
        does, it does in memory.</div>`;
@@ -6173,6 +6427,13 @@ function wire() {
      shows it. Refusing to *show* something because it cannot be *drawn* would make the
      picture the limit of the map. */
   $$(".gotonode").forEach(b => b.addEventListener("click", () => {
+    /* **Two id spaces, routed by which attribute is there.** A row in a routine's pane
+       names a node; a row in a fold's pane names a *box*, which is the drawing's own id and
+       means nothing to `/api/node`. They share a class because they are the same act and
+       look the same, and they must not share an attribute -- reading one id space as the
+       other is rule 47's companion in a pane: an identifier that means two things resolves
+       plausibly and silently to the wrong thing. */
+    if (b.dataset.box) { selectFold(b.dataset.box); return; }
     const id = b.dataset.node;
     if (!id) return;
     const i = Graph.mounted() ? Graph.indexOfId(id) : -1;
@@ -6182,9 +6443,41 @@ function wire() {
        argument has existed since the multi-pick work, so this is a choice between two
        values the engine already takes rather than a second way to select. */
     if (i >= 0) Graph.togglePick({ kind: "node", index: i }, followPickMode());
-    else { loadNode(id); }
+    /* `setSubject`, never `loadNode`. Opening a member of a fold has to *clear* the fold,
+       or the pane paints a routine while `state.fold` still names the class it came from --
+       and the next thing to ask `inspectorSubject()` gets an answer about neither. */
+    else setSubject({ node: id });
     used("follow:" + state.followMode);
-    pushTrail(state.view, b.textContent.trim(), "followed from the inspector");
+    /* `data-label` where the row has one. A caller row is a bare name and its text is the
+       right label; a **fold's member** row carries its whole invocation line, so the
+       trail read `_profile_name_or_none(self) → str | None` where a step wants a name.
+       The row that knows the difference is the row that says so. */
+    pushTrail(state.view, b.dataset.label || b.textContent.trim(),
+              "followed from the inspector");
+  }));
+
+  /* **The one way to the code, wherever it is asked from.** The inspector's location line,
+     every member of a fold, and -- when the flow panel lands -- every call site. Three
+     surfaces, one implementation, because rule 51's list of callers is the thing that
+     grows and the second implementation is the one that forgets the mode switch.
+
+     A file is not a node, so this deliberately does not go through `selectFromNav`: there
+     is nothing to light and nothing for the inspector to answer about. What the reader
+     picks *inside* the file is a node, and that is a different click. `codeGoto` and
+     `revealLine` are the search's own pattern, unchanged. */
+  $$("[data-gotocode]").forEach(b => b.addEventListener("click", (ev) => {
+    ev.stopPropagation();          // the row it sits on is itself a selection
+    const path = b.dataset.gotocode, line = Number(b.dataset.gotoline || 0);
+    if (!path) { console.error("DunneFlow: a code link with no file", b); return; }
+    state.mode = "code";
+    state.view = "code";
+    codeGoto = line || 0;
+    if (state.codeFile === path) { revealLine(codeGoto); codeGoto = 0; }
+    else openCodeFile(path);
+    used("gotocode");
+    pushTrail("code", baseOf(path), line ? `at line ${line}` : "");
+    persist();
+    render();
   }));
 
   /* cover → graph */
@@ -6810,6 +7103,11 @@ const WIRED_ATTRS = new Set([
      server put on each one, which is the box id -- so a click resolves to a thing this
      program knows about rather than to a shape (rule 30). */
   "dgm",
+  /* A **box** in a fold's own pane, and the one way to the code. `box` rather than `fold`
+     because `data-fold` has collapsed a pane since design rule 24 -- a class name and a
+     data attribute are both global, and the obvious spelling here would have railed the
+     inspector on every neighbour row (rule 71). */
+  "box", "gotocode", "gotoline", "label",
   /* The base switch's one control: dismiss a switch that failed. Only ever rendered in the
      failed state -- there is nothing to dismiss while a rebuild is running, and offering a
      cancel that cannot stop the server would be a control that looks live and is not. */
@@ -9090,8 +9388,10 @@ async function setGraphDetail({ level = state.level, minDisk } = {}) {
         moved.length.toLocaleString()} ${moved.length === 1 ? "thing" : "things"} inside`;
     }
     state.wanted = { nodes: moved, disks: before.disks };
-    state.selected = moved[0] || null;
-    if (state.selected) loadNode(state.selected); else { inspectorFor = null; SPECIMEN = null; }
+    /* A fold does not travel between altitudes: a box is a compartment's own idea and the
+       stack's two levels are the model's. Cleared rather than carried, because carrying it
+       would leave the inspector describing a class that the level on screen does not draw. */
+    setSubject({ node: moved[0] || null });
   } else {
     state.wanted = { nodes: before.nodes, disks: before.disks };
   }
@@ -9176,9 +9476,7 @@ async function ensureGraph() {
  * breadcrumb and the trail all follow from here rather than from each other. */
 function onGraphSelect(sel) {
   state.picks = sel.picks;
-  state.selected = sel.node ? sel.node.id : null;
-  if (sel.node) loadNode(sel.node.id);
-  else { inspectorFor = null; SPECIMEN = null; }
+  setSubject({ node: sel.node ? sel.node.id : null });
   persist();
   recordSelection();          // so the click that lost your place can be taken back
   buildNav();                 // the list follows the graph -- the other half of the loop
@@ -9890,10 +10188,15 @@ async function selectFromNav(want) {
   }
 
   state.wanted = want;
+  /* **A fold is a subject, not a member of one.** `want.fold` is a diagram box: the stack
+   * still lights every routine it holds, because that is what the reader picked, but the
+   * inspector answers about the *box*. Electing `members[0]` instead is the defect this
+   * replaces -- sixty-one methods and the pane described whichever one sorted first.
+   *
+   * The two are exclusive by construction here, which is what lets `inspectorSubject()` be
+   * an accessor rather than a rule everyone has to remember. */
   // The inspector can answer from an id alone, so it does not wait for the stack.
-  const first = (want.nodes || [])[0] || null;
-  state.selected = first;
-  if (first) loadNode(first); else { inspectorFor = null; SPECIMEN = null; }
+  setSubject({ node: (want.nodes || [])[0] || null, fold: want.fold || null });
 
   await ensureGraph();
   applyWanted();

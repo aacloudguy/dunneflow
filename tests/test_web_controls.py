@@ -1380,9 +1380,19 @@ def test_a_diagram_box_carries_what_it_stands_for() -> None:
 
     js = _read("shell.js")
     assert 'box.kind === "port"' in js, "the diagram no longer tells a place from a thing"
-    assert "selectFromNav({ nodes: box.members })" in js, (
+    # The shared selection, through the one door. `selectFold` is what reaches it, and what
+    # it must reach is `selectFromNav` -- a path that only filled the inspector would be a
+    # selection the stack, the navigator, the trail and undo never heard about.
+    fold = _fn(_code(js), "selectFold")
+    assert "selectFromNav(" in fold, (
         "clicking a box does not reach the shared selection, so the diagram owns a second "
         "answer to what the reader is looking at"
+    )
+    assert "fold: boxId" in fold and "nodes:" in fold, (
+        "a box click no longer asks for both halves: the *members* light the stack, and the "
+        "*fold* is what the inspector answers about. Sending only members is the defect this "
+        "replaces -- `selectFromNav` elects `members[0]`, so a box holding sixty-one methods "
+        "described whichever one sorted first (rule 32)"
     )
 
 
@@ -1426,15 +1436,32 @@ def test_a_click_in_the_diagram_has_a_consequence_the_reader_can_see() -> None:
     # **The box branch only.** Slicing from the port test keeps the port branch, which
     # pushes a trail step of its own -- so the obvious check passes with the box's removed.
     click = js.split("if (box.members && box.members.length) {", 1)[1].split("\n  }", 1)[0]
-    assert "pushTrail(" in _code(click), (
-        "a box click pushes no trail step, so Back cannot reverse the commonest act in "
-        "this view"
+    assert "selectFold(" in _code(click), (
+        "the click no longer reaches the shared selection, and with it the trail step "
+        "`selectFromNav` records -- so Back cannot reverse the commonest act in this view"
+    )
+    assert "markDiagramSelection" in _code(click), (
+        "the click leaves no mark on the drawing, which is the whole of this guard: a reader "
+        "with the inspector railed sees nothing at all happen"
+    )
+    assert "box.id" not in _code(click), (
+        "the click reads `box.id`, and `by_id` is a map *keyed by* the box id whose values "
+        "carry none -- so the id is `undefined` and the click resolves to nothing"
     )
     port = js.split('if (box.kind === "port") {', 1)[1].split("\n    return;", 1)[0]
     assert "pushTrail(" in _code(port), "a port click pushes no trail step either"
-    assert "selectFromNav({ nodes: box.members })" in click, (
-        "the click no longer reaches the shared selection"
+
+    # The step must be able to *name* a fold. A box click sets no `state.selected` at all --
+    # it is not a node -- so the node-only default filed every one of them as "nothing
+    # selected": a step that reverses perfectly and says nothing about where it goes.
+    label = _fn(_code(js), "subjectLabel")
+    # The **branch**, not a mention. Written as `"state.fold" in label` it survived a
+    # mutation that made the test `if (false)` and left the body standing -- the strings
+    # were all still there and the branch was dead (rule 59's companion, and rule 37).
+    assert re.search(r"if\s*\(state\.fold\)", label), (
+        "the trail cannot name a fold, so every box click is filed under the same label"
     )
+    assert "by_id" in label, "a fold's label is not read from the drawing it came from"
 
 
 def test_the_diagram_is_not_promoted_to_its_own_compositor_layer() -> None:
@@ -2688,7 +2715,7 @@ def test_following_a_neighbour_reaches_both_selection_paths() -> None:
     """
     shell = _read("shell.js")
 
-    assert "followPickMode()" in shell.split("$$(\".gotonode\")", 1)[1][:900], (
+    assert "followPickMode()" in shell.split("$$(\".gotonode\")", 1)[1][:1800], (
         "the inspector's follow does not consult followPickMode -- it always replaces, "
         "whatever the reader chose"
     )
@@ -6678,14 +6705,21 @@ def test_a_click_in_the_picture_is_a_step() -> None:
         "the report this change came from"
     )
     rec = _fn(js, "recordSelection")
-    assert "labelFor(state.selected)" in rec, (
+    assert "subjectLabel()" in rec, (
         "a step made by clicking takes no name from what it landed on, so the trail would "
         "read as a row of identical entries"
+    )
+    # The naming itself, one level in. It moved out of `recordSelection` when a second kind
+    # of subject arrived, and a check that only reads the caller passes on a `subjectLabel`
+    # that returns a constant.
+    label = _fn(js, "subjectLabel")
+    assert "labelFor(state.selected)" in label, (
+        "a step lands on a node and takes no name from it"
     )
     # A cleared selection is the step most worth having, and it must say what it is: the
     # fallback used to be `state.view`, so emptying the picture recorded a step called
     # "graph", which reads as a mode change.
-    assert '"nothing selected"' in rec, (
+    assert '"nothing selected"' in label, (
         "a step recorded with nothing selected is not named, so the one step a reader most "
         "wants back is labelled after the view it happened in"
     )
@@ -7118,3 +7152,221 @@ def test_the_settings_version_moved_with_the_shape_that_changed() -> None:
     persisted = js.split("const PERSISTED = [", 1)[1].split("];", 1)[0]
     for key in ("level", "minDisk"):
         assert f'"{key}"' in persisted, f"`{key}` is never written to storage"
+
+
+def test_a_diagram_box_is_asked_about_as_a_fold() -> None:
+    """The defect Tom reported, asserted at its source.
+
+    A box is a **fold** -- a class and its methods, a file and its loose functions -- and it
+    has no id in the store. Clicking one used to hand `selectFromNav` the members and let it
+    elect `members[0]`, so a box labelled `KernelDecl` holding sixty-one methods filled the
+    inspector with `KernelDecl._profile_name_or_none`: a perfectly true answer about
+    something nobody clicked (rule 32).
+
+    The stack has never made that mistake -- `onGraphSelect` clears the selection when a
+    *plate* is picked, because a plate is not a node -- so what was missing was an answer,
+    not honesty about the lack of one.
+    """
+    js = _code(_read("shell.js"))
+
+    # The subject, and the fact that there are two kinds of it.
+    subject = _fn(js, "inspectorSubject")
+    assert "state.fold" in subject and "state.selected" in subject, (
+        "the inspector's subject is one field again, so a fold either cannot be inspected "
+        "or is being smuggled through the node id space"
+    )
+    setter = _fn(js, "setSubject")
+    assert "loadFold(" in setter and "loadNode(" in setter, (
+        "the one place a subject is installed no longer knows both kinds"
+    )
+    assert "state.fold = fold" in setter, (
+        "installing a subject does not clear the previous fold, so a fold outlives its own "
+        "selection and the pane describes a class the reader left ten clicks ago (rule 51)"
+    )
+
+    # **Every writer, through the one owner.** This is the half that decays: four call sites
+    # set what the inspector answers about, and the fold would survive at whichever one was
+    # forgotten. Asserted as an absence over the whole file, because the failure is a *new*
+    # hand-written site rather than a change to an existing one.
+    outside = js.replace(setter, "")
+    stray = [ln for ln in outside.splitlines() if "state.selected = " in ln]
+    assert not stray, (
+        "a subject is installed somewhere other than `setSubject`, so `state.fold` is not "
+        f"cleared there: {stray}"
+    )
+
+    # The renderer, and that the routine path is reached by kind rather than by luck.
+    assert "function viewInspectorFold(" in js, "nothing renders a fold"
+    router = _fn(js, "viewInspector")
+    assert 'if (s.kind === "FOLD") return viewInspectorFold(s);' in router, (
+        "a fold falls through to the routine renderer, whose In and Out rows would write a "
+        "*box* id into `data-node` -- an id space the store has never heard of, so every "
+        "neighbour row is a link to nothing (rule 30)"
+    )
+    fold_view = _fn(js, "viewInspectorFold")
+    assert "data-box=" in fold_view and "data-node=" in fold_view, (
+        "a fold's pane no longer distinguishes its neighbours (boxes) from what it holds "
+        "(nodes) -- two id spaces reading through one attribute resolves plausibly and "
+        "silently to the wrong thing"
+    )
+    assert 'data-fold=' not in fold_view, (
+        "`data-fold` collapses a pane (design rule 24), so spelling a box row that way "
+        "rails the inspector on every neighbour click -- rule 71, a name is global"
+    )
+    # Rule 8: a member list is a reference list, and reference lists are never bounded.
+    assert ".slice(0," not in fold_view, (
+        "a fold's member list is bounded, so a class of sixty-one methods hides exactly the "
+        "one the reader opened it to find"
+    )
+
+    # The pane has to *open*. Rendered and railed is the symptom that was reported.
+    assert "return Boolean(inspectorSubject());" in _fn(js, "panelIsOpen"), (
+        "the auto-rail reads `state.selected`, which a fold leaves null -- so the answer is "
+        "painted in full into a column zero pixels wide"
+    )
+
+
+def test_a_fold_is_answered_from_the_compartment_the_drawing_came_from() -> None:
+    """One pass over the model, two consumers, and a port is refused rather than described.
+
+    `flow_of` reads the counters `diagram.build` already filled, so the arrows on the
+    picture and the numbers in the pane are the same arithmetic (rule 13). Recomputing them
+    from the store would be a second answer that agrees until the day one of them is edited.
+    """
+    py = (Path(__file__).resolve().parents[1]
+          / "src/dunneflow/web/diagram.py").read_text(encoding="utf-8")
+    flow = py.split("def flow_of(", 1)[1].split("\ndef ", 1)[0]
+    assert "c.inside" in flow and "c.out" in flow and "c.into" in flow, (
+        "a fold's flow no longer reads all three counters, so a neighbour on another plate "
+        "or one on this plate is silently missing from the answer"
+    )
+    assert "Store" not in flow and "query(" not in flow, (
+        "the flow is recomputed from the store rather than read off the compartment -- two "
+        "answers to what the picture already drew"
+    )
+    assert '"crosses"' in flow, (
+        "a crossing is not marked, so a row that ends at a *port* standing for a whole "
+        "compartment reads as a neighbour that is really there (rule 23)"
+    )
+
+    serve = (Path(__file__).resolve().parents[1]
+             / "src/dunneflow/web/serve.py").read_text(encoding="utf-8")
+    route = serve.split("def _r_fold(", 1)[1].split("\n    def ", 1)[0]
+    assert 'box.kind == "port"' in route, (
+        "a port is described as though it were a thing in this compartment -- it is a place, "
+        "and giving a stand-in a subject is rule 23 in a payload"
+    )
+    assert "self._compartments()" in route, (
+        "the fold route builds its own compartments, so a cold base builds the model twice "
+        "and the two routes can answer from two different passes"
+    )
+    # One owner, asserted from the other side too.
+    diagram_route = serve.split("def _r_diagram(", 1)[1].split("\n    def ", 1)[0]
+    assert "self._compartments()" in diagram_route, (
+        "the drawing no longer shares the compartment cache with the fold route"
+    )
+
+
+def test_a_fold_asks_the_store_by_a_json_array_and_never_by_the_first_member() -> None:
+    """Every question about a fold is a question about the set it stands for."""
+    q = (Path(__file__).resolve().parents[1]
+         / "src/dunneflow/web/queries.py").read_text(encoding="utf-8")
+    folds = [name for name in ("FOLD_MEMBERS", "FOLD_PARAMS", "FOLD_BOUNDARIES",
+                               "FOLD_SQL_OPS", "FOLD_NET_CALLS", "FOLD_ARTEFACTS",
+                               "FOLD_ANNOTATIONS", "FOLD_COMMENTS")]
+    for name in folds:
+        assert f"{name} = " in q, f"{name} is gone, so a fold cannot answer that question"
+        body = q.split(f"{name} = ", 1)[1].split('"""', 2)[1]
+        assert "json_each(:ids)" in body, (
+            f"{name} no longer takes the whole set -- keyed on one id it answers about one "
+            "member, which is the defect the fold exists to fix"
+        )
+        assert "IN (" not in body, (
+            f"{name} builds an `IN (...)` list, so the SQL text varies per call: it cannot "
+            "be quoted beside the claim it produces (design rule 13) nor prepared once"
+        )
+
+    detail = (Path(__file__).resolve().parents[1]
+              / "src/dunneflow/web/detail.py").read_text(encoding="utf-8")
+    fold = detail.split("def fold(", 1)[1].split("\ndef ", 1)[0]
+    assert "json.dumps(list(box.get(\"members\")" in fold, (
+        "the fold no longer passes its members as a JSON array"
+    )
+    assert "signature_parts(" in fold, (
+        "a member's invocation line is built by something other than `signature_parts`, so "
+        "this pane and the hover card can disagree about one routine (rule 13)"
+    )
+    assert '"kind": "FOLD"' in fold, (
+        "a fold reports a kind the inspector routes on; borrowing ROUTINE puts the wrong "
+        "word in the pane's head and the wrong answer in every check that reads it"
+    )
+
+
+def test_the_inspector_reads_the_fields_the_touch_queries_send() -> None:
+    """Both the table and the destination were blank on every row, from the first day.
+
+    `ROUTINE_SQL_OPS` sends `tbl` and `sql`; the pane read `q.table || q.statement`.
+    `ROUTINE_NET_CALLS` sends `destination`; the pane read `nc.target || nc.host`. Neither
+    failed and neither showed `undefined`: `esc(undefined || "")` is the empty string, so a
+    SQL row rendered as an operation and a line number with nothing between them, and a
+    missing table is indistinguishable from a statement that has none. Rule 44, in the same
+    pane and the same shape as the parameters that rendered without their types.
+
+    Derived from both sides rather than spelled out, so a column renamed in `queries.py`
+    fails here instead of going blank on screen.
+    """
+    q = (Path(__file__).resolve().parents[1]
+         / "src/dunneflow/web/queries.py").read_text(encoding="utf-8")
+    rows = _fn(_code(_read("shell.js")), "touchRows")
+
+    for query, reads, forbidden in (
+        ("ROUTINE_SQL_OPS", ("q.tbl",), ("q.table", "q.statement")),
+        ("ROUTINE_NET_CALLS", ("nc.destination",), ("nc.target", "nc.host")),
+    ):
+        served = q.split(f"{query} = ", 1)[1].split('"""', 2)[1]
+        for name in reads:
+            column = name.split(".", 1)[1]
+            assert column in served, (
+                f"{query} no longer sends `{column}`, which the inspector reads"
+            )
+            assert name in rows, (
+                f"the inspector stopped reading `{name}`, so that row renders with no "
+                "subject at all — an operation and a line, and nothing to say what it is on"
+            )
+        for name in forbidden:
+            assert name not in rows, (
+                f"the inspector reads `{name}`, which no query sends: it renders as the "
+                "empty string and looks exactly like a row that genuinely has no subject"
+            )
+
+
+def test_there_is_one_way_from_the_inspector_to_the_code() -> None:
+    """Three surfaces ask for it; one implementation answers.
+
+    The inspector's location line, every member of a fold, and -- when the flow panel lands
+    -- every call site. Rule 51: the list of callers is the thing that grows, and the second
+    implementation is the one that forgets the mode switch.
+    """
+    js = _code(_read("shell.js"))
+    assert "function gotoCodeBtn(" in js, "nothing draws the way to the code"
+    btn = _fn(js, "gotoCodeBtn")
+    assert 'if (!file) return "";' in btn, (
+        "a code link is drawn for something with no file, which is design rule 16's dead "
+        "control: it renders and cannot do anything"
+    )
+    handler = js.split('$$("[data-gotocode]")', 1)[1].split("\n  }));", 1)[0]
+    assert "openCodeFile(" in handler and "revealLine(" in handler, (
+        "the code hand-off no longer opens the file and lands on the line"
+    )
+    assert 'state.mode = "code"' in handler, (
+        "it opens the file without switching the centre pane, so the reader is sent to a "
+        "view they are not looking at"
+    )
+    assert "ev.stopPropagation();" in handler, (
+        "the code button does not stop its click, so the row it sits on selects at the same "
+        "time and the reader gets two answers to one press"
+    )
+    assert "gotocode" in _read("shell.js").split("const WIRED_ATTRS = new Set([", 1)[1] \
+                                          .split("]);", 1)[0], (
+        "`gotocode` is missing from the wired roster, so the self-check calls it dead"
+    )

@@ -40,6 +40,7 @@ from .code import build_file, build_files
 from .cover import anomalies as build_anomalies
 from .cover import build as build_cover
 from .detail import describe, hover_card
+from .detail import fold as detail_fold
 from .graph import (
     LEVELS,
     MIN_DISK_BY_LEVEL,
@@ -609,6 +610,66 @@ class _Handler(BaseHTTPRequestHandler):
                 base.payloads[key] = payload
         self._json(payload)
 
+    def _compartments(self) -> dict[str, Any]:
+        """Every compartment of the base, built once and cached whole.
+
+        One owner, because there are two routes into it now -- the drawing and the box a
+        reader clicked -- and the list of callers is the thing that grows (rule 51). A
+        second copy of this would build the model twice on a cold base and, worse, could
+        answer the two routes from two different passes.
+        """
+        with self._live.lock:
+            base = self._live.current
+            if not base.compartments:
+                level, min_disk = default_level()
+                model = build(base.store, level=level, min_disk=min_disk)
+                # Filled in place, never reassigned: `_Base` is frozen so that a switch
+                # replaces every field together, and the payload cache above earns its
+                # mutability the same way.
+                base.compartments.update(diagram.build(model))
+            return base.compartments
+
+    def _r_fold(self, q: dict[str, list[str]]) -> None:
+        """One box of a diagram, described as the thing it stands for.
+
+        **A box is a fold, not a node**, and that distinction is the defect this route
+        exists to fix. Clicking one used to select `members[0]` and let `/api/node` answer,
+        so a box labelled `KernelDecl` holding sixty-one methods filled the inspector with
+        `KernelDecl._profile_name_or_none` -- a true answer about something nobody clicked
+        (rule 32: the answer must be about the thing that was asked).
+
+        The stack has always been honest about this: picking a *plate* clears the selection
+        rather than nominating a member of it. What was missing was not honesty but an
+        answer, and `detail.fold` gives one in the same shape every other specimen uses, so
+        the inspector renders it through the path that already exists.
+
+        A port is refused rather than described. It is a place, not a thing in this
+        compartment -- a click on one flips the book, which is a different act with its own
+        handler, and describing it here would be inventing a subject for a stand-in
+        (rule 23).
+        """
+        box_id = (q.get("id") or [""])[0]
+        if not box_id:
+            self._json({"found": False, "reason": "no id asked for"})
+            return
+        found = diagram.find_box(self._compartments(), box_id)
+        if found is None:
+            self._json({"found": False, "id": box_id,
+                        "reason": "no such box in this diagram"})
+            return
+        comp, box = found
+        if box.kind == "port":
+            self._json({"found": False, "id": box_id,
+                        "reason": "a port stands for another compartment, not for "
+                                  "anything in this one"})
+            return
+        with self._live.lock:
+            base = self._live.current
+            body = detail_fold(base.store, diagram.box_payload(box),
+                               diagram.flow_of(comp, box_id),
+                               self._live.source, revision=base.source_revision)
+        self._json(body)
+
     def _r_diagram(self, q: dict[str, list[str]]) -> None:
         """A compartment as a diagram, or the list of compartments there are.
 
@@ -629,16 +690,7 @@ class _Handler(BaseHTTPRequestHandler):
         pass -- so building "just this one" would be building all of them and throwing
         fifty-two away.
         """
-        with self._live.lock:
-            base = self._live.current
-            if not base.compartments:
-                level, min_disk = default_level()
-                model = build(base.store, level=level, min_disk=min_disk)
-                # Filled in place, never reassigned: `_Base` is frozen so that a switch
-                # replaces every field together, and the payload cache above earns its
-                # mutability the same way.
-                base.compartments.update(diagram.build(model))
-            comps = base.compartments
+        comps = self._compartments()
 
         wanted = (q.get("id") or [""])[0]
         if not wanted:
@@ -1237,6 +1289,7 @@ class _Handler(BaseHTTPRequestHandler):
         "/index.html": "_r_index",
         "/api/graph": "_r_graph",
         "/api/diagram": "_r_diagram",
+        "/api/fold": "_r_fold",
         "/api/cover": "_r_cover",
         "/api/routines": "_r_routines",
         "/api/packages": "_r_packages",

@@ -1526,3 +1526,90 @@ SELECT line, kind, value FROM (
 )
 ORDER BY line
 """
+
+
+# --------------------------------------------------------------------------- #
+# FOLDS -- a set of routines asked about as one thing
+#
+# A diagram box is a **fold**: a class and its methods, or a file and its loose
+# functions. It has no id in the store, so every question about it is a question
+# about the set of routines it stands for.
+#
+# Keyed by a JSON array through `json_each` rather than by generated `IN (...)`
+# placeholders. Three reasons, and the third is the one that decided it: a JSON
+# array is one bound parameter, so a fold larger than SQLite's parameter limit is
+# not a different code path; the SQL text is constant, so it can be quoted beside
+# the claim it produces (design rule 13) and reproduced with `dunneflow query`;
+# and a query built by string concatenation per call cannot be prepared once.
+#
+# Every one of these carries `routine_id` back. A fold's rows are the union of its
+# members' rows, and a row that cannot say which member it came from has lost the
+# thing that makes it clickable (rule 30).
+# --------------------------------------------------------------------------- #
+
+FOLD_MEMBERS = """
+SELECT r.id, r.name, r.qualname, r.module, r.file, r.line_start, r.line_end,
+       r.returns, r.is_async, r.is_method, r.class_name, r.visibility
+FROM routines r
+JOIN json_each(:ids) j ON j.value = r.id
+ORDER BY r.line_start, r.qualname
+"""
+
+# The members' signatures, in one pass rather than one query per member. Grouped
+# by owner in Python, because `signature_parts` renders a whole parameter list and
+# splitting that across rows would be a second answer to what a signature is.
+FOLD_PARAMS = """
+SELECT p.routine_id, p.idx, p.name, p.type, p.dflt, p.kind
+FROM params p
+JOIN json_each(:ids) j ON j.value = p.routine_id
+ORDER BY p.routine_id, p.idx
+"""
+
+FOLD_BOUNDARIES = """
+SELECT b.routine_id, b.kind, b.direction, b.target, b.line, b.evidence, b.salience
+FROM boundaries b
+JOIN json_each(:ids) j ON j.value = b.routine_id
+ORDER BY b.salience DESC, b.line
+"""
+
+FOLD_SQL_OPS = """
+SELECT s.routine_id, s.operation, s.direction, s.tbl, s.sql, s.line
+FROM sql_ops s
+JOIN json_each(:ids) j ON j.value = s.routine_id
+ORDER BY s.line
+"""
+
+FOLD_NET_CALLS = """
+SELECT n.routine_id, n.expr, n.protocol, n.verb, n.destination, n.port,
+       n.is_async, n.awaited, n.in_async_routine, n.timeout, n.retries, n.tls,
+       n.payload, n.headers, n.topic, n.ack, n.line
+FROM net_calls n
+JOIN json_each(:ids) j ON j.value = n.routine_id
+ORDER BY n.line
+"""
+
+FOLD_ARTEFACTS = """
+SELECT a.routine_id, a.name, a.stem, a.ext, a.kind, a.line, a.literal, a.is_pattern
+FROM artefacts a
+JOIN json_each(:ids) j ON j.value = a.routine_id
+ORDER BY a.line
+"""
+
+FOLD_ANNOTATIONS = """
+SELECT a.owner_id AS routine_id, a.kind, a.value, a.line, a.text
+FROM annotations a
+JOIN json_each(:ids) j ON j.value = a.owner_id
+WHERE a.owner_kind = 'routine'
+ORDER BY a.line
+"""
+
+# Comments are counted rather than listed. A fold of 61 methods carries hundreds,
+# and the inspector's Governance section places each one against the line it
+# explains -- which is a claim about one routine and reads as noise about sixty.
+# The count says there is something there and the member row is one click away.
+FOLD_COMMENTS = """
+SELECT c.routine_id, COUNT(*) AS n
+FROM comments c
+JOIN json_each(:ids) j ON j.value = c.routine_id
+GROUP BY c.routine_id
+"""

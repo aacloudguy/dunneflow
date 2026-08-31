@@ -21,6 +21,7 @@ holds and labels them. Two disciplines carry over from the renderers:
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from ..schema import signature_parts
@@ -629,3 +630,137 @@ def describe(store: Store, node_id: str,
     detail["found"] = True
     attach_source(detail, source, revision=revision)
     return detail
+
+
+# --------------------------------------------------------------------------- #
+# Folds -- a set of routines asked about as one thing
+#
+# A diagram box is a class and its methods, or a file and its loose functions. It
+# has no id in the store, so `describe()` cannot answer about one: `classify()`
+# reads a kind out of an id, and a fold's id is a *drawing's* id.
+#
+# It answers in the **same shape** every other specimen uses, and that is the whole
+# point rather than a convenience. `viewInspector` has one rendering path with a
+# default for every key (rule 51 -- one truth about what the inspector shows), so a
+# fold that fills `in`, `out`, `touches`, `governance` and `holds` renders through
+# the code that already exists. A second shape would be a second answer to "what is
+# selected", and the diagram is where that mistake was made once already: it set
+# `state.selected` to one arbitrary member and the inspector answered, truthfully,
+# about something nobody clicked.
+#
+# `holds` is the `_module` builder's own key, not a new one. The module altitude has
+# been sending it since the day it was built and nothing has ever rendered it, so
+# the section this adds gives both a fold and a module node the same answer.
+# --------------------------------------------------------------------------- #
+
+def _by_owner(rows: list[dict[str, Any]], key: str = "routine_id"
+              ) -> dict[str, list[dict[str, Any]]]:
+    """Group set-scoped rows back to the member each came from."""
+    out: dict[str, list[dict[str, Any]]] = {}
+    for r in rows:
+        out.setdefault(str(r.get(key) or ""), []).append(r)
+    return out
+
+
+def fold(store: Store, box: dict[str, Any], flow: dict[str, Any],
+         source: SourceStore | None = None, *,
+         revision: str | None = None) -> dict[str, Any]:
+    """A diagram box, described as the thing it stands for.
+
+    `box` is the drawing's own record -- its id, label, kind and the member ids it
+    folds -- and `flow` is what the compartment already knows about what reaches it
+    and what it reaches. Neither is recomputed here: the diagram is built from the
+    graph model in one pass, and a second walk to recover what a box holds would be
+    a second answer to the same question (rule 13).
+
+    A member list is **never bounded** (rule 8). Sixty-one methods is sixty-one rows;
+    the reader came here to find one of them.
+    """
+    ids = json.dumps(list(box.get("members") or []))
+    args = {"ids": ids}
+
+    members = _rows(store, queries.FOLD_MEMBERS, args)
+    params_by = _by_owner(_rows(store, queries.FOLD_PARAMS, args))
+    comments_by = {str(r["routine_id"]): int(r["n"] or 0)
+                   for r in _rows(store, queries.FOLD_COMMENTS, args)}
+    anns = _rows(store, queries.FOLD_ANNOTATIONS, args)
+    anns_by = _by_owner(anns)
+
+    held = []
+    for m in members:
+        mid = str(m["id"])
+        held.append({
+            **m,
+            # The same pieces the hover card and the single-routine inspector send,
+            # from the same renderer -- so a member's invocation line here and its
+            # signature one click in cannot disagree (rule 13).
+            "params": signature_parts([
+                (r["name"], r["type"], r["dflt"], r["kind"])
+                for r in params_by.get(mid, [])
+            ]),
+            "comments": comments_by.get(mid, 0),
+            "annotations": len(anns_by.get(mid, [])),
+        })
+
+    detail: dict[str, Any] = {
+        # The kind a fold reports is the kind of thing it *is*, and it is not one of
+        # the six `classify()` knows. Named rather than borrowed: calling a class box
+        # a ROUTINE would put the wrong word in the inspector's head and the wrong
+        # answer in every check that reads it.
+        "kind": "FOLD",
+        "id": str(box.get("id") or ""),
+        "label": str(box.get("label") or ""),
+        "identity": {
+            "fold": str(box.get("kind") or ""),          # class | file | touch
+            "module": box.get("module") or "",
+            "class_name": box.get("class_name") or "",
+            "qualname": _fold_qualname(box),
+            "file": members[0]["file"] if members else "",
+            "folded": len(held),
+            "plate": str(box.get("id") or "").partition("|")[0],
+        },
+        "holds": {"routines": held},
+        "in": {"callers": flow.get("in") or [], "entrypoints": []},
+        "out": {"calls": flow.get("out") or []},
+        "touches": {
+            "boundaries": _rows(store, queries.FOLD_BOUNDARIES, args),
+            "sql": _rows(store, queries.FOLD_SQL_OPS, args),
+            "net": _rows(store, queries.FOLD_NET_CALLS, args),
+            "artefacts": _rows(store, queries.FOLD_ARTEFACTS, args),
+        },
+        # Annotations whole, comments counted. A fold's comments are hundreds of
+        # sentences each explaining one line of one member, and the inspector places
+        # a comment against the line it is about -- which is an answer about a
+        # routine, not about a class. The count rides on the member row instead.
+        "governance": {"annotations": anns, "comments": []},
+        "where": _fold_where(members),
+        "found": True,
+    }
+    # The span of a class is the span of what it holds, so the source pane opens on
+    # the definition rather than on whichever member happened to sort first.
+    attach_source(detail, source, revision=revision)
+    return detail
+
+
+def _fold_qualname(box: dict[str, Any]) -> str:
+    """What to call a fold in the inspector's head, spelled the way the code is."""
+    module = str(box.get("module") or "")
+    cls = str(box.get("class_name") or "")
+    if module and cls:
+        return f"{module}.{cls}"
+    return module or str(box.get("label") or "")
+
+
+def _fold_where(members: list[dict[str, Any]]) -> dict[str, Any]:
+    """The file a fold lives in, and the span its members cover.
+
+    All of a class's methods and all of a file's loose functions sit in one file by
+    construction, so the file is the first member's. The span is the outermost pair
+    rather than the first member's own, because a fold is the whole of what it holds
+    and a source pane opened on one method is an answer about that method.
+    """
+    if not members:
+        return {"file": "", "first": 0, "last": 0}
+    first = min(int(m["line_start"] or 0) for m in members)
+    last = max(int(m["line_end"] or 0) for m in members)
+    return {"file": members[0]["file"], "first": first, "last": last}

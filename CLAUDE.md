@@ -41,6 +41,14 @@ show. It defaults to the newest. The reader can switch it from the toolbar, and 
 switch survives a page reload; this is how it survives a restart of the server, because
 the base is the server's state and not the browser's.
 
+`GET /api/graph` takes `?level=routine|module` and `?minDisk=<n>` — the stack's **level of
+detail** and how few things a plate may hold before it is merged into `<small>`. An unknown
+level is refused with a 400 rather than defaulted, because a silent fallback answers a
+question nobody asked with a picture that looks exactly right; the threshold is clamped
+instead, because the two are different mistakes. On screen it is the *Detail* control in
+the legend, which states what the altitude costs: what is drawn, what it stands for, and
+what the threshold merged.
+
 `migrate` rewrites a program directory written before paths were relative (rule 60), **in
 place** — 115,546 paths across five stores in 1.2 s on Mensores. In place rather than by
 re-analysis, because a sealed snapshot exists to be readable after its source tree is
@@ -111,6 +119,29 @@ being drawn, and it overstated the picture by half.
 | Sustained fps, six-second orbit, dots | >= 55 median | **60 median, 60 worst — no frames dropped** |
 | …spheres at full size (14×) | >= 55 median | **60 median, 59.7 worst — retaken 2026-08-28** |
 | …spheres at 14× plus 4,253 edges | >= 55 median | **60 median, 59.9 worst — retaken 2026-08-28** |
+
+The second **level of detail**, measured 2026-08-31 on the same corpus. A module payload is
+578 nodes and 1,505 connections against 10,015 and 14,254, and 0.53 MB against 4.89 MB:
+
+| Measure | Budget | Measured 2026-08-31 |
+|---|---|---|
+| Module payload build, server side | < 2 s | 0.09 s |
+| …a threshold nobody has asked for yet | < 2 s | 0.10 s round trip |
+| …the same again, cached on the base | < 50 ms | 10 ms |
+| First paint at module level | < 2 s | **not measured — see below** |
+
+**The build is cheap and it is held per level *and per threshold*, on `_Base`**, so a base
+switch throws all of it away for free. The routine payload is still built at boot, so the
+10.2 s start does not move; a level nobody climbs to costs nothing at all.
+
+**First paint at module level is absent rather than estimated, and so is the frame rate.**
+Rule 38: a browser-automation tab is given no animation frames — the HUD reads **0 fps** in
+one — so anything needing a rendered frame does not exist there. The counts, the controls,
+the selection that travels between altitudes, the change key and the colour buffer were all
+driven and checked in that tab; the picture wants a real window. There is no reason to
+expect it slower than the routine level, which is the point: it is a seventeenth of the
+nodes and a seventh of the edges. That is a prediction, not a measurement, and it is
+written here as one.
 
 **The two sphere rows were withdrawn and are now retaken, with the shading confirmed
 running by eye before either was recorded.** They had been withdrawn rather than left
@@ -399,6 +430,14 @@ docs   ──► extract ──► docs.db  (SQLite) ─────────
   config edit here, not a code change. Prefer adding a rule over adding a branch.
 - `resolve/` — call graph, CLI command trees, flows, naming conventions, glossary.
 - `render/` — Markdown and Mermaid.
+- `web/graph.py` — the 2.5D model, at **two levels of detail**. `routine` is every thing
+  the program declares; `module` folds each file into one node and each boundary kind into
+  one, on a single plate below the code. 10,015 nodes and 52 plates become 578 and 38, and
+  it is a second way to look at the same facts rather than a filter — nothing is dropped
+  and every folded node states what it stands for. The fold happens **on the way in from
+  the store**, never over `m.edges`, which holds each crossing twice by design (rule 23);
+  `packages.py` wrote that warning down before anything needed it. `MIN_DISK` is per level
+  and settable, because what a plate *holds* changes with the level.
 - `web/threads.py` — **adjacency by interest, not by edge.** Why a neighbour is worth a
   detour: shares a plan, the other end of a table you write, the most commented routine on
   your plate, named like ninety-eight others. Every thread carries a *subject* the router
@@ -408,7 +447,9 @@ docs   ──► extract ──► docs.db  (SQLite) ─────────
   and carries a light and a dark variant; `data-palette` on `:root` chooses one. In CSS
   rather than in a script because `cssPalette()` already reads the stack's colours off
   these tokens, so a second table would be a second answer. Each set states its contrast
-  **and** its separation (rule 69).
+  **and** its separation (rule 69). `--graph-unchanged`, `--graph-unclaimed` and
+  `--graph-mixed` sit outside the sets on purpose: a set covers the *directions* of
+  difference, and a ground — or "more than one direction" — is not one of them.
 - `web/vocabulary.py` — the two naming lanes served, and matched against one name. The
   membership test is `Convention.glob`, which is the same string the exceptions query is
   built from, so the claim and the population cannot drift (rule 41).
@@ -1443,6 +1484,19 @@ rule of that number — a blank canvas must say why it is blank — which does e
     works. The shipped dark pair is separable partly because it sits at 6.06:1 and 9.63:1,
     which nobody intended.
 
+    **A channel has a capacity, and this one is now full** — found 2026-08-31, adding a
+    sixth meaning to the difference channel. Sweeping every hue at every saturation and
+    lightness, against every colour in all three sets plus the two grounds, in all three
+    vision models: nothing clears a useful bar in **both** themes. The light theme is the
+    binding constraint — red, orange, green, blue, violet, purple and two greys are already
+    spent, and what is left is yellow, which cannot hold 3:1 on a light ground.
+
+    Two things follow. The colour chosen for `mixed` is the best available rather than a
+    good one (worst ΔE 29.8 light, 45.3 dark), and it is stated as such. And **a seventh
+    meaning cannot be added by colour at all** — the next one wants a different channel,
+    which is what design rules 4 and 5 have been saying since before there was a reason to
+    listen. Knowing a channel is full is worth as much as knowing a pair is separable.
+
 70. **The version on screen decides which bytes, and the sidecar cannot know which that
     is.** There is one `source.db` per program holding every revision, and its own default
     is the newest snapshot -- which is the right answer only while the newest is also the
@@ -1681,6 +1735,14 @@ bought a rewrite of settled CSS, neither of which serves the thing the tool is f
     thousand nodes it reads as a solid cylinder. Nodes are tiny dots — 1.4 to 3.6 pixels,
     degree moving the size across two pixels rather than twenty, because any radius that
     reads as a disc fuses the whole thing into a mass. Plates exist as a toggle, off.
+
+    **The dots stay tiny; what changes is how many there are.** Tom drove it and said the
+    picture was hard to comprehend at 10,015 nodes and 14,254 edges, and the answer was
+    neither bigger nodes nor fewer of them but a second **level of detail**: `module` folds
+    each file into one node and each boundary kind into one, giving 578 and 1,505. This
+    rule's own reasoning is what forces that — if a node cannot be made big enough to read
+    without fusing the picture, the number of nodes is what is wrong. Both levels are
+    served side by side and the reader chooses; nothing is dropped at either.
 
 19. **Edges are shown on demand, never by default.** All 13,277 at once do not describe a
     program, they erase it: everything else goes under a haze. Nothing but nodes is drawn

@@ -58,7 +58,7 @@ no build step. deck.gl is vendored into `web/vendor/`.
 | `cover.py` · `detail.py` · `documents.py` | the cover · the inspector and the hover card · document mode |
 | `threads.py` | adjacency by *interest* — why a neighbour is worth a detour |
 | `vocabulary.py` | the naming and glossary lanes, served and matched against one name |
-| `graph.py` · `layout.py` | the 2.5D model, and where things sit |
+| `graph.py` · `layout.py` | the 2.5D model at two levels of detail, and where things sit |
 | `packages.py` | the package overview — the other graph layout |
 | `code.py` | the code browser — a file, its clickable names and what each line *is* |
 | `search.py` | searching the **text** — files first, then one file's lines with their margin |
@@ -87,8 +87,8 @@ traceability across both stores · named artefacts · the mirror · comments (18
 
 **Dashboard:** one application — the ratified shell (cover, navigator, worklist, table,
 document, glossary, naming, settings) with the 2.5D stack and the package overview as two
-layouts inside graph mode, one inspector reading `/api/node`, and the graph following the
-theme. The reading loop: the navigator is the routine list grouped by package, hovering a
+layouts inside graph mode and **two levels of detail inside the stack**, one inspector
+reading `/api/node`, and the graph following the theme. The reading loop: the navigator is the routine list grouped by package, hovering a
 node gives a card, picking one lights its hop and fills the inspector, threads lead sideways,
 and ⌘Z takes any of it back. **Finding and keeping your place**: an arrow at the plate's rim
 aimed at what you picked and clickable to go there, a reticule on it, a *focus* lock so only
@@ -159,17 +159,70 @@ is not computed yet.
 
 ## What we are doing now
 
-**Paused 2026-08-30, after one history. Next is density — Tom named it at the pause.**
+**Paused 2026-08-31, with the stack's second altitude built and driven. Density is
+answered; the two recorded feature requests are next and both are re-shaped by it.**
 
-*"A graph with this many nodes and edges is hard to comprehend."* 10,015 nodes, 14,254 edges.
-Nothing is blocked and everything needed to start is written down: the two feature requests
-in Tom's own words (**size a plate by its density**, **draw a plate as a readable diagram**),
-his acceptance test for the second — *"they must be easy to read or we have failed"* — and
-rule 18, which is the constraint that shapes it. See `HANDOFF.md`, "Next: density".
+*"A graph with this many nodes and edges is hard to comprehend."* That was Tom's one
+complaint after driving the change colours, and the answer is a **level of detail** rather
+than bigger nodes or fewer of them — his call, and this file's own reasoning: if a plate
+cannot be read at a useful number of nodes, the number of nodes is what is wrong.
 
-**Chunk C is complete and has been looked at**, and the exploration work it uncovered is
-two-thirds done: Back is one history with ⌘Z (`6i`), and the toggle-off that empties the
-picture is recoverable through a visible control. Density is the third.
+```
+routines   10,015 nodes · 14,254 edges · 52 plates · largest plate 926
+modules       578 nodes ·  1,505 edges · 38 plates · largest plate  85
+```
+
+`module` folds each file into one node and each boundary kind into one, on a single plate
+below the code. **Another way to look at the same facts, never a filter**: the routine level
+is untouched, nothing is dropped, and every folded node states what it stands for. The
+*Detail* control sits in the legend beside "colour by", with the `<small>` threshold beside
+it as a Setting (design rule 2) — both per level, because what a plate holds changes with
+the altitude.
+
+- **A selection travels, and it is stated.** Going up, a routine becomes the file holding
+  it; going down, a file becomes the things inside it. Driven: 107 routines from one way in
+  became *"the 44 nodes holding them"*.
+- **A module takes the change band of what it holds, and `mixed` says so** — with `same` as
+  the ground, measured before it was built. Counted the other way every changed file reads
+  mixed and the tone says nothing; this way, **14 files carry the whole comparison** and 7
+  are genuinely mixed.
+- **The difference channel is full**, and that is the session's second find. No hue clears a
+  useful bar in both themes against every colour in all three sets; a seventh meaning cannot
+  be added by colour at all. Rule 69 says so now.
+- **A pre-existing defect surfaced**: a small *external* plate has been merging onto
+  `pkg:<small>` — a package plate — since the day `<small>` existed, so six of Mensores'
+  externals were drawn among the code that reaches them, badged as ours.
+- **Three defects found by driving**, and the first is the lesson: the switch threw on every
+  attempt, silently in the page and loudly in the console, **which I did not read for half
+  an hour**. Guards mutation-tested at 49/49 over a proved-green baseline; every survivor in
+  the earlier runs was the guard being weak.
+
+**What is not verified is what it looks like.** A browser-automation tab gets no animation
+frames — the HUD reads 0 fps — so rule 38 applies: the counts, the controls, the
+translation, the key and the colour buffer are checked; the picture wants a real window.
+
+**Next: chunk 2, sizing a plate by its density**, on **nodes** (Tom's answer), a Setting,
+with `layout.py`'s comment rewritten as the reversal it is. Two things changed about it: the
+range is 10.5× rather than the 31× the note assumed (`MIN_DISK` floors the smallest plate at
+9, not 1), and it is now a question about *two* pictures, so the Setting is per level or it
+is wrong at one of them. **Then chunk 3, the plate as a diagram** — flat first, no
+billboards until there is a problem to see (Tom's call), at the altitude that makes it a
+readable number of boxes. His bar stands: *"they must be easy to read or we have failed."*
+
+See `HANDOFF.md`, "The second altitude — built 2026-08-31".
+
+## Before that: chunk C and the exploration work
+
+**Paused 2026-08-30, after one history.** Chunk C is complete and has been looked at, and
+the exploration work it uncovered is **done**: Back is one history with ⌘Z (`6i`), the
+toggle-off that empties the picture is recoverable through a visible control, and density —
+the third — is answered by the section above.
+
+The two feature requests recorded in Tom's own words are still the next work and are
+unchanged in substance: **size a plate by its density** and **draw a plate as a readable
+diagram**, with his acceptance test for the second — *"they must be easy to read or we have
+failed."* Both are re-shaped by the second altitude rather than superseded by it; see the
+section above for how.
 
 ---
 

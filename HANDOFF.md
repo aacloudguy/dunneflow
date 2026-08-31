@@ -3845,6 +3845,181 @@ question answered first — what makes two findings in two versions the same fin
 carries no id and 93 of Mensores' 106 are `LOST_EDGE`, so pairing them would invent an
 identity (rule 1).
 
+## The second altitude — built 2026-08-31
+
+**`6j`.** Tom's density complaint, answered. Three questions were put to him before any code
+and all three answers are load-bearing.
+
+> *"level-of-detail sounds right to me as well, let's build that. Remember, keep what we
+> have, this is another way to view the same information."*
+
+```
+routines   10,015 nodes · 14,254 edges · 52 plates · largest plate 926
+modules       578 nodes ·  1,505 edges · 38 plates · largest plate  85
+```
+
+The argument for it was already in this file, written for request B: *if a plate cannot be
+read at a useful number of nodes, the number of nodes is wrong rather than the projection.*
+Neither recorded feature request changes the number of things on screen; this does, by
+seventeen times, and it is what makes both of them worth building afterwards.
+
+### What Tom decided
+
+- **Level of detail first**, before plate sizing and before the diagram renderer, because
+  it changes what those two are for.
+- **Externals fold by kind.** 1,920 of the 10,015 are boundary targets with no module — 991
+  individual stdout strings, 408 SQL statements — and left alone they are 77% of the module
+  picture and answer nothing the altitude asks. They become nine nodes on one plate below
+  the code, `ext:<outside>`. One word rather than "touches", because artefacts land there
+  too and naming a file is not touching one (rule 17).
+- **`MIN_DISK` becomes a Setting**, per level (design rule 2). What a plate *holds* changes
+  with the level: 8 folds 21 of Mensores' 45 packages away at module level, 3 folds 7.
+  Defaults 8 and 3, the reader owns the value, and the count of what it merged is stated.
+- **A module takes the change band of what it holds, and `mixed` says so.**
+
+And two answers for the work that follows, recorded so they survive: plate sizing is on
+**nodes**, not nodes + shadows — *"shadows was just an idea due to the 3D aspect, not a
+requirement"* — and the diagram is built **flat first**: *"billboard is my proactive
+approach to what might be a problem... let's build it without billboards first and
+determine if there is a problem to solve at all."*
+
+### The shape, and the one thing that must not be done
+
+A module-level `GraphModel` is an ordinary `GraphModel`, which is why this is small:
+`structural()`, `phyllotaxis`, `disk_heights`, `columnar()` and every line of the renderer
+work on it unchanged. The fold happens **on the way in from the store**, in `_add_edges`,
+where every call, touch and naming is seen exactly once. Never over `m.edges`: the 2.5D
+model holds each crossing twice by design (rule 23), so aggregating the drawn model would
+double every weight silently and plausibly. `packages.py` wrote that warning down before
+anything needed it.
+
+`mod:` and `outside:` join `const:`, `bnd:` and `art:` — the id is what tells the inspector
+what it has been handed — and `detail.py` answers for both. A module card lists what the
+file declares in full (rule 8) and names its neighbours as **modules**: 85 names a reader
+can act on where the 1,400 calls under them are the haystack again (rule 45).
+
+### `same` is the ground, and that was measured before it was built
+
+A module holding one arrival and forty unchanged routines is a module something arrived in,
+not a mixed one. Counted the other way — any two distinct bands make it mixed — **every
+changed file on Mensores reads `mixed` and the tone says nothing at all.** With `same` as
+the ground:
+
+```
+568 modules:  552 unchanged · 7 mixed · 4 with something deleted · 3 behave differently
+              …and 12 not compared, which is the outside plate and two files declaring
+              no routine at all
+```
+
+Fourteen files carry the whole comparison. That is the case for the altitude in one line.
+
+### The colour channel is full, and that is the session's second find
+
+`mixed` needed a sixth colour, and the sweep says the difference channel has no room left.
+Every hue at every saturation and lightness, against every colour in all three sets plus
+the two grounds, in normal vision, deuteranopia and protanopia: **nothing clears a useful
+bar in both themes.** Light is the binding constraint — red, orange, green, blue, violet,
+purple and two greys are spent, and what remains is yellow, which cannot hold 3:1 on a
+light ground.
+
+So the pair shipped is the best available rather than a good one, and it says so: worst
+**ΔE 29.8 light and 45.3 dark** within the channel, against the shipped red/green pair's
+12.7 and 9.5. It sits with `--graph-unchanged` and `--graph-unclaimed` rather than in the
+sets, on the argument those two already make: a set covers the *directions* of difference,
+and "more than one direction" is not one of them. **Rule 69 gains the general point** — a
+seventh meaning cannot be added by colour at all, and the next one wants another channel.
+
+`MODULE` needed a kind colour too, measured the same way: worst ΔE 42.7 light and 51.7 dark
+against the other five. Its nearest neighbour anywhere is `--graph-mixed` at ΔE 20.8, and
+the two are never on screen together because `colorBy` spends the channel on one dimension
+at a time (design rule 4).
+
+### Two things found that were already there
+
+- **A small *external* plate has been merging onto `pkg:<small>`, a package plate, since
+  the day `<small>` existed.** On Mensores that is the four QUEUE targets, the unnamed QUEUE
+  touch and the one LLM_API endpoint, drawn among the code that reaches them and badged as
+  ours — design rule 8's exact claim, inverted. Nothing could see it, because a merged plate
+  is *supposed* to hold things from elsewhere; it surfaced only because making the threshold
+  settable made it reachable at any size. Each band merges into its own plate now, and the
+  two carry different names or the legend says one word for two plates (rule 32). Mensores'
+  routine level is 53 plates rather than 52 as a result.
+- **The module card and the module node disagreed about `holds`** — three fixed keys against
+  a count of what is there, so a file declaring only routines read "0 constants" in one
+  place and nothing in the other. Rule 13 between a card and a node, caught by the guard
+  written to compare them.
+
+### Three defects found by driving it, and the first one is the lesson
+
+- **The switch pushed the shell's plate order back into an engine that had just resolved
+  one.** One truth in two places (rule 51) — and on a fresh session there is no saved order
+  at all, so it handed `setOptions` a `null` and `applyLayout` threw. **Every switch, from
+  the first.** Everything after the throw was skipped, so the selection never travelled and
+  the note that would have said so was never written. The page looked exactly like a page
+  that works.
+
+  **The console had said so from the first attempt and I did not read it.** Half an hour
+  went on a defect that was announcing itself in the one place nothing else looks. That is
+  the same finding the `data-nav` collision produced ("found by reading the console, which
+  no test does") and it did not transfer.
+
+- **`window.__d` and `window.__graph` were written once in `mount`**, so after a switch they
+  described 15,870 routine-level rows while the engine drew 2,069 module-level ones. Design
+  rule 21 puts diagnostics where a developer can reach them; one that lies is worse than
+  none, and this one sent me looking in the wrong place for most of that half hour. They
+  follow the payload now, asserted as **one writer** rather than as present in a function.
+
+- **`ensureGraphChange` loads the routine list for the module fold and repainted only
+  itself**, leaving the other reader saying *"reading the routine list…"* over an answer that
+  had arrived. Rule 55 in the guard as well as the code: the check written for that exact
+  defect sliced from the **first** `loadRoutines()` in the file, so a caller added above it
+  inherited a guard looking somewhere else. It walks every call site now.
+
+### What is verified, and what is not
+
+Driven in a real Chrome window: both levels served and consistent, the control, the
+threshold slider (25 plates at 8, 38 at 3, 47 at 1, each stating what it merged), the
+selection travelling in both directions over three shapes — a plate, one routine, and a way
+in resolving to 107 routines which became *"the 44 nodes holding them"* — the change key
+summing to 578 at module level and unchanged at routine level, and every band reaching the
+colour buffer with its own value including `mixed` at `#00007a`.
+
+**What it looks like is not verified.** The HUD reads **0 fps** in that tab: rule 38, a
+browser-automation tab is given no animation frames, so nothing needing a rendered frame
+exists there. The picture wants Tom's eye, and the frame rate at module level is written in
+`CLAUDE.md` as an absence rather than a guess.
+
+Guards mutation-tested at **49/49** over a proved-green baseline, after runs at 22/24 and
+47/49 — **every survivor the guard being weak**, which is now the fourteenth through
+seventeenth time in this record. Two of them were the same substring trap one guard apart:
+`st.disks_merged` inside `st.disks_merged_nodes`, as `window.__d` sits inside
+`window.__deck`.
+
+### Next
+
+**Chunk 2: size a plate by its density**, and it is unblocked and re-shaped by this. `r =
+DISK_RADIUS * sqrt(n / n_ref)` on **nodes** (Tom's answer), a Setting, with `layout.py`'s
+`DISK_RADIUS` comment rewritten as the reversal it is rather than left standing to
+contradict the code. Two things this session changes about it:
+
+- **The range is not 31×.** That note assumed a smallest plate of 1; `MIN_DISK` puts the
+  floor at 9, so it is 110× on count and **10.5× on radius** — awkward but not the specks
+  the note feared, and it may need no clamp at all, only a check that design rule 20's
+  framing still holds.
+- **It is now a question about two pictures, not one.** At module level the largest plate
+  holds 85 and the smallest 1, which is a different range and a different judgment. The
+  Setting is per level or it is wrong at one of them — the same argument `MIN_DISK` just
+  had.
+
+**Chunk 3: the plate as a diagram**, flat first, on one plate or a selection, at the
+altitude that makes it a readable number of boxes. Tom's bar stands: *"they must be easy to
+read or we have failed."* Withdrawn rather than shipped with a caveat if it does not clear
+it.
+
+**Still open and unstarted:** the anomaly worklist overlay, blocked on one question — what
+makes two findings in two versions the same finding. A finding carries no id and 93 of
+Mensores' 106 are `LOST_EDGE`, so pairing them would invent an identity (rule 1).
+
 ## Looked at, at the keyboard — Tom, 2026-08-30, after the stack's change colours
 
 The pixels `6h` said it owed a real window. Read as a verdict *and* as a worklist.

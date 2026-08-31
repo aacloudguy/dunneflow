@@ -3303,10 +3303,11 @@ function viewSettings() {
         </div>
 
         <div class="setrow">
-          <div><div class="lbl">Trail length</div>
-            <div class="desc">Oldest steps are dropped past this. Pruned on every step whether
-              the trail is shown or not.</div></div>
-          <div class="seg" role="group" aria-label="Trail length">
+          <div><div class="lbl">Steps the trail shows</div>
+            <div class="desc">How many fit on the bar, not how many are kept. The history
+              holds fifty either way and <kbd>Back</kbd> reaches all of them; anything off
+              the end of the bar is counted beside it.</div></div>
+          <div class="seg" role="group" aria-label="Steps the trail shows">
             ${[6, 12, 25].map(n => `<button data-trailcap="${n}"
               aria-pressed="${state.trailCap === n}">${n} steps</button>`).join("")}
           </div>
@@ -3569,9 +3570,28 @@ function sec(key, title, count, bodyHtml) {
  * which is what records history, so without it every undo would record itself and the
  * stack would never move.
  */
-const SELECTION_HISTORY_CAP = 50;
-let selHistory = [];
-let selAt = -1;
+/* **One history, and it used to be two.**
+ *
+ * `state.trail` was the visible record and `selHistory` the invisible one, and the split
+ * was never designed -- it accumulated. `onGraphSelect` recorded to the second and never
+ * the first, so the button labelled **Back** could not reverse a click in the stack, which
+ * is almost the only thing a reader does while exploring it. Reported at the keyboard as
+ * *"I have to use Back too often, and it doesn't always do what I expect"*, and it was
+ * exactly right: two answers to "where have I been", with the visible one blind to the
+ * commonest act (rule 51, crossed with rule 30 -- the control's subject was not what the
+ * reader took it to be).
+ *
+ * They merged cheaply because they had already half-merged. A trail step has carried its
+ * *subject* since rule 33, `goToTrailStep` already restored through `applySelectionStep`,
+ * and neither list was ever persisted -- so there was one shape, one restore path and
+ * nothing to migrate.
+ *
+ * `TRAIL_CAP` is the **history**, and `state.trailCap` is how many steps the bar *shows*.
+ * They were one number, applied to the history, and merging made that fatal: every graph
+ * click is a step now, so a cap of twelve would flush the step the reader detoured *from*
+ * -- destroying the one thing design rule 15 says the trail exists for. */
+const TRAIL_CAP = 50;
+let trailAt = -1;
 let restoringSelection = false;
 
 function selectionSnapshot() {
@@ -3588,16 +3608,49 @@ function sameSelection(a, b) {
 }
 
 /* Called wherever a selection settles, from either direction -- the graph announcing a
- * click, or the list driving one. One recorder, because two would disagree about order. */
-function recordSelection() {
+ * click, or the list driving one. **The one place a step is made**, because two would
+ * disagree about order, and because two is what this whole change exists to undo.
+ *
+ * `label` and `note` are for a caller that can say something better than the selection
+ * can: a mode toggle names the mode, a thread names why it was worth a detour. Everything
+ * else takes the name of what it landed on.
+ *
+ * Two invariants here are load-bearing and both are asserted. `publishSelection()` is
+ * **first**, above the bail, so an undo still tells the sibling window where this one
+ * moved. And the `restoringSelection` bail comes **before any write to the history**, or
+ * stepping back would record the step it had just returned to and the cursor would never
+ * move. */
+function recordSelection(label, note, view) {
   publishSelection();
   if (restoringSelection) return;
-  const now = selectionSnapshot();
-  if (sameSelection(selHistory[selAt], now)) return;   // a repaint is not a step
-  selHistory = selHistory.slice(0, selAt + 1);         // a new move drops the redo branch
-  selHistory.push(now);
-  if (selHistory.length > SELECTION_HISTORY_CAP) selHistory.shift();
-  selAt = selHistory.length - 1;
+  const step = {
+    /* `view` is an override, not a dead parameter: `pushTrail` is handed one by callers
+       that are *in the act* of moving, and a step recorded as the view being left would
+       take a reader back to somewhere they were not. Every current caller passes the view
+       it has just set, so the two agree — but a parameter that is ignored is a control
+       wired to nothing, and this one is read. */
+    view: view || state.view,
+    /* `labelFor` returns the id it was given when it knows no better, and `null` for a
+       cleared selection — so the fallback used to be `state.view`, and a step recording
+       "you cleared the picture" came out labelled *graph*, which reads as a mode change.
+       It is the step a reader is most likely to want back (clicking the node you are on is
+       the toggle-off that empties everything), so it says what it is. */
+    label: label || (state.selected ? labelFor(state.selected) : "nothing selected"),
+    note: note || "",
+    subject: selectionSnapshot(),
+  };
+  /* **By subject, never by label.** `pushTrail` deduplicated on the label, which was fine
+     while steps were named by hand and is wrong the moment every click makes one: two
+     routines sharing a name would be silently dropped as a repeat. A label is not an
+     identity (rule 30), and `sameSelection` is the test the selection history already
+     used. The view is in it because the three centre modes are three ways of looking at
+     one selection, and moving between them is a step even when the subject has not moved. */
+  const at = state.trail[trailAt];
+  if (at && at.view === step.view && sameSelection(at.subject, step.subject)) return;
+  state.trail = state.trail.slice(0, trailAt + 1);   // a new move drops the forward branch
+  state.trail.push(step);
+  if (state.trail.length > TRAIL_CAP) state.trail.shift();
+  trailAt = state.trail.length - 1;
 }
 
 function applySelectionStep(step) {
@@ -3617,17 +3670,20 @@ function applySelectionStep(step) {
   }
 }
 
-function canUndoSelection() { return selAt > 0; }
-function canRedoSelection() { return selAt >= 0 && selAt < selHistory.length - 1; }
+/* Three doors onto one function: the trail bar's Back, the ⌘Z binding, and the HUD's undo
+ * button. They were two mechanisms with different contents; now the only difference between
+ * them is which one the reader happens to reach for. */
+function canUndoSelection() { return trailAt > 0; }
+function canRedoSelection() { return trailAt >= 0 && trailAt < state.trail.length - 1; }
 
 function undoSelection() {
   if (!canUndoSelection()) return;
-  applySelectionStep(selHistory[--selAt]);
+  goToTrailStep(state.trail[--trailAt]);
 }
 
 function redoSelection() {
   if (!canRedoSelection()) return;
-  applySelectionStep(selHistory[++selAt]);
+  goToTrailStep(state.trail[++trailAt]);
 }
 
 /* ═══ the trail: where you have been, so you can wander without losing it ═══ */
@@ -3670,28 +3726,65 @@ function goToTrailStep(step) {
   else render();
 }
 
+/* The door for a caller that can name its own step better than the selection can -- a mode
+ * toggle names the mode, a thread names why it was worth the detour, the detail window says
+ * it opened one. It **records the same step as every other move**, through the one
+ * recorder; it used to keep a list of its own, and that was the defect.
+ *
+ * The pruning that lived here is gone with it. It capped the *history* at
+ * `state.trailCap`, which now bounds only what the bar shows -- see `TRAIL_CAP`. */
 function pushTrail(view, label, note) {
-  const last = state.trail[state.trail.length - 1];
-  if (last && last.view === view && last.label === label) return;   // no repeats
-  state.trail.push({ view, label, note: note || "", subject: selectionSnapshot() });
-  // Prune on every step whether the trail is on screen or not: a hidden trail that
-  // grows without bound is a leak nobody can see.
-  const cap = Math.max(2, state.trailCap);
-  if (state.trail.length > cap) state.trail.splice(0, state.trail.length - cap);
+  recordSelection(label, note, view);
 }
 
+/* The bar is a **window onto the history, not the history itself**, and that is what makes
+ * one history workable. `state.trailCap` bounds what is shown; `TRAIL_CAP` bounds what is
+ * kept. The window ends at the cursor rather than at the newest step, so stepping back
+ * scrolls the bar with you instead of leaving you looking at where you are not.
+ *
+ * What falls outside it is **stated** (design rule 1: a filtered view says what it removed),
+ * because a trail that silently forgets is worse than a short one -- the reader would have
+ * no way to know Back can still reach further than the bar shows.
+ */
 function trailBar() {
   if (!state.trailShown) return "";
   if (state.trail.length < 2 && !state.pins.length) return "";
+  const show = Math.max(2, state.trailCap);
+  /* The window ends one past the cursor where there is a forward branch, so the step you
+     would move *to* is on screen -- a Forward button pointing at something invisible is a
+     control the reader cannot aim. */
+  const end = Math.min(state.trail.length, Math.max(trailAt + 2, show));
+  const from = Math.max(0, end - show);
+  /* **Both ends, and the second was missing.** Only what fell off the *back* was stated,
+     so stepping back through a long trail silently hid everything in front of the cursor —
+     fourteen steps Forward could still reach, with nothing on screen to say so. A window
+     has two edges and design rule 1 applies to both. */
+  const behind = from;
+  const ahead = state.trail.length - end;
   return `
   <div class="trailbar">
     <span class="trail-label">Trail</span>
+    ${behind ? `<span class="trail-behind" title="Back reaches them; the bar shows ${
+      show} at a time">+${behind} behind</span>` : ""}
     <ol class="trail">
-      ${state.trail.map((t, i) => `
-        <li><button class="trailstep ${i === state.trail.length - 1 ? "here" : ""}"
-              data-trail="${i}" title="${esc(t.note || t.label)}">${esc(t.label)}</button></li>`).join("")}
+      ${state.trail.slice(from, end).map((t, k) => {
+        const i = from + k;
+        /* Three states, not two. `here` is the cursor, `ahead` is the forward branch --
+           steps the reader stepped back past and can still step forward into. Drawing them
+           the same as the past would say the journey ends here, which is the opposite of
+           what a history with a cursor knows. */
+        const where = i === trailAt ? "here" : (i > trailAt ? "ahead" : "");
+        return `
+        <li><button class="trailstep ${where}"
+              data-trail="${i}" title="${esc(t.note || t.label)}">${esc(t.label)}</button></li>`;
+      }).join("")}
     </ol>
-    ${state.trail.length > 1 ? `<button class="linkbtn" data-trailback>\u2190 Back</button>` : ""}
+    ${ahead ? `<span class="trail-behind" title="Forward reaches them; the bar shows ${
+      show} at a time">+${ahead} ahead</span>` : ""}
+    <button class="linkbtn" data-trailback ${canUndoSelection() ? "" : "disabled"}
+            title="Back to the previous step (⌘Z)">\u2190 Back</button>
+    <button class="linkbtn" data-trailfwd ${canRedoSelection() ? "" : "disabled"}
+            title="Forward again (⇧⌘Z)">Forward \u2192</button>
     <button class="linkbtn" data-trailclear>Clear</button>
     ${state.pins.length ? `<button class="linkbtn pinned" data-nav2="pins">\u25c6 ${state.pins.length} kept</button>` : ""}
   </div>`;
@@ -5512,6 +5605,24 @@ function render() {
   const vs = $("#verStrip");
   if (vs) vs.innerHTML = versionStrip();
 
+  /* Keep the cursor in the lane. The steps scroll inside their own box now, so the step you
+     are standing on can sit outside it after a Back -- and a trail whose current step is off
+     screen is the state design rule 26 already refuses for the routine list. Only when it is
+     genuinely out of sight: an automatic move must not fight a deliberate one (rule 24). */
+  requestAnimationFrame(() => {
+    /* `$$`, not `$`. The bar is rendered twice — the app's header and the detail window,
+       which needs its own because the header sits behind that window's scrim — and the
+       singular selector is exactly how this bar's controls were once wired to only one of
+       them. */
+    $$(".trailstep.here").forEach((here) => {
+      const lane = here.closest(".trail");
+      if (!lane) return;
+      const h = here.getBoundingClientRect(), l = lane.getBoundingClientRect();
+      if (h.left < l.left || h.right > l.right) {
+        lane.scrollLeft += (h.left - l.left) - (l.width - h.width) / 2;
+      }
+    });
+  });
   const tm = $("#trailMount");
   if (tm) {
     tm.innerHTML = trailBar();
@@ -5683,9 +5794,12 @@ function wire() {
   const tt = $("#trailToggle");
   if (tt) tt.addEventListener("click", () => { state.trailShown = !state.trailShown; render(); });
   $$("[data-trailcap]").forEach(b => b.addEventListener("click", () => {
+    /* **It no longer prunes.** This used to cut the history down to the new size, which was
+       honest while the number meant "how much is kept" and destructive the moment it meant
+       "how much is shown": narrowing the bar would have thrown away the steps Back reaches.
+       The bar takes its own window in `trailBar()`. */
     state.trailCap = parseInt(b.dataset.trailcap, 10);
-    const cap = Math.max(2, state.trailCap);
-    if (state.trail.length > cap) state.trail.splice(0, state.trail.length - cap);
+    persist();
     render();
   }));
   /* Flip which version the reader takes to be newer.
@@ -5873,11 +5987,18 @@ function wire() {
     render();
   }));
 
-  /* the trail: step back into it, or clear it */
+  /* the trail: move the cursor along it, or clear it.
+   *
+   * **Moving, not truncating.** This used to cut the trail off at the step it went to, and
+   * Back used to pop -- which made looking backwards destroy the journey it was showing.
+   * A history has a cursor, and the only thing that drops the forward branch is a *new*
+   * step, which is `recordSelection`'s own rule. Going back and changing your mind is now
+   * free, which is the whole point of the record. */
   $$("[data-trail]").forEach(b => b.addEventListener("click", () => {
     const i = parseInt(b.dataset.trail, 10);
     const step = state.trail[i];
-    state.trail = state.trail.slice(0, i + 1);
+    if (!step) return;
+    trailAt = i;
     // The subject is the point. Steps recorded before this existed have none, and those
     // still change the view -- old data is not a reason to fail, only to do less.
     goToTrailStep(step);
@@ -5890,14 +6011,18 @@ function wire() {
    *
    * The steps beside them were already `$$` and always worked, which is what made it
    * confusing to look at -- two thirds of one bar working is not a state anybody expects. */
-  $$("[data-trailback]").forEach(tb => tb.addEventListener("click", () => {
-    if (state.trail.length > 1) {
-      state.trail.pop();
-      goToTrailStep(state.trail[state.trail.length - 1]);
-    }
-  }));
+  /* Back and Forward are `undoSelection` and `redoSelection` -- the same two functions ⌘Z
+     and the HUD's buttons call. Three doors, one history; that is the whole change. */
+  $$("[data-trailback]").forEach(tb => tb.addEventListener("click", undoSelection));
+  $$("[data-trailfwd]").forEach(tf => tf.addEventListener("click", redoSelection));
   $$("[data-trailclear]").forEach(tc => tc.addEventListener("click", () => {
-    state.trail = [{ view: state.view, label: "here", note: "trail cleared" }];
+    /* Cleared to **where the reader is**, carrying the subject, rather than to a
+       subject-less sentinel. Clear is for a trail grown too long to read, not for
+       abandoning the thing on screen -- and a step with no subject is a step that takes
+       nobody anywhere (rule 33). */
+    state.trail = [{ view: state.view, label: labelFor(state.selected) || "here",
+                     note: "trail cleared", subject: selectionSnapshot() }];
+    trailAt = 0;
     render();
   }));
   $$("[data-nav2]").forEach(b => b.addEventListener("click", () => {
@@ -6185,7 +6310,7 @@ const WIRED_ATTRS = new Set([
   "scale-set", "sec", "sev", "sevnav", "sort", "sqlshow", "start", "step", "theme",
   "term", "termuse", "theme-set", "thread", "threadlabel", "threadsall", "threadwhy",
   "titled", "toggle",
-  "trail", "trailback", "trailcap", "trailclear", "triage", "triaged", "unpin", "viewtab"]);
+  "trail", "trailback", "trailfwd", "trailcap", "trailclear", "triage", "triaged", "unpin", "viewtab"]);
 
 function selfCheck() {
   const problems = [];

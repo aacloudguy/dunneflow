@@ -1717,15 +1717,37 @@ kbd { font-family: var(--f-mono); font-size: .66rem; background: var(--sunken);
   overflow-x: auto; }
 .trail-label { font-size: .62rem; font-weight: 700; letter-spacing: .1em; text-transform: uppercase;
   color: var(--text-faint); white-space: nowrap; }
+/* **The steps scroll in their own lane.** `min-width: 0` lets this shrink below its
+   content, which is right -- the buttons beside it must never be pushed off -- but without
+   an `overflow` the six steps simply painted *outside* the box they had been given, over
+   the counter and the Back button next to them. `getBoundingClientRect` reported every
+   child laid out and visible, because it reports the layout box and not the ink: what the
+   DOM says and what the reader sees are different questions (rule 48's family). Found by
+   zooming in on the bar, not by measuring it. */
 .trail { list-style: none; display: flex; align-items: center; gap: .25rem; margin: 0; padding: 0;
-  min-width: 0; }
+  min-width: 0; overflow-x: auto; scrollbar-width: none; }
+.trail::-webkit-scrollbar { display: none; }
+/* A long qualified name may not push the rest of the trail out of the lane. Ellipsised
+   rather than wrapped: the bar is one row, and the whole label is on the title either
+   way. */
+.trailstep { max-width: 12rem; overflow: hidden; text-overflow: ellipsis; }
 .trail li { display: flex; align-items: center; }
 .trail li + li::before { content: "\203a"; color: var(--text-faint); margin-right: .25rem; }
 .trailstep { font: inherit; font-size: .72rem; background: none; border: 0; cursor: pointer;
   color: var(--text-muted); padding: .1rem .3rem; border-radius: .1875rem; white-space: nowrap; }
 .trailstep:hover { background: var(--raised); color: var(--text); }
 .trailstep.here { background: var(--accent-soft); color: var(--accent-text); font-weight: 600; }
+/* The forward branch: steps the reader stepped back past and can still step forward into.
+   Drawn faintly rather than hidden -- a history with a cursor knows the journey did not end
+   where you are standing, and hiding them would say it did. */
+.trailstep.ahead { color: var(--text-faint); font-style: italic; }
+.trailstep.ahead:hover { color: var(--text-muted); }
+/* What the bar's window leaves out. `trailCap` bounds what is shown and `TRAIL_CAP` what is
+   kept, so a reader has to be told Back reaches further than they can see (design rule 1). */
+.trail-behind { font-size: .66rem; color: var(--text-faint); white-space: nowrap; }
 .trailbar .linkbtn { white-space: nowrap; }
+.trailbar .linkbtn:disabled { opacity: .45; cursor: default; }
+.trailbar .linkbtn:disabled:hover { background: none; }
 .linkbtn.pinned { background: var(--accent-soft); color: var(--accent-text); border-color: var(--accent); }
 
 .curigrid { display: grid; gap: .6rem; }

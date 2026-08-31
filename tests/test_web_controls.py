@@ -785,12 +785,16 @@ def test_a_trail_step_carries_the_subject_it_arrived_at() -> None:
     """
     js = _read("shell.js")
 
-    push = re.search(r"state\.trail\.push\(\{([^}]*)\}", js)
-    assert push, "pushTrail no longer pushes an object literal -- this test is blind"
-    assert "subject" in push.group(1), (
+    # The step is built in `recordSelection` now rather than in `pushTrail` -- one recorder
+    # for the one history -- so the literal is looked for where it is made, not where it
+    # used to be. The claim is unchanged: a step without a subject takes nobody anywhere.
+    step = re.search(r"const step = \{(.*?)\n  \};", _fn(js, "recordSelection"), re.S)
+    assert step, "recordSelection no longer builds a step literal -- this test is blind"
+    assert "subject" in step.group(1), (
         "a trail step records no subject, so clicking it cannot restore what you were "
-        f"looking at: {push.group(1).strip()}"
+        f"looking at: {step.group(1).strip()}"
     )
+    assert "state.trail.push(step)" in js, "the step is not pushed onto the one history"
     # Both ways back must restore it: clicking a step, and the Back button. This counted two
     # copies of the same line, which was the right check while there were two handlers; they
     # go through one function now, so the check follows it -- that both *route* there, and
@@ -800,12 +804,18 @@ def test_a_trail_step_carries_the_subject_it_arrived_at() -> None:
         "the one way back no longer restores a step's subject, so every step takes you "
         "nowhere"
     )
-    for handler, what in ((r"\[data-trail\]", "clicking a step"),
-                          (r"\[data-trailback\]", "pressing Back")):
-        seg = js.split(handler.replace("\\", ""), 1)[1][:600]
-        assert "goToTrailStep(" in seg, (
-            f"{what} does not go through the one way back, so the two can disagree about "
-            f"what returning to a step means"
+    # Clicking a step still routes here directly; Back and Forward reach it through
+    # `undoSelection` / `redoSelection`, which are the same two functions ⌘Z and the HUD's
+    # buttons call. Three doors, one way back.
+    seg = js.split("[data-trail]", 1)[1][:600]
+    assert "goToTrailStep(" in seg, (
+        "clicking a step does not go through the one way back, so the two can disagree "
+        "about what returning to a step means"
+    )
+    for fn in ("undoSelection", "redoSelection"):
+        assert "goToTrailStep(" in _fn(js, fn), (
+            f"`{fn}` does not restore through `goToTrailStep`, so stepping and undoing "
+            "would mean two different things"
         )
     # And the mode is not part of where you were: the three centre views are three ways of
     # looking at one selection, so Back from the table must not land you in the graph.
@@ -829,7 +839,7 @@ def test_the_selection_can_be_taken_back() -> None:
     """
     js = _read("shell.js")
 
-    assert "function recordSelection()" in js, "no selection history is recorded"
+    assert "function recordSelection(" in js, "no selection history is recorded"
     assert js.count("recordSelection()") >= 3, (
         "the history is recorded on fewer paths than there are ways to select — the graph "
         "announcing a click and the list driving one must both reach it"
@@ -847,7 +857,7 @@ def test_the_selection_can_be_taken_back() -> None:
         "recordSelection does not bail while a restore is in flight, so an undo records "
         "itself as a new step and the history never moves backwards"
     )
-    assert body.index("if (restoringSelection) return;") < body.index("selHistory"), (
+    assert body.index("if (restoringSelection) return;") < body.index("state.trail"), (
         "recordSelection does not bail while a restore is in flight, so an undo records "
         "itself as a new step and the history never moves backwards"
     )
@@ -5767,4 +5777,200 @@ def test_edited_and_unchanged_reach_one_tone_and_the_key_says_so() -> None:
     assert "edited without" in key and "tally.edited.toLocaleString()" in key, (
         "the key does not say how many were folded into unchanged — an unstated fold is a "
         "silent filter"
+    )
+
+
+# --------------------------------------------------------------------------- #
+# One history.
+#
+# `state.trail` was the visible record and `selHistory` the invisible one, and the split was
+# never designed -- it accumulated. `onGraphSelect` recorded to the second and never the
+# first, so the button labelled **Back** could not reverse a click in the stack, which is
+# almost the only thing a reader does while exploring it. Reported at the keyboard as "I have
+# to use Back too often, and it doesn't always do what I expect."
+# --------------------------------------------------------------------------- #
+
+
+def test_there_is_one_history() -> None:
+    """Two stores is the defect, so the check is that the second one is gone.
+
+    Not "the merge happened" — that is unfalsifiable — but that nothing writes a step
+    anywhere except the one list, found by looking for pushes rather than by keeping a list
+    of the places that used to have one.
+    """
+    js = _code(_read("shell.js"))
+    assert "selHistory" not in js, (
+        "a second selection history is back. Two stores means two answers to 'where have I "
+        "been', and the visible control ends up blind to whichever acts the other one owns"
+    )
+    pushes = set(re.findall(r"(\w+(?:\.\w+)*)\.push\(step\)", js))
+    assert pushes == {"state.trail"}, (
+        f"steps are pushed onto {sorted(pushes) or 'nothing'} — there must be exactly one "
+        "history, and it is `state.trail`"
+    )
+    # **A word boundary, not a substring.** `"let trailAt" in js` is also true of
+    # `let trailAtX`, so renaming the cursor away walked straight past this (rule 37).
+    assert re.search(r"\blet trailAt\b", js), (
+        "the history has no cursor, so it can only be popped"
+    )
+
+
+def test_a_click_in_the_picture_is_a_step() -> None:
+    """The defect this whole change is from, asserted at its source.
+
+    `onGraphSelect` recorded to the selection history and never to the trail, so the visible
+    Back button had no record of the commonest act there is. It goes through the one
+    recorder now, and the step takes the name of what it landed on.
+    """
+    js = _code(_read("shell.js"))
+    body = _fn(js, "onGraphSelect")
+    assert "recordSelection(" in body, (
+        "clicking a node in the stack records no step, so Back cannot reverse it — which is "
+        "the report this change came from"
+    )
+    rec = _fn(js, "recordSelection")
+    assert "labelFor(state.selected)" in rec, (
+        "a step made by clicking takes no name from what it landed on, so the trail would "
+        "read as a row of identical entries"
+    )
+    # A cleared selection is the step most worth having, and it must say what it is: the
+    # fallback used to be `state.view`, so emptying the picture recorded a step called
+    # "graph", which reads as a mode change.
+    assert '"nothing selected"' in rec, (
+        "a step recorded with nothing selected is not named, so the one step a reader most "
+        "wants back is labelled after the view it happened in"
+    )
+
+
+def test_back_and_undo_are_the_same_thing() -> None:
+    """Three doors onto one history: the trail's Back, ⌘Z, and the HUD's button.
+
+    They were two mechanisms with different contents, and the reader could not tell which
+    one a given control moved.
+    """
+    js = _code(_read("shell.js"))
+    back = js.split("[data-trailback]", 1)[1][:200]
+    assert "undoSelection" in back, "the trail's Back is not the undo everything else uses"
+    fwd = js.split("[data-trailfwd]", 1)[1][:200]
+    assert "redoSelection" in fwd, "the trail's Forward is not the redo everything else uses"
+    keys = js[js.index('e.key.toLowerCase() === "z"'):][:300]
+    assert "undoSelection()" in keys and "redoSelection()" in keys, (
+        "the keyboard does not reach the same two functions"
+    )
+    for act in ("undo", "redo"):
+        assert re.search(rf"^  {act}: \(\) => {act}Selection\(\)", js, re.M), (
+            f"the HUD's {act} button does not reach {act}Selection"
+        )
+
+
+def test_looking_backwards_destroys_nothing() -> None:
+    """Back popped and a step click truncated, so looking back destroyed the journey.
+
+    A history has a cursor. The only thing that drops the forward branch is a **new** step,
+    which is the recorder's own rule — going back and changing your mind is free, and that
+    is the whole point of keeping the record.
+    """
+    js = _code(_read("shell.js"))
+    for fn in ("undoSelection", "redoSelection"):
+        body = _fn(js, fn)
+        assert ".pop()" not in body and ".splice(" not in body, (
+            f"`{fn}` shortens the history rather than moving the cursor"
+        )
+    step = js.split("[data-trail]", 1)[1][:400]
+    assert "state.trail = state.trail.slice" not in step, (
+        "clicking a step truncates the trail to it, so the forward branch is destroyed by "
+        "looking at where you have been"
+    )
+    assert "trailAt = i" in step, "clicking a step does not move the cursor"
+    # The one place that may drop it, and only on a new step.
+    rec = _fn(js, "recordSelection")
+    assert "state.trail = state.trail.slice(0, trailAt + 1)" in rec, (
+        "a new step does not drop the forward branch, so redo would walk into a journey "
+        "that no longer happened"
+    )
+
+
+def test_two_steps_with_one_name_are_two_steps() -> None:
+    """`pushTrail` deduplicated on the *label*, and that is wrong once every click records.
+
+    Two routines called `<module>` are two subjects with one name, and dropping the second
+    as a repeat would silently lose a step Back is expected to reach. A label is not an
+    identity (rule 30); `sameSelection` is the test the selection history already used.
+    """
+    js = _code(_read("shell.js"))
+    rec = _fn(js, "recordSelection")
+    assert "sameSelection(" in rec, (
+        "the recorder no longer compares subjects, so two different routines sharing a name "
+        "collapse into one step"
+    )
+    assert not re.search(r"\.label\s*===\s*", rec), (
+        "the recorder deduplicates on the label — a name is not an identity, and two "
+        "`<module>` routines are two steps"
+    )
+    assert "at.view === step.view" in rec, (
+        "the view is not part of the comparison, so moving between the centre modes over "
+        "one selection records nothing"
+    )
+
+
+def test_the_trail_bar_bounds_itself_and_says_what_it_left_out() -> None:
+    """`trailCap` bounds the **bar**; `TRAIL_CAP` bounds the history.
+
+    They were one number applied to the history, and merging made that fatal: every graph
+    click is a step now, so a cap of twelve would flush the step the reader detoured *from*
+    — destroying the one thing design rule 15 says the trail exists for.
+
+    Both edges of the window are stated. Only what fell off the back was, at first, so
+    stepping back through a long trail silently hid everything in front of the cursor
+    (design rule 1: a filtered view says what it removed, and a window has two sides).
+    """
+    js = _code(_read("shell.js"))
+    assert "const TRAIL_CAP" in js, "the history has no cap of its own"
+    rec = _fn(js, "recordSelection")
+    assert "TRAIL_CAP" in rec and "state.trailCap" not in rec, (
+        "the recorder bounds the history by the number that governs the bar, so narrowing "
+        "the bar would throw away the steps Back reaches"
+    )
+    cap = js.split("[data-trailcap]", 1)[1][:400]
+    assert "splice" not in cap and "state.trail =" not in cap, (
+        "changing how many steps are shown prunes the history — it is a view setting now"
+    )
+    bar = _fn(js, "trailBar")
+    assert "state.trailCap" in bar, "the bar does not bound itself"
+    # **What it renders, not what it names.** Asserting the words appear passed a bar with
+    # the whole ahead-counter deleted, because `const ahead = …` still declared one — a
+    # guard that checks a name appears has not checked that anything happens (rule 37).
+    for side in ("behind", "ahead"):
+        assert re.search(rf"\$\{{{side}\}} {side}</span>", bar), (
+            f"the bar computes `{side}` and never draws it, so the window silently hides "
+            "steps Back and Forward can still reach"
+        )
+
+
+def test_the_trail_steps_cannot_paint_over_the_controls_beside_them() -> None:
+    """`min-width: 0` with no `overflow` lets a flex row's children spill outside their box.
+
+    Six steps in a 509px lane painted straight over the "+7 ahead" counter and the Back
+    button. **Every measurement said it was fine** — `getBoundingClientRect` reports the
+    layout box, not the ink, and every child came back inside the bar and marked visible.
+    Found by zooming in on it: what the DOM says and what the reader sees are different
+    questions (rule 48's family).
+    """
+    css = _css_code(_read("tokens.css"))
+    lane = re.search(r"\.trail \{([^}]*)\}", css)
+    assert lane, ".trail no longer declares its own rule; this guard is blind"
+    body = lane.group(1)
+    assert "min-width: 0" in body, "the lane no longer shrinks, so it pushes the buttons off"
+    assert "overflow-x" in body, (
+        "the lane shrinks below its content and does not clip it, so the steps paint over "
+        "the counter and the buttons beside them"
+    )
+    step = re.search(r"\.trailstep \{([^}]*)\}", css)
+    assert step and "text-overflow: ellipsis" in step.group(1), (
+        "a long qualified name is not ellipsised, so one step can fill the whole lane"
+    )
+    js = _code(_read("shell.js"))
+    assert '$$(".trailstep.here")' in js, (
+        "the cursor is scrolled into its lane with the singular selector — the bar is "
+        "rendered twice, and that is exactly how its controls were once wired to one of them"
     )

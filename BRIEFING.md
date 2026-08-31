@@ -235,19 +235,22 @@ found.
 **Next, and it now outranks the worklist because Tom hit it at the keyboard: exploring the
 stack.** Three problems, one line of work:
 
-1. **← Back cannot reverse a click in the stack.** `onGraphSelect` records to the ⌘Z
-   selection history and **never calls `pushTrail`**, so the visible Back button steps a
-   trail that has no record of the commonest act there is. Read from the code, not yet
-   reproduced. **Do not just add the `pushTrail` call** — the trail is capped at 12 and
-   every graph click would flush the step the reader detoured *from*. Whether the trail and
-   the selection history should be one history is a design decision, and it is Tom's.
-2. **A click to look is also a click that filters.** `togglePick`'s toggle-off means
-   clicking the node you are looking at clears the selection — and with edges on demand the
-   selection *is* the filter, so a stray click empties the picture. Rule 33 kept the toggle
-   because *undo makes it recoverable*, which is the recovery problem 1 says is invisible.
-   The two are one problem.
+1. **← Back could not reverse a click in the stack — fixed 2026-08-30, `HANDOFF.md` `6i`:
+   one history.** `state.trail` and `selHistory` are merged, with `state.trail` the history
+   and `trailAt` the cursor. Back, ⌘Z and the HUD's undo are three doors onto one function;
+   Back stopped destroying and the bar gained a **Forward**; dedup moved from the label to
+   the subject (two routines called `<module>` are two steps); and **the cap split in two**
+   — `TRAIL_CAP` (50) is the history, `trailCap` is how many the bar shows, and the bar
+   states what falls off *both* edges. Guards mutation-tested at 20/20.
+2. **A click to look is also a click that filters — half-answered by the above.** Rule 33
+   kept `togglePick`'s toggle-off because *undo makes it recoverable*; that promise is now
+   true through a visible control, and driven: clicking the node you are on empties the
+   picture and **one Back restores it**. Whether the toggle should still exist is a separate
+   question and **wants Tom's eye before anything else is done to it**.
 3. **10,015 nodes is hard to comprehend**, which is what the two recorded feature requests
-   exist to answer — sizing a plate by its density, and the readable plate diagram.
+   exist to answer — sizing a plate by its density, and the readable plate diagram. **This
+   is what is left of the three**, and it is the one Tom's *"easy to read or we have
+   failed"* bar was set for.
 
 **After that: the anomaly worklist overlay, blocked on a question** — what makes two
 findings in two versions the same finding. A finding carries no id today and 93 of Mensores'

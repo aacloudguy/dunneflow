@@ -339,7 +339,7 @@ function resetSettings(program, current) {
     graphLayout: 'graph layout', graphTheme: 'graph theme',
     theme: 'theme', palette: 'the colour set', scale: 'interface scale',
     startup: 'startup screen',
-    menuOrder: 'menu order', trailShown: 'the trail', trailCap: 'trail length',
+    menuOrder: 'menu order', trailShown: 'the trail', trailCap: 'how many steps the trail shows',
     density: 'row density', bandScroll: 'scrolling change bands',
     baseRev: 'which version is being read', comparedRev: 'what it is compared with',
     comparedIsNewer: 'which version is taken to be newer',

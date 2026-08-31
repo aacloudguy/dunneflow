@@ -3723,6 +3723,80 @@ warning, and markup another function rewrites is not the markup that renders.
 **Next: tables and the worklist**, then the graph as `colorBy: 'change'` — and that one
 still wants Tom's decision on the colour channel before it is built. Read `6f`.
 
+**6i. Built 2026-08-30: one history.** Tom's decision, from the report in the section
+below: *"I have to use Back too often, and it doesn't always do what I expect."*
+
+*What was wrong.* Two histories, and the split was never designed — it accumulated.
+`state.trail` was the visible record and `selHistory` the invisible ⌘Z one, and
+`onGraphSelect` recorded to the second and never the first. So the button labelled **Back**
+had no record of clicking a node in the stack, which is almost the only thing a reader does
+while exploring it. Rule 51 (two places each holding their own answer to one question)
+crossed with rule 30 (the visible control's subject was not what the reader took it to be).
+
+*Why it was cheap.* They had already half-merged. A trail step has carried its **subject**
+since rule 33; `goToTrailStep` already restored through `applySelectionStep`, which is the
+function undo used; and **neither list was ever persisted**, so there was one shape, one
+restore path and nothing to migrate. `selHistory` and `selAt` are gone, `state.trail` is the
+history, and `trailAt` is the cursor.
+
+*Decisions worth keeping.*
+
+- **One recorder.** `recordSelection(label, note, view)` is the only place a step is made;
+  `pushTrail` keeps its signature and delegates. Its two invariants stay exactly where they
+  were and are still asserted: `publishSelection()` **first**, above the bail, so an undo
+  still tells the sibling window where this one moved; and the `restoringSelection` bail
+  **before any write to the history**, or stepping back would record the step it just
+  returned to.
+- **Dedup by subject, never by label.** `pushTrail` compared labels, which was fine while
+  steps were named by hand and wrong the moment every click makes one: two routines called
+  `<module>` are two subjects with one name. Confirmed by driving it — the trail shows two
+  `<module>` steps side by side, which the old rule would have collapsed.
+- **Looking backwards destroys nothing.** Back popped and a step click truncated. Both are
+  cursor moves now, and the only thing that drops the forward branch is a *new* step. So the
+  bar gained a **Forward**, the `here` mark follows the cursor, and the steps ahead of it
+  render faint and italic rather than being hidden — a history with a cursor knows the
+  journey did not end where you are standing.
+- **The cap split in two, and that is what makes one history workable.** `state.trailCap`
+  bounded the *history*, and merging made that fatal: every graph click is a step now, so
+  twelve would flush the step the reader detoured *from*. `TRAIL_CAP` (50) is the history;
+  `trailCap` is how many the bar shows; and `[data-trailcap]` no longer prunes anything.
+  Measured on Mensores: bar showing 6, `+3 behind · 6 shown · +7 ahead` = **16**, the exact
+  history length, with Back reaching all of it.
+
+*Three defects found by driving, and the third is the one worth reading.*
+
+1. **A step for a cleared selection was labelled `graph`.** `labelFor(null)` is null, so the
+   fallback was `state.view` — and the step a reader most wants back (clicking the node you
+   are on is the toggle-off that empties everything) was named after the view it happened in.
+2. **The bar stated what fell off the back and not the front.** Stepping back through a long
+   trail silently hid everything ahead of the cursor. A window has two edges and design rule
+   1 applies to both.
+3. **The steps painted over the controls beside them, and every measurement said otherwise.**
+   `.trail` carries `min-width: 0` so the buttons are never pushed off, and had no
+   `overflow` — so six steps in a 509 px lane drew straight over the "+7 ahead" counter and
+   the Back button. `getBoundingClientRect` reported all seven children inside the bar and
+   marked visible, because it reports the **layout box and not the ink**. Found by zooming
+   in on the bar after the numbers had already said it was fine. Rule 48's family: what the
+   DOM says and what the reader sees are different questions.
+
+*What this closes, and what it does not.* Tom's second complaint — *"accidentally changing
+the filter by clicking on and off nodes"* — is the same problem, and rule 33 kept that
+toggle on the grounds that *undo makes it recoverable*. Driven: clicking the node you are
+already on empties the picture, and **one Back restores it**, through a visible control. That
+promise is now true. Whether the toggle should still exist is a separate question and wants
+Tom's eye before anything else is done to it.
+
+*Guards.* Seven new, and two rewritten rather than protected — `test_the_selection_can_be_
+taken_back` asserted an ordering against `selHistory`, which no longer exists. Mutation-tested
+at **20/20** over a proved-green baseline (rule 59), after 18/20 with **both survivors the
+guard being weak** — the seventeenth and eighteenth time in five sessions:
+
+- `"let trailAt" in js` is also true of `let trailAtX`, so renaming the cursor away walked
+  past it. It is a word-boundary match now.
+- the bar's two counters were asserted by looking for the words `behind` and `ahead`, which
+  a bar with the whole ahead-counter deleted still contains, because `const ahead = …`
+  declares one. It asserts the rendered output now.
+
 ## Looked at, at the keyboard — Tom, 2026-08-30, after the stack's change colours
 
 The pixels `6h` said it owed a real window. Read as a verdict *and* as a worklist.
@@ -3740,6 +3814,10 @@ nodes, which changes the focus. I have to use Back too often, and it doesn't alw
 I expect."*
 
 ### 1. Back is two histories, and the visible one is blind to the commonest act
+
+> **Fixed 2026-08-30, see `6i` — one history.** What follows is the diagnosis as it stood,
+> kept because the reasoning about the cap is what shaped the fix: the trail bar bounds
+> itself now and the history does not.
 
 **Read from the code rather than reproduced, and it is structural rather than behavioural.**
 `onGraphSelect` (`shell.js:8298`) calls `recordSelection()` — the ⌘Z selection history — and
@@ -3772,6 +3850,11 @@ control, or stay two with the second one named and reachable. That is a design d
 it is Tom's.
 
 ### 2. Clicking to look changes the filter
+
+> **Half-answered 2026-08-30 by `6i`.** Rule 33 kept the toggle on the grounds that undo
+> makes it recoverable; that is now true through a visible control, and driven: clicking the
+> node you are on empties the picture and **one Back restores it**. Whether the toggle
+> should still exist is a separate question and wants Tom's eye.
 
 *"…without accidentally changing the filter by clicking on and off nodes, which changes the
 focus."*
@@ -3817,8 +3900,9 @@ red/green pair is the weakest thing in the product at ΔE 9.5.
 **The real window has now happened**, and the verdict is in the section above: the colours
 and the edges work, the chunk is approved, and the picture is *hard to comprehend at this
 density*. Three things came out of it, and they are one line of work — see "Looked at, at
-the keyboard". The sharpest is that **← Back cannot reverse a click in the stack**: graph
-selections go to the ⌘Z history and never to the trail. Read `6h`.
+the keyboard". The sharpest was that **← Back could not reverse a click in the stack**: graph
+selections went to the ⌘Z history and never to the trail. **Fixed 2026-08-30 — see `6i`,
+one history.** Read `6h`.
 
 ### The colour channel, decided 2026-08-30 — the graph as `colorBy: 'change'`
 

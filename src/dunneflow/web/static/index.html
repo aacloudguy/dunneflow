@@ -143,6 +143,10 @@
           <button data-mode="table" aria-pressed="false">Table</button>
           <button data-mode="doc" aria-pressed="false">Document</button>
           <button data-mode="code" aria-pressed="false">Code</button>
+          <!-- A fifth way of looking at one selection, not a layout inside Graph. The stack
+               draws every thing the program declares; this draws one compartment as a
+               diagram -- a different level of detail, which is the whole point of it. -->
+          <button data-mode="diagram" aria-pressed="false">Diagram</button>
         </div>
       </div>
 
@@ -183,6 +187,11 @@
           `fitView` frame with plain arithmetic instead of the `0.60 : 0.90` fudge the
           pre-merge engine needed while the legend sat on top of the picture.
         -->
+        <!-- Its own mount, kept out of `render()`'s innerHTML path for the reason the graph
+             is: rewriting it on every keystroke would throw away a laid-out SVG, the
+             reader's pan and zoom, and the place they had got to. -->
+        <div class="diagrammount" id="diagramMount" hidden></div>
+
         <div class="graphmount" id="graphMount" hidden>
           <div class="graphcanvas">
             <div class="graphstage" id="graphStage"></div>

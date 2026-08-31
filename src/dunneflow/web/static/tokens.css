@@ -2177,6 +2177,39 @@ kbd { font-family: var(--f-mono); font-size: .66rem; background: var(--sunken);
 .pal-numlabel { font-size: .7rem; color: var(--text-muted); }
 .pal-detail { margin-top: .5rem; }
 
+/* ═══ the compartment diagram ═══
+   A header that stays and a canvas that fills, as two rows -- the shape the navigator and
+   the code pane already use, and for the same reason: `min-height: 0` at every link, or a
+   grid item refuses to shrink below its content and hands the overflow to the document. */
+.diagrammount { display: grid; grid-template-rows: auto minmax(0, 1fr);
+                min-height: 0; overflow: hidden; background: var(--graph-ground); }
+.dgm-head { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap;
+            padding: .4rem .6rem; border-bottom: 1px solid var(--border);
+            background: var(--surface); }
+.dgm-head .hint { font-size: .7rem; }
+.dgm-toggle { display: inline-flex; align-items: center; gap: .25rem; font-size: .72rem; }
+.dgm-head select { font: inherit; font-size: .75rem; padding: .15rem .3rem;
+                   background: var(--raised); color: var(--text);
+                   border: 1px solid var(--border); border-radius: .2rem; }
+/* `touch-action: none` so a drag pans the drawing instead of scrolling the page, and
+   `cursor: grab` because that gesture genuinely is a grab. */
+.dgm-canvas { position: relative; overflow: hidden; min-height: 0;
+              touch-action: none; cursor: grab; }
+.dgm-canvas:active { cursor: grabbing; }
+/* Transformed rather than re-laid-out: a pan moves this wrapper and never asks Graphviz
+   for anything, so eighty boxes cost a compositor transform per frame. */
+.dgm-pan { position: absolute; inset: 0; transform-origin: 0 0; will-change: transform; }
+.dgm-pan svg { width: 100%; height: 100%; }
+/* A node is a thing to click, and says so. The port is dashed in the DOT already; this is
+   the affordance rather than the meaning. */
+.dgm-pan g.node { cursor: pointer; }
+.dgm-pan g.node:hover polygon, .dgm-pan g.node:hover ellipse,
+.dgm-pan g.node:hover path { stroke: var(--accent); stroke-width: 2; }
+.dgm-pan g.node text { fill: var(--text); }
+.dgm-pan g.node polygon, .dgm-pan g.node ellipse, .dgm-pan g.node path { fill: var(--surface); }
+.dgm-pan g.edge path { stroke: var(--graph-edge); }
+.dgm-pan g.edge polygon { fill: var(--graph-edge); stroke: var(--graph-edge); }
+
 /* The shape key: every kind in the outline the chosen set actually draws it in.
    A grid rather than a flow, so the six names line up and the eye compares outlines down
    a column instead of hunting them along a line. Every dimension in rem (design rule 3) --

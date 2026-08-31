@@ -35,7 +35,7 @@ from ..docstore import DocStore
 from ..resolve import version as version_order
 from ..sourcedb import SourceStore
 from ..store import Store
-from . import changes, filediff, packages, queries
+from . import changes, diagram, filediff, packages, queries
 from .code import build_file, build_files
 from .cover import anomalies as build_anomalies
 from .cover import build as build_cover
@@ -280,6 +280,11 @@ class _Base:
     # version*: a base switch must throw all of it away, and a frozen record swapped whole
     # does that for free.
     payloads: dict[tuple[str, int], dict[str, Any]] = field(default_factory=dict)
+    # The compartment diagrams, built once per base for the same reason the payloads are:
+    # they are a fact about *this version* of the program, and a switch throws them away
+    # with everything else. One pass over the model builds all fifty-three, so this is
+    # keyed by nothing -- it is the whole set or it is empty.
+    compartments: dict[str, Any] = field(default_factory=dict)
 
 
 # What building a base costs, in the order it is paid, so a reader watching a switch is
@@ -430,7 +435,11 @@ class _Live:
                       files=files, naming=naming, glossary=glossary, cover=cover,
                       # The default under its own key, and the *same object*: `payload` and
                       # `payloads[default_level()]` are one truth with an index over it.
-                      payloads={default_level(): payload})
+                      payloads={default_level(): payload},
+                      # Empty rather than built: fifty-three diagrams cost a model build,
+                      # and a session that never opens Diagram mode must not pay for it at
+                      # every switch. The route fills it on first ask.
+                      compartments={})
         with self.lock:
             outgoing = self.current
             self.current = fresh
@@ -599,6 +608,67 @@ class _Handler(BaseHTTPRequestHandler):
                                         level=level, min_disk=min_disk)
                 base.payloads[key] = payload
         self._json(payload)
+
+    def _r_diagram(self, q: dict[str, list[str]]) -> None:
+        """A compartment as a diagram, or the list of compartments there are.
+
+        With no `id`, the index: every compartment and what it holds, so the reader can
+        choose one without fetching fifty-three diagrams to find out. With an `id`, that
+        compartment's **DOT** -- which is what the browser draws, with Graphviz -- and its
+        **Mermaid**, which is the same graph in a form a reader can paste into another tool.
+        Both come from one `Compartment`, so the picture and the export cannot describe
+        different graphs (rule 13).
+
+        An unknown id is a 404 and never an empty diagram. `graph.py` merges small packages
+        into `pkg:<small>`, so an id that is a real package and not a real plate exists; a
+        blank picture would be indistinguishable from a compartment that genuinely holds
+        nothing, and this program has none of those.
+
+        Built once per base and cached whole. The fold is a single pass over a model that
+        costs a couple of seconds to construct, and every compartment comes out of that one
+        pass -- so building "just this one" would be building all of them and throwing
+        fifty-two away.
+        """
+        with self._live.lock:
+            base = self._live.current
+            if not base.compartments:
+                level, min_disk = default_level()
+                model = build(base.store, level=level, min_disk=min_disk)
+                # Filled in place, never reassigned: `_Base` is frozen so that a switch
+                # replaces every field together, and the payload cache above earns its
+                # mutability the same way.
+                base.compartments.update(diagram.build(model))
+            comps = base.compartments
+
+        wanted = (q.get("id") or [""])[0]
+        if not wanted:
+            self._json({"compartments": [
+                {"id": c.id, "name": c.name, **c.stats}
+                for c in sorted(comps.values(), key=lambda c: (-c.stats["boxes"], c.name))]})
+            return
+        c = comps.get(wanted)
+        if c is None:
+            self.send_error(404, f"no compartment {wanted!r}")
+            return
+        self._json({
+            "id": c.id, "name": c.name, **c.stats,
+            # Ports off unless asked for: see `diagram.dot` for the measurement. The page
+            # states the crossing count either way, so what is not drawn is never silent.
+            "dot": diagram.dot(c, ports=(q.get("ports") or ["0"])[0] == "1"),
+            "portsDrawn": (q.get("ports") or ["0"])[0] == "1",
+            "mermaid": diagram.mermaid(c),
+            # What each box stands for, so a click on the drawing resolves to something this
+            # program knows about rather than to a shape (rule 30). Keyed by the id Graphviz
+            # writes into the SVG, which is the box id itself.
+            #
+            # **`by_id`, not `boxes`.** It was `boxes` for one run, and `**c.stats` already
+            # carries a `boxes` *count* -- so the map silently overwrote the number and the
+            # page would have read a count off an object. One key meaning two things is
+            # rule 32 in a payload, and it is invisible because both halves are real.
+            "by_id": {b.id: {"label": b.label, "kind": b.kind, "holds": b.holds,
+                             "members": b.members, **b.detail}
+                      for b in c.boxes + c.ports},
+        })
 
     def _r_packages(self, q: dict[str, list[str]]) -> None:
         """The overview altitude: every package as a box, and what passes between them.
@@ -1155,6 +1225,7 @@ class _Handler(BaseHTTPRequestHandler):
         "/": "_r_index",
         "/index.html": "_r_index",
         "/api/graph": "_r_graph",
+        "/api/diagram": "_r_diagram",
         "/api/cover": "_r_cover",
         "/api/routines": "_r_routines",
         "/api/packages": "_r_packages",

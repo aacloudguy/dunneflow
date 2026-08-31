@@ -1,6 +1,9 @@
 {
   "deck.gl": "9.3.10",
   "mermaid": "11.17.2",
+  "@hpcc-js/wasm": "2.35.0",
   "license": "MIT",
-  "note": "mermaid is vendored for the plate diagram and is not yet loaded by any page. It must be initialised with htmlLabels:false -- an SVG carrying <foreignObject> refuses to rasterise into a canvas, so a plate image built from one is silently blank. Measured 2026-08-31: plain <text> gives ink, foreignObject never decodes."
+  "graphviz": "15.1.0, compiled to WebAssembly inside graphviz.umd.js. The wasm is embedded in that one file, so a plain script tag works with no bundler and no second fetch -- the same shape as the deck.gl vendoring. All seven engines are compiled in: dot, neato, fdp, circo, twopi, osage, patchwork.",
+  "why-graphviz-draws": "dot with pack=true packs disconnected components instead of laying them out in a row. Measured on Mensores: pkg:cli goes from 11991x514 (23:1) under Mermaid's dagre to 782x744 (1.1:1), and from 2.5 s to 83 ms. dagre has no component-packing, aspect-ratio or width option at all. Pass pack=true ALONE -- size merely scales a finished drawing and ratio fights the packing.",
+  "why-mermaid-stays": "Mermaid is kept to EMIT source a reader can copy into other tools. It does not draw. If it is ever made to draw again it must be initialised htmlLabels:false -- an SVG carrying <foreignObject> refuses to rasterise into a canvas, so anything built from one is silently blank."
 }

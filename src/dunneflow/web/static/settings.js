@@ -112,6 +112,14 @@ const DEFAULTS = {
    * switch in the controls box beside `plates`, because it is something a reader flips
    * while reading and not a preference they set once. */
   diagram: false,
+  /* Which compartment the Diagram mode has open. Persisted because it is where the reader
+     was, and coming back to a different compartment than you left is the same forgetting
+     `codeFile` exists to prevent. Null means "decide from the selection, or the largest". */
+  diagramId: null,
+  /* Whether the diagram draws its crossings to other compartments. Off by default:
+     drawn, they connect what was disconnected so nothing packs, and on a small
+     compartment they outnumber the subject. The count is stated either way. */
+  diagramPorts: false,
   /* Which shapes the boxes are drawn in, **as a set** rather than a shape per kind.
    *
    * The same decision the colour sets took, and Tom's: a reader assigning shapes one at a
@@ -395,6 +403,8 @@ function resetSettings(program, current) {
     plateSize: 'how much a plate\'s width says about what it holds',
     collapseUnused: 'collapsed plates',
     diagram: 'the plate drawn as a diagram', nodeShapes: 'which shapes the boxes take',
+    diagramId: 'which compartment the diagram has open',
+    diagramPorts: 'whether the diagram draws its crossings',
     showPlates: 'the plates themselves', edgesInMotion: 'edges while moving',
     pointerShown: 'the you-are-here pointer', pointerColor: 'the pointer colour',
     pointerPlace: 'where the pointer stands',

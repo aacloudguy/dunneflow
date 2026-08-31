@@ -3919,6 +3919,87 @@ three shape sets rendering. Guards mutation-tested at **10/10** over a proved-gr
 
 Still unseen: the pixels. Rule 38 is unchanged.
 
+## Diagram mode — built 2026-08-31
+
+Tom: *"Keep Mermaid as emitted source, but switch to Graphviz for drawing… Add this as
+another kind of Graph, not just an option inside Graph. It's a different point of view, like
+Table, Document, or Code."*
+
+A fifth centre mode. `web/diagram.py` folds the model into one **compartment** per plate --
+a box per class, a box per file's loose functions, a box per boundary kind -- and emits it
+twice from one pass: **DOT**, which Graphviz draws, and **Mermaid**, which a reader copies
+elsewhere. One model, two emitters, so the picture and the export cannot describe different
+graphs (rule 13).
+
+```
+53 compartments · boxes median 10, p90 54, max 107 · /api/diagram in 140 ms
+pkg:mcp        8 boxes over 134 routines   1.26:1   drawn in  40 ms
+pkg:governance 40 boxes over 202 routines  1.13:1   drawn in  31 ms
+pkg:quaestor   83 boxes over 487 routines  1.98:1   drawn in  49 ms
+```
+
+Graphviz 15.1.0 as `@hpcc-js/wasm` 2.35.0 -- one UMD script tag, 822 KB, the wasm embedded
+so there is no second fetch and no bundler, exactly the shape of the deck.gl vendoring.
+Loaded **lazily**: most sessions never open this mode, and 822 KB at boot would slow the
+screen everyone sees for the one many never do.
+
+### What it does
+
+- **A picker**, and the compartment the current selection sits on when there is one -- five
+  modes are five ways of looking at one selection, so arriving here from a selected routine
+  lands on its compartment rather than on a default nobody chose.
+- **Pan and zoom on a transform**, not a viewBox: the SVG is laid out once and only the
+  wrapper moves, so a drag costs a compositor transform and never a re-layout.
+- **A box click reaches the shared selection** -- `selectFromNav` with the routines it holds,
+  so the inspector fills and the stack lights. A fold that cannot be got back through is a
+  filter, and a box that cannot name what it stands for is a shape (rule 30).
+- **A port click flips the book** to that compartment, which is the navigation Tom asked for.
+- Counts always stated: boxes, the routines they stand for, flows within, crossings, how
+  many compartments those reach, and how many boxes have no flow either way.
+
+### Crossings are off by default, and that is rule 19 arriving one level up
+
+Drawn, they do two things and both are bad: they connect what was disconnected so `pack` has
+nothing left to pack, and on a small compartment they **outnumber the subject** -- `pkg:mcp`
+is 8 boxes to 29 ports. Measured, with Tom's shadow proposal beside it:
+
+```
+                no crossings     ports         shadows      nodes: boxes / +ports / +shadows
+pkg:mcp            1.26:1        7.69:1        9.52:1              8 / +29 / +67
+pkg:governance     1.13:1        2.47:1        4.58:1             40 / +25 / +80
+pkg:quaestor       1.98:1        3.43:1        6.64:1             83 / +41 / +175
+```
+
+**Tom's shadows are the better model and the worse picture, drawn all at once.** A port says
+only which compartment; a shadow names the actual far-side class or file, and 79% of them
+would be degree-1 leaves, which layout engines handle far better than a port's hubs. But
+either way a single enormous row crosses the picture and swamps the compartment it is about.
+
+What rule 19 also prescribes is how to have them: **on demand, for what is selected.** A box
+reaches 3 to 6 far-side boxes on average, so a shadow set for *one* box is a handful rather
+than eighty. That is the next thing to build and it takes Tom's model, spent where the reader
+asked rather than everywhere at once.
+
+### One bug worth the name
+
+`boxes` was both a count and a map in the payload -- `**c.stats` carries a box *count*, and
+the box map overwrote it, so the page would have read a count off an object. One key meaning
+two things is rule 32 in a payload, and it is invisible because both halves are real. It is
+`by_id` now, and a guard asserts the map is never keyed `boxes` again.
+
+### Verified
+
+Driven: the mode button, the mount swapping with the graph's, the picker, the crossings
+toggle changing the fetch and the picture (8 nodes to 37), a **port click flipping to
+`pkg:storage`**, a **box click filling the inspector** with
+`mensores.storage._graph_backend.BackendCapabilityError`, the counts, and **no console
+errors**. The compartment index is 140 ms; a compartment is 31–76 ms to fetch and draw.
+
+Still to build: the second level -- opening a box into its own routines, which is bounded at
+4 to 6 median -- shadows on demand, and the Mermaid export Tom deferred (*"a Mermaid drawing
+of what is rendered, a complete set, or per selected plate"*). The source is already emitted
+and served on every compartment; nothing surfaces it yet.
+
 ## The ribbon, diagnosed and fixed — 2026-08-31
 
 Tom: *"Give up the plate image - let's render what's real and not force it to comply to a

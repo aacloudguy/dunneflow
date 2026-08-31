@@ -202,6 +202,8 @@ const state = {
   plateSize: { routine: 1, module: 1 },
   collapseUnused: false,  // close the gap a plate nothing is looking at leaves behind
   diagram: false,         // what is lit, drawn as labelled boxes rather than as dots
+  diagramId: null,        // which compartment Diagram mode has open
+  diagramPorts: false,    // draw the crossings to other compartments -- see diagram.py
   nodeShapes: "kind",     // a shape *set*, never a shape per kind -- see settings.js
   /* Which panes are open. This existed in `settings.js` from the start -- persisted,
    * named in the reset dialog -- and nothing anywhere read it: the pre-merge graph had
@@ -2096,6 +2098,161 @@ document.addEventListener("click", (ev) => {
   if (Graph.mounted()) requestAnimationFrame(() => Graph.resize());
 });
 
+/* ═══ the compartment diagram ═══════════════════════════════════════════════════
+ *
+ * A different level of detail from the stack, and a mode of its own rather than a layout
+ * inside Graph -- Tom's call, and the right one: the stack draws every thing the program
+ * declares, this draws one compartment's classes, its files of loose functions, what it
+ * touches, and the flow between them.
+ *
+ * **Graphviz draws it, not Mermaid**, and that is measured rather than preferred. Mermaid's
+ * dagre has no component-packing option, and roughly half a compartment's boxes have no
+ * within-compartment edge, so they land side by side on rank 0: `pkg:cli` is 11991x514
+ * pixels at 23:1 in 2.5 s. Graphviz `dot` with `pack=true` draws the same graph at 782x744,
+ * 1.1:1, in 83 ms. The server still emits Mermaid for the same compartment, from the same
+ * model, for a reader to copy elsewhere.
+ *
+ * Loaded **lazily and once**. The wasm is 822 KB and most sessions never open this mode, so
+ * paying for it at boot would slow the screen everyone sees for the one many never do --
+ * the same argument `ensureGraph` makes about the stack's payload. */
+let DIAGRAM = null;         // the compartment index, once fetched
+let diagramNow = null;      // the compartment on screen, whole
+let diagramBusy = false;
+let diagramErr = null;
+let gvLoading = null;       // the in-flight load, so two calls cannot fetch it twice
+
+async function graphviz() {
+  if (window.__gv) return window.__gv;
+  if (gvLoading) return gvLoading;
+  gvLoading = (async () => {
+    await new Promise((ok, no) => {
+      const el = document.createElement("script");
+      el.src = "/vendor/graphviz.umd.js";
+      el.onload = ok;
+      el.onerror = () => no(new Error("the drawing engine could not be loaded"));
+      document.head.appendChild(el);
+    });
+    const mod = window["@hpcc-js/wasm/graphviz"];
+    if (!mod) throw new Error("the drawing engine loaded but exported nothing");
+    window.__gv = await mod.Graphviz.load();
+    return window.__gv;
+  })();
+  return gvLoading;
+}
+
+/* Which compartment to open on.
+ *
+ * The one the current selection is on, when there is one -- the modes are five ways of
+ * looking at **one** selection, so arriving in Diagram mode from a selected routine should
+ * land on that routine's compartment rather than on a default nobody chose. Otherwise the
+ * largest, because it is the one most worth having drawn for you. */
+function diagramWanted() {
+  if (state.diagramId) return state.diagramId;
+  const on = Graph.mounted() ? Graph.selectedDisks() : [];
+  if (on.length && DIAGRAM) {
+    const hit = DIAGRAM.find(c => c.id === on[0]);
+    if (hit) return hit.id;
+  }
+  return DIAGRAM && DIAGRAM.length ? DIAGRAM[0].id : null;
+}
+
+async function ensureDiagram() {
+  if (state.view !== "diagram" || diagramBusy) return;
+  diagramBusy = true;
+  diagramErr = null;
+  renderDiagram();
+  try {
+    if (!DIAGRAM) {
+      const r = await fetch("/api/diagram");
+      if (!r.ok) throw new Error(`the compartment list came back ${r.status}`);
+      DIAGRAM = (await r.json()).compartments;
+    }
+    const want = diagramWanted();
+    if (!want) throw new Error("this program has no compartments to draw");
+    if (!diagramNow || diagramNow.id !== want
+        || !!diagramNow.portsDrawn !== !!state.diagramPorts) {
+      const r = await fetch(`/api/diagram?id=${encodeURIComponent(want)}`
+                            + (state.diagramPorts ? "&ports=1" : ""));
+      if (!r.ok) throw new Error(`${want} came back ${r.status}`);
+      diagramNow = await r.json();
+      diagramNow.svg = null;
+    }
+    if (!diagramNow.svg) {
+      const gv = await graphviz();
+      const t0 = performance.now();
+      diagramNow.svg = gv.layout(diagramNow.dot, "svg", "dot");
+      diagramNow.drawMs = Math.round(performance.now() - t0);
+    }
+  } catch (err) {
+    diagramErr = err.message || String(err);
+    console.error("[dunneflow] the diagram could not be drawn:", err);
+  }
+  diagramBusy = false;
+  renderDiagram();
+}
+
+/* Painted into its own mount, never through `render()`. Rewriting this on every keystroke
+ * would throw away a laid-out SVG and the reader's pan and zoom -- the same reason the
+ * stack keeps a container `render()` does not touch. */
+function renderDiagram() {
+  const host = $("#diagramMount");
+  if (!host) return;
+  if (diagramErr) {
+    host.innerHTML = `<div class="dgm-head"><b>The diagram could not be drawn.</b>
+      <span class="muted">${esc(diagramErr)}</span></div>`;
+    return;
+  }
+  if (!diagramNow || !diagramNow.svg) {
+    host.innerHTML = `<div class="dgm-head"><span class="muted">${
+      diagramBusy ? "drawing…" : "nothing drawn yet"}</span></div>`;
+    return;
+  }
+  const c = diagramNow;
+  const opts = (DIAGRAM || []).map(x =>
+    `<option value="${esc(x.id)}" ${x.id === c.id ? "selected" : ""}>${
+      esc(x.name)} — ${x.boxes} boxes</option>`).join("");
+  /* Design rule 1: what is drawn and what it stands for, always. A diagram of 83 boxes over
+     487 routines is a fold, and a fold that does not say what it folded is a filter. */
+  host.innerHTML = `
+    <div class="dgm-head">
+      <select id="dgmPick" aria-label="Which compartment to draw">${opts}</select>
+      <span class="hint"><b class="num">${c.boxes}</b> boxes over
+        <b class="num">${(c.routines || 0).toLocaleString()}</b> routines ·
+        <b class="num">${c.inside}</b> flows within ·
+        <b class="num">${c.crossing}</b> crossing to
+        <b class="num">${c.ports}</b> other compartments${
+        c.portsDrawn ? "" : ` <span class="muted">(not drawn)</span>`}${
+        c.unlinked ? ` · <b class="num">${c.unlinked}</b> with no flow either way` : ""}
+        <span class="muted">· drawn in ${c.drawMs} ms</span></span>
+      ${/* Rule 19's own switch, one level up. Drawn, the crossings connect what was
+            disconnected so nothing packs, and in a small compartment they outnumber the
+            subject -- 8 boxes to 29 ports on `pkg:mcp`. Off by default, always counted. */""}
+      <label class="dgm-toggle"><input type="checkbox" id="dgmPorts" ${
+        c.portsDrawn ? "checked" : ""}> <span class="muted">show crossings</span></label>
+      <button class="gbtn" data-dgm="fit">fit</button>
+    </div>
+    <div class="dgm-canvas" id="dgmCanvas"><div class="dgm-pan" id="dgmPan">${c.svg}</div></div>`;
+  const svg = host.querySelector("#dgmPan svg");
+  if (svg) {
+    svg.removeAttribute("width");
+    svg.removeAttribute("height");
+    svg.style.cssText = "width:100%;height:100%;display:block";
+    svg.setAttribute("preserveAspectRatio", "xMidYMid meet");
+  }
+  dgmFit();
+}
+
+/* Pan and zoom, on a transform rather than a viewBox: the SVG is laid out once and only the
+ * wrapper moves, so a drag costs a compositor transform and never a re-layout of eighty
+ * boxes. */
+const dgmView = { x: 0, y: 0, k: 1 };
+function dgmApply() {
+  const pan = $("#dgmPan");
+  if (pan) pan.style.transform =
+    `translate(${dgmView.x}px, ${dgmView.y}px) scale(${dgmView.k})`;
+}
+function dgmFit() { dgmView.x = 0; dgmView.y = 0; dgmView.k = 1; dgmApply(); }
+
 /* ═══ mode toggle ═══ */
 $$("#modes button").forEach(b => b.addEventListener("click", () => {
   state.mode = b.dataset.mode;
@@ -2111,7 +2268,89 @@ $$("#modes button").forEach(b => b.addEventListener("click", () => {
    * Reported as *the graph should have been there*, and it should. */
   render();
   if (state.mode === "graph") ensureGraph();
+  /* Paint, then build -- the same order the graph needed and for the same reason: the mount
+     is `hidden` from the previous render until `render()` has run, and a pane measured while
+     hidden is 0x0. */
+  if (state.mode === "diagram") ensureDiagram();
 }));
+
+/* The diagram's own controls, delegated from the mount because that mount is rewritten
+ * whenever a different compartment is drawn -- handlers bound to elements would stop working
+ * silently the moment they were replaced. */
+document.addEventListener("click", (ev) => {
+  const fit = ev.target.closest("[data-dgm]");
+  if (fit) { dgmFit(); return; }
+  const mount = $("#diagramMount");
+  if (!mount || mount.hidden || !ev.target.closest("#diagramMount")) return;
+  const g = ev.target.closest("g.node");
+  if (!g || !diagramNow) return;
+  const box = diagramNow.by_id[g.id];
+  if (!box) return;
+  /* **A port is a place, a box is a thing.** Clicking a port flips the book to that
+     compartment; clicking a box selects what it holds in the one selection the whole
+     dashboard shares, so the inspector fills and the stack lights without this view owning
+     a second answer to "what am I looking at" (rule 51). */
+  if (box.kind === "port") {
+    state.diagramId = box.plate;
+    diagramNow = null;
+    pushTrail("diagram", box.label);
+    used("diagram:port");
+    ensureDiagram();
+    return;
+  }
+  if (box.members && box.members.length) {
+    used("diagram:box");
+    selectFromNav({ nodes: box.members });
+  }
+});
+
+document.addEventListener("change", (ev) => {
+  if (ev.target.id === "dgmPorts") {
+    state.diagramPorts = ev.target.checked;
+    used("diagram:ports:" + (state.diagramPorts ? "on" : "off"));
+    persist();
+    ensureDiagram();
+    return;
+  }
+  if (ev.target.id !== "dgmPick") return;
+  state.diagramId = ev.target.value;
+  diagramNow = null;
+  pushTrail("diagram", ev.target.selectedOptions[0].textContent.split("—")[0].trim());
+  used("diagram:pick");
+  persist();
+  ensureDiagram();
+});
+
+/* Drag to pan, wheel to zoom. On the wrapper's transform, so neither costs a re-layout. */
+(function dgmGestures() {
+  let from = null;
+  document.addEventListener("pointerdown", (ev) => {
+    const c = ev.target.closest("#dgmCanvas");
+    if (!c) return;
+    from = { x: ev.clientX - dgmView.x, y: ev.clientY - dgmView.y };
+    c.setPointerCapture?.(ev.pointerId);
+  });
+  document.addEventListener("pointermove", (ev) => {
+    if (!from) return;
+    dgmView.x = ev.clientX - from.x;
+    dgmView.y = ev.clientY - from.y;
+    dgmApply();
+  });
+  document.addEventListener("pointerup", () => { from = null; });
+  document.addEventListener("wheel", (ev) => {
+    const c = ev.target.closest("#dgmCanvas");
+    if (!c) return;
+    ev.preventDefault();
+    const r = c.getBoundingClientRect();
+    const px = ev.clientX - r.left, py = ev.clientY - r.top;
+    const k = Math.max(0.15, Math.min(12, dgmView.k * (ev.deltaY < 0 ? 1.12 : 1 / 1.12)));
+    // Anchor the point under the cursor, or zooming walks the drawing out of the pane.
+    dgmView.x = px - (px - dgmView.x) * (k / dgmView.k);
+    dgmView.y = py - (py - dgmView.y) * (k / dgmView.k);
+    dgmView.k = k;
+    dgmApply();
+  }, { passive: false });
+})();
 
 /* ═══ graph layout: two drawings of one selection ═══ */
 /* Delegated, because the same control is drawn in two places -- the crumb bar while you
@@ -3829,7 +4068,7 @@ function redoSelection() {
  * toggle over one shared selection, not three destinations** -- switching never costs the
  * reader their place.
  */
-const CENTRE_MODES = ["graph", "table", "doc", "code"];
+const CENTRE_MODES = ["graph", "table", "doc", "code", "diagram"];
 
 /* Going back to a step, and the one thing that surprised a reader about it.
  *
@@ -5622,8 +5861,13 @@ function render() {
    * touches -- innerHTML on the viewport would destroy the deck.gl canvas, its GL context
    * and the reader's place, on every keystroke. */
   const stackOn = state.view === "graph" && state.graphLayout === "stack";
+  /* Three mounts, exactly one on screen. The diagram keeps its own for the reason the graph
+     does: a laid-out SVG and the reader's pan are destroyed by an `innerHTML` write, and
+     `render()` runs on every keystroke. */
+  const diagramOn = state.view === "diagram";
   $("#graphMount").hidden = !stackOn;
-  $("#viewMount").hidden = stackOn;
+  $("#diagramMount").hidden = !diagramOn;
+  $("#viewMount").hidden = stackOn || diagramOn;
   /* The pop-up hides with its mount, but `hoverAt` would not: coming back and pointing at
      the same node again would find the id unchanged, take the "moving within the same
      node" path, and reposition an empty card. Clearing the subject is what makes the two
@@ -5635,6 +5879,7 @@ function render() {
     renderGraphFurniture();
     vp.innerHTML = "";
   }
+  if (diagramOn) vp.innerHTML = "";
   /* No early return. The graph is a view in the centre pane, not a page -- the inspector,
    * the trail, the filter strip and the navigator counts all still belong on screen, and
    * returning here would quietly empty three panes whenever the stack was showing. */
@@ -6451,6 +6696,11 @@ const WIRED_ATTRS = new Set([
      is stamped `data-shapeset`, which is what keeps it clear of the `data-nav` collision
      those two are named to avoid. */
   "shapeset",
+  /* The compartment diagram's own controls. `dgm` is the fit button; the compartment picker
+     is an id and the boxes are routed by Graphviz's own `g.node` class and the `id=` the
+     server put on each one, which is the box id -- so a click resolves to a thing this
+     program knows about rather than to a shape (rule 30). */
+  "dgm",
   /* The base switch's one control: dismiss a switch that failed. Only ever rendered in the
      failed state -- there is nothing to dismiss while a rebuild is running, and offering a
      cancel that cannot stop the server would be a control that looks live and is not. */
@@ -8308,7 +8558,7 @@ const PERSISTED = [
   "diskOrder", "diskColors", "colorBy", "sortMode", "filterMode", "direction",
   "level", "minDisk",
   "nodeSize", "spreadX", "spreadY", "spreadZ", "plateSize", "collapseUnused",
-  "diagram", "nodeShapes",
+  "diagram", "nodeShapes", "diagramId", "diagramPorts",
   "searchCase", "searchWord", "searchRegex",
   "panels", "inspectorAuto", "navWidth", "codeWidth", "codeFile", "codeOverlay",
   "tableOverlay",

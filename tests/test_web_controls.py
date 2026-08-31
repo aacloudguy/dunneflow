@@ -1298,6 +1298,94 @@ def test_a_panes_fold_control_is_not_inside_its_content() -> None:
     )
 
 
+def test_the_diagram_draws_with_graphviz_and_exports_mermaid() -> None:
+    """Two emitters, one model — and only one of them draws.
+
+    Mermaid's dagre has no component-packing, aspect-ratio or width option, and roughly half
+    a compartment's boxes have no within-compartment edge, so they land side by side on rank
+    0: `pkg:cli` is 11991x514 at 23:1 in 2.5 s. Graphviz `dot` with `pack=true` draws the
+    same graph at 782x744, 1.1:1, in 83 ms. So Graphviz draws and Mermaid is kept to emit
+    source a reader can copy elsewhere.
+
+    Both come from one `Compartment` in one pass, which is the only thing that makes offering
+    two representations safe: a second walk over the store would be a second answer to what
+    is in a compartment, and the export would drift from the picture (rule 13).
+
+    And `pack=true` must be **alone**. It was first tried beside `ratio=compress,
+    size="14,10"` and appeared to do almost nothing, because `size` merely scales a finished
+    drawing while `ratio` fights the packing — a probe that changes two things at once
+    measures neither.
+    """
+    root = Path(__file__).resolve().parents[1]
+    py = (root / "src/dunneflow/web/diagram.py").read_text(encoding="utf-8")
+
+    assert "def dot(" in py and "def mermaid(" in py, "the two emitters are not both here"
+    graph_attrs = re.search(r'f\'  graph \[rankdir=\{rankdir\}, ([^\']*)', py)
+    assert graph_attrs, "the DOT graph attributes changed shape -- this test is blind"
+    attrs = graph_attrs.group(1)
+    assert "pack=true" in attrs, (
+        f"pack=true is gone from the DOT: {attrs!r}. Without it Graphviz rows disconnected "
+        "components exactly as dagre does, and the compartment is a ribbon again"
+    )
+    for poison in ("ratio=", "size="):
+        assert poison not in attrs, (
+            f"{poison} is back beside pack=true: {attrs!r}. `size` scales a finished drawing "
+            "and `ratio` fights the packing; together they hid the fix for a whole round"
+        )
+
+    # One model, two emitters -- neither may go back to the store for itself.
+    for fn in ("def dot(", "def mermaid("):
+        body = py.split(fn, 1)[1].split("\ndef ", 1)[0]
+        assert "Store" not in body and "query(" not in body, (
+            f"{fn} reads the store itself, so the drawing and the export can describe "
+            "different graphs"
+        )
+
+    # Ports are off unless asked for -- design rule 19, one level up from the stack.
+    assert "ports: bool = False" in py, (
+        "crossings are drawn by default. They connect what was disconnected so nothing "
+        "packs (107 boxes go from 1746x1098 to 4871x1331), and on a small compartment they "
+        "outnumber the subject -- pkg:mcp is 8 boxes to 29 ports"
+    )
+    js = _read("shell.js")
+    head = _fn(js, "renderDiagram")
+    assert "c.portsDrawn" in head and "not drawn" in head, (
+        "the page does not say the crossings are undrawn -- design rule 1: a count without "
+        "the fact that it is not on screen is a silent filter"
+    )
+
+
+def test_a_diagram_box_carries_what_it_stands_for() -> None:
+    """A fold that cannot be got back through is a filter.
+
+    A box is a class or a file's loose functions -- 83 boxes over `quaestor`'s 487 routines.
+    Clicking one has to reach the selection the whole dashboard shares, or the diagram is a
+    picture beside the product rather than a view of it, and the box is a shape (rule 30).
+    A port is the other case: it stands for somewhere else, so it is a *place* and clicking
+    it moves the reader rather than selecting anything.
+    """
+    py = (Path(__file__).resolve().parents[1]
+          / "src/dunneflow/web/diagram.py").read_text(encoding="utf-8")
+    assert "members: list[str]" in py, "a box no longer records the nodes it stands for"
+    assert "box.members.append(n.id)" in py, "nothing fills a box's members"
+
+    serve = (Path(__file__).resolve().parents[1]
+             / "src/dunneflow/web/serve.py").read_text(encoding="utf-8")
+    route = serve.split("def _r_diagram(", 1)[1].split("\n    def ", 1)[0]
+    assert '"by_id"' in route, "the payload no longer says what each box is"
+    assert '"boxes": {' not in route, (
+        "the box map is keyed `boxes` again, which `**c.stats` already uses for the box "
+        "*count* -- the map overwrites the number and the page reads a count off an object"
+    )
+
+    js = _read("shell.js")
+    assert 'box.kind === "port"' in js, "the diagram no longer tells a place from a thing"
+    assert "selectFromNav({ nodes: box.members })" in js, (
+        "clicking a box does not reach the shared selection, so the diagram owns a second "
+        "answer to what the reader is looking at"
+    )
+
+
 def test_every_declared_data_array_is_assigned_somewhere() -> None:
     """`let X = []` that nothing ever writes to is an empty view with no symptom.
 

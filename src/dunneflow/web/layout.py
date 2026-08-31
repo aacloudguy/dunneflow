@@ -28,9 +28,25 @@ from .graph import GraphModel
 # spokes, which is why a sunflower packs evenly; any rational fraction of a turn does.
 GOLDEN_ANGLE = math.pi * (3.0 - math.sqrt(5.0))
 
-# One disk's radius in world units. Disks are drawn the same size regardless of how much
-# they hold, so a plate with 900 nodes and one with 30 read as the same kind of object;
-# density then carries the information rather than area.
+# One disk's radius in world units, and the width of the *widest* plate rather than of
+# every plate.
+#
+# This said that disks are drawn the same size regardless of how much they hold, so a plate
+# with 900 nodes and one with 30 read as the same kind of object and density carries the
+# information rather than area. **That was tried and it is the wrong way round**, and the
+# note is rewritten rather than left standing beside code that contradicts it. At one width
+# a plate of 991 and a plate of 6 are a solid mass and a sparse ring, so a reader has to
+# compare two textures to learn a number the picture could simply have shown them; on
+# Mensores 25 of 53 plates hold under a hundred things and every one of them wasted the
+# full footprint of the largest. Area says it, and it is the channel that was going spare.
+#
+# The sizing itself is **not here**, and that is deliberate. `phyllotaxis` is radially
+# uniform, so scaling a plate's placed coordinates by a factor is exactly computing it at a
+# smaller radius -- which makes plate width a *view* property like Z and the spreads,
+# owned by the renderer, reversible from an unscaled base, and settable without asking the
+# server for a second payload. See `applyLayout` in `static/graph.js`, and `plateSize` in
+# `static/settings.js` for the strength the reader sets. What is computed here is the
+# arrangement every width is a multiple of.
 DISK_RADIUS = 1000.0
 
 # Vertical gap between plates. Deliberately small against `DISK_RADIUS`: fifty-one plates

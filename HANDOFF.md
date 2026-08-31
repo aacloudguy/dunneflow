@@ -3845,6 +3845,140 @@ question answered first — what makes two findings in two versions the same fin
 carries no id and 93 of Mensores' 106 are `LOST_EDGE`, so pairing them would invent an
 identity (rule 1).
 
+## Sizing a plate by what it holds — built 2026-08-31
+
+**`6k`.** The first of the two recorded feature requests, and the smaller one. Three
+questions went to Tom before any code and he took all three recommendations.
+
+```
+routine   largest ext:STDIO 991 · smallest ext:<small outside> 6   → 12.85x on radius
+module    largest pkg:_internal 85 · smallest 3                    →  5.32x on radius
+```
+
+### Three things settled before writing anything
+
+- **It belongs in the client, not `layout.py`.** `phyllotaxis` is radially uniform, so
+  scaling a plate's placed coordinates by a factor is *exactly* computing it at a smaller
+  radius — which makes plate width a view property like Z and the spreads, reversible from
+  the unscaled base the engine already keeps, live with no round trip, and correct at both
+  altitudes from payloads already in hand. `layout.py`'s note is rewritten as the reversal
+  it is; a guard written in the last session for exactly this moment reversed with it.
+- **The anchor is arithmetic, not a decision.** Nodes are `radiusUnits: 'pixels'` and
+  `fitView` frames whatever it is handed, so anchoring at the largest plate and at the
+  smallest are the same picture at different zooms — under an orthographic projection
+  uniform scaling *is* zoom (design rule 22). Largest is chosen only so nothing grows past
+  the radius the server placed it at. **Measured: the bounding cylinder is 999.8 x 3391.5
+  at both ends of the dial**, so design rule 20's framing never moves.
+- **Tom's "nodes, not nodes + shadows" answer is right, and now there is a reason.** A
+  shadow is never drawn (rule 23), so the density a reader *sees* is real nodes over area
+  however many placement devices share the disc — `ext:<outside>` carries ten nodes and 378
+  shadows and has to read as ten. Sizing on the total would draw it six times too wide,
+  equally plausibly.
+
+### What Tom decided
+
+- **Full on by default (1.00)**, with the uniform stack one drag away. At fit zoom the
+  smallest routine plate is ~56 px radius holding nine nodes, so nothing clumps.
+- **In the HUD controls box, with the spreads**, because it multiplies them and answers the
+  neighbouring question — they widen every plate together, this says how much of that width
+  each plate has earned. Live, no fetch, per level under the hood.
+- **One scale for the whole stack**, code and externals alike. The consequence is that the
+  widest plate on Mensores is `ext:STDIO`, 991 stdout strings, sitting below the code in the
+  band that already reads *the program, then what it touches*. Honest, and design rule 8
+  says externals are first-class.
+
+### Called width, not density — and that is the find worth keeping
+
+`density` is **already a setting in this product**: the table's row height. One word for two
+ideas, in a tool whose entire subject is a program's vocabulary, is the `disk`/`plate`
+collision `settings.js` still carries a debt for. Caught before it shipped rather than
+after, and there is a guard now — over what a reader can *see* (the label, the aria-label,
+the collapsed ribbon), never over the span, because the note explaining why the word is
+avoided is written beside the control and a guard tripping on that is rule 37 in its purest
+form.
+
+### Everything on a plate's circle asks that plate how wide it is
+
+Three things sit on it and they were three expressions built from one constant: the nodes,
+the plate's own outline, and the you-are-here arrow standing on its rim. Correct while every
+plate was one width and a lie the moment one is not — an arrow on the largest plate's circle,
+for a node on a plate a tenth as wide, is still on the right bearing and no longer on the rim
+of anything. Rule 51: one number described the whole stack until it did not.
+
+### `followMode` has never survived a reload, and no guard could see it
+
+Found while mutation-testing. `followMode` is declared in `DEFAULTS`, set by a live control
+that calls `persist()`, and named in the reset dialog — and it was **not in `PERSISTED`**,
+which is the only list `persist()` walks. So design rule 2's "build both and let real use
+retire the loser" has been retiring on a coin toss per session.
+
+`test_every_persisted_key_is_a_setting_the_store_knows` was written for exactly this failure
+and ran **one direction only** — written and unknown, never declared and unwritten. Both
+halves are the same defect. Rule 37 again: a guard that names the right case in one direction
+has not checked the other.
+
+### What is verified, driven in Chrome
+
+- The widths reaching the engine are `sqrt(n / nmax)` to the last digit: min **0.09529814**
+  against an expected **0.09529814**.
+- **The dial comes home.** At 0 every factor is exactly 1 and the worst node is 3e-5 world
+  units from the payload's own coordinate on a 2000-unit stack — Float32 rounding, not
+  compounding. At 0.5 the minimum is 0.5476, which is the interpolation exactly.
+- **Per level, and it travels.** With routine on 0.40 and module on 1.00, each altitude is
+  drawn to its own value on arrival and the store holds `{routine: 0.4, module: 1}`.
+- **The reset names what it cleared** — *"back to defaults: plateSize"* — and restores that
+  level.
+- Every plate's drawn nodes sit inside that plate's own scaled radius, and each outline is
+  that plate's own circle at `PLATE_R x factor` to the tenth of a unit.
+- The row is laid out below *stack*, sized like its siblings, and `elementFromPoint` returns
+  the slider itself (rule 48 — wiring and reachability are different claims).
+- Clean load, self-check green, **no console errors** — the one place the last session's
+  half-hour defect had been shouting.
+
+**What it looks like is not verified.** The HUD reads **0 fps** and deck.gl's canvas is
+stuck at its default 300x150, because `ResizeObserver` never fires in a browser-automation
+tab: rule 38, and it is the same absence the second altitude was paused on. The picture
+wants Tom's eye.
+
+Guards mutation-tested at **24/24** over a proved-green baseline, after a run at 22/24 — one
+survivor was the guard being weak (it asked whether `d.diskScale` appeared *anywhere* in
+`plateWidths` and passed a mutation that read the ratios for the numbers while still testing
+`diskScale.size` for emptiness — rule 59's companion: a mutation that leaves any read of the
+thing standing has not removed it, and a guard that accepts any read has not checked the one
+that matters). The other was a stale mutation, not a weak guard.
+
+### Two things found in the guards themselves
+
+- **Two `_fn` helpers with one name**, and the later definition silently won for every caller
+  of the earlier — so a guard could be written, reviewed and mutation-tested against a helper
+  other than the one beside it. Rule 51 one level up. One of them now, the brace-depth version,
+  because a check for what a function does *not* contain is only as good as the span it is
+  taken over.
+- **And that one was wrong for a destructured parameter.** `setGraphDetail({ level, minDisk })`
+  opens and closes a brace in its *signature*, so counting from the first `{` returned the
+  signature and nothing else. Four existing guards caught it — because a presence check over an
+  empty span fails loudly, where an absence check would have passed vacuously and for ever.
+
+**No new numbered rule.** Every finding here is an existing rule in a new costume: 51 for the
+one constant that described the whole stack, 37 for the guard run in one direction, 59's
+companion for the guard that accepted any read, and the vocabulary collision is the `disk` /
+`plate` debt arriving a second time.
+
+### Paused 2026-08-31, after plate sizing
+
+Working tree clean; all three gates green; `output/mensores` untouched.
+
+**Next: chunk 3, the plate as a diagram** — flat first, no billboards until there is a problem
+to see (Tom's call), on one plate or a selection, at the altitude that makes it a readable
+number of boxes. His bar stands: *"they must be easy to read or we have failed."* Withdrawn
+rather than shipped with a caveat if it does not clear it.
+
+**Still owed: Tom's eye on both this and the second altitude.** Two chunks now rest on a
+picture nobody with a real window has looked at.
+
+**Still open and unstarted:** the anomaly worklist overlay, blocked on one question — what
+makes two findings in two versions the same finding.
+
 ## The second altitude — built 2026-08-31
 
 **`6j`.** Tom's density complaint, answered. Three questions were put to him before any code

@@ -430,6 +430,12 @@ docs   ──► extract ──► docs.db  (SQLite) ─────────
   config edit here, not a code change. Prefer adding a rule over adding a branch.
 - `resolve/` — call graph, CLI command trees, flows, naming conventions, glossary.
 - `render/` — Markdown and Mermaid.
+- `web/layout.py` — where things sit. `DISK_RADIUS` is now the width of the **widest**
+  plate rather than of every plate; how wide each one is actually drawn is a *view*
+  property owned by the renderer, like Z and the spreads, because `phyllotaxis` is radially
+  uniform and scaling a plate's coordinates is exactly computing it at a smaller radius.
+  Its old note — every disk one size, density carries the information — is rewritten as the
+  reversal it is rather than left standing beside code that contradicts it.
 - `web/graph.py` — the 2.5D model, at **two levels of detail**. `routine` is every thing
   the program declares; `module` folds each file into one node and each boundary kind into
   one, on a single plate below the code. 10,015 nodes and 52 plates become 578 and 38, and
@@ -1804,6 +1810,26 @@ bought a rewrite of settled CSS, neither of which serves the thing the tool is f
     It is what makes large nodes usable at all. Billboarded spheres fuse into a solid mass
     once they are big enough to look at, and at 14x no amount of Z helps, because the
     crowding is *within* a plate. Widening is the answer, not shrinking the nodes.
+
+    **A fifth control joined them and it is not an axis: plate width, by what a plate
+    holds.** The three axes widen every plate together; this says how much of that width
+    each plate has earned, at `sqrt(n / n_largest)` on **real nodes** — a shadow is never
+    drawn (rule 23), so the density a reader sees is nodes over area however many placement
+    devices share the disc. It is a *strength* between the uniform stack (0) and area
+    proportional to content (1), interpolated so that 0 comes home to exactly the
+    arrangement the server placed, and it is **per level** for the same reason `MIN_DISK`
+    is: Mensores spans 12.85x across its routine plates and 5.32x across its module ones,
+    which is a different judgment about a different picture.
+
+    Two things fall out that are worth keeping. **Where a proportional scale is anchored is
+    a zoom, not a decision** — marks are drawn in pixels and fit frames whatever it is
+    handed, so anchoring at the largest plate and at the smallest are the same picture at
+    different zooms, and the first is chosen only because nothing then grows past the
+    radius the server placed it at. Measured: the bounding cylinder is **999.8 x 3391.5 at
+    both ends of the dial**, so design rule 20's framing is untouched. And **everything that
+    sits on a plate's circle has to ask that plate how wide it is** — the nodes, the plate's
+    own outline, and the you-are-here arrow standing on its rim were three expressions built
+    from one constant, which is correct at one width and a lie at any other (rule 51).
 
 23. **Hiding and collapsing are separate switches.** Hiding decides whether an unselected
     plate draws; collapsing decides whether it still takes up room. Wanting the second

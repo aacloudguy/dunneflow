@@ -513,9 +513,28 @@ def test_the_level_names_are_the_only_ones_that_exist(levelled: Store) -> None:
 
 
 def test_the_docs_name_the_source_of_truth() -> None:
-    """`layout.py` says every disk is drawn the same size. That note is still true and
-    still load-bearing -- the plate-sizing request reverses it, and when it does the
-    comment must move with the code rather than stand contradicting it."""
-    text = Path(__file__).resolve().parents[1].joinpath(
-        "src/dunneflow/web/layout.py").read_text(encoding="utf-8")
-    assert "Disks are drawn the same size" in text
+    """`layout.py` used to say every disk is drawn the same size. The plate-sizing work
+    reversed that, and this guard reversed with it -- which is the whole reason it was
+    written in that form: a comment left standing beside code that contradicts it is worse
+    than no comment, because it is the one a reader believes.
+
+    Two halves, and the second is the one that decays. The old claim must be **gone**, or
+    the module states both answers; and the note must **name where the sizing now happens**,
+    because `DISK_RADIUS` is still computed here and a reader who finds it will otherwise
+    conclude this file decides how wide a plate is. It does not -- the renderer does, from
+    an unscaled base, because plate width is a view property like Z and the spreads.
+    """
+    root = Path(__file__).resolve().parents[1]
+    text = root.joinpath("src/dunneflow/web/layout.py").read_text(encoding="utf-8")
+    assert "Disks are drawn the same size" not in text, (
+        "layout.py still claims every disk is one width, and the renderer no longer draws "
+        "them that way -- the comment has to move with the code"
+    )
+    for cited in ("applyLayout", "graph.js", "plateSize"):
+        assert cited in text, (
+            f"layout.py does not name {cited!r}, so the note leaves a reader at "
+            "DISK_RADIUS believing this file decides how wide a plate is drawn"
+        )
+    # And the thing named must exist, or this is a signpost to nothing (rule 17's converse).
+    engine = root.joinpath("src/dunneflow/web/static/graph.js").read_text(encoding="utf-8")
+    assert "function applyLayout(" in engine and "opts.plateSize" in engine

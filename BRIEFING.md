@@ -159,8 +159,43 @@ is not computed yet.
 
 ## What we are doing now
 
-**Paused 2026-08-31, with the stack's second altitude built and driven. Density is
-answered; the two recorded feature requests are next and both are re-shaped by it.**
+**Paused 2026-08-31, with chunk 2 built and driven: a plate's width now says what it
+holds.** The first of the two recorded feature requests is done; the second — the plate as
+a readable diagram — is next and unblocked.
+
+A fifth control joined the three spread axes in the HUD, and it is not an axis: `sqrt(n /
+n_largest)` on **real nodes**, a *strength* between the uniform stack (0) and area
+proportional to content (1), **per level**. Tom took all three recommendations: full on by
+default, beside the spreads, one scale for code and externals alike.
+
+```
+routine   1.00x → 0.10x across 52 plates      module   1.00x → 0.25x across 16 plates
+```
+
+- **The anchor is arithmetic, not a decision.** Marks are drawn in pixels and fit frames
+  what it is handed, so anchoring at the largest plate or the smallest is one picture at two
+  zooms. Measured: the bounding cylinder is **999.8 x 3391.5 at both ends of the dial**, so
+  design rule 20's framing never moves.
+- **The dial comes home.** At 0 the worst node is 3e-5 world units from the payload's own
+  coordinate on a 2000-unit stack — Float32 rounding, not compounding.
+- **Called width and not density**, because `density` is already this product's word for the
+  table's row height. The `disk`/`plate` collision arriving a second time, caught before it
+  shipped.
+- **`followMode` has never survived a reload** — declared, set by a live control that calls
+  `persist()`, named in the reset dialog, and absent from `PERSISTED`. The guard written for
+  exactly that failure ran one direction only. Fixed, and it runs both ways now.
+- Guards mutation-tested at **24/24** over a proved-green baseline. **What it looks like is
+  still not verified** — 0 fps, rule 38, the picture wants Tom's eye.
+
+See `HANDOFF.md`, "Sizing a plate by what it holds — built 2026-08-31".
+
+**Next: chunk 3, the plate as a diagram** — flat first, no billboards until there is a
+problem to see, at the altitude that makes it a readable number of boxes. *"They must be
+easy to read or we have failed."*
+
+### Before that: the second altitude (2026-08-31)
+
+**Density is answered by a level of detail as well as by plate width.**
 
 *"A graph with this many nodes and edges is hard to comprehend."* That was Tom's one
 complaint after driving the change colours, and the answer is a **level of detail** rather

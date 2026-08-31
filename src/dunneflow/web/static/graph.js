@@ -200,6 +200,7 @@ const opts = {
   spreadX: 1,
   spreadY: 1,
   spreadZ: 0.35,
+  plateSize: 1,        // 0 = every plate one width; 1 = area by what it holds
   /* Close the gap left by a plate nothing is looking at, rather than leaving a hole.
    * Independent of `filterMode`, which decides whether those plates draw at all. */
   collapseUnused: false,
@@ -360,6 +361,30 @@ function prepare(raw) {
     byDisk.get(k).push(i);
   }
 
+  /* How wide each plate would be drawn if its area meant what it holds: `sqrt(n / nmax)`,
+   * so a plate with four times as much in it is twice as wide and the two read as equally
+   * dense. `applyLayout` interpolates between this and a uniform 1 -- the ratio is a fact
+   * about the payload, the strength is the reader's.
+   *
+   * **On real nodes, never nodes plus shadows.** A shadow is never drawn (rule 23), so the
+   * density a reader actually sees is nodes over area however many placement devices share
+   * the disc: `ext:<outside>` carries ten nodes and 378 shadows and has to read as ten.
+   * Sizing on the total would make that plate four times too wide and say nothing true.
+   *
+   * Anchored at the largest plate, so nothing grows past the radius the server placed it
+   * at. That anchor is arithmetic rather than a decision to defend: nodes are drawn in
+   * pixels and `fitView` frames whatever it is handed, so anchoring at the other end is
+   * the same picture at a different zoom -- and under an orthographic projection uniform
+   * scaling *is* zoom (design rule 22).
+   *
+   * A plate holding no drawn node is floored at one rather than collapsed to a point. It
+   * still carries shadows, and a plate of radius zero is a plate whose outline and whose
+   * rim pointer have nowhere to be. */
+  const diskRatio = new Map();
+  let biggest = 1;
+  for (const k of raw.disks) biggest = Math.max(biggest, k.nodes || 0);
+  for (const k of raw.disks) diskRatio.set(k.id, Math.sqrt(Math.max(1, k.nodes || 0) / biggest));
+
   /* Inbound and outbound kept apart. "What calls this" is a different question from
    * "what does this call", and merging them makes the commonest question unanswerable. */
   const inbound = new Map(), outbound = new Map();
@@ -418,7 +443,8 @@ function prepare(raw) {
   }
 
   return { raw, n, positions, baseXY, colors, radii, degree, byDisk, inbound, outbound,
-           links, ranked, haystack, plates: [], diskZ: new Map(), collapsed: new Set() };
+           links, ranked, haystack, plates: [], diskZ: new Map(), diskRatio,
+           diskScale: new Map(), collapsed: new Set() };
 }
 
 /* ------------------------------------------------------------------ layout --- */
@@ -460,20 +486,38 @@ function applyLayout(d) {
     slot++;
   });
 
+  /* **Plate width, by what the plate holds.** `plateSize` is a strength between the
+   * uniform stack (0) and area proportional to content (1), and the interpolation is what
+   * makes the dial reversible -- 0 comes home to exactly the arrangement the server sent,
+   * for the same reason `baseXY` is kept unscaled at all.
+   *
+   * It **multiplies** the spread rather than replacing it, and the two answer different
+   * questions: spread widens every plate together, this says how much of that width each
+   * plate has earned. Both are applied from the base copy, so neither compounds.
+   *
+   * Every plate is still drawn and nothing is removed, so design rule 1 has nothing to
+   * state here -- but the range *is* stated beside the slider, because a stack of plates
+   * that differ in width and one whose program differs in shape look the same. */
+  const strength = Math.max(0, Math.min(1, opts.plateSize ?? 0));
+  d.diskScale.clear();
+  for (const [id, ratio] of d.diskRatio) d.diskScale.set(id, 1 + (ratio - 1) * strength);
+
   /* Three axes, independent. X and Y widen a plate, which is what separates nodes that
    * fuse into a mass at large sizes; Z is the gap between plates. All three moving
    * together is *zoom* -- under an orthographic projection uniform scaling and zoom are
    * the same operation -- so there is no linked slider here, and none is wanted. */
   for (let i = 0; i < d.n; i++) {
-    d.positions[i * 3]     = d.baseXY[i * 2]     * opts.spreadX;
-    d.positions[i * 3 + 1] = d.baseXY[i * 2 + 1] * opts.spreadY;
+    const f = d.diskScale.get(d.raw.nodes.disk[i]) ?? 1;
+    d.positions[i * 3]     = d.baseXY[i * 2]     * opts.spreadX * f;
+    d.positions[i * 3 + 1] = d.baseXY[i * 2 + 1] * opts.spreadY * f;
     d.positions[i * 3 + 2] = d.diskZ.get(d.raw.nodes.disk[i]) ?? 0;
   }
   for (const p of d.plates) {
     const z = d.diskZ.get(p.disk.id) ?? 0;
+    const f = d.diskScale.get(p.disk.id) ?? 1;
     for (const pt of p.polygon) {
-      pt[0] = pt.base[0] * opts.spreadX;
-      pt[1] = pt.base[1] * opts.spreadY;
+      pt[0] = pt.base[0] * opts.spreadX * f;
+      pt[1] = pt.base[1] * opts.spreadY * f;
       pt[2] = z;
     }
   }
@@ -889,7 +933,7 @@ function buildLayers(d) {
       getFillColor: PALETTE.plateTouchFill, getLineColor: PALETTE.plateTouchLine,
       getLineWidth: 1, lineWidthUnits: 'pixels', pickable: false,
       updateTriggers: { getPolygon: [opts.spreadX, opts.spreadY, opts.spreadZ,
-                                     opts.diskOrder, opts.collapseUnused],
+                                     opts.plateSize, opts.diskOrder, opts.collapseUnused],
                         data: [...touched].join(',') },
     }));
   }
@@ -901,7 +945,7 @@ function buildLayers(d) {
       getFillColor: PALETTE.plateFill, getLineColor: PALETTE.plateLine, getLineWidth: 1,
       lineWidthUnits: 'pixels', pickable: false,
       updateTriggers: { getPolygon: [opts.spreadX, opts.spreadY, opts.spreadZ,
-                                      opts.diskOrder, opts.collapseUnused] },
+                                      opts.plateSize, opts.diskOrder, opts.collapseUnused] },
     }));
   }
 
@@ -1359,8 +1403,14 @@ function pointerData(d) {
 function rimPoint(d, i, at) {
   const bx = d.baseXY[i * 2], by = d.baseXY[i * 2 + 1];
   const t = (bx === 0 && by === 0) ? 0 : Math.atan2(by, bx);
-  return [Math.cos(t) * PLATE_R * opts.spreadX,
-          Math.sin(t) * PLATE_R * opts.spreadY,
+  /* The plate's *own* width, not one radius for all of them. Once a plate's width says
+   * what it holds, `PLATE_R` is the width of the largest plate and nothing else -- an
+   * arrow placed on that circle for a node on a plate a tenth as wide stands a long way
+   * outside the plate it is pointing into, still on the right bearing and no longer on
+   * the rim of anything. Rule 51: one number described the whole stack until it did not. */
+  const f = d.diskScale.get(d.raw.nodes.disk[i]) ?? 1;
+  return [Math.cos(t) * PLATE_R * opts.spreadX * f,
+          Math.sin(t) * PLATE_R * opts.spreadY * f,
           at[2]];
 }
 
@@ -1870,7 +1920,8 @@ window.DunneFlowGraph = {
     Object.assign(opts, partial);
     if (!g.prepared) return;
     if (partial.spreadX !== undefined || partial.spreadY !== undefined ||
-        partial.spreadZ !== undefined || partial.diskOrder !== undefined ||
+        partial.spreadZ !== undefined || partial.plateSize !== undefined ||
+        partial.diskOrder !== undefined ||
         partial.collapseUnused !== undefined) {
       applyLayout(g.prepared);
     }
@@ -2016,6 +2067,21 @@ window.DunneFlowGraph = {
   diskColorHex: (id) => rgbToHex(diskColor(id)),
   defaultOrder: () => (g.data ? defaultOrder(g.data) : []),
   stats: () => g.data?.stats ?? null,
+
+  /* The widest and narrowest plate actually drawn, as multiples of the widest.
+   *
+   * Read out of `diskScale` -- the very map `applyLayout` scaled the positions with --
+   * rather than recomputed from the disk counts beside it. Rule 13: the number printed
+   * beside a control must be produced by the thing it describes, or a clamp, a floor or
+   * an interpolation the shell does not know about makes the readout a confident
+   * disagreement with the picture. `null` while there is nothing prepared, because "no
+   * stack yet" and "every plate one width" are different claims. */
+  plateWidths() {
+    const d = g.prepared;
+    if (!d || !d.diskScale.size) return null;
+    const vs = [...d.diskScale.values()];
+    return { min: Math.min(...vs), max: Math.max(...vs), plates: vs.length };
+  },
 
   /* Guarded, because these are buttons and a reader can press one while the payload is
    * still arriving. Nine thousand nodes take a moment, the HUD is on screen throughout,

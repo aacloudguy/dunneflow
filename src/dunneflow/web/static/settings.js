@@ -85,6 +85,24 @@ const DEFAULTS = {
   spreadX: 1,
   spreadY: 1,
   spreadZ: 0.35,
+  /* How much a plate's *width* says about how much it holds.
+   *
+   * A strength, not a size. 0 is the uniform stack -- every plate drawn the same width
+   * whether it holds 991 things or 6 -- and 1 is area proportional to content, so the
+   * footprint means *how much is here* and two plates read as equally dense. The dial
+   * interpolates between the two, which is what makes it reversible: 0 comes home
+   * exactly, the same reason the engine keeps an unscaled copy of every position.
+   *
+   * The reversal is deliberate and is recorded in `layout.py`, which drew every disk the
+   * same size on the argument that density would then carry the information. It did not:
+   * a plate of 6 nodes and a plate of 991 at one width are a sparse ring and a solid
+   * mass, and the reader has to compare two textures to learn a number. Area says it.
+   *
+   * **Per level**, because it is a question about two pictures. Mensores' routine level
+   * spans 12.85x from largest plate to smallest and its module level 5.32x, so full
+   * strength is a far more dramatic silhouette at one altitude than at the other and the
+   * judgment does not carry across. The same argument `minDisk` and `diskOrder` make. */
+  plateSize: { routine: 1, module: 1 },
   collapseUnused: false,  // close the gap a plate nothing is looking at leaves behind
   showPlates: false,
   /* The "you are here" pointer: an arrow standing over each node the reader picked.
@@ -353,6 +371,7 @@ function resetSettings(program, current) {
     sortMode: 'sort', filterMode: 'filter mode', direction: 'direction',
     nodeSize: 'node size', picks: 'selection', followMode: 'following a neighbour',
     spreadX: 'spread across', spreadY: 'spread deep', spreadZ: 'spread between plates',
+    plateSize: 'how much a plate\'s width says about what it holds',
     collapseUnused: 'collapsed plates',
     showPlates: 'the plates themselves', edgesInMotion: 'edges while moving',
     pointerShown: 'the you-are-here pointer', pointerColor: 'the pointer colour',

@@ -633,28 +633,42 @@ def test_the_legend_is_a_track_not_an_overlay() -> None:
 def test_the_slider_reset_covers_every_slider_and_invents_no_defaults() -> None:
     """A reset that misses a slider leaves the reader in the arrangement they wanted out of.
 
-    Four axes, each stepping 0.05, are genuinely hard to land by hand, and the only way back
-    used to be a reload or the whole-settings reset — which also throws away the disk order,
-    the colours and the selection. So `sizereset` resets exactly the slider keys.
+    Five sliders, each stepping 0.05, are genuinely hard to land by hand, and the only way
+    back used to be a reload or the whole-settings reset — which also throws away the disk
+    order, the colours and the selection. So `sizereset` resets exactly the sliders.
 
-    Both halves matter. Every slider on screen must be in `SLIDER_KEYS`, or the reset
-    silently leaves one where it was and reports success for the rest. And every key must
-    exist in `DEFAULTS`, because the reset reads its values from there rather than carrying
-    numbers of its own: a second copy of a default is a second thing to forget when one of
-    them moves, and `state[k] = undefined` would render a slider with no position at all.
+    Three halves, and the third arrived with `plateSize`. Every slider on screen must be in
+    the `SLIDERS` table, or the reset silently leaves one where it was and reports success
+    for the rest. Every key must exist in `DEFAULTS`, because the reset reads its values
+    from there rather than carrying numbers of its own. And the reset must go through the
+    table's **accessors**: `plateSize` is a map keyed by level, so `state[k] =
+    Settings.DEFAULTS[k]` restores it correctly and then hands the engine an object where
+    it expects a number — the picture keeps the old widths while the slider moves home,
+    which is one control with two answers and the visible one is the wrong one (rule 67).
     """
     js = _read("shell.js")
 
-    keys = re.search(r"const SLIDER_KEYS = \[([^\]]*)\]", js)
-    assert keys, "SLIDER_KEYS is gone; the reset cannot know what it resets"
-    reset = set(re.findall(r'"(\w+)"', keys.group(1)))
+    table = re.search(r"const SLIDERS = \{(.*?)\n\};", js, re.S)
+    assert table, "the SLIDERS table is gone; the reset cannot know what it resets"
+    reset = set(re.findall(r"^  (\w+):", table.group(1), re.M))
+    assert reset, "the SLIDERS table changed shape -- this test is blind"
+    assert "Object.keys(SLIDERS)" in js, (
+        "SLIDER_KEYS no longer derives from the table -- a hand-kept second list agrees "
+        "with a wrong implementation, which is the failure it was written to detect"
+    )
 
     # Every range input in the controls box, taken from the markup rather than a list.
-    axis_table = re.search(r"const AXIS = \{([^}]*)\}", js)
-    assert axis_table, "the AXIS table is gone -- this test is blind"
-    axes = set(re.findall(r'"(spread[XYZ])"', axis_table.group(1)))
-    assert axes, "the AXIS table changed shape -- this test is blind"
-    sliders = axes | {"nodeSize"}          # the size slider is the fourth, handled apart
+    controls = js.split('id="panel-controls"', 1)[1].split("</div>`", 1)[0]
+    ids = set(re.findall(r'<input id="(g\w+)" type="range"', controls))
+    assert ids, "no range inputs found in the controls box -- this test is blind"
+    ID_TO_KEY = {"gsize": "nodeSize", "gspreadx": "spreadX", "gspready": "spreadY",
+                 "gspreadz": "spreadZ", "gwidth": "plateSize"}
+    unknown = ids - set(ID_TO_KEY)
+    assert not unknown, (
+        f"sliders this test cannot name: {sorted(unknown)} — add them to ID_TO_KEY, and "
+        "to SLIDERS, or the reset leaves them where they were"
+    )
+    sliders = {ID_TO_KEY[i] for i in ids}
 
     assert sliders <= reset, (
         f"sliders the reset does not restore: {sorted(sliders - reset)} — "
@@ -668,10 +682,276 @@ def test_the_slider_reset_covers_every_slider_and_invents_no_defaults() -> None:
         f"reset keys with no default: {sorted(reset - declared)} — "
         "the reset reads Settings.DEFAULTS, so these would become undefined"
     )
-    assert "Settings.DEFAULTS[k]" in js, (
+    for call in ("sliderGet(k)", "sliderSet(k, sliderDef(k))", "sliderDef(k)"):
+        assert call in js, (
+            f"the reset no longer goes through {call} — a per-level slider read or "
+            "written as a flat key hands the engine an object and moves the control home "
+            "over a picture that did not change"
+        )
+    assert "Settings.DEFAULTS" in js, (
         "the reset has stopped reading Settings.DEFAULTS — a second copy of a default "
         "is a second thing to forget when one of them moves"
     )
+
+
+def _fn(js: str, name: str) -> str:
+    """One top-level `function name(...)`, from its keyword to its closing brace.
+
+    **By brace depth, and there was briefly a second helper of this name that was not.** It
+    ran to the next `function` at column 0, which is a different span: everything between
+    two functions -- trailing prose, a hoisted constant, a comment naming the very thing a
+    guard was checking for the absence of. That version had already been narrowed once, to
+    make `\nasync function` count, because a guard reading "the fields `loadRoutines` reads"
+    had been reading `loadAnomalies` as well and failing on a field the endpoint it names
+    has no reason to send.
+
+    Two helpers with one name is the same defect one level up (rule 51), and the later
+    definition silently won for every caller of the earlier -- so a guard could be read,
+    reviewed and mutation-tested against a helper other than the one written beside it.
+    One of them, and it is the one that reads exactly what it claims: a check for what a
+    function does *not* contain is only as good as the span it is taken over (rule 37).
+    """
+    start = js.index(f"function {name}(")
+    # **Past the parameter list before counting braces.** A destructured parameter --
+    # `setGraphDetail({ level, minDisk })`, `mount(container, raw, options = {})` -- opens
+    # and closes a brace in the signature, so counting from the first `{` returns the
+    # signature and nothing else. Four guards passed on that: an *absence* check over an
+    # empty span is vacuously true, and a presence check fails loudly, which is the only
+    # reason it was caught at all.
+    depth = 0
+    for j in range(js.index("(", start), len(js)):
+        if js[j] == "(":
+            depth += 1
+        elif js[j] == ")":
+            depth -= 1
+            if depth == 0:
+                break
+    else:
+        raise AssertionError(f"function {name} has no parameter list")
+
+    i = js.index("{", j)
+    depth = 0
+    for k in range(i, len(js)):
+        if js[k] == "{":
+            depth += 1
+        elif js[k] == "}":
+            depth -= 1
+            if depth == 0:
+                return js[start:k + 1]
+    raise AssertionError(f"function {name} never closes")
+
+
+def test_a_plates_width_is_taken_from_what_is_drawn_on_it() -> None:
+    """Sizing a plate by its content means its **real nodes**, never nodes plus shadows.
+
+    A shadow is never drawn (rule 23) -- it is a placement device standing in for something
+    living elsewhere -- so the density a reader actually sees is nodes over area however
+    many of them share the disc. Mensores' `ext:<outside>` carries ten nodes and 378
+    shadows: sized on the total it would be drawn six times too wide, equally plausibly,
+    and the one thing a width is supposed to say would be false. Tom answered this before
+    it was built -- *"shadows was just an idea due to the 3D aspect, not a requirement"* --
+    and the arithmetic agrees with him for a reason worth keeping written down.
+
+    The guard reads the ratio block rather than the whole file, because `shadows` appears
+    legitimately a dozen times elsewhere in the engine.
+    """
+    js = _read("graph.js")
+    block = js.split("const diskRatio = new Map();", 1)[1].split("\n\n", 1)[0]
+    assert "k.nodes" in block, "the plate ratio no longer counts the plate's own nodes"
+    assert "shadow" not in block.lower(), (
+        "the plate ratio counts shadows -- a plate would be drawn wider than what is "
+        "drawn on it, and a width that says nothing true is worse than every plate alike"
+    )
+    assert "Math.sqrt" in block, (
+        "the ratio is no longer a square root, so a plate four times as full is four "
+        "times as wide rather than twice -- area is the channel, not radius"
+    )
+
+
+def test_the_width_dial_is_reversible_and_comes_home_to_the_payload() -> None:
+    """0 must be exactly the arrangement the server sent, not nearly it.
+
+    Every scale in this engine is computed from an unscaled base for one reason: 2x then 2x
+    again is 4x, and a slider dragged back has to come home. The width dial is the first one
+    that is an *interpolation* rather than a multiplier, so the thing to check is the
+    endpoints -- at 0 every plate is one width, at 1 every plate is its own ratio.
+
+    Evaluated rather than matched. The expression is lifted out of the engine's own source
+    and run, so a rewrite that is still correct passes and one that is merely differently
+    shaped -- `ratio * strength`, which collapses the whole stack to a point at 0 -- fails.
+    """
+    js = _read("graph.js")
+    m = re.search(r"d\.diskScale\.set\(id, (.+)\);", js)
+    assert m, "the width factor is no longer set from one expression -- this test is blind"
+    expr = m.group(1).strip()
+    assert "strength" in expr and "ratio" in expr, f"unexpected factor: {expr!r}"
+
+    def factor(ratio: float, strength: float) -> float:
+        return float(eval(expr, {"__builtins__": {}},  # noqa: S307 -- the engine's own text
+                          {"ratio": ratio, "strength": strength}))
+
+    for ratio in (1.0, 0.5, 0.078):
+        assert factor(ratio, 0.0) == pytest.approx(1.0), (
+            f"at 0 a plate of ratio {ratio} is drawn at {factor(ratio, 0.0)} -- the dial "
+            "does not come home to the arrangement the server placed"
+        )
+        assert factor(ratio, 1.0) == pytest.approx(ratio), (
+            f"at 1 a plate of ratio {ratio} is drawn at {factor(ratio, 1.0)} -- its area "
+            "no longer means what it holds"
+        )
+    assert factor(0.25, 0.5) == pytest.approx(0.625), "the dial is no longer linear"
+
+    clamp = js.split("const strength =", 1)[1].split(";", 1)[0]
+    assert "Math.max(0" in clamp and "Math.min(1" in clamp, (
+        "the strength is unclamped -- a stored value from another build, or a control "
+        "someone widens later, turns plates inside out rather than being refused"
+    )
+
+
+def test_everything_placed_on_a_plate_asks_that_plate_how_wide_it_is() -> None:
+    """One radius described the whole stack until it did not.
+
+    Three things sit on a plate's circle: the nodes, the plate's own outline, and the
+    you-are-here arrow standing on its rim. They were three expressions built from one
+    constant, which was right while every plate was the same width and is a lie the moment
+    one is not -- an arrow on the largest plate's circle, for a node on a plate a tenth as
+    wide, is still on the right bearing and no longer on the rim of anything (rule 51).
+
+    So every place that multiplies by `spreadX` must also multiply by the plate's own
+    factor, and that factor must come from the map `applyLayout` scaled the positions with
+    -- not from a second walk over the disk counts, which is how two answers to one
+    question get into one picture.
+    """
+    js = _read("graph.js")
+    sites = [ln.strip() for ln in js.splitlines() if re.search(r"\* opts\.spreadX", ln)]
+    assert len(sites) >= 3, f"expected the three placement sites, found {sites}"
+    for line in sites:
+        assert re.search(r"\* f\b", line), (
+            f"placed without asking the plate how wide it is: {line!r} -- at one width "
+            "this is correct and at any other it puts the thing somewhere it is not"
+        )
+    for fn in ("applyLayout", "rimPoint"):
+        assert "diskScale.get(" in _fn(js, fn), (
+            f"{fn} does not read diskScale, so its factor comes from somewhere else -- "
+            "two answers to how wide a plate is drawn, in one frame"
+        )
+
+
+def test_the_width_dial_reaches_the_picture_and_not_only_the_setting() -> None:
+    """A slider that writes state, persists, and repaints nothing looks exactly like one
+    that works -- design rule 16, and the dial has four separate ways to be that.
+
+    The engine must relay it to `applyLayout`; the plate outlines must be told their
+    geometry changed or they keep the previous widths while the nodes move inside them; the
+    mount must hand over the value the reader last chose; and a change of *altitude* must
+    push that altitude's own value, because the dial is per level and `setPayload` does not
+    know that. Miss the last and the slider moves to the right number over a picture drawn
+    to the other one -- one control, two answers, and the visible one is wrong (rule 67).
+    """
+    engine = _read("graph.js")
+    trigger = engine.split("if (partial.spreadX !== undefined", 1)[1].split("}", 1)[0]
+    assert "partial.plateSize !== undefined" in trigger, (
+        "setOptions does not relay plateSize to applyLayout -- the dial would move, "
+        "persist, and leave the stack exactly as it was"
+    )
+    triggers = re.findall(r"updateTriggers: \{ getPolygon: \[([^\]]*)\]", engine)
+    assert len(triggers) == 2, f"expected two plate layers, found {len(triggers)}"
+    for t in triggers:
+        assert "opts.plateSize" in t, (
+            "a plate layer does not re-upload on a width change -- the outlines stay at "
+            "the old widths while the nodes inside them move, which reads as a bug in the "
+            "nodes"
+        )
+
+    shell = _read("shell.js")
+    mount = shell.split("Graph.mount(", 1)[1].split("});", 1)[0]
+    assert "plateSize: plateSizeNow()" in mount, (
+        "the mount does not hand over the reader's width -- it would be restored into "
+        "`state`, shown on the slider, and never drawn"
+    )
+    detail = _fn(shell, "setGraphDetail")
+    swap = detail.split("Graph.setPayload(payload);", 1)
+    assert len(swap) == 2, "setGraphDetail no longer swaps the payload -- this test is blind"
+    assert "Graph.setOptions({ plateSize: plateSizeNow() })" in swap[1], (
+        "a change of altitude does not push that altitude's width -- the dial is per "
+        "level, so the new picture would be drawn to the old level's judgment"
+    )
+
+
+def test_the_width_readout_is_read_back_from_what_was_drawn() -> None:
+    """Rule 13: the number printed beside a control must be produced by the thing it
+    describes. The widths on screen come out of `diskScale` -- the very map the positions
+    were scaled with -- so a clamp, the floor on an empty plate, or the interpolation
+    itself cannot make the line a confident disagreement with the picture.
+
+    Recomputing `sqrt(n / nmax)` in the shell would be a second answer built from the same
+    inputs, which is how the routine list came to print an edge count under a heading about
+    nodes (rule 32) and how the table footer and the table came apart (rule 13).
+    """
+    engine = _read("graph.js")
+    widths = engine.split("plateWidths() {", 1)[1].split("\n  },", 1)[0]
+    # **The values, not merely a mention.** A first version of this asked whether
+    # `d.diskScale` appeared anywhere in the body and passed a mutation that read the
+    # *ratios* for the numbers while still testing `diskScale.size` for emptiness -- the
+    # guard true, the readout describing a stack nobody had drawn. Rule 59's companion: a
+    # mutation that leaves any read of the thing standing has not removed it, and a guard
+    # that accepts any read has not checked the one that matters.
+    assert "d.diskScale.values()" in widths, (
+        "plateWidths does not take its numbers from the map the positions were scaled "
+        "with -- the line beside the slider would describe a stack that was not drawn"
+    )
+    assert "diskRatio" not in widths and "raw.disks" not in widths, (
+        "plateWidths reads the payload's own ratios rather than what the dial made of "
+        "them, so the readout would say the same thing at every strength"
+    )
+    assert "return null" in widths, (
+        "plateWidths answers for an unprepared engine -- 'no stack yet' and 'every plate "
+        "one width' are different claims and a reader cannot tell them apart"
+    )
+
+    shell = _read("shell.js")
+    note = _fn(shell, "plateRangeNote")
+    assert "Graph.plateWidths()" in note, (
+        "the readout no longer asks the engine what it drew"
+    )
+    assert "Math.sqrt" not in note and ".nodes" not in note, (
+        "the readout recomputes the widths from the plate counts -- a second answer to a "
+        "question the engine has already answered, and the two will disagree"
+    )
+    assert "state.level" in note, (
+        "the readout does not say which altitude it is speaking about -- the dial is per "
+        "level, and a value that changes under the reader with nothing saying so reads as "
+        "a control that reset itself"
+    )
+    assert "every plate one width" in note, (
+        "a stack with the dial at zero says nothing about being at zero, so an unsized "
+        "stack and a program whose packages are all the same size look identical"
+    )
+
+
+def test_the_width_control_does_not_borrow_a_word_this_product_owns() -> None:
+    """`density` is already a setting here -- the table's row height -- and the dial that
+    equalises plate density is *called* width for exactly that reason.
+
+    One word for two ideas, in a tool whose whole subject is a program's vocabulary, is the
+    disk/plate collision `settings.js` already carries a debt for. This one was caught
+    before it shipped rather than after, and the guard is what keeps it caught.
+    """
+    shell = _read("shell.js")
+    controls = shell.split('id="panel-controls"', 1)[1].split("</div>`", 1)[0]
+    assert 'id="gwidth"' in controls, "the width slider is gone from the controls box"
+
+    # Over what a reader can *see*, never over the whole span: the note explaining why the
+    # word is not used is written in the markup beside the control, and a guard that trips
+    # on the prose saying a word was avoided is rule 37 in its purest form.
+    seen = set(re.findall(r'style="width:3\.2rem">([^<]+)<', controls))
+    seen |= set(re.findall(r'aria-label="([^"]+)"', controls))
+    seen.add(_fn(shell, "controlsSummary"))
+    for text in seen:
+        assert "density" not in text.lower(), (
+            f"the graph's controls say {text!r} to the reader, and this product already "
+            "spends the word `density` on the table's row height"
+        )
 
 
 def test_every_declared_data_array_is_assigned_somewhere() -> None:
@@ -2003,20 +2283,6 @@ def test_asking_where_the_selection_is_cannot_throw() -> None:
 
 
 # ------------------------------------------------- the two vocabulary lanes --- #
-
-def _fn(js: str, name: str) -> str:
-    """One function's source, from its `function` line to the next one at column 0.
-
-    `\nasync function` counts. It did not, so a function followed by an async one returned
-    both -- and a guard reading "the fields `loadRoutines` reads" was reading `loadAnomalies`
-    as well, and failed on a field the endpoint it names has no reason to send. A helper
-    that reads more than it claims makes every test built on it say more than it checked.
-    """
-    start = js.index(f"function {name}(")
-    rest = js[start:]
-    ends = [i for i in (rest.find("\nfunction ", 1), rest.find("\nasync function ", 1)) if i > 0]
-    return rest if not ends else rest[:min(ends)]
-
 
 def _code(js: str) -> str:
     """JavaScript with its comment *lines* removed.
@@ -3953,6 +4219,21 @@ def test_every_persisted_key_is_a_setting_the_store_knows() -> None:
         f"written to storage and unknown to the store: {sorted(orphans)}. "
         "loadSettings merges only keys DEFAULTS declares, so these are saved on every "
         "change and dropped on every load -- the reader's choice silently forgotten."
+    )
+
+    # **And the other direction, which this guard did not run for as long as it existed.**
+    # `followMode` was declared, set by a live control that calls `persist()`, and named in
+    # the reset dialog -- and never written, because `persist()` walks PERSISTED. So the
+    # setting design rule 2 exists to retire on evidence came back on its default every
+    # session, and the evidence was a coin toss. Both halves are the same defect and only
+    # one of them was being caught, which is rule 37: a guard that names the right case in
+    # one direction has not checked the other.
+    lost = declared - persisted
+    assert not lost, (
+        f"declared as settings and never written: {sorted(lost)}. `persist()` writes "
+        "PERSISTED and nothing else, so a control can set one of these, call persist, and "
+        "watch it come back as the default on the next load -- the same silent forgetting "
+        "as the orphans above, arriving from the other side."
     )
 
 

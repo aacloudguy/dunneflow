@@ -198,6 +198,8 @@ const state = {
   spreadX: 1,             // three independent axes; all three together is what zoom is
   spreadY: 1,
   spreadZ: 0.35,
+  // How much a plate's width says about how much it holds; per level, see `plateSizeNow`.
+  plateSize: { routine: 1, module: 1 },
   collapseUnused: false,  // close the gap a plate nothing is looking at leaves behind
   /* Which panes are open. This existed in `settings.js` from the start -- persisted,
    * named in the reset dialog -- and nothing anywhere read it: the pre-merge graph had
@@ -8211,13 +8213,19 @@ const PERSISTED = [
   "egress", "aiOps", "triage", "pins", "usage", "graphLayout",
   "diskOrder", "diskColors", "colorBy", "sortMode", "filterMode", "direction",
   "level", "minDisk",
-  "nodeSize", "spreadX", "spreadY", "spreadZ", "collapseUnused",
+  "nodeSize", "spreadX", "spreadY", "spreadZ", "plateSize", "collapseUnused",
   "searchCase", "searchWord", "searchRegex",
   "panels", "inspectorAuto", "navWidth", "codeWidth", "codeFile", "codeOverlay",
   "tableOverlay",
   "navGroups",
   "navOpen", "navCap",
   "showPlates", "picks", "graphTheme", "edgesInMotion", "pointerShown", "pointerColor", "pointerPlace", "reticuleShown", "focusLocked",
+  /* `followMode` was declared in the store, set by a live control that calls `persist()`,
+   * and named in the reset dialog -- and absent from this list, so every one of those
+   * writes dropped it on the floor and every reload came back on `replace`. Design rule 2
+   * says both ways of following a neighbour are built because real use retires the loser;
+   * a choice that cannot survive a reload is not use, it is a coin toss per session. */
+  "followMode",
 ];
 
 let settings = null;      // the loaded blob; `state` is the live copy
@@ -8455,6 +8463,18 @@ function minDiskNow(level = state.level) { return (state.minDisk || {})[level] ?
 function setMinDiskNow(n) {
   state.minDisk = { ...(state.minDisk || {}), [state.level]: n };
 }
+/* How much a plate's width says about how much it holds, at the altitude on screen.
+ *
+ * Per level, and unlike `minDisk` there is no third state to keep: 0 is a real answer a
+ * reader can choose and the default is a number rather than "whatever the server says",
+ * so a missing entry falls through to `Settings.DEFAULTS` and never to a literal here. */
+function plateSizeNow(level = state.level) {
+  const v = (state.plateSize || {})[level];
+  return typeof v === "number" ? v : Settings.DEFAULTS.plateSize[level];
+}
+function setPlateSizeNow(v) {
+  state.plateSize = { ...(state.plateSize || {}), [state.level]: v };
+}
 
 /* The key **is** the question, so a cache hit and a fetch can never answer different ones. */
 function graphKey(level, min) { return `${level}:${min ?? ""}`; }
@@ -8581,6 +8601,12 @@ async function setGraphDetail({ level = state.level, minDisk } = {}) {
   }
   graphPayload = payload;
   Graph.setPayload(payload);
+  /* **The dial is per level, so a change of level is a change of its value.** Without
+     this the engine keeps the width it was last given and draws the new altitude at the
+     old altitude's judgment, while the slider beside it moves to the right number -- one
+     control and two answers (rule 67), and the one on screen is the one that is wrong.
+     After `setPayload`, because `adoptPayload` rebuilds the ratios this multiplies. */
+  Graph.setOptions({ plateSize: plateSizeNow() });
   /* **The engine resolves the plate order and the shell records what it resolved.** This
      used to push `plateOrder()` back in first, which is one truth in two places (rule 51)
      and worse than untidy: `adoptPayload` had *just* worked out whether the saved order
@@ -8665,6 +8691,7 @@ async function ensureGraph() {
     changeStamp: Date.now(),
     filterMode: state.filterMode, direction: state.direction, nodeSize: state.nodeSize,
     spreadX: state.spreadX, spreadY: state.spreadY, spreadZ: state.spreadZ,
+    plateSize: plateSizeNow(),
     collapseUnused: state.collapseUnused, showPlates: state.showPlates, scale: state.scale,
     edgesInMotion: state.edgesInMotion, picks: state.picks,
     pointerShown: state.pointerShown, pointerColor: pointerRgb(),
@@ -9691,6 +9718,29 @@ function renderGraphFurniture() {
                value="${state[key]}" aria-label="${aria}">
         <span class="muted num" id="${id}val">${(+state[key]).toFixed(2)}×</span>
       </label>`).join("")}
+      ${/* **How much a plate's width says about how much it holds.** Beside the spreads
+            because it multiplies them and answers the neighbouring question: they widen
+            every plate together, this says how much of that width each plate has earned.
+            0 is the uniform stack, which is what shipped before this and is one drag away.
+
+            Per level, so the strip states which altitude it is speaking about -- a dial
+            whose value changed under the reader when they climbed, with nothing saying so,
+            is a control that reads as having been reset.
+
+            **Called width and not density**, though density is what it equalises: `density`
+            is already a setting in this product -- the table's row height -- and one word
+            for two ideas in a tool whose whole subject is a program's vocabulary is the
+            disk/plate collision again, caught this time before it shipped rather than
+            after. The sentence beneath says what the width is made of. */""}
+      <label style="display:flex;align-items:center;gap:.35rem">
+        <span class="muted" style="width:3.2rem">width</span>
+        <input id="gwidth" type="range" min="0" max="1" step="0.05"
+               value="${plateSizeNow()}"
+               aria-label="How much a plate's width says about how much it holds">
+        <span class="muted num" id="gwidthval">${plateSizeNow().toFixed(2)}</span>
+      </label>
+      <div class="hint" id="gwidthrange" style="margin:-.1rem 0 .1rem 3.55rem">${
+        plateRangeNote()}</div>
       <div style="display:flex;align-items:center;gap:.35rem;margin-top:.2rem">
         <span class="muted" style="width:3.2rem">follow</span>
         <select class="gsel" id="gdirection"
@@ -9722,14 +9772,37 @@ function legendSays(what) {
   if (host) host.innerHTML = `<div class="hint" style="font-size:.66rem">${esc(what)}</div>`;
 }
 
+/* What the density dial has actually done to the stack, in one line.
+ *
+ * The widths come from the **engine**, out of the same map it scaled the positions with,
+ * never recomputed here from the plate counts sitting in the legend beside it. A floor, a
+ * clamp or the interpolation itself would make a shell-side sum a confident disagreement
+ * with the picture, which is rule 13 and is exactly how `Graph.connections` and the table
+ * footer once came apart.
+ *
+ * Nothing is removed, so design rule 1 is not what this is for -- it is rule 32's half of
+ * the same discipline. A stack whose plates differ in width and a program whose packages
+ * differ in size look identical, so the line says which reading is on the screen, and at
+ * which altitude, because the dial is per level and a value that changed under the reader
+ * with nothing saying so reads as a control that reset itself. */
+function plateRangeNote() {
+  const w = Graph.mounted() ? Graph.plateWidths() : null;
+  const at = state.level === "module" ? "one node per file" : "every routine";
+  if (!w) return `at ${at}`;
+  if (w.max - w.min < 0.005) return `every plate one width · at ${at}`;
+  return `${w.max.toFixed(2)}× → ${w.min.toFixed(2)}× across ${
+    w.plates.toLocaleString()} plates, by what they hold · at ${at}`;
+}
+
 /* What the controls ribbon says when it is shut. A strip reading only "controls" would be
  * the icon rail design rule 24 rejects, turned on its side: it makes the reader open it to
- * find out what it was. These are the two things the box actually sets. */
+ * find out what it was. These are the things the box actually sets. */
 function controlsSummary() {
   return `size <b class="num">${(+state.nodeSize).toFixed(1)}×</b> · spread ` +
     `<b class="num">${(+state.spreadX).toFixed(2)}</b> / ` +
     `<b class="num">${(+state.spreadY).toFixed(2)}</b> / ` +
-    `<b class="num">${(+state.spreadZ).toFixed(2)}</b>`;
+    `<b class="num">${(+state.spreadZ).toFixed(2)}</b> · plate width ` +
+    `<b class="num">${plateSizeNow().toFixed(2)}</b>`;
 }
 
 /* The selection is real but the reader cannot see it.
@@ -10009,15 +10082,38 @@ function sortedDisks() {
  * whenever the selection changes and handlers bound to elements would stop working
  * silently the moment they were replaced. */
 
-/* The four sliders are hard to land on a value by hand -- four axes, each 0.05 apart --
- * and the way out of a bad arrangement was reloading or the whole-settings reset, which
- * also throws away the disk order, the colours and the selection. This resets exactly the
- * four and says which, because a reset that does not name what it cleared leaves the
- * reader guessing which of the things they had arranged were theirs.
+/* Every slider in the controls box, and how to read, write and default one.
+ *
+ * They are hard to land on a value by hand -- five of them, each stepping 0.05 -- and the
+ * way out of a bad arrangement was reloading or the whole-settings reset, which also
+ * throws away the disk order, the colours and the selection. This resets exactly these and
+ * says which, because a reset that does not name what it cleared leaves the reader
+ * guessing which of the things they had arranged were theirs.
  *
  * The values come from `Settings.DEFAULTS`, never from numbers written here: a second copy
- * of a default is a second thing to forget when one of them moves. */
-const SLIDER_KEYS = ["nodeSize", "spreadX", "spreadY", "spreadZ"];
+ * of a default is a second thing to forget when one of them moves.
+ *
+ * **`plateSize` is why this is a table of accessors rather than a list of names.** It is
+ * per level -- what a plate holds changes with the altitude -- so `state.plateSize` is a
+ * map, and `state[k] = Settings.DEFAULTS[k]` is right for four of the five and hands the
+ * engine an object for the fifth. Routing from a table means a sixth slider that is per
+ * anything is one row here rather than a special case in three functions (rule 36); the
+ * four flat ones are unchanged except in where they are written down. */
+const SLIDERS = {
+  nodeSize: {},
+  spreadX:  {},
+  spreadY:  {},
+  spreadZ:  {},
+  plateSize: {
+    get: () => plateSizeNow(),
+    set: (v) => setPlateSizeNow(v),
+    def: () => Settings.DEFAULTS.plateSize[state.level],
+  },
+};
+const SLIDER_KEYS = Object.keys(SLIDERS);
+const sliderGet = (k) => (SLIDERS[k].get ? SLIDERS[k].get() : state[k]);
+const sliderSet = (k, v) => { if (SLIDERS[k].set) SLIDERS[k].set(v); else state[k] = v; };
+const sliderDef = (k) => (SLIDERS[k].def ? SLIDERS[k].def() : Settings.DEFAULTS[k]);
 
 const GRAPH_ACTIONS = {
   fit:   () => Graph.fit(),
@@ -10049,9 +10145,9 @@ const GRAPH_ACTIONS = {
   undo: () => undoSelection(),
   redo: () => redoSelection(),
   sizereset: () => {
-    const changed = SLIDER_KEYS.filter(k => state[k] !== Settings.DEFAULTS[k]);
-    for (const k of SLIDER_KEYS) state[k] = Settings.DEFAULTS[k];
-    Graph.setOptions(Object.fromEntries(SLIDER_KEYS.map(k => [k, state[k]])));
+    const changed = SLIDER_KEYS.filter(k => sliderGet(k) !== sliderDef(k));
+    for (const k of SLIDER_KEYS) sliderSet(k, sliderDef(k));
+    Graph.setOptions(Object.fromEntries(SLIDER_KEYS.map(k => [k, sliderGet(k)])));
     persist();
     renderGraphFurniture();          // the sliders themselves have to move back
     const note = $("#gresetnote");
@@ -10155,6 +10251,20 @@ function wireGraphOnce() {
       Graph.setOptions({ [key]: state[key] });
       return;
     }
+    /* Not a fourth axis, so not in the table above: the axes are one key each and this one
+     * is a key per level. It is on the same live path for the same reason -- a pane that
+     * rebuilds itself destroys the slider being dragged -- and its own line is rewritten
+     * *after* the engine has relaid the stack, because the widths it prints are read back
+     * out of what the engine did rather than predicted from what it was asked. */
+    if (t.id === "gwidth") {
+      setPlateSizeNow(parseFloat(t.value));
+      $("#gwidthval").textContent = plateSizeNow().toFixed(2);
+      Graph.setOptions({ plateSize: plateSizeNow() });
+      const line = $("#gwidthrange");
+      if (line) line.textContent = plateRangeNote();
+      updateControlsSummary();
+      return;
+    }
     if (t.id === "gdirection") {
       state.direction = t.value; Graph.setOptions({ direction: t.value }); persist(); return;
     }
@@ -10213,7 +10323,7 @@ function wireGraphOnce() {
       return;
     }
     if (ev.target.classList.contains("sw") ||
-        ["gsize", "gspreadx", "gspready", "gspreadz"].includes(ev.target.id)) persist();
+        ["gsize", "gspreadx", "gspready", "gspreadz", "gwidth"].includes(ev.target.id)) persist();
   });
 
   /* Drag to reorder. Reordering is the stack order, so dropping a row moves a plate. */

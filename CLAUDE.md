@@ -1605,6 +1605,17 @@ bought a rewrite of settled CSS, neither of which serves the thing the tool is f
    removed / modified. Kind is icon plus label; colour follows an explicit "colour by"
    selector.
 
+   **Shape is the channel that was going spare, and the diagram spends it on kind.** Five
+   kinds, five silhouettes, in Mermaid's own vocabulary — a process box for a routine, a
+   hexagon for a constant, a stadium for a boundary — which is what frees colour to go on
+   saying *what changed*. Offered as a **set** rather than as a shape per kind, on exactly the
+   argument rule 69 makes about colour sets: choosing them one at a time lets two kinds land
+   on one outline, which is the channel saying nothing, and a sixth kind then arrives with no
+   shape at all. Unlike a colour set there is nothing to measure — a shape has no contrast
+   ratio and no separation — so the sets are offered because they read, not because they
+   cleared a bar, and the Settings page says so rather than implying a rigour it does not
+   have.
+
 5. **Confidence is shape, not colour.** Solid edge = CERTAIN, dashed = INFERRED, plus a
    global "hide inferred" toggle so the defensible skeleton can be read alone. Severity
    and confidence stay separate channels, exactly as in `anomalies.py`.
@@ -1830,6 +1841,26 @@ bought a rewrite of settled CSS, neither of which serves the thing the tool is f
     sits on a plate's circle has to ask that plate how wide it is** — the nodes, the plate's
     own outline, and the you-are-here arrow standing on its rim were three expressions built
     from one constant, which is correct at one width and a lie at any other (rule 51).
+
+    **The plate as a diagram, and the billboard question is settled at one angle only.**
+    Rule 22 billboards a node because a sphere has *no orientation*, so a picture of one must
+    not have one either. A labelled box is the opposite case — it has a top and a reading
+    direction — so one held facing the camera has stopped lying on the plate it belongs to,
+    and the boxes are built flat. Built flat and then **looked at**, which is what settled it:
+    the tilt costs nothing a reader notices (a label loses 43% of its height at 35° and stays
+    perfectly readable), and the **orbit** costs everything — text lying in the plate inherits
+    the in-plane rotation, so looking straight down at a plate gives a page of names on a
+    diagonal. So a box gives up its bearing and nothing else: turned about **Z alone**, it
+    still lies flat, still foreshortens with the tilt, and its reading direction faces the
+    reader at every orbit angle. At orbit zero it is identical to leaving it alone, which is
+    the test that it takes nothing away.
+
+    Sized in **pixels**, like the dots and the labels, which is what makes the overflow answer
+    work: boxes are placed busiest-first and only where they do not overlap at the current
+    zoom, everything else stays a dot (rule 19 — nothing leaves the picture), and the number
+    still a dot is stated with the way to get more (design rule 1). Measured on Mensores at a
+    1280×760 pane: `pkg:mcp` lights 360 and draws **102** boxes; the worst plate lights 1,319
+    and draws 86, placed in **2.3 ms**.
 
 23. **Hiding and collapsing are separate switches.** Hiding decides whether an unselected
     plate draws; collapsing decides whether it still takes up room. Wanting the second

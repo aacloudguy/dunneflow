@@ -3845,6 +3845,145 @@ question answered first — what makes two findings in two versions the same fin
 carries no id and 93 of Mensores' 106 are `LOST_EDGE`, so pairing them would invent an
 identity (rule 1).
 
+## The plate as a diagram — built 2026-08-31
+
+**`6l`.** The second recorded feature request, and the one carrying an acceptance test:
+*"The goal of the Mermaid diagrams is to aid in understanding, so they must be easy to read
+or we have failed."* Three questions went to Tom; he answered one, asked to clarify, and
+then settled the other two.
+
+### What Tom decided
+
+- **Boxes for whatever is lit.** No new idea to learn: picking a plate already lights every
+  node on it and picking a routine lights it and its one hop, so "the lit set" is the
+  reading loop drawn as a diagram rather than as dots. Median 3 boxes from a routine (p99
+  16), 6 to 991 from a plate.
+- **Shape carries kind — and is selectable in Settings.** His words: *"Shape can carry kind,
+  but should be selectable in Settings, that's my only request."* Offered as **sets**, the
+  way the colours are: *By kind*, *All rectangles*, *All rounded*.
+- **Box what fits, dot the rest, state the number.** Placed busiest-first and only where they
+  do not overlap at the current zoom; zooming in turns more dots into boxes.
+
+### Two things the data settled before any of that was asked
+
+- **Names are box-sized; boundary targets are not.** Routines, constants, structures and
+  artefacts run a median of 13 to 18 characters with a 99th percentile of 37. Boundaries are
+  70% over 30 characters, median 50, **max 1,388** — a whole embedded Python program —
+  because a boundary's label is the *expression it touches* rather than a name.
+- **That decision then changed once shape started carrying kind.** The first version led a
+  boundary box with its kind (`DATABASE`, `STDIO`), which was right while colour was the only
+  thing saying what a node is. It is wrong now: the stadium outline already says *boundary*,
+  so the box would spend its one line repeating the shape while dropping the only thing shape
+  cannot carry. It says what it touches, prefixed by the direction, elided at 28 characters
+  with the card holding it whole — rule 8 forbids truncating at *ingest*, and a bounded
+  diagram beside the complete content is what it explicitly allows.
+
+### The billboard question, answered at one angle and only one
+
+This is the *"To be determined…"* Tom left open, and it was left open on purpose: rule 22
+billboards a node because a sphere **has no orientation**, and a labelled box does — it has a
+top and a reading direction — so one held facing the camera has stopped lying on the plate it
+belongs to. His instruction was to build it flat and find out whether there was a problem at
+all. There is, and **it is not where either of us expected**:
+
+- **The tilt costs nothing.** At 35° a label loses 43% of its height and stays perfectly
+  readable. Foreshortening was the thing the question was about and it turns out not to matter.
+- **The orbit costs everything.** Text lying in the plate inherits the in-plane rotation, so
+  turning the stack 20° turns every label 20°, and looking *straight down* at a plate — the
+  one view where a plate is an undistorted diagram — gives a page of names set on a diagonal.
+  Top-down was **worse than tilted**, which is the opposite of what the reasoning predicted.
+
+So a box gives up its bearing and nothing else: **turned about Z alone**. It still lies flat,
+still foreshortens with the tilt, still reads as something *on* a plate, and its reading
+direction faces the reader at every orbit angle. At orbit zero it is identical to leaving it
+alone, which is the test that it takes nothing away. The other two axes stay exactly where
+flat put them.
+
+### What it looks like, and how that was seen at all
+
+Rule 38 stands: the automation tab gets **zero animation frames** — measured, 0 in a second,
+and resizing the window to 1600×1000 changed nothing — so deck's canvas never leaves its
+300×150 default and the renderer draws nothing to screenshot.
+
+So the geometry was **rasterised** instead: `draw()` builds its layers synchronously, so the
+boxes, their outlines, their colours and their text are all in `props` without a frame ever
+happening, and a 2D canvas can draw them through deck's own viewport. Every number came from
+the layer's own accessors — `getPolygon`, `getLineColor`, `getAngle` — so it is the renderer's
+geometry and not a second copy of it. **It is a picture of what would be drawn, not a
+screenshot of the renderer**, and it is recorded as one.
+
+That harness got it wrong twice and both are worth keeping:
+
+- **It built its viewport without `orthographic: true`**, which is deck's default of
+  *perspective* — a different projection from the one design rule 20 chose. Every number it
+  had produced was about another picture: box counts, the overlap check, the lot. Rule 24 in
+  my own instrument. Caught by measuring pixels-per-world against `2 ** zoom` and finding 39
+  where 132 was owed.
+- **It drew the labels mirrored**, because canvas Y runs down and the plate's Y runs up. The
+  first screenshot was a page of backwards text — the harness lying about the renderer rather
+  than the renderer being wrong.
+
+And one risk was closed by reading rather than by looking: deck's `getAngle` sign convention
+for non-billboard text. `rotate_by_angle` in the vendored bundle is a column-major *clockwise*
+matrix followed by `pixelOffset.y *= -1.0`, which is net **counter-clockwise in the world XY
+plane** — the same convention the harness used, so the pictures are faithful on the one point
+the whole fix turns on. That is rule 22's own history taken seriously: three times the sphere
+shading compiled, drew, and silently did nothing.
+
+### Measured on Mensores
+
+```
+pkg:mcp, 360 lit          496x361  → 21 boxes    900x600  →  55
+                         1280x760  → 102 boxes  1920x1080 → 157
+pkg:quaestor, 1,319 lit  1280x760  →  86 boxes, 1,233 still dots, placed in 2.3 ms
+```
+
+The dots and the boxes sum to the lit set exactly, at every size, and the count line says so:
+*"102 boxed · 258 still dots — zoom in for more"*. Zero overlapping pairs among the placed
+boxes, checked by re-projecting them off the layer deck was handed.
+
+### What is verified, and what is not
+
+Driven: both shape sets and the six outlines they produce, the switch, the placement at four
+window sizes, the sum against the lit set, the overlap check, the cost, the count line, the
+cross-plate crossings drawn beside the boxes (`sel-edges` and `inter-edges` both present with
+`boxes-kind` and `box-labels`), and the settings surviving a reload.
+
+**Not verified: the renderer's own pixels.** Everything above is the geometry deck was given,
+drawn by a second rasteriser. The one thing that cannot be checked this way is whether deck's
+TextLayer puts the glyphs where the harness put them — the convention is read out of the
+shader and matches, but reading a shader is not seeing it. **This wants Tom's eye more than
+either of the last two chunks did**, because it is the first one whose whole point is what it
+looks like.
+
+**The weakest thing in the picture is not the boxes.** With 360 lit and 149 within-plate
+links, the edges are a hairball behind them. That is the existing edge rendering rather than
+anything this chunk added, and it is the next thing to look at if the diagram is kept.
+
+Guards mutation-tested at **23/23** over a proved-green baseline, after a run at 20/23 —
+**all three survivors the guard being weak**, which is the eighteenth through twentieth time
+in this record. Two were the same shape twice: a check asking whether a name appeared
+*anywhere* in a function, passing a mutation that left a second occurrence standing (rule 59's
+companion). The third was a genuine gap — nothing asserted the mount hands `diagram` and
+`nodeShapes` to the engine at all, so deleting that line left every guard green while the
+switch would have been persisted, restored, drawn checked, and never reached the renderer.
+
+**No new numbered rule.** The billboard finding belongs to rule 22 and is recorded there; the
+shape-as-a-set argument belongs to design rule 4 and is recorded there; everything else is
+rule 24, rule 59's companion, and design rule 1 in new costumes.
+
+### Paused 2026-08-31, after the diagram
+
+Working tree clean; all three gates green; both mutation suites at 100% (24/24 for the plate
+widths, 23/23 here); `output/mensores` untouched.
+
+**Three chunks now rest on a picture nobody with a real window has looked at**: the second
+altitude, the plate widths, and this. `dunneflow serve output/mensores`, then the *diagram*
+switch in the controls box beside *plates*, and Settings › Shape for the outlines.
+
+**Still open and unstarted:** the anomaly worklist overlay, blocked on one question — what
+makes two findings in two versions the same finding.
+
 ## Sizing a plate by what it holds — built 2026-08-31
 
 **`6k`.** The first of the two recorded feature requests, and the smaller one. Three

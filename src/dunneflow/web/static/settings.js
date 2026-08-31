@@ -104,6 +104,27 @@ const DEFAULTS = {
    * judgment does not carry across. The same argument `minDisk` and `diskOrder` make. */
   plateSize: { routine: 1, module: 1 },
   collapseUnused: false,  // close the gap a plate nothing is looking at leaves behind
+  /* Draw what the selection has lit as labelled boxes rather than as dots.
+   *
+   * Off by default, and that is design rule 2 rather than timidity: the dots are what
+   * fifteen thousand nodes can be drawn as at all (rule 18), and boxes are an order of
+   * magnitude larger, so this is a second way of looking rather than a better one. It is a
+   * switch in the controls box beside `plates`, because it is something a reader flips
+   * while reading and not a preference they set once. */
+  diagram: false,
+  /* Which shapes the boxes are drawn in, **as a set** rather than a shape per kind.
+   *
+   * The same decision the colour sets took, and Tom's: a reader assigning shapes one at a
+   * time can land two kinds on one outline, which is the channel saying nothing, and a
+   * sixth kind then arrives with no shape at all. `kind` spends the channel -- five kinds,
+   * five silhouettes, Mermaid's own vocabulary -- which is what frees colour to go on
+   * saying what changed (design rule 4). `rect` and `round` are one outline for everything
+   * and leave kind on colour, where it is today.
+   *
+   * Unlike a colour set there is nothing to measure here: a shape has no contrast ratio and
+   * no separation, so every set that can be reached is reachable because it reads, not
+   * because it passed a bar. That is worth saying rather than implying by omission. */
+  nodeShapes: 'kind',     // 'kind' | 'rect' | 'round'
   showPlates: false,
   /* The "you are here" pointer: an arrow standing over each node the reader picked.
    *
@@ -373,6 +394,7 @@ function resetSettings(program, current) {
     spreadX: 'spread across', spreadY: 'spread deep', spreadZ: 'spread between plates',
     plateSize: 'how much a plate\'s width says about what it holds',
     collapseUnused: 'collapsed plates',
+    diagram: 'the plate drawn as a diagram', nodeShapes: 'which shapes the boxes take',
     showPlates: 'the plates themselves', edgesInMotion: 'edges while moving',
     pointerShown: 'the you-are-here pointer', pointerColor: 'the pointer colour',
     pointerPlace: 'where the pointer stands',

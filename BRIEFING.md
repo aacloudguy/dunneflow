@@ -159,9 +159,45 @@ is not computed yet.
 
 ## What we are doing now
 
-**Paused 2026-08-31, with chunk 2 built and driven: a plate's width now says what it
-holds.** The first of the two recorded feature requests is done; the second — the plate as
-a readable diagram — is next and unblocked.
+**Paused 2026-08-31, with both recorded feature requests built.** Chunk 3 draws a plate as
+a diagram: labelled boxes for whatever is lit, in five silhouettes that carry kind.
+
+Tom's decisions: **boxes for whatever is lit** (which already means the whole plate when you
+pick a plate, and a routine plus its hop when you pick a routine); **shape carries kind, as a
+set in Settings** — *By kind*, *All rectangles*, *All rounded*; and **box what fits, dot the
+rest, state the number**, so zooming in turns more dots into boxes and nothing ever leaves
+the picture.
+
+```
+pkg:mcp, 360 lit    496x361 → 21 boxes   1280x760 → 102 boxes   1920x1080 → 157
+pkg:quaestor, 1,319 lit                  1280x760 →  86 boxes, 1,233 still dots, 2.3 ms
+```
+
+- **The billboard question is answered, and not where either of us expected.** Built flat, as
+  Tom asked. The **tilt** costs nothing — a label loses 43% of its height at 35° and stays
+  readable — and the **orbit** costs everything, because flat text inherits the in-plane
+  rotation, so *top-down was worse than tilted*. A box now gives up its bearing and nothing
+  else: turned about Z alone, still flat on its plate.
+- **A boundary box says what it touches, not what kind it is** — the stadium outline already
+  says *boundary*, so spending the one line on the word would drop the only thing shape
+  cannot carry.
+- **Rule 38 held**: zero animation frames even at 1600×1000, so the geometry was rasterised
+  from the layers deck was handed. **A picture of what would be drawn, not a screenshot of
+  the renderer** — and the harness was wrong twice before it was right (a perspective
+  viewport where the product is orthographic, and mirrored text).
+- Guards mutation-tested at **23/23**, after 20/23 with all three survivors the guard being
+  weak.
+
+See `HANDOFF.md`, "The plate as a diagram — built 2026-08-31".
+
+**Next: nothing is scheduled.** Three chunks now rest on a picture nobody with a real window
+has seen. The one open piece of work is the **anomaly worklist overlay**, still blocked on
+one question — what makes two findings in two versions the same finding.
+
+### Before that: sizing a plate by what it holds (2026-08-31)
+
+**A plate's width now says how much is on it.** The first of the two recorded feature
+requests.
 
 A fifth control joined the three spread axes in the HUD, and it is not an axis: `sqrt(n /
 n_largest)` on **real nodes**, a *strength* between the uniform stack (0) and area

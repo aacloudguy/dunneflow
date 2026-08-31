@@ -201,6 +201,8 @@ const state = {
   // How much a plate's width says about how much it holds; per level, see `plateSizeNow`.
   plateSize: { routine: 1, module: 1 },
   collapseUnused: false,  // close the gap a plate nothing is looking at leaves behind
+  diagram: false,         // what is lit, drawn as labelled boxes rather than as dots
+  nodeShapes: "kind",     // a shape *set*, never a shape per kind -- see settings.js
   /* Which panes are open. This existed in `settings.js` from the start -- persisted,
    * named in the reset dialog -- and nothing anywhere read it: the pre-merge graph had
    * collapsible panels and the merge kept the switch while dropping the implementation.
@@ -3073,6 +3075,67 @@ function viewAnomalies() {
   </div>`;
 }
 
+/* The shape sets, and what each is *for*.
+ *
+ * The roster and the prose only. **The outlines themselves come from the engine** —
+ * `Graph.silhouettes(set)` returns the very points the stack draws — because a key that
+ * keeps its own copy of these shapes is a second answer to what a kind looks like, and the
+ * two part company the day a shape moves (rule 13). The colour sets are built the same way,
+ * reading their values back off the stylesheet.
+ *
+ * `kind` is first and is the default: it is the set that spends the channel, and spending
+ * it is what frees colour to go on saying what changed (design rule 4). */
+const SHAPE_SETS = [
+  { id: "kind",  name: "By kind",
+    why: "Five kinds, five outlines, and they are Mermaid's own vocabulary — a process box "
+       + "for a routine, a hexagon for a constant, a stadium for a boundary. Shape then "
+       + "carries what a thing is, and colour is free to carry what changed about it." },
+  { id: "rect",  name: "All rectangles",
+    why: "One outline for everything. The eye reads position and connection rather than "
+       + "sorting five silhouettes, and kind stays where it is now, on colour." },
+  { id: "round", name: "All rounded",
+    why: "The same, with soft corners. Quieter against a dense plate, and the corners are "
+       + "cut rather than curved so a box costs eight points instead of an arc." },
+];
+
+/* The kinds a box can be, in the order the key lists them, with what each one *is*.
+ *
+ * `MODULE` is here because the module altitude folds a whole file into one node and that
+ * node gets a box like any other — a key that listed five kinds and drew six would be the
+ * silent omission design rule 1 exists to prevent, one altitude away. */
+const SHAPE_KINDS = [
+  ["ROUTINE",   "a thing that runs"],
+  ["STRUCTURE", "a shape data takes"],
+  ["CONSTANT",  "a name pinned to a value"],
+  ["BOUNDARY",  "where something leaves or arrives"],
+  ["ARTEFACT",  "a file the program names"],
+  ["MODULE",    "a whole file, at the module altitude"],
+];
+
+/* The key: every kind, in the outline the chosen set actually draws it in.
+ *
+ * SVG rather than a canvas, because these are six static shapes on a settings page and the
+ * engine is not mounted when this renders — asking a WebGL view for a picture of itself in
+ * order to illustrate a control would make the control depend on the view being open.
+ * The *points* are still the engine's; only the drawing is local. */
+function shapeKeyHtml() {
+  const shapes = Graph.silhouettes(state.nodeShapes);
+  const W = 68, H = 26;
+  return SHAPE_KINDS.map(([kind, what]) => {
+    const pts = (shapes[kind] || []).map(([x, y]) =>
+      `${(W / 2 + x * (W / 2 - 1.5)).toFixed(1)},${(H / 2 + y * (H / 2 - 1.5)).toFixed(1)}`
+    ).join(" ");
+    return `<div class="shapekey">
+      <svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" aria-hidden="true">
+        <polygon points="${esc(pts)}" fill="none" stroke="var(--graph-${kind.toLowerCase()})"
+                 stroke-width="1.4"></polygon>
+      </svg>
+      <span class="shapekey-name">${esc(kind.toLowerCase())}</span>
+      <span class="shapekey-what muted">${esc(what)}</span>
+    </div>`;
+  }).join("");
+}
+
 /* The colour sets, and what each is *for*.
  *
  * The values are in `tokens.css` and nothing about a colour is written down here. This is
@@ -3340,6 +3403,31 @@ function viewSettings() {
           external mark are single colours with nothing to be confused with, so they are
           not part of a set.</p>
         <div class="palettes">${PALETTES.map(paletteRow).join("")}</div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head"><h2>Shape</h2>
+        <span class="hint">the other channel that can carry a meaning</span></div>
+      <div class="panel-body">
+        <p class="hint" style="margin:0 0 .6rem">When the stack is drawn as a
+          <b>diagram</b> — boxes with names on them, for whatever is lit — every box has an
+          outline, and an outline can say something. <b>By kind</b> spends it the way a
+          diagram always has, which leaves colour free to go on saying what changed; the
+          other two draw one outline for everything and leave kind on colour, where it is
+          now. Unlike a colour set there is nothing to measure here: a shape has no contrast
+          ratio, so these are offered because they read, not because they cleared a bar.</p>
+        <div class="setrow">
+          <div><div class="lbl">Node shape</div>
+            <div class="desc">A set rather than a shape per kind, for the same reason the
+              colours are: choosing them one at a time lets two kinds land on one outline,
+              which is the channel saying nothing.</div></div>
+          <div class="seg" role="group" aria-label="Node shape">
+            ${SHAPE_SETS.map(sh => `<button data-shapeset="${esc(sh.id)}"
+              aria-pressed="${state.nodeShapes === sh.id}">${esc(sh.name)}</button>`).join("")}
+          </div>
+        </div>
+        <div class="shapekeys">${shapeKeyHtml()}</div>
       </div>
     </section>
 
@@ -5984,6 +6072,21 @@ function wire() {
     render();
   }));
 
+  /* The shape set, beside the colour set and named the same way: `data-shapeset` is a
+     route and nothing on the page is stamped with it, so the `data-nav` collision cannot
+     happen again here. The engine is told even when it is not mounted -- `setOptions`
+     returns early without a prepared payload and the value is handed over again at mount,
+     so a choice made from Settings before the graph has ever been opened is not lost
+     (rule 68: a restore is a setter and must do what the setter does). */
+  $$("[data-shapeset]").forEach(b => b.addEventListener("click", () => {
+    state.nodeShapes = b.dataset.shapeset;
+    used("shapes:" + state.nodeShapes);
+    if (Graph.mounted()) Graph.setOptions({ nodeShapes: state.nodeShapes });
+    persist();
+    // The key beside the control draws the set's own outlines, so it has to redraw too.
+    render();
+  }));
+
   /* worklist */
   $$("[data-sev]").forEach(b => b.addEventListener("click", () => {
     if (b.disabled) return;
@@ -6357,6 +6460,10 @@ const WIRED_ATTRS = new Set([
   "assumenewer",
   /* The change worklist's one control: which band is open. */
   "changeband",
+  /* The shape set, beside `palette-set` and `theme-set`. A route only: nothing on the page
+     is stamped `data-shapeset`, which is what keeps it clear of the `data-nav` collision
+     those two are named to avoid. */
+  "shapeset",
   /* The base switch's one control: dismiss a switch that failed. Only ever rendered in the
      failed state -- there is nothing to dismiss while a rebuild is running, and offering a
      cancel that cannot stop the server would be a control that looks live and is not. */
@@ -8214,6 +8321,7 @@ const PERSISTED = [
   "diskOrder", "diskColors", "colorBy", "sortMode", "filterMode", "direction",
   "level", "minDisk",
   "nodeSize", "spreadX", "spreadY", "spreadZ", "plateSize", "collapseUnused",
+  "diagram", "nodeShapes",
   "searchCase", "searchWord", "searchRegex",
   "panels", "inspectorAuto", "navWidth", "codeWidth", "codeFile", "codeOverlay",
   "tableOverlay",
@@ -8693,6 +8801,7 @@ async function ensureGraph() {
     spreadX: state.spreadX, spreadY: state.spreadY, spreadZ: state.spreadZ,
     plateSize: plateSizeNow(),
     collapseUnused: state.collapseUnused, showPlates: state.showPlates, scale: state.scale,
+    diagram: state.diagram, nodeShapes: state.nodeShapes,
     edgesInMotion: state.edgesInMotion, picks: state.picks,
     pointerShown: state.pointerShown, pointerColor: pointerRgb(),
     pointerPlace: state.pointerPlace, reticuleShown: state.reticuleShown,
@@ -9551,6 +9660,18 @@ function countLine(c) {
     /* Not a filter on the picture -- nothing is removed, so there is no count to state --
      * but a reader whose hover has stopped answering over most of the screen is owed the
      * reason, and the reason is a mode they turned on. */
+    /* **Design rule 1, and it is the whole of the overflow answer.** Boxes are placed only
+       where they fit at this zoom, so a plate pick of 926 draws a few dozen and leaves the
+       rest as dots -- and forty boxes over a selection of nine hundred looks exactly like a
+       selection of forty. Both numbers, because rule 32 says each must be named after what
+       it counts, and the way to get more is stated because a reader cannot guess that the
+       picture answers to the zoom. Silent when everything lit got a box: "41 of 41" is
+       noise, and the diagram is then simply the picture. */
+    (c.boxesDotted
+      ? ` · <b class="num">${(c.boxes || 0).toLocaleString()}</b> boxed · ` +
+        `<b class="num">${c.boxesDotted.toLocaleString()}</b> still dots ` +
+        `<span class="muted">— zoom in for more</span>`
+      : "") +
     (c.focusLocked ? ` · <span class="muted">focus: only what is lit answers</span>` : "") +
     (c.pointersWanted > c.pointers
       ? ` · <b class="num">${c.pointers}</b> of <b class="num">${c.pointersWanted}</b> pointers`
@@ -9752,6 +9873,13 @@ function renderGraphFurniture() {
         <label style="display:flex;align-items:center;gap:.2rem">
           <input id="gplates" type="checkbox" ${state.showPlates ? "checked" : ""}>
           <span class="muted">plates</span>
+        </label>
+        ${/* A way of looking rather than a preference, so it sits where the reading happens
+             rather than in Settings -- the same argument the focus lock is on the HUD. What
+             the shapes *are* is a preference and does live in Settings. */""}
+        <label style="display:flex;align-items:center;gap:.2rem">
+          <input id="gdiagram" type="checkbox" ${state.diagram ? "checked" : ""}>
+          <span class="muted">diagram</span>
         </label>
       </div>
       <div style="margin-top:.35rem">
@@ -10270,6 +10398,18 @@ function wireGraphOnce() {
     }
     if (t.id === "gplates") {
       state.showPlates = t.checked; Graph.setOptions({ showPlates: t.checked }); persist(); return;
+    }
+    /* The count line has to be rewritten as well as the picture: turning the diagram on
+       states how many boxes were drawn and how many nodes stayed dots, and the engine only
+       knows those once it has placed them. `announceCounts` fires from `setOptions`, so the
+       line follows on its own -- but not on the way *off*, where there is nothing to place
+       and the numbers have to go rather than stand stale (rule 51). */
+    if (t.id === "gdiagram") {
+      state.diagram = t.checked;
+      used("diagram:" + (t.checked ? "on" : "off"));
+      Graph.setOptions({ diagram: t.checked });
+      persist();
+      return;
     }
     /* Hiding and collapsing are separate switches on purpose: one decides whether an
      * unselected plate draws, the other whether it still takes up room. Wanting the

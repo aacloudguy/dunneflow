@@ -954,6 +954,221 @@ def test_the_width_control_does_not_borrow_a_word_this_product_owns() -> None:
         )
 
 
+def test_a_shape_set_covers_every_kind_a_box_can_be() -> None:
+    """A kind with no outline is drawn as something else, silently.
+
+    `silhouette` falls back to the rectangle for a kind it does not know, which is the right
+    behaviour at runtime — a payload this build has not been taught is better drawn plainly
+    than not drawn — and exactly the wrong thing to rely on. Two kinds sharing one outline is
+    the channel saying nothing, which is the whole argument for offering shape as a **set**
+    rather than as a picker per kind.
+
+    Both directions. Every kind the payload can carry must have an outline; and every outline
+    must be listed in the Settings key, or the reader meets a shape the page never explained.
+    """
+    engine = _read("graph.js")
+    block = engine.split("const SILHOUETTE = {", 1)[1].split("\n};", 1)[0]
+    shaped = set(re.findall(r"^  (\w+):", block, re.M))
+    assert len(shaped) >= 5, f"the SILHOUETTE table changed shape: {sorted(shaped)}"
+
+    # The kinds the *server* can emit, read from the payload builder rather than a list here.
+    graph_py = (Path(__file__).resolve().parents[1]
+                / "src/dunneflow/web/graph.py").read_text(encoding="utf-8")
+    emitted = set(re.findall(r'kind="([A-Z_]+)"', graph_py))
+    assert emitted, "no node kinds found in graph.py -- this test is blind"
+    assert emitted <= shaped, (
+        f"kinds the payload emits with no outline of their own: {sorted(emitted - shaped)} "
+        "— each falls back to the rectangle and becomes indistinguishable from a routine"
+    )
+
+    shell = _read("shell.js")
+    keyed = set(re.findall(r'^  \["(\w+)",', shell.split("const SHAPE_KINDS = [", 1)[1]
+                           .split("\n];", 1)[0], re.M))
+    assert keyed == shaped, (
+        f"the Settings key and the engine disagree about which kinds have a shape: "
+        f"key-only {sorted(keyed - shaped)}, engine-only {sorted(shaped - keyed)} — "
+        "a reader meets an outline the page never explained, or reads about one that is "
+        "never drawn"
+    )
+
+
+def test_the_shape_key_draws_the_engines_own_outlines() -> None:
+    """Rule 13: the picture beside a control must be produced by the thing it describes.
+
+    A key that keeps its own copy of these shapes is a second answer to what a kind looks
+    like, and the two part company on the day a shape moves — silently, because both halves
+    go on rendering perfectly. So the page asks the engine, and the engine answers with the
+    very points it hands to the layer.
+    """
+    shell = _read("shell.js")
+    fn = _fn(shell, "shapeKeyHtml")
+    assert "Graph.silhouettes(" in fn, (
+        "the shape key no longer asks the engine for its outlines"
+    )
+    assert "polygon" in fn and "points=" in fn, "the key stopped drawing the outlines at all"
+    for forbidden in ("SILHOUETTE", "Math.cos", "rect", "hexagon"):
+        assert forbidden not in fn, (
+            f"the shape key builds {forbidden!r} of its own — a second answer to what a "
+            "kind looks like, which will disagree with the stack and say nothing when it does"
+        )
+
+    engine = _read("graph.js")
+    api = engine.split("silhouettes: (set)", 1)
+    assert len(api) == 2, "Graph.silhouettes is gone; the key has nothing to ask"
+    assert "silhouette(k, set)" in api[1], (
+        "Graph.silhouettes no longer routes through `silhouette`, so the key can be "
+        "answered by something other than what draws the stack"
+    )
+
+
+def test_a_box_and_its_label_are_turned_by_one_number() -> None:
+    """The outline and the text inside it are two layers drawing one object.
+
+    They are turned about Z so the reading direction faces the reader — which was **found by
+    looking**, not reasoned: built flat, the tilt turned out to cost nothing a reader
+    notices, and the *orbit* turned every label by the orbit angle, so looking straight down
+    at a plate gave a page of names set on a diagonal.
+
+    Two numbers for one turn is how the box ends up at one angle and its name at another, and
+    nothing would fail: both layers render, both are correct about themselves. So the angle
+    comes from one function, in degrees for the text layer and radians for the outline,
+    converted at the single call site that has both.
+    """
+    js = _read("graph.js")
+    assert "function boxSpinDeg()" in js, "the turn is no longer stated in one place"
+
+    build = _fn(js, "buildLayers")
+    assert "const spinDeg = boxSpinDeg();" in build, "the layers no longer ask for the turn"
+    assert re.search(r"const spin = \(spinDeg \* Math\.PI\) / 180;", build), (
+        "the radian form is no longer derived from the degree form — two spellings of one "
+        "angle is how the outline and its label come to disagree"
+    )
+    assert "getAngle: spinDeg" in build, "the text layer is not given the turn"
+    assert "boxPolygon(b, unit, spin)" in build, "the outline is not given the turn"
+
+    # It must also re-upload when the turn changes, or the boxes keep the previous angle
+    # while the labels move -- the silent half of the same defect.
+    for trigger in (r"getPolygon: \[unit, spin,", r"getAngle: \[spinDeg\]"):
+        assert re.search(trigger, build), (
+            f"no update trigger matching {trigger!r} — deck compares props shallowly, so "
+            "the geometry would keep the angle it was first built at"
+        )
+
+
+def test_boxes_are_placed_in_screen_space_and_say_what_stayed_a_dot() -> None:
+    """The overflow answer, and design rule 1 is the whole of it.
+
+    A plate pick can light 926 nodes and a diagram of 926 boxes is not a diagram. Boxes are
+    placed busiest-first and kept only where they do not touch one already placed; everything
+    else stays a **dot**, so nothing leaves the picture (rule 19), and the number still a dot
+    is stated with the way to get more (design rule 1, rule 32).
+
+    Measured on Mensores at a 1280x760 pane: picking `pkg:mcp` lights 360 and draws 102
+    boxes; the worst plate lights 1,319 and draws 86, in 2.3 ms.
+    """
+    engine = _read("graph.js")
+    place = _fn(engine, "placeBoxes")
+    assert "vp.project(" in place, "placement no longer happens in screen space"
+    assert "d.degree[b] - d.degree[a]" in place, (
+        "boxes are no longer placed busiest-first — the ordering is what makes the ones "
+        "that survive a crowd the ones worth reading"
+    )
+    assert "g.members.size - placed.length" in place, (
+        "the dotted count is no longer the remainder of what was lit, so the two numbers "
+        "can disagree about one selection"
+    )
+    # **The catch branch itself, not any `return null` in the function.** A first version
+    # asked whether the string appeared anywhere in `placeBoxes` and passed a mutation that
+    # made the catch return an empty answer while a later `return null` stood untouched —
+    # rule 59's companion, and the third time this session a guard has accepted any
+    # occurrence when only one of them was the claim.
+    catch = re.search(r"\}\s*catch\s*\{(.*?)\}", place, re.S)
+    assert catch, "getViewports() is called unguarded; an optional chain does not catch a throw"
+    assert re.search(r"return null;", catch.group(1)), (
+        "placeBoxes answers for a viewport it does not have — rule 42: deck asserts inside "
+        "getViewports() before its first frame, and 'cannot say' is not 'nothing fits'. "
+        f"the catch returns: {catch.group(1).strip()!r}"
+    )
+
+    build = _fn(engine, "buildLayers")
+    assert re.search(r"opts\.diagram && still", build), (
+        "the placement runs while the camera is moving — a hundred rectangles re-solved "
+        "per frame to draw a picture nobody is reading yet"
+    )
+    assert "g.boxCount = boxes ? boxes.placed.length : 0;" in build, (
+        "the counts do not follow the placement, so turning the diagram off would leave "
+        "the last numbers standing over a picture that no longer has boxes in it"
+    )
+
+    shell = _read("shell.js")
+    # **And the mount has to hand both of them over.** Nothing asserted this until a
+    # mutation deleted the line and every guard stayed green: the switch would be restored
+    # into `state`, drawn checked in the controls box, and never reach the engine — design
+    # rule 16's dead control, arriving through the restore path rather than the wiring.
+    mount = shell.split("Graph.mount(", 1)[1].split("});", 1)[0]
+    for handed in ("diagram: state.diagram", "nodeShapes: state.nodeShapes"):
+        assert handed in mount, (
+            f"the mount does not hand over {handed!r} — the setting would be persisted, "
+            "restored, shown on its control and never drawn"
+        )
+    line = _fn(shell, "countLine")
+    # The **condition**, not a mention: `(c.boxesDotted ? ... : "")` mutated to `(false ? ...`
+    # leaves every use of the name standing inside a branch that can no longer run, which is
+    # a dead control wearing a live variable (rule 59's companion once more).
+    assert re.search(r"\(c\.boxesDotted\s*$", line, re.M), (
+        "the overflow line is no longer guarded by the dotted count itself — a branch that "
+        "cannot run still mentions every name in it"
+    )
+    assert "c.boxes || 0" in line, (
+        "the count line does not state how many boxes were drawn — forty boxes over a "
+        "selection of nine hundred looks exactly like a selection of forty"
+    )
+    assert "zoom in for more" in line, (
+        "the line does not say how to get more boxes, and a reader cannot guess that the "
+        "picture answers to the zoom"
+    )
+
+
+def test_the_box_cache_is_keyed_on_the_selection_and_cleared_by_whoever_moves_a_node() -> None:
+    """Two ways for a cached placement to describe the wrong picture, and neither raises.
+
+    Keyed on how *many* nodes are lit, two different routines with the same number of
+    neighbours share a key and the second is drawn with the first one's boxes. And a key
+    naming the spreads it happens to know about goes stale the day a fourth thing moves a
+    node — so the invalidation lives with the code that does the moving instead (rule 51).
+    """
+    js = _read("graph.js")
+    place = _fn(js, "placeBoxes")
+    key = place.split("const key = [", 1)[1].split("].join", 1)[0]
+    assert "g.picks.map(pickKey)" in key, (
+        "the placement cache is not keyed on the selection itself — two selections of the "
+        "same size would share an answer, and the second would be a confident picture of "
+        "the first"
+    )
+    assert "g.members.size" not in key, (
+        "the cache is keyed on the size of the selection, which is exactly the collision "
+        "above wearing a number"
+    )
+    assert "opts.direction" in key, (
+        "direction decides what a pick lights, so a cache blind to it answers the previous "
+        "question"
+    )
+    for spread in ("opts.spreadX", "opts.plateSize"):
+        assert spread not in key, (
+            f"{spread} is back in the key — a key that lists the inputs it knows about is "
+            "the shape that goes wrong when a fourth is added beside them; the layout "
+            "clears the cache instead"
+        )
+    layout = _fn(js, "applyLayout")
+    assert "g.boxCache = null" in layout, (
+        "applyLayout moves every position and does not clear the placement built from them"
+    )
+    adopt = _fn(js, "adoptPayload")
+    assert "g.boxCache = null" in adopt, (
+        "a payload swap leaves a placement whose indices point into the previous payload"
+    )
+
+
 def test_every_declared_data_array_is_assigned_somewhere() -> None:
     """`let X = []` that nothing ever writes to is an empty view with no symptom.
 

@@ -138,6 +138,35 @@ const PLATE_R = 1060;
 const NODE_LABEL_CAP = 250;
 const NODE_LABEL_ZOOM = -1.2;
 
+/* ── the plate as a diagram ──────────────────────────────────────────────────────
+ *
+ * A box carrying a name, lying flat on the plate its node lives on, for everything the
+ * selection has lit. Flat rather than billboarded, which is Tom's call and the opposite of
+ * rule 22's decision about the nodes -- and the two do not contradict each other. A sphere
+ * has **no orientation**, so a picture of one must not have one either; a labelled box
+ * *does* -- it has a top and a reading direction -- and one held facing the camera has
+ * stopped being on the plate it belongs to. Held flat it foreshortens with the tilt, which
+ * costs 18% of its height at the default 35 degrees and none at all top-down. If that turns
+ * out to be the wrong trade the billboard is a one-line change, and it is deliberately not
+ * being made until there is a picture to judge.
+ *
+ * Sized in **pixels**, like the dots and the labels, so a box is readable at any zoom and
+ * the reader zooms in to get more of them rather than to make each one bigger. That is what
+ * makes the overflow answer work: boxes are placed where they fit and everything else stays
+ * a dot, so nothing leaves the picture (rule 19) and the count of what is still a dot is
+ * stated (design rule 1).
+ */
+const BOX_H = 17;                 // one line of 11px text plus its padding, in pixels
+const BOX_PAD = 7;                // pixels either side of the text
+const BOX_CHAR = 6.2;             // advance of the 11px monospace face the labels use
+const BOX_CHARS_MAX = 28;         // past this a name is elided; the card carries it whole
+const BOX_GAP = 4;                // pixels between two boxes before they count as touching
+/* How many lit nodes are *considered* for a box. Distinct from how many are drawn, which
+ * is whatever fits: this bounds the placement work rather than the picture. A plate pick
+ * can light 926 and the greedy pass is quadratic in what it has already placed, so the
+ * pool is capped busiest-first and the remainder are dots without being measured. */
+const BOX_POOL = 600;
+
 const hexToRgb = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
 const rgbToHex = (c) => '#' + c.map((v) => v.toString(16).padStart(2, '0')).join('');
 
@@ -165,6 +194,17 @@ const g = {
   anchorArmed: false,
   anchorRetry: 0,
   hiddenLabels: 0,
+  /* What the last diagram pass drew, and the placement it drew it from.
+   *
+   * The cache is keyed on the camera and the settings that move a box on screen; it is
+   * **cleared** by whoever moves the positions underneath it, rather than by naming every
+   * spread, order and collapse in the key. One truth about when it is stale, and the code
+   * that invalidates it is the code that caused the staleness (rule 51) -- a key listing
+   * the inputs it happens to know about is the shape that goes wrong when a fourth is
+   * added beside them. */
+  boxCache: null,
+  boxCount: 0,
+  boxDotted: 0,
   benching: false,
   mounted: false,
 };
@@ -201,6 +241,8 @@ const opts = {
   spreadY: 1,
   spreadZ: 0.35,
   plateSize: 1,        // 0 = every plate one width; 1 = area by what it holds
+  diagram: false,      // draw what is lit as labelled boxes rather than as dots
+  nodeShapes: 'kind',  // 'kind' | 'rect' | 'round' -- a set, never a shape per kind
   /* Close the gap left by a plate nothing is looking at, rather than leaving a hole.
    * Independent of `filterMode`, which decides whether those plates draw at all. */
   collapseUnused: false,
@@ -522,6 +564,9 @@ function applyLayout(d) {
     }
   }
   d.gpu = null;
+  // Every box was placed by projecting a position that has just moved. Rule 51: the code
+  // that causes the staleness is the code that clears it.
+  g.boxCache = null;
   if (g.picks.length) buildSelectionGeometry(d);
 }
 
@@ -1125,7 +1170,61 @@ function buildLayers(d) {
     }
   }
 
-  if (still && g.viewState.zoom >= NODE_LABEL_ZOOM) {
+  /* **The diagram.** Boxes for what is lit, dots for the rest, and the labels below are
+   * skipped while it is on -- a name beside a dot and a name inside a box are two answers
+   * to one question, and the loose one would sit over the boxes it duplicates.
+   *
+   * Only when the camera is **still**, for the reason the labels already are: the placement
+   * is a screen-space pass over what the selection lit, and running it inside a drag would
+   * re-solve a hundred rectangles per frame to draw a picture nobody is reading yet. It is
+   * cached on the view state besides, so coming to rest costs one pass and not one per
+   * frame after it.
+   *
+   * Drawn **after** the nodes and before the edges. The dot stays under its box on purpose:
+   * it is where the edges terminate, so a box without one would leave every line stopping
+   * short of the thing it connects -- and at 1.4 to 3.6 pixels it reads as the anchor it is
+   * rather than as a second mark. */
+  const boxes = opts.diagram && still ? placeBoxes(d) : null;
+  g.boxCount = boxes ? boxes.placed.length : 0;
+  g.boxDotted = boxes ? boxes.dotted : 0;
+  if (boxes && boxes.placed.length) {
+    const unit = Math.pow(2, -g.viewState.zoom);
+    const spinDeg = boxSpinDeg();
+    const spin = (spinDeg * Math.PI) / 180;
+    layers.push(new PolygonLayer({
+      id: `boxes-${opts.nodeShapes}`, data: boxes.placed, coordinateSystem: CARTESIAN,
+      getPolygon: (b) => boxPolygon(b, unit, spin),
+      filled: true, stroked: true, extruded: false,
+      getFillColor: PALETTE.labelBg,
+      /* The node's own colour, read from the same buffer the dot is painted from, so the
+       * box and the dot under it cannot disagree about what the reader chose to colour by
+       * (rule 13). A second call to the colour logic here would be a second answer. */
+      getLineColor: (b) => [d.colors[b.index * 4], d.colors[b.index * 4 + 1],
+                            d.colors[b.index * 4 + 2], 255],
+      getLineWidth: 1.2 * opts.scale, lineWidthUnits: 'pixels', pickable: false,
+      updateTriggers: {
+        getPolygon: [unit, spin, opts.nodeShapes],
+        getLineColor: [opts.colorBy, opts.filterMode, opts.changeStamp],
+      },
+    }));
+    layers.push(new TextLayer({
+      id: 'box-labels', data: boxes.placed, coordinateSystem: CARTESIAN,
+      getPosition: (b) => b.pos, getText: (b) => b.text,
+      /* In world units and **not billboarded**, so the text lies on the plate with the box
+       * around it. Sized from the same `unit` the outline is, or the two would part company
+       * the moment the reader zoomed. */
+      getSize: 11 * opts.scale * unit, sizeUnits: 'common',
+      getColor: PALETTE.label, billboard: false,
+      // The same turn the outline takes, from the one function that decides it.
+      getAngle: spinDeg,
+      getTextAnchor: 'middle', getAlignmentBaseline: 'center',
+      characterSet: 'auto', fontFamily: 'ui-monospace, Menlo, monospace',
+      pickable: false,
+      updateTriggers: { getSize: [unit, opts.scale], getAngle: [spinDeg] },
+    }));
+  }
+
+  if (still && !boxes && g.viewState.zoom >= NODE_LABEL_ZOOM) {
     const labels = pickLabels(d);
     if (labels.length) {
       layers.push(new TextLayer({
@@ -1448,6 +1547,206 @@ function pointerCount() {
   return g.picks.filter((p) => p.kind === 'node').length;
 }
 
+/* ── the plate as a diagram ─────────────────────────────────────────────────────
+ *
+ * Five kinds, five silhouettes, offered as a **set** rather than as a shape per kind --
+ * the same decision the colour sets took, and for the same reason: a reader who assigns
+ * shapes one at a time can land two kinds on one outline, which is the channel saying
+ * nothing, and a sixth kind arrives with no shape at all. `kind` is the set that spends
+ * the channel; `rect` and `round` are the two Tom originally asked for, one outline for
+ * everything, and they leave kind where it already is, on colour.
+ *
+ * Shape carrying kind is what frees colour to go on saying *what changed* (design rule 4:
+ * colour is the scarcest channel, spend it on one dimension at a time). It is also what a
+ * diagram has always done -- these five are Mermaid's own vocabulary, which is the thing
+ * the request asked for by name.
+ *
+ * Returned as a unit outline in [-1, 1] and scaled by the caller, so the shapes are stated
+ * once and the sizing is stated once. A shape a set does not name falls back to the
+ * rectangle rather than throwing: an unknown kind is a payload this build has not been
+ * taught, and drawing it plainly is a better answer than drawing nothing.
+ */
+const SILHOUETTE = {
+  // A routine is a thing that runs: Mermaid's plain process box.
+  ROUTINE:   () => [[-1, -1], [1, -1], [1, 1], [-1, 1]],
+  // A shape data takes: soft corners, cut rather than curved, because eight points read as
+  // rounded at box size and cost a quarter of what an arc costs.
+  STRUCTURE: (r = 0.34) => [[-1 + r, -1], [1 - r, -1], [1, -1 + r * 3], [1, 1 - r * 3],
+                            [1 - r, 1], [-1 + r, 1], [-1, 1 - r * 3], [-1, -1 + r * 3]],
+  // A name pinned to a value: Mermaid's hexagon, `{{ }}`.
+  CONSTANT:  () => [[-1 + 0.3, -1], [1 - 0.3, -1], [1, 0], [1 - 0.3, 1], [-1 + 0.3, 1], [-1, 0]],
+  // Where it leaves: Mermaid's stadium, `([ ])` -- the shape it spends on start and end.
+  BOUNDARY:  () => {
+    const out = [];
+    for (let k = 0; k <= 8; k++) {
+      const t = -Math.PI / 2 + (k / 8) * Math.PI;
+      out.push([1 - 0.5 + Math.cos(t) * 0.5, Math.sin(t)]);
+    }
+    for (let k = 0; k <= 8; k++) {
+      const t = Math.PI / 2 + (k / 8) * Math.PI;
+      out.push([-1 + 0.5 + Math.cos(t) * 0.5, Math.sin(t)]);
+    }
+    return out;
+  },
+  // A file it names: Mermaid's parallelogram, `[/ /]`, which it spends on input and output.
+  ARTEFACT:  () => [[-1 + 0.28, -1], [1, -1], [1 - 0.28, 1], [-1, 1]],
+  // A file folded whole, at the module altitude. Not one of Mermaid's, and it does not need
+  // to be: it stands for many things, so it is a box with a shoulder.
+  MODULE:    () => [[-1, -1], [1 - 0.3, -1], [1, -1 + 0.6], [1, 1], [-1, 1]],
+};
+
+/* The set is a parameter rather than a read of `opts`, so the key on the Settings page can
+ * ask for the outlines of a set the reader is only *considering* — and so that the key and
+ * the stack are answered by one function (rule 13). A key drawn from its own copy of these
+ * shapes is a second answer to what a kind looks like. */
+function silhouette(kind, set = opts.nodeShapes) {
+  if (set === 'rect') return SILHOUETTE.ROUTINE();
+  if (set === 'round') return SILHOUETTE.STRUCTURE();
+  return (SILHOUETTE[kind] ?? SILHOUETTE.ROUTINE)();
+}
+
+/* What goes on a box, which is **not** always what goes beside a dot.
+ *
+ * The name, for every kind, and that is a decision that **changed once shape started
+ * carrying kind**. Four of the five are box-sized already: routines, constants, structures
+ * and artefacts run a median of 13 to 18 characters and a 99th percentile of 37. A boundary
+ * is the exception -- its label is the *expression it touches*, a median of 50 characters
+ * and up to 1,388 of embedded Python, because what identifies a boundary is where it goes
+ * rather than what it is called.
+ *
+ * The first version led a boundary box with its kind -- `DATABASE`, `STDIO` -- and that was
+ * right while colour was the only thing saying what a node is. It is wrong now: the stadium
+ * outline already says *boundary*, so the box would spend its one line repeating the shape
+ * while dropping the only thing the shape cannot carry. It says what it touches instead,
+ * prefixed by the direction, which shape cannot carry either.
+ *
+ * Rule 8 forbids truncating at **ingest** and this is not that: the value is recorded whole,
+ * stored whole and shown whole one hover away. An ellipsis on a box is the bounded diagram
+ * rule 8 explicitly allows, with the complete content sitting beside it.
+ */
+const BOX_ARROW = { IN: '←', OUT: '→', BOTH: '↔' };
+
+function boxText(d, i) {
+  const det = d.raw.nodes.detail[i] || {};
+  let text = d.raw.nodes.label[i] || '';
+  if (d.raw.nodes.kind[i] === 'BOUNDARY') {
+    const arrow = BOX_ARROW[det.direction];
+    if (arrow) text = `${arrow} ${text}`;
+  }
+  return text.length > BOX_CHARS_MAX ? text.slice(0, BOX_CHARS_MAX - 1) + '…' : text;
+}
+
+/* Which lit nodes get a box, decided in **screen space** at the zoom in force.
+ *
+ * Busiest first, and a box is kept only where it does not touch one already placed. That
+ * ordering is the same one the layout itself uses -- what a package mostly does ends up
+ * where the eye lands first -- so the boxes that survive a crowd are the ones worth reading.
+ *
+ * Everything not placed stays a **dot**. Nothing leaves the picture, which is rule 19's own
+ * argument for dimming rather than hiding, and the number still a dot is stated on the count
+ * line, which is design rule 1's. Zooming in spreads the plate in screen space without
+ * changing the boxes, so more of them fit -- the reader's way of asking for more detail is
+ * the one they already have.
+ *
+ * Returns null rather than an empty answer when there is no viewport to ask. Rule 42: deck
+ * asserts inside `getViewports()` before its first frame, so the guard is a `try` and not an
+ * optional chain -- and "cannot say" is a different answer from "nothing fits".
+ */
+function placeBoxes(d) {
+  let vp;
+  try {
+    vp = g.deckgl?.getViewports?.()[0];
+  } catch {
+    return null;
+  }
+  if (!vp || !g.members.size) return null;
+
+  /* Keyed on the **selection**, never on how big it is: two different routines with the
+   * same number of neighbours would share a key and the second would be drawn with the
+   * first one's boxes -- a confident picture of the wrong thing, which is the failure this
+   * whole file keeps finding. `direction` is in it because it decides what a pick lights. */
+  const key = [vp.width, vp.height, g.viewState.zoom, g.viewState.rotationX,
+               g.viewState.rotationOrbit, (g.viewState.target || []).join(','),
+               g.picks.map(pickKey).join(','), opts.direction,
+               opts.nodeShapes, opts.scale].join('|');
+  if (g.boxCache && g.boxCache.key === key) return g.boxCache.value;
+
+  const pool = [...g.members].sort((a, b) => d.degree[b] - d.degree[a]);
+  const considered = Math.min(BOX_POOL, pool.length);
+  const scale = opts.scale;
+  const half = BOX_H * scale / 2;
+  const placed = [];
+  const rects = [];
+  for (let k = 0; k < considered; k++) {
+    const i = pool[k];
+    if (i < 0 || i >= d.n) continue;
+    const text = boxText(d, i);
+    if (!text) continue;
+    const w = (text.length * BOX_CHAR + BOX_PAD * 2) * scale;
+    const at = vp.project([d.positions[i * 3], d.positions[i * 3 + 1], d.positions[i * 3 + 2]]);
+    // Off the canvas is not a reason to say a box was suppressed: it is not competing for
+    // room with anything, and counting it would make the readout a claim about the window.
+    if (at[0] < -w || at[1] < -half || at[0] > vp.width + w || at[1] > vp.height + half) continue;
+    const r = [at[0] - w / 2 - BOX_GAP, at[1] - half - BOX_GAP,
+               at[0] + w / 2 + BOX_GAP, at[1] + half + BOX_GAP];
+    let clear = true;
+    for (let j = 0; j < rects.length; j++) {
+      const o = rects[j];
+      if (r[0] < o[2] && r[2] > o[0] && r[1] < o[3] && r[3] > o[1]) { clear = false; break; }
+    }
+    if (!clear) continue;
+    rects.push(r);
+    placed.push({ index: i, text, halfW: w / 2, halfH: half,
+                  kind: d.raw.nodes.kind[i],
+                  pos: [d.positions[i * 3], d.positions[i * 3 + 1], d.positions[i * 3 + 2]] });
+  }
+  const value = { placed, dotted: g.members.size - placed.length };
+  g.boxCache = { key, value };
+  return value;
+}
+
+/* A box's outline in world units, lying flat on its plate and turned to face the reader.
+ *
+ * Under an orthographic projection one screen pixel is a fixed number of world units --
+ * `2 ** -zoom`, which is the same identity `fitView` inverts to frame the stack -- so a box
+ * with a pixel size has an exact world size and needs no per-frame fudge. Design rule 20
+ * chose orthographic so that framing would be arithmetic rather than a factor that holds at
+ * one window size; this is the same dividend, spent on a different question.
+ *
+ * **Turned about Z by the orbit angle, and that was found by looking.** Built flat and left
+ * alone -- which is what was asked for, and rightly: rule 22 billboards a node because a
+ * sphere has no orientation, and a labelled box *does* have one, so a box held facing the
+ * camera has stopped lying on the plate it belongs to. Flat was tried first to find out
+ * whether that mattered. It does, and not where it was expected to: the **tilt** is not the
+ * problem -- at 35 degrees a label loses 43% of its height and stays perfectly readable --
+ * the **orbit** is. Text lying in the plate inherits the in-plane rotation, so turning the
+ * stack twenty degrees turns every label twenty degrees, and looking straight down at a
+ * plate gives a page of names set on a diagonal.
+ *
+ * So the box keeps its plate and gives up only its bearing: rotated about Z alone, it still
+ * lies flat, still foreshortens with the tilt, still reads as something *on* a plate, and
+ * its reading direction faces the reader at every orbit angle. At orbit zero this is
+ * identical to leaving it alone, which is the test that it takes nothing away.
+ *
+ * This is the whole of the billboard question, answered at the one angle it actually needed
+ * answering, and it leaves the other two axes exactly where flat put them. */
+function boxPolygon(b, unit, spin) {
+  const c = Math.cos(spin), s = Math.sin(spin);
+  return silhouette(b.kind).map(([dx, dy]) => {
+    const x = dx * b.halfW * unit, y = dy * b.halfH * unit;
+    return [b.pos[0] + x * c - y * s, b.pos[1] + x * s + y * c, b.pos[2]];
+  });
+}
+
+/* The in-plane turn that puts a box's reading direction across the screen.
+ *
+ * `rotationOrbit` spins the world about Z, so undoing it on the box is what holds the label
+ * still while the stack turns underneath it. Degrees out, because that is what `TextLayer`
+ * wants for `getAngle`, and radians in `boxPolygon`, because that is what `Math.cos` wants
+ * -- stated once here so the outline and the text inside it cannot be turned by different
+ * amounts (rule 13, between two layers drawing one object). */
+function boxSpinDeg() { return -(g.viewState.rotationOrbit || 0); }
+
 function pickLabels(d) {
   const pool = g.members.size
     ? [...g.members].sort((a, b) => d.degree[b] - d.degree[a])
@@ -1506,6 +1805,13 @@ function announceCounts() {
     // reader has no other way to tell a short stack from a small program.
     collapsed: g.prepared?.collapsed.size ?? 0,
     hiddenLabels: g.hiddenLabels,
+    /* **What the diagram drew, and what it could not.** Design rule 1: boxes are placed
+     * only where they fit, so a plate pick of 926 draws a few dozen and leaves the rest as
+     * dots -- and a diagram of forty boxes over a selection of nine hundred looks exactly
+     * like a selection of forty. Two numbers because they answer different questions, and
+     * rule 32 because each is named after what it counts. */
+    boxes: g.boxCount,
+    boxesDotted: g.boxDotted,
     /* How many pointers stand in the picture, and how many were asked for. Two numbers
      * because a thread can select ninety-nine routines and only two dozen get an arrow --
      * design rule 1, and rule 32: the number has to say what it counts. */
@@ -1703,6 +2009,7 @@ function selectionOnScreen() {
 function adoptPayload(raw, picks) {
   g.data = raw;
   g.idIndex = null;          // a fact about this payload; see `indexOfId`
+  g.boxCache = null;         // an index is a position in *one* payload (see `picks` below)
 
   g.prepared = prepare(raw);
   g.prepared.plates = diskPlates(raw);
@@ -1929,6 +2236,11 @@ window.DunneFlowGraph = {
       recomputeMembers(g.prepared);
       buildSelectionGeometry(g.prepared);
     }
+    /* Neither moves a node, so neither relays to `applyLayout` -- but both change which
+     * boxes fit, and the placement is cached on a key that cannot see a shape set changing
+     * the width of every box on screen. `nodeShapes` is in that key; `diagram` turns the
+     * pass on and off and needs no invalidation at all. */
+    if (partial.nodeShapes !== undefined) g.boxCache = null;
     if (partial.pointerColor !== undefined || partial.pointerShown !== undefined ||
         partial.focusLocked !== undefined || partial.reticuleShown !== undefined) {
       announceCounts();       // the readout states the pointers and whether focus is on
@@ -2059,6 +2371,13 @@ window.DunneFlowGraph = {
              disk: raw.disk[i], detail: raw.detail[i] || {},
              degree: g.prepared ? g.prepared.degree[i] : 0 };
   },
+
+  /* The outlines a set draws, keyed by kind, for a key beside the control that chooses it.
+   * Unit coordinates in [-1, 1]; the caller scales. Read out of the engine rather than
+   * redrawn on the page, because a key that keeps its own copy of these shapes is a second
+   * answer to what a kind looks like, and the two part company on the day a shape moves. */
+  silhouettes: (set) => Object.fromEntries(
+    Object.keys(SILHOUETTE).map((k) => [k, silhouette(k, set)])),
 
   disks: () => (g.data?.disks ?? []).slice(),
   /* The order actually in force, which is not always the one handed in: a saved

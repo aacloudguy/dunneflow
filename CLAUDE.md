@@ -65,6 +65,16 @@ line that carries neither.
 
 `analyze` is incremental: unchanged files are not re-parsed.
 
+**Diagram mode has two levels too**, and the second is asked on demand rather than built
+with the others: a compartment is fifty-three drawings from one pass over the model, and a
+*box* is one of nine thousand. Measured on Mensores 2026-08-31:
+
+| Measure | Budget | Measured |
+|---|---|---|
+| One compartment, drawn in the browser | < 500 ms | 93–179 ms |
+| Opening a box — three grouped queries | < 200 ms | 15 ms (18 routines) · 170 ms (61) |
+| `/api/fold`, a class of 61 methods | < 500 ms | 0.77 s cold, ~40 ms warm |
+
 ## Verification — run before marking anything complete
 
 ```bash
@@ -444,6 +454,10 @@ docs   ──► extract ──► docs.db  (SQLite) ─────────
   the store**, never over `m.edges`, which holds each crossing twice by design (rule 23);
   `packages.py` wrote that warning down before anything needed it. `MIN_DISK` is per level
   and settable, because what a plate *holds* changes with the level.
+- `web/diagram.py` — the compartment, at **two levels**. A box is a class, a file's loose
+  functions, or a boundary kind; opening one returns a **`Compartment` of routines** — the
+  same type, so `dot()` and `mermaid()` draw both and a fix to one is a fix to both. A fold
+  is a subject in its own right, never one of the things it folds (rule 74).
 - `web/threads.py` — **adjacency by interest, not by edge.** Why a neighbour is worth a
   detour: shares a plan, the other end of a table you write, the most commented routine on
   your plate, named like ninety-eight others. Every thread carries a *subject* the router
@@ -1222,6 +1236,14 @@ rule of that number — a blank canvas must say why it is blank — which does e
     instead**. An instrument that modifies the thing it measures has to put it back at
     the level the next reader looks at, and for Python that level is not the file.
 
+    **And the next reader is not always the next command.** A live check against the running
+    dashboard reported `state.fold` set while `inspectorSubject()` returned null — an
+    impossible pair, and the explanation was that the browser had fetched `shell.js` while
+    this harness was part-way through rewriting it. The served file is a level the harness
+    also has to put back, and a browser reads it on its own schedule. Do not drive the
+    product while the harness runs; a mutant answering a question you asked of the real
+    thing is a false finding with no tell at all.
+
 57. **Admitting a directory for its documents must not admit a copy of the program.**
     `.claude` and `.groma` are kept in the document walk deliberately — that is where a
     project files its charter, its decisions and its naming standard, and skipping every
@@ -1563,6 +1585,76 @@ rule of that number — a blank canvas must say why it is blank — which does e
     scoped to `.codefile`, asserted in both directions so a name taken later cannot reach
     these rows. Found by looking at the pane, which is now the fourth consecutive session
     that has paid for itself.
+
+72. **A gesture's target is not what is under the pointer, and an instrument that cannot
+    reproduce that reports its absence just as confidently.** The compartment diagram
+    captured the pointer on **every** press inside its canvas, to pan. A captured pointer
+    retargets the compatibility mouse events with it, so `click` and `dblclick` arrived
+    naming the canvas rather than the box: `ev.target.closest("g.node")` was null and every
+    handler in the view returned having done nothing. Clicking a box did nothing, opening
+    one did nothing, and **nothing failed** — the handlers were correct the whole time and
+    were being handed the wrong element.
+
+    Rule 48 said a scripted click proves the handler and only a pointer proves the path to
+    it. This is the sharper half of that, and it is why the defect survived two sessions and
+    two rounds of verification: the automation's own click **could not reproduce it**.
+    `setPointerCapture` throws `NotFoundError` for a pointerId that is not active, and the
+    injected pointer's never was — so the capture silently never took for the instrument and
+    took every time for a real mouse. Both sessions reported the feature working.
+
+    Two things follow, and the second is the general one. **Capture on the first move past a
+    slop, never on the press**: a drag needs it and a click does not, and taking it early
+    costs every click in the view. And when the instrument and the product disagree about
+    something as basic as which element was clicked, **reproduce the failure rather than the
+    gesture** — a retargeted click *is* a click whose target is the container carrying the
+    coordinates of the press, and that can be dispatched. The fix is then verified against
+    the defect (rule 37) rather than against a simulation of the act.
+
+    Its companion, and cheap: read the element with `elementFromPoint(ev.clientX,
+    ev.clientY)` when `ev.target` yields nothing, so the next thing to capture a pointer
+    cannot break it again. That is the same tool rule 48 names for proving a control is
+    reachable, used to *be* reachable.
+
+73. **A picture must not move under a gesture, and identity is what survives when it
+    does.** The diagram's SVG was `width: 100%` with `preserveAspectRatio`, so the *browser*
+    fitted it — and re-fitted it on every container resize. The first click on a box
+    un-rails the inspector, which narrows the centre column, which moved the whole drawing
+    **139 pixels** out from under the reader's cursor. Their second click landed on a
+    different box, so `dblclick` never fired: once per session, on the first double-click
+    anyone tries.
+
+    Two fixes and they are different in kind. The **cause** is that framing was the
+    browser's job; it is our own transform now against a drawing that carries its own pixel
+    size, which is what design rule 20 already requires of the stack — framing is arithmetic,
+    and there is always a way back. Deferred rather than guessed when the pane has no size
+    yet (rule 49). And the **gesture** is keyed on the box id rather than on the element or
+    the position, because a reflow changes every position and no identity.
+
+    The general form is worth more than either: **a layout change is a legitimate response
+    to the first half of a gesture, and it invalidates the second half.** Anywhere a click
+    opens, rails, or resizes something, the next click in the sequence is landing somewhere
+    the reader did not aim.
+
+74. **A fold is not one of the things it folds.** A diagram box is a class and its methods,
+    or a file and its loose functions. Clicking one handed `selectFromNav` the members and
+    let it elect `members[0]`, so a box labelled `KernelDecl` holding sixty-one methods
+    filled the inspector with `KernelDecl._profile_name_or_none` — a perfectly true answer
+    about something nobody clicked. Reported as *"the Inspector does not change to reflect
+    that specific node"*, which is exactly what it was.
+
+    **The stack has never made this mistake**: picking a *plate* clears the selection,
+    because a plate is not a node. So what was missing was an answer rather than honesty
+    about the lack of one, and the answer is that a fold is a **subject** in its own right —
+    same skeleton as every other specimen, so the pane that exists renders it, with `holds`
+    listing what it stands for, never bounded (rule 8).
+
+    Two consequences that are the same rule one layer out. Every reader of "what is
+    selected" has to know there are two kinds — the auto-rail read `state.selected`, so the
+    complete answer was painted into a column **zero pixels wide**, and the trail filed every
+    box click as *"nothing selected"*. And every *writer* has to go through one owner, or
+    the fold outlives its selection at whichever of the four call sites was forgotten
+    (rule 51). Assert the writers as an **absence** over the whole file: the failure is a new
+    hand-written site, not a change to an existing one.
 
 ## Anomalies: the discipline
 

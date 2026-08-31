@@ -3845,6 +3845,146 @@ question answered first — what makes two findings in two versions the same fin
 carries no id and 93 of Mensores' 106 are `LOST_EDGE`, so pairing them would invent an
 identity (rule 1).
 
+## A box answers about itself, and the click that never arrived — 2026-08-31
+
+Tom drove the approved Diagram mode and reported three things over two rounds. All three
+were defects, and the last of them had already survived two rounds of verification because
+of *how* it was being verified.
+
+> *"I click a node, and the Inspector does not change to reflect that specific node… If I
+> click on an edge in the diagram, I would like to see what data is flowing there (Flow)…
+> It would be nice to have this sync'd with Code as well."*
+
+### 1. A box is a fold, and the inspector was answering about a member of it
+
+`selectFromNav({nodes: box.members})` sets `state.selected = members[0]`. So clicking the
+box labelled **`KernelDecl`, 61 methods** filled the inspector with
+`KernelDecl._profile_name_or_none`, lines 335–337 — a true answer about something nobody
+clicked (rule 32). The previous session recorded that "the inspector did fill", which was
+true and beside the point.
+
+**The stack has never made that mistake.** `onGraphSelect` sets `state.selected = null` when
+a *plate* is picked, because a plate is not a node. What was missing was an answer, not
+honesty about the lack of one.
+
+`/api/fold` answers in the **same skeleton every other specimen uses**, so it renders
+through the pane that already exists: 61 members with their invocation lines, 8 neighbours,
+what it touches, its governance ids, and the span of the whole class. Set-scoped queries by
+`json_each` on a JSON array — one bound parameter, constant SQL text, no per-call
+concatenation, and a fold larger than SQLite's parameter limit is not a different code path.
+
+`_module` had been sending a `holds` key since the day it was built and nothing rendered it,
+so the section this adds serves both.
+
+### 2. Two things it was hiding, and one it was not
+
+- **The pane rendered and railed itself.** The auto-rail read `state.selected`, which a fold
+  leaves null, so the whole answer was painted into a column **zero pixels wide**. That is
+  Tom's *"nothing is visible"* arriving from the other end.
+- **The trail filed every box click as "nothing selected"**, for the same reason.
+- **The inspector's SQL rows have never shown their table, and the network rows never their
+  destination.** `ROUTINE_SQL_OPS` sends `tbl`/`sql`; the pane read `q.table || q.statement`.
+  `ROUTINE_NET_CALLS` sends `destination`; the pane read `nc.target || nc.host`. Both render
+  as the empty string, so a SQL row was an operation and a line number with nothing between
+  them. Rule 44, unrelated to any of this, live since the day it was written.
+
+### 3. The navigator did not follow, and could not
+
+> *"If I click on the menu on the left, the Diagram shows that routine… However, if I click
+> inside the Diagram, neither of the other two syncs to it at all."*
+
+Half right on the build he had: the inspector did follow. The navigator marks
+`state.selected === r.id` and reveals the same field, so a fold marked nothing and moved
+nothing — design rule 26's back half, dead. It marks **every member** now (61 rows), opens
+the package and scrolls to the first. Marking all of them is the honest answer rather than
+an unfortunate one; Tom raised it as a worry and the alternative is electing a member, which
+is the defect this replaces.
+
+### 4. The pointer capture — the one that beat two rounds of verification
+
+> *"I did a hard refresh, but double click still does not open a new diagram or box, and
+> click does not change the Inspector view that I can detect."*
+
+`dgmGestures` called `setPointerCapture` on **every press** inside the canvas. A captured
+pointer retargets the compatibility mouse events with it, so `click` and `dblclick` arrived
+naming `#dgmCanvas` rather than the box: `ev.target.closest("g.node")` was null and every
+handler in the view returned having done nothing. **The handlers were correct the whole time
+and were being handed the wrong element.**
+
+**Why it survived.** Every check I ran dispatched an event directly at the element it named,
+which never touches the pointer path at all — rule 48, and the previous session filed the
+same symptom under *"the feedback was in a railed pane"*, which was also true and was not
+this. My one real-pointer click passed because `setPointerCapture` **throws** for a
+pointerId the automation never made active: the capture silently never took for the
+instrument and did for a real mouse. An instrument that cannot reproduce a defect reports
+its absence just as confidently as its presence.
+
+Reproduced in the end **without a pointer at all** — a retargeted click *is* a click whose
+target is the canvas carrying the coordinates of the press, and that can be dispatched.
+
+Capture is taken on the first move past a 3px slop instead; a drag swallows the click it
+ends in, so panning no longer selects what it set off from; and `diagramBoxAt()` asks
+`elementFromPoint` what is under the pointer rather than trusting `ev.target`.
+
+### 5. And the drawing moved 139 pixels between the two clicks
+
+The SVG was `width: 100%` with `preserveAspectRatio`, so the **browser** fitted it and
+re-fitted on every resize. The first click un-rails the inspector, which narrows the centre
+column, which moved the whole drawing out from under the cursor — so the second click landed
+on a different box and no gesture could be built on `dblclick`. Once per session, on the
+first double-click a reader tries.
+
+Fit is our own transform now against an SVG carrying its own pixel size, deferred rather
+than guessed when the pane has no size yet (rule 49). Measured at **0 px** of movement when
+the inspector opens. Opening a box is a second click on the same **box id** within 500 ms,
+because identity survives a reflow and a position does not.
+
+### 6. The second level, and the way to the code
+
+A box opens into its own routines. `build_inside` returns a **`Compartment`** — the same
+type the first level uses — so `dot()` and `mermaid()` draw it unchanged and a fix to one is
+a fix to both. `mensores.governance/_authorization.py` opens to 18 routines, 3 boundary
+cylinders, 36 flows within, 0 unlinked, in **15 ms**; `KernelDecl` to 61 routines in 93 ms.
+Ports there name the far *box* rather than the far plate.
+
+`gotoCodeBtn` / `data-gotocode` is the one way to the code — the location line, every member
+of a fold, and every call site when the flow panel lands. `data-box`, **not** `data-fold`:
+that attribute has collapsed a pane since design rule 24, so the obvious spelling would have
+railed the inspector on every neighbour row (rule 71), caught on the way in.
+
+### 7. Three acts in this view were unreversible
+
+Switching compartment, opening a box, backing out. None changes a *selection*, so every step
+they filed deduplicated against the one before it and Back skipped straight past —
+pre-existing for the compartment picker. A step's subject carries where the drawing is now.
+
+### What it cost, and what earned itself
+
+**Rule 36's guard paid for itself again**: adding two fields to `_Base` failed
+`test_a_switch_rebuilds_every_part_of_the_base` immediately, because a base switch would
+have carried the old version's box index into the new base and placed this version's
+crossings in the last version's boxes. Nothing else would have noticed.
+
+**The diagram had no behavioural test at all.** A mutation emptying the compartment cache
+passed every source-reading guard in the suite — the code was all still there and every
+drawing was blank. `tests/test_diagram.py` folds the sample tree, opens its largest box, and
+asserts the two levels agree about what they hold.
+
+**A live check read a mutant.** Mid-session, the page reported `state.fold` set while
+`inspectorSubject()` returned null — the browser had fetched `shell.js` while the mutation
+harness was rewriting it. Rule 56's family: an instrument that modifies the thing it
+measures. Do not drive the browser while it runs.
+
+Guards mutation-tested at **46/46** over a proved-green baseline, after 20/20, 30/35, 38/38,
+43/46 and 45/46. **Every survivor across all of them was the guard rather than the
+mutation** — a step keeping `diagramId:` while dropping `state.diagramId`, a picker
+computing the right constant and comparing against the wrong one, a port keeping its lookup
+and losing its refusal, a flag set nowhere, one of two early returns, and a slice taken on a
+comment `_code()` had already stripped so it ran to the end of the file. That is the
+twenty-fourth through thirtieth time in this record.
+
+**Tom, after the last fix: _"Fixed! I love this, thank you!"_**
+
 ## Looked at, at the keyboard — Tom, 2026-08-31, on the diagram
 
 Two sentences, and both were defects rather than misreadings.

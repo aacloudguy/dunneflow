@@ -159,43 +159,71 @@ is not computed yet.
 
 ## What we are doing now
 
-**Paused 2026-08-31 with Diagram mode built and driven.** A fifth centre mode beside Graph,
-Table, Document and Code — a compartment drawn as a real diagram by **Graphviz**, with
-**Mermaid kept to emit source** a reader can copy elsewhere.
+**Paused 2026-08-31, with Diagram mode reading both ways and at two levels.** Tom drove the
+approved mode and reported three things over two rounds; all three were defects, and the
+last beat two rounds of verification because of *how* it was being verified.
+
+**A box is a fold, and the inspector answers about the fold.** Clicking `KernelDecl` (61
+methods) used to fill the pane with `KernelDecl._profile_name_or_none` — `selectFromNav`
+electing `members[0]`. `/api/fold` answers in the same skeleton every other specimen uses,
+so the pane that exists renders it: 61 members with their invocation lines, 8 neighbours,
+what it touches, the span of the whole class. Rule 74.
+
+**Two things it was hiding, and one it was not.** The pane rendered and *railed itself* (the
+auto-rail read `state.selected`, which a fold leaves null) — Tom's "nothing is visible" from
+the other end; the trail filed every box click as "nothing selected"; and, unrelated and live
+since the day it was written, the inspector's **SQL rows never showed their table** and the
+**network rows never their destination** (rule 44).
+
+**The navigator now follows.** It marked `state.selected === r.id`, so a fold marked nothing
+and moved nothing — design rule 26's back half, dead. It marks every member (61 rows), opens
+the package and scrolls to the first.
+
+**A second click on the same box opens it** into its own routines — `build_inside` returns a
+`Compartment`, the same type the first level uses, so both are drawn by one renderer.
+`_authorization.py` opens to 18 routines, 3 boundary cylinders, 36 flows within, 0 unlinked,
+in 15 ms.
+
+**And the click that never arrived.** `dgmGestures` captured the pointer on every press, and
+a captured pointer retargets `click`/`dblclick` to the capturing element — so every handler
+in the view was handed the canvas instead of the box and returned having done nothing.
+Nothing failed. **The automation could not reproduce it**: `setPointerCapture` throws for a
+pointerId the injected pointer never made active, so the capture took for a real mouse and
+never for the instrument. Reproduced in the end without a pointer at all, because a
+retargeted click *is* a click whose target is the container. Rule 72. Its companion, rule 73:
+the drawing moved **139 px** between the two clicks because the browser was fitting it, so
+the second landed on a different box.
 
 ```
-53 compartments · boxes median 10, p90 54, max 107
-pkg:mcp         8 boxes over 134 routines   1.26:1   40 ms
-pkg:governance 40 boxes over 202 routines   1.13:1   31 ms
-pkg:quaestor   83 boxes over 487 routines   1.98:1   49 ms
+one compartment drawn        93–179 ms      opening a box    15 ms (18) · 170 ms (61)
+KernelDecl                   61 routines · 0 flows within · 77 crossing to 8 boxes
+_authorization.py            18 routines · 36 flows within · 0 unlinked
 ```
 
-A box is a **class**, or a **file's loose functions**, or a boundary kind. Clicking one
-reaches the shared selection so the inspector fills and the stack lights; clicking a port
-flips to that compartment. Pan and zoom move a transform, never a re-layout. Graphviz 15.1.0
-via `@hpcc-js/wasm`, one UMD script tag, loaded lazily.
+**Tom, after the last fix: _"Fixed! I love this, thank you!"_**
 
-**Crossings are off by default** — rule 19 one level up. Drawn, they connect what was
-disconnected so `pack` has nothing to pack, and on a small compartment they outnumber the
-subject (`mcp` is 8 boxes to 29 ports). Tom's **shadow** proposal was built as a probe,
-measured, and dropped on his call: shadows are the better model (they name the far-side
-class, and 79% are degree-1 leaves) and the worse picture drawn all at once — `mcp` at 9.5:1
-against 7.7:1 for ports and 1.26:1 for neither.
+**Next, from the approved plan** (`~/.claude/plans/squishy-conjuring-kay.md`), chunks 3 and 4:
 
-**Looked at and approved — Tom, 2026-08-31: _"Diagrams look great, love it!"_** Three things
-came out of driving it and all three are fixed: the drawing blurred when zoomed (a
-`will-change: transform` layer rasterised once and scaled as a bitmap), there was no hover
-card, and a click had no visible effect because its only feedback was in a pane he had
-railed. A click now marks the box on the drawing and pushes a trail step, so Back and Forward
-mean what they say.
+1. **The call-site arguments, as written** — Tom's call over approximating them from the
+   callee's declaration. `CallSite` gains `args`, the Python extractor reads each argument's
+   source segment whole (rule 8), `calls` gains a stable `site_id`, `SCHEMA_VERSION` bumps
+   and Mensores re-analyses. The precision line is stated in the product: the expression as
+   written, never an inferred type, and a parameter binding only where it is unambiguous.
+2. **An edge says what flows along it** — `dot()` writes `id=` on every edge, the compartment
+   keeps the edge *kind* alongside the weight (it is dropped today, so a TOUCH and a CALL are
+   indistinguishable), and `/api/flow?from=&to=` answers on demand: every call site with its
+   arguments and the callee's declared parameters, or the SQL and network operations for an
+   edge into a boundary. A third specimen shape in the same pane, and every call site carries
+   the `data-gotocode` button — Tom's *"ultimately where it all goes"*.
+3. **The anomaly worklist overlay**, still blocked on one question — what makes two findings
+   in two versions the same finding. 93 of Mensores' 106 are `LOST_EDGE`, so pairing them
+   would invent an identity (rule 1).
 
-**Next: the second level** — opening a box into its own routines, bounded at 4–6 median and
-106 at the very worst — and the **Mermaid export** (of what is rendered, a complete set, or
-per compartment), which Tom deferred. The source is already emitted and served on every
-compartment; nothing surfaces it yet.
+**Withdrawn and not to be rebuilt without reading why:** boxes drawn on the stack at
+phyllotaxis positions (a sunflower is not a diagram), and shadows for cross-compartment edges
+(the better model, the worse picture — measured, dropped on Tom's call).
 
-See `HANDOFF.md`, "Diagram mode — built 2026-08-31" and "Looked at, at the keyboard — Tom,
-2026-08-31, on Diagram mode".
+See `HANDOFF.md`, "A box answers about itself, and the click that never arrived".
 
 ### Before that: the plate diagram, withdrawn (2026-08-31)
 

@@ -3995,6 +3995,23 @@ seventeenth time in this record. Two of them were the same substring trap one gu
 `st.disks_merged` inside `st.disks_merged_nodes`, as `window.__d` sits inside
 `window.__deck`.
 
+### Paused 2026-08-31, after the second altitude
+
+Working tree clean; all three gates green; `output/mensores` untouched and still serving
+both revisions. Three commits: the model and the server, the client, and the record.
+
+**Tom has not looked at it yet, and that is the one thing owed.** Everything checkable
+without a rendered frame is checked — the counts at both altitudes, the control, the
+threshold, the selection travelling in both directions over three shapes, the change key
+summing to the drawn total, and every band reaching the colour buffer with its own value.
+The HUD reads **0 fps** in a browser-automation tab (rule 38), so the picture itself has
+been described and not seen. A `dunneflow serve output/mensores` and the *Detail* selector
+in the legend is the whole of what wants an eye.
+
+**Read the verdict as a worklist when it comes**, as the last one was: *"the stack is
+legible enough to say what changed and not yet legible enough to explore"* is the sentence
+this chunk was built to answer, and whether it did is not something I can tell from here.
+
 ### Next
 
 **Chunk 2: size a plate by its density**, and it is unblocked and re-shaped by this. `r =

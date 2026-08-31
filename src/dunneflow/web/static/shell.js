@@ -3407,48 +3407,6 @@ function viewSettings() {
     </section>
 
     <section class="panel">
-      <div class="panel-head"><h2>Shape</h2>
-        <span class="hint">the other channel that can carry a meaning</span></div>
-      <div class="panel-body">
-        <p class="hint" style="margin:0 0 .6rem">When the stack is drawn as a
-          <b>diagram</b> — boxes with names on them, for whatever is lit — every box has an
-          outline, and an outline can say something. <b>By kind</b> spends it the way a
-          diagram always has, which leaves colour free to go on saying what changed; the
-          other two draw one outline for everything and leave kind on colour, where it is
-          now. Unlike a colour set there is nothing to measure here: a shape has no contrast
-          ratio, so these are offered because they read, not because they cleared a bar.</p>
-        ${/* **The switch belongs here as well as on the HUD, and that was found by a reader
-              failing to find it.** Choosing a shape set is the moment someone expects to
-              see shapes; leaving the only way to turn the diagram on inside a panel they
-              had collapsed made this page a control that renders and appears to do nothing
-              — design rule 16 with the wiring perfectly correct. One function owns the
-              state (`setDiagram`), so the two controls cannot disagree. */""}
-        <div class="setrow">
-          <div><div class="lbl">Draw the stack as a diagram</div>
-            <div class="desc">Off, the stack is dots — which is the only way fifteen thousand
-              nodes can be drawn at all. On, whatever is <b>lit</b> becomes a labelled box:
-              pick a plate and you get its contents, pick a routine and you get it and its
-              neighbours. Boxes are placed where they fit and everything else stays a dot,
-              with the count stated; zoom in and more dots become boxes. The same switch is
-              on the graph itself, in the controls box beside <b>plates</b>.</div></div>
-          <button class="toggle" id="diagramToggle" aria-pressed="${state.diagram}"
-                  aria-label="Draw the stack as a diagram"></button>
-        </div>
-        <div class="setrow">
-          <div><div class="lbl">Node shape</div>
-            <div class="desc">A set rather than a shape per kind, for the same reason the
-              colours are: choosing them one at a time lets two kinds land on one outline,
-              which is the channel saying nothing.</div></div>
-          <div class="seg" role="group" aria-label="Node shape">
-            ${SHAPE_SETS.map(sh => `<button data-shapeset="${esc(sh.id)}"
-              aria-pressed="${state.nodeShapes === sh.id}">${esc(sh.name)}</button>`).join("")}
-          </div>
-        </div>
-        <div class="shapekeys">${shapeKeyHtml()}</div>
-      </div>
-    </section>
-
-    <section class="panel">
       <div class="panel-head"><h2>What opens, and what shows</h2>
         <span class="hint">both built; use decides which survives</span></div>
       <div class="panel-body">
@@ -5503,8 +5461,6 @@ function viewInspector() {
 
   return `
     <div class="insp-head">
-      <button class="panefold" data-fold="inspector" style="float:right"
-              title="Collapse the inspector" aria-label="Collapse the inspector">&#x00BB;</button>
       <h2>${breakable(id.qualname || s.label || s.id)}</h2>
       <div class="loc">${esc(fileName)}${id.line_start
         ? `:${id.line_start}–${id.line_end}` : ""}</div>
@@ -5568,6 +5524,24 @@ function srcPane(s) {
  *
  * So each section renders inside its own boundary and says so when it cannot. The error
  * is on the page, not only in a console the reader does not have open. */
+/* A pane's fold control belongs to the **pane**, not to whatever is inside it.
+ *
+ * The inspector's lived in the header of a *populated* specimen, so the two states that
+ * return early -- "Nothing selected" and "Not in this map" -- rendered without it. Design
+ * rule 24 says every pane folds and folding leaves a rail, and the pane that most needs it
+ * is precisely the one with nothing to say: the inspector holds 22rem to report that it is
+ * empty, which is the whole reason it rails itself in the first place. So a reader had to
+ * find something to select before they could collapse the pane that was showing nothing --
+ * reported exactly that way.
+ *
+ * Emitted at the paint site, before the content, so no branch of any renderer can drop it
+ * again: it is structurally outside every `return` the content has. Rule 36 -- route from
+ * one place rather than remembering to repeat it. */
+function paneFold(pane, label) {
+  return `<button class="panefold" data-fold="${pane}"
+            title="Collapse the ${label}" aria-label="Collapse the ${label}">&#x00BB;</button>`;
+}
+
 function section(name, fn) {
   try {
     return fn();
@@ -5745,7 +5719,12 @@ function render() {
     updatePointerNote();
   }
 
-  $("#inspector").innerHTML = section("inspector", viewInspector);
+  /* `pane` is what the stylesheet hangs the fold control's placement on: the inspector is a
+     flex column, and a floated child of one is stretched to the full width rather than
+     floated (see `.pane > .panefold`). */
+  $("#inspector").classList.add("pane");
+  $("#inspector").innerHTML =
+    paneFold("inspector", "inspector") + section("inspector", viewInspector);
   applyPanels();
   let vw = document.getElementById("viewerMount");
   if (!vw) { vw = document.createElement("div"); vw.id = "viewerMount"; document.body.appendChild(vw); }
@@ -6095,17 +6074,6 @@ function wire() {
      returns early without a prepared payload and the value is handed over again at mount,
      so a choice made from Settings before the graph has ever been opened is not lost
      (rule 68: a restore is a setter and must do what the setter does). */
-  const dgm = $("#diagramToggle");
-  if (dgm) dgm.addEventListener("click", () => setDiagram(!state.diagram));
-  $$("[data-shapeset]").forEach(b => b.addEventListener("click", () => {
-    state.nodeShapes = b.dataset.shapeset;
-    used("shapes:" + state.nodeShapes);
-    if (Graph.mounted()) Graph.setOptions({ nodeShapes: state.nodeShapes });
-    persist();
-    // The key beside the control draws the set's own outlines, so it has to redraw too.
-    render();
-  }));
-
   /* worklist */
   $$("[data-sev]").forEach(b => b.addEventListener("click", () => {
     if (b.disabled) return;
@@ -9893,13 +9861,12 @@ function renderGraphFurniture() {
           <input id="gplates" type="checkbox" ${state.showPlates ? "checked" : ""}>
           <span class="muted">plates</span>
         </label>
-        ${/* A way of looking rather than a preference, so it sits where the reading happens
-             rather than in Settings -- the same argument the focus lock is on the HUD. What
-             the shapes *are* is a preference and does live in Settings. */""}
-        <label style="display:flex;align-items:center;gap:.2rem">
-          <input id="gdiagram" type="checkbox" ${state.diagram ? "checked" : ""}>
-          <span class="muted">diagram</span>
-        </label>
+        ${/* **The diagram switch was here and is withdrawn.** See `setDiagram` for why: the
+             boxes are drawn at the plate's own positions, which are a *sunflower* ordered by
+             degree and carry no structure at all, so what came out was a field of labelled
+             boxes with the edges crossing everywhere. Tom's bar for this view was set before
+             it was built -- "they must be easy to read or we have failed" -- and it does not
+             clear it, so it is withdrawn rather than offered with a caveat. */""}
       </div>
       <div style="margin-top:.35rem">
         <button class="gbtn" data-gact="sizereset">reset sliders</button>
@@ -9932,7 +9899,35 @@ function legendSays(what) {
  * differ in size look identical, so the line says which reading is on the screen, and at
  * which altitude, because the dial is per level and a value that changed under the reader
  * with nothing saying so reads as a control that reset itself. */
-/* The diagram, turned on or off, from **one** function.
+/* The diagram, turned on or off, from **one** function -- and **nothing calls it today**.
+ *
+ * **The view is withdrawn, and this is the record of why.** It drew a labelled box for
+ * everything the selection lit, at the position the plate layout had already given each
+ * node -- and that layout is `phyllotaxis`, a sunflower ordered by degree, whose own
+ * docstring says the ordering "is the only structure this layout imposes". Boxes at
+ * sunflower positions are not a diagram. Every edge crosses every other, nothing is ranked
+ * by what calls what, and a reader gets a field of names rather than a picture of a flow.
+ * Tom's word for it was *"just nodes that are boxes, that's totally different"*, and he is
+ * right: a diagram's readability comes from its **layout algorithm**, not from the outline
+ * of its nodes.
+ *
+ * His bar was set before it was built -- *"they must be easy to read or we have failed"* --
+ * with the instruction to withdraw rather than ship with a caveat. So the two controls are
+ * gone and everything else stays: the silhouettes, the box text, the pixel sizing, the
+ * placement and its overflow rule are all correct components of the view that has to
+ * replace this one, which is a **layered layout per plate** -- ranks by call direction,
+ * ordering within a rank to reduce crossings -- computed where the rest of the layout is
+ * computed. This function is kept so there is one door to reopen rather than two to
+ * rebuild.
+ *
+ * Two smaller things it also got wrong, recorded so the rebuild does not inherit them.
+ * **The glyphs render scrambled** -- `selected_backend` came out as `s/lec-uh-cc-e·u` --
+ * which the rasterised preview could not have caught and which the caveat on that preview
+ * predicted in as many words: it draws the geometry deck was handed, not deck's own text.
+ * `sizeUnits: 'common'` on a non-billboarded `TextLayer` is the first thing to suspect.
+ * And **some lit nodes stayed dots beside boxes at a selection of eight**, where everything
+ * should have fitted -- the placement's own answer, arriving where there was no crowd to
+ * answer for.
  *
  * Two controls reach it -- the switch in the controls box, where a reader flips a way of
  * looking while reading, and the toggle in Settings beside the shapes, which is where a
@@ -9967,15 +9962,14 @@ function controlsSummary() {
     `<b class="num">${(+state.spreadX).toFixed(2)}</b> / ` +
     `<b class="num">${(+state.spreadY).toFixed(2)}</b> / ` +
     `<b class="num">${(+state.spreadZ).toFixed(2)}</b> · plate width ` +
-    `<b class="num">${plateSizeNow().toFixed(2)}</b>` +
-    /* **A mode inside a box that folds has to be named on the strip the box folds into.**
-       This box collapses to its summary (design rule 25), and a reader with it shut and the
-       diagram on would have a stack of labelled boxes and nothing anywhere saying why --
-       or, the way it actually happened, the diagram *off* and no hint that a switch for it
-       exists in there at all. Design rule 24 already says a strip reading only "controls"
-       makes the reader open it to find out what it was; this is the same argument for what
-       the strip has to name. */
-    (state.diagram ? ` · <b>diagram</b>` : "");
+    `<b class="num">${plateSizeNow().toFixed(2)}</b>`;
+  /* **A mode inside a box that folds has to be named on the strip the box folds into**, and
+     the diagram was named here until it was withdrawn. Kept as a note rather than deleted,
+     because the rebuild puts a mode back in this box: this box collapses to its summary
+     (design rule 25), and a reader with it shut and a mode on would have a picture changed
+     out of all recognition with nothing anywhere saying why. Design rule 24 already says a
+     strip reading only "controls" makes the reader open it to find out what it was; this is
+     the same argument for what the strip has to say once it is open to something. */
 }
 
 /* The selection is real but the reader cannot see it.
@@ -10449,7 +10443,7 @@ function wireGraphOnce() {
        knows those once it has placed them. `announceCounts` fires from `setOptions`, so the
        line follows on its own -- but not on the way *off*, where there is nothing to place
        and the numbers have to go rather than stand stale (rule 51). */
-    if (t.id === "gdiagram") { setDiagram(t.checked); return; }
+
     /* Hiding and collapsing are separate switches on purpose: one decides whether an
      * unselected plate draws, the other whether it still takes up room. Wanting the
      * second without the first is ordinary -- it is how a selection of eight plates out

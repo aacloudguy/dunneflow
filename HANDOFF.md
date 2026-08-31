@@ -3919,6 +3919,86 @@ three shape sets rendering. Guards mutation-tested at **10/10** over a proved-gr
 
 Still unseen: the pixels. Rule 38 is unchanged.
 
+## Withdrawn — Tom, 2026-08-31, on the plate diagram
+
+> *"Diagram mode is unreadable, and inconsistent… My original concept for this was a valid
+> Mermaid diagram laying on its side — create the Mermaid diagram first, then render it
+> orthogonally, and stack them up… This is just nodes that are boxes, that's totally
+> different. Mermaid diagrams have completely different layouts than graph plates, they use
+> a different layout algorithm."*
+
+**He is right, and the acceptance test he set before it was built is the one that applies:**
+*"they must be easy to read or we have failed"*, with the instruction to withdraw rather
+than ship with a caveat. Withdrawn.
+
+### What I built, and why it was never going to work
+
+A labelled box for everything the selection lit, **at the position the plate layout had
+already given each node** — and that layout is `phyllotaxis`, a sunflower. `layout.py`'s own
+docstring said so all along: *"That ordering is the only structure this layout imposes."*
+Boxes at sunflower positions are not a diagram. Nothing is ranked by what calls what, so
+every edge crosses every other and a reader gets a field of names rather than a picture of a
+flow.
+
+**A diagram's readability comes from its layout algorithm, not from the outline of its
+nodes**, and I spent the chunk on the outlines. The shape sets, the box text, the pixel
+sizing, the placement and its overflow rule are all correct components of the right view;
+none of them was the thing that mattered.
+
+The question I put to him — *what becomes a box* — was the wrong question, and it was wrong
+in a way worth naming. It took the existing picture as given and asked which nodes to
+decorate. The record's own words for the request were *"draw a plate as a diagram, not as a
+field of dots"*, and the operative word is **draw**, not *decorate*.
+
+### Two smaller failures, both real
+
+- **The glyphs render scrambled** — `selected_backend` came out as `s/lec-uh-cc-e·u`. The
+  rasterised preview could not have caught this and its caveat predicted it in as many
+  words: it draws the geometry deck was handed, not deck's own text. `sizeUnits: 'common'`
+  on a non-billboarded `TextLayer` is the first thing to suspect in the rebuild.
+- **Some lit nodes stayed dots beside boxes at a selection of eight**, where everything
+  should have fitted — the placement's overflow answer arriving where there was no crowd to
+  answer for.
+
+### What is kept, and what the rebuild needs
+
+The two controls are gone and everything else stays: `setDiagram` survives so there is one
+door to reopen rather than two to rebuild, and a guard asserts the **absence of a door**
+until `layout.py` has a layered layout. The engine's `diagram` option defaults off and a
+guard holds it there.
+
+The rebuild is a **second layout beside `structural()`, not a replacement** — design rule 2's
+own shape, and for its reason: the sunflower is right for ten thousand dots and wrong for
+eighty boxes, and the reverse. Ranks assigned by call direction, ordering within a rank
+chosen to reduce crossings, then coordinates; computed where the rest of the layout is
+computed, deterministically and with no random number generator, which that file already
+requires.
+
+`layout.py` now records this at `structural()` so the next reader does not repeat it.
+
+## The inspector could not be collapsed while it was empty — fixed 2026-08-31
+
+> *"When Inspector shows 'Nothing selected.', there is no method to collapse the panel. You
+> must find something that will display there before the collapse button will appear."*
+
+Its fold control lived in the header of a **populated** specimen, so the two states that
+return early — *"Nothing selected"* and *"Not in this map"* — rendered without one. Design
+rule 24 says every pane folds and folding leaves a rail, and the pane that most needs it is
+precisely the one with nothing to say: the inspector holds 22rem to report that it is empty,
+which is the whole reason it rails itself in the first place.
+
+It is painted at the **paint site** now, before the content, so no branch of any renderer can
+drop it again — structurally outside every `return` the content has (rule 36).
+
+**And the first fix was wrong in a way rule 48 does not catch.** Moved out of the header it
+carried `style="float:right"`, and the inspector is a flex column: **a flex item ignores
+`float`**, so the button stretched to the full 351px and read as a bar across the top of the
+pane. `elementFromPoint` said it was reachable, and it was — hit-testing says a control is
+under the cursor and says nothing about it being the width of the pane. `align-self` on a
+`.pane > .panefold` rule, and it measures 16×16 where it should.
+
+Guards mutation-tested at **6/6** over a proved-green baseline.
+
 ## The plate as a diagram — built 2026-08-31
 
 **`6l`.** The second recorded feature request, and the one carrying an acceptance test:

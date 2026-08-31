@@ -159,8 +159,38 @@ is not computed yet.
 
 ## What we are doing now
 
-**Paused 2026-08-31, with both recorded feature requests built.** Chunk 3 draws a plate as
-a diagram: labelled boxes for whatever is lit, in five silhouettes that carry kind.
+**Paused 2026-08-31. Chunk 3 was built, driven by Tom, and WITHDRAWN.** Plate sizing
+(chunk 2) stands; the plate diagram does not.
+
+*"This is just nodes that are boxes, that's totally different. Mermaid diagrams have
+completely different layouts than graph plates, they use a different layout algorithm."* He
+is right. It drew labelled boxes **at the positions the plate layout already had** — and that
+layout is `phyllotaxis`, a sunflower, whose own docstring says the ordering "is the only
+structure this layout imposes". Nothing is ranked by what calls what, so every edge crosses
+every other. **A diagram's readability comes from its layout algorithm, not from the outline
+of its nodes**, and the chunk was spent on the outlines.
+
+His bar was set before it was built — *"they must be easy to read or we have failed"* — with
+the instruction to withdraw rather than ship with a caveat. Both controls are gone; a guard
+asserts the absence of a door until `layout.py` has a layered layout. Everything else is
+kept, because the shapes, the box text, the pixel sizing and the overflow rule are all
+correct components of the right view.
+
+**The rebuild, in his words:** *"create the Mermaid diagram first, then render it
+orthogonally, and stack them up. Show how each connects to the others with edges between the
+layers."* A **second layout beside `structural()`** — ranks by call direction, ordering within
+a rank to reduce crossings, then coordinates — computed server-side and deterministically,
+which `layout.py` already requires. Design rule 2's shape: the sunflower is right for ten
+thousand dots and wrong for eighty boxes.
+
+Two smaller failures to fix in the rebuild: the glyphs render **scrambled**
+(`selected_backend` → `s/lec-uh-cc-e·u`; suspect `sizeUnits: 'common'` on a non-billboarded
+`TextLayer`), and some lit nodes stayed dots beside boxes at a selection of eight where
+everything should have fitted.
+
+<details><summary>what the withdrawn chunk built</summary>
+
+Labelled boxes for whatever is lit, in five silhouettes that carry kind.
 
 Tom's decisions: **boxes for whatever is lit** (which already means the whole plate when you
 pick a plate, and a routine plus its hop when you pick a routine); **shape carries kind, as a
@@ -196,8 +226,16 @@ And the **clipping is fixed**: rule 39 blamed the near plane for two sessions an
 **far** one, at `maxZoom` exactly — 4,063 of 15,869 nodes past the frustum with deck's default
 of 500, zero with 5,000, at no cost to the scale or to `unproject`.
 
-See `HANDOFF.md`, "The plate as a diagram — built 2026-08-31" and "Looked at, at the keyboard
-— Tom, 2026-08-31, on the diagram".
+See `HANDOFF.md`, "Withdrawn — Tom, 2026-08-31, on the plate diagram".
+
+</details>
+
+**Also fixed 2026-08-31: the inspector could not be collapsed while it was empty.** Its fold
+control lived in the header of a *populated* specimen, so "Nothing selected" — the state a
+reader most wants to fold away — rendered without one. It is painted at the paint site now,
+outside every `return` the content has. The first fix was wrong in a way `elementFromPoint`
+does not catch: `float` on a flex item does nothing, so the button stretched to the pane's
+full width while hit-testing said it was perfectly reachable.
 
 **Next: nothing is scheduled.** Three chunks now rest on a picture nobody with a real window
 has seen. The one open piece of work is the **anomaly worklist overlay**, still blocked on

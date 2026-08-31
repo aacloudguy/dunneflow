@@ -76,7 +76,19 @@ def structural(model: GraphModel) -> dict[tuple[str, str], tuple[float, float, f
 
     Within a disk, nodes are ordered by degree so that the busiest sit nearest the middle.
     That ordering is the only structure this layout imposes, and it is enough to make a
-    plate readable: what a package mostly does ends up where the eye lands first.
+    plate readable **as dots**: what a package mostly does ends up where the eye lands first.
+
+    **It is not enough to make a plate readable as a diagram, and that is now known rather
+    than suspected.** A first attempt at the plate diagram drew a labelled box at each of
+    these positions and left the placement alone. What came out was a field of names in a
+    sunflower with every edge crossing every other, because nothing here ranks a node by
+    what calls it -- a diagram's readability comes from its layout algorithm, not from the
+    outline of its nodes. The view was withdrawn; see `setDiagram` in `static/shell.js`.
+
+    A diagram wants a **layered** layout: ranks assigned by call direction, ordering within
+    a rank chosen to reduce crossings, then coordinates. That is a second layout beside this
+    one rather than a replacement, for the reason design rule 2 gives -- this one is right
+    for ten thousand dots and would be wrong for eighty boxes, and the reverse.
     """
     degree: dict[tuple[str, str], int] = {}
     for e in model.edges:

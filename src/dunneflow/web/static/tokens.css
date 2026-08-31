@@ -789,6 +789,17 @@ body {
   border-radius: .2rem;
 }
 .panefold:hover { background: var(--raised); color: var(--text); }
+/* Painted as the pane's own first child rather than inside whatever it is showing, so that
+   an empty pane can still be collapsed -- the inspector's fold used to live in the header of
+   a *populated* specimen, and "Nothing selected" is exactly the state a reader most wants to
+   fold away.
+
+   `align-self` and not `float`. The pane is a flex column, and **a flex item ignores
+   `float`**: the button stretched to the full 351px of the pane and read as a bar across the
+   top. It was reachable and it was wrong, which is the half of rule 48 that hit-testing
+   alone does not catch -- `elementFromPoint` said the control was under the cursor while the
+   control was the width of the pane. */
+.pane > .panefold { align-self: flex-end; margin: .4rem .5rem 0 0; }
 
 /* ═══ navigator ═══ */
 /* A header that stays and a body that scrolls, as two grid rows.

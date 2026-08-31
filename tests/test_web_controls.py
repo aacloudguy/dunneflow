@@ -1209,63 +1209,92 @@ def test_the_frustum_reaches_past_the_stack_at_every_zoom() -> None:
     )
 
 
-def test_the_diagram_has_one_owner_and_every_control_goes_through_it() -> None:
-    """Two controls reach the diagram: the switch on the graph, where a reader flips a way of
-    looking while reading, and the toggle in Settings beside the shapes — which is where a
-    reader who has just chosen a shape set is standing when they wonder why nothing changed.
+def test_the_diagram_is_withdrawn_and_nothing_offers_it() -> None:
+    """The plate diagram is built and **not offered**, and this is what keeps it that way.
 
-    The second exists because the first could not be found. The reader's layout had the
-    controls box collapsed, so the switch was 0×0 and the Shape page was a control that
-    rendered and appeared to do nothing — design rule 16 with the wiring perfectly correct.
+    It drew a labelled box for everything the selection lit, at the position the plate layout
+    had already given each node — and that layout is `phyllotaxis`, a sunflower ordered by
+    degree, whose own docstring says the ordering "is the only structure this layout imposes".
+    Boxes at sunflower positions are not a diagram: every edge crosses every other and nothing
+    is ranked by what calls what. Tom's word for it was *"just nodes that are boxes, that's
+    totally different"*, and the bar he set before it was built — *"they must be easy to read
+    or we have failed"* — came with the instruction to withdraw rather than ship with a
+    caveat.
 
-    Two doors onto one piece of state is fine. Two *implementations* of what the door does is
-    rule 51, and the second one always forgets something: here it would be `used()`, which is
-    how design rule 2 retires a loser on evidence.
+    So this asserts the **absence of a door**, which is an unusual thing for a guard to do and
+    is the point: the code is all still here, ready for the layered layout that has to replace
+    the sunflower, and the one way it goes wrong is somebody re-exposing the switch without
+    doing that work. `setDiagram` survives so there is one door to reopen rather than two to
+    rebuild.
     """
     js = _read("shell.js")
-    assert "function setDiagram(" in js, "the diagram no longer has one owner"
-    owner = _fn(js, "setDiagram")
-    for required in ("state.diagram", "used(", "persist()", "Graph.setOptions"):
-        assert required in owner, f"setDiagram does not {required} — a door that half-works"
-
     code = _code(js)
-    assigns = [ln.strip() for ln in code.splitlines()
-               if re.search(r"state\.diagram\s*=", ln)]
-    assert len(assigns) == 1, (
-        f"state.diagram is assigned in {len(assigns)} places: {assigns} — every control "
-        "must go through setDiagram, or one of them forgets to count, persist or repaint"
+    assert "function setDiagram(" in js, (
+        "the owner is gone — reopening this view should be one edit, not a rebuild"
     )
-    assert 'if (t.id === "gdiagram") { setDiagram(' in js, (
-        "the graph's switch no longer routes through the owner"
+    for control in ('id="gdiagram"', 'id="diagramToggle"', "[data-shapeset]"):
+        assert control not in code, (
+            f"{control} is back on the page. The plate layout is still `phyllotaxis`, so "
+            "this offers a reader the picture that failed the acceptance test — put a "
+            "layered layout in `layout.py` before restoring it"
+        )
+    assert "setDiagram(" not in code.replace("function setDiagram(", ""), (
+        "something calls setDiagram again, so the withdrawn view is reachable"
     )
-    assert 'dgm.addEventListener("click", () => setDiagram(' in js, (
-        "the Settings toggle no longer routes through the owner"
-    )
-    assert 'id="diagramToggle"' in js, (
-        "the Settings toggle is gone — and it is the one a reader with the controls box "
-        "collapsed can actually reach"
+    engine = _read("graph.js")
+    opts = engine.split("const opts = {", 1)[1].split("\n};", 1)[0]
+    assert re.search(r"^  diagram: false,", opts, re.M), (
+        "the engine's diagram option no longer defaults off, so a withdrawn view would "
+        "draw itself with no control anywhere to stop it"
     )
 
 
-def test_a_folded_box_names_the_mode_it_is_hiding() -> None:
-    """This box collapses to a summary strip (design rule 25), and the strip has to name what
-    is on inside it.
+def test_a_panes_fold_control_is_not_inside_its_content() -> None:
+    """Design rule 24: every pane folds, and folding leaves a rail. The pane that most needs
+    it is the one with nothing to say — the inspector holds 22rem to report that it is empty,
+    which is the whole reason it rails itself.
 
-    With the box shut and the diagram on, a reader would have a stack of labelled boxes and
-    nothing anywhere saying why — and the way it actually happened, the diagram *off* and no
-    hint that a switch for it existed in there at all. Design rule 24 already says a strip
-    reading only "controls" makes the reader open it to find out what it was; this is the
-    same argument applied to what the strip must say.
+    Its fold button lived in the header of a *populated* specimen, so the two states that
+    return early — "Nothing selected" and "Not in this map" — rendered without one. A reader
+    had to find something to select before they could collapse the pane that was showing
+    nothing, and reported it exactly that way.
+
+    The check is structural rather than a search for the string: the control must be emitted
+    at the **paint site**, outside every `return` the content has, so no branch of any
+    renderer can drop it again.
     """
     js = _read("shell.js")
-    summary = _fn(js, "controlsSummary")
-    assert "state.diagram" in summary, (
-        "the collapsed strip does not name the diagram, so a mode that changes every node "
-        "on screen is invisible from outside the box that switches it"
+    body = _fn(js, "viewInspector")
+    assert 'data-fold="inspector"' not in body, (
+        "the inspector's fold control is back inside the content — every early return in "
+        "that function then renders a pane the reader cannot collapse"
     )
-    assert re.search(r"state\.diagram \?", summary), (
-        "the strip mentions the diagram unconditionally — it must say so when it is on, "
-        "which is a different claim from listing a control that exists"
+    assert "function paneFold(" in js, "the shared fold control is gone"
+    paint = re.search(r'\$\("#inspector"\)\.innerHTML =\s*(.*?);', js, re.S)
+    assert paint, "the inspector paint site changed shape -- this test is blind"
+    assert 'paneFold("inspector"' in paint.group(1), (
+        f"the inspector is painted without its fold control: {paint.group(1).strip()!r}"
+    )
+    # **And it must not be floated.** The pane is a flex column and a flex item ignores
+    # `float`, so the button stretched to the full 351px and read as a bar across the top --
+    # reachable, hit-testable, and wrong. Rule 48's other half: `elementFromPoint` says the
+    # control is under the cursor and says nothing about it being the size of the pane.
+    helper = _fn(js, "paneFold")
+    assert "float" not in helper, (
+        "the fold control is floated inside a flex column, where float does nothing and the "
+        "button stretches to the whole pane"
+    )
+    css = _css_code(_read("tokens.css"))
+    rule = css.split(".pane > .panefold", 1)
+    assert len(rule) == 2 and "align-self" in rule[1][:120], (
+        "nothing places the pane's fold control, so it stretches to the pane's full width"
+    )
+    assert '#inspector").classList.add("pane")' in js, (
+        "the inspector no longer carries the class its fold placement hangs on"
+    )
+    # And it must still be a route the shell listens for, or it is a dead control.
+    assert '"fold"' in js.split("const WIRED_ATTRS = new Set([", 1)[1].split("]);", 1)[0], (
+        "`fold` is not in the wired roster, so the self-check would call it dead"
     )
 
 

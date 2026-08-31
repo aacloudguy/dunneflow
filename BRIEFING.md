@@ -188,7 +188,16 @@ pkg:quaestor, 1,319 lit                  1280x760 →  86 boxes, 1,233 still dot
 - Guards mutation-tested at **23/23**, after 20/23 with all three survivors the guard being
   weak.
 
-See `HANDOFF.md`, "The plate as a diagram — built 2026-08-31".
+**Looked at by Tom, and it found two defects.** The diagram switch was inside a HUD box he
+had collapsed, so it measured 0×0 and Settings › Shape was a page that appeared to do nothing
+— design rule 16 arriving through a *layout* rather than through the wiring. The switch is in
+the Shape panel too now (one owner, `setDiagram`), and the collapsed strip names the mode.
+And the **clipping is fixed**: rule 39 blamed the near plane for two sessions and it is the
+**far** one, at `maxZoom` exactly — 4,063 of 15,869 nodes past the frustum with deck's default
+of 500, zero with 5,000, at no cost to the scale or to `unproject`.
+
+See `HANDOFF.md`, "The plate as a diagram — built 2026-08-31" and "Looked at, at the keyboard
+— Tom, 2026-08-31, on the diagram".
 
 **Next: nothing is scheduled.** Three chunks now rest on a picture nobody with a real window
 has seen. The one open piece of work is the **anomaly worklist overlay**, still blocked on

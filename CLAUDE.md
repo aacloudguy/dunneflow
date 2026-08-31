@@ -884,22 +884,40 @@ rule of that number — a blank canvas must say why it is blank — which does e
     benchmark already refuses to start on a hidden tab. When the instrument cannot prove it,
     describe the change and let someone with a real window look.
 
-39. **Under an orthographic projection a negative `near` is geometrically sound and breaks
-    the controls.** deck.gl's default frustum (`near 0.1, far 500`) clips the stack when the
-    reader zooms in: `OrbitView` scales world units by `2 ** zoom / height` with the camera a
-    fixed focal distance from the target, so the stack's *view-space* depth grows with zoom
-    until its near half crosses the near plane. Nodes nearest the camera vanish and return on
-    zooming out.
+39. **A plausible diagnosis of a real symptom is still a guess, and this one named the
+    wrong plane for two sessions.** Zooming all the way in lost a quarter of the stack. The
+    explanation on file was the **near** plane — `OrbitView` scales world units by
+    `2 ** zoom` about a target the camera sits a fixed distance from, so the stack's near
+    half was said to cross `near 0.1`. It reasons well and it is wrong.
 
-    An orthographic frustum is a box, not a pyramid, so a negative `near` looks like the
-    obvious fix. **It kills pan and zoom outright** — deck.gl's orbit controller implements
-    both through `viewport.unproject()`, while rotate is angle arithmetic that never
-    unprojects, so exactly the two controls that unproject stop and the one that does not
-    carries on. Losing pan and zoom is far worse than clipping at extreme zoom, so the
-    default stands until there is a fix that keeps `near` positive — moving the camera back
-    rather than the plane. Recorded because the diagnosis is right and the obvious remedy is
-    not, and because it was shipped without being driven: **not being able to test a change
-    is a reason to describe it, never a reason to ship it and ask.**
+    Measured, by projecting every drawn node through deck's own view-projection and counting
+    the ones whose clip-space z leaves `[-1, 1]`: **nothing clips anywhere in the range
+    except at `maxZoom` exactly, where 4,063 of 15,869 go past +1** — the **far** plane, at
+    deck's default of 500. The near plane is never reached at any zoom this view allows. A
+    cliff at the top of the range rather than a gradual onset, which is exactly how a reader
+    reported it: *"when I zoom in, the clipping cuts in"*.
+
+    So `far` is raised to 5,000 and `near` is untouched. It costs nothing, and both things
+    that could have made it cost something were measured: the on-screen scale is identical to
+    the pixel (24,574.8 px per 100 world units at `maxZoom` either way), and `unproject`
+    round-trips to zero error. 5,000 rather than more, because it clears `maxZoom` with the
+    furthest node at clip-space −0.43, while 50,000 puts the whole stack past −0.94 and
+    spends depth precision on nothing.
+
+    **The warning that produced this rule stands, and is why the fix took two sessions to
+    find.** An orthographic frustum is a box, not a pyramid, so a negative `near` is
+    geometrically meaningful and looks like the obvious fix. **It kills pan and zoom
+    outright** — deck.gl's orbit controller implements both through `viewport.unproject()`,
+    while rotate is angle arithmetic that never unprojects, so exactly the two controls that
+    unproject stop and the one that does not carries on. A guard now refuses a negative
+    `near`, because the geometrically obvious wrong answer is the one a reader reaches for.
+
+    Two general points. **A symptom explained but never measured is an open question wearing
+    an answer** — this one was closed with a count rather than an argument, and the count
+    took one pass over 15,869 nodes and no rendered frame at all. And it stayed open because
+    it was filed as *tolerable at extreme zoom*: it stopped being tolerable the moment a
+    feature told the reader to zoom in for more, so **a defect's severity is a property of
+    what has been built since**, not of when it was found.
 
 40. **Two detectors recording one act is two numbers about one thing.** The hover card
     read three tables *and* "DATABASE 20" — which is the same seventeen statements seen by

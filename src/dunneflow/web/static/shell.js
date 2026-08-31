@@ -3417,6 +3417,23 @@ function viewSettings() {
           other two draw one outline for everything and leave kind on colour, where it is
           now. Unlike a colour set there is nothing to measure here: a shape has no contrast
           ratio, so these are offered because they read, not because they cleared a bar.</p>
+        ${/* **The switch belongs here as well as on the HUD, and that was found by a reader
+              failing to find it.** Choosing a shape set is the moment someone expects to
+              see shapes; leaving the only way to turn the diagram on inside a panel they
+              had collapsed made this page a control that renders and appears to do nothing
+              — design rule 16 with the wiring perfectly correct. One function owns the
+              state (`setDiagram`), so the two controls cannot disagree. */""}
+        <div class="setrow">
+          <div><div class="lbl">Draw the stack as a diagram</div>
+            <div class="desc">Off, the stack is dots — which is the only way fifteen thousand
+              nodes can be drawn at all. On, whatever is <b>lit</b> becomes a labelled box:
+              pick a plate and you get its contents, pick a routine and you get it and its
+              neighbours. Boxes are placed where they fit and everything else stays a dot,
+              with the count stated; zoom in and more dots become boxes. The same switch is
+              on the graph itself, in the controls box beside <b>plates</b>.</div></div>
+          <button class="toggle" id="diagramToggle" aria-pressed="${state.diagram}"
+                  aria-label="Draw the stack as a diagram"></button>
+        </div>
         <div class="setrow">
           <div><div class="lbl">Node shape</div>
             <div class="desc">A set rather than a shape per kind, for the same reason the
@@ -6078,6 +6095,8 @@ function wire() {
      returns early without a prepared payload and the value is handed over again at mount,
      so a choice made from Settings before the graph has ever been opened is not lost
      (rule 68: a restore is a setter and must do what the setter does). */
+  const dgm = $("#diagramToggle");
+  if (dgm) dgm.addEventListener("click", () => setDiagram(!state.diagram));
   $$("[data-shapeset]").forEach(b => b.addEventListener("click", () => {
     state.nodeShapes = b.dataset.shapeset;
     used("shapes:" + state.nodeShapes);
@@ -9913,6 +9932,24 @@ function legendSays(what) {
  * differ in size look identical, so the line says which reading is on the screen, and at
  * which altitude, because the dial is per level and a value that changed under the reader
  * with nothing saying so reads as a control that reset itself. */
+/* The diagram, turned on or off, from **one** function.
+ *
+ * Two controls reach it -- the switch in the controls box, where a reader flips a way of
+ * looking while reading, and the toggle in Settings beside the shapes, which is where a
+ * reader who has just chosen a shape set is standing when they wonder why nothing changed.
+ * Two doors onto one piece of state is fine; two *implementations* of what the door does is
+ * rule 51, and the second one always forgets something (here it would be `used()`, and the
+ * usage counter is how design rule 2 retires a loser).
+ *
+ * `render()` rather than a narrow repaint, because the other control has to move too. */
+function setDiagram(on) {
+  state.diagram = !!on;
+  used("diagram:" + (state.diagram ? "on" : "off"));
+  if (Graph.mounted()) Graph.setOptions({ diagram: state.diagram });
+  persist();
+  render();
+}
+
 function plateRangeNote() {
   const w = Graph.mounted() ? Graph.plateWidths() : null;
   const at = state.level === "module" ? "one node per file" : "every routine";
@@ -9930,7 +9967,15 @@ function controlsSummary() {
     `<b class="num">${(+state.spreadX).toFixed(2)}</b> / ` +
     `<b class="num">${(+state.spreadY).toFixed(2)}</b> / ` +
     `<b class="num">${(+state.spreadZ).toFixed(2)}</b> · plate width ` +
-    `<b class="num">${plateSizeNow().toFixed(2)}</b>`;
+    `<b class="num">${plateSizeNow().toFixed(2)}</b>` +
+    /* **A mode inside a box that folds has to be named on the strip the box folds into.**
+       This box collapses to its summary (design rule 25), and a reader with it shut and the
+       diagram on would have a stack of labelled boxes and nothing anywhere saying why --
+       or, the way it actually happened, the diagram *off* and no hint that a switch for it
+       exists in there at all. Design rule 24 already says a strip reading only "controls"
+       makes the reader open it to find out what it was; this is the same argument for what
+       the strip has to name. */
+    (state.diagram ? ` · <b>diagram</b>` : "");
 }
 
 /* The selection is real but the reader cannot see it.
@@ -10404,13 +10449,7 @@ function wireGraphOnce() {
        knows those once it has placed them. `announceCounts` fires from `setOptions`, so the
        line follows on its own -- but not on the way *off*, where there is nothing to place
        and the numbers have to go rather than stand stale (rule 51). */
-    if (t.id === "gdiagram") {
-      state.diagram = t.checked;
-      used("diagram:" + (t.checked ? "on" : "off"));
-      Graph.setOptions({ diagram: t.checked });
-      persist();
-      return;
-    }
+    if (t.id === "gdiagram") { setDiagram(t.checked); return; }
     /* Hiding and collapsing are separate switches on purpose: one decides whether an
      * unselected plate draws, the other whether it still takes up room. Wanting the
      * second without the first is ordinary -- it is how a selection of eight plates out

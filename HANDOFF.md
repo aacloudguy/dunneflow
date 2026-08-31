@@ -3845,6 +3845,80 @@ question answered first — what makes two findings in two versions the same fin
 carries no id and 93 of Mensores' 106 are `LOST_EDGE`, so pairing them would invent an
 identity (rule 1).
 
+## Looked at, at the keyboard — Tom, 2026-08-31, on the diagram
+
+Two sentences, and both were defects rather than misreadings.
+
+> *"'tick diagram in the controls box on the right' does not map to anything that I see. My
+> Settings for Shapes is set to By Kind, but all nodes are simply dots, as before. When I
+> zoom in, the clipping cuts in and nodes disappear."*
+
+### 1. The switch was inside a box he had collapsed
+
+`panels.controls: false` in his stored layout, so `#gdiagram` measured **0×0** and the box
+was a 29-pixel strip reading *"size 1.0× · spread 1.00 / 1.00 / 0.35 · plate width 1.00"*.
+The switch was wired perfectly and unreachable, which is design rule 16 arriving through a
+*layout* rather than through the wiring — nothing in the roster or the self-check can see it,
+because there is nothing wrong with the control.
+
+Worse, and this is the part worth keeping: **he went to Settings › Shape, set it to By Kind,
+and nothing happened.** That page was a control that rendered and appeared to do nothing,
+because the thing it configures is switched on somewhere else entirely. A settings panel for
+a mode you cannot turn on from it is the same defect one layer out.
+
+Three fixes:
+
+- **The switch is in the Shape panel too**, which is where a reader who has just chosen a
+  shape set is standing when they wonder why nothing changed. `setDiagram()` owns the state
+  and both controls go through it — two doors, one implementation, because the second
+  implementation always forgets something (here `used()`, which is how design rule 2 retires
+  a loser).
+- **The collapsed strip names the mode when it is on.** Design rule 25 lets this box fold to
+  its summary; design rule 24 already says a strip that makes you open it to find out what it
+  was has failed. **A mode inside a box that folds has to be named on the strip it folds
+  into** — otherwise the diagram is on, every node on screen is a labelled box, and nothing
+  says why.
+- The Shape panel says in as many words that the shapes appear when the diagram is on.
+
+### 2. The clipping, and rule 39 named the wrong plane for two sessions
+
+The note on file said the **near** plane: the stack's near half crossing `near 0.1` as zoom
+pulls it toward the camera. It reasons well, it was never measured, and it is wrong.
+
+Measured by projecting every drawn node through deck's own view-projection and counting the
+ones whose clip-space z leaves `[-1, 1]`:
+
+```
+far = 500 (deck's default)      zoom −9 … 7 → 0 clipped      zoom 8 → 4,063 of 15,869
+far = 5,000                     zoom −9 … 8 → 0 clipped
+```
+
+It is the **far** plane, at `maxZoom` exactly — a cliff at the top of the range rather than a
+gradual onset, which is precisely how it was reported. The near plane is never reached at any
+zoom this view allows.
+
+`far` is 5,000 now and `near` is untouched. Both things that could have made it cost
+something were measured: the on-screen scale is identical to the pixel (24,574.8 px per 100
+world units at `maxZoom` either way), and `unproject` round-trips to **zero** error — which is
+the check that matters, because the previous attempt at this was a negative `near`, and that
+breaks pan and zoom by making the unprojection nonsense. A guard refuses a negative `near`
+now, because the geometrically obvious wrong answer is the one a reader reaches for.
+
+**Two general points, and rule 39 is rewritten around them.** A symptom explained but never
+measured is an open question wearing an answer; this one was closed with a count over 15,869
+nodes and no rendered frame at all, which was available for the whole two sessions it stood.
+And it stayed open because it was filed as *tolerable at extreme zoom* — it stopped being
+tolerable the moment a feature told the reader to **zoom in for more**, so a defect's severity
+is a property of what has been built since, not of when it was found.
+
+### Verified
+
+`far: 5000` on the live view with **zero clipped at every zoom including `maxZoom`**, where it
+was 4,063. The Settings toggle found, pressed, persisted and pressed back. Six key rows and
+three shape sets rendering. Guards mutation-tested at **10/10** over a proved-green baseline.
+
+Still unseen: the pixels. Rule 38 is unchanged.
+
 ## The plate as a diagram — built 2026-08-31
 
 **`6l`.** The second recorded feature request, and the one carrying an acceptance test:

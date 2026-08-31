@@ -1169,6 +1169,106 @@ def test_the_box_cache_is_keyed_on_the_selection_and_cleared_by_whoever_moves_a_
     )
 
 
+def test_the_frustum_reaches_past_the_stack_at_every_zoom() -> None:
+    """Zooming all the way in used to lose a quarter of the stack, and the note on file
+    blamed the wrong plane for two sessions.
+
+    Measured by projecting every drawn node through deck's own view-projection and counting
+    the ones whose clip-space z leaves [-1, 1]: nothing clips anywhere in the range except at
+    `maxZoom` exactly, where **4,063 of 15,869** go past +1 — the *far* plane, at deck's
+    default of 500. The near plane is never reached. It is a cliff at the top of the range
+    rather than a gradual onset, which is how it was reported.
+
+    Two halves. The far plane must be raised, from a named constant rather than a number
+    written into the view. And `near` must **not** be made negative — that was the previous
+    attempt, and it breaks pan and zoom outright, because deck's orbit controller implements
+    both through `viewport.unproject()`. A guard is the only thing that stops a future reader
+    reaching for the geometrically obvious fix a second time.
+    """
+    js = _read("graph.js")
+    m = re.search(r"const FAR_PLANE = (\d+);", js)
+    assert m, "FAR_PLANE is gone; the frustum is back to deck's default of 500"
+    assert int(m.group(1)) >= 4000, (
+        f"FAR_PLANE is {m.group(1)} — measured, the stack needs about 4,000 to clear "
+        "maxZoom, and below that the far nodes are clipped at the top of the range"
+    )
+    view = re.search(r"new OrbitView\(\{([^}]*)\}\)", js)
+    assert view, "the OrbitView construction changed shape -- this test is blind"
+    assert "far: FAR_PLANE" in view.group(1), (
+        f"the view does not take the raised far plane: {view.group(1).strip()!r}"
+    )
+    assert "orthographic: true" in view.group(1), (
+        "the view is no longer orthographic — design rule 20, and every pixel-to-world "
+        "conversion in this file assumes it"
+    )
+    assert not re.search(r"near:\s*-", view.group(1)), (
+        "a negative near is back. It is geometrically sound under an orthographic "
+        "projection and it breaks pan and zoom outright — both go through "
+        "viewport.unproject(), rotate does not, so exactly the two controls that unproject "
+        "stop while the one that does not carries on"
+    )
+
+
+def test_the_diagram_has_one_owner_and_every_control_goes_through_it() -> None:
+    """Two controls reach the diagram: the switch on the graph, where a reader flips a way of
+    looking while reading, and the toggle in Settings beside the shapes — which is where a
+    reader who has just chosen a shape set is standing when they wonder why nothing changed.
+
+    The second exists because the first could not be found. The reader's layout had the
+    controls box collapsed, so the switch was 0×0 and the Shape page was a control that
+    rendered and appeared to do nothing — design rule 16 with the wiring perfectly correct.
+
+    Two doors onto one piece of state is fine. Two *implementations* of what the door does is
+    rule 51, and the second one always forgets something: here it would be `used()`, which is
+    how design rule 2 retires a loser on evidence.
+    """
+    js = _read("shell.js")
+    assert "function setDiagram(" in js, "the diagram no longer has one owner"
+    owner = _fn(js, "setDiagram")
+    for required in ("state.diagram", "used(", "persist()", "Graph.setOptions"):
+        assert required in owner, f"setDiagram does not {required} — a door that half-works"
+
+    code = _code(js)
+    assigns = [ln.strip() for ln in code.splitlines()
+               if re.search(r"state\.diagram\s*=", ln)]
+    assert len(assigns) == 1, (
+        f"state.diagram is assigned in {len(assigns)} places: {assigns} — every control "
+        "must go through setDiagram, or one of them forgets to count, persist or repaint"
+    )
+    assert 'if (t.id === "gdiagram") { setDiagram(' in js, (
+        "the graph's switch no longer routes through the owner"
+    )
+    assert 'dgm.addEventListener("click", () => setDiagram(' in js, (
+        "the Settings toggle no longer routes through the owner"
+    )
+    assert 'id="diagramToggle"' in js, (
+        "the Settings toggle is gone — and it is the one a reader with the controls box "
+        "collapsed can actually reach"
+    )
+
+
+def test_a_folded_box_names_the_mode_it_is_hiding() -> None:
+    """This box collapses to a summary strip (design rule 25), and the strip has to name what
+    is on inside it.
+
+    With the box shut and the diagram on, a reader would have a stack of labelled boxes and
+    nothing anywhere saying why — and the way it actually happened, the diagram *off* and no
+    hint that a switch for it existed in there at all. Design rule 24 already says a strip
+    reading only "controls" makes the reader open it to find out what it was; this is the
+    same argument applied to what the strip must say.
+    """
+    js = _read("shell.js")
+    summary = _fn(js, "controlsSummary")
+    assert "state.diagram" in summary, (
+        "the collapsed strip does not name the diagram, so a mode that changes every node "
+        "on screen is invisible from outside the box that switches it"
+    )
+    assert re.search(r"state\.diagram \?", summary), (
+        "the strip mentions the diagram unconditionally — it must say so when it is on, "
+        "which is a different claim from listing a control that exists"
+    )
+
+
 def test_every_declared_data_array_is_assigned_somewhere() -> None:
     """`let X = []` that nothing ever writes to is an empty view with no symptom.
 

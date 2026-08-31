@@ -135,6 +135,9 @@ const DISK_GAP = 190;
  * the pointer stands on this circle: an arrow at the side of the stack has to know where
  * the side is, and two copies of that number is a signpost that drifts off the edge. */
 const PLATE_R = 1060;
+/* How far the frustum reaches, in view-space units. deck's default is 500 and the stack
+ * crosses it at `maxZoom` exactly -- see `mount`, where the measurement is recorded. */
+const FAR_PLANE = 5000;
 const NODE_LABEL_CAP = 250;
 const NODE_LABEL_ZOOM = -1.2;
 
@@ -2071,29 +2074,39 @@ function mount(container, raw, options = {}) {
     /* Orthographic: under perspective the near plates magnify and the far ones shrink,
      * rendering a stack of equal disks as a tapered cylinder -- the exact shape the model
      * exists not to be. It also makes zoom map world units to pixels exactly. */
-    /* ── the near plane, and why it is left alone ──
+    /* ── the far plane, and it was the near one for two sessions ──
      *
-     * Zooming far enough in clips the nodes nearest the camera: they vanish as the stack is
-     * pulled towards the reader and return on zooming out. The cause is deck.gl's default
-     * frustum, near 0.1 and far 500, which nothing here ever set. `OrbitView` scales world
-     * units by `2 ** zoom / height` with the camera a fixed focal distance from the target,
-     * so the stack's depth *in view space* grows with zoom until its near half crosses the
-     * near plane.
+     * Zooming all the way in used to lose a quarter of the stack. The diagnosis on file
+     * said the nodes *nearest* the camera crossed the near plane; that was wrong, and it
+     * was wrong in the way a plausible explanation usually is -- it was never measured,
+     * only reasoned from the fact that `OrbitView` scales world units by `2 ** zoom` about
+     * a target the camera sits a fixed distance from.
      *
-     * Under an orthographic projection the frustum is a box rather than a pyramid, so a
-     * negative near is geometrically meaningful and looks like the obvious fix. It is not,
-     * and this comment exists so nobody tries it twice: **it breaks pan and zoom outright.**
-     * deck.gl's orbit controller implements both through `viewport.unproject()` -- zoom
-     * anchors the point under the cursor, pan drags it -- while rotate is angle arithmetic
-     * that never unprojects. A negative near makes the unprojection matrix produce nonsense,
-     * so exactly the two controls that unproject stop working and the one that does not
-     * carries on, which is a very confusing thing to be looking at.
+     * Measured, by projecting every drawn node through deck's own view-projection and
+     * counting the ones whose clip-space z leaves [-1, 1]: **nothing clips anywhere in the
+     * range except at `maxZoom` exactly, where 4,063 of 15,869 go past +1** -- the *far*
+     * plane, at deck's default of 500. The near plane is never reached at any zoom this
+     * view allows. It is a cliff at the very top of the range rather than a gradual onset,
+     * which is exactly how it was reported: *"when I zoom in, the clipping cuts in"*.
      *
-     * Losing pan and zoom is far worse than clipping at extreme zoom, so the default stands
-     * until there is a fix that keeps near positive -- moving the camera back rather than
-     * moving the plane. Not attempted here: `focalDistance` is not an `OrbitView` prop, and
-     * reaching past the documented surface is what produced the broken build. */
-    views: [new OrbitView({ orbitAxis: 'Z', orthographic: true })],
+     * So `far` is raised and `near` is left where it is. That is the whole fix, it costs
+     * nothing, and it is measured on both counts that matter: the on-screen scale is
+     * identical to the pixel (24,574.8 px per 100 world units at maxZoom either way), and
+     * `unproject` round-trips to zero error -- which is the thing that must be checked,
+     * because the *previous* attempt at this was a negative `near`.
+     *
+     * **That attempt is why this comment is long, and it stays a warning.** Under an
+     * orthographic projection the frustum is a box rather than a pyramid, so a negative
+     * near is geometrically meaningful and looks like the obvious fix. It breaks pan and
+     * zoom outright: deck.gl's orbit controller implements both through
+     * `viewport.unproject()` -- zoom anchors the point under the cursor, pan drags it --
+     * while rotate is angle arithmetic that never unprojects, so exactly the two controls
+     * that unproject stop and the one that does not carries on.
+     *
+     * 5,000 rather than something larger: it clears `maxZoom` with the furthest node at
+     * clip-space -0.43, and a far plane pushed to 50,000 puts the whole stack past -0.94,
+     * which spends depth precision on nothing. */
+    views: [new OrbitView({ orbitAxis: 'Z', orthographic: true, far: FAR_PLANE })],
     viewState: g.viewState,
     controller: { inertia: 250 },
     /* A reticule to aim with, and `grabbing` while the camera is actually being dragged --

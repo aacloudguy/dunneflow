@@ -136,10 +136,13 @@ search. FTS5 was rejected on evidence: token-based, so it cannot find `_emit` in
 Still not built: syntax highlighting (a design-rule-2 pair if ever wanted, done server-side
 with stdlib `tokenize`).
 
-**Not built:** `dunneflow infer` (the model pass) · the rest of the temporal **overlays**
-— the code browser, the routine views and the stack are all layered (2026-08-30); the
-anomaly worklist is blocked on finding identity · attestation · the project profile · document
-mode's narrative view · packaging as a binary · any language but Python.
+**The temporal overlays are complete.** The code browser, the routine views and the stack
+were layered 2026-08-30; the **anomaly worklist joined them 2026-09-01**, once a finding
+carried an identity to be paired on.
+
+**Not built:** `dunneflow infer` (the model pass) · attestation · the project profile ·
+document mode's narrative view · `CURIOSITIES` on screen · packaging as a binary · any
+language but Python.
 
 **The revision spine is in, and both ends of a pair are readable.** `WORKING` is a *state*
 rather than an id, and a revision is identified by when it was captured; `seal()` keeps the
@@ -159,11 +162,90 @@ is not computed yet.
 
 ## What we are doing now
 
-**Paused 2026-08-31 with chunks 5a and 5b in, committed and green** — 723 tests, mypy
-clean, ruff clean, working tree clean. Nothing is half-done; the next session starts on
-5c, which begins by reproducing a defect rather than by building anything.
+**Paused 2026-09-01 with chunk 5 complete — 5a, 5b and 5c all in, committed and green.**
+731 tests, mypy clean, ruff clean, working tree clean. Nothing is half-done.
 
-**The question that blocked the anomaly worklist since 2026-08-30 is answered**, and it
+**5c put the anomaly comparison on screen, and it opened by reproducing a defect rather
+than by building anything.** `state.triage` was keyed by the finding's **array index**
+while both of its declarations said `finding id ->`. Reproduced over Mensores' pair and
+then in the browser, end to end:
+
+```
+index 104   base 22:53:57  `siq__rebuild_87_02h` is written but never read back
+            base 22:53:15  `tags` is written but never read back
+```
+
+File a decision against the first, switch the base, and storage restores `{"104": "ack"}`
+— now an acknowledgement of a different table, with the finding actually acknowledged not
+even in that version. Nothing on screen, nothing in the console. `loadAnomalies()` was
+dropping `ident`, `ident_parts` and `subject` on the way in, all three sent since 5a; the
+last of those had been `undefined` in a live sentence for as long as the sentence existed
+(rule 44).
+
+`triageOf` / `setTriage` are now the **only** two places `state.triage` is subscripted, and
+the guard is an absence over the whole file rather than a check on the sites that existed.
+
+**`SETTINGS_VERSION` is 5, and it is the first bump that carries forward.** An index-keyed
+blob read as ident-keyed is a wrong answer, not an absent one, so it may not merge — but
+exactly one key of sixty-six is unreadable and the shelf, the plate colours and the panel
+layout are as good as they were. `CARRY_FORWARD` is keyed by the version being *left*, the
+way `migrate.py` gates re-stamping a fingerprint (rule 62); the old blob is **left in
+place**, because deleting it is a read path destroying what it read (rule 20); and the load
+says what it dropped, once, on the surface that lost it.
+
+```
+5c  /api/anomalychanges on screen   default on, fetched when the worklist is opened
+    base 22:53:57  1 / 0 / 4        base 22:53:15  0 / 1 / 4, and the word inverts with it
+    0 ms held · five states that must not look alike, and do not
+    20/20 mutations caught over a baseline proved green first
+```
+
+Findings only the compared version has are **counted in the head with the set one unfold
+away**, never given rows and never triageable — Tom's call, and it keeps the list, `j`/`k`
+and "left to triage" all counting one thing (rule 32). The `moved` mark spends
+`--diff-moved`, which already existed: violet in all three sets and both themes, measured
+for separation (rule 69), and already the graph legend's `tone-moved`. *Still here,
+claiming something different* is a direction of difference, not an absence of one.
+
+**Two things driving it found that no test could have.** The note counted all 106 findings
+while everything beside it was per severity, so the Suspect tab read `◈ 4 claiming
+something different` with not one marked row on it — all five banded findings are INFO
+(rule 32, and the same shape that retired `degree`). And the carried-forward note rendered
+one fact twice side by side, because both the store and the view wrote a reason for it
+(rule 40, in prose). Fifth consecutive session in which looking at the pane paid for
+itself.
+
+**Absent rather than estimated: a picture of it.** The automation tab's viewport is fixed
+at 1262×556 whatever the window is, and this app puts ~320px of chrome above the list, so
+the marked rows do not fit a frame. Everything static was driven there — classes, computed
+colours, the titles with both numbers in them, per-tab counts, the switch both ways, and
+`elementFromPoint` on the unfold and the switch to prove they are reachable rather than
+merely wired. Rule 38: the picture wants a real window.
+
+### Three things waiting on Tom, and none of them is a bug
+
+1. **The flow panel's arrow stroke is 1 px**, which is thin to aim at. The same flow is
+   reachable from a row in the pane, which is a button, so this may be enough.
+2. **A 1,347-line `frozenset` argument exists in this corpus** (`quaestor/_envelope.py`,
+   91 KB in one argument) and the pane **wraps** it rather than eliding, because rule 8
+   allows abbreviation only where the complete value sits beside it. It may read badly.
+   Whatever replaces it has to keep the whole value reachable.
+3. **New, and small.** The routine lane draws *behaves differently* in `--text-muted`
+   while the graph legend and now the findings draw the same idea in `--diff-moved`. Two
+   answers to one question (rule 51). Left alone because changing a shipped surface on
+   that judgment is his call.
+
+### What is next, and it is open
+
+Nothing in chunk 5 is outstanding. Still open and unblocked, untouched by any of it: **the
+change worklist does not yet see an argument change** (`changes.FACTS` compares `calls`
+without them), and `CURIOSITIES` is computed per package by `threads.py` and has never been
+put on screen — most of design rule 15's doorway panel, and it says honestly that it is not
+computed yet.
+
+### Before that: a finding says what makes it that finding (2026-08-31)
+
+**The question that blocked the anomaly worklist since 2026-08-30 was answered**, and it
 was measurable rather than a matter of taste. *What makes two findings in two versions the
 same finding:* over Mensores' pair, `kind + subject` is a total key with zero collisions —
 106 of 106 paired, one genuinely new — while adding `file` *loses* three pairings, because
@@ -174,7 +256,7 @@ and the callers and the rivals are what it *reports*.
 **Tom took an explicit identity per detector**, and his reason set the shape: *"to later on
 permit different languages such as Kotlin or C++ … keep the input possibilities wide
 enough."* Detectors are query-driven, so another language's facts already run through them
-and will bring detectors of their own — a central rule inferring identity would have to go
+and will bring detectors of their own; a central rule inferring identity would have to go
 on being right about every one.
 
 ```
@@ -198,26 +280,8 @@ first passes and every one was the guard, including the sharpest of the session:
 ordinal that breaks a genuine tie was hiding weak keys from the uniqueness test**, so the
 corpus guard now asserts no declared key needs tie-breaking at all.
 
-**Next: 5c, the overlay on screen**, which opens on a live defect. `state.triage` is keyed
-by the finding's **array index** while both declarations of it say `finding id ->`
-(`shell.js:362`, `settings.js:330`). It is persisted, findings are served sorted by count,
-and a base switch reloads — so a moved count, a new detector or a switch lands every saved
-decision on a different finding, silently. `SETTINGS_VERSION` must bump. Tom's call on the
-overlay itself: **default on, fetched when the worklist is opened**, matching `codeOverlay`
-and `tableOverlay`. See `HANDOFF.md`, "A finding says what makes it that finding".
-
-**Two things are waiting on Tom and neither is a bug:**
-
-1. **The arrow stroke is 1 px**, which is thin to aim at. The same flow is reachable from a
-   row in the pane, which is a button, so this may be enough — his judgment, not mine.
-2. **A 1,347-line `frozenset` argument exists in this corpus** (`quaestor/_envelope.py`,
-   91 KB in one argument) and the pane **wraps** it rather than eliding, because rule 8
-   allows abbreviation only where the complete value sits beside it. It may read badly.
-   Whatever replaces it has to keep the whole value reachable.
-*(The third — 386 MB of stores the schema bump made stale — is **deleted**, on Tom's word.
-Checked first rather than assumed, because rule 25 says the file bodies are the one thing
-that cannot be rebuilt: all 640 of its blob hashes were already in the new `source.db`,
-zero missing, and both source trees are still on disk.)*
+See `HANDOFF.md`, "The overlay on the findings, and the key it had to be built on" and
+"A finding says what makes it that finding".
 
 ### Before that: an edge says what flows (2026-08-31)
 
@@ -254,9 +318,9 @@ corpus and wraps rather than elides, because rule 8 allows abbreviation only bes
 full value.
 
 *Its "next" was chunk 5, blocked on what makes two findings in two versions the same
-finding. That question is answered and 5a and 5b are built — see the top of this section.*
-Still open and unblocked, and untouched by either: the change worklist does not yet see an
-argument change (`changes.FACTS` compares `calls` without them).
+finding. That question is answered and all of chunk 5 is built — see the top of this file.*
+Still open and unblocked, and untouched by any of it: the change worklist does not yet see
+an argument change (`changes.FACTS` compares `calls` without them).
 
 ### Before that: the call-site arguments (2026-08-31)
 
@@ -355,8 +419,9 @@ order: the panel in 2 wants what 1 records.
    the `data-gotocode` button — Tom's *"ultimately where it all goes"*.
 3. **The anomaly worklist overlay**, still blocked on one question — what makes two findings
    in two versions the same finding. 93 of Mensores' 106 are `LOST_EDGE`, so pairing them
-   would invent an identity (rule 1). *(Answered 2026-08-31, and 5a and 5b are built. This
-   paragraph is what was true when the plan was approved; see "What we are doing now".)*
+   would invent an identity (rule 1). *(Answered 2026-08-31, and all of chunk 5 is built —
+   5c landed 2026-09-01. This paragraph is what was true when the plan was approved; see
+   "What we are doing now".)*
 
 **Withdrawn and not to be rebuilt without reading why:** boxes drawn on the stack at
 phyllotaxis positions (a sunflower is not a diagram), and shadows for cross-compartment edges

@@ -2547,6 +2547,48 @@ table.grid td.chgcell.rtnchg-edited  { color: var(--text-faint); }
 table.grid td.chgcell.rtnchg-same    { color: var(--text-faint); font-weight: 400; }
 .tfoot-chg { color: var(--text-muted); }
 
+/* ── and the same comparison, over the findings ────────────────────────────────────
+ *
+ * **Every class here is prefixed `anochg-` and scoped to `.wl-item`**, for the reason the
+ * block above states at length: a class name is global and a stylesheet gives no warning
+ * (rule 71). `anochg` is not `chg` and not `rtnchg`; `.ano-` is the worklist's own furniture
+ * around it.
+ *
+ * **All three states are in the difference channel, and the third one already had a
+ * colour.** `--diff-moved` is violet in every set, in both themes, with its separation from
+ * the other two measured and stated in the Settings table (rule 69) -- it exists because
+ * *still here, claiming something different* is a direction of difference like the other
+ * two, not an absence of one. `.tone-moved` is the class the graph legend already spells it
+ * with, so this surface and that one cannot part company about what violet means (rule 51).
+ *
+ * `same` stays out of the channel, because it is not a direction: it says the comparison ran
+ * and found nothing here, which is a fact rather than a finding, and it is the quietest
+ * thing on the row on purpose.
+ */
+.wl-item .anochg { font-weight: 700; width: .8rem; text-align: center; flex: none; }
+.wl-item .anochg.tone-moved { color: var(--diff-moved); }
+.wl-item .anochg-same { color: var(--text-faint); font-weight: 400; }
+
+/* The note above the list, and the one saying what a version bump could not carry over.
+   `.wl-head` wraps rather than being a grid, so a full line is `flex-basis: 100%` -- a
+   `grid-column` here would be a declaration that renders and governs nothing, which is the
+   whole family of defect rule 71 sits in. Two lines rather than more words on one: how many
+   findings there are and what the comparison says about them are two questions (rule 32). */
+.ano-chgnote { margin: .35rem 0 0; flex-basis: 100%; }
+.ano-carried { margin: .35rem 0 0; flex-basis: 100%; color: var(--text-muted);
+  border-left: .125rem solid var(--sev-info); padding-left: .5rem; }
+
+/* The findings only the compared version has. Rows, not buttons: they are not findings of
+   the version on screen, so there is nothing here to select or to triage, and anything that
+   looked clickable would be a control that resolves to nothing (rule 30). */
+.ano-elsewhere { flex-basis: 100%; margin-top: .4rem; padding: .5rem .6rem;
+  border: .0625rem solid var(--border); border-radius: .375rem; background: var(--sunken); }
+.ano-elsewhere .hint { margin: 0 0 .4rem; font-size: .74rem; color: var(--text-muted); }
+.ano-elselist { list-style: none; margin: 0; padding: 0; display: flex;
+  flex-direction: column; gap: .2rem; }
+.ano-elselist li { display: flex; align-items: baseline; gap: .4rem; font-size: .78rem; }
+.ano-elsetitle { flex: 1; min-width: 0; }
+
 /* The mark's sentence inside the navigator's hover card. A routine row is `data-card`, so
    it has no native title to hang the words on -- and a title on the glyph itself would put
    the tiny unreadable tooltip the card replaced on top of the card. */

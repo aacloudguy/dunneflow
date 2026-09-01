@@ -7138,11 +7138,22 @@ def test_the_change_key_names_what_it_counts_at_each_altitude() -> None:
 
 def test_the_settings_version_moved_with_the_shape_that_changed() -> None:
     """`level` and `minDisk` are new keys and would merge safely on their own. `diskOrder`
-    is the reason for the bump: it was one array and is now one per level, and a v3 blob
-    merged into that shape hands `mount` a list of plate ids where it expects a map."""
+    is the reason for the v4 bump: it was one array and is now one per level, and a v3 blob
+    merged into that shape hands `mount` a list of plate ids where it expects a map.
+
+    The literal was `4` here and had to be edited by the next bump, which is an assertion
+    about *when* it was written rather than about what it protects -- and it caught the v5
+    bump for exactly nothing. What the shape needs is that the version is at least the one
+    the shape arrived in; what a *bump* needs is asserted next door, in
+    `test_a_bump_that_carries_forward_names_the_blob_it_reads`.
+    """
     st = _read("settings.js")
-    assert "const SETTINGS_VERSION = 4;" in st, (
-        "the version did not move with the shape of `diskOrder`"
+    declared = re.search(r"const SETTINGS_VERSION = (\d+);", st)
+    assert declared, "settings.js declares no SETTINGS_VERSION at all"
+    version = int(declared.group(1))
+    assert version >= 4, (
+        "the version did not move with the shape of `diskOrder`: a v3 blob merges into the "
+        "per-level shape and hands `mount` a list where it expects a map"
     )
     code = _code(st)
     assert "diskOrder: { routine: null, module: null }" in code
@@ -7837,4 +7848,350 @@ def test_the_engine_echoing_a_selection_does_not_replace_the_subject() -> None:
         "the flag is not raised around `Graph.setSelection`, or is not lowered in a "
         "`finally` -- a throw inside the engine would leave the shell deaf to every "
         "selection the reader makes afterwards"
+    )
+
+
+# ── the comparison over the findings, and the key it had to be built on ────────────────
+#
+# 5c. The overlay could not be drawn until the surface underneath it was keyed on something
+# that survives a base switch, so these guards come in two halves: the defect, and the view.
+
+
+def test_a_triage_decision_is_filed_against_the_finding_and_not_its_position() -> None:
+    """The defect this chunk opened on, asserted as an **absence** over the whole file.
+
+    `state.triage` was subscripted by the finding's index at five separate sites -- the
+    count, the row, the three buttons, the click handler and the number keys -- every one
+    correct on its own and all five wrong together, because `/api/anomalies` sorts by a
+    count that moves. Measured on Mensores' pair: a decision filed against
+    `siq__rebuild_87_02h` read back after a base switch as an acknowledgement of `tags`,
+    with nothing on screen or in the console to say so.
+
+    So the guard is not on the five sites that existed. A sixth hand-written one is the
+    failure this shape exists to prevent, and it would pass a check written over the five
+    (rule 74's shape, and rule 51's reason).
+    """
+    js = _code(_read("shell.js"))
+    doors = (_fn(js, "triageOf"), _fn(js, "setTriage"))
+    for door in doors:
+        assert "a.ident" in door, (
+            f"a triage door no longer keys on the identity: {door[:120]}"
+        )
+
+    rest = js
+    for door in doors:
+        assert door in rest, "a triage door moved; this guard has lost its subject"
+        rest = rest.replace(door, "")
+    stray = rest.count("state.triage[")
+    assert stray == 0, (
+        f"`state.triage[` is subscripted in {stray} place(s) outside `triageOf` and "
+        "`setTriage`. A decision filed anywhere else is filed against whatever that "
+        "expression happens to be, and the array is sorted by a count that moves"
+    )
+    # And the doors must be *used*, or the absence above is satisfied by a dead feature.
+    assert rest.count("triageOf(") >= 3, "nothing reads a triage decision any more"
+    assert rest.count("setTriage(") >= 2, "nothing files a triage decision any more"
+
+
+def test_a_bump_that_carries_forward_names_the_blob_it_reads() -> None:
+    """A carry-forward may vouch only for the one version below it, and only by name.
+
+    Every bump before v5 discarded everything, which is right when a blob cannot be read at
+    all. v5 is the other case: exactly one key changed *meaning* -- `triage` went from being
+    keyed by position to being keyed by identity -- and the other sixty-five, the shelf and
+    the plate colours and the panel layout among them, are as good as they were.
+
+    Left general that is a licence to vouch for changes it did not make, so it is gated on
+    the specific version being left, exactly as `migrate.py` gates re-stamping a fingerprint
+    on one named prior value (rule 62).
+    """
+    st = _read("settings.js")
+    code = _code(st)
+    version = int(re.search(r"const SETTINGS_VERSION = (\d+);", st).group(1))  # type: ignore[union-attr]
+
+    spec = re.search(r"const CARRY_FORWARD = \{(.*?)\n\};", code, re.S)
+    assert spec, "there is no CARRY_FORWARD table; a bump silently discards everything"
+    keys = [int(k) for k in re.findall(r"^\s*(\d+):", spec.group(1), re.M)]
+    assert keys, "CARRY_FORWARD names no version, so it can carry nothing"
+    for k in keys:
+        assert k < version, (
+            f"CARRY_FORWARD claims to read v{k}, which is not below v{version} -- a blob "
+            "this build wrote is not something a bump has to migrate"
+        )
+
+    carry = _fn(code, "carryForward")
+    # **Both** of the two places a version appears, and this guard survived its own mutation
+    # once for reading only one of them: `CARRY_FORWARD[4]` left `SETTINGS_VERSION - 1` sitting
+    # in the storage-key line one row below, so the check passed over a span it did not mean
+    # (rule 54, and rule 37 -- check that the guard catches, not that it mentions).
+    assert not re.search(r"CARRY_FORWARD\[\s*\d", carry), (
+        "the carry-forward indexes its table by a literal version. It then goes on claiming "
+        "to understand a blob three bumps old, which is exactly the licence to vouch for "
+        "changes it did not make that gating it on one named prior value refuses (rule 62)"
+    )
+    assert carry.count("SETTINGS_VERSION - 1") >= 2, (
+        "the carry-forward does not restrict *both* the table lookup and the key it reads to "
+        "the version immediately below. A v2 blob is not something a v5 bump has any claim "
+        "to understand"
+    )
+    load = _fn(code, "loadSettings")
+    # Rule 20: a read may refuse but it may never repair -- and never destroy. Over the two
+    # **read** paths and not over the file, because `resetSettings` deletes the key and is
+    # right to: that is the reader asking, out loud, for exactly that. A check that cries
+    # wolf is a check nobody reads (rule 43), and the first version of this one did.
+    for name, fn in (("carryForward", carry), ("loadSettings", load)):
+        assert "removeItem" not in fn, (
+            f"`{name}` deletes a storage key. It is a read path, and deleting the blob it "
+            "just read destroys every arrangement the moment an older build runs"
+        )
+
+    assert "carried.dropped" in load, "nothing is dropped, so the unreadable key merges"
+    assert load.index("carried.dropped") < load.index("Object.assign"), (
+        "the drop happens after the merge, so half a dropped group reaches the settings"
+    )
+    assert "__carried" in load, (
+        "the load does not report what it dropped -- and a worklist that has quietly "
+        "forgotten every decision looks exactly like one nobody has triaged yet"
+    )
+    assert "triage" in re.search(r"drop:\s*\[([^\]]*)\]", code).group(1)  # type: ignore[union-attr]
+
+
+def test_the_findings_overlay_marks_are_prefixed_and_scoped() -> None:
+    """Rule 71, and the second time this exact guard has been needed.
+
+    `.chg-mod` was already the change worklist's *module* label -- faint and two sizes down
+    -- so the file rows' first version rendered every modified file quieter than the
+    unchanged ones. A class name is global and a stylesheet gives no warning.
+    """
+    js = _code(_read("shell.js"))
+    body = _fn(js, "anomalyChip")
+    written: set[str] = set()
+    for lit in re.findall(r'cls:\s*"([^"]*)"', body):
+        written |= {c for c in lit.split() if not c.startswith("tone-")}
+    assert written, "anomalyChip writes no classes any more; this guard has lost its subject"
+    assert len(written) >= 2, f"only {sorted(written)} written; this guard is blind"
+    for cls in written:
+        assert cls == "anochg" or cls.startswith("anochg-"), (
+            f"`{cls}` is not prefixed for these rows. A bare name is global, and `chg-mod` "
+            "is how that was found out"
+        )
+
+    css = _css_code(_read("tokens.css"))
+    for cls in written:
+        rules = re.findall(rf"[^{{}}]*\.{re.escape(cls)}\b[^{{}}]*\{{", css)
+        for rule in rules:
+            assert ".wl-item" in rule, (
+                f"`{rule.strip().rstrip('{').strip()}` styles `{cls}` without scoping it to "
+                "`.wl-item` -- the rule reaches anything else that takes the name"
+            )
+    # A class the stylesheet cannot carry renders and does nothing (rule 48's family). The
+    # moved mark borrows a tone, so the tone has to be defined *for this element*.
+    assert "tone-moved" in body, "the moved mark no longer spells its colour"
+    assert re.search(r"\.wl-item .anochg\.tone-moved\s*\{", css), (
+        "`tone-moved` is written on a finding's mark and the stylesheet carries no rule for "
+        "it there, so the mark renders in the inherited colour and says nothing"
+    )
+
+
+def test_the_findings_mark_takes_its_tone_from_the_word_and_not_the_band() -> None:
+    """Red is always *gone* and green is always *arrived*, whichever set each happens to be.
+
+    The bands are named for where a finding **is** (rule 65) and carry no direction at all;
+    the direction is the reader's assumption about which version is newer, and `diffWords()`
+    is the one place that holds it. A mark reading "added" in the colour of gone is worse
+    than a mark with no colour.
+    """
+    body = _fn(_code(_read("shell.js")), "anomalyChip")
+    assert "diffWords()" in body, "the mark no longer asks which way round the pair runs"
+
+    # **A literal is the mutation this guard survived**, and it is the one that matters: an
+    # earlier version inspected only the concatenation, so hardcoding `tone-gone` left it
+    # nothing to iterate and it passed on an empty loop. A mutation that removes the thing
+    # being read has not been caught by a check that reads it (rule 59's companion).
+    for lit in re.findall(r'cls:\s*"([^"]*)"', body):
+        for cls in lit.split():
+            assert cls not in ("tone-gone", "tone-new"), (
+                f"`{cls}` is written as a literal on a finding's mark. The direction is the "
+                "reader's assumption about which version is newer, not a property of the "
+                "band -- so a literal says 'added' in the colour of gone the moment they "
+                "flip it, and the band names no direction at all (rule 65)"
+            )
+    written_tones = re.findall(r'"\s*anochg tone-"\s*\+\s*([\w.]+)', body)
+    assert written_tones, (
+        "no mark takes its tone from a word any more -- either the directional band is gone "
+        "or its colour has been fixed in place"
+    )
+    for tone in written_tones:
+        assert tone.endswith(".tone"), (
+            f"the tone comes from `{tone}` rather than from a word's own `.tone`, so it can "
+            "disagree with the word printed beside it"
+        )
+    assert "w.base.tone" in body and "w.base.word" in body, (
+        "the base-only band no longer takes both halves of the base word, so the colour and "
+        "the sentence can part company"
+    )
+
+
+def test_the_findings_overlay_is_a_setting_that_something_reads() -> None:
+    """Design rule 16's other half: a setting nothing reads, saved and never once acted on."""
+    st = _read("settings.js")
+    assert re.search(r"^\s*anomalyOverlay:\s*true", st, re.M), (
+        "anomalyOverlay is not a default, so `loadSettings` drops it on every load"
+    )
+    assert "anomalyOverlay: 'the change overlay on the findings'" in st, (
+        "the reset would clear the findings overlay without mentioning it"
+    )
+    js = _code(_read("shell.js"))
+    persisted = js.split("const PERSISTED = [", 1)[1].split("];", 1)[0]
+    assert '"anomalyOverlay"' in persisted, "the switch is never written to storage"
+    assert '"anoOnlyThere"' not in persisted, (
+        "whether the compared-only findings are unfolded is where the reader *is*, not what "
+        "they arranged, and outliving the visit is what `PERSISTED` is the line against"
+    )
+    on = _fn(js, "anomalyOverlayOn")
+    assert "comparing()" in on and "state.anomalyOverlay" in on, (
+        "the overlay does not consult both the comparison and the switch, so one surface "
+        "can think there is a comparison while another does not (rule 51)"
+    )
+    # The switch is drawn by the one renderer, so an unknown surface is a named error.
+    assert 'anomaly: { key: "anomalyOverlay"' in js, (
+        "the findings switch is not in OVERLAY_SWITCHES, so it is a hand-written fourth "
+        "copy of a control that already has one renderer (rule 36)"
+    )
+
+
+def test_the_findings_overlay_says_what_it_could_not_show() -> None:
+    """Five states that must not look alike, and four of them are blank without this.
+
+    Switched off, not asked for yet, on its way, refused, and nothing to say. An unmarked
+    worklist and a worklist whose findings all stayed put are identical to look at, and only
+    one of them is a claim (design rule 1). The refusal matters most: three empty bands read
+    as *this version had nothing wrong with it*, which is the opposite of *we could not
+    look* (rules 49 and 63).
+    """
+    note = _fn(_code(_read("shell.js")), "anomalyChangeNote")
+    assert "state.anomalyOverlay" in note, (
+        "the note says nothing when the marks are switched off, so an unmarked worklist "
+        "reads as a worklist nothing moved in"
+    )
+    assert "not compared" in note, "there is no sentence for a comparison nobody has asked for"
+    assert ".loading" in note and "comparing with" in note, (
+        "the wait is silent -- and this is the dear one, seconds on the first open of a "
+        "session, because the compared end is thirteen detectors over an unopened graph"
+    )
+    assert ".available" in note and ".reason" in note, (
+        "a graph this build refuses to read is reported as a comparison that found nothing"
+    )
+    assert "unchanged" in note, (
+        "the unchanged are not counted, so the marked findings read as the whole list"
+    )
+
+
+def test_the_findings_only_the_compared_version_has_are_counted_and_reachable() -> None:
+    """Design rule 1: a filter states what it removed, with the hidden set one click away.
+
+    Those findings have no row in this list -- the list is the base's findings -- so their
+    number comes from the band and is reported as what it is. Which is also rule 32: every
+    other count here is taken by walking the rows that are drawn, because a number read off
+    a band length is one no amount of scrolling could find.
+    """
+    js = _code(_read("shell.js"))
+    counts = _fn(js, "anomalyChangeCounts")
+    # Walked from the rows on screen, and **from this tab's rows**. Counting all 106 while
+    # the tabs, the progress bar and "left to triage" beside it were per severity put
+    # "4 claiming something different" on a Suspect tab with not one marked row in it: all
+    # five banded findings on Mensores' pair are INFO. Two correct numbers, neither saying
+    # what it counted (rule 32). Found by looking at the pane, not by this file.
+    assert "worklistFor(sev).forEach" in counts, (
+        "the counts are read off the band lengths, or off the whole program rather than the "
+        "tab they are drawn above -- either way they state numbers no amount of scrolling "
+        "in this list could find (rule 32)"
+    )
+    assert "only_in_compared" in counts, (
+        "the findings only the compared version has are not counted at all, which is the "
+        "silent filter design rule 1 exists to forbid"
+    )
+    assert "sevKey(r.severity) === sev" in counts, (
+        "the compared-only count is not narrowed to this tab, so a Suspect tab claims a "
+        "finding that is filed under Info"
+    )
+    note = _fn(js, "anomalyChangeNote")
+    assert "anomalyChangeCounts(sev)" in note, (
+        "the note does not pass the tab it is drawn above, so its numbers are about a "
+        "different set from every other number in that head"
+    )
+    panel = _fn(js, "anomalyOnlyThereHtml")
+    assert "sevKey(r.severity) === state.sev" in panel, (
+        "the unfolded set is not the one the count promised -- a reader opening `1 added` "
+        "on the Suspect tab is shown findings from another tab"
+    )
+    # One mapping, one answer (rule 51): the served vocabulary is turned into this view's
+    # key in a single place, or the count and the row can file one finding under two tabs.
+    assert js.count('BROKEN: "broken"') == 1, (
+        "the severity mapping exists more than once, so two surfaces can disagree about "
+        "which tab a finding belongs to"
+    )
+
+    note = _fn(js, "anomalyChangeNote")
+    assert "data-anoonlythere" in note, "the set is counted and cannot be opened"
+    assert "anoonlythere" in _js_set("WIRED_ATTRS"), (
+        "the unfold is not in the wired roster, so the self-check cannot see it die"
+    )
+
+    panel = _fn(js, "anomalyOnlyThereHtml")
+    assert "data-triage" not in panel and "data-cursor" not in panel, (
+        "a compared-only finding offers triage or a cursor. It is not a finding of the "
+        "version on screen, so a decision about it is a decision about nothing -- and "
+        "`j`/`k`, the progress bar and 'left to triage' must go on counting one thing"
+    )
+    assert "not of the" in panel or "not of" in panel, (
+        "the panel does not say these are the other version's findings, so they read as "
+        "findings of this one"
+    )
+
+
+def test_the_worklist_reads_no_field_that_never_reached_it() -> None:
+    """Rule 44, in **both** directions -- and the second one is where this defect lived.
+
+    The usual half: a view reading a field the *server* does not send renders a blank while
+    looking finished. The other half is one step further in, and it is the one that bit --
+    `loadAnomalies` maps the server's rows into the worklist's own shape, and it dropped
+    `subject` while `viewAnomalies` went on reading `cur.a.subject`. Always `undefined`,
+    falling back to `"a name"`, in the sentence explaining why the two jump buttons are
+    disabled. Not a field the server does not send: a field this file does not send itself.
+
+    It dropped `ident` the same way, which is the whole of chunk 5c.
+    """
+    web = Path(__file__).resolve().parents[1] / "src" / "dunneflow" / "web"
+    cover = (web / "cover.py").read_text(encoding="utf-8")
+    builder = cover.split("def anomalies(", 1)[1].split("\ndef ", 1)[0]
+    served = set(re.findall(r'^\s*"(\w+)":', builder, re.M))
+    assert {"ident", "subject", "severity", "count"} <= served, (
+        "the endpoint changed shape -- this test is blind"
+    )
+
+    js = _code(_read("shell.js"))
+    load = _fn(js, "loadAnomalies")
+    read_from_server = set(re.findall(r"\bf\.(\w+)", load))
+    assert not read_from_server - served, (
+        f"loadAnomalies reads fields /api/anomalies does not send: "
+        f"{sorted(read_from_server - served)}"
+    )
+
+    # And the half that failed: what the map actually writes, against what the worklist
+    # reads off a finding. `ident` is checked apart because the doors take the finding whole.
+    carried = set(re.findall(r"^\s*(\w+):", load, re.M))
+    assert {"ident", "subject"} <= carried, (
+        f"loadAnomalies drops {sorted({'ident', 'subject'} - carried)} on the way in. The "
+        "server has sent them since the identity landed, and a finding without its identity "
+        "is one a triage decision cannot be filed against"
+    )
+    surfaces = "".join(_fn(js, n) for n in
+                       ("viewAnomalies", "anomalyChip", "triagedCount", "sevCounts"))
+    wanted = set(re.findall(r"\b(?:cur|x)\.a\.(\w+)", surfaces))
+    assert wanted, "nothing reads a finding any more; this guard has lost its subject"
+    missing = sorted(wanted - carried)
+    assert not missing, (
+        f"the worklist reads fields `loadAnomalies` never carries: {missing} -- every row "
+        "renders, the value is `undefined`, and nothing anywhere fails"
     )

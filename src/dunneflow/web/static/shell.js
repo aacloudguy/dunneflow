@@ -134,6 +134,17 @@ let codeGoto = 0;
  * start. */
 let REVISIONS = [];       // [{ revision, state, captured, label, files, comparable, serving }]
 let CHANGES = null;       // { available, counts, added, removed, behaves, ... } | { loading: true } | null
+/* What the comparison says about each **finding**: the three bands `/api/anomalychanges`
+ * pairs on the identity each detector declares. Held for one pair, dropped by whoever moves
+ * the pair, exactly as `CHANGES` is -- and for the same reason, which the loaders above
+ * state: an answer to another question shown under this one's heading is invisible, because
+ * marks look exactly like marks.
+ *
+ * The one that costs. Findings are not rows to be joined, so the compared end means running
+ * thirteen detectors over a graph nothing here has opened: 1.3 s to 4.1 s the first time
+ * and 0 ms afterwards, both ends held per graph on the server. That is why it is asked for
+ * when the worklist is opened rather than with the cover. */
+let ANOMALYCHANGES = null; // { available, counts, only_in_base, only_in_compared, moved } | { loading } | null
 
 /* A base switch in progress, or `null` for none.
  *
@@ -242,6 +253,14 @@ const state = {
    * mark four hundred lines, while these marks are read off an answer the page already
    * holds. See `settings.js`. */
   tableOverlay: true,
+  /* And the same switch for the findings. A third rather than a wider second, because this
+   * one costs what neither of the others does: the compared end is thirteen detectors run
+   * over a graph nothing here has opened. See `settings.js`. */
+  anomalyOverlay: true,
+  /* Whether the findings only the *compared* version has are unfolded. **Not persisted**:
+   * this is where the reader is, not what they arranged, and the line between the two is
+   * the one `PERSISTED` is drawn on. */
+  anoOnlyThere: false,
   codeQ: "",              // one box, two lanes: file names, and the text inside them
   /* How a match is decided. Persisted, because they are how this reader searches rather
      than what they are looking for right now -- the same line `termFilter` and `routineQ`
@@ -670,6 +689,10 @@ const NAV_ROUTES = {
     // Fetched on demand, not with the cover: the findings are large and most
     // sessions read the counts without ever opening the list.
     loadAnomalies().then(render);
+    /* And the comparison over them, through the same door and on the same bargain — the
+       dearest of the three overlays, so it is never paid by a reader who does not open
+       this list. It repaints itself when an answer arrives. */
+    ensureAnomalyOverlay();
     state.sev = b.dataset.sevnav || "suspect";
     state.cursor = 0;
     used("anomalies");
@@ -716,6 +739,14 @@ function refreshChanges(base, compared) {
      figures under the new pair's heading. */
   if (CHANGES && !CHANGES.loading
       && (CHANGES.base !== pair.base || CHANGES.compared !== pair.compared)) CHANGES = null;
+  /* The findings' pairing is about the same two versions and goes stale on the same move.
+     Dropped here rather than reloaded: this door is the reader asking about the *routines*,
+     and re-running thirteen detectors over the other graph because of it would spend
+     seconds nobody asked for. `ensureAnomalyOverlay` fetches it when the worklist is next
+     opened, which is the only place it is drawn. */
+  if (ANOMALYCHANGES && !ANOMALYCHANGES.loading
+      && (ANOMALYCHANGES.base !== pair.base
+          || ANOMALYCHANGES.compared !== pair.compared)) ANOMALYCHANGES = null;
   return loadChanges(pair.base, pair.compared).then(() => { buildNav(); render(); });
 }
 
@@ -839,6 +870,117 @@ function overlayOn() {
  * and can never differ about whether there is a comparison at all (rule 51). */
 function tableOverlayOn() {
   return comparing() && !!state.tableOverlay;
+}
+
+/* And the same question for the findings, which have a switch of their own for the reason
+ * the routine list has one: what the three cost differs, and this is the dear one. */
+function anomalyOverlayOn() {
+  return comparing() && !!state.anomalyOverlay;
+}
+
+/* The findings' pairing, asked for once per pair.
+ *
+ * Idempotent, and **any** answer counts as asked, including a refusal -- the trap
+ * `ensureChanges` names: a refusal carries no `compared`, so a loader testing for one
+ * re-asks a question already answered "no" on every call.
+ *
+ * Asked when the worklist is opened rather than at boot, which is the same door
+ * `loadAnomalies` already comes through and the same bargain `codeOverlay` and
+ * `tableOverlay` strike: a reader who never opens the worklist never pays for it, and one
+ * who does has already said what they came for. Nothing waits on it -- the findings paint
+ * from `/api/anomalies`, and the head says the comparison is coming rather than leaving a
+ * blank where a claim belongs (rule 35).
+ */
+function ensureAnomalyOverlay() {
+  if (!anomalyOverlayOn()) return Promise.resolve(null);
+  if (ANOMALYCHANGES) return Promise.resolve(ANOMALYCHANGES);
+  return loadAnomalyChanges(chosenPair().base, comparedRevInForce());
+}
+
+async function loadAnomalyChanges(base, compared) {
+  if (ANOMALYCHANGES && ANOMALYCHANGES.loading) return ANOMALYCHANGES;
+  ANOMALYCHANGES = { loading: true };
+  render();
+  const qs = [];
+  if (base) qs.push("base=" + encodeURIComponent(base));
+  if (compared) qs.push("compared=" + encodeURIComponent(compared));
+  try {
+    const r = await fetch("/api/anomalychanges" + (qs.length ? "?" + qs.join("&") : ""));
+    ANOMALYCHANGES = await r.json();
+  } catch (err) {
+    /* Named, never swallowed, and the sentence matters more here than anywhere else this
+       pattern appears: three empty bands read as *this version had nothing wrong with it*,
+       which is the opposite of *we could not look* (rules 49 and 63). */
+    ANOMALYCHANGES = { available: false,
+                       reason: "the comparison could not be read: " + err.message };
+  }
+  render();
+  return ANOMALYCHANGES;
+}
+
+/* What one finding's mark says, in a glyph, a class and a sentence.
+ *
+ * **Every class begins `anochg-`**, and rule 71 is why: a class name is global and a
+ * stylesheet gives no warning. The routine lane learned it the expensive way -- its first
+ * version reached for `.chg-mod`, which was already the change worklist's *module* label,
+ * so every modified file rendered smaller and greyer than the unchanged ones.
+ *
+ * The tone comes from `diffWords()` and never from the band, so flipping which version the
+ * reader takes to be newer swaps the colour with the word. A page saying "added" in the
+ * colour of *gone* is worse than one with no colour at all.
+ *
+ * **Three states, and only two have a direction.** A finding both versions have, whose
+ * count or severity moved, was neither added nor deleted -- so it gets a mark of its own
+ * rather than a sign that means nothing, and its sentence names *which* of the three claims
+ * moved and what the other version says. That is what `moved` and `in_compared` carry, and
+ * it is the whole reason 5b compares the claims rather than the title (rule 40).
+ */
+function anomalyChip(ident) {
+  if (!anomalyOverlayOn()) return { cls: "", glyph: "", title: "" };
+  const band = anomalyBandOf(ident);
+  if (!band) return { cls: "", glyph: "", title: "" };
+  const w = diffWords();
+  if (band.where === "only_in_base") {
+    return { cls: " anochg tone-" + w.base.tone, glyph: signOf(w.base.tone),
+             title: w.base.word + " — only the version on screen has this finding" };
+  }
+  if (band.where === "moved") {
+    /* `◈`, and not a sign: *still here, claiming something different* has no direction, and
+       a `+` or a `−` here would be the second of two numbers about one thing (rule 32).
+       `tone-moved` rather than a colour of its own -- the violet is measured, in all three
+       sets and both themes (rule 69), and it is what the graph legend already spells this
+       same idea with. */
+    return { cls: " anochg tone-moved", glyph: "◈",
+             title: "still here, and claiming something different — " + movedWords(band.row) };
+  }
+  /* No glyph, and the sentence carries it. This is the state with no visible mark, so it is
+     the one that needs the words: unmarked-and-compared and unmarked-and-not-compared are
+     opposite claims that look identical. */
+  return { cls: " anochg anochg-same", glyph: "",
+           title: "both versions have it, claiming the same thing" };
+}
+
+/* Which band a finding is in, by its identity — and `null` when there is no answer to read
+ * yet, which is not the same as "in neither band". */
+function anomalyBandOf(ident) {
+  const v = ANOMALYCHANGES;
+  if (!v || v.loading || !v.available || !ident) return null;
+  if ((v.only_in_base || []).some(r => r.ident === ident)) return { where: "only_in_base" };
+  const m = (v.moved || []).find(r => r.ident === ident);
+  if (m) return { where: "moved", row: m };
+  return { where: "same" };
+}
+
+/* What moved, in words, from the two things 5b sends: which claims differ, and what the
+ * compared version says each of them is. Both, because "the count moved" without the other
+ * number is a mark that tells the reader to go and look somewhere there is nothing to see. */
+function movedWords(row) {
+  const said = { count: "occurrences", severity: "severity", confidence: "confidence" };
+  return (row.moved || []).map(c => {
+    const there = (row.in_compared || {})[c];
+    const here = c === "count" ? row.count : row[c];
+    return `${said[c] || c} ${here} here, ${there} there`;
+  }).join("; ");
 }
 
 /* The **fact** lane's data, asked for once per pair.
@@ -3373,9 +3515,32 @@ function sevCounts() {
   ANOMALIES.forEach(a => c[a.sev]++);
   return c;
 }
-function triagedCount(sev) {
-  return ANOMALIES.filter((a, i) => a.sev === sev && state.triage[i]).length;
+/* Triage, through one door in each direction.
+ *
+ * **The only two places `state.triage` is subscripted anywhere in this file**, and that is
+ * the point rather than tidiness. It was keyed by the finding's index at five separate
+ * sites -- the count, the row, the three buttons, the click handler and the number keys --
+ * every one of them correct on its own and all five wrong together, because the array is
+ * sorted by a count that moves. A sixth hand-written site is the failure this shape exists
+ * to prevent, so the guard on it is an *absence* over the whole file rather than a check on
+ * the five that exist today (rule 74's shape, and rule 51's reason).
+ *
+ * The argument is the finding, never its identity, so a caller cannot reach for the wrong
+ * key by having only half of one in hand.
+ */
+function triageOf(a) {
+  return a && a.ident ? state.triage[a.ident] : undefined;
 }
+function setTriage(a, v) {
+  if (!a || !a.ident) return;
+  if (v) state.triage[a.ident] = v; else delete state.triage[a.ident];
+}
+
+function triagedCount(sev) {
+  return ANOMALIES.filter(a => a.sev === sev && triageOf(a)).length;
+}
+/* `i` is the position of a row in **this** list, and it addresses the cursor -- which is
+ * genuinely a position, and stays one. What it must never address again is a decision. */
 function worklistFor(sev) {
   return ANOMALIES.map((a, i) => ({ a, i })).filter(x => x.a.sev === sev);
 }
@@ -3648,6 +3813,133 @@ function viewChanges() {
   </div>`;
 }
 
+/* The counts, **taken by walking the findings that are drawn** rather than from the bands.
+ *
+ * Rule 32: a count must be produced by the thing it measures. The bands are the server's
+ * answer about two graphs; this list is what reached the page, and reading the band lengths
+ * would print a number no amount of scrolling could find.
+ *
+ * **And "drawn" means this tab, not this program.** The first version counted all 106
+ * findings while the head around it -- the tabs, the progress bar, "left to triage" -- was
+ * per severity, so on Mensores' pair the Suspect tab read "◈ 4 claiming something different
+ * · 1 added" with **not one marked row on screen**: all five banded findings are INFO. Two
+ * correct numbers, neither saying what it counted, which is the whole of rule 32 and the
+ * reason `degree` stopped being printed beside a routine. Found by looking at the pane.
+ *
+ * `only_compared` is the exception and cannot be otherwise -- those findings have no row
+ * here at all, so their number comes from the band. It is still narrowed to the tab, by the
+ * severity each of them carries, because a number about a different tab is the same defect
+ * one step out. The routine lane made exactly this exception for exactly this reason.
+ */
+function anomalyChangeCounts(sev) {
+  const v = ANOMALYCHANGES;
+  if (!v || v.loading || !v.available) return null;
+  const c = { only_base: 0, moved: 0, same: 0, only_compared: 0 };
+  worklistFor(sev).forEach(x => {
+    const band = anomalyBandOf(x.a.ident);
+    if (!band) return;
+    if (band.where === "only_in_base") c.only_base++;
+    else if (band.where === "moved") c.moved++;
+    else c.same++;
+  });
+  /* The server sends `severity` in full and this list keys them short, so the comparison is
+     over one vocabulary rather than two (rule 13). */
+  c.only_compared = (v.only_in_compared || [])
+    .filter(r => sevKey(r.severity) === sev).length;
+  return c;
+}
+
+/* One place turns a served severity into the key this view files it under. It existed
+ * inline in `loadAnomalies` and now has a second caller, and two copies of a mapping is two
+ * answers to one question (rule 51). */
+function sevKey(severity) {
+  return { BROKEN: "broken", SUSPECT: "suspect", INFO: "info" }[severity] || "info";
+}
+
+/* What the marks are saying, in words, above the list they are drawn on.
+ *
+ * Design rule 1, and it has five things to say that no glyph can. Which version this is
+ * held against. That the comparison **has not been asked for yet** — an unmarked worklist
+ * and a worklist whose findings all stayed put are identical to look at, and only one of
+ * them is a claim. That it is on its way, because the first one of a session can take
+ * seconds. That the marks are switched off. And that the compared graph **cannot be read**,
+ * with the reason and the command that fixes it — three empty bands would read as *this
+ * version had nothing wrong with it*, which is a different and false claim (rules 49, 62
+ * and 63).
+ *
+ * Returns "" only when there is nothing to say, which is when there is no second version.
+ */
+function anomalyChangeNote(sev) {
+  if (!comparing()) return "";
+  const shortRev = comparedRevInForce().replace("T", " ").replace("Z", "");
+  if (!state.anomalyOverlay) {
+    return `not marking the difference from <code>${esc(shortRev)}</code>`;
+  }
+  if (!ANOMALYCHANGES) {
+    return `not compared with <code>${esc(shortRev)}</code> yet`;
+  }
+  if (ANOMALYCHANGES.loading) {
+    /* Said out loud because this is the wait a reader is most likely to meet: the compared
+       version's findings are thirteen detectors over a graph nothing has opened, and the
+       first one of a session is seconds rather than milliseconds. */
+    return `comparing with <code>${esc(shortRev)}</code>… running the detectors over that
+            version, which is seconds the first time and nothing afterwards`;
+  }
+  if (!ANOMALYCHANGES.available) {
+    return `<b>no comparison.</b> ${esc(ANOMALYCHANGES.reason || "")}`;
+  }
+  const c = anomalyChangeCounts(sev);
+  if (!c) return "";
+  const w = diffWords();
+  const bits = [];
+  if (c.only_base) {
+    bits.push(`<b class="tone-${w.base.tone}">${signOf(w.base.tone)}${
+      c.only_base.toLocaleString()}</b> ${esc(w.base.word)}`);
+  }
+  if (c.moved) bits.push(`<b>◈ ${c.moved.toLocaleString()}</b> claiming something different`);
+  /* Counted out loud, for the routine lane's reason: it is the largest number here and the
+     least interesting, and leaving it out makes the marked ones read as the whole list. */
+  bits.push(`${c.same.toLocaleString()} unchanged`);
+  /* **Counted, never marked, and one click from being read.** A finding only the compared
+     version has is not in this list — the list is the base's findings — so there is no row
+     to put a glyph on. It is not hidden either: design rule 1 wants the removed set an
+     unfold away, and these are shown as what they are, with no triage buttons, because a
+     decision about a version you are not reading is not a decision. */
+  const other = c.only_compared
+    ? ` · <button class="linkbtn" data-anoonlythere="1" aria-expanded="${!!state.anoOnlyThere}"
+          >${c.only_compared.toLocaleString()} ${esc(w.compared.word)} — in
+          ${esc(shortRev)} only ${state.anoOnlyThere ? "▾" : "▸"}</button>`
+    : "";
+  return `against <code>${esc(shortRev)}</code>: ${bits.join(" · ")}${other}`;
+}
+
+/* The findings the compared version has and this one does not, unfolded.
+ *
+ * Read-only and deliberately plain: they carry no triage buttons and no cursor, because
+ * they are not findings of the version on screen and `j`/`k`, the progress bar and "left to
+ * triage" must go on counting one thing (rule 32). What they do carry is their kind, their
+ * count and their title, which is enough to decide whether it is worth switching the base
+ * to go and look.
+ */
+function anomalyOnlyThereHtml() {
+  if (!state.anoOnlyThere) return "";
+  const v = ANOMALYCHANGES;
+  const rows = ((v && v.available && v.only_in_compared) || [])
+    .filter(r => sevKey(r.severity) === state.sev);
+  const w = diffWords();
+  if (!rows.length) return "";
+  return `<div class="ano-elsewhere">
+    <p class="hint">${esc(w.compared.word)} — these are findings of
+      <code>${esc(comparedRevInForce().replace("T", " ").replace("Z", ""))}</code>, not of the
+      version on screen, so there is nothing here to triage. Switch the base to work on them.</p>
+    <ol class="ano-elselist">${rows.map(r => `<li>
+      <span class="kind-tag">${esc(r.kind)}</span>
+      <span class="ano-elsetitle">${esc(r.title)}</span>
+      <span class="num">${r.count}×</span>
+    </li>`).join("")}</ol>
+  </div>`;
+}
+
 function viewAnomalies() {
   const counts = sevCounts();
   const list = worklistFor(state.sev);
@@ -3656,6 +3948,18 @@ function viewAnomalies() {
   const done = triagedCount(state.sev);
   const total = list.length;
   const pct = total ? (done / total) * 100 : 0;
+  const note = anomalyChangeNote(state.sev);
+  /* Said here rather than as a banner, because here is the only place it cost anything.
+     A worklist that has quietly forgotten every decision and one nobody has triaged yet
+     are identical to look at, and the reader is owed which of the two they are looking at
+     (design rule 1, and `resetSettings`'s own rule about naming what it cleared). */
+  const carriedNote = state.carried
+    ? `<p class="chgnote ano-carried"><b>${esc(state.carried.why)} were not carried
+        over.</b> They were filed against a position in this list rather than against a
+        finding, and the list is sorted by a count that moves — so a decision made before
+        this version of DunneFlow could have been about any of them. Everything else you
+        had arranged is as you left it.</p>`
+    : "";
 
   const tab = (k, label, n, colour) => `
     <button role="tab" data-sev="${k}" aria-selected="${state.sev === k}" ${n === 0 ? "disabled" : ""}>
@@ -3664,13 +3968,16 @@ function viewAnomalies() {
     </button>`;
 
   const item = (x, idx) => {
-    const t = state.triage[x.i];
+    const t = triageOf(x.a);
+    const chip = anomalyChip(x.a.ident);
     return `<li>
       <button class="wl-item" data-cursor="${idx}" aria-current="${idx === state.cursor}"
               ${t ? 'data-triaged="' + t + '"' : ""}>
         <span class="wl-stripe" style="background:var(--sev-${x.a.sev})"></span>
         <span class="wl-title">${esc(x.a.title)}</span>
         <span class="wl-meta">
+          ${chip.title ? `<span class="${chip.cls.trim()}" data-titled="1"
+             title="${esc(chip.title)}">${chip.glyph}</span>` : ""}
           <span class="kind-tag">${esc(x.a.kind)}</span>
           <span class="num">${x.a.n}\u00d7</span>
         </span>
@@ -3695,7 +4002,11 @@ function viewAnomalies() {
         <button class="linkbtn" data-step="-1" aria-label="Previous finding">\u2191 Prev</button>
         <button class="linkbtn" data-step="1" aria-label="Next finding">\u2193 Next</button>
         <span style="font-size:.68rem;color:var(--text-faint)">or <kbd>j</kbd>/<kbd>k</kbd></span>
+        ${overlaySwitchHtml("anomaly")}
       </div>
+      ${carriedNote}
+      ${note ? `<p class="chgnote ano-chgnote">${note}</p>` : ""}
+      ${anomalyOnlyThereHtml()}
     </div>
 
     <div class="wl-body">
@@ -3722,13 +4033,13 @@ function viewAnomalies() {
 
         <div class="wl-actions">
           <div class="wl-actlabel">What is this?</div>
-          <button class="actbtn triage ${state.triage[cur.i] === "notbug" ? "on" : ""}" data-triage="notbug">
+          <button class="actbtn triage ${triageOf(cur.a) === "notbug" ? "on" : ""}" data-triage="notbug">
             Not a bug \u2014 the blind spot applies <span class="k">1</span></button>
-          <button class="actbtn triage ${state.triage[cur.i] === "ack" ? "on" : ""}" data-triage="ack">
+          <button class="actbtn triage ${triageOf(cur.a) === "ack" ? "on" : ""}" data-triage="ack">
             Real \u2014 acknowledged, leave it for now <span class="k">2</span></button>
-          <button class="actbtn triage ${state.triage[cur.i] === "tooldefect" ? "on" : ""}" data-triage="tooldefect">
+          <button class="actbtn triage ${triageOf(cur.a) === "tooldefect" ? "on" : ""}" data-triage="tooldefect">
             This is a DunneFlow defect, not the program's <span class="k">3</span></button>
-          ${state.triage[cur.i] ? `<button class="linkbtn" data-triage="" style="align-self:flex-start">Undo</button>` : ""}
+          ${triageOf(cur.a) ? `<button class="linkbtn" data-triage="" style="align-self:flex-start">Undo</button>` : ""}
         </div>
 
         <div class="note" style="margin-top:.75rem">
@@ -7056,6 +7367,23 @@ function wire() {
     buildNav();                // the navigator draws these marks too
     render();
   }));
+  /* The findings' switch, and it may have to fetch for its neighbours' reason: a reader who
+   * opened the worklist with it off has never asked the question, so turning it on is the
+   * first time anybody has. */
+  $$("[data-anomalyoverlay]").forEach(b => b.addEventListener("click", () => {
+    state.anomalyOverlay = !state.anomalyOverlay;
+    persist();
+    used("anomalies:overlay:" + (state.anomalyOverlay ? "on" : "off"));
+    ensureAnomalyOverlay();    // repaints itself when an answer arrives
+    render();
+  }));
+  /* The findings only the compared version has. Not persisted (see `state.anoOnlyThere`):
+   * this is where the reader is, not what they arranged. */
+  $$("[data-anoonlythere]").forEach(b => b.addEventListener("click", () => {
+    state.anoOnlyThere = !state.anoOnlyThere;
+    used("anomalies:onlythere:" + (state.anoOnlyThere ? "open" : "shut"));
+    render();
+  }));
   /* Selection is keyed by qualname, never by row index -- sorting reorders the array,
      and a revision change reorders it again. Same rule the temporal layers depend on. */
   $$("tbody tr[data-row]").forEach(tr => tr.addEventListener("click", () => {
@@ -7264,7 +7592,7 @@ function wire() {
     const cur = list[state.cursor];
     if (!cur) return;
     const v = b.dataset.triage;
-    if (v) state.triage[cur.i] = v; else delete state.triage[cur.i];
+    setTriage(cur.a, v);
     if (v) step(1);            /* triaging advances — that is the point of a worklist */
     else render();
   }));
@@ -7285,6 +7613,7 @@ function wire() {
   /* cover: the anomaly panel is a doorway, not a readout */
   $$("[data-gosev]").forEach(b => b.addEventListener("click", () => {
     loadAnomalies().then(render);
+    ensureAnomalyOverlay();        // the other door in, and it must pay the same toll
     state.view = "anomalies"; state.sev = b.dataset.gosev; state.cursor = 0;
     used("anomalies"); render();
   }));
@@ -7562,7 +7891,7 @@ document.addEventListener("keydown", (e) => {
     e.preventDefault();
     const list = worklistFor(state.sev), cur = list[state.cursor];
     if (!cur) return;
-    state.triage[cur.i] = { "1": "notbug", "2": "ack", "3": "tooldefect" }[e.key];
+    setTriage(cur.a, { "1": "notbug", "2": "ack", "3": "tooldefect" }[e.key]);
     step(1);
   }
 });
@@ -7617,6 +7946,12 @@ const WIRED_ATTRS = new Set([
      marks are read off an answer already held, so wanting one without the other is
      ordinary and one control cannot say it. */
   "tableoverlay",
+  /* And the findings'. A third rather than a wider second, for the reason the second exists
+     and one more: this is the dear one -- the compared end is thirteen detectors run over a
+     graph nothing here has opened -- so a reader must have somewhere to decline it.
+     `anoonlythere` unfolds the findings only the compared version has, which are counted
+     but never listed among this version's own (design rule 1, rule 32). */
+  "anomalyoverlay", "anoonlythere",
   /* The version strip's one control: which version the reader assumes is newer. It is on
      the strip rather than in Settings because it decides what every red row means, and a
      colour a reader cannot account for is worse than no colour. */
@@ -8027,6 +8362,9 @@ const OVERLAY_SWITCHES = {
   table: { key: "tableOverlay", attr: "data-tableoverlay",
            on:  "Stop marking what the comparison says about these routines",
            off: "Mark what the comparison says about these routines" },
+  anomaly: { key: "anomalyOverlay", attr: "data-anomalyoverlay",
+             on:  "Stop marking what the comparison says about these findings",
+             off: "Mark what the comparison says about these findings" },
 };
 
 /* One renderer, two switches, and a table rather than a parameter chain -- an unknown
@@ -9464,6 +9802,18 @@ async function loadAnomalies() {
      speaks and a view is not a reason to change it. `blind` is never allowed to be
      empty: a finding without its blind spot is a guess wearing a uniform. */
   ANOMALIES = (d.findings || []).map(f => ({
+    /* **What makes this finding this finding**, and the reason every other field here can
+       be a rendering. Dropping it was the defect this chunk opened on: triage was filed
+       against the finding's *position* in this array while both declarations of
+       `state.triage` said `finding id ->`, and the findings are served sorted by count.
+       Measured on Mensores' pair -- a decision filed against `siq__rebuild_87_02h` read
+       back after a base switch as an acknowledgement of `tags`, with nothing on screen or
+       in the console to say so.
+
+       `parts` rides with it because the pairing is a *claim* and the parts are how a
+       reader sees why it was made (design rule 13). */
+    ident: f.ident,
+    parts: f.ident_parts || [],
     title: f.title,
     kind: f.kind,
     conf: f.confidence,
@@ -9471,7 +9821,12 @@ async function loadAnomalies() {
     where: f.line ? `${f.file}:${f.line}` : f.file,
     detail: f.detail,
     blind: f.blind_spot,
-    sev: { BROKEN: "broken", SUSPECT: "suspect", INFO: "info" }[f.severity] || "info",
+    /* Read by the text explaining why the two jump buttons are disabled, which named
+       `cur.a.subject` and got `undefined` for as long as the buttons have existed --
+       rule 44, a live control reading a field nothing sends. Sent since the identity
+       landed; simply never carried across this map. */
+    subject: f.subject || "",
+    sev: sevKey(f.severity),
   }));
 }
 
@@ -9507,7 +9862,7 @@ const PERSISTED = [
   "diagram", "nodeShapes", "diagramId", "diagramPorts",
   "searchCase", "searchWord", "searchRegex",
   "panels", "inspectorAuto", "navWidth", "codeWidth", "codeFile", "codeOverlay",
-  "tableOverlay",
+  "tableOverlay", "anomalyOverlay",
   "navGroups",
   "navOpen", "navCap",
   "showPlates", "picks", "graphTheme", "edgesInMotion", "pointerShown", "pointerColor", "pointerPlace", "reticuleShown", "focusLocked",
@@ -9553,6 +9908,10 @@ function adoptSettings(name) {
   for (const k of PERSISTED) {
     if (k in settings) state[k] = settings[k];
   }
+  /* What a version bump carried over and what it had to drop. Not in `PERSISTED` and so
+     never written back: it is a fact about *this* load, and a reader who has seen it once
+     should not meet it again on the next one. The surface that lost something says so. */
+  state.carried = settings.__carried || null;
 }
 
 /* ── the palette, read from the stylesheet ─────────────────────────────────────

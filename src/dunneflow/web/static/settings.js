@@ -29,7 +29,42 @@
  * *per level*, and a v3 blob merged into that shape would hand `mount` a list of plate ids
  * where it expects a map. A half-applied layout is harder to recognise as wrong than a
  * reset one, which is this file's own rule. */
-const SETTINGS_VERSION = 4;
+/* Bumped to 5 because `triage` changed **meaning** rather than shape. It was keyed by the
+ * finding's position in the served list while both of its declarations said `finding id ->`,
+ * and findings are served sorted by count -- so a count that moved, a detector that was
+ * added, or a base switch landed every saved decision on a different finding. Measured on
+ * Mensores' pair: a decision filed against `siq__rebuild_87_02h` read back after a switch as
+ * an acknowledgement of `tags`, silently. An index-keyed blob read as ident-keyed is a
+ * *wrong* answer, not an absent one, so it may not merge.
+ *
+ * Which is a different case from every bump before it, and it is why this one carries
+ * forward. A blob that cannot be read at all is the reason those discarded everything;
+ * here exactly one key is unreadable and the other sixty-five -- the shelf, the plate
+ * colours, the panel layout -- are as good as they were. Discarding them would be this
+ * file's own rule applied where its reasoning does not reach. */
+const SETTINGS_VERSION = 5;
+
+/* What a bump may carry over from the version below it, and what it must drop.
+ *
+ * Keyed by the version being *left*, so it is a statement about one specific blob rather
+ * than a licence to vouch for any older one -- the same gate `migrate.py` puts on
+ * re-stamping a fingerprint (rule 62). A version not named here carries nothing, which is
+ * what every bump before 5 did.
+ *
+ * The value is what to **drop**. Everything else merges by the ordinary rules.
+ */
+const CARRY_FORWARD = {
+  4: {
+    drop: ['triage'],
+    /* The **name** of what was dropped, and nothing more. The reason belongs to the surface
+     * that lost it -- the worklist knows why a position is not a finding and this store does
+     * not -- and a sentence in both places renders as the same claim twice. It did, on the
+     * first drive: 'triage decisions — they were filed against a position in the list, not a
+     * finding: they were filed against a position in this list rather than against a
+     * finding'. Rule 40 in prose: two renderings of one fact, side by side. */
+    why: 'Triage decisions',
+  },
+};
 
 const DEFAULTS = {
   /* ── the graph ───────────────────────────────────────────────────────────── */
@@ -256,6 +291,19 @@ const DEFAULTS = {
    *
    * Like its neighbour it governs nothing with one version, and the switch is not drawn. */
   tableOverlay: true,
+  /* And the same question asked of the **findings**: does this worklist say what the
+   * comparison found about each one -- which of them the compared version also has, and
+   * whose count, severity or confidence moved.
+   *
+   * A third switch for the reason there is a second: what it costs is different again, and
+   * it is the most expensive of the three. Findings are not rows to be joined; they are
+   * what thirteen detectors conclude, so the compared end means running them over a graph
+   * this process has never opened -- 1.3 s to 4.1 s the first time, and nothing at all
+   * afterwards. That is why it is fetched when the worklist is *opened* rather than with
+   * the cover, and why a reader who does not want to pay it has somewhere to say so.
+   *
+   * Like both its neighbours it governs nothing with one version, and is not drawn. */
+  anomalyOverlay: true,
 
   /* ── the shell ───────────────────────────────────────────────────────────── */
   theme: 'system',        // 'system' | 'light' | 'dark'
@@ -346,14 +394,44 @@ function freshDefaults() {
   return JSON.parse(JSON.stringify(DEFAULTS));
 }
 
+/* The blob one version below this one, if `CARRY_FORWARD` says this bump may read it.
+ *
+ * **The old key is left where it is.** Deleting it would be a read path destroying the
+ * evidence it read -- rule 20 exactly, and the cost of being wrong is asymmetric: the
+ * saving is a few kilobytes, and the loss is every arrangement a reader has made, gone the
+ * moment they run an older build. Orphaned blobs are the cheaper mistake, and they are why
+ * `dunneflow:mensores:v1` through `v3` are still readable on a machine that has had this
+ * dashboard since the first bump.
+ *
+ * Only the version immediately below, and only when it is named: a v2 blob is not
+ * something this bump has any claim to understand.
+ */
+function carryForward(program) {
+  const spec = CARRY_FORWARD[SETTINGS_VERSION - 1];
+  if (!spec) return { raw: null, carried: null };
+  const raw = window.localStorage.getItem(
+    `dunneflow:${program}:v${SETTINGS_VERSION - 1}`);
+  if (!raw) return { raw: null, carried: null };
+  return { raw, carried: { from: SETTINGS_VERSION - 1, dropped: spec.drop, why: spec.why } };
+}
+
 function loadSettings(program) {
   const out = freshDefaults();
   let raw = null;
+  let carried = null;
   try {
     raw = window.localStorage.getItem(storageKey(program));
+    if (!raw) ({ raw, carried } = carryForward(program));
   } catch {
     return out;                       // storage unavailable; defaults are a fine answer
   }
+  /* What was carried and what was dropped, for whoever is about to render the surface the
+   * dropped key belonged to. Not a persisted setting: `persist()` writes the `PERSISTED`
+   * list and nothing else, so this rides along without ever being written back. Said at
+   * all because a worklist that has quietly forgotten every decision and one nobody has
+   * triaged yet are identical to look at, and only one of them is a claim (design rule 1,
+   * and `resetSettings`'s own reason for naming what it cleared). */
+  if (carried) out.__carried = carried;
   if (!raw) return out;
   let saved;
   try {
@@ -362,6 +440,9 @@ function loadSettings(program) {
     return out;                       // unparseable is the same as absent
   }
   if (!saved || typeof saved !== 'object') return out;
+  /* Dropped **before** the merge rather than deleted after it, so a dropped group cannot
+   * reach `Object.assign` and leave half of itself behind. */
+  if (carried) for (const k of carried.dropped) delete saved[k];
   /* Merge only keys the current version knows about. A key the saved blob carries and
    * this build does not is dropped, and a key this build has and the blob lacks keeps its
    * default -- so adding a setting never has to migrate anything. */
@@ -414,6 +495,7 @@ function resetSettings(program, current) {
     codeWidth: 'code pane width', codeFile: 'which file the code pane has open',
     codeOverlay: 'the change overlay on the code',
     tableOverlay: 'the change overlay on the routine list and the table',
+    anomalyOverlay: 'the change overlay on the findings',
     navGroups: 'how many navigator groups open at once', navOpen: 'which groups are open',
     navCap: 'how many routines a package lists',
     graphLayout: 'graph layout', graphTheme: 'graph theme',

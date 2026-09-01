@@ -3845,6 +3845,163 @@ question answered first — what makes two findings in two versions the same fin
 carries no id and 93 of Mensores' 106 are `LOST_EDGE`, so pairing them would invent an
 identity (rule 1).
 
+## The overlay on the findings, and the key it had to be built on — 2026-09-01
+
+Chunk 5c. It opened by reproducing a defect rather than by building anything, and the
+reproduction is what made the rest of it obvious.
+
+### The defect, reproduced end to end before a line was changed
+
+`state.triage` was keyed by the finding's **array index** while both declarations of it
+said `finding id ->` — `shell.js:362` and `settings.js:330`. Five sites subscripted it:
+the count, the row, the three buttons, the click handler and the number keys. Every one
+correct on its own, and all five wrong together, because `/api/anomalies` serves findings
+`sorted()` by severity, confidence and **count**.
+
+Reproduced over Mensores' pair rather than argued:
+
+    base 22:53:57 -> 107 findings     base 22:53:15 -> 106
+    2 of 106 positions hold a different finding, and they are the last two
+
+    index 104   base 22:53:57  `siq__rebuild_87_02h` is written but never read back
+                base 22:53:15  `tags` is written but never read back
+
+The one finding that exists in one version and not the other — `siq__rebuild_87_02h`, and
+it is exactly the unpaired one 5b measured — shunts every later index by one. Then the
+persistence half, in the browser: file a decision against it, switch the base, and
+`localStorage` restores `{"104": "ack"}`, which now reads as an acknowledgement of `tags`.
+The finding actually acknowledged is not even in that version. **Nothing on screen, nothing
+in the console.**
+
+Two more of the same family in one function. `loadAnomalies()` dropped `ident`,
+`ident_parts` **and** `subject` on the way in, while `shell.js` read `cur.a.subject` in the
+sentence explaining why the two jump buttons are disabled — always `undefined`, falling
+back to `"a name"`, for as long as the buttons have existed. Rule 44 one step further in
+than usual: not a field the *server* does not send, but a field this file does not send
+itself. The server has sent all three since 5a.
+
+### One door in each direction, asserted as an absence
+
+`triageOf(a)` and `setTriage(a, v)` are now the only two places `state.triage` is
+subscripted anywhere. The guard is over the **whole file**, not over the five sites that
+existed: a sixth hand-written one is the failure this shape exists to prevent, and a check
+written over the five would pass on it (rule 74's shape, rule 51's reason). Both take the
+finding rather than its identity, so a caller cannot reach for the wrong key holding half
+of one.
+
+### `SETTINGS_VERSION` 5, and the first bump that carries forward
+
+An index-keyed blob read as ident-keyed is a **wrong** answer, not an absent one, so it may
+not merge. Every bump before this one discarded the whole blob, which is right when a blob
+cannot be read at all — here exactly one key of sixty-six is unreadable and the shelf, the
+plate colours and the panel layout are as good as they were. Tom's call: bump, carry
+forward, drop exactly `triage`.
+
+`CARRY_FORWARD` is keyed by the version being **left**, so it is a statement about one
+specific blob rather than a licence to vouch for any older one — the gate `migrate.py` puts
+on re-stamping a fingerprint (rule 62), in client storage. Two things fell out:
+
+- **The old blob is left where it is.** Deleting it would be a read path destroying the
+  evidence it read (rule 20), and the trade is asymmetric: a few kilobytes against every
+  arrangement a reader has made, gone the moment they run an older build. `v1` through `v3`
+  are still sitting in this machine's storage, which is the cheaper mistake.
+- **The load says what it dropped**, on the surface that lost it rather than as a banner,
+  and once — a second load has a v5 blob and does not nag.
+
+Driven: v5 written with 67 keys, every arrangement intact, `triage` empty, v4 untouched.
+
+### The overlay
+
+`/api/anomalychanges` on screen, default on, fetched when the worklist is opened — the
+bargain `codeOverlay` and `tableOverlay` already strike, and the dearest of the three,
+because the compared end is thirteen detectors over a graph nothing here has opened.
+
+Two calls Tom took before it was built. **Findings only the compared version has are
+counted in the head with the set one unfold away**, not given rows — so the list, `j`/`k`
+and "left to triage" go on counting one thing (rule 32), which is the exception
+`changeCounts` already makes for `only_compared` routines. And they carry no triage
+buttons: a decision about a version you are not reading is not a decision.
+
+**The `moved` mark already had a colour and nobody had spent it.** `--diff-moved` is violet
+in all three sets and both themes, with its separation measured and stated in the Settings
+table (rule 69), and `.tone-moved` is what the graph legend already spells the same idea
+with. *Still here, claiming something different* is a **direction** of difference, not an
+absence of one — so it goes in the channel, and the two surfaces cannot part company about
+what violet means. Every class is prefixed `anochg-` and scoped to `.wl-item`, because
+rule 71 has been paid for twice already.
+
+    base 22:53:57   1 only_in_base ·  0 only_in_compared · 4 moved · 0 ms held
+    base 22:53:15   0 only_in_base ·  1 only_in_compared · 4 moved, and the word inverts
+
+The inversion is exact and it is the check that these are set membership rather than a
+claim about time: `siq__rebuild_87_02h` is a counted-but-unlisted "1 added" from one end
+and a green `+` row from the other, and the word is "added" both times, because it follows
+the **word** and never the side.
+
+### What driving it found, and no test could have
+
+**A count that named the wrong set.** The note counted all 106 findings while the tabs, the
+progress bar and "left to triage" beside it were per severity — so the Suspect tab read
+`◈ 4 claiming something different · 1 added` with **not one marked row on it**: all five
+banded findings on this pair are INFO. Two correct numbers, neither saying what it counted,
+which is rule 32 exactly and the same shape that stopped `degree` being printed beside a
+routine. Everything in that note is scoped to the tab now, the compared-only count and the
+unfolded set included.
+
+**One fact rendered twice, side by side.** The carried-forward note read *"triage decisions
+— they were filed against a position in the list, not a finding: they were filed against a
+position in this list rather than against a finding"*, because `settings.js` carried a
+reason and `shell.js` wrote one too. The store names **what** was dropped; the view says
+**why it mattered here**. Rule 40 in prose.
+
+Both were found by looking at the pane, which is now the fifth consecutive session that has
+paid for itself.
+
+### The guards
+
+Mutation-tested **20/20** over a baseline proved green first (rule 59). Three survived
+first passes and every one was the guard:
+
+- a check for `SETTINGS_VERSION - 1` in `carryForward` passed over `CARRY_FORWARD[4]`,
+  because the *storage key* one line below still said it — rule 54's shape, the right name
+  read over the wrong span. It asserts both occurrences and no literal index now;
+- the tone check inspected only the concatenation form, so hardcoding `tone-gone` left the
+  loop nothing to iterate and it passed on empty — rule 59's companion, a mutation that
+  removes the thing being read. It refuses a literal outright now;
+- and one that cried wolf on its own first run: `"removeItem" not in code` fired on
+  `resetSettings`, which deletes the key and is **right** to — that is the reader asking
+  out loud. Scoped to the two read paths (rule 43).
+
+One existing guard was rewritten rather than repointed. `test_the_settings_version_moved_
+with_the_shape_that_changed` asserted the literal `const SETTINGS_VERSION = 4;`, so the v5
+bump failed it for nothing — an assertion about *when it was written* rather than about what
+it protects, which is rule 46's family. It asserts `>= 4` now, and what a *bump* needs is
+asserted next door.
+
+    731 tests · mypy clean · ruff clean · 20/20 mutations caught
+
+### Not measured, and absent rather than estimated
+
+**A picture of it.** The automation tab's viewport is fixed at 1262x556 whatever the window
+is set to, and this app puts ~320px of chrome above the list, so the marked rows do not fit
+in a frame. Every static fact was driven and checked there — the classes, the computed
+colours (`rgb(109, 40, 217)`, which is `--diff-moved`), the titles with both numbers in
+them, the counts per tab, the switch both ways, and `elementFromPoint` on the unfold and the
+switch to prove they are reachable rather than merely wired (rule 48). Rule 38: the picture
+wants a real window.
+
+### Still wanting Tom's eye
+
+Carried over unchanged and blocking nothing: the flow panel's **1 px arrow stroke**, thin to
+aim at though the same flow is reachable from a row in the pane; and a **1,347-line
+`frozenset` argument** in this corpus that wraps rather than elides, because rule 8 allows
+abbreviation only beside the full value.
+
+New, and small: the routine lane draws *behaves differently* in `--text-muted` while the
+graph legend and now the findings draw the same idea in `--diff-moved`. Two answers to one
+question (rule 51). Not changed here because it is a change to a shipped surface on a
+judgment that is Tom's, not mine.
+
 ## A finding says what makes it that finding — 2026-08-31
 
 Chunks 5a and 5b. The anomaly worklist overlay had been blocked since 2026-08-30 on one

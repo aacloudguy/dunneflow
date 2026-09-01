@@ -159,6 +159,23 @@ is not computed yet.
 
 ## What we are doing now
 
+**Paused 2026-08-31 with chunks 3 and 4 both in, committed and green** — 698 tests, mypy
+clean, ruff clean, working tree clean. Nothing is half-done; the next session starts on a
+decision rather than in the middle of an edit.
+
+**Three things are waiting on Tom and none of them is a bug:**
+
+1. **The arrow stroke is 1 px**, which is thin to aim at. The same flow is reachable from a
+   row in the pane, which is a button, so this may be enough — his judgment, not mine.
+2. **A 1,347-line `frozenset` argument exists in this corpus** (`quaestor/_envelope.py`,
+   91 KB in one argument) and the pane **wraps** it rather than eliding, because rule 8
+   allows abbreviation only where the complete value sits beside it. It may read badly.
+   Whatever replaces it has to keep the whole value reachable.
+3. **`output/mensores.pre-schema6` holds 386 MB** of stores made stale by the
+   `SCHEMA_VERSION` bump. Both source trees exist and the pair is rebuilt from them, so
+   nothing needs it — kept rather than deleted because 386 MB of somebody else's disk is
+   not mine to reclaim on my own judgment.
+
 **Chunk 4 landed 2026-08-31: an edge says what flows.** The last thing Diagram mode was
 missing, and the one Tom asked for in the same breath as the arguments.
 

@@ -1604,6 +1604,39 @@ table.grid tbody tr[aria-selected="true"] td:first-child { box-shadow: inset .18
 .srcblock mark { background: var(--accent-soft); color: var(--accent-text); }
 .flowitem .dim { color: var(--text-faint); }
 
+/* ONE ARROW, OPENED — a call site and the arguments it passes.
+ * Every dimension in rem (design rule 3) and no colour of its own: the tokens already
+ * name the four greys this needs, and a fifth declared here would be a colour outside
+ * `tokens.css` by being inside it under another name. */
+.callsite {
+  border-left: 2px solid var(--border);
+  padding: .15rem 0 .3rem .5rem; margin: .25rem 0 .45rem 0;
+}
+.callsite + .callsite { border-top: 1px solid var(--border); padding-top: .35rem; }
+.callhead { display: flex; gap: .4rem; align-items: baseline; font-size: .76rem; }
+.callhead code { font-family: var(--f-mono); font-size: .74rem; white-space: nowrap;
+                 overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.callin, .calldecl { font-size: .72rem; color: var(--text-muted); padding: .05rem 0; }
+.callin code, .calldecl code { font-family: var(--f-mono); font-size: .7rem; }
+/* An argument is a row of three: which one it is, what was written, and what it lands on.
+ * A grid rather than a flex row so the expressions line up down the column -- a reader
+ * scanning seven call sites for the one that passes `None` is reading a column. */
+.argrow {
+  display: grid; grid-template-columns: 2.6rem minmax(0, 1fr) auto;
+  gap: .35rem; align-items: baseline; font-size: .74rem; padding: .05rem 0 .05rem .5rem;
+}
+.argi { font-family: var(--f-mono); font-size: .68rem; color: var(--text-faint);
+        text-align: right; overflow: hidden; text-overflow: ellipsis; }
+/* **Wrapped, not elided.** An argument is the subject of this pane, and a 1,347-line
+ * `frozenset` literal is real -- one is in Mensores. Rule 8 allows abbreviation only where
+ * the complete value sits beside it, and there is nothing beside it here, so the long ones
+ * wrap and the row grows. `break-word` rather than `break-all`: an expression breaks at a
+ * dot or a bracket before it breaks mid-identifier. */
+.argx { font-family: var(--f-mono); font-size: .72rem; word-break: break-word;
+        min-width: 0; }
+.argb { color: var(--text-faint); white-space: nowrap; }
+.argb .dim { color: var(--text-faint); }
+
 /* THE WHY — human prose, set in serif, indented against what it explains */
 .why {
   font-family: var(--f-serif); font-size: .78rem; line-height: 1.45;

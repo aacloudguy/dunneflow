@@ -1649,3 +1649,70 @@ WHERE c.at_boundary = 0
   AND c.caller_id NOT IN (SELECT value FROM json_each(:ids))
 GROUP BY c.callee_id, c.caller_id
 """
+
+# --------------------------------------------------------------------------- #
+# One edge of the diagram, opened: every call site between two sets of routines.
+#
+# Two id sets, two JSON arrays, the same `json_each` idiom the fold queries use --
+# constant SQL text, one bound parameter per side, and no limit to trip over.
+#
+# **Grouped by nothing.** The fold queries return one row per *connection* because a
+# picture wants the connection; this returns one row per **call site**, because the
+# question an edge answers is "what actually passes along here" and an aggregate
+# cannot say it. `site_id` comes back so the arguments can be hung off the right one:
+# two identical expressions on one line are two calls (287 of them on Mensores).
+# --------------------------------------------------------------------------- #
+
+FLOW_CALL_SITES = """
+SELECT c.site_id, c.caller_id, c.callee_id, c.callee_expr, c.file, c.line,
+       c.confidence, c.external, c.ambiguous,
+       rc.qualname AS caller_name, rc.class_name AS caller_class,
+       re.qualname AS callee_name, re.file AS callee_file,
+       re.line_start AS callee_line, re.returns AS callee_returns,
+       re.is_async AS callee_async, re.is_method AS callee_method
+FROM calls c
+JOIN json_each(:src) a ON a.value = c.caller_id
+JOIN json_each(:dst) b ON b.value = c.callee_id
+LEFT JOIN routines rc ON rc.id = c.caller_id
+LEFT JOIN routines re ON re.id = c.callee_id
+WHERE c.at_boundary = 0
+ORDER BY c.file, c.line, c.site_id
+"""
+
+# The arguments, for a set of call sites named by the answer above. Kept a second query
+# rather than joined into the first because a call site with four arguments would
+# otherwise repeat every column of its own row four times, and the call site is the
+# thing being listed.
+FLOW_CALL_ARGS = """
+SELECT a.site_id, a.idx, a.expr, a.keyword, a.splat
+FROM call_args a
+JOIN json_each(:sites) j ON j.value = a.site_id
+ORDER BY a.site_id, a.idx
+"""
+
+# An edge into a boundary reuses `FOLD_SQL_OPS`, `FOLD_NET_CALLS`, `FOLD_BOUNDARIES` and
+# `FOLD_ARTEFACTS` **as they are**, scoped to the routines on the near side. No aliases:
+# `FLOW_SQL_OPS = FOLD_SQL_OPS` would be a second name for one query, and two names are
+# how two answers to one question begin (rule 13). Which operations belong to the edge is
+# decided in Python against the box the reader clicked, because `sql_ops` records a table
+# and `boundaries` records a kind, and one query asked to know both is two questions
+# wearing one name.
+
+# The boundaries of a set of routines that **no more specific record already names**.
+# Rule 40, set-scoped: 991 of Mensores' 1,316 DATABASE boundaries sit on a line with a
+# `sql_ops` row and all twenty NETWORK boundaries sit on a `net_calls` row, so listing
+# both is listing one act twice. The exclusion is per line and not per routine, because
+# 43 routines open a connection and run nothing -- the boundary is the only record of
+# what they do, and a coarser rule blanks them. The one-line tolerance is a judgment,
+# stated as one: the two detectors disagree by a line on a multi-line statement,
+# recording the call site and the statement start.
+FLOW_BOUNDARIES_UNNAMED = """
+SELECT b.routine_id, b.kind, b.direction, b.target, b.line, b.evidence, b.salience
+FROM boundaries b
+JOIN json_each(:ids) j ON j.value = b.routine_id
+WHERE NOT EXISTS (SELECT 1 FROM sql_ops s
+                   WHERE s.routine_id = b.routine_id AND abs(s.line - b.line) <= 1)
+  AND NOT EXISTS (SELECT 1 FROM net_calls n
+                   WHERE n.routine_id = b.routine_id AND abs(n.line - b.line) <= 1)
+ORDER BY b.salience DESC, b.line
+"""

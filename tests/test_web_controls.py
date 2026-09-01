@@ -7181,10 +7181,17 @@ def test_a_diagram_box_is_asked_about_as_a_fold() -> None:
     assert "loadFold(" in setter and "loadNode(" in setter, (
         "the one place a subject is installed no longer knows both kinds"
     )
-    assert "state.fold = fold" in setter, (
-        "installing a subject does not clear the previous fold, so a fold outlives its own "
-        "selection and the pane describes a class the reader left ten clicks ago (rule 51)"
-    )
+    # **Every kind is written on every install.** Asserted as "each field is assigned in
+    # here", not as one literal line: the first version of this guard asserted
+    # `state.fold = fold` and went red the day a third kind of subject arrived, which is
+    # a check about a spelling rather than about the thing it names (rule 37). What must
+    # hold is that installing any subject clears the others, or one outlives its own
+    # selection and the pane describes something the reader left ten clicks ago (rule 51).
+    for fld in ("state.fold", "state.selected", "state.flow"):
+        assert f"{fld} = " in setter, (
+            f"`{fld}` is not assigned when a subject is installed, so it survives the next "
+            f"selection and the inspector answers about the wrong thing (rule 51)"
+        )
 
     # **Every writer, through the one owner.** This is the half that decays: four call sites
     # set what the inspector answers about, and the fold would survive at whichever one was
@@ -7671,4 +7678,163 @@ def test_the_diagram_does_not_move_when_a_pane_opens() -> None:
     assert 'width:${vb[2]}px' in draw, (
         "the drawing no longer carries its own pixel size, so the transform scales "
         "something whose size the container is still deciding"
+    )
+
+
+def test_an_arrow_is_a_subject_and_the_pane_answers_about_it() -> None:
+    """The third specimen, wired the way the second one had to be taught to be.
+
+    A box was clickable and the inspector answered about one of its members (rule 74); an
+    arrow was drawn and answered about nothing at all, because `dot()` wrote `id=` on nodes
+    only. Both are the same failure -- a control carrying no identity resolves to nothing
+    (rule 30) -- and the second one is cheaper to catch here than on the screen.
+    """
+    js = _code(_read("shell.js"))
+
+    # The subject exists, is exclusive, and reaches the accessor everything else asks.
+    subject = _fn(js, "inspectorSubject")
+    assert "state.flow" in subject, (
+        "an arrow is not one of the things the inspector can be answering about, so opening "
+        "one either shows the previous subject or nothing"
+    )
+    setter = _fn(js, "setSubject")
+    # The **branch**, not the name. `if (false) loadFlow(flow)` contains "loadFlow(" and
+    # installs nothing, and a containment check passes over it -- rule 37, caught by
+    # mutation rather than by reading.
+    assert "if (flow) loadFlow(flow);" in setter, (
+        "the one place a subject is installed does not install a flow, so opening an arrow "
+        "leaves the previous subject in the pane"
+    )
+    assert "state.flow = flow;" in setter, (
+        "installing a subject does not write the flow, so an arrow outlives its own "
+        "selection (rule 51)"
+    )
+
+    # The renderer, routed by kind above the first line that reads a routine's shape.
+    router = _fn(js, "viewInspector")
+    assert 'if (s.kind === "FLOW") return viewInspectorFlow(s);' in router, (
+        "a flow falls through to the routine renderer, which reads `identity.qualname`, "
+        "params and `where` off a thing that has none of them"
+    )
+    assert "function viewInspectorFlow(" in js, "nothing renders a flow"
+
+    # The way to the code, from the one door, on every call site (Tom's "ultimately where
+    # it all goes"). A panel of call sites with no route to the line is the map again.
+    view = _fn(js, "viewInspectorFlow")
+    assert "gotoCodeBtn(" in view, (
+        "a call site does not carry the button that opens its line, so the panel names a "
+        "file and a line and cannot go there"
+    )
+
+    # The precision line is **on the screen**, not only in the source. A binding shown
+    # without its limits is a claim without its provenance (design rule 13).
+    # Again the branch rather than the name: `false && c.unbound_because` renders nothing
+    # and contains the field. The same mutation survived this guard's first version.
+    assert "${c.unbound_because" in view, (
+        "the pane does not say why an argument was left unbound, so a blank beside it reads "
+        "as 'no such parameter' -- a different and false claim"
+    )
+
+
+def test_the_edge_separator_is_spelled_once_on_each_side_and_they_agree() -> None:
+    """Two literals for one identity is how two answers to one question begin.
+
+    The client splits an edge id back into two box ids. If its separator ever stopped
+    matching the one `diagram.py` writes, `indexOf` would return -1 and every arrow would
+    be unopenable -- or worse, would split at the wrong place and name a box that does not
+    exist, which the panel would answer about confidently (rule 30).
+    """
+    from dunneflow.web import diagram
+
+    js = _code(_read("shell.js"))
+    decl = [ln for ln in js.splitlines() if "EDGE_SEP =" in ln]
+    assert len(decl) == 1, f"the client spells the edge separator {len(decl)} times: {decl}"
+    assert f'"{diagram.EDGE_SEP}"' in decl[0], (
+        f"the client's separator is not the server's ({diagram.EDGE_SEP!r}): {decl[0]}"
+    )
+    # And it is split on the **first** occurrence, which is exact only because no box id
+    # can contain one -- asserted over the real program in `tests/test_diagram.py`.
+    splitter = _fn(js, "splitEdgeId")
+    assert "indexOf(" in splitter, (
+        "the split no longer takes the first occurrence, so an edge whose far end is itself "
+        "a box id splits in the wrong place"
+    )
+
+
+def test_the_drawing_asks_about_a_box_before_it_asks_about_an_arrow() -> None:
+    """Two pickable things through one handler, in the order the drawing stacks them.
+
+    A box is painted over the endpoints of its own arrows, so asking about the arrow first
+    answers about a line the reader was not aiming at wherever the two overlap. That is
+    rule 47's companion -- one handler, two meanings -- and it is invisible: both answers
+    are about real things on the drawing.
+    """
+    js = _read("shell.js")
+    for fn_name in ("diagramBoxAt", "diagramEdgeAt"):
+        fn = _fn(_code(js), fn_name)
+        assert "elementFromPoint" in fn, (
+            f"{fn_name} trusts `ev.target`, which a captured pointer retargets to the "
+            "canvas -- rule 72, the defect that beat two rounds of verification"
+        )
+    # The click handler reaches the box question first and the arrow only when it misses.
+    # **Structural, because two orderings of a position both failed.** The first version
+    # compared two chosen literals and survived a mutation that simply *added* an earlier
+    # call; the second compared the first mention of each name and measured where the two
+    # functions are **defined**, which is a different thing entirely and survived the same
+    # mutation. What actually has to hold is that the arrow is asked about *only* in the
+    # branch the box question missed -- so that is what is asserted, in both directions.
+    code = _code(js)
+    ask = "const at = diagramBoxAt(ev);"
+    before, after = code.split(ask, 1)
+    handler = before.rsplit('document.addEventListener("click"', 1)[-1]
+    assert "diagramEdgeAt(" not in handler, (
+        "the click handler asks about an arrow before it asks about a box, so a click on a "
+        "box near one of its own arrows opens the arrow"
+    )
+    missed = after.split("const { g, box } = at;", 1)[0]
+    assert "diagramEdgeAt(" in missed, (
+        "nothing asks about an arrow when the box question misses, so every arrow on the "
+        "drawing is unclickable while looking exactly like one that works"
+    )
+
+
+def test_the_engine_echoing_a_selection_does_not_replace_the_subject() -> None:
+    """The defect this was found from, asserted where it happened.
+
+    `applyWanted` hands the engine a selection and `Graph.setSelection` announces it
+    **synchronously**, so `onGraphSelect` ran inside the caller's own turn and re-subjected
+    to `sel.node` -- the last node of whatever was just installed, which is one arbitrary
+    member of it. A box click set `state.fold` and the echo replaced it with a method of
+    that class two lines later; opening an arrow set `state.flow` and the echo replaced it
+    with a routine. Rule 74 arriving through the engine rather than through the caller.
+
+    It had been there since the fold was built and was invisible: verified in Diagram mode
+    with the stack never mounted, `applyWanted` returns at `Graph.mounted()` and nothing
+    echoes at all. Found by opening an arrow with the graph up -- by driving, not by a test.
+    """
+    js = _code(_read("shell.js"))
+
+    handler = _fn(js, "onGraphSelect")
+    assert "if (installingSelection) return;" in handler, (
+        "the engine's echo is treated as a new selection by the reader, so the subject a "
+        "caller just installed is replaced by one arbitrary member of it (rule 74)"
+    )
+    # The bail must come **before** the subject is written, or it guards nothing.
+    assert handler.index("installingSelection") < handler.index("setSubject("), (
+        "the echo bail sits after the subject is written, so it stops nothing"
+    )
+    # `state.picks` is still taken from the echo: the engine is the authority on what is
+    # picked, and only *what to do about a new selection* belongs behind the bail.
+    assert handler.index("state.picks") < handler.index("installingSelection"), (
+        "the echo bail also skips `state.picks`, so the shell's idea of what is picked "
+        "stops tracking the engine's"
+    )
+
+    # And the flag is raised for exactly the call that re-enters, in a `finally` -- a throw
+    # inside the engine would otherwise leave every later selection silently ignored.
+    applied = _fn(js, "applyWanted")
+    assert "installingSelection = true;" in applied and "finally" in applied, (
+        "the flag is not raised around `Graph.setSelection`, or is not lowered in a "
+        "`finally` -- a throw inside the engine would leave the shell deaf to every "
+        "selection the reader makes afterwards"
     )

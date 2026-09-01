@@ -322,6 +322,13 @@ const state = {
    * answer about something nobody clicked (rule 32). The stack has never made that
    * mistake -- picking a plate clears the selection rather than electing a member of it. */
   fold: null,              // the box id under inspection, or null
+  /* **The third subject: an arrow.** A box says what a thing is; an edge says what passes
+   * between two of them, which is the question the picture has been drawing and unable to
+   * state. Held as the edge id alone -- *which drawing it is on* is `state.diagramBox`,
+   * which already exists, already rides the trail and is already compared. A second field
+   * saying where we are would be the detail window's defect again (rule 51): two answers
+   * to one question, drifting the first time anything moves either. */
+  flow: null,              // the edge id under inspection, or null
   /* What the reader asked for, in id space, before it is resolved to drawn indices.
    * Held here rather than only in the engine so a choice made from the navigator while
    * the centre pane is showing a table or a document is still a real choice. */
@@ -2342,6 +2349,26 @@ function diagramCard(box) {
         ? `<div class="hint">Click to select what it holds.</div>` : ""}`;
 }
 
+/* The same card for an arrow. It asks the server for nothing either, and for a better
+ * reason than the box's: what an arrow carries -- its kinds and its weight -- rode in with
+ * the drawing, and what it *contains* is a panel rather than a card. The hint says which
+ * click gets that, because an arrow two pixels wide that turns out to be clickable only
+ * once you have tried is a control nobody finds. */
+function diagramEdgeCard(e) {
+  const by = (diagramNow && diagramNow.by_id) || {};
+  const a = by[e.from], b = by[e.to];
+  const what = { CALL: "calls", TOUCH: "touches", NAMES: "names" };
+  return `
+    <div class="hc-head">
+      <b class="hc-name">${esc((a && a.label) || e.from)} \u2192 ${
+        esc((b && b.label) || e.to)}</b>
+      <span class="kind-tag">${esc((e.kinds || []).map(k => what[k] || k).join(" + "))}</span>
+    </div>
+    <div class="hc-sub">${e.weight} along it${e.crosses
+      ? " \u00b7 crosses to another compartment" : ""}</div>
+    <div class="hint">Click to see what flows here.</div>`;
+}
+
 /* Dwell is not wanted here and the reason is the same as the fetch: there is nothing to
  * wait for. The card is built from data already in the page, so showing it on entry costs
  * one `innerHTML` write and a placement. */
@@ -2351,12 +2378,24 @@ document.addEventListener("pointermove", (ev) => {
   const canvas = ev.target.closest(".dgm-canvas");
   if (!canvas) { if (hoverHost === "diagram") hideHoverCard(); return; }
   const g = ev.target.closest("g.node");
-  if (!g || !diagramNow || !diagramNow.by_id[g.id]) {
+  /* **A box first, then an arrow**, the same order the click handler asks in and for the
+   * same reason: a box is drawn over its own edges' endpoints, so asking about the arrow
+   * first would describe a line the reader is not pointing at wherever the two overlap. */
+  const eg = g ? null : ev.target.closest("g.edge");
+  const edge = (eg && diagramNow && (diagramNow.edges || {})[eg.id]) || null;
+  if ((!g || !diagramNow || !diagramNow.by_id[g.id]) && !edge) {
     if (hoverHost === "diagram") hideHoverCard();
     return;
   }
   const r = canvas.getBoundingClientRect();
   const at = { x: ev.clientX - r.left, y: ev.clientY - r.top };
+  if (edge) {
+    if (eg.id === hoverAt && hoverHost === "diagram") {
+      hoverAnchor = at; placeHoverCard(); return;
+    }
+    showHoverCard("diagram", eg.id, at, diagramEdgeCard(edge));
+    return;
+  }
   /* Moving within the same box is a move, not a new subject -- the stack's card makes the
      same distinction, and for the same reason: re-rendering would flicker a card that is
      already correct. */
@@ -2513,6 +2552,25 @@ function diagramBoxAt(ev) {
   return box ? { g, box } : null;
 }
 
+/* The same question about an arrow. Graphviz classes an edge `g.edge` and writes the `id=`
+ * `dot()` gave it, so this is the box hit test with one class changed -- including the
+ * `elementFromPoint` fallback, which matters more here than it does for a box: an arrow is
+ * a two-pixel stroke, and the thing under the pointer is as often the `<path>`'s parent as
+ * the path itself.
+ *
+ * A stroke that thin is hard to hit on purpose, and that is a real limit rather than a
+ * defect to hide: the same flow is reachable from a row in the inspector, which is a
+ * button. Both go through `selectFlow`, so there is one answer either way (rule 51). */
+function diagramEdgeAt(ev) {
+  let el = ev.target;
+  let g = el && el.closest ? el.closest("g.edge") : null;
+  if (!g && ev.clientX != null) {
+    const under = document.elementFromPoint(ev.clientX, ev.clientY);
+    g = under && under.closest ? under.closest("g.edge") : null;
+  }
+  return (g && g.id && splitEdgeId(g.id)) ? g.id : null;
+}
+
 /* The diagram's own controls, delegated from the mount because that mount is rewritten
  * whenever a different compartment is drawn -- handlers bound to elements would stop working
  * silently the moment they were replaced. */
@@ -2524,7 +2582,16 @@ document.addEventListener("click", (ev) => {
   const mount = $("#diagramMount");
   if (!mount || mount.hidden || !ev.target.closest("#diagramMount")) return;
   const at = diagramBoxAt(ev);
-  if (!at) return;
+  if (!at) {
+    /* **A box first, then an arrow.** A box is drawn over its own edges' endpoints, so
+     * asking about the arrow first would answer about a line the reader was not aiming at
+     * wherever the two overlap -- rule 47's companion, where two pickable things reporting
+     * through one handler made an index mean two things. Asked in the order the drawing
+     * stacks them. */
+    const edge = diagramEdgeAt(ev);
+    if (edge) selectFlow(edge);
+    return;
+  }
   const { g, box } = at;
 
   /* **Opening a box is a second click on the same box, not a `dblclick` event.**
@@ -4338,6 +4405,10 @@ const TRAIL_CAP = 50;
 let trailAt = -1;
 let restoringSelection = false;
 
+/* True only while `applyWanted` is handing the engine a selection the app already decided.
+ * See `onGraphSelect`, which is what it is for. */
+let installingSelection = false;
+
 function selectionSnapshot() {
   /* The **fold** rides with the selection, or Back cannot reverse the commonest act in
      Diagram mode. A box click sets no `selected` at all -- it is not a node -- so a step
@@ -4346,6 +4417,9 @@ function selectionSnapshot() {
      was written for). */
   return { picks: (state.picks || []).slice(), selected: state.selected,
            fold: state.fold || null,
+           /* The arrow rides too, for the same reason the fold does: opening one sets no
+              `selected`, so a step without this field names nothing and takes nobody back. */
+           flow: state.flow || null,
            /* **Where the drawing is** is part of the subject in Diagram mode, and leaving it
               out made three acts unreversible: switching compartment, opening a box, and
               backing out of one. None of them changes the *selection*, so every step they
@@ -4359,6 +4433,7 @@ function selectionSnapshot() {
 function sameSelection(a, b) {
   return a && b && a.selected === b.selected &&
          (a.fold || null) === (b.fold || null) &&
+         (a.flow || null) === (b.flow || null) &&
          (a.diagramId || null) === (b.diagramId || null) &&
          (a.diagramBox || null) === (b.diagramBox || null) &&
          a.picks.length === b.picks.length &&
@@ -4419,7 +4494,7 @@ function applySelectionStep(step) {
   try {
     state.picks = step.picks.slice();
     if (Graph.mounted()) Graph.setSelection(state.picks);
-    setSubject({ node: step.selected, fold: step.fold });
+    setSubject({ node: step.selected, fold: step.fold, flow: step.flow });
     /* Restore where the drawing was, and redraw only when it actually moved: `ensureDiagram`
        refetches, and calling it on every Back would make stepping through a trail of
        selections re-request a compartment that never changed. */
@@ -5854,10 +5929,12 @@ let inspectorFor = null;
  *
  * Exclusive by construction, which is what lets `inspectorSubject()` be an accessor rather
  * than a rule every caller has to remember. */
-function setSubject({ node = null, fold = null } = {}) {
-  state.fold = fold;
-  state.selected = fold ? null : node;
-  if (fold) loadFold(fold);
+function setSubject({ node = null, fold = null, flow = null } = {}) {
+  state.flow = flow;
+  state.fold = flow ? null : fold;
+  state.selected = (flow || fold) ? null : node;
+  if (flow) loadFlow(flow);
+  else if (fold) loadFold(fold);
   else if (node) loadNode(node);
   else { inspectorFor = null; SPECIMEN = null; }
 }
@@ -5867,6 +5944,18 @@ function setSubject({ node = null, fold = null } = {}) {
  * perfectly reversible and names nothing, which is a trail with no map on it. Beside
  * `inspectorSubject()` because it answers the same question in words. */
 function subjectLabel() {
+  /* An arrow is named by its two ends, because "an edge" is not somewhere anybody can be
+   * taken back to. The labels come from the drawing that is up, which is the same place
+   * the arrow was clicked -- never from the id, which is two box ids with a separator in
+   * the middle and is not a name (rule 30). */
+  if (state.flow) {
+    const ends = splitEdgeId(state.flow);
+    const by = (diagramNow && diagramNow.by_id) || {};
+    if (ends && by[ends[0]] && by[ends[1]]) {
+      return `${by[ends[0]].label} \u2192 ${by[ends[1]].label}`;
+    }
+    return "a flow";
+  }
   if (state.fold) {
     const box = diagramNow && diagramNow.by_id[state.fold];
     return (box && box.label) || state.fold;
@@ -5887,7 +5976,7 @@ function subjectLabel() {
  * say 3 functions, so highlighting all three might be problematic" -- and the alternative is
  * electing a member, which is exactly the defect the fold exists to undo. */
 function selectedRowIds() {
-  if (state.fold) return new Set(((state.wanted || {}).nodes) || []);
+  if (state.flow || state.fold) return new Set(((state.wanted || {}).nodes) || []);
   return new Set(state.selected ? [state.selected] : []);
 }
 
@@ -5919,7 +6008,7 @@ async function selectFold(boxId) {
  * what every caller has to remember and rule 51 is a list of the times one of them did not.
  * Everything that asks "what is being inspected" asks here. */
 function inspectorSubject() {
-  return state.fold || state.selected || null;
+  return state.flow || state.fold || state.selected || null;
 }
 
 /* One fetch-and-paint, two subjects. `loadNode` and `loadFold` differ in the endpoint they
@@ -5956,6 +6045,61 @@ async function loadNode(id) {
  * `fetches: false` was added to the hover card to prevent, one surface over. */
 async function loadFold(boxId) {
   await loadSpecimen(boxId, `/api/fold?id=${encodeURIComponent(boxId)}`);
+}
+
+/* The separator between the two ends of an edge id, and the **only** place it is spelled on
+ * this side. `diagram.py` writes it into every arrow's `id=`; a second literal here is a
+ * second answer to what an edge is called, and it would be silently wrong rather than
+ * broken -- `partition` on a separator that is not there yields an empty far end and a
+ * panel that confidently answers about nothing.
+ *
+ * Split on the **first** occurrence, because a box id cannot contain one and the far end
+ * may itself be a box id. A guard asserts that on the server, where the ids are made. */
+const EDGE_SEP = "=>";
+
+function splitEdgeId(eid) {
+  const at = String(eid || "").indexOf(EDGE_SEP);
+  if (at <= 0) return null;
+  const src = eid.slice(0, at), dst = eid.slice(at + EDGE_SEP.length);
+  return (src && dst) ? [src, dst] : null;
+}
+
+/* One arrow, asked about as what passes along it.
+ *
+ * `inside` is `state.diagramBox` and not a copy of it. The two levels are two different
+ * compartments and the same pair of ids can name an arrow on either, so the server is told
+ * which drawing the question is about rather than left to read it out of the id -- which
+ * would be inferring an identity from the shape of a string (rule 30).
+ *
+ * No `loadThreads`, for the fold's reason: adjacency by interest is a question about one
+ * node, and an arrow is not one. */
+async function loadFlow(edgeId) {
+  const ends = splitEdgeId(edgeId);
+  if (!ends) { console.error("DunneFlow: an arrow with no two ends", edgeId); return; }
+  const inside = state.diagramBox || "";
+  const url = `/api/flow?from=${encodeURIComponent(ends[0])}&to=${encodeURIComponent(ends[1])}`
+            + (inside ? `&inside=${encodeURIComponent(inside)}` : "");
+  /* Keyed on the edge **and** the drawing it is on, or opening the same pair at the second
+   * level after the first would be answered out of the cache with the first level's reply
+   * (rule 42's family -- a guard that names the right case and asks the wrong question). */
+  await loadSpecimen(`${inside}\u0000${edgeId}`, url);
+}
+
+/* **Look at this arrow.** Goes through `selectFromNav` like every other selection, so the
+ * stack lights both ends, the navigator follows, the trail records it and undo reverses it.
+ * A path that only filled the inspector would be a selection the rest of the dashboard
+ * never heard about (rule 51) -- which is the defect the fold was built to undo, and it
+ * would have been rebuilt here one function along.
+ *
+ * Both ends' members, because that is what the arrow is about. A port holds none, so an
+ * arrow into one lights the near side alone and says so in the pane. */
+async function selectFlow(edgeId) {
+  const ends = splitEdgeId(edgeId);
+  if (!ends) { console.error("DunneFlow: an arrow row with no identity"); return; }
+  const by = (diagramNow && diagramNow.by_id) || {};
+  const nodes = [...((by[ends[0]] || {}).members || []),
+                 ...((by[ends[1]] || {}).members || [])];
+  await selectFromNav({ nodes, flow: edgeId });
 }
 
 /* **The other direction.** Design rule 26 says the list and the picture are one instrument
@@ -6193,6 +6337,106 @@ function viewInspectorFold(s) {
     </div>`;
 }
 
+/* ── an arrow, described as what passes along it ──────────────────────────
+ *
+ * The third specimen, and the last one the diagram needs. A box says what a thing *is*;
+ * this says what moves between two of them, which is what every arrow on the drawing has
+ * been asserting and unable to state.
+ *
+ * **Call sites are listed, never grouped.** The drawing aggregates because a picture wants
+ * the connection; a reader who clicks an arrow is asking what actually passes, and "7
+ * calls" is the number they already read off the arrow (rule 32). Never bounded (rule 8):
+ * they came here to find one of them.
+ *
+ * **The precision line is on the screen, not only in the source.** Every argument is the
+ * expression as written; none of them is a type, and one is aligned to a parameter only
+ * where the alignment is not a guess. Where it declines, the pane says *why it declined* --
+ * a blank beside an argument reads as "no such parameter", which is a different and false
+ * claim (design rule 13: a claim without its provenance is an assertion in a uniform).
+ */
+function viewInspectorFlow(s) {
+  const id = s.identity || {};
+  const calls = s.calls || [];
+  const t = s.touches || {};
+
+  /* An argument, with what it lands on if anything does. The expression is `<code>` because
+   * it is source and reads as source; the binding is dimmed beside it because the argument
+   * is the subject and the parameter is what happened to it. */
+  const argRow = (a) => `
+      <div class="argrow">
+        <span class="argi">${a.keyword ? esc(a.keyword) + "=" : (a.splat ? "" : a.idx)}</span>
+        <code class="argx">${breakable(a.expr || "")}</code>
+        <span class="argb">${a.binds
+          ? `<span class="dim">\u2192 ${esc(a.binds.name || "")}${a.binds.type
+              ? `: ${esc(a.binds.type)}` : ""}</span>`
+          : `<span class="dim" style="color:var(--text-faint)">${a.splat
+              ? "a splat \u2014 not one argument" : "unbound"}</span>`}</span>
+      </div>`;
+
+  /* One call site: where it is written, what it passes, and the way to the line itself --
+   * Tom's *"ultimately where it all goes"*. `gotoCodeBtn` is the same one door every other
+   * route to the code goes through (rule 51). */
+  const callRow = (c) => `
+      <div class="callsite">
+        <div class="callhead">
+          <code>${breakable(c.callee_expr || "")}</code>
+          <span class="conf badge ${c.confidence === "CERTAIN" ? "certain" : ""}">${
+            esc(c.confidence || "")}</span>${c.external
+              ? `<span class="kind-tag">external</span>` : ""}
+          <span class="dim" style="margin-left:auto">${gotoCodeBtn(c.file, c.line)
+            }<span class="ln">:${c.line}</span></span>
+        </div>
+        <div class="callin"><span class="dim">in</span> <code>${
+          breakable(c.caller_name || "")}</code></div>
+        ${(c.args || []).length ? (c.args || []).map(argRow).join("")
+          : `<div class="hint">Called with no arguments.</div>`}
+        ${c.declared && c.declared.length
+          ? `<div class="calldecl"><span class="dim">declared</span> <code>${
+              breakable(c.callee_name || "")}(${(c.declared || []).map(
+                pp => esc(pp.text)).join(", ")})</code>${c.callee_returns
+                ? ` <span class="dim">\u2192 ${esc(c.callee_returns)}</span>` : ""}</div>`
+          : ""}
+        ${c.unbound_because
+          ? `<div class="hint">Arguments are shown as written and not aligned to
+             parameters: ${esc(c.unbound_because)}.</div>` : ""}
+      </div>`;
+
+  const touches = touchRows(t);
+  const kinds = (id.kinds || []).join(" + ") || "\u2014";
+  const callBody = calls.length ? calls.map(callRow).join("")
+    : (id.kinds || []).includes("CALL")
+      ? `<div class="hint">This arrow carries calls the store has, and none of them
+         resolved to a routine on the far side \u2014 they leave the program (rule 26:
+         external is not inferred).</div>`
+      : `<div class="hint">Nothing calls along this arrow; it carries ${esc(kinds)}.</div>`;
+
+  return `
+    <div class="insp-head">
+      <h2>${breakable(s.label || s.id)}</h2>
+      <div class="loc">${esc(id.from_kind || "")} \u2192 ${esc(id.to_kind || "")}${
+        id.crosses ? ` \u00b7 crosses to another compartment` : ""}</div>
+      <div class="tags">
+        <span class="kind-tag">FLOW</span>
+        <span class="kind-tag">${esc(kinds)}</span>
+        <span class="badge certain">${id.weight} along it</span>
+        <span style="margin-left:auto;display:flex;gap:.3rem">
+          ${pinBtn(s.label || s.id, `${id.sites} call sites, ${touches.length} touches`)}
+        </span>
+      </div>
+    </div>
+    ${sec("calls", "Call sites", calls.length, callBody)}
+    ${sec("touches", "Touches", touches.length, touches.length ? touches.join("")
+        : `<div class="hint">Nothing along this arrow touches a boundary, a table, a
+           remote or a named file.</div>`)}
+    <div class="insp-actions">
+      <p class="hint">Every expression here is what the caller wrote. Nothing is inferred:
+         no argument is given a type, and one is named against a parameter only where the
+         source settles it \u2014 a keyword by name, a position only when the callee is
+         resolved and takes no <code>*args</code>. 92% of arguments on a resolved call bind;
+         the rest say why they do not.</p>
+    </div>`;
+}
+
 /* The one button that goes to the code, wherever it is drawn. A file with no line still
  * opens the file; a fold with neither renders nothing at all rather than a control that
  * cannot do anything (design rule 16). */
@@ -6229,6 +6473,10 @@ function viewInspector() {
      render a box id into `data-node` and link to nothing. Routed on the kind, above the
      first line that reads a routine's shape. */
   if (s.kind === "FOLD") return viewInspectorFold(s);
+  /* And an arrow, for the same reason and above the same line: a flow has no `identity.qualname`,
+     no params and no `where`, so every line below reads a routine's shape off a thing that
+     is not one. Routed on the kind, from the same table. */
+  if (s.kind === "FLOW") return viewInspectorFlow(s);
 
   const id = s.identity || {};
   const inn = s.in || { callers: [], entrypoints: [] };
@@ -9767,6 +10015,26 @@ async function ensureGraph() {
  * breadcrumb and the trail all follow from here rather than from each other. */
 function onGraphSelect(sel) {
   state.picks = sel.picks;
+  /* **An echo is not an act.** The engine announces every selection change, including the
+   * one the app has just handed it -- `applyWanted` calls `Graph.setSelection`, which
+   * announces *synchronously*, so this ran before the caller had finished its own turn.
+   *
+   * On the echo it re-subjected to `sel.node`, which is the **last node** of whatever was
+   * installed: one arbitrary member of it. That is exactly the defect a fold was built to
+   * remove (rule 74) arriving through the engine rather than through the caller -- a box
+   * click set `state.fold`, the echo replaced it with a method of that class two lines
+   * later, and the pane answered truthfully about something nobody clicked. It filed a
+   * second trail step under that member's name while it was there.
+   *
+   * The fold has had this since the day it was built and it was invisible: verified in
+   * Diagram mode with the stack never mounted, `applyWanted` returns at `Graph.mounted()`
+   * and nothing echoes at all. Found by opening an arrow with the graph up.
+   *
+   * `state.picks` is still taken, because the engine is the authority on what is picked.
+   * Everything below is *what to do about a new selection*, and the caller that installed
+   * this one does all of it itself, in the right order, with the right subject. Same shape
+   * and same reason as `recordSelection`'s `restoringSelection` bail. */
+  if (installingSelection) return;
   setSubject({ node: sel.node ? sel.node.id : null });
   persist();
   recordSelection();          // so the click that lost your place can be taken back
@@ -10466,7 +10734,16 @@ function applyWanted() {
     seen.add(key);
     return true;
   });
-  Graph.setSelection(merged);             // the engine announces; onGraphSelect does the rest
+  /* The engine announces synchronously, so this **is** the call that re-enters
+   * `onGraphSelect`. Flagged for exactly its duration: what comes back is the selection
+   * that was just installed, not a new one made by the reader, and the difference decides
+   * whether the subject and the trail are written again. */
+  installingSelection = true;
+  try {
+    Graph.setSelection(merged);
+  } finally {
+    installingSelection = false;
+  }
   updateGraphCounts();
 }
 
@@ -10496,7 +10773,8 @@ async function selectFromNav(want) {
    * The two are exclusive by construction here, which is what lets `inspectorSubject()` be
    * an accessor rather than a rule everyone has to remember. */
   // The inspector can answer from an id alone, so it does not wait for the stack.
-  setSubject({ node: (want.nodes || [])[0] || null, fold: want.fold || null });
+  setSubject({ node: (want.nodes || [])[0] || null, fold: want.fold || null,
+               flow: want.flow || null });
 
   await ensureGraph();
   applyWanted();

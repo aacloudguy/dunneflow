@@ -3845,6 +3845,144 @@ question answered first — what makes two findings in two versions the same fin
 carries no id and 93 of Mensores' 106 are `LOST_EDGE`, so pairing them would invent an
 identity (rule 1).
 
+## An edge says what flows, and the echo that had been eating the subject — 2026-08-31
+
+Chunk 4 of the approved plan, and the one Tom asked for in the same breath as the
+arguments: *"If I click on an edge in the diagram, I would like to see what data is
+flowing there (Flow)."*
+
+### The arrow is a thing now
+
+`Compartment`'s three lanes were `Counter[(src, dst)] -> weight`, which computes the kind
+on the way in and drops it on the way out — so a TOUCH and a CALL between the same two
+boxes were one arrow with one number and nothing could say which. A lane is
+`pair -> Counter[kind]` now, and **the weight is the sum, by construction**, so the number
+on the arrow and the kinds behind it cannot disagree (rule 13).
+
+`dot()` writes `id=` on every edge as well as every node. The id is the two box ids with
+`=>` between them, split on the **first** occurrence — exact only while no box id can hold
+one, which is asserted over every box in the program rather than assumed. A box id that
+held one would name a box that does not exist, and the panel would answer about it
+confidently.
+
+`/api/flow?from=&to=[&inside=]` answers on demand. `inside` names the fold when the arrow
+is on the second level and is **refused rather than inferred from the shape of an id**
+(rule 30): the same pair of ids can name an arrow on either level.
+
+    a CALL edge, 14 sites   OrchestratorClaimStore -> _orchestrator_claim_store.py   1 ms warm
+    a TOUCH edge, weight 12  _orchestrator_claim_status.py -> DATABASE               2 ms
+    the whole payload        119 arrows keyed by id, riding with the drawing         0 requests to hover
+
+### What an argument may be said to land on, and 92.2% of them do
+
+The precision line is the whole of this chunk. An argument is recorded as written; it is
+aligned to a declared parameter **only where the source settles it**:
+
+- a **keyword** binds by name, always — the source names its parameter;
+- a **positional** binds by index only when the callee is resolved, declares no `*args`,
+  and the receiver question is answered;
+- a **splat** binds to nothing ever, and a positional *after* a splat is unbindable too —
+  `f(*xs, b)` puts `b` at an index nobody can compute, and the easy version of this rule
+  carries on one place out and produces a specific, plausible, wrong answer.
+
+The receiver question is the interesting one. `self.render(x)` passes `x` to the *second*
+parameter and that is certain. `obj.render(x)` and `Cls.render(obj, x)` are the same
+routine written two ways and nothing in the expression says which, so nothing is claimed.
+
+**Measured before deciding whether that refusal was too cautious**, over every resolved
+call site rather than over the four edges I had open:
+
+    10,668 of 11,570 arguments bound   92.2%
+       426  a dotted call to a method -- the receiver question
+       348  the callee takes *args
+       113  no parameter of that name or index
+        15  a splat
+
+So the refusal costs 3.7% and the `self.` fast path does the work. A sharper rule using
+arity to settle the receiver would buy at most those 426 and add reasoning; not worth it,
+and rule 1 says the refusal is the right default anyway. **The pane states the reason on
+every refusal**, because a blank beside an argument reads as *no such parameter*, which is
+a different and false claim.
+
+### The defect this uncovered, which was not this chunk's
+
+Driving it with the graph mounted, the arrow was clicked, `state.flow` was set — and two
+lines later it was gone and the inspector was describing `emit_hard_policy_changed`.
+
+`applyWanted` hands the stack a selection the app has already decided, and
+`Graph.setSelection` announces it **synchronously**, so `onGraphSelect` ran inside its own
+caller's turn and re-subjected to `sel.node`: the last node of whatever was just installed,
+one arbitrary member of it. **That is rule 74 exactly, arriving through the engine instead
+of through the caller** — and it filed a second trail step under that member's name on the
+way past.
+
+**The fold has had it since the day it was built.** Instrumented on the live page, a box
+click set `state.fold` and the echo replaced it with a method of that class, every time.
+It was invisible because in Diagram mode with the stack never mounted `applyWanted` returns
+at `Graph.mounted()` and nothing echoes at all — so the feature is correct exactly as long
+as nobody opens the graph, which is how it passed a session of verification and Tom's own
+use. Rule 76, and rule 38's companion: an instrument that never reaches a state cannot
+report on it.
+
+The bail is a flag raised for the duration of the one call that re-enters, in a `finally`
+— a throw inside the engine would otherwise leave the shell deaf to every later selection.
+`state.picks` stays outside it, because the engine is the authority on what is *picked*.
+
+### Two smaller things, both found by driving
+
+**A port carries `plate`, not `what`.** Inside a box a boundary is a `touch` box whose
+`what` is the kind; *between* compartments the boundaries live on their own plate, so the
+arrow ends at a port standing for `ext:DATABASE`. Reading only the first spelling returned
+an edge into the database with five unfiltered boundaries and **no SQL at all** — a panel
+that looked like an answer and named none of the twelve statements the arrow was drawn
+for. With it fixed, the same edge reads two SELECTs with their tables and two DATABASE
+boundaries that no SQL row names — and rule 40's one-line tolerance is visibly right
+there: the connection opens at :94 and :110, the statements run at :99 and :115, so both
+are kept as separate acts.
+
+**`elementFromPoint` answers `null` outside the viewport**, which is not the same as
+"nothing there". A probe that did not check cost one confusing round.
+
+### What was verified, and what was not
+
+Driven with a real pointer sequence at coordinates taken from each arrow's own path:
+
+    17 arrows drawn, 17 with an id, 17 reachable by elementFromPoint
+    the click routes to selectFlow; fold and selected are null; SPECIMEN.kind is FLOW
+    14 call sites rendered, 14 `code >` buttons, 10 bound argument rows
+    the trail step reads "OrchestratorClaimStore -> _orchestrator_claim_store.py"
+    the hover card fires 0 requests
+    the pane scrolls inside itself; the document does not (rule 29 holds)
+
+**Not verified: what it looks like.** The automation tab's screenshot viewport is narrower
+than the page's CSS viewport, so the inspector is off the captured frame while being
+plainly on the page at x=910, 352x437. Rule 38 — the picture wants a real window and Tom's
+eye. Two things worth his judgment: the arrow stroke is **1px**, which is thin to aim at
+(the same flow is reachable from a row in the pane, which is a button), and a 1,347-line
+`frozenset` argument exists in this corpus and will wrap rather than elide, because rule 8
+allows abbreviation only where the complete value sits beside it.
+
+### Guards
+
+`tests/test_diagram.py` gains six behavioural checks over the real fold and ten over the
+binding rule; `tests/test_web_controls.py` gains four. Mutation-tested **19/19** and
+**5/5** over baselines proved green first (rule 59).
+
+**Four survived the first pass and every one was the guard.** Three were the same
+weakness — a containment check the mutation left the token in place for: `"loadFlow(" in
+setter` passes on `if (false) loadFlow(flow)`, and `"unbound_because" in view` passes on
+`false && c.unbound_because`. The fourth is the one worth keeping: an ordering guard that
+compared two chosen literals survived a mutation that simply *added* an earlier call, and
+its "fix" — comparing the first mention of each name — measured where the two functions are
+**defined** rather than where they are called, and survived the same mutation again. It is
+structural now, in both directions: the arrow is asked about *only* in the branch the box
+question missed. Rule 46's shape, in a test, twice.
+
+A fifth mutation did not apply at all, and that is a check too: the pattern had drifted from
+the file, so it was reporting nothing while looking like a pass.
+
+Gates: 698 tests, mypy clean, ruff clean.
+
 ## The arguments, as written — 2026-08-31
 
 Chunk 3 of the approved plan, and the one Tom chose over approximating a call from the
@@ -3977,7 +4115,7 @@ One of the twelve passed for the wrong reason first time and is worth keeping: t
 which are two *modules* and so two callers, so the ids differed for a reason that had
 nothing to do with the claim. It edits one file now.
 
-Gates: 703 tests, mypy clean, ruff clean.
+Gates: **679** tests, mypy clean, ruff clean. *That figure was first written here as 703 and was never measured* -- `pytest -q` prints dots and the count was asserted beside them. Rule 13 in this file rather than in the product: a number printed beside a claim has to be the one the thing produced.
 
 **Next: chunk 4** — `dot()` writes `id=` on every edge, `Compartment` keeps the edge *kind*
 beside the weight (dropped today, so a TOUCH and a CALL are indistinguishable), and

@@ -482,10 +482,31 @@ docs   ──► extract ──► docs.db  (SQLite) ─────────
   the store**, never over `m.edges`, which holds each crossing twice by design (rule 23);
   `packages.py` wrote that warning down before anything needed it. `MIN_DISK` is per level
   and settable, because what a plate *holds* changes with the level.
-- `web/diagram.py` — the compartment, at **two levels**. A box is a class, a file's loose
+- `web/diagram.py` — the compartment, at **two levels**, and **every arrow carries its
+  identity and its kind**. A lane is `pair -> Counter[kind]` rather than `pair -> weight`,
+  so a TOUCH and a CALL between the same two boxes are one arrow that can say which it is;
+  the weight *is* the sum, by construction, so the two cannot disagree (rule 13). `dot()`
+  writes `id=` on every edge as well as every node, which is what makes an arrow clickable
+  at all. The separator is `=>` and no box id may contain one — asserted over the whole
+  program, because the split is on the **first** occurrence and a box id that held one
+  would name a box that does not exist. A box is a class, a file's loose
   functions, or a boundary kind; opening one returns a **`Compartment` of routines** — the
   same type, so `dot()` and `mermaid()` draw both and a fix to one is a fix to both. A fold
   is a subject in its own right, never one of the things it folds (rule 74).
+- `/api/flow?from=&to=[&inside=]` — one arrow, opened: every call site with the arguments
+  **as written** and the callee's declared parameters, or the SQL and network operations
+  for an edge into a boundary. Answered on demand — rule 45 where it belongs, bounded by
+  the reader opening one arrow rather than by the picture drawing a hundred. `inside` names
+  the fold when the arrow is on the second level and is refused rather than guessed from
+  the shape of an id (rule 30). Call sites are **listed, never grouped**: the aggregate is
+  the number already on the arrow (rule 32), and never bounded (rule 8).
+- **The binding line, and it is on the screen.** An argument is aligned to a parameter only
+  where the source settles it — a keyword by name always, a position only when the callee
+  is resolved, takes no `*args`, and the receiver question is answered (`self.f(x)` skips
+  one; `obj.f(x)` cannot be told from `Cls.f(obj, x)` and so binds nothing). Measured over
+  the corpus: **10,668 of 11,570 arguments on a resolved call bind, 92.2%**, and every
+  refusal states its reason, because a blank beside an argument reads as *no such
+  parameter* — a different and false claim.
 - `web/threads.py` — **adjacency by interest, not by edge.** Why a neighbour is worth a
   detour: shares a plan, the other end of a table you write, the most commented routine on
   your plate, named like ninety-eight others. Every thread carries a *subject* the router
@@ -1711,6 +1732,35 @@ rule of that number — a blank canvas must say why it is blank — which does e
     `d['k']`, a wrapped argument comes back on one line — and a reader who goes looking in
     the file for the string the product showed them does not find it. Recording what a
     caller passes means recording what the caller *wrote*.
+
+76. **An echo is not an act, and the engine cannot tell you which it is sending.**
+    `applyWanted` hands the stack a selection the app has already decided, and
+    `Graph.setSelection` announces it **synchronously** -- so `onGraphSelect` ran inside its
+    own caller's turn and re-subjected to `sel.node`, which is the *last node of whatever
+    was just installed*. One arbitrary member of it.
+
+    That is rule 74 exactly, arriving through the engine instead of through the caller: a
+    box click set `state.fold` and the echo replaced it with a method of that class two
+    lines later; opening an arrow set `state.flow` and the echo replaced it with a routine.
+    The pane then answered truthfully about something nobody clicked, and filed a second
+    trail step under that member's name on the way past.
+
+    **It had been live since the fold was built, and it was verified twice.** In Diagram
+    mode with the stack never mounted, `applyWanted` returns at `Graph.mounted()` and
+    nothing echoes at all -- so the feature is correct exactly as long as nobody opens the
+    graph. Found by driving with the graph up, which no test had reason to do. Rule 38's
+    companion: an instrument that never reaches a state cannot report on it.
+
+    The fix is a flag raised for the duration of the one call that re-enters, in a
+    `finally` -- a throw inside the engine would otherwise leave the shell deaf to every
+    later selection. `state.picks` stays outside the bail, because the engine is the
+    authority on what is *picked*; everything else in that handler is "what to do about a
+    new selection", and the caller that installed this one does all of it itself.
+
+    The general form, and it is the third costume rule 51 has worn: **a notification you
+    caused is not a notification you received.** Anywhere something announces changes it is
+    also given, the receiver has to be able to tell the two apart, and nothing in the
+    message says which it is.
 
 ## Anomalies: the discipline
 

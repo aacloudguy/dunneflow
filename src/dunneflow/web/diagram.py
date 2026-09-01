@@ -123,6 +123,24 @@ class Box:
     detail: dict[str, Any] = field(default_factory=dict)
 
 
+# One lane of flow: for each pair of boxes, the weight **per kind**. Not a plain
+# `Counter[(src, dst)]`, which is what it was: that keeps the weight and drops the kind, so
+# a call and a database touch between the same two boxes are one arrow with one number and
+# nothing anywhere can say which it is. Held as one structure rather than as a weight beside
+# a kind map, because two structures over one fact drift (rule 13) -- the weight *is* the
+# sum of the kinds, by construction.
+Flow = dict[tuple[str, str], Counter[str]]
+
+
+def add_flow(lane: Flow, src: str, dst: str, kind: str, weight: int) -> None:
+    """The one door onto a lane, so a caller cannot record a weight without its kind."""
+    lane.setdefault((src, dst), Counter())[kind] += weight
+
+
+def flow_weight(lane: Flow, pair: tuple[str, str]) -> int:
+    return sum(lane.get(pair, Counter()).values())
+
+
 @dataclass
 class Compartment:
     """A compartment, its boxes, and the flow among them.
@@ -138,9 +156,9 @@ class Compartment:
     name: str
     boxes: list[Box] = field(default_factory=list)
     ports: list[Box] = field(default_factory=list)
-    inside: Counter[tuple[str, str]] = field(default_factory=Counter)
-    out: Counter[tuple[str, str]] = field(default_factory=Counter)
-    into: Counter[tuple[str, str]] = field(default_factory=Counter)
+    inside: Flow = field(default_factory=dict)
+    out: Flow = field(default_factory=dict)
+    into: Flow = field(default_factory=dict)
 
     @property
     def stats(self) -> dict[str, int]:
@@ -240,10 +258,10 @@ def build(model: GraphModel) -> dict[str, Compartment]:
         if da is None or db is None:
             continue
         if da == db:
-            comp(da).inside[(a, b)] += e.weight
+            add_flow(comp(da).inside, a, b, e.kind, e.weight)
         else:
-            comp(da).out[(a, port(da, db).id)] += e.weight
-            comp(db).into[(port(db, da).id, b)] += e.weight
+            add_flow(comp(da).out, a, port(da, db).id, e.kind, e.weight)
+            add_flow(comp(db).into, port(db, da).id, b, e.kind, e.weight)
 
     for c in comps.values():
         c.boxes.sort(key=lambda x: (x.kind, x.label.lower(), x.id))
@@ -263,6 +281,26 @@ def _ids(c: Compartment) -> dict[str, str]:
 
 def _quote(s: str) -> str:
     return s.replace("\\", "\\\\").replace('"', '\\"')
+
+
+# The separator between the two ends of an edge id. `=>` rather than something prettier
+# because it must not occur in a box id, and a box id is `plate|kind|key` where the key is
+# a module path, a class name, a boundary kind, or another box id -- none of which can
+# contain it. The client splits on the **first** occurrence; a guard asserts no box id
+# holds one, because if one ever did the split would name a box that does not exist and
+# the panel would answer confidently about nothing (rule 30).
+EDGE_SEP = "=>"
+
+
+def edge_id(src: str, dst: str) -> str:
+    """The identity of one edge, so a click on an arrow reaches the flow behind it."""
+    return f"{src}{EDGE_SEP}{dst}"
+
+
+def split_edge(eid: str) -> tuple[str, str] | None:
+    """The two ends of an edge id, or `None` if it is not one. Never a guess."""
+    src, sep, dst = eid.partition(EDGE_SEP)
+    return (src, dst) if sep and src and dst else None
 
 
 def dot(c: Compartment, *, rankdir: str = "TB", ports: bool = False) -> str:
@@ -319,13 +357,18 @@ def dot(c: Compartment, *, rankdir: str = "TB", ports: bool = False) -> str:
         for b in c.ports:
             out.append(f'  {ids[b.id]} [id="{_quote(b.id)}", label="{_quote(b.label)}", '
                        f'shape=ellipse, style=dashed];')
+    # `id=` on every edge, for the same reason it is on every node: Graphviz writes it into
+    # the `<g id="...">` of the arrow, so a click routes back to a thing this program knows
+    # about. Without it an edge carries Graphviz's own auto id and nothing can be asked
+    # about it -- which is what "an edge has no answer at all" meant.
     for src, dst in sorted(c.inside):
-        out.append(f"  {ids[src]} -> {ids[dst]};")
+        out.append(f'  {ids[src]} -> {ids[dst]} [id="{_quote(edge_id(src, dst))}"];')
     if ports:
         # A crossing is dashed, because it does not end where it appears to: the far end is
         # a port standing for a whole compartment, not the routine that was called.
         for src, dst in sorted(list(c.out) + list(c.into)):
-            out.append(f"  {ids[src]} -> {ids[dst]} [style=dashed];")
+            out.append(f'  {ids[src]} -> {ids[dst]} '
+                       f'[style=dashed, id="{_quote(edge_id(src, dst))}"];')
     out.append("}")
     return "\n".join(out)
 
@@ -399,10 +442,10 @@ def flow_of(c: Compartment, box_id: str) -> dict[str, list[dict[str, Any]]]:
     label: dict[str, str] = {b.id: b.label for b in (*c.boxes, *c.ports)}
     kind: dict[str, str] = {b.id: b.kind for b in (*c.boxes, *c.ports)}
 
-    def rows(pairs: list[tuple[tuple[str, str], int]], mine: int, theirs: int,
+    def rows(pairs: list[tuple[tuple[str, str], Counter[str]]], mine: int, theirs: int,
              crosses: bool) -> list[dict[str, Any]]:
         out = []
-        for pair, weight in pairs:
+        for pair, kinds in pairs:
             if pair[mine] != box_id:
                 continue
             other = pair[theirs]
@@ -410,7 +453,14 @@ def flow_of(c: Compartment, box_id: str) -> dict[str, list[dict[str, Any]]]:
                 "id": other,
                 "label": label.get(other, other),
                 "box_kind": kind.get(other, ""),
-                "weight": int(weight),
+                "weight": sum(kinds.values()),
+                # What sort of flow it is, heaviest first. Dropped for the whole life of
+                # this pane, so a database touch and a call read identically.
+                "kinds": [k for k, _ in kinds.most_common()],
+                # The edge as the drawing names it, so a row here and an arrow there are
+                # the same control (rule 30). Both directions, because a row is `other`
+                # and the edge is always (source, target).
+                "edge": (edge_id(other, box_id) if mine == 1 else edge_id(box_id, other)),
                 # A crossing does not end where it appears to: the far end is a port
                 # standing for a whole compartment, not the thing that was called
                 # (rule 23's argument, one level up). Marked rather than hidden.
@@ -423,6 +473,47 @@ def flow_of(c: Compartment, box_id: str) -> dict[str, list[dict[str, Any]]]:
         "in": rows(inside, 1, 0, False) + rows(list(c.into.items()), 1, 0, True),
         "out": rows(inside, 0, 1, False) + rows(list(c.out.items()), 0, 1, True),
     }
+
+
+def edge_flow(c: Compartment, src: str, dst: str) -> tuple[list[str], int] | None:
+    """The kinds carried by one arrow and its weight, or `None` if there is no such arrow.
+
+    All three lanes are asked, because a reader clicking an arrow does not know or care
+    which lane the drawing filed it in -- `inside`, `out` and `into` are a fact about the
+    *picture* (rule 23's within-plate links and crossings), not about the edge. `None`
+    rather than an empty answer: "there is no arrow between these two" and "the arrow
+    carries nothing" are different claims, and an empty panel states the second.
+    """
+    for lane in (c.inside, c.out, c.into):
+        kinds = lane.get((src, dst))
+        if kinds:
+            return [k for k, _ in kinds.most_common()], sum(kinds.values())
+    return None
+
+
+def edge_payload(c: Compartment) -> dict[str, dict[str, Any]]:
+    """Every arrow the drawing carries, by the id `dot()` wrote on it.
+
+    So a hover over an arrow costs no request at all -- the kinds and the weight are what a
+    card would say, they are already computed here, and asking the server for them would be
+    a fetch per arrow for a fact that rode in with the picture. Same reasoning that made the
+    box card `fetches: false`.
+
+    Crossings are marked, because an arrow that ends at a port does not end where it appears
+    to (rule 23) and a card that did not say so would be describing a connection to a place
+    rather than to a thing.
+    """
+    ports = {b.id for b in c.ports}
+    out: dict[str, dict[str, Any]] = {}
+    for lane in (c.inside, c.out, c.into):
+        for (src, dst), kinds in lane.items():
+            out[edge_id(src, dst)] = {
+                "from": src, "to": dst,
+                "kinds": [k for k, _ in kinds.most_common()],
+                "weight": sum(kinds.values()),
+                "crosses": src in ports or dst in ports,
+            }
+    return out
 
 
 def box_payload(b: Box) -> dict[str, Any]:
@@ -480,12 +571,12 @@ def build_inside(box_id: str, box: Box, members: list[dict[str, Any]],
             c.boxes.append(tb)
         src = seen.get(str(t.get("routine_id") or ""))
         if src is not None:
-            c.inside[(src.id, tid)] += int(t.get("weight") or 1)
+            add_flow(c.inside, src.id, tid, "TOUCH", int(t.get("weight") or 1))
 
     for e in inner:
         a, b2 = seen.get(str(e["src"])), seen.get(str(e["dst"]))
         if a is not None and b2 is not None:
-            c.inside[(a.id, b2.id)] += int(e["weight"])
+            add_flow(c.inside, a.id, b2.id, "CALL", int(e["weight"]))
 
     ports: dict[str, Box] = {}
 
@@ -509,11 +600,11 @@ def build_inside(box_id: str, box: Box, members: list[dict[str, Any]],
     for e in out:
         mine, far = seen.get(str(e["mine"])), port(str(e["other"]))
         if mine is not None and far is not None:
-            c.out[(mine.id, far.id)] += int(e["weight"])
+            add_flow(c.out, mine.id, far.id, "CALL", int(e["weight"]))
     for e in into:
         mine, far = seen.get(str(e["mine"])), port(str(e["other"]))
         if mine is not None and far is not None:
-            c.into[(far.id, mine.id)] += int(e["weight"])
+            add_flow(c.into, far.id, mine.id, "CALL", int(e["weight"]))
 
     c.boxes.sort(key=lambda x: (x.kind, int(x.detail.get("line") or 0), x.label.lower()))
     c.ports.sort(key=lambda x: (x.label.lower(), x.id))

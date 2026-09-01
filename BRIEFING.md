@@ -5,7 +5,7 @@ It exists so a fresh context can be useful in a few minutes instead of an hour.
 
 | Read | For |
 |---|---|
-| `CLAUDE.md` | The rules. 74 engineering rules and 26 dashboard design rules, each earned from a false result on real code. **Binding.** |
+| `CLAUDE.md` | The rules. 75 engineering rules and 26 dashboard design rules, each earned from a false result on real code. **Binding.** |
 | `HANDOFF.md` | The chronological record — what was built when, what it cost, what broke. ~1,700 lines. Read *sections*, not the whole thing. |
 | **this file** | Where things are, what is done, what we are doing now, what not to re-open. |
 | Artifact `f993d319-d2b7-4217-9130-cdbba698d1bc` | The ratified dashboard design — a complete working UI, the source of truth for every view. Read it with the **Artifact tool**, not from a screenshot. |
@@ -158,6 +158,45 @@ running that program-wide is most of design rule 15's doorway panel. It says hon
 is not computed yet.
 
 ## What we are doing now
+
+**Chunk 4 landed 2026-08-31: an edge says what flows.** The last thing Diagram mode was
+missing, and the one Tom asked for in the same breath as the arguments.
+
+```
+/api/flow?from=&to=[&inside=]   1-2 ms warm    119 arrows ride with the drawing, 0 hover requests
+17 arrows drawn · 17 with an id · 17 reachable by elementFromPoint · 14 call sites rendered
+10,668 of 11,570 arguments on a resolved call bind -- 92.2%, and every refusal says why
+```
+
+A lane is `pair -> Counter[kind]` rather than `pair -> weight`, so a TOUCH and a CALL are
+told apart and the weight *is* the sum by construction; `dot()` writes `id=` on every edge;
+the panel lists **call sites, never grouped** (the aggregate is the number already on the
+arrow) and never bounded.
+
+**The binding line is on the screen, not only in the source.** A keyword binds by name
+always, a position only when the callee is resolved, takes no `*args`, and the receiver
+question is answered — `self.f(x)` skips one, `obj.f(x)` cannot be told from `Cls.f(obj,x)`
+and so binds nothing. The refusal costs 3.7%, measured before deciding it was not too
+cautious.
+
+**And it uncovered a defect that was not its own.** `Graph.setSelection` announces
+*synchronously*, so `onGraphSelect` re-subjected to `sel.node` — one arbitrary member of
+whatever had just been installed. **The fold has had this since the day it was built**, and
+it was invisible because with the stack unmounted nothing echoes at all: the feature is
+correct exactly as long as nobody opens the graph. Rule 76.
+
+**Wanted from Tom's eye** (rule 38 — the automation tab's screenshot viewport is narrower
+than the page's): the arrow stroke is 1 px, which is thin to aim at, though the same flow
+is reachable from a row in the pane; and a 1,347-line `frozenset` argument exists in this
+corpus and wraps rather than elides, because rule 8 allows abbreviation only beside the
+full value.
+
+**Next: chunk 5 — the anomaly worklist overlay**, still blocked on one question: what makes
+two findings in two versions the same finding. 93 of Mensores' 106 are `LOST_EDGE`, so
+pairing them would invent an identity (rule 1). Also open and unblocked: the change worklist
+does not yet see an argument change (`changes.FACTS` compares `calls` without them).
+
+### Before that: the call-site arguments (2026-08-31)
 
 **Chunk 3 landed 2026-08-31: the call-site arguments, as written.** Tom's call over
 approximating a call from the callee's declaration. `CallArg` is `{idx, expr, keyword,
@@ -1143,6 +1182,10 @@ Rules 28, 29 and 30.
 | A call site has an **identity**, and it holds no position — an ordinal among identical expressions in one caller | Tom, 2026-08-31; `call_site_id`; `make_id` |
 | An argument is recorded **as the caller wrote it**, never `ast.unparse`, never shortened | Tom, 2026-08-31; rule 8; rule 75 |
 | The temporal pair is the **two society clones**; `mensores-overhaul` is a third tree | 2026-08-31; "How to verify" |
+| An arrow is a **subject**, like a box and a node; the three are exclusive by construction | rule 74; rule 76 |
+| An argument binds to a parameter **only where the source settles it**, and says why not | Tom, 2026-08-31; rule 1 |
+| Call sites are listed, never grouped and never bounded — the aggregate is on the arrow | rule 32; rule 8 |
+| The engine's **echo** of a selection it was handed is not a new act by the reader | rule 76 |
 
 ## How to verify — all three, before saying anything is done
 

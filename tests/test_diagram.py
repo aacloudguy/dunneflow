@@ -20,6 +20,38 @@ def _model(analyzed: Store):
     return build(analyzed, level="routine", min_disk=1)
 
 
+def _busiest(comps):
+    """The compartment with the most arrows of any lane.
+
+    Not the most `inside` arrows: the sample tree is a single file, so every routine folds
+    into one box and every arrow it has is a **crossing** to a port. Picking on `inside`
+    alone chose an empty drawing and asserted over nothing -- a guard passing because it
+    found no cases is rule 37 in its own file.
+    """
+    return max(comps.values(),
+               key=lambda c: len(c.inside) + len(c.out) + len(c.into))
+
+
+def _opened(analyzed: Store, comps):
+    """The largest box, opened -- the second level, where the CALL arrows are."""
+    import json
+    box_of, label_of = diagram.box_index(comps)
+    box = max((b for c in comps.values() for b in c.boxes if b.kind != "touch"),
+              key=lambda b: b.holds)
+    args = {"ids": json.dumps(list(box.members))}
+    rows = analyzed.query
+    touches = [dict(r) for r in rows(queries.FOLD_BOUNDARIES, args)]
+    for t in touches:
+        t["weight"] = 1
+    return diagram.build_inside(
+        box.id, box,
+        [dict(r) for r in rows(queries.FOLD_MEMBERS, args)],
+        [dict(r) for r in rows(queries.FOLD_INNER_CALLS, args)],
+        [dict(r) for r in rows(queries.FOLD_CALLS_OUT, args)],
+        [dict(r) for r in rows(queries.FOLD_CALLS_IN, args)],
+        touches, box_of, label_of)
+
+
 def test_folding_a_program_yields_compartments_with_boxes_in_them(analyzed: Store) -> None:
     """The failure no source guard can see: a build that succeeds and produces nothing."""
     comps = diagram.build(_model(analyzed))
@@ -123,3 +155,227 @@ def test_both_emitters_describe_the_same_graph(analyzed: Store) -> None:
     # One arrow per connection in each, so a reader counting them gets the same answer.
     assert dot.count(" -> ") == len(c.inside) + len(c.out) + len(c.into)
     assert mmd.count("-->") + mmd.count("-.->") == len(c.inside) + len(c.out) + len(c.into)
+
+
+# --------------------------------------------------------------------------- #
+# An edge, and what it says it carries. Same discipline as the tests above: run the
+# real fold over the sample tree, because the failure worth catching here is a
+# drawing whose arrows are all correct and all unanswerable.
+# --------------------------------------------------------------------------- #
+
+
+def test_every_arrow_carries_an_identity_that_names_two_real_boxes(analyzed: Store) -> None:
+    """An arrow with no id is an arrow nothing can be asked about.
+
+    `dot()` wrote `id=` on nodes only, so every edge carried Graphviz's own auto id and a
+    click on one routed nowhere. This asserts the whole round trip -- the id is emitted,
+    it splits, and both halves are boxes that exist in the drawing -- because emitting an
+    id that does not split, or splits into something the compartment has never heard of,
+    looks exactly like emitting a good one.
+    """
+    comps = diagram.build(_model(analyzed))
+    # **Both levels, and both lanes.** The sample tree folds to one box per compartment, so
+    # its only arrows are crossings to ports; the within-drawing arrows appear at the second
+    # level. The first version checked the busiest compartment alone and survived a mutation
+    # that stripped the id from exactly the lane this corpus has none of (rule 37).
+    drawings = [_busiest(comps), _opened(analyzed, comps)]
+    lanes = sum(len(c.inside) + len(c.out) + len(c.into) for c in drawings)
+    assert lanes, "neither drawing has an arrow at all"
+    seen = 0
+    for c in drawings:
+        src = diagram.dot(c, ports=True)
+        known = {b.id for b in (*c.boxes, *c.ports)}
+        edges = [ln for ln in src.splitlines() if " -> " in ln]
+        for ln in edges:
+            assert 'id="' in ln, f"an arrow with no identity: {ln.strip()}"
+            eid = ln.split('id="', 1)[1].split('"', 1)[0]
+            ends = diagram.split_edge(eid)
+            assert ends, f"an arrow id that is not two ends: {eid}"
+            assert ends[0] in known and ends[1] in known, (
+                f"an arrow names a box this drawing does not hold: {eid}"
+            )
+            seen += 1
+    assert seen == lanes, (
+        f"{lanes} arrows in the two models and {seen} in their sources -- one of the lanes "
+        "is drawn without being emitted, or emitted twice"
+    )
+
+
+def test_no_box_id_contains_the_edge_separator(analyzed: Store) -> None:
+    """The claim the split rests on, asserted over every box in the program.
+
+    `split_edge` partitions on the **first** separator, which is exact only while no box id
+    can contain one. If one ever could, the split would name a box that does not exist and
+    the flow panel would answer confidently about nothing (rule 30) -- silently, because
+    every other step in the chain would still work.
+    """
+    comps = diagram.build(_model(analyzed))
+    for c in comps.values():
+        for b in (*c.boxes, *c.ports):
+            assert diagram.EDGE_SEP not in b.id, (
+                f"{b.id} contains {diagram.EDGE_SEP!r}, so an edge id built from it cannot "
+                "be split back into its two ends"
+            )
+
+
+def test_an_arrow_keeps_the_kind_of_flow_and_not_only_its_weight(analyzed: Store) -> None:
+    """A TOUCH and a CALL were indistinguishable in the payload.
+
+    The lanes were `Counter[(src, dst)] -> weight`, so the kind was computed on the way in
+    and dropped on the way out. Asserted over the *program* rather than over a constructed
+    pair: the sample tree touches a database and calls its own routines, so both kinds are
+    there to be told apart, and a mutation that reinstated a bare weight would still add up.
+    """
+    comps = diagram.build(_model(analyzed))
+    seen: set[str] = set()
+    # Both levels. The sample tree is one file, so at compartment level every routine folds
+    # into one box and the only arrows are TOUCH crossings; the CALL arrows appear when that
+    # box is opened. Asserting over one level would assert over one kind.
+    for c in [*comps.values(), _opened(analyzed, comps)]:
+        for lane in (c.inside, c.out, c.into):
+            for pair, kinds in lane.items():
+                assert kinds, f"an arrow with no kind at all: {pair}"
+                seen |= set(kinds)
+                got = diagram.edge_flow(c, *pair)
+                assert got is not None, f"{pair} is drawn and cannot be looked up"
+                assert got[1] == sum(kinds.values()), (
+                    "an arrow's weight and the sum of its kinds disagree -- two answers to "
+                    "one number (rule 13)"
+                )
+    assert {"CALL", "TOUCH"} <= seen, (
+        f"the program folds to only {sorted(seen)}, so this cannot tell a kept kind from a "
+        "constant"
+    )
+
+
+def test_an_arrow_that_is_not_there_is_none_rather_than_empty(analyzed: Store) -> None:
+    """"No such arrow" and "the arrow carries nothing" are different claims."""
+    comps = diagram.build(_model(analyzed))
+    c = max(comps.values(), key=lambda x: len(x.boxes))
+    assert diagram.edge_flow(c, "not|a|box", "nor|is|this") is None
+
+
+def test_the_edge_payload_names_every_arrow_the_drawing_draws(analyzed: Store) -> None:
+    """The hover card reads this map, so a missing arrow is a card that never appears."""
+    comps = diagram.build(_model(analyzed))
+    c = _busiest(comps)
+    payload = diagram.edge_payload(c)
+    for lane in (c.inside, c.out, c.into):
+        for src, dst in lane:
+            eid = diagram.edge_id(src, dst)
+            assert eid in payload, f"{eid} is drawn and is not in the payload"
+            assert payload[eid]["from"] == src and payload[eid]["to"] == dst
+
+
+# --------------------------------------------------------------------------- #
+# Binding an argument to a parameter: the one place this chunk makes a claim about
+# meaning rather than about position, and therefore the one place rule 1 bites.
+# A false binding is worse than no binding -- "this argument is that parameter" is
+# exactly the confident, plausible, wrong answer the tool exists not to produce.
+# --------------------------------------------------------------------------- #
+
+from dunneflow.web.detail import bind_arguments  # noqa: E402
+
+
+def _arg(idx, expr, keyword=None, splat=False):
+    return {"idx": idx, "expr": expr, "keyword": keyword, "splat": splat}
+
+
+def _param(name, kind="positional", type_=None):
+    return {"name": name, "kind": kind, "type": type_, "dflt": None}
+
+
+def test_a_keyword_binds_by_name_and_needs_nothing_else() -> None:
+    out, why = bind_arguments([_arg(0, "5.0", keyword="timeout")],
+                              [_param("url"), _param("timeout", type_="float")],
+                              callee_expr="get", resolved=True)
+    assert out[0]["binds"]["name"] == "timeout"
+    assert out[0]["binds"]["type"] == "float"
+    assert why == ""
+
+
+def test_a_positional_binds_by_index_when_the_callee_is_plain() -> None:
+    out, why = bind_arguments([_arg(0, "a"), _arg(1, "b")],
+                              [_param("first"), _param("second")],
+                              callee_expr="go", resolved=True)
+    assert [x["binds"]["name"] for x in out] == ["first", "second"]
+    assert why == ""
+
+
+def test_an_unresolved_callee_binds_nothing_and_says_why() -> None:
+    """There is no parameter list on the far side. A blank would read as "no such name"."""
+    out, why = bind_arguments([_arg(0, "a")], [], callee_expr="whatever", resolved=False)
+    assert out[0]["binds"] is None
+    assert "not resolved" in why
+
+
+def test_a_variadic_callee_binds_no_position() -> None:
+    out, why = bind_arguments([_arg(0, "a")],
+                              [_param("first"), _param("rest", kind="vararg")],
+                              callee_expr="go", resolved=True)
+    assert out[0]["binds"] is None
+    assert "*args" in why
+
+
+def test_a_keyword_still_binds_on_a_variadic_callee() -> None:
+    """The refusal is about *position*. A name is a name however the callee is shaped."""
+    out, _ = bind_arguments([_arg(0, "1", keyword="mode")],
+                            [_param("rest", kind="vararg"),
+                             _param("mode", kind="keyword")],
+                            callee_expr="go", resolved=True)
+    assert out[0]["binds"]["name"] == "mode"
+
+
+def test_a_splat_binds_to_nothing_ever() -> None:
+    out, _ = bind_arguments([_arg(0, "*xs", splat=True), _arg(1, "**kw", splat=True)],
+                            [_param("a"), _param("b")],
+                            callee_expr="go", resolved=True)
+    assert [x["binds"] for x in out] == [None, None]
+
+
+def test_a_positional_after_a_splat_is_unbindable_too() -> None:
+    """`f(*xs, b)` puts `b` at an index nobody can compute.
+
+    The easy version of this rule stops at the splat and carries on one place out, which
+    binds `b` to the second parameter -- a specific, plausible, wrong answer.
+    """
+    out, _ = bind_arguments([_arg(0, "*xs", splat=True), _arg(1, "b")],
+                            [_param("first"), _param("second")],
+                            callee_expr="go", resolved=True)
+    assert out[1]["binds"] is None
+
+
+def test_self_dot_a_method_skips_the_receiver() -> None:
+    """`self.render(x)` passes `x` to the *second* parameter, and that is certain.
+
+    The dot binds the receiver, and the head being `self` is what makes it knowable rather
+    than likely. Without the offset every argument of every method call lands one parameter
+    early -- which is not a missing answer, it is a wrong one.
+    """
+    out, why = bind_arguments([_arg(0, "x")],
+                              [_param("self"), _param("width", type_="int")],
+                              callee_expr="self.render", resolved=True)
+    assert out[0]["binds"]["name"] == "width"
+    assert why == ""
+
+
+def test_a_dotted_call_to_a_method_refuses_rather_than_guessing() -> None:
+    """`obj.render(x)` and `Cls.render(obj, x)` are the same routine, written two ways.
+
+    Nothing in the expression says which, so nothing is claimed -- and the pane says why,
+    because a blank beside an argument reads as "no such parameter", which is different
+    and false.
+    """
+    out, why = bind_arguments([_arg(0, "x")],
+                              [_param("self"), _param("width")],
+                              callee_expr="enrollment.render", resolved=True)
+    assert out[0]["binds"] is None
+    assert "receiver" in why
+
+
+def test_a_plain_dotted_call_to_a_function_still_binds() -> None:
+    """`mod.helper(x)` has a dot and no receiver, so the refusal above must not catch it."""
+    out, why = bind_arguments([_arg(0, "x")], [_param("path")],
+                              callee_expr="os.path.join", resolved=True)
+    assert out[0]["binds"]["name"] == "path"
+    assert why == ""

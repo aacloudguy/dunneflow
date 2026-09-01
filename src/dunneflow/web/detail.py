@@ -653,6 +653,97 @@ def describe(store: Store, node_id: str,
 # the section this adds gives both a fold and a module node the same answer.
 # --------------------------------------------------------------------------- #
 
+# --------------------------------------------------------------------------- #
+# One edge, opened: what actually flows along it.
+#
+# The third SPECIMEN shape, and the last one the diagram needs. A box says what a
+# thing *is*; an edge says what passes between two of them, which is the question
+# the picture has been drawing an answer to and unable to state.
+#
+# **The precision line, and it is stated in the product rather than only here.** We
+# record the expression a caller wrote. We do not infer what it evaluates to, we do
+# not name its type, and we bind it to a declared parameter only where the alignment
+# is not a guess. A false binding is worse than no binding (rule 1): "this argument
+# is that parameter" is exactly the kind of confident, plausible, wrong answer this
+# whole tool exists not to produce.
+# --------------------------------------------------------------------------- #
+
+# How many declared parameters the receiver eats. `self.render(x)` passes `x` to the
+# *second* parameter, because `self` is bound by the dot -- and that is knowable only
+# when the dot is there and its head is `self` or `cls`. `Cls.render(obj, x)` is the
+# same routine called with the receiver written out, and nothing in the source says
+# which of the two a dotted expression is. So it is one or nothing, never a guess.
+_RECEIVER_HEADS = ("self.", "cls.")
+
+
+def bind_arguments(args: list[dict[str, Any]], params: list[dict[str, Any]],
+                   *, callee_expr: str, resolved: bool) -> tuple[list[dict[str, Any]], str]:
+    """Each argument against the parameter it lands on, where that is not a guess.
+
+    Returns the arguments with a `binds` key added, and **the reason** any of them are
+    unbound -- because "no parameter named beside this argument" and "we decline to
+    say" are different claims and a blank reads as the first.
+
+    Three rules, and each one is a refusal as much as a permission:
+
+    * a **keyword** binds by name, always. `f(timeout=5)` names its parameter in the
+      source; nothing has to be inferred and nothing about the callee can change it.
+    * a **positional** binds by index, and only when the callee is resolved, declares
+      no `*args`, and the receiver question above is settled. An unresolved callee has
+      no parameter list to bind to at all.
+    * a **splat** binds to nothing, ever. `f(*xs)` is not one argument, and the number
+      of parameters it covers is a property of `xs` at run time.
+
+    And one that is easy to miss: **a positional after a splat is unbindable too.**
+    `f(*xs, b)` puts `b` at an index nobody can compute, so the alignment stops at the
+    first splat rather than carrying on one place out.
+    """
+    positional = [p for p in params if p.get("kind") in ("positional_only", "positional")]
+    variadic = any(p.get("kind") == "vararg" for p in params)
+    by_name = {str(p.get("name") or ""): p for p in params}
+
+    offset = 0
+    receiver_known = True
+    if callee_expr.startswith(_RECEIVER_HEADS):
+        offset = 1
+    elif "." in callee_expr and any(p.get("name") in ("self", "cls") for p in positional[:1]):
+        # A dotted call to something that declares `self`. It is either a bound call
+        # with the receiver implicit or an unbound one with it written out, and the
+        # expression cannot tell us which.
+        receiver_known = False
+
+    why = ""
+    if not resolved:
+        why = "the callee is not resolved, so there is no declared parameter list to bind to"
+    elif variadic:
+        why = "the callee takes *args, so a position does not name a parameter"
+    elif not receiver_known:
+        why = ("a dotted call to a method may or may not pass the receiver itself, and the "
+               "expression does not say which")
+
+    out: list[dict[str, Any]] = []
+    seen_splat = False
+    pos = 0
+    for a in args:
+        arg = dict(a)
+        bound: dict[str, Any] | None = None
+        if a.get("splat"):
+            seen_splat = True
+        elif a.get("keyword"):
+            bound = by_name.get(str(a["keyword"]))
+        elif not seen_splat and resolved and not variadic and receiver_known:
+            i = pos + offset
+            if i < len(positional):
+                bound = positional[i]
+        if not a.get("keyword") and not a.get("splat"):
+            pos += 1
+        arg["binds"] = ({"name": bound.get("name"), "type": bound.get("type"),
+                         "default": bound.get("dflt"), "kind": bound.get("kind")}
+                        if bound else None)
+        out.append(arg)
+    return out, why
+
+
 def _by_owner(rows: list[dict[str, Any]], key: str = "routine_id"
               ) -> dict[str, list[dict[str, Any]]]:
     """Group set-scoped rows back to the member each came from."""
@@ -764,3 +855,111 @@ def _fold_where(members: list[dict[str, Any]]) -> dict[str, Any]:
     first = min(int(m["line_start"] or 0) for m in members)
     last = max(int(m["line_end"] or 0) for m in members)
     return {"file": members[0]["file"], "first": first, "last": last}
+
+
+def flow_edge(store: Store, *, edge: str, src: dict[str, Any], dst: dict[str, Any],
+              kinds: list[str], weight: int) -> dict[str, Any]:
+    """One arrow of the diagram, described as what passes along it.
+
+    `src` and `dst` are the drawing's own box records -- the same `box_payload` shape a
+    click already carries -- so nothing here recomputes what the compartment knows. The
+    edge's *kinds* come from the compartment too, and they are what decides which of the
+    three answers this is: a CALL lists call sites, a TOUCH lists operations, a NAMES
+    lists artefacts. An edge can carry more than one and all of them are answered.
+
+    **Call sites are listed, never grouped.** The picture aggregates because a picture
+    wants the connection; the reader who clicks an arrow is asking what actually passes,
+    and "7 calls" is the aggregate they already read off the drawing (rule 32 -- the
+    number must say what it counts). Never bounded either (rule 8): seven call sites is
+    seven rows, and the reader came here to find one of them.
+    """
+    src_ids = [m for m in (src.get("members") or [])]
+    dst_ids = [m for m in (dst.get("members") or [])]
+    src_json, dst_json = json.dumps(src_ids), json.dumps(dst_ids)
+
+    calls: list[dict[str, Any]] = []
+    if "CALL" in kinds:
+        sites = _rows(store, queries.FLOW_CALL_SITES, {"src": src_json, "dst": dst_json})
+        args_by: dict[str, list[dict[str, Any]]] = {}
+        for r in _rows(store, queries.FLOW_CALL_ARGS,
+                       {"sites": json.dumps([str(x["site_id"]) for x in sites])}):
+            args_by.setdefault(str(r["site_id"]), []).append(r)
+        # The callees' declared parameters, in one pass over the set rather than one
+        # query per site -- an edge into a class of sixty-one methods is sixty-one
+        # lookups otherwise, and it is the same `FOLD_PARAMS` the fold pane uses so a
+        # signature cannot read two ways (rule 13).
+        callee_ids = sorted({str(x["callee_id"]) for x in sites if x["callee_id"]})
+        params_by = _by_owner(_rows(store, queries.FOLD_PARAMS,
+                                    {"ids": json.dumps(callee_ids)}))
+        for x in sites:
+            cid = str(x["callee_id"] or "")
+            declared = params_by.get(cid, [])
+            bound, why = bind_arguments(
+                args_by.get(str(x["site_id"]), []),
+                declared,
+                callee_expr=str(x["callee_expr"] or ""),
+                resolved=bool(cid),
+            )
+            calls.append({
+                **x,
+                "args": bound,
+                "unbound_because": why,
+                # The callee's side of the invocation line, from the one renderer, so
+                # what an argument lands on and what the signature says are the same
+                # answer rather than two.
+                "declared": signature_parts([
+                    (r["name"], r["type"], r["dflt"], r["kind"]) for r in declared
+                ]),
+            })
+
+    # What the far box is, when it is not a routine -- and it is spelled two ways
+    # because a boundary is drawn two ways. **Inside** a box it is a `touch` box whose
+    # `what` is the kind; **between** compartments the boundaries live on their own
+    # plate, so the arrow ends at a *port* standing for `ext:DATABASE` and carries a
+    # `plate` instead. Reading only the first spelling returned an edge into the
+    # database with five unfiltered boundaries and no SQL at all -- a panel that looked
+    # like an answer and named none of the twelve statements the arrow was drawn for.
+    what = str(dst.get("what") or "")
+    if not what:
+        plate = str(dst.get("plate") or "")
+        if plate.startswith("ext:"):
+            what = plate[4:]
+    touches: dict[str, list[dict[str, Any]]] = {"sql": [], "net": [], "boundaries": [],
+                                                "artefacts": []}
+    if "TOUCH" in kinds or "NAMES" in kinds:
+        near = {"ids": src_json}
+        if what == "DATABASE":
+            touches["sql"] = _rows(store, queries.FOLD_SQL_OPS, near)
+        if what == "NETWORK":
+            touches["net"] = _rows(store, queries.FOLD_NET_CALLS, near)
+        # Everything the more specific records did not already name (rule 40), narrowed
+        # to the kind this arrow ends at -- the near side touches several kinds and only
+        # one of them is the box that was clicked.
+        touches["boundaries"] = [b for b in _rows(store, queries.FLOW_BOUNDARIES_UNNAMED,
+                                                  near)
+                                 if not what or str(b.get("kind")) == what]
+        if "NAMES" in kinds:
+            touches["artefacts"] = _rows(store, queries.FOLD_ARTEFACTS, near)
+
+    return {
+        "kind": "FLOW",
+        "id": edge,
+        "label": f"{src.get('label') or '?'} → {dst.get('label') or '?'}",
+        "identity": {
+            "from": str(src.get("id") or ""),
+            "to": str(dst.get("id") or ""),
+            "from_label": str(src.get("label") or ""),
+            "to_label": str(dst.get("label") or ""),
+            "from_kind": str(src.get("kind") or ""),
+            "to_kind": str(dst.get("kind") or ""),
+            "kinds": list(kinds),
+            "weight": int(weight),
+            "sites": len(calls),
+            # A port stands for a whole compartment rather than for the thing that was
+            # called, so an edge ending at one does not end where it appears to (rule
+            # 23). Marked, never quietly rendered as if it did.
+            "crosses": str(dst.get("kind") or "") == "port",
+        },
+        "calls": calls,
+        "touches": touches,
+    }

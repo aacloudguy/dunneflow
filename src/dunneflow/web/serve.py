@@ -40,6 +40,7 @@ from .code import build_file, build_files
 from .cover import anomalies as build_anomalies
 from .cover import build as build_cover
 from .detail import describe, hover_card
+from .detail import flow_edge as detail_flow
 from .detail import fold as detail_fold
 from .graph import (
     LEVELS,
@@ -681,6 +682,93 @@ class _Handler(BaseHTTPRequestHandler):
                                self._live.source, revision=base.source_revision)
         self._json(body)
 
+    def _inside_compartment(self, box_id: str, box: diagram.Box) -> diagram.Compartment:
+        """A fold's own routines as a compartment. **The one place that builds one.**
+
+        Two routes want it now -- the drawing of the second level, and the flow behind an
+        arrow on that drawing -- and a second copy of these five queries would be a second
+        answer to what is inside a box the moment either is edited (rule 51).
+
+        Not cached, and that is rule 45's own argument: a compartment is fifty-three
+        drawings from one pass and is built with the others, a box is one of nine thousand
+        and is built when someone opens it. Three grouped queries over indexed columns,
+        measured at 15 ms for eighteen routines and 170 ms for sixty-one.
+        """
+        args = {"ids": json.dumps(list(box.members))}
+        with self._live.lock:
+            base = self._live.current
+            rows = base.store.query
+            members = [dict(r) for r in rows(queries.FOLD_MEMBERS, args)]
+            inner = [dict(r) for r in rows(queries.FOLD_INNER_CALLS, args)]
+            out = [dict(r) for r in rows(queries.FOLD_CALLS_OUT, args)]
+            into = [dict(r) for r in rows(queries.FOLD_CALLS_IN, args)]
+            touches = [dict(r) for r in rows(queries.FOLD_BOUNDARIES, args)]
+            box_of, box_label = dict(base.box_of), dict(base.box_label)
+        for t in touches:
+            t["weight"] = 1
+        return diagram.build_inside(box_id, box, members, inner, out, into, touches,
+                                    box_of, box_label)
+
+    def _r_flow(self, q: dict[str, list[str]]) -> None:
+        """One arrow, opened: what actually passes between two boxes.
+
+        `from` and `to` are box ids; `inside` names the fold when the arrow is on the
+        second level, and is absent on the first. The two levels are two different
+        compartments and an edge id alone cannot say which -- a routine box id is a node
+        id and a first-level box id is `plate|kind|key`, so guessing from the shape would
+        be reading an identity out of a string (rule 30).
+
+        Answered on demand, which is rule 45 where it belongs: the cost is bounded by the
+        reader opening **one** arrow, not by the picture drawing a hundred and fifteen of
+        them.
+
+        An arrow that is not in the compartment is `found: false` and says so. An empty
+        panel would claim the arrow carries nothing, which is a different and false thing.
+        """
+        src_id = (q.get("from") or [""])[0]
+        dst_id = (q.get("to") or [""])[0]
+        inside = (q.get("inside") or [""])[0]
+        if not src_id or not dst_id:
+            self._json({"found": False, "reason": "an edge has two ends and needs both"})
+            return
+
+        comps = self._compartments()
+        if inside:
+            found = diagram.find_box(comps, inside)
+            if found is None or found[1].kind == "port" or not found[1].members:
+                self._json({"found": False, "id": inside,
+                            "reason": "no such box to be inside of"})
+                return
+            comp = self._inside_compartment(inside, found[1])
+        else:
+            comp = comps.get(src_id.partition("|")[0])  # type: ignore[assignment]
+            if comp is None:
+                self._json({"found": False, "reason": "no such compartment"})
+                return
+
+        by_id = {b.id: b for b in (*comp.boxes, *comp.ports)}
+        src, dst = by_id.get(src_id), by_id.get(dst_id)
+        if src is None or dst is None:
+            self._json({"found": False, "id": diagram.edge_id(src_id, dst_id),
+                        "reason": "one end of that arrow is not in this drawing"})
+            return
+        edge = diagram.edge_flow(comp, src_id, dst_id)
+        if edge is None:
+            self._json({"found": False, "id": diagram.edge_id(src_id, dst_id),
+                        "reason": "there is no arrow between those two boxes"})
+            return
+        kinds, weight = edge
+
+        with self._live.lock:
+            store = self._live.current.store
+            body = detail_flow(store, edge=diagram.edge_id(src_id, dst_id),
+                                    src=diagram.box_payload(src),
+                                    dst=diagram.box_payload(dst),
+                                    kinds=kinds, weight=weight)
+        body["found"] = True
+        body["inside_of"] = inside
+        self._json(body)
+
     def _r_inside(self, q: dict[str, list[str]]) -> None:
         """One box, opened: the routines it holds and the flow among them.
 
@@ -714,21 +802,7 @@ class _Handler(BaseHTTPRequestHandler):
                                   "is the bottom of the flow -- neither opens"})
             return
 
-        args = {"ids": json.dumps(list(box.members))}
-        with self._live.lock:
-            base = self._live.current
-            rows = base.store.query
-            members = [dict(r) for r in rows(queries.FOLD_MEMBERS, args)]
-            inner = [dict(r) for r in rows(queries.FOLD_INNER_CALLS, args)]
-            out = [dict(r) for r in rows(queries.FOLD_CALLS_OUT, args)]
-            into = [dict(r) for r in rows(queries.FOLD_CALLS_IN, args)]
-            touches = [dict(r) for r in rows(queries.FOLD_BOUNDARIES, args)]
-            box_of, box_label = dict(base.box_of), dict(base.box_label)
-
-        for t in touches:
-            t["weight"] = 1
-        c = diagram.build_inside(box_id, box, members, inner, out, into, touches,
-                                 box_of, box_label)
+        c = self._inside_compartment(box_id, box)
         ports = (q.get("ports") or ["0"])[0] == "1"
         self._json({
             "id": c.id, "name": c.name, **c.stats,
@@ -739,6 +813,11 @@ class _Handler(BaseHTTPRequestHandler):
             "by_id": {b.id: {"label": b.label, "kind": b.kind, "holds": b.holds,
                              "members": b.members, **b.detail}
                       for b in c.boxes + c.ports},
+            # Every arrow, keyed by the id `dot()` wrote on it, so a hover over one costs
+            # no request. Rule 45's own argument in the other direction: the answer rides
+            # with the picture because it is already computed, and only the *contents* of
+            # an arrow -- the call sites and their arguments -- wait to be asked for.
+            "edges": diagram.edge_payload(c),
             "names": {nid: lbl
                       for b in c.boxes
                       for nid, lbl in zip(b.members, b.labels, strict=True)},
@@ -803,6 +882,11 @@ class _Handler(BaseHTTPRequestHandler):
             # `strict=True`: the two lists are appended in one place in one loop, so a
             # mismatch is impossible today and would silently truncate every box after it
             # if that ever stopped being true.
+            # Every arrow, keyed by the id `dot()` wrote on it, so a hover over one costs
+            # no request. Rule 45's own argument in the other direction: the answer rides
+            # with the picture because it is already computed, and only the *contents* of
+            # an arrow -- the call sites and their arguments -- wait to be asked for.
+            "edges": diagram.edge_payload(c),
             "names": {nid: lbl
                       for b in c.boxes
                       for nid, lbl in zip(b.members, b.labels, strict=True)},
@@ -1366,6 +1450,7 @@ class _Handler(BaseHTTPRequestHandler):
         "/api/diagram": "_r_diagram",
         "/api/fold": "_r_fold",
         "/api/inside": "_r_inside",
+        "/api/flow": "_r_flow",
         "/api/cover": "_r_cover",
         "/api/routines": "_r_routines",
         "/api/packages": "_r_packages",

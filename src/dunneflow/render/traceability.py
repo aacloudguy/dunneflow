@@ -251,13 +251,31 @@ def _headlines(t: Traceability) -> list[str]:
     in_code = t.in_code()
     traced = t.traced()
     planned = counts["LIKELY_LANDED"] + counts["POSSIBLY_LANDED"] + counts["NO_TRACE_IN_CODE"]
+    # **A share of nothing is not zero percent, it is not a number** -- and `analyze`
+    # crashed here rather than saying so. A program that cites no governance id in any
+    # comment is not exotic: it is every program that has not adopted this discipline, which
+    # is most of them. Found by pointing the tool at a four-file fixture, which is the first
+    # thing it has ever been given that had none; Mensores has 593 and could never reach it.
+    #
+    # Stated as an absence rather than filled with a plausible 0% (rule 49): "no ids are
+    # cited in code" and "none of the ids cited in code are documented" are opposite
+    # findings, and a bare 0% claims the second.
+    # The division sits **inside** the guarded branch rather than behind a placeholder
+    # computed above it. A `share = ... if in_code else "—"` was written first and its
+    # fallback was read by nothing -- the empty branch below does not mention it -- so a
+    # mutation putting `0%` back in that limb changed no output and survived. Rule 35 in
+    # three lines of my own: not a weak guard and not a weak mutation, a dead value.
+    built = (f"{in_code:,} ids are cited in code. {traced:,} of them "
+             f"({traced / in_code:.0%}) are findable in the documentation; "
+             f"**{counts['UNDOCUMENTED_WORK']:,} are not there at all**. That is the list "
+             "worth reading first, and it is short enough to read."
+             if in_code else
+             "**No governance ids are cited in code at all.** Nothing here was built "
+             "without a plan, because nothing here names a plan — which is a fact about "
+             "this program's conventions rather than about its work.")
     return [
         "## The two findings\n",
-        "**What was built without a plan.** "
-        f"{in_code:,} ids are cited in code. {traced:,} of them "
-        f"({traced / in_code:.0%}) are findable in the documentation; "
-        f"**{counts['UNDOCUMENTED_WORK']:,} are not there at all**. That is the list "
-        "worth reading first, and it is short enough to read.\n",
+        "**What was built without a plan.** " + built + "\n",
         "**What was planned without landing.** "
         f"{planned:,} ids are the subject of a document and are cited by no comment "
         "anywhere in the code. They are *not* all unbuilt — that is the part this tool "

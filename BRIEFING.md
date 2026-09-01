@@ -163,11 +163,69 @@ is not computed yet.
 
 ## What we are doing now
 
-**Paused 2026-09-01. Chunk 5 is complete, the change worklist sees an argument, and two
-things filed as known are closed.** 747 tests, mypy clean, ruff clean, working tree clean.
-Nothing is half-done.
+**Paused 2026-09-01. Chunk 5 is complete and the change worklist is closed: it sees an
+argument, a constant, and now a rewritten comment.** 758 tests, mypy clean, ruff clean,
+working tree clean. Nothing is half-done.
 
-### The latest: a presence line says what it left out (2026-09-01)
+### The latest: the change worklist sees a rewritten comment (2026-09-01)
+
+**The premise on file was wrong, and usefully.** It said a rewritten explanation above
+unchanged code is *invisible*. It is not invisible; it is **three different wrong answers**,
+each constructed and verified:
+
+| a rewritten comment… | what the page said |
+|---|---|
+| **leading**, file has module-level code (487 of 628) | `<module>` in *edited only* — the file, not the routine, filed under "internal computation" |
+| **leading**, file has none (141 of 628) | **"No differences found."** A stated false claim |
+| **inline**, any file | *edited only* — and a pure re-wrap said the same |
+
+`line_start` is the `def` line, so a leading block is outside its own routine's `body_hash`.
+But the `comments` table already attaches it to the routine it leads, so asking that table
+**names the right subject for free**.
+
+**What it adds on Mensores, stated plainly: no new rows.** 20 routines have differing
+comments and all 20 were already in a band (10 `behaves`, 10 `edited only`). The value there
+is the `comments` tag; the three wrong answers are what the band is for, and this pair —
+three days apart in active development — contains none of them.
+
+**The canonical form was decided by measurement.** 86% of the 18,731 comment lines live in a
+run of two or more, so re-wrapping is the ordinary edit. Re-wrapped at three widths with not
+one word changed: comparing as written reports **1,561 · 1,186 · 1,231** of the 1,870
+routines that own a comment; joined in line order and collapsed reports **none**. The
+experiment was wrong twice first, both times in my favour — `textwrap` splits long
+identifiers mid-word, and the first renumbering merged runs — and now asserts against both.
+
+**And the bound is what made it free.** A comment is text in a file, so equal content hashes
+are equal comments — `filediff`'s argument, needing no sidecar because `files.content_hash`
+is in the graph. 41 ms over every comment, **5.2 ms** over the fifteen files that differ,
+same answer. Measured like for like in a worktree at HEAD: `/api/changes` **451 → 448 ms**,
+every existing band unchanged.
+
+**The band shape was Tom's call:** a fifth band holding only what would otherwise be in
+none, plus a `comments` tag on rows already in one. Not `behaves` — that promises something
+the routine *does* moved. Not `edited only` — that says the change was internal computation,
+which is what this tool exists not to report. `changeCount()` takes it into the headline and
+still leaves `edited_only` out, which is this tool's subject in one expression.
+
+**The glyph is the channel, because the colour channel is full** (rule 69): `explained`
+shares `--diff-moved` with `behaves` and the pilcrow separates them. On the stack, where a
+node is a dot, the two are one colour — and the legend says so.
+
+```
+20/20 mutations caught over a proved-green baseline
+six survived first: two weak mutations, three weak guards, and one a dead value of my own
+```
+
+**Found by dogfooding, unrelated:** `analyze` raised `ZeroDivisionError` rendering
+traceability for a program that cites no governance id in code — not exotic, just every
+program without the discipline. Mensores cites 593 and could never reach it. Now stated as
+an absence rather than a plausible 0% (rule 49).
+
+**Absent rather than estimated:** the graph legend's new row. The key only renders over a
+mounted stack and this tab gets no frames (rule 38); it is asserted and mutation-tested, not
+seen.
+
+### Before that: a presence line says what it left out (2026-09-01)
 
 Two small things Tom took together, and they shared a shape: each was a surface saying less
 than the map already knew.
@@ -338,15 +396,14 @@ and unified on `--diff-moved`; see the top of this file.*
 Nothing in chunk 5 is outstanding, the argument gap is closed, and the two small things
 filed as known are done. Still open and unblocked, and these are now the whole list:
 
-1. **The change worklist does not see a rewritten comment.** `changes.FACTS` does not
-   compare them at all, so a rewritten explanation above unchanged code is invisible — and
-   18,208 comments are the governance layer and the only source of WHY. Left out on Tom's
-   scoping call and wanting its own thought: a reflowed comment is the re-wrap problem
-   again, larger, and prose has no `ast.unparse` to appeal to.
-2. **`CURIOSITIES` has never been put on screen.** `threads.py` computes the outlier family
-   per package already — most commented, most called, deepest closure, most lopsided table
-   — and running that program-wide is most of design rule 15's doorway panel. It says
-   honestly that it is not computed yet.
+1. **`CURIOSITIES` has never been put on screen.** `threads.py` computes the outlier
+   family per package already — most commented, most called, deepest closure, most lopsided
+   table — and running that program-wide is most of design rule 15's doorway panel. It says
+   honestly that it is not computed yet. **This is now the only unblocked item on the list.**
+2. **A rewritten docstring is not compared either**, and it is the same shape as the comment
+   work just done. `routines.docstring` is in the store and nothing compares it; rule 9 keeps
+   docstrings out of code-shaped detectors, which is a different question from whether a
+   change to one is worth reporting. Not in the scope Tom took.
 
 ### Before that: a finding says what makes it that finding (2026-08-31)
 
@@ -1420,6 +1477,11 @@ Rules 28, 29 and 30.
 | An argument binds to a parameter **only where the source settles it**, and says why not | Tom, 2026-08-31; rule 1 |
 | Call sites are listed, never grouped and never bounded — the aggregate is on the arrow | rule 32; rule 8 |
 | The engine's **echo** of a selection it was handed is not a new act by the reader | rule 76 |
+| A rewritten comment is a **fifth band**, never a sixth fact kind — `behaves` promises what a routine *does* | Tom, 2026-09-01; rule 32 |
+| `explained_only` holds only what would be in **no** band; a routine already in one gets a tag | rule 32 |
+| Comments are compared **joined in line order and collapsed**, never as written | rule 1; measured |
+| The comment scan is bounded by **files whose bytes differ** — equal hash, equal comments | `filediff`'s argument |
+| The headline count takes `explained_only` and still leaves `edited_only` out | this tool's subject |
 | *Behaves differently* is **in the difference channel**, on every surface that draws it | Tom, 2026-09-01; rule 51; rule 69 |
 | `edited` stays **out** of that channel — the channel holds three directions and a ground | rule 69 |
 | A presence group's unfold is keyed on the **band**, never on the sign that swaps with the assumption | rule 65; rule 30 |

@@ -414,3 +414,50 @@ def test_every_composed_id_is_marked_inferred():
     assert made
     assert all(a.confidence == Confidence.INFERRED for a in made)
     assert all(a.line == 0 for a in made), "a composed id has no line to point at"
+
+
+def test_a_program_that_cites_no_id_in_code_is_reported_rather_than_a_crash(tmp_path):
+    """`analyze` raised `ZeroDivisionError` here, and the program was ordinary.
+
+    The headline divides the ids findable in documentation by the ids cited in code. A
+    program whose comments name no governance id at all makes that denominator zero -- which
+    is not an exotic corpus, it is every program that has not adopted this discipline. Found
+    by pointing the tool at a four-file fixture, the first thing it had ever been given with
+    none; Mensores cites 593 and could not reach it.
+
+    **Stated as an absence, never filled with a plausible 0%** (rule 49). "No ids are cited
+    in code" and "none of the ids cited in code are documented" are opposite findings, and a
+    bare 0% asserts the second.
+    """
+    root = tmp_path / "quiet"
+    root.mkdir()
+    (root / "prog.py").write_text(
+        "# An ordinary comment that names no plan.\n"
+        "def go():\n    return 1\n", encoding="utf-8")
+    docs = root / "docs"
+    docs.mkdir()
+    (docs / "readme.md").write_text("# A document that names no plan either.\n",
+                                    encoding="utf-8")
+
+    store = Store(root / "graph.db")
+    analyze_tree(root, store)
+    doc_store = DocStore(root / "docs.db")
+    analyze_docs_tree(docs, doc_store, jobs=1)
+    doc_store.mark_duplicates()
+    try:
+        assert measure(store, doc_store).in_code() == 0, (
+            "this fixture cites an id after all, so it does not test the empty case"
+        )
+        text = render_traceability(store, doc_store, tmp_path, root, "quiet", "stamp"
+                                   ).read_text(encoding="utf-8")
+    finally:
+        store.close()
+        doc_store.close()
+
+    assert "No governance ids are cited in code at all" in text, (
+        "the report does not say that nothing here names a plan"
+    )
+    assert "0%) are findable" not in text, (
+        "a share of nothing is rendered as 0%, which claims that ids were cited and none "
+        "of them documented — the opposite finding"
+    )

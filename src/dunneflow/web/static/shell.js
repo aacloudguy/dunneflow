@@ -1079,6 +1079,11 @@ const CHANGE_BANDS = {
   only_in_compared: "only_compared",
   behaves:          "behaves",
   edited_only:      "edited",
+  /* The WHY, and it is a fifth band rather than a sixth fact kind. `behaves` promises that
+     something the routine **does** has moved, and a rewritten comment moves nothing it
+     does; the server subtracts this band from all the others, so the partition below still
+     holds. Tom's call, 2026-09-01. */
+  explained_only:   "explained",
 };
 
 /* id -> status, built once and **hung on the answer** rather than kept in a module
@@ -1087,10 +1092,16 @@ const CHANGE_BANDS = {
  * repaint -- rule 45's shape, and the defect `Graph.connections` cost 2,418 ms for. And
  * riding the answer means it cannot outlive the pair it was built from.
  *
- * The four bands are a partition: `edited_only` excludes `behaves` by construction, and
- * both require the routine to be in *both* versions, which the one-sided bands cannot be.
- * An id in two of them would therefore be the server disagreeing with itself, and it is
- * said out loud rather than resolved by whichever loop ran last. */
+ * The **five** bands are a partition: `edited_only` excludes `behaves` by construction,
+ * `explained_only` excludes both, and all three require the routine to be in *both*
+ * versions, which the one-sided bands cannot be. An id in two of them would therefore be
+ * the server disagreeing with itself, and it is said out loud rather than resolved by
+ * whichever loop ran last.
+ *
+ * `explained_only` holds only what would otherwise be in **no** band -- a routine whose
+ * body, facts and arguments are all identical and whose comments are not. A routine in
+ * another band whose comments also moved carries `comments` among its `moved` kinds
+ * instead, so one row never makes two claims (rule 32). */
 function routineIndex() {
   if (CHANGES._byId) return CHANGES._byId;
   const by = new Map();
@@ -1188,6 +1199,19 @@ function routineChip(id) {
     return { cls: " rtnchg tone-moved", glyph: "\u25cb",
              title: "behaves differently" + (moved ? " \u2014 " + moved : "") };
   }
+  /* **Violet too, and separated by its glyph rather than by a colour.** Rule 69 measured
+     the difference channel full -- three directions and a ground, with nothing left that
+     clears a useful bar in both themes -- so a fifth meaning cannot have a colour of its
+     own, and it says so rather than taking one that fails for some readers. Sharing
+     `--diff-moved` is not a compromise here either: *still here, and different* is exactly
+     what that colour means, and `behaves` and `explained` are two answers to *how*, which
+     is what the glyph is for (design rule 4, and design rule 5's argument for shape).
+
+     The pilcrow, because it is the mark for a paragraph and prose is what moved. */
+  if (st === "explained") {
+    return { cls: " rtnchg tone-moved", glyph: "\u00b6",
+             title: "explained differently \u2014 what it does is the same in both" };
+  }
   if (st === "edited") {
     /* `\u2248`, and it was `\u00b7` until someone looked at the note it appears in. The
        middle dot is also the separator between the counts there, so the line read
@@ -1195,8 +1219,17 @@ function routineChip(id) {
        of them a word and one of them punctuation, and nothing to tell them apart.
        Approximately-equal says the thing anyway: the text moved and the behaviour did
        not. */
+    /* **And whether its explanation moved with it.** `behaves` has always named its kinds
+       here; `edited` had nothing to name until comments were compared, and then it had
+       exactly one thing and went on not saying it. A row tagged `comments` in the worklist
+       and described as "nothing it does changed" in the tooltip is two surfaces answering
+       one question differently (rule 51) -- and the tooltip is the one a reader is more
+       likely to be looking at, because it is where the cursor already is. Found by hovering
+       the column rather than by any check. */
     return { cls: " rtnchg rtnchg-edited", glyph: "\u2248",
-             title: "edited, and nothing it does changed" };
+             title: "edited, and nothing it does changed"
+                    + (moved.includes("comments")
+                       ? " \u2014 though what explains it moved too" : "") };
   }
   /* A routine only the *compared* version has. It has no row in either surface -- both
      list the routines of the version on screen -- so this is reached only if something
@@ -1224,7 +1257,8 @@ function routineChip(id) {
  * and it is reported as what it is: a count of things that are not in this list.
  */
 function routineChangeCounts() {
-  const c = { only_base: 0, behaves: 0, edited: 0, same: 0, total: ROUTINES.length,
+  const c = { only_base: 0, behaves: 0, explained: 0, edited: 0, same: 0,
+              total: ROUTINES.length,
               only_compared: 0 };
   if (!tableOverlayOn() || !CHANGES || CHANGES.loading || !CHANGES.available) return null;
   for (const r of ROUTINES) {
@@ -1381,8 +1415,13 @@ function changeTones() {
      band: "more than one thing happened in this file" is the same claim whichever version
      the reader takes to be newer, so flipping the assumption must not move it. Everything
      above it is directional and everything below it is a ground. */
+  /* `explained` shares `moved`, and the legend says so out loud. The stack has no glyph
+     channel -- a node is a dot -- so the one thing that separates these two everywhere else
+     is unavailable here, and rule 69 forbids inventing a colour for it. A shared colour
+     that is stated beats a sixth hue some readers cannot tell from a fifth. */
   return { only_base: w.base.tone, only_compared: w.compared.tone,
-           behaves: "moved", mixed: "mixed", edited: "quiet", same: "quiet" };
+           behaves: "moved", explained: "moved",
+           mixed: "mixed", edited: "quiet", same: "quiet" };
 }
 
 function pushGraphChange() {
@@ -1478,6 +1517,12 @@ function routineChangeNote() {
      the surfaces still spelling this idea in the plain text colour. */
   if (c.behaves) {
     bits.push(`<b class="tone-moved">○ ${c.behaves.toLocaleString()}</b> behave
+               differently`);
+  }
+  /* Violet, like the count above it and for the same reason: this is the other half of
+     "still here, and different", and the glyph is what says which half. */
+  if (c.explained) {
+    bits.push(`<b class="tone-moved">¶ ${c.explained.toLocaleString()}</b> explained
                differently`);
   }
   if (c.edited) bits.push(`<b>≈ ${c.edited.toLocaleString()}</b> edited only`);
@@ -3885,6 +3930,8 @@ function viewChanges() {
             to reconcile (rule 51). `edited_only` stays out -- it is the fourth thing, and
             rule 69 measured this channel as holding three directions and a ground. */""}
       ${stat(c.behaves, "behave differently", "something they do has moved", "moved")}
+      ${stat(c.explained_only, "explained differently", "and nothing else about them did",
+             "moved")}
       ${stat(c.edited_only, "edited only", "and nothing they do changed")}
     </div>
 
@@ -3911,6 +3958,12 @@ function viewChanges() {
     ${band(second[0], cap(second[1].word), CHANGES[second[0]],
            `Only in the ${second[0] === "only_in_base" ? "base" : "compared"} version.`,
            second[1].tone)}
+    ${band("explained_only", "Explained differently", CHANGES.explained_only,
+           "The same routine, and what <em>explains</em> it has moved — a comment rewritten "
+           + "over code that did not change. It is here rather than under <em>edited</em> "
+           + "because a rewritten WHY is not internal computation; it is the layer this tool "
+           + "exists to show, and the one the code itself never carries.",
+           "moved")}
     ${band("edited", "Edited, behaving the same", CHANGES.edited_only,
            "The body changed and nothing it does did. Internal computation — what this tool "
            + "exists not to report — listed here so leaving it out is not a silent filter.")}
@@ -8506,7 +8559,8 @@ function overlaySwitchHtml(which) {
 function factLaneHtml(path) {
   if (!overlayOn() || !path) return "";
   const f = fileFactChanges(path);
-  const n = f.behaves.length + f.base_only.length + f.compared_only.length;
+  const n = f.behaves.length + f.explained.length
+          + f.base_only.length + f.compared_only.length;
   if (!n) {
     /* Three states, and collapsing any two of them states the wrong one. "Nobody has asked
        yet", "it is being computed" and "nothing here behaves differently" are different
@@ -8518,8 +8572,11 @@ function factLaneHtml(path) {
       return `<div class="codeview-note factlane">reading what behaves differently…</div>`;
     }
     if (!CHANGES.available) return "";
-    return `<div class="codeview-note factlane"><b>Nothing in this file behaves
-      differently.</b> Its text may still differ — that is the lane above.</div>`;
+    /* Both bands named, because `n` counts both. Saying only "behaves differently" here
+       would be a claim narrower than the one this lane just tested -- a file whose comments
+       were rewritten would read as one nothing had been checked about. */
+    return `<div class="codeview-note factlane"><b>Nothing in this file behaves or is
+      explained differently.</b> Its text may still differ — that is the lane above.</div>`;
   }
   const w = diffWords();
   /* The glyph is passed rather than derived from the tone, because there are **three**
@@ -8544,6 +8601,8 @@ function factLaneHtml(path) {
             all use. Rule 51, and rule 71 gave it the cover: a near miss compiles. */""}
       ${f.behaves.map(r => row(r, "moved", "\u25cb",
           "behaves differently — " + moved(r))).join("")}
+      ${f.explained.map(r => row(r, "moved", "\u00b6",
+          "explained differently — its comment moved and its code did not")).join("")}
       ${f.base_only.map(r => row(r, w.base.tone, signOf(w.base.tone),
           w.base.word)).join("")}
       ${f.compared_only.map(r => row(r, w.compared.tone, signOf(w.compared.tone),
@@ -8650,12 +8709,18 @@ function overlayNote() {
  * column it cannot honestly give.
  */
 function fileFactChanges(path) {
-  const empty = { behaves: [], base_only: [], compared_only: [] };
+  const empty = { behaves: [], explained: [], base_only: [], compared_only: [] };
   if (!path || !overlayOn()) return empty;
   if (!CHANGES || CHANGES.loading || !CHANGES.available) return empty;
   const here = (rows) => (rows || []).filter(r => r.file === path);
   return {
     behaves: here(CHANGES.behaves),
+    /* The WHY, in the one pane where the reader can see the prose that moved. Leaving it
+       out here would be a silent filter in the view most able to act on it (design rule 1),
+       and it is the band a text diff comes closest to answering -- which is exactly why the
+       lane has to distinguish them: the text lane says these lines moved, and this says the
+       lines that moved were the explanation. */
+    explained: here(CHANGES.explained_only),
     base_only: here(CHANGES.only_in_base),
     /* Not narrowed by line, and not placeable — see above. Kept because a routine the
        other version has and this one does not is exactly what someone reading this file
@@ -9498,7 +9563,12 @@ function groupCount(g) {
 function changeCount() {
   if (!CHANGES || CHANGES.loading || !CHANGES.available) return "";
   const c = CHANGES.counts;
-  return c.only_in_base + c.only_in_compared + c.behaves;
+  /* `explained_only` is in the headline and `edited_only` is not, and the line between them
+     is this tool's own subject. A body that changed while what the routine does did not is
+     internal computation, which is what this tool exists **not** to report. A rewritten
+     comment over unchanged code is the WHY, which is what it exists to report and the one
+     layer the code itself never carries. */
+  return c.only_in_base + c.only_in_compared + c.behaves + (c.explained_only || 0);
 }
 
 /* What the group says above its rows, and the three states it must keep apart.
@@ -9532,6 +9602,9 @@ function changeNote() {
   }
   /* Stated even when it is the only thing that happened, and stated as what it is: the
      largest band in ordinary work, and the least interesting. */
+  if (c.explained_only) {
+    bits.push(`<span class="tone-moved">${c.explained_only} explained differently</span>`);
+  }
   if (c.edited_only) bits.push(`${c.edited_only} edited without changing what they do`);
   return bits.join(" · ");
 }
@@ -9591,6 +9664,9 @@ function changeList() {
        + band("behaves", "Behaving differently", c.behaves,
               "The same routine, and something it <em>does</em> has moved — what it calls, "
               + "what it touches, what it takes or returns.", "moved")
+       + band("explained_only", "Explained differently", c.explained_only,
+              "The same routine, and what <em>explains</em> it has moved. Nothing it does "
+              + "changed, and neither did a line of its code.", "moved")
        + band("edited", "Edited, behaving the same", c.edited_only,
               "The body changed and nothing it does did. Internal computation, which this "
               + "tool exists not to report — listed so its absence is not a silent filter.");
@@ -11910,7 +11986,8 @@ function changeKeyHtml() {
   const nodes = (graphPayload && graphPayload.nodes) || {};
   const ids = nodes.id || [];
   const shadow = nodes.shadow || [];
-  const tally = { only_base: 0, only_compared: 0, behaves: 0, edited: 0, same: 0,
+  const tally = { only_base: 0, only_compared: 0, behaves: 0, explained: 0, edited: 0,
+                  same: 0,
                   mixed: 0, unclaimed: 0 };
   for (let i = 0; i < ids.length; i++) {
     if (shadow[i] === 1) continue;
@@ -11951,6 +12028,13 @@ function changeKeyHtml() {
             ? "counted, not drawn — the comparison lists routines and this level draws files"
             : "not drawn — this version has no node for them")}
     ${row("tone-moved", "\u25cb", tally.behaves, "behave differently", "")}
+    ${/* The same violet, and the row says so rather than leaving a reader to wonder why two
+          keys share a colour. Rule 69 measured the channel full, and a dot has no glyph to
+          be told apart by -- so on the stack these two are one colour, and this is the only
+          place that can admit it (design rule 1). */""}
+    ${row("tone-moved", "\u00b6", tally.explained, "explained differently",
+          "the same violet — a dot has no glyph, and the difference channel has no sixth "
+          + "colour that every reader can tell from the fifth")}
     ${/* Only the module level can hold more than one band at once: a routine is in one band
           or none, and a file holding sixty-three of them is not. Drawing such a file as any
           single band would be a confident wrong answer with no symptom, so it gets its own

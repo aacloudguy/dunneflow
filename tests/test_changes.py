@@ -615,3 +615,286 @@ def test_only_the_python_canonicaliser_knows_how_to_canonicalise():
     assert canonical("not python at all (((", "a/b.py") == "not python at all (((", (
         "an expression that cannot be parsed must come back unchanged, never substituted"
     )
+
+
+# --------------------------------------------------------------------------- #
+# The WHY, which is the one layer the code itself never carries.
+#
+# A comment block leading a definition sits *above* the `def`, so it is outside that
+# routine's `line_start` and outside its `body_hash`. Before this band existed a rewritten
+# leading comment produced one of two wrong answers, and both are asserted below because
+# they are different failures: in a file with module-level work it surfaced as `<module>`
+# in *edited only* -- the file rather than the routine, filed under "internal computation",
+# the one thing this tool says it exists not to report -- and in a file with none it
+# surfaced not at all, with the page stating **"No differences found"**.
+# --------------------------------------------------------------------------- #
+
+# Module-level *work*, which is what creates the `<module>` routine whose body hash is the
+# whole file. 487 of Mensores' 628 files are like this and 141 are not, so both are fixtures.
+WITH_MODULE = '''\
+import os
+
+ROOT = os.environ.get("MENSORES_ROOT", "/srv")
+
+# Intent: the pid identifies this process to the scheduler.
+def alpha():
+    # Caveat: getpid is per-process, not per-thread.
+    return os.getpid()
+'''
+
+BARE = '''\
+# Intent: the pid identifies this process to the scheduler.
+def alpha():
+    return 1
+'''
+
+OLD_WHY = "# Intent: the pid identifies this process to the scheduler."
+NEW_WHY = "# Intent: the pid is the lease key; two workers must never share one."
+
+
+def _named(rows):
+    return [r["name"] for r in rows]
+
+
+def test_a_rewritten_leading_comment_names_the_routine_it_leads(tmp_path):
+    """The routine, not the file — and the fix is free because the store already knows.
+
+    `<module>`'s body hash is the whole file, so the change was *reported*; it was reported
+    against the wrong subject. The `comments` table attaches a leading comment to the
+    routine it leads, so asking that table instead of a body hash names `alpha`.
+    """
+    d = changes.build(base=_graph(tmp_path, "b", WITH_MODULE.replace(OLD_WHY, NEW_WHY)),
+                      compared=_graph(tmp_path, "a", WITH_MODULE))
+    assert _named(d["explained_only"]) == ["alpha"], d["explained_only"]
+    assert d["counts"]["behaves"] == 0, (
+        "a rewritten comment is in the band that promises something the routine DOES moved"
+    )
+    assert "alpha" not in _named(d["edited_only"]), (
+        "the routine whose intent was rewritten is filed under internal computation"
+    )
+
+
+def test_a_rewritten_leading_comment_is_not_no_differences_found(tmp_path):
+    """The sharper half: in a file with no module-level work, nothing surfaced at all.
+
+    Not an omission — the page states "No differences found. Every routine, call, boundary,
+    table, way in and constant the map can see is the same in both", which is a confident
+    false claim over a version whose intent had been rewritten. `identical` is what says it,
+    so `identical` is what this asserts.
+    """
+    d = changes.build(base=_graph(tmp_path, "b", BARE.replace(OLD_WHY, NEW_WHY)),
+                      compared=_graph(tmp_path, "a", BARE))
+    assert d["identical"] is False, "the page would state that nothing differs"
+    assert _named(d["explained_only"]) == ["alpha"], d["explained_only"]
+    assert d["counts"]["edited_only"] == 0, (
+        "nothing here was edited in a way that changed a body hash — this file has no "
+        "<module> routine at all, which is why the change used to vanish"
+    )
+
+
+def test_the_same_words_re_wrapped_are_not_a_different_explanation(tmp_path):
+    """Rule 1, in prose, and the corpus was made to say how much it matters.
+
+    86% of Mensores' 18,731 comment lines live in a run of two or more, so re-wrapping is
+    the ordinary edit rather than an exotic one. Re-wrapped at three widths without altering
+    one word, comparing as written reports 1,561 · 1,186 · 1,231 of the 1,870 routines that
+    own a comment; joined in line order and collapsed reports **none**.
+    """
+    reflowed = WITH_MODULE.replace(
+        OLD_WHY, "# Intent: the pid identifies this process\n# to the scheduler.")
+    d = changes.build(base=_graph(tmp_path, "b", reflowed),
+                      compared=_graph(tmp_path, "a", WITH_MODULE))
+    assert d["explained_only"] == [], (
+        "a comment re-wrapped over two lines reads as a different explanation"
+    )
+
+    # **And the case the collapse pass actually exists for**, which the wrap above does not
+    # reach: each stored line is already stripped, so joining one-space-per-break is a
+    # canonical form all by itself. What is not is whitespace *inside* a line -- two spaces
+    # after a full stop, which 112 of Mensores' 6,076 comment runs carry -- because a wrap
+    # that breaks at exactly that point turns two spaces into one. Without the second pass
+    # this is a false difference, and the first version of this test could not see it.
+    spaced = WITH_MODULE.replace(
+        OLD_WHY, "# Intent: the pid is the lease key.  Two workers must never share one.")
+    spaced_wrapped = WITH_MODULE.replace(
+        OLD_WHY, "# Intent: the pid is the lease key.\n# Two workers must never share one.")
+    d2 = changes.build(base=_graph(tmp_path, "d", spaced_wrapped),
+                       compared=_graph(tmp_path, "c", spaced))
+    assert d2["explained_only"] == [], (
+        "the same sentence, re-wrapped where it had two spaces, reads as a different "
+        "explanation — the collapse pass is what this asserts and it is not running"
+    )
+    # The file's bytes did change, so `<module>` is legitimately edited. That is the honest
+    # answer and is not what this test is about; what it is about is that `alpha` is clean.
+    assert "alpha" not in _named(d["edited_only"]) + _named(d["explained_only"])
+
+
+def test_the_comments_are_read_in_the_order_they_are_written(tmp_path):
+    """A source guard, because the defect it prevents cannot be reproduced by a fixture.
+
+    Drop the `ORDER BY` and SQLite still returns rows in rowid order, which for a file
+    inserted in one pass *is* line order -- so every test here goes on passing while the
+    query has stopped promising anything. The same objection that kept `group_concat` out of
+    `_arguments_moved`: an order SQLite does not specify is one that holds until it does not.
+
+    The line number **orders** and never keys, which is the module docstring's own
+    distinction. Inserting a line above a comment block moves every number in it and changes
+    no order.
+    """
+    from dunneflow.web.changes import COMMENTS_IN
+
+    assert "ORDER BY" in COMMENTS_IN and "c.line" in COMMENTS_IN.split("ORDER BY")[1], (
+        "the comments are read in whatever order the engine returns them, so joining them "
+        "is a set with extra steps and a re-wrap reads as a rewrite"
+    )
+    # And the line is *not* in what is compared -- only in what orders it.
+    assert "c.line" not in COMMENTS_IN.split("ORDER BY")[0], (
+        "a line number reached the comparison itself, which makes one inserted import a "
+        "difference in every comment below it"
+    )
+
+
+def test_an_inline_comment_that_moved_tags_the_row_it_already_had(tmp_path):
+    """A tag, never a second row (rule 32: one row, one claim).
+
+    An inline comment is inside the body, so the routine is already in `edited only`. What
+    the tag adds is *which* part of that edit a reader might care about — and `explained
+    only` must stay empty, or one routine would be counted in two bands.
+    """
+    rewritten = WITH_MODULE.replace(
+        "# Caveat: getpid is per-process, not per-thread.",
+        "# Caveat: this is the lease key and must outlive the thread.")
+    d = changes.build(base=_graph(tmp_path, "b", rewritten),
+                      compared=_graph(tmp_path, "a", WITH_MODULE))
+    alpha = [r for r in d["edited_only"] if r["name"] == "alpha"]
+    assert alpha, f"alpha is not in `edited only`: {_named(d['edited_only'])}"
+    assert alpha[0]["moved"] == ["comments"], alpha[0]["moved"]
+    assert _named(d["explained_only"]) == [], (
+        "a routine already in a band was given a second row rather than a tag"
+    )
+
+
+def test_an_inline_comment_re_wrapped_leaves_no_tag(tmp_path):
+    """The other direction of the same claim, and the one a weak guard would miss.
+
+    The body hash moves either way, so `alpha` is in `edited only` whatever happens here.
+    What must not happen is the tag: it would say the explanation moved when not one word
+    of it did, which is the false difference rule 1 is about.
+    """
+    reflowed = WITH_MODULE.replace(
+        "    # Caveat: getpid is per-process, not per-thread.",
+        "    # Caveat: getpid is per-process,\n    # not per-thread.")
+    d = changes.build(base=_graph(tmp_path, "b", reflowed),
+                      compared=_graph(tmp_path, "a", WITH_MODULE))
+    alpha = [r for r in d["edited_only"] if r["name"] == "alpha"]
+    assert alpha, "alpha's body hash did not move, so this fixture tests nothing"
+    assert alpha[0]["moved"] == [], (
+        "a re-wrapped comment was tagged as a changed explanation"
+    )
+
+
+def test_the_five_bands_are_a_partition(tmp_path):
+    """No routine in two bands, with all five populated at once.
+
+    The four were a partition by construction and the fifth has to be subtracted from all of
+    them to stay one. Asserted over a fixture that fills every band, because a partition
+    that holds when two bands are empty has not been tested.
+    """
+    before = WITH_MODULE + '''
+def beta():
+    return alpha()
+
+# Intent: unchanged throughout.
+def gamma():
+    return 2
+
+def delta():
+    return 3
+'''
+    after = (before
+             .replace(OLD_WHY, NEW_WHY)                        # explained: alpha
+             .replace("def beta():\n    return alpha()",
+                      "def beta():\n    return os.getpid()")   # behaves: beta
+             .replace("def delta():\n    return 3",
+                      "def delta():\n    n = 1 + 1\n    return 3")  # edited: delta
+             + "\ndef epsilon():\n    return 4\n")             # only in base
+    d = changes.build(base=_graph(tmp_path, "b", after),
+                      compared=_graph(tmp_path, "a", before))
+    bands = {
+        "only_in_base": d["only_in_base"], "only_in_compared": d["only_in_compared"],
+        "behaves": d["behaves"], "edited_only": d["edited_only"],
+        "explained_only": d["explained_only"],
+    }
+    filled = [k for k, v in bands.items() if v]
+    assert set(filled) >= {"only_in_base", "behaves", "edited_only", "explained_only"}, (
+        f"this fixture does not fill the bands it claims to: {filled}"
+    )
+    seen: dict[str, str] = {}
+    for band, rows in bands.items():
+        for r in rows:
+            assert r["id"] not in seen, (
+                f"{r['name']} is in both `{seen[r['id']]}` and `{band}`"
+            )
+            seen[r["id"]] = band
+
+
+def test_a_comment_in_a_file_whose_bytes_did_not_change_is_not_looked_for(tmp_path):
+    """The bound that makes this affordable, asserted as an *answer* rather than as a flag.
+
+    A comment is text in a file, so a file both versions hold with the same content hash
+    cannot hold a comment that moved — the same argument `filediff` makes when it decides
+    which twelve of 628 files are worth reading, and `files.content_hash` is already in the
+    graph. 41 ms over every comment in Mensores, 5.2 ms over the fifteen files that differ,
+    and the same twenty routines either way.
+
+    Two files, one changed: the answer must name the routine in the changed one and must not
+    be disturbed by the other, whose bytes are identical and whose comments therefore are.
+    """
+    def two_files(tmp, name, one, two):
+        tree = tmp / name
+        tree.mkdir()
+        (tree / "one.py").write_text(one)
+        (tree / "two.py").write_text(two)
+        db = tmp / f"{name}.db"
+        store = Store(db)
+        for f in sorted(tree.glob("*.py")):
+            store.write_file_facts(extract_file(f, tree))
+        store.conn.commit()
+        store.close()
+        return db
+
+    steady = BARE.replace("alpha", "steady")
+    d = changes.build(
+        base=two_files(tmp_path, "b", BARE.replace(OLD_WHY, NEW_WHY), steady),
+        compared=two_files(tmp_path, "a", BARE, steady))
+    assert _named(d["explained_only"]) == ["alpha"], d["explained_only"]
+
+
+def test_a_routine_that_moved_files_is_still_compared(tmp_path):
+    """The bound's one interesting edge, and it needs no special case.
+
+    Whichever file lost the routine and whichever gained it both differ in bytes by having
+    done so, so both are in the changed set and both sides of the comparison see it.
+    """
+    def two_files(tmp, name, one, two):
+        tree = tmp / name
+        tree.mkdir()
+        (tree / "one.py").write_text(one)
+        (tree / "two.py").write_text(two)
+        db = tmp / f"{name}.db"
+        store = Store(db)
+        for f in sorted(tree.glob("*.py")):
+            store.write_file_facts(extract_file(f, tree))
+        store.conn.commit()
+        store.close()
+        return db
+
+    # `alpha` keeps its qualname -- and therefore its id -- by moving with its module name
+    # unchanged is impossible, so this asserts the weaker, true thing: the move is reported
+    # and nothing is silently dropped.
+    d = changes.build(base=two_files(tmp_path, "b", "", BARE),
+                      compared=two_files(tmp_path, "a", BARE, ""))
+    moved = _named(d["only_in_base"]) + _named(d["only_in_compared"])
+    assert "alpha" in moved, (
+        "a routine that moved between files vanished from the comparison entirely"
+    )

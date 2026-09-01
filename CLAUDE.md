@@ -396,6 +396,7 @@ The change worklist, comparing two revisions of Mensores (4,733 routines against
 |---|---|---|
 | `/api/changes`, warm | < 500 ms | **480 ms — and that is 20 ms of headroom** |
 | …the same before the arguments and constants landed | | 266 ms |
+| …with the comment lane added | | **no measurable change: 451 → 448 ms, median of four** |
 | …first comparison of a session | < 5 s | **1.4 s – 23 s, and it is the disk** |
 | …the same, cached | < 50 ms | 0.7 ms |
 
@@ -545,14 +546,24 @@ docs   ──► extract ──► docs.db  (SQLite) ─────────
   membership test is `Convention.glob`, which is the same string the exceptions query is
   built from, so the claim and the population cannot drift (rule 41).
 - `web/changes.py` — the **fact lane**: what a routine does differently, which routines and
-  tables and constants each version has, and **what a caller passes**. `call_args` is
+  tables and constants each version has, **what a caller passes**, and **what explains it**. `call_args` is
   compared by joining through `calls.site_id` to reach an owner — and `site_id` itself is
   kept *out* of the key, because it carries an ordinal among identical expressions and
   inserting a third `emit()` would renumber every site after it. Arguments are canonicalised
   before being judged different, because they are stored as written (rules 8 and 75) and a
   re-wrapped message is not a change to what a routine does; **constants are not**, because
   `_literal` already unparses them on the way in. Two columns, two answers, and the
-  difference is how each is filled rather than what it holds.
+  difference is how each is filled rather than what it holds. **Comments are a third
+  answer to the same question, and a band of their own.** A leading comment sits above the
+  `def` and so outside that routine's `body_hash` — rewritten, it surfaced as `<module>` in
+  *edited only* or as *"No differences found"*, depending only on whether the file had
+  module-level code. `explained_only` holds what would otherwise be in no band and a routine
+  already in one carries a `comments` tag instead, so the four bands stay a partition. They
+  are compared **joined in line order and collapsed**, never as written: 86% of Mensores'
+  18,731 comment lines live in a run of two or more, and a corpus-wide re-wrap that changes
+  no word reports 1,561 false differences as written and none joined. Bounded to the files
+  whose `content_hash` differs — 41 ms to 5.2 ms, same answer — which is why it costs
+  `/api/changes` nothing measurable (451 → 448 ms).
 - `web/filediff.py` — the **text lane** of a comparison, beside `changes.py`'s fact lane.
   The file-level answer costs **no body reads at all**: the sidecar is content-addressed,
   so equal hashes are equal bytes and comparing two path maps *is* the file-level diff.

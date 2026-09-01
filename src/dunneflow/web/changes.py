@@ -131,6 +131,40 @@ SELECT c.caller_id AS o, c.callee_expr, a.idx, a.expr, a.keyword, a.splat, c.fil
   FROM {db}.call_args a JOIN {db}.calls c ON c.site_id = a.site_id
 """
 
+# Every comment a routine owns, in the order it is written, for the routines living in
+# files whose bytes differ.
+#
+# **The bound is what makes this affordable, and it is sound rather than a sample.** A
+# comment is text in a file, so a file both versions hold with the same content hash cannot
+# hold a comment that moved -- the same argument `filediff.py` makes when it decides which
+# twelve of 628 files are worth reading, and it needs no sidecar here because
+# `files.content_hash` is already in the graph. Measured on Mensores' pair: 41 ms over all
+# 18,731 comment lines a side, **5.2 ms** over the fifteen files whose bytes differ, and the
+# same twenty routines either way. `/api/changes` has 20 ms of headroom and the first number
+# does not fit in it.
+#
+# A routine that moved between files is covered without a special case: whichever file lost
+# it and whichever gained it both differ in bytes by having done so, so both are in the set.
+CHANGED_FILES = """
+SELECT path FROM (SELECT path, content_hash FROM {B}.files
+                  EXCEPT SELECT path, content_hash FROM {A}.files)
+UNION
+SELECT path FROM (SELECT path, content_hash FROM {A}.files
+                  EXCEPT SELECT path, content_hash FROM {B}.files)
+"""
+
+# `ORDER BY line`, and the line number is used to **order** rather than to key -- the
+# distinction the module docstring turns on. Inserting a line above a comment block moves
+# every number in it and changes no order, so nothing here is disturbed by an edit
+# elsewhere; what an order does carry is that moving one comment past another is a change to
+# what explains what, which it is.
+COMMENTS_IN = """
+SELECT c.routine_id, c.text
+  FROM {db}.comments c JOIN {db}.routines r ON r.id = c.routine_id
+ WHERE r.file IN ({q})
+ ORDER BY c.routine_id, c.line
+"""
+
 # A constant present in both versions, holding something different.
 #
 # `constants` has always been in `PRESENCE`, compared by name -- so a value that moved was
@@ -291,6 +325,75 @@ def _arguments_moved(conn: sqlite3.Connection, A: str, B: str) -> set[str]:
             and meant(here.get(rid, [])) != meant(there.get(rid, []))}
 
 
+def _comments_moved(conn: sqlite3.Connection, A: str, B: str) -> set[str]:
+    """Routines the two versions **explain** differently.
+
+    The WHY layer, and the only one the code itself never carries. `FACTS` compares what a
+    routine *does*; this compares what somebody wrote down about it, which is why it is its
+    own band rather than a sixth fact kind (see `build`).
+
+    **What was wrong before this existed, in three different ways.** A comment block leading
+    a definition sits *above* the `def`, so it is outside that routine's `line_start` and
+    outside its `body_hash`. Rewrite one and:
+
+    * in a file with module-level work -- 487 of Mensores' 628 -- the change surfaces as
+      `<module>` in *edited only*, which names the file rather than the routine whose intent
+      was rewritten and files the WHY under "internal computation", the one thing this tool
+      says it exists not to report;
+    * in a file with none -- the other 141 -- nothing surfaces at all and the page states
+      **"No differences found"**, which is a false claim rather than an omission;
+    * and an *inline* comment re-wrapped, saying nothing new, lands in *edited only* as a
+      body change.
+
+    The first two are fixed by asking the `comments` table instead of a body hash: a leading
+    comment is attached to the routine it leads, so the right subject is named for free.
+
+    **Joined in line order and collapsed, not compared as written**, and the corpus was made
+    to say which. Re-wrapping every comment in Mensores at three widths without altering one
+    word -- 86% of its 18,731 comment lines live in a run of two or more, so this is the
+    dominant edit, not an exotic one:
+
+        compared as written    1,561 · 1,186 · 1,231 routines falsely reported
+        joined and collapsed       0 ·     0 ·     0
+
+    1,561 of the 1,870 routines that own a comment. Comparing as written is not a stricter
+    reading, it is unusable, and rule 1 decides it: a false difference tells the reader
+    something moved when it did not.
+
+    `_constants_moved` said whoever added comments here would have to ask the canonical
+    question a third time, and that the answer would depend on how the column is filled. It
+    does. A constant reaches the store through `ast.unparse` and is already canonical; an
+    argument is a byte slice and needs a pass; a comment is **one row per physical line**,
+    stripped of its marker and nothing else, so the pass it needs is not about a language at
+    all -- it is about where somebody pressed return. That is why it is done here rather than
+    behind the `canonical/` seam: joining lines and collapsing runs of whitespace is prose
+    handling, and prose is prose in every language (rule 15, from the other side).
+
+    Two passes, for `_arguments_moved`'s reason and with the same soundness argument
+    inverted: collapsing whitespace can only make two strings *more* equal, so the cheap
+    pass -- comparing the joined strings as stored -- is a superset by construction and the
+    second pass can only ever remove candidates.
+    """
+    files = [r[0] for r in conn.execute(CHANGED_FILES.format(A=A, B=B))]
+    if not files:
+        return set()
+    q = ",".join("?" * len(files))
+
+    def side(db: str) -> dict[str, str]:
+        cur = conn.cursor()
+        cur.row_factory = None
+        out: dict[str, list[str]] = {}
+        for rid, text in cur.execute(COMMENTS_IN.format(db=db, q=q), files):
+            out.setdefault(rid, []).append(text)
+        return {k: " ".join(v) for k, v in out.items()}
+
+    here, there = side(A), side(B)
+    return {rid for rid in here.keys() | there.keys()
+            if here.get(rid, "") != there.get(rid, "")
+            and " ".join(here.get(rid, "").split())
+            != " ".join(there.get(rid, "").split())}
+
+
 def _constants_moved(conn: sqlite3.Connection, A: str, B: str) -> list[str]:
     """Constants both versions declare, holding something different.
 
@@ -394,15 +497,43 @@ def build(base: Path, compared: Path,
             f"SELECT id FROM {A}.routines INTERSECT SELECT id FROM {B}.routines")}
         behaves = {rid: sorted(k) for rid, k in moved.items() if rid in both}
 
+        # **Deliberately not a sixth `FACTS` row, and not folded into `moved`.** Putting it
+        # there would make every routine whose comment was rewritten *behave differently* --
+        # a band that promises something the routine **does** has moved, about a change that
+        # moved nothing it does. That is the mistake the argument canonicaliser was written
+        # to avoid, one fact type over. Tom's call, 2026-09-01: its own band, and a tag on
+        # the rows that are already in one.
+        commented = _comments_moved(conn, A, B) & both
+
         named = {r["id"]: dict(r) for r in conn.execute(
             f"SELECT id, name, qualname, module, file, line_start FROM {B}.routines")}
+
+        def tags(rid: str, kinds: list[str]) -> list[str]:
+            """What moved, with `comments` last because it is not one of the others.
+
+            It rides on the row rather than in `moved` itself so the band a routine lands in
+            is decided by what it *does* and never by what explains it (rule 32: one row,
+            one claim, and the tag says which claim it is).
+            """
+            return [*kinds, "comments"] if rid in commented else kinds
+
         behaves_rows = [
-            {**named[rid], "moved": kinds}
+            {**named[rid], "moved": tags(rid, kinds)}
             for rid, kinds in sorted(behaves.items(),
                                      key=lambda kv: named.get(kv[0], {}).get("qualname", ""))
             if rid in named
         ]
-        edited_only = [row for rid, row in edited.items() if rid not in behaves]
+        edited_only = [{**row, "moved": tags(rid, [])}
+                       for rid, row in edited.items() if rid not in behaves]
+        # The fifth band, and it holds exactly what would otherwise be in none: the same
+        # routine, the same body, the same facts, and what explains it has moved. The four
+        # bands stay a partition because this one is defined by subtraction from all of them.
+        explained_only = [
+            named[rid] for rid in sorted(
+                commented - behaves.keys() - edited.keys(),
+                key=lambda r: named.get(r, {}).get("qualname", ""))
+            if rid in named
+        ]
 
         presence = {}
         for table, (key, label) in PRESENCE.items():
@@ -434,18 +565,24 @@ def build(base: Path, compared: Path,
                 "only_in_compared": len(only_comp),
                 "behaves": len(behaves_rows),
                 "edited_only": len(edited_only),
+                "explained_only": len(explained_only),
                 "routines_base": conn.execute(
                     f"SELECT COUNT(*) FROM {B}.routines").fetchone()[0],
                 "routines_compared": conn.execute(
                     f"SELECT COUNT(*) FROM {A}.routines").fetchone()[0],
             },
+            # `explained_only` is in here, and it is the whole reason the band exists: a
+            # rewritten leading comment used to leave every other term zero, so the page
+            # stated "No differences found" over a version whose intent had been rewritten.
             "identical": not (only_base or only_comp or behaves_rows or edited_only
+                              or explained_only
                               or any(v["only_in_base"] or v["only_in_compared"] or v["moved"]
                                      for v in presence.values())),
             "only_in_base": only_base,
             "only_in_compared": only_comp,
             "behaves": behaves_rows,
             "edited_only": edited_only,
+            "explained_only": explained_only,
             "presence": presence,
         }
     finally:

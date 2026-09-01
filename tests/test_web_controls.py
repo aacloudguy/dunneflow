@@ -6042,8 +6042,15 @@ def test_every_change_band_the_server_sends_becomes_a_status() -> None:
     comparison genuinely found nothing about. Rule 44's shape -- a view reading the fields a
     server sends -- pointed the other way, at the fields it must not ignore.
 
-    The four presence and behaviour bands only. `counts`, `presence` and `identical` are
-    about the comparison rather than about one routine, and nothing here should map them.
+    The bands only. `counts`, `presence` and `identical` are about the comparison rather
+    than about one routine, and nothing here should map them.
+
+    **Named by what it is not.** The first version listed the four band names and asserted
+    it had found four -- so `explained_only`, sent by the server and mapped by the client,
+    passed straight through a guard whose whole subject is bands the client forgets. An
+    inclusion list can only ever check what somebody remembered to add to it; the exclusion
+    list below is three keys that will not grow, and every band after it is covered by
+    having been born.
     """
     js = _code(_read("shell.js"))
     py = (Path(__file__).resolve().parents[1] / "src" / "dunneflow" / "web"
@@ -6053,11 +6060,22 @@ def test_every_change_band_the_server_sends_becomes_a_status() -> None:
     assert m, "CHANGE_BANDS is no longer an object literal; this guard is blind"
     mapped = set(re.findall(r"(\w+):", m.group(1)))
 
-    ret = py[py.index("        return {"):]
-    served = set(re.findall(r'^\s*"(\w+)": ', ret, re.M))
-    bands = {k for k in served
-             if k in {"only_in_base", "only_in_compared", "behaves", "edited_only"}}
-    assert len(bands) == 4, f"changes.py sends {sorted(bands)}; this guard is blind"
+    # **The top-level keys, read with `ast`.** A regex over the returned block also finds
+    # the keys nested inside `counts` and `presence` -- `routines_base`, `moved` -- which the
+    # inclusion list used to hide by never asking about them. Reading the literal is exact,
+    # and it is the same instrument `test_the_diff_asks_for_a_canonical_form` had to reach
+    # for when prose kept tripping a containment check (rule 43).
+    import ast as _ast
+
+    build = next(n for n in _ast.walk(_ast.parse(py))
+                 if isinstance(n, _ast.FunctionDef) and n.name == "build")
+    ret = next(n.value for n in _ast.walk(build)
+               if isinstance(n, _ast.Return) and isinstance(n.value, _ast.Dict))
+    assert isinstance(ret, _ast.Dict)
+    served = {k.value for k in ret.keys
+              if isinstance(k, _ast.Constant) and isinstance(k.value, str)}
+    bands = served - {"counts", "identical", "presence"}
+    assert len(bands) >= 4, f"changes.py sends {sorted(bands)}; this guard is blind"
     assert bands <= mapped, (
         f"the bands {sorted(bands - mapped)} reach no status, so every routine in them "
         "renders as unchanged"
@@ -8425,6 +8443,98 @@ def test_behaving_differently_is_drawn_in_the_channel_on_every_surface() -> None
     )
     assert 'row("tone-moved"' in _fn(js, "changeKeyHtml"), (
         "the graph legend no longer spells this band in the channel"
+    )
+
+
+def test_the_why_is_a_band_of_its_own_on_every_surface_that_draws_a_band() -> None:
+    """The fifth band, and the two things that must stay true of it.
+
+    **It is not `behaves`.** That band promises something the routine *does* has moved, and a
+    rewritten comment moves nothing it does -- putting it there is the mistake the argument
+    canonicaliser was written to avoid, one fact type over. So `explained` takes the pilcrow
+    and `behaves` keeps the ring, and neither may borrow the other's glyph.
+
+    **It is not a new colour.** Rule 69 measured the difference channel full: three
+    directions and a ground, with nothing left that clears a useful bar in both themes. So
+    it shares `--diff-moved` with `behaves` -- *still here, and different* is exactly what
+    that colour means -- and the glyph is what separates them. On the stack, where a node is
+    a dot and there is no glyph, they are one colour, and the legend is the only place that
+    can admit it (design rule 1).
+
+    Every surface, because a band drawn in four places out of six is a silent filter in the
+    two that forgot it.
+    """
+    js = _code(_read("shell.js"))
+
+    # The routing table, so an unhandled band is a named error rather than a routine that
+    # quietly reads as unchanged (design rule 16).
+    m = re.search(r"const CHANGE_BANDS = \{(.*?)\n\};", js, re.S)
+    assert m and re.search(r"explained_only:\s*\"explained\"", m.group(1)), (
+        "the fifth band reaches no status, so every routine in it renders as unchanged"
+    )
+
+    chip = _fn(js, "routineChip")
+    body = chip[chip.index('st === "explained"'):]
+    body = body[:body.index('st === "edited"')]
+    assert "tone-moved" in body, "the mark has left the difference channel"
+    glyph = re.search(r'glyph:\s*"([^"]+)"', body)
+    assert glyph and glyph.group(1) in ("\\u00b6", "\u00b6"), (
+        f"the mark is {glyph and glyph.group(1)!r}; the pilcrow is what says prose moved"
+    )
+    # And it is not the ring. Two bands in one colour separated by nothing is the colour
+    # saying nothing (design rule 4), and it is the failure this shape is one step from.
+    beh = chip[chip.index('st === "behaves"'):]
+    beh = beh[:beh.index('st === "edited"')]
+    bg = re.search(r'glyph:\s*"([^"]+)"', beh)
+    assert bg and bg.group(1) != glyph.group(1), (
+        "`behaves` and `explained` draw the same glyph in the same colour, so nothing on "
+        "the row says which of the two it is"
+    )
+
+    # The stack shares the tone, deliberately, and the legend says so.
+    assert 'explained: "moved"' in _fn(js, "changeTones"), (
+        "the stack paints this band something other than the difference channel's third "
+        "direction"
+    )
+    key = _fn(js, "changeKeyHtml")
+    assert "tally.explained" in key, "the legend counts every band but this one"
+    # **Out of the `row(...)` call, never out of the text around it.** The first version
+    # looked for the explanation within 400 characters either side, and `_code()` does not
+    # strip a comment opened inside a template expression -- so it was reading the note
+    # explaining the decision and calling it the note on the screen. Rule 43 in the guard:
+    # a check that vouches for prose nobody renders has checked nothing.
+    call = re.search(r'row\("tone-moved",\s*"[^"]*",\s*tally\.explained,\s*'
+                     r'"[^"]*",\s*(.*?)\)\}', key, re.S)
+    assert call, "the legend's row for this band is no longer a `row(...)` call"
+    why = call.group(1)
+    assert "violet" in why and len(why) > 20, (
+        f"the legend draws two keys in one colour and its own row says {why!r} about it -- "
+        "a reader is left to decide whether the repeat is a mistake (design rule 1)"
+    )
+
+    # Every surface that draws a band draws this one.
+    # **What each one reads, not that each one mentions it.** `"explained" in the function`
+    # stays true of `explained: []`, which is the band drawn as empty -- the shape rule 35
+    # is about, and the one mutation of these three that survived the first pass.
+    for fn, what, needs in (
+            ("viewChanges", "the change worklist page", "CHANGES.explained_only"),
+            ("changeList", "the navigator's Changes group", "c.explained_only"),
+            ("fileFactChanges", "the code browser's fact lane",
+             "explained: here(CHANGES.explained_only)")):
+        assert needs in _fn(js, fn), (
+            f"{what} does not read the fifth band, so it is a silent filter there"
+        )
+    assert re.search(r'stat\(c\.explained_only,[^)]*"moved"\)', _fn(js, "viewChanges"), re.S), (
+        "the page has a band and no figure for it, so the four numbers at the top no longer "
+        "add up to what the bands below them hold (rule 32)"
+    )
+
+    # And the headline count takes it and leaves `edited_only` -- which is the line this
+    # whole tool is drawn on. A body that changed while what the routine does did not is
+    # internal computation; a comment rewritten over unchanged code is the WHY.
+    cc = _fn(js, "changeCount")
+    assert "explained_only" in cc and "edited_only" not in cc, (
+        "the group's headline count no longer separates the WHY from internal computation"
     )
 
 

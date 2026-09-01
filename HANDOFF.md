@@ -3845,6 +3845,197 @@ question answered first — what makes two findings in two versions the same fin
 carries no id and 93 of Mensores' 106 are `LOST_EDGE`, so pairing them would invent an
 identity (rule 1).
 
+## The change worklist sees a rewritten comment — 2026-09-01
+
+The last gap in `changes.FACTS`, and the premise on file was wrong in a way worth keeping.
+It was written down as *a rewritten explanation above unchanged code is invisible*. It is
+not invisible; it is **three different wrong answers**, and only one of them is silence.
+
+### What the tool said before, verified case by case
+
+`line_start` is the `def` line, so a comment block leading a definition sits above it and
+outside that routine's `body_hash`. Each row below was constructed and run, and the
+mechanism confirmed in the store rather than argued:
+
+| a rewritten comment… | what the page said |
+|---|---|
+| **leading**, in a file with module-level code (487 of Mensores' 628) | `<module>` in *edited only* — the file rather than the routine, filed under "internal computation, which this tool exists not to report" |
+| **leading**, in a file with none (141 of 628) | **"No differences found."** A stated false claim, not an omission |
+| **inline**, any file | *edited only* on the right routine, and a pure re-wrap says the same thing |
+
+The `comments` table already attaches a leading comment to the routine it leads —
+`alpha` owns it and `<module>` owns none — so asking that table instead of a body hash
+**names the right subject for free**. That is what makes this a read-side change with no
+re-analysis behind it.
+
+### What it adds on the real corpus, stated plainly: no new rows
+
+```
+20 routines have differing comments · all 20 were already in a band
+10 in `behaves`, 10 in `edited only` · 0 reclassified · 0 rows added
+```
+
+Recorded as it is rather than as it was hoped. Mensores' two versions are three days apart
+in active development, so every comment change there rides along with a code change; the
+value on that corpus is the `comments` tag on twenty rows, and the three wrong answers above
+are what the band is actually for. A documentation-tidying commit is the case it catches,
+and this pair does not contain one.
+
+### The canonical form, decided by measurement rather than taste
+
+86% of Mensores' 18,731 comment lines live in a contiguous run of two or more, so
+re-wrapping is the ordinary edit and not an exotic one. Re-wrapping every run at three
+widths without altering one word:
+
+```
+compared as written (set of text + leading)   1,561 · 1,186 · 1,231 routines falsely reported
+joined in line order, whitespace collapsed        0 ·     0 ·     0
+```
+
+1,561 of the 1,870 routines that own a comment. Comparing as written is not a stricter
+reading, it is unusable, and rule 1 decides it.
+
+**The experiment was wrong twice before it was right, both times in my favour.** `textwrap`
+splits a long identifier mid-word by default, which is a corruption rather than a re-wrap;
+and the first renumbering let a lengthened run overrun the next one's start, merging two
+runs. Both showed the joined form failing at 518 when it does not fail at all. Each is now
+asserted against inside the experiment — an instrument that alters what it measures reports
+on itself (rule 24, in a measurement of prose).
+
+`_constants_moved` predicted this: *"whoever adds `comments` here next will have to ask this
+same question a third time, and the answer will depend on how that column is filled rather
+than on what it holds."* It does. A constant arrives through `ast.unparse` and is already
+canonical; an argument is a byte slice and needs the `canonical/` seam; a comment is **one
+row per physical line**, stripped of its marker and nothing else, so the pass it needs is
+not about a language at all — it is about where somebody pressed return. That is why it is
+done in `changes.py` rather than behind the language seam: joining lines and collapsing
+whitespace is prose handling, and prose is prose in every language.
+
+### The bound, which is what made it free
+
+```
+41.0 ms   every comment in the program, both sides
+ 5.2 ms   bounded to the fifteen files whose bytes differ
+          — the same twenty routines either way
+```
+
+A comment is text in a file, so a file both versions hold with the same content hash cannot
+hold a comment that moved. That is `filediff`'s own argument, and it needs no sidecar here
+because `files.content_hash` is already in the graph. A routine that moved between files
+needs no special case: whichever file lost it and whichever gained it both differ in bytes
+by having done so.
+
+Measured like for like in one process against a warm disk, this commit and the one before
+it — a git worktree at HEAD, so the working tree was never touched while the numbers were
+taken:
+
+```
+/api/changes warm   451 ms before  ->  448 ms after   (median of four)
+                    every existing band unchanged: 53 / 0 / 20 / 13
+```
+
+Inside the noise. The 20 ms of headroom recorded last session is still there.
+
+### The band, which was Tom's call
+
+A **fifth band**, and a **tag** on the rows already in another one.
+
+Not `behaves`: that band promises something the routine *does* has moved, and a rewritten
+comment moves nothing it does — the mistake the argument canonicaliser was written to avoid,
+one fact type over. Not `edited only` alone: that band says the change was internal
+computation, which is what this tool exists **not** to report, and a rewritten WHY is the
+layer it exists to show. So `explained_only` holds exactly what would otherwise be in *no*
+band, the four bands stay a partition by subtraction, and a routine already in one carries
+`comments` among its `moved` kinds instead — one row, one claim (rule 32).
+
+`changeCount()` takes `explained_only` into the headline and still leaves `edited_only` out,
+and that line is this tool's whole subject in one expression.
+
+**The glyph is the channel, because the colour channel is full.** Rule 69 measured it:
+three directions and a ground, with nothing left that clears a useful bar in both themes. So
+`explained` shares `--diff-moved` with `behaves` — *still here, and different* is exactly
+what that colour means — and the pilcrow separates them. On the stack, where a node is a dot
+and there is no glyph, the two are one colour, and the legend is the only surface that can
+admit it, so it does (design rule 1).
+
+### What driving it found
+
+A four-file program with the four cases built into it, analysed twice and served.
+`worker_key` reads *explained differently*, `sweep` reads *behaves differently — boundaries,
+call_args*, `claim` reads *edited only* with a `comments` tag, and the re-wrapped block on
+`claim` produced nothing at all.
+
+And one defect that no check could have: **the table cell's tooltip said "edited, and
+nothing it does changed" on a row whose worklist tag said `comments`.** `behaves` has always
+named its kinds in that tooltip; `edited` had nothing to name until this landed, and then
+had exactly one thing and went on not saying it. Two surfaces answering one question
+differently (rule 51), and the tooltip is the one the cursor is already on. Found by
+hovering the column. Seventh consecutive session in which looking at the pane paid for
+itself.
+
+**Absent rather than estimated:** the graph legend's new row. The key only renders over a
+mounted stack and a browser-automation tab gets no animation frames, so `Graph.mounted()` is
+false there and every tally is zero (rule 38). It is asserted and mutation-tested, not seen.
+
+### A crash found by dogfooding, and it was nothing to do with this
+
+`analyze` raised `ZeroDivisionError` on the four-file fixture. `render/traceability.py`
+divides the ids findable in documentation by the ids cited in code, and a program whose
+comments name no governance id makes that denominator zero — which is not an exotic corpus,
+it is every program that has not adopted the discipline. Mensores cites 593 and could never
+reach it; this was the first thing the tool had ever been given with none.
+
+Stated as an absence rather than filled with a plausible 0% (rule 49): *"no ids are cited in
+code"* and *"none of the ids cited in code are documented"* are opposite findings, and a
+bare 0% asserts the second.
+
+### The guards
+
+**20/20 mutations caught over a baseline proved green first** (rule 59). Six survived the
+first pass, and the split is the useful part — two were weak mutations, three were weak
+guards, and one was neither:
+
+- **weak mutations.** Folding comments into `moved` after `behaves` had already been
+  computed changes nothing; and mutating one of the two symmetric halves of the changed-file
+  `UNION` leaves the other half finding the file anyway.
+- **weak guards.** The fact-lane check accepted `"explained"` appearing anywhere, which
+  stays true of `explained: []` — the band drawn as empty, rule 35's own shape. The legend
+  check looked for its explanation within 400 characters either side, and `_code()` does not
+  strip a comment opened inside a template expression, so it was reading the note explaining
+  the decision and calling it the note on the screen (rule 43, again). And the re-wrap
+  fixture could not reach the case the collapse pass exists for: each stored line is already
+  stripped, so joining one-space-per-break is a canonical form by itself — what needs
+  collapsing is whitespace *inside* a line, two spaces after a full stop, which 112 of
+  Mensores' 6,076 runs carry.
+- **neither.** Putting a plausible `0%` back into the traceability fix changed no output,
+  because the placeholder it lived in was read by nothing: the empty branch does not mention
+  it. A dead value in three lines of my own, and the mutation is what found it (rule 35).
+
+`ORDER BY line` gets a **source** guard rather than a fixture, for `group_concat`'s reason:
+drop it and SQLite still returns rows in rowid order, which for a file inserted in one pass
+*is* line order — so every test goes on passing while the query has stopped promising
+anything.
+
+And one existing guard had to be inverted rather than extended.
+`test_every_change_band_the_server_sends_becomes_a_status` listed the four band names and
+asserted it had found four, so `explained_only` — sent by the server, mapped by the client —
+passed straight through the guard whose entire subject is bands the client forgets. It reads
+the served keys out of `build`'s return with `ast` now and excludes three that are not bands,
+because an inclusion list can only check what somebody remembered to add to it. That is the
+second session running in which a blindness check keyed to the design had to be re-keyed to
+the instrument.
+
+```
+758 tests · mypy clean · ruff clean · 20/20 mutations caught
+```
+
+### Left out, and honestly
+
+**A docstring is not a comment here.** `changes.py` compares the `comments` table, and a
+rewritten docstring — which is also WHY, and which rule 9 keeps out of code-shaped detectors
+for a different reason — is not in it. `routines.docstring` is in the store and is not
+compared by anything. It is the same shape as this work and was not in the scope Tom took.
+
 ## A presence line says what it left out, and one idea stops having two colours — 2026-09-01
 
 Two small things, both filed as known and neither a bug. Tom took them together and they

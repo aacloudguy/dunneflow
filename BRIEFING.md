@@ -163,7 +163,7 @@ is not computed yet.
 clean, ruff clean, working tree clean. Nothing is half-done; the next session starts on a
 decision rather than in the middle of an edit.
 
-**Three things are waiting on Tom and none of them is a bug:**
+**Two things are waiting on Tom and neither is a bug:**
 
 1. **The arrow stroke is 1 px**, which is thin to aim at. The same flow is reachable from a
    row in the pane, which is a button, so this may be enough — his judgment, not mine.
@@ -171,10 +171,10 @@ decision rather than in the middle of an edit.
    91 KB in one argument) and the pane **wraps** it rather than eliding, because rule 8
    allows abbreviation only where the complete value sits beside it. It may read badly.
    Whatever replaces it has to keep the whole value reachable.
-3. **`output/mensores.pre-schema6` holds 386 MB** of stores made stale by the
-   `SCHEMA_VERSION` bump. Both source trees exist and the pair is rebuilt from them, so
-   nothing needs it — kept rather than deleted because 386 MB of somebody else's disk is
-   not mine to reclaim on my own judgment.
+*(The third — 386 MB of stores the schema bump made stale — is **deleted**, on Tom's word.
+Checked first rather than assumed, because rule 25 says the file bodies are the one thing
+that cannot be rebuilt: all 640 of its blob hashes were already in the new `source.db`,
+zero missing, and both source trees are still on disk.)*
 
 **Chunk 4 landed 2026-08-31: an edge says what flows.** The last thing Diagram mode was
 missing, and the one Tom asked for in the same breath as the arguments.

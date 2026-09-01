@@ -24,6 +24,7 @@ import json
 import sys
 from dataclasses import dataclass, field
 
+from .schema import make_id
 from .store import Store
 
 # What it means for the program.
@@ -44,23 +45,92 @@ _STDLIB = frozenset(sys.stdlib_module_names)
 
 @dataclass(slots=True)
 class Anomaly:
+    """One finding, and what makes it *this* finding rather than another.
+
+    `ident_parts` is what the detector says identifies its finding, and it has no
+    default: a detector that does not answer the question cannot construct one. That is
+    deliberate, and it is the half of this design that has to survive a second language.
+    Detectors are query-driven over the store, so a Kotlin or C++ extractor's facts run
+    through the ones here unchanged -- and will bring detectors of their own. A central
+    rule that *inferred* identity from `subject` would have to go on being right about
+    every one of them; a rule declared beside the detector makes adding one a
+    self-contained job.
+
+    Two constraints on the parts, and both were measured rather than reasoned:
+
+    * **No position.** Not a line, and -- for a detector that groups -- not a file
+      either. `file` on a grouped finding is `MIN(file)`, an arbitrary tiebreak that
+      moves when an unrelated file changes: keyed with it, Mensores' pair loses three of
+      its 106 pairings and reports them as removed-and-added. That is `make_id`'s own
+      argument one level up, and `changes.py` makes it again for facts.
+    * **The parts come from the fact contract**, never from a language's syntax. Every
+      detector here already groups by store columns -- `qualname`, `callee_expr`, `tbl`,
+      `module` -- which is exactly what `schema.py` guarantees any extractor emits.
+
+    A finding that is about the *whole program* -- `DEAD_CODE`, `UNREACHABLE` -- declares
+    `()`, and that empty tuple is a statement rather than an omission: there is one of
+    these per program, so the kind alone identifies it. Before this it was an empty
+    `subject` that fell out of a default argument, which reads identically and claims
+    nothing.
+    """
+
     kind: str
     severity: str
     confidence: str
     title: str
     detail: str
     blind_spot: str
+    # What identifies this finding across two versions of one program. Required.
+    ident_parts: tuple[str, ...]
     subject: str = ""
     file: str = ""
     line: int = 0
     count: int = 1
 
+    @property
+    def ident(self) -> str:
+        """The identity, derived -- never stored beside the parts it comes from.
+
+        A second copy of an answer is a second thing to keep in step (rule 51), and the
+        parts are kept because the pairing is a *claim*: two findings are said to be one,
+        and the parts are how a reader or a guard sees why (design rule 13).
+
+        `make_id` joins on `\\x00`, so no part can be spelled to look like a boundary
+        between two -- the separator collision `diagram.py` has to assert its way around
+        cannot arise here. The `"finding"` prefix is the same namespacing `make_id("ep",
+        ...)` and `make_id("site", ...)` already use, so a finding's id can never collide
+        with a routine's.
+        """
+        return make_id("finding", self.kind, *self.ident_parts)
+
 
 @dataclass(slots=True)
 class Report:
     items: list[Anomaly] = field(default_factory=list)
+    _seen: dict[str, int] = field(default_factory=dict, repr=False)
 
     def add(self, a: Anomaly) -> None:
+        """Keep the finding, disambiguating a genuine repeat rather than merging it.
+
+        Nine of the detectors group, so their key is unique by construction. Four do not
+        -- `PARSE_ERROR` reports one finding per error in a file, and two files can
+        legitimately create indexes of the same name -- and for those a key can repeat.
+        Left alone, two findings would share an id and the pairing would quietly speak
+        about one of them twice.
+
+        So an exact repeat takes an **ordinal among identical keys**, which is the same
+        residue `_identity()` gives colliding qualnames and `call_site_id` gives two
+        identical expressions in one routine. It is a position of last resort and it is
+        stated here rather than hidden: it is stable only while the repeats keep their
+        order, which for a stored, ordered query they do.
+
+        Note what this does *not* do: it never invents the key, only breaks a tie in it.
+        The detector still says what identifies its finding.
+        """
+        n = self._seen.get(a.ident, 0)
+        self._seen[a.ident] = n + 1
+        if n:
+            a.ident_parts = (*a.ident_parts, f"#{n + 1}")
         self.items.append(a)
 
     def sorted(self) -> list[Anomaly]:
@@ -101,6 +171,10 @@ def _parse_failures(store: Store, r: Report) -> None:
                 blind_spot="None. The file is not valid Python for the interpreter "
                            "running DunneFlow; if the program targets an older or "
                            "newer syntax, that is the difference.",
+                # One finding per error, so the path alone would merge a file's two
+                # failures into one. The message is what tells them apart, and it is
+                # what the finding is *about*.
+                ident_parts=(row["path"], err),
                 subject=row["path"], file=row["path"],
             ))
 
@@ -121,6 +195,10 @@ def _name_collisions(store: Store, r: Report) -> None:
                        "they are distinct and this is a naming defect in DunneFlow, "
                        "not in the program. Check whether the definitions sit inside "
                        "different functions.",
+            # Grouped by qualname, so the qualname is the key -- unique by construction.
+            # `f` is MIN(file) and is deliberately not here: it names one of the
+            # colliding definitions arbitrarily, and which one it names can move.
+            ident_parts=(row["qualname"],),
             subject=row["qualname"], file=row["f"], count=row["n"],
         ))
 
@@ -139,6 +217,10 @@ def _redefinitions(store: Store, r: Report) -> None:
             blind_spot="Conditional definitions (`if TYPE_CHECKING:`, platform "
                        "branches, try/except ImportError) legitimately define a name "
                        "more than once and only one is ever live.",
+            # The GROUP BY key, both halves of it: the same name in two modules is two
+            # findings, and joining them into one string would be a key that cannot say
+            # which part is which.
+            ident_parts=(row["module"], row["name"]),
             subject=f"{row['module']}.{row['name']}", file=row["f"], count=row["n"],
         ))
 
@@ -165,6 +247,11 @@ def _lost_edges(store: Store, r: Report) -> None:
             blind_spot="If the receiver is a third-party object, or the method is "
                        "supplied by a mixin or set dynamically, no local definition "
                        "was ever intended and nothing is wrong.",
+            # The expression that could not be pinned. **Not** the rivals and not the
+            # callers: both are what the finding *reports*, and both move while the
+            # finding stays the same one -- 93 of Mensores' 106 findings are this kind,
+            # so keying on either would report most of the program as churn.
+            ident_parts=(row["callee_expr"],),
             subject=row["callee_expr"], file=row["f"], count=row["n"],
         ))
 
@@ -194,6 +281,11 @@ def _dead_code(store: Store, r: Report, include_tests: bool) -> None:
         blind_spot=f"{scope} Routines reached by name (plugin registries, "
                    f"`getattr`, entry-point groups) also appear here, because no "
                    f"static analysis can see those calls.",
+        # One per program: this is a finding *about the program*, not about any of the
+        # routines it lists. `file` and `line` point at the first of them so the row is
+        # clickable, and neither may enter the key -- which routine sorts first is not
+        # part of what this finding is.
+        ident_parts=(),
         subject="", file=rows[0]["file"], line=rows[0]["line_start"], count=len(rows),
     ))
 
@@ -222,6 +314,7 @@ def _unreachable(store: Store, r: Report) -> None:
         blind_spot="An edge lost to ambiguity strands everything behind it, so "
                    "LOST_EDGE findings inflate this number. Library code meant to be "
                    "imported by other programs is also unreachable by design.",
+        ident_parts=(),  # one per program
         count=stranded,
     ))
 
@@ -247,6 +340,9 @@ def _schema_drift(store: Store, r: Report) -> None:
             blind_spot="Migrations legitimately create the same table at different "
                        "versions; check whether these statements belong to different "
                        "migration steps.",
+            # Grouped by the table's name. The shapes and the statement count are
+            # what the finding says about it, and both move while it stays one finding.
+            ident_parts=(row["name"],),
             subject=row["name"], count=row["defs"],
         ))
 
@@ -267,6 +363,11 @@ def _one_way_tables(store: Store, r: Report) -> None:
             blind_spot="The other half may live in another program, in tests, in a "
                        "migration, or in SQL built by string interpolation that "
                        "DunneFlow could not attribute to a table.",
+            # Grouped by the table. Note what is *not* in the key: which way it is
+            # one-way. A table that gains its first read stops being this finding
+            # rather than becoming a different one, and that is the honest reading --
+            # the finding is about the table, and it went.
+            ident_parts=(row["tbl"],),
             subject=row["tbl"], count=row["rd"] + row["wr"],
         ))
 
@@ -283,6 +384,11 @@ def _orphan_indexes(store: Store, r: Report) -> None:
                    f"TABLE anywhere in this program.",
             blind_spot="The table may be created by a migration tool, by another "
                        "program sharing the database, or by SQL loaded from a file.",
+            # Not grouped, so the key is what names this index and the table it
+            # claims. `file` stays out even here: an index moved between files is the
+            # same orphan, and `line` is a position in any case. Two indexes of one
+            # name over one table take the ordinal `Report.add` gives a genuine repeat.
+            ident_parts=(row["name"], row["tbl"]),
             subject=row["name"], file=row["file"], line=row["line"],
         ))
 
@@ -303,6 +409,7 @@ def _remote_call_hazards(store: Store, r: Report) -> None:
             blind_spot="A timeout may be set on the client object rather than the "
                        "call, or globally by the library's configuration. Check the "
                        "client construction before treating any one of these as a bug.",
+            ident_parts=(),  # one per program: it counts the calls, it is not one
             count=len(no_timeout),
             file=no_timeout[0]["file"], line=no_timeout[0]["line"],
         ))
@@ -315,6 +422,7 @@ def _remote_call_hazards(store: Store, r: Report) -> None:
             detail="A single transient failure propagates to the caller.",
             blind_spot="Retries are often handled by a transport adapter, a service "
                        "mesh, or the caller rather than at the call site.",
+            ident_parts=(),  # one per program
             count=total,
         ))
 
@@ -332,6 +440,10 @@ def _remote_call_hazards(store: Store, r: Report) -> None:
             blind_spot="The result may be awaited elsewhere, passed to "
                        "`asyncio.gather`, or scheduled as a task. Calls managed by "
                        "`async with` are already excluded.",
+            # The routine and the expression it never awaits. Two identical
+            # expressions in one routine are two of these, and they take the ordinal --
+            # the same residue `call_site_id` carries, for the same reason.
+            ident_parts=(x["qualname"], x["expr"]),
             subject=x["qualname"], file=x["file"], line=x["line"],
         ))
 
@@ -350,6 +462,7 @@ def _messaging_hazards(store: Store, r: Report) -> None:
             detail="Messages are published but nothing here reads them.",
             blind_spot="The consumer is very often a separate program or service, "
                        "which is the normal shape for messaging.",
+            ident_parts=(),  # one per program
             count=producers,
         ))
 
@@ -366,6 +479,9 @@ def _entrypoint_problems(store: Store, r: Report) -> None:
                    f"{row['evidence']}, but no routine could be found for it.",
             blind_spot="The target may be built dynamically, or supplied by a "
                        "dependency rather than defined in this program.",
+            # A way in is named within a module, and both halves are needed: two
+            # modules may each declare a `main` that leads nowhere.
+            ident_parts=(row["module"], row["name"]),
             subject=row["name"], file=row["file"],
         ))
     for row in store.query(
@@ -379,6 +495,9 @@ def _entrypoint_problems(store: Store, r: Report) -> None:
                    f"from the command tree.",
             blind_spot="The sub-application may come from an installed package "
                        "rather than from this source tree.",
+            # Which application mounts which sub-application. `file` stays out: the
+            # mount moved to another module is the same unresolved mount.
+            ident_parts=(row["parent_var"], row["child_expr"]),
             subject=row["child_expr"], file=row["file"], line=row["line"],
         ))
 
@@ -404,6 +523,7 @@ def _type_gaps(store: Store, r: Report) -> None:
             detail="; ".join(x["qualname"] for x in missing),
             blind_spot="None as a fact; whether it matters depends on whether the "
                        "project requires annotations.",
+            ident_parts=(),  # one per program
             count=len(missing), file=missing[0]["file"], line=missing[0]["line_start"],
         ))
     if untyped:
@@ -413,6 +533,7 @@ def _type_gaps(store: Store, r: Report) -> None:
             detail="What moves in is undeclared, so the map cannot say what these "
                    "routines accept.",
             blind_spot="None as a fact.",
+            ident_parts=(),  # one per program
             count=untyped,
         ))
 

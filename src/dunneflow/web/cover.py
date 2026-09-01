@@ -140,6 +140,12 @@ def anomalies(store: Store) -> list[dict[str, Any]]:
     """
     return [
         {
+            # What makes this finding *this* finding, so a triage decision can be filed
+            # against it and a second version's findings paired with it. Sent as well as
+            # the parts it is derived from, because the pairing is a claim and the parts
+            # are how a reader sees why it was made (design rule 13).
+            "ident": a.ident,
+            "ident_parts": list(a.ident_parts),
             "kind": a.kind,
             "severity": a.severity,
             "confidence": a.confidence,

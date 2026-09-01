@@ -65,14 +65,20 @@ def _plural(n: int, one: str, many: str = "") -> str:
 # the code that carries it. `queries.py` wrote that reasoning down for tables
 # before anything needed it: inventing an id to make a row clickable would be a
 # link to nothing.
+#
+# **Public, and this is the only place a subject is minted.** `curiosities.py` sends
+# subjects too, and a second constructor over there would be a second answer to "what
+# does following this select" -- the shape the shell routes on, decided twice. The
+# guard that checks every minted kind has a handler reads *this* module, so a private
+# copy elsewhere would be invisible to it as well as wrong.
 # --------------------------------------------------------------------------- #
 
-def _node(node_id: str) -> dict[str, Any]:
+def node_subject(node_id: str) -> dict[str, Any]:
     """A thing that is already in the graph. One hop, selected as itself."""
     return {"type": "node", "id": node_id}
 
 
-def _cohort(kind: str, key: str, label: str) -> dict[str, Any]:
+def cohort_subject(kind: str, key: str, label: str) -> dict[str, Any]:
     """A set of routines that share something. Resolved on demand, never shipped.
 
     The ids are deliberately *not* inline. A plan carried by three hundred routines
@@ -99,7 +105,7 @@ def _governance(store: Store, node_id: str) -> list[dict[str, Any]]:
             "why": f"{_plural(others, 'other routine')} carr"
                    f"{'ies' if others == 1 else 'y'} this {noun}",
             "count": others,
-            "subject": _cohort("governance", value, value),
+            "subject": cohort_subject("governance", value, value),
         })
     return out
 
@@ -147,7 +153,7 @@ def _boundary(store: Store, node_id: str) -> list[dict[str, Any]]:
             "count": others,
             # A table is not a node in the graph, so selecting one means selecting the
             # code that reads and writes it.
-            "subject": _cohort("table", r["name"], r["name"]),
+            "subject": cohort_subject("table", r["name"], r["name"]),
         })
 
     for r in _rows(store, queries.THREAD_BOUNDARIES, {"id": node_id}):
@@ -160,7 +166,7 @@ def _boundary(store: Store, node_id: str) -> list[dict[str, Any]]:
             "count": others,
             # An endpoint *is* a node, so it is selected as itself rather than through
             # a set standing in for it.
-            "subject": _node(f"bnd:{kind}:{target}"),
+            "subject": node_subject(f"bnd:{kind}:{target}"),
         })
 
     for r in _rows(store, queries.THREAD_ARTEFACTS, {"id": node_id}):
@@ -171,7 +177,7 @@ def _boundary(store: Store, node_id: str) -> list[dict[str, Any]]:
             "why": f"{_plural(others, 'other routine')} name"
                    f"{'s' if others == 1 else ''} this file",
             "count": others,
-            "subject": _node(f"art:{r['name']}"),
+            "subject": node_subject(f"art:{r['name']}"),
         })
 
     for r in _rows(store, queries.THREAD_NET, {"id": node_id}):
@@ -182,7 +188,7 @@ def _boundary(store: Store, node_id: str) -> list[dict[str, Any]]:
             "why": f"{_plural(others, 'other routine')} also "
                    f"{'call' if others != 1 else 'calls'} this {r['protocol']} destination",
             "count": others,
-            "subject": _cohort("net", r["target"], r["target"]),
+            "subject": cohort_subject("net", r["target"], r["target"]),
         })
 
     out.sort(key=lambda t: (t["count"], t["label"]))
@@ -215,7 +221,7 @@ def _package_of(module: str, root: str) -> str:
     return f"{root}.{head}"
 
 
-def _label_of(row: dict[str, Any]) -> str:
+def label_of(row: dict[str, Any]) -> str:
     """A name a reader can recognise.
 
     `<module>` is a real node -- the synthetic module scope that owns everything no
@@ -237,22 +243,22 @@ def _outliers(store: Store, node_id: str, module: str, root: str) -> list[dict[s
 
     r = _one(store, queries.THREAD_MOST_COMMENTED, args)
     if r and int(r["n"]) > 0:
-        out.append({"kind": "outlier", "label": _label_of(r),
+        out.append({"kind": "outlier", "label": label_of(r),
                     "why": f"{_plural(int(r['n']), 'comment')} — the most in {here}",
-                    "count": int(r["n"]), "subject": _node(str(r["id"]))})
+                    "count": int(r["n"]), "subject": node_subject(str(r["id"]))})
 
     r = _one(store, queries.THREAD_MOST_CALLED, args)
     if r and int(r["n"]) > 0:
-        out.append({"kind": "outlier", "label": _label_of(r),
+        out.append({"kind": "outlier", "label": label_of(r),
                     "why": f"called from {_plural(int(r['n']), 'place')} — the most in {here}",
-                    "count": int(r["n"]), "subject": _node(str(r["id"]))})
+                    "count": int(r["n"]), "subject": node_subject(str(r["id"]))})
 
     r = _one(store, queries.THREAD_DEEPEST, args)
     if r and int(r["depth"]) > 1:
-        out.append({"kind": "outlier", "label": _label_of(r),
+        out.append({"kind": "outlier", "label": label_of(r),
                     "why": f"nested {_plural(int(r['depth']), 'level')} deep — "
                            f"the deepest closure in {here}",
-                    "count": int(r["depth"]), "subject": _node(str(r["id"]))})
+                    "count": int(r["depth"]), "subject": node_subject(str(r["id"]))})
 
     r = _one(store, queries.THREAD_LOPSIDED_TABLE, args)
     if r:
@@ -268,7 +274,7 @@ def _outliers(store: Store, node_id: str, module: str, root: str) -> list[dict[s
                        f"{'read' if w > rd else 'written'} in {here} "
                        f"({w} write{'' if w == 1 else 's'}, {rd} read{'' if rd == 1 else 's'})",
                 "count": max(w, rd),
-                "subject": _cohort("table", str(r["name"]), str(r["name"])),
+                "subject": cohort_subject("table", str(r["name"]), str(r["name"])),
             })
 
     return out
@@ -309,7 +315,7 @@ def _vocabulary(name: str, module: str, naming: dict[str, Any] | None,
             "why": f"{c['claim'].rstrip('.')} — {c['holds']:,} of {c['total']:,}"
                    f" ({c['rating']}); {_plural(others, 'other')} named this way",
             "count": others,
-            "subject": _cohort("convention", c["glob"], c["glob"]),
+            "subject": cohort_subject("convention", c["glob"], c["glob"]),
         })
 
     for t in vocabulary.terms_in(glossary or {}, name, module):
@@ -328,7 +334,7 @@ def _vocabulary(name: str, module: str, naming: dict[str, Any] | None,
             "label": t["term"],
             "why": why,
             "count": int(t["uses"]),
-            "subject": _cohort("term", t["term"], t["term"]),
+            "subject": cohort_subject("term", t["term"], t["term"]),
         })
 
     return out

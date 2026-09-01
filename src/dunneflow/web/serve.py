@@ -39,6 +39,7 @@ from . import anomalychanges, changes, diagram, filediff, packages, queries
 from .code import build_file, build_files
 from .cover import anomalies as build_anomalies
 from .cover import build as build_cover
+from .curiosities import for_program
 from .detail import describe, hover_card
 from .detail import flow_edge as detail_flow
 from .detail import fold as detail_fold
@@ -292,6 +293,16 @@ class _Base:
     # first level drew it in. Filled beside them and thrown away with them.
     box_of: dict[str, str] = field(default_factory=dict)
     box_label: dict[str, str] = field(default_factory=dict)
+    # The doorway panel: ten measured extrema over this version, held here for the same
+    # reason as everything above it -- they are facts about *this* version and a switch
+    # must throw them away. Not in `COMPARISON_CACHES`, because they are keyed on one
+    # graph rather than on a pair; being a field is what already clears them.
+    #
+    # Empty rather than built at boot. Both vocabulary lanes are paid for at start
+    # because a thread is asked on every selection, so a lazy first call would stall the
+    # reading loop; this is a page a session either opens or never does, and 108 ms warm
+    # behind the click that asked for it is the right way round (rule 45).
+    curiosities: dict[str, Any] = field(default_factory=dict)
 
 
 # What building a base costs, in the order it is paid, so a reader watching a switch is
@@ -483,7 +494,7 @@ class _Live:
                       # the index is derived from the compartments, so a base carrying one
                       # without the other would place this version's crossings in the last
                       # version's boxes.
-                      compartments={}, box_of={}, box_label={})
+                      compartments={}, box_of={}, box_label={}, curiosities={})
         with self.lock:
             outgoing = self.current
             self.current = fresh
@@ -1119,6 +1130,29 @@ class _Handler(BaseHTTPRequestHandler):
             body = cohort(self._live.current.store, kind, key)
         self._json(body)
 
+    def _r_curiosities(self, q: dict[str, list[str]]) -> None:
+        """The doorway panel: what came out furthest from the middle, program-wide.
+
+        Held on the base and computed on the first ask. 108 ms warm on Mensores for all
+        ten measures; the first ask of a session is the external volume reading a 28 MB
+        graph and is 1.7 s, which is the caveat every other cold row in this product
+        carries and not a property of the queries.
+
+        `/api/threads` answers the same family of questions about *one node's* package.
+        This is the whole program, which is a different panel and a different bargain:
+        that one is asked on every selection and so is paid for at boot, this one is
+        asked when a reader opens it.
+        """
+        with self._live.lock:
+            base = self._live.current
+            if not base.curiosities:
+                # Filled in place rather than reassigned, exactly as the compartments and
+                # the payloads are: `_Base` is frozen so a switch replaces every field
+                # together, and these have to go with it.
+                base.curiosities.update(for_program(base.store))
+            body = base.curiosities
+        self._json(body)
+
     def _r_naming(self, q: dict[str, list[str]]) -> None:
         """The Form lane: what this program does about names, counted."""
         with self._live.lock:
@@ -1622,6 +1656,7 @@ class _Handler(BaseHTTPRequestHandler):
         "/api/document": "_r_document",
         "/api/node": "_r_node",
         "/api/hover": "_r_hover",
+        "/api/curiosities": "_r_curiosities",
         "/api/threads": "_r_threads",
         "/api/thread": "_r_thread",
         "/api/naming": "_r_naming",

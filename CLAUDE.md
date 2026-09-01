@@ -255,6 +255,25 @@ lock and committed inside it, so only the commit blocks a reader; and the progre
 behind its own lock, because a poll that queued behind the rebuild would report nothing
 until there was nothing left to report.
 
+The doorway panel — ten measured extrema over the whole program, held on the base and
+computed on the first ask:
+
+| Measure | Budget | Measured 2026-09-01 |
+|---|---|---|
+| `/api/curiosities`, warm | < 500 ms | **0.5–0.7 ms**, held on `_Base` |
+| …the first ask of a session | < 5 s | 0.2 s – 1.7 s, and it is the disk |
+| …the ten queries themselves, warm | < 500 ms | 106 ms |
+
+Not paid at boot, unlike the two vocabulary lanes, and the difference is the bargain: a
+thread is asked on every selection, so a lazy first call there would stall the reading
+loop; this is a page a session either opens or never does (rule 45).
+
+**One family was 7.47 s and is 54 ms**, and the fix is the shape every one of them now
+uses. Written the obvious way, the call-argument CTE joined 43,926 rows to `calls` and
+`routines` — and did it four times over, once per reference to the CTE. Materialising only
+the key and the measure, and resolving the winner's name once for the one row that won,
+is the whole difference. `MATERIALIZED` is stated rather than hoped for.
+
 The two lanes' **bodies** are fetched when their page is opened — 44 KB and 190 KB — while
 their sizes ride with the cover, because the navigator states a count beside every other row
 and a blank there reads as *nothing here*. Measured on the glossary, 1,207 words with 60
@@ -530,6 +549,18 @@ docs   ──► extract ──► docs.db  (SQLite) ─────────
   the corpus: **10,668 of 11,570 arguments on a resolved call bind, 92.2%**, and every
   refusal states its reason, because a blank beside an argument reads as *no such
   parameter* — a different and false claim.
+- `web/curiosities.py` — **the doorway panel**: ten measured extrema over the whole
+  program, each with **its middle stated**. Every program has a most-commented routine, so
+  a maximum alone is a claim nobody can weigh — 1,126 comments against a middle of 3 is a
+  discovery, 3 levels of nesting against a middle of 2 is not, and the panel says the
+  second as plainly as the first. The list is fixed and complete, so rule 8's bound never
+  arises; a measure with nothing to measure is *named* rather than dropped (design rule 1).
+  Ordered by distance from the middle. **A curiosity is a measurement, never a judgement**:
+  no severity, no blind spot, nothing implying a number ought to be smaller — that is what
+  `anomalies.py` is for. One statement per family returns the value, the median, the ties
+  and the population *together*, so the query a card offers is not a query about the number
+  but the query that returned it (design rule 13), reproducible verbatim through
+  `dunneflow query`. Subjects are minted in `threads.py` and nowhere else.
 - `web/threads.py` — **adjacency by interest, not by edge.** Why a neighbour is worth a
   detour: shares a plan, the other end of a table you write, the most commented routine on
   your plate, named like ninety-eight others. Every thread carries a *subject* the router
@@ -1803,6 +1834,25 @@ rule of that number — a blank canvas must say why it is blank — which does e
     caused is not a notification you received.** Anywhere something announces changes it is
     also given, the receiver has to be able to tell the two apart, and nothing in the
     message says which it is.
+
+    **Amended 2026-09-01: the flag was put at the site the defect was found at, and there
+    were three.** `Graph.mount` is handed `picks: state.picks` and finishes by calling
+    `announceSelection()` for exactly the same reason `setSelection` does, and it was not
+    flagged; `applySelectionStep` raises `restoringSelection`, which only ever suppressed
+    `recordSelection`, so a Back ran the whole handler under `sel.node` and was corrected
+    on the next line — right by ordering rather than by design.
+
+    Both were unreachable until the doorway panel, which is the first surface in the
+    product that can follow a subject with the stack **never mounted**. It showed the mount
+    case immediately: a card naming `backup_cmd` opened the inspector on
+    `mensores.transport._envelope.<module>`, an unrelated node, and filed two trail steps
+    under its name. One predicate now covers all three sites and a guard asserts there is no
+    fourth — because the failure to guard against is a *new* way to hand the engine a
+    selection, which would look exactly like working code.
+
+    So the rule has a second half: **a guard against an echo must cover every place that
+    causes one, not the place the defect was found.** Rule 51 with a flag as the thing
+    kept at one call site.
 
 ## Anomalies: the discipline
 

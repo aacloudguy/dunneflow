@@ -1821,7 +1821,10 @@ kbd { font-family: var(--f-mono); font-size: .66rem; background: var(--sunken);
 
 .curigrid { display: grid; gap: .6rem; }
 @media (min-width: 768px) { .curigrid { grid-template-columns: 1fr 1fr; } }
-.curi { display: flex; gap: .55rem; text-align: left; font: inherit; cursor: pointer;
+/* A card, not a button. It holds two buttons of its own -- follow, and the query that
+   measured it -- and a button inside a button is not a thing the DOM has: the whole card
+   was `<button>` while the panel had nothing in it to click. */
+.curi { display: flex; gap: .55rem; text-align: left; font: inherit;
   background: var(--surface); border: 1px solid var(--border); border-radius: .5rem;
   padding: .6rem .7rem; box-shadow: var(--shadow); color: var(--text); }
 .curi:hover { border-color: var(--accent); }
@@ -1829,9 +1832,13 @@ kbd { font-family: var(--f-mono); font-size: .66rem; background: var(--sunken);
 .curi-body { display: flex; flex-direction: column; gap: .2rem; min-width: 0; }
 .curi-head { font-size: .84rem; font-weight: 600; display: flex; align-items: baseline;
   gap: .4rem; flex-wrap: wrap; }
+/* The thing measured. `word-break` because a qualname is six segments long and a card is
+   half a column wide -- a name that overflows its card paints over the one beside it. */
+.curi-what { font-size: .76rem; color: var(--text); word-break: break-word; }
 .curi-text { font-size: .75rem; color: var(--text-muted); line-height: 1.45; }
 .curi-text code { font-family: var(--f-mono); font-size: .71rem; word-break: break-all; }
-.curi-go { font-size: .7rem; font-weight: 600; color: var(--accent-text); margin-top: .1rem; }
+.curi-acts { display: flex; gap: .8rem; flex-wrap: wrap; margin-top: .25rem; }
+.curinote { font-size: .75rem; }
 
 .pinbtn { font: inherit; font-size: .68rem; font-weight: 600; background: var(--raised);
   border: 1px solid var(--border); border-radius: .25rem; padding: .1rem .38rem;

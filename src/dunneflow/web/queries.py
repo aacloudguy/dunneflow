@@ -1716,3 +1716,225 @@ WHERE NOT EXISTS (SELECT 1 FROM sql_ops s
                    WHERE n.routine_id = b.routine_id AND abs(n.line - b.line) <= 1)
 ORDER BY b.salience DESC, b.line
 """
+
+
+# --------------------------------------------------------------------------- #
+# Curiosities: the doorway panel, program-wide
+#
+# Design rule 15's fourth piece of furniture. `THREAD_*` above answers the same
+# family of questions scoped to the package a reader is standing on; these ask it
+# of the whole program.
+#
+# **Every number printed beside a curiosity comes out of the one statement that
+# found it.** That is design rule 13 taken literally: the query a card offers is
+# not a query *about* the number, it is the query that returned it, and it runs
+# verbatim through `dunneflow query`. So each of these returns the extremum, the
+# **median**, how many things tie with the extremum, and the size of the
+# population it came out of -- four numbers a reader can weigh against each other,
+# from one scan they can reproduce.
+#
+# The middle is not decoration. Every program has a most-commented routine, so a
+# maximum on its own is a claim nobody can weigh: 1,126 comments against a middle
+# of 3 is a discovery and 3 levels of nesting against a middle of 2 is not, and
+# the panel has to be able to say the second as plainly as the first. Rule 14's
+# lesson -- at enough measures, something always comes out furthest -- in the one
+# place in this product that goes looking for extremes on purpose.
+#
+# Every one is a **measurement, never a judgement.** A long routine, a wide
+# parameter list and a lopsided table are all things worth looking at and none of
+# them is a finding; `anomalies.py` is where a claim about what is *wrong* lives,
+# and it states a blind spot because it makes one. These do not, and must not read
+# as though they did.
+#
+# The shape is the same nine times over and it is load-bearing for cost. `m`
+# materialises **only the key and the measure** -- never a name, never a join --
+# and the extremum's name is resolved once, for the one row that won. Written the
+# obvious way instead, with the join inside `m`, the call-argument family joined
+# 43,926 rows to `calls` and `routines` and did it four times over, once per
+# reference to the CTE: **7.47 s, against 54 ms for this.** `MATERIALIZED` is what
+# stops the recomputation and is stated rather than hoped for.
+# --------------------------------------------------------------------------- #
+
+# Comments on one routine. `<module>` is a real node -- the synthetic module scope
+# that owns everything no function does (rule 18) -- and it is genuinely the most
+# commented thing in most files, so it is left in and rendered as the module it is.
+CURIO_COMMENTS = """
+WITH m AS MATERIALIZED (
+    SELECT c.routine_id AS k, COUNT(*) AS n FROM comments c GROUP BY c.routine_id),
+top AS (SELECT k, n FROM m ORDER BY n DESC, k LIMIT 1)
+SELECT r.id AS node, r.name AS name, r.qualname AS qualname,
+       r.file || ':' || r.line_start AS whence, top.n AS value,
+       (SELECT n FROM m ORDER BY n LIMIT 1 OFFSET (SELECT COUNT(*)/2 FROM m)) AS middle,
+       (SELECT COUNT(*) FROM m WHERE m.n = top.n)                             AS ties,
+       (SELECT COUNT(*) FROM m)                                               AS population
+FROM top JOIN routines r ON r.id = top.k
+"""
+
+# Callers of one routine, counted **distinct**: a routine calling another twice is
+# one caller, and the number says callers rather than call sites (rule 32).
+CURIO_CALLERS = """
+WITH m AS MATERIALIZED (
+    SELECT c.callee_id AS k, COUNT(DISTINCT c.caller_id) AS n
+    FROM calls c WHERE c.callee_id IS NOT NULL AND c.callee_id <> '' GROUP BY c.callee_id),
+top AS (SELECT k, n FROM m ORDER BY n DESC, k LIMIT 1)
+SELECT r.id AS node, r.name AS name, r.qualname AS qualname,
+       r.file || ':' || r.line_start AS whence, top.n AS value,
+       (SELECT n FROM m ORDER BY n LIMIT 1 OFFSET (SELECT COUNT(*)/2 FROM m)) AS middle,
+       (SELECT COUNT(*) FROM m WHERE m.n = top.n)                             AS ties,
+       (SELECT COUNT(*) FROM m)                                               AS population
+FROM top JOIN routines r ON r.id = top.k
+"""
+
+# Lines in one routine. The declaration's span, not a report on what is inside it:
+# this tool does not read control flow and does not start here. Size is a measure
+# real standards are written about, and how long a routine is is a fact about the
+# shape of the map -- so it is reported flatly, with the middle beside it, and
+# implies nothing about whether it should be shorter.
+#
+# `<module>` is excluded, and this is the one family it must be: the module scope
+# spans its whole file, so it would win every time and would be measuring files.
+CURIO_LINES = """
+WITH m AS MATERIALIZED (
+    SELECT r.id AS k, r.line_end - r.line_start + 1 AS n
+    FROM routines r WHERE r.name <> '<module>' AND r.line_end >= r.line_start),
+top AS (SELECT k, n FROM m ORDER BY n DESC, k LIMIT 1)
+SELECT r.id AS node, r.name AS name, r.qualname AS qualname,
+       r.file || ':' || r.line_start AS whence, top.n AS value,
+       (SELECT n FROM m ORDER BY n LIMIT 1 OFFSET (SELECT COUNT(*)/2 FROM m)) AS middle,
+       (SELECT COUNT(*) FROM m WHERE m.n = top.n)                             AS ties,
+       (SELECT COUNT(*) FROM m)                                               AS population
+FROM top JOIN routines r ON r.id = top.k
+"""
+
+# Parameters on one routine -- what moves *in*, which is squarely this tool's
+# subject. The population is routines that take any at all, so the middle is the
+# middle of those rather than of everything including the nullary ones.
+CURIO_PARAMS = """
+WITH m AS MATERIALIZED (
+    SELECT p.routine_id AS k, COUNT(*) AS n FROM params p GROUP BY p.routine_id),
+top AS (SELECT k, n FROM m ORDER BY n DESC, k LIMIT 1)
+SELECT r.id AS node, r.name AS name, r.qualname AS qualname,
+       r.file || ':' || r.line_start AS whence, top.n AS value,
+       (SELECT n FROM m ORDER BY n LIMIT 1 OFFSET (SELECT COUNT(*)/2 FROM m)) AS middle,
+       (SELECT COUNT(*) FROM m WHERE m.n = top.n)                             AS ties,
+       (SELECT COUNT(*) FROM m)                                               AS population
+FROM top JOIN routines r ON r.id = top.k
+"""
+
+# How deep a closure is nested, read out of the qualname the way `THREAD_DEEPEST`
+# reads it: rule 10 gave every nested routine its enclosing scope precisely so that
+# seven closures called `_close_ladybug` stay seven routines, and the segments below
+# the module are the depth. Ties are the norm here rather than the exception, which
+# is why every one of these carries a tie count.
+CURIO_DEPTH = """
+WITH m AS MATERIALIZED (
+    SELECT r.id AS k,
+           (length(r.qualname) - length(replace(r.qualname, '.', ''))) -
+           (length(r.module)   - length(replace(r.module,   '.', ''))) AS n
+    FROM routines r WHERE r.is_nested = 1),
+top AS (SELECT k, n FROM m ORDER BY n DESC, k LIMIT 1)
+SELECT r.id AS node, r.name AS name, r.qualname AS qualname,
+       r.file || ':' || r.line_start AS whence, top.n AS value,
+       (SELECT n FROM m ORDER BY n LIMIT 1 OFFSET (SELECT COUNT(*)/2 FROM m)) AS middle,
+       (SELECT COUNT(*) FROM m WHERE m.n = top.n)                             AS ties,
+       (SELECT COUNT(*) FROM m)                                               AS population
+FROM top JOIN routines r ON r.id = top.k
+"""
+
+# How many boundaries one routine reaches -- the thing that touches the outside
+# world in the most places. Counted as recorded, which means a routine running
+# seventeen statements against a database has seventeen; rule 40's de-duplication
+# is about not stating one act twice on **one card**, and here there is one number.
+CURIO_BOUNDARIES = """
+WITH m AS MATERIALIZED (
+    SELECT b.routine_id AS k, COUNT(*) AS n FROM boundaries b GROUP BY b.routine_id),
+top AS (SELECT k, n FROM m ORDER BY n DESC, k LIMIT 1)
+SELECT r.id AS node, r.name AS name, r.qualname AS qualname,
+       r.file || ':' || r.line_start AS whence, top.n AS value,
+       (SELECT n FROM m ORDER BY n LIMIT 1 OFFSET (SELECT COUNT(*)/2 FROM m)) AS middle,
+       (SELECT COUNT(*) FROM m WHERE m.n = top.n)                             AS ties,
+       (SELECT COUNT(*) FROM m)                                               AS population
+FROM top JOIN routines r ON r.id = top.k
+"""
+
+# The longest thing anybody passed to anything, in characters of the expression **as
+# written** (rules 8 and 75 -- never re-rendered, never shortened). The subject is the
+# routine that wrote it, because an argument is not a node; `whence` is where to look.
+CURIO_ARGUMENT = """
+WITH m AS MATERIALIZED (
+    SELECT a.site_id AS k, a.idx AS i, length(a.expr) AS n FROM call_args a),
+top AS (SELECT k, i, n FROM m ORDER BY n DESC, k, i LIMIT 1)
+SELECT c.caller_id AS node, r.name AS name, r.qualname AS qualname,
+       c.file || ':' || c.line AS whence, top.n AS value,
+       (SELECT n FROM m ORDER BY n LIMIT 1 OFFSET (SELECT COUNT(*)/2 FROM m)) AS middle,
+       (SELECT COUNT(*) FROM m WHERE m.n = top.n)                             AS ties,
+       (SELECT COUNT(*) FROM m)                                               AS population
+FROM top JOIN calls c ON c.site_id = top.k JOIN routines r ON r.id = c.caller_id
+"""
+
+# The longest constant value, in characters. `_literal` unparses these on the way in,
+# so unlike an argument this is a rendering rather than the source text -- and it is
+# still never truncated (rule 8), which is what makes the number mean anything.
+CURIO_CONSTANT = """
+WITH m AS MATERIALIZED (
+    SELECT k.module || '.' || k.name AS k, length(k.value) AS n FROM constants k),
+top AS (SELECT k, n FROM m ORDER BY n DESC, k LIMIT 1)
+SELECT 'const:' || top.k AS node, c.name AS name, top.k AS qualname,
+       c.file || ':' || c.line AS whence, top.n AS value,
+       (SELECT n FROM m ORDER BY n LIMIT 1 OFFSET (SELECT COUNT(*)/2 FROM m)) AS middle,
+       (SELECT COUNT(*) FROM m WHERE m.n = top.n)                             AS ties,
+       (SELECT COUNT(*) FROM m)                                               AS population
+FROM top JOIN constants c ON c.module || '.' || c.name = top.k
+"""
+
+# The most lopsided table: read far more often than it is written, or the reverse.
+# The lopsidedness is the doorway -- something writes a great deal nobody reads back,
+# which is either an audit log or a question.
+#
+# A table is **not a node** (`queries.py` wrote that down before anything needed it),
+# so `node` is empty and the subject is the code that touches it. Both sides must be
+# non-zero: a table only ever written is not lopsided, it is write-only, and dividing
+# by nothing would rank it above everything real for ever.
+CURIO_TABLE = """
+WITH m AS MATERIALIZED (
+    SELECT s.tbl AS k,
+           SUM(s.direction = 'WRITE') AS writes, SUM(s.direction = 'READ') AS reads,
+           MAX(CAST(SUM(s.direction = 'WRITE') AS REAL) / SUM(s.direction = 'READ'),
+               CAST(SUM(s.direction = 'READ')  AS REAL) / SUM(s.direction = 'WRITE')) AS n
+    FROM sql_ops s WHERE s.tbl <> '' GROUP BY s.tbl
+    HAVING SUM(s.direction = 'WRITE') > 0 AND SUM(s.direction = 'READ') > 0),
+top AS (SELECT k, writes, reads, n FROM m ORDER BY n DESC, k LIMIT 1)
+SELECT '' AS node, top.k AS name, '' AS qualname,
+       top.writes || ' written, ' || top.reads || ' read' AS whence, top.n AS value,
+       (SELECT n FROM m ORDER BY n LIMIT 1 OFFSET (SELECT COUNT(*)/2 FROM m)) AS middle,
+       (SELECT COUNT(*) FROM m WHERE m.n = top.n)                             AS ties,
+       (SELECT COUNT(*) FROM m)                                               AS population
+FROM top
+"""
+
+# The governance id the most code carries -- the WHY layer's widest thread. Counted
+# over distinct owners, so a routine citing `AC-4` three times is one. A governance
+# id is not a node either, so following it selects the code that carries it.
+#
+# **Routines only, and that is the whole of rule 32 in one clause.** An annotation's
+# owner is a routine *or a structure*, so counting every owner and calling the total
+# "routines" was two mistakes at once: a wrong noun, and a number the reader could
+# catch out by clicking. `AC-4` has 112 routine owners and 9 structure owners, the card
+# said 121 routines, and following it selected 112 with nothing to explain the gap --
+# because `GOVERNANCE_ROUTINES`, which resolves the cohort, has always been scoped to
+# `owner_kind = 'routine'`. The measure is now over exactly the set the subject opens.
+# Found by following the card and counting what came back.
+CURIO_GOVERNANCE = """
+WITH m AS MATERIALIZED (
+    SELECT a.value AS k, COUNT(DISTINCT a.owner_id) AS n
+    FROM annotations a JOIN routines r ON r.id = a.owner_id
+    WHERE a.value <> '' AND a.owner_kind = 'routine' GROUP BY a.value),
+top AS (SELECT k, n FROM m ORDER BY n DESC, k LIMIT 1)
+SELECT '' AS node, top.k AS name, '' AS qualname,
+       (SELECT lower(MIN(a.kind)) FROM annotations a WHERE a.value = top.k) AS whence,
+       top.n AS value,
+       (SELECT n FROM m ORDER BY n LIMIT 1 OFFSET (SELECT COUNT(*)/2 FROM m)) AS middle,
+       (SELECT COUNT(*) FROM m WHERE m.n = top.n)                             AS ties,
+       (SELECT COUNT(*) FROM m)                                               AS population
+FROM top
+"""

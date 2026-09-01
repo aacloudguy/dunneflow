@@ -58,6 +58,7 @@ no build step. deck.gl is vendored into `web/vendor/`.
 | `queries.py` | every dashboard query as **SQL text**, in one place |
 | `cover.py` · `detail.py` · `documents.py` | the cover · the inspector and the hover card · document mode |
 | `threads.py` | adjacency by *interest* — why a neighbour is worth a detour |
+| `curiosities.py` | the doorway panel — ten measured extrema, each with **its middle** |
 | `vocabulary.py` | the naming and glossary lanes, served and matched against one name |
 | `graph.py` · `layout.py` | the 2.5D model at two levels of detail, and where things sit |
 | `packages.py` | the package overview — the other graph layout |
@@ -142,8 +143,7 @@ were layered 2026-08-30; the **anomaly worklist joined them 2026-09-01**, once a
 carried an identity to be paired on.
 
 **Not built:** `dunneflow infer` (the model pass) · attestation · the project profile ·
-document mode's narrative view · `CURIOSITIES` on screen · packaging as a binary · any
-language but Python.
+document mode's narrative view · packaging as a binary · any language but Python.
 
 **The revision spine is in, and both ends of a pair are readable.** `WORKING` is a *state*
 rather than an id, and a revision is identified by when it was captured; `seal()` keeps the
@@ -156,18 +156,96 @@ an interpretation the reader owns, derived from the two versions where they say 
 ends are settable from the toolbar; changing the base makes the server rebuild everything
 from that graph (1.2–3.0 s warm, 35 s cold), and `serve --revision` chooses it at boot.
 
-**Built but not on screen:** `CURIOSITIES`. `threads.py` computes the outlier family per
-package already — most commented, most called, deepest closure, most lopsided table — and
-running that program-wide is most of design rule 15's doorway panel. It says honestly that it
-is not computed yet.
+**The doorway panel is on screen — built 2026-09-01.** Design rule 15's fourth piece of
+furniture, and the last of the four. `curiosities.py` measures ten extrema over the whole
+program and every card states **the middle it is being read against**, because every
+program has a most-commented routine and a maximum alone is a claim nobody can weigh.
 
 ## What we are doing now
 
-**Paused 2026-09-01. Chunk 5 is complete and the change worklist is closed: it sees an
-argument, a constant, and now a rewritten comment.** 758 tests, mypy clean, ruff clean,
-working tree clean. Nothing is half-done.
+**Paused 2026-09-01. The doorway panel is built, and design rule 15's four pieces of
+furniture are now all four.** 783 tests, mypy clean, ruff clean, working tree clean.
+Nothing is half-done.
 
-### The latest: the change worklist sees a rewritten comment (2026-09-01)
+### The latest: curiosities, and each one states its middle (2026-09-01)
+
+**Design rule 15's last piece of furniture.** The trail, threads and the shelf were built;
+`CURIOSITIES` had never been computed, and the panel said so honestly. It now measures ten
+extrema over the whole program.
+
+**The design decision, and it is the whole of it: a curiosity is a measured extremum with
+its middle stated.** Every program has a most-commented routine, so a maximum alone is a
+claim nobody can weigh. The panel is ordered by the distance between the two, so the
+strangest is first and the ones barely above their middle sort last and say so:
+
+```
+9,122.4x  91,224 characters in one call argument   middle 10, of 43,926
+  375.3x  1,126 comments on one routine            middle 3, of 1,870
+  252.5x  8,586 characters in one constant's value middle 34, of 2,638
+     82x  82 callers of one routine                middle 1, of 2,866
+   41.1x  617 lines in one routine                 middle 15, of 4,299
+     28x  112 routines carry one governance id     middle 4, of 591
+   13.5x  27 boundaries reached from one routine   middle 2, of 1,445
+    9.5x  19 parameters on one routine             middle 2, of 3,949
+    4.5x  9x out of balance: one table's r/w       middle 2x, of 29
+    1.5x  3 levels of nesting in one closure       middle 2, of 115 — and 24 tie
+```
+
+Every one was checked against real source, not taken from the store on trust: the
+1,350-line `frozenset` at `quaestor/_envelope.py:67`, `make_operational_event` at
+1637–2253 (617 lines exactly), `write_spec_amendment`'s 19 parameters. **And each card's
+own SQL was copied out of the served JSON and run through `dunneflow query`** — all ten
+returned exactly what the card printed, which is design rule 13 from the reader's side.
+
+**Ten cards, always, and the list is fixed** — so rule 8's bound never arises. A measure
+with nothing to measure is *named* rather than dropped, because nine cards and ten cards
+are different claims.
+
+**A curiosity is a measurement, never a judgement.** No severity, no blind spot, nothing
+implying a number ought to be smaller — that is `anomalies.py`'s job, and it states a blind
+spot because it makes a claim. Tom's framing settled the line-count family: external
+standards are written about size, so reporting 617 lines beside a middle of 15 is a
+measurement and implies nothing.
+
+**Two defects found, and both by driving rather than by any test.**
+
+*Mine.* The governance card said **"121 routines carry one governance id" and opened 112**.
+An annotation's owner is a routine *or a structure*; the measure counted both and called
+them routines while the cohort query has always been scoped to routines. Rule 32 twice
+over — a wrong noun, and a number a reader catches out by clicking. The guard is written
+against a `counts_its_cohort` flag rather than against this family, so the next cohort
+measured by its own size is covered without anyone remembering.
+
+*Not mine, and it had been unreachable.* **Rule 76's flag was at one of three call sites.**
+`Graph.mount` is handed `picks: state.picks` and announces them, exactly as `setSelection`
+does; `applySelectionStep` raises a different flag that `onGraphSelect` never consulted. A
+card naming `backup_cmd` opened the inspector on `mensores.transport._envelope.<module>` and
+filed two trail steps under its name. **This panel is the first surface in the product that
+can follow a subject with the stack never mounted**, which is why nothing had reached it —
+rule 76's own note, one call site further on. Rule 76 is amended and one predicate now
+covers all three, with a guard asserting there is no fourth.
+
+**The cost, and one query was 7.47 s.** Written the obvious way the call-argument family
+joined 43,926 rows to `calls` and `routines` four times over, once per reference to the
+CTE. Materialising only the key and the measure and resolving the winner's name once is
+**54 ms**. All ten are 106 ms warm; the route is held on the base and answers in 0.5 ms.
+
+```
+25 mutations caught over a baseline proved green first
+five survived a first pass: two guards read the flag named in their own comment (rule 37
+for the fourth and fifth time — `_code` exists for this), one fixture could not produce a
+zero middle, one guard did not exist, one was too loose
+```
+
+**Absent rather than estimated: a picture of the whole panel.** The automation tab's
+capture is fixed at 784×353 whatever the window size, so one card fits and the other nine
+do not (rule 38). What *was* driven there: all ten cards, all twenty buttons reachable by
+`elementFromPoint`, every node card followed and checked against the inspector, both cohort
+cards resolved (the governance one selecting exactly the 112 it claims), the provenance
+block opened and confirmed not to open the naming page's, Back returning to all ten cards,
+and three cold-mount cycles for the echo fix.
+
+### Before that: the change worklist sees a rewritten comment (2026-09-01)
 
 **The premise on file was wrong, and usefully.** It said a rewritten explanation above
 unchanged code is *invisible*. It is not invisible; it is **three different wrong answers**,
@@ -396,10 +474,8 @@ and unified on `--diff-moved`; see the top of this file.*
 Nothing in chunk 5 is outstanding, the argument gap is closed, and the two small things
 filed as known are done. Still open and unblocked, and these are now the whole list:
 
-1. **`CURIOSITIES` has never been put on screen.** `threads.py` computes the outlier
-   family per package already — most commented, most called, deepest closure, most lopsided
-   table — and running that program-wide is most of design rule 15's doorway panel. It says
-   honestly that it is not computed yet. **This is now the only unblocked item on the list.**
+1. ~~**`CURIOSITIES` has never been put on screen.**~~ *Built 2026-09-01 — see the top of
+   this file.*
 2. **A rewritten docstring is not compared either**, and it is the same shape as the comment
    work just done. `routines.docstring` is in the store and nothing compares it; rule 9 keeps
    docstrings out of code-shaped detectors, which is a different question from whether a

@@ -2172,7 +2172,9 @@ layers then add a selector to a working view rather than inventing both at once.
   outlier family per package -- most commented, most called, deepest closure, most lopsided
   table -- and design rule 15's curiosities panel is that computation run over the whole
   program rather than one plate. It says honestly that it is not computed yet; it now has
-  the machinery sitting beside it.
+  the machinery sitting beside it. *Built 2026-09-01 — and at program scope it turned out to
+  want its own module and its own queries, because what a card must carry beside the number
+  is the **middle** it is being read against. See "Curiosities: the doorway panel".*
 
 - The usage report screen's content. `followMode`, `graphLayout`, `graphTheme` and
   `menuOrder` are all design-rule-2 pairs counting usage now, and none of them can be
@@ -3064,7 +3066,7 @@ not a key, so the ask should be put back to Tom rather than built as originally 
 *Still owed, unchanged:* the rendered markdown is not revision-named, so a second analysis
 overwrites the first's map; the navigator's search box pinned-when-open / icon-when-closed
 (decided 2026-08-30, not built); `m.<module>` as a language feature, with research owed on
-prior art first; `CURIOSITIES`; the worklist's two jump buttons; the two vocabulary-lane
+prior art first; the worklist's two jump buttons; the two vocabulary-lane
 precision defects; per-plate sphere scaling and stack orientation; packaging as a binary.
 One question never answered: **what is an occurrence for LOST_EDGE** — the 142 callers, or
 the rival definitions? 93 of Mensores' 106 findings are LOST_EDGE, so it decides the
@@ -6443,6 +6445,149 @@ turn it on is the first design question, before any renderer.
 (`graph.js:1026`, `pickLabels`), so labelled nodes are not new ground — what is new is a
 node that *is* its label rather than a dot with one beside it.
 
+## Curiosities: the doorway panel — built 2026-09-01
+
+Design rule 15 asks for four pieces of furniture for the explorer. Three were built — the
+trail, the threads, the shelf. This is the fourth, and the panel had been on screen since
+the port saying, honestly, that nothing had been computed.
+
+### What it is
+
+**A curiosity is a measured extremum with its middle stated.** That is the whole design and
+everything else follows from it. Every program has a most-commented routine, so a maximum
+alone is a claim nobody can weigh; 1,126 comments against a middle of 3 is a discovery and
+3 levels of nesting against a middle of 2 is not, and the panel has to be able to say the
+second as plainly as the first. Rule 14's lesson — at enough measures something always
+comes out furthest — in the one place in this product that goes looking for extremes on
+purpose.
+
+Ten measures, all of them, every time. **The list is fixed and complete, so rule 8's bound
+never arises**, and a family with nothing to measure is *named* rather than dropped:
+nine cards and ten cards are different claims (design rule 1). Ordered by the ratio between
+value and middle, so the strangest is first and the near-ordinary ones sort last and say so.
+
+**A curiosity is a measurement, never a judgement.** No severity, no blind spot, nothing
+implying a number ought to be smaller — `anomalies.py` is where a claim about what is
+*wrong* lives, and it states a blind spot because it makes one. These make none.
+
+Tom settled the shape (one card per measure, all ten, ranked by distance from the middle)
+and the line-count family, with the reason recorded: external coding standards are written
+about package and routine size, so displaying a large line count is a measurement and
+implies no judgement.
+
+### Measured on Mensores, and every number checked against real source
+
+| Measure | Extremum | Middle | Ratio |
+|---|---|---|---|
+| characters in one call argument | 91,224 (`frozenset`, `quaestor/_envelope.py:67`) | 10 | 9,122× |
+| comments on one routine | 1,126 (`quaestor._envelope`, module scope) | 3 | 375× |
+| characters in one constant's value | 8,586 (`GOVERNED_GATES`) | 34 | 253× |
+| callers of one routine | 82 (`make_operational_event`) | 1 | 82× |
+| lines in one routine | 617 (`make_operational_event`) | 15 | 41× |
+| routines carrying one governance id | 112 (`AC-4`) | 4 | 28× |
+| boundaries reached from one routine | 27 (`cli.audit.backup_cmd`) | 2 | 13.5× |
+| parameters on one routine | 19 (`SQLiteClient.write_spec_amendment`) | 2 | 9.5× |
+| a table's read/write lopsidedness | 9× (`spec_seals`) | 2× | 4.5× |
+| nesting depth of a closure | 3, and 24 others as deep | 2 | 1.5× |
+
+Not taken from the store on trust. The `frozenset` at line 67 really does span 1,350 lines;
+`make_operational_event` really is 1637–2253, which is 617; `write_spec_amendment` really
+takes 19 parameters. **And each card's own SQL was copied out of the served JSON and run
+through `dunneflow query`** — all ten returned exactly what the card printed, which is
+design rule 13 checked from the reader's side rather than asserted from ours.
+
+The inspector shows `In 92` for `make_operational_event` against the card's 82, and the two
+agree: 92 call sites, 82 distinct callers. The card says *callers* (rule 32).
+
+### One statement per family, and it produces every number on the card
+
+Value, median, ties and population come out of **one scan**, so they cannot disagree, and
+the statement a card offers is not a query *about* the number — it is the query that
+returned it. Reproducible verbatim.
+
+**One of them was 7.47 s.** Written the obvious way, the call-argument CTE joined 43,926
+rows to `calls` and `routines` — and did it four times over, once per reference to the CTE.
+Materialising only the key and the measure, and resolving the winner's name once for the
+one row that won, is **54 ms**. `MATERIALIZED` is stated rather than hoped for. All ten are
+106 ms warm; the route is held on `_Base` and answers in 0.5 ms after the first ask.
+
+Not paid at boot, unlike the two vocabulary lanes, and the difference is the bargain: a
+thread is asked on every selection so a lazy first call there would stall the reading loop;
+this is a page a session either opens or never does (rule 45).
+
+### Two defects, both found by driving
+
+**Mine.** The governance card said **"121 routines carry one governance id" and opened
+112**. An annotation's owner is a routine *or a structure*; the measure counted every owner
+and called them routines, while `GOVERNANCE_ROUTINES` — which resolves the cohort — has
+always been scoped to routines. Rule 32 twice over: a wrong noun, and a number a reader
+catches out the moment they click it. The measure is now over exactly the set the subject
+opens, and the guard is written against a `counts_its_cohort` flag rather than against this
+family, so the next cohort measured by its own size is covered without anyone remembering.
+
+**Not mine, and it had been unreachable.** **Rule 76's flag was at one of three call sites.**
+`Graph.mount` is handed `picks: state.picks` and finishes by calling `announceSelection()`
+for exactly the same reason `setSelection` does, and it was never flagged;
+`applySelectionStep` raises `restoringSelection`, which only ever suppressed
+`recordSelection`, so a Back ran the whole handler under `sel.node` and was corrected on the
+next line — right by ordering rather than by design.
+
+This panel is **the first surface in the product that can follow a subject with the stack
+never mounted**, which is why nothing had reached the mount case before. It showed up on the
+first cold run: a card naming `backup_cmd` opened the inspector on
+`mensores.transport._envelope.<module>` and filed two trail steps under its name. One
+predicate now covers all three sites and a guard asserts there is no fourth — the failure to
+guard against is a *new* way to hand the engine a selection, which would look exactly like
+working code. Rule 76 is amended accordingly.
+
+The panel's own click handler was rule 30 alive in the file, and is gone rather than fixed:
+each card carried a `tag` string and the handler switched on it with an `else` falling
+through to table mode. It had never fired because `CURIOSITIES` was never filled; filling it
+is what would have lit it up. Cards now carry a **subject** and go through the tested
+`data-thread` / `THREAD_SUBJECTS` path, which also gives them the trail step for free.
+
+### Smaller things it turned up
+
+- **The navigator count never appeared.** `render()` does not rebuild the pane, so the
+  number landed and the row went on saying nothing until something unrelated rebuilt it.
+  Rule 55's companion: whoever sets the state does the work of showing it.
+- **The provenance key was a bare index**, and two panes number their cards from zero.
+  Opening the naming page's third query would have opened this pane's third card too.
+  `provKey(pane, i)` is the one owner of the key shape; a prefix written at the attribute
+  and again at the comparison is two decisions about one key.
+- **`laneState` takes its bag as a parameter** now. Three panes fetch on demand and each
+  keeps its own flag; what must not be duplicated is the four states and how each reads.
+
+### Verification
+
+```
+25 mutations caught over a baseline proved green first
+five survived a first pass:
+  two guards read the flag named in their own comment (rule 37, for the fourth and fifth
+    time — `_code` exists precisely for this, and neither guard used it)
+  one fixture could not produce a zero middle, so the branch was tested where it can be
+    reached — through `_card` with a constructed row — rather than pretended at
+  one guard did not exist (the four lane states)
+  one was too loose (the silent note, dropped from the page with cards while the other
+    return still mentioned it)
+```
+
+The fixture had to be corrected twice before it could tell the governance defect from its
+fix: a comment on a class body is filed under module scope (rule 18), which is a *routine*,
+so the id had to go in the class's **docstring** to produce a structure owner at all. Until
+then the guard passed against the reverted defect — a check that has never failed is a claim
+nobody has tested.
+
+**Absent rather than estimated: a picture of the whole panel.** The automation tab's capture
+is fixed at 784×353 whatever the window is resized to, so one card fits and the other nine
+do not (rule 38). What was driven there: all ten cards, all twenty buttons reachable by
+`elementFromPoint`, every node card followed and checked against the inspector, both cohort
+cards resolved (the governance one selecting exactly the 112 it claims), the provenance
+block opened and confirmed not to open the naming page's, Back returning to all ten cards,
+and three cold-mount cycles for the echo fix.
+
+783 tests, mypy clean, ruff clean.
+
 ## Still open, in the order agreed
 
 **1. Switching the base — done 2026-08-30, see `6d`.** What follows was the plan and is kept
@@ -6551,7 +6696,7 @@ is still unimplemented (and is now a smaller question than it was — a version 
 the program, so what `--revision` would add is a reader's *declaration* where the program
 says nothing); the navigator's search box pinned-when-open / icon-when-closed (decided
 2026-08-30, not built); `m.<module>` as a language feature, with research owed on prior art
-first; `CURIOSITIES`; the worklist's two jump buttons; the two vocabulary-lane precision
+first; the worklist's two jump buttons; the two vocabulary-lane precision
 defects; per-plate sphere scaling and stack orientation; packaging as a binary. One question
 never answered: **what is an occurrence for LOST_EDGE** — the 142 callers, or the rival
 definitions? 93 of Mensores' 106 findings are LOST_EDGE, so it decides the feature. And the

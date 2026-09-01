@@ -5255,37 +5255,89 @@ function ghostRows(ov, after, cls) {
 }
 
 function viewCuriosities() {
-  /* Not yet computed from the store. Said plainly rather than shown as an empty grid,
-     because "nothing unusual here" and "nobody has looked yet" are opposite claims and
-     an empty list reads as the first one. */
+  /* Four states, and a blank panel states the wrong one whichever it is. "Nobody has
+     looked yet" and "there is nothing unusual here" are opposite claims about the map --
+     the same argument design rule 21 makes about a canvas, one pane out. */
+  const waiting = laneState(CURIOS, "lane", "error", "the curiosities");
+  if (waiting) return `<div style="max-width:58rem">${waiting}</div>`;
+
+  /* Design rule 1: a measure that had nothing to say is named, not dropped. Nine cards and
+     ten cards are different claims, and a reader has no way to tell a measure that came out
+     ordinary from one that was never taken. */
+  const silent = CURIOS.silent || [];
+  const silentNote = silent.length ? `<div class="note curinote">
+      <b>${silent.length} of ${CURIOS.families} measures had nothing to measure here.</b>
+      ${silent.map(k => `<code>${esc(k)}</code>`).join(" ")} — this program holds nothing
+      for ${silent.length === 1 ? "that one" : "those"} to come out of, which is a fact about
+      the program rather than a gap in the panel.</div>` : "";
+
   if (!CURIOSITIES.length) {
-    return `<div class="note" style="max-width:56rem">
-      <b>Curiosities are not computed yet.</b>
-      They are what came out furthest from the middle — 264 comments on one routine, four
-      closures deep, a table written twice as often as it is read. Doorways rather than
-      problems. This panel stays empty until they are measured from this program rather
-      than described from another.</div>`;
+    return `<div style="max-width:58rem;display:flex;flex-direction:column;gap:.75rem">
+      <div class="note"><b>Nothing here could be measured.</b> All ${CURIOS.families}
+      measures came back empty, which happens when a map holds no routines at all. This is
+      an answer, not an empty page waiting to fill.</div>${silentNote}</div>`;
   }
+
   return `
-  <div style="max-width:56rem;display:flex;flex-direction:column;gap:.75rem">
+  <div style="max-width:58rem;display:flex;flex-direction:column;gap:.75rem">
     <div class="note">
-      <b>${CURIOSITIES.length || "No"} thing${CURIOSITIES.length === 1 ? "" : "s"} about this program unusual enough to be worth a look.</b>
-      None of them is a problem. Each is a measurement that came out further from the middle
-      than the rest, which is usually where the interesting story is. Pull one and see where it goes.
+      <b>${CURIOSITIES.length} measurement${CURIOSITIES.length === 1 ? "" : "s"} of this
+      program, each showing what came out furthest from the middle.</b>
+      None of them is a problem and none of them is a finding — there is no severity here
+      and nothing that says a number ought to be smaller. Each says its value, the
+      <b>middle</b> it is being read against, and how far apart the two are; the list is
+      ordered by that distance, so the strangest is first and the ones barely above their
+      middle sort last and say so. Pull one and see where it goes.
+      ${comparing() ? `<br><span class="muted">Measured on the base alone. These are not
+        compared across the two versions — what a card names is what the version on screen
+        holds.</span>` : ""}
     </div>
+    ${silentNote}
     <div class="curigrid">
-      ${CURIOSITIES.map((c, i) => `
-        <button class="curi" data-curi="${i}">
-          <span class="curi-icon" aria-hidden="true">${c.icon}</span>
-          <span class="curi-body">
-            <span class="curi-head">${esc(c.head)}<span class="kind-tag">${esc(c.tag)}</span></span>
-            <span class="curi-text">${c.body}</span>
-            <span class="curi-go">follow this \u2192</span>
-          </span>
-        </button>`).join("")}
+      ${CURIOSITIES.map((c, i) => curiCard(c, i)).join("")}
     </div>
   </div>`;
 }
+
+/* One card. The follow button is an ordinary `data-thread`, which is the whole point:
+ * it carries a **subject** and goes through `THREAD_SUBJECTS`, the table that already
+ * knows how to open a node and how to resolve a cohort, and it pushes a trail step on
+ * the way.
+ *
+ * What it replaces was rule 30 alive in this file. Each card carried a `tag` string and
+ * the handler switched on it — `anomaly` to the worklist, `vocabulary` to the glossary,
+ * everything else falling through to table mode — so a card's destination was decided by
+ * a *label* and an unrecognised one landed somewhere that looked deliberate. It had never
+ * fired only because this array had never been filled; filling it is what would have lit
+ * it up. There is no second route now, and nothing to keep in step. */
+function curiCard(c, i) {
+  const key = provKey("curi", i);
+  return `<div class="curi">
+    <span class="curi-icon" aria-hidden="true">◈</span>
+    <span class="curi-body">
+      <span class="curi-head">${esc(c.head)}<span class="kind-tag">${esc(c.ratioText)}</span></span>
+      <span class="curi-what mono">${esc(c.what)}</span>
+      ${c.whence ? `<span class="curi-text">${
+        c.whenceLabel ? esc(c.whenceLabel) + " " : ""}<span class="mono">${esc(c.whence)}</span></span>` : ""}
+      <span class="curi-text">${esc(c.middle)}${c.tie ? ` · ${esc(c.tie)}` : ""}</span>
+      <span class="curi-acts">
+        <button class="cite" data-thread="${esc(JSON.stringify(c.subject))}"
+                data-threadlabel="${esc(c.what)}" data-threadwhy="${esc(c.head)}">
+          <span class="citeicon" aria-hidden="true">◈</span>Follow this<span class="citego">go</span></button>
+        <button class="cite" data-sqlshow="${key}">
+          <span class="citeicon" aria-hidden="true">⌗</span>How this was measured<span class="citego">show the query</span></button>
+      </span>
+      ${state.showSql === key ? `<pre class="srcblock sqlblock">${esc(c.sql)}</pre>
+        <span class="provfoot">Run it yourself:
+          <span class="mono">dunneflow query &lt;this map&gt; --sql "…"</span> — the directory
+          this dashboard is serving, not the source tree. Every number on this card comes out
+          of that one statement: the value, the middle, how many tie with it, and how large a
+          population it came out of. It is not a query <i>about</i> the number, it is the
+          query that returned it.</span>` : ""}
+    </span>
+  </div>`;
+}
+
 
 /* ═══ kept things ═══ */
 function viewPins() {
@@ -6048,14 +6100,69 @@ function ensureVocabulary() {
   if (state.view === "naming" && !VOCAB.naming) loadNaming().then(render);
 }
 
+/* Which provenance block is open, keyed by **pane and card** rather than by card alone.
+ *
+ * Exactly one is open at a time across the whole app, which is right -- and a bare index
+ * makes that one number mean two things, because every pane numbers its own cards from
+ * zero. Open the naming page's third query, switch to the curiosities, and that pane's
+ * third card is open too: a block nobody asked for, with nothing on screen to explain it.
+ *
+ * One function rather than a prefix written at each site, because a key composed in two
+ * places is two decisions about one thing and they drift the first time either moves
+ * (rule 51). The attribute and the comparison both come through here. */
+function provKey(pane, i) { return `${pane}:${i}`; }
+
+/* The doorway panel's fetch state. Its own bag rather than a third lane inside `VOCAB`,
+ * which is the two naming lanes and their data: a shared *renderer* is one truth, a shared
+ * bag would be one pane keeping another's flag. */
+const CURIOS = {};
+
+/* Ten measured extrema, asked for once. Idempotent the same way the vocabulary loaders
+ * are -- the lane is set before the first await, so the repaint this triggers on arrival
+ * does not start a second request. */
+async function loadCuriosities() {
+  if (CURIOS.lane) return;
+  CURIOS.lane = "loading";
+  try {
+    const r = await fetch("/api/curiosities");
+    if (!r.ok) throw new Error(`the server answered ${r.status}`);
+    const d = await r.json();
+    CURIOSITIES = d.curiosities || [];
+    CURIOS.families = d.families || 0;
+    CURIOS.silent = d.silent || [];
+    CURIOS.lane = "ready";
+  } catch (err) {
+    CURIOS.lane = "failed";
+    CURIOS.error = err.message;
+  }
+}
+
+/* Asked from the one place that knows which page is about to be painted, for the reason
+ * `ensureVocabulary` states: wiring the fetch to the navigator row instead would work from
+ * there and fail from the breadcrumb, the trail and `data-goto`. */
+function ensureCuriosities() {
+  /* `buildNav()` as well as `render()`, and it is not belt and braces. The count beside
+     *Worth a look* comes from this lane, and `render()` does not rebuild the navigator --
+     so the number arrived, the panel filled, and the row went on saying nothing until some
+     unrelated thing happened to rebuild the pane. Whoever sets the state does the work of
+     showing it (rule 55's companion); found by opening the panel and looking at the row. */
+  if (state.view === "curiosities" && !CURIOS.lane) {
+    loadCuriosities().then(() => { buildNav(); render(); });
+  }
+}
+
 /* "Not asked for yet", "on its way", "the server refused" and "there is nothing here" are
- * four different things and a blank panel states the wrong one whichever it is. */
-function laneState(lane, err, what) {
-  if (!VOCAB[lane]) return `<div class="note">${esc(what)} has not been asked for yet.</div>`;
-  if (VOCAB[lane] === "loading") return `<div class="note">Reading ${esc(what)}…</div>`;
-  if (VOCAB[lane] === "failed") {
+ * four different things and a blank panel states the wrong one whichever it is.
+ *
+ * The bag is a parameter because three panes now fetch on demand and each keeps its own
+ * flag. What must not be duplicated is *this* -- the four states and how each reads -- and
+ * a second copy of it is how one pane quietly starts calling a failure an empty answer. */
+function laneState(bag, lane, err, what) {
+  if (!bag[lane]) return `<div class="note">${esc(what)} has not been asked for yet.</div>`;
+  if (bag[lane] === "loading") return `<div class="note">Reading ${esc(what)}…</div>`;
+  if (bag[lane] === "failed") {
     return `<div class="note"><b>${esc(what)} could not be read.</b>
-      ${esc(VOCAB[err] || "no reason given")}. Nothing is being shown rather than something
+      ${esc(bag[err] || "no reason given")}. Nothing is being shown rather than something
       being guessed.</div>`;
   }
   return "";
@@ -6136,9 +6243,9 @@ function conventionPanel(cv, i) {
 
       ${cv.sql ? `
       <div class="prov">
-        <button class="cite" data-sqlshow="${i}">
+        <button class="cite" data-sqlshow="${provKey("conv", i)}">
           <span class="citeicon" aria-hidden="true">⌗</span>How this number was counted<span class="citego">show the query</span></button>
-        ${state.showSql === i ? `<pre class="srcblock sqlblock">${esc(cv.sql)}</pre>
+        ${state.showSql === provKey("conv", i) ? `<pre class="srcblock sqlblock">${esc(cv.sql)}</pre>
           <div class="provfoot">Run it yourself:
             <span class="mono">dunneflow query &lt;this map&gt; --sql "…"</span> — the directory this
             dashboard is serving, not the source tree.
@@ -6150,7 +6257,7 @@ function conventionPanel(cv, i) {
 }
 
 function viewNaming() {
-  const waiting = laneState("naming", "namingError", "the naming standard");
+  const waiting = laneState(VOCAB, "naming", "namingError", "the naming standard");
   if (waiting) return `<div style="max-width:58rem">${waiting}</div>`;
 
   const th = VOCAB.thresholds || {};
@@ -6283,7 +6390,7 @@ function senseRow(term, s, i) {
 }
 
 function viewGlossary() {
-  const waiting = laneState("glossary", "glossaryError", "the glossary");
+  const waiting = laneState(VOCAB, "glossary", "glossaryError", "the glossary");
   if (waiting) return `<div style="max-width:58rem">${waiting}</div>`;
 
   const q = state.termFilter.trim().toLowerCase();
@@ -7318,7 +7425,7 @@ function render() {
   else if (state.view === "glossary")  { ensureVocabulary(); vp.innerHTML = viewGlossary(); }
   else if (state.view === "naming")    { ensureVocabulary(); vp.innerHTML = viewNaming(); }
   else if (state.view === "inference") vp.innerHTML = viewInference();
-  else if (state.view === "curiosities") vp.innerHTML = viewCuriosities();
+  else if (state.view === "curiosities") { ensureCuriosities(); vp.innerHTML = viewCuriosities(); }
   else if (state.view === "pins")       vp.innerHTML = viewPins();
   else if (state.view === "settings")  {
     vp.innerHTML = viewSettings();
@@ -7796,9 +7903,14 @@ function wire() {
     state.view = b.dataset.goto; render();
   }));
 
+  /* One open provenance block at a time, across every pane that has one -- and the key is
+     **namespaced**, never a bare index. Two panes numbering their own cards from zero share
+     one number, so opening the naming page's third query and switching to the curiosities
+     opened that pane's third card as well: a block nobody asked for, and there is nothing on
+     screen that would explain it. */
   $$("[data-sqlshow]").forEach(b => b.addEventListener("click", () => {
-    const i = parseInt(b.dataset.sqlshow, 10);
-    state.showSql = state.showSql === i ? null : i;
+    const k = b.dataset.sqlshow;
+    state.showSql = state.showSql === k ? null : k;
     render();
   }));
 
@@ -7863,17 +7975,10 @@ function wire() {
     state.pins.splice(parseInt(b.dataset.unpin, 10), 1); render();
   }));
 
-  /* a curiosity is a doorway */
-  $$("[data-curi]").forEach(b => b.addEventListener("click", () => {
-    const c = CURIOSITIES[parseInt(b.dataset.curi, 10)];
-    pushTrail("curiosities", c.lead, c.head);
-    if (c.tag === "anomaly")         { state.view = "anomalies"; state.sev = "suspect"; state.cursor = 0; }
-    else if (c.tag === "vocabulary") { state.view = "glossary"; state.termFilter = c.lead; }
-    else if (c.tag === "data")       { state.view = "table"; state.mode = "table"; }
-    else if (c.tag === "governance") { state.view = "glossary"; state.termFilter = ""; }
-    else                             { state.view = "table"; state.mode = "table"; }
-    render();
-  }));
+  /* A curiosity is a doorway, and it goes through `data-thread` above -- there is no
+     handler of its own here, deliberately. The one that used to be routed on a `tag`
+     string with a fall-through, which is rule 30: a label is not an identity, and an
+     unrecognised one landed on table mode looking like a decision somebody made. */
 
   /* a thread is a detour you can take and come back from */
   $$("[data-thread]").forEach(b => b.addEventListener("click", () => {
@@ -9496,7 +9601,12 @@ const NAV_GROUPS = [
     onOpen: () => ensureFilePair().then(() => { buildNav(); render(); }),
     body: () => codeList() },
   { id: "navExplore", title: "Explore", open: true, items: () => [
-      { nav: "curiosities", label: "Worth a look", n: "" },
+      { nav: "curiosities", label: "Worth a look",
+        /* The count is what the panel holds once it has been asked. Blank before that,
+           because "" and 0 are different claims and the navigator states a number beside
+           every other row -- a 0 here would say this program has nothing unusual in it,
+           which is a measurement nobody has taken yet. */
+        n: CURIOS.lane === "ready" ? CURIOSITIES.length : "" },
       { nav: "pins",        label: "Kept",         n: state.pins.length, id: "navPins" },
     ] },
   { id: "navWaysIn", title: "Ways in", open: true, items: () => [
@@ -10534,20 +10644,42 @@ async function ensureGraph() {
      nothing to compare would paint every node one tone for a frame and then correct
      itself, which reads as a flicker rather than as a decision. */
   resolveColorBy();
-  Graph.mount($("#graphStage"), graphPayload, {
-    diskOrder: plateOrder(), diskColors: state.diskColors, colorBy: state.colorBy,
-    nodeChange: graphChangeOn() ? changeByNodeId() : null, changeTone: changeTones(),
-    changeStamp: Date.now(),
-    filterMode: state.filterMode, direction: state.direction, nodeSize: state.nodeSize,
-    spreadX: state.spreadX, spreadY: state.spreadY, spreadZ: state.spreadZ,
-    plateSize: plateSizeNow(),
-    collapseUnused: state.collapseUnused, showPlates: state.showPlates, scale: state.scale,
-    diagram: state.diagram, nodeShapes: state.nodeShapes,
-    edgesInMotion: state.edgesInMotion, picks: state.picks,
-    pointerShown: state.pointerShown, pointerColor: pointerRgb(),
-    pointerPlace: state.pointerPlace, reticuleShown: state.reticuleShown,
-    focusLocked: state.focusLocked,
-  });
+  /* **The mount announces too, and that is an echo like any other (rule 76).**
+   * `Graph.mount` is handed `picks: state.picks` -- a selection this app has already
+   * decided -- and finishes by calling `announceSelection()`, so `onGraphSelect` re-enters
+   * here as well as from `applyWanted`. Rule 76 flagged the second call site and not this
+   * one, and the difference was invisible because nothing could reach it: a thread row only
+   * exists once something is selected, which means the graph is already up.
+   *
+   * The doorway panel is the first surface that can follow a subject with the stack never
+   * mounted, and it made it visible at once -- a card naming `backup_cmd` opened the
+   * inspector on `mensores.transport._envelope.<module>`, an unrelated node, and filed two
+   * trail steps under its name. That is rule 74's defect arriving through the engine,
+   * exactly as rule 76 describes, at the one call site the fix had not reached.
+   *
+   * Flagged for the mount's duration in a `finally`, for the same reason the other site is:
+   * a throw inside the engine would otherwise leave the shell deaf to every later
+   * selection. `applyWanted()` below then installs the wanted set and does the subject, the
+   * trail and the repaint itself, in the right order and with the right subject. */
+  installingSelection = true;
+  try {
+    Graph.mount($("#graphStage"), graphPayload, {
+      diskOrder: plateOrder(), diskColors: state.diskColors, colorBy: state.colorBy,
+      nodeChange: graphChangeOn() ? changeByNodeId() : null, changeTone: changeTones(),
+      changeStamp: Date.now(),
+      filterMode: state.filterMode, direction: state.direction, nodeSize: state.nodeSize,
+      spreadX: state.spreadX, spreadY: state.spreadY, spreadZ: state.spreadZ,
+      plateSize: plateSizeNow(),
+      collapseUnused: state.collapseUnused, showPlates: state.showPlates, scale: state.scale,
+      diagram: state.diagram, nodeShapes: state.nodeShapes,
+      edgesInMotion: state.edgesInMotion, picks: state.picks,
+      pointerShown: state.pointerShown, pointerColor: pointerRgb(),
+      pointerPlace: state.pointerPlace, reticuleShown: state.reticuleShown,
+      focusLocked: state.focusLocked,
+    });
+  } finally {
+    installingSelection = false;
+  }
   /* Read back the order the engine resolved. A saved order from a graph that has since
    * changed is discarded there, and the shell must not go on persisting the stale one --
    * that is how a setting outlives the thing it described. */
@@ -10589,8 +10721,16 @@ function onGraphSelect(sel) {
    * `state.picks` is still taken, because the engine is the authority on what is picked.
    * Everything below is *what to do about a new selection*, and the caller that installed
    * this one does all of it itself, in the right order, with the right subject. Same shape
-   * and same reason as `recordSelection`'s `restoringSelection` bail. */
-  if (installingSelection) return;
+   * and same reason as `recordSelection`'s `restoringSelection` bail.
+   *
+   * **Both flags, because at this point both mean the same thing.** A trail step restores
+   * a selection through `Graph.setSelection` too, and `restoringSelection` only ever
+   * suppressed `recordSelection` -- so a Back ran this whole body with `sel.node` as its
+   * subject and `applySelectionStep` set the right one on the next line. Correct by
+   * ordering rather than by design, with a wasted repaint under a wrong subject on the way
+   * past. Three sites hand the engine a selection the app already decided; one predicate
+   * covers all three, and a guard asserts there is no fourth. */
+  if (installingSelection || restoringSelection) return;
   setSubject({ node: sel.node ? sel.node.id : null });
   persist();
   recordSelection();          // so the click that lost your place can be taken back

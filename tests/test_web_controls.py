@@ -2640,8 +2640,20 @@ def test_every_thread_carries_a_subject_and_every_subject_has_a_route() -> None:
     shell = _read("shell.js")
     threads_py = (WEB / "threads.py").read_text(encoding="utf-8")
 
+    # `threads.py` is the only place a subject is constructed, and that is the point of
+    # reading it alone: `curiosities.py` sends subjects too and gets them from here, so a
+    # second constructor over there would be a second answer to what the shell routes on.
+    # Asserted rather than assumed -- see below.
     minted = set(re.findall(r'return \{"type": "(\w+)"', threads_py))
     assert minted, "threads.py no longer mints subjects as `{'type': ...}` -- this is blind"
+
+    for other in ("curiosities.py",):
+        text = (WEB / other).read_text(encoding="utf-8")
+        assert not re.search(r'\{\s*"type"\s*:', text), (
+            f"{other} constructs a subject of its own. There is one place that decides what "
+            "following something selects, and a second one is invisible to this guard as "
+            "well as being a second answer (rule 51)."
+        )
 
     body = shell.split("const THREAD_SUBJECTS = {", 1)[1].split("\n};", 1)[0]
     routed = set(re.findall(r"^\s+(\w+):", body, re.M))
@@ -2784,18 +2796,29 @@ def test_every_cohort_kind_minted_has_a_query_to_resolve_it() -> None:
     """The same both-directions check as the subject table, one tier down.
 
     A cohort subject is a promise: *there is code at the far end of this, ask me and I will
-    name it.* `_cohort("plate", ...)` with no entry in `cohort()`'s table is a thread that
-    renders, highlights, is clicked, and comes back "no such thread kind" -- rule 30's
+    name it.* `cohort_subject("plate", ...)` with no entry in `cohort()`'s table is a thread
+    that renders, highlights, is clicked, and comes back "no such thread kind" -- rule 30's
     failure wearing a server's uniform instead of a client's.
 
     The reverse matters too and is the quieter half: a query for a kind nothing ever mints
     is dead code that reads as coverage, and it is exactly what makes a table look more
     complete than the feature is.
+
+    **Both callers, because there are two now.** `curiosities.py` mints cohorts through the
+    same constructor, and a guard reading only `threads.py` would pass while the doorway
+    panel offered a kind nothing resolves -- the same blindness this test's own assertions
+    are written to refuse.
     """
     threads_py = (WEB / "threads.py").read_text(encoding="utf-8")
+    curios_py = (WEB / "curiosities.py").read_text(encoding="utf-8")
 
-    minted = set(re.findall(r'_cohort\(\s*"(\w+)"', threads_py))
+    minted = set(re.findall(r'cohort_subject\(\s*\n?\s*"(\w+)"',
+                            threads_py + curios_py))
     assert minted, "nothing mints a cohort any more -- this test is blind"
+    assert re.search(r'cohort_subject\(\s*\n?\s*"(\w+)"', curios_py), (
+        "curiosities.py no longer mints a cohort through the shared constructor -- either "
+        "it grew a private one (two answers to what a subject is) or this test is blind"
+    )
 
     table = threads_py.split("    sql = {", 1)[1].split("    }.get(kind)", 1)[0]
     resolved = set(re.findall(r'^\s+"(\w+)":', table, re.M))
@@ -2853,8 +2876,13 @@ def _code(js: str) -> str:
 
     Three guards this session failed on the prose explaining the very thing they check --
     a check for `p.annotation` tripping on the comment saying `p.annotation` was the bug,
-    and twice more besides. A containment check is only as good as the span it is taken
-    over (rule 37), and a comment is not code.
+    and twice more besides. **Two more in the session that built the doorway panel**, both
+    found by mutation and not by review: a check that `onGraphSelect` consults
+    `restoringSelection` and a check that `ensureCuriosities` calls `buildNav()`, each
+    passing against its own removal because the comment beside it named the thing. Five
+    now, which is enough to say the failure is the habit rather than the occasion: reach
+    for this whenever a guard asks whether a name is *used*. A containment check is only
+    as good as the span it is taken over (rule 37), and a comment is not code.
 
     Whole lines only, which is the conservative half of the job and the only half that is
     safe. A general comment stripper has to track string state, and a first attempt at one
@@ -2944,6 +2972,251 @@ def test_the_vocabulary_views_read_the_fields_the_server_sends() -> None:
         assert got <= sense, (
             f"{fn} reads sense fields the server does not send: {sorted(got - sense)}"
         )
+
+
+def test_every_selection_the_app_hands_the_engine_is_flagged_as_an_echo() -> None:
+    """Rule 76, over **every** call site rather than the one it was found at.
+
+    `Graph.setSelection` announces synchronously, so the shell hears back the selection it
+    has just installed and, unflagged, re-subjects to `sel.node` -- one arbitrary member of
+    it. Rule 76 flagged `applyWanted`. It did not flag `Graph.mount`, which is handed
+    `picks: state.picks` and finishes by calling `announceSelection()` for exactly the same
+    reason, and that site was unreachable until there was a surface that could follow a
+    subject with the stack never mounted.
+
+    The doorway panel is that surface, and it showed the defect on its first cold run: a
+    card naming `backup_cmd` opened the inspector on `mensores.transport._envelope.<module>`
+    and filed two trail steps under its name.
+
+    So the check is over the *set* of sites, not over the two that exist -- a third way to
+    hand the engine a selection is the failure to guard against, and it would look exactly
+    like working code.
+    """
+    # **Comments stripped**, and that is not tidiness. The first version of this read the
+    # raw file, and the mutation that removes `restoringSelection` from `onGraphSelect`
+    # survived it -- because the comment *explaining* the predicate names the flag, so the
+    # guard was reading its own prose as evidence. Rule 37, on a guard written for rule 37.
+    js = _code(_read("shell.js"))
+    # `(?!\))` skips the prose: a comment saying "`Graph.mount()` is already handed
+    # `state.picks`" is not a call site, and counting it made this fail on a fix that was
+    # already in place -- a guard reading a sentence about the code as though it were code.
+    sites = [m.start() for m in re.finditer(r"Graph\.(mount|setSelection)\((?!\))", js)]
+    assert len(sites) >= 3, "the engine is handed a selection from fewer than three places -- blind"
+
+    # Nearest flag either side, not a fixed distance: the comments explaining these are
+    # long enough that a window wide enough to clear one is wide enough to borrow the next
+    # site's flag, which is a guard that passes on the arrangement rather than on the rule.
+    flags = [(m.start(), m.group(1), m.group(2)) for m in
+             re.finditer(r"(?<!let )(?<!const )(?<!var )"
+                         r"(installingSelection|restoringSelection) = (true|false);", js)]
+    assert flags, "neither echo flag is set anywhere -- this test is blind"
+
+    unflagged = []
+    for at in sites:
+        raised = [f for f in flags if f[0] < at]
+        lowered = [f for f in flags if f[0] > at]
+        if not raised or raised[-1][2] != "true" or not lowered or lowered[0][2] != "false":
+            unflagged.append(js[at:at + 40].split("(")[0])
+        elif raised[-1][1] != lowered[0][1]:
+            unflagged.append(js[at:at + 40].split("(")[0]
+                             + " (raised and lowered by different flags)")
+    assert not unflagged, (
+        f"a selection is handed to the engine without being flagged as an echo: {unflagged} "
+        "-- what comes back is re-read as a new selection and the subject becomes one "
+        "arbitrary member of it (rule 76)"
+    )
+
+    # And the predicate that reads them must honour both, or a site is flagged with one the
+    # handler does not consult -- which looks exactly like being guarded.
+    handler = _fn(js, "onGraphSelect")
+    for flag in ("installingSelection", "restoringSelection"):
+        assert flag in handler, (
+            f"onGraphSelect does not consult {flag}, so a site raising it is not guarded "
+            "at all -- the flag is set, read by nothing, and reads as coverage"
+        )
+
+    # And the flag must be released in a `finally`: a throw inside the engine would leave
+    # the shell deaf to every later selection the reader makes.
+    for m in re.finditer(r"(?<!let )(?<!const )(?<!var )installingSelection = false;", js):
+        window = js[max(0, m.start() - 200):m.start()]
+        assert "finally" in window, (
+            "the echo flag is lowered outside a `finally`, so a throw inside the engine "
+            "leaves it raised and every later selection is ignored"
+        )
+
+
+def test_the_doorway_panel_reads_the_fields_the_server_sends() -> None:
+    """Rule 44, on the newest pane. A view reading a field nothing sends renders a blank
+    while looking finished, and nothing anywhere fails.
+
+    Checked in one direction only, for the reason the vocabulary guard states: a served
+    field may go unread, but a read field that is never sent is a hole in the card.
+    """
+    js = _code(_read("shell.js"))
+    py = (STATIC.parent / "curiosities.py").read_text(encoding="utf-8")
+
+    served = _served_keys(py, "_card")
+    assert {"head", "what", "middle", "ratioText", "subject", "sql", "ties"} <= served, (
+        "curiosities._card changed shape -- this test is blind"
+    )
+    read = set(re.findall(r"\bc\.(\w+)", _fn(js, "curiCard")))
+    assert read, "curiCard reads nothing off a curiosity -- this test is blind"
+    assert read <= served, (
+        f"the doorway panel reads fields the server does not send: {sorted(read - served)}"
+    )
+
+    # And the panel's own summary reads the two things that ride beside the cards.
+    panel = _fn(js, "viewCuriosities")
+    for field in ("CURIOS.silent", "CURIOS.families"):
+        assert field in panel, f"{field} is sent and the panel never says it"
+    # **On both pages, not just one.** The panel has two returns -- the ordinary one with
+    # cards and the one for a map that measured nothing -- and the silent note belongs on
+    # both. Written as a mere reference to `CURIOS.silent`, this guard passed a mutation
+    # that dropped the note from the page a reader actually sees, because the other branch
+    # still mentioned it. Design rule 1: nine cards and ten cards are different claims.
+    assert panel.count("${silentNote}") >= 2, (
+        "the note naming the measures that had nothing to measure is missing from one of "
+        "the panel's two returns, so on that page a dropped measure is invisible"
+    )
+
+
+def test_a_curiosity_is_followed_through_the_subject_table_and_nothing_else() -> None:
+    """The rule-30 defect this panel used to hold, asserted as an **absence**.
+
+    Every card carried a `tag` string and one handler switched on it -- `anomaly` to the
+    worklist, `vocabulary` to the glossary, and an `else` that sent everything else to
+    table mode. A label deciding a destination, with a fall-through that looks deliberate.
+    It never fired only because `CURIOSITIES` was never filled; filling it is what would
+    have lit it up.
+
+    The check is an absence over the whole file rather than an assertion about the one
+    handler that existed, because the failure to guard against is a *new* hand-written
+    route beside the shared one (rule 74's shape).
+    """
+    # Comment-stripped, like every other containment check here. Two guards written this
+    # session passed against their own mutation because the prose explaining a name is not
+    # the name being used -- rule 37, twice, in one afternoon.
+    js = _code(_read("shell.js"))
+    assert "data-curi=" not in js and "dataset.curi" not in js, (
+        "a curiosity is routed by something of its own again -- there is one table that "
+        "says what following something selects, and a second route past it is rule 30"
+    )
+    card = _fn(js, "curiCard")
+    assert 'data-thread="' in card, (
+        "a curiosity card offers no `data-thread` button, so it carries a subject nothing "
+        "acts on -- it renders, it highlights, and it goes nowhere"
+    )
+    assert "c.subject" in card, "the follow button does not carry the served subject"
+
+
+def test_the_doorway_panel_is_fetched_wherever_it_is_painted() -> None:
+    """The same argument the vocabulary lanes make, and this pane has more ways in than
+    they do: the navigator, the breadcrumb, the trail and `data-goto` all set
+    `state.view`. The ask belongs where the view is painted."""
+    js = _code(_read("shell.js"))
+    dispatch = js.split('else if (state.view === "curiosities")', 1)[1].split("\n", 1)[0]
+    assert "ensureCuriosities()" in dispatch, (
+        "the doorway panel is painted without anything asking for its data; it would say "
+        "\"has not been asked for yet\" for ever"
+    )
+    body = _fn(js, "ensureCuriosities")
+    assert "loadCuriosities" in body, "the lane is never fetched"
+    assert "render()" in body, (
+        "the lane is fetched and never repainted -- the data arrives behind a page that "
+        "has already said it has none"
+    )
+    # And the navigator, which is a *different* surface fed by the same arrival. It was
+    # missing, and the symptom was a row reading "Worth a look" with no number beside it
+    # while ten cards sat in the panel it names. `render()` does not rebuild the nav.
+    assert "buildNav()" in body, (
+        "the count beside the navigator row is fed by this lane and nothing rebuilds the "
+        "pane when it lands, so the row states no count until something unrelated does"
+    )
+
+
+def test_the_doorway_panel_tells_its_four_states_apart() -> None:
+    """"Nobody has looked yet", "on its way", "the server refused" and "there is nothing
+    here" are four different claims and a blank panel states the wrong one whichever it is.
+
+    The panel must go through `laneState` -- the one place that knows the four -- rather
+    than testing the array and painting an empty grid, which is design rule 21's argument
+    one pane out from the canvas.
+    """
+    js = _code(_read("shell.js"))
+    panel = _fn(js, "viewCuriosities")
+    assert "laneState(CURIOS" in panel, (
+        "the panel does not ask what state its lane is in, so 'not fetched' and 'nothing "
+        "to report' paint the same page"
+    )
+    assert re.search(r"if \(waiting\) return", panel), (
+        "the lane state is computed and then painted over -- a page that says it is "
+        "loading and shows an empty grid underneath says both things at once"
+    )
+    # And the empty answer is its own sentence, distinct from the three above it.
+    assert "CURIOSITIES.length" in panel, "the panel never tests whether anything came back"
+
+    shared = _fn(js, "laneState")
+    for word in ('"loading"', '"failed"'):
+        assert word in shared, f"laneState no longer distinguishes {word} -- blind"
+
+
+def test_the_doorway_count_is_blank_until_something_has_counted() -> None:
+    """`CURIOSITIES.length` beside "Worth a look" is 0 until the page is opened, and 0
+    there says *this program has nothing unusual in it* -- a measurement nobody has
+    taken. An absent count and a count of nothing are different claims."""
+    js = _code(_read("shell.js"))
+    row = js.split('nav: "curiosities"', 1)[1].split("},", 1)[0]
+    assert "CURIOSITIES.length" in row, "the row states no count at all"
+    assert 'CURIOS.lane === "ready"' in row, (
+        "the count is taken from an array that is empty until the panel is opened, so an "
+        "unopened panel claims the program has no curiosities"
+    )
+
+
+def test_two_panes_provenance_blocks_cannot_open_each_other() -> None:
+    """Both panes number their cards from zero, so a bare index means two things.
+
+    Open the naming page's third query, switch to the curiosities, and that pane's third
+    card is open too -- a block nobody asked for, with nothing on screen to explain it.
+    Rule 47's companion in a different currency: one key that means two things.
+
+    Checked through `provKey` rather than by reading prefixes out of the markup, and that
+    is the point of there being a `provKey` at all: a prefix written at the attribute and
+    again at the comparison is two decisions about one key, and the pair that drifts is a
+    button that opens nothing.
+    """
+    js = _code(_read("shell.js"))
+
+    panes = set(re.findall(r'provKey\("(\w+)"', js))
+    assert len(panes) >= 2, (
+        f"fewer than two panes key a provenance block: {sorted(panes)} -- either this "
+        "test is blind or one pane is no longer namespaced"
+    )
+
+    opens = re.findall(r'data-sqlshow="([^"]*)"', js)
+    assert opens, "nothing opens a provenance block any more -- this test is blind"
+    for attr in opens:
+        assert "provKey(" in attr or "${key}" in attr, (
+            f'data-sqlshow="{attr}" composes its own key rather than going through '
+            "provKey, so two panes can share one and open each other's queries"
+        )
+
+    # Both halves, because either alone is a button that does nothing: whatever the
+    # attribute writes, the comparison that decides whether to render the block must be
+    # the *same expression*. A namespaced attribute beside a bare-index comparison is a
+    # button that opens somebody else's query, and it looks entirely wired.
+    checked = 0
+    for fn in ("conventionPanel", "curiCard"):
+        body = _fn(js, fn)
+        wrote = re.findall(r'data-sqlshow="\$\{([^}]+)\}"', body)
+        assert wrote, f"{fn} no longer writes a provenance key -- this test is blind"
+        for expr in wrote:
+            assert f"state.showSql === {expr}" in body, (
+                f"{fn} opens the block on `{expr}` and decides to render it on something "
+                "else, so the button is wired to a key nothing checks"
+            )
+            checked += 1
+    assert checked >= 2, "fewer than two panes were checked -- this test is blind"
 
 
 def test_every_route_to_a_lane_can_cause_its_fetch() -> None:
@@ -7879,7 +8152,12 @@ def test_the_engine_echoing_a_selection_does_not_replace_the_subject() -> None:
     js = _code(_read("shell.js"))
 
     handler = _fn(js, "onGraphSelect")
-    assert "if (installingSelection) return;" in handler, (
+    # The predicate, not its exact wording. It began as `if (installingSelection) return;`
+    # and now also honours `restoringSelection`, because a trail step restores a selection
+    # through the engine for the same reason and had been correct only by the order of the
+    # two lines after it. A guard pinned to one spelling fails on a broadening that
+    # satisfies it -- which is a check about the code's phrasing rather than its rule.
+    assert re.search(r"if \([^)]*installingSelection[^)]*\) return;", handler), (
         "the engine's echo is treated as a new selection by the reader, so the subject a "
         "caller just installed is replaced by one arbitrary member of it (rule 74)"
     )

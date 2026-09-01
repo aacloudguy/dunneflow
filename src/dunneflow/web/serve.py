@@ -34,8 +34,8 @@ from .. import revisions
 from ..docstore import DocStore
 from ..resolve import version as version_order
 from ..sourcedb import SourceStore
-from ..store import Store
-from . import changes, diagram, filediff, packages, queries
+from ..store import StaleGraphError, Store
+from . import anomalychanges, changes, diagram, filediff, packages, queries
 from .code import build_file, build_files
 from .cover import anomalies as build_anomalies
 from .cover import build as build_cover
@@ -327,6 +327,18 @@ class _Live:
     repair, and it must never be able to damage the map it came to show.
     """
 
+    # The caches keyed on a **pair** of versions, and therefore the ones a switch
+    # invalidates: one end of every pair has just moved. Named here rather than cleared
+    # one by one, so a third comparison cannot be added and half-wired (rule 36) -- both
+    # `open()` and the guard that checks it read this list rather than restating it.
+    #
+    # What is deliberately *not* here is as load-bearing: `filepairs` and `findings` are
+    # keyed on one thing each -- two snapshots of the one sidecar, and one graph file --
+    # and neither becomes a different answer because a different version is on screen.
+    # `findings` is also where the whole cost of the anomaly comparison lives, so
+    # clearing it would make every switch pay four seconds to learn what it already knew.
+    COMPARISON_CACHES: tuple[str, ...] = ("changes", "anomalypairs")
+
     def __init__(self, source_db: Path, out_dir: Path) -> None:
         self.lock = threading.Lock()
         # The program directory, so a second point in time can be found. The graph being
@@ -337,12 +349,34 @@ class _Live:
         # opened deliberately, so paying for it at boot would add seconds to a start that
         # is already 10 s and buy nothing for a reader who never opens the view.
         self.changes: dict[tuple[str, str], dict[str, Any]] = {}
+        # The same, over the findings rather than over the facts, and cleared beside it
+        # for the same reason. Note that the *expensive* half is not here: running the
+        # detectors is held per graph in `findings` below, which a switch does not touch,
+        # so re-pairing after one costs the pairing alone.
+        self.anomalypairs: dict[tuple[str, str], dict[str, Any]] = {}
         # The file-level pairing, per pair of revisions. **Not cleared on a base switch**,
         # unlike `changes` above, and the difference is worth stating: a diff is keyed on
         # two graphs, which a switch replaces one of, while this is keyed on two snapshots
         # of the one sidecar -- and `source.db` is the store that is never rebuilt (rule
         # 25). The pairing of two revisions is the same fact before and after a switch.
         self.filepairs: dict[tuple[str, str], dict[str, Any]] = {}
+        # The findings of one graph, keyed by that graph's filename. **Not cleared on a
+        # base switch**, for `filepairs`' reason rather than `changes`': a diff is keyed
+        # on two graphs and a switch replaces one of them, while this is keyed on one
+        # graph -- and a graph file's findings are a property of the file. Switching away
+        # and back re-serves them rather than recomputing.
+        #
+        # It exists because the findings are *computed*, not stored: thirteen detectors
+        # over the graph, every time they are asked for. On the served graph, whose pages
+        # the boot has already warmed, that is **62 ms** per request against 0.9 ms held
+        # -- worth having and not the reason. The reason is the other end of a
+        # comparison, which is a 31 MB file this process has never opened: **1.3 s to
+        # 4.1 s** for the first pairing on Mensores, stated as a range because that is
+        # what it is -- two runs of identical work, differing by how much of the file the
+        # operating system still had. It is the disk as much as the work, which is the
+        # caveat every other cold row in this project carries. Bounded by the number of
+        # revisions a reader visits, which is the number of graphs in one directory.
+        self.findings: dict[str, list[dict[str, Any]]] = {}
         # A sidecar is optional by design -- `--no-source`, or a map handed over without
         # it. Absent is a state the inspector states plainly, never one it hides.
         #
@@ -455,7 +489,8 @@ class _Live:
             self.current = fresh
             # Every cached diff is keyed on a pair one end of which has just moved. Not a
             # stale copy of this answer -- an answer to a different question (rule 51).
-            self.changes.clear()
+            for cache in self.COMPARISON_CACHES:
+                getattr(self, cache).clear()
             # Safe here and nowhere else: every use of a base's store is under this lock,
             # so no request can be holding this connection.
             if outgoing is not None:
@@ -941,9 +976,68 @@ class _Handler(BaseHTTPRequestHandler):
         The findings are large -- every one carries its detail and its blind spot -- and
         most sessions read the counts without ever opening the list. Sending them with
         the cover would put that weight behind the first paint of every map.
+
+        Held per graph rather than recomputed. This route ran all thirteen detectors on
+        every request, under the lock, for an answer that cannot change while the served
+        file does not: 62 ms a time on Mensores, against 0.9 ms held. Small, and the same
+        cache is what makes the comparison affordable, where the other end is a graph
+        nothing has opened.
+        """
+        rows, reason = self._findings(self._live_graph())
+        if rows is None:
+            self._json({"findings": [], "available": False, "reason": reason})
+            return
+        self._json({"findings": rows})
+
+    def _live_graph(self) -> Path:
+        """Which graph is being served, read once under the lock.
+
+        A switch landing between two reads would have one caller asking about two
+        different versions, which is the trap `_r_changes` names at its own first read.
         """
         with self._live.lock:
-            self._json({"findings": build_anomalies(self._live.current.store)})
+            return self._live.current.graph_db
+
+    def _findings(self, graph_db: Path) -> tuple[list[dict[str, Any]] | None, str]:
+        """One graph's findings, from the cache or by running the detectors.
+
+        `None` and a reason, never an empty list, when the graph cannot be read: a stale
+        or wrong-kind store **refuses** (rules 16 and 20), and "no findings" and "we could
+        not look" are opposite claims that render identically (rules 49 and 63).
+
+        Two paths, and the difference is rule 58. Where this is the graph the dashboard is
+        serving, the detectors run on the connection already holding it open -- a second
+        read-only handle to a file this process has open in WAL mode cannot share the
+        `-shm` index and re-derives it per query. Where it is not, it is a file nothing
+        here holds, so an ordinary read-only open is the cheap path and it is closed
+        again. The lock is held across the served build for the reason `_r_changes` holds
+        it: that connection belongs to every other request too. Measured on Mensores: 62
+        ms on the served graph, 1.3-4.1 s on the other one, which is a 31 MB file being
+        read for the first time -- a range, because it is mostly the disk.
+        """
+        key = graph_db.name
+        with self._live.lock:
+            held = self._live.findings.get(key)
+        if held is not None:
+            return held, ""
+
+        rows: list[dict[str, Any]]
+        with self._live.lock:
+            if graph_db == self._live.current.graph_db:
+                rows = build_anomalies(self._live.current.store)
+                self._live.findings[key] = rows
+                return rows, ""
+        try:
+            other = Store(graph_db, writable=False)
+        except (StaleGraphError, ValueError, OSError) as exc:
+            return None, str(exc)
+        try:
+            rows = build_anomalies(other)
+        finally:
+            other.close()
+        with self._live.lock:
+            self._live.findings[key] = rows
+        return rows, ""
 
     def _r_documents(self, q: dict[str, list[str]]) -> None:
         """What document mode can show."""
@@ -1318,6 +1412,75 @@ class _Handler(BaseHTTPRequestHandler):
             **built,
         })
 
+    def _r_anomalychanges(self, q: dict[str, list[str]]) -> None:
+        """What the comparison says about each finding.
+
+        The same two ends as `/api/changes`, picked the same way and meaning the same
+        thing, because a reader holding one pair in mind must not find a second one here
+        (rule 51). `base` is the version the map is showing; neither end is claimed to be
+        older.
+
+        Where this differs from every other comparison in the dashboard is the cost, and
+        it is inherent rather than an oversight: findings are not rows to be joined, they
+        are what thirteen detectors conclude, so the compared version's findings mean
+        running the detectors over the compared version's graph. Held per graph in
+        `_Live.findings`, so a reader who switches back and forth pays once each.
+        """
+        graphs = revisions.known(self._live.out_dir, revisions.GRAPH)
+        if len(graphs) < 2:
+            self._json({
+                "available": False,
+                "reason": ("this program has one version — analyse another copy of the "
+                           "source after sealing this one, and there will be two"),
+                "revisions": len(graphs),
+            })
+            return
+
+        def _pick(name: str, default: Path) -> Path | None:
+            asked = (q.get(name) or [""])[0]
+            if not asked:
+                return default
+            p = revisions.db_path(self._live.out_dir, revisions.GRAPH, asked)
+            return p if p.exists() else None
+
+        serving = self._live_graph()
+        base = _pick("base", serving)
+        compared = _pick("compared", next(
+            (g for g in graphs if g != serving), graphs[1]))
+        if base is None or compared is None:
+            self._json({"available": False,
+                        "reason": "no graph for one of the versions asked for"})
+            return
+        if base == compared:
+            self._json({"available": False,
+                        "reason": "a version compared with itself has nothing to say"})
+            return
+
+        key = (compared.name, base.name)
+        with self._live.lock:
+            built = self._live.anomalypairs.get(key)
+        if built is None:
+            t = time.perf_counter()
+            base_rows, why = self._findings(base)
+            compared_rows, why_other = self._findings(compared)
+            if base_rows is None or compared_rows is None:
+                # Stated, never an empty list: a graph this version of DunneFlow refuses
+                # to read and a program with nothing wrong with it are opposite claims
+                # (rules 49 and 63), and the reader is owed which one they are looking at.
+                self._json({"available": False,
+                            "reason": why or why_other})
+                return
+            built = anomalychanges.build(base_rows, compared_rows)
+            built["ms"] = round((time.perf_counter() - t) * 1000)
+            with self._live.lock:
+                self._live.anomalypairs[key] = built
+        self._json({
+            "available": True,
+            "base": revisions.revision_of(base),
+            "compared": revisions.revision_of(compared),
+            **built,
+        })
+
     def _r_filechanges(self, q: dict[str, list[str]]) -> None:
         """Which files differ between two versions, and where inside one of them.
 
@@ -1471,6 +1634,7 @@ class _Handler(BaseHTTPRequestHandler):
         "/api/revisions": "_r_revisions",
         "/api/changes": "_r_changes",
         "/api/filechanges": "_r_filechanges",
+        "/api/anomalychanges": "_r_anomalychanges",
         "/api/base": "_r_base",
         "/favicon.ico": "_r_favicon",
     }

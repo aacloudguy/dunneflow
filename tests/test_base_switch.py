@@ -141,11 +141,38 @@ def test_a_switch_clears_every_cached_comparison(live: Any) -> None:
     the failure `refreshChanges` drops its own result to avoid.
     """
     lv, out, first, second = live
-    lv.changes[("a.db", "b.db")] = {"available": True}
+    caches = serve_mod._Live.COMPARISON_CACHES
+    assert len(caches) >= 2, "fewer comparison caches than there are -- guard is blind"
+    for name in caches:
+        getattr(lv, name)[("a.db", "b.db")] = {"available": True}
     lv.open(revisions.db_path(out, revisions.GRAPH, second))
-    assert lv.changes == {}, "a comparison computed against the previous base survived it"
+    for name in caches:
+        assert getattr(lv, name) == {}, (
+            f"`{name}` computed against the previous base survived it"
+        )
     assert lv.current.graph_db.name.endswith(revisions.as_filename(second) + ".db")
     assert first != second
+
+
+def test_a_switch_keeps_what_is_keyed_on_one_version_rather_than_on_a_pair(
+    live: Any,
+) -> None:
+    """The other half of the rule above, and the expensive half.
+
+    `findings` holds what thirteen detectors concluded about **one graph file**, which a
+    switch does not change: the file is the same file. Cleared with the pair caches it
+    would look tidy and make every switch pay 4.1 s to learn what it already knew -- and
+    `filepairs` has carried this same reasoning since it was written, because there is one
+    `source.db` per program and it is never rebuilt (rule 25).
+    """
+    lv, out, _first, second = live
+    lv.findings["some-graph.db"] = [{"ident": "x"}]
+    lv.filepairs[("a", "b")] = {"files": []}
+    lv.open(revisions.db_path(out, revisions.GRAPH, second))
+    assert lv.findings, "a switch threw away findings keyed on a graph it did not move"
+    assert lv.filepairs, "a switch threw away the sidecar pairing"
+    assert "findings" not in serve_mod._Live.COMPARISON_CACHES
+    assert "filepairs" not in serve_mod._Live.COMPARISON_CACHES
 
 
 def test_a_failed_switch_leaves_the_previous_base_serving(live: Any, tmp_path: Path) -> None:

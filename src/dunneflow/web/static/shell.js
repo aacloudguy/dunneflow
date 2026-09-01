@@ -719,6 +719,26 @@ const NAV_ROUTES = {
      answer about it, so this opens a pane rather than making a selection. What the reader
      picks *inside* it is a node, and that is the click that selects. */
   file: (b) => openCodeFile(b.dataset.navid || ""),
+  /* The same file, opened **and gone to**, and it is a second route rather than a flag on
+     the first because the two callers want different things. Inside the navigator's Code
+     group the file list is already under the reader's eye, so `file` opens the pane and
+     deliberately leaves the centre alone -- that group exists to have code and the stack
+     readable at once. A row in the change worklist is nowhere near the code, so opening a
+     pane the reader cannot see is a click that does nothing visible: design rule 16's dead
+     control, except that it works.
+
+     Found by clicking one. `state.codeFile` was set, the file loaded, and the page did not
+     move a pixel -- rule 51 in the shape that rule is about, a route correct for the one
+     caller it was written for and wrong for the caller it has just acquired. */
+  chgfile: (b) => {
+    openCodeFile(b.dataset.navid || "");
+    /* Both, and `persist` after them, exactly as `codeopen` does: `mode` is what the centre
+       toggle shows and `view` is what is painted, and setting one of the two leaves the
+       toggle disagreeing with the pane. `render()` is the dispatcher's, not ours. */
+    state.mode = "code";
+    state.view = "code";
+    persist();
+  },
   /* A changed routine is a routine. The band it sits in says *why* it is worth looking at;
      the click is the same selection every other row makes, so the stack lights its hop, the
      inspector fills, the trail records it and undo takes it back -- none of which this view
@@ -1086,6 +1106,50 @@ const CHANGE_BANDS = {
   explained_only:   "explained",
 };
 
+/* The `moved` kinds that are **explanations rather than facts**, in the order the server
+ * appends them. Every one of them rides on a row and none of them decides which band the
+ * row is in -- so anything asking "did what explains this move" asks this list, and a
+ * third kind of prose is covered without a second place remembering (rule 36).
+ *
+ * `modules_explained` is not here: it is not a tag at all, because a module docstring has
+ * no routine to be a tag on. It is its own band with a file for a subject. */
+const EXPLAIN_TAGS = ["comments", "docstring"];
+
+/* The bands whose rows are **not routines**, and what each says about itself.
+ *
+ * `CHANGE_BANDS` maps a band to the status one routine gets from it; these have no such
+ * status, because a file is not a routine and giving it one would put a path where the
+ * stack, the table and the inspector all expect a node id. They are a table beside that one
+ * rather than an exception inside it, so a second file band is one entry here and the guard
+ * that asks "does every band the server sends reach a client that draws it" keeps working
+ * without anybody remembering (design rule 16).
+ *
+ * `nav` is the route a row takes, and `"file"` is the code browser's own — so the subject
+ * is one the router already acts on, never a label with no way in (rule 30). */
+const CHANGE_FILE_BANDS = {
+  modules_explained: {
+    nav: "chgfile",
+    title: "Modules explained differently",
+    why: `The same file, and what it says it <em>is</em> has moved — a rewritten module
+       docstring. The subject here is the <em>file</em>, not a routine: a module docstring
+       belongs to no routine, and in a file that runs nothing at import there is no routine
+       it could have been reported against at all.`,
+    /* What the figure counts, in its own words, because every other number beside it
+       counts routines (rule 32) — and **both numbers**, because the note prints this
+       inline. "1 modules explained differently" is `classs ending in \`Error\`` again: a
+       string the code composes is prose the moment something prints it (rule 44's
+       companion), and an `s` appended by arithmetic is not a plural. Written out rather
+       than derived, because English is not a rule and the next label may not take one. */
+    stat: "modules explained differently",
+    stat1: "module explained differently",
+    statWhy: "files, not routines — what a module says it is",
+    /* Which key on a row is its identity, and which is printed. They differ here, and rule
+       30 says name both rather than let one stand in for the other. */
+    id: "path",
+    label: "module",
+  },
+};
+
 /* id -> status, built once and **hung on the answer** rather than kept in a module
  * variable, exactly as `FILEPAIR._by` is and for the same two reasons. The table draws
  * 4,734 rows, so a `find` per row is work proportional to the whole program on every
@@ -1225,10 +1289,17 @@ function routineChip(id) {
        and described as "nothing it does changed" in the tooltip is two surfaces answering
        one question differently (rule 51) -- and the tooltip is the one a reader is more
        likely to be looking at, because it is where the cursor already is. Found by hovering
-       the column rather than by any check. */
+       the column rather than by any check.
+
+       **Both explanation tags, not the one this was written for.** A docstring is inside the
+       `def`, so a rewritten one is *always* in this band -- it is the whole reason the
+       docstring lane is a tag and never a band, and a tooltip that named only `comments`
+       would go on calling the commonest case internal computation. Derived from the tag
+       list rather than tested by name, so a third explanation is covered without anyone
+       remembering (rule 36). */
     return { cls: " rtnchg rtnchg-edited", glyph: "\u2248",
              title: "edited, and nothing it does changed"
-                    + (moved.includes("comments")
+                    + (EXPLAIN_TAGS.some(t => moved.includes(t))
                        ? " \u2014 though what explains it moved too" : "") };
   }
   /* A routine only the *compared* version has. It has no row in either surface -- both
@@ -3933,6 +4004,13 @@ function viewChanges() {
       ${stat(c.explained_only, "explained differently", "and nothing else about them did",
              "moved")}
       ${stat(c.edited_only, "edited only", "and nothing they do changed")}
+      ${/* Drawn even at zero, unlike the bands below it, because these figures are the
+            shape of the comparison rather than a list of what it found — and a figure that
+            appears only when it is non-zero cannot be read as a nought. Each states in its
+            own label that it counts *files*, because every other number on this line counts
+            routines and rule 32 is about exactly that. */""}
+      ${Object.entries(CHANGE_FILE_BANDS).map(([k, b]) =>
+          stat(c[k] || 0, (c[k] === 1 ? b.stat1 : b.stat), b.statWhy, "moved")).join("")}
     </div>
 
     <p class="hint" style="margin:.6rem 0 0">
@@ -3967,7 +4045,44 @@ function viewChanges() {
     ${band("edited", "Edited, behaving the same", CHANGES.edited_only,
            "The body changed and nothing it does did. Internal computation — what this tool "
            + "exists not to report — listed here so leaving it out is not a silent filter.")}
+    ${Object.entries(CHANGE_FILE_BANDS)
+        .map(([k, b]) => modband(b, CHANGES[k] || [])).join("")}
   </div>`;
+}
+
+/* Files whose **module docstring** moved, and the one band on this page whose rows are not
+ * routines.
+ *
+ * A module docstring is the only place a module says what it *is*, and it belongs to no
+ * routine — so it gets a subject of its own rather than being hung on the synthetic
+ * `<module>`, which exists in 487 of Mensores' 628 files while 619 of them carry a module
+ * docstring. For the 138 that state what they are and run nothing at import, this band is
+ * the difference between the change being reported and the page saying "No differences
+ * found" (rule 74's shape: a thing is never one of the things it holds).
+ *
+ * `data-nav="file"` is the code browser's own route, so the row opens the file — the
+ * identity is the path, and it is one the router already acts on rather than a label with
+ * no way in (rule 30). Never bounded (rule 8).
+ *
+ * Violet, with `explained` and `behaves`: the difference channel holds three directions and
+ * a ground and rule 69 measured it full, so this cannot have a colour of its own and does
+ * not pretend to. It is separated by being a band of files, which is a stronger separation
+ * than a glyph.
+ */
+function modband(b, rows) {
+  if (!rows.length) return "";
+  return `
+    <section class="chgsection">
+      <h3 class="tone-moved">${b.title}
+        <span class="num">${rows.length.toLocaleString()}</span></h3>
+      <p class="hint">${b.why}</p>
+      <ol class="chg-list">${rows.map(r => `
+        <li><button class="chg-item" data-nav="${esc(b.nav)}"
+                    data-navid="${esc(r[b.id])}">
+          <span class="chg-title navlabel">${esc(r[b.label] || r[b.id])}</span>
+          <span class="chg-meta"><span class="mono chg-mod">${esc(r[b.id])}</span></span>
+        </button></li>`).join("")}</ol>
+    </section>`;
 }
 
 /* The counts, **taken by walking the findings that are drawn** rather than from the bands.
@@ -9677,8 +9792,14 @@ function changeCount() {
      is this tool's own subject. A body that changed while what the routine does did not is
      internal computation, which is what this tool exists **not** to report. A rewritten
      comment over unchanged code is the WHY, which is what it exists to report and the one
-     layer the code itself never carries. */
-  return c.only_in_base + c.only_in_compared + c.behaves + (c.explained_only || 0);
+     layer the code itself never carries.
+
+     `modules_explained` is in for the same reason and counts something else — files, where
+     every other term counts routines. It is a total of *things that differ* rather than of
+     routines, which is what the group badge above it means; the page below is where the
+     two are separated, because that is where there is room to say which is which. */
+  return c.only_in_base + c.only_in_compared + c.behaves + (c.explained_only || 0)
+         + Object.keys(CHANGE_FILE_BANDS).reduce((n, k) => n + (c[k] || 0), 0);
 }
 
 /* What the group says above its rows, and the three states it must keep apart.
@@ -9694,8 +9815,16 @@ function changeNote() {
   if (CHANGES.loading) return lost + "comparing…";
   if (!CHANGES.available) return lost + esc(CHANGES.reason || "no second version");
   const c = CHANGES.counts;
-  const moved = c.only_in_base + c.only_in_compared + c.behaves;
-  if (!moved && !c.edited_only) return lost + "no differences found";
+  /* **The server's own answer, not a sum reassembled here.** This was
+     `only_in_base + only_in_compared + behaves`, and it had been wrong since the day the
+     comment lane landed: a pair whose one difference is a rewritten comment — or a table
+     that appeared, or a constant whose value moved — has all three terms at zero, so the
+     group a reader lands in first said **"no differences found"** while the page below it
+     listed the change. Exactly the false claim the explained band was built to remove,
+     surviving in the other of the two surfaces (rule 51), and it would have taken both new
+     lanes with it. `identical` is computed once, over every band and every presence line,
+     by the side that knows them all. */
+  if (CHANGES.identical) return lost + "no differences found";
   const bits = lost ? [state.revNote] : [];
   /* The note is the one place these words appear before the bands do, so it wears the same
      colours -- a reader who reads "53 added" in red and then finds the band in green has
@@ -9715,7 +9844,21 @@ function changeNote() {
   if (c.explained_only) {
     bits.push(`<span class="tone-moved">${c.explained_only} explained differently</span>`);
   }
+  for (const [k, b] of Object.entries(CHANGE_FILE_BANDS)) {
+    if (c[k]) {
+      bits.push(`<span class="tone-moved">${c[k]} ${
+        c[k] === 1 ? b.stat1 : b.stat}</span>`);
+    }
+  }
   if (c.edited_only) bits.push(`${c.edited_only} edited without changing what they do`);
+  /* Reachable, and it is not the same sentence as the one above. `identical` is false
+     whenever *anything* moved, and the terms named here are routines and modules — so a
+     pair whose only difference is a table or a constant arrives with nothing to say. It
+     says where the answer is rather than nothing at all, which is design rule 1: a note
+     that goes blank reads as a comparison that failed. */
+  if (!bits.length || (lost && bits.length === 1)) {
+    bits.push("differences outside the routines — see What differs");
+  }
   return bits.join(" · ");
 }
 
@@ -9779,7 +9922,40 @@ function changeList() {
               + "changed, and neither did a line of its code.", "moved")
        + band("edited", "Edited, behaving the same", c.edited_only,
               "The body changed and nothing it does did. Internal computation, which this "
-              + "tool exists not to report — listed so its absence is not a silent filter.");
+              + "tool exists not to report — listed so its absence is not a silent filter.")
+       /* The one group here whose rows are files. It cannot go through `band` — that builds
+          a routine row, `nav: "chg"` with an id — so it is written out, and the reason it is
+          not folded into `band` with a flag is rule 32 in a function: one caller, one claim.
+          Its rows open the file, which is the code browser's own route. */
+       + Object.entries(CHANGE_FILE_BANDS)
+              .map(([k, b]) => modgroup(k, b, c[k] || [])).join("");
+}
+
+/* Files whose module docstring moved, as a navigator group. The page's `modband` is the
+ * same set with room to explain itself; both read one `CHANGES`, so they cannot disagree
+ * about what moved (rule 51). */
+function modgroup(key, b, rows) {
+  if (!rows.length) return "";
+  /* The same accordion the routine bands are in — `state.changeBand` holds the one open
+     group, so this has to be a member of it rather than carry an open flag of its own, or
+     opening it would leave a routine band open beside it and the pane would have two
+     answers to which band is open (rule 51). Its markup is `band`'s exactly, class for
+     class: a group wired correctly to a stylesheet that cannot carry it is this project's
+     most-repeated defect (rules 54 and 71), and the only defence is not to invent a shape. */
+  const open = state.changeBand === key;
+  return `<div class="chgband">
+      <button class="nav-head sub" data-changeband="${esc(key)}" aria-expanded="${open}">
+        <span class="nav-title tone-moved">${b.title}</span>
+        <span class="n num tone-moved">${rows.length}</span>
+      </button>
+      ${open ? `<div class="nav-items">
+        <p class="hint" style="margin:.2rem .5rem .4rem">${b.why}</p>
+        ${rows.map(r => navItemHtml({
+            nav: b.nav, label: r[b.label] || r[b.id], sub: r[b.id], n: "",
+            sel: r[b.id],
+          })).join("")}
+      </div>` : ""}
+    </div>`;
 }
 
 /* The size of a vocabulary lane, from the cover. Empty rather than 0 when the server sent

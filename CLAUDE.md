@@ -416,6 +416,7 @@ The change worklist, comparing two revisions of Mensores (4,733 routines against
 | `/api/changes`, warm | < 500 ms | **480 ms — and that is 20 ms of headroom** |
 | …the same before the arguments and constants landed | | 266 ms |
 | …with the comment lane added | | **no measurable change: 451 → 448 ms, median of four** |
+| …with the docstring and module lanes added | | **+3 ms: 451 → 454, median of eight alternating** |
 | …first comparison of a session | < 5 s | **1.4 s – 23 s, and it is the disk** |
 | …the same, cached | < 50 ms | 0.7 ms |
 
@@ -595,6 +596,26 @@ docs   ──► extract ──► docs.db  (SQLite) ─────────
   no word reports 1,561 false differences as written and none joined. Bounded to the files
   whose `content_hash` differs — 41 ms to 5.2 ms, same answer — which is why it costs
   `/api/changes` nothing measurable (451 → 448 ms).
+
+  **A docstring is the same question from the other side, and it is a tag rather than a
+  band.** A comment can sit *outside* a routine's `body_hash` and vanish; a docstring is
+  inside the `def` and never does — it lands in *edited only*, the band whose whole claim is
+  *internal computation, the one thing this tool exists not to report*. So what is corrected
+  is the reason a row gives, not its absence: `docstring` rides beside `comments` and neither
+  decides a band. The **canonical form differs from the comment lane's, and the difference is
+  measured rather than preferred** — paragraphs are kept. Over Mensores' 3,769 docstrings,
+  re-wrapping every one at three widths without altering a word reports 2,060 · 1,652 · 1,602
+  as written and **none** under either canonical form; merging every docstring's paragraphs,
+  which destroys the separation PEP 257 gives the summary line, is reported by a full
+  collapse **not at all** and by the paragraph-preserving form for all 1,996. Same zero on
+  the noise, 1,996 more on the signal — which is what chose it.
+
+  **A module docstring is a third subject, and it is a file.** `files.doc` states what a
+  module *is* — 619 of Mensores' 628 files — and belongs to no routine. `modules_explained`
+  carries a path, because a row must be able to open something (rule 30) and the code
+  browser's route already does. Both new lanes together are **+3 ms** (451 → 454, median of
+  eight alternating builds on a warm disk), and `_changed_files` is one bound three lanes
+  take rather than three copies waiting to disagree.
 - `web/filediff.py` — the **text lane** of a comparison, beside `changes.py`'s fact lane.
   The file-level answer costs **no body reads at all**: the sidecar is content-addressed,
   so equal hashes are equal bytes and comparing two path maps *is* the file-level diff.
@@ -1853,6 +1874,38 @@ rule of that number — a blank canvas must say why it is blank — which does e
     So the rule has a second half: **a guard against an echo must cover every place that
     causes one, not the place the defect was found.** Rule 51 with a flag as the thing
     kept at one call site.
+
+77. **A synthetic subject is minted on a condition, so it cannot carry a fact that does not
+    share it.** `<module>` is this tool's stand-in for a file's own scope, and it owns the
+    module-level comments, boundaries, calls and constants — everything that *runs at
+    import*. A module docstring runs nothing, and hanging it on `<module>` was the obvious
+    implementation: one join, no new row shape, and the comment lane's own precedent for
+    naming the right subject for free.
+
+    It covers **487 of Mensores' 628 files** while **619** of them state what the module is.
+    `<module>` exists only where a file has module-level work, so for the other 141 there is
+    no such routine — no `body_hash` moves, no fact moves, and a rewritten module docstring
+    is reported by nothing at all while the page states **"No differences found."** That is
+    the comment lane's worst answer standing again, in the one sentence a module writes
+    about itself, and it would have shipped looking like a working feature: 487 of 628 is
+    not a symptom.
+
+    The subject is the **file**, and the row carries a path the code browser can open (rule
+    30). Rule 74's family — a fold is not one of the things it folds — pointed at a
+    *synthetic*: `<module>` stands for what a file does, which is not what a file says it is.
+
+    Two things worth keeping. **Caught by counting rather than by a false result**, which is
+    the only reason it is written here as a design decision instead of as a defect: the tell
+    was 619 against 487, and both numbers are one query. And the cheap answer's failure mode
+    is the dangerous one — it is right about the majority, wrong in silence about the rest,
+    and the rest are exactly the files with nothing else going on in them.
+
+    Its companion, found by *clicking* the row the decision produced: **a route correct for
+    the caller it was written for is wrong for the caller it has just acquired.** `file`
+    opens the code pane and deliberately leaves the centre alone, which is right inside the
+    navigator's Code group where the list is under the reader's eye, and from a worklist page
+    it sets the state, loads the file, and moves not one pixel. Rule 51 in the shape rule 51
+    is about, and invisible to every test: the state was correct the whole time.
 
 ## Anomalies: the discipline
 

@@ -6714,3 +6714,179 @@ uv run dunneflow analyze ../society-2026-08-29/src --name verifycheck
 It is the only program directory whose revisions carry a `tree` and a version;
 `output/mensores` predates both columns and honestly reports empty, which is what makes it
 the useful test of the *fallback* path.
+
+---
+
+## The docstring lanes — built 2026-09-01
+
+The last item on the open list, and it was two subjects rather than one.
+`routines.docstring` had been in the store from the beginning and compared by nothing; so
+had `files.doc`, and they cannot share a row.
+
+### What was wrong, verified on the pair rather than argued
+
+A docstring lives *inside* the `def`, so it is inside `body_hash` — which is the opposite
+of the comment case and makes this a different defect. A rewritten comment could vanish
+outright; a rewritten docstring never does. It is reported, in **`edited only`**, whose
+tooltip reads *"edited, and nothing it does changed"* and whose section on the page calls
+it *internal computation — what this tool exists not to report*.
+
+On Mensores' pair (628 files against 625), two routines have a differing docstring:
+
+| routine | band before | what actually moved |
+|---|---|---|
+| `_migrations._production_audit_db_path` | `edited only` | a `.. deprecated::` notice and the entire reasoning |
+| `_queue.StateIntentQueue.ensure_schema` | `behaves` | docstring, invisible beside `calls` + `call_args` |
+
+Neither was missing. Both were filed under a reason that is false about them.
+
+### The canonical question, a fourth time
+
+`_constants_moved` predicted this would come round and said the answer would depend on how
+the column is filled. It does, and it lands somewhere new:
+
+| surface | how it reaches the store | canonical form |
+|---|---|---|
+| constant | `ast.unparse` | none needed — already canonical |
+| call argument | a byte slice of the file (rules 8, 75) | ask `canonical/`, per language |
+| comment | one row per *physical line*, marker stripped | join everything, collapse |
+| **docstring** | one string via `inspect.cleandoc` — **blank lines intact** | **collapse within a paragraph, keep the breaks** |
+
+Two experiments over the real 3,769 docstrings, and only the second chooses:
+
+```
+re-wrapped at 72 / 79 / 88,   as written     2,060 · 1,652 · 1,602 falsely reported
+not one word altered          collapsed          0 ·     0 ·     0
+                              by paragraph       0 ·     0 ·     0
+
+every paragraph merged        collapsed          0 reported     <- blind
+(1,996 affected)              by paragraph   1,996 reported
+```
+
+Merging paragraphs changes no word and destroys the separation PEP 257 gives the summary
+line. A full collapse cannot see it; the paragraph-preserving form catches all of it and
+costs nothing on the noise. Same zero, 1,996 more signal.
+
+One fixture went wrong on the way and it is worth keeping: a blank line padded to *less*
+than the docstring's common margin is removed by `cleandoc` before anything compares it, so
+the first version of the trailing-whitespace test was testing an empty string against an
+empty string. Eight spaces inside a four-space margin, not three. Found by mutation.
+
+### The module lane — Tom's call, and rule 77
+
+`files.doc` states what a module *is*, and belongs to no routine. The cheap implementation
+is `<module>`, and the numbers are the whole argument against it:
+
+```
+files with a module docstring   619
+files with a <module> routine   487      <- minted only where a file runs something at import
+                                141      files that say what they are and would report nothing
+```
+
+For those 141, a rewritten module docstring moves no body hash, no fact and no row, and the
+page states **"No differences found."** That is the comment lane's worst answer standing
+again. Caught by counting before it shipped, not by a false result, which is why it is
+written up as a design decision.
+
+`modules_explained` rows carry a **path**; the route opens the file. `CHANGE_FILE_BANDS` is
+a table beside `CHANGE_BANDS` rather than an exemption inside it, so the guard asking
+whether every band the server sends reaches something that draws it keeps working.
+
+### Two live defects found on the way, neither in this work
+
+**`changeNote()` had been wrong since the comment lane landed.** It decided "no differences
+found" from `only_in_base + only_in_compared + behaves + edited_only`, so a pair whose one
+difference is a rewritten comment — or a table that appeared, or a constant whose value
+moved — said *no differences found* in the group a reader lands in first while the page
+below listed the change. The same false claim the explained band was built to remove,
+surviving in the other of the two surfaces (rule 51). It asks `CHANGES.identical` now,
+which the server computes once over every band and every presence line.
+
+**The file route did nothing visible, and only clicking it said so.** `openCodeFile` opens
+the pane and leaves the centre alone — right inside the navigator's Code group, where the
+list is already under the reader's eye, and wrong from a worklist page: state set, file
+loaded, not a pixel moved. `chgfile` is a second route rather than a flag on the first,
+because the two callers genuinely want different things. Rule 77's companion.
+
+And a third, smaller: **"1 modules explained differently"**, which is `classs ending in
+\`Error\`` again — a string the code composes is prose the moment something prints it. Both
+forms are written out in the table rather than derived, because English is not a rule.
+
+### Cost
+
+```
+_changed_files       1.9 ms   (15 of 628 files)
+_comments_moved      8.2 ms
+_docstrings_moved    3.2 ms   ...and 22.3 ms unbounded, over all 628
+_module_docs_moved   2.2 ms
+```
+
+`/api/changes` whole build, HEAD against this, **alternating in one process on a warm disk**
+so disk state cancels — the first attempt was taken cold and gave a −54 ms median, which is
+noise wearing a sign:
+
+```
+HEAD  449 451 449 453 452 456 463 449   median 451
+new   454 454 457 455 456 453 452 454   median 454      +3 ms
+```
+
+The 19 ms the bound saves is almost exactly the 20 ms of headroom that budget row has. So
+the bound now has a guard of its own — **no answer can catch it being removed**, because
+every prose lane returns the same rows bounded or not, and the comment lane's own test says
+as much in its docstring. It is guarded in both directions: `_changed_files` reading the
+changed-file query, and every lane taking it rather than building its own.
+
+### Mutation
+
+```
+18/18 caught over a baseline proved green first (rule 59)
+```
+
+Three passes. Five survived the first: three genuinely unguarded surfaces (the edited
+tooltip, the file row's route, `changeNote`), one weak fixture (the margin problem above),
+and two weak *mutations* — the `behaves` promotion wrote to `moved` after `behaves` had
+already been computed, and the bound mutation matched twice because both lanes share it,
+which is the point. One survived the second, and it was my own guard: it summed two counts
+of overlapping substrings, so either printing site could drop the singular and still clear
+the bar. Rule 59's companion twice in one session.
+
+### What was driven, and what is absent
+
+Driven on Mensores' real pair: both docstring tags, the edited tooltip's sentence, the stat
+tiles, `routineChip`. Driven on a purpose-built two-revision program: the module band, its
+heading and hint, the row reachable by `elementFromPoint` and clicked through a real pointer
+event (rule 48) to the code view, the trail step it files, the navigator group joining the
+same accordion as the routine bands, and the singular.
+
+**Absent rather than estimated: a picture of the band.** The automation tab's capture is
+fixed at 784×349 whatever the window size (rule 38), so anything below the fold cannot be
+photographed. The stat tile's violet is visible in the one capture that fits.
+
+### The corpus used and removed
+
+`output/tinydocs`, 1 MB, built to exercise the module lane end to end and deleted after.
+`queue.py` runs nothing at import, so it has no `<module>` routine and is the 141-of-628
+case; `audit.py` does, and carries the routine-docstring change. Rebuild with:
+
+```bash
+mkdir -p /tmp/tinyv1/tiny /tmp/tinyv2/tiny
+# v1/queue.py    """Queue state, and the one place it is written."""     + push(), drain()
+# v2/queue.py    """Queue state. Every writer goes through `push`; nothing else may."""
+# v1/audit.py    """Audit trail."""  + ROOT = os.environ.get(...)  + record() -> """Write one event to the trail."""
+# v2/audit.py    ...record() -> """Write one event to the trail, and never anywhere else."""
+uv run dunneflow analyze /tmp/tinyv1 --name tinydocs
+uv run dunneflow revisions output/tinydocs --seal --label "before the rewrite"
+uv run dunneflow analyze /tmp/tinyv2 --name tinydocs
+uv run dunneflow serve output/tinydocs
+```
+
+It reports 1 module explained differently, 2 edited only (`tiny.audit.record` tagged
+`docstring`, and `tiny.audit.<module>` because that file's bytes changed), and nothing else.
+
+### Still open after this
+
+The list is at the foot of this file and has not grown. One thing this work *names* that was
+not named before: **a class docstring is compared by nothing**, and it is blocked on the
+same question rule 77 is about — `structures` has no presence band at all, so a class that
+appeared or vanished is unreported too, and there is no row to tag. Zero differ on Mensores'
+pair. Decide the subject before building the lane.

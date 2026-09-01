@@ -5,7 +5,7 @@ It exists so a fresh context can be useful in a few minutes instead of an hour.
 
 | Read | For |
 |---|---|
-| `CLAUDE.md` | The rules. 75 engineering rules and 26 dashboard design rules, each earned from a false result on real code. **Binding.** |
+| `CLAUDE.md` | The rules. 76 engineering rules and 26 dashboard design rules, each earned from a false result on real code. **Binding.** |
 | `HANDOFF.md` | The chronological record — what was built when, what it cost, what broke. ~1,700 lines. Read *sections*, not the whole thing. |
 | **this file** | Where things are, what is done, what we are doing now, what not to re-open. |
 | Artifact `f993d319-d2b7-4217-9130-cdbba698d1bc` | The ratified dashboard design — a complete working UI, the source of truth for every view. Read it with the **Artifact tool**, not from a screenshot. |
@@ -163,11 +163,91 @@ program has a most-commented routine and a maximum alone is a claim nobody can w
 
 ## What we are doing now
 
-**Paused 2026-09-01. The doorway panel is built, and design rule 15's four pieces of
-furniture are now all four.** 783 tests, mypy clean, ruff clean, working tree clean.
-Nothing is half-done.
+**Paused 2026-09-01. The change worklist now sees a rewritten docstring, and a rewritten
+module docstring.** 798 tests, mypy clean, ruff clean, working tree clean. Nothing is
+half-done.
 
-### The latest: curiosities, and each one states its middle (2026-09-01)
+### The latest: what a routine says about itself, and what a module says it is (2026-09-01)
+
+**The last item on the open list, and it turned out to be two.** `routines.docstring` was in
+the store and compared by nothing; so was `files.doc`, and they need different subjects.
+
+**The routine lane corrects a reason, not an absence — which is what makes it unlike the
+comment lane.** A leading comment sits above the `def` and so outside `body_hash`, which is
+why rewriting one could vanish entirely. A docstring is *inside* the `def`, so it is always
+inside `body_hash` and always reported — filed under **edited only**, the band this tool
+describes in its own words as *internal computation, what it exists not to report*. On
+Mensores' pair `_production_audit_db_path` had a deprecation notice and its whole reasoning
+rewritten and sat exactly there. So `docstring` is a **tag** beside `comments`, and it can
+never be a band: `explained_only` holds what would be in no band, and nothing reaches it by
+this route.
+
+**The canonical question, asked a fourth time and answered differently — by measurement.**
+`_constants_moved` predicted this would come round and said the answer would depend on how
+the column is filled. It does. A comment reaches the store as one row per *physical line*
+with no paragraph structure left to keep, so the comment lane joins the lot and collapses.
+A docstring arrives as one string through `inspect.cleandoc`, **blank lines intact**, so the
+structure is there to keep. Two experiments over the real 3,769:
+
+```
+re-wrapped at 72 / 79 / 88,      as written    2,060 · 1,652 · 1,602 falsely reported
+not one word altered             collapsed         0 ·     0 ·     0
+                                 by paragraph      0 ·     0 ·     0
+
+every paragraph merged,          collapsed         0 reported   ← blind
+1,996 affected                   by paragraph  1,996 reported
+```
+
+Both forms are silent on the noise, so the re-wrap does not choose between them. Merging
+paragraphs does: it changes no word and destroys the separation PEP 257 gives the summary
+line, and a full collapse cannot see it. Same zero on the noise, 1,996 more on the signal.
+
+**The module lane is a new subject, and it is Tom's call.** `files.doc` states what a module
+*is* — 619 of 628 files. The cheap implementation is to hang it on `<module>`, and it covers
+**487 of 628** while missing 141 *silently*: `<module>` exists only where a file runs
+something at import, so in a file that runs nothing, a rewritten module docstring moves no
+body hash, no fact and no row, and the page states **"No differences found."** That is
+**rule 77**, and it was caught by counting rather than by a false result — 619 against 487,
+one query each. `modules_explained` rows carry a **path**, and the route opens the file.
+
+**Two live defects found on the way, neither of them in this work.**
+
+*The navigator's note had been wrong since the comment lane landed.* `changeNote()` decided
+"no differences found" from `only_in_base + only_in_compared + behaves + edited_only` — so a
+pair whose one difference is a rewritten comment, a table that appeared, or a constant whose
+value moved said **no differences found** in the group a reader lands in first, while the
+page below listed it. The same false claim the explained band was built to remove, surviving
+in the other of the two surfaces (rule 51). `identical` is the server's own answer and is now
+what is asked.
+
+*And the file route did nothing visible.* Found by clicking the row, not by any test:
+`openCodeFile` opens the pane and leaves the centre alone, which is right inside the Code
+group and wrong from a worklist page — state set, file loaded, not a pixel moved. Rule 77's
+companion, and rule 51 in the shape that rule is about.
+
+```
+18/18 mutations caught over a baseline proved green first
+three passes: five survived the first (three unguarded surfaces, one weak fixture, and two
+weak mutations — the `behaves` one wrote to `moved` after `behaves` was computed); one
+survived the second, and it was my own guard summing two overlapping substring counts so
+either site could drop the plural and still clear the bar
+```
+
+**+3 ms, and it is measured like for like**: 451 → 454, median of eight alternating builds
+of HEAD and this in one process against a warm disk. The two lanes are 3.2 ms and 2.2 ms in
+isolation, and the shared bound takes the docstring lane from 22.3 ms over all 628 files to
+3.2 over the fifteen that differ — 19 ms, which is almost exactly the 20 ms of headroom that
+row has. That bound now has a guard of its own, because no *answer* can catch it being
+removed: every prose lane returns the same rows bounded or not.
+
+**Absent rather than estimated: a picture of the band.** The automation tab's capture is
+fixed at 784×349 whatever the window (rule 38), so the worklist below the fold cannot be
+photographed. What *was* driven: both docstring tags on the real Mensores pair, the edited
+tooltip, the band and its stat tile, the row reachable by `elementFromPoint` and clicked
+through a real pointer event to the file, the navigator group joining the same accordion,
+and the singular. The stat tile's violet is visible in the one capture that fits.
+
+### Before that: curiosities, and each one states its middle (2026-09-01)
 
 **Design rule 15's last piece of furniture.** The trail, threads and the shelf were built;
 `CURIOSITIES` had never been computed, and the panel said so honestly. It now measures ten
@@ -472,14 +552,27 @@ and unified on `--diff-moved`; see the top of this file.*
 ### What is next, and it is open
 
 Nothing in chunk 5 is outstanding, the argument gap is closed, and the two small things
-filed as known are done. Still open and unblocked, and these are now the whole list:
+filed as known are done.
 
-1. ~~**`CURIOSITIES` has never been put on screen.**~~ *Built 2026-09-01 — see the top of
-   this file.*
-2. **A rewritten docstring is not compared either**, and it is the same shape as the comment
-   work just done. `routines.docstring` is in the store and nothing compares it; rule 9 keeps
-   docstrings out of code-shaped detectors, which is a different question from whether a
-   change to one is worth reporting. Not in the scope Tom took.
+1. ~~**`CURIOSITIES` has never been put on screen.**~~ *Built 2026-09-01.*
+2. ~~**A rewritten docstring is not compared either.**~~ *Built 2026-09-01, and it was two
+   lanes rather than one — see the top of this file.*
+
+**Nothing is on this list.** What remains is the standing set at the foot of `HANDOFF.md`,
+none of it scheduled and one item blocked on a question rather than on effort:
+
+- **What is an occurrence for `LOST_EDGE`** — the 142 callers, or the rival definitions? 93
+  of Mensores' 106 findings are that kind, so the answer decides the feature. A question for
+  Tom before any code.
+- **A class docstring is still compared by nothing**, and it is the one prose surface left.
+  `structures.docstring` is in the store; the reason it was left out is that a class is not
+  a row in this worklist *at all* — `structures` has no presence band, so a class that
+  appeared or vanished is unreported too. It wants that decided first, and it is the same
+  subject question rule 77 is about. Zero differ on Mensores' pair.
+- The filed small things: the rendered markdown is not revision-named, `--revision` on
+  `analyze`, the navigator's search box pinned-when-open (decided 2026-08-30, never built),
+  the worklist's two jump buttons, the two vocabulary-lane precision defects, packaging as a
+  binary.
 
 ### Before that: a finding says what makes it that finding (2026-08-31)
 

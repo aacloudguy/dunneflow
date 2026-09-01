@@ -898,3 +898,342 @@ def test_a_routine_that_moved_files_is_still_compared(tmp_path):
     assert "alpha" in moved, (
         "a routine that moved between files vanished from the comparison entirely"
     )
+
+
+# --------------------------------------------------------------------------- #
+# What a routine says about itself, and what a module says it is.
+#
+# The docstring lane, beside the comment lane and answering the same question from the
+# other side. Its fixtures are separate because the shape it tests is the opposite one: a
+# comment can be *outside* a routine's body hash and vanish; a docstring is always inside
+# it and never vanishes, so every test here is about the band being wrong rather than
+# missing -- except the module ones, where it does vanish and for a different reason.
+# --------------------------------------------------------------------------- #
+
+DOC_OLD = '"""The path a production door would resolve from the current directory."""'
+DOC_NEW = '"""The path a production door would resolve right now."""'
+
+DOCUMENTED = f"""\
+def alpha():
+    {DOC_OLD}
+    return 1
+"""
+
+MODULE_DOC_OLD = '"""Queue state, and the one place it is written."""'
+MODULE_DOC_NEW = '"""Queue state. Every writer goes through `push`; nothing else may."""'
+
+# A file that runs **nothing** at import, so it has no `<module>` routine at all. This is
+# the 141-of-628 case, and it is the one where a rewritten module docstring changes no row.
+MODULE_BARE = f"""\
+{MODULE_DOC_OLD}
+
+
+def alpha():
+    return 1
+"""
+
+# ...and one that does, so it has a `<module>` routine whose body hash is the whole file.
+MODULE_WITH_WORK = f"""\
+{MODULE_DOC_OLD}
+
+import os
+
+ROOT = os.environ.get("MENSORES_ROOT", "/srv")
+
+
+def alpha():
+    return 1
+"""
+
+
+def _tagged(d, tag):
+    """Every routine carrying one `moved` tag, in whichever band it landed in."""
+    return sorted(r["name"] for band in ("behaves", "edited_only", "explained_only")
+                  for r in d[band] if tag in (r.get("moved") or []))
+
+
+def test_a_rewritten_docstring_tags_the_row_it_already_had(tmp_path):
+    """The whole shape of this lane in one assertion, and it is not the comment lane's.
+
+    A docstring lives *inside* the `def`, so `body_hash` moves with it and the routine is
+    already in `edited only` -- the band whose claim is *the body differs and nothing it
+    does does*, described in this tool's own words as internal computation and the one thing
+    it exists not to report. Nothing was missing; the reason given was wrong.
+
+    So the tag, and **the band must not move**. A rewritten docstring did not move anything
+    the routine does, and promoting it to `behaves` would be the comment lane's mistake with
+    the sign flipped (rule 32: one row, one claim).
+    """
+    d = changes.build(base=_graph(tmp_path, "b", DOCUMENTED.replace(DOC_OLD, DOC_NEW)),
+                      compared=_graph(tmp_path, "a", DOCUMENTED))
+    assert _tagged(d, "docstring") == ["alpha"], d["edited_only"]
+    assert _named(d["edited_only"]) == ["alpha"], (
+        "a rewritten docstring is a body change, and the band that says so is right"
+    )
+    assert d["counts"]["behaves"] == 0, (
+        "a docstring is not something the routine does"
+    )
+    assert d["counts"]["explained_only"] == 0, (
+        "explained_only holds what would be in no band; this row has one"
+    )
+
+
+def test_a_docstring_removed_outright_is_a_difference(tmp_path):
+    """One side has one and the other does not, which the set comparison must catch.
+
+    The query asks only for routines that *have* a docstring -- carrying an empty string per
+    routine to state its absence would be the same answer at a cost -- so this is the case
+    that says the default on the missing side is doing its job.
+    """
+    stripped = DOCUMENTED.replace("    " + DOC_OLD + "\n", "")
+    d = changes.build(base=_graph(tmp_path, "b", stripped),
+                      compared=_graph(tmp_path, "a", DOCUMENTED))
+    assert _tagged(d, "docstring") == ["alpha"], d
+
+
+def test_the_same_docstring_re_wrapped_is_not_a_different_explanation(tmp_path):
+    """Rule 1 in prose again, and the corpus was made to say how much it matters.
+
+    Re-wrapping every one of Mensores' 3,769 docstrings at three widths without altering a
+    word -- 52% of them are multi-line with a blank-line break, so this is the ordinary edit
+    -- reports 2,060 · 1,652 · 1,602 routines as written and **none** canonically.
+    """
+    wrapped = DOCUMENTED.replace(
+        DOC_OLD,
+        '"""The path a production door\n    would resolve from the current directory."""')
+    d = changes.build(base=_graph(tmp_path, "b", wrapped),
+                      compared=_graph(tmp_path, "a", DOCUMENTED))
+    assert _tagged(d, "docstring") == [], (
+        "the same words at a different width are not a different explanation"
+    )
+
+
+def test_merging_a_docstrings_paragraphs_is_a_difference(tmp_path):
+    """The measurement that chose the canonical form, and the half a full collapse loses.
+
+    `_comments_moved` collapses every run of whitespace, which is right for a comment: it
+    reaches the store as one row per physical line with no paragraph structure left to keep.
+    A docstring reaches it through `inspect.cleandoc` with its blank lines intact, so the
+    structure is there -- and PEP 257 gives the summary line its meaning by separating it.
+
+    Measured on Mensores: merging every docstring's paragraphs without changing one word
+    affects 1,996 of them, and a full collapse reports **none** of it. Both forms are silent
+    on the re-wrap above, so this is the only experiment that separates them.
+    """
+    two = DOCUMENTED.replace(
+        DOC_OLD, '"""Resolve a path.\n\n    From the current directory, which is the bug.\n    """')
+    one = DOCUMENTED.replace(
+        DOC_OLD, '"""Resolve a path.\n    From the current directory, which is the bug.\n    """')
+    d = changes.build(base=_graph(tmp_path, "b", one),
+                      compared=_graph(tmp_path, "a", two))
+    assert _tagged(d, "docstring") == ["alpha"], (
+        "a summary line that stopped being a summary line is a change to how it reads, "
+        "and a full whitespace collapse cannot see it"
+    )
+
+    # **A blank line with spaces on it is still a blank line**, and this is the half a
+    # `\n\n` would miss. Editors disagree about trimming, so the two versions of one file
+    # routinely differ there and nowhere else -- and a paragraph break that stops counting
+    # as one turns a re-wrap back into 1,996 false differences. Found by mutation.
+    # Eight spaces, not three. `ast.get_docstring` is `inspect.cleandoc`, which strips the
+    # docstring's common margin -- four here -- so a blank line padded to *less* than the
+    # margin comes out genuinely empty and this fixture would be testing nothing. Padded
+    # past it, the blank line reaches the store as `"    "`, which is what an editor that
+    # indents blank lines to their block actually produces.
+    padded = two.replace(
+        '"""Resolve a path.\n\n    From', '"""Resolve a path.\n        \n    From')
+    assert padded != two, "the padded fixture is the same string; this assertion is blind"
+    d = changes.build(base=_graph(tmp_path, "d", padded),
+                      compared=_graph(tmp_path, "c", two))
+    assert _tagged(d, "docstring") == [], (
+        "trailing spaces on an otherwise blank line are not a change to what a routine says"
+    )
+
+
+def test_a_rewritten_module_docstring_is_not_no_differences_found(tmp_path):
+    """The case with no routine to report against, and it is 141 of Mensores' 628 files.
+
+    `<module>` is minted only where a file has module-level work. In a file that runs
+    nothing at import there is no such routine, no body hash moves, no fact moves -- and the
+    page states "No differences found", which is a confident false claim over a file whose
+    one statement of what it *is* has been rewritten. `identical` is what says it, so
+    `identical` is what this asserts.
+    """
+    d = changes.build(base=_graph(tmp_path, "b",
+                                  MODULE_BARE.replace(MODULE_DOC_OLD, MODULE_DOC_NEW)),
+                      compared=_graph(tmp_path, "a", MODULE_BARE))
+    assert d["identical"] is False, "the page would state that nothing differs"
+    assert [r["path"] for r in d["modules_explained"]] == ["m.py"], d["modules_explained"]
+    assert d["counts"]["modules_explained"] == 1
+    assert d["counts"]["edited_only"] == 0, (
+        "nothing here was edited in a way that changed a body hash -- this file has no "
+        "<module> routine at all, which is why the change vanished"
+    )
+
+
+def test_a_module_docstring_is_a_file_and_never_a_routine(tmp_path):
+    """Rule 74's shape: a module is not one of its routines, so it is not filed as one.
+
+    In a file that *does* run something at import there is a `<module>` routine whose body
+    hash is the whole file, so this change is also reported there -- honestly, because the
+    file's bytes did change. What must not happen is the module docstring being *counted*
+    as a routine, or the row that carries it naming something the reader cannot open.
+    """
+    d = changes.build(base=_graph(tmp_path, "b",
+                                  MODULE_WITH_WORK.replace(MODULE_DOC_OLD, MODULE_DOC_NEW)),
+                      compared=_graph(tmp_path, "a", MODULE_WITH_WORK))
+    rows = d["modules_explained"]
+    assert [r["path"] for r in rows] == ["m.py"], rows
+    assert all("path" in r and "module" in r and "id" not in r for r in rows), (
+        "a file row carrying a node id would put a path where a routine is expected"
+    )
+    assert _tagged(d, "docstring") == [], (
+        "the module docstring is not any routine's docstring, not even <module>'s"
+    )
+    assert d["counts"]["routines_base"] == d["counts"]["routines_compared"], (
+        "no routine was created or destroyed by rewriting a module docstring"
+    )
+
+
+def test_a_module_docstring_re_wrapped_is_not_a_difference(tmp_path):
+    """The same canonical form as the routine lane, because it is the same kind of prose."""
+    wrapped = MODULE_BARE.replace(
+        MODULE_DOC_OLD, '"""Queue state, and the one\nplace it is written."""')
+    d = changes.build(base=_graph(tmp_path, "b", wrapped),
+                      compared=_graph(tmp_path, "a", MODULE_BARE))
+    assert d["modules_explained"] == [], d["modules_explained"]
+
+
+def test_a_docstring_in_a_file_whose_bytes_did_not_change_is_not_looked_for(tmp_path):
+    """The bound, asserted as an *answer* rather than as a flag, and shared with two lanes.
+
+    A docstring is text in a file, so equal content hashes are equal docstrings -- the same
+    argument the comment lane makes, and the reason `_changed_files` is one function three
+    lanes call rather than three copies waiting to disagree (rule 51). Measured on Mensores:
+    22.3 ms over all 628 files, 3.2 ms over the fifteen that differ, same answer.
+    """
+    def two_files(tmp, name, one, two):
+        tree = tmp / name
+        tree.mkdir()
+        (tree / "one.py").write_text(one)
+        (tree / "two.py").write_text(two)
+        db = tmp / f"{name}.db"
+        store = Store(db)
+        for f in sorted(tree.glob("*.py")):
+            store.write_file_facts(extract_file(f, tree))
+        store.conn.commit()
+        store.close()
+        return db
+
+    steady = DOCUMENTED.replace("alpha", "steady")
+    d = changes.build(
+        base=two_files(tmp_path, "b", DOCUMENTED.replace(DOC_OLD, DOC_NEW), steady),
+        compared=two_files(tmp_path, "a", DOCUMENTED, steady))
+    assert _tagged(d, "docstring") == ["alpha"], d
+
+
+def test_the_two_explanation_tags_are_kept_apart(tmp_path):
+    """A comment and a docstring are two things, and one tag for both would say neither.
+
+    A comment is what somebody wrote *around* a routine; a docstring is what the routine
+    says about *itself*. They are rewritten independently and a reader clearing a worklist
+    wants to know which -- rule 32, in a tag.
+    """
+    with_both = '''\
+# Intent: the pid identifies this process to the scheduler.
+def alpha():
+    """Return the identifier."""
+    return 1
+'''
+    both_moved = (with_both.replace(OLD_WHY, NEW_WHY)
+                           .replace('"""Return the identifier."""',
+                                    '"""Return the lease key. Two workers must not share one."""'))
+    d = changes.build(base=_graph(tmp_path, "b", both_moved),
+                      compared=_graph(tmp_path, "a", with_both))
+    row = next(r for band in ("behaves", "edited_only", "explained_only")
+               for r in d[band] if r["name"] == "alpha")
+    assert row["moved"] == ["comments", "docstring"], row
+
+    only_doc = with_both.replace('"""Return the identifier."""',
+                                 '"""Return the lease key."""')
+    d = changes.build(base=_graph(tmp_path, "d", only_doc),
+                      compared=_graph(tmp_path, "c", with_both))
+    row = next(r for band in ("behaves", "edited_only", "explained_only")
+               for r in d[band] if r["name"] == "alpha")
+    assert row["moved"] == ["docstring"], (
+        "the comment did not move, and a tag that appears anyway is a false difference"
+    )
+
+
+def test_the_prose_bound_is_the_files_that_differ_and_every_lane_takes_it() -> None:
+    """The bound is a **cost** decision, so no answer can catch it being removed.
+
+    Every prose lane returns the same rows bounded or unbounded -- a file whose bytes are
+    identical holds identical prose, which is the whole argument -- so the tests that assert
+    the answer pass either way and the comment lane's own said so in as many words. That was
+    affordable when it was 41 ms against 5.2; the docstring lane is 22.3 ms against 3.2, and
+    `/api/changes` measured 480 ms against a 500 ms budget. Nineteen milliseconds is
+    **almost exactly the headroom**, so the bound stops being a nicety and starts being the
+    thing that keeps the row in budget.
+
+    Two ways to lose it and both are checked, because a guard for one passes cleanly against
+    the other (rule 37): the bound itself widening, and a lane going round it.
+    """
+    import ast as _ast
+
+    src = (Path(__file__).resolve().parents[1] / "src" / "dunneflow" / "web"
+           / "changes.py").read_text(encoding="utf-8")
+    tree = _ast.parse(src)
+    fn = {n.name: n for n in _ast.walk(tree) if isinstance(n, _ast.FunctionDef)}
+
+    # It reads the changed-file query and nothing wider. Asserted over the *call* rather
+    # than over the string, because the string is quoted in the prose above it (rule 43).
+    called = {c.func.id for c in _ast.walk(fn["_changed_files"])
+              if isinstance(c, _ast.Call) and isinstance(c.func, _ast.Name)}
+    assert "CHANGED_FILES" not in called
+    assert any(isinstance(n, _ast.Name) and n.id == "CHANGED_FILES"
+               for n in _ast.walk(fn["_changed_files"])), (
+        "_changed_files no longer reads CHANGED_FILES, so the bound is whatever it now asks"
+    )
+
+    # And every prose lane takes it. Named as an absence over the whole module: what has to
+    # be caught is a *new* lane written with its own bound, which would look like working
+    # code and quietly cost the budget row (rule 74's guard shape).
+    for lane in ("_comments_moved", "_moved_prose", "_module_docs_moved"):
+        names = {n.id for n in _ast.walk(fn[lane])
+                 if isinstance(n, _ast.Name)}
+        assert "_changed_files" in names, (
+            f"{lane} does not take the shared bound; two answers to which files are worth "
+            "reading is rule 51, and one of them is 19 ms of a 20 ms headroom"
+        )
+        assert "CHANGED_FILES" not in names, (
+            f"{lane} builds its own bound instead of taking the one place that owns it"
+        )
+
+
+def test_the_bound_names_the_files_that_differ_and_no_others(tmp_path):
+    """The bound's own answer, over two files where one changed. Rule 13, on a bound."""
+    def two_files(tmp, name, one, two):
+        tree = tmp / name
+        tree.mkdir()
+        (tree / "one.py").write_text(one)
+        (tree / "two.py").write_text(two)
+        db = tmp / f"{name}.db"
+        store = Store(db)
+        for f in sorted(tree.glob("*.py")):
+            store.write_file_facts(extract_file(f, tree))
+        store.conn.commit()
+        store.close()
+        return db
+
+    steady = DOCUMENTED.replace("alpha", "steady")
+    base = two_files(tmp_path, "b", DOCUMENTED.replace(DOC_OLD, DOC_NEW), steady)
+    compared = two_files(tmp_path, "a", DOCUMENTED, steady)
+    conn = changes._attach(compared, base)
+    try:
+        assert changes._changed_files(conn, "compared", "base") == ["one.py"], (
+            "the bound names a file whose bytes are identical, so every prose lane reads "
+            "the whole program to get the answer it already had"
+        )
+    finally:
+        conn.close()

@@ -6331,7 +6331,19 @@ def test_every_change_band_the_server_sends_becomes_a_status() -> None:
 
     m = re.search(r"const CHANGE_BANDS = \{(.*?)\n\};", js, re.S)
     assert m, "CHANGE_BANDS is no longer an object literal; this guard is blind"
-    mapped = set(re.findall(r"(\w+):", m.group(1)))
+    mapped = set(re.findall(r"^  (\w+):", m.group(1), re.M))
+
+    # The bands whose rows are **files**, which reach no routine status and must not: a path
+    # is not a node id. A second table beside the first rather than an exemption written into
+    # this guard -- an exemption here is a list nobody maintains, and the next file band
+    # would arrive silently drawn by nothing (rule 35's argument, in a test).
+    f = re.search(r"const CHANGE_FILE_BANDS = \{(.*?)\n\};", js, re.S)
+    assert f, "CHANGE_FILE_BANDS is no longer an object literal; this guard is blind"
+    files = set(re.findall(r"^  (\w+): \{", f.group(1), re.M))
+    assert files, "CHANGE_FILE_BANDS is empty; this guard is blind"
+    assert not (files & mapped), (
+        f"{sorted(files & mapped)} is in both tables, so one band would draw two ways"
+    )
 
     # **The top-level keys, read with `ast`.** A regex over the returned block also finds
     # the keys nested inside `counts` and `presence` -- `routines_base`, `moved` -- which the
@@ -6349,13 +6361,20 @@ def test_every_change_band_the_server_sends_becomes_a_status() -> None:
               if isinstance(k, _ast.Constant) and isinstance(k.value, str)}
     bands = served - {"counts", "identical", "presence"}
     assert len(bands) >= 4, f"changes.py sends {sorted(bands)}; this guard is blind"
-    assert bands <= mapped, (
-        f"the bands {sorted(bands - mapped)} reach no status, so every routine in them "
-        "renders as unchanged"
+    assert bands <= mapped | files, (
+        f"the bands {sorted(bands - mapped - files)} reach neither a routine status nor a "
+        "file band, so everything in them renders as unchanged"
     )
-    assert mapped <= served, (
-        f"{sorted(mapped - served)} is mapped and never sent"
+    assert mapped | files <= served, (
+        f"{sorted((mapped | files) - served)} is drawn and never sent"
     )
+    # And each file band is actually drawn, which the mapping above cannot say: `mapped` is
+    # consumed by `routineIndex`, `files` by two renderers, and a table entry nothing reads
+    # is design rule 16's dead setting one level up.
+    for band in files:
+        assert re.search(r"CHANGE_FILE_BANDS\)\s*\n?\s*\.?\s*map", js), (
+            f"CHANGE_FILE_BANDS is iterated nowhere, so {band} is drawn by nothing"
+        )
 
 
 def test_a_routine_only_the_compared_version_has_is_counted_and_never_marked() -> None:
@@ -8893,4 +8912,161 @@ def test_a_presence_line_says_what_it_left_out_and_can_show_it() -> None:
     assert '"presOpen"' not in persisted, (
         "which names are unfolded is where the reader *is*, not what they arranged, and "
         "outliving the visit is what `PERSISTED` is the line against"
+    )
+
+
+def test_the_edited_tooltip_names_every_explanation_and_not_one_of_them() -> None:
+    """A docstring is *always* in the edited band, so the tooltip that band draws must know.
+
+    `edited` says "edited, and nothing it does changed" -- and a rewritten docstring lands
+    there by construction, because a docstring lives inside the `def` and moves the body
+    hash with it. A tooltip that adds "though what explains it moved too" for `comments`
+    only would go on calling the commonest case internal computation, which is the one thing
+    this tool says it exists not to report. The tag list on the row and the sentence on the
+    tooltip would be two surfaces answering one question differently (rule 51).
+
+    Asserted over the **table** rather than over the sentence: the failure to guard against
+    is a third kind of prose arriving and nobody remembering the tooltip (rule 36).
+    """
+    js = _code(_read("shell.js"))
+    m = re.search(r"const EXPLAIN_TAGS = \[(.*?)\];", js, re.S)
+    assert m, "EXPLAIN_TAGS is no longer an array literal; this guard is blind"
+    tags = set(re.findall(r'"(\w+)"', m.group(1)))
+    assert {"comments", "docstring"} <= tags, (
+        f"EXPLAIN_TAGS is {sorted(tags)}; an explanation missing from it is an explanation "
+        "the edited tooltip goes on denying"
+    )
+    assert "EXPLAIN_TAGS.some(t => moved.includes(t))" in js, (
+        "the edited tooltip tests the tag list by name again, so the table decides nothing"
+    )
+    # And every tag the table names is one the server can actually send, or the tooltip is
+    # written against prose that does not exist (rule 44, one file over).
+    py = (Path(__file__).resolve().parents[1] / "src" / "dunneflow" / "web"
+          / "changes.py").read_text(encoding="utf-8")
+    for tag in tags:
+        assert f'"{tag}"] if rid in ' in py, (
+            f"the client tags rows `{tag}` and changes.py never emits it"
+        )
+
+
+def test_a_file_band_takes_a_file_route_and_never_a_routine_one() -> None:
+    """A path where a node id belongs selects nothing, plausibly and in silence.
+
+    `CHANGE_FILE_BANDS` exists because its rows are files: a module docstring belongs to no
+    routine, and in the 141 of Mensores' 628 files that run nothing at import there is no
+    routine it could be reported against at all. Routed as `chg` the row would hand a path
+    to `selectFromNav`, which would find no node and leave the inspector saying "Nothing
+    selected" while every control worked -- rule 30's defect exactly, and the reason that
+    table names its route rather than sharing the routine bands'.
+
+    `file` is the code browser's own route, so this also asserts the route **exists**: a
+    subject the router cannot act on is a label (rule 30).
+    """
+    js = _code(_read("shell.js"))
+    m = re.search(r"const CHANGE_FILE_BANDS = \{(.*?)\n\};", js, re.S)
+    assert m, "CHANGE_FILE_BANDS is no longer an object literal; this guard is blind"
+    navs = set(re.findall(r"nav:\s*\"(\w+)\"", m.group(1)))
+    routes = re.search(r"const NAV_ROUTES = \{(.*?)\n\};", js, re.S)
+    assert routes, "NAV_ROUTES is no longer an object literal; this guard is blind"
+    declared = set(re.findall(r"^  (\w+):", routes.group(1), re.M))
+    assert navs <= declared, (
+        f"a file band routes as {sorted(navs - declared)}, which no route handles"
+    )
+    # And it must not be a *routine* route: `selectFromNav` handed a path finds no node and
+    # leaves the inspector saying "Nothing selected" while every control worked (rule 30).
+    routine_routes = {r for r in declared
+                      if re.search(rf"^  {r}:.*selectFromNav", routes.group(1), re.M)}
+    assert not (navs & routine_routes), (
+        f"a file band routes as {sorted(navs & routine_routes)}, a routine route — a path "
+        "handed to it selects nothing, plausibly and in silence"
+    )
+    # And the route must take the reader *to* the file. `file` opens the pane and leaves the
+    # centre alone, which is right inside the Code group where the list is already under the
+    # reader's eye and wrong from a worklist page, where nothing moves and the click reads as
+    # broken. Found by clicking one (rule 51).
+    body = re.search(r"^  " + sorted(navs)[0] + r":.*?\n  \w+:", routes.group(1),
+                     re.S | re.M)
+    assert body and "state.view" in body.group(0), (
+        f"the `{sorted(navs)[0]}` route opens a file without going to it, so a click on a "
+        "file row changes nothing the reader can see"
+    )
+    # Both renderers take the route from the table rather than writing it out, or one of
+    # them is a second answer waiting to disagree (rule 51).
+    assert js.count('nav: b.nav') + js.count('data-nav="${esc(b.nav)}"') == 2, (
+        "a file band's renderer names its route directly instead of reading the table"
+    )
+
+
+def test_the_changes_note_asks_the_server_whether_anything_differs() -> None:
+    """"No differences found" is the one answer that must not be reassembled locally.
+
+    `changeNote()` computed it as `only_in_base + only_in_compared + behaves + edited_only`,
+    and it had been wrong since the comment lane landed: a pair whose one difference is a
+    rewritten comment -- or a table that appeared, or a constant whose value moved, or now a
+    module docstring -- has every one of those terms at zero. So the group a reader lands in
+    first stated **no differences found** while the page below it listed the change. The
+    same confident false claim the explained band was built to remove, surviving in the
+    other of the two surfaces (rule 51).
+
+    `identical` is computed once, over every band and every presence line, by the side that
+    knows them all -- and the client must ask it rather than keep a sum that a sixth band
+    silently invalidates.
+    """
+    js = _code(_read("shell.js"))
+    note = re.search(r"function changeNote\(\) \{(.*?)\n\}", js, re.S)
+    assert note, "changeNote is no longer a function declaration; this guard is blind"
+    body = note.group(1)
+    assert 'CHANGES.identical' in body, (
+        "changeNote decides `no differences found` without asking the server's own answer"
+    )
+    assert not re.search(r"c\.\w+\s*\+\s*c\.\w+", body.split('"no differences found"')[0]), (
+        "changeNote reassembles a sum to decide whether anything differs; a band left out "
+        "of it makes the note deny a difference the page lists"
+    )
+
+
+def test_a_file_band_states_a_count_of_one_in_english() -> None:
+    """"1 modules explained differently" is `classs ending in \\`Error\\`` again.
+
+    A string the code composes is prose the moment something prints it, and this label is
+    printed inline in the navigator's note as well as under a figure on the page. An `s`
+    appended by arithmetic is not a plural in general, so both forms are written out and
+    a band that names one and not the other is caught here rather than by a reader.
+    """
+    js = _code(_read("shell.js"))
+    m = re.search(r"const CHANGE_FILE_BANDS = \{(.*?)\n\};", js, re.S)
+    assert m, "CHANGE_FILE_BANDS is no longer an object literal; this guard is blind"
+    entries = re.findall(r"^  (\w+): \{(.*?)^  \},", m.group(1) + "\n  },", re.S | re.M)
+    assert entries, "no band entries found; this guard is blind"
+    for name, body in entries:
+        for key in ("stat", "stat1"):
+            assert re.search(rf'{key}:\s*"', body), f"{name} has no `{key}`"
+        one_m = re.search(r'stat1:\s*"([^"]+)"', body)
+        many_m = re.search(r'\bstat:\s*"([^"]+)"', body)
+        assert one_m and many_m, f"{name} does not state both forms as string literals"
+        assert one_m.group(1) != many_m.group(1), (
+            f"{name} states one and many the same way"
+        )
+    # **Every** place that prints it chooses by the count, asserted per site rather than by
+    # a total. The first version added two counts of overlapping substrings, so one of the
+    # two could drop the choice and the sum still cleared the bar -- rule 59's companion,
+    # and found by the mutation it was written to catch.
+    printers = {"viewChanges", "changeNote"}
+    for fn in printers:
+        body = re.search(rf"function {fn}\(\) \{{(.*?)\n\}}", js, re.S)
+        assert body, f"{fn} is no longer a function declaration; this guard is blind"
+        if "b.stat" not in body.group(1):
+            continue
+        assert "b.stat1" in body.group(1), (
+            f"{fn} prints a file band's label without choosing between its two forms, so a "
+            'count of one reads "1 modules explained differently"'
+        )
+    # And nowhere else prints it, or the pair named above is the thing that has gone stale
+    # -- an inclusion list can only check what somebody remembered to add to it.
+    everywhere = {name for name, body in
+                  ((m.group(1), js[m.end():js.find("\nfunction ", m.end())])
+                   for m in re.finditer(r"function (\w+)\(", js))
+                  if "b.stat" in body}
+    assert everywhere <= printers, (
+        f"{sorted(everywhere - printers)} also prints a file band's label and is unchecked"
     )

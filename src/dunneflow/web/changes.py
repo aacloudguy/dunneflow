@@ -24,6 +24,13 @@ So the bands are named by **where a thing is**, never by what happened to it:
   in ordinary work and the least interesting, and saying so is the point: a routine
   whose internal computation changed is exactly what this tool exists not to report.
 
+Beside the bands sit the **explanations**, which are not facts about what a routine does
+and are never allowed to decide which band it is in. A rewritten comment and a rewritten
+docstring are tags on the row (`comments`, `docstring`); a rewritten **module** docstring
+has no routine to be a tag on and is its own lane, `modules_explained`, whose rows carry a
+path because the subject is the file. Explanations are compared as prose -- see `_prose`,
+which is a different canonical form from the one comments get, for a stated reason.
+
 **Added and deleted are an interpretation, and they are not made here.** Which of the
 two versions is newer is an assumption the reader owns; it is stated in the toolbar and
 it is a Setting. This module reports set membership, which is a fact, and leaves the
@@ -43,6 +50,7 @@ to `graph.db`. Neither snapshot is copied, moved or rewritten to be compared.
 
 from __future__ import annotations
 
+import re
 import sqlite3
 from pathlib import Path
 from typing import Any
@@ -163,6 +171,31 @@ SELECT c.routine_id, c.text
   FROM {db}.comments c JOIN {db}.routines r ON r.id = c.routine_id
  WHERE r.file IN ({q})
  ORDER BY c.routine_id, c.line
+"""
+
+# What a routine says about itself, for the routines living in files whose bytes differ --
+# the same bound `COMMENTS_IN` carries and sound for the same reason.
+#
+# **Only routines that have one**, either side. A docstring removed outright shows up on one
+# side and not the other, which the set comparison already reads as a difference; carrying
+# 1,017 empty strings a side to say so would be the same answer at a cost.
+DOCSTRINGS_IN = """
+SELECT r.id, r.docstring
+  FROM {db}.routines r
+ WHERE r.file IN ({q}) AND r.docstring IS NOT NULL AND r.docstring <> ''
+"""
+
+# What a **module** says it is. `files.doc` and not a routine's column, because it is not a
+# routine's: `<module>` is minted only where a file has module-level work, so 487 of
+# Mensores' 628 files have one and the other 141 do not -- while 619 of them state what the
+# module is. Hanging this on `<module>` would cover it where it happens to exist and miss it
+# silently everywhere else, which is the half answer this module is written not to give.
+#
+# Files in **both** versions only. A file one version has and the other does not is already
+# stated by the file lane, and saying it twice is rule 40's defect in a diff.
+MODULE_DOCS = """
+SELECT f.path, f.module, f.doc FROM {db}.files f
+ WHERE f.path IN ({q}) AND f.doc IS NOT NULL AND f.doc <> ''
 """
 
 # A constant present in both versions, holding something different.
@@ -374,7 +407,7 @@ def _comments_moved(conn: sqlite3.Connection, A: str, B: str) -> set[str]:
     pass -- comparing the joined strings as stored -- is a superset by construction and the
     second pass can only ever remove candidates.
     """
-    files = [r[0] for r in conn.execute(CHANGED_FILES.format(A=A, B=B))]
+    files = _changed_files(conn, A, B)
     if not files:
         return set()
     q = ",".join("?" * len(files))
@@ -392,6 +425,146 @@ def _comments_moved(conn: sqlite3.Connection, A: str, B: str) -> set[str]:
             if here.get(rid, "") != there.get(rid, "")
             and " ".join(here.get(rid, "").split())
             != " ".join(there.get(rid, "").split())}
+
+
+# A paragraph break, and the only whitespace in a docstring that survives comparison.
+_PARA = re.compile(r"\n\s*\n")
+
+
+def _prose(text: str) -> str:
+    """A docstring's words, with the shape of its paragraphs and nothing else.
+
+    **The canonical question, asked a fourth time and answered differently from the third**
+    -- `_constants_moved` predicted it would come round and said the answer would depend on
+    how the column is filled, which is exactly what decides it. A comment reaches the store
+    as one row per *physical line* with no paragraph structure left to keep, so
+    `_comments_moved` joins the lot and collapses; a docstring reaches it as one string
+    through `ast.get_docstring`, which is `inspect.cleandoc` -- dedented, stripped top and
+    tail, and with **its blank lines intact**. The structure is there, so it is kept.
+
+    Measured over Mensores' 3,769 docstrings rather than argued, re-wrapping every one of
+    them at three widths without altering a word -- the ordinary edit, and 52% of them are
+    multi-line with a blank-line break:
+
+        re-wrapped at 72 / 79 / 88   as written  2,060 · 1,652 · 1,602 falsely reported
+                                     collapsed       0 ·     0 ·     0
+                                     by paragraph    0 ·     0 ·     0
+
+    Both canonical forms are silent on the noise, so that experiment does not choose between
+    them. The one that does is its opposite: **merging every paragraph**, changing not one
+    word and destroying the separation PEP 257 gives the summary line, is reported by
+    neither `as written`'s rival nor by a full collapse --
+
+        paragraphs merged, 1,996 affected   collapsed  0 reported
+                                            by paragraph  1,996 reported
+
+    -- so a full collapse buys nothing over this and is blind to a real change to how a
+    routine is explained. Same zero on the noise, 1,996 more on the signal.
+
+    Done here rather than behind the `canonical/` seam for `_comments_moved`'s reason:
+    joining lines and collapsing runs of whitespace is prose handling, and prose is prose in
+    every language (rule 15, from the other side). Where somebody pressed return is not a
+    question about a parser.
+    """
+    return "\n\n".join(" ".join(p.split()) for p in _PARA.split(text) if p.strip())
+
+
+def _docstrings_moved(conn: sqlite3.Connection, A: str, B: str) -> set[str]:
+    """Routines the two versions **describe** differently.
+
+    Beside `_comments_moved` and answering the same question from the other side: a comment
+    is what somebody wrote *around* a routine and a docstring is what the routine says about
+    itself. Both are the WHY, and neither is anything the code carries.
+
+    **One wrong answer, where a comment had three, and it is the band rather than the
+    silence.** A leading comment sits above the `def` and so outside `body_hash`, which is
+    why rewriting one could vanish entirely. A docstring is *inside* the `def`, so it is
+    always inside `body_hash` and a rewritten one is never invisible -- it is filed under
+    **edited only**, whose whole claim is *the body differs and nothing it does does*, a band
+    this tool describes in its own words as internal computation and the one thing it exists
+    not to report. `_production_audit_db_path` on Mensores' pair had a deprecation notice and
+    its entire reasoning rewritten and sits there, indistinguishable from a renamed local.
+
+    So this is a **tag and never a band**, and the two follow from that same fact. It cannot
+    put a row in `explained_only` -- nothing reaches that band by this route, because a
+    docstring change is a body change by construction -- and it must not move a row out of
+    the band it earned, because what a routine *does* is what decides that (rule 32).
+
+    Two passes, `_comments_moved`'s shape and its soundness argument: collapsing whitespace
+    can only make two strings more equal, so comparing them as stored is a superset by
+    construction and the second pass can only ever remove candidates.
+    """
+    return _moved_prose(conn, A, B, DOCSTRINGS_IN)
+
+
+def _module_docs_moved(conn: sqlite3.Connection, A: str,
+                       B: str) -> list[dict[str, Any]]:
+    """Files whose module docstring moved -- **the subject is the file, not a routine.**
+
+    A module docstring is the only place a module states what it *is*, and it belongs to no
+    routine. Hanging it on the synthetic `<module>` was the obvious cheap answer and is
+    wrong: `<module>` exists only where a file has module-level work, so on Mensores it
+    covers 487 of 628 files while 619 of them carry a module docstring. For the **138** that
+    state what they are and run nothing at import, a rewritten module docstring changes no
+    routine's `body_hash`, no fact, and no row -- and the page says **"No differences
+    found."** That is the comment lane's worst answer still standing, in the one sentence a
+    module writes about itself.
+
+    A file is a subject the reader can act on -- the code browser already selects one -- so
+    these rows carry a path and the router opens it, rather than naming something with no way
+    in (rule 30).
+
+    Rows are ordered by path, and only files **both** versions hold: a file only one side has
+    is the file lane's answer already, and two lanes reporting one difference is rule 40.
+    """
+    files = _changed_files(conn, A, B)
+    if not files:
+        return []
+    q = ",".join("?" * len(files))
+
+    def side(db: str) -> dict[str, tuple[str, str]]:
+        return {str(r[0]): (str(r[1] or ""), str(r[2]))
+                for r in conn.execute(MODULE_DOCS.format(db=db, q=q), files)}
+
+    here, there = side(A), side(B)
+    return [{"path": path, "module": there.get(path, here.get(path, ("", "")))[0]}
+            for path in sorted(here.keys() & there.keys())
+            if here[path][1] != there[path][1]
+            and _prose(here[path][1]) != _prose(there[path][1])]
+
+
+def _changed_files(conn: sqlite3.Connection, A: str, B: str) -> list[str]:
+    """The files whose bytes differ, which is what every prose lane is bounded to.
+
+    One place asks it, because three lanes now do -- and a bound computed twice is two
+    answers to *which files are worth reading* waiting to disagree (rule 51).
+    """
+    return [str(r[0]) for r in conn.execute(CHANGED_FILES.format(A=A, B=B))]
+
+
+def _moved_prose(conn: sqlite3.Connection, A: str, B: str, sql: str) -> set[str]:
+    """Owners whose prose differs, as stored and then canonically.
+
+    Shared by the docstring lane and nothing else today; written as one function because the
+    comment lane has the same two-pass shape with a *different* canonical form, and folding
+    all three together would mean one function that takes an argument saying which kind of
+    prose it is holding -- the row that means two things (rule 32), in a signature.
+    """
+    files = _changed_files(conn, A, B)
+    if not files:
+        return set()
+    q = ",".join("?" * len(files))
+
+    def side(db: str) -> dict[str, str]:
+        cur = conn.cursor()
+        cur.row_factory = None
+        return {str(k): str(v or "") for k, v in cur.execute(
+            sql.format(db=db, q=q), files)}
+
+    here, there = side(A), side(B)
+    return {k for k in here.keys() | there.keys()
+            if here.get(k, "") != there.get(k, "")
+            and _prose(here.get(k, "")) != _prose(there.get(k, ""))}
 
 
 def _constants_moved(conn: sqlite3.Connection, A: str, B: str) -> list[str]:
@@ -504,18 +677,34 @@ def build(base: Path, compared: Path,
         # to avoid, one fact type over. Tom's call, 2026-09-01: its own band, and a tag on
         # the rows that are already in one.
         commented = _comments_moved(conn, A, B) & both
+        # **A tag, and it can never be a band.** A docstring is inside the `def`, so it is
+        # inside `body_hash` -- every routine here is already in `edited_only` or in
+        # `behaves`, and what it corrects is the *reason* the row gives rather than its
+        # absence. See `_docstrings_moved`.
+        documented = _docstrings_moved(conn, A, B) & both
+        # The file lane of the same question, and the only one here whose subject is not a
+        # routine. It is computed outside `moved` and outside the bands for that reason: a
+        # file is not a routine and must not be counted as one (rule 74's shape -- a thing
+        # is never one of the things it holds).
+        modules = _module_docs_moved(conn, A, B)
 
         named = {r["id"]: dict(r) for r in conn.execute(
             f"SELECT id, name, qualname, module, file, line_start FROM {B}.routines")}
 
         def tags(rid: str, kinds: list[str]) -> list[str]:
-            """What moved, with `comments` last because it is not one of the others.
+            """What moved, with the two explanation tags last because they are not facts.
 
-            It rides on the row rather than in `moved` itself so the band a routine lands in
+            They ride on the row rather than in `moved` itself so the band a routine lands in
             is decided by what it *does* and never by what explains it (rule 32: one row,
             one claim, and the tag says which claim it is).
+
+            **Two tags rather than one**, and they are kept apart deliberately: a comment is
+            what somebody wrote *around* a routine and a docstring is what the routine says
+            about *itself*. One tag reading "prose" would be a row that means two things.
             """
-            return [*kinds, "comments"] if rid in commented else kinds
+            return [*kinds,
+                    *(["comments"] if rid in commented else []),
+                    *(["docstring"] if rid in documented else [])]
 
         behaves_rows = [
             {**named[rid], "moved": tags(rid, kinds)}
@@ -528,9 +717,16 @@ def build(base: Path, compared: Path,
         # The fifth band, and it holds exactly what would otherwise be in none: the same
         # routine, the same body, the same facts, and what explains it has moved. The four
         # bands stay a partition because this one is defined by subtraction from all of them.
+        #
+        # **In Python only comments can reach it**, and the subtraction is written over both
+        # explanation sets anyway rather than over the one that can. A docstring lives inside
+        # the `def`, so `body_hash` moves with it and `edited` has the row already; that is a
+        # fact about how *this* extractor hashes a body, not about what a docstring is, and a
+        # band defined by "what is in no other band" must be that and not a list of the ways
+        # it has so far been reached.
         explained_only = [
             named[rid] for rid in sorted(
-                commented - behaves.keys() - edited.keys(),
+                (commented | documented) - behaves.keys() - edited.keys(),
                 key=lambda r: named.get(r, {}).get("qualname", ""))
             if rid in named
         ]
@@ -566,6 +762,7 @@ def build(base: Path, compared: Path,
                 "behaves": len(behaves_rows),
                 "edited_only": len(edited_only),
                 "explained_only": len(explained_only),
+                "modules_explained": len(modules),
                 "routines_base": conn.execute(
                     f"SELECT COUNT(*) FROM {B}.routines").fetchone()[0],
                 "routines_compared": conn.execute(
@@ -575,7 +772,7 @@ def build(base: Path, compared: Path,
             # rewritten leading comment used to leave every other term zero, so the page
             # stated "No differences found" over a version whose intent had been rewritten.
             "identical": not (only_base or only_comp or behaves_rows or edited_only
-                              or explained_only
+                              or explained_only or modules
                               or any(v["only_in_base"] or v["only_in_compared"] or v["moved"]
                                      for v in presence.values())),
             "only_in_base": only_base,
@@ -583,6 +780,10 @@ def build(base: Path, compared: Path,
             "behaves": behaves_rows,
             "edited_only": edited_only,
             "explained_only": explained_only,
+            # Rows whose subject is a **file**. Kept out of every routine band and out of
+            # `counts`' routine totals for the reason it is its own lane at all: a module is
+            # not one of its routines.
+            "modules_explained": modules,
             "presence": presence,
         }
     finally:

@@ -159,9 +159,52 @@ is not computed yet.
 
 ## What we are doing now
 
-**Paused 2026-08-31 with chunks 3 and 4 both in, committed and green** — 698 tests, mypy
-clean, ruff clean, working tree clean. Nothing is half-done; the next session starts on a
-decision rather than in the middle of an edit.
+**Paused 2026-08-31 with chunks 5a and 5b in, committed and green** — 723 tests, mypy
+clean, ruff clean, working tree clean. Nothing is half-done; the next session starts on
+5c, which begins by reproducing a defect rather than by building anything.
+
+**The question that blocked the anomaly worklist since 2026-08-30 is answered**, and it
+was measurable rather than a matter of taste. *What makes two findings in two versions the
+same finding:* over Mensores' pair, `kind + subject` is a total key with zero collisions —
+106 of 106 paired, one genuinely new — while adding `file` *loses* three pairings, because
+for a grouped detector it is `MIN(file)`, a tiebreak that moves when an unrelated file
+changes. The old sub-question dissolved: `LOST_EDGE` is already one finding per expression,
+and the callers and the rivals are what it *reports*.
+
+**Tom took an explicit identity per detector**, and his reason set the shape: *"to later on
+permit different languages such as Kotlin or C++ … keep the input possibilities wide
+enough."* Detectors are query-driven, so another language's facts already run through them
+and will bring detectors of their own — a central rule inferring identity would have to go
+on being right about every one.
+
+```
+5a  ident_parts has no default, so a detector that cannot answer cannot construct a finding
+    all 17 sites declare theirs · Mensores 106/106 and 107/107 distinct · zero ordinals used
+5b  /api/anomalychanges   only_in_base · only_in_compared · moved   (rule 65, never a time)
+    inverts exactly when the ends swap: 1/0/4 one way, 0/1/4 the other
+    62 ms → 0.9 ms on /api/anomalies · 1.3–4.1 s cold for the pair · 0 ms once both held
+```
+
+Compared is what a finding **claims** — count, severity, confidence — never its title or
+detail, which are renderings of exactly those (rule 40), and never its blind spot, which
+describes DunneFlow rather than the program. Findings are held per **graph**, not per pair,
+so a base switch does not throw away the expensive half; `COMPARISON_CACHES` names what a
+switch *does* clear and a guard asserts what must survive it. A graph this DunneFlow
+refuses to read is stated with its reason and `dunneflow migrate`, sends no bands, and does
+not stop the base's own findings answering — driven end to end, not trusted to a guard.
+
+Guards mutation-tested 10/10 and 11/11 over baselines proved green first. Four survived
+first passes and every one was the guard, including the sharpest of the session: **the
+ordinal that breaks a genuine tie was hiding weak keys from the uniqueness test**, so the
+corpus guard now asserts no declared key needs tie-breaking at all.
+
+**Next: 5c, the overlay on screen**, which opens on a live defect. `state.triage` is keyed
+by the finding's **array index** while both declarations of it say `finding id ->`
+(`shell.js:362`, `settings.js:330`). It is persisted, findings are served sorted by count,
+and a base switch reloads — so a moved count, a new detector or a switch lands every saved
+decision on a different finding, silently. `SETTINGS_VERSION` must bump. Tom's call on the
+overlay itself: **default on, fetched when the worklist is opened**, matching `codeOverlay`
+and `tableOverlay`. See `HANDOFF.md`, "A finding says what makes it that finding".
 
 **Two things are waiting on Tom and neither is a bug:**
 
@@ -175,6 +218,8 @@ decision rather than in the middle of an edit.
 Checked first rather than assumed, because rule 25 says the file bodies are the one thing
 that cannot be rebuilt: all 640 of its blob hashes were already in the new `source.db`,
 zero missing, and both source trees are still on disk.)*
+
+### Before that: an edge says what flows (2026-08-31)
 
 **Chunk 4 landed 2026-08-31: an edge says what flows.** The last thing Diagram mode was
 missing, and the one Tom asked for in the same breath as the arguments.
@@ -208,10 +253,10 @@ is reachable from a row in the pane; and a 1,347-line `frozenset` argument exist
 corpus and wraps rather than elides, because rule 8 allows abbreviation only beside the
 full value.
 
-**Next: chunk 5 — the anomaly worklist overlay**, still blocked on one question: what makes
-two findings in two versions the same finding. 93 of Mensores' 106 are `LOST_EDGE`, so
-pairing them would invent an identity (rule 1). Also open and unblocked: the change worklist
-does not yet see an argument change (`changes.FACTS` compares `calls` without them).
+*Its "next" was chunk 5, blocked on what makes two findings in two versions the same
+finding. That question is answered and 5a and 5b are built — see the top of this section.*
+Still open and unblocked, and untouched by either: the change worklist does not yet see an
+argument change (`changes.FACTS` compares `calls` without them).
 
 ### Before that: the call-site arguments (2026-08-31)
 
@@ -310,7 +355,8 @@ order: the panel in 2 wants what 1 records.
    the `data-gotocode` button — Tom's *"ultimately where it all goes"*.
 3. **The anomaly worklist overlay**, still blocked on one question — what makes two findings
    in two versions the same finding. 93 of Mensores' 106 are `LOST_EDGE`, so pairing them
-   would invent an identity (rule 1).
+   would invent an identity (rule 1). *(Answered 2026-08-31, and 5a and 5b are built. This
+   paragraph is what was true when the plan was approved; see "What we are doing now".)*
 
 **Withdrawn and not to be rebuilt without reading why:** boxes drawn on the stack at
 phyllotaxis positions (a sunflower is not a diagram), and shadows for cross-compartment edges
@@ -400,7 +446,8 @@ full width while hit-testing said it was perfectly reachable.
 
 **Next: nothing is scheduled.** Three chunks now rest on a picture nobody with a real window
 has seen. The one open piece of work is the **anomaly worklist overlay**, still blocked on
-one question — what makes two findings in two versions the same finding.
+one question — what makes two findings in two versions the same finding. *(Answered
+2026-08-31; the overlay's server halves are built. See "What we are doing now".)*
 
 ### Before that: sizing a plate by what it holds (2026-08-31)
 

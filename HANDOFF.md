@@ -3845,6 +3845,173 @@ question answered first — what makes two findings in two versions the same fin
 carries no id and 93 of Mensores' 106 are `LOST_EDGE`, so pairing them would invent an
 identity (rule 1).
 
+## A finding says what makes it that finding — 2026-08-31
+
+Chunks 5a and 5b. The anomaly worklist overlay had been blocked since 2026-08-30 on one
+question rather than on effort, and the question turned out to be measurable.
+
+### The question, answered with a count rather than an argument
+
+*What makes two findings in two versions the same finding.* A finding carried no identity
+at all, `state.triage` was keyed by an array index, and 93 of Mensores' 106 findings are
+`LOST_EDGE` — so any loose pairing would have invented one, which is rule 1's defect with
+a colour on it.
+
+Measured over the real pair before putting anything to Tom, which is what turned a design
+judgment into a decision:
+
+    base 106 findings · compared 107
+      kind+subject       106 distinct keys in each · 0 collisions
+                         106 of 106 paired · 1 genuinely new · 4 with a moved count
+      kind+subject+file  loses pairs — `file` is MIN(file), an arbitrary tiebreak
+      kind+title         loses 4 and 5 — the title carries the counts
+
+And the old sub-question — *what is an occurrence for `LOST_EDGE`, the 142 callers or the
+rival definitions* — dissolved rather than being answered. The detector already groups by
+`callee_expr`, so the finding is one per expression; the callers are its `count` and the
+rivals are in its title. Both are what it *reports*, and both move while it stays the same
+finding. It was never an identity question.
+
+### Tom's decision, and the reason that shaped the build
+
+He took **an explicit identity per detector** over the cheaper uniform key, and his reason
+is the whole shape of 5a: *"to later on permit different languages such as Kotlin or C++
+… keep the input possibilities wide enough."*
+
+Detectors are query-driven over the store, so a Kotlin or C++ extractor's facts already
+run through the thirteen that exist — and a second language brings detectors of its own. A
+**central** rule inferring identity from `subject` would have to go on being right about
+every one of them. Declared beside the detector, adding one is a self-contained job.
+
+Two constraints follow, and both are stated in `Anomaly`'s docstring rather than left to
+be rediscovered: no position in a key, and the parts come from the **fact contract**
+(`qualname`, `callee_expr`, `tbl`, `module`) rather than from any language's syntax.
+
+### 5a — the identity
+
+`ident_parts` has **no default**, so a detector that does not answer the question cannot
+construct a finding: the type checker named all 17 sites itself the moment the field
+landed, which is the strongest form the guard can take. `ident` is a property over the
+parts — `make_id("finding", kind, *parts)`, the namespacing `make_id("ep", …)` and
+`make_id("site", …)` already use — never stored beside them, because a second copy of an
+answer is a second thing to keep in step (rule 51). The parts are kept because the pairing
+is a *claim* and they are how a reader sees why it was made (design rule 13).
+
+Three shapes, and naming them was most of the work. **Grouped** detectors key on their
+GROUP BY column, unique by construction. **Per-site** ones key on what names them.
+**Whole-program** ones declare `()`, and that empty tuple is a statement — one of these
+per program — where before it was an empty `subject` that fell out of a default argument
+and claimed nothing.
+
+`Report.add` breaks a genuine tie with an **ordinal among identical keys**, the residue
+`_identity()` and `call_site_id` already carry. It never merges and it never invents a
+key; it only breaks a tie in one.
+
+    Mensores, both ends   106 findings / 106 ids · 107 / 107 · zero ordinals needed
+    DunneFlow read by itself   21 findings / 21 ids
+
+### 5b — the pairing
+
+`web/anomalychanges.py` takes two lists of rows and pairs them, so it can be read and
+tested without a graph on disk. Bands named for **where a finding is** (rule 65):
+`only_in_base`, `only_in_compared`, `moved` — and the compared end of a moved finding is
+`in_compared`, never `was`, which would be the whole of rule 65 in one word.
+
+**What is compared is what a finding claims**: `count`, `severity`, `confidence`. Not
+`title` or `detail`, which are renderings of exactly those — comparing both would report
+one change twice and call it two (rule 40). Not `blind_spot`, which is a sentence about
+*this tool*: when it changes, DunneFlow changed, and a mark there would say the program
+moved when it did not.
+
+Driven against the real pair, both ways round, and it inverts exactly — which is the
+check that these are set membership and not a claim about time:
+
+    base 22:53:57   1 only_in_base · 0 only_in_compared · 4 moved
+    base 22:53:15   0 only_in_base · 1 only_in_compared · 4 moved, counts reversed
+    the one unpaired finding is real: an eighth ONE_WAY_TABLE, `siq__rebuild_87_02h`
+
+### The cost is inherent, and it is the disk
+
+Every other comparison here joins two graphs on one connection, because facts are rows.
+Findings are not rows — they are what thirteen detectors *conclude* — so the compared
+version's findings mean running the detectors over its graph. Rule 58 does not land: its
+36× is a second handle to a file this process already holds open, and the compared graph
+is not that file.
+
+    /api/anomalies, served graph      62 ms per request → 0.9 ms held
+    first pairing, 31 MB graph cold   1.3 s – 4.1 s, and it is mostly the disk
+    pairing once both ends are held   0 ms
+
+So the findings are held per **graph**, not per pair, and a base switch does not clear
+them: the file is the same file. `COMPARISON_CACHES` names the caches a switch *does*
+clear, and a second guard asserts `findings` and `filepairs` are not among them — cleared
+for tidiness they would make every switch pay those seconds again to learn what it knew.
+
+The same cache fixes something that was already there: `/api/anomalies` ran all thirteen
+detectors on **every** request, inside the lock, for an answer that cannot change while
+the served file does not.
+
+### A graph that cannot be read is stated, never emptied
+
+Rules 49 and 63, and driven end to end rather than trusted to a guard: a program directory
+holding one readable graph and one genuinely stale one. The comparison answers
+`available: false`, names the file, the reason and `dunneflow migrate` (rule 62 — a reader
+must name *which* fix applies), sends **no bands at all**, and the base's own findings go
+on answering. An empty list there would have read as *this version had nothing wrong with
+it*, which is a different and false claim.
+
+### The guards, and what the first passes found
+
+Mutation-tested **10/10** and **11/11** over baselines proved green first (rule 59). Four
+survived first passes and **every one was the guard**, for the fourteenth, fifteenth,
+sixteenth and seventeenth time in five sessions:
+
+- a check reading the word `file` passed straight over `MIN(file) f` reaching the site as
+  `row["f"]`. It compares *expressions* now, never names;
+- the fixtures had one module, so a key of the bare name was indistinguishable from
+  `(module, name)`. Two modules redefining one name is the smallest program that can see
+  the difference;
+- **the ordinal that exists to disambiguate was hiding weak keys from the uniqueness
+  test** — two findings that should have had different keys got different ids anyway, told
+  apart by their order. The corpus guard now asserts no declared key needs tie-breaking at
+  all, which is the stronger claim;
+- nothing asserted that a pair whose findings only *moved* is not `identical`.
+
+Two general rules fell out and are worth keeping. **A key carries every loop the finding
+is emitted inside**: `_parse_failures` loops files then errors, and keyed on the path alone
+every error after the first vanishes into the tie-breaker — the merge this design exists to
+prevent, wearing the costume of the mechanism written to prevent it. Unreachable in Python,
+which stops at the first syntax error, and reachable the day a compiler that reports many is
+read; so the guard is structural, because the fixtures cannot see it. And **a finding that
+counts a set is not identified by a member of it** — rule 32 in an identity.
+
+    710 tests after 5a · 723 after 5b · mypy clean · ruff clean
+
+### Paused 2026-08-31, with 5a and 5b in
+
+Both committed, tree clean. **Next: 5c, the overlay on screen**, and it opens by
+reproducing a live defect rather than by building anything. `state.triage` is keyed by the
+finding's **array index** while both of its declarations say `finding id ->` —
+`shell.js:362` and `settings.js:330`. Triage is persisted, findings are served `sorted()`
+by severity, confidence and **count**, and a base switch reloads the page: so a count that
+moves, a detector that is added, or a switch lands every saved decision on a different
+finding, silently. `SETTINGS_VERSION` must bump — an index-keyed blob read as ident-keyed
+is a wrong answer, not an absent one.
+
+Tom's call on the overlay, taken at the pause before 5b: **default on, fetched when the
+worklist is opened**, matching `codeOverlay` and `tableOverlay`, which pay on a deliberate
+navigation. The first open of a session may wait and says *comparing with …* while it does.
+
+Found in passing and unfixed: `loadAnomalies()` drops `f.subject` from its map while
+`shell.js:3752` reads `cur.a.subject` — always `undefined`, falling back to `"a name"`, in
+the text explaining why the two jump buttons are disabled. Rule 44 again.
+
+**Still wanting Tom's eye, carried over unchanged and blocking nothing:** the flow panel's
+arrow stroke is **1 px**, thin to aim at, though the same flow is reachable from a row in
+the pane, which is a button; and a **1,347-line `frozenset` argument** in this corpus wraps
+rather than elides, because rule 8 allows abbreviation only where the complete value sits
+beside it.
+
 ## An edge says what flows, and the echo that had been eating the subject — 2026-08-31
 
 Chunk 4 of the approved plan, and the one Tom asked for in the same breath as the

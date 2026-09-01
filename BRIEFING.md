@@ -163,10 +163,61 @@ is not computed yet.
 
 ## What we are doing now
 
-**Paused 2026-09-01. Chunk 5 is complete and the change worklist now sees an argument.**
-744 tests, mypy clean, ruff clean, working tree clean. Nothing is half-done.
+**Paused 2026-09-01. Chunk 5 is complete, the change worklist sees an argument, and two
+things filed as known are closed.** 747 tests, mypy clean, ruff clean, working tree clean.
+Nothing is half-done.
 
-### The latest: what a call passes, and what a constant is (2026-09-01)
+### The latest: a presence line says what it left out (2026-09-01)
+
+Two small things Tom took together, and they shared a shape: each was a surface saying less
+than the map already knew.
+
+**`Constants +23` printed six names and stopped.** The count was right, so nothing looked
+wrong — a reader simply had no way to know six was not twenty-three, and there was no full
+listing anywhere in the product. The server had been sending every name whole the whole
+time; the defect was `names.slice(0, 6)` in the renderer. Open, the group names the **whole**
+set rather than the remainder, and the way back is drawn whichever way it is open, because
+"showing six of 23" and "showing all 23" are both answers.
+
+**The unfold is keyed on the band, never on the sign.** `+` and `−` swap when the reader
+changes which version they take to be newer and the names do not move, so an unfold filed
+against "the plus group" comes back attached to a different set — rule 65 in a control.
+Driven both ways: `+23` green with 23 open becomes `−23` red with the same 23 still open.
+
+**Driving it found what no test could.** Twenty-three names separated by a single space,
+several 76 characters long and wrapping mid-name, is a wall of monospace. *The bound had
+been hiding a legibility problem as much as it had been hiding names* — at six it reads as
+a list. Each name is a chip now, inline rather than `inline-block`, because a chip that
+cannot break is a 76-character box that overflows a narrow pane.
+
+**And *behaves differently* stopped having two colours.** It drew in `--text-muted` on the
+routine lane while the stack, the graph legend and the findings' mark drew the same idea in
+`--diff-moved`. Tom's call. Eight surfaces; the stylesheet comment is rewritten as the
+reversal it is rather than left standing beside code that contradicts it. `edited` stays
+out, and that is the channel being **full** rather than an oversight (rule 69).
+
+Two near-misses out of it, both rule 71's family. The fact lane spelled it `tone-mod` — a
+fourth spelling of the third direction, with a rule of its own painting it grey one class
+name away from the `.tone-moved` everything else used, and the one surface no search for
+`tone-moved` could find because the renderer spells the class itself. And `.hc-chg` sets a
+colour on the very element the tone lands on, so it **ties** with the unscoped rule and wins
+on source order — the hover card would have said it in grey while the row that opened it
+said it in violet. Caught by working the specificity out by hand, then proved in the browser
+by deleting the rule live.
+
+```
+21/21 mutations caught over a baseline proved green first
+one existing guard's blindness check rewritten rather than lowered — it counts what the
+regex found, not how many classes the design happens to have
+```
+
+**Absent rather than estimated:** a picture of the four figures side by side. The automation
+tab's screenshot viewport captures roughly the left half of a 1258 px page, so the violet
+figure is off the frame. Everything static was driven — classes, computed colours on all six
+surfaces, the unfold both ways with `elementFromPoint`, and the assumption flip carrying the
+open set with it. Rule 38.
+
+### Before that: what a call passes, and what a constant is (2026-09-01)
 
 `FACTS` compared `calls` without their arguments and `constants` by name alone, so
 `f(db_path=None)` becoming `f(policy_path=…)` and `EXPECTED_SCHEMA_VERSION` going 27 → 28
@@ -206,9 +257,9 @@ still invisible, and 18,208 comments are the governance layer and the only sourc
 wants its own thought — a reflowed comment is the re-wrap problem again, larger, and prose
 has no `ast.unparse` to appeal to.
 
-**Pre-existing, now easier to notice:** a presence line names at most six of its members with
-no full listing anywhere (`Constants +23` shows six), which is rule 8's bound without rule 8's
-companion.
+**Pre-existing, now easier to notice:** a presence line named at most six of its members
+with no full listing anywhere (`Constants +23` showed six), which is rule 8's bound without
+rule 8's companion. *Closed 2026-09-01 — see the top of this file.*
 
 ### Before that: chunk 5c, the overlay on the findings (2026-09-01)
 
@@ -269,7 +320,7 @@ colours, the titles with both numbers in them, per-tab counts, the switch both w
 `elementFromPoint` on the unfold and the switch to prove they are reachable rather than
 merely wired. Rule 38: the picture wants a real window.
 
-### Three things waiting on Tom, and none of them is a bug
+### Two things waiting on Tom's eye, and neither is a bug
 
 1. **The flow panel's arrow stroke is 1 px**, which is thin to aim at. The same flow is
    reachable from a row in the pane, which is a button, so this may be enough.
@@ -277,18 +328,25 @@ merely wired. Rule 38: the picture wants a real window.
    91 KB in one argument) and the pane **wraps** it rather than eliding, because rule 8
    allows abbreviation only where the complete value sits beside it. It may read badly.
    Whatever replaces it has to keep the whole value reachable.
-3. **New, and small.** The routine lane draws *behaves differently* in `--text-muted`
-   while the graph legend and now the findings draw the same idea in `--diff-moved`. Two
-   answers to one question (rule 51). Left alone because changing a shipped surface on
-   that judgment is his call.
+
+*There was a third — the routine lane drawing* behaves differently *in `--text-muted` while
+the legend and the findings drew the same idea in `--diff-moved`. Put to Tom on 2026-09-01
+and unified on `--diff-moved`; see the top of this file.*
 
 ### What is next, and it is open
 
-Nothing in chunk 5 is outstanding, and the argument gap is closed. Still open and
-unblocked: **the change worklist does not see a rewritten comment** (`changes.FACTS` does
-not compare them at all), left out on Tom's scoping call and wanting its own thought; and
-`CURIOSITIES` is computed per package by `threads.py` and has never been put on screen —
-most of design rule 15's doorway panel, and it says honestly that it is not computed yet.
+Nothing in chunk 5 is outstanding, the argument gap is closed, and the two small things
+filed as known are done. Still open and unblocked, and these are now the whole list:
+
+1. **The change worklist does not see a rewritten comment.** `changes.FACTS` does not
+   compare them at all, so a rewritten explanation above unchanged code is invisible — and
+   18,208 comments are the governance layer and the only source of WHY. Left out on Tom's
+   scoping call and wanting its own thought: a reflowed comment is the re-wrap problem
+   again, larger, and prose has no `ast.unparse` to appeal to.
+2. **`CURIOSITIES` has never been put on screen.** `threads.py` computes the outlier family
+   per package already — most commented, most called, deepest closure, most lopsided table
+   — and running that program-wide is most of design rule 15's doorway panel. It says
+   honestly that it is not computed yet.
 
 ### Before that: a finding says what makes it that finding (2026-08-31)
 
@@ -1362,6 +1420,10 @@ Rules 28, 29 and 30.
 | An argument binds to a parameter **only where the source settles it**, and says why not | Tom, 2026-08-31; rule 1 |
 | Call sites are listed, never grouped and never bounded — the aggregate is on the arrow | rule 32; rule 8 |
 | The engine's **echo** of a selection it was handed is not a new act by the reader | rule 76 |
+| *Behaves differently* is **in the difference channel**, on every surface that draws it | Tom, 2026-09-01; rule 51; rule 69 |
+| `edited` stays **out** of that channel — the channel holds three directions and a ground | rule 69 |
+| A presence group's unfold is keyed on the **band**, never on the sign that swaps with the assumption | rule 65; rule 30 |
+| A presence line names six and puts the **whole** set one click away, never the remainder | rule 8; design rule 1 |
 
 ## How to verify — all three, before saying anything is done
 
@@ -1455,6 +1517,12 @@ standards and must yield **zero** naming rules.
 - **Three times now: a control correctly wired to a stylesheet that could not carry it.**
   `[hidden]` beaten by a later `display`, a `th` width ignored under `table-layout: auto`,
   a sticky header bound to a box that never scrolls. Markup and handlers both check out.
+- **A blindness check keyed to the design erodes; key it to the instrument.** A guard
+  asserted four distinct `rtnchg-` class names existed "or this guard is blind". Moving one
+  of them into the difference channel left three, and the obvious fix -- lower the floor to
+  3 -- is how such a check reaches zero over a few sessions without anyone deciding to
+  weaken it. It counts what the regex *found* now (one `cls:` literal per state), which is a
+  fact about the instrument rather than about the design it is pointed at.
 - **A guard that passes first time has not been tested.** Twelve did this session. Every one
   was a containment check over too wide a span, or against a name where the claim was about
   a behaviour. Run every new guard against its own defect *and* a half-working version.
@@ -1465,6 +1533,19 @@ standards and must yield **zero** naming rules.
   named keys nothing listened for, and two of them sat on buttons with *no attributes at
   all*. The runtime self-check enumerates `data-*`, so a control carrying none is one it
   cannot see. Design rule 16 one level further out than any check here was looking.
+- **A search for a class name cannot see a class that is computed.** The fact lane spelled
+  the third difference `tone-mod` -- a fourth spelling of one idea, with a rule of its own
+  painting it grey a class name away from the `.tone-moved` everything else used. No search
+  for `tone-moved` could find it, because the renderer writes `tone-${tone}` itself and what
+  travels from the caller is a bare `"mod"`. The guard that checks the tone *vocabulary*
+  passed throughout; only a guard naming the surface caught it, and it was the one mutation
+  to survive a first pass.
+- **An equal-specificity class rule loses to a later one, and a colour is the quietest place
+  for that.** `.hc-chg` sets a colour on the very element a `.tone-*` class lands on, so the
+  two tie and source order decides -- the hover card would have said *behaves differently*
+  in grey while the row that opened it said it in violet, with the markup, the class and the
+  handler all correct. Found by working the specificity out by hand, not by anything that
+  ran. Rule 29, which was filed under media queries and is not about media queries.
 - **A guard that reads past its subject vouches for the wrong thing.** `_fn` stopped at
   `\nfunction` and swallowed the `async function` after it; a badge check took "everything
   after the keydown listener" as the handler. Both passed against their own defects.

@@ -2189,8 +2189,15 @@ kbd { font-family: var(--f-mono); font-size: .66rem; background: var(--sunken);
 .tone-moved { color: var(--diff-moved); }
 .chgstat.tone-gone .num, .chgstat.tone-gone > span { color: var(--diff-gone); }
 .chgstat.tone-new  .num, .chgstat.tone-new  > span { color: var(--diff-new); }
+/* The third figure, and it needs its own pair of rules for the reason the two above have
+   theirs: `.chgstat b` and `.chgstat span` are each one class and would tie with the
+   unscoped `.tone-moved`, then win on source order. It would have drawn the figure in the
+   text colour under a heading and beside a mark both in violet -- correct markup, correct
+   class, wrong colour, no symptom (rule 29). */
+.chgstat.tone-moved .num, .chgstat.tone-moved > span { color: var(--diff-moved); }
 .chgstat.tone-gone { border-color: var(--diff-gone); background: var(--diff-gone-bg); }
 .chgstat.tone-new  { border-color: var(--diff-new);  background: var(--diff-new-bg); }
+.chgstat.tone-moved { border-color: var(--diff-moved); background: var(--diff-moved-bg); }
 /* The hint underneath stays the muted text colour: it is prose about the number, not the
    number, and colouring it would spend the channel on a second thing (design rule 4). */
 .chgstat .hint { color: var(--text-muted); }
@@ -2533,14 +2540,25 @@ kbd { font-family: var(--f-mono); font-size: .66rem; background: var(--sunken);
  * quieter than the unchanged ones, the exact inverse of what a mark is for. Nothing threw
  * and every check passed.
  *
- * The colour comes from `--diff-gone` / `--diff-new` through `.tone-gone` / `.tone-new`, so
- * the colour set the reader chose in Settings reaches these without either surface knowing
- * a palette exists. `behaves` and `edited` are deliberately **not** in that channel: they
- * have no direction, and design rule 4 says colour carries one dimension at a time.
+ * The colour comes from `--diff-gone` / `--diff-new` / `--diff-moved` through `.tone-gone`
+ * / `.tone-new` / `.tone-moved`, so the colour set the reader chose in Settings reaches
+ * these without either surface knowing a palette exists.
+ *
+ * **This block used to say `behaves` was deliberately out of that channel, and it is
+ * written here as the reversal it is rather than left standing beside code that
+ * contradicts it.** The old argument was that `behaves` has no *direction* and design rule
+ * 4 spends colour on one dimension at a time. `--diff-moved` is the answer to it: violet,
+ * in all three sets and both themes, measured for separation from the other two (rule 69),
+ * and it exists because *still here, doing something different* is a direction of
+ * difference rather than an absence of one. Three surfaces already drew it that way -- the
+ * stack, the graph legend and the findings' mark -- so these two were one idea's second
+ * colour (rule 51). Tom's call, 2026-09-01.
+ *
+ * `edited` stays out, and that is the channel being full rather than an omission: it is a
+ * fourth thing where rule 69 measured room for three directions and a ground.
  */
 .nav-item .rtnchg { margin-left: .3rem; font-weight: 700; flex: none; width: .7rem;
   text-align: center; }
-.nav-item .rtnchg-behaves { color: var(--text-muted); }
 .nav-item .rtnchg-edited  { color: var(--text-faint); }
 
 /* The note under the routine group's own count, and above the table. A second line rather
@@ -2552,7 +2570,6 @@ kbd { font-family: var(--f-mono); font-size: .66rem; background: var(--sunken);
    down four thousand rows reads as a column that failed to fill. */
 table.grid td.chgcell { text-align: center; font-weight: 700;
   font-variant-numeric: tabular-nums; }
-table.grid td.chgcell.rtnchg-behaves { color: var(--text-muted); }
 table.grid td.chgcell.rtnchg-edited  { color: var(--text-faint); }
 /* An em dash for `same`, and it is the quietest thing on the row on purpose: it says the
    comparison ran and found nothing here, which is a fact and not a finding. */
@@ -2607,6 +2624,13 @@ table.grid td.chgcell.rtnchg-same    { color: var(--text-faint); font-weight: 40
 .hc-chg { margin-top: .35rem; font-size: .74rem; color: var(--text-muted); }
 .hc-chg.tone-gone { color: var(--diff-gone); }
 .hc-chg.tone-new  { color: var(--diff-new); }
+/* And the third direction, which needs a rule here for exactly the reason the other two do
+   and nearly did not get one. `.hc-chg` sets `--text-muted` and is one class, so it ties
+   with the unscoped `.tone-moved` on specificity and wins on source order -- the card would
+   have gone on saying *behaves differently* in grey while the row that opened it said it in
+   violet, with the markup, the class and the handler all correct. Rule 29: fix it with
+   specificity, never by moving a rule up the file. */
+.hc-chg.tone-moved { color: var(--diff-moved); }
 /* The fact lane: what a routine *does* differently, which no text diff can state. */
 .factlane .factrows { display: flex; flex-direction: column; gap: .1rem;
   margin-top: .4rem; }
@@ -2615,7 +2639,12 @@ table.grid td.chgcell.rtnchg-same    { color: var(--text-faint); font-weight: 40
   cursor: pointer; border-radius: .25rem; color: var(--text); font: inherit; }
 .factrow:hover, .factrow:focus-visible { background: var(--accent-soft); }
 .factdot { width: .8rem; text-align: center; font-weight: 700; flex: none; }
-.factdot.tone-mod { color: var(--text-muted); }
+/* No `.factdot.tone-*` rules: the three tones reach this dot through the unscoped
+   `.tone-gone` / `.tone-new` / `.tone-moved`, because `.factdot` declares no colour of its
+   own for them to tie with. It carried a `.tone-mod` until 2026-09-01 -- a *fourth*
+   spelling of the third direction, painting it `--text-muted` one class name away from the
+   `.tone-moved` everything else uses. A near-miss class name is rule 71's defect with the
+   stylesheet cooperating. */
 .factwhy { color: var(--text-muted); font-size: .9em; }
 
 .codelink { font: inherit; background: none; border: 0; padding: 0; cursor: pointer;
@@ -2797,10 +2826,28 @@ body.detached-code #trailMount { display: none !important; }
   color: var(--text-muted);
 }
 .chgpresence li { margin: 0.15rem 0; }
-.chgpresence code { font-size: 0.72rem; }
+/* Each name is a chip, and that is the unfold's doing rather than a taste. Six names
+   separated by a single space read as a list; twenty-three of them, several 76 characters
+   long and wrapping mid-name, read as a wall of monospace with nothing saying where one
+   ends. The bound was hiding a legibility problem as much as it was hiding names, and it
+   only became visible on looking at the line with the rest of them on it.
+
+   Inline rather than `inline-block`, and that is the part worth writing down: a chip that
+   cannot break is a 76-character box that overflows a narrow pane, which is a worse answer
+   than the wall. An inline background breaks across lines with its text, so a long name
+   still wraps and the chip is simply drawn in two pieces. */
+.chgpresence code { font-size: 0.72rem; background: var(--sunken); padding: 0.05rem 0.25rem;
+  border-radius: 0.2rem; margin-right: 0.15rem; overflow-wrap: anywhere; }
 /* Each count and the names it is a count *of*, held together. A line carrying three numbers
    and one undivided list is three claims and one answer, and the reader cannot tell which
    names belong to which number (rule 32). The gap between groups is wider than the gap
    inside one, because that is the whole of what says they are groups. */
 .chgpresence .presgroup { margin-right: 0.9rem; white-space: normal; }
 .chgpresence .presgroup b { margin-right: 0.15rem; }
+/* The rest of the names, one click from the first six. Inside the group rather than at the
+   end of the line, because a line carries up to three counts and a control that sat outside
+   them would be the undivided list all over again -- one button, three possible subjects,
+   and nothing saying which (rule 32). Smaller than an ordinary `.linkbtn` and set on the
+   text baseline: it is a footnote to a count, not a step in the reading. */
+.chgpresence .presmore { font-size: 0.68rem; padding: 0 0.3rem; vertical-align: baseline;
+  white-space: nowrap; }

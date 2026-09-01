@@ -3845,6 +3845,145 @@ question answered first — what makes two findings in two versions the same fin
 carries no id and 93 of Mensores' 106 are `LOST_EDGE`, so pairing them would invent an
 identity (rule 1).
 
+## A presence line says what it left out, and one idea stops having two colours — 2026-09-01
+
+Two small things, both filed as known and neither a bug. Tom took them together and they
+turned out to share a shape: each was a surface saying less than the map already knew.
+
+### The bound without the companion
+
+`Constants +23` printed six names and stopped. The count was right, so nothing looked
+wrong — a reader simply had no way to know that six was not twenty-three, and there was no
+full listing anywhere in the product. Rule 8 allows abbreviation **only** where the
+complete content sits beside it; design rule 1 says a filtered view states what it removed
+with the hidden set one click away. This had the bound and neither companion.
+
+**The server was never the problem.** `changes.build` sends every name, in order, whole —
+1 table, 3 ways in, 2 named files, 23 constants and 7 that moved on Mensores' pair. The
+whole defect was `names.slice(0, 6)` in the renderer.
+
+```
+Tables      −1   1 name,  no control  — six is already the whole of it
+Ways in     −3   3 names, no control
+Named files −2   2 names, no control
+Constants  −23   6 names + "17 more ▸"  ·  ◈7  6 names + "1 more ▸"
+```
+
+Open, the group names the **whole** set rather than the remainder: two lists a reader has
+to join by hand is the same defect one step on, and it is why the way back says *fewer*
+rather than *hide these*. The control is drawn whichever way the group is open, because
+"showing six of 23" and "showing all 23" are both answers and a button that appears only
+while something is hidden makes the unfolded state look like the only state there was.
+
+**The key is the band, never the sign, and that is the judgment worth keeping.** `+` and
+`−` swap when the reader changes which version they take to be newer; the twenty-three
+names do not move. Keyed on "the plus group" an unfold comes back attached to a different
+set — rule 65 in a control, and rule 30 one layer in: a sign is not an identity. Driven
+both ways, and it holds: `+23` green with 23 names open becomes `−23` red with the same 23
+still open, and the `◈7` beside it is untouched either way.
+
+Not persisted, for `anoOnlyThere`'s reason: this is where the reader is, not what they
+arranged, and that is the line `PERSISTED` is drawn on.
+
+### What driving it found, which no test could have
+
+Twenty-three names separated by a single space, several of them 76 characters long and
+wrapping mid-name, is a wall of monospace with nothing saying where one ends. **The bound
+had been hiding a legibility problem as much as it had been hiding names** — at six it
+reads as a list, and it only stops working at the size the unfold makes reachable. Each
+name is a chip now.
+
+Inline rather than `inline-block`, and that is the part worth writing down: a chip that
+cannot break is a 76-character box that overflows a narrow pane, which is a worse answer
+than the wall. An inline background breaks across lines with its text.
+
+Sixth consecutive session in which looking at the pane paid for itself.
+
+### One idea, two colours
+
+*Behaves differently* drew in `--text-muted` on the routine lane while the stack, the graph
+legend and the findings' mark drew the same idea in `--diff-moved`. Tom's call: unify.
+
+The old argument is in the stylesheet and is **rewritten as the reversal it is** rather
+than left standing beside code that contradicts it. It ran: `behaves` has no *direction*,
+and design rule 4 spends colour on one dimension at a time. `--diff-moved` is the answer to
+it — it exists precisely because *still here, doing something different* is a direction of
+difference rather than an absence of one, and it is measured for separation from the other
+two in all three sets and both themes (rule 69).
+
+Eight surfaces, and finding them all is most of the work:
+
+```
+routineChip          navigator rows, table cells and the hover card   moved
+factLaneHtml         the code browser's fact lane                     moved
+viewChanges          the page's third figure, and its band heading    moved
+changeList           the navigator group's band heading               moved
+changeNote           the note above that group                        moved
+routineChangeNote    the routine lane's own note                      moved
+anomalyChangeNote    the findings' note                               moved
+changeTones · changeKeyHtml   the stack and its legend         already moved
+```
+
+`edited` stays out, and that is the channel being **full** rather than an oversight: it is
+a fourth thing where rule 69 measured room for three directions and a ground.
+
+**Two near-misses came out of it, and both are the same family.**
+
+The fact lane spelled it `tone-mod` — a *fourth* spelling of the third direction, with a
+`.factdot.tone-mod` rule of its own painting it the muted text colour one class name away
+from the `.tone-moved` everything else used. Nothing was dead: the class was written, the
+rule existed, the colour rendered. Rule 71 with the stylesheet cooperating. It is also the
+one surface no search for `tone-moved` could ever have found, because the renderer spells
+the class itself and what travels is a bare `"mod"` — and it is the one mutation that
+survived the first pass.
+
+And `.hc-chg` sets the muted colour on the very element the tone class lands on, so it
+**ties** with the unscoped `.tone-moved` and wins on source order. The hover card would
+have gone on saying *behaves differently* in grey while the row that opened it said it in
+violet, with the markup, the class and the handler all correct. Rule 29, and it was caught
+by working the specificity out by hand rather than by anything that ran. Proved in the
+browser afterwards by deleting the rule live: `rgb(90, 102, 117)` without it,
+`rgb(109, 40, 217)` with.
+
+### The guards
+
+**21/21 mutations caught over a baseline proved green first** (rule 59), and two of the
+three new guards had to be repointed after a mutation survived or a guard failed for the
+wrong reason:
+
+- `test_the_difference_channel_is_spelled_one_way` asserts both directions — every tone the
+  stylesheet carries is one the shell writes and back again, and every tone rule paints from
+  `--diff-*` or a named ground. It could **not** see `tone-mod` come back, because that name
+  never appears in the shell: the tone travels as a bare string to a renderer that spells
+  the class. The surface-by-surface guard is what catches it, and the general lesson is that
+  a search for a class name cannot see a class that is computed.
+- `test_behaving_differently_is_drawn_in_the_channel_on_every_surface` anchors the three
+  notes on their **count expression**, not on the words beside it: two of the three
+  sentences wrap across a line, so a search for the prose finds nothing and the guard would
+  pass by having no subject.
+
+**And one existing guard's blindness check had to be rewritten rather than lowered.**
+`test_every_routine_mark_class_is_prefixed_and_scoped` asserted four distinct `rtnchg-`
+names existed "or this guard is blind". Moving `behaves` into the channel left three, and
+the obvious fix — lower the floor to 3 — is how a blindness check erodes to nothing over a
+few sessions. It counts what the **regex found** now (five `cls:` literals, one per state),
+which is a fact about the instrument rather than about the design it is pointed at.
+
+```
+747 tests · mypy clean · ruff clean · 21/21 mutations caught
+```
+
+### Absent rather than estimated
+
+**A picture of the four figures side by side.** The automation tab's screenshot viewport
+captures roughly the left half of a 1258 px page whatever the window is, so the violet
+figure is off the frame — the same limitation the anomaly rows hit last session. What was
+driven there is everything static: the classes, the computed colours on every surface
+(`rgb(109, 40, 217)` = `--diff-moved` on the table cell, the page figure, the band heading,
+the presence line, the fact dot and the hover card), the unfold both ways with
+`elementFromPoint` proving it reachable, and the assumption flip carrying the open set with
+it. Rule 38: the picture wants a real window.
+
 ## The change worklist sees what a call passes, and what a constant is — 2026-09-01
 
 Two gaps that had been written down as open long enough to look like scenery. `FACTS`

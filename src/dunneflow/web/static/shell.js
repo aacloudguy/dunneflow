@@ -261,6 +261,12 @@ const state = {
    * this is where the reader is, not what they arranged, and the line between the two is
    * the one `PERSISTED` is drawn on. */
   anoOnlyThere: false,
+  /* Which presence groups have their complete list open, keyed `<band>:<side>`. **Not
+   * persisted**, for `anoOnlyThere`'s reason: this is where the reader is, not what they
+   * arranged. Keyed by band *and* side because a line carries up to three counts and
+   * unfolding the constants that moved is not a request to unfold the twenty-three the
+   * other version has not got. */
+  presOpen: {},
   codeQ: "",              // one box, two lanes: file names, and the text inside them
   /* How a match is decided. Persisted, because they are how this reader searches rather
      than what they are looking for right now -- the same line `termFilter` and `routineQ`
@@ -1162,8 +1168,24 @@ function routineChip(id) {
     return { cls: " rtnchg tone-" + w.base.tone, glyph: signOf(w.base.tone),
              title: w.base.word + " \u2014 only the version on screen has it" };
   }
+  /* **In the difference channel, like the other two, and it took a decision to put it
+     there.** This drew in `--text-muted` for as long as it existed, on the argument the
+     block above still made: `behaves` has no *direction*, and design rule 4 says colour
+     carries one dimension at a time. That argument was answered by `--diff-moved` --
+     violet, in all three sets and both themes, measured for separation from the other two
+     (rule 69) -- which exists precisely because *still here, doing something different* is
+     a direction of difference and not an absence of one.
+
+     What made it wrong rather than merely arguable is that three other surfaces had
+     already gone that way: the graph paints this band `moved`, the graph legend spells it
+     `tone-moved`, and the findings' own mark does too. One idea in two colours is two
+     answers to one question (rule 51), and the reader is the one who has to reconcile
+     them. Tom's call, 2026-09-01.
+
+     `edited` stays out and that is not an oversight: it is the fourth thing, the channel
+     holds three directions and a ground, and rule 69 measured that channel full. */
   if (st === "behaves") {
-    return { cls: " rtnchg rtnchg-behaves", glyph: "\u25cb",
+    return { cls: " rtnchg tone-moved", glyph: "\u25cb",
              title: "behaves differently" + (moved ? " \u2014 " + moved : "") };
   }
   if (st === "edited") {
@@ -1451,7 +1473,13 @@ function routineChangeNote() {
     bits.push(`<b class="tone-${w.base.tone}">${signOf(w.base.tone)}${
       c.only_base.toLocaleString()}</b> ${esc(w.base.word)}`);
   }
-  if (c.behaves) bits.push(`<b>○ ${c.behaves.toLocaleString()}</b> behave differently`);
+  /* In the channel, beside the count above it. This note is the routine lane's own
+     summary of the marks below it, so it wears what they wear -- and it was the last of
+     the surfaces still spelling this idea in the plain text colour. */
+  if (c.behaves) {
+    bits.push(`<b class="tone-moved">○ ${c.behaves.toLocaleString()}</b> behave
+               differently`);
+  }
   if (c.edited) bits.push(`<b>≈ ${c.edited.toLocaleString()}</b> edited only`);
   /* The unchanged are counted out loud. It is the largest number here and the least
      interesting, and leaving it out would make the marked ones read as the whole list. */
@@ -2078,6 +2106,21 @@ document.addEventListener("click", (ev) => {
   const key = b.dataset.changeband;
   state.changeBand = state.changeBand === key ? "" : key;
   buildNav();
+  render();
+});
+
+/* The rest of a presence line's names. Delegated for `changeband`'s reason -- `render()`
+ * rewrites this pane, so a listener bound to the button would be bound to a button that no
+ * longer exists one click later.
+ *
+ * A fresh object rather than a write into the old one: nothing here reads it by identity
+ * today, and the next thing that does will be a repaint that compares. */
+document.addEventListener("click", (ev) => {
+  const b = ev.target.closest("[data-presgroup]");
+  if (!b) return;
+  const key = b.dataset.presgroup;
+  state.presOpen = { ...state.presOpen, [key]: !state.presOpen[key] };
+  used("changes:presence:" + (state.presOpen[key] ? "all" : "six"));
   render();
 });
 
@@ -3745,8 +3788,15 @@ function viewChanges() {
      (rule 13). */
   const presLine = (name, label) => {
     const v = pres[name] || { only_in_base: [], only_in_compared: [], moved: [] };
-    const arrived = v[words.base.tone === "new" ? "only_in_base" : "only_in_compared"];
-    const gone = v[words.base.tone === "new" ? "only_in_compared" : "only_in_base"];
+    /* The band each sign is *drawn from*, kept rather than resolved on the spot, because
+       the unfold below is keyed on it. `+` and `−` swap when the reader changes which
+       version they take to be newer; the twenty-three names do not move, so an unfold
+       filed against "the plus group" would come back attached to a different set. Rule 65
+       in a control: name a set for where it is, not for what befell it. */
+    const arrivedBand = words.base.tone === "new" ? "only_in_base" : "only_in_compared";
+    const goneBand = words.base.tone === "new" ? "only_in_compared" : "only_in_base";
+    const arrived = v[arrivedBand];
+    const gone = v[goneBand];
     /* A third state, and only constants have one: present in both versions and **holding
        something different**. The other three lines are names \u2014 a table, a way in, a file the
        program names \u2014 and a name either is there or is not; a constant is a name *and* a
@@ -3765,15 +3815,40 @@ function viewChanges() {
        left and then named the *arrivals* only, so `Constants +23 \u25c87` was followed by six
        names none of which had moved \u2014 two numbers and one list, and nothing saying which
        list belonged to which number (rule 32, and it read perfectly plausibly). */
-    const group = (n, cls, sign, names) => !n ? "" :
-      `<span class="presgroup"><b class="${cls}">${sign}${n}</b> ${
-        names.slice(0, 6).map(x => `<code>${esc(String(x))}</code>`).join(" ")}</span>`;
+    /* **Six names, and the other seventeen one click away.** Rule 8 allows abbreviation
+       only where the complete content sits beside it, and this line had the bound without
+       the companion: `Constants +23` printed six names and said nothing at all about the
+       rest, which is design rule 1's silent filter standing in a header. The count was
+       right the whole time, so nothing looked wrong -- the reader simply had no way to
+       know six was not twenty-three.
+
+       Open, the group names the **whole** set rather than the remainder. Two lists a
+       reader has to join by hand is the same defect one step on, and it is the reason the
+       button says *fewer* rather than *hide these*.
+
+       The button is drawn whichever way the group is open, because "showing six of 23" and
+       "showing all 23" are both answers: a control that appears only while something is
+       hidden makes the unfolded state look like the only state there has ever been. */
+    const group = (n, cls, sign, names, which) => {
+      if (!n) return "";
+      const key = name + ":" + which;
+      const open = !!state.presOpen[key];
+      const shown = open ? names : names.slice(0, 6);
+      const rest = names.length - shown.length;
+      const more = (rest || open)
+        ? ` <button class="linkbtn presmore" data-presgroup="${esc(key)}"
+              aria-expanded="${open}">${open ? "fewer \u25be"
+                                             : rest.toLocaleString() + " more \u25b8"}</button>`
+        : "";
+      return `<span class="presgroup"><b class="${cls}">${sign}${n}</b> ${
+        shown.map(x => `<code>${esc(String(x))}</code>`).join(" ")}${more}</span>`;
+    };
     const parts = [
-      group(arrived.length, "tone-new", "+", arrived),
-      group(gone.length, "tone-gone", "\u2212", gone),
+      group(arrived.length, "tone-new", "+", arrived, arrivedBand),
+      group(gone.length, "tone-gone", "\u2212", gone, goneBand),
       /* No sign: a value that moved was neither added nor deleted, and a `+` here would be
          a direction the fact has not got. */
-      group(moved.length, "tone-moved", "\u25c8", moved),
+      group(moved.length, "tone-moved", "\u25c8", moved, "moved"),
     ].filter(Boolean);
     return `<li>${label} ${parts.join(" ")}</li>`;
   };
@@ -3804,7 +3879,12 @@ function viewChanges() {
     <div class="chgstats">
       ${stat(c[first[0]], first[1].word, "", first[1].tone)}
       ${stat(c[second[0]], second[1].word, "", second[1].tone)}
-      ${stat(c.behaves, "behave differently", "something they do has moved")}
+      ${/* In the difference channel with the other two figures, for `routineChip`'s
+            reason: the mark on a row and the figure it is counted in are one answer, and
+            one of them in violet beside the other in the text colour is the reader's job
+            to reconcile (rule 51). `edited_only` stays out -- it is the fourth thing, and
+            rule 69 measured this channel as holding three directions and a ground. */""}
+      ${stat(c.behaves, "behave differently", "something they do has moved", "moved")}
       ${stat(c.edited_only, "edited only", "and nothing they do changed")}
     </div>
 
@@ -3823,7 +3903,8 @@ function viewChanges() {
 
     ${band("behaves", "Behaving differently", CHANGES.behaves,
            "The same routine, and something it <em>does</em> has moved — what it calls, "
-           + "what it touches, what it takes or what it returns. The tag says which.")}
+           + "what it touches, what it takes or what it returns. The tag says which.",
+           "moved")}
     ${band(first[0], cap(first[1].word), CHANGES[first[0]],
            `Only in the ${first[0] === "only_in_base" ? "base" : "compared"} version.`,
            first[1].tone)}
@@ -3919,7 +4000,12 @@ function anomalyChangeNote(sev) {
     bits.push(`<b class="tone-${w.base.tone}">${signOf(w.base.tone)}${
       c.only_base.toLocaleString()}</b> ${esc(w.base.word)}`);
   }
-  if (c.moved) bits.push(`<b>◈ ${c.moved.toLocaleString()}</b> claiming something different`);
+  /* The same, over the findings: the mark on a row and the count of those marks are one
+     answer, and the note is where a reader meets it first. */
+  if (c.moved) {
+    bits.push(`<b class="tone-moved">◈ ${c.moved.toLocaleString()}</b> claiming something
+               different`);
+  }
   /* Counted out loud, for the routine lane's reason: it is the largest number here and the
      least interesting, and leaving it out makes the marked ones read as the whole list. */
   bits.push(`${c.same.toLocaleString()} unchanged`);
@@ -7979,8 +8065,10 @@ const WIRED_ATTRS = new Set([
      the strip rather than in Settings because it decides what every red row means, and a
      colour a reader cannot account for is worse than no colour. */
   "assumenewer",
-  /* The change worklist's one control: which band is open. */
-  "changeband",
+  /* The change worklist's controls: which band is open, and which presence group has its
+     complete list showing rather than its first six. `presgroup` carries the band and the
+     side it names, never a position among the three groups on a line (rule 30). */
+  "changeband", "presgroup",
   /* The shape set, beside `palette-set` and `theme-set`. A route only: nothing on the page
      is stamped `data-shapeset`, which is what keeps it clear of the `data-nav` collision
      those two are named to avoid. */
@@ -8450,7 +8538,11 @@ function factLaneHtml(path) {
     This is the lane a text diff cannot give: what a routine <i>does</i>, not which of its
     lines moved.
     <div class="factrows">
-      ${f.behaves.map(r => row(r, "mod", "\u25cb",
+      ${/* `moved`, and it was `mod` until 2026-09-01 -- a fourth spelling of the third
+            direction, with a rule of its own that painted it the muted text colour one
+            class name away from the `.tone-moved` the graph, its legend and the findings
+            all use. Rule 51, and rule 71 gave it the cover: a near miss compiles. */""}
+      ${f.behaves.map(r => row(r, "moved", "\u25cb",
           "behaves differently — " + moved(r))).join("")}
       ${f.base_only.map(r => row(r, w.base.tone, signOf(w.base.tone),
           w.base.word)).join("")}
@@ -9431,7 +9523,13 @@ function changeNote() {
   for (const [key, w] of diffBands()) {
     if (c[key]) bits.push(`<span class="tone-${w.tone}">${c[key]} ${w.word}</span>`);
   }
-  if (c.behaves) bits.push(`${c.behaves} behaving differently`);
+  /* In the channel, like the two above it. The note's own rule is that it wears the same
+     colours the bands do -- a reader told one thing here and another below has been told
+     two things (rule 13, in a sentence) -- and that rule applied to this line the moment
+     the band it names started drawing in violet. */
+  if (c.behaves) {
+    bits.push(`<span class="tone-moved">${c.behaves} behaving differently</span>`);
+  }
   /* Stated even when it is the only thing that happened, and stated as what it is: the
      largest band in ordinary work, and the least interesting. */
   if (c.edited_only) bits.push(`${c.edited_only} edited without changing what they do`);
@@ -9492,7 +9590,7 @@ function changeList() {
        + presence
        + band("behaves", "Behaving differently", c.behaves,
               "The same routine, and something it <em>does</em> has moved — what it calls, "
-              + "what it touches, what it takes or returns.")
+              + "what it touches, what it takes or returns.", "moved")
        + band("edited", "Edited, behaving the same", c.edited_only,
               "The body changed and nothing it does did. Internal computation, which this "
               + "tool exists not to report — listed so its absence is not a silent filter.");

@@ -5860,11 +5860,18 @@ def test_every_routine_mark_class_is_prefixed_and_scoped() -> None:
     # version of this collected `rtnchg[a-z-]*`, which can only ever find names that
     # already pass — so renaming one to `chg-behaves` left it green, which is the whole
     # defect. A guard that cannot see the mutation is a claim nobody has tested (rule 37).
+    lits = re.findall(r'cls:\s*"([^"]*)"', body)
+    # **The floor is on what the regex found, not on how many names are prefixed.** It was
+    # four distinct `rtnchg-` names until `behaves` joined the difference channel and left
+    # three -- a change to the design, not to this claim, and a floor that moves with the
+    # design is a floor that gets lowered until it means nothing. Five states, five literals.
+    assert len(lits) >= 5, f"only {lits} found; this guard has lost its subject"
     written: set[str] = set()
-    for lit in re.findall(r'cls:\s*"([^"]*)"', body):
-        written |= {c for c in lit.split() if not c.startswith("tone-")}
+    tones: set[str] = set()
+    for lit in lits:
+        for c in lit.split():
+            (tones if c.startswith("tone-") else written).add(c)
     assert written, "routineChip writes no classes any more; this guard has lost its subject"
-    assert len(written) >= 4, f"only {sorted(written)} written; this guard is blind"
     for cls in written:
         assert cls == "rtnchg" or cls.startswith("rtnchg-"), (
             f"`{cls}` is not prefixed for these rows. A bare name is global, and that is "
@@ -5879,6 +5886,34 @@ def test_every_routine_mark_class_is_prefixed_and_scoped() -> None:
                 f"`{rule.strip().rstrip('{').strip()}` styles `{cls}` without scoping it to "
                 f"one of {scopes} — the rule reaches anything else that takes the name"
             )
+
+    # And the other half, which the shared channel brings with it: a tone this chip writes
+    # must be one every surface that draws the chip can carry. `.hc-chg` sets the muted text
+    # colour and is one class, so it *ties* with an unscoped `.tone-*` and wins on source
+    # order -- the hover card would say "behaves differently" in grey while the row that
+    # opened it said it in violet, with the markup, the class and the handler all correct
+    # (rule 29, and rule 71's family). The chip is drawn in three places and this asserts
+    # the two where a tie is possible.
+    # A bare `tone-` is the two presence bands, whose tone is `diffWords()`'s answer and is
+    # concatenated at runtime -- `test_the_stack_takes_its_tone_from_the_word_and_not_from_
+    # the_band` is what holds that end. What is left is every tone spelled out here.
+    named = {t for t in tones if len(t) > len("tone-")}
+    assert named, "routineChip names no tone any more; the marks have left the channel"
+    for tone in named:
+        assert re.search(rf"(^|\}})\s*\.{re.escape(tone)}\s*{{", css), (
+            f"`{tone}` has no unscoped rule, so it renders in whatever colour it inherits"
+        )
+        # **The tie is on the element the class lands on, not on the pane around it.**
+        # The chip's `cls` goes onto a child span inside `.nav-item`, where a direct rule
+        # beats an inherited colour whatever the specificity says -- and onto `.hc-chg`
+        # and `td.chgcell` themselves, where it is one class against one class and source
+        # order decides. `td.chgcell` declares no colour of its own; `.hc-chg` declares the
+        # muted one, which is what would have left the hover card grey while the row that
+        # opened it went violet, with the markup, the class and the handler all correct.
+        assert re.search(rf"\.hc-chg\.{re.escape(tone)}\s*{{", css), (
+            f"`.hc-chg` sets a colour on the very element `{tone}` lands on, so the two "
+            f"tie and the later one wins; give `.hc-chg.{tone}` a rule of its own"
+        )
 
 
 def test_the_navigator_never_asks_for_the_comparison_itself() -> None:
@@ -8260,3 +8295,214 @@ def test_a_constant_that_moved_is_drawn_in_the_channel_it_belongs_to() -> None:
     )
     for tone in ("gone", "new", "moved"):
         assert f"var(--diff-{tone})" in css, f"--diff-{tone} is spelled by no rule"
+
+
+def test_the_difference_channel_is_spelled_one_way() -> None:
+    """One idea, one class name -- and a near miss compiles (rule 71).
+
+    The fact lane painted *behaves differently* through a `.factdot.tone-mod` of its own, in
+    `--text-muted`, one class name away from the `.tone-moved` the stack, its legend, the
+    findings' mark and the presence line all use. Nothing was dead: the class was written,
+    the rule existed, the colour rendered. It was simply a **fourth spelling** of the third
+    direction, and it said something different from the other three.
+
+    Two directions, because either alone passes while the surfaces disagree:
+
+    * every tone the stylesheet carries is one the shell writes, and every tone the shell
+      writes is one the stylesheet carries -- a name on one side only is a class that
+      renders in whatever it inherits, or a rule nothing can reach;
+    * and every one of them paints from the difference channel or from a **named** ground.
+      `--text-muted` is neither; a tone reaching for it is a meaning quietly leaving the
+      channel, which is exactly what `tone-mod` was.
+    """
+    js = _code(_read("shell.js"))
+    css = _css_code(_read("tokens.css"))
+    # A bare `tone-` is `"tone-" + w.base.tone`, resolved at runtime to one of the two the
+    # assumption chooses between; it names no fourth thing.
+    in_js = {t for t in re.findall(r"tone-[a-z]+", js)}
+    in_css = {t for t in re.findall(r"\.(tone-[a-z]+)\b", css)}
+    assert len(in_js) >= 4 and len(in_css) >= 4, (
+        f"only {sorted(in_js)} / {sorted(in_css)} found; this guard is blind"
+    )
+    assert in_js == in_css, (
+        f"the shell and the stylesheet do not spell the same set of tones. Only in the "
+        f"shell: {sorted(in_js - in_css)} -- classes nothing can carry. Only in the "
+        f"stylesheet: {sorted(in_css - in_js)} -- rules nothing reaches"
+    )
+    # The three directions and the three grounds, named. A seventh is not forbidden here --
+    # it is forbidden by rule 69, which measured this channel full -- but it must arrive as
+    # a decision rather than as a second name for something already spelled.
+    assert in_js == {"tone-gone", "tone-new", "tone-moved",
+                     "tone-quiet", "tone-unclaimed", "tone-mixed"}, (
+        f"the tone vocabulary has changed: {sorted(in_js)}. Three directions and three "
+        f"grounds; a fourth spelling of one of them is how `tone-mod` painted *behaves "
+        f"differently* in the muted text colour beside three surfaces drawing it in violet"
+    )
+    for rule, body in re.findall(r"([^{}]*\.tone-[a-z]+\b[^{}]*)\{([^{}]*)\}", css):
+        for prop in re.findall(r"\b(?:color|background|border-color)\s*:\s*([^;]+)", body):
+            assert "--diff-" in prop or "--graph-" in prop, (
+                f"`{rule.strip()}` paints a tone with `{prop.strip()}`. A tone is a member "
+                f"of the difference channel or a named ground; anything else is a meaning "
+                f"leaving the channel without saying so"
+            )
+
+
+def test_behaving_differently_is_drawn_in_the_channel_on_every_surface() -> None:
+    """One idea, one colour, everywhere it appears (rule 51). Tom's call, 2026-09-01.
+
+    *Behaves differently* drew in `--text-muted` on the routine lane -- the navigator rows,
+    the table column, the hover card, the fact lane and both notes -- while the stack, the
+    graph legend and the findings' mark drew the same idea in `--diff-moved`. Two answers to
+    one question, with the reader left to reconcile them.
+
+    The old argument for the grey was that `behaves` has no *direction* and design rule 4
+    spends colour on one dimension at a time. `--diff-moved` is the answer to it: it exists
+    because *still here, doing something different* is a direction of difference rather than
+    an absence of one, and it is measured for separation from the other two in all three
+    sets and both themes (rule 69).
+
+    Asserted surface by surface, because a colour is only unified when the last one moves --
+    and the last one here was a literal `"mod"` passed to a renderer that spells the class
+    itself, which no search for `tone-moved` could ever see.
+
+    `edited` stays out, and that is the channel being full rather than an oversight: it is a
+    fourth thing where rule 69 measured room for three directions and a ground.
+    """
+    js = _code(_read("shell.js"))
+
+    chip = _fn(js, "routineChip")
+    beh = chip[chip.index('st === "behaves"'):]
+    beh = beh[:beh.index('st === "edited"')]
+    assert "tone-moved" in beh, (
+        "the mark on a routine row and in the table column has left the channel"
+    )
+    assert "--text-muted" not in beh and "rtnchg-behaves" not in beh, (
+        "the mark carries a colour of its own again"
+    )
+
+    # The fact lane spells the class itself, so what travels is a bare tone name. This is the
+    # one surface a search for `tone-moved` cannot see, and the one that survived first.
+    lane = _fn(js, "factLaneHtml")
+    m = re.search(r'f\.behaves\.map\(r => row\(r,\s*"([a-z]+)"', lane)
+    assert m, "the fact lane no longer draws the behaves band; this guard has lost its subject"
+    assert m.group(1) == "moved", (
+        f"the fact lane passes `{m.group(1)}` where every other surface says `moved`. A "
+        f"fourth spelling of one idea is how `.factdot.tone-mod` painted this in the muted "
+        f"text colour beside three surfaces drawing it in violet (rule 71 -- a near miss "
+        f"compiles)"
+    )
+
+    page = _fn(js, "viewChanges")
+    assert re.search(r'stat\(c\.behaves,[^)]*"moved"\)', page, re.S), (
+        "the page's figure is outside the channel while the two beside it are in it"
+    )
+    assert re.search(r'band\("behaves",[^;]*?"moved"\)', page, re.S), (
+        "the page's band heading is outside the channel"
+    )
+    assert re.search(r'band\("behaves",[^;]*?"moved"\)', _fn(js, "changeList"), re.S), (
+        "the navigator group's band heading is outside the channel"
+    )
+
+    # The three notes. Each is the first place a reader meets the number, and each states in
+    # its own comment that it wears what the rows below it wear (rule 13, in a sentence).
+    #
+    # Anchored on the **count expression**, never on the words beside it: two of the three
+    # sentences wrap across a line, so a search for the prose finds nothing and the guard
+    # would pass by having no subject.
+    for fn, expr in (("changeNote", "c.behaves"),
+                     ("routineChangeNote", "c.behaves.toLocaleString()"),
+                     ("anomalyChangeNote", "c.moved.toLocaleString()")):
+        body = _fn(js, fn)
+        i = body.index("${" + expr)
+        assert "tone-moved" in body[max(0, i - 60):i], (
+            f"`{fn}` states its count outside the channel, so a reader is told one thing "
+            f"in the note and another by the marks it is counting"
+        )
+
+    # And the two that were already right, so a future edit cannot quietly take them back.
+    assert 'behaves: "moved"' in _fn(js, "changeTones"), (
+        "the stack no longer paints this band in the channel"
+    )
+    assert 'row("tone-moved"' in _fn(js, "changeKeyHtml"), (
+        "the graph legend no longer spells this band in the channel"
+    )
+
+
+def test_a_presence_line_says_what_it_left_out_and_can_show_it() -> None:
+    """Rule 8's companion, which this line had gone without since it was written.
+
+    A presence line named six of its members and stopped. `Constants +23` printed six names
+    and said nothing whatever about the other seventeen -- the count was right, so nothing
+    looked wrong, and a reader had no way to know six was not twenty-three. That is design
+    rule 1's silent filter standing in a header: abbreviation is allowed **only** where the
+    complete content sits beside it, and there was no listing anywhere in the product.
+
+    Three claims here, and each one failed a different mutation:
+
+    * the six are still six, and the group knows how many it did not name;
+    * open, it names the **whole** set rather than the remainder -- two lists a reader must
+      join by hand is the same defect one step on;
+    * and the unfold is keyed on the **band**, never on the sign. `+` and `−` swap when the
+      reader changes which version they take to be newer and the names do not move, so an
+      unfold filed against "the plus group" comes back attached to a different set (rule 65
+      in a control, and rule 30: a sign is not an identity).
+    """
+    js = _code(_read("shell.js"))
+    line = _fn(js, "viewChanges")
+    grp = line[line.index("const group ="):line.index("const parts")]
+
+    # Read out of `group`, because that is what makes the control belong to a count rather
+    # than to the row -- the same reason the naming site has to be in there.
+    assert "names.slice(0, 6)" in grp and "open ? names :" in grp, (
+        "the group does not choose between the whole set and the first six, so either the "
+        "bound is gone or the complete listing is"
+    )
+    assert "names.length - shown.length" in grp, (
+        "the group does not compute what it left out, so the line cannot say how many "
+        "names are not on it -- which is the whole of the defect this guard is from"
+    )
+    assert "data-presgroup" in grp, (
+        "the names are bounded with no control to see the rest: rule 8 allows abbreviation "
+        "only where the complete content sits beside it"
+    )
+    # And the button is drawn open as well as shut. A control that appears only while
+    # something is hidden makes the unfolded state look like the only state there was.
+    assert re.search(r"\(\s*rest\s*\|\|\s*open\s*\)", grp), (
+        "the unfold control is drawn only while something is hidden, so an open group has "
+        "no way back and reads as a line that was always this long"
+    )
+
+    # The key. Asserted over what is *passed*, not over the string built inside `group`: the
+    # mutation that matters swaps `arrivedBand` for a literal, and the concatenation is
+    # innocent either way.
+    calls = re.findall(r'group\(\w+\.length,[^)]*?,\s*("?\w+"?)\)', line)
+    assert len(calls) == 3, f"the line no longer draws three groups: {calls}"
+    # `moved` is the third and its key is the literal band name, because it *is* a band and
+    # takes no sign at all -- there is nothing for an assumption to swap it with.
+    assert calls.count('"moved"') == 1, (
+        f"the third group is not keyed on the band it draws from: {calls}"
+    )
+    assert "arrivedBand" in calls and "goneBand" in calls, (
+        f"a presence group is keyed on something other than the band it draws from: "
+        f"{calls}. `+` and `−` swap with the reader's assumption and the names do not, so "
+        f"an unfold keyed on the sign comes back attached to a different set (rule 65)"
+    )
+    head = line[line.index("const presLine ="):line.index("const group =")]
+    assert 'words.base.tone === "new" ? "only_in_base"' in head, (
+        "the bands are no longer resolved from the assumption, so the sign and the names "
+        "under it can disagree"
+    )
+
+    # The control is routed, listened for, and not persisted.
+    assert "presgroup" in _js_set("WIRED_ATTRS"), (
+        "the unfold is not in the wired roster, so the self-check cannot see it die"
+    )
+    assert 'closest("[data-presgroup]")' in js, (
+        "nothing listens for the unfold -- a control that renders and is wired to nothing "
+        "looks exactly like one that works (design rule 16)"
+    )
+    persisted = js.split("const PERSISTED = [", 1)[1].split("];", 1)[0]
+    assert '"presOpen"' not in persisted, (
+        "which names are unfolded is where the reader *is*, not what they arranged, and "
+        "outliving the visit is what `PERSISTED` is the line against"
+    )

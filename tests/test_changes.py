@@ -346,3 +346,272 @@ def test_no_band_or_count_is_named_for_a_point_in_time(tmp_path):
     assert not (parts & forbidden), sorted(parts & forbidden)
     # And the ends it does name are the two it is allowed to name.
     assert {"only_in_base", "only_in_compared"} <= keys
+
+
+# ── what a caller passes, and what a constant holds ────────────────────────────────────
+#
+# Two gaps that were open long enough to be written down as open. `FACTS` compares `calls`
+# without their arguments, and `constants` sat in `PRESENCE` compared by name — so
+# `f(db_path=None)` becoming `f(policy_path=…)` and `EXPECTED_SCHEMA_VERSION` going from 27
+# to 28 both read as no change at all.
+
+
+ARG_BEFORE = '''\
+def sink(a, b=None):
+    return a
+
+def caller():
+    sink(1, b=None)
+'''
+
+
+def test_an_argument_that_changed_is_a_behaviour_change(tmp_path):
+    """The gap itself. The call resolves to the same routine at the same site; only what it
+    hands over is different, and what moves is the whole subject of this tool."""
+    after = ARG_BEFORE.replace("sink(1, b=None)", "sink(1, b=2)")
+    d = changes.build(base=_graph(tmp_path, "b", after),
+                      compared=_graph(tmp_path, "a", ARG_BEFORE))
+    rows = {r["name"]: r["moved"] for r in d["behaves"]}
+    assert "caller" in rows, f"an argument that changed is not a behaviour change: {rows}"
+    assert "call_args" in rows["caller"], rows["caller"]
+    # And it is reported *once*. `calls` did not move -- same callee, same expression -- so a
+    # second kind here would be one difference counted twice (rule 40).
+    assert rows["caller"] == ["call_args"], rows["caller"]
+
+
+def test_a_keyword_that_changed_is_a_behaviour_change(tmp_path):
+    """`db_path=None` -> `policy_path=…` on Mensores' pair: the name it was passed under is
+    as much a part of what moves as the value."""
+    after = ARG_BEFORE.replace("def sink(a, b=None)", "def sink(a, c=None)") \
+                      .replace("sink(1, b=None)", "sink(1, c=None)")
+    d = changes.build(base=_graph(tmp_path, "b", after),
+                      compared=_graph(tmp_path, "a", ARG_BEFORE))
+    assert "call_args" in {r["name"]: r["moved"] for r in d["behaves"]}["caller"]
+
+
+def test_an_argument_rewrapped_and_not_changed_is_not_a_behaviour_change(tmp_path):
+    """**The reason there is a canonicalising pass at all**, and it is a real finding.
+
+    Mensores' `claim_break_glass_cmd` passes a `typer.echo` message that was re-wrapped
+    across two lines without one character of its content changing. Arguments are stored as
+    written and never re-rendered (rules 8 and 75) — right for a reader who wants to find the
+    string in the file, and wrong for a comparison, which asks whether these are the same
+    expression.
+
+    Without the second pass this routine lands in *behaves differently*, the band that
+    promises what a routine **does** moved, sitting beside one that says *edited only, and
+    nothing it does changed*. Rule 1: a false difference is worse than a missing one.
+    """
+    before = 'def sink(m):\n    return m\n\ndef caller():\n    sink("one two three")\n'
+    after = ('def sink(m):\n    return m\n\ndef caller():\n'
+             '    sink(\n        "one "\n        "two "\n        "three"\n    )\n')
+    d = changes.build(base=_graph(tmp_path, "b", after),
+                      compared=_graph(tmp_path, "a", before))
+    moved = {r["name"]: r["moved"] for r in d["behaves"]}
+    assert "caller" not in moved, (
+        f"a re-wrapped literal is reported as behaving differently: {moved}"
+    )
+    # It is not silently dropped either -- the body did change, so it belongs to the band
+    # that exists to say exactly that.
+    assert "caller" in {r["name"] for r in d["edited_only"]}, d["edited_only"]
+
+
+def test_a_splat_argument_is_compared_as_written(tmp_path):
+    """`**kwargs` is a call-site form, not an expression, and does not parse alone.
+
+    All 49 of Mensores' unparseable arguments are splats. They compare as written, which is
+    correct rather than a fallback — and it has to go on working, because a canonicaliser
+    that threw here would take the whole comparison with it.
+    """
+    before = 'def sink(**kw):\n    return kw\n\ndef caller(**kwargs):\n    sink(**kwargs)\n'
+    after = before.replace("sink(**kwargs)", "sink(**dict(kwargs))")
+    d = changes.build(base=_graph(tmp_path, "b", after),
+                      compared=_graph(tmp_path, "a", before))
+    assert "call_args" in {r["name"]: r["moved"] for r in d["behaves"]}["caller"]
+
+
+def test_a_constant_whose_value_moved_is_reported(tmp_path):
+    """`EXPECTED_SCHEMA_VERSION` 27 -> 28 read as no change for as long as constants were
+    compared by name. A constant is a name *and* a value, and the value is what it says."""
+    before = "EXPECTED_SCHEMA_VERSION = 27\nOTHER = 'x'\n"
+    after = "EXPECTED_SCHEMA_VERSION = 28\nOTHER = 'x'\n"
+    d = changes.build(base=_graph(tmp_path, "b", after),
+                      compared=_graph(tmp_path, "a", before))
+    c = d["presence"]["constants"]
+    assert [k.split(".")[-1] for k in c["moved"]] == ["EXPECTED_SCHEMA_VERSION"], c
+    # Present in both, so it is in neither presence band. A constant in one band and the
+    # other would be one difference reported twice (rule 40).
+    assert c["only_in_base"] == [] and c["only_in_compared"] == [], c
+    assert d["identical"] is False
+
+
+def test_a_constant_whose_type_or_finality_moved_has_also_moved(tmp_path):
+    """Three things say what a named value *is*, and the value is only one of them.
+
+    `X: int = 1` becoming `X: str = "1"` is a change to what the program says it holds, and
+    a constant that stopped being `Final` is a constant something may now reassign. Both are
+    what moves; neither shows up in the value alone.
+
+    Written because a first version of this compared the value only, and the fixture that
+    was supposed to guard the key could not see it: a mutation dropping `type` and
+    `is_final` survived, and the mutation was fine — the guard was the weak one (rule 59).
+    """
+    for before, after, what in (
+        ("from typing import Final\nX: int = 1\n",
+         "from typing import Final\nX: str = 1\n", "type"),
+        ("from typing import Final\nX: Final[int] = 1\n",
+         "from typing import Final\nX: int = 1\n", "finality"),
+    ):
+        d = changes.build(base=_graph(tmp_path, f"b_{what}", after),
+                          compared=_graph(tmp_path, f"a_{what}", before))
+        moved = [k.split(".")[-1] for k in d["presence"]["constants"]["moved"]]
+        assert moved == ["X"], f"a constant whose {what} moved is not reported: {moved}"
+
+
+def test_a_constant_rewritten_and_not_changed_has_not_moved(tmp_path):
+    """A re-spaced constant has not moved — and **the diff does nothing to earn this.**
+
+    The property is the extractor's: `constants.value` reaches the store through `_literal`,
+    which is `ast.unparse`, so both spellings are already the same string before anything
+    compares them. An end-to-end guard rather than a guard on `_constants_moved`, and it is
+    written that way on purpose — a canonical pass was added here, measured at 384 ms over
+    374,529 characters a side, found unable to change any answer, and removed.
+
+    Which is why this test's docstring says where the property lives. Without that, the next
+    reader sees arguments canonicalised and constants not, assumes an oversight, and puts the
+    dead pass back. The regression that would actually break this is in `extract.py` — if a
+    constant were ever recorded by source slice, the way an argument deliberately is.
+    """
+    d = changes.build(base=_graph(tmp_path, "b", "OPS = {'a':1,  'b':2}\n"),
+                      compared=_graph(tmp_path, "a", "OPS = {'a': 1, 'b': 2}\n"))
+    assert d["presence"]["constants"]["moved"] == [], d["presence"]["constants"]
+
+
+def test_only_constants_carry_a_moved_band_and_the_others_carry_it_empty(tmp_path):
+    """A table, a way in and a file the program names are **names**: each either is there or
+    is not, so "still here, saying something else" cannot be true of one.
+
+    Empty rather than absent, so the renderer reads one shape and a missing key can never be
+    mistaken for a band with nothing in it (rule 13).
+    """
+    d = changes.build(base=_graph(tmp_path, "b", "A = 1\n"),
+                      compared=_graph(tmp_path, "a", "A = 2\n"))
+    for table, v in d["presence"].items():
+        assert "moved" in v, f"`{table}` has no `moved` key at all"
+        if table != "constants":
+            assert v["moved"] == [], f"`{table}` claims a value moved: {v['moved']}"
+
+
+def test_no_comparison_key_here_carries_a_position(tmp_path):
+    """The module's own rule, extended to the two new comparisons.
+
+    An argument's `line` and a constant's `line` are both in the store and neither is asked
+    about; nor is the file either sits in. And `site_id` is deliberately out of the argument
+    key — it embeds an ordinal among identical expressions in a caller, so inserting a third
+    `emit()` would renumber the ones after it and every argument of every renumbered site
+    would read as changed. Not a line number, but a position all the same.
+    """
+    body = 'def s(x):\n    return x\n\ndef caller():\n    s(1)\n    s(2)\n'
+    shoved = "import os\nimport sys\n\n" + body
+    d = changes.build(base=_graph(tmp_path, "b", shoved),
+                      compared=_graph(tmp_path, "a", body))
+    moved = {r["name"]: r["moved"] for r in d["behaves"]}
+    assert "call_args" not in moved.get("caller", []), (
+        f"pushing everything down two lines moved an argument: {moved}"
+    )
+    assert d["presence"]["constants"]["moved"] == []
+
+    # **The case that actually separates `site_id` in from `site_id` out**, and the first
+    # version of this test could not see it: swapping two calls to the same name leaves every
+    # argument exactly where it was and gives both sites a different ordinal. With `site_id`
+    # in the key that is two changed sites and nothing changed; without it, nothing at all.
+    #
+    # Nothing here reports *order* — `calls` is a set, and so is this — so "the same calls
+    # with the same arguments" is the whole of what the tool can see, and saying they moved
+    # would be a difference it cannot defend.
+    swapped = body.replace("    s(1)\n    s(2)\n", "    s(2)\n    s(1)\n")
+    assert swapped != body, "the fixture did not actually swap anything"
+    d2 = changes.build(base=_graph(tmp_path, "d", swapped),
+                       compared=_graph(tmp_path, "c", body))
+    moved2 = {r["name"]: r["moved"] for r in d2["behaves"]}
+    assert "call_args" not in moved2.get("caller", []), (
+        f"reordering two calls to one name moved their arguments: {moved2} -- the ordinal "
+        "in `site_id` has reached the comparison key, and inserting a call to a name a "
+        "routine already calls now rewrites every site after it"
+    )
+
+    # And an inserted call *is* reported, so the guard above is not passing by reporting
+    # nothing at all.
+    grown = body.replace("    s(1)\n", "    s(0)\n    s(1)\n")
+    d3 = changes.build(base=_graph(tmp_path, "f", grown),
+                       compared=_graph(tmp_path, "e", body))
+    assert "call_args" in {r["name"]: r["moved"] for r in d3["behaves"]}.get("caller", []), (
+        "a call passing a value nothing passed before is not reported"
+    )
+
+
+def test_the_diff_asks_for_a_canonical_form_and_never_makes_one():
+    """`changes.py` knows that two writings can be the same expression, and nothing else.
+
+    CLAUDE.md's promise is that adding a language means writing one extractor: the resolver,
+    the renderers and the orientation queries know nothing about any language. An `import ast`
+    here would break that quietly — it would work perfectly, on Python, for ever.
+    """
+    import ast as _ast
+
+    from dunneflow.web import changes as mod
+
+    src = Path(mod.__file__).read_text(encoding="utf-8")
+    assert "from ..canonical import canonical" in src, (
+        "the diff no longer asks for a canonical form — it either compares expressions as "
+        "written, or it has started making one itself"
+    )
+
+    # **Over the code, never over the prose**, and this guard fired on its own docstring
+    # before it did this: `_constants_moved` explains at length why a constant needs no
+    # canonical pass, and cannot do that without naming `ast.unparse`. Exactly the shape
+    # `test_the_diff_contains_no_write_statement` above already had to solve for `DROP` --
+    # a check that cries wolf is a check nobody reads (rule 43).
+    tree = _ast.parse(src)
+    for node in _ast.walk(tree):
+        if isinstance(node, (_ast.Import, _ast.ImportFrom)):
+            names = [a.name for a in node.names] + [getattr(node, "module", None) or ""]
+            assert "ast" not in names, (
+                "changes.py imports a parser — it has learned what a language is, and the "
+                "next language will have to teach it a second time"
+            )
+        if isinstance(node, _ast.Attribute) and isinstance(node.value, _ast.Name):
+            assert node.value.id != "ast", (
+                f"changes.py calls `ast.{node.attr}` — the canonical form is the extractor's "
+                "answer to give, not this module's to compute"
+            )
+
+
+def test_only_the_python_canonicaliser_knows_how_to_canonicalise():
+    """The seam, asserted from the other end: one place makes a canonical form, per language.
+
+    And it lives **beside** the extractors rather than inside one, which is not cosmetic:
+    `code_extraction_inputs()` globs `extractors/python/*.py` into the cache key, so a
+    canonicaliser there would discard every graph on the machine — sealed snapshots included
+    — every time it was edited, for a change that cannot alter one fact.
+    """
+    from dunneflow.canonical import CANONICAL, LANG_SUFFIX, canonical
+
+    # **The direction that can actually be wrong.** A language may have an extractor and no
+    # canonicaliser -- it then compares as written, which is honest. What cannot be right is
+    # a canonicaliser filed under a language no suffix produces: `canonical` looks it up
+    # through `LANG_SUFFIX`, so nothing could ever reach it (rule 35, in a table).
+    assert set(CANONICAL) <= set(LANG_SUFFIX.values()), (
+        f"canonicalisers no suffix can reach: {sorted(set(CANONICAL) - set(LANG_SUFFIX.values()))}"
+    )
+    # A suffix nobody claims compares as written -- an answer, not a failure (rule 49).
+    assert canonical('d["k"]', "a/b.py") == "d['k']"
+    assert canonical('d["k"]', "a/b.kt") == 'd["k"]', (
+        "an unknown language was canonicalised by somebody else's rules"
+    )
+    assert canonical("**kwargs", "a/b.py") == "**kwargs", (
+        "a splat is not an expression, and must survive being handed to a parser"
+    )
+    assert canonical("not python at all (((", "a/b.py") == "not python at all (((", (
+        "an expression that cannot be parsed must come back unchanged, never substituted"
+    )

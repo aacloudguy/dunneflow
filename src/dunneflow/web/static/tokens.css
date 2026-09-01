@@ -2175,6 +2175,18 @@ kbd { font-family: var(--f-mono); font-size: .66rem; background: var(--sunken);
  */
 .tone-gone { color: var(--diff-gone); }
 .tone-new  { color: var(--diff-new); }
+/* The third direction, and it joins its two siblings here rather than going on being spelled
+ * only where somebody happened to need it. `--diff-moved` has existed in all three sets and
+ * both themes from the start, measured for separation from the other two (rule 69), and was
+ * reachable only through `.legkey-dot.tone-moved` and `.wl-item .anochg.tone-moved` -- so
+ * writing `tone-moved` anywhere else rendered in the inherited colour and said nothing. A
+ * class the stylesheet cannot carry is the defect rule 48 is about, and both surfaces that
+ * did carry it got there by writing their own rule.
+ *
+ * Those two stay: they are scoped for specificity against `.legkey-dot`'s and `.anochg`'s own
+ * declarations, exactly as `.chgstat.tone-gone` below is. One token, one value, several
+ * reaches -- which is not two answers to one question. */
+.tone-moved { color: var(--diff-moved); }
 .chgstat.tone-gone .num, .chgstat.tone-gone > span { color: var(--diff-gone); }
 .chgstat.tone-new  .num, .chgstat.tone-new  > span { color: var(--diff-new); }
 .chgstat.tone-gone { border-color: var(--diff-gone); background: var(--diff-gone-bg); }
@@ -2786,3 +2798,9 @@ body.detached-code #trailMount { display: none !important; }
 }
 .chgpresence li { margin: 0.15rem 0; }
 .chgpresence code { font-size: 0.72rem; }
+/* Each count and the names it is a count *of*, held together. A line carrying three numbers
+   and one undivided list is three claims and one answer, and the reader cannot tell which
+   names belong to which number (rule 32). The gap between groups is wider than the gap
+   inside one, because that is the whole of what says they are groups. */
+.chgpresence .presgroup { margin-right: 0.9rem; white-space: normal; }
+.chgpresence .presgroup b { margin-right: 0.15rem; }

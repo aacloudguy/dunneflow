@@ -47,6 +47,12 @@ import sqlite3
 from pathlib import Path
 from typing import Any
 
+# The one language-specific question this module asks, and it asks it by name rather than
+# by importing a parser: are these two writings the same expression. See `canonical/` --
+# this module learns that a canonical form exists, never how one is made, which is what
+# keeps the resolver, the renderers and this view ignorant of any particular language.
+from ..canonical import canonical
+
 # --------------------------------------------------------------------------- #
 # What a routine *does*, stated per fact table as (owner column, compared columns).
 #
@@ -93,6 +99,50 @@ SELECT o FROM (
     EXCEPT
     SELECT {owner} AS o, {cols} FROM {A}.{table}
 )
+"""
+
+# What a caller *passed*, which `FACTS` cannot ask for and which is squarely the subject:
+# an argument is a thing that moves. `f(db_path=None)` becoming
+# `f(policy_path=project_dir / ".mensores" / "standards-policy.json")` read as no change at
+# all until this existed.
+#
+# **Its own step rather than a sixth `FACTS` row**, and not for tidiness. Two things about it
+# genuinely differ: `call_args` carries no owner, so it reaches one by joining `calls` through
+# `site_id`; and its answer needs a second, verifying pass that none of the other five wants
+# (see `_arguments_moved`). Five working comparisons are not disturbed to make a table look
+# uniform.
+#
+# **`site_id` is deliberately absent from the key.** It embeds an ordinal among identical
+# expressions in a caller -- `call_site_id` says so and states the residue -- so inserting a
+# third `emit()` renumbers the ones after it and every argument of every renumbered site
+# would read as changed. That is the module docstring's own rule arriving by a side door: not
+# a line number, but a position all the same.
+#
+# What it costs is the mirror of what `FACTS["calls"]` already costs, and it is stated rather
+# than discovered later: this is set comparison, so deleting one of two *identical* calls
+# carrying *identical* arguments reads as no change. Rule 1 -- a false difference is worse
+# than a missing one. Measured on Mensores' pair, both keys give the same fourteen routines,
+# so the corpus does not separate them and the choice rests on the argument.
+# `file` rides along and is **not** part of the comparison -- `_arguments_moved` slices it
+# off before comparing. It is here because the canonical form of an expression is a question
+# only that file's language can answer, and this module does not know what a language is.
+ARG_FACTS = """
+SELECT c.caller_id AS o, c.callee_expr, a.idx, a.expr, a.keyword, a.splat, c.file
+  FROM {db}.call_args a JOIN {db}.calls c ON c.site_id = a.site_id
+"""
+
+# A constant present in both versions, holding something different.
+#
+# `constants` has always been in `PRESENCE`, compared by name -- so a value that moved was
+# invisible, `EXPECTED_SCHEMA_VERSION` going from 27 to 28 among them. A named value is a
+# thing that moves, and what it holds is the whole of what it says.
+#
+# `value`, `type` and `is_final`, and nothing else. Not `file` or `line`, for the reason no
+# key here carries a position. Not `comment`: a constant's comment is its WHY and a change to
+# it is a real change, but it is a *different* change from what the constant is, and one row
+# that means two things is a row that says neither (rule 32).
+CONSTANT_VALUES = """
+SELECT module, name, value, type, is_final FROM {db}.constants
 """
 
 # `{B}` is the **base** and `{A}` the **compared**, everywhere in this module. The base
@@ -169,6 +219,111 @@ def _rows(conn: sqlite3.Connection, sql: str, **kw: Any) -> list[sqlite3.Row]:
     return conn.execute(sql.format(**kw)).fetchall()
 
 
+def _arguments_moved(conn: sqlite3.Connection, A: str, B: str) -> set[str]:
+    """Routines that pass something different, in two passes.
+
+    **The cheap pass says which routines the expensive one is worth running on**, which is
+    the shape `filediff.py` already uses: there, equal content hashes decide which twelve of
+    628 files `difflib` reads. Measured warm on Mensores' pair -- 43,926 arguments against
+    43,464, 53 callers differing as written and 13 still differing once canonicalised:
+
+        one scan a side, compared as written    188 ms
+        canonicalising only what that flagged    17 ms
+
+    Canonicalising both corpora outright is 556 ms for the same answer.
+
+    **Two scans and a set comparison, rather than `EXCEPT` in SQL**, and it was chosen by
+    measurement: the compound form is 364 ms because it sorts both sides twice, once per
+    direction. A `group_concat` digest per caller is faster still at 164 ms and is **not**
+    used -- SQLite does not specify the order an aggregate concatenates in, so two identical
+    argument sets laid out differently in two files would digest differently and report a
+    difference that is not there. Rule 1, for 24 ms.
+
+    **The second pass is what keeps this out of the wrong band.** Arguments are stored as
+    written and never re-rendered (rules 8 and 75), which is right for a reader who wants to
+    find the string in the file and wrong for a comparison: Mensores has a `typer.echo` whose
+    message was re-wrapped across two lines without one character of its content changing,
+    and comparing what was written puts it in *behaves differently* -- next to a band that
+    says *edited only, and nothing it does changed*. Rule 1: a false difference tells the
+    reader something moved when it did not. Fourteen routines survive the first pass and
+    thirteen survive both.
+
+    **This module still does not know what a language is.** It asks `extractors.canonical`,
+    handing it the file the expression came from; how a canonical form is made stays inside
+    the extractor that owns the suffix, and a suffix nobody claims compares as written.
+    """
+    def side(db: str) -> dict[str, list[tuple[Any, ...]]]:
+        # **Plain tuples, on a cursor of its own.** This is the one query here that reads
+        # every row of the largest table in the store -- 43,926 arguments a side -- and
+        # building a `sqlite3.Row` for each is 202 ms against 165 for the tuples SQLite
+        # already has. Set on the *cursor*: `conn` may be the connection the whole dashboard
+        # shares, and every other query on it is written against `Row`'s by-name access.
+        cur = conn.cursor()
+        cur.row_factory = None
+        out: dict[str, list[tuple[Any, ...]]] = {}
+        for owner, callee, idx, expr, keyword, splat, file in cur.execute(
+                ARG_FACTS.format(db=db)):
+            if owner:
+                out.setdefault(owner, []).append(
+                    (callee, idx, expr, keyword, splat, file))
+        return out
+
+    def written(rows: list[tuple[Any, ...]]) -> set[tuple[Any, ...]]:
+        return {t[:5] for t in rows}
+
+    def meant(rows: list[tuple[Any, ...]]) -> set[tuple[Any, ...]]:
+        # A splat is a call-site form rather than an expression -- neither `**kwargs` nor
+        # `*items` parses on its own, wrapped in brackets or not -- so it is compared as
+        # written.
+        #
+        # **This branch changes no answer**, and it is kept anyway with that said out loud.
+        # `canonical` would return every one of these unchanged through its own fallback, so
+        # removing the test is behaviourally invisible; a mutation of it survives, and the
+        # mutation is the weak one rather than the guard (rule 59's companion). What it buys
+        # is 49 parse attempts not made on Mensores, and a reader not having to work out
+        # whether splats were considered.
+        return {(ce, i, e if sp else canonical(e, f), k, sp)
+                for ce, i, e, k, sp, f in rows}
+
+    here, there = side(A), side(B)
+    return {rid for rid in here.keys() | there.keys()
+            if written(here.get(rid, [])) != written(there.get(rid, []))
+            and meant(here.get(rid, [])) != meant(there.get(rid, []))}
+
+
+def _constants_moved(conn: sqlite3.Connection, A: str, B: str) -> list[str]:
+    """Constants both versions declare, holding something different.
+
+    Named `module.name` -- the same key `PRESENCE` compares them on, so a constant cannot be
+    in the presence bands and this one at once, and the two cannot disagree about what a
+    constant *is* (rule 51).
+
+    **Not canonicalised, and that is the interesting half.** A constant's value reaches the
+    store through `_literal`, which is `ast.unparse` -- so `{'a':1,  'b':2}` and
+    `{'a': 1, 'b': 2}` are already the *same string* by the time they are written down, and
+    a canonical pass here can never change the answer. It was written, measured at 384 ms
+    over 374,529 characters a side, and removed on that evidence: work that cannot change an
+    answer is not caution, it is a claim the code does not need to make.
+
+    An **argument** is the opposite case and needs the pass, which is why only one of the two
+    has it. `call_args.expr` comes from `_segment`, a byte slice of the file, deliberately
+    *not* re-rendered so a reader can find the string where it was written (rules 8 and 75).
+    Two writings of one message therefore reach the store as two strings, and only asking for
+    a canonical form tells them apart.
+
+    Written down because the symmetry is inviting and wrong: whoever adds `comments` here
+    next will have to ask this same question a third time, and the answer will depend on how
+    that column is filled rather than on what it holds.
+    """
+    def held(db: str) -> dict[str, tuple[Any, ...]]:
+        return {
+            f"{r['module']}.{r['name']}": (r["value"], r["type"], r["is_final"])
+            for r in conn.execute(CONSTANT_VALUES.format(db=db))
+        }
+    base, other = held(B), held(A)
+    return sorted(k for k in base.keys() & other.keys() if base[k] != other[k])
+
+
 def build(base: Path, compared: Path,
           *, serving: sqlite3.Connection | None = None) -> dict[str, Any]:
     """The whole difference list, both directions, with every row carrying its subject.
@@ -228,6 +383,9 @@ def build(base: Path, compared: Path,
                     moved.setdefault(r["o"], set()).add(table)
         for r in conn.execute(RETURNS_MOVED.format(A=A, B=B)):
             moved.setdefault(r["o"], set()).add("returns")
+        # What the caller passed. Named for its table, like every other kind here.
+        for rid in _arguments_moved(conn, A, B):
+            moved.setdefault(rid, set()).add("call_args")
 
         # Only routines present in BOTH. A fact belonging to a routine that is on one
         # side only is already stated by its own band, and counting it here would report
@@ -257,6 +415,13 @@ def build(base: Path, compared: Path,
                 "only_in_compared": [r[0] for r in conn.execute(
                     f"SELECT {label} FROM {A}.{table} "
                     f"WHERE {key} NOT IN (SELECT {key} FROM {B}.{table}) ORDER BY 1")],
+                # A third state, and only constants have one. The other three are names --
+                # a table, a way in, a file the program names -- and a name either is there
+                # or is not. A constant is a name *and* a value, so "in both, holding
+                # something different" is a thing that can be true of it and of nothing else
+                # here. Empty for the others rather than absent, so the renderer reads one
+                # shape (rule 13).
+                "moved": _constants_moved(conn, A, B) if table == "constants" else [],
             }
 
         # `identical` is a real answer and is stated as one. Two versions that differ
@@ -275,7 +440,7 @@ def build(base: Path, compared: Path,
                     f"SELECT COUNT(*) FROM {A}.routines").fetchone()[0],
             },
             "identical": not (only_base or only_comp or behaves_rows or edited_only
-                              or any(v["only_in_base"] or v["only_in_compared"]
+                              or any(v["only_in_base"] or v["only_in_compared"] or v["moved"]
                                      for v in presence.values())),
             "only_in_base": only_base,
             "only_in_compared": only_comp,

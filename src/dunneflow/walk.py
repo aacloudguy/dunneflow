@@ -68,9 +68,6 @@ VCS_MARKERS = frozenset({".git", ".hg", ".svn"})
 # Matched at an edge of the filename, never as a substring -- see `is_test_path`.
 TEST_MARKERS = ("test_", "_test", "conftest")
 
-LANG_SUFFIX = {".py": "python", ".pyi": "python"}
-
-
 @dataclass(slots=True)
 class WalkStats:
     found: int = 0

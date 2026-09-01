@@ -3845,6 +3845,160 @@ question answered first — what makes two findings in two versions the same fin
 carries no id and 93 of Mensores' 106 are `LOST_EDGE`, so pairing them would invent an
 identity (rule 1).
 
+## The change worklist sees what a call passes, and what a constant is — 2026-09-01
+
+Two gaps that had been written down as open long enough to look like scenery. `FACTS`
+compared `calls` without their arguments, and `constants` sat in `PRESENCE` compared by
+name — so `f(db_path=None)` becoming `f(policy_path=…/standards-policy.json)` and
+`EXPECTED_SCHEMA_VERSION` going from 27 to 28 both read as **no change at all**.
+
+### Measured before it was proposed, and one of the findings was noise
+
+```
+arguments   53 callers differ as written · 14 routines in both · 13 after canonicalising
+            2 genuinely new to `behaves` (18 -> 20) · 11 already caught by another fact
+constants    7 values differ, of 2,615 present in both versions
+```
+
+The thirteen were checked against real source, one by one, and every one is genuine:
+`db_path=None` → `policy_path=project_dir / ".mensores" / "standards-policy.json"` in two
+places, a `frozenset` admitting `'work_items'`, `system/com.society.mensores-scriba` becoming
+`system/{_scribe_label()}`, and a refusal message rewritten.
+
+**The fourteenth was the interesting one.** `claim_break_glass_cmd` passes a `typer.echo`
+message that was re-wrapped across two lines with not one character of its content changed.
+Arguments are stored **as written** — chunk 3's deliberate choice, so a reader can find the
+string in the file (rules 8 and 75) — so comparing what was written put it in *behaves
+differently*, the band that promises what a routine **does** moved, sitting beside one that
+says *edited only, and nothing it does changed*. Rule 1 in the place it does most damage,
+and the discipline that caught it is the one already written down: verify a sample against
+real source before shipping a detector.
+
+### The canonical form, and where it is allowed to live
+
+Tom's call: canonicalise **at read time, behind a language seam**. So `changes.py` learns
+that a canonical form *exists* and never how one is made — an `import ast` there would work
+perfectly, on Python, for ever, and quietly break "adding a language changes one extractor".
+
+Two passes, the shape `filediff.py` already uses where equal hashes decide which twelve of
+628 files `difflib` reads:
+
+```
+one scan a side, compared as written    165 ms   ->  53 candidates
+canonicalising only what that flagged    17 ms   over 1,188 arguments
+canonicalising both corpora outright    556 ms   for the same answer
+```
+
+**Constants are deliberately *not* canonicalised, and that asymmetry is the finding.** A
+constant's value reaches the store through `_literal`, which is `ast.unparse` — so both
+spellings of `{'a':1,  'b':2}` are already the same string before anything compares them. A
+canonical pass was written for them, measured at 384 ms over 374,529 characters a side,
+found unable to change any answer, and **removed**. An argument is the opposite case because
+`_segment` slices it out of the file on purpose. Two columns, two answers, and the difference
+is how each is filled rather than what it holds. Written down in both places, because the
+symmetry is inviting and wrong.
+
+### Where the canonicalisers live, and why it is not where they started
+
+They went into `extractors/python/canonical.py`, and both of Mensores' graphs immediately
+read as **stale** — `code_extraction_inputs()` globs `extractors/python/*.py` into the cache
+key. That is the right default (rule 12 was earned by a key that hashed the rules and not the
+reader, and a glob cannot forget a file somebody adds), but the glob is a *mechanism* and the
+key's own docstring states the *rule*: **scope is decided by asking what this extraction
+actually reads.** Extraction never imports a canonicaliser, and no edit to one can change a
+single fact — only whether two facts are judged equal.
+
+Left there it would have discarded every graph on the machine on every edit, sealed snapshots
+included, which exist precisely to outlive their source tree (rules 25 and 62). Tom took the
+move. `canonical/` sits beside `extractors/`, the fingerprint returned to its stored value
+(`0721d30af999205b`), both graphs became readable again, and **no re-analysis was needed** —
+which the plan had claimed for the wrong reason and then very nearly got wrong.
+
+Adding a language now touches two places, and they are two concerns rather than one split in
+half: `extractors/<lang>/` reads facts, `canonical/<lang>.py` says when two expressions are
+the same. A language may have the first and not the second, and then it compares as written.
+
+`LANG_SUFFIX` came along with it — it had been sitting in `walk.py` **declared and read by
+nothing at all** since it was written (rule 35, in a constant that looked like a decision).
+It is in `canonical/` now, where it is the one thing that consults it.
+
+### The judgment worth recording: `site_id` is not in the key
+
+`call_args` has no owner, so it reaches one by joining `calls` through `site_id`. `site_id`
+itself is kept **out** of the comparison: it embeds an ordinal among identical expressions in
+a caller, so inserting a third `emit()` renumbers the ones after it and every argument of
+every renumbered site would read as changed — the module docstring's own rule about positions
+arriving by a side door.
+
+What it costs is the mirror of what `FACTS["calls"]` already costs and is stated rather than
+discovered later: this is set comparison, so deleting one of two *identical* calls carrying
+*identical* arguments reads as no change. Measured honestly — on this pair both keys give the
+same fourteen routines, so **the corpus does not separate them** and the choice rests on the
+argument.
+
+### The budget, which now has almost nothing left
+
+```
+/api/changes warm   266 ms before  ->  480 ms after, against a < 500 ms budget
+first of a session  1.4 s - 23 s, and it swings by forty on the same query
+cached              0.7 ms
+```
+
+Recorded as 20 ms of headroom rather than as comfortably inside. Three formulations were
+measured and **the fastest was rejected**: a `group_concat` digest per caller is 164 ms
+against 188 for two scans diffed in Python, but SQLite does not specify the order an
+aggregate concatenates in, so two identical argument sets laid out differently in two files
+would digest differently and report a difference that is not there. Rule 1, for 24 ms. The
+scan takes SQLite's own tuples on a cursor of its own rather than building a `sqlite3.Row`
+per row — 202 ms against 165 — and it is set on the *cursor* because `conn` may be the
+connection the whole dashboard shares.
+
+And the baseline was measured in a **git worktree at HEAD**, not by stashing, so the working
+tree was never touched while the numbers were taken.
+
+### What driving it found
+
+`Constants +23 ◈7` followed by six names, **none of which had moved** — three claims and one
+list, with nothing saying which names belonged to which number. Rule 32, and it read
+perfectly plausibly. Each count carries its own names now.
+
+### The guards
+
+Mutation-tested **18/18** over a baseline proved green first (rule 59). Four survived first
+passes; three were the guard and one was the mutation, which is worth separating:
+
+- the `site_id` guard could not see its own mutation. Its fixture inserted a call, which is a
+  real change either way; the case that separates the two keys is a **reorder** — two calls
+  to one name swapped, every argument where it was, both ordinals different;
+- the constants guard compared values only, so dropping `type` and `is_final` from the key was
+  invisible;
+- the presence-line guard checked that `names.slice(0, 6)` *appeared*, so a mutation that kept
+  the groups and appended a second list at the end left it green. It counts now;
+- and one **mutation** was the weak one: canonicalising splats changes no answer, because
+  `canonical` returns them unchanged through its own fallback. The branch is an optimisation
+  and a statement of intent, and the code now says so rather than implying a guard covers it.
+
+Two guards had to be rewritten rather than repointed. `test_the_diff_asks_for_a_canonical_
+form_and_never_makes_one` fired **on its own docstring** — the prose explaining why constants
+need no canonical pass cannot say so without naming `ast.unparse` — which is exactly the shape
+`test_the_diff_contains_no_write_statement` already had to solve for `DROP`. It walks the AST
+now and reads code, never prose (rule 43). And a new guard asserts the cache key holds only
+what extraction reads, so the placement decision above is checked rather than remembered.
+
+    744 tests · mypy clean · ruff clean · 18/18 mutations caught
+
+### Left out, and one thing to look at
+
+**Comments**, on Tom's scoping call. `changes.FACTS` does not compare them, so a rewritten
+explanation above unchanged code is invisible — and 18,208 comments are the governance layer
+and the only source of WHY. It wants its own thought: a reflowed comment is the re-wrap
+problem again, larger, and prose has no `ast.unparse` to appeal to.
+
+**Pre-existing and now more visible:** a presence line names at most six of its members and
+there is no full listing anywhere — `Constants +23` shows six. Rule 8 allows abbreviation
+only where the complete content sits beside it. Adding a third count made the bound easier to
+notice; it did not create it.
+
 ## The overlay on the findings, and the key it had to be built on — 2026-09-01
 
 Chunk 5c. It opened by reproducing a defect rather than by building anything, and the

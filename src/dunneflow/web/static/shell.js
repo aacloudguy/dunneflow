@@ -3744,15 +3744,38 @@ function viewChanges() {
      shown are that same side's, so the sign and the examples under it cannot disagree
      (rule 13). */
   const presLine = (name, label) => {
-    const v = pres[name] || { only_in_base: [], only_in_compared: [] };
+    const v = pres[name] || { only_in_base: [], only_in_compared: [], moved: [] };
     const arrived = v[words.base.tone === "new" ? "only_in_base" : "only_in_compared"];
     const gone = v[words.base.tone === "new" ? "only_in_compared" : "only_in_base"];
-    if (!arrived.length && !gone.length) return "";
-    const bits = [];
-    if (arrived.length) bits.push(`<b class="tone-new">+${arrived.length}</b>`);
-    if (gone.length) bits.push(`<b class="tone-gone">\u2212${gone.length}</b>`);
-    const named = arrived.slice(0, 6).map(x => `<code>${esc(String(x))}</code>`).join(" ");
-    return `<li>${label} <span class="num">${bits.join(" ")}</span> ${named}</li>`;
+    /* A third state, and only constants have one: present in both versions and **holding
+       something different**. The other three lines are names \u2014 a table, a way in, a file the
+       program names \u2014 and a name either is there or is not; a constant is a name *and* a
+       value, so it is the one row here where "still here, saying something else" can be
+       true. It was compared by name alone until this existed, so `EXPECTED_SCHEMA_VERSION`
+       going from 27 to 28 read as no change at all.
+
+       `tone-moved` rather than a colour of its own: it is the violet the graph legend and
+       the findings' own mark already spell this idea with, measured in all three sets and
+       both themes (rule 69). Three surfaces, one answer (rule 51). And it takes **no**
+       sign \u2014 a value that moved was neither added nor deleted, and a `+` here would be a
+       direction the fact does not have. */
+    const moved = v.moved || [];
+    if (!arrived.length && !gone.length && !moved.length) return "";
+    /* **Each count carries its own names.** The first version of this put every count on the
+       left and then named the *arrivals* only, so `Constants +23 \u25c87` was followed by six
+       names none of which had moved \u2014 two numbers and one list, and nothing saying which
+       list belonged to which number (rule 32, and it read perfectly plausibly). */
+    const group = (n, cls, sign, names) => !n ? "" :
+      `<span class="presgroup"><b class="${cls}">${sign}${n}</b> ${
+        names.slice(0, 6).map(x => `<code>${esc(String(x))}</code>`).join(" ")}</span>`;
+    const parts = [
+      group(arrived.length, "tone-new", "+", arrived),
+      group(gone.length, "tone-gone", "\u2212", gone),
+      /* No sign: a value that moved was neither added nor deleted, and a `+` here would be
+         a direction the fact has not got. */
+      group(moved.length, "tone-moved", "\u25c8", moved),
+    ].filter(Boolean);
+    return `<li>${label} ${parts.join(" ")}</li>`;
   };
 
   /* Whether a band caps its own height and scrolls inside itself, or runs its full

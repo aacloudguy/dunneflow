@@ -392,14 +392,30 @@ for every file a reader visits would be a second copy of the program in memory t
 
 The change worklist, comparing two revisions of Mensores (4,733 routines against 4,786):
 
-| Measure | Budget | Measured 2026-08-29 |
+| Measure | Budget | Measured 2026-09-01 |
 |---|---|---|
-| `/api/changes`, warm | < 500 ms | 317 ms |
-| …first comparison of a session | < 5 s | **13 s – 28 s, and it is the disk** |
-| …the same, cached | < 50 ms | 1 ms |
+| `/api/changes`, warm | < 500 ms | **480 ms — and that is 20 ms of headroom** |
+| …the same before the arguments and constants landed | | 266 ms |
+| …first comparison of a session | < 5 s | **1.4 s – 23 s, and it is the disk** |
+| …the same, cached | < 50 ms | 0.7 ms |
+
+**The warm row has almost nothing left and is recorded as such.** Comparing what a caller
+passes and what a constant holds costs **+214 ms**, nearly all of it one scan of the largest
+table in the store — 43,926 arguments a side, joined to `calls` to reach an owner. Measured
+like for like: six builds in one process against a warm disk, the same corpus, this commit
+and the one before it (270 → 493, then 266 → 480 once the scan stopped building a
+`sqlite3.Row` per row and took SQLite's own tuples, which is 202 ms against 165).
+
+Three formulations were measured and the fastest was **rejected**: a `group_concat` digest
+per caller is 164 ms against 188 for two scans diffed in Python and 364 for `EXCEPT` both
+ways, but SQLite does not specify the order an aggregate concatenates in, so two identical
+argument sets laid out differently in two files would digest differently and report a
+difference that is not there. Rule 1, for 24 ms.
 
 **The cold row is the external volume**, reading a 31 MB graph the server has never
-touched: 13.1 s, then 2.5 s, then 317 ms on three runs of the same comparison. It was
+touched: 13.1 s, then 2.5 s, then 317 ms on three runs of the same comparison in 2026-08-29,
+and 23.4 s / 1.2 s / 0.5 s on three server restarts a session later. It swings by a factor
+of forty on the same query and the same files, which is why it is stated as a range. It was
 **84 s** until the diff stopped opening a second read-only handle to a database the
 dashboard already holds open — see rule 58, and note that measured standalone it was
 242 ms the whole time.
@@ -452,6 +468,12 @@ docs   ──► extract ──► docs.db  (SQLite) ─────────
   program in memory; reachability is recursive SQL over indexed edges. This is the one
   decision that lets the tool survive growth — do not replace it with in-memory graphs.
 - `extractors/python/` — stdlib `ast` + `tokenize` only. No third-party parser.
+- `canonical/` — whether two writings are **the same expression**, one module per language.
+  Beside the extractors rather than inside one, and that placement is load-bearing:
+  `code_extraction_inputs()` globs `extractors/python/*.py` into the cache key, so a
+  canonicaliser living there would discard every graph on the machine — sealed snapshots
+  included — each time it was edited, for a module extraction never reads and that cannot
+  change one fact. A language with no entry compares its expressions as written.
 - `extractors/docs/` — Markdown, reStructuredText and plain text, scanned by hand for
   the same reason: no markdown library. Emits `DocFacts`.
 - `docstore.py` — `docs.db`. **Parallel to the graph, never inside it.** A doc rescan
@@ -522,6 +544,15 @@ docs   ──► extract ──► docs.db  (SQLite) ─────────
 - `web/vocabulary.py` — the two naming lanes served, and matched against one name. The
   membership test is `Convention.glob`, which is the same string the exceptions query is
   built from, so the claim and the population cannot drift (rule 41).
+- `web/changes.py` — the **fact lane**: what a routine does differently, which routines and
+  tables and constants each version has, and **what a caller passes**. `call_args` is
+  compared by joining through `calls.site_id` to reach an owner — and `site_id` itself is
+  kept *out* of the key, because it carries an ordinal among identical expressions and
+  inserting a third `emit()` would renumber every site after it. Arguments are canonicalised
+  before being judged different, because they are stored as written (rules 8 and 75) and a
+  re-wrapped message is not a change to what a routine does; **constants are not**, because
+  `_literal` already unparses them on the way in. Two columns, two answers, and the
+  difference is how each is filled rather than what it holds.
 - `web/filediff.py` — the **text lane** of a comparison, beside `changes.py`'s fact lane.
   The file-level answer costs **no body reads at all**: the sidecar is content-addressed,
   so equal hashes are equal bytes and comparing two path maps *is* the file-level diff.

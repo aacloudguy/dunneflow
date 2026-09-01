@@ -8195,3 +8195,68 @@ def test_the_worklist_reads_no_field_that_never_reached_it() -> None:
         f"the worklist reads fields `loadAnomalies` never carries: {missing} -- every row "
         "renders, the value is `undefined`, and nothing anywhere fails"
     )
+
+
+def test_a_constant_that_moved_is_drawn_in_the_channel_it_belongs_to() -> None:
+    """The third presence state, and the class that carries it.
+
+    Only constants have one: a table, a way in and a named file are **names**, and a name
+    either is there or is not. A constant is a name *and* a value, so "still here, saying
+    something else" is a thing that can be true of it and of nothing else on that list.
+
+    `tone-moved` rather than a colour of its own -- it is what the graph legend and the
+    findings' mark already spell this idea with, measured in all three sets and both themes
+    (rule 69), so three surfaces cannot part company about what violet means (rule 51).
+    """
+    js = _code(_read("shell.js"))
+    line = _fn(js, "viewChanges")
+    assert "v.moved || []" in line, (
+        "the presence line does not read the moved band, so a constant whose value changed "
+        "renders as nothing at all"
+    )
+    # Read out of the call rather than out of a template string. The two came apart once
+    # already: this line put all three counts on the left and then named only the arrivals,
+    # so `Constants +23 \u25c87` was followed by six names none of which had moved -- three
+    # claims and one answer, with nothing saying which names belonged to which number
+    # (rule 32, and it read perfectly plausibly).
+    calls = re.findall(r'group\((\w+)\.length,\s*"([^"]+)",\s*"([^"]*)"', line)
+    tones = {name: tone for name, tone, _ in calls}
+    glyphs = {name: glyph for name, _, glyph in calls}
+    assert tones.get("moved") == "tone-moved", (
+        f"the moved count is not drawn in the difference channel: {tones}"
+    )
+    assert tones.get("arrived") == "tone-new" and tones.get("gone") == "tone-gone", (
+        f"the presence counts no longer take their tone from the difference channel: {tones}"
+    )
+    # No sign on the moved count -- a value that moved was neither added nor deleted, and a
+    # direction it has not got is a second number about one thing.
+    assert glyphs.get("moved") not in ("+", "\\u2212", "\N{MINUS SIGN}", "-", None), (
+        f"the moved count carries `{glyphs.get('moved')}`, a direction it has not got"
+    )
+    # And each count names its own members, or three numbers share one list again.
+    #
+    # **Exactly one** naming site, and it is inside `group`. `in line` was not enough: a
+    # mutation that kept the groups and appended a second list at the end of the row left it
+    # green, because both tokens were still there. The count is what says there is one list
+    # per group rather than one per row (rule 37 -- check that the guard catches).
+    assert line.count("names.slice(0, 6)") == 1, (
+        f"{line.count('names.slice(0, 6)')} places name members. One list per row is the "
+        "shape that put six arrival names under a count of moved ones"
+    )
+    grp = line[line.index("const group ="):line.index("const parts")]
+    assert "names.slice(0, 6)" in grp, (
+        "the names are rendered outside `group`, so they belong to the row rather than to "
+        "the count they sit beside"
+    )
+    assert "parts.join" in line, "the groups are no longer assembled from the per-count parts"
+
+    # Rule 48's family, and the defect this very edit nearly shipped: `tone-moved` was
+    # reachable only through `.legkey-dot` and `.wl-item .anochg`, so writing it anywhere
+    # else rendered in the inherited colour and said nothing at all.
+    css = _css_code(_read("tokens.css"))
+    assert re.search(r"(^|\})\s*\.tone-moved\s*\{", css), (
+        "`.tone-moved` has no unscoped rule, so the presence line's ◈ renders in whatever "
+        "colour it inherits -- a class the stylesheet cannot carry"
+    )
+    for tone in ("gone", "new", "moved"):
+        assert f"var(--diff-{tone})" in css, f"--diff-{tone} is spelled by no rule"

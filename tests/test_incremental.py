@@ -292,3 +292,46 @@ def test_a_reader_refuses_a_stale_document_store(tmp_path: Path) -> None:
 
     with pytest.raises(StaleGraphError, match="dunneflow analyze"):
         DocStore(db, writable=False)
+
+
+def test_the_cache_key_holds_only_what_extraction_reads() -> None:
+    """The key's own rule, asserted where it can be broken by an ordinary edit.
+
+    `code_extraction_inputs()` globs `extractors/python/*.py`, which is the right default:
+    rule 12 was earned by a key that hashed the rules and not the reader, and a glob cannot
+    forget a file somebody adds. But the glob is a *mechanism* and "what extraction actually
+    reads" is the *rule*, and a file dropped into that folder is in the key whether or not
+    extraction has ever heard of it.
+
+    That happened: a canonicaliser for the change comparison landed there and made both of
+    Mensores' graphs read as stale — including a sealed snapshot, which exists precisely to
+    outlive its source tree (rules 25 and 62) — for a module extraction never imports and
+    that cannot alter a single fact. It lives in `canonical/` now.
+
+    Over-invalidating is the safer direction and this test does not argue otherwise. It
+    argues that the *reason* a file is in the key must be that extraction reads it.
+    """
+    import ast
+
+    from dunneflow.detectors import code_extraction_inputs
+
+    for path in code_extraction_inputs():
+        if path.suffix != ".py" or not path.stat().st_size:
+            continue
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        reachable = any(
+            isinstance(n, (ast.Import, ast.ImportFrom, ast.FunctionDef, ast.ClassDef))
+            for n in ast.walk(tree)
+        )
+        assert reachable, (
+            f"{path.name} is in the code cache key and declares nothing — if it is not read "
+            "by extraction it does not belong there, and every edit to it discards every "
+            "graph on the machine"
+        )
+
+    names = {p.name for p in code_extraction_inputs()}
+    assert "canonical.py" not in names, (
+        "a canonicaliser is in the code extraction key. It cannot change a fact — only "
+        "whether two facts compare equal — so editing one would discard every graph, sealed "
+        "snapshots included, for nothing. It belongs in `canonical/`"
+    )

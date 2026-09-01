@@ -41,6 +41,7 @@ docs   ──► extract ──► docs.db  ──────ATTACH──┘
 | `extractors/python/` | stdlib `ast` + `tokenize` only. No third-party parser. |
 | `extractors/docs/` | Markdown / rST / text, scanned by hand. No markdown library. |
 | `detectors/*.yaml` | **The extension point.** Teach a framework here, not in code. |
+| `canonical/` | Whether two writings are the same expression, per language. **Beside** the extractors, never inside one — see the cache-key note in `CLAUDE.md`. |
 | `resolve/` | Call graph, CLI trees, flows, naming, glossary, traceability, mirror. |
 | `render/` | Markdown and Mermaid, complete — never abbreviated (rule 8). |
 | `anomalies.py` | What looks wrong. Every finding states what would make it a false alarm. |
@@ -162,8 +163,54 @@ is not computed yet.
 
 ## What we are doing now
 
-**Paused 2026-09-01 with chunk 5 complete — 5a, 5b and 5c all in, committed and green.**
-731 tests, mypy clean, ruff clean, working tree clean. Nothing is half-done.
+**Paused 2026-09-01. Chunk 5 is complete and the change worklist now sees an argument.**
+744 tests, mypy clean, ruff clean, working tree clean. Nothing is half-done.
+
+### The latest: what a call passes, and what a constant is (2026-09-01)
+
+`FACTS` compared `calls` without their arguments and `constants` by name alone, so
+`f(db_path=None)` becoming `f(policy_path=…)` and `EXPECTED_SCHEMA_VERSION` going 27 → 28
+both read as **no change at all**.
+
+```
+arguments   53 callers differ as written · 13 genuine after canonicalising · 2 new to the band
+constants    7 values moved, of 2,615 in both versions
+/api/changes 266 ms -> 480 ms warm, against a < 500 ms budget — 20 ms of headroom
+```
+
+All thirteen were checked against real source. **The fourteenth was noise and is the reason
+there is a canonical pass**: a `typer.echo` message re-wrapped across two lines with its
+content unchanged, which lands in *behaves differently* — the band that promises what a
+routine **does** moved. Arguments are stored as written on purpose (rules 8 and 75), so the
+comparison has to ask a different question of the same string.
+
+**Constants are deliberately not canonicalised**, and the asymmetry is the finding:
+`_literal` already unparses them on the way in, so a pass there was written, measured at
+384 ms, found unable to change any answer, and removed. Two columns, two answers, and the
+difference is how each is filled.
+
+**`canonical/` sits beside `extractors/`, not inside it.** Put in `extractors/python/` it
+made both graphs read as stale — that folder is globbed into the cache key — so every edit
+to a canonicaliser would have discarded every graph on the machine, sealed snapshots
+included, for a module extraction never reads. Moved on Tom's call; the fingerprint returned
+to its stored value and no re-analysis was needed. `LANG_SUFFIX` came with it from `walk.py`,
+where it had been declared and read by nothing at all.
+
+`site_id` is deliberately **out** of the argument key: it carries an ordinal among identical
+expressions, so inserting a third `emit()` would renumber every site after it. 18/18
+mutations caught over a proved-green baseline; four survived first passes, three were the
+guard and one was the mutation.
+
+**Left out on Tom's scoping call: comments.** A rewritten explanation above unchanged code is
+still invisible, and 18,208 comments are the governance layer and the only source of WHY. It
+wants its own thought — a reflowed comment is the re-wrap problem again, larger, and prose
+has no `ast.unparse` to appeal to.
+
+**Pre-existing, now easier to notice:** a presence line names at most six of its members with
+no full listing anywhere (`Constants +23` shows six), which is rule 8's bound without rule 8's
+companion.
+
+### Before that: chunk 5c, the overlay on the findings (2026-09-01)
 
 **5c put the anomaly comparison on screen, and it opened by reproducing a defect rather
 than by building anything.** `state.triage` was keyed by the finding's **array index**
@@ -237,11 +284,11 @@ merely wired. Rule 38: the picture wants a real window.
 
 ### What is next, and it is open
 
-Nothing in chunk 5 is outstanding. Still open and unblocked, untouched by any of it: **the
-change worklist does not yet see an argument change** (`changes.FACTS` compares `calls`
-without them), and `CURIOSITIES` is computed per package by `threads.py` and has never been
-put on screen — most of design rule 15's doorway panel, and it says honestly that it is not
-computed yet.
+Nothing in chunk 5 is outstanding, and the argument gap is closed. Still open and
+unblocked: **the change worklist does not see a rewritten comment** (`changes.FACTS` does
+not compare them at all), left out on Tom's scoping call and wanting its own thought; and
+`CURIOSITIES` is computed per package by `threads.py` and has never been put on screen —
+most of design rule 15's doorway panel, and it says honestly that it is not computed yet.
 
 ### Before that: a finding says what makes it that finding (2026-08-31)
 
@@ -319,8 +366,7 @@ full value.
 
 *Its "next" was chunk 5, blocked on what makes two findings in two versions the same
 finding. That question is answered and all of chunk 5 is built — see the top of this file.*
-Still open and unblocked, and untouched by any of it: the change worklist does not yet see
-an argument change (`changes.FACTS` compares `calls` without them).
+*(The argument gap that paragraph named is closed — 2026-09-01, see the top of this file.)*
 
 ### Before that: the call-site arguments (2026-08-31)
 
@@ -345,8 +391,9 @@ over the real tree, and the 235 it catches are all messages with a symbol in the
 paper. On the way it turned out this file and `CLAUDE.md` **both named the wrong tree** to
 verify against; see "How to verify", which now names the pair.
 
-Honestly absent: the change worklist does not yet see an argument change (`changes.FACTS`
-compares `calls` without them), and the boot figure is withdrawn for this session rather
+Honestly absent at the time: the change worklist did not yet see an argument change
+(`changes.FACTS` compared `calls` without them) — closed 2026-09-01 — and the boot figure is
+withdrawn for this session rather
 than reported — four runs of identical work spanning 16 s to 135 s at 3% CPU is not a
 measurement (rule 24). Every request timing against the running server is inside budget.
 

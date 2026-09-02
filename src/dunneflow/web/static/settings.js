@@ -405,7 +405,16 @@ const DEFAULTS = {
   hideInferred: false,
   colWidths: { q: 26, why: 30, fan: 5, chg: 7 },  // the columns the routine list can fill
   // today; lines/returns/params/touches come back with an endpoint that serves them
-  insp: { in: true, out: true, touches: true, gov: true, sig: false },
+  /* `value` open because it is the whole point of a constant's pane; `reads` closed because
+     it states a limit rather than a finding, and a caveat that opens itself every time
+     reads as the answer. Both are named here rather than left to `state.insp[key]` being
+     `undefined`: an unlisted key toggles from nothing on its first click -- so it starts
+     closed whatever it wanted -- and "Collapse all" cannot see it until someone has opened
+     it once. `holds`, the fold pane's section, is in exactly that position and has been
+     since it was written; noted here rather than changed, because its default is a decision
+     about that pane and not about this one. */
+  insp: { in: true, out: true, touches: true, gov: true, sig: false,
+          value: true, reads: false },
   sortKey: 'fan',
   sortAsc: false,
 

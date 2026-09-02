@@ -23,6 +23,14 @@
 let ENTRYPOINTS = [];   // ways in, deduplicated and ranked by reach
 let BOUNDARIES  = [];   // boundary kinds with counts and their commonest target
 let PKGS        = [];   // top-level packages by routine count
+/* The program's own namespace -- `mensores` -- measured by the server over every module and
+   sent with the cover, so it is known before anything renders. What a narrow field drops
+   first, because it is the one part of a module path that is the same on every row.
+
+   This was a `Set` of package ids and the lookup was "the first segment that names a
+   package", which never stripped anything: `mensores` is a package too. Replaced rather
+   than patched -- the packages were never the right instrument for this question. */
+let ROOT        = "";
 let TABLES      = [];   // declared tables, busiest first
 /* Every routine, each carrying the graph's own node id. Loaded on demand by
    `loadRoutines()` and read by two things: the navigator's routine list and table mode.
@@ -394,7 +402,21 @@ const state = {
    * not exist in the next program opened. */
   changeBand: "added",
   triage: {},              // finding id -> "ack" | "notbug" | "tooldefect"
-  insp: { in: true, out: true, touches: true, gov: true, sig: false },
+  /* **`settings.js` owns these, and this is a copy of them.** It was a second literal
+     spelling the same five keys, and the second copy is dead: `adoptSettings` overwrites
+     every persisted key with `state[k] = settings[k]`, so what a reader sees is always
+     `DEFAULTS.insp` merged with their saved blob and never this line.
+
+     Found by editing the wrong one. Two new sections were added here, the page was opened,
+     and both rendered `data-open="undefined"` -- closed, with the value box inside one of
+     them measuring `clientHeight: 0`. Nothing failed and nothing was logged; the literal
+     that does not win looks exactly like the literal that does. Rule 51, in the settings
+     rather than at a call site: a rule kept in two places rots as one of them is edited.
+
+     Spread rather than referenced, because a shared object is worse than a copy here --
+     toggling a section would write through into `DEFAULTS` and a reset would then restore
+     what the reader had just changed. */
+  insp: { ...window.DunneFlowSettings.DEFAULTS.insp },
   aiOps: { harvest: true },
   egress: "off",
   showManifest: false,
@@ -4064,6 +4086,28 @@ function viewChanges() {
        The button is drawn whichever way the group is open, because "showing six of 23" and
        "showing all 23" are both answers: a control that appears only while something is
        hidden makes the unfolded state look like the only state there has ever been. */
+    /* **A presence row that can be opened, where there is something to open.**
+     *
+     * Every one of these was a bare `<code>`: the line said `Constants ◈7` and named seven
+     * constants, and not one of them could be reached -- design rule 16's dead control
+     * wearing a label instead of a button. The band whose whole point is *this is not
+     * constant any more* was the least actionable thing on the page.
+     *
+     * The id and the route come from the server (`PRESENCE`), never from the printed name.
+     * Building `const:` + a label in here would be constructing an identity out of a
+     * label, which is rule 30 with the arrow reversed -- and it would silently produce a
+     * link to nothing for the two kinds whose label is not their id.
+     *
+     * A row with no route stays text, and that is the honest half: a way in has no subject
+     * this table can carry, so it gets no affordance rather than a button that does
+     * nothing. */
+    const presName = (x) => {
+      const label = esc(String(x.label == null ? x : x.label));
+      if (!x || !x.nav || !x.id) return `<code>${label}</code>`;
+      return `<button class="linkbtn presname" data-nav="${esc(x.nav)}"
+        data-navid="${esc(x.id)}"><code>${label}</code></button>`;
+    };
+
     const group = (n, cls, sign, names, which) => {
       if (!n) return "";
       const key = name + ":" + which;
@@ -4076,7 +4120,7 @@ function viewChanges() {
                                              : rest.toLocaleString() + " more \u25b8"}</button>`
         : "";
       return `<span class="presgroup"><b class="${cls}">${sign}${n}</b> ${
-        shown.map(x => `<code>${esc(String(x))}</code>`).join(" ")}${more}</span>`;
+        shown.map(presName).join(" ")}${more}</span>`;
     };
     const parts = [
       group(arrived.length, "tone-new", "+", arrived, arrivedBand),
@@ -5919,7 +5963,7 @@ function detailFlowCol(side, rows, total, noun, empty) {
           ${r.id
             ? `<button class="dflow-go" data-detail="${esc(r.id)}"
                  title="${esc(r.qualname || r.name || "")}">${esc(r.name || r.callee_expr)}${
-                 r.module ? `<span class="dim">${esc(moduleTail(r.module))}</span>` : ""}</button>`
+                 r.module ? `<span class="dim">${esc(moduleLabel(r.module, MODULE_BUDGET_FLOW).text)}</span>` : ""}</button>`
             : `<span class="dflow-dead" title="${esc(r.callee_expr || "")}">${
                  esc(r.name || r.callee_expr)}${
                  r.at_boundary ? `<span class="dim">at the boundary</span>`
@@ -5940,6 +5984,31 @@ function detailFlowCol(side, rows, total, noun, empty) {
 }
 
 const DETAIL_FLOW_SHOWN = 12;
+
+/* How many characters a module gets, per field, and each is that field's own width.
+ *
+ * `.navsub` is `max-width: 11rem` at `font-size: .64rem` (tokens.css). 30 is what the
+ * shortening it replaces was already producing there and fitting -- `…disceptator.
+ * _extraction_state` is 30 -- so it is a measured calibration rather than a guess, and with
+ * the program root dropped it now shows **81% of Mensores' 566 modules whole**.
+ *
+ * `.dflow-go .dim` sits in the detail window's flow column, which is `overflow-wrap:
+ * anywhere` rather than clipped -- it wraps instead of cutting. So this budget buys
+ * tidiness rather than fit, and it is looser for that reason: nothing is lost when it is
+ * exceeded, and a wrapped second line in a three-column modal is not the same cost as a
+ * clipped one in a rail. */
+const MODULE_BUDGET_NAV = 30;
+const MODULE_BUDGET_FLOW = 34;
+
+/* How much of a constant's value the hover card shows before it stops and says so.
+ *
+ * Six lines of the card at its widest -- `.navcard` is `max-width: min(34rem, 50vw)` and
+ * `.hc-value` is `.72rem` monospace, so a line holds about forty characters at the default
+ * root size. Six is what the three-line clamp this replaces was worth plus room to see a
+ * value has structure, and it is above the **median constant, which is 34 characters**:
+ * most values are therefore shown whole and say nothing about being cut, because they are
+ * not. 739 of 2,638 are longer than one line and 301 longer than this. */
+const CARD_VALUE_CHARS = 240;
 
 function detailPanel() {
   if (!state.detail) return "";
@@ -7048,10 +7117,17 @@ function callBadge(c) {
 
 /* Never a silent omission (design rule 1, and `LOST_EDGE` in another key). A list that has
  * been cut says so, in counts, with the whole number beside the shown one. */
+/* The sentence, without the box around it. Two surfaces say this -- a pane in `.hint`, a
+   card in `.hc-more` -- and they must say it the same way: two formulations of one fact is
+   the defect the topbar's three filter notes were just unified out of. The wrapper differs
+   because the surfaces differ; the words do not (rule 51). */
+function cutWords(shown, total, what) {
+  return `Showing ${shown.toLocaleString()} of ${total.toLocaleString()} ${what}.`;
+}
+
 function cut(shown, total, what) {
   if (shown >= total) return "";
-  return `<div class="hint" style="margin-top:.35rem">Showing ${shown} of
-    ${total.toLocaleString()} ${what}.</div>`;
+  return `<div class="hint" style="margin-top:.35rem">${cutWords(shown, total, what)}</div>`;
 }
 
 /* What a thing reaches outside itself, as rows. One renderer, because a routine and a
@@ -7303,6 +7379,162 @@ function viewInspectorFlow(s) {
     </div>`;
 }
 
+/* ── a constant, described as what it holds ──────────────────────────────
+ *
+ * **The value was not on this pane at all**, and what stood where it belongs was three
+ * sentences that cannot be true of a constant. Selecting `GOVERNED_GATES` -- 8,586
+ * characters, the largest named value in the corpus -- rendered the routine-shaped pane:
+ *
+ *     In  0       Nothing in this map calls it. That is either a way in, dead code, or a
+ *                 call DunneFlow cannot see -- a dynamic dispatch, or a language it does
+ *                 not read.
+ *     Out 0       It calls nothing this map can see.
+ *     Touches 0   It touches no boundary, table, remote or named file. Everything it
+ *                 does, it does in memory.
+ *
+ * A constant is not a routine. It cannot be a way in or dead code, it calls nothing by
+ * construction, and it does nothing in memory. Three answers, each *plausible*, each
+ * inviting the reader to conclude the analysis had failed on a thing it had read
+ * perfectly -- and the 8,586 characters it had read were the one thing absent. Rule 30's
+ * shape one level up: not a label standing in for an identity, but a **kind** standing in
+ * for another kind, which the routing above now stops.
+ *
+ * **What reads a constant is not a relation this map holds**, and that is said rather than
+ * left as an empty section. The store has no table pairing a routine with a constant it
+ * mentions -- `calls` is about calls -- so "nothing uses it" is a claim nothing here can
+ * make. An absent connection stated is `LOST_EDGE`'s discipline in a pane: a missing
+ * relation must be visible, or a program documents as a smaller one that works.
+ */
+/* The moved row for one constant, or `null`.
+ *
+ * Read out of `CHANGES` rather than fetched, exactly as `routineChange` reads it to mark a
+ * navigator row: the comparison has already been made and holds both values, and asking
+ * `/api/node` for them would make it answer about two versions when the whole design says
+ * it answers about the base. One source, one answer (rule 51).
+ *
+ * Not indexed. A `Map` is what `routineIndex()` builds because it is asked 4,786 times per
+ * repaint; this is asked once, for the one constant on screen, against a list that is seven
+ * rows long on Mensores' pair. An index here would be the cache rule 52 warns about --
+ * work done to avoid work that was never being done. */
+function constantMoved(nodeId) {
+  if (!comparing() || !CHANGES || CHANGES.loading || !CHANGES.available) return null;
+  const rows = ((CHANGES.presence || {}).constants || {}).moved || [];
+  return rows.find(r => r && r.id === nodeId) || null;
+}
+
+/* What moved, when the reader is holding this version against another.
+ *
+ * **The band's whole claim is that the thing is not constant any more**, and until this
+ * existed the claim was made by a name and nothing else: `EXPECTED_SCHEMA_VERSION` moved,
+ * with no way to learn that it went from 27 to 28 without opening two versions of the file.
+ *
+ * **Both sides are named by which version they are, and by nothing else.** `added` and
+ * `deleted` are not available here and their absence is the point: a constant in this band
+ * is declared in *both* versions, so neither side arrived and neither left. `diffWords()`
+ * is deliberately not consulted -- it answers which end the reader takes to be newer, which
+ * is an assumption, and a value that moved has no direction for it to colour. `◈` and no
+ * sign, the same mark and the same reasoning the presence line uses for this band.
+ *
+ * **It says which of the three moved.** A constant is a value, a type and a finality, and
+ * two of those can change while the value does not: `X: Final[int] = 1` becoming
+ * `X: int = 1` moves twice and prints the same `1` on both sides. Without the line saying
+ * so, that reads as two identical values under a heading claiming they differ -- rule 13 in
+ * a pane, where the evidence shown must be what produced the claim.
+ *
+ * Bounded by nothing. This is the pane rule 8 sends a reader *to*; the card is the surface
+ * that abbreviates, and it can only do that because this one does not. */
+function movedBody(m) {
+  if (!m) return "";
+  const what = (m.moved || []).join(" and ") || "something";
+  const side = (label, text) => `
+    <div class="constside">
+      <div class="constside-k mono">${esc(label)}</div>
+      <pre class="constval mono">${esc(String(text == null ? "" : text))}</pre>
+    </div>`;
+  const short = (r) => String(r || "?").replace("T", " ").replace("Z", "");
+  return `
+    <div class="constmoved">
+      <div class="hint"><b class="tone-moved">◈ ${esc(what)} differs</b> between the two
+        versions. It is declared in both, so it was neither added nor deleted — what it
+        holds has moved, which is the one thing a name on its own cannot say.</div>
+      ${side(`${short(CHANGES.base)} — the version on screen`, m.base)}
+      ${side(`${short(CHANGES.compared)} — held against it`, m.compared)}
+    </div>`;
+}
+
+function viewInspectorConstant(s) {
+  const id = s.identity || {};
+  const value = String(id.value == null ? "" : id.value);
+  const comments = ((s.governance || {}).comments) || [];
+  const moved = constantMoved(s.id);
+
+  /* **Whole, and it scrolls.** This is the one surface that shows a value entire, which is
+     what lets the card bound itself and say so: rule 8 allows abbreviation only where the
+     complete content sits beside it, and this pane is where "beside it" lives. The box caps
+     its height in `tokens.css` rather than its content -- nothing is cut, so nothing here
+     has a count to state. */
+  const measure = `<div class="hint">${value.length.toLocaleString()} characters, shown
+    whole${value.includes("\n") ? "" : " on the one line the source declares"}.</div>`;
+
+  /* **The value once, never twice.** Where the constant has moved, `movedBody` already
+     draws this version's value in a labelled box beside the other one -- so drawing it
+     again underneath gave three boxes reading 28, 27, 28, and a reader who has to check
+     whether the first and third are the same has been handed a puzzle rather than an
+     answer. The measure stays either way: it is about this version's value and is true on
+     both paths. */
+  const valueBody = !value
+    /* A constant the extractor recorded with no value is a real case and not an empty
+       string: `_literal` declines what it cannot unparse. Naming it beats printing
+       nothing, which reads as a value of "" (design rule 21 in a section). */
+    ? `<div class="hint">No value was recorded. The declaration is in the source, but its
+       right-hand side is not something the extractor could write down as a literal.</div>`
+    : moved
+      ? measure
+      : `<pre class="constval mono">${esc(value)}</pre>${measure}`;
+
+  const whyBody = comments.length
+    ? comments.map(c => `<div class="why"><span class="ln">:${c.line}</span> ${
+        esc(c.text)}</div>`).join("")
+    : `<div class="hint">No comment says why it is this value. 1,047 of Mensores' 2,638
+       named values carry one; this is not among them.</div>`;
+
+  const tags = [
+    id.is_final ? `<span class="kind-tag">FINAL</span>` : "",
+    id.private ? `<span class="kind-tag">PRIVATE</span>` : "",
+    id.type ? `<span class="kind-tag mono">${esc(String(id.type))}</span>` : "",
+  ].filter(Boolean).join("");
+
+  return `
+    <div class="insp-head">
+      <h2>${breakable(`${id.module || ""}.${id.name || s.label || ""}`)}</h2>
+      <div class="loc">${esc(id.file || "")}${id.line ? `:${id.line}` : ""} ${
+        gotoCodeBtn(id.file, id.line)}</div>
+      <div class="tags">
+        <span class="badge certain">ANALYZED</span>
+        <span class="kind-tag">CONSTANT</span>
+        ${tags}
+        <span style="margin-left:auto;display:flex;gap:.3rem">
+          ${pinBtn(`${id.module || ""}.${id.name || ""}`,
+                   `${value.length.toLocaleString()} characters`)}
+        </span>
+      </div>
+    </div>
+    ${sec("value", "Value", null, movedBody(moved) + valueBody)}
+    ${sec("gov", "Why", comments.length, whyBody)}
+    ${sec("reads", "What reads it", null, `<div class="hint">Not a question this map can
+       answer. DunneFlow records what a program <em>calls</em> and what it <em>touches</em>;
+       it keeps no relation between a routine and a constant it mentions, so an empty answer
+       here would be a claim nothing measured. The source search finds every mention of
+       <code>${esc(id.name || "")}</code> as text.</div>`)}
+
+    <div class="insp-actions">
+      <button class="actbtn" id="srcBtn">${s.source && s.source.available
+        ? `Show source · ${(s.source.lines || []).length} lines`
+        : "Source not stored"} <span class="k">S</span></button>
+      <div id="srcPane" hidden>${srcPane(s)}</div>
+    </div>`;
+}
+
 /* The one button that goes to the code, wherever it is drawn. A file with no line still
  * opens the file; a fold with neither renders nothing at all rather than a control that
  * cannot do anything (design rule 16). */
@@ -7343,6 +7575,10 @@ function viewInspector() {
      no params and no `where`, so every line below reads a routine's shape off a thing that
      is not one. Routed on the kind, from the same table. */
   if (s.kind === "FLOW") return viewInspectorFlow(s);
+  /* And a constant, for the same reason and above the same line. It has no callers, no
+     calls and no touches, so every section below reads a routine's shape off a thing that
+     has not got one -- and, worse, *answers*: see `viewInspectorConstant`. */
+  if (s.kind === "CONSTANT") return viewInspectorConstant(s);
 
   const id = s.identity || {};
   const inn = s.in || { callers: [], entrypoints: [] };
@@ -8896,7 +9132,7 @@ function routineList() {
              map is one allocation per routine, which is rule 45's shape on the pane that
              repaints on every keystroke. */""}
         ${g.rows.map(r => navItemHtml({
-            nav: "routine", label: r.name, sub: moduleTail(r.module), sel: r.id,
+            nav: "routine", label: r.name, sub: moduleLabel(r.module, MODULE_BUDGET_NAV).text, sel: r.id,
             n: routineFan(r.id), qual: `${r.module}.${r.name}`, card: true,
             current: rowMarks.has(r.id),
             /* Read, never asked for. `routineChip` answers "" until something else has
@@ -8927,16 +9163,150 @@ function routineFan(id) {
   return `${c.in}\u2190 ${c.out}\u2192`;
 }
 
-/* The last two segments of a dotted module path.
+/* \u2500\u2500 one shortening, and it keeps both ends \u2500\u2500
  *
- * The whole path was shown, clipped from the left with `direction: rtl`, which renders as
- * garbage the moment punctuation is involved -- `mensores._internal._cwd_guard` came out as
- * "...ores_internal_cwd_guard", a string that is not in the program anywhere. Better to
- * choose which part to show than to let the browser cut one arbitrarily; the full path is
- * on the row's title either way. */
-function moduleTail(module) {
-  const parts = String(module).split(".");
-  return parts.length > 2 ? "\u2026" + parts.slice(-2).join(".") : module;
+ * Asked for at the keyboard: *many of the things we attempt to display are actually too
+ * large for their fields. We must choose the portion that shows as much uniqueness as
+ * possible.* Neither end alone is that portion. `mensores.storage._audit` and
+ * `mensores.capture._audit` share a leaf; `mensores.storage._audit` and
+ * `mensores.storage._queue` share a head. Only keeping **both** tells the two pairs apart,
+ * so what goes is the middle.
+ *
+ * This replaces `moduleTail`, which kept the last two segments and is the reason that
+ * choice is worth stating: a leaf-only rule renders those first two as the same string.
+ *
+ * **Whole segments, never mid-token.** A qualified name has joints -- `.` between module
+ * parts, `/` between path parts -- and cutting *between* them leaves a string that exists
+ * in the program with a piece visibly removed. Cutting *through* one leaves
+ * `...ores_internal_cwd_guard`, which exists nowhere; that was `direction: rtl` letting the
+ * browser choose, and it is the defect this function was extracted from.
+ *
+ * **The budget is the caller's**, because it comes from the width of the caller's own
+ * field. CSS keeps its `text-overflow: ellipsis` underneath as a backstop for the window
+ * width this arithmetic did not predict (rule 53) -- a budget alone is right at one window
+ * size. `selfCheck` asserts the backstop never fires.
+ *
+ * Returns the count as well as the text: a caller that cannot say how much it cut cannot
+ * obey design rule 1, and `moduleTail` could not -- it shortened to a fixed two segments
+ * and told nobody, in either of the two places it was used.
+ */
+const ELLIPSIS = "\u2026";
+
+function shorten(text, budget) {
+  const s = String(text == null ? "" : text);
+  if (s.length <= budget) return { text: s, cut: 0 };
+
+  /* `/` wins where a string has both, because `mensores/storage/_audit.py` is jointed at
+     its slashes and the dot in `.py` is not a joint -- splitting on it yields two parts,
+     which sends a path down the character branch and cuts it mid-segment. */
+  const sep = s.includes("/") ? "/" : s.includes(".") ? "." : "";
+
+  /* Both ends of one token, at a character. The unit changes and the rule does not.
+     Returns text only; the three places that reach it wrap it differently. */
+  const squeeze = (str, room) => {
+    const keep = room - ELLIPSIS.length;
+    /* No room for two ends and a mark between them. The mark alone, never a bare head: a
+       silently cut string reads as the whole one, which is the claim design rule 1 exists
+       to stop a field from making. */
+    if (keep < 2) return ELLIPSIS;
+    const head = Math.ceil(keep / 2);
+    return str.slice(0, head) + ELLIPSIS + str.slice(-(keep - head));
+  };
+  const done = (out) =>
+    out.length >= s.length ? { text: s, cut: 0 } : { text: out, cut: s.length - out.length };
+
+  /* One token, no joints -- a value, an expression, a bare identifier. */
+  if (!sep) return done(squeeze(s, budget));
+
+  const parts = s.split(sep);
+  const leaf = parts[parts.length - 1];
+
+  /* **Drop whole segments from the middle first**, growing both runs while they fit. A run
+     may only grow while at least one segment is still being elided: an `\u2026` standing for
+     nothing is punctuation pretending to be a fact. Two segments have no middle, so this
+     yields nothing and the next step answers. */
+  const build = (l, h) =>
+    parts.slice(0, l + 1).join(sep) + sep + ELLIPSIS + sep + parts.slice(h).join(sep);
+
+  if (parts.length >= 3) {
+    let l = 0, h = parts.length - 1;
+    for (;;) {
+      const canHead = h - l > 2 && build(l + 1, h).length <= budget;
+      const canTail = h - l > 2 && build(l, h - 1).length <= budget;
+      if (!canHead && !canTail) break;
+      /* Ties go to the tail. Both ends are kept by this rule, but where only one can grow
+         it is the leaf that most often carries the name a reader is hunting. */
+      if (canTail && (!canHead || parts.length - h <= l)) h--;
+      else l++;
+    }
+    const out = build(l, h);
+    if (out.length <= budget) return done(out);
+  }
+
+  /* **No middle segment left to drop, so the cut goes inside a token -- and it goes inside
+     the head, not the leaf.**
+   *
+   * The first version cut across the whole string, which spends the damage on whichever end
+   * the arithmetic happened to reach: `disceptator._anthropic_architect` came out as
+   * `disceptator._an\u2026opic_architect`, keeping a package name the navigator already prints as
+   * the group heading and breaking the one part that separates this row from the others in
+   * it. Tom's rule names the leaf as where uniqueness usually sits, so the leaf is what is
+   * protected: `disc\u2026ator._anthropic_architect`, both ends still present, one token broken
+   * instead of two.
+   */
+  const headRun = parts.slice(0, -1).join(sep);
+  const room = budget - leaf.length - sep.length;
+  if (headRun && room >= ELLIPSIS.length + 2) {
+    return done(squeeze(headRun, room) + sep + leaf);
+  }
+
+  /* **The leaf alone is wider than the field** -- 110 of Mensores' 566 modules, whose last
+     segment is a 41-character migration name. Nothing can keep it whole, so it takes the
+     same treatment: both its ends, its middle elided, behind the first segment and a mark
+     for everything dropped between them.
+
+     Two ellipses in one string is not elegant and it is the honest shape. Letting CSS clip
+     the tail instead would drop the migration number -- the only part that tells these rows
+     apart -- and would do it without a mark. */
+  const keptHead = parts.length >= 3 ? parts[0] + sep + ELLIPSIS + sep : headRun + sep;
+  const leafRoom = budget - keptHead.length;
+  if (leafRoom >= ELLIPSIS.length + 2) return done(keptHead + squeeze(leaf, leafRoom));
+
+  /* **Narrower than one segment and a mark**, so nothing structural survives and the whole
+     string is squeezed to the field: both its ends, everything between them gone. It always
+     fits, which is the entire job of a last step.
+
+     This branch was a floor -- `Math.max(4, room)` -- which guaranteed the opposite: with a
+     head already wider than the field, it added four more characters and returned a string
+     twice the budget. Caught by asserting the budget across every width from 8 up rather
+     than at the two the fields actually use, which is the range rule 53 is about. */
+  return done(squeeze(s, budget));
+}
+
+/* A module as a field shows it: the program's own root dropped, then shortened.
+ *
+ * **All 566 of Mensores' modules begin `mensores.`**, so a rule that keeps the head would
+ * spend its first nine characters on a word that is identical on every row -- and, for a
+ * three-segment module, would elide the *package* to keep it. `mensores.disceptator.
+ * _extraction_state` becomes `mensores.\u2026.\_extraction_state`: the useless half kept, the
+ * informative half thrown away.
+ *
+ * `ROOT` comes from `/api/cover`, measured over every module in the store, so it is the
+ * same for every field on every surface (rule 24) and known before anything renders.
+ *
+ * **`startsWith` on the whole prefix, not a search for a segment.** The first attempt asked
+ * which segment named a package and stripped everything before it, which stripped nothing
+ * at all: `mensores` is itself a package -- the modules directly under it belong to one --
+ * so it matched at position 0 every time. It threw nothing, logged nothing, and left 1,019
+ * navigator rows reading `mensores.\u2026.\_advance_gate`; found by looking at them.
+ *
+ * Stripped and *then* budgeted, so the modules that now fit are shown whole rather than
+ * shortened to make room for a prefix nobody needed -- 81% of Mensores' 566 at the
+ * navigator's width. */
+function moduleLabel(module, budget) {
+  const s = String(module == null ? "" : module);
+  const pre = ROOT ? ROOT + "." : "";
+  return shorten(pre && s.startsWith(pre) ? s.slice(pre.length) : s, budget);
 }
 
 /* ══ the code browser ═══════════════════════════════════════════════════════════════
@@ -10635,6 +11005,7 @@ async function loadCover() {
   ENTRYPOINTS = d.entrypoints || [];
   BOUNDARIES  = d.boundaries  || [];
   PKGS        = d.packages    || [];
+  ROOT        = d.root || "";
   TABLES      = d.tables      || [];
   STATS       = Object.assign({}, d.stats, { anomalies: d.anomalies, program: d.program,
                                              vocabulary: d.vocabulary || null });
@@ -11743,10 +12114,25 @@ function hoverDetailHtml(card, needWhere) {
     bits.push(`<div class="hc-meas">${esc(card.struct_kind || "")}${
       card.fields ? ` · ${card.fields} field${card.fields === 1 ? "" : "s"}` : ""}</div>`);
   } else if (card.kind === "CONSTANT") {
-    /* Whole, never shortened here. Rule 8 is about ingest, but a value cut in the one place
-       a reader looks at it is the same loss one layer later; the box clamps it visually and
-       the full text stays in the DOM. */
-    bits.push(`<div class="hc-meas mono hc-value">${esc(String(card.value || ""))}</div>`);
+    /* **Bounded, and it says by how much.** This put the whole value in the DOM and let CSS
+       clamp it to three lines -- which is a filter with nothing on screen to say a filter
+       ran (design rule 1), sitting inside the card that exists to answer *what is this*.
+       `GOVERNED_GATES` is 8,586 characters and the card showed about 240 of them, silently,
+       looking exactly like a constant whose value is 240 characters long.
+       The remedy is not to show more: it is to say what was cut and where the rest is.
+
+       **Characters, not lines, and the difference is a claim.** Every value in `constants`
+       reaches the store through `_literal`, which is `ast.unparse`, so **not one of
+       Mensores' 2,638 carries a newline** -- the wrapping on screen is the card's, not the
+       program's. "94 more lines" would be a fact about this pane reported as a fact about
+       the source (rule 32). */
+    const v = String(card.value || "");
+    const shown = v.slice(0, CARD_VALUE_CHARS);
+    bits.push(`<div class="hc-meas mono hc-value">${esc(shown)}</div>`);
+    if (v.length > CARD_VALUE_CHARS) {
+      bits.push(`<div class="hc-more">${cutWords(CARD_VALUE_CHARS, v.length, "characters")}
+        Click for the whole value.</div>`);
+    }
   }
 
   if (card.touches && card.touches.length) {

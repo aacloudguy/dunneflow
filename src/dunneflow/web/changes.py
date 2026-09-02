@@ -53,7 +53,7 @@ from __future__ import annotations
 import re
 import sqlite3
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 # The one language-specific question this module asks, and it asks it by name rather than
 # by importing a parser: are these two writings the same expression. See `canonical/` --
@@ -322,11 +322,40 @@ SELECT y.id AS o FROM {A}.routines x JOIN {B}.routines y ON y.id = x.id
 # Named files printed real filenames. A label is not an identity (rule 30) and neither is
 # an identity a label; where they differ, both are named here rather than one standing in
 # for the other.
-PRESENCE: dict[str, tuple[str, str]] = {
-    "db_tables":   ("name", "name"),
-    "entrypoints": ("id", "name || ' — ' || module"),
-    "artefacts":   ("name", "name"),
-    "constants":   ("module || '.' || name", "module || '.' || name"),
+# The **subject** is what the reader can act on, and it is a third thing again. A row that
+# names something and cannot open it is design rule 16's dead control with a label on it;
+# `group()` in the shell rendered every one of these as a bare `<code>`, so a constant whose
+# value had moved could be read and never reached.
+#
+# `nav` names the route and `subject` is what that route consumes, because the four are not
+# one shape -- the same discovery rule 30 records about the navigator. A constant and a
+# named file are **nodes** and select as themselves. A table is not a node at all, so its
+# route selects the code that reads and writes it, and the subject is the table's name. A
+# way in has neither: its route wants the routines it *starts*, `ways_in()` computes them,
+# and this table has no access to them -- so it declares no subject and the shell prints it
+# as text. Inventing an id to make that row clickable would be a link to nothing, which is
+# the sentence `queries.py` wrote down before anything needed it.
+class Presence(NamedTuple):
+    key: str      # identity across the two revisions
+    label: str    # what is printed
+    nav: str      # the navigator route, "" where the row cannot be acted on
+    subject: str  # SQL for what that route consumes, "" with nav
+
+
+#
+# **One residue, stated rather than discovered.** The `chg` route reads its ids through
+# `navIds`, which splits `data-navid` on a space -- it was written for a route that can
+# carry several. A *named file* is the one subject here whose name can contain one, and such
+# a row would resolve to two ids that name nothing. Mensores has 0 of them, and a constant's
+# `module.name` cannot hold a space at all, so the corpus does not exercise it; it is
+# recorded because the next artefact-bearing corpus might, and because the fix belongs to
+# `navIds` rather than here.
+PRESENCE: dict[str, Presence] = {
+    "db_tables":   Presence("name", "name", "t", "name"),
+    "entrypoints": Presence("id", "name || ' — ' || module", "", ""),
+    "artefacts":   Presence("name", "name", "chg", "'art:' || name"),
+    "constants":   Presence("module || '.' || name", "module || '.' || name",
+                            "chg", "'const:' || module || '.' || name"),
 }
 
 
@@ -703,7 +732,30 @@ def _moved_prose(conn: sqlite3.Connection, A: str, B: str, sql: str) -> set[str]
             and _prose(here.get(k, "")) != _prose(there.get(k, ""))}
 
 
-def _constants_moved(conn: sqlite3.Connection, A: str, B: str) -> list[str]:
+def _presence_side(conn: sqlite3.Connection, table: str, p: Presence,
+                   *, frm: str, notin: str) -> list[dict[str, Any]]:
+    """One side of a presence band: what `frm` has that `notin` has not.
+
+    Rows carry all three of the things `PRESENCE` separates -- the label that is printed,
+    the id the route consumes, and the route itself -- rather than leaving the shell to
+    derive any from the others. Building `const:` + a printed name in the browser would be
+    constructing an identity out of a label, which is rule 30 with the arrow reversed.
+
+    `nav` is empty wherever the kind declares no subject, and the shell prints those rows as
+    plain text. A row that looks live and does nothing is the worse of the two failures
+    (design rule 16), so the absence is carried rather than papered over with a route that
+    would resolve to nothing.
+    """
+    subject = p.subject or "NULL"
+    return [
+        {"label": r[0], "id": r[1], "nav": p.nav if r[1] else ""}
+        for r in conn.execute(
+            f"SELECT {p.label}, {subject} FROM {frm}.{table} "
+            f"WHERE {p.key} NOT IN (SELECT {p.key} FROM {notin}.{table}) ORDER BY 1")
+    ]
+
+
+def _constants_moved(conn: sqlite3.Connection, A: str, B: str) -> list[dict[str, Any]]:
     """Constants both versions declare, holding something different.
 
     Named `module.name` -- the same key `PRESENCE` compares them on, so a constant cannot be
@@ -733,7 +785,39 @@ def _constants_moved(conn: sqlite3.Connection, A: str, B: str) -> list[str]:
             for r in conn.execute(CONSTANT_VALUES.format(db=db))
         }
     base, other = held(B), held(A)
-    return sorted(k for k in base.keys() & other.keys() if base[k] != other[k])
+    # **Both values ride with the row**, because the whole claim of this band is that the
+    # thing is not constant any more, and a name alone cannot make it: `EXPECTED_SCHEMA_
+    # VERSION` moved says less than 27 → 28. They are already in hand -- the two maps above
+    # are read to decide the band and were being thrown away -- so this costs a lookup, not
+    # a query.
+    #
+    # `type` and `is_final` are compared and *not* carried. They are part of what "holding
+    # something different" means, and a row that showed only the value while the difference
+    # was a lost `Final` would print two identical strings under a heading saying they
+    # differ -- rule 13, where a claim's evidence must be what produced it. The pane says
+    # which of the three moved instead.
+    # `nav` and the `const:` prefix come from `PRESENCE` rather than being written out here,
+    # because this band and the two presence bands are the same rows reached three ways and
+    # a second spelling of the route is a second thing to get wrong. It was: these rows were
+    # built with a label and an id and **no route at all**, so the one band whose whole claim
+    # is *this is not constant any more* was the one band a reader could not open -- 23 of
+    # the 30 constant rows clickable and the 7 that mattered not.
+    nav = PRESENCE["constants"].nav
+    return [
+        {
+            "label": k,
+            "id": f"const:{k}",
+            "nav": nav,
+            "base": base[k][0],
+            "compared": other[k][0],
+            "moved": [
+                what for what, i in (("value", 0), ("type", 1), ("final", 2))
+                if base[k][i] != other[k][i]
+            ],
+        }
+        for k in sorted(base.keys() & other.keys())
+        if base[k] != other[k]
+    ]
 
 
 def build(base: Path, compared: Path,
@@ -921,16 +1005,12 @@ def build(base: Path, compared: Path,
         ]
 
         presence = {}
-        for table, (key, label) in PRESENCE.items():
-            # Compared on the key, printed as the label. One row in, one label out, so the
-            # count beside a line and the names under it cannot disagree (rule 13).
+        for table, p in PRESENCE.items():
+            # Compared on the key, printed as the label, acted on by the subject -- three
+            # things, and `_presence_side` carries all three onto every row.
             presence[table] = {
-                "only_in_base": [r[0] for r in conn.execute(
-                    f"SELECT {label} FROM {B}.{table} "
-                    f"WHERE {key} NOT IN (SELECT {key} FROM {A}.{table}) ORDER BY 1")],
-                "only_in_compared": [r[0] for r in conn.execute(
-                    f"SELECT {label} FROM {A}.{table} "
-                    f"WHERE {key} NOT IN (SELECT {key} FROM {B}.{table}) ORDER BY 1")],
+                "only_in_base": _presence_side(conn, table, p, frm=B, notin=A),
+                "only_in_compared": _presence_side(conn, table, p, frm=A, notin=B),
                 # A third state, and only constants have one. The other three are names --
                 # a table, a way in, a file the program names -- and a name either is there
                 # or is not. A constant is a name *and* a value, so "in both, holding

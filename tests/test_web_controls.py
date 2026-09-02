@@ -20,6 +20,7 @@ implementation, which is the failure it was supposed to detect.
 from __future__ import annotations
 
 import itertools
+import json
 import math
 import re
 import shutil
@@ -9105,4 +9106,182 @@ def test_a_file_band_states_a_count_of_one_in_english() -> None:
                   if "b.stat" in body}
     assert everywhere <= printers, (
         f"{sorted(everywhere - printers)} also prints a file band's label and is unchecked"
+    )
+
+
+# --------------------------------------------------------------------------- #
+# Shortening a name to fit a field
+#
+# `shorten()` is the one place that decides which part of a name survives a field too
+# narrow for it, and every abbreviated label in the dashboard is about to go through it.
+# It is behaviour rather than shape, so these run it -- the source scans above cannot see
+# whether the string that comes out is the right one.
+#
+# Skipped rather than required when no engine is present, exactly as the parse check is:
+# DunneFlow ships with **no Node at runtime or build** and that stays true. This uses
+# whatever the developer's machine has and asserts nothing about the product.
+# --------------------------------------------------------------------------- #
+
+def _engine() -> str | None:
+    engine = next((c for c in ("node", "deno", "bun") if shutil.which(c)), None)
+    if engine:
+        return engine
+    jsc = Path("/System/Library/Frameworks/JavaScriptCore.framework"
+               "/Versions/A/Helpers/jsc")
+    return str(jsc) if jsc.exists() else None
+
+
+def _run_shorten(body: str) -> str:
+    """Run `body` with `shorten`, `moduleLabel` and `ELLIPSIS` in scope.
+
+    The functions are sliced out of `shell.js` by name rather than copied here, so a test
+    cannot go on passing against a version of the rule the shell no longer has.
+    """
+    engine = _engine()
+    if engine is None:
+        pytest.skip("no JavaScript engine on this machine to run with")
+    assert engine is not None
+    js = _read("shell.js")
+    start = js.index("const ELLIPSIS")
+    end = js.index("\n/* A module as a field shows it")
+    end = js.index("\n}", js.index("return shorten(", end)) + 2
+    src = js[start:end]
+    assert "function shorten(" in src and "function moduleLabel(" in src, (
+        "shorten/moduleLabel are no longer where this test slices them from"
+    )
+    prog = f'var ROOT = "mensores";\n{src}\n{body}'
+    r = subprocess.run([engine, "-e", prog], capture_output=True, text=True)
+    assert r.returncode == 0, f"the snippet failed:\n{r.stderr}"
+    return r.stdout.strip()
+
+
+# Real names from the corpus, each one chosen because it drove a decision. The budget is
+# the navigator's, which is the field these were calibrated against.
+_MODULES = [
+    "mensores.disceptator._advance_gate",
+    "mensores.disceptator._anthropic_architect",
+    "mensores.storage.sqlite.migrations.0027_repair_session_claims_release_causes",
+    "mensores.cli.audit",
+    "mensores._config",
+    "mensores.quaestor._envelope",
+]
+
+
+def test_a_shortened_name_never_exceeds_its_budget() -> None:
+    """The budget is what the field can hold, so exceeding it is the defect, not a detail.
+
+    CSS keeps `text-overflow: ellipsis` underneath as a backstop for a window width the
+    arithmetic did not predict (rule 53). A backstop that fires routinely is not a backstop:
+    it is the tail-clipping this rule was written to replace, back again and silent.
+    """
+    # Concatenated rather than interpolated: every other snippet here is JavaScript full of
+    # braces, and a `.format()` on one of those is a debugging session about `{`.
+    out = _run_shorten("""
+      var bad = [];
+      var mods = """ + json.dumps(_MODULES) + """;
+      for (var b = 8; b <= 40; b++) {
+        for (var m of mods) {
+          var t = moduleLabel(m, b).text;
+          if (t.length > b) bad.push(b + " " + m + " -> " + t);
+        }
+      }
+      console.log(JSON.stringify(bad));
+    """)
+    assert out == "[]", f"over budget: {out}"
+
+
+def test_a_name_that_fits_is_never_marked() -> None:
+    """A short value must not say it was cut, and must not carry an ellipsis it did not need.
+
+    Design rule 1 runs both ways: a filter states what it removed, and a view that removed
+    nothing may not imply it did. The median constant is 34 characters and most modules fit
+    the navigator whole -- if those wore a mark, the mark would stop meaning anything.
+    """
+    out = _run_shorten("""
+      var r = shorten("cli.audit", 30);
+      console.log(JSON.stringify([r.text, r.cut, r.text.indexOf(ELLIPSIS)]));
+    """)
+    assert out == '["cli.audit",0,-1]'
+
+
+def test_shortening_keeps_both_ends() -> None:
+    """Tom's rule, and the reason `moduleTail` was replaced rather than widened.
+
+    A leaf-only rule renders `storage._audit` and `capture._audit` as the same string; a
+    head-only rule does the same to `storage._audit` and `storage._queue`. Only keeping
+    both tells the two pairs apart, which is what a reader scanning a list is doing.
+    """
+    out = _run_shorten("""
+      var r = shorten("aaa.bbb.ccc.ddd.eee", 12);
+      console.log(JSON.stringify([r.text.startsWith("aaa"), r.text.endsWith("eee"),
+                                  r.text.indexOf(ELLIPSIS) > 0]));
+    """)
+    assert out == "[true,true,true]"
+
+
+def test_the_leaf_survives_where_anything_can() -> None:
+    """The leaf is where uniqueness usually sits, so it is the last thing broken.
+
+    `disceptator._anthropic_architect` was coming out as `disceptator._an…opic_architect`:
+    the package kept whole -- and the navigator already prints it as the group heading --
+    while the one part separating this row from its neighbours was cut in half. The head
+    takes the damage now.
+    """
+    out = _run_shorten("""
+      var r = shorten("disceptator._anthropic_architect", 30);
+      console.log(JSON.stringify([r.text, r.text.endsWith("._anthropic_architect")]));
+    """)
+    assert out.endswith("true]"), f"the leaf did not survive: {out}"
+
+
+def test_a_path_is_jointed_at_its_slashes() -> None:
+    """`.py` is not a joint, and splitting on it cuts a path mid-segment.
+
+    A string holding both separators is a path with an extension, every time. Choosing `.`
+    there gives two parts, no middle to elide, and a cut through a directory name --
+    `mensores/…/_…y` where `mensores/…/_audit.py` was available.
+    """
+    out = _run_shorten("""
+      var r = shorten("mensores/storage/sqlite/_audit.py", 22);
+      console.log(JSON.stringify([r.text, r.text.endsWith("_audit.py")]));
+    """)
+    assert out.endswith("true]"), f"the path lost its file name: {out}"
+
+
+def test_the_program_root_is_dropped_before_anything_that_identifies() -> None:
+    """All 566 of Mensores' modules begin `mensores.`, so it is the first thing to go.
+
+    Keeping it costs nine characters on every row to say what every row says, and for a
+    three-segment module it is kept *instead of* the package -- `mensores.….\\_advance_gate`,
+    which is the useless half retained and the informative half elided.
+
+    `ROOT` is measured by the server over every module (`COVER_ROOT`). The first attempt
+    looked for "a segment that names a package" and stripped nothing at all, because
+    `mensores` is itself a package: it matched at position 0 every time, threw nothing, and
+    left the navigator exactly as it had been.
+    """
+    out = _run_shorten("""
+      console.log(JSON.stringify([
+        moduleLabel("mensores.disceptator._advance_gate", 30).text,
+        moduleLabel("elsewhere.disceptator._advance_gate", 30).text.startsWith("elsewhere"),
+      ]));
+    """)
+    assert out == '["disceptator._advance_gate",true]', out
+
+
+def test_the_cover_states_the_program_root() -> None:
+    """The client may not derive it, and the reason is rule 24.
+
+    A root computed from whatever list is loaded shortens the same module two ways on two
+    surfaces. It is a property of the program, so the server measures it once over every
+    module and says so; a browser that guessed would be guessing per pane.
+    """
+    cover = (Path(__file__).resolve().parents[1] / "src" / "dunneflow" / "web"
+             / "cover.py").read_text(encoding="utf-8")
+    assert '"root": _root(store)' in cover, "the cover no longer sends the program root"
+    js = _read("shell.js")
+    assert "ROOT        = d.root" in js, "the shell no longer reads the root the cover sends"
+    assert "PKG_IDS" not in js, (
+        "PKG_IDS is back; the packages are not the right instrument for the root, because "
+        "the root is itself a package"
     )

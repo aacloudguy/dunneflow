@@ -1354,11 +1354,34 @@ JOIN routines r ON r.id = e.routine_id
 """
 
 
+# The program root: the one leading segment every module shares, or nothing.
+#
+# `COVER_PACKAGES` says it takes the second segment "without knowing the program root", and
+# this is that root, asked for directly. It exists because a field that shortens a module
+# has to know which end carries information: **all 566 of Mensores' modules begin
+# `mensores.`**, so a rule keeping both ends of a name spends its head on a word that is
+# identical on every row -- and, for a three-segment module, elides the *package* to keep
+# it.
+#
+# Grouped rather than assumed. One row means every module agrees and the segment is a root;
+# more than one means the program has several top-level names and there is nothing to strip.
+# `mensores` is itself a package id in `COVER_PACKAGES` -- top-level modules belong to it --
+# which is exactly why "a segment that names a package" is the wrong test and this one is
+# right.
+COVER_ROOT = """
+SELECT CASE WHEN instr(module, '.') = 0 THEN module
+            ELSE substr(module, 1, instr(module, '.') - 1) END AS head,
+       COUNT(*) AS n
+FROM (SELECT DISTINCT module FROM routines)
+GROUP BY head
+"""
+
+
 # Package sizes under the *same* expression the disks use, so the overview and the stack
 # agree about what a package is. `COVER_PACKAGES` answers a different question -- it takes
-# the second segment without knowing the program root -- and two definitions of "package"
-# in one dashboard is how a reader ends up comparing two numbers that were never the same
-# measurement.
+# the second segment without knowing the program root (`COVER_ROOT` now answers that one) --
+# and two definitions of "package" in one dashboard is how a reader ends up comparing two
+# numbers that were never the same measurement.
 PACKAGE_SIZES = f"""
 SELECT {PACKAGE_EXPR} AS pkg, COUNT(*) AS n
 FROM routines

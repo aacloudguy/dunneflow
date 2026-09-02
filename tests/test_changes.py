@@ -315,7 +315,12 @@ def test_a_single_difference_anywhere_is_enough_to_not_be_identical(tmp_path):
     d = changes.build(base=_graph(tmp_path, "b", grown),
                       compared=_graph(tmp_path, "a", BEFORE))
     assert d["identical"] is False
-    assert d["presence"]["constants"]["only_in_base"] == ["m.LIMIT"], d["presence"]
+    assert ([r["label"] for r in d["presence"]["constants"]["only_in_base"]]
+            == ["m.LIMIT"]), d["presence"]
+    # And the row can be opened. A presence row that names a constant and cannot reach it
+    # is design rule 16 with a label on it, which is what every one of these used to be.
+    assert (d["presence"]["constants"]["only_in_base"][0]["id"]
+            == "const:m.LIMIT"), d["presence"]
 
 
 def test_no_band_or_count_is_named_for_a_point_in_time(tmp_path):
@@ -438,7 +443,14 @@ def test_a_constant_whose_value_moved_is_reported(tmp_path):
     d = changes.build(base=_graph(tmp_path, "b", after),
                       compared=_graph(tmp_path, "a", before))
     c = d["presence"]["constants"]
-    assert [k.split(".")[-1] for k in c["moved"]] == ["EXPECTED_SCHEMA_VERSION"], c
+    assert [r["label"].split(".")[-1] for r in c["moved"]] == ["EXPECTED_SCHEMA_VERSION"], c
+    # **Both values ride with the row**, which is the whole claim of this band: the thing
+    # is not constant any more, and a name alone cannot say so.
+    assert [r["base"] for r in c["moved"]] == ["28"], c["moved"]
+    assert [r["compared"] for r in c["moved"]] == ["27"], c["moved"]
+    # And which of the three moved, because a row showing two identical values under a
+    # heading that says they differ is rule 13 in a pane.
+    assert [r["moved"] for r in c["moved"]] == [["value"]], c["moved"]
     # Present in both, so it is in neither presence band. A constant in one band and the
     # other would be one difference reported twice (rule 40).
     assert c["only_in_base"] == [] and c["only_in_compared"] == [], c
@@ -464,8 +476,15 @@ def test_a_constant_whose_type_or_finality_moved_has_also_moved(tmp_path):
     ):
         d = changes.build(base=_graph(tmp_path, f"b_{what}", after),
                           compared=_graph(tmp_path, f"a_{what}", before))
-        moved = [k.split(".")[-1] for k in d["presence"]["constants"]["moved"]]
+        rows = d["presence"]["constants"]["moved"]
+        moved = [r["label"].split(".")[-1] for r in rows]
         assert moved == ["X"], f"a constant whose {what} moved is not reported: {moved}"
+        # The row says *which* of the three moved, and it names the one this case
+        # changed. Matched exactly rather than by substring: "fina" is inside "final"
+        # and inside nothing else here, so a substring test passes on a row that names
+        # only the value and would not notice (rule 59's companion).
+        term = {"type": "type", "finality": "final"}[what]
+        assert term in rows[0]["moved"], (what, rows[0]["moved"])
 
 
 def test_a_constant_rewritten_and_not_changed_has_not_moved(tmp_path):
@@ -1431,3 +1450,57 @@ def test_a_structure_that_did_not_move_is_reported_by_no_lane(tmp_path):
                  "structures_declared", "structures_explained"):
         assert d[lane] == [], lane
     assert d["identical"] is True
+
+
+def test_every_presence_row_can_be_acted_on_or_says_it_cannot(tmp_path):
+    """A row that names something and cannot open it is design rule 16 with a label on it.
+
+    Every band here is a list of things a reader wants to look at, and for a long time all
+    of them rendered as bare text. The fix is only half done if a *band* is missed, and one
+    was: `_constants_moved` built its rows by hand with a label and an id and **no route**,
+    so 23 of the 30 constant rows were clickable and the seven whose value had moved -- the
+    band whose entire claim is *this is not constant any more* -- were not. Nothing failed;
+    the rows simply rendered as text, exactly as every row used to.
+
+    So this asserts the **shape over every band of every kind**, rather than over the two
+    that were written first. `entrypoints` is the one kind that legitimately carries no
+    subject: its route wants the routines a way in starts, and this table cannot reach them.
+    Declared, not inferred -- an empty `nav` is a claim that there is nothing to open, and
+    it has to be as deliberate as a route is.
+    """
+    grown = BEFORE + "\nLIMIT = 5\n"
+    d = changes.build(base=_graph(tmp_path, "b", grown),
+                      compared=_graph(tmp_path, "a", BEFORE))
+
+    routable = {k for k, p in changes.PRESENCE.items() if p.nav}
+    assert routable, "no presence kind declares a route; this guard is blind"
+
+    for kind, bands in d["presence"].items():
+        for band, rows in bands.items():
+            for r in rows:
+                assert set(r) >= {"label", "id", "nav"}, (
+                    f"{kind}.{band} row is not the presence row shape: {r}")
+                if kind in routable:
+                    assert r["nav"] and r["id"], (
+                        f"{kind}.{band} names {r['label']!r} and cannot be opened")
+                else:
+                    assert not r["nav"], (
+                        f"{kind}.{band} claims a route it has no subject for: {r}")
+
+
+def test_a_moved_constant_is_reachable(tmp_path):
+    """The band Tom asked for, checked as a whole row rather than as a name.
+
+    `EXPECTED_SCHEMA_VERSION` moved says less than 27 → 28, and both of those say nothing
+    at all if the row cannot be opened to see them in context.
+    """
+    before = "X: int = 1\n"
+    after = "X: int = 2\n"
+    d = changes.build(base=_graph(tmp_path, "b", after),
+                      compared=_graph(tmp_path, "a", before))
+    moved = d["presence"]["constants"]["moved"]
+    assert len(moved) == 1, moved
+    row = moved[0]
+    assert row["id"] == "const:m.X" and row["nav"], row
+    assert (row["base"], row["compared"]) == ("2", "1"), row
+    assert row["moved"] == ["value"], row

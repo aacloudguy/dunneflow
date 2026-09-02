@@ -25,6 +25,33 @@ from ..store import Store
 from . import queries
 
 
+def _root(store: Store) -> str:
+    """The one leading segment every module shares, or `""` when they do not share one.
+
+    What it is *for*: a field too narrow for a module path has to drop something, and the
+    only defensible thing to drop first is the part that is the same on every row. All 566
+    of Mensores' modules begin `mensores.`, so a head-and-leaf shortening spends nine
+    characters saying nothing and then elides `disceptator` -- the package, the one segment
+    that separates this module from the other 565 -- to afford them.
+
+    **Not "a segment that names a package".** That test was tried and is wrong: `mensores`
+    is itself a package in `COVER_PACKAGES`, because the modules sitting directly under it
+    belong to one, so it matches at position 0 and nothing is ever stripped. It looked
+    right, changed nothing, and reported no error -- found by reading 1,019 rows in the
+    navigator that still said `mensores.….\\_advance_gate`.
+
+    Empty rather than a guess when the program has more than one top-level name, and empty
+    when the shared head is a module in its own right -- stripping `mensores` from the
+    module `mensores` leaves nothing to show. A reader then sees whole module paths
+    shortened by the ordinary rule, which is worse-looking and still true.
+    """
+    heads = [(r["head"], r["n"]) for r in store.query(queries.COVER_ROOT)]
+    if len(heads) != 1:
+        return ""
+    head = str(heads[0][0] or "")
+    return head if head else ""
+
+
 def _lines(source: SourceStore | None, revision: str | None) -> int | None:
     """How many lines were read, from the sidecar that holds them.
 
@@ -105,6 +132,11 @@ def build(store: Store, source: SourceStore | None, program: str, *,
 
     return {
         "program": program,
+        # The program's own namespace, so a narrow field can drop it before it drops
+        # anything that tells two modules apart. A fact about the program, measured once
+        # here rather than inferred per list in the browser -- the same name must shorten
+        # the same way wherever it appears (rule 24).
+        "root": _root(store),
         "stats": {
             "files": counts["files"],
             "lines": _lines(source, revision),

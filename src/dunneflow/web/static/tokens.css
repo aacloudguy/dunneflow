@@ -1260,9 +1260,13 @@ body {
 .hc-rest:empty { display: none; }
 
 .hc-meas { color: var(--text-muted); font-size: .66rem; }
-.hc-value { color: var(--text); overflow-wrap: anywhere;
-            display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;
-            overflow: hidden; }
+/* **No clamp.** This was `-webkit-line-clamp: 3` with `overflow: hidden`, which cut an
+   8,586-character value down to three lines and left nothing on screen to say it had --
+   design rule 1's silent filter, inside the one surface whose whole job is to answer *what
+   is this*. The bound is `CARD_VALUE_CHARS` in the script now, where it can be counted and
+   stated; `.hc-more` beneath carries the sentence. A clamp here as well would cut the cut
+   value a second time, and only one of the two could say so. */
+.hc-value { color: var(--text); overflow-wrap: anywhere; }
 
 .hc-touches { display: flex; flex-wrap: wrap; gap: .2rem .45rem; font-size: .66rem; }
 .hc-t { display: inline-flex; align-items: baseline; gap: .2rem;
@@ -1652,6 +1656,43 @@ table.grid tbody tr[aria-selected="true"] td:first-child { box-shadow: inset .18
 .touchrow .k { font-size: .62rem; font-weight: 700; letter-spacing: .04em; color: var(--text-muted); }
 .touchrow .t { font-family: var(--f-mono); font-size: .72rem; word-break: break-all; }
 .touchrow .gl { text-align: center; }
+
+/* ── a constant's value, whole ──
+ *
+ * **The one place a value is shown entire, and therefore the one place that may scroll.**
+ * The hover card cannot: it is `pointer-events: none` so that it never puts a surface
+ * between the reader and the node they are pointing at, and a scroller needs the pointer.
+ * That decision is kept, and this pane is what it is kept *by* -- the card bounds itself
+ * and says so (design rule 1) because the whole value is one click away, here.
+ *
+ * `max-height` rather than a character bound, because nothing is being cut: the box is a
+ * window onto the whole string, and a reader who scrolls reaches the end. 28rem is about
+ * twenty lines at this size -- enough to see a value has structure, short of filling the
+ * pane with one field. 23 of Mensores' 2,638 values need it; the median is 34 characters
+ * and never reaches it.
+ *
+ * `pre-wrap`, not `pre`: **not one value in the corpus contains a newline** -- `_literal`
+ * unparses them all onto one line -- so `pre` would give a single 8,586-character line and
+ * a horizontal scrollbar, which is the one axis a reader cannot skim. Wrapped, the same
+ * value is twenty legible lines. `anywhere` because the line has no spaces to break at.
+ *
+ * Rule 3: every dimension here is `rem`, so the scale multiplier reaches the box as well as
+ * the type inside it. */
+.constval {
+  margin: .2rem 0 .35rem; padding: .4rem .5rem;
+  max-height: 28rem; overflow: auto;
+  background: var(--sunken); border: 1px solid var(--border); border-radius: .1875rem;
+  font-size: .7rem; line-height: 1.5; color: var(--text);
+  white-space: pre-wrap; overflow-wrap: anywhere;
+}
+
+/* The two versions of a value that moved, stacked rather than side by side. A constant's
+   value is one long line -- 8,586 characters at worst -- and two columns of that in an
+   inspector half a pane wide gives two 20-character gutters, which is the shape that makes
+   a text diff unreadable. Each keeps its own `.constval` box and its own scroller. */
+.constmoved { margin: 0 0 .5rem; }
+.constside + .constside { margin-top: .35rem; }
+.constside-k { font-size: .62rem; color: var(--text-faint); letter-spacing: .04em; }
 
 .govchips { display: flex; flex-wrap: wrap; gap: .25rem; }
 .govchip { font-family: var(--f-mono); font-size: .66rem; padding: .08rem .3rem;

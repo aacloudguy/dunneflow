@@ -2886,3 +2886,11 @@ body.detached-code #trailMount { display: none !important; }
    text baseline: it is a footnote to a count, not a step in the reading. */
 .chgpresence .presmore { font-size: 0.68rem; padding: 0 0.3rem; vertical-align: baseline;
   white-space: nowrap; }
+
+/* The topbar search and its three flags. A wrapper so the flags sit inside the field's
+   visual box rather than beside it in the toolbar's flex row, where they would compete with
+   the revision picker for space. Every dimension in rem (design rule 3). */
+.tb-searchwrap { position: relative; display: flex; align-items: center; flex: 1 1 auto;
+                 min-width: 0; }
+.tb-searchwrap .tb-search { flex: 1 1 auto; min-width: 0; padding-right: 7rem; }
+.tb-searchwrap .srch-flags { position: absolute; right: .35rem; display: flex; gap: .15rem; }

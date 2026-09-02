@@ -219,6 +219,9 @@ const state = {
   diagram: false,         // what is lit, drawn as labelled boxes rather than as dots
   diagramId: null,        // which compartment Diagram mode has open
   diagramPorts: false,    // draw the crossings to other compartments -- see diagram.py
+  navCase: false,         // the topbar's three, matching the Code box's -- see settings.js
+  navWord: false,
+  navRegex: false,
   diagramCursor: "arrow", // 'arrow' | 'crosshair' | 'hand' -- see settings.js
   diagramEdgeWidth: 1,    // user units; scales with the drawing, not with the chrome
   /* Which **box** is open, or null for the compartment. The second altitude of the same
@@ -2411,6 +2414,10 @@ const CODE_ROUTES = {
     }
     state[key] = !state[key];
     persist();
+    /* Both surfaces, because one table routes both sets of flags and only the pane the flag
+       belongs to would otherwise redraw -- `|ab|` going disabled under `.*` is a pressed
+       state that has to move on the topbar as well. */
+    paintNavFlags();
     buildNav();
     /* Immediately, not after the debounce: a click is the reader having finished asking,
        and a pause after one reads as the switch not working. */
@@ -8665,14 +8672,61 @@ function dressNavItems() {
  * Everything it filters is already in memory, so this costs no request per keystroke: that
  * is rule 45's whole subject, and the one lane that *would* cost a request -- the source
  * text -- is offered as a route rather than run. */
-function navMatch(q, ...fields) {
-  if (!q) return true;
-  return fields.some(f => (f || "").toLowerCase().includes(q));
+function navMatch(m, ...fields) {
+  if (!m || m.all) return true;
+  if (!m.ok) return false;            // a broken pattern matches nothing, and says why
+  return fields.some(f => m.test(f));
 }
 
-/* What the reader typed, once, lowered once. Read by every group's `items()`. */
+/* The matcher, **compiled once per keystroke and not once per row.**
+ *
+ * `items()` and `note()` are each called for every group and the predicate for every row --
+ * 5,560 names on Mensores -- so building a `RegExp` inside `navMatch` would compile the
+ * pattern five and a half thousand times per character typed. That is rule 45's own shape:
+ * work proportional to the program on every keystroke. Cached on the query and the three
+ * flags, so every caller in one repaint shares one compile.
+ *
+ * **A broken pattern is an answer, not an absence.** `[unclosed` is a mistake a reader can
+ * see and fix, and reporting it as "nothing matches" says the program does not contain the
+ * thing they asked for -- which is precisely the false conclusion this work began with. The
+ * Code box already says why; this says the same sentence.
+ */
+let navMatcherCache = null;
+function navMatcher() {
+  const q = state.routineQ.trim();
+  const key = `${q}\u0000${state.navCase}\u0000${state.navWord}\u0000${state.navRegex}`;
+  if (navMatcherCache && navMatcherCache.key === key) return navMatcherCache;
+  let m;
+  if (!q) {
+    m = { key, all: true, ok: true, test: () => true };
+  } else {
+    /* Whole word is off while a regex is in force, exactly as in the Code box: a pattern
+       writes its own `\b`, and wrapping one in another pair changes what it means. */
+    const flags = state.navCase ? "" : "i";
+    if (state.navRegex) {
+      try {
+        const re = new RegExp(q, flags);
+        m = { key, ok: true, test: (f) => re.test(f || "") };
+      } catch (err) {
+        m = { key, ok: false, reason: err.message, test: () => false };
+      }
+    } else if (state.navWord) {
+      const re = new RegExp(`\\b${q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, flags);
+      m = { key, ok: true, test: (f) => re.test(f || "") };
+    } else if (state.navCase) {
+      m = { key, ok: true, test: (f) => (f || "").includes(q) };
+    } else {
+      const lower = q.toLowerCase();
+      m = { key, ok: true, test: (f) => (f || "").toLowerCase().includes(lower) };
+    }
+  }
+  navMatcherCache = m;
+  return m;
+}
+
+/* Kept for the groups that still ask for a plain query. */
 function navQuery() {
-  return state.routineQ.trim().toLowerCase();
+  return navMatcher();
 }
 
 /* What a filtered group says about itself. **Design rule 1: no filter is ever silent.**
@@ -8688,6 +8742,11 @@ function navQuery() {
 function navFilterNote(hit, whole, what, shown) {
   const q = state.routineQ.trim();
   if (!q) return `${whole.toLocaleString()} ${what}`;
+  /* A pattern that will not compile is a mistake the reader can fix, and saying "nothing
+     matches" about it claims the program lacks what they asked for. The Code box already
+     says why; this is the same sentence, so the two boxes answer alike. */
+  const m = navMatcher();
+  if (!m.ok) return `that is not a regular expression: ${esc(m.reason || "")}`;
   if (!hit) return `nothing matches “${esc(q)}”`;
   const cut = shown && hit > shown ? ` — showing ${shown}` : "";
   /* `N match`, never `N matches`. Both are correct English -- "one matches", "four match" --
@@ -8699,13 +8758,15 @@ function navFilterNote(hit, whole, what, shown) {
 }
 
 function matchingRoutines() {
-  const q = state.routineQ.trim().toLowerCase();
-  if (!q) return { rows: ROUTINES, total: ROUTINES.length, filtered: false };
+  /* Through the shared matcher, so the three flags reach the group a reader uses most. This
+     was its own lowercased `includes`, which is the same test the matcher makes by default
+     -- and would have gone on being that while `.*` worked in every other group (rule 51:
+     one truth, one place that owns it). */
+  const m = navMatcher();
+  if (m.all) return { rows: ROUTINES, total: ROUTINES.length, filtered: false };
   const rows = [];
-  for (const r of ROUTINES) {
-    if (r.name.toLowerCase().includes(q) || r.module.toLowerCase().includes(q)) rows.push(r);
-  }
-  return { rows, total: rows.length, filtered: true };
+  for (const r of ROUTINES) if (navMatch(m, r.name, r.module)) rows.push(r);
+  return { rows, total: rows.length, filtered: true, bad: !m.ok, reason: m.reason };
 }
 
 /* The routine list, by package.
@@ -9492,6 +9553,27 @@ function fileLaneCount() {
  * because searching is how a reader gets from the file they are reading to the one they
  * are looking for, and making them back out of a file first is making them lose their
  * place to ask a question. */
+/* The topbar's three flags, drawn from the same shape as the Code box's so the two cannot
+ * drift into different spellings of one idea (rule 13). Painted into a static container
+ * rather than returned as part of a rebuilt pane, because the topbar lives in `index.html`
+ * and `render()` never rewrites it -- so this is called wherever the pressed state can move.
+ */
+function paintNavFlags() {
+  const host = $("#navFlags");
+  if (!host) return;
+  const sw = (key, label, title, on = true) => `
+    <button class="srch-flag" data-searchflag="${key}" aria-pressed="${!!state[key] && on}"
+            ${on ? "" : "disabled"} data-titled="1" title="${esc(title)}">${label}</button>`;
+  host.innerHTML =
+    sw("navCase", "Aa", "Match capitals exactly")
+    + sw("navWord", "|ab|",
+         state.navRegex ? "Whole word — off while a regular expression is in force, "
+                        + "because a pattern writes its own word edges"
+                        : "Whole word: emit, and not _emit_all",
+         !state.navRegex)
+    + sw("navRegex", ".*", "Read the query as a regular expression");
+}
+
 function searchBoxHtml() {
   const sw = (key, label, title, on = true) => `
     <button class="srch-flag" data-searchflag="${key}" aria-pressed="${!!state[key] && on}"
@@ -9892,7 +9974,11 @@ const NAV_GROUPS = [
     note: () => {
       if (!ROUTINES.length) return "reading the routine list…";
       const { packages, total, filtered, autoOpen } = routineTree();
-      if (!total) return `nothing matches “${esc(state.routineQ)}”`;
+      if (!total) {
+        const m = navMatcher();
+        return m.ok ? `nothing matches “${esc(state.routineQ.trim())}”`
+                    : `that is not a regular expression: ${esc(m.reason || "")}`;
+      }
       const pkgs = `${packages.length} package${packages.length === 1 ? "" : "s"}`;
       /* Design rule 1, and note what it does *not* have to say here: the packages are all
          of them. What a package leaves out is stated on that package.
@@ -9999,11 +10085,13 @@ const NAV_GROUPS = [
        its own would read as "this program does not touch that" -- which is the false
        conclusion this whole change is about. */
     note: () => {
-      const q = navQuery();
-      const hit = BOUNDARIES.filter(b => navMatch(q, b.kind, b.common)).length;
+      const m = navMatcher();
+      const hit = BOUNDARIES.filter(b => navMatch(m, b.kind, b.common)).length;
       const base = navFilterNote(hit, BOUNDARIES.length, "kinds");
-      return q && !hit ? `${base} — these are the nine kinds; a target is in the source`
-                       : base;
+      /* `!m.all`, never `q` -- the matcher is an object and so always truthy, which would
+         have appended this sentence to the resting state as well. */
+      return !m.all && m.ok && !hit
+        ? `${base} — these are the nine kinds; a target is in the source` : base;
     },
     items: () => {
       const q = navQuery();
@@ -10656,6 +10744,7 @@ const PERSISTED = [
   "level", "minDisk",
   "nodeSize", "spreadX", "spreadY", "spreadZ", "plateSize", "collapseUnused",
   "diagram", "nodeShapes", "diagramId", "diagramPorts", "diagramCursor", "diagramEdgeWidth",
+  "navCase", "navWord", "navRegex",
   "searchCase", "searchWord", "searchRegex",
   "panels", "inspectorAuto", "navWidth", "codeWidth", "codeFile", "codeOverlay",
   "tableOverlay", "anomalyOverlay",
@@ -13233,6 +13322,10 @@ function wireSearchOnce() {
   box.addEventListener("input", () => {
     state.routineQ = box.value;
     buildNav();
+    /* No cache reset here: `navMatcher()` keys on the query and the three flags, so a new
+       query misses the cache by itself. Written down because the obvious bug in a memo like
+       this is a stale answer, and the reason there is none is the key rather than a reset
+       somebody has to remember (rule 51). */
   });
 }
 
@@ -13265,6 +13358,7 @@ async function boot() {
   applyTheme();
   applyPalette();
   applyDiagramLook();
+  paintNavFlags();          // after `adoptSettings`, or they show the defaults (rule 68)
   applyScale();
   state.view = state.startup;
 

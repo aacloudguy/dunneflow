@@ -190,6 +190,19 @@ const DEFAULTS = {
    * boxes beside it. 1 is Graphviz's own default and so is what the drawing has always
    * had -- offered rather than raised, because a heavier line is easier to hit and a
    * lighter picture is easier to read, and only the reader knows which they are doing. */
+  /* The topbar search's three flags, and they are the Code box's three under different
+   * names. Two boxes that look alike and behave differently is the complaint that produced
+   * this whole line of work -- one searches names and one searches text, which is a real
+   * difference and stays -- so what *can* be the same is: `Aa`, `|ab|`, `.*`, spelled and
+   * behaving identically in both.
+   *
+   * Kept as their own keys rather than shared with `searchCase`/`searchWord`/`searchRegex`,
+   * because the two boxes answer different questions and a reader hunting a name literally
+   * while grepping the source by pattern is an ordinary thing to be doing. One switch
+   * governing both would make that unreachable (design rule 2's reasoning, inverted). */
+  navCase: false,            // `Quaestor` and `quaestor` are different names
+  navWord: false,            // `emit`, not `_emit_all`
+  navRegex: false,           // and then whole-word is off: a pattern writes its own \b
   diagramCursor: 'arrow',    // 'arrow' | 'crosshair' | 'hand'
   diagramEdgeWidth: 1,       // user units, scaling with the drawing; 1 = Graphviz's default
   showPlates: false,
@@ -510,6 +523,9 @@ function resetSettings(program, current) {
     diagram: 'the plate drawn as a diagram', nodeShapes: 'which shapes the boxes take',
     diagramId: 'which compartment the diagram has open',
     diagramPorts: 'whether the diagram draws its crossings',
+    navCase: 'the search matching capitals exactly',
+    navWord: 'the search matching whole words',
+    navRegex: 'the search reading a regular expression',
     diagramCursor: 'the cursor over the diagram',
     diagramEdgeWidth: 'how thick a flow arrow is drawn',
     showPlates: 'the plates themselves', edgesInMotion: 'edges while moving',

@@ -7372,3 +7372,45 @@ by name.
 
 Driven in Chrome on the real Mensores pair, with a real table, a real boundary kind, a real
 structure, a package and a way in. Console clean.
+
+### The topbar's three flags — built 2026-09-02, same session
+
+*"Does that mean I can use regex in the Search box?"* — and the honest answer was **yes, in
+the other one**. The Code box has taken a full pattern since it was built, behind `.*`, with
+`Aa` and `|ab|` beside it; the topbar was `.toLowerCase().includes(q)`. Two boxes that look
+alike and behave differently, which is the complaint that produced this whole line of work,
+one layer along. Tom's call: give the topbar the same three.
+
+**Kept as their own keys** (`navCase` / `navWord` / `navRegex`) rather than shared with the
+Code box's, because the two answer different questions and hunting a name literally while
+grepping the source by pattern is an ordinary thing to be doing. One switch governing both
+would make that unreachable.
+
+**Compiled once per keystroke, never once per row.** `items()` and `note()` are called for
+every group and the predicate for every row — 5,560 names on Mensores — so a `RegExp` built
+inside `navMatch` would compile the pattern five and a half thousand times per character.
+`navMatcher()` caches on the query **and** the three flags, so a new query misses by itself
+and there is no reset for anyone to forget (rule 51). That the lists are in memory is what
+makes this affordable at all: rule 45 bites on the 186,786 lines of source, which is why
+*that* box had to earn its toggles.
+
+**A broken pattern is an answer, not an absence.** `[unclosed` says *"that is not a regular
+expression: …"* in every group, which is the sentence the Code box already used. Reporting it
+as "nothing matches" would claim the program lacks what was asked for — the exact false
+conclusion this work began with.
+
+**`matchingRoutines()` had to be rewritten to go through the matcher**, and that is the part
+worth keeping: it carried its own lowercased `includes`, which is what the matcher does by
+default, so it would have gone on quietly working while `.*` reached every group but the one
+a reader uses most (rule 51 again).
+
+Two smaller things. `navQuery()` now returns an object, so the boundaries note's `q && !hit`
+was always truthy and appended its sentence to the resting state — caught by reading, and it
+is `!m.all && m.ok && !hit` now. And whole-word goes disabled under regex on both surfaces,
+so the shared handler repaints the topbar as well as the pane.
+
+Verified in Chrome: three flags at boot with the right pressed state; `_VALID_[A-Z_]+` → 5
+routines, `^emit` → 30 routines and 3 structures, `[unclosed` → the stated reason; `Aa` off
+matches `HOOKEVENT` → `HookEvent` and on does not; `|ab|` disabled while `.*` is on and
+enabled after; and **the flags survive a reload and still match** (rule 68). Console clean,
+809 tests, mypy and ruff clean.

@@ -192,6 +192,15 @@ all, so a search matching nothing left a heading above an empty body (design rul
 *What it still cannot do, and says so:* a boundary **target** is not findable — 1,741 of them,
 mostly expressions, against nine kinds in memory. The note names the source search instead.
 
+**And it takes a regular expression now.** *"Does that mean I can use regex in the Search
+box?"* — yes, but in the *other* one: the Code box has taken a pattern since it was built and
+the topbar was a substring test. Tom's call, give the topbar the same three flags. `Aa`,
+`|ab|`, `.*`, with their own keys so a literal name hunt and a pattern grep can be in force at
+once. Compiled **once per keystroke** and cached on the query plus the flags — 5,560 names
+means a per-row compile would be 5,560 of them per character. A pattern that will not compile
+**says why** rather than reading as *nothing matches*, which is the false conclusion this
+whole thread began with.
+
 ### Before that: the cursor over a diagram (2026-09-02)
 
 **Opened as "the arrow stroke is 1 px, thin to aim at" and that was the smaller half.** Tom

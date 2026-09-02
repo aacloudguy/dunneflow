@@ -72,7 +72,13 @@
     <select class="tb-select" id="rev"></select>
 
     <label class="sr-only" for="search">Search routines, boundaries, tables</label>
-    <input class="tb-search" id="search" type="search" placeholder="Search routines, tables, boundaries…   /">
+    <!-- The three flags are the Code box's three, written here rather than generated
+         because the topbar is static markup that `render()` never touches. `navFlags()`
+         keeps their pressed state in step; the routing is the same `searchflag` table. -->
+    <div class="tb-searchwrap">
+      <input class="tb-search" id="search" type="search" placeholder="Search routines, tables, boundaries…   /">
+      <div class="srch-flags" id="navFlags"></div>
+    </div>
 
     <div class="tb-right">
       <div class="scale-group">

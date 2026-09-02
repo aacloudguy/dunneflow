@@ -7615,3 +7615,108 @@ once. Its default is a decision about that pane, not this one.
 *named file* is the one subject here whose name can contain one. Mensores has 0, and a
 constant's `module.name` cannot hold one at all, so the corpus does not exercise it; the fix
 belongs to `navIds`.
+
+## Two dead controls, reported at the keyboard — fixed 2026-09-02
+
+Both arrived the way the useful ones do: as an account of what the reader tried, not as a
+diagnosis. Both were **design rule 16 with every part working**, and both were rule 30
+underneath — an item that carried no identity, or a route that could not consume one.
+
+### "On its own" was offered, selected, handled — and undone twice
+
+*"In the header, I have selected society-2026-08-29 on its own. However, the next line down
+still shows BASE then compared with society-2026-08-26. How can this be cleared so I view
+just one version, no diff?"*
+
+**It could not be.** And everything about the option was already right: it exists in the
+control, it is selected, the handler sets the field, drops `FILEPAIR`/`FILEDIFF`, clears
+`CHANGES`, and carries a comment saying *"On its own is a real answer and must not spend
+seconds fetching a comparison nobody asked for."* Measured before anything was changed:
+
+```
+state.comparedRev  ""            the handler did its job
+CHANGES            null          the handler did its job
+comparedRevInForce 2026-08-31T22:53:15Z   ← invented
+comparing()        true
+```
+
+**First, `comparedRevInForce()` could not tell two answers apart.** *Nothing chosen yet* and
+*chosen: on its own* were both `""`, so the fallback — which exists so a first visit marks
+its file list without anyone opening the worklist — filled the choice back in. **Rule 49**:
+a fallback that yields a plausible value has hidden the failure it was written for.
+
+`comparedRev` has three states now. `ALONE` is a **named state, not an id**, the way
+`sourcedb.py` makes `WORKING` one; it cannot collide with a revision, because those are
+instants. `pairLost` skips it, or the next reload greets the choice with *"the revision you
+were comparing (alone) is no longer here"* and silently resets it — **rule 43**, crying wolf
+about a thing that never existed.
+
+**And that fixed nothing the reader could see, which is the half worth recording.**
+`versionStrip()` derived the compared end **again**, with its own copy of the same fallback:
+
+```js
+const compared = REVISIONS.find(r => r.revision === (CHANGES && CHANGES.compared))
+              || usable.find(r => r.revision !== (base && base.revision));
+```
+
+and its "on its own" branch tested `usable.length < 2` — whether the **program** has a second
+version — so on a two-revision pair it could not fire at all. The state went right,
+`comparing()` went false, and the strip three lines away went on naming a pair. **Rule 51**:
+one question, one place that answers it.
+
+The strip now says **which kind of none** it is. A program with one version *cannot* be
+compared; a reader who chose "on its own" *chose* not to be. Reporting both as "nothing
+compared" shows a state the reader can change as a limit of the program (design rule 1).
+
+### The shelf could drop a thing and never open it
+
+*"Using the Kept feature of Trail, I see my Kept item, but there is no way to select it and
+therefore view it. I can Drop it, but nothing else."*
+
+A pin was `{label, note}`. **Neither is an identity**, so the shelf could render a row and
+drop a row — dropping needs only the row's position — and could never open one. Rule 30 in
+the one surface built for the thing rule 30 is about: the shelf exists so a detour does not
+cost you the thread you were on, and it could not take you back.
+
+**The three kinds are not one shape, and finding that out is what made the fix right rather
+than plausible** — the same discovery rule 30 records about the four navigator routes. A
+routine, a constant and a structure are **nodes**. A fold is a **box**, whose id belongs to
+the drawing and means nothing to `/api/node`. An arrow is a **flow**, and it needs the
+compartment it was drawn in. `.gotonode` already routes two id spaces by which attribute is
+present, and its comment says why: reading one as the other resolves plausibly and silently
+to the wrong thing. `PIN_ROUTES` is a table, so a kind nobody wired logs an error rather than
+falling through to a default that looks deliberate.
+
+**Pins were keyed by label.** `some(p => p.label === label)` collides every `__init__` in the
+program and 531 routines sharing a module word — keeping one showed the other as kept, and
+dropping one dropped the other. Keyed on the subject now.
+
+**A pin kept before subjects existed has none.** It stays plain text and says why, rather
+than being routed somewhere plausible. The shelf is the last place to guess.
+
+### Verified
+
+823 tests, mypy clean, ruff clean, self-check green, console clean. Driven in Chrome on the
+real pair: the strip reads *"VERSION society-2026-08-29 — on its own, nothing compared"*,
+change marks go 1 → 0, it toggles back, and it survives a reload with the control showing
+the right option and no note (rule 68). Keeping a constant and a routine records both
+subjects; clicking a shelf row's label selects it, `SPECIMEN.id` matching and kind
+`CONSTANT`. **Tom confirmed both at the keyboard.**
+
+**Seven guards, each run against the defect it names**, including the pin pairing in *both*
+directions — a kind nothing routes and a route nothing keeps each fail.
+
+Two of them were blind first, and the second is the one worth keeping:
+
+- One tripped on the **comment quoting the code it checks** — the sixth time in this file,
+  so `_fn_body` strips comments now. `_code()`'s own docstring already said five was enough
+  to call it a habit rather than an occasion.
+- The other reported **MISSED when the guard was fine and the *mutation* was wrong**:
+  `replace("if (!comparing())", ..., 1)` hit the first of **eight** occurrences in the file,
+  in a different function entirely. Rule 59 from the other side — a harness that does not
+  prove it changed what it names reports a false result *about the guard*, and the obvious
+  reading of that result is to weaken a check that was already right.
+
+**Not exercised on screen:** the fold and flow pin kinds, which need a compartment drawn.
+The pairing is guarded at the source in both directions, which is why that guard exists
+rather than a click.

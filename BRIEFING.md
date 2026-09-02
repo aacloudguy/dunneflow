@@ -163,8 +163,12 @@ program has a most-commented routine and a maximum alone is a claim nobody can w
 
 ## What we are doing now
 
-**The constants surface is in, and the shortening rule it needed with it (2026-09-02).**
-818 tests, mypy clean, ruff clean, working tree clean. Nothing is half-done.
+**Paused 2026-09-02, after the constants surface and two dead controls Tom found.**
+823 tests, mypy clean, ruff clean, working tree clean. Nothing is half-done.
+
+*Four commits: the constants surface and the shortening rule it needed · the record ·
+"on its own" doing what it says · the shelf taking you back.* **Tom tested the last two at
+the keyboard and confirmed both.**
 
 **Next, and it is chunk B of the same work:** the remaining twelve `text-overflow: ellipsis`
 sites all still cut the **tail**, which is the end that carries least — `.chg-mod`,
@@ -178,14 +182,51 @@ elided* decision and `.leg .nm` is left alone.
 can be opened. It is one outlier and not a class: the next largest resolved call argument in
 the corpus is 923 bytes.
 
-**A debt, and it is rule 38's.** Everything in this session was verified at a **900px
-viewport in a browser context that reports `outerWidth: 0` and will not resize** — where the
-narrow layout sets `#inspector { display: none }`. The pane was forced visible with an
-injected stylesheet to measure it, and every click was scripted. A scripted click proves the
-handler and not the path to it (rule 48). **A look at a real window is owed**, and it is the
-same debt the blank-graph fix has been carrying.
+**A server is running** on `http://127.0.0.1:8787/` against `output/mensores`, the
+two-revision pair. Nothing depends on it; `pkill -f "dunneflow serve"` ends it. It has been
+restarted since the schema of `/api/cover` changed — the cover is built once at boot, so a
+stale server serves a payload with no `root` and every module shortens with its prefix on.
 
-### The latest: the constants surface (2026-09-02)
+**Two dead controls in one session, both found by Tom and neither by a test.** *"I have
+selected society-2026-08-29 on its own… the next line down still shows BASE then compared
+with"* and *"I see my Kept item, but there is no way to select it… I can Drop it, but nothing
+else."* Both were **design rule 16 with every part working**, and rule 30 underneath. That is
+three sessions running where the report was an account of what was tried rather than a
+diagnosis, and the account was worth more than the diagnosis would have been.
+
+**A debt, and it is rule 38's.** Everything measured by automation this session was at a
+**900px viewport in a browser context that reports `outerWidth: 0` and will not resize** —
+where the narrow layout sets `#inspector { display: none }`. The pane was forced visible with
+an injected stylesheet to measure it, and every click was scripted. A scripted click proves
+the handler and not the path to it (rule 48). Tom's own testing covers the two fixes above;
+**the constants surface has still not been looked at in a real window**, and that is the same
+debt the blank-graph fix has been carrying.
+
+### The latest: two dead controls, reported at the keyboard (2026-09-02)
+
+**"On its own" could not be chosen.** The option existed, was selected, and the handler was
+correct — it even carried a comment saying *"On its own is a real answer"*. Two things put
+the comparison back. `comparedRevInForce()` could not tell *nothing chosen yet* from
+*chosen: on its own* (both `""`), so the fallback that marks a first visit's file list
+invented the pair back — **rule 49**. And fixing that changed nothing on screen, because
+`versionStrip()` derived the compared end **again** with its own copy of that fallback, and
+its "on its own" branch tested whether the *program* had a second version rather than whether
+a comparison was running — **rule 51**. `comparedRev` has three states now, with `ALONE` a
+named state rather than an id.
+
+**The shelf could drop a thing and never open it.** A pin was `{label, note}` — neither is an
+identity, so dropping worked (it needs only the row's position) and opening was impossible,
+in the one surface built so a detour does not cost you your thread. The subject is carried
+now, and **the three kinds are not one shape**: a node, a box whose id belongs to the drawing,
+and a flow that needs its compartment. Pins were also keyed by *label*, which collides every
+`__init__` in the program.
+
+*Seven guards, each run against the defect it names. Two were blind first — one tripped on
+the comment quoting the code it checks (the sixth time in that file), and one reported MISSED
+when the **mutation** was wrong rather than the guard: `replace(…, 1)` hit the first of eight
+occurrences, in another function. Rule 59 from the other side.*
+
+### Before that: the constants surface (2026-09-02)
 
 **Measuring first moved the target twice.** The record named a 6,924-character line as the
 problem; `GOVERNED_GATES` is **8,586** and nobody had noticed it. And it is a class, not an
@@ -496,6 +537,13 @@ feature was blocked on an answer nobody owed.
 - **Clicking a change row files two trail steps**, for a structure and for a routine alike.
   Found 2026-09-02 and verified pre-existing rather than introduced. Rule 76's family — an
   echo arriving as an act — and the fix is to the selection path, not to any one lane.
+- **A kept fold and a kept flow have never been opened on screen.** The shelf routes three
+  kinds and the node kind is verified; the other two need a compartment drawn. The kind and
+  the route are guarded against each other at the source, in both directions, which is why
+  that guard exists rather than a click — but it is a shape check and not a look.
+- **Every surface that offers "keep this" is an inspector pane.** A curiosity, a thread and
+  a search hit are all things a reader would want on the shelf and none of them can be kept.
+  Not a defect, and the obvious next question now that a pin carries a subject.
 - **`holds` is not in `insp`'s defaults**, so the fold pane's section starts closed whatever
   it wanted and "Collapse all" cannot see it until someone has opened it once. Found
   2026-09-02 while adding two sections beside it; not fixed, because its default is a

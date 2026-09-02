@@ -6890,3 +6890,118 @@ not named before: **a class docstring is compared by nothing**, and it is blocke
 same question rule 77 is about — `structures` has no presence band at all, so a class that
 appeared or vanished is unreported too, and there is no row to tag. Zero differ on Mensores'
 pair. Decide the subject before building the lane.
+
+## The record split into files that can be carried — 2026-09-02
+
+**`CLAUDE.md` had grown to 162,893 bytes, past the 150,000 a session can load.** It is
+loaded in full at the start of every session, so past that limit it is not merely large —
+it is *truncated*, silently, and the part that falls off is whatever sits at the end. That
+is rule 49's shape in a document: a plausible value where a measurement belongs, with no
+symptom. Nothing was reporting it.
+
+**What it was made of, measured before anything was moved:**
+
+```
+  91,418  Rules learned the hard way          76 engineering rules
+  26,517  Dashboard: design rules             26 design rules
+  23,544  Verification                        of which ~21,000 is measured budget tables
+  14,174  Architecture
+   3,220  Commands
+   1,181  Anomalies: the discipline
+   ~2,800 everything else
+```
+
+Two thirds of the file is 102 rules, and the rules are cited as **bare numbers** — "rule
+45", "design rule 19" — **768 times across `src/` and `tests/`**. So nothing could be
+deleted, renumbered, or closed up: the numbers are addresses, which this file already said
+in as many words about rule 21's gap.
+
+### What was decided, and by whom
+
+Tom took all three, and the shape is his: **split by how often you need it, not by
+importance.**
+
+- **The rule bodies move; the titles stay.** `RULES.md` and `DESIGN-RULES.md` hold all 102
+  in full. `CLAUDE.md` keeps a numbered index of the **bold title of each**, which is the
+  rule itself — the body is its evidence. ~7 KB inline against 118 KB.
+- **`BRIEFING.md`'s history chain goes.** 82,004 of its 121,705 bytes were `### Before
+  that:` sections, each a summary of a session `HANDOFF.md` already records in fuller form.
+  Verified before cutting rather than assumed — the relative-paths session, for one, is at
+  `6a`. Replaced by a 26-row table of date, subject, and **what to search for**.
+- **The measured budgets move to `PERFORMANCE.md`.** `CLAUDE.md` keeps the three gates and
+  the ground-truth corpus rules — the things that must run before anything is called done.
+
+### The result
+
+```
+CLAUDE.md    162,893 -> 34,583     (79% smaller, and the whole of it now loads)
+BRIEFING.md  122,578 -> 46,056     (62% smaller)
+RULES.md               92,158      76 rules, verbatim
+DESIGN-RULES.md        27,029      26 rules, verbatim
+PERFORMANCE.md         22,154      13 tables, verbatim
+HANDOFF.md   443,524 unchanged     the archive is the archive
+```
+
+### How it was proved lossless, which is the part worth keeping
+
+**Not by reading the diff.** A 3,194-line deletion is not reviewable by eye, and "it looks
+right" is exactly the claim this project does not accept.
+
+1. **The split reconstructs the original byte for byte.** `CLAUDE.md` was cut into eight
+   segments by line boundary and the concatenation compared to the original — `True` before
+   a single file was written. A first attempt returned `False` by one byte, on a trailing
+   newline, and that one byte is the reason the check exists.
+2. **Every substantive line of the original was searched for across the whole new set.**
+   1,974 lines of 12 characters or more; **1,972 found verbatim**. The two misses are the
+   two lines deliberately rewritten — the intro sentence, and a heading promoted from `###`
+   to `##`. Naming both up front is what makes the number readable.
+3. **Rule numbers were enumerated, not counted.** 1–77 with **21 correctly absent**, and
+   1–26 for the design rules. A count of 76 would have passed while a rule was silently
+   duplicated and another dropped.
+4. **Every pointer in the new `BRIEFING.md` table was resolved against `HANDOFF.md` before
+   the cut.** 33 anchors, 0 unresolved. A pointer table nobody checked is rule 30 in a
+   document — a label that opens nothing.
+5. **The cut region was scanned for forward-looking language** — `still owed`, `not built`,
+   `blocked`, `deferred` — because a summary being redundant does not make every line in it
+   redundant. 25 hits, and **two were genuinely open and lived nowhere else in `BRIEFING`**:
+   the blank-graph fix (rule 49), reasoned and guarded but never *seen* because the
+   automation tab never mounts the graph; and `m.<module>` as a language feature, with
+   research owed on prior art. Both are in `HANDOFF`'s standing list, so nothing was lost —
+   but both are now restored to `BRIEFING`'s open list, where a reader will meet them.
+
+### The split changes nothing about what the tool reads, and that was measured too
+
+The worry was real: the rule titles now appear **twice** — once in the index, once in the
+body — so the glossary or the naming lanes could double-count them. Analysed both trees in
+isolation, same source, same four-versus-seven markdown files:
+
+```
+before, 4 documents:  10 definitions, 0 stated rules, 25 governance ids
+after,  7 documents:  10 definitions, 0 stated rules, 25 governance ids
+```
+
+Identical. The index sits inside a fence, and **rule 12 says nothing prose-shaped is ever
+read from inside one** — so the mechanism that keeps an example from becoming a definition
+is the same one that keeps an index from becoming a second copy. That was a happy accident
+of formatting when the index was written, and it is recorded here as a decision now: the
+index stays fenced.
+
+798 tests, mypy clean, ruff clean, before and after. Self-analysis reads 54 documents, 0
+failed. Both the original and the pruned set are backed up to
+`/Volumes/YourBackup/DunneFlow/2026-09-02T075559/`, the originals at the top level and
+the result under `after/`.
+
+### What this does not fix
+
+`HANDOFF.md` is 443,524 bytes and was left alone deliberately — it is the archive, it is
+read on demand rather than loaded, and truncating an archive to save a file that is not
+loaded would be the wrong trade. It will want splitting by era eventually; nothing depends
+on that yet.
+
+And the standing risk of the whole exercise is worth stating plainly: **a rule in a file
+nobody opens is a rule nobody follows.** The index is the mitigation — a title in every
+session's context is enough to recognise that a rule applies — but it is a mitigation, not
+a proof, and the instruction to read the body before working in an area a rule governs is
+written at the top of `RULES.md`, at the head of the index, and in the routing table in
+`CLAUDE.md`. If a future session applies a rule shallowly from its title alone, that is the
+failure mode to look for first.

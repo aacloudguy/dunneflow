@@ -9385,3 +9385,54 @@ def test_the_sentinel_is_never_reported_as_a_missing_revision() -> None:
     """
     lost = _fn_body(_read("shell.js"), "pairLost")
     assert "!== ALONE" in lost, "pairLost treats the 'on its own' state as a lost revision"
+
+
+def test_every_kind_a_pin_can_carry_has_a_route() -> None:
+    """Rule 30, asserted in both directions, which is the only way it holds.
+
+    Reported by Tom: *"Using the Kept feature of Trail, I see my Kept item, but there is no
+    way to select it and therefore view it. I can Drop it, but nothing else."*
+
+    A pin was `{label, note}`. Dropping needs only the row's position, so that worked; going
+    back needs an identity, and there was none — in the one surface built so that a detour
+    does not cost you the thread you were on. The item must emit an identity **and** the
+    route must consume one; either half alone passes while the feature is dead.
+
+    Derived from the source both ways rather than from a list somebody keeps: a fourth kind
+    added at a call site with no entry in `PIN_ROUTES` is the same defect returning, and a
+    route for a kind nothing emits is a branch that can never run.
+    """
+    js = _code(_read("shell.js"))
+
+    emitted = set(re.findall(r'pinBtn\(\{\s*kind:\s*"(\w+)"', js))
+    assert emitted, "no pinBtn call passes a subject; the shelf cannot open anything again"
+
+    table = re.search(r"const PIN_ROUTES = \{(.*?)\n  \};", js, re.S)
+    assert table, "PIN_ROUTES is no longer a table; a chain of ifs falls through silently"
+    routed = set(re.findall(r"^\s*(\w+):", table.group(1), re.M))
+
+    assert emitted <= routed, (
+        f"a pin can be kept as {sorted(emitted - routed)} and the shelf has no route for it"
+    )
+    assert routed <= emitted, (
+        f"PIN_ROUTES has {sorted(routed - emitted)}, which nothing ever keeps"
+    )
+    # And the row must actually offer the route. Without this the subject is recorded,
+    # the table is complete, and the shelf still renders a label nobody can click.
+    assert "data-pinopen=" in _read("shell.js"), (
+        "the shelf renders no control that opens a kept item"
+    )
+
+
+def test_a_pin_is_keyed_on_what_it_is_not_on_what_it_is_called() -> None:
+    """`some(p => p.label === label)` collided two different things printing one name.
+
+    On this corpus that is every `__init__` in the program and 531 routines sharing a
+    module word: keeping one would show the other as already kept, and dropping one would
+    drop the other. A label is not an identity in the shelf either.
+    """
+    js = _code(_read("shell.js"))
+    assert "function pinKey(" in js, "pins are no longer keyed by a stated function"
+    assert not re.search(r"state\.pins\.(some|findIndex)\(\s*\w+\s*=>\s*\w+\.label ===", js), (
+        "a pin is being matched by its label again"
+    )

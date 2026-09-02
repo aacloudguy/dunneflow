@@ -5490,9 +5490,38 @@ function trailBar() {
   </div>`;
 }
 
-function pinBtn(label, note) {
-  const on = state.pins.some(p => p.label === label);
-  return `<button class="pinbtn ${on ? "on" : ""}" data-pin="${esc(label)}" data-pinnote="${esc(note || "")}"
+/* Keep this — and **keep what it is**, not only what it is called.
+ *
+ * Reported by Tom: *"Using the Kept feature of Trail, I see my Kept item, but there is no
+ * way to select it and therefore view it. I can Drop it, but nothing else."*
+ *
+ * A pin was `{label, note}`. Neither is an identity, so the shelf could show a row and
+ * drop a row — dropping needs only the position — and could never open one. Rule 30 in
+ * the surface built for exactly the thing rule 30 is about: the shelf exists so a detour
+ * does not cost you the thread you were on, and it could not take you back.
+ *
+ * **The subject is passed in, never derived from the label.** The three kinds here are not
+ * one shape, which is the discovery that makes this fix right rather than plausible: a
+ * routine, a constant and a structure are **nodes**; a fold is a **box**, whose id belongs
+ * to the drawing and means nothing to `/api/node`; and an arrow is a **flow**, which needs
+ * the compartment it was drawn in. `.gotonode` already routes the first two by which
+ * attribute is present, for the same reason — reading one id space as another resolves
+ * plausibly and silently to the wrong thing.
+ *
+ * **Keyed on the subject where there is one.** `some(p => p.label === label)` collided two
+ * different things that print the same name, which on this corpus is 531 routines sharing
+ * a module word and every `__init__` in the program. */
+function pinKey(subject, label) {
+  return subject && subject.id ? `${subject.kind}:${subject.id}` : `label:${label}`;
+}
+
+function pinBtn(subject, label, note) {
+  const key = pinKey(subject, label);
+  const on = state.pins.some(p => pinKey(p.subject, p.label) === key);
+  return `<button class="pinbtn ${on ? "on" : ""}" data-pin="${esc(label)}"
+    data-pinnote="${esc(note || "")}"
+    data-pinkind="${esc((subject && subject.kind) || "")}"
+    data-pinid="${esc((subject && subject.id) || "")}"
     title="${on ? "Kept \u2014 click to drop" : "Keep this to come back to"}">${on ? "\u25c6 Kept" : "\u25c7 Keep this"}</button>`;
 }
 
@@ -5731,15 +5760,27 @@ function viewPins() {
       that you find what you were not looking for; this is where it goes so the detour does not
       cost you the thread you were on.
     </div>
-    ${state.pins.length ? state.pins.map((p, i) => `
+    ${state.pins.length ? state.pins.map((p, i) => {
+      /* **The label is the way back in**, which is the whole point of the shelf and was
+         the one thing it could not do. A pin with no subject -- kept before subjects
+         existed -- stays plain text and says so, because a control that looks live and
+         resolves to nothing is worse than one that plainly is not there. */
+      const sub = p.subject;
+      const body = sub && sub.id
+        ? `<button class="linkbtn pin-open" data-pinopen="${i}"
+             title="Go back to this">${esc(p.label)}</button>`
+        : `<span class="pin-label mono">${esc(p.label)}</span>
+           <span class="pin-note">kept before this could record what it was, so there is
+             nothing to open — keep it again from its own pane</span>`;
+      return `
       <div class="pinrow">
         <span class="pin-mark" aria-hidden="true">\u25c6</span>
         <span class="pin-body">
-          <span class="pin-label mono">${esc(p.label)}</span>
+          ${body}
           ${p.note ? `<span class="pin-note">${esc(p.note)}</span>` : ""}
         </span>
         <button class="linkbtn" data-unpin="${i}">Drop</button>
-      </div>`).join("")
+      </div>`; }).join("")
     : `<p style="font-size:.8rem;color:var(--text-muted)">Nothing kept yet. Anywhere you see
        <span class="pinbtn" style="pointer-events:none">\u25c7 Keep this</span>, that thing lands here.</p>`}
   </div>`;
@@ -7311,7 +7352,8 @@ function viewInspectorFold(s) {
         <span class="kind-tag">${esc(what.toUpperCase())}</span>
         <span class="kind-tag">${id.folded} folded</span>
         <span style="margin-left:auto;display:flex;gap:.3rem">
-          ${pinBtn(id.qualname || s.id, `${id.folded} routines, ${touches.length} touches`)}
+          ${pinBtn({ kind: "fold", id: s.id }, id.qualname || s.id,
+                   `${id.folded} routines, ${touches.length} touches`)}
           <button class="linkbtn" id="collapseAll">Collapse all</button>
         </span>
       </div>
@@ -7415,7 +7457,8 @@ function viewInspectorFlow(s) {
         <span class="kind-tag">${esc(kinds)}</span>
         <span class="badge certain">${id.weight} along it</span>
         <span style="margin-left:auto;display:flex;gap:.3rem">
-          ${pinBtn(s.label || s.id, `${id.sites} call sites, ${touches.length} touches`)}
+          ${pinBtn({ kind: "flow", id: s.id }, s.label || s.id,
+                   `${id.sites} call sites, ${touches.length} touches`)}
         </span>
       </div>
     </div>
@@ -7567,7 +7610,7 @@ function viewInspectorConstant(s) {
         <span class="kind-tag">CONSTANT</span>
         ${tags}
         <span style="margin-left:auto;display:flex;gap:.3rem">
-          ${pinBtn(`${id.module || ""}.${id.name || ""}`,
+          ${pinBtn({ kind: "node", id: s.id }, `${id.module || ""}.${id.name || ""}`,
                    `${value.length.toLocaleString()} characters`)}
         </span>
       </div>
@@ -7749,7 +7792,7 @@ function viewInspector() {
         <span class="kind-tag">${esc(s.kind || "")}</span>
         ${id.class_name ? `<span class="kind-tag">${esc(id.class_name)}</span>` : ""}
         <span style="margin-left:auto;display:flex;gap:.3rem">
-          ${pinBtn(id.qualname || s.id, [
+          ${pinBtn({ kind: "node", id: s.id }, id.qualname || s.id, [
             lines ? `${lines} lines` : null,
             comments.length ? `${comments.length} comments` : null,
             anns.length ? `${anns.length} governance ids` : null,
@@ -8561,13 +8604,50 @@ function wire() {
   $$("[data-pin]").forEach(b => b.addEventListener("click", (e) => {
     e.preventDefault();
     const label = b.dataset.pin;
-    const at = state.pins.findIndex(x => x.label === label);
+    /* The subject is read off the control, never rebuilt from the label. A pin kept before
+       subjects existed has none, and that is carried honestly rather than guessed at --
+       the shelf says such a row cannot be opened instead of routing it somewhere plausible
+       (rule 30, and design rule 16's better half). */
+    const subject = b.dataset.pinid ? { kind: b.dataset.pinkind, id: b.dataset.pinid } : null;
+    const key = pinKey(subject, label);
+    const at = state.pins.findIndex(x => pinKey(x.subject, x.label) === key);
     if (at >= 0) state.pins.splice(at, 1);
-    else state.pins.push({ label, note: b.dataset.pinnote || "" });
+    else state.pins.push({ label, note: b.dataset.pinnote || "", subject });
     render();
   }));
   $$("[data-unpin]").forEach(b => b.addEventListener("click", () => {
     state.pins.splice(parseInt(b.dataset.unpin, 10), 1); render();
+  }));
+
+  /* **The other half of rule 30, and it is the half that was missing.** The item must carry
+     an identity *and* the route must consume one — either alone passes while the feature is
+     dead, and here the row carried neither, so the shelf could drop a thing and never open
+     it.
+
+     Three kinds, three routes, because they are three id spaces. A **node** is what
+     `/api/node` answers about. A **fold** is a box, whose id is the drawing's own. A
+     **flow** is an arrow, and it needs the compartment it was drawn in — `selectFlow` reads
+     `diagramNow` for the members at each end, so a flow kept in one compartment and opened
+     from another has nothing to light. It is routed anyway and says nothing false: the
+     inspector opens on the arrow itself, which is the thing that was kept.
+
+     Routed from a table rather than a chain of ifs, so a kind nobody wired logs an error
+     instead of falling through to a default that looks deliberate (design rule 16). */
+  const PIN_ROUTES = {
+    node: (id) => selectFromNav({ nodes: [id] }),
+    fold: (id) => selectFold(id),
+    flow: (id) => selectFlow(id),
+  };
+  $$("[data-pinopen]").forEach(b => b.addEventListener("click", () => {
+    const pin = state.pins[parseInt(b.dataset.pinopen, 10)];
+    const sub = pin && pin.subject;
+    const route = sub && PIN_ROUTES[sub.kind];
+    if (!route) {
+      console.error("DunneFlow: a kept item with no route for its kind", sub, pin);
+      return;
+    }
+    route(sub.id);
+    used("pin:open:" + sub.kind);
   }));
 
   /* A curiosity is a doorway, and it goes through `data-thread` above -- there is no
@@ -8847,7 +8927,13 @@ const WIRED_ATTRS = new Set([
      handler of its own -- it is the line the click is about, and the roster is a list of
      attributes the shell writes, not only of the ones that are clicked. */
   "searchopen", "searchgo", "searchline", "searchflag",
-  "navid", "navtrack", "node", "open", "pane", "pin", "pinnote", "pkgnode", "pkgpick", "qual",
+  /* `pinopen` is a control -- the shelf's way back to what was kept, which is the thing
+     the shelf existed without for as long as it existed. `pinkind` and `pinid` beside
+     `pinnote` are parameters: the subject, read off the button the click already
+     found. Kept as two fields rather than one packed string because a kind and an id
+     are two questions, and `bnd:` already shows what packing them costs. */
+  "navid", "navtrack", "node", "open", "pane", "pin", "pinnote", "pinkind", "pinid",
+  "pinopen", "pkgnode", "pkgpick", "qual",
   "resize", "row",
   /* `palette-set`, beside `theme-set` and for the same reason: `data-palette` and
      `data-theme` are stamps on `:root`, and an attribute that is both a route and a piece

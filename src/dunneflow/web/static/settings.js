@@ -358,8 +358,16 @@ const DEFAULTS = {
    * obviously worse one, so both exist and usage retires the loser (design rule 2). */
   bandScroll: false,
   /* The two versions. `baseRev` is the one being read — the whole map shows it — and
-   * `comparedRev` is the version it is held against, "" for none. Empty means "whatever
-   * is being served", which is the only honest default before any version has been read.
+   * `comparedRev` is the version it is held against.
+   *
+   * **Three states, and the third is why this is not just a revision id.** `''` is *nothing
+   * chosen yet*, and the dashboard fills it in with the next comparable version so a first
+   * visit marks its file list without anyone opening the worklist. `'alone'` is *chosen: on
+   * its own*, which that fallback must not touch. They were one value until 2026-09-02, and
+   * the cost was the whole "on its own" option: it was offered, selected, and handled, and
+   * the comparison came straight back — see the note on `comparedRev` in `shell.js`.
+   *
+   * `'alone'` cannot collide with a revision: those are instants.
    *
    * Here as well as in `PERSISTED`, and that pairing is the point: `loadSettings` merges
    * only keys this object declares, so a key saved but not declared here is written on

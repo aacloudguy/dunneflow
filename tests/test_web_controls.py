@@ -9285,3 +9285,103 @@ def test_the_cover_states_the_program_root() -> None:
         "PKG_IDS is back; the packages are not the right instrument for the root, because "
         "the root is itself a package"
     )
+
+
+# --------------------------------------------------------------------------- #
+# "On its own" — the option that was offered, selected, handled, and undone
+#
+# Reported by Tom: *"I have selected society-2026-08-29 on its own. However, the next line
+# down still shows BASE then compared with society-2026-08-26."*
+#
+# Everything about the feature was already right. The option existed, it was selected, the
+# handler set the field, cleared `CHANGES`, and carried a comment saying "On its own is a
+# real answer". Two things then put the comparison back, in two different files' worth of
+# reasoning, and **neither threw**:
+#
+#   1. `comparedRevInForce()` could not tell *nothing chosen yet* from *chosen: on its own*
+#      -- both were `""` -- so its fallback, which exists so a first visit marks its file
+#      list, invented the other revision. Rule 49.
+#   2. `versionStrip()` derived the compared end **again**, with its own copy of that same
+#      fallback, and its "on its own" branch tested whether the *program* had a second
+#      version rather than whether a comparison was running. So fixing (1) fixed nothing a
+#      reader could see. Rule 51.
+#
+# These are shape guards because the behaviour needs a page. What they defend is that the
+# question is asked in one place.
+# --------------------------------------------------------------------------- #
+
+def _fn_body(js: str, name: str) -> str:
+    """One function's source, **comments stripped**.
+
+    Six now. The first version of the strip guard below asked whether
+    `usable.find(r => r.revision !== ...)` was gone and tripped on the comment saying it had
+    been removed and why. `_code()` exists for exactly this and the habit is to reach for it
+    whenever a guard asks whether a name is *used* -- a containment check is only as good as
+    the span it is taken over (rule 37), and a comment is not code.
+    """
+    js = _code(js)
+    m = re.search(rf"\nfunction {name}\(", js)
+    assert m, f"{name} is no longer a function declaration; this guard is blind"
+    end = js.find("\nfunction ", m.end())
+    return js[m.start():end if end > 0 else len(js)]
+
+
+def test_choosing_one_version_is_a_state_and_not_an_absence() -> None:
+    """`""` and `ALONE` are different answers, and the handler must record the second."""
+    js = _read("shell.js")
+    assert re.search(r'const ALONE = "[^"]+"', js), (
+        "ALONE is gone; 'nothing chosen yet' and 'chosen: on its own' are one value again "
+        "and the fallback will invent a comparison over the reader's choice"
+    )
+    force = _fn_body(js, "comparedRevInForce")
+    assert "state.comparedRev === ALONE" in force, (
+        "comparedRevInForce no longer honours the reader's explicit 'on its own'"
+    )
+    # Before the CHANGES branch, or a stale server answer speaks for a pair just left.
+    assert force.index("=== ALONE") < force.index("CHANGES.compared"), (
+        "the reader's own answer is read after CHANGES, so leaving a pair reads as that "
+        "pair for one repaint"
+    )
+    # The persisted default stays "" -- the state that means the fallback may apply.
+    assert re.search(r"comparedRev:\s*''", _read("settings.js")), (
+        "comparedRev's default is no longer '', so a first visit no longer falls back"
+    )
+
+
+def test_the_version_strip_asks_whether_a_comparison_is_running() -> None:
+    """One test for "is there a comparison", not one per surface (rule 51).
+
+    The strip is the line the reader actually looks at. While it derived the compared end
+    itself it could report a pair that nothing else in the page believed in — and it did,
+    with `comparing()` returning false three lines away.
+    """
+    strip = _fn_body(_read("shell.js"), "versionStrip")
+    assert "comparing()" in strip, (
+        "versionStrip does not ask comparing(); its 'on its own' state can disagree with "
+        "every mark on the page"
+    )
+    assert "comparedRevInForce()" in strip, (
+        "versionStrip derives the compared end itself again -- two answers to what this "
+        "version is held against"
+    )
+    assert not re.search(r"usable\.find\(r => r\.revision !== ", strip), (
+        "the strip's own copy of the fallback is back"
+    )
+    # And the branch is reachable on a two-revision program, which is the whole bug.
+    alone = strip[strip.index("if (!comparing())"):]
+    assert "usable.length < 2" in alone, (
+        "the strip no longer distinguishes a program that cannot be compared from a reader "
+        "who chose not to -- design rule 1, a state the reader can change reported as a "
+        "limit of the program"
+    )
+
+
+def test_the_sentinel_is_never_reported_as_a_missing_revision() -> None:
+    """`ALONE` is a state, not an id, so it can never be a revision that has gone away.
+
+    Without the guard, choosing "on its own" greets the next reload with *the revision you
+    were comparing (alone) is no longer here* and silently resets the choice — rule 43, a
+    check crying wolf about something that never existed.
+    """
+    lost = _fn_body(_read("shell.js"), "pairLost")
+    assert "!== ALONE" in lost, "pairLost treats the 'on its own' state as a lost revision"

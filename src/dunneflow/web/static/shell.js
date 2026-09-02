@@ -320,9 +320,27 @@ const state = {
    *
    * `baseRev` is the version being read — the cover, the routine list, the code browser,
    * the glossary and the stack all show that one — and `comparedRev` is the version it is
-   * held against, or "" for no comparison at all. So "what am I looking at" has one
-   * answer while a comparison is running, which it would not if every view tried to show
-   * two versions at once.
+   * held against. So "what am I looking at" has one answer while a comparison is running,
+   * which it would not if every view tried to show two versions at once.
+   *
+   * **`comparedRev` has three states, not two, and for a while it had two.** *Nothing
+   * chosen yet* (`""`) and *chosen: on its own* (`ALONE`) are different answers, and
+   * collapsing them made the "on its own" option a control that could not work. Reported
+   * by Tom: *"I have selected society-2026-08-29 on its own. However, the next line down
+   * still shows BASE then compared with society-2026-08-26."*
+   *
+   * Everything about that option was right — it exists, it is selected, the handler sets
+   * the field, clears `CHANGES`, and carries a comment saying "On its own is a real answer
+   * and must not spend seconds fetching a comparison nobody asked for". Then
+   * `comparedRevInForce()` read `""`, could not tell it from a first visit, and **invented
+   * the comparison back** from the fallback that exists so a first visit marks its file
+   * list. Rule 49 exactly: a fallback that yields a plausible value has hidden the failure
+   * it was written for — and design rule 16 from the far side, where every part works and
+   * the feature is dead.
+   *
+   * A named state rather than a second field, the way `sourcedb.py` makes `WORKING` a state
+   * and not an id: the question is *which version, or none*, and one question keeps one
+   * field. It is not a revision id and cannot collide with one — those are instants.
    *
    * **Neither is claimed to be older.** The only instant this tool records is when the
    * bytes were read, which says nothing about when the code is from: these two were
@@ -873,7 +891,12 @@ function pairLost() {
      is a different message with a different remedy, said there. Two places reporting one
      kind of loss would be two answers (rule 51). */
   const gone = [];
-  if (state.comparedRev && !REVISIONS.some(r => r.revision === state.comparedRev)) {
+  /* `ALONE` is a state and not a revision, so it can never be one that has gone away.
+     Without this guard, choosing "on its own" reports *the revision you were comparing
+     (alone) is no longer here* on the next reload and silently resets the choice --
+     which is rule 43, a check crying wolf about a thing that never existed. */
+  if (state.comparedRev && state.comparedRev !== ALONE
+      && !REVISIONS.some(r => r.revision === state.comparedRev)) {
     gone.push(state.comparedRev);
   }
   return gone;
@@ -927,7 +950,19 @@ async function loadChanges(base, compared) {
  * actually used -- the reader's stored choice may name a revision that no longer exists,
  * and `chosenPair()` drops it. Falling back to the choice is what makes the file rows mark
  * themselves before anyone has opened the worklist. */
+/* *Chosen: on its own* — a value for `state.comparedRev`, and not a revision.
+ *
+ * A revision is an instant (`2026-08-31T22:53:57Z`), so this cannot collide with one. It
+ * exists because "" already meant *nothing chosen yet*, and the fallback below turns that
+ * into a comparison — correctly, on a first visit, and wrongly the moment a reader has
+ * actually answered. See the note on `comparedRev` in `state`. */
+const ALONE = "alone";
+
 function comparedRevInForce() {
+  /* Asked before `CHANGES`, because this is the reader's own answer and `CHANGES` is a
+     server result that may still be describing the pair they have just left. Below the
+     `CHANGES` branch this read as a comparison for one whole repaint. */
+  if (state.comparedRev === ALONE) return "";
   if (CHANGES && !CHANGES.loading && CHANGES.available && CHANGES.compared) {
     return CHANGES.compared;
   }
@@ -2188,15 +2223,33 @@ function versionStrip() {
       title="${esc(r.version_where || "")}">${esc(r.version)}</span>`;
   };
 
-  /* One version, and it says so rather than showing an empty half. */
-  if (usable.length < 2) {
+  /* **No comparison, and it says which kind of none.** Two ways to get here and the reader
+     is owed the difference: a program with one version *cannot* be compared, and a reader
+     who picked "on its own" *chose* not to be. Saying only "nothing compared" for both
+     leaves the second looking like the first — a state the reader can change reported as a
+     limit of the program (design rule 1, which is about knowing what you are not looking
+     at).
+
+     Reported by Tom: *"I have selected society-2026-08-29 on its own. However, the next
+     line down still shows BASE then compared with society-2026-08-26."* This branch tested
+     `usable.length < 2` — whether the *program* has a second version — and never whether a
+     comparison was actually running, so on a two-revision pair it could not fire at all. */
+  if (!comparing()) {
+    const why = usable.length < 2
+      ? "— on its own; this program has only one version"
+      : "— on its own, nothing compared";
     return `${lost}<span class="verstrip-k">version</span>
       <span class="verstrip-v">${esc(versionName(base))}</span> ${ver(base)}
-      <span class="verstrip-alone">— on its own, nothing compared</span>`;
+      <span class="verstrip-alone">${esc(why)}</span>`;
   }
 
-  const compared = REVISIONS.find(r => r.revision === (CHANGES && CHANGES.compared))
-                || usable.find(r => r.revision !== (base && base.revision));
+  /* **The one test, not a second derivation of it.** This was
+     `CHANGES.compared || usable.find(r => r.revision !== base.revision)` — the same
+     fallback `comparedRevInForce()` carries, computed again here. Two answers to "what is
+     this held against", and fixing one fixed nothing a reader could see: the state went
+     right, `comparing()` went false, and the strip went on naming a pair (rule 51). */
+  const comparedId = comparedRevInForce();
+  const compared = REVISIONS.find(r => r.revision === comparedId);
   const w = diffWords();
 
   /* What the store can actually see about order, said as the observation it is. The
@@ -8549,14 +8602,16 @@ function wire() {
     rev.dataset.bound = "1";
     rev.addEventListener("change", () => {
       const [wantBase, wantCompared] = String(rev.value).split("|");
-      state.comparedRev = wantCompared || "";
+      /* `ALONE`, never "". The reader has *answered*, and "" is the state that means
+         they have not -- which the fallback in `comparedRevInForce` then fills in. */
+      state.comparedRev = wantCompared || ALONE;
       /* Cleared here, deliberately, because the reader has just answered it. It used to
          disappear by falling out of the one `changeNote` branch that did not prepend it,
          which looked right and was an accident: three returns carried the notice and the
          fourth did not, so it survived every state except a successful comparison. A
          message that clears itself in one arm of a conditional clears itself at random. */
       state.revNote = "";
-      used("pair:" + (state.comparedRev ? "compared" : "alone"));
+      used("pair:" + (wantCompared ? "compared" : "alone"));
 
       /* Moving the reading end is a different act from moving the comparison end, and it
          costs a different amount. The comparison end is a query the server already has the
@@ -8587,7 +8642,7 @@ function wire() {
       /* Only when there is something to compare. "On its own" is a real answer and must
          not spend seconds fetching a comparison nobody asked for -- but it must still
          repaint, or the Changes group keeps the figures of the pair just dropped. */
-      if (state.comparedRev) {
+      if (wantCompared) {
         refreshChanges();
         if (state.codeFile && overlayOn()) {
           ensureFilePair();

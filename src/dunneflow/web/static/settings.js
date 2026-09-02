@@ -168,6 +168,30 @@ const DEFAULTS = {
    * no separation, so every set that can be reached is reachable because it reads, not
    * because it passed a bar. That is worth saying rather than implying by omission. */
   nodeShapes: 'kind',     // 'kind' | 'rect' | 'round'
+  /* The cursor over a pickable thing in the diagram, and how thick a flow arrow is drawn.
+   * Both design rule 2, and both Tom's, from driving it rather than from reading the CSS.
+   *
+   * **The hand was the complaint, and it was not about size.** `cursor: pointer` is the
+   * web's "this is a link" hand, and a diagram is not a page of links -- it is a drawing
+   * you *aim* at. The hand's hotspot is a fingertip whose exact pixel is a guess, and the
+   * glyph is broad enough to cover the thing being aimed at, which is worst on precisely
+   * the thin target that prompted this. An arrow has a sharp, unambiguous tip; a crosshair
+   * has one too and says "precision instrument" besides. All three are defensible and
+   * which one *reads* right is a matter of taste, which is what design rule 2 is for.
+   *
+   * `arrow` is the default because it is what Tom chose. Note what it costs: the hand was
+   * also the only thing on the page saying an arrow could be clicked at all, so with it
+   * gone the hover highlight is carrying that signal alone -- see `tokens.css`.
+   *
+   * **Thickness is in user units, not pixels, and that is not a slip of design rule 3.**
+   * The drawing carries its own pixel size and `dgmFit()` scales it with a transform, so a
+   * stroke here scales with the picture the way every other mark in it does. A rem would
+   * scale it with the *chrome* instead, so zooming in would thin the line relative to the
+   * boxes beside it. 1 is Graphviz's own default and so is what the drawing has always
+   * had -- offered rather than raised, because a heavier line is easier to hit and a
+   * lighter picture is easier to read, and only the reader knows which they are doing. */
+  diagramCursor: 'arrow',    // 'arrow' | 'crosshair' | 'hand'
+  diagramEdgeWidth: 1,       // user units, scaling with the drawing; 1 = Graphviz's default
   showPlates: false,
   /* The "you are here" pointer: an arrow standing over each node the reader picked.
    *
@@ -486,6 +510,8 @@ function resetSettings(program, current) {
     diagram: 'the plate drawn as a diagram', nodeShapes: 'which shapes the boxes take',
     diagramId: 'which compartment the diagram has open',
     diagramPorts: 'whether the diagram draws its crossings',
+    diagramCursor: 'the cursor over the diagram',
+    diagramEdgeWidth: 'how thick a flow arrow is drawn',
     showPlates: 'the plates themselves', edgesInMotion: 'edges while moving',
     pointerShown: 'the you-are-here pointer', pointerColor: 'the pointer colour',
     pointerPlace: 'where the pointer stands',

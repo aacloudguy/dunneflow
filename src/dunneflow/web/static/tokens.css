@@ -2255,9 +2255,17 @@ kbd { font-family: var(--f-mono); font-size: .66rem; background: var(--sunken);
                    border: 1px solid var(--border); border-radius: .2rem; }
 /* `touch-action: none` so a drag pans the drawing instead of scrolling the page, and
    `cursor: grab` because that gesture genuinely is a grab. */
+/* The cursor over the **whole** diagram window, not only over what is pickable in it.
+   `cursor: grab` was here and the setting only reached `g.node` / `g.edge`, so choosing
+   Arrow changed the cursor over the boxes and left the open hand everywhere else -- which
+   is most of the pane, and is what a reader's pointer is over most of the time. */
 .dgm-canvas { position: relative; overflow: hidden; min-height: 0;
-              touch-action: none; cursor: grab; }
-.dgm-canvas:active { cursor: grabbing; }
+              touch-action: none; cursor: var(--dgm-cursor, default); }
+/* Only while a pan is genuinely under way. This was `:active`, which fires on **any**
+   press -- so the closed hand flashed on every click of a box that never became a drag.
+   The class is added past the drag slop and removed on pointerup, which is the same moment
+   rule 72 takes the pointer capture at, and for the same reason. */
+.dgm-canvas.dgm-dragging { cursor: grabbing; }
 /* Transformed rather than re-laid-out: a pan moves this wrapper and never asks Graphviz
    for anything, so eighty boxes cost a compositor transform per frame.
 
@@ -2277,15 +2285,35 @@ kbd { font-family: var(--f-mono); font-size: .66rem; background: var(--sunken);
    the reader was looking. `width: 100%` handed the fit to the browser, which redid it on
    every resize -- 139 pixels of movement from opening the inspector alone. */
 .dgm-pan svg { display: block; }
-/* A node is a thing to click, and says so. The port is dashed in the DOT already; this is
-   the affordance rather than the meaning. */
-.dgm-pan g.node { cursor: pointer; }
+/* The cursor over anything pickable in the drawing, and it is a Setting (design rule 2).
+   `cursor: pointer` -- the web's "this is a link" hand -- was here for every box, and it is
+   the wrong glyph for a drawing you *aim* at: its hotspot is a fingertip whose exact pixel
+   is a guess, and it is broad enough to cover the thing being aimed at. Worst on a thin
+   arrow, which is what turned it up. Arrow, crosshair and hand are all defensible, so all
+   three are offered; `--dgm-cursor` is written by `applyDiagramLook()`.
+
+   Arrows carry it too, and did not before -- so an arrow now says it is a target the same
+   way a box does. */
+.dgm-pan g.node, .dgm-pan g.edge { cursor: var(--dgm-cursor-pick, default); }
 .dgm-pan g.node:hover polygon, .dgm-pan g.node:hover ellipse,
 .dgm-pan g.node:hover path { stroke: var(--accent); stroke-width: 2; }
 .dgm-pan g.node text { fill: var(--text); }
 .dgm-pan g.node polygon, .dgm-pan g.node ellipse, .dgm-pan g.node path { fill: var(--surface); }
-.dgm-pan g.edge path { stroke: var(--graph-edge); }
+/* **The stroke had no width at all**, so it took Graphviz's default of 1 -- a 1 nobody
+   chose. It is a Setting now, in *user units* so it scales with the drawing the way every
+   other mark in it does (a rem would scale it with the chrome instead, and zooming in would
+   thin the line against the boxes beside it). The arrowhead is left alone: it is sized by
+   Graphviz in the DOT, and a head that grew with the line would change the picture's
+   proportions rather than its weight. */
+.dgm-pan g.edge path { stroke: var(--graph-edge); stroke-width: var(--dgm-edge-width, 1); }
 .dgm-pan g.edge polygon { fill: var(--graph-edge); stroke: var(--graph-edge); }
+/* An arrow says it is a target when the pointer is over it. This did not exist, and with
+   the hand gone it is the *only* thing that does -- the hand was carrying that signal by
+   accident. Widened as well as coloured, because a 1-unit line highlighted at 1 unit is a
+   colour change a reader has to already be looking at to notice. */
+.dgm-pan g.edge:hover path { stroke: var(--accent);
+  stroke-width: calc(var(--dgm-edge-width, 1) + 1.5); }
+.dgm-pan g.edge:hover polygon { fill: var(--accent); stroke: var(--accent); }
 
 /* The shape key: every kind in the outline the chosen set actually draws it in.
    A grid rather than a flow, so the six names line up and the eye compares outlines down

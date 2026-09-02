@@ -15,7 +15,7 @@ by *how often you need it*, not by importance:
 |---|---|---|
 | `CLAUDE.md` | commands, verification gates, architecture, and the **index** of every rule | every session — it is loaded for you |
 | `RULES.md` | the 76 engineering rules **in full**, with the false result each came from | before working in the area a rule governs |
-| `DESIGN-RULES.md` | the 26 dashboard design rules in full | before building or changing a view |
+| `DESIGN-RULES.md` | the 27 dashboard design rules in full | before building or changing a view |
 | `PERFORMANCE.md` | every measured figure, with its budget and its conditions | before quoting or retaking a number |
 | `BRIEFING.md` | state: what is built, what is next, what is closed | at the start of a session |
 | `HANDOFF.md` | the full chronological record, session by session | when you need why something is the way it is |
@@ -501,6 +501,8 @@ so read the body before building against one.
  24. A pane collapses to a rail, and the rail says which pane it is.
  25. The primary way in is a pane, not furniture.
  26. The list and the picture are one instrument, and it has to run both ways.
+ 27. A container's affordance drowns out the affordances inside it, because it wins on
+     area.
 ```
 
 ## Adding a language

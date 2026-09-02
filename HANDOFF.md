@@ -7199,3 +7199,91 @@ it is a change to the selection path rather than to this feature.
 
 The list at the foot of this file, minus the class docstring, which this closes. Nothing new
 is blocked. The trail duplication above joins it.
+
+## The cursor over a diagram — built 2026-09-02, and it was never about the arrow
+
+**Opened as the first item on the open list: "the flow panel's arrow stroke is 1 px, which
+is thin to aim at."** That was true and was the smaller half. Tom drove it and said so
+immediately: *"The problem isn't so much the arrow size as the cursor pointer. We're back to
+the hand icon here… I think the reticule or arrow would be better in this context."*
+
+### What was actually wrong
+
+Two things, and neither was a bug anything could detect.
+
+**`.dgm-pan g.node { cursor: pointer }`** — the web's *this is a link* hand — on a drawing
+you **aim** at. Its hotspot is a fingertip whose exact pixel is a guess, and the glyph is
+broad enough to cover the thing being aimed at, which is worst on precisely the thin target
+that opened the item.
+
+**`.dgm-pan g.edge path { stroke: var(--graph-edge) }`** with no `stroke-width` at all — so
+an arrow took Graphviz's default of 1. A 1 nobody chose, which is why it never read as a
+decision.
+
+Both are design rule 2: genuinely interchangeable, so both are built and it is a Setting.
+`diagramCursor` is arrow / crosshair / hand, defaulting to **arrow** — Tom's choice — and
+`diagramEdgeWidth` is 1–4, clamped 1–8 at the one door the value comes through, because
+`localStorage` is editable and a 400-unit stroke is a solid rectangle with no way back.
+
+Thickness is in **user units**, not rem, and that is not a lapse from design rule 3: the
+drawing carries its own pixel size and `dgmFit()` scales it with a transform, so a stroke
+here scales with the picture the way every other mark in it does. A rem would scale it with
+the *chrome*, and zooming in would thin the line against the boxes beside it.
+
+### The fix that was wrong, and the report that corrected it
+
+The first version styled only `g.node` and `g.edge` — what is *pickable* — and left
+`.dgm-canvas { cursor: grab }` alone. Tom: *"the cursor is still Hand most of the time, it
+only switches to arrow when near the link."* The canvas is most of what a pointer is ever
+over, so styling only the targets changed almost nothing.
+
+It is **two** variables now rather than one, and they stay a pair on purpose: `hand` has
+genuinely different conventional glyphs for the two, an **open** hand for a surface that
+pans and a **pointing** hand for a thing that is clickable. Keeping both is what makes the
+`Hand` option honestly *what it was before* rather than an approximation of it. Measured on
+the page: arrow → `default`/`default`, crosshair → `crosshair`/`crosshair`, hand →
+`grab`/`pointer`.
+
+### `:active` was the wrong moment, and rule 72 already said so
+
+`.dgm-canvas:active { cursor: grabbing }` fires on **any** press, so the closed hand flashed
+on every click of a box that never became a pan. That is rule 72's own lesson wearing a
+cursor — a drag needs the feedback and a click does not — and the moment that tells them
+apart already existed: `dragging`, set past the 3 px slop, which is where the pointer
+capture is taken and for the same reason. A class is added there and removed on pointerup.
+
+### What it turned out to be worth, and it is design rule 27
+
+The change was proposed as an aiming fix. What it did was explain the feature:
+
+> *"This change resolved a major confusion for me, too. Now I understand how the diagrams
+> work — click to view Inspector, and how the Inspector list works."*
+
+`cursor: grab` on the canvas is a claim — *this surface is a thing you drag* — and it wins on
+**area**, because the canvas is nearly all of the pane. The boxes' own `cursor: pointer` was
+visible only in the instant the pointer crossed one, so the drawing read as a picture to pan
+rather than as a set of things to click. Every control was wired, the self-check passed, and
+clicking a box had always opened the inspector. **Nobody found out that it did.**
+
+That is **design rule 27**, and it is design rule 16 from the far side: not a control wired
+to nothing, but a control wired to everything whose signal is drowned by a louder one
+belonging to the thing it sits on. Both look exactly like working software, and the second
+is harder to find because it *is* working software.
+
+### One thing added that was not asked for
+
+**Arrows highlight on hover**, widening by 1.5 as well as taking the accent — because a
+1-unit line highlighted at 1 unit is a colour change a reader must already be looking at to
+notice. The reason is a consequence of the change itself: the hand was the only thing on the
+page saying an arrow could be clicked at all, so removing it left the arrows with no
+affordance whatever. Arrows also take the cursor setting now, which they never did. Two CSS
+rules if it should go.
+
+### Verified
+
+809 tests, mypy clean, ruff clean. Driven in Chrome on the real Mensores pair: the controls
+render, pressing one moves the CSS custom property and the `aria-pressed` with it, **the
+choice survives a reload** (rule 68 — where `followMode` was silently lost), the computed
+cursor was read off `#dgmCanvas` and off a box for all three settings, `grabbing` confirmed
+on the drag class, and the self-check still reports *every control is wired*. Both
+`dgmcursor` and `dgmedge` are in `WIRED_ATTRS`, so a rename fails by name.

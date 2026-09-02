@@ -163,11 +163,36 @@ program has a most-commented routine and a maximum alone is a claim nobody can w
 
 ## What we are doing now
 
-**Paused 2026-09-02. Structures are compared — presence, what they declare, and what they
-say about themselves.** 809 tests, mypy clean, ruff clean, working tree clean. Nothing is
-half-done.
+**Paused 2026-09-02. The diagram's cursor and arrow weight are Settings, and the cursor
+turned out to explain the feature.** 809 tests, mypy clean, ruff clean, working tree clean.
+Nothing is half-done.
 
-### The latest: structures, compared at last (2026-09-02)
+### The latest: the cursor over a diagram (2026-09-02)
+
+**Opened as "the arrow stroke is 1 px, thin to aim at" and that was the smaller half.** Tom
+drove it: the `cursor: pointer` hand is the web's *this is a link* glyph, wrong for a drawing
+you **aim** at — its hotspot is a guess and it covers what you are aiming at. Both the cursor
+and the stroke are Settings now (design rule 2): arrow / crosshair / hand, defaulting to
+**arrow**, and 1–4× on the stroke, which had no width set at all and so took Graphviz's
+default of 1.
+
+**The first fix was wrong and the report corrected it.** It styled only what was *pickable*
+and left `.dgm-canvas { cursor: grab }` alone — *"still Hand most of the time, it only
+switches to arrow when near the link."* The canvas is most of what a pointer is ever over.
+
+**And then it turned out not to be an aiming fix at all:** *"This change resolved a major
+confusion for me… now I understand how the diagrams work — click to view Inspector."* The
+canvas's `grab` was a claim that the surface pans, and it **wins on area**; the boxes' own
+`pointer` was visible only in the instant the pointer crossed one, so the drawing read as a
+picture to pan rather than a set of things to click. Every control was wired and the
+self-check passed the whole time — nobody found out clicking a box opened the inspector.
+That is **design rule 27**, and it is design rule 16 from the far side.
+
+*Also fixed on the way: `:active` was the wrong moment for the grabbing hand — it fires on
+any press, so it flashed on every click of a box. It is on the real `dragging` flag now, past
+the slop, which is rule 72's own lesson in a cursor.*
+
+### Before that: structures, compared at last (2026-09-02)
 
 **The last prose surface, and it was three lanes rather than one.** A class docstring was
 compared by nothing — and so was the *presence* of a class, which is why the docstring had
@@ -320,8 +345,11 @@ and the singular. The stat tile's violet is visible in the one capture that fits
 
 ### Two things waiting on Tom's eye, and neither is a bug
 
-1. **The flow panel's arrow stroke is 1 px**, which is thin to aim at. The same flow is
-   reachable from a row in the pane, which is a button, so this may be enough.
+1. ~~**The flow panel's arrow stroke is 1 px**, which is thin to aim at.~~ *Closed
+   2026-09-02, and it was never really about the arrow — see the top of this file. The
+   stroke is a Setting now, and the **cursor** turned out to be the larger half: `grab` on
+   the canvas was claiming the whole pane pans, which drowned out the boxes saying they are
+   clickable. That earned **design rule 27**.*
 2. **A 1,347-line `frozenset` argument exists in this corpus** (`quaestor/_envelope.py`,
    91 KB in one argument) and the pane **wraps** it rather than eliding, because rule 8
    allows abbreviation only where the complete value sits beside it. It may read badly.

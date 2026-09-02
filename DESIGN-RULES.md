@@ -375,3 +375,33 @@ bought a rewrite of settled CSS, neither of which serves the thing the tool is f
    columns, saved filters, and expansion state persist per program, keyed by stable
    identity so they survive switching revisions. They travel only when someone exports
    them, and a recipient always keeps their own scale multiplier.
+
+27. **A container's affordance drowns out the affordances inside it, because it wins on
+    area.** The compartment diagram carried `cursor: grab` on its canvas — *this surface is
+    a thing you drag* — while each box carried `cursor: pointer`. Both were correct, both
+    were live, and the canvas is **most of what a pointer is ever over**: the boxes' claim
+    was visible only in the instant the pointer crossed one, and the drawing read as a
+    picture to pan rather than as a set of things to click.
+
+    The cost was not aesthetic and it was not a defect anything could detect. Every control
+    was wired, the self-check passed, and clicking a box had always opened the inspector.
+    What was missing is that **nobody found out it did.** Reported as comprehension rather
+    than as a bug, after the cursor was changed: *"this change resolved a major confusion
+    for me… now I understand how the diagrams work — click to view Inspector, and how the
+    Inspector list works."* A feature nobody discovers and a feature that does not exist
+    are the same feature.
+
+    This is design rule 16 from the far side. That rule is about a control that renders and
+    is wired to nothing; this is a control wired to everything, whose signal is masked by a
+    louder one belonging to the thing it sits on. Both look exactly like working software,
+    and the second is harder to find because it *is* working software.
+
+    Two things follow. **Ask what the surface claims before asking what the target claims** —
+    where a container and its children both spend one channel, the container is what a
+    reader reads, and the child's use of it is a flicker. And a pan affordance is a poor
+    trade against a click affordance in a drawing that is mostly clicking: panning is
+    discovered by trying, clicking is not, so the channel belongs to the act the reader
+    cannot guess at.
+
+    *Found by Tom driving it, and only by that. It began as a complaint about a 1 px arrow
+    being thin to aim at — which was true, and was the smaller half of the problem.*

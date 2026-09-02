@@ -215,6 +215,8 @@ const state = {
   diagram: false,         // what is lit, drawn as labelled boxes rather than as dots
   diagramId: null,        // which compartment Diagram mode has open
   diagramPorts: false,    // draw the crossings to other compartments -- see diagram.py
+  diagramCursor: "arrow", // 'arrow' | 'crosshair' | 'hand' -- see settings.js
+  diagramEdgeWidth: 1,    // user units; scales with the drawing, not with the chrome
   /* Which **box** is open, or null for the compartment. The second altitude of the same
    * picture: a box is a class at one level and a routine at the next, and `Compartment`
    * says "boxes, and the flow among them" at both. */
@@ -603,6 +605,39 @@ function applyPalette() {
   /* After the stamp, never before: `cssPalette()` reads the computed value off `:root`, so
      pushing first would read the set the reader has just left. */
   if (typeof applyGraphPalette === "function") applyGraphPalette();
+}
+
+/* Both diagram appearance settings, pushed to CSS as custom properties.
+ *
+ * On the document root rather than on the pane, and that is the point: the diagram host is
+ * rebuilt on every compartment change, so setting it there would mean every rebuild is a
+ * second place that has to remember (rule 51). Written once here, read by `tokens.css`, and
+ * correct before the diagram has ever been opened.
+ *
+ * The stroke is clamped rather than trusted. A stored value is whatever was in
+ * `localStorage`, which a reader can edit, and a 400-unit stroke is a solid rectangle with
+ * no way back to a picture -- design rule 6's reasoning, one control over: customisation is
+ * clamped, and the clamp is at the one door the value comes through.
+ */
+function applyDiagramLook() {
+  const r = document.documentElement;
+  /* **Two cursors, not one, and the pair is what the first version got wrong.** It set the
+     pickable things only, so the boxes and arrows turned to an arrow and the whole canvas
+     around them stayed `grab` -- reported exactly that way: *"the cursor is still Hand most
+     of the time, it only switches to arrow when near the link."* The surface is most of what
+     a reader's pointer is over, so styling only the targets changes almost nothing.
+
+     They stay a pair rather than collapsing to one value because `hand` has genuinely
+     different conventional glyphs for the two: an **open** hand says this surface pans, a
+     **pointing** hand says this thing is clickable. Keeping both is what makes `Hand`
+     honestly "what it was before" rather than an approximation of it. */
+  const surface = { arrow: "default", crosshair: "crosshair", hand: "grab" };
+  const pick    = { arrow: "default", crosshair: "crosshair", hand: "pointer" };
+  r.style.setProperty("--dgm-cursor", surface[state.diagramCursor] || "default");
+  r.style.setProperty("--dgm-cursor-pick", pick[state.diagramCursor] || "default");
+  const w = Number(state.diagramEdgeWidth);
+  r.style.setProperty("--dgm-edge-width",
+                      String(Number.isFinite(w) ? Math.min(8, Math.max(1, w)) : 1));
 }
 
 function applyScale() {
@@ -3125,6 +3160,12 @@ const DGM_DRAG_SLOP = 3;
     if (!dragging) {
       if (Math.abs(ev.clientX - from.ox) + Math.abs(ev.clientY - from.oy) < DGM_DRAG_SLOP) return;
       dragging = true;
+      /* The pan cursor, on the **real** drag rather than on `:active`. `:active` fires on
+         any press -- including a click on a box that never becomes a pan -- so the closed
+         hand flashed on every click. That is rule 72's own lesson in a cursor: a drag needs
+         the feedback and a click does not, and the moment that tells them apart is this
+         one, past the slop. */
+      from.el.classList.add("dgm-dragging");
       capture = from.el;
       /* `setPointerCapture` **throws** `NotFoundError` for a pointerId that is no longer
          active, and a throw here would leave the drag half-started -- `dragging` set, the
@@ -3145,6 +3186,7 @@ const DGM_DRAG_SLOP = 3;
       const eat = (e) => { e.stopPropagation(); e.preventDefault(); };
       document.addEventListener("click", eat, { capture: true, once: true });
     }
+    if (from) from.el.classList.remove("dgm-dragging");
     if (capture) { capture.releasePointerCapture?.(from.id); capture = null; }
     from = null;
     dragging = false;
@@ -4798,6 +4840,35 @@ function viewSettings() {
           <div class="seg" role="group" aria-label="Steps the trail shows">
             ${[6, 12, 25].map(n => `<button data-trailcap="${n}"
               aria-pressed="${state.trailCap === n}">${n} steps</button>`).join("")}
+          </div>
+        </div>
+
+        <div class="setrow">
+          <div><div class="lbl">Cursor over the diagram</div>
+            <div class="desc">A diagram is a drawing you <i>aim</i> at, not a page of links.
+              The link <b>hand</b> was here for every box: its hotspot is a fingertip whose
+              exact pixel is a guess, and the glyph is broad enough to cover the thing being
+              aimed at — worst on a thin arrow. An <b>arrow</b> has a sharp, unambiguous
+              tip; a <b>crosshair</b> has one too and says <i>precision instrument</i>
+              besides. Which reads right is taste, so all three are here.</div></div>
+          <div class="seg" role="group" aria-label="Cursor over the diagram">
+            ${[["arrow", "Arrow"], ["crosshair", "Crosshair"], ["hand", "Hand"]]
+              .map(([v, w]) => `<button data-dgmcursor="${v}"
+                aria-pressed="${state.diagramCursor === v}">${w}</button>`).join("")}
+          </div>
+        </div>
+
+        <div class="setrow">
+          <div><div class="lbl">Flow arrow thickness</div>
+            <div class="desc">How heavily an arrow between two boxes is drawn. It had no
+              width set at all, so it took Graphviz's default of <b>1</b> — a 1 nobody
+              chose. Thicker is easier to aim at; thinner leaves the picture lighter to read,
+              and only you know which you are doing. In the drawing's own units, so it scales
+              with the picture rather than with the chrome. The arrowhead is left alone, so
+              raising this changes the weight and not the proportions.</div></div>
+          <div class="seg" role="group" aria-label="Flow arrow thickness">
+            ${[1, 2, 3, 4].map(n => `<button data-dgmedge="${n}"
+              aria-pressed="${Number(state.diagramEdgeWidth) === n}">${n}×</button>`).join("")}
           </div>
         </div>
 
@@ -8011,6 +8082,26 @@ function wire() {
     buildNav();
     render();
   }));
+  /* Both diagram-appearance controls. `applyDiagramLook()` writes the CSS custom property
+     and `render()` repaints the Settings page so the pressed button moves -- the drawing
+     itself needs no rebuild at all, because the SVG reads the property live. That is the
+     whole reason these are CSS variables rather than attributes written into the DOT: a
+     change here costs no Graphviz round trip. */
+  $$("[data-dgmcursor]").forEach(b => b.addEventListener("click", () => {
+    state.diagramCursor = b.dataset.dgmcursor;
+    applyDiagramLook();
+    used("diagram:cursor:" + state.diagramCursor);
+    persist();
+    render();
+  }));
+  $$("[data-dgmedge]").forEach(b => b.addEventListener("click", () => {
+    state.diagramEdgeWidth = Number(b.dataset.dgmedge);
+    applyDiagramLook();
+    used("diagram:edgewidth:" + state.diagramEdgeWidth);
+    persist();
+    render();
+  }));
+
   $$("[data-menuorder]").forEach(b => b.addEventListener("click", () => {
     state.menuOrder = b.dataset.menuorder;
     used("menu:" + state.menuOrder);
@@ -8404,7 +8495,8 @@ document.addEventListener("keydown", (e) => {
  * could not see: it reads `index.html`, and all four of these are written by JavaScript. */
 const WIRED_ATTRS = new Set([
   "aiop", "airun", "bound", "card", "cite", "citeidx", "closeviewer", "crumb", "curi",
-  "cursor", "den", "disk", "drop", "edgesmotion", "egress", "ep", "fold", "gact", "gosev",
+  "cursor", "den", "dgmcursor", "dgmedge", "disk", "drop", "edgesmotion", "egress", "ep",
+  "fold", "gact", "gosev",
   "goto", "graphtheme", "insp", "jump", "layout", "legend", "manifest", "menuorder",
   "mode", "nav", "nav2", "navcap", "navgroups", "pkgopen", "pointerplace", "pointerreset", "pointershown", "reticule",
   "closedetail", "detachdetail", "detail", "detailall", "tablego",
@@ -10438,7 +10530,7 @@ const PERSISTED = [
   "diskOrder", "diskColors", "colorBy", "sortMode", "filterMode", "direction",
   "level", "minDisk",
   "nodeSize", "spreadX", "spreadY", "spreadZ", "plateSize", "collapseUnused",
-  "diagram", "nodeShapes", "diagramId", "diagramPorts",
+  "diagram", "nodeShapes", "diagramId", "diagramPorts", "diagramCursor", "diagramEdgeWidth",
   "searchCase", "searchWord", "searchRegex",
   "panels", "inspectorAuto", "navWidth", "codeWidth", "codeFile", "codeOverlay",
   "tableOverlay", "anomalyOverlay",
@@ -13022,6 +13114,7 @@ function wireSearchOnce() {
 async function boot() {
   applyTheme();
   applyPalette();
+  applyDiagramLook();
   applyScale();
   state.view = state.startup;
   try {
@@ -13046,6 +13139,7 @@ async function boot() {
   adoptSettings(STATS.program);
   applyTheme();
   applyPalette();
+  applyDiagramLook();
   applyScale();
   state.view = state.startup;
 

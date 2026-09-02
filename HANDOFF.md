@@ -6691,26 +6691,27 @@ holds". **Drawing a plate as a diagram** is done too — withdrawn once, then bu
 original framing, with what was decided and what was not, is under "Two feature requests,
 recorded 2026-08-30" above.
 
-*Unchanged from before, and none of it blocked by the above:* the rendered markdown is not
-revision-named, so a second analysis overwrites the first's map; `--revision` on `analyze`
-is still unimplemented (and is now a smaller question than it was — a version is read from
-the program, so what `--revision` would add is a reader's *declaration* where the program
-says nothing); the navigator's search box pinned-when-open / icon-when-closed (decided
-2026-08-30, not built); the two vocabulary-lane precision defects; per-plate sphere scaling
-and stack orientation, the second of which is structural because `OrbitView` has no camera
-roll; `m.<module>` as a language feature, with research owed on prior art first; packaging
-as a binary. And **a class docstring is compared by nothing**, blocked on the same subject
-question rule 77 is about — `structures` has no presence band at all, so a class that
-appeared or vanished is unreported too.
+### The open list lives in `BRIEFING.md`, and only there
 
-**The worklist's two jump buttons are half done, and the halves are worth separating.** The
-design rule 16 defect is *fixed*: they were live-looking buttons with no attributes and no
-handler, and they now state why they do not act. Making them act is still open, and it is
-blocked on precision rather than on effort — a finding carries the **name** it found, not
-the node, so resolving `subject` would guess between every routine sharing that name
-(rule 5). The `cur.a.subject` that explanation reads is fixed too and verified live: the
-server sends it, `loadAnomalies()` carries it, and 23 of 26 findings on DunneFlow's own
-graph have one.
+**Read it under "What is next, and it is open". Do not keep a second copy here.**
+
+This paragraph *was* that second copy, and it drifted twice in two days — which is the whole
+argument for the rule. On 2026-09-02 an audit found it carrying "what is an occurrence for
+`LOST_EDGE`" as an unanswered question that had dissolved two days earlier, and carrying both
+2026-08-30 feature requests as unscheduled when both were built; `BRIEFING`'s copy meanwhile
+was missing per-plate sphere scaling and stack orientation, which only this one had. **Then
+it drifted again inside the very session that fixed it** — the class docstring was closed and
+this list went on saying it was open, while the trail-duplication found the same afternoon
+reached `BRIEFING` and never reached here.
+
+Rule 51, and the shape that rule is about: one truth, one place that owns it, and every
+reader arriving through the same door. Two lists kept level by hand are two answers waiting
+to disagree, and **a standing list is read as current by definition** — an item that has
+stopped being true costs more than one that was never added.
+
+`BRIEFING` owns it because that is the file a session is told to read first. What belongs
+here is what this file is for: the record of *how* each item was closed, under its own dated
+heading.
 
 **Struck 2026-09-02: "what is an occurrence for `LOST_EDGE`" was not an unanswered
 question.** It stood here as *one question never answered* — the 142 callers or the rival
@@ -7029,6 +7030,49 @@ a proof, and the instruction to read the body before working in an area a rule g
 written at the top of `RULES.md`, at the head of the index, and in the routing table in
 `CLAUDE.md`. If a future session applies a rule shallowly from its title alone, that is the
 failure mode to look for first.
+
+## The standing open list, audited entry by entry — 2026-09-02
+
+Nothing was scheduled, so the standing list is what a session navigates by. Audited rather
+than read out, and it had drifted both ways.
+
+**Struck, because it was resolved and still listed.** *"What is an occurrence for
+`LOST_EDGE`"* stood as **one question never answered**, said to decide a whole feature
+because 93 of Mensores' 106 findings are that kind. It **dissolved** on 2026-08-31 rather
+than being answered — the detector already groups by `callee_expr`, so a finding is one per
+expression, the callers are its `count` and the rivals are in its `title`; both are what it
+*reports* and both move while it stays the same finding. The anomaly worklist it was said to
+block was built the same day (`5a`, `5b`, `anomalychanges.py`, `/api/anomalychanges`). It had
+told every session for two days that the largest feature was blocked on an answer nobody
+owed.
+
+Both 2026-08-30 feature requests were marked *not scheduled* and both were **built
+2026-08-31** — sizing a plate by its density, which shipped under the name *plate width*, and
+the plate diagram, withdrawn once and then built.
+
+**Two half-truths about the worklist's jump buttons, separated.** The design rule 16 defect
+is *fixed*: they were live-looking buttons with no attributes and no handler, and each now
+states why it does not act. Making them **act** is still open and is blocked on precision
+rather than effort — a finding carries the **name** it found, not the node, so resolving
+`subject` would guess between every routine sharing that name (rule 5).
+
+And the rule 44 defect inside that explanation is fixed too, which `4650` recorded as *"found
+in passing and unfixed"*. Verified live rather than by reading the map: `/api/anomalies`
+sends `subject`, `loadAnomalies()` carries it across, and **23 of 26 findings on DunneFlow's
+own graph have a non-empty one**.
+
+**Added to `BRIEFING`, which was missing them:** per-plate sphere scaling, and stack
+orientation — the second structural, because `OrbitView` has no camera roll.
+
+### And it drifted again the same day, which is the finding that outlasts the audit
+
+The list was corrected in both files, and then closing the class docstring updated one copy
+and not the other, while the trail duplication found that afternoon reached `BRIEFING` and
+never reached here. Two lists levelled by hand are two answers waiting to disagree — rule 51,
+in the documents rather than in the code.
+
+So `BRIEFING.md` **owns** the open list now and this file points at it. What belongs here is
+what this file is for: the record of *how* each item was closed, under its own dated heading.
 
 ## Structures, compared at last — built 2026-09-02
 

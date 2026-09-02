@@ -340,8 +340,14 @@ filed as known are done.
 2. ~~**A rewritten docstring is not compared either.**~~ *Built 2026-09-01, and it was two
    lanes rather than one — see the top of this file.*
 
-**Nothing is on this list.** What remains is the standing set at the foot of `HANDOFF.md`,
-audited entry by entry on 2026-09-02 and none of it scheduled:
+**This file owns the open list. There is no second copy.** `HANDOFF.md` used to keep one at
+its foot and the two drifted twice in two days — an audit on 2026-09-02 found each carrying
+something the other had closed, and then the same session closed the class docstring in one
+copy and not the other. Rule 51 in the documents: one truth, one place that owns it. Record
+*how* an item was closed in `HANDOFF` under its own dated heading; record *whether* it is
+open here.
+
+Audited entry by entry on 2026-09-02, none of it scheduled:
 
 *Struck in that audit:* **"what is an occurrence for `LOST_EDGE`"** had stood as a question
 for Tom that decided a whole feature. It **dissolved** on 2026-08-31 rather than being

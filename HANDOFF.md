@@ -6683,24 +6683,48 @@ both sides and will fail the moment it becomes true, so it cannot be forgotten (
 
 </details>
 
-*Two feature requests recorded 2026-08-30 and not scheduled:* **sizing a plate by its
-density** (a Setting; it reverses `layout.py`'s written decision that every disk is drawn
-the same size, and there is no per-plate size in the model today) and **drawing a plate as
-a diagram** — labelled rectangles or circles rather than dots, linking between plates, with
-the dimming and the hover card carried over unchanged. See "Two feature requests, recorded
-2026-08-30" above for both, with what is already decided and what is not.
+*Two feature requests recorded 2026-08-30 — **both built 2026-08-31**, and the text below
+is kept because one of them changed name on the way.* **Sizing a plate by its density** is
+done, and shipped as *plate width* rather than density: see "Sizing a plate by what it
+holds". **Drawing a plate as a diagram** is done too — withdrawn once, then built: see
+"Withdrawn — Tom, 2026-08-31, on the plate diagram" and "The plate as a diagram". Their
+original framing, with what was decided and what was not, is under "Two feature requests,
+recorded 2026-08-30" above.
 
 *Unchanged from before, and none of it blocked by the above:* the rendered markdown is not
 revision-named, so a second analysis overwrites the first's map; `--revision` on `analyze`
 is still unimplemented (and is now a smaller question than it was — a version is read from
 the program, so what `--revision` would add is a reader's *declaration* where the program
 says nothing); the navigator's search box pinned-when-open / icon-when-closed (decided
-2026-08-30, not built); `m.<module>` as a language feature, with research owed on prior art
-first; the worklist's two jump buttons; the two vocabulary-lane precision
-defects; per-plate sphere scaling and stack orientation; packaging as a binary. One question
-never answered: **what is an occurrence for LOST_EDGE** — the 142 callers, or the rival
-definitions? 93 of Mensores' 106 findings are LOST_EDGE, so it decides the feature. And the
-blank-graph fix (rule 49) is still reasoned and guarded rather than seen.
+2026-08-30, not built); the two vocabulary-lane precision defects; per-plate sphere scaling
+and stack orientation, the second of which is structural because `OrbitView` has no camera
+roll; `m.<module>` as a language feature, with research owed on prior art first; packaging
+as a binary. And **a class docstring is compared by nothing**, blocked on the same subject
+question rule 77 is about — `structures` has no presence band at all, so a class that
+appeared or vanished is unreported too.
+
+**The worklist's two jump buttons are half done, and the halves are worth separating.** The
+design rule 16 defect is *fixed*: they were live-looking buttons with no attributes and no
+handler, and they now state why they do not act. Making them act is still open, and it is
+blocked on precision rather than on effort — a finding carries the **name** it found, not
+the node, so resolving `subject` would guess between every routine sharing that name
+(rule 5). The `cur.a.subject` that explanation reads is fixed too and verified live: the
+server sends it, `loadAnomalies()` carries it, and 23 of 26 findings on DunneFlow's own
+graph have one.
+
+**Struck 2026-09-02: "what is an occurrence for `LOST_EDGE`" was not an unanswered
+question.** It stood here as *one question never answered* — the 142 callers or the rival
+definitions, deciding the feature because 93 of Mensores' 106 findings are that kind. It
+**dissolved** on 2026-08-31 rather than being answered: the detector already groups by
+`callee_expr`, so a finding is one per expression, the callers are its `count` and the
+rivals are in its `title`. Both are what it *reports*, and both move while it stays the same
+finding. The anomaly worklist it was said to block was built the same day — `5a` and `5b`,
+`anomalychanges.py`, `/api/anomalychanges`. It is recorded here rather than deleted because
+the entry misled every session for two days, and **a standing list is read as current by
+definition**: an item that has stopped being true costs more than one that was never added.
+
+And the blank-graph fix (rule 49) is still reasoned and guarded rather than seen — rule 38,
+it wants a real window.
 
 *Practical note.* The two-version corpus used to verify this work was **removed** — 250 MB,
 and Tom manages disk. Rebuild it with:

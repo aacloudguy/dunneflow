@@ -298,11 +298,15 @@ filed as known are done.
    lanes rather than one — see the top of this file.*
 
 **Nothing is on this list.** What remains is the standing set at the foot of `HANDOFF.md`,
-none of it scheduled and one item blocked on a question rather than on effort:
+audited entry by entry on 2026-09-02 and none of it scheduled:
 
-- **What is an occurrence for `LOST_EDGE`** — the 142 callers, or the rival definitions? 93
-  of Mensores' 106 findings are that kind, so the answer decides the feature. A question for
-  Tom before any code.
+*Struck in that audit:* **"what is an occurrence for `LOST_EDGE`"** had stood as a question
+for Tom that decided a whole feature. It **dissolved** on 2026-08-31 rather than being
+answered — the detector groups by `callee_expr`, so a finding is one per expression, the
+callers are its count and the rivals are in its title — and the anomaly worklist it was said
+to block was built the same day. It had been telling every session since that the largest
+feature was blocked on an answer nobody owed.
+
 - **A class docstring is still compared by nothing**, and it is the one prose surface left.
   `structures.docstring` is in the store; the reason it was left out is that a class is not
   a row in this worklist *at all* — `structures` has no presence band, so a class that
@@ -315,10 +319,17 @@ none of it scheduled and one item blocked on a question rather than on effort:
   present a construct the *language* put there rather than an author. Decided 2026-08-30:
   not filtered and not bare, but a curiosity carrying its own explanation, scoped to the
   language that produced it rather than special-cased in the diff.
+- **The worklist's two jump buttons are half done.** The design rule 16 defect is fixed —
+  they no longer look live while doing nothing, and each states why it does not act. Making
+  them *act* is blocked on precision, not effort: a finding carries the **name** it found,
+  not the node, so resolving it would guess between every routine sharing that name (rule 5).
+- **Per-plate sphere scaling, and stack orientation** — carried in `HANDOFF`'s list and
+  missing from this one until the 2026-09-02 audit. The second is structural: `OrbitView`
+  has no camera roll.
 - The filed small things: the rendered markdown is not revision-named, `--revision` on
-  `analyze`, the navigator's search box pinned-when-open (decided 2026-08-30, never built),
-  the worklist's two jump buttons, the two vocabulary-lane precision defects, packaging as a
-  binary.
+  `analyze` (it exists on `serve` only), the navigator's search box pinned-when-open
+  (decided 2026-08-30, never built), the two vocabulary-lane precision defects, packaging as
+  a binary.
 
 ### Before this, in order — the full record is `HANDOFF.md`
 

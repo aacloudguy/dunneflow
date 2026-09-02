@@ -3519,12 +3519,31 @@ def test_the_navigator_reads_only_fields_the_routines_endpoint_sends() -> None:
     """
     web = Path(__file__).resolve().parents[1] / "src" / "dunneflow" / "web"
     q = (web / "queries.py").read_text(encoding="utf-8")
-    nav = q.split("NAV_ROUTINES = f\"\"\"", 1)[1].split("\"\"\"", 1)[0]
-    served = set(re.findall(r"AS (\w+)", nav))
-    served |= set(re.findall(r'self\._json\(\{"routines": rows, "(\w+)"',
-                             (web / "serve.py").read_text(encoding="utf-8")))
-    served.add("routines")
-    assert {"id", "pkg", "plates"} <= served, "the endpoint changed shape -- this test is blind"
+    # **Both** statements the endpoint sends. It served one list and now serves two, and a
+    # guard that knows about one of them passes while the other renders blank -- which is
+    # the exact failure this test is named for, one list along.
+    served: set[str] = set()
+    for stmt in ("NAV_ROUTINES = f\"\"\"", "NAV_STRUCTURES = f\"\"\""):
+        assert stmt in q, f"{stmt.split(' =')[0]} is gone; this guard is blind"
+        served |= set(re.findall(r"AS (\w+)", q.split(stmt, 1)[1].split('\"\"\"', 1)[0]))
+
+    # The payload's own top-level keys, read with `ast` rather than matched with a regex.
+    # The regex here captured only the *second* key of the literal, so adding a list between
+    # the first and last silently dropped `plates` from what this guard believed was sent.
+    # Reading the dict is exact, and it is the same instrument the change-band guard reaches
+    # for and for the same reason (rule 43: a check that cannot see is a check that lies).
+    import ast as _ast
+
+    fn = next(n for n in _ast.walk(_ast.parse((web / "serve.py").read_text(encoding="utf-8")))
+              if isinstance(n, _ast.FunctionDef) and n.name == "_r_routines")
+    payload = next(c.args[0] for c in _ast.walk(fn)
+                   if isinstance(c, _ast.Call) and c.args and isinstance(c.args[0], _ast.Dict))
+    assert isinstance(payload, _ast.Dict)
+    served |= {k.value for k in payload.keys
+               if isinstance(k, _ast.Constant) and isinstance(k.value, str)}
+    assert {"id", "pkg", "routines", "structures", "plates"} <= served, (
+        f"the endpoint changed shape -- this test is blind. served={sorted(served)}"
+    )
 
     body = _fn(_read("shell.js"), "loadRoutines")
     read = set(re.findall(r"\brow\.(\w+)", body)) | set(re.findall(r"\bd\.(\w+)", body))

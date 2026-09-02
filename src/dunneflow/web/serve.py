@@ -954,7 +954,7 @@ class _Handler(BaseHTTPRequestHandler):
             self._json(self._live.current.cover)
 
     def _r_routines(self, q: dict[str, list[str]]) -> None:
-        """Every routine, with the package the stack puts it on.
+        """Every routine and every structure, with the package the stack puts each on.
 
         The navigator used to read this off `/api/document?id=routines`, which was right
         while a routine row needed only a name and an id. Grouping the list by package needs
@@ -972,6 +972,12 @@ class _Handler(BaseHTTPRequestHandler):
             base = self._live.current
             rows = [dict(r) for r in base.store.query(
                 queries.NAV_ROUTINES, pkg_params(base.root))]
+            # The structures, riding with the routines because both are wanted at the same
+            # moment: the navigator lists them and the topbar search filters them, and both
+            # happen at boot. 671 rows against 4,786 is a seventh of the weight, where a
+            # second request would be a whole second round trip for it.
+            structures = [dict(r) for r in base.store.query(
+                queries.NAV_STRUCTURES, pkg_params(base.root))]
             # Which packages actually have a plate. `graph.py` merges any package below
             # `MIN_DISK` into `pkg:<small>`, so 47 packages become 45 plates -- and a list
             # row offering `pkg:_version` would be selecting a plate that is not in the
@@ -979,7 +985,7 @@ class _Handler(BaseHTTPRequestHandler):
             # needed it: inventing an id to make a row clickable is a link to nothing.
             plates = [d["id"] for d in base.payload["disks"]
                       if d["id"].startswith("pkg:")]
-        self._json({"routines": rows, "plates": plates})
+        self._json({"routines": rows, "structures": structures, "plates": plates})
 
     def _r_anomalies(self, q: dict[str, list[str]]) -> None:
         """The worklist. Separate from the cover, which carries only the counts.

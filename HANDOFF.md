@@ -7287,3 +7287,88 @@ choice survives a reload** (rule 68 — where `followMode` was silently lost), t
 cursor was read off `#dgmCanvas` and off a box for all three settings, `grabbing` confirmed
 on the drag class, and the self-check still reports *every control is wired*. Both
 `dgmcursor` and `dgmedge` are in `WIRED_ATTRS`, so a rename fails by name.
+
+## The topbar search does what it says — built 2026-09-02
+
+**Reported as a question, which is how the useful ones arrive:** *"Interesting that I can't
+find `frozenset` by searching for it. Nothing appears."* Then, better: *"What does search DO,
+exactly? Is it a filter, a focus, or a highlighter?"*
+
+### The answer, and why it was the wrong one
+
+A **filter**, on one list. `matchingRoutines()` walked `ROUTINES` and matched a
+case-insensitive substring of `name` or `module`. `state.routineQ` is read in five places
+and all five are the Routines group. It is not a focus — it never moves the selection, the
+graph or the centre view — and not a highlighter: it marks no occurrence anywhere.
+
+The box says **"Search routines, tables, boundaries…"**. Measured against real names from the
+graph before anything was changed:
+
+```
+envelope     (a routine word)   Routines  52 match     Database —      Boundaries —
+audit_blobs  (a REAL table)     Routines   4 match     Database —      Boundaries —
+VIRTUAL_ENV  (a REAL boundary)  Routines  nothing      Database —      Boundaries —
+```
+
+`audit_blobs` is the worst row: it *looks* like it worked, having matched four routine names
+by substring, while the Database group holding that very table said nothing. A control that
+names three things and does one is design rule 16's dead control with two thirds of it alive.
+
+And `frozenset` was two failures stacked. The name search says "nothing matches", which a
+reader reasonably reads as *this word is not in this program* — while the source search finds
+it **408 times in 136 files**. Two searches with different verbs, and nothing on screen
+saying the second exists.
+
+### What it does now — Tom's call, "make it do what it says"
+
+One predicate, `navMatch`, handed to every named group, so a group added later is filtered by
+having been born (rule 36). Every list filters **before** it slices: searching a bounded list
+would answer about the first eight of forty-three, which is the haystack again and silently.
+
+`structures` now rides with `/api/routines` — 671 rows against 4,786, a seventh of the weight
+on a request already made at boot — and there is a **Structures group**, which the search had
+nowhere to put before. Its rows carry a `structures.id` and route through `chg`, because
+`describe()` already resolves one.
+
+```
+audit_blobs   Database   1 match · audit_blobs 5
+HookEvent     Structures 1 match · HookEvent DATACLASS
+DATABASE      Boundaries 1 match · DATABASE 1371
+quaestor      Routines 531 match · Structures 127 match — showing 8
+```
+
+### Two defects found in the doing, and one of them was mine
+
+**Rule 44, committed inside the fix for rule 44.** The first draft filtered boundaries on
+`b.target` — a field the cover has never sent; it sends `common`. Nothing failed, and the
+filter silently matched on the kind alone. Caught only by typing a real boundary name.
+
+**Design rule 1, four times.** `navPkgs`, `navBounds`, `navTables` and `navWaysIn` had no
+`note` at all, so a search matching nothing in them left a heading and a total above an empty
+body — indistinguishable from a group nobody had opened. `navFilterNote` is shared now.
+
+**And one formulation, not three.** The shared note derived `match`/`matches` from the count
+while the Routines note has always said `match` and the new Structures note said a third
+thing. All three are now the one sentence — the same reason `modband` writes `stat` and
+`stat1` out in full rather than appending an `s` by arithmetic.
+
+### What it deliberately still cannot do, and says so
+
+A boundary **target** is not findable here. The cover carries nine kinds and one commonest
+target each; the program has **1,741** distinct targets, most of them expressions rather than
+names (`text.encode('utf-8')`, `+00:00`). This group lists kinds, so it filters kinds — and
+when nothing matches it says *"these are the nine kinds; a target is in the source"*, because
+"nothing matches" alone is the false conclusion this whole change was about.
+
+### Verified
+
+809 tests, mypy clean, ruff clean. The guard
+`test_the_navigator_reads_only_fields_the_routines_endpoint_sends` had to be fixed to see
+this at all: it derived what the endpoint sends from a regex capturing only the **second**
+key of the `_json` literal, so inserting a list between the first and last silently dropped
+`plates` from what it believed was served. It reads both statements and the payload's keys
+with `ast` now, and it was run against its own defect — reading a field nothing sends fails
+by name.
+
+Driven in Chrome on the real Mensores pair, with a real table, a real boundary kind, a real
+structure, a package and a way in. Console clean.

@@ -163,11 +163,36 @@ program has a most-commented routine and a maximum alone is a claim nobody can w
 
 ## What we are doing now
 
-**Paused 2026-09-02. The diagram's cursor and arrow weight are Settings, and the cursor
-turned out to explain the feature.** 809 tests, mypy clean, ruff clean, working tree clean.
-Nothing is half-done.
+**Paused 2026-09-02. The topbar search filters every group it names, and structures have a
+group of their own.** 809 tests, mypy clean, ruff clean, working tree clean. Nothing is
+half-done.
 
-### The latest: the cursor over a diagram (2026-09-02)
+### The latest: the topbar search does what it says (2026-09-02)
+
+**Reported as a question:** *"I can't find `frozenset` by searching for it. Nothing appears."*
+Then the better one — *"What does search DO, exactly? Is it a filter, a focus, or a
+highlighter?"*
+
+**A filter, on one list.** It matched a substring of a routine's name or module and nothing
+else, while the box said *"Search routines, tables, boundaries…"*. `audit_blobs` — a real
+table — matched **4 routines** by substring while the Database group holding that table said
+nothing, which is the worst kind of pass: it looks like it worked. `VIRTUAL_ENV`, a real
+boundary, said *nothing matches*. And `frozenset` is in the source **408 times in 136 files**,
+found by the *other* search, which nothing on screen mentioned.
+
+**Now every named group filters**, through one predicate handed to each (rule 36), and each
+filters **before** it slices — searching a bounded list would answer about the first eight of
+forty-three. `structures` rides with `/api/routines` (671 rows against 4,786) and there is a
+**Structures group**, which the search had nowhere to put before.
+
+*Two defects found in the doing.* **Rule 44 committed inside the fix for rule 44** — the first
+draft filtered on `b.target`, a field the cover has never sent. And four groups had no note at
+all, so a search matching nothing left a heading above an empty body (design rule 1).
+
+*What it still cannot do, and says so:* a boundary **target** is not findable — 1,741 of them,
+mostly expressions, against nine kinds in memory. The note names the source search instead.
+
+### Before that: the cursor over a diagram (2026-09-02)
 
 **Opened as "the arrow stroke is 1 px, thin to aim at" and that was the smaller half.** Tom
 drove it: the `cursor: pointer` hand is the web's *this is a link* glyph, wrong for a drawing

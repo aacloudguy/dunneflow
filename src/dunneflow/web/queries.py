@@ -1082,6 +1082,24 @@ FROM routines r
 ORDER BY r.module, r.line_start
 """
 
+# Every structure, for the navigator's own group and for the search across it. 671 rows on
+# Mensores against `NAV_ROUTINES`' 4,786, riding with them because both are wanted at the
+# same moment and a second request would be a second round trip for a seventh of the weight.
+#
+# `kind` is carried because it is what separates one of these from another: a vanished
+# TYPE_ALIAS and a vanished CLASS are different news, and a list that prints only names says
+# neither. The docstring is **not** carried -- the inspector fetches it per structure, and
+# 535 of these have one.
+NAV_STRUCTURES = f"""
+SELECT s.id           AS id,
+       s.name         AS name,
+       s.module       AS module,
+       s.kind         AS kind,
+       {PACKAGE_EXPR} AS pkg
+FROM structures s
+ORDER BY s.module, s.line
+"""
+
 DOC_ROUTINES = """
 SELECT r.id       AS node,
        r.name     AS name,

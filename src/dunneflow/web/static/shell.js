@@ -31,6 +31,10 @@ let TABLES      = [];   // declared tables, busiest first
    table mode rendered no rows at all, under a footer stating a count from another
    program. A `let X = []` nothing writes to is an empty view with no symptom. */
 let ROUTINES    = [];
+/* Every structure the program declares -- class, dataclass, enum, type alias. Arrives with
+ * `ROUTINES` on one request, because the navigator lists both and the topbar search filters
+ * both, and both happen at boot. */
+let STRUCTURES  = [];
 /* Which package ids the stack actually draws a plate for, from `/api/routines`. Not the
  * same set as the packages: the small ones are merged, and a heading offering a plate that
  * does not exist is a control that renders and resolves to nothing (rule 30). */
@@ -8644,6 +8648,56 @@ function dressNavItems() {
  * navigator routes whose items carried only a label, so forty rows all did the same
  * nothing while the inspector went on truthfully reporting "Nothing selected". A row here
  * with no id is dropped at load rather than rendered as a button that cannot act. */
+/* **The one place that decides whether a name matches what was typed.**
+ *
+ * The topbar has always said *"Search routines, tables, boundaries…"* and has always
+ * filtered routine names and nothing else -- so typing a real table name matched four
+ * routines by substring and left the Database group untouched, and typing a real boundary
+ * name said *"nothing matches"* about a boundary the program has. A control that names three
+ * things and does one is design rule 16's dead control with two thirds of it alive.
+ *
+ * Written once and handed to every group, so a group added later is filtered by having been
+ * born rather than by somebody remembering (rule 36). Case-insensitive substring, over the
+ * name **and** whatever second string identifies the thing -- a routine's module, a
+ * structure's module, a boundary's commonest target -- because "which `execute` is this"
+ * is answered by the qualifier and not by the leaf.
+ *
+ * Everything it filters is already in memory, so this costs no request per keystroke: that
+ * is rule 45's whole subject, and the one lane that *would* cost a request -- the source
+ * text -- is offered as a route rather than run. */
+function navMatch(q, ...fields) {
+  if (!q) return true;
+  return fields.some(f => (f || "").toLowerCase().includes(q));
+}
+
+/* What the reader typed, once, lowered once. Read by every group's `items()`. */
+function navQuery() {
+  return state.routineQ.trim().toLowerCase();
+}
+
+/* What a filtered group says about itself. **Design rule 1: no filter is ever silent.**
+ *
+ * Four of these groups had no note at all, so a search that matched nothing in them left the
+ * heading and its total sitting above an empty body -- indistinguishable from a group that
+ * had simply not been opened. Written once and handed to each, so a group added later says
+ * something by having been born (rule 36).
+ *
+ * `whole` is the group's own count and is never the filtered one: the heading answers *how
+ * much is here* and the note answers *how much matched*, which are two questions and rule 32
+ * says a number is named after what it measures. */
+function navFilterNote(hit, whole, what, shown) {
+  const q = state.routineQ.trim();
+  if (!q) return `${whole.toLocaleString()} ${what}`;
+  if (!hit) return `nothing matches “${esc(q)}”`;
+  const cut = shown && hit > shown ? ` — showing ${shown}` : "";
+  /* `N match`, never `N matches`. Both are correct English -- "one matches", "four match" --
+     and that is exactly why the choice has to be made once: the Routines note has said
+     `match` since it was written, so deriving an `es` here would have put two spellings of
+     one sentence in one pane (rule 13). The same reason `modband` writes `stat` and `stat1`
+     out in full rather than appending an `s` by arithmetic. */
+  return `${hit.toLocaleString()} match “${esc(q)}”${cut}`;
+}
+
 function matchingRoutines() {
   const q = state.routineQ.trim().toLowerCase();
   if (!q) return { rows: ROUTINES, total: ROUTINES.length, filtered: false };
@@ -9905,29 +9959,94 @@ const NAV_GROUPS = [
         n: CURIOS.lane === "ready" ? CURIOSITIES.length : "" },
       { nav: "pins",        label: "Kept",         n: state.pins.length, id: "navPins" },
     ] },
-  { id: "navWaysIn", title: "Ways in", open: true, items: () => [
-      { nav: "cover", label: "Overview", n: "cover", current: state.view === "cover" },
-      // Bounded, and it says so: the full list is the cover's own ranking, one
-      // click away. Rule 8 -- abbreviation only where the whole sits beside it.
-      /* `sel` is the identity, and it is the whole point: without it these six rows
-       * differed only by the label they printed, and every one of them did the same
-       * nothing. A label is not an identity. */
-      ...ENTRYPOINTS.slice(0, 6).map(e => ({
-        nav: "ep", label: e.name, n: e.reach, sel: (e.nodes || []).join(" "),
-      })),
-    ] },
-  { id: "navPkgs", title: "Packages", open: true, items: () => [
+  /* Every list below is filtered by the topbar, through `navMatch`. Each was a `slice()`
+     of a full list, and the slice now happens **after** the filter -- searching a bounded
+     list would answer about the first eight of forty-three, which is the haystack again and
+     silently (rule 8: abbreviate only where the whole sits beside it, and rule 45: bound the
+     work, not the answer). Each group's note states what its own filter left out. */
+  { id: "navWaysIn", title: "Ways in", open: true,
+    note: () => navFilterNote(
+      ENTRYPOINTS.filter(e => navMatch(navQuery(), e.name, e.module)).length,
+      ENTRYPOINTS.length, "ways in", 6),
+    items: () => {
+      const q = navQuery();
+      /* `Overview` is a place, not a name in the program -- it stays put while a search is
+         running rather than being filtered out, because losing the way back to the cover is
+         not what anybody meant by typing a word. */
+      const eps = ENTRYPOINTS.filter(e => navMatch(q, e.name, e.module));
+      return [
+        ...(q ? [] : [{ nav: "cover", label: "Overview", n: "cover",
+                        current: state.view === "cover" }]),
+        /* `sel` is the identity, and it is the whole point: without it these rows differed
+         * only by the label they printed, and every one did the same nothing. */
+        ...eps.slice(0, 6).map(e => ({
+          nav: "ep", label: e.name, n: e.reach, sel: (e.nodes || []).join(" "),
+        })),
+      ];
+    } },
+  { id: "navPkgs", title: "Packages", open: true,
+    note: () => navFilterNote(PKGS.filter(p => navMatch(navQuery(), p.id)).length,
+                              PKGS.length, "packages", 8),
+    items: () => {
+      const q = navQuery();
       // A package is a plate, and the plate id is what the legend already selects by.
-      ...PKGS.slice(0, 8).map(p => ({ nav: "pkg", label: p.id, n: p.n, sel: `pkg:${p.id}` })),
-    ] },
-  { id: "navBounds", title: "Boundaries", open: false, items: () => [
-      ...BOUNDARIES.map(b => ({ nav: "b", label: b.kind, n: b.n, sel: `ext:${b.kind}` })),
-    ] },
-  { id: "navTables", title: "Database", open: true, items: () => [
+      return PKGS.filter(p => navMatch(q, p.id))
+        .slice(0, 8).map(p => ({ nav: "pkg", label: p.id, n: p.n, sel: `pkg:${p.id}` }));
+    } },
+  { id: "navBounds", title: "Boundaries", open: false,
+    /* And when nothing matches, it says **where the answer is**. A boundary's *target* is a
+       string in the source, not one of the nine kinds listed here, so "nothing matches" on
+       its own would read as "this program does not touch that" -- which is the false
+       conclusion this whole change is about. */
+    note: () => {
+      const q = navQuery();
+      const hit = BOUNDARIES.filter(b => navMatch(q, b.kind, b.common)).length;
+      const base = navFilterNote(hit, BOUNDARIES.length, "kinds");
+      return q && !hit ? `${base} — these are the nine kinds; a target is in the source`
+                       : base;
+    },
+    items: () => {
+      const q = navQuery();
+      /* Matched on the kind and on its **commonest target**, which is `common` and not
+         `target` -- the first draft of this line read `b.target`, a field the cover has
+         never sent, so the filter silently matched on the kind alone. Rule 44 committed
+         inside the fix for rule 44, and caught only by typing a real boundary name.
+
+         **What this cannot do, stated rather than implied.** The cover carries nine kinds
+         and one commonest target each; the program has **1,741** distinct targets. So
+         `VIRTUAL_ENV` is not findable here and is not meant to be -- this group lists kinds,
+         and a target is a string in the source, which is what the Code search is for. The
+         note below says so rather than leaving a reader to conclude the word is absent. */
+      return BOUNDARIES.filter(b => navMatch(q, b.kind, b.common))
+        .map(b => ({ nav: "b", label: b.kind, n: b.n, sel: `ext:${b.kind}` }));
+    } },
+  { id: "navTables", title: "Database", open: true,
+    note: () => navFilterNote(TABLES.filter(x => navMatch(navQuery(), x.name)).length,
+                              TABLES.length, "tables", 8),
+    items: () => {
+      const q = navQuery();
       // A table is not a node and not a plate, so the id here is its name and the route
       // asks the server which routines touch it. See TABLE_ROUTINES in queries.py.
-      ...TABLES.slice(0, 8).map(t => ({ nav: "t", label: t.name, n: t.n, sel: t.name })),
-    ] },
+      return TABLES.filter(x => navMatch(q, x.name))
+        .slice(0, 8).map(x => ({ nav: "t", label: x.name, n: x.n, sel: x.name }));
+    } },
+  /* The structures, and they are here because the search had nowhere to put them. A
+     structure is a subject the inspector already describes (`describe()` resolves a
+     `structures.id`), so these rows carry an id and route exactly as a routine row does. */
+  { id: "navStructs", title: "Structures", open: false,
+    count: () => STRUCTURES.length,
+    note: () => {
+      if (!STRUCTURES.length) return "reading the structures…";
+      const hit = STRUCTURES.filter(s => navMatch(navQuery(), s.name, s.module)).length;
+      return navFilterNote(hit, STRUCTURES.length,
+                           "classes, dataclasses, enums and type aliases", 8);
+    },
+    items: () => {
+      const q = navQuery();
+      return STRUCTURES.filter(s => navMatch(q, s.name, s.module))
+        .slice(0, 8)
+        .map(s => ({ nav: "chg", label: s.name, n: s.kind, sel: s.id }));
+    } },
   { id: "navVocab", title: "Vocabulary", open: true, items: () => [
       /* From the cover, not from `TERMS.length` -- which is zero until the page is opened,
          so the row read as "nothing here" on every session that had not been there yet.
@@ -10462,6 +10581,12 @@ async function loadRoutines() {
     .filter(row => row.id)              // a row with no identity is not selectable
     .map(row => ({ id: row.id, name: row.name || "", module: row.module || "",
                    pkg: row.pkg || "", why: row.why || "" }));
+  /* Same rule, same reason: `describe()` resolves a `structures.id`, so a structure is a
+     subject exactly as a routine is -- and a row without one could not be acted on. */
+  STRUCTURES = (d.structures || [])
+    .filter(row => row.id)
+    .map(row => ({ id: row.id, name: row.name || "", module: row.module || "",
+                   kind: row.kind || "", pkg: row.pkg || "" }));
 }
 
 async function loadAnomalies() {

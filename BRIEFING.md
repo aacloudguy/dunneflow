@@ -5,7 +5,7 @@ It exists so a fresh context can be useful in a few minutes instead of an hour.
 
 | Read | For |
 |---|---|
-| `CLAUDE.md` | The rules. 76 engineering rules and 26 dashboard design rules, each earned from a false result on real code. **Binding.** |
+| `CLAUDE.md` | The rules. 76 engineering rules and 27 dashboard design rules, each earned from a false result on real code. **Binding.** |
 | `HANDOFF.md` | The chronological record — what was built when, what it cost, what broke. ~1,700 lines. Read *sections*, not the whole thing. |
 | **this file** | Where things are, what is done, what we are doing now, what not to re-open. |
 | Artifact `f993d319-d2b7-4217-9130-cdbba698d1bc` | The ratified dashboard design — a complete working UI, the source of truth for every view. Read it with the **Artifact tool**, not from a screenshot. |
@@ -163,20 +163,73 @@ program has a most-commented routine and a maximum alone is a claim nobody can w
 
 ## What we are doing now
 
-**Paused 2026-09-02, after the search work.** The topbar search filters every group it names,
-takes a regular expression, and structures have a group of their own. 809 tests, mypy clean,
-ruff clean, working tree clean. Nothing is half-done.
+**The constants surface is in, and the shortening rule it needed with it (2026-09-02).**
+818 tests, mypy clean, ruff clean, working tree clean. Nothing is half-done.
 
-*Seven commits this session: the record split into carryable files · the open list audited ·
-structures compared · one open list with an owner · the diagram cursor and design rule 27 ·
-the search doing what it says · the search taking a pattern.*
+**Next, and it is chunk B of the same work:** the remaining twelve `text-overflow: ellipsis`
+sites all still cut the **tail**, which is the end that carries least — `.chg-mod`,
+`.gotonode` (caller and callee qualnames), `.wl-title`, `.trailstep`, `.rank-name code`,
+`.callhead code`, `.srcpath-v`. They move onto `shorten()`, and with them the `selfCheck`
+assertion that the CSS backstop never fires. `.argrow` keeps its recorded *wrapped, not
+elided* decision and `.leg .nm` is left alone.
 
-**Next, and it is where we stopped:** the real worst case for the flow panel is
-`session.add_turn` at `_extraction_state.py:742` — 3,323 bytes over 53 lines, on a *resolved*
-call, so its arrow can be opened. Then the constants surface, where a **6,924-character single
-line** turned out to be the readability problem that open-list item 2 had misdescribed.
+**After that**, the flow panel's real worst case: `session.add_turn` at
+`_extraction_state.py:742` — 3,323 bytes over 53 lines, on a *resolved* call, so its arrow
+can be opened. It is one outlier and not a class: the next largest resolved call argument in
+the corpus is 923 bytes.
 
-### The latest: the topbar search does what it says (2026-09-02)
+**A debt, and it is rule 38's.** Everything in this session was verified at a **900px
+viewport in a browser context that reports `outerWidth: 0` and will not resize** — where the
+narrow layout sets `#inspector { display: none }`. The pane was forced visible with an
+injected stylesheet to measure it, and every click was scripted. A scripted click proves the
+handler and not the path to it (rule 48). **A look at a real window is owed**, and it is the
+same debt the blank-graph fix has been carrying.
+
+### The latest: the constants surface (2026-09-02)
+
+**Measuring first moved the target twice.** The record named a 6,924-character line as the
+problem; `GOVERNED_GATES` is **8,586** and nobody had noticed it. And it is a class, not an
+outlier: **739 of 2,638 constants exceed one card line, 301 exceed 300 characters, 23 (0.9%)
+exceed a whole card** — Tom's "rare cases", quantified. Every value is a single line, because
+`_literal` is `ast.unparse`.
+
+**And the real defect was not the line length.** A constant rendered in the *routine-shaped*
+inspector, which answered three questions a constant cannot be asked — nothing calls it *"a
+way in, dead code, or a call DunneFlow cannot see"*, it calls nothing, *"everything it does,
+it does in memory"* — while the 8,586 characters it had read were absent. Three plausible
+sentences inviting the reader to conclude the analysis had failed. `viewInspectorConstant` is
+routed on kind now, beside `FOLD` and `FLOW`.
+
+**The value is whole in the one box that scrolls**, which is what lets the card bound itself
+at 240 characters and say so: rule 8 allows abbreviation only where the complete content sits
+beside it, and that pane is where *beside it* lives. The card's `-webkit-line-clamp: 3` was a
+silent filter inside the surface whose whole job is to answer *what is this*. It counts
+**characters, not lines** — no value carries a newline, so "94 more lines" would report the
+pane as the program (rule 32).
+
+**Tom's three calls.** The card stays non-interactive and a click opens the value — put to
+him because `.hovercard` is `pointer-events: none` by a recorded decision, and settled by
+measurement: the longest qualname is 107 characters, so *names never need a scroll box*.
+**Head and leaf, middle elided**, one rule for all kinds. And a moved constant shows **a mark
+only**, with the name clickable and opening on both values.
+
+**Every presence row was a bare `<code>`** — `Constants ◈7` named seven constants and not one
+could be opened. They carry a route and a subject from the server now; ways in carry none and
+stay text, because their route wants the routines they start and that table cannot reach them.
+`EXPECTED_SCHEMA_VERSION` opens to **28 beside 27**, labelled by revision.
+
+**`shorten()` replaces `moduleTail`**, and the program root is dropped first — all 566 modules
+begin `mensores.`, so keeping the head spends nine characters saying what every row says and,
+for a three-segment module, elides the *package* to afford them. `COVER_ROOT` answers the
+question `COVER_PACKAGES` had a comment saying it could not. **742 of 1,019 navigator rows now
+show whole**; the CSS backstop fired **0 times**.
+
+*Four defects found in the doing, three of them mine — `state.insp` declared in two files with
+only one winning, a root lookup that stripped nothing because `mensores` is itself a package,
+moved rows built with no route, and a floor that guaranteed the overflow it prevented. All
+four in `HANDOFF.md` under this session's heading.*
+
+### Before that: the topbar search does what it says (2026-09-02)
 
 **Reported as a question:** *"I can't find `frozenset` by searching for it. Nothing appears."*
 Then the better one — *"What does search DO, exactly? Is it a filter, a focus, or a
@@ -393,10 +446,14 @@ and the singular. The stat tile's violet is visible in the one capture that fits
    stroke is a Setting now, and the **cursor** turned out to be the larger half: `grab` on
    the canvas was claiming the whole pane pans, which drowned out the boxes saying they are
    clickable. That earned **design rule 27**.*
-2. **A 1,347-line `frozenset` argument exists in this corpus** (`quaestor/_envelope.py`,
-   91 KB in one argument) and the pane **wraps** it rather than eliding, because rule 8
-   allows abbreviation only where the complete value sits beside it. It may read badly.
-   Whatever replaces it has to keep the whole value reachable.
+2. ~~**A 1,347-line `frozenset` argument exists in this corpus**~~ *Closed 2026-09-02, and
+   the constants half of it is built. The entry had already been corrected once: the
+   `frozenset` is **not reachable from the flow panel at all** — external, `at_boundary = 0`,
+   a builtin, so no arrow is drawn — and the same expression sits in the store twice, as
+   91,224 bytes in `call_args` and as **6,924 on one line** in `constants`. The constants
+   surface now shows a value whole in a box that scrolls, and the card bounds itself and says
+   by how much. Its real worst case turned out to be `GOVERNED_GATES` at **8,586**, which
+   nobody had named. The `call_args` side keeps its recorded* wrapped, not elided *decision.*
 
 *There was a third — the routine lane drawing* behaves differently *in `--text-muted` while
 the legend and the findings drew the same idea in `--diff-moved`. Put to Tom on 2026-09-01
@@ -430,9 +487,23 @@ feature was blocked on an answer nobody owed.
 - ~~**A class docstring is still compared by nothing.**~~ *Built 2026-09-02, and it was
   three lanes rather than one — presence, declaration and docstring. See the top of this
   file.*
+- **Chunk B of the shortening work: twelve fields still cut the tail.** `shorten()` exists
+  and two callers use it; `.chg-mod`, `.gotonode`, `.wl-title`, `.trailstep`,
+  `.rank-name code`, `.callhead code` and `.srcpath-v` are still `text-overflow: ellipsis`,
+  which drops the leaf. With them, the `selfCheck` assertion that the CSS backstop never
+  fires — measured at 0 on the navigator already, unguarded everywhere else. `.argrow` keeps
+  its *wrapped, not elided* decision; `.leg .nm` is short enough to leave alone.
 - **Clicking a change row files two trail steps**, for a structure and for a routine alike.
   Found 2026-09-02 and verified pre-existing rather than introduced. Rule 76's family — an
   echo arriving as an act — and the fix is to the selection path, not to any one lane.
+- **`holds` is not in `insp`'s defaults**, so the fold pane's section starts closed whatever
+  it wanted and "Collapse all" cannot see it until someone has opened it once. Found
+  2026-09-02 while adding two sections beside it; not fixed, because its default is a
+  decision about that pane. One line in `settings.js` either way.
+- **`navIds` splits `data-navid` on a space**, so a presence row for a *named file* whose
+  name contains one would resolve to two ids that name nothing. Mensores has 0 and a
+  constant's `module.name` cannot hold one, so nothing exercises it; the fix belongs to
+  `navIds` rather than to any caller.
 - **The blank-graph fix (rule 49) is reasoned and guarded, never *seen*.** The automation
   tab never mounts the graph — `canvas MISSING`, `frames 0` — so rule 38 applies and it
   wants a real window before anyone calls it verified.

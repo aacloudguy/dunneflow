@@ -7442,3 +7442,176 @@ call, so its arrow can actually be opened. Then the constants surface. Neither i
 for a routine as much as for a structure — verified pre-existing, rule 76's family, and the
 fix belongs to the selection path rather than to any lane. And boundary **targets** (1,741 of
 them) are not searchable from the topbar by design; the note names the source search instead.
+
+## The constants surface, and the shortening rule it needs — built 2026-09-02
+
+**Where the last session stopped**, and measuring first moved the target twice.
+
+### What the measurement changed before anything was built
+
+The pause note named a **6,924-character single line** in the constants surface as the
+readability problem. It is the *second* largest. `GOVERNED_GATES` in
+`_internal/_governed_gates.py` is **8,586 characters** and nobody had noticed it.
+
+And it is a class rather than an outlier. Of 2,638 named values, **739 (28%) exceed one
+card line, 301 exceed 300 characters, and 23 (0.9%) exceed a whole card** — which is
+exactly the "rare cases" Tom guessed at, quantified. Every one of them is a **single
+line**: `_literal` is `ast.unparse`, so not one value in the table carries a newline.
+
+The flow panel, which the note put first, is one outlier and not a class: over every
+resolved non-external call, `session.add_turn` is 3,323 bytes and the next is 923. That is
+why the two were swapped — 178 rows against 1, and the shape of the constants problem is
+uniform.
+
+### The defect nobody had seen, and it was not the line length
+
+Selecting a constant rendered the **routine-shaped inspector**, which answered three
+questions a constant cannot be asked:
+
+```
+In  0       Nothing in this map calls it. That is either a way in, dead code, or a call
+            DunneFlow cannot see — a dynamic dispatch, or a language it does not read.
+Out 0       It calls nothing this map can see.
+Touches 0   It touches no boundary, table, remote or named file. Everything it does, it
+            does in memory.
+```
+
+A constant is not a routine. It cannot be a way in or dead code, it calls nothing by
+construction, and it does nothing in memory. Three *plausible* sentences, each inviting the
+reader to conclude the analysis had failed on a thing it had read perfectly — and the 8,586
+characters it had read were the one thing absent. Rule 30's shape one level up: not a label
+standing in for an identity, but a **kind standing in for another kind**.
+
+`viewInspectorConstant` is routed on kind beside `FOLD` and `FLOW`, above the first line
+that reads a routine's shape, which is exactly why those two routes are already there.
+
+### Tom's three decisions
+
+| Question | His answer |
+|---|---|
+| How to reach the 0.9% that overflow a card | Card stays bounded and non-interactive; **clicking opens the value in the inspector** |
+| Which end of a string to keep | **Head and leaf, middle elided** — one rule, all kinds |
+| What a moved constant shows | **A mark only**; the name becomes clickable and opens with both values |
+
+The first was put to him because `.hovercard` is `pointer-events: none` by a recorded
+decision — it follows the cursor, so any hit area would put a surface between the reader
+and the node they are pointing at — and a scroll box needs the pointer. **Measurement made
+the choice easy and it is worth keeping:** the longest qualname in the corpus is 107
+characters, two lines on a card. *Names never need a scroll box.* The scroll box is only
+ever for a value, so the card's decision survives untouched and the inspector is where the
+23 land.
+
+### What was built
+
+**The card is bounded and says by how much.** `-webkit-line-clamp: 3` was a silent filter
+(design rule 1) inside the surface whose whole job is to answer *what is this*: it cut
+8,586 characters to about 240 and looked exactly like a constant whose value is 240
+characters long. It is `CARD_VALUE_CHARS` in the script now, with
+`cutWords()` — the sentence `cut()` already used, factored out so a pane and a card cannot
+word it two ways.
+
+**Characters, not lines, and the difference is a claim.** No value in `constants` carries a
+newline, so the wrapping on screen is the card's and not the program's; *"94 more lines"*
+would report a fact about this pane as a fact about the source (rule 32).
+
+**What reads a constant is stated as unanswerable.** The store has no table pairing a
+routine with a constant it mentions — `calls` is about calls — so "nothing uses it" is a
+claim nothing here can make. `LOST_EDGE`'s discipline in a pane: a missing relation must be
+visible, or a program documents as a smaller one that works.
+
+**A moved constant is reachable, and opens showing both values.** Every presence row was a
+bare `<code>`: the line said `Constants ◈7`, named seven constants, and not one could be
+opened — design rule 16's dead control wearing a label. `PRESENCE` carries a **route and a
+subject** beside its key and label, and they come from the server: building `const:` + a
+printed name in the browser is rule 30 with the arrow reversed. **Ways in carry none and
+stay text** — their route wants the routines they start, `ways_in()` computes those, and
+this table cannot reach them; inventing an id to make the row clickable would be a link to
+nothing, which is the sentence `queries.py` wrote down before anything needed it.
+
+The row says **which of value, type and finality moved**, because two of them can change
+while the value does not — `X: Final[int] = 1` → `X: int = 1` prints the same `1` on both
+sides, and two identical strings under a heading claiming they differ is rule 13 in a pane.
+
+### `shorten()`, and the two things that made it right
+
+Head and leaf, middle elided, **whole segments, never mid-token**. Cutting between joints
+leaves a string that exists in the program with a piece visibly removed; cutting through one
+leaves `...ores_internal_cwd_guard`, which is the `direction: rtl` defect `.navsub` already
+carried a note about.
+
+**The leaf is protected where only one token can break.**
+`disceptator._anthropic_architect` came out as `disceptator._an…opic_architect` — the
+package kept whole, and the navigator *already prints it as the group heading*, while the
+one part separating this row from its neighbours was cut in half. The head takes the damage
+now: `disc…ator._anthropic_architect`.
+
+**The program root is dropped first, and the server measures it.** All 566 modules begin
+`mensores.`, so keeping the head spends nine characters saying what every row says — and,
+for a three-segment module, elides the *package* to afford them. `COVER_ROOT` answers the
+question `COVER_PACKAGES` had a comment saying it could not ("without knowing the program
+root"). A client that derived it from whatever list was loaded would shorten one name two
+ways on two surfaces (rule 24).
+
+**742 of 1,019 navigator rows now show whole**, against essentially none before —
+`moduleTail` always prefixed an ellipsis. The CSS backstop fired **0 times**, measured on
+the page.
+
+### Four defects found in the doing, three of them mine
+
+**Rule 51, in the settings.** `state.insp` was declared in **both** `shell.js` and
+`settings.js`, and only `settings.js` wins — `adoptSettings` overwrites every persisted key.
+Two new sections were added to the copy that does not win, the page was opened, and both
+rendered `data-open="undefined"` with the value box measuring `clientHeight: 0`. Nothing
+failed and nothing was logged. The shell's copy is now `{ ...DEFAULTS.insp }` — spread, not
+shared, because a shared object would write a toggle back into the defaults and a reset
+would restore what the reader had just changed.
+
+**The root lookup stripped nothing.** The first version asked "which segment names a
+package" and `mensores` **is** a package — the modules directly under it belong to one — so
+it matched at position 0 every time. `PKG_IDS.size` was 46 and correct, the function ran,
+and 1,019 rows still read `mensores.….\_advance_gate`. Found by reading them.
+
+**`_constants_moved` built its rows by hand and gave them no route**, so 23 of the 30
+constant rows were clickable and the **7 that mattered** were not — the one band whose whole
+claim is *this is not constant any more* was the one a reader could not open. The route
+comes from `PRESENCE` now rather than being spelled a second time.
+
+**A floor guaranteed the overflow it looked like it prevented.** `Math.max(4, budget -
+head.length)` added four characters to a head already wider than the field. Caught by
+asserting the budget across **every width from 8 to 40** rather than at the two the fields
+actually use — which is the range rule 53 is about.
+
+### Verified
+
+818 tests, mypy clean, ruff clean. The two new guards were each **run against the defect
+they were written for** (rule 59): removing `nav` from the moved rows fails
+`test_every_presence_row_can_be_acted_on_or_says_it_cannot`.
+
+Driven in Chrome on the real Mensores pair: `GOVERNED_GATES` whole and scrolling
+(`scrollHeight` 2382 against `clientHeight` 446), a 36-character constant with **no mark and
+no ellipsis**, `EXPECTED_SCHEMA_VERSION` opening from the presence line to **28 beside 27**
+labelled by revision, 15 presence rows as buttons and the 3 ways in as text. Console clean,
+self-check green.
+
+**One thing the automation could not do, and rule 38 says so plainly.** The browser context
+reports `outerWidth: 0` and will not resize, so everything above was measured at a 900px
+viewport where the narrow layout sets `#inspector { display: none }` — the pane was forced
+visible with an injected stylesheet to measure it, and the clicks were scripted. A scripted
+click proves the handler and not the path to it (rule 48). **A look at a real window is
+owed**, and it is the same debt the blank-graph fix has been carrying.
+
+### Still open
+
+Chunk B — the remaining twelve `text-overflow: ellipsis` sites, which all still cut the
+tail — is planned and not started: `.chg-mod`, `.gotonode`, `.wl-title`, `.trailstep`,
+`.rank-name code`, `.callhead code`, `.srcpath-v`. With them, the `selfCheck` assertion that
+the CSS backstop never fires.
+
+**Noted and not fixed:** `holds`, the fold pane's section, is not in `insp`'s defaults, so it
+starts closed whatever it wanted and "Collapse all" cannot see it until someone has opened it
+once. Its default is a decision about that pane, not this one.
+
+**A residue, stated:** the `chg` route reads ids through `navIds`, which splits on a space. A
+*named file* is the one subject here whose name can contain one. Mensores has 0, and a
+constant's `module.name` cannot hold one at all, so the corpus does not exercise it; the fix
+belongs to `navIds`.

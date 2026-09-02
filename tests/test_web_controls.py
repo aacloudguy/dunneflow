@@ -19,6 +19,7 @@ implementation, which is the failure it was supposed to detect.
 
 from __future__ import annotations
 
+import itertools
 import math
 import re
 import shutil
@@ -6341,9 +6342,24 @@ def test_every_change_band_the_server_sends_becomes_a_status() -> None:
     assert f, "CHANGE_FILE_BANDS is no longer an object literal; this guard is blind"
     files = set(re.findall(r"^  (\w+): \{", f.group(1), re.M))
     assert files, "CHANGE_FILE_BANDS is empty; this guard is blind"
-    assert not (files & mapped), (
-        f"{sorted(files & mapped)} is in both tables, so one band would draw two ways"
-    )
+
+    # The third table, and it joins this guard the way the second one did: as a table, never
+    # as an exemption. A structure is not a routine and not a file -- it is a node the
+    # inspector already describes, so its rows carry an id where a file's carry a path.
+    s = re.search(r"const CHANGE_STRUCT_BANDS = \{(.*?)\n\};", js, re.S)
+    assert s, "CHANGE_STRUCT_BANDS is no longer an object literal; this guard is blind"
+    structs = set(re.findall(r"^  (\w+): \{", s.group(1), re.M))
+    assert structs, "CHANGE_STRUCT_BANDS is empty; this guard is blind"
+
+    # Pairwise, over every table there is, rather than one comparison per pair written out.
+    # A fourth table then joins by being added to this list, which is the whole point of
+    # there being a list (rule 36).
+    tables = {"CHANGE_BANDS": mapped, "CHANGE_FILE_BANDS": files,
+              "CHANGE_STRUCT_BANDS": structs}
+    for (n1, s1), (n2, s2) in itertools.combinations(tables.items(), 2):
+        assert not (s1 & s2), (
+            f"{sorted(s1 & s2)} is in both {n1} and {n2}, so one band would draw two ways"
+        )
 
     # **The top-level keys, read with `ast`.** A regex over the returned block also finds
     # the keys nested inside `counts` and `presence` -- `routines_base`, `moved` -- which the
@@ -6361,12 +6377,13 @@ def test_every_change_band_the_server_sends_becomes_a_status() -> None:
               if isinstance(k, _ast.Constant) and isinstance(k.value, str)}
     bands = served - {"counts", "identical", "presence"}
     assert len(bands) >= 4, f"changes.py sends {sorted(bands)}; this guard is blind"
-    assert bands <= mapped | files, (
-        f"the bands {sorted(bands - mapped - files)} reach neither a routine status nor a "
-        "file band, so everything in them renders as unchanged"
+    drawn = mapped | files | structs
+    assert bands <= drawn, (
+        f"the bands {sorted(bands - drawn)} reach no routine status, no file band and no "
+        "structure band, so everything in them renders as unchanged"
     )
-    assert mapped | files <= served, (
-        f"{sorted((mapped | files) - served)} is drawn and never sent"
+    assert drawn <= served, (
+        f"{sorted(drawn - served)} is drawn and never sent"
     )
     # And each file band is actually drawn, which the mapping above cannot say: `mapped` is
     # consumed by `routineIndex`, `files` by two renderers, and a table entry nothing reads

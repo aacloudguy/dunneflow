@@ -1237,3 +1237,197 @@ def test_the_bound_names_the_files_that_differ_and_no_others(tmp_path):
         )
     finally:
         conn.close()
+
+
+# --------------------------------------------------------------------------- #
+# Structures: the third subject, added 2026-09-02. Compared by nothing before that
+# -- not presence, not what they declare, not what they say about themselves. On
+# Mensores' pair it hid eight structures that appear or vanish.
+# --------------------------------------------------------------------------- #
+
+STRUCTS = '''\
+from dataclasses import dataclass
+from typing import Literal
+
+
+@dataclass
+class Claim:
+    """What somebody asserted."""
+
+    who: str
+    weight: int = 1
+
+
+Status = Literal["open", "shut"]
+'''
+
+
+def test_a_structure_only_the_base_has_is_reported(tmp_path):
+    grown = STRUCTS + '\n\n@dataclass\nclass Extra:\n    """Late arrival."""\n\n    n: int\n'
+    d = changes.build(base=_graph(tmp_path, "b", grown),
+                      compared=_graph(tmp_path, "a", STRUCTS))
+    assert [r["name"] for r in d["structures_only_in_base"]] == ["Extra"]
+    assert d["structures_only_in_compared"] == []
+    assert d["counts"]["structures_only_in_base"] == 1
+    assert d["identical"] is False
+
+
+def test_a_structure_only_the_compared_has_is_reported(tmp_path):
+    shrunk = STRUCTS.replace('Status = Literal["open", "shut"]\n', "")
+    d = changes.build(base=_graph(tmp_path, "b", shrunk),
+                      compared=_graph(tmp_path, "a", STRUCTS))
+    assert [r["name"] for r in d["structures_only_in_compared"]] == ["Status"]
+    assert d["structures_only_in_base"] == []
+
+
+def test_a_type_alias_is_reported_though_it_can_never_have_a_method(tmp_path):
+    """The row a diagram box could not have carried, and the reason the subject is the
+    structure itself.
+
+    A box is built from routine nodes (rule 74), so it exists only where a class has
+    methods -- 192 of Mensores' 671 structures, and **no** TYPE_ALIAS, ENUM or TYPEDDICT
+    ever. Four of the eight rows that actually move on that pair have no methods. Routing
+    these through `state.fold` would have been right about the majority and silently wrong
+    about the rest, which is rule 77.
+    """
+    grown = STRUCTS + '\nOutcome = Literal["kept", "lost"]\n'
+    d = changes.build(base=_graph(tmp_path, "b", grown),
+                      compared=_graph(tmp_path, "a", STRUCTS))
+    row = next(r for r in d["structures_only_in_base"] if r["name"] == "Outcome")
+    assert row["kind"] == "TYPE_ALIAS"
+    # And it carries an id, because `describe()` resolves one -- a row that cannot be
+    # acted on is design rule 16's dead control with a count beside it (rule 30).
+    assert row["id"]
+
+
+def test_a_field_that_arrived_is_a_declaration_change(tmp_path):
+    moved = STRUCTS.replace("    weight: int = 1\n",
+                            "    weight: int = 1\n    note: str = ''\n")
+    d = changes.build(base=_graph(tmp_path, "b", moved),
+                      compared=_graph(tmp_path, "a", STRUCTS))
+    row = next(r for r in d["structures_declared"] if r["name"] == "Claim")
+    assert "fields" in row["moved"]
+    assert d["structures_only_in_base"] == []
+
+
+def test_a_field_whose_type_moved_is_a_declaration_change(tmp_path):
+    moved = STRUCTS.replace("    weight: int = 1", "    weight: float = 1")
+    d = changes.build(base=_graph(tmp_path, "b", moved),
+                      compared=_graph(tmp_path, "a", STRUCTS))
+    assert [r["name"] for r in d["structures_declared"]] == ["Claim"]
+    assert d["structures_declared"][0]["moved"] == ["fields"]
+
+
+PAIR = '''\
+from dataclasses import dataclass
+
+
+@dataclass
+class Pair:
+    """Two of a kind."""
+
+    a: int = 0
+    b: str = ""
+'''
+
+
+def test_reordering_two_fields_is_not_a_declaration_change(tmp_path):
+    """`idx` is a **position**, and no key in this module carries one.
+
+    Swapping two fields renumbers every one after them, which is `site_id`'s residue in a
+    second costume -- and it changes nothing about what the structure holds.
+
+    The fixture is a **pure** swap: same names, same types, same defaults, different order.
+    An earlier version of this test swapped fields that also gained a default, so it
+    asserted a change while its name promised none -- a test whose name and assertion
+    disagree is worse than no test (rule 13, pointed at the suite).
+
+    **The two fields differ in type as well as in name, and that is what gives the test
+    teeth.** With `a: int` and `b: int` a swap is invisible to *either* key, so keying the
+    comparison on `idx` instead of `name` survived this guard -- a mutation that lived
+    because the fixture could not tell the two apart, which is rule 59's companion: when a
+    mutation survives, ask whether the guard is weak before changing either.
+    """
+    swapped = PAIR.replace('    a: int = 0\n    b: str = ""\n',
+                           '    b: str = ""\n    a: int = 0\n')
+    assert swapped != PAIR, "the fixture did not actually swap; this guard is blind"
+    d = changes.build(base=_graph(tmp_path, "b", swapped),
+                      compared=_graph(tmp_path, "a", PAIR))
+    assert d["structures_declared"] == [], d["structures_declared"]
+    assert d["identical"] is True
+
+
+def test_a_rewritten_structure_docstring_is_its_own_band(tmp_path):
+    """A structure has no `body_hash`, so this can be in **no other band**.
+
+    That is the one place it differs from a routine, whose docstring sits inside the `def`
+    and so lands in `edited only` with a tag correcting the reason. Without this band a
+    rewritten class docstring is reported by nothing and the page says "No differences
+    found" -- the comment lane's worst answer, one subject over (rule 77).
+    """
+    reworded = STRUCTS.replace('"""What somebody asserted."""',
+                               '"""What somebody asserted, and who stands behind it."""')
+    d = changes.build(base=_graph(tmp_path, "b", reworded),
+                      compared=_graph(tmp_path, "a", STRUCTS))
+    assert [r["name"] for r in d["structures_explained"]] == ["Claim"]
+    assert d["structures_declared"] == []
+    assert d["identical"] is False
+
+
+def test_a_structure_docstring_rewrapped_and_not_changed_is_no_difference(tmp_path):
+    """The canonical form, asked of the third prose lane exactly as of the other two."""
+    rewrapped = STRUCTS.replace('"""What somebody asserted."""',
+                                '"""What somebody\n    asserted."""')
+    d = changes.build(base=_graph(tmp_path, "b", rewrapped),
+                      compared=_graph(tmp_path, "a", STRUCTS))
+    assert d["structures_explained"] == []
+
+
+def test_a_structure_on_one_side_only_is_not_also_explained_differently(tmp_path):
+    """Rule 40, and it is the defect this lane actually shipped with for an hour.
+
+    `_moved_prose` compares the **union** of the two id sets, so a structure that exists on
+    one side only reads as described differently -- its docstring is here and absent there.
+    Every one of those is already a presence row, and reporting it twice is two lanes
+    recording one act.
+
+    Measured on Mensores' pair when it was wrong: **5 rows, all five of them presence rows
+    and not one a rewritten docstring**, against a raw ground truth of zero. The routine
+    lane guards it at the same place (`& both`) and the module lane inside its own helper --
+    three lanes, one rule, and this was the third time it had to be applied.
+    """
+    grown = STRUCTS + '\n\n@dataclass\nclass Extra:\n    """Late arrival."""\n\n    n: int\n'
+    d = changes.build(base=_graph(tmp_path, "b", grown),
+                      compared=_graph(tmp_path, "a", STRUCTS))
+    assert [r["name"] for r in d["structures_only_in_base"]] == ["Extra"]
+    assert d["structures_explained"] == [], (
+        "a structure only one side has carries its docstring with it; saying so twice is "
+        "rule 40"
+    )
+
+
+def test_the_three_structure_lanes_are_a_partition(tmp_path):
+    """No structure may appear in two of them, or one difference is reported twice."""
+    both = STRUCTS + '\n\n@dataclass\nclass Extra:\n    """Late."""\n\n    n: int\n'
+    other = STRUCTS.replace('"""What somebody asserted."""', '"""Asserted by whom."""') \
+                   .replace("    weight: int = 1", "    weight: float = 1")
+    d = changes.build(base=_graph(tmp_path, "b", both),
+                      compared=_graph(tmp_path, "a", other))
+    seen = {}
+    for lane in ("structures_only_in_base", "structures_only_in_compared",
+                 "structures_declared", "structures_explained"):
+        for r in d[lane]:
+            assert r["id"] not in seen, (
+                f"{r['name']} is in both {seen.get(r['id'])} and {lane}"
+            )
+            seen[r["id"]] = lane
+    assert seen, "the fixture produced no structure rows; this guard is blind"
+
+
+def test_a_structure_that_did_not_move_is_reported_by_no_lane(tmp_path):
+    d = changes.build(base=_graph(tmp_path, "b", STRUCTS),
+                      compared=_graph(tmp_path, "a", STRUCTS))
+    for lane in ("structures_only_in_base", "structures_only_in_compared",
+                 "structures_declared", "structures_explained"):
+        assert d[lane] == [], lane
+    assert d["identical"] is True

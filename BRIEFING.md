@@ -163,10 +163,53 @@ program has a most-commented routine and a maximum alone is a claim nobody can w
 
 ## What we are doing now
 
-**Paused 2026-09-02. The record split into files that can be carried; no code changed.**
-798 tests, mypy clean, ruff clean, working tree clean. Nothing is half-done.
+**Paused 2026-09-02. Structures are compared — presence, what they declare, and what they
+say about themselves.** 809 tests, mypy clean, ruff clean, working tree clean. Nothing is
+half-done.
 
-### The latest: the record split into files that can be carried (2026-09-02)
+### The latest: structures, compared at last (2026-09-02)
+
+**The last prose surface, and it was three lanes rather than one.** A class docstring was
+compared by nothing — and so was the *presence* of a class, which is why the docstring had
+been left out: there was no row for it to be a tag on. On Mensores' pair that hid **8
+structures that appear or vanish**, reported nowhere, on a page free to say *no differences
+found*.
+
+**The subject question was settled by measuring the wrong answer first.** Rule 74 says a
+diagram box *is* a class, so routing through `state.fold` looks obvious. A box is built from
+**routine** nodes, so it exists only where a class has methods: 192 of 671, with **every**
+TYPE_ALIAS, ENUM and TYPEDDICT having none and never able to — and 4 of the 8 rows that
+actually move have no methods. Rule 77, a third time, caught by counting. Nothing had to be
+minted instead: `describe()` already resolves a `structures.id`, verified live on a
+methodless TYPE_ALIAS before a line was written, so these rows carry an **id** where the four
+presence lines carry only a name — rule 30 applied honestly rather than uniformly.
+
+Tom took **Structures** for the name (the store's own word; "Classes" would be wrong for the
+138 aliases and enums) and added the *declares differently* lane on top of what he asked for,
+so nothing about a structure is left uncompared: `7 · 1 · 1 · 0` on the pair.
+
+**A defect shipped and caught within the hour, and it is rule 40.** `structures_explained`
+returned 5 against a ground truth of 0 — every one already a presence row, because
+`_moved_prose` compares the **union** of the id sets and a structure on one side only carries
+its docstring with it. Two lanes recording one act. Caught only because the number disagreed
+with a measurement taken before the code existed; the routine and module lanes each guard it
+in a different place, so this was the third application of one rule.
+
+**A surviving mutation that was the guard's fault.** Keying fields on `idx` rather than
+`name` survived the reorder test, because the fixture's two fields differed only in name —
+swap them and *either* key gives the same set. They differ in type now and it is caught. Rule
+59's companion: ask whether the guard is weak before changing either.
+
+**+13.3 ms**, median of four alternating builds of HEAD and this in one process on a warm
+disk — inside the 20 ms `/api/changes` had left. Driven in Chrome on the real pair: bands,
+counts, singulars, tags and stat tiles all correct, the row reachable by `elementFromPoint`
+and clicked through a **real pointer sequence** landing on a child element, and the inspector
+answering `ClaimVerdict · ANALYZED · STRUCTURE` — the structure, not one of its members.
+
+*Found in passing and left alone: clicking a change row files **two** trail steps. Verified
+pre-existing — a routine row does it too — so it is rule 76's family and not this work's.*
+
+### Before that: the record split into files that can be carried (2026-09-02)
 
 `CLAUDE.md` had reached 162,893 bytes, past the 150,000 a session loads — so it was being
 **truncated silently**, and the part falling off the end was whatever sat there. Two thirds
@@ -307,11 +350,12 @@ callers are its count and the rivals are in its title — and the anomaly workli
 to block was built the same day. It had been telling every session since that the largest
 feature was blocked on an answer nobody owed.
 
-- **A class docstring is still compared by nothing**, and it is the one prose surface left.
-  `structures.docstring` is in the store; the reason it was left out is that a class is not
-  a row in this worklist *at all* — `structures` has no presence band, so a class that
-  appeared or vanished is unreported too. It wants that decided first, and it is the same
-  subject question rule 77 is about. Zero differ on Mensores' pair.
+- ~~**A class docstring is still compared by nothing.**~~ *Built 2026-09-02, and it was
+  three lanes rather than one — presence, declaration and docstring. See the top of this
+  file.*
+- **Clicking a change row files two trail steps**, for a structure and for a routine alike.
+  Found 2026-09-02 and verified pre-existing rather than introduced. Rule 76's family — an
+  echo arriving as an act — and the fix is to the selection path, not to any one lane.
 - **The blank-graph fix (rule 49) is reasoned and guarded, never *seen*.** The automation
   tab never mounts the graph — `canvas MISSING`, `frames 0` — so rule 38 applies and it
   wants a real window before anyone calls it verified.

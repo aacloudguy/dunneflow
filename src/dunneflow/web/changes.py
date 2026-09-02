@@ -198,6 +198,75 @@ SELECT f.path, f.module, f.doc FROM {db}.files f
  WHERE f.path IN ({q}) AND f.doc IS NOT NULL AND f.doc <> ''
 """
 
+# --------------------------------------------------------------------------- #
+# What a **structure** is. A class, a dataclass, an enum, a type alias -- the things
+# `structures` holds -- and the third subject in this module after the routine and the file.
+#
+# It was compared by nothing at all until 2026-09-02: not its presence, not what it declares,
+# not what it says about itself. On Mensores' pair that hid **8 structures that appeared or
+# vanished**, reported nowhere, while the page could still say "No differences found".
+#
+# **The subject is the structure, and that was settled by measuring the alternative.** A
+# diagram box *is* a class (rule 74), so routing these rows through `state.fold` looks
+# obvious and is rule 77's defect exactly: a box is built from routine nodes, so it exists
+# only where a class has methods. Measured -- 192 of 671 structures would have one, **every**
+# TYPE_ALIAS (88), ENUM (42) and TYPEDDICT (8) has none and never can, and **4 of the 8 rows
+# that actually move have no methods**. It would have been right about the majority and
+# silently wrong about the rest, which is the cheap answer's dangerous failure mode.
+#
+# Nothing had to be minted: `describe()` already resolves a `structures.id` and returns a
+# STRUCTURE specimen with its kind, module, fields and annotations. So these rows carry an
+# **id** where the four `PRESENCE` lanes carry only a name -- not an inconsistency but the
+# same rule applied honestly (rule 30): emit an identity where one exists, a name where none
+# does. `db_tables` has no id because a table is not a node; a structure is.
+# --------------------------------------------------------------------------- #
+
+# Present on one side and not the other. Unbounded, unlike the prose lanes below: this is an
+# indexed set difference over 671 rows, not a scan of text, and a structure whose whole file
+# was removed must still be reported.
+STRUCTURES_ONLY = """
+SELECT s.id, s.name, s.kind, s.module, s.file, s.line
+  FROM {X}.structures s
+ WHERE s.id NOT IN (SELECT id FROM {Y}.structures)
+ ORDER BY s.module, s.name
+"""
+
+# What a structure **declares**: its kind and what it inherits. The structure equivalent of
+# `FACTS` -- what the thing is, never where it sits, so no `file` and no `line` (the module
+# docstring's rule, and it applies to every subject here and not only to routines).
+#
+# `kind` is in because DATACLASS becoming CLASS is a real change to what the program can be
+# shown to do, and `bases` because losing a base class changes what a structure inherits --
+# the one row that moves on Mensores' pair is exactly that.
+STRUCTURE_DECL = """
+SELECT id, kind, bases FROM {db}.structures
+"""
+
+# Its fields, which are what a data structure actually *holds*. `name`, `type` and `dflt`,
+# and deliberately not `comment`: a field's comment is its WHY and a change to it is a real
+# change, but it is a different change from what the field is -- the same reason
+# `CONSTANT_VALUES` leaves `comment` out (rule 32).
+#
+# `idx` is **not** compared. It is a position, and reordering two fields of a dataclass
+# renumbers every one after it -- the `site_id` argument in a second costume, and the module
+# docstring's rule against keying on a position.
+STRUCTURE_FIELDS_IN = """
+SELECT structure_id, name, COALESCE(type, ''), COALESCE(dflt, '') FROM {db}.fields
+"""
+
+# What a structure says about **itself**. Bounded to the files whose bytes differ, exactly as
+# the other two prose lanes are, and through the same `_changed_files` so the three cannot
+# disagree about which files are worth reading (rule 51).
+#
+# **Only structures that have one**, either side -- `DOCSTRINGS_IN`'s reasoning, unchanged: a
+# docstring removed outright is on one side and not the other, which the set comparison reads
+# as a difference already.
+STRUCT_DOCS_IN = """
+SELECT s.id, s.docstring
+  FROM {db}.structures s
+ WHERE s.file IN ({q}) AND s.docstring IS NOT NULL AND s.docstring <> ''
+"""
+
 # A constant present in both versions, holding something different.
 #
 # `constants` has always been in `PRESENCE`, compared by name -- so a value that moved was
@@ -533,6 +602,73 @@ def _module_docs_moved(conn: sqlite3.Connection, A: str,
             and _prose(here[path][1]) != _prose(there[path][1])]
 
 
+def _structures_declared(conn: sqlite3.Connection, A: str,
+                         B: str) -> dict[str, set[str]]:
+    """Structures present in both versions that **declare** something different.
+
+    The structure lane's answer to `behaves differently`, and named for the same reason:
+    what the thing is, not what befell it (rule 65). Three kinds move independently and each
+    is reported by name, because "this structure changed" is a row that says nothing a reader
+    can act on -- `kind` (DATACLASS became CLASS), `bases` (it stopped inheriting something),
+    and `fields` (what it holds).
+
+    **Both directions, unioned**, for `MOVED`'s reason: a field only one side has is "this
+    structure holds something else over there" whichever side it is on, and asking one
+    direction reports everything gained and nothing lost.
+
+    Only structures **both** versions have. One that is on a single side is already its own
+    presence row, and a second lane repeating it is rule 40 in a diff -- two numbers about
+    one thing.
+    """
+    def decl(db: str) -> dict[str, tuple[str, str]]:
+        cur = conn.cursor()
+        cur.row_factory = None
+        return {str(r[0]): (str(r[1]), str(r[2]))
+                for r in cur.execute(STRUCTURE_DECL.format(db=db))}
+
+    def fields(db: str) -> dict[str, set[tuple[str, str, str]]]:
+        out: dict[str, set[tuple[str, str, str]]] = {}
+        cur = conn.cursor()
+        cur.row_factory = None
+        for sid, name, typ, dflt in cur.execute(STRUCTURE_FIELDS_IN.format(db=db)):
+            out.setdefault(str(sid), set()).add((str(name), str(typ), str(dflt)))
+        return out
+
+    here_d, there_d = decl(A), decl(B)
+    both = here_d.keys() & there_d.keys()
+    here_f, there_f = fields(A), fields(B)
+
+    moved: dict[str, set[str]] = {}
+    for sid in both:
+        if here_d[sid][0] != there_d[sid][0]:
+            moved.setdefault(sid, set()).add("kind")
+        if here_d[sid][1] != there_d[sid][1]:
+            moved.setdefault(sid, set()).add("bases")
+        if here_f.get(sid, set()) != there_f.get(sid, set()):
+            moved.setdefault(sid, set()).add("fields")
+    return moved
+
+
+def _structure_docs_moved(conn: sqlite3.Connection, A: str, B: str) -> set[str]:
+    """Structures the two versions **describe** differently.
+
+    `_docstrings_moved` for a structure, and the one difference is the one that matters: for
+    a routine a docstring is a **tag**, because it sits inside the `def` and so inside
+    `body_hash`, which means the row is already in `edited only` and what wants correcting is
+    the reason the row gives. A structure has no `body_hash` and no `edited` band at all, so
+    a structure whose docstring was rewritten and nothing else is in **no band** -- reported
+    by nothing, on a page free to say "No differences found".
+
+    So here it can stand alone, and `structures_explained` is where it stands. That is rule
+    77 arriving a third time: the same fact needs a different home depending on whether its
+    subject has somewhere else to be.
+
+    Same canonical form as the other two prose lanes, and same two passes: comparing as
+    stored is a superset by construction, so the second pass can only remove candidates.
+    """
+    return _moved_prose(conn, A, B, STRUCT_DOCS_IN)
+
+
 def _changed_files(conn: sqlite3.Connection, A: str, B: str) -> list[str]:
     """The files whose bytes differ, which is what every prose lane is bounded to.
 
@@ -688,6 +824,59 @@ def build(base: Path, compared: Path,
         # is never one of the things it holds).
         modules = _module_docs_moved(conn, A, B)
 
+        # The third subject, and the one that had nothing at all. Presence first, because it
+        # is where the whole gap was: 8 of Mensores' structures appear or vanish and were
+        # reported nowhere. Rows carry an id, so a reader can open what a row names.
+        struct_only_base = [dict(r) for r in conn.execute(
+            STRUCTURES_ONLY.format(X=B, Y=A))]
+        struct_only_comp = [dict(r) for r in conn.execute(
+            STRUCTURES_ONLY.format(X=A, Y=B))]
+        # What it declares, and what it says about itself. `declared` is the band; `explained`
+        # is a tag on a row already in it, and a band of its own for a structure that is in no
+        # other -- the routine lane's shape, with the difference `_structure_docs_moved`
+        # states: a structure has no `body_hash` to carry it into `edited only`.
+        declared = _structures_declared(conn, A, B)
+        # Structures **both** versions hold, and the intersection is load-bearing rather than
+        # defensive. `_moved_prose` compares the union of the two id sets, so a structure that
+        # exists on one side only reads as "described differently" -- its docstring is present
+        # here and absent there. Every one of those is already a presence row, and reporting
+        # it twice is rule 40: two lanes recording one act, two numbers about one thing.
+        #
+        # Measured before it was written and again after: on Mensores' pair this lane returned
+        # **5 rows, all five of them presence rows and none of them a rewritten docstring**,
+        # against a raw ground truth of zero. The routine lane guards it the same way at the
+        # same place (`& both`), and the module lane guards it inside `_module_docs_moved` --
+        # three lanes, one rule, and this is the third time it has had to be applied.
+        struct_both = {r[0] for r in conn.execute(
+            f"SELECT id FROM {A}.structures INTERSECT SELECT id FROM {B}.structures")}
+        struct_documented = _structure_docs_moved(conn, A, B) & struct_both
+        struct_named = {r["id"]: dict(r) for r in conn.execute(
+            f"SELECT id, name, kind, module, file, line FROM {B}.structures")}
+        # Both versions', because a structure explained differently may sit on either side of
+        # a rename and the base is only one of the two places to find its name.
+        for r in conn.execute(
+                f"SELECT id, name, kind, module, file, line FROM {A}.structures"):
+            struct_named.setdefault(r["id"], dict(r))
+
+        structures_declared = [
+            {**struct_named[sid],
+             "moved": sorted(kinds) + (["docstring"] if sid in struct_documented else [])}
+            for sid, kinds in sorted(
+                declared.items(),
+                key=lambda kv: (struct_named.get(kv[0], {}).get("module", ""),
+                                struct_named.get(kv[0], {}).get("name", "")))
+            if sid in struct_named
+        ]
+        # Defined by subtraction from the band beside it, exactly as `explained_only` is, so
+        # the two stay a partition and no structure is counted twice (rule 40).
+        structures_explained = [
+            struct_named[sid] for sid in sorted(
+                struct_documented - declared.keys(),
+                key=lambda s: (struct_named.get(s, {}).get("module", ""),
+                               struct_named.get(s, {}).get("name", "")))
+            if sid in struct_named
+        ]
+
         named = {r["id"]: dict(r) for r in conn.execute(
             f"SELECT id, name, qualname, module, file, line_start FROM {B}.routines")}
 
@@ -763,6 +952,14 @@ def build(base: Path, compared: Path,
                 "edited_only": len(edited_only),
                 "explained_only": len(explained_only),
                 "modules_explained": len(modules),
+                "structures_only_in_base": len(struct_only_base),
+                "structures_only_in_compared": len(struct_only_comp),
+                "structures_declared": len(structures_declared),
+                "structures_explained": len(structures_explained),
+                "structures_base": conn.execute(
+                    f"SELECT COUNT(*) FROM {B}.structures").fetchone()[0],
+                "structures_compared": conn.execute(
+                    f"SELECT COUNT(*) FROM {A}.structures").fetchone()[0],
                 "routines_base": conn.execute(
                     f"SELECT COUNT(*) FROM {B}.routines").fetchone()[0],
                 "routines_compared": conn.execute(
@@ -771,8 +968,13 @@ def build(base: Path, compared: Path,
             # `explained_only` is in here, and it is the whole reason the band exists: a
             # rewritten leading comment used to leave every other term zero, so the page
             # stated "No differences found" over a version whose intent had been rewritten.
+            # Every lane, including the three structure ones. A term missing here is a
+            # page that says "No differences found" over a difference it is listing below --
+            # which is exactly what the comment lane did before `explained_only` joined it.
             "identical": not (only_base or only_comp or behaves_rows or edited_only
                               or explained_only or modules
+                              or struct_only_base or struct_only_comp
+                              or structures_declared or structures_explained
                               or any(v["only_in_base"] or v["only_in_compared"] or v["moved"]
                                      for v in presence.values())),
             "only_in_base": only_base,
@@ -784,6 +986,15 @@ def build(base: Path, compared: Path,
             # `counts`' routine totals for the reason it is its own lane at all: a module is
             # not one of its routines.
             "modules_explained": modules,
+            # Rows whose subject is a **structure** -- a class, dataclass, enum or type
+            # alias. Three lanes rather than one: what is only on one side, what declares
+            # something different, and what describes itself differently. Kept out of the
+            # routine bands and out of `counts`' routine totals for the reason the module
+            # lane is: a structure is not one of its methods (rule 74).
+            "structures_only_in_base": struct_only_base,
+            "structures_only_in_compared": struct_only_comp,
+            "structures_declared": structures_declared,
+            "structures_explained": structures_explained,
             "presence": presence,
         }
     finally:

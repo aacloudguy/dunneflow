@@ -1150,6 +1150,72 @@ const CHANGE_FILE_BANDS = {
   },
 };
 
+/* The bands whose rows are **structures** — a class, a dataclass, an enum, a type alias.
+ * The third table, and it exists for the reason the second one does: these rows are not
+ * routines, so they get no routine status, and a table beside the other two keeps the guard
+ * that asks "does every band the server sends reach a client that draws it" working without
+ * anybody remembering (design rule 16).
+ *
+ * **`nav: "chg"` — the same route a changed routine takes, and nothing had to be built.**
+ * `describe()` already resolves a `structures.id` and answers with a STRUCTURE specimen, so
+ * a structure is a subject exactly as a routine is: the stack lights it, the inspector
+ * fills, the trail records it. That is why these rows carry an **id** where the four
+ * presence lines carry only a name — rule 30 applied honestly rather than uniformly: emit an
+ * identity where one exists, a name where none does. A table is not a node; a structure is.
+ *
+ * **What was measured before this was written.** Routing these through the diagram box —
+ * a box *is* a class (rule 74) — covers 192 of Mensores' 671 structures, because a box is
+ * built from routine nodes and every TYPE_ALIAS, ENUM and TYPEDDICT has no methods at all.
+ * Four of the eight rows that actually move have none. Rule 77: a subject minted on a
+ * condition cannot carry a fact that does not share it.
+ *
+ * All four are violet with the other explanation bands. Rule 69 measured the difference
+ * channel full at six meanings, so a fifth idea cannot have a colour of its own; these are
+ * separated by being a band of structures, which is a stronger separation than a glyph. */
+const CHANGE_STRUCT_BANDS = {
+  structures_only_in_base: {
+    nav: "chg", id: "id", label: "name", meta: "module", badge: "kind", tone: "gone",
+    title: "Structures only in the base",
+    why: `A class, dataclass, enum or type alias the base version declares and the compared
+       one does not. Compared by nothing at all until 2026-09-02 — on Mensores' pair that
+       hid <strong>eight</strong> of them while the page was free to say
+       <em>no differences found</em>.`,
+    stat: "structures only in the base", stat1: "structure only in the base",
+    statWhy: "structures, not routines",
+  },
+  structures_only_in_compared: {
+    nav: "chg", id: "id", label: "name", meta: "module", badge: "kind", tone: "new",
+    title: "Structures only in the compared",
+    why: `Declared in the compared version and not in the base. Which side is
+       <em>added</em> is the reader's to say — this band names where a thing is, never what
+       befell it (rule 65).`,
+    stat: "structures only in the compared", stat1: "structure only in the compared",
+    statWhy: "structures, not routines",
+  },
+  structures_declared: {
+    nav: "chg", id: "id", label: "name", meta: "module", badge: "kind", tone: "moved",
+    title: "Structures declaring differently",
+    why: `The same structure, and what it <em>declares</em> has moved — the tag says which:
+       <code>kind</code> if a dataclass became a plain class, <code>bases</code> if it
+       stopped inheriting something, <code>fields</code> if what it holds changed. The
+       structure lane's answer to <em>behaves differently</em>.`,
+    stat: "structures declaring differently", stat1: "structure declaring differently",
+    statWhy: "structures, not routines",
+  },
+  structures_explained: {
+    nav: "chg", id: "id", label: "name", meta: "module", badge: "kind", tone: "moved",
+    title: "Structures explained differently",
+    why: `The same structure, declaring the same thing, and what it says about
+       <em>itself</em> has moved — a rewritten docstring. Its own band rather than a tag,
+       and that is the one place this differs from a routine: a routine's docstring sits
+       inside its <code>body_hash</code>, so the row is already under <em>edited</em> and
+       the tag only corrects the reason. A structure has no body hash and no edited band, so
+       without this it would be in <strong>no band at all</strong>.`,
+    stat: "structures explained differently", stat1: "structure explained differently",
+    statWhy: "structures, not routines",
+  },
+};
+
 /* id -> status, built once and **hung on the answer** rather than kept in a module
  * variable, exactly as `FILEPAIR._by` is and for the same two reasons. The table draws
  * 4,734 rows, so a `find` per row is work proportional to the whole program on every
@@ -4011,6 +4077,14 @@ function viewChanges() {
             routines and rule 32 is about exactly that. */""}
       ${Object.entries(CHANGE_FILE_BANDS).map(([k, b]) =>
           stat(c[k] || 0, (c[k] === 1 ? b.stat1 : b.stat), b.statWhy, "moved")).join("")}
+      ${/* The structure tiles, drawn only when non-zero — unlike the file tiles above,
+            which are the shape of the comparison. Four zeroes here on a pair that differs
+            in no structure would be four lines of nought saying nothing, and the band list
+            below already states the whole answer. */""}
+      ${Object.entries(CHANGE_STRUCT_BANDS)
+          .filter(([k]) => c[k])
+          .map(([k, b]) => stat(c[k], (c[k] === 1 ? b.stat1 : b.stat), b.statWhy,
+                                b.tone === "moved" ? "moved" : b.tone)).join("")}
     </div>
 
     <p class="hint" style="margin:.6rem 0 0">
@@ -4047,6 +4121,10 @@ function viewChanges() {
            + "exists not to report — listed here so leaving it out is not a silent filter.")}
     ${Object.entries(CHANGE_FILE_BANDS)
         .map(([k, b]) => modband(b, CHANGES[k] || [])).join("")}
+    ${/* The structure bands, rendered by the same function from a table of their own.
+          Rows carry a real node id, so the click is the selection every other row makes. */""}
+    ${Object.entries(CHANGE_STRUCT_BANDS)
+        .map(([k, b]) => modband(b, CHANGES[k] || [])).join("")}
   </div>`;
 }
 
@@ -4071,16 +4149,27 @@ function viewChanges() {
  */
 function modband(b, rows) {
   if (!rows.length) return "";
+  /* `meta`, `badge` and `tone` default to what the file bands have always done, so this
+     stayed one renderer when the structure bands arrived rather than becoming two that
+     drift (rule 13). A file's identity *is* worth printing under its name — the path is how
+     a reader finds it. A structure's is a sixteen-character hash, so it names its module
+     instead, and says which **kind** of thing it is: a vanished TYPE_ALIAS and a vanished
+     CLASS are different news, and a band that prints only a name says neither. */
+  const metaKey = b.meta || b.id;
   return `
     <section class="chgsection">
-      <h3 class="tone-moved">${b.title}
+      <h3 class="tone-${esc(b.tone || "moved")}">${b.title}
         <span class="num">${rows.length.toLocaleString()}</span></h3>
       <p class="hint">${b.why}</p>
       <ol class="chg-list">${rows.map(r => `
         <li><button class="chg-item" data-nav="${esc(b.nav)}"
                     data-navid="${esc(r[b.id])}">
           <span class="chg-title navlabel">${esc(r[b.label] || r[b.id])}</span>
-          <span class="chg-meta"><span class="mono chg-mod">${esc(r[b.id])}</span></span>
+          <span class="chg-meta"><span class="mono chg-mod">${esc(r[metaKey] || "")}</span>
+            ${b.badge && r[b.badge]
+                ? `<span class="kind-tag">${esc(r[b.badge])}</span>` : ""}
+            ${(r.moved || []).map(m => `<span class="kind-tag">${esc(m)}</span>`).join("")}
+          </span>
         </button></li>`).join("")}</ol>
     </section>`;
 }
@@ -9799,7 +9888,8 @@ function changeCount() {
      routines, which is what the group badge above it means; the page below is where the
      two are separated, because that is where there is room to say which is which. */
   return c.only_in_base + c.only_in_compared + c.behaves + (c.explained_only || 0)
-         + Object.keys(CHANGE_FILE_BANDS).reduce((n, k) => n + (c[k] || 0), 0);
+         + Object.keys(CHANGE_FILE_BANDS).reduce((n, k) => n + (c[k] || 0), 0)
+         + Object.keys(CHANGE_STRUCT_BANDS).reduce((n, k) => n + (c[k] || 0), 0);
 }
 
 /* What the group says above its rows, and the three states it must keep apart.
@@ -9844,10 +9934,16 @@ function changeNote() {
   if (c.explained_only) {
     bits.push(`<span class="tone-moved">${c.explained_only} explained differently</span>`);
   }
-  for (const [k, b] of Object.entries(CHANGE_FILE_BANDS)) {
-    if (c[k]) {
-      bits.push(`<span class="tone-moved">${c[k]} ${
-        c[k] === 1 ? b.stat1 : b.stat}</span>`);
+  /* Both non-routine tables, walked rather than named, so a band added to either is stated
+     in the navigator's note without a second place remembering (rule 36). Without this the
+     note said "no differences found" over a vanished structure the page was listing — the
+     comment lane's defect exactly, which is why it is walked and not listed. */
+  for (const tbl of [CHANGE_FILE_BANDS, CHANGE_STRUCT_BANDS]) {
+    for (const [k, b] of Object.entries(tbl)) {
+      if (c[k]) {
+        bits.push(`<span class="tone-${esc(b.tone || "moved")}">${c[k]} ${
+          c[k] === 1 ? b.stat1 : b.stat}</span>`);
+      }
     }
   }
   if (c.edited_only) bits.push(`${c.edited_only} edited without changing what they do`);

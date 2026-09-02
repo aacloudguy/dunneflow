@@ -7029,3 +7029,129 @@ a proof, and the instruction to read the body before working in an area a rule g
 written at the top of `RULES.md`, at the head of the index, and in the routing table in
 `CLAUDE.md`. If a future session applies a rule shallowly from its title alone, that is the
 failure mode to look for first.
+
+## Structures, compared at last — built 2026-09-02
+
+**The last prose surface, and it turned out to be three lanes rather than one.** A class
+docstring was compared by nothing. So was the *presence* of a class, and so was what one
+declares — `structures` had no band of any kind, which is why the docstring was left out in
+the first place: there was no row for it to be a tag on.
+
+### The subject question, settled by measuring the wrong answer first
+
+`BRIEFING` said this wanted deciding before any code, and it did. The tempting answer is the
+diagram box: rule 74 already says **a box is a class**, `state.fold` is already a subject,
+and `/api/fold` already describes one. Measured before taking it:
+
+```
+structures in base                       671
+  ...that any routine names as its class 192   <- would have a box
+  ...with no method at all               479   <- no box exists, and none can
+
+  by kind:  DATACLASS  480 total, 159 with a box
+            TYPE_ALIAS  88 total,   0        <- every one
+            CLASS       49 total,  32
+            ENUM        42 total,   0        <- every one
+            TYPEDDICT    8 total,   0        <- every one
+            NAMEDTUPLE   4 total,   1
+
+  and of the 8 structures that actually move on the pair, 4 have no methods
+```
+
+A box is built from **routine** nodes, so it exists only where a class has methods. Routing
+these rows through it would have been right about the majority and silently wrong about the
+rest — **rule 77**, third time, and caught by counting rather than by a false result.
+
+**And nothing had to be minted.** `describe()` already resolves a `structures.id` and answers
+with a STRUCTURE specimen — verified live on a TYPE_ALIAS with no methods before a line was
+written. So a structure is a subject exactly as a routine is, and these rows carry an **id**
+where the four presence lines carry only a name. Not an inconsistency: rule 30 applied
+honestly rather than uniformly — emit an identity where one exists, a name where none does.
+`db_tables` has no id because a table is not a node; a structure is.
+
+### What it reports, on Mensores' pair
+
+```
+structures_only_in_base       7     <- reported by nothing before today
+structures_only_in_compared   1
+structures_declared           1     <- IntentOp: bases and fields moved
+structures_explained          0     <- and 0 is the true answer, see below
+```
+
+Tom took **Structures** for the name (the store's own word — the table, the enum and the
+cover all already say it; "Classes" would be wrong for the 138 aliases and enums), and took
+the *declares differently* lane on top of what he had asked for, so nothing about a structure
+is left uncompared.
+
+### The defect this shipped with for an hour, and how it was caught
+
+`structures_explained` came back **5** against a raw ground truth of **0**. Every one of the
+five was already a presence row: `_moved_prose` compares the **union** of the two id sets, so
+a structure that exists on one side only reads as *described differently* — its docstring is
+here and absent there. Two lanes recording one act, which is **rule 40**.
+
+It was caught only because the number disagreed with a ground truth taken before the code
+existed. The routine lane guards it at the call site (`& both`), the module lane inside its
+own helper — **three lanes, one rule, and this was the third time it had to be applied**, in
+a module whose own comments explain the rule twice.
+
+### A surviving mutation that was the guard's fault, not the mutation's
+
+`test_reordering_two_fields_is_not_a_declaration_change` pins that `idx` is excluded — a
+position, and no key in this module carries one. Keying the field comparison on `idx`
+instead of `name` **survived it**. The fixture was `a: int = 0` and `b: int = 0`: swap two
+fields that differ only in name and *either* key gives the same set, so there was nothing
+for the mutation to change. The fields differ in **type** as well now, and the mutation is
+caught. Rule 59's companion — when a mutation survives, ask whether the guard is weak before
+changing either.
+
+One more of the same family, in a test I wrote and then had to withdraw: the first version
+of that test swapped fields that also *gained a default*, so it asserted a change while its
+name promised none. A test whose name and assertion disagree is worse than no test.
+
+### Cost, measured like for like
+
+**+13.3 ms**, median of four alternating builds of HEAD and this in one process against a
+warm disk (321.2 → 334.5). That fits the 20 ms of headroom `/api/changes` had, and it is the
+whole of the budget story: the four lanes are 6.5 ms of query between them once warm, and
+the 182 ms a first run shows is the external volume, the same caveat every cold row carries.
+
+The fact lanes are **unbounded** while the docstring lane is bounded to `_changed_files` with
+the other two prose lanes. That split is deliberate rather than accidental: a presence lane is
+an indexed set difference over 671 rows, and a structure whose whole file was removed must
+still be reported.
+
+### Verified by driving it, not only by tests
+
+809 tests (11 new), mypy clean, ruff clean. Three mutations run against a baseline proved
+green first: the missing intersection, `idx` as a key, and a dead docstring lane — all three
+caught, one only after the fixture was strengthened.
+
+On the real Mensores pair in Chrome: the three bands render with their counts, the navigator
+note reads *"7 structures only in the base · 1 structure only in the compared · 1 structure
+declaring differently"* with the singulars right, the declaring row carries `TYPE_ALIAS`,
+`bases` and `fields` as tags, and the stat tiles say **structures, not routines** (rule 32).
+The row was confirmed reachable with `elementFromPoint` (rule 48) and then clicked through a
+**real pointer sequence dispatched at whatever was on top** — which was a child `kind-tag`,
+so the bubble path is proven too. The inspector answered `ClaimVerdict · ANALYZED ·
+STRUCTURE`: the structure itself, not one of its members (rule 74). Console clean, "every
+control is wired".
+
+**Absent rather than estimated:** a photograph of the bands. The automation capture is fixed
+at 784×349 whatever the window (rule 38), so the worklist below the fold cannot be
+photographed and coordinate-clicking is unreliable there — which is exactly why the click was
+dispatched at coordinates read from the page rather than aimed at a screenshot.
+
+### Found in passing and not fixed — it is not this work's
+
+**Clicking a change row files two trail steps.** Verified pre-existing and not introduced
+here: a **routine** row does it too (`drill_exactly_once_after_recovery` twice from one real
+pointer click), so structures behave exactly as routines do. It is rule 76's family — an echo
+arriving as an act — and rule 76's own amendment describes this symptom in as many words for
+the doorway panel. Left alone deliberately: it affects the existing lane equally, and fixing
+it is a change to the selection path rather than to this feature.
+
+### Still open after this
+
+The list at the foot of this file, minus the class docstring, which this closes. Nothing new
+is blocked. The trail duplication above joins it.

@@ -163,9 +163,18 @@ program has a most-commented routine and a maximum alone is a claim nobody can w
 
 ## What we are doing now
 
-**Paused 2026-09-02. The topbar search filters every group it names, and structures have a
-group of their own.** 809 tests, mypy clean, ruff clean, working tree clean. Nothing is
-half-done.
+**Paused 2026-09-02, after the search work.** The topbar search filters every group it names,
+takes a regular expression, and structures have a group of their own. 809 tests, mypy clean,
+ruff clean, working tree clean. Nothing is half-done.
+
+*Seven commits this session: the record split into carryable files · the open list audited ·
+structures compared · one open list with an owner · the diagram cursor and design rule 27 ·
+the search doing what it says · the search taking a pattern.*
+
+**Next, and it is where we stopped:** the real worst case for the flow panel is
+`session.add_turn` at `_extraction_state.py:742` — 3,323 bytes over 53 lines, on a *resolved*
+call, so its arrow can be opened. Then the constants surface, where a **6,924-character single
+line** turned out to be the readability problem that open-list item 2 had misdescribed.
 
 ### The latest: the topbar search does what it says (2026-09-02)
 

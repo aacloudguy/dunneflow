@@ -7414,3 +7414,31 @@ routines, `^emit` → 30 routines and 3 structures, `[unclosed` → the stated r
 matches `HOOKEVENT` → `HookEvent` and on does not; `|ab|` disabled while `.*` is on and
 enabled after; and **the flags survive a reload and still match** (rule 68). Console clean,
 809 tests, mypy and ruff clean.
+
+### Paused 2026-09-02, after the search work
+
+809 tests, mypy clean, ruff clean, working tree clean. Nothing is half-done. Seven commits:
+the record split into carryable files, the open list audited, structures compared, one open
+list with an owner, the diagram cursor and design rule 27, the topbar search doing what it
+says, and the topbar taking a regular expression.
+
+**A server is running** on `http://127.0.0.1:8787/` against `output/mensores`, the two-revision
+pair. Nothing depends on it; `pkill -f "dunneflow serve"` ends it.
+
+**Where the list stands.** Item 1 of *waiting on Tom's eye* is closed. Item 2 is closed
+differently from how it was written and the entry has been corrected: the 1,347-line
+`frozenset` is **not reachable from the flow panel at all** — `external`, `at_boundary = 0`,
+a builtin, so no arrow is drawn for it — and the same expression is in the store twice, as
+91,224 bytes over 1,348 lines in `call_args` (as written, rule 75) and as **6,924 bytes on one
+line** in `constants` (unparsed by `_literal`). The readability risk is therefore a
+6,924-character line in the constants surface, which nobody had noticed, and not a wrapped
+argument in the flow panel.
+
+**Next, and it is where we stopped.** The real worst case for the flow panel is
+`session.add_turn` at `_extraction_state.py:742` — 3,323 bytes over 53 lines, on a resolved
+call, so its arrow can actually be opened. Then the constants surface. Neither is started.
+
+**Found and deliberately not fixed, twice.** Clicking a change row files **two** trail steps,
+for a routine as much as for a structure — verified pre-existing, rule 76's family, and the
+fix belongs to the selection path rather than to any lane. And boundary **targets** (1,741 of
+them) are not searchable from the topbar by design; the note names the source search instead.

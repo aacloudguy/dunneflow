@@ -265,6 +265,14 @@ const state = {
    * version it governs nothing, and the switch is not drawn: a control that cannot change
    * anything is design rule 16's defect wearing a checkbox. */
   codeOverlay: true,
+  /* Whether the provenance line under the code is shown. **Open by default and remembered
+   * closed**, which is the only defensible pair: the sentence is the one thing on the page
+   * that says these bytes are the sidecar's *as measured* rather than the tree as it stands,
+   * so a reader must meet it (design rule 13). Once met, it says the same thing on every
+   * file, and it is 46px of a pane whose whole job is the lines above it -- 22.6% of the body
+   * on a short window. So it folds, and the fold is a fold rather than a hide: the bar stays,
+   * says what it is, and opens (design rule 23, and rule 45 -- hidden is not absent). */
+  codeProv: true,
   /* The same switch for the routine list and the table. Two switches rather than one,
    * because what they cost differs: the code overlay fetches a difference per file and can
    * mark four hundred lines, while these marks are read off an answer the page already
@@ -5656,9 +5664,14 @@ function viewCode() {
 
     <div class="codeview-body" id="codeTableMount"></div>
 
-    <div class="codeview-foot">Read from the content-addressed sidecar — the file as
-      measured${CODEFILE.revision ? " at " + esc(CODEFILE.revision) : ""}, not as the tree
-      stands now.</div>
+    <div class="codeview-foot" data-open="${state.codeProv}">
+      <button data-codeprov="1" aria-expanded="${state.codeProv}"
+              title="Where these bytes came from">
+        <span class="caret">\u25bc</span>source</button>
+      <span class="provtext">Read from the content-addressed sidecar — the file as
+        measured${CODEFILE.revision ? " at " + esc(CODEFILE.revision) : ""}, not as the tree
+        stands now.</span>
+    </div>
   </div>`;
 }
 
@@ -5700,7 +5713,20 @@ function codeTable() {
       `<span class="ccode">${codeLineHtml(text, links.get(n))}</span></span>`);
     if (ov) rows.push(...ghostRows(ov, n, "crow-wide"));
   });
-  return `<pre class="codetable" id="codeTable">${rows.join("\n")}</pre>`;
+  /* **Joined with nothing, and the newline that used to be here was on screen.**
+   *
+   * `rows.join("\n")` is the reflex — it makes generated markup readable in a devtools
+   * inspector, and it is what every other list builder in this file does. Inside a `<pre>`
+   * it is not whitespace between tags, it is **content**: `white-space: pre` renders that
+   * newline as a line break, and each `.crow` is already `display: block` and has broken the
+   * line itself. So every row was followed by an empty one.
+   *
+   * Reported as *"every line has a blank between it, like old IBM greenbar printouts"*, and
+   * the arithmetic agrees exactly: 1,703 rows in 58,932px is **34.6px a row against a
+   * 17.28px line-height**, twice what it should be, and 29,000px of scrolling that carried
+   * nothing. Invisible to every check here, because the markup was right, the classes were
+   * right and the rule doing it was three lines away in another file. */
+  return `<pre class="codetable" id="codeTable">${rows.join("")}</pre>`;
 }
 
 /* The sign beside a marked line. It follows the **tone**, which follows the word, which
@@ -6312,10 +6338,17 @@ function viewerPanel() {
   } else if (src.error) {
     body = `<div class="viewer-absent"><b>That file could not be read.</b> ${esc(src.error)}</div>`;
   } else {
+    /* Joined with nothing. `.codeview .cl` is `display: block`, so it breaks its own line,
+       and a `\n` beside it inside a `<pre>` is a second break — the citation viewer had the
+       same doubled spacing the code table did, found by going to look at the other two
+       `<pre>` builders after the first was reported. `srcPane`'s `.srcblock` is the one that
+       keeps its newline, and that is not an inconsistency: its rows are **not** wrapped in a
+       block, so there the newline is the only thing breaking the line. The rule is that a
+       row breaks once, not that a separator has one spelling. */
     body = `<pre class="codeview">${src.lines.map(l => {
       const cls = l.n === s.line ? " hit" : "";
       return `<span class="cl${cls}"><span class="cn">${l.n}</span>${esc(l.text) || " "}</span>`;
-    }).join("\n")}</pre>`;
+    }).join("")}</pre>`;
   }
 
   const stamp = (STATS && STATS.analysed) ? String(STATS.analysed).slice(0, 10) : "";
@@ -8665,6 +8698,31 @@ function wire() {
   }));
 
   /* collapsible inspector sections */
+  /* The provenance line's fold. Its own key rather than a member of `state.insp`, because
+     that map is the *inspector's* sections and "Collapse all" walks it -- a centre-pane
+     element answering to the inspector's button is one control with two claims (rule 67). */
+  $$("[data-codeprov]").forEach(b => b.addEventListener("click", () => {
+    state.codeProv = !state.codeProv;
+    used("codeprov:" + (state.codeProv ? "open" : "shut"));
+    /* **Written here, not left to `render()`, and the first draft of this was a dead
+     * control.**
+     *
+     * `render()`'s code branch repaints its chrome only when `codeDomKey()` moves -- file,
+     * availability, overlay -- because rebuilding it re-attaches the table, measured at
+     * 1,358 ms on `_server.py`. The footer is chrome. So flipping the state and calling
+     * `render()` set the field, persisted it, and changed **nothing on screen**: design rule
+     * 16 with every part working, in a control added to satisfy a rule about controls.
+     *
+     * Putting `codeProv` in the key would fix it and would buy a full re-attach for a
+     * one-line fold. The remedy this file already records for exactly that trade is to
+     * update narrowly, as the file filter does -- two attributes, no repaint. */
+    const foot = b.closest(".codeview-foot");
+    if (foot) {
+      foot.dataset.open = String(state.codeProv);
+      b.setAttribute("aria-expanded", String(state.codeProv));
+    }
+    persist();
+  }));
   $$("[data-sec] h3 button").forEach(b => b.addEventListener("click", () => {
     const box = b.closest("[data-sec]");
     state.insp[box.dataset.sec] = !state.insp[box.dataset.sec];
@@ -9045,7 +9103,7 @@ const WIRED_ATTRS = new Set([
   /* The code browser's three. `codelink` is on every clickable name in the source and
      `CODE_ROUTES` is what listens for all of them -- one table, checked by the guard that
      reads it, so a fourth kind added there without a listener fails by name. */
-  "codeback", "codedetach", "codelink", "codeopen", "codemode", "codeoverlay",
+  "codeback", "codedetach", "codelink", "codeopen", "codemode", "codeoverlay", "codeprov",
   /* The routine list and the table's own overlay switch. A second switch rather than one
      governing both surfaces: the code overlay fetches a difference per file and these
      marks are read off an answer already held, so wanting one without the other is
@@ -10905,8 +10963,12 @@ function codeBody() {
       codeLineHtml(text, byLine.get(n)) + `</span>`);
     if (ov) ghost(n);
   });
+  /* Joined with nothing, for the reason `codeTable` is: this is a `<pre>`, so a `\n` between
+     rows is a rendered line break and not markup whitespace, and `.cl` is already a block.
+     Both surfaces had it and the second was found by going to look -- the report named the
+     centre, and one of these is what the reader sees in the rail. */
   return `<div class="codescroll" id="codeScroll"><pre class="codepane">${
-    rows.join("\n")}</pre></div>`;
+    rows.join("")}</pre></div>`;
 }
 
 /* The span of the current selection inside the file on screen, or null.
@@ -11768,7 +11830,7 @@ const PERSISTED = [
   "diagram", "nodeShapes", "diagramId", "diagramPorts", "diagramCursor", "diagramEdgeWidth",
   "navCase", "navWord", "navRegex",
   "searchCase", "searchWord", "searchRegex",
-  "panels", "inspectorAuto", "navWidth", "codeWidth", "codeFile", "codeOverlay",
+  "panels", "inspectorAuto", "navWidth", "codeWidth", "codeFile", "codeOverlay", "codeProv",
   "tableOverlay", "anomalyOverlay",
   "navGroups",
   "navOpen", "navCap",

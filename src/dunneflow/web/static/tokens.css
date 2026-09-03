@@ -2849,8 +2849,22 @@ body.detached-code #trailMount { display: none !important; }
   background: var(--sunken); border-bottom: 1px solid var(--border); flex: none; }
 /* The scroller is this box, and it is bounded so it is one in fact (rule 50). */
 .codeview-body { overflow: auto; flex: 1; min-height: 0; }
-.codeview-foot { padding: .4rem .75rem; border-top: 1px solid var(--border);
-  background: var(--raised); font-size: .68rem; color: var(--text-faint); flex: none; }
+/* **A fold, not a hide.** The bar stays and says what it is; only the sentence goes, so a
+   reader who folded it a week ago can still see that there is something here to open --
+   hidden is not absent, and the difference is the whole of rule 45. Folded it is one short
+   word and a caret; open it is the provenance line design rule 13 requires. */
+.codeview-foot { padding: .3rem .75rem; border-top: 1px solid var(--border);
+  background: var(--raised); font-size: .68rem; color: var(--text-faint); flex: none;
+  display: flex; align-items: baseline; gap: .5rem; min-width: 0; }
+.codeview-foot button { font: inherit; font-size: .6rem; letter-spacing: .08em;
+  text-transform: uppercase; background: none; border: 0; padding: 0; cursor: pointer;
+  color: var(--text-faint); flex: none; display: inline-flex; align-items: baseline;
+  gap: .25rem; }
+.codeview-foot button:hover { color: var(--text-muted); }
+.codeview-foot .caret { transition: transform .12s ease; display: inline-block; }
+.codeview-foot[data-open="false"] .caret { transform: rotate(-90deg); }
+.codeview-foot[data-open="false"] .provtext { display: none; }
+.codeview-foot .provtext { min-width: 0; }
 
 .codetable { margin: 0; padding: .3rem 0; font-family: var(--f-mono); font-size: .72rem;
   line-height: 1.5; white-space: pre; color: var(--text); }

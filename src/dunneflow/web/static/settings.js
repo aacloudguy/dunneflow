@@ -319,6 +319,9 @@ const DEFAULTS = {
    * It says nothing when there is no comparison: with one version there is no overlay to
    * suppress, and a switch that governs nothing is design rule 16's dead control. */
   codeOverlay: true,
+  /* Whether the provenance line under the code is open. Remembered because it is the same
+     sentence on every file: a reader meets it once and then decides for good. */
+  codeProv: true,
   /* The same question asked of the routine list and the table: do these rows say what the
    * comparison found about them. A **second** switch rather than one governing both, and
    * the reason is what each costs. The code overlay fetches a per-file difference and
@@ -553,6 +556,7 @@ function resetSettings(program, current) {
     inspectorAuto: 'auto-collapse the inspector', navWidth: 'navigator width',
     codeWidth: 'code pane width', codeFile: 'which file the code pane has open',
     codeOverlay: 'the change overlay on the code',
+    codeProv: 'the provenance line under the code',
     tableOverlay: 'the change overlay on the routine list and the table',
     anomalyOverlay: 'the change overlay on the findings',
     navGroups: 'how many navigator groups open at once', navOpen: 'which groups are open',

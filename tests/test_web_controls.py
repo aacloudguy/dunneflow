@@ -9842,3 +9842,94 @@ def test_no_route_mounts_a_pane_on_its_own_way_in() -> None:
         "the mode toggle names the modes that need mounting again -- knowledge that is right "
         "until a mode is added, and wrong silently"
     )
+
+
+# ------------------------------- a row breaks once, not twice --- #
+
+
+def test_no_pre_of_block_rows_is_joined_by_a_newline() -> None:
+    """Reported at the keyboard: *"every line has a blank between it, like old IBM greenbar
+    printouts."*
+
+    `rows.join("\\n")` is the reflex — it makes generated markup readable in devtools, and it
+    is what every other list builder in this file does. Inside a `<pre>` it is not whitespace
+    between tags, it is **content**: `white-space: pre` renders it as a line break, and a row
+    span that is `display: block` has already broken the line itself. So every row was
+    followed by an empty one. Measured: 1,703 rows in 58,932px, **34.6px a row against a
+    17.28px line-height**, and 29,000px of scrolling carrying nothing.
+
+    **Three surfaces had it** — the centre's code table, the navigator's code pane and the
+    glossary's citation viewer — and only the first was reported. The other two were found by
+    going to look at the other `<pre>` builders.
+
+    `srcPane` is the one that keeps its newline and it is not an exception to the rule, it is
+    the rule: its rows are **not** wrapped in a block, so there the newline is the only thing
+    breaking the line. What has to hold is that a row breaks *once*, never that a separator
+    has one spelling.
+    """
+    js = _code(_read("shell.js"))
+    css = _css_code(_read("tokens.css"))
+
+    # (the pre's class, the row's selector) for every listing built as a <pre> of spans.
+    listings = [("codetable", ".codetable .crow"),
+                ("codepane", ".codepane .cl"),
+                ("codeview", ".codeview .cl")]
+    for pre_cls, row_sel in listings:
+        rule = re.search(rf"{re.escape(row_sel)}\s*{{([^}}]*)}}", css)
+        assert rule, f"{row_sel} is gone; this guard is blind"
+        assert "display: block" in rule.group(1), (
+            f"{row_sel} is no longer a block, so whether its <pre> may carry a newline has "
+            "changed and this guard is asserting the wrong thing"
+        )
+        # From that <pre>'s opening tag to the next `</pre>`. Not excluding backticks: these
+        # builders nest template literals, and a character class that ruled them out matched
+        # nothing at all -- a guard that finds no code passes every mutation of it.
+        open_at = js.index(f'<pre class="{pre_cls}"')
+        span = js[open_at:js.index("</pre>", open_at)]
+        assert 'join("\\n")' not in span, (
+            f'<pre class="{pre_cls}"> joins block-level rows with a newline, so every row is '
+            "followed by an empty one and the listing is twice as tall as it should be"
+        )
+
+    # And the counter-case, so the rule is not read as "never a newline".
+    src = _fn_body(_read("shell.js"), "srcPane")
+    assert 'join("\\n")' in src, (
+        "srcPane's rows are not wrapped in a block, so its newline is the only thing "
+        "breaking the line -- removing it runs the whole file onto one line"
+    )
+
+
+def test_the_provenance_line_folds_without_repainting_the_file() -> None:
+    """A fold added to satisfy a rule about controls, which was itself a dead control.
+
+    `render()`'s code branch repaints its chrome only when `codeDomKey()` moves — file,
+    availability, overlay — because rebuilding it re-attaches the table, measured at 1,358 ms
+    on `_server.py`. The footer is chrome. So the first draft flipped the state, persisted it,
+    called `render()`, and changed **nothing on screen**: design rule 16 with every part
+    working. Putting `codeProv` in the key would fix it and buy a full re-attach for a
+    one-line fold, so the handler writes the two attributes itself — the narrow update this
+    file already records for the file filter.
+    """
+    js = _code(_read("shell.js"))
+    m = re.search(r'\$\$\("\[data-codeprov\]"\)\.forEach\(b => b\.addEventListener\("click",'
+                  r' \(\) => \{(.*?)\n  \}\)\);', js, re.S)
+    assert m, "the provenance fold has no handler; this guard is blind"
+    body = m.group(1)
+    assert "dataset.open" in body and "aria-expanded" in body, (
+        "the fold does not write its own state to the DOM, so it depends on a repaint that "
+        "codeDomKey() will not trigger -- it sets a field and changes nothing on screen"
+    )
+    assert "render()" not in body, (
+        "the fold calls render(), which either does nothing (the chrome is not repainted) or "
+        "re-attaches the whole file for a one-line toggle"
+    )
+    # A fold, not a hide: the bar has to survive so there is something to open (rule 45).
+    css = _css_code(_read("tokens.css"))
+    assert '.codeview-foot[data-open="false"] .provtext { display: none; }' in css, (
+        "the folded state no longer hides the sentence"
+    )
+    assert not re.search(r'\.codeview-foot\[data-open="false"\]\s*{\s*display:\s*none',
+                         css), (
+        "the whole footer is hidden when folded, so nothing on screen says there is "
+        "provenance to open -- hidden is not absent (rule 45)"
+    )

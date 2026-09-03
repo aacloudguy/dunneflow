@@ -8157,3 +8157,73 @@ of the builder while an older `const bare` still stood near the `return`, which 
 `SyntaxError` and took the whole page down. `test_the_javascript_parses` caught it on the next
 run. Two declarations of one name in one scope is what a large, careful, multi-step edit does
 when it is applied in pieces.
+
+## Three broken buttons on the Code panel — fixed 2026-09-03
+
+All three reported in one line each, all three real, and **no two of them the same bug**.
+
+### "Clicking `margin 35` doesn't change anything"
+
+The margin fold, built an hour earlier and tested at the keyboard by me before it shipped.
+It worked then and it does nothing now, and both are true.
+
+`wire()` runs at the end of **every** `render()` and calls `addEventListener` with a fresh
+closure. For a control inside `#viewMount` or `#inspector` that is harmless — those are
+rewritten each render, so the listener is discarded with the element it was on. **The code
+chrome is the one surface that is not**: `render()` repaints it only when `codeDomKey()`
+moves, precisely so a 1.37 MB subtree is not re-attached on every keystroke. So the button
+survives every render and the listeners pile up on it.
+
+Measured: five renders after a paint, **one click ran the handler six times**. Six toggles is
+an even number and a control that visibly does nothing. One, three, five all work — which is
+exactly why it passed its own test, passed the self-check, and passed the first look at it. I
+clicked it immediately after a paint.
+
+`CODE_ROUTES` is the answer and its own comment already said so: one delegated listener,
+registered once at module load, keyed on the attribute. **A route cannot accumulate.** Both
+new controls moved into it, and the guard is about the surface rather than the two buttons —
+nothing written into the code chrome may be bound in `wire()`.
+
+### "Clicking `files ›` doesn't seem to do anything"
+
+It fired every time. `state.codeFile` went to `""`, and the navigator's Code group went back
+to its list — so the route worked and the reader was looking at the wrong pane.
+`loadCodeFile("")` returns at its **first line**, and `openCodeFile` never called `render()`,
+so the centre went on showing the file with its title, its lines and its footer.
+
+Rule 77's companion one route over: **a route correct for the caller it was written for is
+wrong for the caller it has just acquired.** `openCodeFile` was the navigator's, where the
+list is under the reader's eye and the centre is somebody else's business. The moment `Code`
+became a fourth centre mode it acquired a second caller with a second pane and kept answering
+for the first. Rule 78 names the remedy: the pane reconciles where every route arrives, and
+this is a route that arrives.
+
+### "Back then immediately Forward does not restore the screen I was viewing in Code"
+
+`selectionSnapshot()` records `picks`, `selected`, `fold`, `flow`, `diagramId` and
+`diagramBox` — **where the drawing is, and not where the code is.** Opening a file changes no
+*selection*, so every step a file open filed was deduplicated against the one before it by
+`sameSelection`, and Back stepped straight past the thing the reader had just done.
+
+The comment beside `diagramId` says this about itself, in these words: *"None of them changes
+the selection, so every step they filed was deduplicated against the one before it and Back
+skipped straight past — rule 33 with the field simply missing."* The lesson was written down
+one view over and never carried across, because `Code` became a centre mode after it.
+
+`codeFile` is in all **three** places now, and a field in one or two of them is worse than
+none: recorded but not compared still deduplicates away, compared but not restored survives
+and takes nobody anywhere.
+
+### Verified
+
+843 tests (2 new, 5 mutations all CAUGHT), mypy clean, ruff clean. Driven in Chrome with
+**seven renders between the paint and the click**, which is the condition the first test of
+the margin button did not have: 76px → 248 → 76, both ways, every time. `files ›` clears the
+centre to *"No file open"*. Back moves from `_governed_gates.py` to `_extraction_state.py` and
+Forward returns, with the file on each step's subject.
+
+**What the three have in common is worth more than any of them.** Every one was a control
+whose *state* was right and whose *pane* was not, and none was visible to a check: the margin
+button's listener was attached, the `files ›` route ran, the trail step was filed. The tell in
+all three cases was a reader clicking and watching, which is the debt rule 38 names and the
+thing three sessions running have now paid for.

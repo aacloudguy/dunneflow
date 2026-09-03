@@ -2497,6 +2497,47 @@ const CODE_ROUTES = {
     pushTrail(state.view, labelFor(id), "followed a name in the source");
   },
   codeback: () => openCodeFile(""),
+  /* **Both of these were bound in `wire()` and both were dead.** Reported at the keyboard:
+   * *"clicking `margin 35` doesn't change anything."*
+   *
+   * `wire()` runs at the end of **every** `render()` and calls `addEventListener` with a
+   * fresh closure. For a control inside `#viewMount` or `#inspector` that is harmless — those
+   * are rewritten each render, so the listener goes with the element it was attached to. The
+   * code chrome is the one surface that is **not**: `render()` repaints it only when
+   * `codeDomKey()` moves, precisely so a 1.37 MB subtree is not re-attached on every
+   * keystroke. So the button survives and the listeners pile up on it. Measured: five renders
+   * after a paint, one click ran the handler **six times** — six toggles, an even number, and
+   * a control that visibly does nothing. Once, three times, five times it would have worked,
+   * which is why it passed every check and the first look at it.
+   *
+   * This table is the answer and its own comment already said so: one delegated listener,
+   * registered once at module load, keyed on the attribute. A route cannot accumulate. */
+  codemarks: (b) => {
+    state.codeMarks = !state.codeMarks;
+    used("codemarks:" + (state.codeMarks ? "shown" : "folded"));
+    /* Narrow, because the built subtree is 1.37 MB and re-attaching it costs 1,358 ms. The
+       stamp goes on `:root` rather than on a nearby element, because **two** surfaces draw
+       marks — the centre's table and the navigator's pane — and one setting must reach both
+       (rule 51). Only this button's own label is local, so only that is written here. */
+    applyCodeMarks();
+    b.setAttribute("aria-pressed", String(state.codeMarks));
+    /* The trailing space is part of the label. Without it the click renders "margin186": the
+       markup had a newline between the word and the count and the first version of this
+       replaced it with a string that did not, so the button was right until it was used. */
+    b.firstChild.nodeValue = (state.codeMarks ? "▾" : "▸") + " margin ";
+    persist();
+  },
+  /* The provenance fold, narrow for the same reason and with the same history. */
+  codeprov: (b) => {
+    state.codeProv = !state.codeProv;
+    used("codeprov:" + (state.codeProv ? "open" : "shut"));
+    const foot = b.closest(".codeview-foot");
+    if (foot) {
+      foot.dataset.open = String(state.codeProv);
+      b.setAttribute("aria-expanded", String(state.codeProv));
+    }
+    persist();
+  },
   /* Open or close one file in the search answer. The hits are fetched on the way in and
      never before: the margin is the expensive half and it is built only for what someone
      asked to see. */
@@ -5361,7 +5402,17 @@ function selectionSnapshot() {
               -- rule 33 with the field simply missing, and design rule 15's whole argument
               is that a detour is only free if you can get back from it. */
            diagramId: state.diagramId || null,
-           diagramBox: state.diagramBox || null };
+           diagramBox: state.diagramBox || null,
+           /* **And which file the code browser has open**, for the identical reason the two
+              fields above it exist, one view over. Reported at the keyboard: *"clicking the
+              Trail Back button then immediately Forward again does not restore the screen I
+              was just viewing in Code."* It could not — opening a file changes no
+              *selection*, so every step a file open filed was deduplicated against the one
+              before it by `sameSelection`, and Back stepped straight past the thing the
+              reader had actually done. Rule 33 with the field simply missing, which is what
+              the diagram comment above says about itself. The lesson was recorded and not
+              carried across, and Code became a centre mode after it was written. */
+           codeFile: state.codeFile || null };
 }
 
 function sameSelection(a, b) {
@@ -5370,6 +5421,7 @@ function sameSelection(a, b) {
          (a.flow || null) === (b.flow || null) &&
          (a.diagramId || null) === (b.diagramId || null) &&
          (a.diagramBox || null) === (b.diagramBox || null) &&
+         (a.codeFile || null) === (b.codeFile || null) &&
          a.picks.length === b.picks.length &&
          a.picks.every((p, i) => {
            const q = b.picks[i];
@@ -5438,6 +5490,15 @@ function applySelectionStep(step) {
       state.diagramBox = step.diagramBox || null;
       diagramNow = null;
       ensureDiagram();
+    }
+    /* Restore which file was open, and only when it moved: `loadCodeFile` fetches, so asking
+       on every Back would re-request a file that never changed. `openCodeFile` is not used
+       here — it calls `render()` and `persist()` itself and this function is in the middle of
+       doing both in a particular order, and it would file a fresh trail step from inside the
+       restoring of one. */
+    if ((step.codeFile || null) !== (state.codeFile || null)) {
+      state.codeFile = step.codeFile || "";
+      loadCodeFile(state.codeFile);
     }
     persist();
     buildNav();
@@ -8762,44 +8823,6 @@ function wire() {
   /* The provenance line's fold. Its own key rather than a member of `state.insp`, because
      that map is the *inspector's* sections and "Collapse all" walks it -- a centre-pane
      element answering to the inspector's button is one control with two claims (rule 67). */
-  /* The margin fold. Narrow for the reason the provenance fold is -- the built subtree is
-     1.37 MB and re-attaching it costs 1,358 ms -- but the attribute goes on `:root` rather
-     than on a nearby element, because **two** surfaces draw marks: the centre's table and the
-     navigator's pane. One stamp, both answered, and neither rebuilt (rule 51). The button's
-     own label and count still want the chrome, so that much is repainted. */
-  $$("[data-codemarks]").forEach(b => b.addEventListener("click", () => {
-    state.codeMarks = !state.codeMarks;
-    used("codemarks:" + (state.codeMarks ? "shown" : "folded"));
-    applyCodeMarks();
-    b.setAttribute("aria-pressed", String(state.codeMarks));
-    /* The trailing space is part of the label. Without it the first click renders
-       "margin186": the markup had a newline between the word and the count and the handler
-       replaced it with a string that did not, so the button was right until it was used. */
-    b.firstChild.nodeValue = (state.codeMarks ? "\u25be" : "\u25b8") + " margin ";
-    persist();
-  }));
-  $$("[data-codeprov]").forEach(b => b.addEventListener("click", () => {
-    state.codeProv = !state.codeProv;
-    used("codeprov:" + (state.codeProv ? "open" : "shut"));
-    /* **Written here, not left to `render()`, and the first draft of this was a dead
-     * control.**
-     *
-     * `render()`'s code branch repaints its chrome only when `codeDomKey()` moves -- file,
-     * availability, overlay -- because rebuilding it re-attaches the table, measured at
-     * 1,358 ms on `_server.py`. The footer is chrome. So flipping the state and calling
-     * `render()` set the field, persisted it, and changed **nothing on screen**: design rule
-     * 16 with every part working, in a control added to satisfy a rule about controls.
-     *
-     * Putting `codeProv` in the key would fix it and would buy a full re-attach for a
-     * one-line fold. The remedy this file already records for exactly that trade is to
-     * update narrowly, as the file filter does -- two attributes, no repaint. */
-    const foot = b.closest(".codeview-foot");
-    if (foot) {
-      foot.dataset.open = String(state.codeProv);
-      b.setAttribute("aria-expanded", String(state.codeProv));
-    }
-    persist();
-  }));
   $$("[data-sec] h3 button").forEach(b => b.addEventListener("click", () => {
     const box = b.closest("[data-sec]");
     state.insp[box.dataset.sec] = !state.insp[box.dataset.sec];
@@ -10183,6 +10206,19 @@ function openCodeFile(path) {
   persist();
   loadCodeFile(state.codeFile);
   buildNav();
+  /* **And the centre, which this did not touch.** Reported at the keyboard: *"clicking
+   * `files ›` doesn't seem to do anything."* It did — `state.codeFile` went to `""`, the
+   * navigator's Code group went back to its list, and `loadCodeFile("")` returns at its very
+   * first line without a repaint. Nothing then called `render()`, so the centre pane went on
+   * showing the file the reader had just left, with its title, its lines and its footer.
+   *
+   * This is rule 77's companion, one route over: **a route correct for the caller it was
+   * written for is wrong for the caller it has just acquired.** `openCodeFile` was the
+   * navigator's, where the list is under the reader's eye and the centre is somebody else's
+   * business; the moment `Code` became a centre mode it acquired a second caller with a
+   * second pane, and kept answering for the first. Rule 78: the pane reconciles where every
+   * route arrives, and this is a route that arrives. */
+  render();
 }
 
 /* The switch, drawn only where it can do something.

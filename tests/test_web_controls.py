@@ -9902,30 +9902,45 @@ def test_no_pre_of_block_rows_is_joined_by_a_newline() -> None:
     )
 
 
-def test_the_provenance_line_folds_without_repainting_the_file() -> None:
-    """A fold added to satisfy a rule about controls, which was itself a dead control.
+def test_every_control_in_the_code_chrome_is_delegated_not_rebound() -> None:
+    """Reported at the keyboard: *"clicking `margin 35` doesn't change anything."*
 
-    `render()`'s code branch repaints its chrome only when `codeDomKey()` moves — file,
-    availability, overlay — because rebuilding it re-attaches the table, measured at 1,358 ms
-    on `_server.py`. The footer is chrome. So the first draft flipped the state, persisted it,
-    called `render()`, and changed **nothing on screen**: design rule 16 with every part
-    working. Putting `codeProv` in the key would fix it and buy a full re-attach for a
-    one-line fold, so the handler writes the two attributes itself — the narrow update this
-    file already records for the file filter.
+    `wire()` runs at the end of **every** `render()` and calls `addEventListener` with a
+    fresh closure. For a control inside `#viewMount` or `#inspector` that is harmless — those
+    are rewritten each render, so the listener goes with the element. The code chrome is the
+    one surface that is **not**: it is repainted only when `codeDomKey()` moves, precisely so
+    a 1.37 MB subtree is not re-attached on every keystroke. So the button survives and the
+    listeners pile up on it.
+
+    Measured: five renders after a paint, **one click ran the handler six times**. Six
+    toggles is an even number and a control that visibly does nothing — while once, three
+    times or five times all work, which is why it passed every check and the first look.
+
+    `CODE_ROUTES` is the answer and its own comment already said so: one delegated listener,
+    registered once at module load and keyed on the attribute. A route cannot accumulate. The
+    invariant is therefore about *where* a control in this chrome is wired, not about any one
+    button, so this checks the whole surface.
     """
     js = _code(_read("shell.js"))
-    m = re.search(r'\$\$\("\[data-codeprov\]"\)\.forEach\(b => b\.addEventListener\("click",'
-                  r' \(\) => \{(.*?)\n  \}\)\);', js, re.S)
-    assert m, "the provenance fold has no handler; this guard is blind"
-    body = m.group(1)
-    assert "dataset.open" in body and "aria-expanded" in body, (
-        "the fold does not write its own state to the DOM, so it depends on a repaint that "
-        "codeDomKey() will not trigger -- it sets a field and changes nothing on screen"
-    )
-    assert "render()" not in body, (
-        "the fold calls render(), which either does nothing (the chrome is not repainted) or "
-        "re-attaches the whole file for a one-line toggle"
-    )
+    routes = set(re.findall(r"^  ([a-z]+): ", js.split("const CODE_ROUTES = {", 1)[1]
+                            .split("\n};", 1)[0], re.M))
+    assert routes, "CODE_ROUTES changed shape -- this guard is blind"
+    for key in ("codemarks", "codeprov", "codeback"):
+        assert key in routes, (
+            f"{key} is not in CODE_ROUTES, so it is bound somewhere that runs again on every "
+            "render -- its listeners accumulate on an element the code chrome does not "
+            "rebuild, and every second click cancels the one before it"
+        )
+    # Nothing in the chrome may be bound directly, whichever control is added next.
+    chrome = _fn_body(_read("shell.js"), "viewCode")
+    written = set(re.findall(r"data-([a-z]+)=", chrome))
+    wired = _fn_body(_read("shell.js"), "wire")
+    for key in written:
+        assert f'$$("[data-{key}]")' not in wired, (
+            f"data-{key} is written into the code chrome and bound in wire(), so its "
+            "listeners accumulate -- route it through CODE_ROUTES instead"
+        )
+
     # A fold, not a hide: the bar has to survive so there is something to open (rule 45).
     css = _css_code(_read("tokens.css"))
     assert '.codeview-foot[data-open="false"] .provtext { display: none; }' in css, (
@@ -9936,6 +9951,39 @@ def test_the_provenance_line_folds_without_repainting_the_file() -> None:
         "the whole footer is hidden when folded, so nothing on screen says there is "
         "provenance to open -- hidden is not absent (rule 45)"
     )
+
+
+def test_going_back_restores_which_file_the_code_pane_had_open() -> None:
+    """Reported at the keyboard: *"clicking the Trail Back button then immediately Forward
+    again does not restore the screen I was just viewing in Code."*
+
+    Opening a file changes no *selection*, so every step a file open filed was deduplicated
+    against the one before it by `sameSelection`, and Back stepped straight past the thing the
+    reader had actually done. Rule 33 with the field simply missing — which is exactly what
+    `selectionSnapshot`'s own comment says about `diagramId` and `diagramBox`, recorded one
+    view over and never carried across when Code became a centre mode.
+
+    Three places, and a field in only one or two of them is worse than none: recorded but not
+    compared is a step that still deduplicates away; compared but not restored is a step that
+    survives and takes nobody anywhere.
+    """
+    js = _read("shell.js")
+    snap = _fn_body(js, "selectionSnapshot")
+    same = _fn_body(js, "sameSelection")
+    step = _fn_body(js, "applySelectionStep")
+    assert "codeFile:" in snap, (
+        "a trail step no longer records which file was open, so opening one files a step "
+        "that is identical to the last and is dropped"
+    )
+    assert "codeFile" in same, (
+        "two steps differing only by their file read as the same step, so the one the reader "
+        "just made is deduplicated away and Back skips past it"
+    )
+    assert "step.codeFile" in step, (
+        "going back no longer reopens the file the step was taken in, so the trail records a "
+        "move it cannot reverse"
+    )
+    assert "loadCodeFile" in step, "the restored file is set but never read"
 
 
 def test_the_code_margin_folds_and_says_what_it_folded() -> None:

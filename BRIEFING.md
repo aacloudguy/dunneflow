@@ -163,8 +163,8 @@ program has a most-commented routine and a maximum alone is a claim nobody can w
 
 ## What we are doing now
 
-**Paused 2026-09-03, after chunk B, rule 78, and the code view looked at.**
-842 tests, mypy clean, ruff clean, self-check green, console clean, working tree clean.
+**Paused 2026-09-03, after chunk B, rule 78, and two rounds of looking at the code view.**
+843 tests, mypy clean, ruff clean, self-check green, console clean, working tree clean.
 
 *The shortening work is complete.* The remaining twelve `text-overflow: ellipsis` sites were
 measured before being changed, and measuring struck three of them, changed the mechanism from
@@ -203,7 +203,41 @@ beside it. Every number above is a measurement and every guard is a guard; what 
 is a look. Three things now wait on a real window: the constants surface, the blank-graph fix,
 and this.
 
-### The latest: the code view, looked at (2026-09-03)
+### The latest: three broken buttons on the Code panel (2026-09-03)
+
+**Reported in one line each, all three real, and no two of them the same bug.**
+
+**`margin 35` did nothing** — the fold built an hour earlier and tested at the keyboard before
+it shipped. `wire()` runs at the end of *every* `render()` and calls `addEventListener` with a
+fresh closure; for a control in `#viewMount` or `#inspector` that is harmless, because those
+are rewritten each render. **The code chrome is the one surface that is not** — it repaints
+only when `codeDomKey()` moves, so a 1.37 MB subtree is not re-attached on every keystroke.
+The button survives and the listeners pile up. Measured: five renders after a paint, **one
+click ran the handler six times**. An even number, so nothing happens; one, three or five all
+work, which is why it passed its own test and my own look at it. `CODE_ROUTES` is the answer
+and its comment already said so — **a route cannot accumulate** — and the guard is now about
+the whole surface rather than the two buttons.
+
+**`files ›` fired every time and the reader was watching the wrong pane.** `state.codeFile`
+went to `""` and the navigator's list came back; `loadCodeFile("")` returns at its first line
+and `openCodeFile` never called `render()`, so the centre kept the file, its title and its
+footer. Rule 77's companion one route over: **a route correct for the caller it was written
+for is wrong for the caller it has just acquired** — `openCodeFile` was the navigator's, and
+`Code` became a centre mode after it.
+
+**Back then Forward did not restore the file.** `selectionSnapshot()` records where the
+*drawing* is and not where the *code* is, so a file open — which changes no selection — filed
+a step that `sameSelection` deduplicated away. The comment beside `diagramId` says this about
+itself in those words; the lesson was written one view over and never carried across.
+`codeFile` is in all three places now — recorded, compared and restored — because a field in
+one or two of them is worse than none.
+
+**What they have in common is worth more than any of them.** Every one was a control whose
+*state* was right and whose *pane* was not, and none was visible to a check: the listener was
+attached, the route ran, the step was filed. The tell in all three was a reader clicking and
+watching — rule 38's debt, paid by Tom for the third session running.
+
+### Before that: the code view, looked at (2026-09-03)
 
 **Four things in one screenshot, at Tom's own keyboard and his own window.** Three were real
 and one was a question that answered itself.

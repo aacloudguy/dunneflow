@@ -170,9 +170,31 @@ program has a most-commented routine and a maximum alone is a claim nobody can w
 
 ## What we are doing now
 
-**Document mode is built** — chunks 1, 2, 3 and both lanes of chunk 4 are in.
-912 tests, mypy clean, ruff clean. The approved plan is at
+**Paused 2026-09-03, between chunks: Document mode is built, chunks 5 and 6 remain.**
+912 tests, mypy clean, ruff clean, working tree clean, self-check green. Nothing is
+half-written — chunks 1, 2, 3 and both lanes of 4 are whole, guarded and committed across
+four commits; chunk 5 has an approved plan and no code. The approved plan is at
 `~/.claude/plans/polymorphic-finding-swan.md` — read it before resuming.
+
+**Three things are waiting on Tom, and none of them blocks chunk 5:**
+
+1. **A candidate engineering rule, not minted** — *a lifetime change is an access-pattern
+   change.* Nothing about `DocStore` changed when chunk 2 held it on `_Base`; what changed is
+   *who reads it*, and sqlite refused the connection from a request thread by name, on the
+   routes that touch it and nowhere else. Every unit test passed. The number is a permanent
+   address, so it wants his call rather than mine. Written up in `HANDOFF.md` under chunk 2.
+2. **A real window is owed a look.** Every figure in three sessions was taken at a 537–1,285px
+   centre pane and a **16px root font**, in a browser context that reports 1,267×539, refuses
+   `resize_window`, and crops its screenshots. His Chrome is **24px on a 4K screen**, where
+   rows are taller and the pane proportionally narrower. Rule 38, still open, and the
+   sticky-overlap defect in lane 2 was caught only because it happened to fall in the visible
+   crop. The column weights in lane 2 (`DOC_COL_WEIGHT`) and lane 1's list row are the two
+   places most likely to want adjusting.
+3. **The extractor records 3–4 headings that are inside fenced code blocks** — examples of
+   headings, not headings. 3 or 4 of 29,980, found by the renderer disagreeing with the map.
+   Rule 12 is holding; this is the residue. Not fixed: correcting it changes `docs.db`'s
+   contract, busts every cached graph, and rewrites 29,980 rows for four of them. Named here
+   rather than filed, because it may never be worth doing.
 
 **Next: chunk 5** — `senseOpens()` becomes a *capability* test rather than a provenance test,
 so the **235 documentation-derived definitions** open at their line instead of rendering a
@@ -356,7 +378,7 @@ split measured as a trade rather than a fix, and all 11 rows now show both entir
 be opened. One outlier and not a class: the next largest resolved call argument in the corpus
 is 923 bytes.
 
-**A server is running on 8787**, on the **08-29** base, started to verify chunk 2. Bring one
+**A server is running on 8787**, on the **08-29** base. Bring one
 back with `uv run dunneflow serve output/mensores --port 8787 --no-open`, and add
 `--revision 2026-08-31T22:53:15Z` to open the older one — which is the base with **no document
 bodies**, and is worth keeping in mind: it is the only version anything here has ever had none

@@ -10040,3 +10040,55 @@ def test_the_code_margin_folds_and_says_what_it_folded() -> None:
         "the margin toggle is drawn on files with no margin to fold -- design rule 16's dead "
         "control with a caret on it"
     )
+
+
+def test_the_rail_browses_its_list_without_closing_the_centres_file() -> None:
+    """Reported at the keyboard, as a question about whether the tool was telling the truth:
+    *"Once again, I'm told there is no file open. Why does it say this? It sounds wrong. The
+    list of files is on the left side, and I had clicked on one of them, so it must have been
+    open, right?"*
+
+    It was open. `‹ files` in the rail and `files ›` in the centre were **the same control** —
+    both `data-codeback` — and both ran `openCodeFile("")`. `state.codeFile` is one value
+    serving two panes and the rail decided list-or-file purely by it, so a button that reads
+    *show me the list* closed the file everywhere.
+
+    Two questions, two fields now: `codeRailList` is where the **rail** is, `codeFile` is what
+    is **open**. Tom's own argument for putting code in the rail is quoted in `codeList`'s
+    neighbourhood — *"I want to be able to see code and graph at the same time"* — and a rail
+    you cannot browse without emptying the centre is that undone.
+    """
+    js = _code(_read("shell.js"))
+
+    route = re.search(r"  codeback: \(\) => \{([^}]*)\}", js)
+    assert route, "codeback is no longer a route; this guard is blind"
+    assert "codeRailList = true" in route.group(1), (
+        "the rail's way back to its list no longer sets its own state"
+    )
+    assert "openCodeFile" not in route.group(1), (
+        "the rail's list button closes the file again, so asking one pane to list is "
+        "answered by both and the reader loses what the centre was reading"
+    )
+
+    # The rail has to actually read it, or the field is set and nothing looks at it.
+    lst = _fn_body(_read("shell.js"), "codeList")
+    assert "state.codeRailList" in lst, (
+        "the rail no longer consults its own list state, so codeback sets a field that "
+        "changes nothing -- design rule 16 with the state right"
+    )
+
+    # Choosing a file ends the browsing, wherever the choosing happened.
+    opener = _fn_body(_read("shell.js"), "openCodeFile")
+    assert "state.codeRailList = false" in opener, (
+        "opening a file leaves the rail on its list, so the list refuses to answer the pick "
+        "the reader just made"
+    )
+
+    # And the centre carries no copy of the button. It has no list to go back to --
+    # `viewCode` renders a sentence pointing at the navigator -- so the control could only
+    # ever empty a pane it cannot refill.
+    chrome = _fn_body(_read("shell.js"), "viewCode")
+    assert "data-codeback" not in chrome, (
+        "the centre offers a way back to a list it does not have, so the button removes what "
+        "the reader is looking at and prints instructions to go elsewhere"
+    )

@@ -325,6 +325,9 @@ const DEFAULTS = {
   /* Whether the code's margin column is drawn. Remembered because reading code and reading
      marks are different sittings, and a reader who folded it means it. */
   codeMarks: true,
+  /* Where the *rail* is — its list, or the open file. Separate from `codeFile`, which is what
+     is open: the rail browses while the centre reads. */
+  codeRailList: false,
   /* The same question asked of the routine list and the table: do these rows say what the
    * comparison found about them. A **second** switch rather than one governing both, and
    * the reason is what each costs. The code overlay fetches a per-file difference and
@@ -561,6 +564,7 @@ function resetSettings(program, current) {
     codeOverlay: 'the change overlay on the code',
     codeProv: 'the provenance line under the code',
     codeMarks: 'the margin column beside the code',
+    codeRailList: 'whether the code rail is showing its file list',
     tableOverlay: 'the change overlay on the routine list and the table',
     anomalyOverlay: 'the change overlay on the findings',
     navGroups: 'how many navigator groups open at once', navOpen: 'which groups are open',

@@ -163,8 +163,8 @@ program has a most-commented routine and a maximum alone is a claim nobody can w
 
 ## What we are doing now
 
-**Paused 2026-09-03, after chunk B, rule 78, and two rounds of looking at the code view.**
-843 tests, mypy clean, ruff clean, self-check green, console clean, working tree clean.
+**Paused 2026-09-03, after chunk B, rule 78, and three rounds of looking at the code view.**
+844 tests, mypy clean, ruff clean, self-check green, console clean, working tree clean.
 
 *The shortening work is complete.* The remaining twelve `text-overflow: ellipsis` sites were
 measured before being changed, and measuring struck three of them, changed the mechanism from
@@ -203,7 +203,38 @@ beside it. Every number above is a measurement and every guard is a guard; what 
 is a look. Three things now wait on a real window: the constants surface, the blank-graph fix,
 and this.
 
-### The latest: three broken buttons on the Code panel (2026-09-03)
+### The latest: one file, two panes, and one button for both (2026-09-03)
+
+**Reported as a question about whether the tool was telling the truth**, which is the form the
+useful ones take: *"Once again, I'm told there is no file open... The list of files is on the
+left side, and I had clicked on one of them, so it must have been open, right? What was
+supposed to happen when I clicked on those buttons?"*
+
+`‹ files` in the rail and `files ›` in the centre were **the same control** — both
+`data-codeback`, both `openCodeFile("")` — and `state.codeFile` is **one value serving two
+panes**, with `codeList()` deciding list-or-file purely by it. So a button reading *show me
+the list* closed the file everywhere. The reader was right and the pane was wrong.
+
+The centre's copy was the worse of the two: `viewCode()` has **no file list at all**, so its
+whole effect was to remove what the reader was looking at and print *"Open the Code group in
+the navigator and pick one"* — a control that empties a pane it cannot refill. It is gone.
+
+**And it was mine to have surfaced, which is worth recording as a shape.** `openCodeFile` had
+never called `render()` until earlier the same day; before that the rail's button looked
+pane-scoped *by accident*, because the centre kept its already-painted chrome until something
+else repainted it. The state was global the whole time. **A fix that makes an inconsistency
+visible gets reported as the fix's fault, and is not.**
+
+Two questions, two fields now: `codeRailList` is where the **rail** is, `codeFile` is what is
+**open**. Tom's own argument for code in the rail is quoted a few lines above `codeList` —
+*"I want to be able to see code and graph at the same time"* — and a rail that must empty the
+centre to show its list is that undone, as it had been since Code became a fourth centre mode.
+
+*Four mutations CAUGHT and one control case correctly **not** caught*: a `data-codeback` in
+the rail must not trip the guard, because that is where the button belongs. A guard firing on
+both would assert the opposite of the fix.
+
+### Before that: three broken buttons on the Code panel (2026-09-03)
 
 **Reported in one line each, all three real, and no two of them the same bug.**
 

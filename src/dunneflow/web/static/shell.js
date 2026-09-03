@@ -284,6 +284,18 @@ const state = {
    * in its honest form: not two interchangeable options, but two different questions). On,
    * because the margin is a built feature and a reader must meet it before deciding. */
   codeMarks: true,
+  /* **Whether the rail is showing its list rather than the open file**, which is a fact
+   * about the *rail* and not about the file. Those were one value until 2026-09-03, so
+   * `\u2039 files` — which reads as "show me the list" — was `openCodeFile("")` and closed the
+   * file in **both** panes. Reported at the keyboard: *"Once again, I'm told there is no file
+   * open. Why does it say this? It sounds wrong."* It was: the reader had asked the rail to
+   * list, and the centre threw away what they were reading.
+   *
+   * The rail is a browser and the centre is a reader — Tom's own argument for putting code
+   * in the rail at all was *"I want to be able to see code and graph at the same time"*, and
+   * a rail you cannot browse without closing the centre is that undone. So the two are
+   * separate: this says where the rail is, `codeFile` says what is open. */
+  codeRailList: false,
   /* The same switch for the routine list and the table. Two switches rather than one,
    * because what they cost differs: the code overlay fetches a difference per file and can
    * mark four hundred lines, while these marks are read off an answer the page already
@@ -2496,7 +2508,22 @@ const CODE_ROUTES = {
     await selectFromNav({ nodes: [id] });
     pushTrail(state.view, labelFor(id), "followed a name in the source");
   },
-  codeback: () => openCodeFile(""),
+  /* **The rail's way back to its list, and it no longer closes the file.**
+   *
+   * This was `openCodeFile("")`. `state.codeFile` is one value serving two panes, so a
+   * button reading "show me the list" emptied the centre as well — reported as *"Once
+   * again, I'm told there is no file open. It sounds wrong. The list of files is on the left
+   * side, and I had clicked on one of them, so it must have been open, right?"* It was open;
+   * the reader had asked one pane to list and been answered by both.
+   *
+   * The two questions are now two fields: `codeRailList` is where the **rail** is,
+   * `codeFile` is what is **open**. Nothing here clears the file, so the centre reads on.
+   *
+   * The centre used to carry a second copy of this button (`files ›`) and it is gone. It had
+   * no list to go back to — `viewCode()` has none — so its entire effect was to remove what
+   * the reader was looking at and print "Open the Code group in the navigator and pick one":
+   * a control that empties a pane it cannot refill. */
+  codeback: () => { state.codeRailList = true; persist(); buildNav(); render(); },
   /* **Both of these were bound in `wire()` and both were dead.** Reported at the keyboard:
    * *"clicking `margin 35` doesn't change anything."*
    *
@@ -5729,7 +5756,6 @@ function viewCode() {
             >${CODEFILE.marks.length.toLocaleString()}</span></button>` : ""}
       <button class="linkbtn" data-codedetach="1"
               title="Open the code in a window of its own, in sync with this one">detach ⧉</button>
-      <button class="linkbtn" data-codeback="1" title="Back to the list of files">files ›</button>
     </div>
 
     ${/* Design rule 1: what is not on screen is stated, in counts. A name that is not
@@ -10197,6 +10223,11 @@ async function loadCodeFile(path) {
  * click that selects. */
 function openCodeFile(path) {
   state.codeFile = path || "";
+  /* Picking one ends the browsing. Set here rather than in the row's route, because every
+     way a file gets opened — a row, a search hit, a worklist row, following a selection —
+     ends up here, and a rail left listing after the reader chose is the list refusing to
+     answer (rule 51). */
+  state.codeRailList = false;
   /* **This selection is serviced, by the reader.** Without this the walk would see a file
      that is not the selection's, decide the pane had drifted, and put it back on the next
      repaint -- so a reader who opened a second file to compare it with the first could not
@@ -11134,7 +11165,10 @@ function revealLine(first) {
 /* The group's body: the list, or the file with a way back to the list. */
 function codeList() {
   if (!FILES.length) return "";
-  if (!state.codeFile) return codeFileList();
+  /* The list when there is nothing open, **or when the reader asked for it**. The second
+     half is what makes the rail a browser: it can show its list while the centre goes on
+     reading, which is the whole reason code was put in the rail. */
+  if (!state.codeFile || state.codeRailList) return codeFileList();
   const f = FILES.find(x => x.path === state.codeFile);
   /* **The box stays above an open file**, and that is the whole reason it is rendered from
    * one function rather than only in the list. Searching is how a reader gets from the file
@@ -11943,7 +11977,7 @@ const PERSISTED = [
   "diagram", "nodeShapes", "diagramId", "diagramPorts", "diagramCursor", "diagramEdgeWidth",
   "navCase", "navWord", "navRegex",
   "searchCase", "searchWord", "searchRegex",
-  "panels", "inspectorAuto", "navWidth", "codeWidth", "codeFile", "codeOverlay", "codeProv", "codeMarks",
+  "panels", "inspectorAuto", "navWidth", "codeWidth", "codeFile", "codeOverlay", "codeProv", "codeMarks", "codeRailList",
   "tableOverlay", "anomalyOverlay",
   "navGroups",
   "navOpen", "navCap",

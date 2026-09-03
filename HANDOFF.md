@@ -8227,3 +8227,60 @@ whose *state* was right and whose *pane* was not, and none was visible to a chec
 button's listener was attached, the `files ›` route ran, the trail step was filed. The tell in
 all three cases was a reader clicking and watching, which is the debt rule 38 names and the
 thing three sessions running have now paid for.
+
+## One file, two panes, and one button for both — fixed 2026-09-03
+
+Reported as a question about whether the tool was telling the truth, which is the form the
+useful ones take: *"Once again, I'm told there is no file open. Why does it say this? It
+sounds wrong. The list of files is on the left side, and I had clicked on one of them, so it
+must have been open, right? What was supposed to happen when I clicked on those buttons?"*
+
+### What they did
+
+| Button | Where | What it ran |
+|---|---|---|
+| `‹ files` | the rail | `data-codeback` → `openCodeFile("")` |
+| `files ›` | the centre | `data-codeback` → `openCodeFile("")` — **the same control** |
+| `open ▸` | the rail | switches the *centre* to Code mode; does not touch the file |
+
+Two renderings of one button, with the arrows pointing opposite ways, and `state.codeFile`
+is **one value serving two panes** — `codeList()` decided list-or-file purely by it. So a
+control that reads *show me the list* closed the file everywhere. The reader was right and
+the pane was wrong.
+
+The centre's copy was the worse of the two: `viewCode()` has **no file list at all**. Its
+entire effect was to remove what the reader was looking at and print *"Open the Code group in
+the navigator and pick one"* — a button that empties a pane it cannot refill.
+
+### It was mine to have surfaced
+
+`openCodeFile` had never called `render()` until earlier the same day. Before that, `‹ files`
+cleared the state and rebuilt the navigator while the centre kept its **already-painted**
+chrome, so the rail's button looked pane-scoped by accident — until the next render blanked
+it. The state was global the whole time; the fix made it honest, and honest is what exposed
+this. Worth recording as the shape rather than the incident: **a fix that makes an
+inconsistency visible will be reported as the fix's fault, and is not.**
+
+### Two questions, two fields
+
+`codeRailList` is where the **rail** is; `codeFile` is what is **open**. `codeback` sets the
+first and touches nothing else, so the rail lists while the centre reads on. `openCodeFile`
+clears it — every way a file gets opened arrives there, so a rail left listing after the
+reader chose cannot happen (rule 51). The centre's duplicate button is gone.
+
+Tom's own argument for putting code in the rail is quoted a few lines above `codeList`: *"it
+should be able to run on the left menu as well. I want to be able to see code and graph at
+the same time, and that's the only way."* A rail that must empty the centre to show its list
+is that undone, and it had been since Code became a fourth centre mode.
+
+### Verified
+
+843 tests (1 new), mypy clean, ruff clean. Driven in Chrome: `‹ files` lists the rail and the
+centre keeps `_anthropic.py`; picking it again returns the rail to the file; picking a
+*different* one moves both; the search-back variant returns the rail to its 408 hits in 136
+files with the centre untouched. The centre renders no back button at all.
+
+**Four mutations CAUGHT and one control case correctly not caught** — a `data-codeback` added
+inside the *rail* must not trip the guard, because the guard is scoped to `viewCode` and the
+rail is where that button belongs. A guard that fired on both would be asserting the opposite
+of the fix.

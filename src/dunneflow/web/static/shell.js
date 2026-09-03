@@ -108,6 +108,20 @@ let CODEFILE = null; // { path, lines, links, marks, defs, ... } for the one fil
 let DOCINDEX = null;   // [{ id, title, blurb }] | null
 let DOCPAGE = null;    // { id, title, sections, rows, loading } | { found:false } | null
 
+/* And lane 1's, the program's own documents. Same bargain again: the **list** is asked for
+ * once and cannot change while the map is open, and **one** document is held.
+ *
+ * One rather than a cache of many is not a small saving here either — `.groma/ISSUES.md` is
+ * 1.32 MB of prose and the rendered markup is more, so a cache of a browsing session is tens
+ * of megabytes held against a reader looking at one page. The server answers the largest in
+ * 7 ms warm and the renderer takes 40–72 ms, which is less than remembering costs.
+ *
+ * `DOCFILE.html` is the rendered markup, held beside the text rather than rebuilt at paint
+ * time: `render()` runs on every keystroke, and re-parsing 1.32 MB of Markdown per repaint
+ * is the defect lane 2 already paid for one layer up. */
+let DOCS = null;       // { documents:[…], classes:[…], total } | { failed } | null
+let DOCFILE = null;    // { path, document, headings, body, html, front, loading } | null
+
 /* Searching inside the source: the answer, and the files opened out of it.
  *
  * `SEARCH` is the **file-level** answer -- how many lines matched, in which files -- and it
@@ -319,6 +333,28 @@ const state = {
    * "back to the list" state to get stuck in and no second field to keep in step with this
    * one -- which is the defect `codeRailList` exists to have fixed. */
   docId: "routines",
+  /* **Which lane of Document mode.** `map` is the eight documents this tool generates about
+   * the program; `program` is the 2,064 the program itself carries. Two subjects that share
+   * a pane, not two views of one thing — so the switch is a real one and it is remembered.
+   *
+   * It opens on `map`, because that lane answers a question about the *program* and lane 1
+   * answers a question about its documentation. A reader who came to orient is served by the
+   * first; a reader who came to read the charter will say so, once, and be remembered. */
+  docLane: "map",
+  /* Which of the program's documents is open, "" for the list. `codeFile`'s shape and
+   * `codeFile`'s scar: the browse state and the open state were one value there and a button
+   * reading "show me the list" emptied the centre. Here there is only one pane, so one field
+   * is the whole truth — and the list is what "" means rather than a second flag. */
+  docPath: "",
+  /* Whether a document's **author comments** are shown. Off, and remembered.
+   *
+   * An HTML comment is content the author hid, and `html: false` un-hides it — markdown-it
+   * escapes a refused `html_block` rather than dropping it, so 7,317 comments across 505 of
+   * Mensores' 2,019 documents would read as body prose. Folded rather than dropped, because
+   * a silent filter is the thing design rule 1 exists to prevent and a template's comments
+   * are occasionally the most useful thing in it. The same bargain, and the same switch
+   * shape, as the code browser's margin and provenance folds. */
+  docComments: false,
   /* The same switch for the routine list and the table. Two switches rather than one,
    * because what they cost differs: the code overlay fetches a difference per file and can
    * mark four hundred lines, while these marks are read off an answer the page already
@@ -452,6 +488,14 @@ const state = {
      note. Not `navNote`, which is rendered only in the graph HUD -- a surface the
      reader may never open, and where this notice was invisible for its first hour. */
   revNote: "",
+  /* And Document mode's, for the same reason twice over. A link that resolves outside the
+     corpus and an anchor naming a section that is not there are both facts a reader is owed
+     — and putting them in `navNote` would put them in the **graph HUD**, which is not on
+     screen while somebody is reading a document. That is precisely the mistake `revNote`
+     above was created to undo, and the comment on it is why this field exists rather than a
+     third use of the first one. Transient: it says what just happened, so it is cleared by
+     the next thing that happens. */
+  docNote: "",
   colourBy: "none",
   colWidths: { q: 26, why: 30, fan: 5, chg: 7 },
   // No filter can be applied yet, so none is claimed. The prototype carried three
@@ -516,7 +560,11 @@ const state = {
   termFilter: "",
   /* What is typed in the topbar search. Transient like `termFilter`: a filter is a
      question being asked right now, not an arrangement worth restoring next visit. */
-  routineQ: ""
+  routineQ: "",
+  /* The filter over the program's 2,064 documents. Transient, like `routineQ` and
+     `termFilter` and for the same reason: a filter is a question being asked right now, not
+     an arrangement worth restoring next visit. */
+  docQ: ""
 };
 
 /* How many routines one package lists, and what the choices are.
@@ -2704,7 +2752,165 @@ const DOC_ROUTES = {
     pushTrail(state.view, name, "picked a table in a document");
   },
   docgo: () => revealSelectedRow(true, "docrow"),
+
+  /* ── lane 1 ─────────────────────────────────────────────────────────────────────── */
+
+  /* Whether the comment list is open, remembered. Narrow: `<details>` toggles itself, so
+     this only records what the reader chose — a `render()` here would rebuild the document
+     to change a disclosure triangle. The state is read on the **next** open, which is why it
+     is worth keeping at all. */
+  doccomments: (b) => {
+    state.docComments = !b.open;      // the click precedes the toggle
+    used("doc:comments:" + (state.docComments ? "shown" : "folded"));
+    persist();
+  },
+  doclane: (b) => {
+    const id = b.dataset.doclane;
+    if (!id || id === state.docLane) return;
+    state.docLane = id;
+    state.docNote = "";
+    used("doc:lane:" + id);
+    persist();
+    render();
+  },
+  /* Open one of the program's documents. Not a `selectFromNav`: a document is not a node,
+     there is nothing in the stack to light and nothing for the inspector to answer about —
+     the same argument `openCodeFile` makes about a file, written down there before this
+     existed. The trail records it, because moving to a document is a hop a reader wants
+     back (rule 33). */
+  docopen: (b) => {
+    const path = b.dataset.docopen;
+    if (!path) { console.error("DunneFlow: a document row with no path", b); return; }
+    state.docPath = path;
+    state.docNote = "";
+    lastDocRead = path;
+    used("doc:open");
+    persist();
+    pushTrail("doc", baseOf(path), "opened a document");
+    render();
+  },
+  docclose: () => {
+    state.docPath = "";
+    state.docNote = "";
+    DOCFILE = null;
+    docDom = { key: "", node: null };
+    docPaintedFor = "";
+    persist();
+    render();
+    /* **After the paint, never before it.** A reveal is a scroll against a box that has to
+       already hold the rows — rule 49's companion, and the reason `loadCodeFile` puts its
+       own reveal at the bottom. */
+    revealLastDocRead();
+  },
+  /* A heading in the side nav. Scrolls to the block carrying that **line**, which is exact
+     — `docs.db` recorded the line and `prose.js` stamped it on the block, and 825 of 825
+     headings were verified to agree. A name match would be rule 5 in a document with two
+     sections called "Notes". */
+  docline: (b) => scrollToDocLine(Number(b.dataset.docline || 0)),
+  /* An anchor written inside the document. The renderer stripped its `href` — an `<a href>`
+     here navigates the dashboard away — so this is what makes it work at all. */
+  docanchor: (b) => {
+    const id = b.dataset.docanchor;
+    const el = id && $("#docMount")?.querySelector(`[id="${CSS.escape(id)}"]`);
+    if (!el) {
+      /* **Stated, not swallowed.** A `#anchor` naming a heading this document does not have
+         is a fact about the document, and a click that silently does nothing is
+         indistinguishable from a control that is broken (design rule 16). */
+      state.docNote = `This document has no section called “${id}”.`;
+      render();
+      return;
+    }
+    el.scrollIntoView({ block: "start" });
+    flashDoc(el);
+  },
+  /* A relative link to another document. **Checked against the corpus before it is
+     followed**, because 666 of them exist and a great many point outside it — `.groma/
+     PROJECT.md` links to `../../Society-Specs/01-naming-standards.md`, which is a real link
+     to a real file that is not part of this program. Following it would open a blank pane;
+     saying so names what happened and what the reader is looking at. */
+  doclink: (b) => {
+    const to = b.dataset.doclink || "";
+    const wrote = b.dataset.dochref || to;
+    const known = DOCS && Array.isArray(DOCS.documents)
+      && DOCS.documents.some(d => d.path === to);
+    if (!known) {
+      state.docNote = `“${wrote}” is not a document this map read`
+        + (to ? ` — it resolves to ${to}, which is outside the scanned tree.` : ".");
+      render();
+      return;
+    }
+    state.docPath = to;
+    state.docNote = "";
+    lastDocRead = to;
+    used("doc:link");
+    persist();
+    pushTrail("doc", baseOf(to), "followed a link in a document");
+    render();
+  },
 };
+
+/* Scroll to the block a given source line was rendered from, and mark it.
+ *
+ * `[data-line]` is stamped by `prose.js` from `token.map`, so this is the renderer's own
+ * answer rather than a search. The nearest block at or after the line, because a heading's
+ * recorded line is the heading's own and every block below it has a larger one — an exact
+ * match is the ordinary case and the fallback is for a line inside a block rather than at
+ * the top of one. */
+function scrollToDocLine(line) {
+  const root = $("#docMount");
+  if (!root || !line) return;
+  let el = root.querySelector(`[data-line="${line}"]`);
+  if (!el) {
+    /* **The block that *contains* the line, before the one that follows it.**
+     *
+     * A heading's recorded line is a block's first line and matches above. Most other lines
+     * anybody opens at are not: a definition sits in the middle of a paragraph, and a
+     * heading written inside a fenced example is inside the fence rather than at the top of
+     * it. Reaching for the next block instead lands the reader one paragraph past what they
+     * asked for — adjacent, plausible, and wrong.
+     *
+     * The innermost containing block wins, which is `search.py`'s rule for the same question
+     * asked of source: a line is inside a list *and* inside the item, and the item is the
+     * answer. Then, only if nothing contains it, the nearest block at or after. */
+    let inner = null, innerSpan = Infinity, after = null, afterAt = Infinity;
+    for (const c of root.querySelectorAll("[data-line]")) {
+      const from = Number(c.dataset.line);
+      const to = Number(c.dataset.lineEnd || from);
+      if (from <= line && line <= to) {
+        const span = to - from;
+        if (span < innerSpan) { inner = c; innerSpan = span; }
+      } else if (from >= line && from < afterAt) { after = c; afterAt = from; }
+    }
+    el = inner || after;
+  }
+  if (!el) return;
+  el.scrollIntoView({ block: "start" });
+  flashDoc(el);
+}
+
+/* Put the row you were last reading back under the reader's eye.
+ *
+ * Only when it is out of sight, which is `revealSelectedRow`'s rule and for its reason: an
+ * automatic move may not fight a deliberate one, and a reader who scrolled somewhere before
+ * opening a document meant to be there. */
+function revealLastDocRead() {
+  if (!lastDocRead) return;
+  const li = $(`#docMount li[data-docrowfor="${CSS.escape(lastDocRead)}"]`);
+  const sc = li && scrollerFor(li);
+  if (!li || !sc) return;
+  const rb = li.getBoundingClientRect(), sb = sc.getBoundingClientRect();
+  if (rb.bottom > sb.top && rb.top < sb.bottom) return;      // already visible
+  sc.scrollTop += (rb.top - sb.top) - (sb.height / 2) + (rb.height / 2);
+}
+
+/* Say where you landed, briefly. A scroll with no mark leaves the reader hunting for what
+ * moved, which is the complaint design rule 26 was written from one pane over. */
+let docFlashAt = null;
+function flashDoc(el) {
+  if (docFlashAt) docFlashAt.classList.remove("docflash");
+  el.classList.add("docflash");
+  docFlashAt = el;
+}
 
 /* One listener, two tables. A third table would be a third `addEventListener` on
  * `document` and a third place for an attribute to be silently unhandled; a merge would
@@ -4114,10 +4320,94 @@ async function loadDocPage(id) {
   render();
 }
 
+/* ── lane 1: the program's own documents ──────────────────────────────────────────────
+ *
+ * The list, asked for once. 2,064 rows with a heading count and a definition count on each
+ * — 546 KB, whole and never paged, and cheap because the bodies are not in it: 38.7 MB of
+ * prose stays in the sidecar until somebody opens a document.
+ */
+async function loadDocs() {
+  if (DOCS) return;
+  DOCS = "loading";
+  try {
+    const r = await fetch("/api/docs");
+    if (!r.ok) throw new Error(`the server answered ${r.status}`);
+    DOCS = await r.json();
+  } catch (err) {
+    DOCS = { failed: err.message };
+  }
+}
+
+/* One document: its row, its headings, its text, and its text **rendered**.
+ *
+ * Rendered here rather than at paint time, and that is the whole shape of this function.
+ * `render()` runs on every selection and every keystroke; re-parsing 1.32 MB of Markdown on
+ * each one is lane 2's own defect a layer up, and it would be worse — parsing is work the
+ * cached subtree cannot save, because the cache holds a *node* and the parse happens before
+ * there is one.
+ *
+ * The library is loaded here too, which is the first moment anything needs it. A session
+ * that never opens a document never fetches its 125 KB.
+ *
+ * The path is checked again after both awaits. A reader who moves on while the largest
+ * document is in flight must not have the answer to the question they left land on the page
+ * they moved to — `loadCodeFile`'s rule, and it needs saying twice here because there are
+ * two places to come back from.
+ */
+async function loadDocFile(path) {
+  if (!path) { DOCFILE = null; return; }
+  if (DOCFILE && DOCFILE.path === path) return;
+  DOCFILE = { path, loading: true };
+  render();
+  let d;
+  try {
+    const r = await fetch(`/api/doc?path=${encodeURIComponent(path)}`);
+    if (!r.ok) throw new Error(`the server answered ${r.status}`);
+    d = await r.json();
+  } catch (err) {
+    d = { available: false, path, reason: err.message };
+  }
+  if (state.docPath !== path) return;              // the reader moved on
+  let html = "", front = "", as = "text", failed = "", comments = [];
+  if (d.available && d.body && d.body.available) {
+    try {
+      await Prose.load();
+      if (state.docPath !== path) return;          // ...and again, across the second await
+      const out = Prose.render(d.body.text, d.document.fmt, path);
+      html = out.html; front = out.front || ""; as = out.as; comments = out.comments || [];
+    } catch (err) {
+      /* The renderer failing is its own state, and it is not the document being missing.
+         Rule 49: a fallback that yields a plausible value hides the failure it was written
+         for — so this says the renderer failed and shows the text as text, rather than
+         quietly presenting an unrendered document as though that were the document. */
+      failed = err.message;
+      html = `<pre class="doctext" data-line="1">${esc(d.body.text)}</pre>`;
+    }
+  }
+  DOCFILE = { ...d, path, loading: false, html, front, as, comments, renderFailed: failed };
+  /* The built subtree describes the *previous* document. Dropped here rather than left to
+     the key check alone, so a node holding the wrong document cannot survive one render
+     where the key happens to match. */
+  docDom = { key: "", node: null };
+  docPaintedFor = "";
+  render();
+}
+
 /* Asked from the one place that knows which page is about to be painted, for the reason
  * `ensureVocabulary` states: wired to the navigator row instead it would work from there
- * and say "not asked for yet" forever from the breadcrumb, the trail and `data-goto`. */
+ * and say "not asked for yet" forever from the breadcrumb, the trail and `data-goto`.
+ *
+ * **Per lane**, so the lane nobody is looking at costs nothing. A session that reads the
+ * program's charter never builds the map's eight documents, and one that never leaves lane 2
+ * never fetches the 546 KB list. */
 function ensureDocument() {
+  if (state.docLane === "program") {
+    if (!DOCS) loadDocs().then(render);
+    if (state.docPath && (!DOCFILE || DOCFILE.path !== state.docPath)) {
+      loadDocFile(state.docPath);
+    }
+    return;
+  }
   if (!DOCINDEX) loadDocIndex().then(render);
   if (state.docId && (!DOCPAGE || DOCPAGE.id !== state.docId)) loadDocPage(state.docId);
 }
@@ -4136,18 +4426,64 @@ function ensureDocument() {
 let docDom = { key: "", node: null };
 let docPaintedFor = "";
 
+/* What the built subtree is *of*, and it carries the lane because the two lanes draw
+ * different things into one mount. Without it, switching lanes with the same key would hand
+ * back the other lane's page — which is the one failure a cache of a whole subtree can
+ * produce, and it looks exactly like a switch that did not work.
+ *
+ * The **filter is deliberately not in it.** Filtering hides rows rather than rebuilding the
+ * list: 2,064 rows rebuilt per keystroke is the cost, and rebuilding also destroys the input
+ * the reader is typing into, taking the focus and the caret with it. */
 function docDomKey() {
+  if (state.docLane === "program") {
+    if (state.docPath) {
+      if (!DOCFILE) return "read#…";
+      return `read#${DOCFILE.path}#${DOCFILE.loading ? "…" : (DOCFILE.available === false ? "!" : (DOCFILE.html || "").length)}`;
+    }
+    if (!DOCS || DOCS === "loading") return "list#…";
+    return `list#${DOCS.failed ? "!" : DOCS.total}`;
+  }
   if (!DOCPAGE) return "";
-  return `${DOCPAGE.id}#${DOCPAGE.loading ? "…" : (DOCPAGE.found === false ? "!" : DOCPAGE.rows)}`;
+  return `map#${DOCPAGE.id}#${DOCPAGE.loading ? "…" : (DOCPAGE.found === false ? "!" : DOCPAGE.rows)}`;
 }
 
 function attachDoc() {
   const mount = $("#docMount");
-  if (mount && !mount.firstElementChild && DOCPAGE) {
+  /* **Whether there is anything to draw is the lane's question, not `DOCPAGE`'s.** Guarding
+     on lane 2's page here left lane 1 with an empty mount and no error — the pane rendered
+     its chrome, the list was fetched, and nothing was ever put on screen (design rule 16's
+     defect one layer down). */
+  const has = state.docLane === "program" ? true : !!DOCPAGE;
+  if (mount && !mount.firstElementChild && has) {
     mount.appendChild(cachedSubtree(docDom, docDomKey(), docBody));
+  }
+  paintDocNote();
+  if (state.docLane === "program") {
+    applyDocFilter();
+    wireDocFilterOnce();
+    return;
   }
   paintDocHere();
   revealSelectedRow(false, "docrow");
+}
+
+/* The filter box, bound once and never again.
+ *
+ * Bound the way `#search` is, and for the reason that one records: `wire()` runs at the end
+ * of every `render()`, so an `addEventListener` there piles a listener onto a surviving
+ * element per repaint (rule 78). The `__wired` stamp is on the element, so an input that is
+ * genuinely replaced gets a fresh listener and one that is not keeps its single one. */
+function wireDocFilterOnce() {
+  const box = $("#docQ");
+  if (!box || box.__wired) return;
+  box.__wired = true;
+  box.addEventListener("input", () => {
+    state.docQ = box.value;
+    /* `applyDocFilter()` and **not** `render()`. The list is not rebuilt for a filter — see
+       the note there — and a `render()` would rewrite the chrome around this input, taking
+       the focus and the caret with it after the first letter. */
+    applyDocFilter();
+  });
 }
 
 /* Move the selection's highlight without touching anything else. The same narrow write
@@ -4266,6 +4602,9 @@ function docSection(sec, si) {
 }
 
 function docBody() {
+  if (state.docLane === "program") {
+    return state.docPath ? docReaderBody() : docListBody();
+  }
   if (!DOCPAGE) return `<div class="nav-note">Reading…</div>`;
   if (DOCPAGE.loading) return `<div class="nav-note">Building ${esc(DOCPAGE.id)}…</div>`;
   if (DOCPAGE.found === false) {
@@ -4274,6 +4613,192 @@ function docBody() {
       something being guessed.</div>`;
   }
   return `<div>${(DOCPAGE.sections || []).map(docSection).join("")}</div>`;
+}
+
+/* ── lane 1's two pages: the list, and one document read ────────────────────────────── */
+
+/* Every document the scan read, grouped by what kind of document it is.
+ *
+ * **The counts are the server's**, taken from the same rows the groups are drawn from, so a
+ * heading saying 1,601 over 1,601 rows is one query's answer rather than two that agree
+ * today (rule 13). `corpus.py` computes them with a `Counter` over exactly the list it
+ * returns, for that reason.
+ *
+ * Grouped rather than flat because the classes are the first useful cut of 2,064 documents:
+ * PLAN 1601 · OTHER 286 · DECISION 92 · RESEARCH 33 · TOOLING 12 · README 9 · REFERENCE 8 ·
+ * ROADMAP 6 · SPEC 6 · NAMING_STANDARD 5 · GLOSSARY 3 · ISSUE 2 · CONTRIBUTING 1. A reader
+ * looking for the charter is looking in one of four small groups.
+ *
+ * `content-visibility` per group, exactly as lane 2 does and for the measured reason there.
+ */
+function docListBody() {
+  if (!DOCS || DOCS === "loading") return `<div class="nav-note">Reading the document list…</div>`;
+  if (DOCS.failed) {
+    return `<div class="note"><b>The document list could not be read.</b>
+      ${esc(DOCS.failed)}. Nothing is being shown rather than something being guessed.</div>`;
+  }
+  if (DOCS.available === false) {
+    /* Design rule 21: a blank canvas says why it is blank. `--no-docs` and "this program
+       has no documentation" are different claims and only one of them is ever true here. */
+    return `<div class="note"><b>No documentation was read for this map.</b>
+      ${esc(DOCS.reason || "")} Re-analyse without <code class="mono">--no-docs</code> and
+      this lane fills.</div>`;
+  }
+
+  const byClass = new Map();
+  for (const d of DOCS.documents) {
+    if (!byClass.has(d.class)) byClass.set(d.class, []);
+    byClass.get(d.class).push(d);
+  }
+  /* The server's order — largest group first, ties by name — rather than a second sort here.
+     Two places deciding an order is two answers to one question (rule 51). */
+  const groups = DOCS.classes.map(c => [c.name, c.n, byClass.get(c.name) || []]);
+
+  return `<div>${groups.map(([name, n, rows]) => `
+    <section class="docgroup">
+      <h3 class="dochead">
+        <span class="mono">${esc(name)}</span>
+        <span class="dochead-n" data-doccount="${esc(name)}">${n.toLocaleString()}</span>
+      </h3>
+      <ul class="doclist">
+        ${rows.map(d => `
+        <li data-docrowfor="${esc(d.path)}"
+            data-hay="${esc((d.path + " " + d.title).toLowerCase())}">
+          <button data-docopen="${esc(d.path)}" ${d.held ? "" : "disabled"}
+                  title="${d.held ? esc(d.path) : "the sidecar does not hold this document's text"}">
+            <span class="dl-title">${esc(d.title || baseOf(d.path))}</span>
+            <span class="dl-path mono">${esc(d.path)}</span>
+          </button>
+          <span class="dl-meta">
+            <span title="words">${d.words.toLocaleString()}w</span>
+            <span title="headings">${d.headings} §</span>
+            ${d.definitions ? `<span title="definitions the glossary took from it">${d.definitions} def</span>` : ""}
+            ${d.duplicateOf ? `<span class="dl-dup" title="a byte-identical copy of ${esc(d.duplicateOf)}">copy</span>` : ""}
+            ${d.held ? "" : `<span class="dl-unheld" title="stored without its text">no text</span>`}
+          </span>
+        </li>`).join("")}
+      </ul>
+    </section>`).join("")}</div>`;
+}
+
+/* One document, read. The prose, and the document's own headings beside it.
+ *
+ * The markup is `DOCFILE.html`, rendered once when the document was fetched — see
+ * `loadDocFile`. Nothing here parses anything.
+ */
+function docReaderBody() {
+  if (!DOCFILE || DOCFILE.loading) {
+    return `<div class="nav-note">Opening ${esc(state.docPath)}…</div>`;
+  }
+  if (DOCFILE.available === false) {
+    return `<div class="note"><b>${esc(DOCFILE.path)} could not be opened.</b>
+      ${esc(DOCFILE.reason || "no reason given")}.</div>`;
+  }
+  const body = DOCFILE.body || {};
+  if (!body.available) {
+    /* The row exists and the text does not, which is a different thing from the document
+       not being in the corpus — and a different thing again from this *version* having no
+       bodies. `corpus.py` writes the three sentences; this shows whichever it was sent
+       rather than composing a fourth (rule 51). */
+    return `<div class="note"><b>This document's text is not stored.</b>
+      ${esc(body.reason || "")} The scan read it — its headings and definitions are in the
+      map — but the sidecar cannot open it.</div>`;
+  }
+
+  const heads = DOCFILE.headings || [];
+  return `
+  <div class="docread">
+    <nav class="docnav" aria-label="Headings in this document">
+      ${heads.length
+        ? `<div class="docnav-h">In this document</div>
+           <ol>${heads.map(h => `
+             <li class="dn-l${h.level}"><button data-docline="${h.line}"
+               title="line ${h.line}">${esc(h.text)}</button></li>`).join("")}</ol>`
+        : `<div class="docnav-h">No headings</div>
+           <p class="hint">This document declares none, so there is nothing to jump to.
+              It is not a failure to read it.</p>`}
+    </nav>
+    <div class="docmain">
+      ${DOCFILE.renderFailed ? `<div class="note"><b>The renderer failed on this
+        document.</b> ${esc(DOCFILE.renderFailed)}. Its text is below exactly as stored —
+        this is the document, not a rendering of it.</div>` : ""}
+      ${DOCFILE.as === "text" && !DOCFILE.renderFailed ? `<p class="hint doctextnote">
+        Shown as written. ${esc(DOCFILE.document.fmt) === "TEXT"
+          ? "This is a plain-text document."
+          : `<code class="mono">${esc(DOCFILE.document.fmt)}</code> is read for its headings
+             and definitions but is not rendered by this build.`}</p>` : ""}
+      ${DOCFILE.front ? `<details class="docfront"><summary>Front matter</summary>
+        <pre class="doctext">${esc(DOCFILE.front)}</pre></details>` : ""}
+      ${/* **What the authors said to each other, and it is not prose.** An HTML comment is
+            content whoever wrote the document hid; `html: false` un-hides it, because
+            markdown-it disables the html_block rule entirely and the comment arrives as an
+            ordinary paragraph. Lifted out before parsing, and listed here **with the line it
+            was on** rather than dropped — a silent filter is what design rule 1 exists to
+            prevent, and in a corpus of templates and plans these are occasionally the most
+            useful thing in the file. Folded, because the reader came for the document. */""}
+      ${(DOCFILE.comments || []).length ? `<details class="docfront doccomments"
+        ${state.docComments ? "open" : ""} data-doccomments>
+        <summary>${DOCFILE.comments.length} author comment${
+          DOCFILE.comments.length === 1 ? "" : "s"}, hidden in the source</summary>
+        <ol class="doccommentlist">${DOCFILE.comments.map(c => `
+          <li><button data-docline="${c.line}" title="jump to line ${c.line}">line ${c.line}</button>
+              <pre class="doctext">${esc(c.text)}</pre></li>`).join("")}</ol>
+      </details>` : ""}
+      <div class="prose">${DOCFILE.html}</div>
+    </div>
+  </div>`;
+}
+
+/* The filter, applied to the list that is already drawn.
+ *
+ * **A narrow write, not a rebuild**, and there are two reasons rather than one. Rebuilding
+ * 2,064 rows on every keystroke is the cost; rebuilding also destroys the `<input>` the
+ * reader is typing into, taking the focus and the caret with it — which is the failure that
+ * reads as "the box stops working after one letter".
+ *
+ * The haystack is on the row (`data-hay`, lowercased once when the list was built), so this
+ * is a string test per row and no DOM reads at all.
+ *
+ * **Every count is restated and no group is silently empty** (design rule 1). A filtered
+ * heading that still says 1,601 over four rows is the defect a filter is most able to hide.
+ */
+/* The last document opened, so the list can say where the reader has been. Not
+ * `state.docPath` — that is "" the moment they come back, which is exactly when this is
+ * wanted. Not persisted: it is where they are, not what they arranged. */
+let lastDocRead = "";
+
+function applyDocFilter() {
+  const root = $("#docMount");
+  if (!root || state.docLane !== "program" || state.docPath) return;
+  const q = state.docQ.trim().toLowerCase();
+  let shown = 0;
+  for (const sec of root.querySelectorAll(".docgroup")) {
+    let n = 0;
+    for (const li of sec.querySelectorAll("li[data-hay]")) {
+      const hit = !q || li.dataset.hay.includes(q);
+      li.hidden = !hit;
+      if (hit) n++;
+    }
+    const count = sec.querySelector("[data-doccount]");
+    if (count) count.textContent = n.toLocaleString();
+    /* The group goes too when nothing in it matches. A heading over no rows reads as a
+       class this program has none of, which is a different and false claim. */
+    sec.hidden = n === 0;
+    shown += n;
+  }
+  /* **And which one you were just reading.** Coming back from a document to a list of 2,064
+     with the scroll wherever it was is the moment a reader most needs their place — design
+     rule 26's own argument, in the pane that had no answer to it. Marked here rather than in
+     the markup because `state.docPath` moves without the list being rebuilt. */
+  for (const li of root.querySelectorAll("li[data-docrowfor]")) {
+    li.classList.toggle("dl-last", li.dataset.docrowfor === lastDocRead);
+  }
+  const note = $("#docFilterNote");
+  if (note) {
+    note.textContent = q
+      ? `${shown.toLocaleString()} of ${(DOCS.total || 0).toLocaleString()} documents match “${state.docQ.trim()}”`
+      : `All ${(DOCS.total || 0).toLocaleString()} documents.`;
+  }
 }
 
 /* Where the reader is in this document, stated.
@@ -4308,19 +4833,101 @@ function paintDocSubject() {
 
 /* The chooser and the frame. Built only when the document changes — everything about this
  * pane that moves on a selection is written narrowly by the branch in `render()`. */
+/* **The two lanes, named for what they are about rather than for which came first.**
+ *
+ * They are not two views of one thing. Lane 2 is prose *this tool generates about the
+ * program*; lane 1 is prose *somebody wrote*, which the tool read and mined and could not
+ * show until now. A reader wanting the charter and a reader wanting every boundary are
+ * asking different questions, and the switch says so in those words. */
+const DOC_LANES = [
+  { id: "map", label: "The map",
+    blurb: "What this tool worked out about the program — eight documents, every row a "
+         + "selection." },
+  { id: "program", label: "The program's own",
+    blurb: "The documentation the program carries: plans, decisions, research, READMEs." },
+];
+
+function docLaneStrip() {
+  const n = (state.docLane === "program" && DOCS && DOCS.total) ? DOCS.total : null;
+  return `<nav class="doclanes" role="group" aria-label="Which documents">
+    ${DOC_LANES.map(l => `<button data-doclane="${l.id}"
+        aria-pressed="${state.docLane === l.id}" title="${esc(l.blurb)}">${esc(l.label)}${
+        l.id === "program" && n ? ` <span class="tabn">${n.toLocaleString()}</span>` : ""
+      }</button>`).join("")}
+  </nav>`;
+}
+
 function viewDoc() {
   ensureDocument();
+  return `<article class="doc">
+    ${docLaneStrip()}
+    ${state.docLane === "program" ? viewDocProgram() : viewDocMap()}
+  </article>`;
+}
+
+/* Lane 1's chrome: the filter over the list, or the way back from a document. */
+/* The note, and **a narrow write to go with it**.
+ *
+ * It lives in the chrome, and the chrome is repainted only when `docDomKey()` moves — which
+ * is exactly what it does not do when a link resolves outside the corpus. Setting the field
+ * and calling `render()` would set a message nothing draws: rule 44's shape, a live control
+ * reading a field the page does not show, which renders nothing and throws nothing. The
+ * element is always present so there is always something to write into. */
+function docNoteHtml() {
+  return `<p class="note docnote" id="docNote"${state.docNote ? "" : " hidden"}>${
+    esc(state.docNote)}</p>`;
+}
+
+function paintDocNote() {
+  const el = $("#docNote");
+  if (!el) return;
+  el.textContent = state.docNote;
+  el.hidden = !state.docNote;
+}
+
+function viewDocProgram() {
+  if (state.docPath) {
+    const d = DOCFILE && !DOCFILE.loading && DOCFILE.document;
+    return `
+    <header class="dochdr docreadhdr">
+      <button class="linkbtn" data-docclose>&lsaquo; all documents</button>
+      ${d ? `<h2>${esc(d.title || baseOf(d.path))}</h2>
+        <p class="hint"><code class="mono">${esc(d.path)}</code></p>
+        <p class="hint">${esc(d.class)} · ${d.words.toLocaleString()} words ·
+           ${(d.size / 1024).toFixed(1)} KB${
+           d.duplicateOf ? ` · a byte-identical copy of <code class="mono">${esc(d.duplicateOf)}</code>` : ""}
+           ${(d.errors && d.errors.length)
+             ? ` · <b>${d.errors.length} problem${d.errors.length === 1 ? "" : "s"} recorded
+                 while reading it</b>` : ""}</p>` : ""}
+    </header>
+    ${docNoteHtml()}
+    <div id="docMount"></div>`;
+  }
+  return `
+    <div class="docfilter">
+      <input id="docQ" type="search" placeholder="Filter by path or title…"
+             value="${esc(state.docQ)}" aria-label="Filter the documents"
+             autocomplete="off" spellcheck="false">
+      ${/* Design rule 1: no filter is ever silent. The sentence is written by
+            `applyDocFilter()` and only ever by it, so what is on screen and what was
+            counted cannot come from two places (rule 13). */""}
+      <span class="hint" id="docFilterNote"></span>
+    </div>
+    ${docNoteHtml()}
+    <div id="docMount"></div>`;
+}
+
+/* Lane 2's chrome, unchanged — the eight documents, and where the reader is in one. */
+function viewDocMap() {
   const idx = Array.isArray(DOCINDEX) ? DOCINDEX : [];
   if (DOCINDEX && DOCINDEX.failed) {
-    return `<article class="doc"><div class="note"><b>The document list could not be
-      read.</b> ${esc(DOCINDEX.failed)}.</div></article>`;
+    return `<div class="note"><b>The document list could not be read.</b>
+      ${esc(DOCINDEX.failed)}.</div>`;
   }
   const open = idx.find(d => d.id === state.docId) || null;
-
   const rows = DOCPAGE && !DOCPAGE.loading ? (DOCPAGE.rows || 0) : 0;
 
   return `
-  <article class="doc">
     <nav class="docstrip" aria-label="Documents">
       ${idx.length
         ? idx.map(d => `<button data-docpick="${esc(d.id)}"
@@ -4340,14 +4947,7 @@ function viewDoc() {
         inspector, exactly as a navigator row does.</p>` : ""}
     </header>` : ""}
 
-    <div id="docMount"></div>
-
-    ${/* Lane 1, named rather than left to be noticed missing. The routes are built and the
-          bodies are held; what is not built is the renderer that turns one into a page. */""}
-    <p class="hint docother">The program's <b>own</b> documentation — 2,064 files the scan
-      read — is a second lane of this mode and is not built yet. Its bodies are stored and
-      served; what it waits on is the renderer.</p>
-  </article>`;
+    <div id="docMount"></div>`;
 }
 
 function sevCounts() {
@@ -8739,9 +9339,9 @@ function render() {
       /* The two things that move without the document moving. Narrow writes, because the
          whole point of the branch above is that this one touches nothing expensive. */
       ensureDocument();
-      paintDocSubject();
-      paintDocHere();
-      revealSelectedRow(false, "docrow");
+      paintDocNote();
+      if (state.docLane === "program") { applyDocFilter(); wireDocFilterOnce(); }
+      else { paintDocSubject(); paintDocHere(); revealSelectedRow(false, "docrow"); }
     }
   }
   else if (state.view === "code")    {
@@ -9642,6 +10242,18 @@ const WIRED_ATTRS = new Set([
      `gotoline` sits beside `gotocode` -- the roster is every attribute the shell writes,
      because the self-check reads the DOM and cannot tell a carried one from a dead one. */
   "docpick", "docwhere", "docwhereline", "docrow", "doctable", "docgo",
+  /* And lane 1's. `docrowfor`, `hay` and `doccount` carry data the filter reads and route
+     nothing, the way `docwhereline` and `gotoline` do -- the roster is every attribute the
+     shell writes, because the self-check reads the DOM and cannot tell a carried one from a
+     dead one. `doclink` and `docanchor` are written by `prose.js` rather than here, and are
+     in the roster because they are routed from `DOC_ROUTES` like the rest. */
+  "doclane", "docopen", "docclose", "docline", "docanchor", "doclink", "dochref",
+  "doccomments",
+  "docrowfor", "hay", "doccount",
+  /* `line` is `prose.js`'s, stamped on every rendered block from `token.map`, and the shell
+     reads it to scroll a heading into view. In the roster because the roster is about what
+     is in the DOM, not about which file wrote it -- the self-check reads the page. */
+  "line", "lineEnd",
   /* The routine list and the table's own overlay switch. A second switch rather than one
      governing both surfaces: the code overlay fetches a difference per file and these
      marks are read off an answer already held, so wanting one without the other is
@@ -12421,7 +13033,8 @@ const PERSISTED = [
   "diagram", "nodeShapes", "diagramId", "diagramPorts", "diagramCursor", "diagramEdgeWidth",
   "navCase", "navWord", "navRegex",
   "searchCase", "searchWord", "searchRegex",
-  "panels", "inspectorAuto", "navWidth", "codeWidth", "codeFile", "codeOverlay", "codeProv", "codeMarks", "codeRailList", "docId",
+  "panels", "inspectorAuto", "navWidth", "codeWidth", "codeFile", "codeOverlay", "codeProv", "codeMarks", "codeRailList",
+  "docId", "docLane", "docPath", "docComments",
   "tableOverlay", "anomalyOverlay",
   "navGroups",
   "navOpen", "navCap",

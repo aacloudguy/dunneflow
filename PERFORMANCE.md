@@ -354,6 +354,28 @@ changed or not, which turns re-analysis back into an event. Blind spot: a docume
 rewritten to exactly its old length with its modification time preserved is missed;
 `--recheck-docs` hashes everything.
 
+**Document mode, lane 1** — the program's own 2,064 documents, measured 2026-09-03:
+
+| Measure | Budget | Measured 2026-09-03 |
+|---|---|---|
+| The list: 2,064 rows in 13 class groups, first paint | < 200 ms | 56 ms |
+| …repaint, and the filter over all 2,064 | < 50 ms | 5 ms · 2 ms |
+| Open a document (fetch + render + paint), ordinary | < 500 ms | 279 ms (`glossary.md`) |
+| …the worst case, 1.32 MB | < 1 s | 668 ms (`.groma/ISSUES.md`) |
+| Paint one already-fetched document | < 100 ms | 4 ms · 66 ms (worst case) |
+| Repaint on any other change | < 50 ms | 2 ms |
+
+**The filter hides rows rather than rebuilding the list**, and there are two reasons rather
+than one. 2,064 rows rebuilt per keystroke is the cost; rebuilding also destroys the
+`<input>` being typed into, taking the focus and the caret with it — which reads as a box
+that stops working after one letter. So the query is deliberately *not* in the cache key, and
+2 ms is what a narrow write over 2,064 rows costs.
+
+**A document is rendered once, when it is fetched, never at paint time.** Parsing is the one
+cost a subtree cache cannot save — the cache holds a node and the parse happens before there
+is one — so the 40–72 ms of markdown parsing is paid on the fetch and every repaint after it
+is 2 ms.
+
 **The document renderer** (`prose.js` + `markdown-it`), measured 2026-09-03 on Mensores.
 It is cheap, and the interesting thing about it is that it is cheap:
 

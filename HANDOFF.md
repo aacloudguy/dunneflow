@@ -8694,3 +8694,107 @@ fetches, in 927 ms.
 **Next: chunk 4's lane 1** — the document list grouped by class with its counts, a filter, a
 reader with the document's own headings as a side nav, and the three link routes this
 renderer emits. Then chunk 5's citations, then chunk 6's records.
+
+## Document mode, chunk 4 lane 1: the program's own documents, read — 2026-09-03
+
+The last piece of the feature. 2,064 documents that were mined for 29,980 headings and 235
+definitions and readable nowhere in the tool now have a list, a filter, a reader and a side
+nav. **Document mode is complete** but for chunk 5's citations.
+
+**Two lanes sharing a pane, and they are two subjects rather than two views of one thing** —
+prose this tool generates about the program, and prose somebody wrote. The switch says so in
+those words. One mount, one subtree cache and one `render()` branch serve both, so the cache
+key carries the lane: a subtree keyed on the other lane's page is handed back on a switch,
+and that looks exactly like a switch that did not work.
+
+**The list** is 2,064 rows in 13 class groups with the server's own counts — PLAN 1,601 ·
+OTHER 286 · DECISION 92 and down — grouped because the classes are the first useful cut and a
+reader looking for the charter is looking in one of four small groups. **The filter hides rows
+rather than rebuilding**, for two reasons and the second is the one that reads as a broken
+control: 2,064 rows per keystroke is the cost, and rebuilding also destroys the `<input>`
+being typed into, taking the focus and the caret with it. So the query is deliberately *out*
+of the cache key. Every group count is restated and an empty group is hidden (design rule 1) —
+a heading still saying 1,601 over four rows is what a filter is most able to hide.
+
+**The reader** is the document's own headings beside the prose, wrapping to one column when
+the pane is narrow — **flex-wrap rather than a breakpoint**, because a `@media` query can only
+ask how wide the *window* is and this depends on the *centre pane*, which the reader moves by
+hundreds of pixels by collapsing a panel without touching the window. The bases are in `rem`,
+so the wrap point moves with the scale control, which a breakpoint cannot do at all (rule 28).
+
+**A document is rendered once when it is fetched, never at paint time.** Parsing is the one
+cost a subtree cache cannot save — the cache holds a *node* and the parse happens before there
+is one — so 1.32 MB is parsed on the fetch and every repaint after is 2 ms.
+
+**All three link kinds are routed.** A relative link is **checked against the corpus before it
+is followed**: 666 of them, and many point outside the scanned tree —
+`.groma/milestones/1.1.0-ROADMAP.md` links to `ROADMAP-v1-archive.md`, which does not exist.
+Following it opens a blank pane; saying so names what happened, and the sentence quotes both
+what the author wrote and what it resolves to.
+
+**And it goes in `docNote`, never `navNote`.** `navNote` is rendered in exactly one place —
+the graph HUD — which is not on screen while somebody is reading a document. That mistake is
+already recorded in this file: `revNote` exists because a notice put there *"was invisible for
+its first hour"*. Reading the comment beside the field was what stopped it happening a third
+time. The note also needs a narrow write of its own, because it lives in chrome that repaints
+only when the cache key moves — set without one it would render nothing and throw nothing
+(rule 44).
+
+### The screenshot found what nothing else could: half the corpus was showing its own hidden notes
+
+`.groma/adrs/0000-template.md` opened with a paragraph of editorial instructions —
+*"Plan 14-01 Task 3 seeds this skeletal ADR template…"* — drawn as body prose.
+
+**`html: false` does not hide an HTML comment. It un-hides one.** With raw HTML refused,
+markdown-it disables the `html_block` rule *entirely*, so a comment is not a token that can be
+caught: it arrives as an ordinary **paragraph** and is escaped into visible text. Verified
+rather than assumed — parsing a document with three HTML constructs in it yields
+`html_block: 0`, which is why the first fix, written against `html_block` tokens, counted zero
+comments and changed nothing.
+
+**7,317 comments across 505 of Mensores' 2,019 documents** — a quarter of the corpus showing
+notes nobody wrote for the reader. They are lifted out before parsing, replaced by exactly as
+many newlines as they held — the frontmatter rule, for the frontmatter reason — and **listed
+with their line numbers** rather than dropped, because a silent filter is what design rule 1
+exists to prevent and in a corpus of templates the comments are occasionally the most useful
+thing in the file.
+
+### And a heading that was not one, which found what chunk 5 will need
+
+Sweeping the corpus after the comment strip, **one heading of 1,566 no longer matched**:
+`docs/audit/discoveries-format.md:156`. It turned out to be `## Discoveries` **inside a fenced
+code block** — an example of a heading, which the extractor recorded as a real one. Three or
+four such cases in 29,980, so rule 12 is holding and this is not worth chasing; the renderer
+is right and the map is the one that is slightly wrong.
+
+What it exposed is not small. Blocks carried only their **start** line, and the lines anybody
+opens at are mostly not the first line of anything — **a definition sits in the middle of a
+paragraph, and that is exactly what chunk 5's citations open against.** With only starts
+stamped, the nearest-at-or-after fallback lands the reader on the block *after* the one their
+line is in: adjacent, plausible, and wrong. Every block now carries `data-line-end` and the
+lookup takes the **innermost containing** block — `search.py`'s rule for the same question
+asked of source. Verified: 1,565 headings match exactly, 1 resolves to the fence that contains
+it, **zero unreachable**.
+
+### Three guards survived their own mutations, all the same way
+
+`if (!known)` → `if (false)`, the narrowing removed from the containing-block search, and
+`lastDocRead = path` deleted from one of its two doors. Every one passed, because each guard
+checked that a **name appeared** rather than that anything happened — `DOCS.documents.some`
+was still computed, `innerSpan` was still declared, `let lastDocRead` was still there. That is
+rule 37, three times, in guards written for a chunk whose own defects are rule 37's shape.
+They now assert the branch, the comparison, and both doors.
+
+**23 mutations, all CAUGHT** on the second pass (baseline green first, rule 59). The harness
+takes a backup to disk *before* mutating and verifies every file restored at the end —
+last session's timeout left an untracked file mutated with no way to `git checkout` it back.
+
+Measured: the list is **56 ms** to first paint and **5 ms** to repaint; the filter over 2,064
+rows is **2 ms**; the worst-case document (1.32 MB, 6,694 blocks, 327 headings) is **668 ms**
+to open and **2 ms** to repaint.
+
+912 tests, mypy clean, ruff clean. Self-check green, console clean.
+
+**Next: chunk 5** — `senseOpens()` becomes a capability test rather than a provenance test, so
+the 235 documentation-derived definitions open at their line. Everything it needs is now in
+place: `/api/docsource`, the renderer, and `data-line-end`. Then chunk 6's records.

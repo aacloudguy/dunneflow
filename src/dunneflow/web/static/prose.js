@@ -183,6 +183,46 @@ const Prose = (function () {
     return { body: text, front: "" };          // opened and never closed: not frontmatter
   }
 
+  /* Author comments, lifted out before the parser sees them — and **counted, never
+   * dropped**.
+   *
+   * `html: false` does not hide an HTML comment; it un-hides one. With raw HTML refused
+   * markdown-it disables the html_block rule entirely, so `<!-- Plan 14-01 seeds this
+   * template -->` is not an `html_block` token at all — it is an ordinary **paragraph** of
+   * text, escaped and drawn as body prose. Verified rather than assumed: parsing a document
+   * with three HTML constructs in it yields `html_block: 0`. So there is nothing to catch at
+   * the token level, and this has to happen to the text.
+   *
+   * **7,317 comments across 505 of Mensores' 2,019 documents** — a quarter of the corpus
+   * showing editorial notes nobody wrote for the reader.
+   *
+   * Replaced by **exactly as many newlines as they contained**, which is the frontmatter
+   * rule and is here for the frontmatter reason: `data-line` is what a citation and a
+   * heading nav open against, and shortening the text by four lines would put every block
+   * below four lines out — a page that renders perfectly with every number on it wrong.
+   *
+   * Returned with their line numbers rather than binned, because a silent filter is what
+   * design rule 1 exists to prevent, and in a corpus of templates and plans the comments are
+   * occasionally the most useful thing in the file. */
+  const COMMENT = /<!--[\s\S]*?-->/g;
+  function stripComments(text) {
+    const found = [];
+    let at = 0, line = 1, out = "";
+    for (const m of String(text).matchAll(COMMENT)) {
+      const before = text.slice(at, m.index);
+      out += before;
+      line += (before.match(/\n/g) || []).length;
+      found.push({ line, text: m[0] });
+      /* The newlines, and only the newlines. Everything else on those lines is the comment
+         and is not prose. */
+      out += (m[0].match(/\n/g) || []).join("");
+      line += (m[0].match(/\n/g) || []).length;
+      at = m.index + m[0].length;
+    }
+    out += text.slice(at);
+    return { body: found.length ? out : text, comments: found };
+  }
+
   /* ── the render ───────────────────────────────────────────────────────────────────── */
 
   /* `md.parse()` to tokens and then the renderer, never `md.render()`.
@@ -203,12 +243,14 @@ const Prose = (function () {
     if (fmt !== "MARKDOWN") {
       return { as: "text", fmt: fmt || "TEXT", front: "",
                html: `<pre class="doctext" data-line="1">${esc(text)}</pre>`,
-               links: { anchor: 0, relative: 0, external: 0, other: 0 }, images: 0 };
+               links: { anchor: 0, relative: 0, external: 0, other: 0 }, images: 0,
+               comments: [] };
     }
     if (!md) throw new Error("Prose.render before Prose.load");
 
     const split = splitFrontmatter(String(text == null ? "" : text));
-    const tokens = md.parse(split.body, {});
+    const stripped = stripComments(split.body);
+    const tokens = md.parse(stripped.body, {});
     const seen = Object.create(null);
     const links = { anchor: 0, relative: 0, external: 0, other: 0 };
     let images = 0;
@@ -223,6 +265,15 @@ const Prose = (function () {
          html_block, a horizontal rule); a closing tag carries no map and needs none. */
       if (t.map && t.nesting >= 0 && t.type !== "inline") {
         t.attrSet("data-line", String(t.map[0] + 1));
+        /* **And where the block ends**, because most of the lines anybody wants to open at
+         * are not the first line of anything. A heading's recorded line is a block's start
+         * and matches exactly; a *definition's* is somewhere in the middle of a paragraph,
+         * and that is what chunk 5's citations open against. With only the start stamped,
+         * the nearest-at-or-after fallback lands the reader on the block **after** the one
+         * their line is in — plausible, adjacent, and wrong.
+         *
+         * `map[1]` is exclusive, so the inclusive last line is `map[1]` in 1-based terms. */
+        t.attrSet("data-line-end", String(t.map[1]));
       }
       if (t.type === "heading_open") {
         /* The id is minted from the *next* token's content, which is the inline run this
@@ -303,10 +354,12 @@ const Prose = (function () {
     }
 
     return { as: "markdown", fmt: "MARKDOWN", front: split.front,
-             html: md.renderer.render(tokens, md.options, {}), links, images };
+             html: md.renderer.render(tokens, md.options, {}), links, images,
+             comments: stripped.comments };
   }
 
-  return { load, ready, render, resolvePath, linkKind, slug, splitFrontmatter };
+  return { load, ready, render, resolvePath, linkKind, slug, splitFrontmatter,
+           stripComments };
 })();
 
 if (typeof window !== "undefined") window.Prose = Prose;

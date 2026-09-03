@@ -10361,3 +10361,236 @@ def test_the_group_name_and_the_column_headers_stack() -> None:
     assert "thead th { top: var(--dochead-h); }" in css, (
         "the column headers stick at the same place as the group name and are covered by it"
     )
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════
+# Document mode, lane 1: the program's own 2,064 documents
+#
+# Two lanes sharing a pane, not two views of one thing — so most of what can go wrong here
+# is one lane's machinery quietly serving the other's page.
+# ══════════════════════════════════════════════════════════════════════════════════════
+
+
+def test_the_two_lanes_are_told_apart_by_every_part_that_serves_both() -> None:
+    """One mount, one cache, one `render()` branch — and two entirely different pages.
+
+    The cache key is the dangerous one: a subtree keyed on lane 2's document id would be
+    handed back when the reader switched to lane 1, and a cache returning the *other lane's
+    page* looks exactly like a switch that did not work.
+    """
+    js = _code(_read("shell.js"))
+    key = _fn(js, "docDomKey")
+    assert 'state.docLane === "program"' in key, (
+        "the cache key does not carry the lane, so switching lanes can hand back the page "
+        "you switched away from"
+    )
+    for part in ("list#", "read#", "map#"):
+        assert part in key, f"the key does not tell {part!r} apart from the other pages"
+    body = _fn(js, "docBody")
+    assert 'state.docLane === "program"' in body, "one lane's body is drawn for both"
+    assert "docReaderBody()" in body and "docListBody()" in body, (
+        "lane 1 has no list or no reader"
+    )
+    ens = _fn(js, "ensureDocument")
+    assert 'state.docLane === "program"' in ens and "return;" in ens, (
+        "both lanes are fetched whichever is on screen, so a reader who never leaves one "
+        "pays for the other"
+    )
+
+
+def test_the_filter_does_not_rebuild_the_list() -> None:
+    """Two reasons, and the second is the one that reads as a broken control.
+
+    2,064 rows rebuilt per keystroke is the cost. Rebuilding also destroys the `<input>` the
+    reader is typing into, taking the focus and the caret with it — which reads as "the box
+    stops working after one letter". So the filter hides rows, the query stays out of the
+    cache key, and the box is bound once.
+    """
+    js = _code(_read("shell.js"))
+    key = _fn(js, "docDomKey")
+    assert "docQ" not in key, (
+        "the filter is in the cache key, so every keystroke rebuilds 2,064 rows and "
+        "replaces the input being typed into"
+    )
+    wire_once = _fn(js, "wireDocFilterOnce")
+    assert "__wired" in wire_once, "the filter box gains a listener per render (rule 78)"
+    assert "applyDocFilter()" in wire_once and "render()" not in wire_once, (
+        "the filter calls render(), which rewrites the chrome around the input and takes "
+        "the focus with it"
+    )
+    assert "data-docq" not in js and 'id="docQ"' in js, (
+        "the filter box is routed rather than bound once, so it cannot keep its own state"
+    )
+
+
+def test_the_filter_restates_every_count_it_changes() -> None:
+    """Design rule 1: no filter is ever silent.
+
+    A group heading still saying 1,601 over four rows is the defect a filter is most able to
+    hide, and a heading over *no* rows reads as a class this program has none of — a
+    different and false claim.
+    """
+    fn = _fn(_code(_read("shell.js")), "applyDocFilter")
+    assert "count.textContent" in fn, "a group heading keeps its unfiltered number"
+    assert "sec.hidden" in fn, "a group with nothing in it is left on screen, headed and empty"
+    assert "docFilterNote" in fn, "the total is never restated"
+    assert "DOCS.total" in fn, (
+        "the note does not say what the matches are out of, so `14` could be 14 of 14"
+    )
+
+
+def test_a_document_is_rendered_once_when_it_is_fetched() -> None:
+    """`render()` runs on every keystroke, and parsing is work no subtree cache can save.
+
+    The cache holds a *node*; the parse happens before there is one. `.groma/ISSUES.md` is
+    1.32 MB and takes 40–72 ms to parse — per keystroke, that is lane 2's defect one layer
+    up and worse.
+    """
+    js = _code(_read("shell.js"))
+    load = _fn(js, "loadDocFile")
+    assert "Prose.render(" in load, "the document is not rendered when it is fetched"
+    assert "await Prose.load()" in load, (
+        "the renderer's library is never loaded, so the first document throws"
+    )
+    reader = _fn(js, "docReaderBody")
+    assert "Prose.render(" not in reader, (
+        "the document is parsed at paint time, which is every keystroke"
+    )
+    assert "DOCFILE.html" in reader, "the reader does not draw the rendered markup"
+    # And the reader who moved on must not be handed the answer they left.
+    assert load.count("state.docPath !== path") >= 2, (
+        "the path is not re-checked after both awaits — there are two ways to come back "
+        "from, the fetch and the render"
+    )
+
+
+def test_a_link_out_of_the_corpus_is_refused_and_says_so_in_this_pane() -> None:
+    """666 relative links, and a great many point at files the scan never read.
+
+    `.groma/milestones/1.1.0-ROADMAP.md` links to `ROADMAP-v1-archive.md`, which does not
+    exist in the tree. Following it opens a blank pane; saying so names what happened.
+
+    **And the sentence goes in `docNote`, never `navNote`.** `navNote` is rendered in exactly
+    one place — the graph HUD — which is not on screen while somebody is reading a document.
+    That mistake is already recorded in this file, on `revNote`, which exists because of it.
+    """
+    js = _code(_read("shell.js"))
+    routes = js.split("const DOC_ROUTES = {", 1)[1].split("\n};", 1)[0]
+    link = routes.split("doclink:", 1)[1]
+    assert "DOCS.documents.some" in link, (
+        "nothing works out whether the corpus holds the target"
+    )
+    # **The branch, not the computation.** The first version of this checked only that
+    # `DOCS.documents.some` appeared, and `if (!known)` changed to `if (false)` sailed
+    # through it: the answer was still worked out and no longer acted on. Rule 37, in a
+    # guard written for rule 37's own defect.
+    assert "if (!known) {" in link, (
+        "the corpus is consulted and the answer is not acted on, so every relative link is "
+        "followed and one out of the corpus opens a blank pane"
+    )
+    assert link.index("if (!known) {") < link.index("state.docPath = to"), (
+        "the document is opened before the check, so the refusal cannot stop it"
+    )
+    assert "state.docNote" in link and "state.navNote" not in link, (
+        "the refusal is written to `navNote`, which only the graph HUD draws — invisible to "
+        "a reader in Document mode"
+    )
+    anchor = routes.split("docanchor:", 1)[1].split("doclink:", 1)[0]
+    assert "state.docNote" in anchor, (
+        "an anchor naming a section this document has not got does nothing and says nothing"
+    )
+    # The note is in the chrome, which repaints only when the key moves — so it needs its
+    # own narrow write, or setting it renders nothing (rule 44).
+    assert "function paintDocNote(" in js, (
+        "`docNote` is set and nothing draws it between key changes"
+    )
+    assert "paintDocNote()" in _fn(js, "attachDoc")
+
+
+def test_a_heading_jump_lands_in_the_block_that_holds_the_line() -> None:
+    """The containing block, before the one after it — and chunk 5 depends on this.
+
+    A heading's recorded line is a block's first line and matches exactly. Most other lines
+    anybody opens at are not: a **definition** sits in the middle of a paragraph, which is
+    what a glossary citation will open against. Reaching for the next block instead lands one
+    paragraph past what was asked for: adjacent, plausible, and wrong.
+    """
+    js = _code(_read("shell.js"))
+    fn = _fn(js, "scrollToDocLine")
+    assert "dataset.lineEnd" in fn, (
+        "only the start of each block is consulted, so a line inside one finds nothing and "
+        "falls through to the block after it"
+    )
+    # The **comparison**, not the variable: `innerSpan` stays declared when the narrowing
+    # is removed, and the first version of this guard passed on exactly that.
+    assert "if (span < innerSpan)" in fn, (
+        "the last containing block wins rather than the narrowest, so a line inside a list "
+        "item resolves to the whole list"
+    )
+    prose = _read("prose.js")
+    assert 't.attrSet("data-line-end"' in prose, (
+        "the renderer stamps no end line, so nothing can tell which block holds a line"
+    )
+
+
+def test_author_comments_are_lifted_out_and_counted() -> None:
+    """`html: false` does not hide an HTML comment — it un-hides one.
+
+    With raw HTML refused markdown-it disables the html_block rule **entirely**, so a comment
+    is not a token to catch: it arrives as an ordinary paragraph and renders as body prose.
+    Verified rather than assumed — parsing a document with three HTML constructs yields
+    `html_block: 0`. **7,317 comments across 505 of Mensores' 2,019 documents.**
+
+    Lifted out before parsing, replaced by exactly as many newlines as they held (the
+    frontmatter rule, for the frontmatter reason), and **listed with their lines** rather than
+    dropped: a silent filter is what design rule 1 exists to prevent.
+    """
+    prose = _read("prose.js")
+    fn = prose.split("function stripComments(", 1)[1].split("\n  }", 1)[0]
+    assert "found.push({ line" in fn, "the comments are dropped rather than returned"
+    assert 'match(/\\n/g) || []).join("")' in fn, (
+        "the comment is not replaced by its own newlines, so every data-line below it shifts"
+    )
+    js = _code(_read("shell.js"))
+    reader = _fn(js, "docReaderBody")
+    assert "DOCFILE.comments.length" in reader and "data-docline" in reader, (
+        "the comments are held and never shown, or shown with no way back to where they were"
+    )
+    assert "author comment" in reader, "the count is not stated (design rule 1)"
+
+
+def test_coming_back_from_a_document_says_where_you_were() -> None:
+    """2,064 rows and no mark is coming back to a list you have not read.
+
+    Design rule 26 in the pane that had no answer to it. `state.docPath` cannot serve — it is
+    `""` the moment the reader comes back, which is exactly when this is wanted.
+    """
+    js = _code(_read("shell.js"))
+    assert "let lastDocRead" in js, "nothing remembers which document was open"
+    # **Every door that opens a document must set it**, and the declaration surviving is not
+    # that. Removing the assignment from `docopen` left `let lastDocRead` in place and the
+    # first version of this guard passed — so opening from the list marked nothing while
+    # following a link marked correctly, which is worse than neither.
+    routes_all = js.split("const DOC_ROUTES = {", 1)[1].split("\n};", 1)[0]
+    for door in ("docopen:", "doclink:"):
+        after = routes_all.split(door, 1)[1].split("\n  },", 1)[0]
+        assert "lastDocRead =" in after, (
+            f"`{door[:-1]}` opens a document without recording it, so coming back from that "
+            "door marks nothing"
+        )
+    assert "dl-last" in _fn(js, "applyDocFilter"), "the row is never marked"
+    reveal = _fn(js, "revealLastDocRead")
+    assert "scrollerFor(" in reveal, (
+        "the reveal assumes which element scrolls instead of asking, and the one that looks "
+        "like the scroller is not"
+    )
+    assert "rb.bottom > sb.top && rb.top < sb.bottom" in reveal, (
+        "it scrolls even when the row is already visible, so an automatic move fights a "
+        "deliberate one"
+    )
+    routes = js.split("const DOC_ROUTES = {", 1)[1].split("\n};", 1)[0]
+    close = routes.split("docclose:", 1)[1].split("docline:", 1)[0]
+    assert close.index("render();") < close.index("revealLastDocRead()"), (
+        "the reveal runs before the paint, so it scrolls a pane that does not hold the rows "
+        "yet (rule 49's companion)"
+    )

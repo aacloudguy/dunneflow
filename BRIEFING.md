@@ -148,9 +148,9 @@ carried an identity to be paired on.
 
 **Not built:** `dunneflow infer` (the model pass) · attestation · the project profile ·
 packaging as a binary · any language but Python. **Document mode is being built now** —
-chunks 1, 2, 3 and lane 2 of chunk 4 are in, so the pane is a working view of the map's
-eight documents. What is left is lane 1's **pane**: the program's own 2,064 documents are
-stored, served and renderable, and nothing calls the renderer yet.
+chunks 1, 2, 3 and **both lanes** of chunk 4 are in, so the pane reads both the map's eight
+documents and the program's own 2,064. What is left is chunk 5: the glossary's 235
+documentation-derived definitions still render a dead end instead of opening.
 
 **The revision spine is in, and both ends of a pair are readable.** `WORKING` is a *state*
 rather than an id, and a revision is identified by when it was captured; `seal()` keeps the
@@ -170,18 +170,19 @@ program has a most-commented routine and a maximum alone is a claim nobody can w
 
 ## What we are doing now
 
-**Document mode: chunks 1, 2, 3 and chunk 4's lane 2 are in.**
-904 tests, mypy clean, ruff clean. The approved plan is at
+**Document mode is built** — chunks 1, 2, 3 and both lanes of chunk 4 are in.
+912 tests, mypy clean, ruff clean. The approved plan is at
 `~/.claude/plans/polymorphic-finding-swan.md` — read it before resuming.
 
-**Next: chunk 4's lane 1** — the document list grouped by class with its counts, a filter, a
-reader with the document's own headings as a side nav, and the three link routes `prose.js`
-already emits (`data-doclink`, `data-docanchor`, and the external ones that route
-themselves). Then chunk 5's citations, then chunk 6's records.
+**Next: chunk 5** — `senseOpens()` becomes a *capability* test rather than a provenance test,
+so the **235 documentation-derived definitions** open at their line instead of rendering a
+dead end. Everything it needs is in place: `/api/docsource` serves the spans, `prose.js`
+renders the document, and `data-line-end` is what makes a definition's mid-paragraph line
+resolve to the block that holds it. Then chunk 6's records.
 
-**Lane 2 is a working view** — the map's own eight documents, every row an ordinary
-selection. **Lane 1 now has everything but its pane**: the bodies are stored, three routes
-serve them, and `prose.js` renders them. Nothing calls the renderer yet.
+**Both lanes work.** Lane 2 is the map's own eight documents, every row an ordinary
+selection. Lane 1 is the program's own 2,064 — a list grouped by class, a filter, a reader
+with the document's headings beside it, and all three link kinds routed.
 
 *Earlier the same day:* chunk B of the shortening work, rule 78, and three rounds of looking at
 the code view — the greenbar, the margin fold, three broken buttons, and the rail/centre split.
@@ -189,7 +190,41 @@ the code view — the greenbar, the margin fold, three broken buttons, and the r
 *The paragraphs below are that day's earlier work, kept because the reasoning is recent and
 load-bearing; the current task is the one named above.*
 
-### The latest: Document mode, chunk 3 — the renderer (2026-09-03)
+### The latest: Document mode, chunk 4 lane 1 — the program's documents, read (2026-09-03)
+
+The last piece. 2,064 documents mined for 29,980 headings and readable nowhere now have a
+list, a filter, a reader and a side nav.
+
+**Two lanes sharing a pane — two subjects, not two views of one thing.** One mount, one
+subtree cache, one `render()` branch, so the cache key carries the lane: a subtree keyed on
+the other lane's page is handed back on a switch, which looks exactly like a switch that did
+not work. **The filter hides rows rather than rebuilding** — 2,064 rows per keystroke is the
+cost, and rebuilding also destroys the `<input>` being typed into. The reader wraps to one
+column by **flex-wrap rather than a breakpoint**, because this depends on the *centre pane* and
+`@media` can only ask about the *window*.
+
+**The screenshot found what nothing else could.** `html: false` does not hide an HTML comment
+— **it un-hides one**: markdown-it disables the `html_block` rule entirely, so a comment
+arrives as an ordinary paragraph and renders as body prose. **7,317 of them across 505 of
+2,019 documents.** The first fix, written against `html_block` tokens, counted zero — there
+are none. They are lifted out before parsing, replaced by their own newlines, and listed with
+their lines rather than dropped.
+
+**And a heading that was not one found what chunk 5 will need.** One of 1,566 stopped matching
+after the comment strip: `## Discoveries` **inside a code fence**, recorded by the extractor as
+a real heading (3–4 such in 29,980). What it exposed is that blocks carried only their *start*
+line — and the lines anybody opens at are mostly not the first line of anything. **A definition
+sits mid-paragraph, which is exactly what chunk 5 opens against.** Every block now carries
+`data-line-end` and the lookup takes the innermost containing block. Zero unreachable headings.
+
+**Three of my own guards survived their mutations, all the same way**: each checked that a
+*name appeared* rather than that anything happened. Rule 37, three times, in a chunk whose own
+defects are rule 37's shape.
+
+**23 mutations, all CAUGHT** on the second pass. The list is 56 ms to paint and 5 ms to
+repaint; the filter over 2,064 rows is 2 ms; the 1.32 MB worst case is 668 ms to open.
+
+### Before that: Document mode, chunk 3 — the renderer (2026-09-03)
 
 `prose.js` and the vendored `markdown-it`. **Its own file, and the boundary is `graph.js`'s**:
 it turns text into markup and knows nothing about this page, and what it has to say leaves as

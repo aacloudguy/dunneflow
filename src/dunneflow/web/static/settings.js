@@ -333,6 +333,17 @@ const DEFAULTS = {
      to the routine you have picked* — and a page that opens on a menu cannot do that on
      arrival. `routines` holds a row for the thing most selections are. */
   docId: 'routines',
+  /* Which lane of Document mode. `map` is the eight documents this tool generates about the
+     program; `program` is the 2,064 the program itself carries. Two subjects sharing a pane
+     rather than two views of one thing, so the switch is real and is remembered. */
+  docLane: 'map',
+  /* Which of the program's own documents is open, '' for the list. */
+  docPath: '',
+  /* Whether a document's author comments -- HTML comments, hidden by whoever wrote them --
+     are shown. Off: `html:false` escapes them into visible prose, and 7,317 of them across
+     505 of Mensores' documents would read as body text. Folded, never dropped, and counted
+     on the page (design rule 1). */
+  docComments: false,
   /* The same question asked of the routine list and the table: do these rows say what the
    * comparison found about them. A **second** switch rather than one governing both, and
    * the reason is what each costs. The code overlay fetches a per-file difference and
@@ -571,6 +582,9 @@ function resetSettings(program, current) {
     codeMarks: 'the margin column beside the code',
     codeRailList: 'whether the code rail is showing its file list',
     docId: 'which of the map\'s documents is open',
+    docLane: 'which lane of document mode',
+    docPath: 'which of the program\'s own documents is open',
+    docComments: 'whether a document shows its author comments',
     tableOverlay: 'the change overlay on the routine list and the table',
     anomalyOverlay: 'the change overlay on the findings',
     navGroups: 'how many navigator groups open at once', navOpen: 'which groups are open',

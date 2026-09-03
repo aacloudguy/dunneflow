@@ -1784,7 +1784,6 @@ table.grid tbody tr[aria-selected="true"] td:first-child { box-shadow: inset .18
 .doc h2 { font-size: .95rem; margin: 1.4rem 0 .4rem; letter-spacing: -.01em; }
 .doc p { margin: .5rem 0; }
 .doc .lead { color: var(--text-muted); }
-.doc .prose { font-family: var(--f-serif); font-size: .88rem; line-height: 1.6; }
 
 /* The eight, always all of them and always one click away. A strip rather than a
    browse-then-open pair, because eight fits and 626 files did not. */
@@ -1855,12 +1854,115 @@ table.grid.docgrid tbody tr.docrow-unlinked td { color: var(--text-faint); }
 .docwhere { font-size: .72rem; }
 .docother { margin-top: 1.2rem; padding-top: .6rem; border-top: 1px solid var(--border); }
 
+/* The two lanes. Not a tab strip inside one subject — two subjects sharing a pane, so the
+   switch sits above everything and is the first thing read. */
+.doclanes { display: flex; gap: .3rem; margin-bottom: .6rem;
+            border-bottom: 1px solid var(--border); padding-bottom: .5rem; }
+.doclanes button {
+  font: inherit; font-size: .78rem; font-weight: 600; padding: .3rem .7rem; cursor: pointer;
+  border: 1px solid var(--border); border-radius: .25rem;
+  background: var(--raised); color: var(--text-muted);
+}
+.doclanes button:hover { color: var(--text); border-color: var(--border-strong); }
+.doclanes button[aria-pressed="true"] {
+  background: var(--accent); color: var(--on-accent); border-color: var(--accent);
+}
+.doclanes .tabn { font-weight: 400; opacity: .8; font-variant-numeric: tabular-nums; }
+
+.docfilter { display: flex; align-items: center; gap: .6rem; margin-bottom: .55rem;
+             flex-wrap: wrap; }
+.docfilter input {
+  font: inherit; font-size: .78rem; padding: .3rem .5rem; min-width: 18rem; flex: 0 1 24rem;
+  border: 1px solid var(--border-strong); border-radius: .25rem;
+  background: var(--surface); color: var(--text);
+}
+.docnote { margin: 0 0 .6rem; }
+
+/* The list. A `<ul>` rather than a table: a document has a name and a path and a handful of
+   counts, and none of them is a column anybody sorts by. */
+.doclist { list-style: none; margin: 0; padding: 0; }
+.doclist li { display: flex; align-items: baseline; gap: .6rem; padding: .12rem .5rem;
+              border-bottom: 1px solid var(--border); }
+.doclist li:hover { background: var(--raised); }
+/* `flex: 0 1 auto`, so the counts sit **beside** the path rather than at the far edge of
+   the pane. With `1 1 auto` the button took all the slack and pushed them a thousand pixels
+   from the name they belong to — legible, aligned, and unreadable as a row. */
+.doclist button {
+  font: inherit; text-align: left; background: none; border: 0; padding: .18rem 0;
+  cursor: pointer; color: inherit; display: flex; align-items: baseline; gap: .5rem;
+  min-width: 0; flex: 0 1 auto;
+}
+.doclist button:disabled { cursor: default; opacity: .55; }
+.dl-title { font-size: .8rem; font-weight: 600; overflow-wrap: anywhere; }
+.dl-path { font-size: .72rem; color: var(--text-faint); overflow-wrap: anywhere; }
+.dl-meta { display: flex; gap: .5rem; font-size: .7rem; color: var(--text-muted);
+           font-variant-numeric: tabular-nums; white-space: nowrap; }
+.dl-dup, .dl-unheld { color: var(--text-faint); font-style: italic; }
+/* Where you were when you left the list. Design rule 26 in the pane that had no answer to
+   it: coming back to 2,064 rows with no mark is coming back to a list you have not read. */
+.doclist li.dl-last { background: var(--accent-soft); }
+.doclist li.dl-last .dl-title { box-shadow: inset .1875rem 0 0 var(--accent); padding-left: .3rem; }
+
+/* The reader: the document's own headings, and the document. Two columns while there is
+   room for two, and one when there is not.
+ *
+ * **Flex-wrap rather than a breakpoint**, and the reason is that a breakpoint would be
+ * asking the wrong thing. This layout depends on how wide the *centre pane* is, and a
+ * `@media` query can only ask how wide the **window** is — which is a poor proxy here,
+ * because the reader can collapse the navigator and the inspector and move the centre by
+ * hundreds of pixels without touching the window. Rule 53: a layout bounded by arithmetic
+ * is right at one size.
+ *
+ * The bases are in `rem`, so the wrap point moves with the scale control the way every other
+ * dimension does (design rule 3) — which a `@media` breakpoint cannot do at all (rule 28).
+ * `flex: 100` on the prose is what makes the nav take its basis and the prose take the rest
+ * rather than the two sharing the slack. */
+.docread { display: flex; flex-wrap: wrap; gap: 1.2rem; align-items: flex-start; }
+.docnav { font-size: .74rem; flex: 1 1 12rem; max-width: 18rem;
+          position: sticky; top: 0; max-height: 85vh; overflow-y: auto; }
+.docnav-h { font-size: .66rem; font-weight: 700; letter-spacing: .09em;
+            text-transform: uppercase; color: var(--text-muted); margin-bottom: .4rem; }
+.docnav ol { list-style: none; margin: 0; padding: 0; }
+.docnav button { font: inherit; text-align: left; background: none; border: 0; cursor: pointer;
+                 color: var(--text-muted); padding: .12rem 0; overflow-wrap: anywhere; }
+.docnav button:hover { color: var(--accent-text); }
+.docnav .dn-l1 > button { font-weight: 700; color: var(--text); }
+.docnav .dn-l2 { padding-left: .6rem; }
+.docnav .dn-l3 { padding-left: 1.2rem; }
+.docnav .dn-l4, .docnav .dn-l5, .docnav .dn-l6 { padding-left: 1.8rem; }
+.docmain { flex: 100 1 26rem; min-width: 0; }
+.docfront { margin: 0 0 1rem; font-size: .74rem; color: var(--text-muted); }
+.docfront summary { cursor: pointer; }
+.doctextnote { margin-top: 0; }
+/* Author comments: listed, folded, and drawn as what they are — not as prose, because they
+   are not prose. See `prose.js`: with `html:false` markdown-it disables the html_block rule
+   entirely, so a comment arrives as an ordinary paragraph and reads as body copy. 7,317 of
+   them across 505 documents. Each carries the line it was on, so it opens where it lived. */
+.doccommentlist { list-style: none; margin: .4rem 0 0; padding: 0; }
+.doccommentlist li { margin: 0 0 .5rem; }
+.doccommentlist button { font: inherit; font-size: .7rem; background: none; border: 0;
+                         padding: 0; cursor: pointer; color: var(--accent-text); }
+.doccommentlist pre { margin: .15rem 0 0; padding: .35rem .5rem; background: var(--raised);
+                      border-left: .1875rem solid var(--border-strong); color: var(--text-faint); }
+/* Where a jump landed. It fades rather than sticking: it answers "what moved", which is a
+   question the reader has for about a second. */
+.docflash { animation: docflash 1.6s ease-out 1; }
+@keyframes docflash {
+  from { background: var(--accent-soft); }
+  to   { background: transparent; }
+}
+
 /* ── lane 1: a document's own prose, rendered ──
  *
  * A **measure**, unlike lane 2's tables, because this is text meant to be read: `46rem` is
  * the width the document pane carried before it held tables, and it comes back for the one
  * thing it was chosen for. */
-.prose { max-width: 46rem; font-size: .84rem; line-height: 1.62; }
+/* **One rule, and the serif is deliberate.** `.doc .prose` set the family and the size and
+   this set the size again — two rules for one thing, and the higher-specificity one silently
+   won, so the number written here was not the number on screen. The serif was the ratified
+   design's own call for this pane and it is kept: it is the only surface in the tool that is
+   *read* rather than scanned, and every other one is sans. */
+.prose { font-family: var(--f-serif); max-width: 46rem; font-size: .88rem; line-height: 1.62; }
 .prose h1, .prose h2, .prose h3, .prose h4, .prose h5, .prose h6 {
   letter-spacing: -.01em; text-wrap: balance; margin: 1.5rem 0 .5rem; scroll-margin-top: 3rem;
 }

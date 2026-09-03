@@ -197,6 +197,18 @@ docs   ──► extract ──► docs.db  (SQLite) ─────────
   reason, and one per program holding every revision. 2,056 bodies for 2,064 paths, 38.7 MB
   of prose in 14.8 MB; the eight duplicates cost nothing. `--no-doc-source` beside
   `--no-source`, separately, because the two travel separately.
+- **Document mode is two lanes sharing one pane**, and they are two subjects rather than two
+  views of one thing: `documents.py` is prose this tool *generates* about the program,
+  `corpus.py` is prose somebody *wrote*. One mount, one subtree cache and one `render()`
+  branch serve both, so the cache key carries the lane — a subtree keyed on the other lane's
+  page is handed back on a switch, and that looks exactly like a switch that did not work.
+  The filter over the 2,064 documents **hides rows rather than rebuilding**: the query is
+  deliberately out of the cache key, because rebuilding also destroys the `<input>` being
+  typed into and takes the focus with it. A document is **rendered once when it is fetched**,
+  never at paint time — parsing is the one cost a subtree cache cannot save. A relative link
+  is **checked against the corpus before it is followed** (666 of them, and many point
+  outside the scanned tree), and the refusal goes in `docNote`, never `navNote`: that is
+  rendered only in the graph HUD, which nobody reading a document is looking at.
 - `web/static/prose.js` — **the document renderer**, and the only third-party parser in the
   tool. Its own file because the boundary is `graph.js`'s: it turns text into markup and
   knows nothing about this page, and what it has to say leaves as **data attributes** —
@@ -213,7 +225,14 @@ docs   ──► extract ──► docs.db  (SQLite) ─────────
   can follow, 5 images. **YAML frontmatter is blanked, never removed**: markdown-it parses it
   as a setext heading, 989 of 2,019 documents open with one, and *deleting* the lines would
   shift every `token.map` below by a constant — a page that renders perfectly with every
-  number on it wrong.
+  number on it wrong. **An HTML comment is lifted out the same way and for a sharper reason:
+  `html: false` does not hide one, it un-hides one.** With raw HTML refused, markdown-it
+  disables the `html_block` rule *entirely*, so a comment is not a token to catch — it
+  arrives as an ordinary paragraph and renders as body prose. 7,317 of them across 505
+  documents. They are listed with their lines rather than dropped (design rule 1). Every
+  block also carries `data-line-end`, because the lines anybody opens at are mostly **not**
+  the first line of a block: a definition sits mid-paragraph, and reaching for the next block
+  instead lands one paragraph past what was asked for.
 - `web/documents.py` — **lane 2 of Document mode: the map's own eight documents**, and
   `corpus.py` below is lane 1. Close names for different subjects: this is prose the tool
   *generates* about the program, that is the prose somebody *wrote*. Every row carries the

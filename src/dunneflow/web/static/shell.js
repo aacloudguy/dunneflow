@@ -273,6 +273,17 @@ const state = {
    * on a short window. So it folds, and the fold is a fold rather than a hide: the bar stays,
    * says what it is, and opens (design rule 23, and rule 45 -- hidden is not absent). */
   codeProv: true,
+  /* Whether the code's **margin column** is drawn. Measured on `_extraction_state.py`, the
+   * fixed 12rem reserve fails from both directions at once: **1,573 of 1,703 rows (92.4%)
+   * carry no mark** and pay the whole indent, while **49 of the 130 marks that exist (37.7%)
+   * are clipped** by that same 12rem. A comment in `tokens.css` records it was already
+   * narrowed once from 15rem for the first of those reasons, which treated the symptom.
+   *
+   * Neither width is right, because reading *code* and reading *marks* are different jobs
+   * and one column cannot serve both. So it folds, and Tom picks per session (design rule 2
+   * in its honest form: not two interchangeable options, but two different questions). On,
+   * because the margin is a built feature and a reader must meet it before deciding. */
+  codeMarks: true,
   /* The same switch for the routine list and the table. Two switches rather than one,
    * because what they cost differs: the code overlay fetches a difference per file and can
    * mark four hundred lines, while these marks are read off an answer the page already
@@ -5645,6 +5656,16 @@ function viewCode() {
           CODEFILE.defs.length} definitions · ${CODEFILE.marks.length.toLocaleString()} marks</div>
       </div>
       ${overlaySwitchHtml("code")}
+      ${/* Drawn only where it can do something: with no marks in the file there is no column
+           to fold, and a switch that governs nothing is design rule 16's dead control with a
+           caret on it. The count is on the button because "fold the margin" and "fold the
+           margin holding 186 things" are different offers (rule 32). */
+        CODEFILE.marks.length ? `<button class="linkbtn" data-codemarks="1"
+          aria-pressed="${state.codeMarks}"
+          title="${state.codeMarks ? "Fold the margin — the marks become a glyph beside the line number"
+                                   : "Show the margin — the marks in full, beside the lines they describe"}"
+          >${state.codeMarks ? "\u25be" : "\u25b8"} margin <span class="num"
+            >${CODEFILE.marks.length.toLocaleString()}</span></button>` : ""}
       <button class="linkbtn" data-codedetach="1"
               title="Open the code in a window of its own, in sync with this one">detach ⧉</button>
       <button class="linkbtn" data-codeback="1" title="Back to the list of files">files ›</button>
@@ -5698,6 +5719,14 @@ function codeTable() {
    * three columns with none of that, and the alignment is exactly as reliable because every
    * width is declared rather than negotiated. */
   const ov = codeOverlay();
+  /* **A file with nothing to mark renders no mark elements at all**, whichever way the fold
+     is set. The toggle is a reader's preference between two jobs; this is a fact about the
+     file, and it is answered in the markup rather than in CSS because the first attempt was
+     a `.nomarks` rule that **lost on specificity** to the fold's own
+     `:root[data-code-marks="off"] .codetable .cglyph` — (0,3,0) against (0,4,0) — so the
+     column stayed 20px wide on a file that could never fill it. Not rendering a thing cannot
+     lose a cascade it is not in (rule 29's family). */
+  const bare = !CODEFILE.marks.length;
   const rows = [];
   if (ov) rows.push(...ghostRows(ov, 0, "crow-wide"));
   CODEFILE.lines.forEach((text, i) => {
@@ -5707,9 +5736,21 @@ function codeTable() {
     rows.push(`<span class="crow${gone ? ` chg tone-${ov.base.tone}` : ""}" id="crow-${n}">` +
       `<span class="cnum">${n}</span>` +
       (ov ? `<span class="csign" aria-hidden="true">${gone ? signOf(ov.base.tone) : ""}</span>` : "") +
-      `<span class="cmark">${ms.map(m => `<span class="mk mk-${esc(m.kind)}"` +
+      /* **The glyph is always in the markup and the CSS decides which of the two shows.**
+         Folded, a marked line still has to say so -- hidden is not absent (rule 45), and a
+         listing that silently drops the only sign that line 41 writes to a table is a filter
+         with no notice (design rule 1). Both forms are rendered because the fold is then a
+         stylesheet's business: no repaint, and the 1.37 MB subtree this builds is cached and
+         re-attached rather than rebuilt. The glyphs are `MARK_GLYPH`'s, the same table the
+         navigator's pane reads, and the title is `markTitle`'s -- one answer, two surfaces
+         (rule 13). */
+      (bare ? "" : (ms.length
+        ? `<span class="cglyph" title="${esc(ms.map(markTitle).join("\n"))}"
+            >${esc([...new Set(ms.map(m => MARK_GLYPH[m.kind] || "\u00b7"))].join(""))}</span>`
+        : `<span class="cglyph"></span>`)) +
+      (bare ? "" : `<span class="cmark">${ms.map(m => `<span class="mk mk-${esc(m.kind)}"` +
             ` title="${esc(m.kind)}${m.note ? " · " + esc(m.note) : ""}"` +
-            `>${esc(m.label)}${m.detail ? `<i>${esc(m.detail)}</i>` : ""}</span>`).join("")}</span>` +
+            `>${esc(m.label)}${m.detail ? `<i>${esc(m.detail)}</i>` : ""}</span>`).join("")}</span>`) +
       `<span class="ccode">${codeLineHtml(text, links.get(n))}</span></span>`);
     if (ov) rows.push(...ghostRows(ov, n, "crow-wide"));
   });
@@ -5726,7 +5767,14 @@ function codeTable() {
    * 17.28px line-height**, twice what it should be, and 29,000px of scrolling that carried
    * nothing. Invisible to every check here, because the markup was right, the classes were
    * right and the rule doing it was three lines away in another file. */
-  return `<pre class="codetable" id="codeTable">${rows.join("")}</pre>`;
+  /* **A file with nothing to mark pays for no column**, whichever way the fold is set. The
+     toggle is a reader's preference between two jobs; this is a fact about the file, and
+     284 of Mensores' 628 files have no marks at all. Baked into the markup rather than
+     stamped on the root, because it is a property of *this* file and the subtree is cached
+     under the file's own key -- a root stamp would follow the reader to the next file and be
+     wrong there. */
+  return `<pre class="codetable${bare ? " nomarks" : ""}" id="codeTable">${
+    rows.join("")}</pre>`;
 }
 
 /* The sign beside a marked line. It follows the **tone**, which follows the word, which
@@ -5755,7 +5803,7 @@ function ghostRows(ov, after, cls) {
       out.push(`<span class="crow ghost chg tone-${ov.compared.tone} ${cls}">` +
         `<span class="cnum ghostn" title="line ${n} of the compared version">${n}</span>` +
         `<span class="csign" aria-hidden="true">${signOf(ov.compared.tone)}</span>` +
-        `<span class="cmark"></span>` +
+        `<span class="cglyph"></span><span class="cmark"></span>` +
         `<span class="ccode">${esc(text) || "&nbsp;"}</span></span>`);
     });
   }
@@ -7249,6 +7297,18 @@ function codeOnScreen() {
       || groupOpen(NAV_GROUPS.find(g => g.id === "navCode"));
 }
 
+/* The margin fold, stamped on the root so both code surfaces read one answer.
+ *
+ * On `:root` rather than on either pane: the centre's table and the navigator's pane both
+ * draw marks, both are cached subtrees that are re-attached rather than rebuilt, and a stamp
+ * on each is two places that can disagree about one setting (rule 51). Called from `render()`
+ * as well as from the button, so a reload lands with the reader's choice already in force
+ * rather than showing the margin for a frame and folding it after (rule 68 -- a restore is a
+ * setter, and it must do what the setter does). */
+function applyCodeMarks() {
+  document.documentElement.dataset.codeMarks = state.codeMarks ? "on" : "off";
+}
+
 /* Which selection the code pane has already been walked for.
  *
  * **Not a "have I walked" flag but a "walked for *what*" one**, and the difference is the
@@ -8092,6 +8152,7 @@ function render() {
    * file for a frame and correct it on the next. The two that mount into a *painted*
    * container are at the foot of this function instead, and say so there. */
   followSelectionIntoCode();
+  applyCodeMarks();
   $("#crumbs").innerHTML = crumbsFor();
   $("#modes").style.visibility = CENTRE_MODES.includes(state.view) ? "visible" : "hidden";
   /* The layout choice sits inside graph mode, never beside it. Graph / table / document are
@@ -8701,6 +8762,22 @@ function wire() {
   /* The provenance line's fold. Its own key rather than a member of `state.insp`, because
      that map is the *inspector's* sections and "Collapse all" walks it -- a centre-pane
      element answering to the inspector's button is one control with two claims (rule 67). */
+  /* The margin fold. Narrow for the reason the provenance fold is -- the built subtree is
+     1.37 MB and re-attaching it costs 1,358 ms -- but the attribute goes on `:root` rather
+     than on a nearby element, because **two** surfaces draw marks: the centre's table and the
+     navigator's pane. One stamp, both answered, and neither rebuilt (rule 51). The button's
+     own label and count still want the chrome, so that much is repainted. */
+  $$("[data-codemarks]").forEach(b => b.addEventListener("click", () => {
+    state.codeMarks = !state.codeMarks;
+    used("codemarks:" + (state.codeMarks ? "shown" : "folded"));
+    applyCodeMarks();
+    b.setAttribute("aria-pressed", String(state.codeMarks));
+    /* The trailing space is part of the label. Without it the first click renders
+       "margin186": the markup had a newline between the word and the count and the handler
+       replaced it with a string that did not, so the button was right until it was used. */
+    b.firstChild.nodeValue = (state.codeMarks ? "\u25be" : "\u25b8") + " margin ";
+    persist();
+  }));
   $$("[data-codeprov]").forEach(b => b.addEventListener("click", () => {
     state.codeProv = !state.codeProv;
     used("codeprov:" + (state.codeProv ? "open" : "shut"));
@@ -9103,7 +9180,7 @@ const WIRED_ATTRS = new Set([
   /* The code browser's three. `codelink` is on every clickable name in the source and
      `CODE_ROUTES` is what listens for all of them -- one table, checked by the guard that
      reads it, so a fourth kind added there without a listener fails by name. */
-  "codeback", "codedetach", "codelink", "codeopen", "codemode", "codeoverlay", "codeprov",
+  "codeback", "codedetach", "codelink", "codeopen", "codemode", "codeoverlay", "codeprov", "codemarks",
   /* The routine list and the table's own overlay switch. A second switch rather than one
      governing both surfaces: the code overlay fetches a difference per file and these
      marks are read off an answer already held, so wanting one without the other is
@@ -11830,7 +11907,7 @@ const PERSISTED = [
   "diagram", "nodeShapes", "diagramId", "diagramPorts", "diagramCursor", "diagramEdgeWidth",
   "navCase", "navWord", "navRegex",
   "searchCase", "searchWord", "searchRegex",
-  "panels", "inspectorAuto", "navWidth", "codeWidth", "codeFile", "codeOverlay", "codeProv",
+  "panels", "inspectorAuto", "navWidth", "codeWidth", "codeFile", "codeOverlay", "codeProv", "codeMarks",
   "tableOverlay", "anomalyOverlay",
   "navGroups",
   "navOpen", "navCap",

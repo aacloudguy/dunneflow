@@ -163,8 +163,8 @@ program has a most-commented routine and a maximum alone is a claim nobody can w
 
 ## What we are doing now
 
-**Paused 2026-09-03, after chunk B and the pane-reconcile rule it uncovered.**
-839 tests, mypy clean, ruff clean, self-check green, console clean, working tree clean.
+**Paused 2026-09-03, after chunk B, rule 78, and the code view looked at.**
+842 tests, mypy clean, ruff clean, self-check green, console clean, working tree clean.
 
 *The shortening work is complete.* The remaining twelve `text-overflow: ellipsis` sites were
 measured before being changed, and measuring struck three of them, changed the mechanism from
@@ -203,7 +203,44 @@ beside it. Every number above is a measurement and every guard is a guard; what 
 is a look. Three things now wait on a real window: the constants surface, the blank-graph fix,
 and this.
 
-### The latest: no pane assumes what it was showing is still true (2026-09-03)
+### The latest: the code view, looked at (2026-09-03)
+
+**Four things in one screenshot, at Tom's own keyboard and his own window.** Three were real
+and one was a question that answered itself.
+
+**The greenbar was a row breaking twice.** `rows.join("\n")` is the reflex, and inside a
+`<pre>` it is not whitespace between tags — it is content. `white-space: pre` renders it as a
+line break and the row span is already `display: block`, so every row was followed by an empty
+one: **1,703 rows in 58,932px, 34.6px a row against a 17.28px line-height.** Now 29,520px.
+**Three surfaces had it** — the centre's table, the navigator's pane, the glossary's citation
+viewer — and only one was reported; the others were found by looking at the remaining `<pre>`
+builders. `srcPane` keeps its newline and that is the rule rather than an exception: its rows
+are not wrapped in a block. **A row breaks once**, and the guard asserts both directions.
+
+**The indent was not an indent** — it is the margin column, and a fixed 12rem reserve fails
+from both ends at once: **92.4% of rows carry no mark** and pay it in full, while **37.7% of
+the marks that exist are clipped** by it. (A comment records it was already narrowed once from
+15rem, which treated the symptom; the mark widths run median 185px to **max 1,263**, so no one
+width can serve both.) Three ways out were measured and put to Tom. **His call: fold it** —
+248px down to **76px**, and at his 24px root that is 258px of code back. Folded, a marked line
+still says so with a glyph carrying the whole mark on its title (rule 45, design rule 1), and
+a file with **no** marks renders no mark elements at all.
+
+**The line numbers were asked about and left alone.** `3.5rem`, right-aligned, four digits —
+exactly the reason Tom guessed, on a 1,703-line file.
+
+**The grey area is provenance**, and it folds now per his standing rule. *That fold was itself
+a dead control in its first draft*, which is worth more than the fold: `render()` repaints the
+code chrome only when `codeDomKey()` moves, so flipping the state and calling `render()` set
+the field and changed nothing on screen — design rule 16 with every part working, in a control
+added to satisfy a rule about controls.
+
+*Two guards went blind rather than green on the way*, which is the only reason they were
+survivable — one matching a class attribute that gained a second token, one `_fn_body` unable
+to see an `async function`. And one self-inflicted `SyntaxError`: two `const bare` in one
+scope, caught by `test_the_javascript_parses` on the next run.
+
+### Before that: no pane assumes what it was showing is still true (2026-09-03)
 
 **Found by Tom mid-rabbit, and it relocated the defect twice.** *"When I change the center
 panel to Code, that panel shows `mensores/_internal/_governed_gates.py` which is not what I

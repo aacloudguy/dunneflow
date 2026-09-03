@@ -8043,3 +8043,117 @@ sentences, none of them the true one, which the routine list already carries as 
 *"Module-level code: runs at import, before anything is called."* Same shape as the constants
 defect: a pane answering a question this kind cannot be asked. `viewInspectorConstant` is the
 precedent — route on kind. Not built; Tom found it on the way past this one.
+
+
+## The code view, looked at — 2026-09-03
+
+Four things in one screenshot, at Tom's own keyboard and his own window. **Three were real
+and one was a question that answered itself.**
+
+### The greenbar: a row was breaking twice
+
+*"Every line has a blank between it, like old IBM greenbar printouts. Kind of takes me back
+40 years, but that's not a good thing."*
+
+`rows.join("\n")` — the reflex, the thing every other list builder in this file does, and the
+thing that makes generated markup readable in devtools. Inside a `<pre>` it is not whitespace
+between tags, it is **content**: `white-space: pre` renders it as a line break, and the row
+span is `display: block` and has already broken the line. So every row was followed by an
+empty one. **1,703 rows in 58,932px — 34.6px a row against a 17.28px line-height**, and
+29,000px of scrolling carrying nothing. Now 29,520px.
+
+**Three surfaces had it and only one was reported.** The centre's code table, the navigator's
+code pane, and the glossary's citation viewer; the second and third were found by going to
+look at the other `<pre>` builders once the first was understood. `srcPane` keeps its newline
+and that is the rule rather than an exception to it — its rows are *not* wrapped in a block,
+so there the newline is the only thing breaking the line. What has to hold is that **a row
+breaks once**, never that a separator has one spelling, and the guard asserts both directions.
+
+### The indent was not an indent
+
+*"The indent is also large, so you have to scroll over to see the text. If that's real, ok,
+but otherwise it needs to be removed."*
+
+It is not real: it is the margin column, a fixed 12rem reserve where marks are drawn. Measured
+on the file he was looking at, it fails **from both directions at once**:
+
+| | |
+|---|---|
+| rows carrying no mark, paying the whole indent | **1,573 of 1,703 — 92.4%** |
+| marks that exist and are clipped by that same 12rem | **49 of 130 — 37.7%** |
+| mark widths | min 85px · median 185 · p90 341 · **max 1,263** |
+
+A comment in `tokens.css` records that it was already narrowed once from 15rem to 12rem for
+the first of those reasons. That treated the symptom: no single width serves both, because
+the long tail means "wide enough for the marks" is 1,263px and "narrow enough for the code"
+is zero.
+
+Three ways out were measured against each other and put to Tom: fold it, move marks to the
+end of the line, or size the reserve to the file's own widest mark. **His call: fold it.**
+Code starts at 248px with the margin shown and **76px folded** — 172px back at a 16px root,
+258px at his 24px.
+
+**Folded, a marked line still says so.** A glyph from `MARK_GLYPH` — the same table the
+navigator's pane reads — sits where the column was, carrying the whole mark on its title
+(`markTitle`, the same function, so one answer serves two surfaces). Dropping it would make
+the fold a silent filter over the one thing the margin exists to report (design rule 1, rule
+45). Both forms are in the markup and a stylesheet chooses, so folding repaints nothing.
+
+**And a file with nothing to mark renders no mark elements at all**, whichever way the fold
+is set — the toggle is a preference between two jobs, this is a fact about the file. The first
+attempt at that was a `.nomarks` CSS rule, and it **lost on specificity** to the fold's own
+`:root[data-code-marks="off"] .codetable .cglyph` — (0,3,0) against (0,4,0) — so the column
+stayed 20px wide on a file that could never fill it. Answered in the builder instead: not
+rendering a thing cannot lose a cascade it is not in.
+
+### The line numbers: asked and answered, nothing changed
+
+*"There's a bit of space before the line numbers, I'm guessing that's to permit large numbers
+— again, if that's the case, leave it."*
+
+That is exactly what it is. `.cnum` is `3.5rem`, right-aligned, which holds four digits and
+the file is 1,703 lines. Left alone.
+
+### The grey area: provenance, and now a fold
+
+It is the line that says these bytes came from the content-addressed sidecar **as measured**
+at a recorded instant, not as the tree stands now — the same claim the inspector's source view
+makes, and design rule 13's provenance. It is 46px of a pane whose whole job is the lines
+above it, **22.6% of the body on a short window**, and it says the same sentence on every
+file. So it folds, per Tom's standing rule that anything that can collapse should.
+
+A fold rather than a hide: the bar stays and says what it is, so there is something on screen
+to open (rule 45, design rule 23).
+
+**That fold was itself a dead control in its first draft**, which is worth more than the fold
+is. `render()`'s code branch repaints its chrome only when `codeDomKey()` moves — file,
+availability, overlay — because rebuilding it re-attaches the table, measured at 1,358 ms on
+`_server.py`. The footer is chrome. So flipping the state, persisting it and calling
+`render()` set the field and **changed nothing on screen**: design rule 16 with every part
+working, in a control added to satisfy a rule about controls. Putting `codeProv` in the key
+would fix it and buy a full re-attach for a one-line toggle, so the handler writes the two
+attributes itself — the narrow update this file already records for the file filter.
+
+### Verified
+
+842 tests (3 new), mypy clean, ruff clean, console clean. Driven in Chrome: row pitch 17.3px
+against a 17.28px line-height on the centre and 16.8 against 16.8 in the navigator's pane;
+the margin folds to 76px and back to 248 and survives a reload folded (rule 68); an unmarked
+file renders **zero** mark spans, starts its code at 56px and draws no toggle; the glyph
+carries `import: import — __future__.annotations` on its title.
+
+**Eleven mutations across three guards, all CAUGHT**, including the counter-case that
+`srcPane` must *keep* its newline — without it the rule reads as "never a newline" and the
+next person deletes the one that is load-bearing.
+
+*Two guards went blind rather than green on the way, which is the only reason they were
+survivable.* One matched `<pre class="codetable"` including the closing quote and threw when
+the class gained a conditional second token; the other was `_fn_body` failing on
+`async function`. A guard that cannot find its subject must say so — one that quietly finds
+nothing passes every mutation of itself (rule 37).
+
+*And one self-inflicted defect worth recording*: the first pass added `const bare` at the top
+of the builder while an older `const bare` still stood near the `return`, which is a
+`SyntaxError` and took the whole page down. `test_the_javascript_parses` caught it on the next
+run. Two declarations of one name in one scope is what a large, careful, multi-step edit does
+when it is applied in pieces.

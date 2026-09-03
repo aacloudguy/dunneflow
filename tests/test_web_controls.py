@@ -9884,7 +9884,10 @@ def test_no_pre_of_block_rows_is_joined_by_a_newline() -> None:
         # From that <pre>'s opening tag to the next `</pre>`. Not excluding backticks: these
         # builders nest template literals, and a character class that ruled them out matched
         # nothing at all -- a guard that finds no code passes every mutation of it.
-        open_at = js.index(f'<pre class="{pre_cls}"')
+        # On the class *token*, not the whole attribute: `codetable` gained a conditional
+        # second class, and matching the closing quote made this guard blind -- it threw
+        # rather than passing, which is the only reason that was survivable (rule 37).
+        open_at = js.index(f'<pre class="{pre_cls}')
         span = js[open_at:js.index("</pre>", open_at)]
         assert 'join("\\n")' not in span, (
             f'<pre class="{pre_cls}"> joins block-level rows with a newline, so every row is '
@@ -9932,4 +9935,60 @@ def test_the_provenance_line_folds_without_repainting_the_file() -> None:
                          css), (
         "the whole footer is hidden when folded, so nothing on screen says there is "
         "provenance to open -- hidden is not absent (rule 45)"
+    )
+
+
+def test_the_code_margin_folds_and_says_what_it_folded() -> None:
+    """One reserve cannot serve two jobs, so the reader picks.
+
+    Measured on `_extraction_state.py`: a fixed 12rem margin leaves **1,573 of 1,703 rows
+    (92.4%) carrying no mark** and paying the whole indent, while still clipping **49 of the
+    130 marks that exist (37.7%)**. A comment records it was already narrowed once from 15rem
+    for the first of those, which treated the symptom. Reading code and reading marks are
+    different questions; Tom's call was to fold it.
+
+    Folded, a marked line **still says so**. A glyph is not the tag and is not meant to be —
+    it says *there is something here* and carries the whole of it on its title. Dropping it
+    would make the fold a silent filter over the one thing the margin exists to report
+    (design rule 1, rule 45).
+    """
+    js = _code(_read("shell.js"))
+    css = _css_code(_read("tokens.css"))
+
+    assert 'class="cglyph"' in js, (
+        "a folded margin shows nothing at all on a marked line, so the fold silently drops "
+        "the only sign that the line touches a boundary"
+    )
+    assert re.search(r':root\[data-code-marks="off"\][^{]*\.cmark\s*{[^}]*display:\s*none',
+                     css), "the fold no longer hides the margin"
+    assert re.search(r':root\[data-code-marks="off"\][^{]*\.cglyph\s*{[^}]*display:\s*inline',
+                     css), "the folded state no longer shows the glyph"
+
+    # The stamp is on :root, because two surfaces draw marks and one setting must reach both.
+    apply_fn = _fn_body(_read("shell.js"), "applyCodeMarks")
+    assert "documentElement" in apply_fn, (
+        "the fold is stamped somewhere other than the root, so the centre's table and the "
+        "navigator's pane can disagree about one setting"
+    )
+    rend = _fn_body(_read("shell.js"), "render")
+    assert "applyCodeMarks();" in rend, (
+        "the stamp is not applied on render, so a reload shows the margin for a frame and "
+        "folds it after -- a restore must do what the setter does (rule 68)"
+    )
+
+    # A file with nothing to mark renders no mark elements, whichever way the fold is set.
+    build = _fn_body(_read("shell.js"), "codeTable")
+    assert "const bare = !CODEFILE.marks.length;" in build, (
+        "an unmarked file no longer knows it is unmarked"
+    )
+    assert build.count('bare ? "" :') >= 2, (
+        "an unmarked file still renders its mark spans, so it pays for a column it can never "
+        "fill -- and the CSS that used to do this lost on specificity to the fold's own rule"
+    )
+
+    # And the control is drawn only where it can act.
+    view = _fn_body(_read("shell.js"), "viewCode")
+    assert "CODEFILE.marks.length ?" in view and "data-codemarks" in view, (
+        "the margin toggle is drawn on files with no margin to fold -- design rule 16's dead "
+        "control with a caret on it"
     )

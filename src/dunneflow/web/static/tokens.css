@@ -2877,6 +2877,23 @@ body.detached-code #trailMount { display: none !important; }
    past the middle of the window. Aligned right, the marks abut what they describe. */
 .codetable .cmark { display: inline-block; width: 12rem; padding-right: .6rem;
   text-align: right; white-space: nowrap; overflow: hidden; vertical-align: top; }
+/* **The glyph, and the fold.** The margin is a fixed reserve and no width serves both jobs:
+   measured on `_extraction_state.py`, 12rem leaves **92.4% of rows** paying an indent for
+   nothing while still clipping **37.7% of the marks it exists for**. Reading code and reading
+   marks are different questions, so the reader picks, and the picking is a stylesheet's
+   business -- both forms are in the markup, so folding repaints nothing.
+
+   Folded, a marked line still says so. A glyph is not the tag, and it is not meant to be:
+   it says *there is something here* and carries the whole of it on its title. Dropping it
+   would make the fold a silent filter over the one thing the margin exists to report
+   (design rule 1, rule 45). */
+.codetable .cglyph, .codepane .cglyph { display: none; }
+:root[data-code-marks="off"] .codetable .cmark { display: none; }
+:root[data-code-marks="off"] .codetable .cglyph {
+  display: inline-block; width: 1.25rem; padding-right: .4rem; text-align: right;
+  color: var(--text-faint); user-select: none; vertical-align: top; white-space: nowrap; }
+/* `.nomarks` is a label, not a mechanism: the builder renders no mark elements for such a
+   file, so there is nothing here to hide. Kept so the shorter row is legible in devtools. */
 .codetable .ccode { display: inline; }
 .codetable .crow.here { background: var(--accent-soft); }
 .codetable .crow.here .cnum { box-shadow: inset .1875rem 0 0 var(--accent); }

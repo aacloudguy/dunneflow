@@ -28,7 +28,8 @@ pages it emits.
 ```
 source ──► extract ──► graph.db ──► resolve ──► render (Markdown + Mermaid)
 docs   ──► extract ──► docs.db  ──────ATTACH──┘
-                       source.db  (file bodies, content-addressed)
+                       source.db     (file bodies, content-addressed)
+                       docsource.db  (document bodies, the same store, its own kind)
 ```
 
 | Module | What it is |
@@ -36,7 +37,7 @@ docs   ──► extract ──► docs.db  ──────ATTACH──┘
 | `schema.py` | The fact contract. Every extractor in any language emits these types. |
 | `store.py` | SQLite. **The spine, not an export format.** Nothing holds the program in memory. |
 | `docstore.py` | `docs.db` — parallel to the graph, never inside it. |
-| `sourcedb.py` | `source.db` — file bodies. The one store that is never discarded (rule 25). |
+| `sourcedb.py` | `source.db` — file bodies. The one store that is never discarded (rule 25). And `DocSourceStore`: the same class with a different `kind`, writing `docsource.db`. |
 | `migrate.py` | Stored paths absolute → relative, in place. The prior state it can speak for, named (rules 60–62). |
 | `extractors/python/` | stdlib `ast` + `tokenize` only. No third-party parser. |
 | `extractors/docs/` | Markdown / rST / text, scanned by hand. No markdown library. |
@@ -63,6 +64,7 @@ no build step. deck.gl is vendored into `web/vendor/`.
 | `graph.py` · `layout.py` | the 2.5D model at two levels of detail, and where things sit |
 | `packages.py` | the package overview — the other graph layout |
 | `code.py` | the code browser — a file, its clickable names and what each line *is* |
+| `corpus.py` | the program's **own** documents served — the list, one document, one span. Lane 1; `documents.py` is lane 2 |
 | `search.py` | searching the **text** — files first, then one file's lines with their margin |
 | `static/shell.js` | **the application**: state, routing, every view, the self-check |
 | `static/graph.js` | **the engine**: payload to pixels, and nothing about this page |
@@ -143,7 +145,9 @@ were layered 2026-08-30; the **anomaly worklist joined them 2026-09-01**, once a
 carried an identity to be paired on.
 
 **Not built:** `dunneflow infer` (the model pass) · attestation · the project profile ·
-document mode's narrative view · packaging as a binary · any language but Python.
+packaging as a binary · any language but Python. **Document mode is being built now** —
+chunks 1 and 2 of 6 are in (a body sidecar for documents, and three routes that serve them),
+and there is still no view: the pane says *"Not built yet"* until chunk 4.
 
 **The revision spine is in, and both ends of a pair are readable.** `WORKING` is a *state*
 rather than an id, and a revision is identified by when it was captured; `seal()` keeps the
@@ -163,15 +167,60 @@ program has a most-commented routine and a maximum alone is a claim nobody can w
 
 ## What we are doing now
 
-**Paused 2026-09-03, mid-feature: Document mode, chunk 1 of 6.**
-850 tests, mypy clean, ruff clean, working tree clean. Nothing is half-written — chunk 1 is
-whole, guarded and committed; chunks 2-6 have an approved plan and no code yet.
+**Document mode, chunks 1 and 2 of 6 are in.**
+868 tests, mypy clean, ruff clean. The approved plan is at
+`~/.claude/plans/polymorphic-finding-swan.md` — read it before resuming.
+
+**Next: chunk 4's lane 2 and the `where_` bug**, then chunk 3's renderer, then chunk 5's
+citations, then chunk 6's records. Only chunk 3 needs the vendored library, which is why the
+order is not 3-4-5.
+
+Chunk 2 served the corpus — `/api/docs`, `/api/doc`, `/api/docsource`, a new `web/corpus.py`,
+and the version's `DocStore` held on `_Base` instead of opened and closed for the glossary.
+**There is no client yet; that is chunk 4.** Everything was verified with `curl` against a
+live server, which is how both of the session's defects were found — see the entry in
+`HANDOFF.md`, and the short version below.
 
 *Earlier the same day:* chunk B of the shortening work, rule 78, and three rounds of looking at
 the code view — the greenbar, the margin fold, three broken buttons, and the rail/centre split.
 
 *The paragraphs below are that day's earlier work, kept because the reasoning is recent and
 load-bearing; the current task is the one named above.*
+
+### The latest: Document mode, chunk 2 — the corpus served (2026-09-03)
+
+Every figure the plan predicted came back exactly: **2,064 documents** (2,019 Markdown, 45
+text), 29,980 headings, 235 definitions, 8 duplicates, all openable, and the class breakdown
+to the row — PLAN 1601 · OTHER 286 · DECISION 92 · RESEARCH 33 · TOOLING 12 · README 9 ·
+REFERENCE 8 · ROADMAP 6 · SPEC 6 · NAMING_STANDARD 5 · GLOSSARY 3 · ISSUE 2 · CONTRIBUTING 1.
+The list is 546 KB of JSON at **18 ms warm**; the worst case, `.groma/ISSUES.md` at 1.33 MB
+and 18,299 lines, is **6–7 ms warm**. Both whole, neither paged.
+
+**The document store is held on `_Base` now, and the 148 MB per-switch leak its old close was
+written against has moved rather than gone** — the swap closes it, `_Live.close()` closes it,
+and so does the failure path of `open()`. Three closes where there was one, all three guarded,
+one of them exercised by asking the outgoing connection a question after the switch.
+
+**Two defects, and neither could have been found by a test.**
+
+*A 000 and a stack trace on the first request.* `DocStore` had no `shared` parameter at all,
+because it had only ever been opened, read and closed on one thread. Held on the base and read
+from a request thread, sqlite refuses it **by name, from inside the request, and only on the
+routes that touch it**. Every unit test passed, because a unit test calls the builder on the
+thread that opened the store. Its guard starts a real `threading.Thread`.
+
+*And rule 70, one corpus over from where it was first paid for.* `_sidecar_revision` returns
+`None` for *this sidecar cannot serve the version on screen*; every store reads `revision=None`
+as *the current one*. Two meanings, one spelling, and the newer won: Mensores' 08-26 base
+listed all 2,041 of its documents as openable and served the **08-29** prose under them, every
+heading's line landing wherever the text had since moved. The source sidecar never showed it
+because it holds both snapshots — the older base is the first version anything here has ever
+had no bodies for. `serving()` is the fix: `revision=None` is a refusal with a sentence, never
+a fallback. `_span`, which `/api/source` shares, had the identical hole.
+
+**Fifteen mutations, all CAUGHT.** Four absences, four sentences — never scanned, not
+captured, not for this version, not this path — because they look identical on a blank pane
+and the thing to do about each is different.
 
 *The shortening work is complete.* The remaining twelve `text-overflow: ellipsis` sites were
 measured before being changed, and measuring struck three of them, changed the mechanism from
@@ -193,24 +242,21 @@ never the predicate. A caller row **stacks** its module under its name — side 
 split measured as a trade rather than a fix, and all 11 rows now show both entire where 7 of
 11 used to overflow.
 
-**Next: Document mode, chunk 2 — serving.** `/api/docs`, `/api/doc`, `/api/docsource`, and
-`_Base` gaining a `docs` field so a document list has a live handle to answer from. Then
-chunk 4's lane 2 with the `where_` bug, chunk 3's renderer, chunk 5's citations. **Only chunk 3
-needs the vendored library**, so the order is deliberate. The approved plan is at
-`~/.claude/plans/polymorphic-finding-swan.md` — read it first; it carries the measured figures
-and the reasoning for each choice.
+*Chunk 2 is done — it is the entry above.*
 
-*Still queued behind that:* the flow panel's real worst case — `session.add_turn` at
+*Still queued behind the plan:* the flow panel's real worst case — `session.add_turn` at
 `_extraction_state.py:742`, 3,323 bytes over 53 lines, on a *resolved* call, so its arrow can
 be opened. One outlier and not a class: the next largest resolved call argument in the corpus
 is 923 bytes.
 
-**No server is running** — it was stopped to re-analyse and not restarted. Bring one back with
-`uv run dunneflow serve output/mensores --port 8787 --no-open`; note `--port` yields to any free
-port if 8787 is taken and says so on its last line. `output/mensores` now also holds
-`docsource.db` (17 MB on disk). Nothing depends on it; `pkill -f "dunneflow serve"` ends it. Note that
-`--port` yields to any free port if the asked-for one is taken, so a second server started
-over a stale one lands somewhere else and says so on its last line.
+**A server is running on 8787**, on the **08-29** base, started to verify chunk 2. Bring one
+back with `uv run dunneflow serve output/mensores --port 8787 --no-open`, and add
+`--revision 2026-08-31T22:53:15Z` to open the older one — which is the base with **no document
+bodies**, and is worth keeping in mind: it is the only version anything here has ever had none
+for, and it is what turned up the rule-70 defect. `output/mensores` also holds `docsource.db`
+(17 MB on disk). `pkill -f "dunneflow serve"` ends it. Note that `--port` yields to any free
+port if the asked-for one is taken, so a second server started over a stale one lands
+somewhere else and says so on its last line.
 
 **The debt is unchanged and it is rule 38's.** Everything in chunk B was measured at 1396px in
 a browser context that reports `outerWidth: 0`, refuses to resize, and whose **screenshots did
@@ -219,7 +265,7 @@ beside it. Every number above is a measurement and every guard is a guard; what 
 is a look. Three things now wait on a real window: the constants surface, the blank-graph fix,
 and this.
 
-### The latest: Document mode, chunk 1 of 6 — a body sidecar for documents (2026-09-03)
+### Before that: Document mode, chunk 1 of 6 — a body sidecar for documents (2026-09-03)
 
 **Paused mid-feature. The approved plan is at `~/.claude/plans/polymorphic-finding-swan.md`;
 read it before resuming.**
@@ -263,8 +309,7 @@ browser — `token.map` on every block, and `html: false` rendering a `<script>`
 *Open and not yet handled:* relative links (`./rel.md`, `#anchor`) render as **live hrefs** and
 would navigate the dashboard. Chunk 3 must route them.
 
-**Next:** chunk 2 (serving), then chunk 4's lane 2 and the `where_` bug, then chunk 3's
-renderer, then chunk 5's citations. Only chunk 3 needs the library.
+**Next was chunk 2, and it is built** — see the entry at the top of this section.
 
 ### Before that: one file, two panes, and one button for both (2026-09-03)
 

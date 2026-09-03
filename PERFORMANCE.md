@@ -354,5 +354,24 @@ changed or not, which turns re-analysis back into an event. Blind spot: a docume
 rewritten to exactly its old length with its modification time preserved is missed;
 `--recheck-docs` hashes everything.
 
+**Serving the corpus** — the document list and one document, measured 2026-09-03 on
+Mensores' 2,064 documents, 38.7 MB of prose held in a 17 MB sidecar:
+
+| Measure | Budget | Measured 2026-09-03 |
+|---|---|---|
+| `/api/docs`, all 2,064 rows | < 200 ms | 18 ms warm, 1.7–2.3 s cold |
+| `/api/doc`, an ordinary document | < 100 ms | 0.8–2.5 ms (`docs/reference/glossary.md`) |
+| `/api/doc`, the worst case | < 200 ms | 6–7 ms warm, 0.86 s cold |
+
+The worst case is `.groma/ISSUES.md` — 1.33 MB, 18,299 lines, 327 headings, 191,549 words —
+which is comparable to the largest *code* file and is sent whole (rules 8 and 55). The list
+is 546 KB of JSON and is also whole: 2,064 rows with a heading count and a definition count
+on each, never paged.
+
+What makes both affordable is that the bodies are **not** in `docs.db`. The list is three
+grouped counts over a store the server already holds open, and 38.7 MB of prose stays in the
+sidecar until somebody opens a document. **The cold row is the external volume**, as every
+cold row in this file is: 1.7 s and 2.3 s on two first reads, 18 ms on every one after.
+
 The machine's source volume is a slow external disk; cold reads cost far more than
 warm ones. That is expected and is not a regression.

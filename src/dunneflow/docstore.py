@@ -137,13 +137,25 @@ CREATE INDEX IF NOT EXISTS ix_documents_dup   ON documents(duplicate_of);
 class DocStore:
     """A connection to one program's documentation corpus."""
 
-    def __init__(self, path: Path | str, *, writable: bool = True) -> None:
-        """See `Store.__init__`: a reader refuses a stale corpus, it never drops one."""
+    def __init__(self, path: Path | str, *, writable: bool = True,
+                 shared: bool = False) -> None:
+        """See `Store.__init__`: a reader refuses a stale corpus, it never drops one.
+
+        `shared` arrived late, and the reason it was not here from the start is worth
+        keeping: this store was only ever opened, read and closed on one thread. The
+        dashboard now **holds** one per version so a document list can be served, and the
+        server hands each request to its own thread -- at which point sqlite refuses the
+        connection by name, from the request rather than from the open, and only when a
+        route that reads it is actually asked for.
+
+        Shared means many threads, and a lock owed by the caller. `_Live` already owns one
+        and every read of a version's stores is under it.
+        """
         self.path = Path(path)
         self.writable = writable
         if writable:
             self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.conn = sqlite3.connect(self.path)
+        self.conn = sqlite3.connect(self.path, check_same_thread=not shared)
         self.conn.row_factory = sqlite3.Row
         self._refuse_wrong_kind()
         if not writable:

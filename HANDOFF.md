@@ -8382,3 +8382,107 @@ field), then chunk 4's lane 2 and the `where_` bug, then chunk 3's renderer, the
 citations. Chunks 2, 4 and 5 need no library; the plan file has the detail.
 
 **The server is stopped** — it was killed to re-analyse and not restarted.
+
+## Document mode, chunk 2: the corpus served — 2026-09-03
+
+Chunk 2 of the approved plan (`~/.claude/plans/polymorphic-finding-swan.md`). Chunk 1 gave
+the 2,064 documents a body sidecar; this gives them a reader on the wire. No client yet —
+that is chunk 4 — so everything here was verified with `curl` against a live server on
+Mensores, which is how both of the session's defects were found.
+
+**Three routes, one new module.** `web/corpus.py` is lane 1 — *the program's own documents*
+— and `web/documents.py` is lane 2, *the map's eight*. Close names for different subjects,
+so the module says which is which in its first paragraph. `/api/docs` is the whole list,
+`/api/doc` one document with its headings and its text, `/api/docsource` a span for chunk
+5's citations to open against. The SQL lives in `corpus.py` rather than `queries.py`,
+because `queries.py` is the **graph's** query book down to its `DOC_*` entries — those
+select from `routines` and `boundaries` — and a statement against `docs.db` filed beside
+them would be two schemas under one heading.
+
+Measured on Mensores, and every figure the plan predicted came back exactly: **2,064
+documents** (2,019 Markdown, 45 text), 29,980 headings, 235 definitions, 8 duplicates, and
+the class breakdown to the row — PLAN 1601 · OTHER 286 · DECISION 92 · RESEARCH 33 ·
+TOOLING 12 · README 9 · REFERENCE 8 · ROADMAP 6 · SPEC 6 · NAMING_STANDARD 5 · GLOSSARY 3 ·
+ISSUE 2 · CONTRIBUTING 1. All 2,064 openable. The list is 546 KB of JSON at **18 ms warm**,
+1.7–2.3 s cold; the worst case — `.groma/ISSUES.md`, 1.33 MB and 18,299 lines — is **6–7 ms
+warm** and 0.86 s cold. Both are whole and neither is paged: what makes that affordable is
+that the bodies are not in `docs.db`, so the list is three grouped counts and 38.7 MB of
+prose stays in the sidecar until somebody opens a document.
+
+**The document store is now held on `_Base`, and the leak it was closed against has moved
+rather than gone.** `_docs_for` used to open a `DocStore`, hand it to the glossary and close
+it in a `finally`, because one held across a base switch leaked a 148 MB store every time
+the reader moved between two versions. A document list cannot be served from a store that is
+already shut, so the handle is a field of the base and the *swap* closes it — the lifetime
+is a version's instead of a statement's. That makes it three closes where there was one: the
+swap, `_Live.close()`, and the failure path of `open()`, because a build that raises after
+opening it must not leave 148 MB behind for a switch the reader never got. The old guard
+asserted a `finally` and now asserts all three, plus an exercised one that asks the outgoing
+connection a question after the switch and expects sqlite to refuse it by name (rule 37).
+
+**Two defects, and neither could have been found by a test.** Both came from starting the
+server and typing `curl`.
+
+*The first was a 000 and a stack trace on the very first request.* `DocStore` had no
+`shared` parameter at all — `Store` and `SourceStore` both do — because it had only ever
+been opened, read and closed on one thread. The base now **holds** it and
+`ThreadingHTTPServer` hands each request to its own thread, where sqlite refuses a
+connection made on another one: **by name, from inside the request, and only for the routes
+that touch it**. `/api/cover` beside it was fine the whole time. Every unit test passed,
+because a unit test calls `build_corpus` on the thread that opened the store. The guard for
+it starts a real `threading.Thread`.
+
+*The second is rule 70, one corpus over from where it was first paid for, and it is the
+better of the two.* `_sidecar_revision` returns `None` for **this sidecar cannot serve the
+version on screen**. Every store here reads `revision=None` as **the current one** and
+resolves it to the newest snapshot. Two meanings, one spelling, and the newer one won:
+serving Mensores' 2026-08-26 base — whose document bodies were never captured, because there
+is one `docsource.db` and it holds the 08-29 snapshot — listed all **2,041** of its documents
+as openable and served the **08-29** prose under them. Every heading's line number landing
+wherever the text had since moved, and nothing anywhere looking wrong.
+
+The source sidecar never showed this because it holds both snapshots, so the older base is
+the first version anything in this tool has ever had no bodies for. `serving()` is the fix
+and it is one function: `revision=None` is a refusal with a sentence from there down, never
+a fallback. `_span` — which `/api/source` shares — had the identical hole and now refuses
+above the store rather than passing it on.
+
+Verified on the pair afterwards: the 08-26 base reports 2,041 documents, **0 openable**,
+`sidecar: true`, and *"the document sidecar holds no bodies for the version on screen"*;
+switching to 08-29 gives 2,064 and all of them openable. `sidecar` and `reason` are
+deliberately two fields — whether the program *has* document bodies is a fact about the
+directory and decides whether re-analysing would help; whether they can be read at this
+version is a different question, and one flag answering both reported a program that has a
+sidecar as one that does not (rule 32).
+
+**Four absences, four sentences**, because they look identical on a blank pane and the thing
+to do about each is different: never scanned (`--no-docs`), scanned but not captured
+(`--no-doc-source`), captured but not for this version, and captured but not this path.
+Design rule 21, and the guard asserts all four are distinct strings.
+
+**Fifteen mutations, all CAUGHT** (baseline proved green first, rule 59): a document route
+reading the *source* sidecar — which does not raise, because the two schemas are identical,
+it just reports every document missing; the list bounded with a `LIMIT`; the swap forgetting
+the outgoing store; a failed build leaking it; the sidecar opened as a `SourceStore`; both
+routes reading the newest revision rather than this version's; the class counts filtering
+rows the list keeps; an absent corpus shipping an empty list instead of a reason; the two
+sidecars sharing one revision answer; the `None`-revision fall-through, at both readers; and
+the `shared` flag removed again.
+
+One fixture change worth noting: `test_base_switch`'s program had no `docs.db` at all, so
+every new guard about the held handle would have passed on a `None`. It writes a document per
+revision now — rule 37, a guard that cannot see the thing it is guarding.
+
+868 tests (17 new in `test_corpus.py`, plus one rewritten and one added in `test_base_switch.py`), mypy clean, ruff clean.
+
+**A candidate rule, not minted — it wants Tom's call, because a number here is a permanent
+address.** *A lifetime change is an access-pattern change.* Nothing about `DocStore` changed;
+what changed is who reads it. Opened, read and closed inside one function it never needed
+`shared`, and the flag's absence had no symptom because there was nothing to have one. Held
+on the base so a list could be served, it is read from a request thread — and sqlite refuses
+by name, from inside the request, on the routes that touch it and nowhere else. The general
+shape is that moving a resource's lifetime outward silently moves *who touches it* outward
+too, and the guards that covered the old lifetime say nothing about the new one.
+
+**Next: chunk 4's lane 2 and the `where_` bug**, then chunk 3's renderer, then chunk 5's
+citations. Only chunk 3 needs the vendored library.

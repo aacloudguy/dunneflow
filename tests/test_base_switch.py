@@ -28,6 +28,8 @@ from typing import Any
 import pytest
 
 from dunneflow import revisions
+from dunneflow.docstore import DocStore
+from dunneflow.extractors.docs import extract_doc
 from dunneflow.extractors.python.extract import extract_file
 from dunneflow.store import Store
 from dunneflow.web import serve as serve_mod
@@ -58,7 +60,13 @@ def also(path):
 
 
 def _program(tmp_path: Path) -> tuple[Path, str, str]:
-    """A program directory with two revisions, as `analyze` would leave it."""
+    """A program directory with two revisions, as `analyze` would leave it.
+
+    **With its documents**, because the base holds a `DocStore` now and a fixture with no
+    `docs.db` would let every guard about that handle pass on a `None` — which is rule
+    37's shape, a guard that cannot see the thing it is guarding. One document per
+    revision is enough: what is being tested is the handle's lifetime, not the corpus.
+    """
     out = tmp_path / "prog"
     out.mkdir()
     revs = []
@@ -66,12 +74,18 @@ def _program(tmp_path: Path) -> tuple[Path, str, str]:
         tree = tmp_path / f"tree{i}"
         tree.mkdir()
         (tree / "m.py").write_text(source)
+        (tree / "README.md").write_text(f"# Revision {i}\n\nWhat this version is for.\n")
         rev = f"2026-08-30T10:0{i}:00Z"
         store = Store(revisions.db_path(out, revisions.GRAPH, rev))
         store.write_file_facts(extract_file(tree / "m.py", tree))
         store.set_meta("revision", rev)
         store.conn.commit()
         store.close()
+        docs = DocStore(revisions.db_path(out, revisions.DOCS, rev))
+        docs.set_meta("revision", rev)
+        docs.write_doc_facts(extract_doc(tree / "README.md", tree))
+        docs.conn.commit()
+        docs.close()
         revs.append(rev)
     return out, revs[0], revs[1]
 
@@ -284,28 +298,64 @@ def test_no_get_route_can_swap_the_base() -> None:
                 )
 
 
-def test_the_document_store_is_closed_once_its_lane_is_built() -> None:
+def test_the_document_store_is_closed_by_the_switch_that_replaces_it() -> None:
     """A switch that leaks the document store leaks 148 MB per switch.
 
-    `serve()` closed it when it was the only caller. `open()` is called on every switch
-    now, and a reader moving between two versions is a thing this chunk exists to make
-    ordinary — so the one-off leak became a per-switch one. Only the glossary lane holds
-    anything from it, and the lane is a plain dict by the time this returns.
+    **The leak is the same one; the close has moved.** It used to happen in a `finally`
+    the moment the glossary lane was built, because `open()` runs on every switch and a
+    handle held past it accumulated one store per version the reader visited. A document
+    list cannot be served from a store that is already shut, so the handle is now a field
+    of `_Base` and the *swap* closes the outgoing one — the lifetime is a version's
+    instead of a statement's, and the leak is answered rather than avoided.
+
+    Which makes this guard about three closes rather than one, because there are now three
+    ways for the store to outlive the version that owns it: a build that raises after
+    opening it, a swap that forgets the outgoing base, and a server that shuts down.
     """
     src = inspect.getsource(serve_mod._Live.open)
     assert "_docs_for(" in src, "the glossary no longer reads the version's own documents"
-    assert "docs.close()" in src, (
-        "the document store opened for the glossary is never closed -- 148 MB per switch"
-    )
+
     tree = ast.parse(src.strip())
-    closed_in_finally = any(
+    # A build that raises after `_docs_for` returns must close what it opened. In the
+    # handler, not a `finally`: the success path deliberately keeps it.
+    closed_on_failure = any(
         "docs.close()" in ast.unparse(h)
-        for n in ast.walk(tree) if isinstance(n, ast.Try) for h in n.finalbody
+        for n in ast.walk(tree) if isinstance(n, ast.Try) for h in n.handlers
     )
-    assert closed_in_finally, (
-        "the close is not in a `finally`, so a glossary pass that raises leaks the store "
-        "and the switch that failed costs more than the one that worked"
+    assert closed_on_failure, (
+        "a build that fails after opening the document store never closes it — the switch "
+        "that did not happen costs more than the one that did"
     )
+    assert "docs=docs" in ast.unparse(tree).replace(" ", ""), (
+        "`open()` no longer hands the document store to the base, so nothing owns it"
+    )
+
+    swap = inspect.getsource(serve_mod._Live.open)
+    assert "outgoing.docs" in swap, (
+        "the swap closes the outgoing graph store and not its document store — the "
+        "per-switch leak, moved rather than fixed"
+    )
+    assert "docs.close()" in inspect.getsource(serve_mod._Live.close), (
+        "shutting the server down leaves the current version's document store open"
+    )
+
+
+def test_a_switch_closes_the_outgoing_document_store(live: Any) -> None:
+    """The same claim exercised, because reading it off the source is not seeing it happen.
+
+    A closed sqlite connection refuses the next query by name, so the outgoing handle is
+    asked one question after the switch. Rule 37: a guard that checks a close *appears*
+    has not checked that anything was closed.
+    """
+    import sqlite3
+
+    lv, out, _first, second = live
+    outgoing = lv.current.docs
+    assert outgoing is not None, "the fixture's program has no documents; guard is blind"
+    lv.open(revisions.db_path(out, revisions.GRAPH, second))
+    assert lv.current.docs is not outgoing, "the switch carried the old document store over"
+    with pytest.raises(sqlite3.ProgrammingError):
+        outgoing.query("SELECT COUNT(*) n FROM documents")
 
 
 def test_a_refusal_carries_no_progress_because_nothing_is_running() -> None:

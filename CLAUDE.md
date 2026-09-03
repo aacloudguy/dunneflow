@@ -179,10 +179,34 @@ docs   ──► extract ──► docs.db  (SQLite) ─────────
   change one fact. A language with no entry compares its expressions as written.
 - `extractors/docs/` — Markdown, reStructuredText and plain text, scanned by hand for
   the same reason: no markdown library. Emits `DocFacts`.
+
+  **That rule governs the extractor, and only the extractor.** Its output is a contract,
+  hashed into the cache key by `doc_extraction_inputs()`, so a third party's reading of a
+  document must never become a fact this tool asserts. A **renderer** produces pixels, is
+  in no cache key, and no fact depends on it — which is why `markdown-it` is vendored in
+  `web/vendor/` and why nothing under `extractors/` may import it. State the line rather
+  than blur it, or the next reader will correctly call the library a violation.
 - `docstore.py` — `docs.db`. **Parallel to the graph, never inside it.** A doc rescan
   never touches `graph.db`, code-only analysis stays cheap, and the corpus stays a
   separately handable artifact — many will hand over a charter and never a line of
   source. The join is one `ATTACH DATABASE` away.
+
+  **It records what a document *says*, never what it is.** `DocSourceStore` in
+  `sourcedb.py` holds the bodies in `docsource.db` — the same content-addressed blob store
+  as `source.db` with a different `kind` stamp, in its own file for design rule 14's
+  reason, and one per program holding every revision. 2,056 bodies for 2,064 paths, 38.7 MB
+  of prose in 14.8 MB; the eight duplicates cost nothing. `--no-doc-source` beside
+  `--no-source`, separately, because the two travel separately.
+- `web/corpus.py` — the corpus **served**: `/api/docs`, `/api/doc`, `/api/docsource`. Two
+  stores answer together and either can be missing on its own, so there are **four**
+  states and not two — never scanned, scanned but not captured, captured but not for the
+  version on screen, and captured but not this path — each with its own sentence, because
+  they look identical on a blank pane and the thing to do about each is different (design
+  rule 21). `revision=None` is a **refusal** from here down, never "the newest": that `None`
+  meeting the store's `None` served 2026-08-29's prose under 2026-08-26's headings, which
+  is rule 70 one corpus over from where it was first paid for. A document is sent **whole
+  and as one string**, unlike `/api/source`'s numbered lines, because a renderer needs
+  block structure intact and takes its line numbers from `token.map`.
 - `call_args` — what a caller passed, **as written**, hanging off `calls.site_id` rather
   than off a rowid: an argument has to stay attached to its call site across two versions
   of the same program. Sliced out of the file's own text on **byte** offsets (rule 75),

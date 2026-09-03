@@ -33,10 +33,11 @@ from urllib.parse import parse_qs
 from .. import revisions
 from ..docstore import DocStore
 from ..resolve import version as version_order
-from ..sourcedb import SourceStore
+from ..sourcedb import DocSourceStore, SourceStore
 from ..store import StaleGraphError, Store
 from . import anomalychanges, changes, diagram, filediff, packages, queries
 from .code import build_file, build_files
+from .corpus import build_corpus, build_document
 from .cover import anomalies as build_anomalies
 from .cover import build as build_cover
 from .curiosities import for_program
@@ -247,6 +248,13 @@ class _Base:
     # bodies of some other version under this version's map is the failure this field
     # exists to make impossible.
     source_revision: str | None
+    # The same question asked of the **other** sidecar, and it is a separate field rather
+    # than a reuse of the one above. `analyze` makes both stores adopt the graph's own
+    # revision id, so the two agree on every program analysed in one pass -- and "agree
+    # today" is exactly the kind of coincidence rule 51 is about. `--no-doc-source` on one
+    # run and not the next is enough to part them, and the failure would be silent: this
+    # version's headings laid over some other version's prose.
+    docsource_revision: str | None
     # The 2.5D stack, columnar. Named with the program so the browser can key stored
     # settings per program: a disk order and a set of colours worked out for one codebase
     # mean nothing in another, and silently applying one to the other would be the worst
@@ -269,6 +277,19 @@ class _Base:
     # glossary, which reads a 176 MB document store.
     naming: dict[str, Any]
     glossary: dict[str, Any]
+    # **This version's document store, held open.** It used to be opened for the glossary
+    # and closed in the same breath, because one held across a base switch leaked a 148 MB
+    # store every time the reader moved between two versions. Held *here* that argument is
+    # answered rather than avoided: a base owns it and the swap closes it, so the lifetime
+    # is the version's rather than the process's.
+    #
+    # And it has to be held, because a document list cannot be served from a store that is
+    # already shut. `docs.db` is per revision -- a version's documents are that version's
+    # -- which is why this is a field of `_Base` and `source`/`docsource` are not.
+    #
+    # `None` is a real state and not an error: design rule 11 makes documentation an
+    # optional input, and a program analysed with `--no-docs` keeps a complete code map.
+    docs: DocStore | None
     # The first screen. 175 reachability queries on every navigation would make it the
     # slowest one.
     cover: dict[str, Any]
@@ -401,6 +422,24 @@ class _Live:
             except (ValueError, OSError):
                 self.source = None
 
+        # The **document** bodies, and the same posture for the same reasons: optional,
+        # read-only, one per program, and outside `_Base` because it is not a thing a
+        # version owns. Its own store rather than a lane in `source.db`, because design
+        # rule 14 turns on documentation and source being separately handable -- a map can
+        # arrive with either, both or neither, and each absence is stated.
+        #
+        # `DocSourceStore` rather than `SourceStore`, and that is load-bearing rather than
+        # decorative: the two have identical schemas, so nothing but the kind stamp could
+        # tell this open from opening `source.db` by mistake, and rule 16 refuses it by
+        # name.
+        self.docsource: DocSourceStore | None = None
+        docsource_db = out_dir / "docsource.db"
+        if docsource_db.exists():
+            try:
+                self.docsource = DocSourceStore(docsource_db, writable=False, shared=True)
+            except (ValueError, OSError):
+                self.docsource = None
+
         # Filled by `open()`, which every caller goes through -- boot included. Typed as
         # the real thing rather than `| None` because a server with no base has never
         # existed: `serve()` opens one before it binds a port, and a failed open raises
@@ -441,7 +480,12 @@ class _Live:
         # -- so this is a real outcome of a real switch, not a defensive branch.
         store = Store(graph_db, writable=False, shared=True)
         revision = revisions.revision_of(graph_db) or ""
-        source_revision = self._source_revision(revision)
+        source_revision = self._sidecar_revision(self.source, revision)
+        docsource_revision = self._sidecar_revision(self.docsource, revision)
+        # Named before the `try` so the failure path can close it. It is opened inside,
+        # several steps in, and a build that raises after that point must not leave a 148
+        # MB store behind for a switch the reader never got.
+        docs: DocStore | None = None
         try:
             _step(1)
             payload = build_payload(store, self.out_dir.name)
@@ -459,16 +503,14 @@ class _Live:
             # document. It is never a prerequisite for a code-derived fact. Per revision,
             # because a version's documents are that version's.
             #
-            # Closed as soon as the lane is built, and only the lane holds anything from it.
-            # `serve()` did this when it was the only caller; opening one per switch and
-            # never closing it would leak a 148 MB store every time the reader moved
-            # between two versions -- which is a thing they are now expected to do often.
+            # **It used to be closed right here, and now the base holds it.** The close was
+            # not caution: one held across a switch leaked a 148 MB store every time the
+            # reader moved between two versions, which is a thing they do often. Held on
+            # `_Base` the leak is answered rather than avoided -- the swap below closes the
+            # outgoing one, and the failure path a few lines down closes this one -- and
+            # the document list has the live handle it cannot be served without.
             docs = self._docs_for(graph_db)
-            try:
-                glossary = bind_glossary(store, docs)
-            finally:
-                if docs is not None:
-                    docs.close()
+            glossary = bind_glossary(store, docs)
 
             _step(5)
             defined, total = glossary["coverage"]
@@ -480,11 +522,15 @@ class _Live:
                                 })
         except BaseException:
             store.close()
+            if docs is not None:
+                docs.close()
             raise
 
         fresh = _Base(graph_db=graph_db, store=store, revision=revision,
-                      source_revision=source_revision, payload=payload, root=root,
-                      files=files, naming=naming, glossary=glossary, cover=cover,
+                      source_revision=source_revision,
+                      docsource_revision=docsource_revision, payload=payload, root=root,
+                      files=files, naming=naming, glossary=glossary, docs=docs,
+                      cover=cover,
                       # The default under its own key, and the *same object*: `payload` and
                       # `payloads[default_level()]` are one truth with an index over it.
                       payloads={default_level(): payload},
@@ -506,9 +552,16 @@ class _Live:
             # so no request can be holding this connection.
             if outgoing is not None:
                 outgoing.store.close()
+                # The document store goes with it, for the same reason and under the same
+                # lock. A version's documents are that version's, so leaving this open
+                # would be the 148 MB per-switch leak the old close was written against --
+                # moved, not removed.
+                if outgoing.docs is not None:
+                    outgoing.docs.close()
 
-    def _source_revision(self, revision: str) -> str | None:
-        """Which revision of the bodies this version can be read at, or nothing.
+    def _sidecar_revision(self, sidecar: SourceStore | None,
+                          revision: str) -> str | None:
+        """Which revision of one sidecar's bodies this version can be read at, or nothing.
 
         The graph's own revision when the sidecar holds it. A legacy bare `graph.db` has
         no revision to claim, and a sidecar written before revisions existed maps its
@@ -519,14 +572,21 @@ class _Live:
         as an absence. It is the one case where guessing would be silent and wrong: the
         newest snapshot's bytes under an older version's map look exactly like a file, and
         the marks in the margin land on whatever line has since moved under them.
+
+        **Takes the store rather than reading `self.source`**, because there are two of
+        them now and this is the whole of the rule for both. Left at the call site it
+        would have been copied for the document sidecar, and the copy would have been
+        right on the day it was written -- rule 51's shape exactly. The two stores answer
+        differently often enough to matter: `--no-doc-source` on one run and not the next
+        parts them.
         """
-        if self.source is None:
+        if sidecar is None:
             return None
-        if revision and self.source.holds_revision(revision):
+        if revision and sidecar.holds_revision(revision):
             return revision
         if revision:
             return None
-        return self.source.current_revision()
+        return sidecar.current_revision()
 
     def _docs_for(self, graph_db: Path) -> DocStore | None:
         """The document store captured beside this graph, or nothing at all."""
@@ -536,7 +596,12 @@ class _Live:
         if docs_db is None or not docs_db.exists():
             return None
         try:
-            return DocStore(docs_db, writable=False)
+            # `shared`, like every other store this server holds: the base keeps this one
+            # alive and `ThreadingHTTPServer` reads it from a request thread, where sqlite
+            # refuses a connection made on another one -- from the request, by name, and
+            # only for the routes that touch it. Every read is under `_Live.lock`, which
+            # is the lock the flag makes the caller responsible for.
+            return DocStore(docs_db, writable=False, shared=True)
         except (ValueError, OSError):
             return None
 
@@ -600,8 +665,12 @@ class _Live:
     def close(self) -> None:
         if self.current is not None:
             self.current.store.close()
+            if self.current.docs is not None:
+                self.current.docs.close()
         if self.source is not None:
             self.source.close()
+        if self.docsource is not None:
+            self.docsource.close()
 
 
 class _Handler(BaseHTTPRequestHandler):
@@ -1236,19 +1305,57 @@ class _Handler(BaseHTTPRequestHandler):
                     case=case, word=word, regex=regex, revision=base.source_revision))
 
     def _r_source(self, q: dict[str, list[str]]) -> None:
-        """A span of one file, straight out of the sidecar.
+        """A span of one file, straight out of the source sidecar.
 
         Separate from `/api/node` because the inspector opens a definition first and the
         surrounding file only if asked. Sending a whole file with every selection would
         put a megabyte behind every click for a view most clicks never open.
         """
+        self._span(q, self._live.source, "source_revision",
+                   absent="no source sidecar beside this map")
+
+    def _r_docsource(self, q: dict[str, list[str]]) -> None:
+        """The same span of one document, out of the **document** sidecar.
+
+        Its own route rather than a `corpus=` parameter on `/api/source`, and the reason
+        is rule 16's: two stores, two routes, nothing guessed. A parameter would put the
+        choice of *which database* behind a query string a caller can omit, and the
+        default would be right until the day somebody forgot it -- at which point a
+        citation into `docs/glossary.md` would be answered out of the code sidecar, which
+        holds no such path and would report the document as missing.
+
+        This is what chunk 5 opens a `DECLARED_DOCS` citation against.
+        """
+        self._span(q, self._live.docsource, "docsource_revision",
+                   absent="no document sidecar beside this map (--no-doc-source)")
+
+    def _span(self, q: dict[str, list[str]], sidecar: SourceStore | None,
+              revision_field: str, *, absent: str) -> None:
+        """Lines `first` to `last` of one path out of one sidecar, or why not.
+
+        One implementation for both corpora, because the *rule* is the same and only the
+        store and the revision differ -- and a second copy would have been correct on the
+        day it was written (rule 51). The four refusals are the ones that were already
+        here: no path, no sidecar, line numbers that are not numbers, and a sidecar that
+        does not hold the path. Each is stated; none is a blank (rule 49).
+
+        `revision_field` is a name rather than a value because the base can move between
+        this call and the read, and the answer must come from the base the read is made
+        against -- resolved under the lock, beside the store it is a revision *of*.
+
+        **A `None` revision refuses rather than falling through**, and that is not
+        defensiveness. `_sidecar_revision` returns it for "this sidecar cannot serve the
+        version on screen"; every store below reads `revision=None` as "the current one".
+        Passed on, the newer meaning wins and the newest snapshot's bytes are served under
+        this version's line numbers -- which is rule 70 exactly, and is what the document
+        sidecar did on Mensores' older base before anybody looked.
+        """
         path = (q.get("path") or [""])[0]
         if not path:
             self._json({"available": False, "reason": "no path asked for"})
             return
-        if self._live.source is None:
-            self._json({"available": False, "file": path,
-                        "reason": "no source sidecar beside this map"})
+        if sidecar is None:
+            self._json({"available": False, "file": path, "reason": absent})
             return
         try:
             first = int((q.get("first") or ["1"])[0])
@@ -1258,12 +1365,17 @@ class _Handler(BaseHTTPRequestHandler):
                         "reason": "line numbers must be numbers"})
             return
         with self._live.lock:
-            rev = self._live.current.source_revision
+            rev = getattr(self._live.current, revision_field)
+            if rev is None:
+                self._json({"available": False, "file": path,
+                            "reason": "this sidecar holds nothing for the version on "
+                                      "screen"})
+                return
             if last <= 0:
-                whole = self._live.source.text(path, revision=rev)
+                whole = sidecar.text(path, revision=rev)
                 lines = list(enumerate((whole or "").split("\n"), 1)) if whole else []
             else:
-                lines = self._live.source.lines(path, first, last, revision=rev)
+                lines = sidecar.lines(path, first, last, revision=rev)
         if not lines:
             self._json({"available": False, "file": path,
                         "reason": "the sidecar does not hold this file"})
@@ -1271,6 +1383,31 @@ class _Handler(BaseHTTPRequestHandler):
         self._json({"available": True, "file": path,
                     "first": lines[0][0], "last": lines[-1][0],
                     "lines": [{"n": n, "text": t} for n, t in lines]})
+
+    def _r_docs(self, q: dict[str, list[str]]) -> None:
+        """Every document the scan read, complete and unbounded (rule 8).
+
+        Cheap enough to be whole: 2,064 rows and three grouped counts over a store this
+        process already holds open. What makes it affordable is that the bodies are not in
+        it -- 38.7 MB of prose stays in the sidecar until somebody opens a document.
+        """
+        with self._live.lock:
+            base = self._live.current
+            self._json(build_corpus(base.docs, self._live.docsource,
+                                    revision=base.docsource_revision))
+
+    def _r_doc(self, q: dict[str, list[str]]) -> None:
+        """One document: its row, its headings with their lines, and its text.
+
+        Whole, like `/api/source` and for the same reason: a reference is never bounded,
+        and the client bounds what it *draws* rather than being handed a slice it cannot
+        tell from the document (rules 8 and 55). The largest here is 1.33 MB.
+        """
+        with self._live.lock:
+            base = self._live.current
+            self._json(build_document(base.docs, self._live.docsource,
+                                      (q.get("path") or [""])[0],
+                                      revision=base.docsource_revision))
 
     def _version_of(self, graph: Path) -> dict[str, Any]:
         """What one version says its own version is, or nothing at all.
@@ -1669,6 +1806,9 @@ class _Handler(BaseHTTPRequestHandler):
         "/api/glossary": "_r_glossary",
         "/api/table": "_r_table",
         "/api/source": "_r_source",
+        "/api/docs": "_r_docs",
+        "/api/doc": "_r_doc",
+        "/api/docsource": "_r_docsource",
         "/api/files": "_r_files",
         "/api/file": "_r_file",
         "/api/search": "_r_search",

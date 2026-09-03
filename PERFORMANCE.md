@@ -354,6 +354,41 @@ changed or not, which turns re-analysis back into an event. Blind spot: a docume
 rewritten to exactly its old length with its modification time preserved is missed;
 `--recheck-docs` hashes everything.
 
+**Document mode, lane 2** — the map's own eight documents, measured 2026-09-03 on
+Mensores. The pane's whole cost is **layout**, and the numbers say so plainly: on
+`routines`, 4,786 rows over 566 groups, building the markup is **73 ms**, parsing it into a
+detached node **329 ms**, and laying it out **2.0 s**.
+
+| Measure | Budget | Measured 2026-09-03 |
+|---|---|---|
+| `/api/document`, the largest (`routines`, 4,786 rows, 2.07 MB) | < 200 ms | 47 ms |
+| First paint, `routines` | < 1 s | 631 ms |
+| First paint, `boundaries` (4,070) · `constants` (2,638) | < 1 s | 360 ms · 317 ms |
+| First paint, the five smaller documents | < 200 ms | 23–174 ms |
+| Repaint on a selection, any document | < 100 ms | 19–94 ms |
+
+**The first draft cost 9,568 ms per `render()`** — on a function that runs on every
+selection, every keystroke and every message from the other window. It rewrote the chrome
+around the document each time, which detaches the built subtree, and **re-attaching pays
+the layout again**. That is the code browser's 1,358 ms defect at six times the size, and
+the fix is the same one: repaint only when the document changes, and write the highlight
+and the subject line narrowly.
+
+**Two plausible fixes did nothing, and that is worth recording** (rule 39). **566 separate
+tables against one**, with the group headings as rows inside it: 2,049 ms against 2,103.
+**4,786 `<button>` cells against spans**: 2,103 against 2,003, inside the noise. Neither
+structure is where the cost lives.
+
+What worked was two lines of CSS. `content-visibility: auto` on each group is **61 ms
+against 3,205** — the browser lays out the groups the reader can see and skips the other
+550 — and `table-layout: fixed` is **1,769 ms against 2,389**, 25%, which is why this grid
+now lays out like every other one. The remaining time is twenty thousand cells of real
+text and there is nothing in it to find.
+
+Conditions: 1,267×539 with the centre pane at 537px, root font 16px. **The pane width is
+load-bearing here** — a narrow centre wraps every cell and makes each row 70px tall, so a
+wider window lays out fewer pixels for the same rows, not more.
+
 **Serving the corpus** — the document list and one document, measured 2026-09-03 on
 Mensores' 2,064 documents, 38.7 MB of prose held in a 17 MB sidecar:
 

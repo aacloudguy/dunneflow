@@ -1042,6 +1042,19 @@ ORDER BY r.qualname
 # A row whose id is null is still returned. It is a fact about the program
 # either way, and the client shows it without a link rather than dropping it --
 # a silently shorter table is the failure design rule 1 exists to prevent.
+#
+# **The location column is aliased `"where"`, in quotes, and the quotes are not
+# decoration.** `where` is a SQL keyword and an unquoted alias is a syntax error,
+# so this was `AS where_` for as long as the family existed -- while
+# `documents.py` keyed the same column `Column("where", ...)`. `row.get("where")`
+# returned `None`, and the "Where" cell of **every row of all eight documents**
+# rendered blank. Nothing ever noticed, because nothing rendered them.
+#
+# Fixed at this end rather than the other because the key is the contract the
+# client reads and it should not carry a SQL-syntax scar. A guard now runs every
+# statement in the family and asserts that each `Column` key is a column the
+# query actually returns (design rule 16), so unquoting this fails by name
+# instead of emptying a column.
 # --------------------------------------------------------------------------- #
 
 DOC_ENTRYPOINTS = """
@@ -1050,7 +1063,7 @@ SELECT e.routine_id             AS node,
        e.kind                   AS kind,
        COALESCE(r.qualname, '') AS routine,
        COALESCE(e.evidence, '') AS evidence,
-       COALESCE(r.file, e.file) || ':' || COALESCE(r.line_start, 0) AS where_,
+       COALESCE(r.file, e.file) || ':' || COALESCE(r.line_start, 0) AS "where",
        COALESCE(r.file, e.file) AS file,
        COALESCE(r.line_start, 0) AS line
 FROM entrypoints e
@@ -1111,7 +1124,7 @@ SELECT r.id       AS node,
          CASE WHEN COALESCE(r.returns, '') <> '' THEN ' -> ' || r.returns ELSE '' END
                   AS signature,
        COALESCE(r.docstring, '') AS why,
-       r.file || ':' || r.line_start AS where_,
+       r.file || ':' || r.line_start AS "where",
        r.file     AS file,
        r.line_start AS line
 FROM routines r
@@ -1127,7 +1140,7 @@ SELECT s.id     AS node,
                  FROM (SELECT name FROM fields
                        WHERE structure_id = s.id ORDER BY idx) f), '') AS fields,
        COALESCE(s.docstring, '') AS why,
-       s.file || ':' || s.line AS where_,
+       s.file || ':' || s.line AS "where",
        s.file   AS file,
        s.line   AS line
 FROM structures s
@@ -1140,7 +1153,7 @@ SELECT 'const:' || c.module || '.' || c.name AS node,
        c.module AS module,
        c.value  AS value,
        COALESCE(c.comment, '') AS why,
-       c.file || ':' || c.line AS where_,
+       c.file || ':' || c.line AS "where",
        c.file   AS file,
        c.line   AS line
 FROM constants c
@@ -1154,7 +1167,7 @@ SELECT 'bnd:' || b.kind || ':' || b.target AS node,
        b.direction AS direction,
        COALESCE(r.qualname, '(module scope)') AS routine,
        COALESCE(b.evidence, '') AS evidence,
-       b.file || ':' || b.line AS where_,
+       b.file || ':' || b.line AS "where",
        b.file      AS file,
        b.line      AS line
 FROM boundaries b
@@ -1175,7 +1188,7 @@ SELECT NULL      AS node,
          WHERE o.tbl = t.name AND o.direction = 'read')  AS reads,
        (SELECT COUNT(*) FROM sql_ops o
          WHERE o.tbl = t.name AND o.direction = 'write') AS writes,
-       t.file || ':' || t.line AS where_,
+       t.file || ':' || t.line AS "where",
        t.file    AS file,
        t.line    AS line
 FROM db_tables t
@@ -1189,7 +1202,7 @@ SELECT o.routine_id AS node,
        o.direction  AS direction,
        COALESCE(r.qualname, '(module scope)') AS routine,
        o.sql        AS sql,
-       o.file || ':' || o.line AS where_,
+       o.file || ':' || o.line AS "where",
        o.file       AS file,
        o.line       AS line
 FROM sql_ops o
@@ -1205,7 +1218,7 @@ SELECT n.routine_id AS node,
        COALESCE(r.qualname, '(module scope)') AS routine,
        n.timeout    AS timeout,
        n.retries    AS retries,
-       n.file || ':' || n.line AS where_,
+       n.file || ':' || n.line AS "where",
        n.file       AS file,
        n.line       AS line
 FROM net_calls n

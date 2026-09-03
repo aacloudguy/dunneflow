@@ -57,6 +57,19 @@ class Section:
     node_col: str = "node"
     # The column to group rows under as headings. None means one flat table.
     group_col: str | None = None
+    # The column holding a **table name**, for a section whose rows are not nodes.
+    #
+    # `DOC_DB_TABLES` selects `NULL AS node` on purpose -- a declared table is not a node
+    # in the graph, and inventing an id to make a row clickable would be a link to nothing.
+    # But selecting a table is a real act with a route of its own: it means selecting the
+    # code that reads and writes it, which `TABLE_ROUTINES` answers and the navigator has
+    # done since it had a Database group. Without this the whole 43-row section renders
+    # inert, and an inert row is indistinguishable from a row whose id was lost.
+    #
+    # Declared here rather than inferred by the client from a null id, because "this row
+    # names a table" and "this row's node could not be resolved" are different facts that
+    # look identical on the wire (rule 30).
+    table_col: str | None = None
     params: dict[str, Any] = field(default_factory=dict)
 
 
@@ -178,6 +191,7 @@ DOCUMENTS: tuple[Document, ...] = (
         sections=(
             Section(
                 query=queries.DOC_DB_TABLES,
+                table_col="name",
                 columns=(
                     Column("name", "Table", "code"),
                     Column("columns", "Columns", "code"),
@@ -284,6 +298,10 @@ def build(store: Store, doc_id: str) -> dict[str, Any]:
                 groups.append(g)
             g["rows"].append({
                 "node": row.get(spec.node_col),
+                # Present only where the section declares one, so a client can tell "this
+                # row selects a table" from "this row selects nothing" without reading the
+                # shape of a null.
+                **({"table": row.get(spec.table_col)} if spec.table_col else {}),
                 "cells": {c.key: row.get(c.key) for c in spec.columns},
             })
         for g in groups:
@@ -292,6 +310,9 @@ def build(store: Store, doc_id: str) -> dict[str, Any]:
             "columns": [{"key": c.key, "label": c.label, "kind": c.kind}
                         for c in spec.columns],
             "grouped": spec.group_col is not None,
+            # What a row in this section selects, stated rather than sniffed: "node" is a
+            # graph node, "table" is a declared table and selects the code that touches it.
+            "selects": "table" if spec.table_col else "node",
             "groups": groups,
             "rows": sum(len(g["rows"]) for g in groups),
         })

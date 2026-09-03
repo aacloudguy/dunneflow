@@ -197,6 +197,22 @@ docs   ──► extract ──► docs.db  (SQLite) ─────────
   reason, and one per program holding every revision. 2,056 bodies for 2,064 paths, 38.7 MB
   of prose in 14.8 MB; the eight duplicates cost nothing. `--no-doc-source` beside
   `--no-source`, separately, because the two travel separately.
+- `web/documents.py` — **lane 2 of Document mode: the map's own eight documents**, and
+  `corpus.py` below is lane 1. Close names for different subjects: this is prose the tool
+  *generates* about the program, that is the prose somebody *wrote*. Every row carries the
+  graph node id that produced it, selected in the same statement as its text — which is the
+  whole reason this does not reuse `render/markdown.py`, because linking rendered prose back
+  to nodes would mean matching names against the store and rule 5 says how that ends. So a
+  row is an **ordinary selection**: the stack lights, the inspector fills, the trail records
+  the hop, undo reaches it. A `Section` also declares `table_col` where its rows name a
+  declared **table** rather than a node — `DOC_DB_TABLES` selects `NULL AS node` on purpose,
+  and selecting a table means selecting the code that reads and writes it. Declared rather
+  than inferred from a null id, because *"this row names a table"* and *"this row's node
+  could not be resolved"* are different facts that look identical on the wire (rule 30).
+  The location column is aliased `AS "where"`, **in quotes** — `where` is a SQL keyword, it
+  was `where_` for as long as the family existed, and `Column("where", …)` therefore read
+  `None` and rendered the cell blank in **every row of all eight documents**. A guard now
+  prepares every statement and asserts each `Column` key is a column it returns.
 - `web/corpus.py` — the corpus **served**: `/api/docs`, `/api/doc`, `/api/docsource`. Two
   stores answer together and either can be missing on its own, so there are **four**
   states and not two — never scanned, scanned but not captured, captured but not for the

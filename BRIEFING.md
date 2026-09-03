@@ -57,13 +57,14 @@ no build step. deck.gl is vendored into `web/vendor/`.
 |---|---|
 | `serve.py` | the server — two route tables (GET reads, the one POST switches the base), and `_Base`: everything one version decides, swapped whole |
 | `queries.py` | every dashboard query as **SQL text**, in one place |
-| `cover.py` · `detail.py` · `documents.py` | the cover · the inspector and the hover card · document mode |
+| `cover.py` · `detail.py` | the cover · the inspector and the hover card |
 | `threads.py` | adjacency by *interest* — why a neighbour is worth a detour |
 | `curiosities.py` | the doorway panel — ten measured extrema, each with **its middle** |
 | `vocabulary.py` | the naming and glossary lanes, served and matched against one name |
 | `graph.py` · `layout.py` | the 2.5D model at two levels of detail, and where things sit |
 | `packages.py` | the package overview — the other graph layout |
 | `code.py` | the code browser — a file, its clickable names and what each line *is* |
+| `documents.py` | the map's **own** eight documents — lane 2, every row a selection |
 | `corpus.py` | the program's **own** documents served — the list, one document, one span. Lane 1; `documents.py` is lane 2 |
 | `search.py` | searching the **text** — files first, then one file's lines with their margin |
 | `static/shell.js` | **the application**: state, routing, every view, the self-check |
@@ -146,8 +147,9 @@ carried an identity to be paired on.
 
 **Not built:** `dunneflow infer` (the model pass) · attestation · the project profile ·
 packaging as a binary · any language but Python. **Document mode is being built now** —
-chunks 1 and 2 of 6 are in (a body sidecar for documents, and three routes that serve them),
-and there is still no view: the pane says *"Not built yet"* until chunk 4.
+chunks 1, 2 and lane 2 of chunk 4 are in, so the pane is a working view of the map's eight
+documents. What is left is lane 1: the program's own 2,064 documents are stored and served
+and have no renderer yet, which is chunk 3.
 
 **The revision spine is in, and both ends of a pair are readable.** `WORKING` is a *state*
 rather than an id, and a revision is identified by when it was captured; `seal()` keeps the
@@ -167,19 +169,17 @@ program has a most-commented routine and a maximum alone is a claim nobody can w
 
 ## What we are doing now
 
-**Document mode, chunks 1 and 2 of 6 are in.**
-868 tests, mypy clean, ruff clean. The approved plan is at
+**Document mode: chunks 1, 2 and chunk 4's lane 2 are in.**
+889 tests, mypy clean, ruff clean. The approved plan is at
 `~/.claude/plans/polymorphic-finding-swan.md` — read it before resuming.
 
-**Next: chunk 4's lane 2 and the `where_` bug**, then chunk 3's renderer, then chunk 5's
+**Next: chunk 3's renderer**, then chunk 4's **lane 1** on top of it, then chunk 5's
 citations, then chunk 6's records. Only chunk 3 needs the vendored library, which is why the
-order is not 3-4-5.
+order was not 3-4-5.
 
-Chunk 2 served the corpus — `/api/docs`, `/api/doc`, `/api/docsource`, a new `web/corpus.py`,
-and the version's `DocStore` held on `_Base` instead of opened and closed for the glossary.
-**There is no client yet; that is chunk 4.** Everything was verified with `curl` against a
-live server, which is how both of the session's defects were found — see the entry in
-`HANDOFF.md`, and the short version below.
+**Document mode has a view now** — lane 2, the map's own eight documents, where every row is
+an ordinary selection. Lane 1, the program's own 2,064 documents, is served and has no
+renderer; the pane says so rather than leaving it to be noticed.
 
 *Earlier the same day:* chunk B of the shortening work, rule 78, and three rounds of looking at
 the code view — the greenbar, the margin fold, three broken buttons, and the rail/centre split.
@@ -187,7 +187,40 @@ the code view — the greenbar, the margin fold, three broken buttons, and the r
 *The paragraphs below are that day's earlier work, kept because the reasoning is recent and
 load-bearing; the current task is the one named above.*
 
-### The latest: Document mode, chunk 2 — the corpus served (2026-09-03)
+### The latest: Document mode, chunk 4 lane 2 — the narrative view delivered (2026-09-03)
+
+**The ratified design's own sentence, built at last**: *"the same selection, as a document,
+scrolled to the routine you have selected."* `documents.py` has carried a graph node id on
+every row since it was written precisely so this could exist, so a row is an **ordinary
+selection** — the stack lights, the inspector fills, the navigator marks and reveals, the
+trail records the hop, undo reaches it. Driven and read back off the page, not asserted.
+
+**The `where_` bug is fixed and it was worse than it sounded.** All eight `DOC_*` statements
+aliased their location column `AS where_` — `where` is a SQL keyword — while `documents.py`
+keyed it `Column("where", …)`, so the **"Where" cell of every row of all eight documents**
+rendered blank. Now `AS "where"`, and every statement in the family is prepared against the
+real schema with each `Column` key asserted to be one it returns. 0 blank cells on Mensores.
+
+**The first draft cost 9,568 ms per `render()`** — the code browser's own defect at six times
+the size, written by someone who had just read the comment about it. And **two of three
+fixes did nothing** (rule 39): 566 tables against one was 2,049 ms against 2,103; 4,786
+`<button>` cells against spans was inside the noise. What worked was not repainting, plus
+`content-visibility: auto` per group (**61 ms against 3,205**) and `table-layout: fixed`
+(1,769 against 2,389). First paint is now **631 ms** on the largest document and repaints
+are 19–94 ms.
+
+**Two defects found by looking and by clicking.** The group name and the column headers were
+both sticky at `top: 0` inside one container, so the name covered **every column label** the
+moment a group reached the top of the pane — nothing threw, and only a screenshot showed it.
+And the **trail note never landed in three routes**, one of them a year old: `codelink`,
+`docrow` and `doctable` all push a note after `selectFromNav` has already recorded the step,
+and the dedupe threw it away whole. A deduped step now adopts a note the standing one lacks.
+
+**21 mutations, all CAUGHT.** The rule-38 debt stands and grew: every figure was taken at a
+537px centre pane and a 16px root font in a window that refuses to resize and crops its
+screenshots at 784px. **A real window is still owed a look.**
+
+### Before that: Document mode, chunk 2 — the corpus served (2026-09-03)
 
 Every figure the plan predicted came back exactly: **2,064 documents** (2,019 Markdown, 45
 text), 29,980 headings, 235 definitions, 8 duplicates, all openable, and the class breakdown

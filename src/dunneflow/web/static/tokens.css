@@ -1771,13 +1771,89 @@ table.grid tbody tr[aria-selected="true"] td:first-child { box-shadow: inset .18
 .srcblock .cm { color: var(--text-faint); font-style: italic; }
 .srcblock .ln { color: var(--text-faint); }
 
-/* ═══ document mode ═══ */
-.doc { max-width: 46rem; }
+/* ═══ document mode ═══
+ *
+ * Lane 2: the map's own eight documents, as tables of rows that are selections.
+ *
+ * **No `max-width` here, and that is a change.** It was `46rem` — a measure for prose,
+ * which is what this pane was going to hold when the rule was written. A five-column table
+ * of qualified names in 46rem wraps every cell to three lines and turns a 4,786-row
+ * document into a scroll four times longer than it needs to be. The reading measure comes
+ * back with lane 1, on the prose it was meant for. */
 .doc h1 { font-size: 1.3rem; margin: 0 0 .2rem; letter-spacing: -.02em; text-wrap: balance; }
 .doc h2 { font-size: .95rem; margin: 1.4rem 0 .4rem; letter-spacing: -.01em; }
 .doc p { margin: .5rem 0; }
 .doc .lead { color: var(--text-muted); }
 .doc .prose { font-family: var(--f-serif); font-size: .88rem; line-height: 1.6; }
+
+/* The eight, always all of them and always one click away. A strip rather than a
+   browse-then-open pair, because eight fits and 626 files did not. */
+.docstrip { display: flex; flex-wrap: wrap; gap: .3rem; margin-bottom: .55rem; }
+.docstrip button {
+  font: inherit; font-size: .74rem; padding: .25rem .55rem; cursor: pointer;
+  border: 1px solid var(--border); border-radius: .25rem;
+  background: var(--raised); color: var(--text-muted);
+}
+.docstrip button:hover { color: var(--text); border-color: var(--border-strong); }
+.docstrip button[aria-pressed="true"] {
+  background: var(--accent); color: var(--on-accent); border-color: var(--accent);
+  font-weight: 700;
+}
+.dochdr { margin: 0 0 .6rem; }
+.dochdr h2 { margin: 0 0 .15rem; }
+
+.docsec { margin-bottom: 1.1rem; }
+/* **The one thing that makes a 4,786-row document affordable.**
+ *
+ * Measured on `routines`, 566 groups: laying it out is **3,205 ms** without this and
+ * **61 ms** with it. Everything else that was tried moved nothing — 566 tables against one
+ * was 2,049 ms against 2,103, and 4,786 `<button>` cells against spans was inside the
+ * noise. The saving is not in *how* the rows are built; it is in not laying out the 550
+ * groups nobody is looking at.
+ *
+ * `contain-intrinsic-size: auto 24rem` is the placeholder height a skipped group claims.
+ * `auto` means the browser remembers each group's real height once it has rendered it, so
+ * the scrollbar settles as the reader moves and does not keep re-estimating. It is an
+ * estimate until then, and a scrollbar that shifts on first scroll is the cost of this. */
+.docgroup {
+  content-visibility: auto; contain-intrinsic-size: auto 24rem;
+  /* **How far down the column headers stick**, and it is one number because two elements
+     have to agree about it. The group name and the `thead` are both sticky inside this
+     container and both defaulted to `top: 0`, so they stuck to exactly the same pixel and
+     the name — one z-index higher — covered the headers completely. Every column label in
+     the document was invisible the moment a group reached the top of the pane, and only a
+     screenshot showed it.
+
+     In `rem` and declared rather than measured (design rule 3), so the height and the
+     offset cannot drift apart when the scale control moves. */
+  --dochead-h: 1.85rem;
+}
+/* Sticky, like the column headings above it — a group of 566 is a heading a reader loses
+   long before they reach the end of it. `z-index` under the `th` so the two do not fight. */
+.dochead {
+  position: sticky; top: 0; z-index: 3; display: flex; align-items: center; gap: .45rem;
+  height: var(--dochead-h); box-sizing: border-box;
+  margin: .9rem 0 0; padding: 0 .5rem; font-size: .76rem; font-weight: 700;
+  background: var(--raised); border-radius: .25rem .25rem 0 0;
+}
+/* Under the group name, never behind it. */
+table.grid.docgrid thead th { top: var(--dochead-h); }
+.dochead-n { color: var(--text-muted); font-weight: 400; font-variant-numeric: tabular-nums; }
+
+/* `fixed`, like every other grid here, and it is measured rather than inherited: laying
+   out `routines` (4,786 rows, 566 groups) is 1,769 ms fixed against 2,389 auto — 25% of
+   the only cost this pane has. What fixed layout needs in exchange is declared widths,
+   which `docCols()` writes as a `<colgroup>` from a weight per column *kind*; without them
+   a one-word Direction takes the same share as a signature. */
+table.grid.docgrid { table-layout: fixed; width: 100%; }
+table.grid.docgrid tbody tr[data-docrow],
+table.grid.docgrid tbody tr[data-doctable] { cursor: pointer; }
+/* A row with nothing to select. Dimmed rather than hidden — it is a fact about the program
+   either way, and its `title` says what could not be placed (design rule 1). */
+table.grid.docgrid tbody tr.docrow-unlinked td { color: var(--text-faint); }
+.docwhy { color: var(--text-muted); }
+.docwhere { font-size: .72rem; }
+.docother { margin-top: 1.2rem; padding-top: .6rem; border-top: 1px solid var(--border); }
 
 /* ═══ worklist ═══ */
 .worklist { display: flex; flex-direction: column; gap: .6rem; height: 100%; min-height: 0; }

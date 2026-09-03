@@ -2288,7 +2288,11 @@ def test_the_table_moves_to_a_new_subject_and_not_to_a_repaint() -> None:
     assert '$(".tablewrap")' not in rev, "the reveal is back on the wrapper, which never scrolls"
     # The guard, not the variable. Removing the early return leaves the assignment below it
     # intact, so "the name appears" stayed true with the behaviour gone -- rule 37, again.
-    assert "if (!force && state.selected === lastRevealedRow) return;" in rev, (
+    # Per attribute since Document mode wanted the same reveal over `data-docrow`. One
+    # shared memory would have the second pane skip its move because the first had made it
+    # — same selection, different row, and the skip looks exactly like a pane that is not
+    # wired to the selection at all.
+    assert "if (!force && state.selected === lastRevealedRow[attr]) return;" in rev, (
         "the reveal fires on every repaint, so a reader who scrolls away from their "
         "selection is dragged back to it by the next render"
     )
@@ -7757,11 +7761,15 @@ def test_the_inspector_reads_the_fields_the_touch_queries_send() -> None:
 
 
 def test_there_is_one_way_from_the_inspector_to_the_code() -> None:
-    """Three surfaces ask for it; one implementation answers.
+    """Four surfaces ask for it now; one implementation answers.
 
-    The inspector's location line, every member of a fold, and -- when the flow panel lands
-    -- every call site. Rule 51: the list of callers is the thing that grows, and the second
-    implementation is the one that forgets the mode switch.
+    The inspector's location line, every member of a fold, every call site when the flow
+    panel lands -- and Document mode's "Where" column, which is the caller that made the
+    body a named function. That column's cells live in a subtree `render()` deliberately
+    does not rewrite, so they cannot be bound in `wire()` at all (rule 78): the second door
+    is a delegated route, and it calls the same function rather than repeating it. Rule 51:
+    the list of callers is the thing that grows, and the second implementation is the one
+    that forgets the mode switch.
     """
     js = _code(_read("shell.js"))
     assert "function gotoCodeBtn(" in js, "nothing draws the way to the code"
@@ -7770,22 +7778,30 @@ def test_there_is_one_way_from_the_inspector_to_the_code() -> None:
         "a code link is drawn for something with no file, which is design rule 16's dead "
         "control: it renders and cannot do anything"
     )
-    handler = js.split('$$("[data-gotocode]")', 1)[1].split("\n  }));", 1)[0]
-    assert "openCodeFile(" in handler and "revealLine(" in handler, (
+    body = _fn(js, "goToCode")
+    assert "openCodeFile(" in body and "revealLine(" in body, (
         "the code hand-off no longer opens the file and lands on the line"
     )
-    assert 'state.mode = "code"' in handler, (
+    assert 'state.mode = "code"' in body, (
         "it opens the file without switching the centre pane, so the reader is sent to a "
         "view they are not looking at"
     )
+    # **Both doors, and only through the one function.** A door that re-implemented any of
+    # the four steps above would pass every assertion here while drifting from the other.
+    handler = js.split('$$("[data-gotocode]")', 1)[1].split("\n  }));", 1)[0]
+    assert "goToCode(" in handler, "the inspector's door no longer goes through goToCode"
     assert "ev.stopPropagation();" in handler, (
         "the code button does not stop its click, so the row it sits on selects at the same "
         "time and the reader gets two answers to one press"
     )
-    assert "gotocode" in _read("shell.js").split("const WIRED_ATTRS = new Set([", 1)[1] \
-                                          .split("]);", 1)[0], (
-        "`gotocode` is missing from the wired roster, so the self-check calls it dead"
+    assert "docwhere: (b) => goToCode(" in js, (
+        "Document mode's location column re-implements the hand-off, or has none"
     )
+    for attr in ("gotocode", "docwhere"):
+        assert attr in _read("shell.js").split("const WIRED_ATTRS = new Set([", 1)[1] \
+                                              .split("]);", 1)[0], (
+            f"`{attr}` is missing from the wired roster, so the self-check calls it dead"
+        )
 
 
 def test_the_routine_list_follows_a_fold() -> None:
@@ -10091,4 +10107,250 @@ def test_the_rail_browses_its_list_without_closing_the_centres_file() -> None:
     assert "data-codeback" not in chrome, (
         "the centre offers a way back to a list it does not have, so the button removes what "
         "the reader is looking at and prints instructions to go elsewhere"
+    )
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════
+# Document mode, lane 2: the map's own eight documents
+#
+# The narrative view the ratified design asked for, built from rows instead of prose. Every
+# claim it makes is one a static page would satisfy without meaning anything -- it renders,
+# it looks like a document, and nothing about it is connected to the selection -- so each is
+# checked at the place it can fail rather than by its presence.
+# ══════════════════════════════════════════════════════════════════════════════════════
+
+
+def test_document_mode_repaints_only_when_the_document_changes() -> None:
+    """The defect that shipped in the first draft, and it was **9.5 seconds per render**.
+
+    `render()` runs on every selection, every keystroke and every message from the other
+    window. The first version rewrote the chrome around the document each time, which
+    detaches the built subtree -- and re-attaching 4,786 rows costs the layout again.
+    Measured: building the markup 73 ms, parsing it 329 ms, **laying it out 2.0 s**, and
+    9,568 ms for one `render()` that did it more than once.
+
+    Two plausible fixes did nothing, which is why the guard is on the branch and not on the
+    markup: 566 tables against one was 2,049 ms against 2,103, and 4,786 `<button>` cells
+    against spans was inside the noise (rule 39). What worked was not re-attaching, and
+    skipping the groups nobody is looking at.
+    """
+    js = _code(_read("shell.js"))
+    branch = js.split('else if (state.view === "doc")', 1)[1].split('else if (state.view ===', 1)[0]
+    assert "docPaintedFor !== docDomKey()" in branch, (
+        "the document pane repaints unconditionally — every keystroke re-lays out 4,786 rows"
+    )
+    assert '!$("#docMount")' in branch, (
+        "the guard trusts a flag that is true of a pane another view has since overwritten "
+        "(rule 42)"
+    )
+    # The else half has to do the two narrow writes, or the pane is correct and frozen:
+    # the highlight never moves and the subject line names the previous selection.
+    else_half = branch.split("} else {", 1)[1]
+    assert "paintDocHere()" in else_half and "paintDocSubject()" in else_half, (
+        "a repaint that is skipped leaves the highlight and the subject line where they "
+        "were — a pane that is in sync with nothing and looks right"
+    )
+
+
+def test_the_document_body_is_built_once_per_key() -> None:
+    """`cachedSubtree` takes a **function**, and that is the whole of it.
+
+    JavaScript evaluates arguments before the call, so passing the built string rebuilds it
+    on every hit and throws it away — a cache doing its job on the DOM and none at all on
+    the work, which is what it looked like for a session in the code browser.
+    """
+    js = _code(_read("shell.js"))
+    attach = _fn(js, "attachDoc")
+    assert "cachedSubtree(docDom, docDomKey(), docBody)" in attach, (
+        "the document body is not cached, or is passed already built"
+    )
+    assert "docBody()" not in attach, (
+        "`docBody()` is called at the cache's call site, so the markup is rebuilt on every "
+        "attach and the cache saves nothing"
+    )
+    # And the key must carry what changes the page, or the cache hands back the last one.
+    key = _fn(js, "docDomKey")
+    for part in ("DOCPAGE.id", "loading", "rows"):
+        assert part in key, f"the cache key ignores {part}: a stale document survives a change"
+
+
+def test_document_mode_controls_are_routed_from_a_table() -> None:
+    """Rule 78, at the second surface that earned it.
+
+    `wire()` runs at the end of **every** `render()`. For a control inside a pane that is
+    rewritten each time that is harmless; the document subtree is deliberately *not*
+    rewritten, so a `wire()` binding piles a fresh listener onto every one of 4,786 rows
+    per repaint. Five renders after a paint, one click ran the code-panel handler six times
+    — an even number of toggles, and a control that visibly does nothing.
+    """
+    js = _code(_read("shell.js"))
+    routes = js.split("const DOC_ROUTES = {", 1)[1].split("\n};", 1)[0]
+    for kind in ("docpick", "docwhere", "docrow", "doctable", "docgo"):
+        assert f"{kind}:" in routes, f"{kind} has no route — a control wired to nothing"
+    wire = _fn(js, "wire")
+    for kind in ("docpick", "docwhere", "docrow", "doctable", "docgo"):
+        assert f"data-{kind}" not in wire, (
+            f"`{kind}` is bound in wire(), so its listeners accumulate one per render "
+            "(rule 78)"
+        )
+    # One listener over both tables, read from a list rather than restated.
+    assert "const ROUTE_TABLES = [CODE_ROUTES, DOC_ROUTES]" in js, (
+        "the two route tables are not dispatched from one list, so a third would need this "
+        "handler edited rather than an entry adding (rule 36)"
+    )
+
+
+def test_the_location_route_is_declared_before_the_row_route() -> None:
+    """Order is load-bearing here, and getting it wrong is silent.
+
+    The location button sits **inside** a row that is itself a selection, and the dispatcher
+    returns on the first *kind* that matches rather than on the nearest element. Declared
+    after `docrow`, clicking `mensores/cli/agent.py:38` would select the routine instead of
+    opening the file — a plausible-looking result, and the wrong one.
+    """
+    js = _code(_read("shell.js"))
+    routes = js.split("const DOC_ROUTES = {", 1)[1].split("\n};", 1)[0]
+    assert routes.index("docwhere:") < routes.index("docrow:"), (
+        "`docrow` is checked before `docwhere`, so the location cell selects the row "
+        "instead of opening the file"
+    )
+
+
+def test_a_document_row_is_an_ordinary_selection() -> None:
+    """The pane's whole claim, and a static page would satisfy every other check.
+
+    `documents.py` carries a graph node id on every row *precisely* so that clicking one
+    selects that node — rather than matching a name against the store afterwards, which
+    rule 5 says lights up every `main` in a program that has a great many. If these rows do
+    not go through `selectFromNav`, the document is a rendering of `03-routines.md` and the
+    reason it is not that file was thrown away.
+    """
+    js = _code(_read("shell.js"))
+    routes = js.split("const DOC_ROUTES = {", 1)[1].split("\n};", 1)[0]
+    row = routes.split("docrow:", 1)[1].split("doctable:", 1)[0]
+    assert "selectFromNav({ nodes: [id] })" in row, (
+        "a document row does not select — the stack does not light, the inspector does not "
+        "fill, and the trail records nothing"
+    )
+    assert "await selectFromNav" in row, "the selection is not awaited"
+    assert row.index("await selectFromNav") < row.index("pushTrail"), (
+        "the trail step is pushed before the selection settles, so it files a step whose "
+        "subject is null and can take nobody back (rule 33)"
+    )
+    tbl = routes.split("doctable:", 1)[1]
+    assert "selectFromNav({ table: name })" in tbl, (
+        "a declared table row selects nothing. A table is not a node, but selecting one "
+        "means selecting the code that reads and writes it — `queries.py` settled that "
+        "before this pane existed, and without it a 43-row section is inert"
+    )
+
+
+def test_a_row_with_no_node_carries_no_route_and_says_why() -> None:
+    """Design rule 1: three states, and the reader is owed which one it is.
+
+    8 of Mensores' 178 entrypoints name a routine the resolver could not place. Given a
+    `data-docrow` anyway they would look clickable and do nothing; dropped they would make
+    the document quietly short.
+    """
+    js = _code(_read("shell.js"))
+    attrs = _fn(js, "docRowAttrs")
+    assert "if (row.node)" in attrs, "every row is given a route, including ones with no id"
+    assert "docrow-unlinked" in attrs and "title=" in attrs, (
+        "an unlinked row is not marked and carries no explanation, so it is "
+        "indistinguishable from a row whose route is broken"
+    )
+
+
+def test_the_document_pane_follows_the_selection() -> None:
+    """*"The same selection, as a document, scrolled to the routine you have selected."*
+
+    That sentence is the ratified design's, and it is the half of the narrative view that
+    was never built. A pane that renders the right rows and does not move to yours has not
+    delivered it.
+    """
+    js = _code(_read("shell.js"))
+    attach = _fn(js, "attachDoc")
+    assert 'revealSelectedRow(false, "docrow")' in attach, (
+        "arriving in Document mode with a routine selected does not scroll to its row"
+    )
+    assert "paintDocHere()" in attach, "the selected row is not marked when the pane paints"
+    here = _fn(js, "paintDocHere")
+    assert 'tr[data-docrow="' in here and "CSS.escape" in here, (
+        "the highlight is not looked up by id, or an id with a quote in it breaks the query"
+    )
+    # Per-attribute memory, or the second pane skips a reveal the first has made.
+    reveal = _fn(js, "revealSelectedRow")
+    assert "lastRevealedRow[attr]" in reveal, (
+        "one shared reveal memory for two panes: the same selection in the table and in a "
+        "document is a different row, and the skip looks like a pane wired to nothing"
+    )
+
+
+def test_a_deduplicated_trail_step_adopts_the_note_it_was_carrying() -> None:
+    """Three routes read as though they explained the hop, and none of them did.
+
+    `codelink`, `docrow` and `doctable` all `await selectFromNav(...)` and then
+    `pushTrail(view, label, "why")`. `selectFromNav` records the step itself with no note,
+    so the note-carrying call arrived second on the same subject and was dropped whole.
+    Design rule 16's defect three times over, invisible because the step it wanted was
+    already there and looked right. Found by clicking a row and reading `state.trail`.
+    """
+    js = _code(_read("shell.js"))
+    rec = _fn(js, "recordSelection")
+    assert "if (step.note && !at.note) at.note = step.note;" in rec, (
+        "a deduplicated step throws away the note it carried, so every route that explains "
+        "why the reader moved explains nothing"
+    )
+
+
+def test_the_document_grid_declares_its_widths_and_skips_what_is_offscreen() -> None:
+    """The two CSS decisions that are performance, and both are measured.
+
+    `content-visibility` is the difference between **61 ms and 3,205 ms** on `routines`;
+    `table-layout: fixed` is 1,769 ms against 2,389. Fixed layout honours declared widths
+    and nothing else, so dropping the `<colgroup>` gives a one-word Direction the same
+    share as a signature — right-looking and wrong.
+    """
+    css = _css_code(_read("tokens.css"))
+    js = _code(_read("shell.js"))
+    assert "content-visibility: auto" in css.split(".docgroup", 1)[1].split("}", 1)[0], (
+        "the document's groups are all laid out, which is 3.2 s on the largest one"
+    )
+    assert "contain-intrinsic-size" in css.split(".docgroup", 1)[1].split("}", 1)[0], (
+        "a skipped group claims no height, so the scrollbar is the length of the rendered "
+        "groups alone"
+    )
+    grid = css.split("table.grid.docgrid {", 1)[1].split("}", 1)[0]
+    assert "table-layout: fixed" in grid, "the document grid lays out `auto` — 25% slower"
+    assert "function docCols(" in js and "<colgroup>" in _fn(js, "docCols"), (
+        "fixed layout with no declared widths gives every column an equal share"
+    )
+    head = _fn(js, "docSection")
+    assert "docCols(cols)" in head, "the colgroup is built and not emitted"
+
+
+def test_the_group_name_and_the_column_headers_stack() -> None:
+    """Both are sticky inside one container, and both defaulted to the same pixel.
+
+    The group name is a higher `z-index`, so it covered the column headers completely: every
+    label in the document invisible the moment a group reached the top of the pane. Nothing
+    threw, nothing measured wrong, and only a screenshot showed it.
+
+    One number in `rem` for the height and the offset, because two elements have to agree
+    about it and a measured one would drift when the scale control moves (design rule 3).
+    """
+    css = _css_code(_read("tokens.css"))
+    group = css.split(".docgroup {", 1)[1].split("}", 1)[0]
+    assert "--dochead-h:" in group, "the offset is not declared, so it cannot be shared"
+    head = css.split(".dochead {", 1)[1].split("}", 1)[0]
+    assert "height: var(--dochead-h)" in head, (
+        "the group name's height is not the number the headers are offset by, so they will "
+        "drift apart"
+    )
+    assert "rem" in group.split("--dochead-h:", 1)[1].split(";", 1)[0], (
+        "the offset is not in `rem`, so the scale control moves the heading and not the "
+        "headers (design rule 3)"
+    )
+    assert "thead th { top: var(--dochead-h); }" in css, (
+        "the column headers stick at the same place as the group name and are covered by it"
     )

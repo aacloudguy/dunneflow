@@ -8486,3 +8486,110 @@ too, and the guards that covered the old lifetime say nothing about the new one.
 
 **Next: chunk 4's lane 2 and the `where_` bug**, then chunk 3's renderer, then chunk 5's
 citations. Only chunk 3 needs the vendored library.
+
+## Document mode, chunk 4 lane 2: the narrative view delivered — 2026-09-03
+
+The half of the ratified design that was never built, and the `where_` bug found while
+planning it. Lane 1 — the program's own 2,064 documents — still waits on chunk 3's renderer
+and the pane says so.
+
+**The `where_` bug, first, because it is the smaller and the older.** All eight `DOC_*`
+statements aliased their location column `AS where_` — `where` is a SQL keyword and an
+unquoted alias is a syntax error — while `documents.py` keyed the same column
+`Column("where", …)`. `row.get("where")` returned `None`, so the **"Where" cell of every row
+of all eight documents rendered blank**: a column that is there, headed, sized, and empty.
+It had been that way for as long as the family existed and nothing noticed, because nothing
+rendered these documents.
+
+Fixed at the SQL end — `AS "where"`, quoted — because the key is the contract the client
+reads and should not carry a SQL-syntax scar. What makes the direction safe is the guard:
+every statement in the family is now **prepared against the real schema** and every `Column`
+key asserted to be a column it returns, along with `node_col` and `group_col`. A prepared
+statement reports its columns before it returns any rows, so the check runs on an empty
+store and cannot be made to pass by a fixture that happens to hold the right data. Verified
+on Mensores afterwards: **0 blank "Where" cells** across all seven documents that have one.
+
+**Lane 2 is the ratified design's own sentence, delivered from rows.** *"The same selection,
+as a document, scrolled to the routine you have selected."* `documents.py` has carried a
+graph node id on every row since it was written, precisely so this could be built — matching
+a name against the store afterwards would light up every `main` in a program that has a
+great many (rule 5). So a row here is an **ordinary selection**: the stack lights, the
+inspector fills, the navigator marks and reveals, the trail records the hop, undo reaches
+it. All of that was driven and read back off the page rather than asserted.
+
+Three smaller things came with it. A **strip** of all eight rather than a browse-then-open
+pair, because eight fits and 626 files did not — so there is no second field to keep in step
+with `docId`, which is the defect `codeRailList` exists to have fixed. The **"Where" column
+opens the code browser**, which is what `Column`'s own docstring has said it is for since it
+was written. And the **43-row table section**, whose rows are `NULL AS node` by design, now
+selects the code that reads and writes each table — `queries.py` settled that a table is not
+a node but selecting one means selecting its touchers, before anything rendered it. A
+`Section` declares `table_col` for that; inferring it from a null id would be rule 30, since
+*"this row names a table"* and *"this row's node could not be resolved"* look identical on
+the wire.
+
+### The first draft cost 9,568 ms per render, and two of my three fixes did nothing
+
+`render()` runs on every selection, every keystroke and every message from the other window.
+The first version rewrote the chrome around the document each time — which **detaches** the
+built subtree, and re-attaching 4,786 rows pays the layout again. It is the code browser's
+1,358 ms defect at six times the size, in a pane written by someone who had just read the
+comment about it.
+
+Measured on `routines`: building the markup **73 ms**, parsing it **329 ms**, laying it out
+**2.0 s**. So the cost is layout, and the question is what to do about it.
+
+**566 separate tables against one**, group headings as rows inside it: 2,049 ms against
+2,103. **4,786 `<button>` cells against spans**: 2,103 against 2,003. Both were plausible,
+both were measured, and **both were nothing** — rule 39, and the reason they are written
+down rather than quietly dropped.
+
+What worked was not repainting (the structural fix), plus two lines of CSS:
+`content-visibility: auto` per group is **61 ms against 3,205**, and `table-layout: fixed` is
+**1,769 against 2,389**. Fixed layout honours declared widths and nothing else, so a
+`<colgroup>` is built from a weight per column *kind* — without it a one-word Direction takes
+the same share as a signature.
+
+Result: first paint **631 ms** on the largest document (from 5,169), 23–360 ms on the other
+seven, and **19–94 ms** per repaint.
+
+### Two defects the screenshot and the click found
+
+**The group name covered every column header.** Both are sticky inside the same
+`content-visibility` container and both defaulted to `top: 0`, so they stuck to exactly the
+same pixel — and the name, one `z-index` higher, hid the headers completely the moment a
+group reached the top of the pane. Nothing threw and nothing measured wrong. `--dochead-h`
+is now one number in `rem` that the heading's height and the headers' offset both read, so
+the scale control cannot move one without the other (design rule 3).
+
+**And the trail note never landed — in three routes, one of them a year old.** `codelink`,
+`docrow` and `doctable` all `await selectFromNav(...)` and then
+`pushTrail(view, label, "why")`. `selectFromNav` records the step itself with no note, so the
+note-carrying call arrived second on the same subject and `recordSelection`'s dedupe threw it
+away whole. Every one of those routes read as though it explained the hop and none of them
+did — design rule 16's defect three times over, invisible because the step it wanted was
+already there and looked right. A deduplicated step now **adopts** a note the standing one
+lacks, and only then. Found by clicking a row and reading `state.trail`.
+
+**Twenty-one mutations, all CAUGHT** (baseline green first, rule 59): the unconditional
+repaint; a skipped repaint that stops moving the highlight; the cache handed a built string
+rather than a function; a key that forgets which document it holds; a control bound in
+`wire()`; `docrow` declared before `docwhere`, which makes the location cell select the row
+instead of opening the file; a row that stops selecting; a table row that stops selecting;
+an unlinked row given a route anyway; the pane no longer following the selection; the note
+dropped again; `content-visibility` removed; `auto` layout; the colgroup dropped; the headers
+un-stacked; the shared height un-shared; the `table_col` declaration removed at three points;
+and `where_` restored.
+
+889 tests (11 in `test_documents.py`, 10 more in `test_web_controls.py`), mypy clean, ruff
+clean. Self-check green, console clean.
+
+**The rule-38 debt stands and this session added to it.** The automation window reports
+1,267×539, refuses `resize_window`, and its screenshots crop at 784px — so every number above
+was taken at a **537px centre pane and a 16px root font**, where each row is 70px tall
+because the cells wrap. Tom's Chrome is 24px on a 4K screen. The pane width is load-bearing
+for these figures, and the sticky-overlap defect was caught by a screenshot only because it
+happened to be in the left 784px. **A real window is still owed a look.**
+
+**Next: chunk 3's renderer**, then chunk 4's lane 1 on top of it, then chunk 5's citations,
+then chunk 6's records.

@@ -97,6 +97,17 @@ let VIEWER_SRC = null;
 let FILES = [];      // every analysed file, with the counts that earn a column -- served
 let CODEFILE = null; // { path, lines, links, marks, defs, ... } for the one file open
 
+/* Document mode's two stores, on the same bargain as the code browser's and for the same
+ * reason. `DOCINDEX` is the eight documents the map can build -- id, title and blurb, no
+ * counts, because a count costs a query each. `DOCPAGE` holds **one** built document.
+ *
+ * One rather than eight, and it is not a small saving: `routines` is 2.07 MB of JSON over
+ * 4,786 rows and `constants` and `boundaries` are a megabyte apiece, so a cache of all of
+ * them is four megabytes held against a reader who is looking at one. The server answers
+ * the largest in 47 ms, which is less than remembering costs. */
+let DOCINDEX = null;   // [{ id, title, blurb }] | null
+let DOCPAGE = null;    // { id, title, sections, rows, loading } | { found:false } | null
+
 /* Searching inside the source: the answer, and the files opened out of it.
  *
  * `SEARCH` is the **file-level** answer -- how many lines matched, in which files -- and it
@@ -296,6 +307,18 @@ const state = {
    * a rail you cannot browse without closing the centre is that undone. So the two are
    * separate: this says where the rail is, `codeFile` says what is open. */
   codeRailList: false,
+  /* Which of the map's eight documents Document mode has open.
+   *
+   * It defaults to a document rather than to a chooser, because the ratified view's claim
+   * is *"the same selection, read as a document, scrolled to the routine you have
+   * selected"* -- and a page that opens on a menu cannot do that on arrival. `routines` is
+   * the one that holds a row for the thing most selections are.
+   *
+   * Eight is a strip, not a list. The Code group needs a browse-then-open pair because it
+   * has 626 files; here every document is one click away at all times, so there is no
+   * "back to the list" state to get stuck in and no second field to keep in step with this
+   * one -- which is the defect `codeRailList` exists to have fixed. */
+  docId: "routines",
   /* The same switch for the routine list and the table. Two switches rather than one,
    * because what they cost differs: the code overlay fetches a difference per file and can
    * mark four hundred lines, while these marks are read off an answer the page already
@@ -2632,10 +2655,69 @@ const CODE_ROUTES = {
   },
 };
 
+/* Document mode's controls, on the same delegated listener and for the same reason.
+ *
+ * The document subtree is **not** rewritten on every render — that is the whole point of
+ * `docDom` — so a control inside it bound with `addEventListener` in `wire()` accumulates
+ * one listener per render, and a click then runs the handler five or six times. An even
+ * number of toggles is a control that visibly does nothing, which is how three buttons on
+ * the code panel came to be dead while passing every check (rule 78). A route in a table
+ * cannot accumulate.
+ *
+ * `docwhere` is declared **before** `docrow`, and the order is load-bearing: the location
+ * button sits inside a row that is itself a selection, and the loop below returns on the
+ * first kind that matches rather than on the nearest element. Declared the other way
+ * round, clicking `mensores/cli/agent.py:38` would select the routine instead of opening
+ * the file. */
+const DOC_ROUTES = {
+  /* The one control that changes which document is open. It drops nothing: `loadDocPage`
+     is idempotent on the id and clears the built subtree itself when the answer lands. */
+  docpick: (b) => {
+    const id = b.dataset.docpick;
+    if (!id) { console.error("DunneFlow: a document button with no id", b); return; }
+    if (id === state.docId) return;
+    state.docId = id;
+    used("doc:" + id);
+    persist();
+    render();
+  },
+  docwhere: (b) => goToCode(b.dataset.docwhere, Number(b.dataset.docwhereline || 0), b),
+  /* A row. **An ordinary selection**, exactly as a navigator row makes — which is the
+     claim the ratified view actually made for this pane, and the reason `documents.py`
+     carries a node id on every row instead of reusing the rendered Markdown. Awaited then
+     recorded, because a step captures `state.selected` as its subject and pushing first
+     files a step whose subject is null (rule 33). */
+  docrow: async (b) => {
+    const id = b.dataset.docrow;
+    if (!id) { console.error("DunneFlow: a document row with no identity", b); return; }
+    await selectFromNav({ nodes: [id] });
+    pushTrail(state.view, labelFor(id), "picked a row in a document");
+  },
+  /* A declared table is not a node, so selecting one means selecting the code that reads
+     and writes it — `queries.py` settled that before this pane existed, and the navigator
+     has done it since it had a Database group. Without this the whole 43-row section is
+     inert, and an inert row is indistinguishable from one whose id was lost. */
+  doctable: async (b) => {
+    const name = b.dataset.doctable;
+    if (!name) { console.error("DunneFlow: a table row with no name", b); return; }
+    await selectFromNav({ table: name });
+    pushTrail(state.view, name, "picked a table in a document");
+  },
+  docgo: () => revealSelectedRow(true, "docrow"),
+};
+
+/* One listener, two tables. A third table would be a third `addEventListener` on
+ * `document` and a third place for an attribute to be silently unhandled; a merge would
+ * put Document mode's routes under a name that says `CODE_`. Read from the list, so adding
+ * a table is an entry rather than an edit here (rule 36). */
+const ROUTE_TABLES = [CODE_ROUTES, DOC_ROUTES];
+
 document.addEventListener("click", (ev) => {
-  for (const kind of Object.keys(CODE_ROUTES)) {
-    const b = ev.target.closest(`[data-${kind}]`);
-    if (b) { CODE_ROUTES[kind](b); return; }
+  for (const table of ROUTE_TABLES) {
+    for (const kind of Object.keys(table)) {
+      const b = ev.target.closest(`[data-${kind}]`);
+      if (b) { table[kind](b); return; }
+    }
   }
 });
 
@@ -3960,33 +4042,311 @@ function viewTable() {
   </div>`;
 }
 
-/* Document mode: declared and explicitly unbuilt, which is the only honest state for it.
+/* ══ Document mode, lane 2: the map's own eight documents ═══════════════════════════
  *
- * This held a full page of hand-written prose about one Mensores command -- headings, a
- * lead, three sections of specific narrative -- presented exactly as generated output
- * would be. It was the ratified design's mockup content, never replaced, and it is the
- * most expensive kind of pinned data: not a stale number in a corner but a confident,
- * detailed answer about a program the reader may not even be looking at. Nothing marked it
- * as a sample, so there was no way to tell it apart from a real one.
+ * **The narrative view, delivered — and delivered from rows rather than from prose.**
  *
- * The backend for the *other* thing called document mode does exist -- eight documents,
- * every row carrying a node id, which is what the routine list is now built from. The
- * narrative view is a different thing and is not built. Saying so is not a failure state;
- * "nothing here yet" and "nothing to report" are opposite claims and must not look alike.
+ * What stood here was a page of hand-written sample text about one Mensores command,
+ * presented exactly as generated output would be, with nothing marking it as a mockup. It
+ * was deleted as pinned data (rule 34) and replaced by an honest *"not built yet"*. This
+ * is what that note was standing in for.
+ *
+ * The ratified design made **two** claims for this pane and each has its own home:
+ *
+ *   * *"read from `source.db` so the prose and the code beside it are both what was
+ *     measured"* — **Code mode does this**, and has since it was built;
+ *   * *"the same selection, as a document, scrolled to the routine you have selected"* —
+ *     **this**, and it is buildable now in a way it was not when the design was drawn.
+ *
+ * `documents.py` exists precisely so it could be: every row carries the graph node id that
+ * produced it, selected in the same statement as its text, because matching a name against
+ * the store afterwards would light up every `main` in a program that has a great many
+ * (rule 5). So a row here is an *ordinary selection* — the stack lights, the inspector
+ * fills, the trail records the hop, and undo reaches it — and that is the whole difference
+ * between this and reading the rendered Markdown in `output/`.
+ *
+ * Lane 1 — the program's **own** 2,064 documents — is served (`/api/docs`, `/api/doc`) and
+ * has no view yet: it wants the vendored renderer, which is the next chunk. Said on the
+ * page rather than left to be discovered.
  */
+
+/* The eight, asked for once. They cannot change while the map is open — a base switch
+ * reloads the page — and the payload is three strings each. */
+async function loadDocIndex() {
+  if (DOCINDEX) return;
+  DOCINDEX = "loading";
+  try {
+    const r = await fetch("/api/documents");
+    if (!r.ok) throw new Error(`the server answered ${r.status}`);
+    DOCINDEX = (await r.json()).documents || [];
+  } catch (err) {
+    DOCINDEX = { failed: err.message };
+  }
+}
+
+/* One built document. Idempotent on the id, because `render()` runs on every selection and
+ * every keystroke and this is asked from inside it: without the guard a reader moving the
+ * selection inside an open document would refetch two megabytes per click.
+ *
+ * The id is checked again after the await. A reader who switches documents while the
+ * largest is in flight must not have the answer to the question they left land on the page
+ * they moved to — the same rule `loadCodeFile` follows, for the same reason. */
+async function loadDocPage(id) {
+  if (!id) { DOCPAGE = null; return; }
+  if (DOCPAGE && DOCPAGE.id === id) return;
+  DOCPAGE = { id, loading: true, sections: [], rows: 0 };
+  render();
+  let d;
+  try {
+    const r = await fetch(`/api/document?id=${encodeURIComponent(id)}`);
+    if (!r.ok) throw new Error(`the server answered ${r.status}`);
+    d = await r.json();
+  } catch (err) {
+    d = { found: false, id, reason: err.message };
+  }
+  if (state.docId !== id) return;                  // the reader moved on
+  DOCPAGE = { ...d, id, loading: false };
+  /* The built subtree describes the *previous* document. Dropped here rather than left to
+   * the key check alone, so a node holding two megabytes of the wrong document cannot
+   * survive one render where the key happens to match. */
+  docDom = { key: "", node: null };
+  docPaintedFor = "";
+  render();
+}
+
+/* Asked from the one place that knows which page is about to be painted, for the reason
+ * `ensureVocabulary` states: wired to the navigator row instead it would work from there
+ * and say "not asked for yet" forever from the breadcrumb, the trail and `data-goto`. */
+function ensureDocument() {
+  if (!DOCINDEX) loadDocIndex().then(render);
+  if (state.docId && (!DOCPAGE || DOCPAGE.id !== state.docId)) loadDocPage(state.docId);
+}
+
+/* ── painting, which is the whole cost of this pane ──────────────────────────────────
+ *
+ * `routines` is 4,786 rows over 566 groups and paints to about the same weight of markup
+ * as the largest source file, which cost `render()` 1,358 ms per call until the code
+ * browser stopped rebuilding it. `render()` runs on every selection, every keystroke and
+ * every message from the other window, so this follows `viewCode` exactly: the chrome is
+ * cheap and repainted, the document is built once per key and re-attached, and moving the
+ * selection touches two rows' worth of highlight and nothing else.
+ *
+ * Rule 55 — the bound is on the *work*, never on the answer. Every row of every document is
+ * in the DOM; what is bounded is how often it is built. */
+let docDom = { key: "", node: null };
+let docPaintedFor = "";
+
+function docDomKey() {
+  if (!DOCPAGE) return "";
+  return `${DOCPAGE.id}#${DOCPAGE.loading ? "…" : (DOCPAGE.found === false ? "!" : DOCPAGE.rows)}`;
+}
+
+function attachDoc() {
+  const mount = $("#docMount");
+  if (mount && !mount.firstElementChild && DOCPAGE) {
+    mount.appendChild(cachedSubtree(docDom, docDomKey(), docBody));
+  }
+  paintDocHere();
+  revealSelectedRow(false, "docrow");
+}
+
+/* Move the selection's highlight without touching anything else. The same narrow write
+ * `paintHere()` makes over the code, and for the same reason: redrawing 4,786 rows to
+ * change a background colour is rule 45 in a stylesheet. */
+function paintDocHere() {
+  const root = $("#docMount");
+  if (!root) return;
+  root.querySelectorAll('tr[aria-selected="true"]')
+      .forEach(tr => tr.setAttribute("aria-selected", "false"));
+  if (!state.selected) return;
+  const row = root.querySelector(`tr[data-docrow="${CSS.escape(state.selected)}"]`);
+  if (row) row.setAttribute("aria-selected", "true");
+}
+
+/* ── the markup ───────────────────────────────────────────────────────────────────── */
+
+/* One cell, drawn by its declared `kind`.
+ *
+ * `kind` is a hint about presentation and never about meaning — `documents.py` says so at
+ * the `Column` that carries it, and the client may style a column but may not drop one.
+ * The only kind that is more than styling is `where`, which is a file and a line and is
+ * documented as *"a file and line that the source view can open"*. It opens one.
+ *
+ * An empty cell is drawn empty rather than skipped: a boundary with no target, a routine
+ * with no comment and a network call with no retry policy are all facts about the program,
+ * and 1,199 blank targets in the boundaries document are the program not naming them. */
+function docCell(kind, value) {
+  const v = value == null ? "" : String(value);
+  if (kind === "where") {
+    if (!v) return "";
+    const at = v.lastIndexOf(":");
+    const file = at > 0 ? v.slice(0, at) : v;
+    const line = at > 0 ? Number(v.slice(at + 1)) || 0 : 0;
+    /* Its own route rather than `data-gotocode`, which is bound in `wire()` — and this
+     * subtree is not rewritten on every render, so a `wire()` binding would pile a fresh
+     * listener onto every one of 4,786 cells per repaint. That is rule 78 exactly, and it
+     * is the defect three controls on the code panel already paid for. Both doors call
+     * `goToCode`, so there is still one implementation (rule 51). */
+    return `<button class="linkbtn mono docwhere" data-docwhere="${esc(file)}"
+      data-docwhereline="${line}" title="Open ${esc(file)} in the code browser">${esc(v)}</button>`;
+  }
+  if (kind === "code") return `<span class="mono">${esc(v)}</span>`;
+  if (kind === "why")  return `<span class="docwhy">${esc(v)}</span>`;
+  return esc(v);
+}
+
+/* What a row selects, and what it says when it cannot select anything.
+ *
+ * Three states and the reader is owed which one it is (design rule 1). A node id selects
+ * the node. A table name selects the code that reads and writes it — a declared table is
+ * not a node, and `queries.py` wrote down before anything needed it that inventing an id
+ * to make a row clickable would be a link to nothing. And a null id is a real answer: 8 of
+ * Mensores' 178 entrypoints name a routine the resolver could not place, and those rows
+ * carry a title saying so rather than a link that goes nowhere. */
+function docRowAttrs(row, selects) {
+  if (selects === "table" && row.table) {
+    return ` data-doctable="${esc(String(row.table))}" tabindex="0"`;
+  }
+  if (row.node) {
+    return ` data-docrow="${esc(String(row.node))}" tabindex="0"` +
+           ` aria-selected="${state.selected === row.node}"`;
+  }
+  return ` class="docrow-unlinked" title="Nothing in the graph to select: this row names` +
+         ` something the resolver could not place, so it is shown without a link rather` +
+         ` than dropped."`;
+}
+
+/* How much of the table each kind of column is worth.
+ *
+ * `table-layout: fixed` is what makes a 4,786-row document affordable — 1,769 ms against
+ * 2,389 for `auto`, measured, and it is what every other grid in this shell already uses.
+ * The price is that fixed layout honours declared widths and *nothing else*, so a column
+ * with none takes an equal share: a one-word Direction as wide as a signature. These are
+ * weights rather than percentages because the documents have four and five columns, and a
+ * table of percentages per document would be eight places to forget one (rule 36). */
+const DOC_COL_WEIGHT = { why: 3, code: 2, where: 1.5, text: 1.2 };
+
+function docCols(cols) {
+  const w = cols.map(c => DOC_COL_WEIGHT[c.kind] || DOC_COL_WEIGHT.text);
+  const total = w.reduce((a, b) => a + b, 0);
+  return `<colgroup>${w.map(x =>
+    `<col style="width:${(100 * x / total).toFixed(2)}%">`).join("")}</colgroup>`;
+}
+
+function docSection(sec, si) {
+  const cols = sec.columns || [];
+  const head = docCols(cols) + `<thead><tr>${cols.map(c =>
+    `<th scope="col">${esc(c.label)}</th>`).join("")}</tr></thead>`;
+  const body = (g) => `<tbody>${(g.rows || []).map(r =>
+    `<tr${docRowAttrs(r, sec.selects)}>${cols.map(c =>
+      `<td class="dc-${esc(c.kind)}">${docCell(c.kind, (r.cells || {})[c.key])}</td>`
+    ).join("")}</tr>`).join("")}</tbody>`;
+
+  if (!sec.grouped) {
+    const g = (sec.groups || [])[0] || { rows: [] };
+    return `<section class="docsec"><table class="grid docgrid">${head}${body(g)}</table></section>`;
+  }
+  /* A heading per group, with its count on it. The count is `len(rows)` computed beside the
+     rows on the server, so a heading saying 12 over 11 rows is impossible by construction
+     rather than by care (rule 13).
+
+     **Each group is its own `<section>` so the browser can skip laying out the ones nobody
+     is looking at** — see `.docgroup` in the stylesheet, which is the difference between
+     61 ms and 3,205 ms on this document. The wrapper is here rather than a `<div>` around
+     the pair because `content-visibility` needs one element to contain both the heading and
+     its rows: a heading outside the container would be laid out for all 566. */
+  return `<section class="docsec">${(sec.groups || []).map((g, gi) => `
+    <section class="docgroup">
+      <h3 class="dochead" id="docg-${si}-${gi}">
+        <span class="mono">${esc(g.title || "(none)")}</span>
+        <span class="dochead-n">${(g.count || 0).toLocaleString()}</span>
+      </h3>
+      <table class="grid docgrid">${head}${body(g)}</table>
+    </section>`).join("")}</section>`;
+}
+
+function docBody() {
+  if (!DOCPAGE) return `<div class="nav-note">Reading…</div>`;
+  if (DOCPAGE.loading) return `<div class="nav-note">Building ${esc(DOCPAGE.id)}…</div>`;
+  if (DOCPAGE.found === false) {
+    return `<div class="note"><b>${esc(DOCPAGE.id)} could not be built.</b>
+      ${esc(DOCPAGE.reason || "no reason given")}. Nothing is being shown rather than
+      something being guessed.</div>`;
+  }
+  return `<div>${(DOCPAGE.sections || []).map(docSection).join("")}</div>`;
+}
+
+/* Where the reader is in this document, stated.
+ *
+ * The table carries the same line for the defect it was written for: a selected row
+ * 238,000px down a list with the scroll at nought is a pane in sync with no way to tell
+ * (design rule 26). Its own function because it is the one part of this pane's chrome that
+ * moves when the *selection* moves rather than when the document does, and the branch in
+ * `render()` writes it on its own — a second copy of the sentence would be the second
+ * answer that drifts (rule 51). */
+function docSubjectHtml() {
+  if (!state.selected) {
+    return `<span class="tsub-none">Nothing selected — every row is shown, none is yours yet.</span>`;
+  }
+  if (!DOCPAGE || DOCPAGE.loading || DOCPAGE.found === false) return "";
+  const all = (DOCPAGE.sections || [])
+    .flatMap(s => (s.groups || []).flatMap(g => g.rows || []));
+  const at = all.findIndex(r => r.node === state.selected);
+  /* Selected, and not in *this* document. A constant has no row in `routines` and a
+     routine has none in `network` — saying which is a different claim from showing
+     nothing, and the reader is owed which one it is (design rule 1). */
+  if (at < 0) return `<span class="tsub-none">The selection has no row in this document.</span>`;
+  return `<span class="tsub-name mono">${esc(labelFor(state.selected) || state.selected)}</span>
+     <span class="tsub-rank">row ${(at + 1).toLocaleString()} of ${all.length.toLocaleString()}</span>
+     <button class="linkbtn" data-docgo>Go to it</button>`;
+}
+
+function paintDocSubject() {
+  const el = $("#docSubject");
+  if (el) el.innerHTML = `<span class="tsub-label">Showing</span>` + docSubjectHtml();
+}
+
+/* The chooser and the frame. Built only when the document changes — everything about this
+ * pane that moves on a selection is written narrowly by the branch in `render()`. */
 function viewDoc() {
+  ensureDocument();
+  const idx = Array.isArray(DOCINDEX) ? DOCINDEX : [];
+  if (DOCINDEX && DOCINDEX.failed) {
+    return `<article class="doc"><div class="note"><b>The document list could not be
+      read.</b> ${esc(DOCINDEX.failed)}.</div></article>`;
+  }
+  const open = idx.find(d => d.id === state.docId) || null;
+
+  const rows = DOCPAGE && !DOCPAGE.loading ? (DOCPAGE.rows || 0) : 0;
+
   return `
   <article class="doc">
-    <div class="note">
-      <b>Not built yet.</b> Document mode will read the current selection as prose — the
-      routine you have picked, in its own words, scrolled to the line you are looking at,
-      taken from <code class="mono">source.db</code> so the text and the code beside it are
-      both what was measured rather than what the tree happens to say now.
-      <p style="margin:.5rem 0 0">What exists today is the document <em>backend</em>: eight
-      documents, every row carrying its graph node id. The routine list in the navigator is
-      built from one of them. The narrative reading of a selection is not built, and this
-      page would rather say so than show you a sample.</p>
+    <nav class="docstrip" aria-label="Documents">
+      ${idx.length
+        ? idx.map(d => `<button data-docpick="${esc(d.id)}"
+             aria-pressed="${d.id === state.docId}" title="${esc(d.blurb)}">${esc(d.title)}</button>`).join("")
+        : `<span class="hint">Reading the document list…</span>`}
+    </nav>
+
+    <div class="tablesubject" id="docSubject">
+      <span class="tsub-label">Showing</span>${docSubjectHtml()}
     </div>
+
+    ${open ? `<header class="dochdr">
+      <h2>${esc(open.title)}</h2>
+      <p class="hint">${esc(open.blurb)}</p>
+      ${rows ? `<p class="hint">All <b>${rows.toLocaleString()}</b> rows — complete, and
+        every one of them a selection. Clicking a row picks it in the stack and the
+        inspector, exactly as a navigator row does.</p>` : ""}
+    </header>` : ""}
+
+    <div id="docMount"></div>
+
+    ${/* Lane 1, named rather than left to be noticed missing. The routes are built and the
+          bodies are held; what is not built is the renderer that turns one into a page. */""}
+    <p class="hint docother">The program's <b>own</b> documentation — 2,064 files the scan
+      read — is a second lane of this mode and is not built yet. Its bodies are stored and
+      served; what it waits on is the renderer.</p>
   </article>`;
 }
 
@@ -5495,7 +5855,20 @@ function recordSelection(label, note, view) {
      used. The view is in it because the three centre modes are three ways of looking at
      one selection, and moving between them is a step even when the subject has not moved. */
   const at = state.trail[trailAt];
-  if (at && at.view === step.view && sameSelection(at.subject, step.subject)) return;
+  if (at && at.view === step.view && sameSelection(at.subject, step.subject)) {
+    /* **The note is adopted rather than dropped, and that is not tidiness.** Three routes
+     * do `await selectFromNav(...)` and then `pushTrail(view, label, "why")` — a name in
+     * the source, a row in a document, a table in a document. `selectFromNav` records the
+     * step itself, with no note, so the note-carrying call arrived second on the same
+     * subject and was thrown away entire. Every one of those routes read as though it
+     * explained the hop and none of them did: design rule 16's defect, three times, and
+     * invisible because the step it wanted was already there and looked right.
+     *
+     * Only when the standing step has none. A step that already says why it happened is
+     * not improved by a later caller's guess at the same question. */
+    if (step.note && !at.note) at.note = step.note;
+    return;
+  }
   state.trail = state.trail.slice(0, trailAt + 1);   // a new move drops the forward branch
   state.trail.push(step);
   if (state.trail.length > TRAIL_CAP) state.trail.shift();
@@ -8328,7 +8701,49 @@ function render() {
     if (mount) mount.scrollTop = keep;
     revealSelectedRow(false);
   }
-  else if (state.view === "doc")       vp.innerHTML = viewDoc();
+  else if (state.view === "doc")     {
+    /* **Not repainted unless the document changed**, which is `viewCode`'s bargain over a
+     * page of the same weight — and it is the *only* thing that works. Measured on
+     * `routines`, 4,786 rows over 566 groups: building the markup is 73 ms and parsing it
+     * 329 ms, and **laying it out is 2.0 s**. Detach it and put it back and you pay the
+     * layout again, so a `render()` that rewrote the chrome around it cost **9.5 s per
+     * call** — on a function that runs on every selection, every keystroke and every
+     * message from the other window.
+     *
+     * Three things were tried and two of them did nothing, which is worth writing down
+     * because both were plausible (rule 39). **566 separate tables against one** with the
+     * group headings as rows inside it: 2,049 ms against 2,103. **4,786 `<button>`
+     * elements against spans**: 2,103 against 2,003, inside the noise. The only structural
+     * saving was `table-layout: fixed` — 1,769 ms against 2,389, 25% — and that is now
+     * what this grid uses like every other one. The remaining two seconds is laying out
+     * twenty thousand cells of real text and there is nothing in it to find.
+     *
+     * So it is paid **once per document opened**, by a reader who asked for that document,
+     * and every repaint after it writes two attributes and a subject line. Rule 55: the
+     * bound is on the work, never on the answer — every row is in the DOM.
+     *
+     * The DOM is checked as well as the flag, for rule 42's reason: a flag saying "already
+     * painted" is true of a pane another view has since overwritten, and `#docMount`'s
+     * child is the thing that either is or is not on screen. */
+    if (docPaintedFor !== docDomKey() || !$("#docMount")) {
+      const was = docPaintedFor;
+      const keep = vp.scrollTop;
+      vp.innerHTML = viewDoc();
+      attachDoc();
+      docPaintedFor = docDomKey();
+      /* Kept only while the same document is on screen. Restoring 97,000px into a
+         thirty-two-row `network` puts the reader at the bottom of a page they have never
+         seen; the key is what tells the two cases apart. */
+      if (docPaintedFor === was) vp.scrollTop = keep;
+    } else {
+      /* The two things that move without the document moving. Narrow writes, because the
+         whole point of the branch above is that this one touches nothing expensive. */
+      ensureDocument();
+      paintDocSubject();
+      paintDocHere();
+      revealSelectedRow(false, "docrow");
+    }
+  }
   else if (state.view === "code")    {
     /* **Not repainted unless the file changed.** Re-attaching the built table was supposed
      * to make this cheap and did not: moving 17,500 cells back into the document forces a
@@ -8535,17 +8950,7 @@ function wire() {
      `revealLine` are the search's own pattern, unchanged. */
   $$("[data-gotocode]").forEach(b => b.addEventListener("click", (ev) => {
     ev.stopPropagation();          // the row it sits on is itself a selection
-    const path = b.dataset.gotocode, line = Number(b.dataset.gotoline || 0);
-    if (!path) { console.error("DunneFlow: a code link with no file", b); return; }
-    state.mode = "code";
-    state.view = "code";
-    codeGoto = line || 0;
-    if (state.codeFile === path) { revealLine(codeGoto); codeGoto = 0; }
-    else openCodeFile(path);
-    used("gotocode");
-    pushTrail("code", baseOf(path), line ? `at line ${line}` : "");
-    persist();
-    render();
+    goToCode(b.dataset.gotocode, Number(b.dataset.gotoline || 0), b);
   }));
 
   /* cover → graph */
@@ -9230,6 +9635,13 @@ const WIRED_ATTRS = new Set([
      `CODE_ROUTES` is what listens for all of them -- one table, checked by the guard that
      reads it, so a fourth kind added there without a listener fails by name. */
   "codeback", "codedetach", "codelink", "codeopen", "codemode", "codeoverlay", "codeprov", "codemarks",
+  /* Document mode's, and they are in `DOC_ROUTES` for the same reason the code's are in a
+     table: the document subtree is not rewritten on every render, so a `wire()` binding
+     would pile a listener onto every one of 4,786 rows per repaint (rule 78).
+     `docwhereline` carries the line beside `docwhere` and routes nothing, the way
+     `gotoline` sits beside `gotocode` -- the roster is every attribute the shell writes,
+     because the self-check reads the DOM and cannot tell a carried one from a dead one. */
+  "docpick", "docwhere", "docwhereline", "docrow", "doctable", "docgo",
   /* The routine list and the table's own overlay switch. A second switch rather than one
      governing both surfaces: the code overlay fetches a difference per file and these
      marks are read off an answer already held, so wanting one without the other is
@@ -10214,6 +10626,29 @@ async function loadCodeFile(path) {
   if (codeGoto) { revealLine(codeGoto); codeGoto = 0; }
 }
 
+/* Go to a file at a line, from wherever the link was drawn.
+ *
+ * The body of what `[data-gotocode]` did inline, lifted out the day a **second** door
+ * wanted it: Document mode's "Where" column, whose cells sit in a subtree that is not
+ * rewritten on every render and so cannot be wired in `wire()` at all (rule 78). Two
+ * doors, one implementation — rule 51, whose whole subject is that the list of callers is
+ * the thing that grows.
+ *
+ * `where` is for the console, so a link with no file names the element it came from rather
+ * than failing silently. */
+function goToCode(path, line, where) {
+  if (!path) { console.error("DunneFlow: a code link with no file", where || null); return; }
+  state.mode = "code";
+  state.view = "code";
+  codeGoto = line || 0;
+  if (state.codeFile === path) { revealLine(codeGoto); codeGoto = 0; }
+  else openCodeFile(path);
+  used("gotocode");
+  pushTrail("code", baseOf(path), line ? `at line ${line}` : "");
+  persist();
+  render();
+}
+
 /* Open a file in the pane, and say so in the trail.
  *
  * A file is not a node, so this does not go through `selectFromNav`: there is nothing to
@@ -11009,9 +11444,14 @@ function repaintCode() {
  * arguments before the call, so `codeCached(slot, codeTable())` rebuilt 1.37 MB of markup
  * on every hit and then threw it away. The cache was doing its job on the DOM and none at
  * all on the work, and it looked exactly like a cache that worked — `render()` went from
- * 155 ms to 1,370. Measured, or it would still be in. */
-function codeCached(slot, build) {
-  const key = codeDomKey();
+ * 155 ms to 1,370. Measured, or it would still be in.
+ *
+ * Generic since Document mode wanted the identical bargain over a 4,786-row document. Two
+ * copies of this would agree until the day one of them was edited, and the thing that
+ * would be edited is the argument-evaluation trap above — which is invisible and cost a
+ * session to find once already (rule 51). The key is a parameter rather than read from a
+ * global, because the two panes key on different things. */
+function cachedSubtree(slot, key, build) {
   if (slot.key !== key || !slot.node) {
     const box = document.createElement("div");
     box.innerHTML = build();
@@ -11020,6 +11460,10 @@ function codeCached(slot, build) {
   }
   return slot.node;
 }
+
+/* The code browser's own door onto it, so its two call sites keep reading as they did and
+ * cannot forget which key this pane is cached on. */
+function codeCached(slot, build) { return cachedSubtree(slot, codeDomKey(), build); }
 
 /* Move the selection's highlight without touching anything else.
  *
@@ -11977,7 +12421,7 @@ const PERSISTED = [
   "diagram", "nodeShapes", "diagramId", "diagramPorts", "diagramCursor", "diagramEdgeWidth",
   "navCase", "navWord", "navRegex",
   "searchCase", "searchWord", "searchRegex",
-  "panels", "inspectorAuto", "navWidth", "codeWidth", "codeFile", "codeOverlay", "codeProv", "codeMarks", "codeRailList",
+  "panels", "inspectorAuto", "navWidth", "codeWidth", "codeFile", "codeOverlay", "codeProv", "codeMarks", "codeRailList", "docId",
   "tableOverlay", "anomalyOverlay",
   "navGroups",
   "navOpen", "navCap",
@@ -12596,15 +13040,20 @@ function scrollerFor(el) {
  *
  * A *new* subject is a different matter: nobody scrolled anywhere, the answer simply
  * changed, and an answer 97,000px off screen is not an answer. */
-let lastRevealedRow = null;
+/* Per **attribute**, not one value for both panes. The table's rows are `data-row` and
+ * Document mode's are `data-docrow`, and one shared memory would have the second pane skip
+ * its reveal because the first had already made it — the selection is the same, the row is
+ * a different row in a different document, and the skip looks exactly like a pane that is
+ * not wired to the selection at all. */
+let lastRevealedRow = { row: null, docrow: null };
 
-function revealSelectedRow(force) {
+function revealSelectedRow(force, attr = "row") {
   if (!state.selected) return;
-  if (!force && state.selected === lastRevealedRow) return;
-  const row = $(`tr[data-row="${CSS.escape(state.selected)}"]`);
+  if (!force && state.selected === lastRevealedRow[attr]) return;
+  const row = $(`tr[data-${attr}="${CSS.escape(state.selected)}"]`);
   const sc = row && scrollerFor(row);
   if (!row || !sc) return;
-  lastRevealedRow = state.selected;
+  lastRevealedRow[attr] = state.selected;
   const rb = row.getBoundingClientRect(), sb = sc.getBoundingClientRect();
   const hidden = rb.bottom < sb.top || rb.top > sb.bottom;
   if (!force && !hidden) return;

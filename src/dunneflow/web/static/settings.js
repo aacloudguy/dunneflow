@@ -328,6 +328,11 @@ const DEFAULTS = {
   /* Where the *rail* is — its list, or the open file. Separate from `codeFile`, which is what
      is open: the rail browses while the centre reads. */
   codeRailList: false,
+  /* Which of the map's eight documents Document mode has open. A document rather than a
+     chooser, because the pane's own claim is *the selection, read as a document, scrolled
+     to the routine you have picked* — and a page that opens on a menu cannot do that on
+     arrival. `routines` holds a row for the thing most selections are. */
+  docId: 'routines',
   /* The same question asked of the routine list and the table: do these rows say what the
    * comparison found about them. A **second** switch rather than one governing both, and
    * the reason is what each costs. The code overlay fetches a per-file difference and
@@ -565,6 +570,7 @@ function resetSettings(program, current) {
     codeProv: 'the provenance line under the code',
     codeMarks: 'the margin column beside the code',
     codeRailList: 'whether the code rail is showing its file list',
+    docId: 'which of the map\'s documents is open',
     tableOverlay: 'the change overlay on the routine list and the table',
     anomalyOverlay: 'the change overlay on the findings',
     navGroups: 'how many navigator groups open at once', navOpen: 'which groups are open',

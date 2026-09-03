@@ -1277,3 +1277,59 @@ rule of that number — a blank canvas must say why it is blank — which does e
     navigator's Code group where the list is under the reader's eye, and from a worklist page
     it sets the state, loads the file, and moves not one pixel. Rule 51 in the shape rule 51
     is about, and invisible to every test: the state was correct the whole time.
+
+78. **A pane brought up to date by the control that moved it is only as correct as the last
+    person to add a control.** Reported at the keyboard, mid-rabbit: *"When I change the
+    center panel to Code, that panel shows `mensores/_internal/_governed_gates.py` which is
+    not what I expect to see. Is this accurate, or is the center panel off?"*
+
+    It was off. `/api/node` gave `mensores/disceptator/_extraction_state.py` for that node
+    all along. What was on screen was `state.codeFile`, which is **persisted** — the file a
+    session two days earlier had left open, in a package the reader had never opened, drawn
+    with a title and a path and nothing whatever to say it was stale. A wrong answer wearing
+    a correct answer's clothes; the reader had no way to tell, which is why it arrived as a
+    question about the tool's honesty rather than as a bug report.
+
+    Nothing was broken. The store was right, the selection was right, and
+    `followSelectionIntoCode()` was right — it opens `if (!codeOnScreen()) return`, which is
+    correct, because there is nothing to walk when the pane is not up. **The guard's
+    condition has two halves — *the selection changed* and *the pane became visible* — and
+    only the first of them had an event.** The walk was invited from exactly one place, the
+    end of `loadSpecimen`. Selecting while Code sat behind another mode returned at the guard
+    and left no trace, and the mode switch never asked again.
+
+    Tom's rule is larger than the defect and is the rule here: *"Every possible venue that
+    can change the point of view should be considered, so no control should ever expect that
+    it 'knows' what it was showing before is still true."* A reader moves the point of view
+    from the navigator, the centre, the inspector, the trail, the shelf, the crumbs, a hovered
+    row, a diagram box, a search hit and a second window.
+
+    **So a pane reconciles where every route arrives, not where each route remembers** — in
+    `render()`. This is rule 51's family and it is worth its own address because rule 51 is
+    about a *rule* rotting across call sites, where this is about *state going stale in
+    silence*: nothing throws, nothing logs, and the pane looks deliberate. The audit that
+    followed the report found three panes on each side of the lesson. Reconciling in
+    `render()`: the table, the vocabulary lanes, the doorway panel. Relying on every call
+    site: the code pane (one site, and the wrong one), the stack (four), the diagram (seven).
+
+    **The four stack calls were mis-ordered as well as incomplete**, which is what makes the
+    count the point rather than an aside. Every one of them sat *before* its own `render()`,
+    so each was mounting into the previous view's layout — the defect recorded as *"the graph
+    should have been there"*, found once on the mode toggle, fixed there, and left standing
+    at the other three because the report named one handler. A guard was written for it and
+    watched that handler. It watches `render()` now, which speaks for every route including
+    the ones nobody has written.
+
+    **The price is that a reconcile must be silent when it has nothing to do**, because
+    `render()` runs on every keystroke, and two of the three were not. `ensureDiagram` claimed
+    its lock before asking, ran to the bottom, and finished by rewriting `#diagramMount` — the
+    mount that exists *specifically* so `render()` will not touch it — taking the laid-out SVG
+    and the reader's pan and zoom with it. Make the reconcile cheap and quiet, or it becomes
+    the thing that destroys the reader's place on every character they type.
+
+    **And an automatic move must not fight a deliberate one**, which is what stops this rule
+    turning a pane into a cage. The walk records **which subject** the pane was walked for,
+    never merely *that* it was: a flag would be cleared by every selection and set by every
+    walk, so a reader opening a second file to compare against the first could not keep it on
+    screen for one paint. Marking the subject serviced lets them go anywhere inside one
+    selection, and still follows them the moment they pick something new.

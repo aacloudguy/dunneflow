@@ -5,7 +5,7 @@ It exists so a fresh context can be useful in a few minutes instead of an hour.
 
 | Read | For |
 |---|---|
-| `CLAUDE.md` | The rules. 76 engineering rules and 27 dashboard design rules, each earned from a false result on real code. **Binding.** |
+| `CLAUDE.md` | The rules. 77 engineering rules and 27 dashboard design rules, each earned from a false result on real code. **Binding.** |
 | `HANDOFF.md` | The chronological record — what was built when, what it cost, what broke. ~1,700 lines. Read *sections*, not the whole thing. |
 | **this file** | Where things are, what is done, what we are doing now, what not to re-open. |
 | Artifact `f993d319-d2b7-4217-9130-cdbba698d1bc` | The ratified dashboard design — a complete working UI, the source of truth for every view. Read it with the **Artifact tool**, not from a screenshot. |
@@ -457,6 +457,11 @@ pre-existing — a routine row does it too — so it is rule 76's family and not
 **truncated silently**, and the part falling off the end was whatever sat there. Two thirds
 of it was 102 rules, cited as bare numbers 768 times across `src/` and `tests/`, so nothing
 could be deleted or renumbered. The bodies moved and the titles stayed:
+
+**Figures as measured at the split, 2026-09-02, and left as taken.** Every count and byte
+size below is of that day — the rules have been added to since, and rewriting one column
+without retaking the other is a different measurement under the same label (rule 24). The
+live counts are at the head of this file.
 
 | File | Was | Now | Holds |
 |---|---|---|---|

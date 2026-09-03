@@ -9725,7 +9725,8 @@ def test_the_source_path_readout_no_longer_sizes_a_string_it_cannot_receive() ->
 
 # --------------------------- no pane assumes what it shows is still true --- #
 #
-# Tom's rule, from a pane that assumed it: *"EVERY mode switch should re-verify where it
+# Rule 78, and it was written from the defect these guard. Tom's rule, from a pane that
+# assumed the opposite: *"EVERY mode switch should re-verify where it
 # should be ... no control should ever expect that it 'knows' what it was showing before is
 # still true."* A reader moves the point of view from the navigator, the centre, the
 # inspector, the trail, the shelf, the crumbs, a hovered row, a diagram box, a search hit

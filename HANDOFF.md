@@ -8011,6 +8011,30 @@ The stack's backing store is 300×150 against a 245×293 stage in the automation
 against `HEAD` with the change stashed: **identical**, so it is the recorded rule-38 context and
 not this. It is the same context that reports `canvas MISSING, frames 0`.
 
+### It is rule 78
+
+Tom's call, put to him because the numbers are permanent addresses in this project's
+constitution and 768 citations point at them. **Rule 78: a pane brought up to date by the
+control that moved it is only as correct as the last person to add a control.**
+
+Its own address rather than a note under rule 51, and the distinction is the reason it earned
+one: rule 51 is about a *rule* rotting across call sites, where this is about **state going
+stale in silence**. Nothing throws, nothing logs, and the pane looks entirely deliberate —
+which is why this arrived as a question about whether the tool was telling the truth rather
+than as a bug report.
+
+The body carries the three things that make it usable rather than agreeable: the reconcile
+must be **silent when there is nothing to do**, because `render()` runs on every keystroke;
+an **automatic move must not fight a deliberate one**, or the rule turns a pane into a cage;
+and the guard's condition had **two halves with an event on only one**, which is the shape to
+look for. Cited from four places in `shell.js` and from the guards.
+
+Enumerated after adding it rather than counted: **1–78 with 21 absent, 77 rules, and the
+index in `CLAUDE.md` and the bodies in `RULES.md` agree exactly** — no index without a body,
+no body without an index. `BRIEFING.md`'s file-size table is left as taken and now says so:
+its counts and byte sizes are of 2026-09-02, and rewriting one column without retaking the
+other is a different measurement under the same label (rule 24).
+
 ### Left open
 
 **`<module>` is answered in a routine-shaped inspector.** It draws *"Nothing in this map calls

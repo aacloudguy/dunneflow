@@ -2686,7 +2686,7 @@ function diagramWanted() {
 async function ensureDiagram() {
   if (state.view !== "diagram" || diagramBusy) return;
   /* **Silent when there is nothing to do**, and that is what makes this safe to call from
-   * `render()` rather than from the seven places that currently remember to.
+   * `render()` rather than from the seven places that used to remember to (rule 78).
    *
    * Without it the function ran to the bottom on every call, found both of its content
    * guards satisfied, and still finished with `renderDiagram()` -- which rewrites
@@ -3034,7 +3034,7 @@ $$("#modes button").forEach(b => b.addEventListener("click", () => {
    * switching to the graph from the table showed an empty canvas until the reader found
    * snap-to-fit. Reported as *the graph should have been there*, and it should.
    *
-   * The unfound one is that a handler naming the modes that need mounting is **knowledge
+   * The unfound one is rule 78: a handler naming the modes that need mounting is **knowledge
    * with a shelf life** -- it is right until a mode is added, and wrong silently. Both are
    * gone: `render()` reconciles every pane at the point every route arrives, in the order
    * that was fixed here and is now fixed for routes nobody has written. */
@@ -7237,7 +7237,8 @@ function followSelectionIntoCode() {
    * Reported as *"the panel shows `mensores/_internal/_governed_gates.py` which is not what
    * I expect to see"*, on a node whose own `where.file` was
    * `mensores/disceptator/_extraction_state.py` all along. The store was right, the walk was
-   * right, and nothing invited the walk a second time. */
+   * right, and nothing invited the walk a second time. **Rule 78**, and the rule was written
+   * from this. */
   if (!codeOnScreen()) return;
   if (codeFollowedFor === inspectorFor) return;
   const w = SPECIMEN && SPECIMEN.where;
@@ -8033,8 +8034,8 @@ function render() {
   const vp = $("#viewMount");
   /* ══ reconcile, before anything is painted ═══════════════════════════════════════════
    *
-   * **No control may assume that what it was showing is still true.** Tom's rule, and it
-   * came from a pane that was: selecting a routine while Code was behind another mode left
+   * **No control may assume that what it was showing is still true (rule 78).** Tom's rule,
+   * and it came from a pane that did: selecting a routine while Code was behind another mode left
    * the walk uninvited, and switching to Code afterwards showed a **persisted** file from a
    * previous session with nothing to say it was stale.
    *

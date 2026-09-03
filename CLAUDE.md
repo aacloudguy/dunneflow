@@ -14,7 +14,7 @@ by *how often you need it*, not by importance:
 | File | What it holds | When to read it |
 |---|---|---|
 | `CLAUDE.md` | commands, verification gates, architecture, and the **index** of every rule | every session — it is loaded for you |
-| `RULES.md` | the 76 engineering rules **in full**, with the false result each came from | before working in the area a rule governs |
+| `RULES.md` | the 77 engineering rules **in full**, with the false result each came from | before working in the area a rule governs |
 | `DESIGN-RULES.md` | the 27 dashboard design rules in full | before building or changing a view |
 | `PERFORMANCE.md` | every measured figure, with its budget and its conditions | before quoting or retaking a number |
 | `BRIEFING.md` | state: what is built, what is next, what is closed | at the start of a session |
@@ -429,6 +429,8 @@ it was written from.
  76. An echo is not an act, and the engine cannot tell you which it is sending.
  77. A synthetic subject is minted on a condition, so it cannot carry a fact that does
      not share it.
+ 78. A pane brought up to date by the control that moved it is only as correct as the
+     last person to add a control.
 ```
 
 ## Anomalies: the discipline

@@ -246,11 +246,18 @@
   Order matters and is not incidental. deck.gl defines the `deck` global that
   `shading.js` and `graph.js` both read at parse time, and `shell.js` reads
   `window.DunneFlowGraph` when it mounts. These are classic scripts sharing one
-  global scope, which is why each of the three wraps itself in an IIFE and exports
+  global scope, which is why each of them wraps itself in an IIFE and exports
   exactly one name.
+
+  `prose.js` needs nothing at parse time and is 6 KB; what it *renders* with is
+  `markdown-it`, 125 KB, and that is fetched lazily the first time a document is
+  opened. Most sessions never open one, and paying for it at boot would slow the
+  screen everyone sees for the one many never reach -- the same bargain the
+  drawing engine already makes.
 -->
 <script src="/vendor/deck.gl.min.js"></script>
 <script src="/static/settings.js"></script>
 <script src="/static/shading.js"></script>
 <script src="/static/graph.js"></script>
+<script src="/static/prose.js"></script>
 <script src="/static/shell.js"></script>

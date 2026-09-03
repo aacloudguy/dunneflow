@@ -65,6 +65,7 @@ no build step. deck.gl is vendored into `web/vendor/`.
 | `packages.py` | the package overview — the other graph layout |
 | `code.py` | the code browser — a file, its clickable names and what each line *is* |
 | `documents.py` | the map's **own** eight documents — lane 2, every row a selection |
+| `static/prose.js` | the document renderer — markdown to markup, `data-line` on every block |
 | `corpus.py` | the program's **own** documents served — the list, one document, one span. Lane 1; `documents.py` is lane 2 |
 | `search.py` | searching the **text** — files first, then one file's lines with their margin |
 | `static/shell.js` | **the application**: state, routing, every view, the self-check |
@@ -147,9 +148,9 @@ carried an identity to be paired on.
 
 **Not built:** `dunneflow infer` (the model pass) · attestation · the project profile ·
 packaging as a binary · any language but Python. **Document mode is being built now** —
-chunks 1, 2 and lane 2 of chunk 4 are in, so the pane is a working view of the map's eight
-documents. What is left is lane 1: the program's own 2,064 documents are stored and served
-and have no renderer yet, which is chunk 3.
+chunks 1, 2, 3 and lane 2 of chunk 4 are in, so the pane is a working view of the map's
+eight documents. What is left is lane 1's **pane**: the program's own 2,064 documents are
+stored, served and renderable, and nothing calls the renderer yet.
 
 **The revision spine is in, and both ends of a pair are readable.** `WORKING` is a *state*
 rather than an id, and a revision is identified by when it was captured; `seal()` keeps the
@@ -169,17 +170,18 @@ program has a most-commented routine and a maximum alone is a claim nobody can w
 
 ## What we are doing now
 
-**Document mode: chunks 1, 2 and chunk 4's lane 2 are in.**
-889 tests, mypy clean, ruff clean. The approved plan is at
+**Document mode: chunks 1, 2, 3 and chunk 4's lane 2 are in.**
+904 tests, mypy clean, ruff clean. The approved plan is at
 `~/.claude/plans/polymorphic-finding-swan.md` — read it before resuming.
 
-**Next: chunk 3's renderer**, then chunk 4's **lane 1** on top of it, then chunk 5's
-citations, then chunk 6's records. Only chunk 3 needs the vendored library, which is why the
-order was not 3-4-5.
+**Next: chunk 4's lane 1** — the document list grouped by class with its counts, a filter, a
+reader with the document's own headings as a side nav, and the three link routes `prose.js`
+already emits (`data-doclink`, `data-docanchor`, and the external ones that route
+themselves). Then chunk 5's citations, then chunk 6's records.
 
-**Document mode has a view now** — lane 2, the map's own eight documents, where every row is
-an ordinary selection. Lane 1, the program's own 2,064 documents, is served and has no
-renderer; the pane says so rather than leaving it to be noticed.
+**Lane 2 is a working view** — the map's own eight documents, every row an ordinary
+selection. **Lane 1 now has everything but its pane**: the bodies are stored, three routes
+serve them, and `prose.js` renders them. Nothing calls the renderer yet.
 
 *Earlier the same day:* chunk B of the shortening work, rule 78, and three rounds of looking at
 the code view — the greenbar, the margin fold, three broken buttons, and the rail/centre split.
@@ -187,7 +189,44 @@ the code view — the greenbar, the margin fold, three broken buttons, and the r
 *The paragraphs below are that day's earlier work, kept because the reasoning is recent and
 load-bearing; the current task is the one named above.*
 
-### The latest: Document mode, chunk 4 lane 2 — the narrative view delivered (2026-09-03)
+### The latest: Document mode, chunk 3 — the renderer (2026-09-03)
+
+`prose.js` and the vendored `markdown-it`. **Its own file, and the boundary is `graph.js`'s**:
+it turns text into markup and knows nothing about this page, and what it has to say leaves as
+data attributes the shell routes.
+
+**The line CLAUDE.md draws is enforced now rather than stated.** `VERSIONS.json` has claimed
+*"a test asserts it"* since the library was vendored and there was no such test — rule 43's
+shape, the same as `shorten()`'s docstring promising a `selfCheck`. Nothing under
+`extractors/` may mention the library: its output is a contract hashed into the cache key,
+and a renderer is in no cache key at all.
+
+**The property it was chosen for, verified rather than assumed**: every heading `docs.db`
+recorded found in the rendered DOM at exactly its own line — **825 of 825** across 60
+documents, 782 of 782 across another 41. That is the chain design rule 13 rests on.
+
+**Every link and image decision came from the corpus**: 3,516 https · 6 http · 666 relative ·
+16 anchors · 6 unfollowable schemes · 5 images. External links stay links in a new tab;
+relative links and anchors **lose their href entirely**; `graph:` and friends render as text.
+**An image is never fetched** — that is egress rather than navigation, no click and no
+consent (design rule 14). Swept over 230 documents and 4.0 MB: zero errors, zero hrefs that
+could navigate away, zero `<img>`, zero `<script>`.
+
+**Frontmatter is half the corpus and the obvious fix was the trap.** 989 of 2,019 documents
+open with YAML that markdown-it renders as a setext heading. *Cutting* those lines shifts
+every `token.map` below by a constant — a page that renders perfectly with every line number
+on it wrong. They are **blanked** instead: no arithmetic, none to get wrong.
+
+**Two process findings.** A guard passed on the *comment* explaining it — dropping
+`noreferrer` survived a mutation because the paragraph saying why it was there was still in
+the searched text, which is `_code()`'s own recorded defect reproduced within an hour of
+reading it. And a mutation harness killed by a timeout **leaves the tree mutated**, which
+`git checkout` cannot undo for a new untracked file: commit before mutating.
+
+**22 mutations, all CAUGHT.** The library is 29 ms lazily; 1.32 MB parses and renders in
+40–72 ms.
+
+### Before that: Document mode, chunk 4 lane 2 — the narrative view delivered (2026-09-03)
 
 **The ratified design's own sentence, built at last**: *"the same selection, as a document,
 scrolled to the routine you have selected."* `documents.py` has carried a graph node id on

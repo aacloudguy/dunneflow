@@ -197,6 +197,23 @@ docs   ──► extract ──► docs.db  (SQLite) ─────────
   reason, and one per program holding every revision. 2,056 bodies for 2,064 paths, 38.7 MB
   of prose in 14.8 MB; the eight duplicates cost nothing. `--no-doc-source` beside
   `--no-source`, separately, because the two travel separately.
+- `web/static/prose.js` — **the document renderer**, and the only third-party parser in the
+  tool. Its own file because the boundary is `graph.js`'s: it turns text into markup and
+  knows nothing about this page, and what it has to say leaves as **data attributes** —
+  `data-line` on every block, `data-doclink`, `data-docanchor` — which the shell routes.
+  Rendered through `md.parse()` to tokens and never `md.render()`, because the line map is
+  the whole reason the library is here: **825 of 825 headings** verified findable in the DOM
+  at exactly the line `docs.db` recorded, which is the chain design rule 13 rests on.
+  `html: false` is the whole XSS answer; `linkify: false` because in 2,019 plans and research
+  notes a great deal of text looks like a URL without being one. **An image is never
+  fetched** — an `<img>` fires a request with no click and no consent, out of a tool whose
+  posture is deterministic and local (design rule 14) — and a **relative link never keeps its
+  href**, because `<a href="./rel.md">` navigates the dashboard away. Chosen from the corpus
+  rather than in general: 3,522 external links, 666 relative, 16 anchors, 6 schemes nobody
+  can follow, 5 images. **YAML frontmatter is blanked, never removed**: markdown-it parses it
+  as a setext heading, 989 of 2,019 documents open with one, and *deleting* the lines would
+  shift every `token.map` below by a constant — a page that renders perfectly with every
+  number on it wrong.
 - `web/documents.py` — **lane 2 of Document mode: the map's own eight documents**, and
   `corpus.py` below is lane 1. Close names for different subjects: this is prose the tool
   *generates* about the program, that is the prose somebody *wrote*. Every row carries the

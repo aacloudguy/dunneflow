@@ -134,14 +134,21 @@ def test_the_page_loads_what_it_needs() -> None:
     """
     html = _read("index.html")
     for src in ("/vendor/deck.gl.min.js", "/static/settings.js", "/static/shading.js",
-                "/static/graph.js", "/static/shell.js"):
+                "/static/graph.js", "/static/prose.js", "/static/shell.js"):
         assert src in html, f"{src} is never loaded, so the page is missing part of itself"
+    # `markdown-it` is deliberately **not** here: it is fetched lazily by `Prose.load()` the
+    # first time a document is opened. A script tag for it would undo that, and would look
+    # exactly like this guard being thorough.
+    assert "/vendor/markdown-it" not in html, (
+        "the renderer's 125 KB library is loaded at boot, for a mode most sessions never open"
+    )
     assert "/static/tokens.css" in html, "the token stylesheet is never loaded"
 
     # Order is not incidental: these are classic scripts sharing one global scope, and each
     # reads the global the one before it defines.
     at = [html.index(s) for s in ("/vendor/deck.gl.min.js", "/static/shading.js",
-                                  "/static/graph.js", "/static/shell.js")]
+                                  "/static/graph.js", "/static/prose.js",
+                                  "/static/shell.js")]
     assert at == sorted(at), "the scripts are loaded out of order; each needs the last"
 
 

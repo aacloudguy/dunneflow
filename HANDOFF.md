@@ -8593,3 +8593,104 @@ happened to be in the left 784px. **A real window is still owed a look.**
 
 **Next: chunk 3's renderer**, then chunk 4's lane 1 on top of it, then chunk 5's citations,
 then chunk 6's records.
+
+## Document mode, chunk 3: the renderer — 2026-09-03
+
+`prose.js`, and the vendored `markdown-it` it drives. The last piece before lane 1 has a
+view. Nothing in Document mode calls it yet — that is chunk 4's lane 1 — so everything here
+was verified by driving `Prose` directly against the live corpus, which is how three of the
+four findings turned up.
+
+**Its own file, and the boundary is `graph.js`'s.** It turns text into markup and knows
+nothing about this page: which document is open, what a link means when clicked, what exists
+in the corpus. What it has to say leaves as **data attributes** and the shell routes them. A
+renderer that called `openDoc()` would be a second place deciding what a click means, and it
+could not be tested without the whole application around it — which is why every check in
+`test_prose.py` reads the module rather than the page.
+
+**The line CLAUDE.md draws is now enforced rather than stated.** `VERSIONS.json` has claimed
+*"a test asserts it"* since the library was vendored and **there was no such test** — rule
+43's shape exactly, and the same shape as `shorten()`'s docstring promising a `selfCheck` for
+a session without one. There is one now: nothing under `extractors/` may mention the library
+or the vendor path, because the extractor's output is a contract hashed into the cache key
+and must not depend on a third party's reading of a document. A renderer produces pixels,
+sits in no cache key, and no fact depends on it.
+
+**The property the library was chosen for, verified end to end rather than assumed.** Every
+heading `docs.db` recorded must be findable in the rendered DOM at exactly its own line, or a
+glossary citation opens a document *near* where it was read from. **825 of 825 headings
+across 60 documents**, and 782 of 782 across a second sample of 41. `md.parse()` to tokens
+and `md.renderer.render()`, never `md.render()`, which throws the maps away before anything
+can be stamped on them.
+
+**Every decision about links and images was taken from the corpus, not in general.** Measured
+over 2,019 Markdown documents: **3,516 https · 6 http · 666 relative · 16 anchors · 6 other
+schemes · 5 images**. So external links stay links and open in a new tab with
+`rel="noreferrer noopener"`; relative links and anchors **lose their href entirely** and
+carry where they wanted to go instead; `graph:`, `xs:` and `node:` render as text, because a
+link nobody can follow is design rule 16's dead control.
+
+**And an image is never fetched.** That is the one that is egress rather than navigation:
+`![](https://tracker/x.png)` fires a request the moment it renders — no click, no consent —
+out of a tool whose whole posture is deterministic and local (design rule 14). Five images in
+this corpus and all of them relative, but the rule is about what a document *can* contain.
+Each renders as a placeholder naming its source, so the reader knows something was there.
+
+Verified on a sweep of **230 documents, 4.0 MB**: zero errors, **zero hrefs that could
+navigate away**, zero `<img>`, zero `<script>/<iframe>/<object>/<embed>`. And directly: a
+document containing `<script>`, `<img onerror>`, `javascript:` and `vbscript:` renders all
+four as text with nothing executed.
+
+### Frontmatter: half the corpus, and the obvious fix was the trap
+
+markdown-it knows nothing about YAML frontmatter, so a document opening
+`---\nkind: reference\ntitle: Glossary\n---` parses it as a **setext heading** — the metadata
+becomes an `<h2>` above the document's own title, with an id of
+`kind-referencetitle-glossary`. **989 of Mensores' 2,019 Markdown documents** begin with one.
+
+The trap is the fix. **Cutting the lines out shifts every `token.map` below by the number
+removed**, so every `data-line` is wrong by a constant, every heading in the nav scrolls to
+the wrong block, and a citation opens near rather than at. The page renders perfectly and
+every number on it is off by four. The lines are **blanked** instead: no arithmetic, so no
+arithmetic to get wrong. Only a *closed* fence at the very top counts — a document opening
+with a horizontal rule is not carrying frontmatter, and 30 of the 989 are blocks the
+extractor could not parse as YAML and which are still not prose. The raw text is returned so
+the caller can show it as what it is.
+
+### Two process findings, both worth keeping
+
+**A guard passed on the comment explaining it.** Dropping `noreferrer` from the code survived
+a mutation, because this file's `_strip` blanked comment *lines* — the shell's treatment —
+and these are long block comments whose continuation lines are plain indented prose. The
+paragraph saying *why `noreferrer` is there* was still in the text being searched. That is
+the exact defect `_code()`'s own docstring in `test_web_controls` records, reproduced in a
+new file within an hour of reading it. `_strip` now tracks `/* … */` across lines, a guard
+asserts the stripper is exact for this file, and the assertion targets the `attrSet` call
+rather than the word.
+
+**And a killed mutation harness leaves the tree mutated.** The run timed out at two minutes,
+`finally` never ran, and `prose.js` was left with its anchor-collision handling removed —
+which `git checkout` could not undo, because the file was new and untracked. Caught by the
+next run reporting *"SKIPPED (no match)"* on a mutation that had passed minutes before. The
+lesson is small and cheap: **commit before mutating**, so a killed harness is one `git
+checkout` from clean.
+
+**22 mutations, all CAUGHT** (baseline green first, rule 59): the extractor importing the
+library; the library loaded at boot; `prose.js` not loaded at all; two callers both fetching;
+`html: true`; `linkify: true`; `md.render()`; no `data-line`; the stamp landing on inline
+tokens; a relative link keeping its href; an external link replacing the page; the referrer
+leaking; an unknown scheme drawn as a link; a protocol-relative URL read as a corpus path;
+images fetched; a path resolved against the document rather than its directory; two headings
+sharing an anchor; plain text fed to the parser; frontmatter cut rather than blanked; an
+unclosed fence eating the document; the renderer reaching into the shell; and the record
+losing its reason.
+
+Measured: the library is **29 ms** to fetch and configure, lazily. `.groma/ISSUES.md` — 1.32
+MB — parses and renders in **40–72 ms**. 230 documents and 4.0 MB of prose, with their
+fetches, in 927 ms.
+
+904 tests (15 new in `test_prose.py`), mypy clean, ruff clean.
+
+**Next: chunk 4's lane 1** — the document list grouped by class with its counts, a filter, a
+reader with the document's own headings as a side nav, and the three link routes this
+renderer emits. Then chunk 5's citations, then chunk 6's records.

@@ -1855,6 +1855,63 @@ table.grid.docgrid tbody tr.docrow-unlinked td { color: var(--text-faint); }
 .docwhere { font-size: .72rem; }
 .docother { margin-top: 1.2rem; padding-top: .6rem; border-top: 1px solid var(--border); }
 
+/* ── lane 1: a document's own prose, rendered ──
+ *
+ * A **measure**, unlike lane 2's tables, because this is text meant to be read: `46rem` is
+ * the width the document pane carried before it held tables, and it comes back for the one
+ * thing it was chosen for. */
+.prose { max-width: 46rem; font-size: .84rem; line-height: 1.62; }
+.prose h1, .prose h2, .prose h3, .prose h4, .prose h5, .prose h6 {
+  letter-spacing: -.01em; text-wrap: balance; margin: 1.5rem 0 .5rem; scroll-margin-top: 3rem;
+}
+.prose h1 { font-size: 1.28rem; } .prose h2 { font-size: 1.08rem; }
+.prose h3 { font-size: .95rem; }  .prose h4, .prose h5, .prose h6 { font-size: .86rem; }
+.prose > :first-child { margin-top: 0; }
+.prose p, .prose ul, .prose ol, .prose blockquote { margin: .7rem 0; }
+.prose li { margin: .2rem 0; }
+.prose code { font-family: var(--f-mono); font-size: .82em; background: var(--raised);
+              padding: .05rem .25rem; border-radius: .2rem; overflow-wrap: anywhere; }
+/* The one place a document may be wider than its measure, and it scrolls rather than wraps:
+   a wrapped code block is a code block that no longer says what the program says. */
+.prose pre { background: var(--raised); border: 1px solid var(--border); border-radius: .3rem;
+             padding: .6rem .7rem; overflow-x: auto; margin: .8rem 0; }
+.prose pre code { background: none; padding: 0; font-size: .78rem; overflow-wrap: normal; }
+.prose blockquote { border-left: .1875rem solid var(--border-strong); padding-left: .7rem;
+                    color: var(--text-muted); }
+.prose hr { border: 0; border-top: 1px solid var(--border); margin: 1.4rem 0; }
+.prose table { border-collapse: collapse; margin: .8rem 0; font-size: .78rem; display: block;
+               overflow-x: auto; }
+.prose th, .prose td { border: 1px solid var(--border); padding: .3rem .5rem;
+                       text-align: left; vertical-align: top; }
+.prose th { background: var(--raised); }
+.prose img { max-width: 100%; }
+
+/* The three kinds of link, and they look different because they *do* different things
+   (design rule 16 from the other side: a control that looks the same must behave the same).
+   External leaves the machine and says so; the other two move you inside this pane. */
+.prose a, .prose .doclink, .prose .docanchor {
+  color: var(--accent-text); text-decoration: underline;
+  text-underline-offset: .12em; cursor: pointer;
+}
+.prose .docext::after { content: " \2197"; font-size: .8em; color: var(--text-faint); }
+.prose .doclink-missing { color: var(--text-muted); text-decoration-style: dotted;
+                          cursor: help; }
+
+/* An image that was never fetched, and the reader is told rather than shown a gap.
+   See `prose.js`: rendering an `<img>` fires a request with no click, out of a tool whose
+   whole posture is deterministic and local (design rule 14). */
+.docimg { display: inline-flex; align-items: baseline; gap: .35rem; padding: .1rem .35rem;
+          border: 1px dashed var(--border-strong); border-radius: .25rem;
+          font-size: .78rem; color: var(--text-muted); }
+.docimg-alt { font-style: italic; }
+.docimg-src { font-family: var(--f-mono); font-size: .72rem; color: var(--text-faint);
+              overflow-wrap: anywhere; }
+
+/* A `.txt`, or an `.rst`/`.adoc` this build does not render. Not a fallback wearing a
+   monospace font — it is the document, as written, and the pane says which it is. */
+.doctext { font-family: var(--f-mono); font-size: .78rem; line-height: 1.5;
+           white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; }
+
 /* ═══ worklist ═══ */
 .worklist { display: flex; flex-direction: column; gap: .6rem; height: 100%; min-height: 0; }
 .wl-head { display: flex; align-items: center; gap: .875rem; flex-wrap: wrap; }

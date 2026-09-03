@@ -354,6 +354,25 @@ changed or not, which turns re-analysis back into an event. Blind spot: a docume
 rewritten to exactly its old length with its modification time preserved is missed;
 `--recheck-docs` hashes everything.
 
+**The document renderer** (`prose.js` + `markdown-it`), measured 2026-09-03 on Mensores.
+It is cheap, and the interesting thing about it is that it is cheap:
+
+| Measure | Budget | Measured 2026-09-03 |
+|---|---|---|
+| Fetch and configure the library, lazily | < 500 ms | 29 ms |
+| Parse and render `.groma/ISSUES.md` (1.32 MB) | < 500 ms | 40–72 ms |
+| 230 documents, 4.0 MB of prose, with their fetches | — | 927 ms |
+
+The library is **125 KB fetched on first use**, not at boot — most sessions never open a
+document, and two concurrent callers produce one script tag and one instance.
+
+**The chain design rule 13 depends on was verified rather than assumed.** Every heading
+`docs.db` recorded must be findable in the rendered DOM at exactly its own line, or a
+citation opens a document *near* where it was read from. Measured over a spread of the
+corpus: **825 of 825 headings across 60 documents**, and 782 of 782 across a second sample
+of 41 — including 27 documents carrying YAML frontmatter, which is the case most able to
+break it silently.
+
 **Document mode, lane 2** — the map's own eight documents, measured 2026-09-03 on
 Mensores. The pane's whole cost is **layout**, and the numbers say so plainly: on
 `routines`, 4,786 rows over 566 groups, building the markup is **73 ms**, parsing it into a

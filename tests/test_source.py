@@ -494,3 +494,168 @@ def test_a_read_only_open_of_an_older_sidecar_still_lists_its_revisions(tmp_path
         r[1] for r in sqlite3.connect(db).execute("PRAGMA table_info(revisions)")
     }, "a read-only open added a column — a read may refuse, but never repair"
     reader.close()
+
+
+# ------------------------------------------------ the document sidecar --- #
+
+def test_the_two_sidecars_refuse_each_other(tmp_path: Path) -> None:
+    """Rule 16, and the pair that makes it bite rather than merely apply.
+
+    `SourceStore` and `DocSourceStore` have **identical schemas**, which is the point: a body
+    is a body, and blobs, paths, revisions and the inflate cache all work the same on prose.
+    It is also why the stamp is the only thing between them. A graph refuses by shape; these
+    two can only refuse by name, and opening one as the other would not error -- it would
+    succeed and claim the wrong corpus.
+    """
+    code, docs = tmp_path / "source.db", tmp_path / "docsource.db"
+    SourceStore(code).close()
+    sourcedb.DocSourceStore(docs).close()
+
+    with pytest.raises(WrongStoreKind) as one:
+        sourcedb.DocSourceStore(code)
+    assert "not a document sidecar" in str(one.value)
+
+    with pytest.raises(WrongStoreKind) as two:
+        SourceStore(docs)
+    assert "not a source sidecar" in str(two.value)
+
+    # Each still opens as itself, or the guard has cost the thing it was protecting.
+    SourceStore(code).close()
+    sourcedb.DocSourceStore(docs).close()
+
+
+def test_a_sidecar_that_adopts_a_revision_can_be_read_back(tmp_path: Path) -> None:
+    """Bodies nothing can name are bodies with no reader.
+
+    `open_working` mints an identity from the clock, which is right for `source.db` -- it is
+    the authority the graph and the document store are named after. A second sidecar is not
+    that authority, and the first build of this one showed what happens without a way to say
+    so: `capture` wrote 2,064 path rows under the right revision and `revisions` stayed
+    **empty**, so `resolve_revision(None)` fell through to `LEGACY_REVISION` and the analyze
+    line read *"2,056 bodies for 0 paths"*. Every row was present. Nothing said the snapshot
+    existed, and every read resolves through that.
+    """
+    path = tmp_path / "docsource.db"
+    store = sourcedb.DocSourceStore(path)
+    rev = store.adopt_revision("2026-01-01T00:00:00Z", tree="a-tree")
+    store.add_blob("# Title\n\nbody\n", "hash-1")
+    store.map_path("README.md", "hash-1", revision=rev)
+    store.commit()
+    assert store.counts()["paths"] == 1, (
+        "the revision was adopted and the path count still resolves somewhere else"
+    )
+    store.close()
+
+    back = sourcedb.DocSourceStore(path, writable=False)
+    assert back.text("README.md") == "# Title\n\nbody\n", (
+        "a reader told nothing cannot resolve to the adopted revision"
+    )
+    assert [r["revision"] for r in back.revisions()] == ["2026-01-01T00:00:00Z"]
+    assert back.revisions()[0]["tree"] == "a-tree"
+    back.close()
+
+
+def test_adopting_the_same_revision_twice_reuses_it(tmp_path: Path) -> None:
+    """Re-analysing one snapshot must not leave two half-filled ones behind.
+
+    The property `open_working` has, for the reason it has it: `analyze` is run again after
+    every edit. An empty `tree` is filled in; a recorded one is left alone.
+    """
+    store = sourcedb.DocSourceStore(tmp_path / "docsource.db")
+    store.adopt_revision("2026-01-01T00:00:00Z")
+    store.adopt_revision("2026-01-01T00:00:00Z", tree="named-later")
+    store.commit()
+    rows = store.revisions()
+    assert len(rows) == 1, f"adopting twice left {len(rows)} revisions"
+    assert rows[0]["tree"] == "named-later", "an empty tree was not filled in"
+    store.close()
+
+
+def test_capture_fills_a_document_sidecar_from_the_doc_stores_hashes(tmp_path: Path) -> None:
+    """The wiring `analyze` uses, end to end and without `analyze`.
+
+    `capture()` needs a `dict[str, str]` and a root; `DocStore.known_hashes()` returns exactly
+    that. So the document sidecar needed no new capture path, no change to the walk, and no
+    body carried back out of the extraction subprocesses -- the bodies are re-read from disk
+    by the same hashes the scan just recorded.
+    """
+    tree = tmp_path / "tree"
+    (tree / "docs").mkdir(parents=True)
+    (tree / "README.md").write_text("# Read me\n", encoding="utf-8")
+    (tree / "docs" / "a.md").write_text("# A\n", encoding="utf-8")
+
+    hashes = {
+        "README.md": hash_source("# Read me\n"),
+        "docs/a.md": hash_source("# A\n"),
+    }
+    store = sourcedb.DocSourceStore(tmp_path / "docsource.db")
+    store.adopt_revision("2026-01-01T00:00:00Z")
+    stats = capture(hashes, store, root=tree, revision="2026-01-01T00:00:00Z")
+    assert stats == {"stored": 2, "cached": 0, "missing": 0}
+    assert store.text("docs/a.md") == "# A\n"
+    # And again: a body already held is never re-read.
+    again = capture(hashes, store, root=tree, revision="2026-01-01T00:00:00Z")
+    assert again["stored"] == 0 and again["cached"] == 2
+    store.close()
+
+
+def test_a_sidecar_is_stamped_the_moment_it_exists(tmp_path: Path) -> None:
+    """A store created and closed with no write in between must still know what it is.
+
+    `executescript` autocommits the schema; the three `set_meta` calls beside it do not, and
+    `close()` closes without committing. So the file landed with all four tables and an
+    **empty `meta`** -- no kind, no schema version, no `paths=relative` marker -- and rule 16
+    was bypassed on it entirely: `_refuse_wrong_kind` cannot tell "no kind row" from "fresh
+    database", so the wrong class opened it and **restamped** it.
+
+    Found by building the second sidecar and asserting the two refuse each other. The pair is
+    what made it visible: with one kind there was nothing to be mistaken for. Production never
+    reached it, because `analyze` always follows with a `capture()` that commits -- the guard
+    was intact everywhere it was exercised, which is the definition of the hazard.
+    """
+    path = tmp_path / "source.db"
+    SourceStore(path).close()
+
+    meta = dict(sqlite3.connect(path).execute("SELECT key, value FROM meta"))
+    assert meta.get("kind") == "source", (
+        f"a created-and-closed sidecar is unstamped ({meta!r}), so anything may open it"
+    )
+    assert meta.get(sourcedb.META_PATHS) == sourcedb.PATHS_RELATIVE, (
+        "the paths marker did not survive either -- rule 60's marker is not inferred, so "
+        "losing it means a migration cannot tell an unmigrated store from a migrated one"
+    )
+
+    # And the guard now bites on exactly that file.
+    with pytest.raises(WrongStoreKind):
+        sourcedb.DocSourceStore(path)
+
+
+def test_analyze_lands_the_document_bodies_under_the_graphs_own_revision() -> None:
+    """Two sidecars describing one analysis must name the same snapshot.
+
+    Pinned on the *caller*, as `open_working`'s tree is above, because the store cannot
+    police what it is handed. `source.db` is the authority on the revision id -- the graph
+    and the document store are named after it -- so the document sidecar must **adopt** that
+    id rather than mint one from its own clock.
+
+    Without the adopt call the capture still writes every path row, under the right revision,
+    and `revisions` stays empty; `resolve_revision(None)` then falls through to
+    `LEGACY_REVISION` and no read resolves. On Mensores that read *"2,056 bodies for 0
+    paths"* with all 2,064 rows present.
+    """
+    import re
+    src = Path("src/dunneflow/cli.py").read_text()
+    adopt = re.search(r"docsource\.adopt_revision\((.*?)\)", src)
+    assert adopt, (
+        "analyze no longer adopts a revision for the document sidecar, so its bodies are "
+        "stored under a snapshot the store has no row for and no reader can resolve"
+    )
+    assert "revision" in adopt.group(1), (
+        f"the document sidecar is adopting {adopt.group(1)!r} rather than the graph's own "
+        "revision, so the two sidecars describe different snapshots of one analysis"
+    )
+    # And it must be the same variable the graph and the document store are named from.
+    assert "capture_source(doc_store.known_hashes(), docsource," in src.replace("\n", " ").replace(
+        "                                           ", ""), (
+        "the document capture is no longer driven by the document store's own hashes"
+    )

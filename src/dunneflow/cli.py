@@ -32,7 +32,7 @@ from .resolve.glossary import bind
 from .resolve.mirror import BANDS as MIRROR_BANDS
 from .resolve.mirror import measure as measure_mirror
 from .resolve.naming import measure
-from .sourcedb import STATE_FOR_COMPARISON, SourceStore
+from .sourcedb import STATE_FOR_COMPARISON, DocSourceStore, SourceStore
 from .sourcedb import capture as capture_source
 from .store import StaleGraphError, Store
 from .walk import analyze_docs_tree, analyze_tree
@@ -181,6 +181,39 @@ def cmd_analyze(args: argparse.Namespace) -> int:
                          if where.is_relative_to(docs_root) else where)
                 _emit(f"  skipped {shown} — a checkout of its own, not this program")
         doc_store.optimize()
+
+        # The **document** sidecar, the exact mirror of the source one below and driven the
+        # same way: by the hashes the scan just recorded rather than by a second walk, so a
+        # document whose body is already held is never opened again.
+        #
+        # `docs.db` records what a document *says* -- its headings, definitions, stated rules
+        # and tables. Nothing anywhere held what it **is**, so 2,064 documents were mined and
+        # unreadable: the glossary could quote a definition's line and then say, in as many
+        # words, that it could not open the document it came from. Design rule 11 calls
+        # documentation and source *equal inputs*, and source had a sidecar and a browser
+        # while documentation had neither.
+        #
+        # Its own file rather than a lane in `source.db`, because design rule 14 turns on the
+        # two being separately handable -- *"many will send documentation and never source"*.
+        if not args.no_doc_source:
+            docsource = DocSourceStore(out_dir / "docsource.db")
+            docsource.set_meta("program", program)
+            # Under the id `source.db` already chose, never one of its own: two sidecars
+            # describing one analysis must name the same snapshot (see `adopt_revision`).
+            docsource.adopt_revision(revision, tree=tree_leaf)
+            doc_src_stats = capture_source(doc_store.known_hashes(), docsource,
+                                           root=docs_root, revision=revision)
+            dsc = docsource.counts()
+            if not args.quiet:
+                _emit(
+                    f"documents: {dsc['blobs']:,} bodies for {dsc['paths']:,} paths "
+                    f"({dsc['stored'] / 1e6:.1f} MB stored, {dsc['bytes'] / 1e6:.1f} MB of "
+                    f"prose) — {doc_src_stats['stored']:,} read, "
+                    f"{doc_src_stats['cached']:,} already held"
+                    + (f", {doc_src_stats['missing']:,} unreadable"
+                       if doc_src_stats["missing"] else "")
+                )
+            docsource.close()
 
     t1 = time.perf_counter()
     rstats = resolve_calls(store)
@@ -672,6 +705,12 @@ def build_parser() -> argparse.ArgumentParser:
                    help="hash every document rather than trusting its modification time")
     a.add_argument("--no-source", action="store_true",
                    help="do not keep a copy of the source beside the map")
+    # Its own switch rather than a second meaning for `--no-source`, and design rule 14 is
+    # the reason: the two corpora are handed over separately, and "send the documentation
+    # but not the code" is the posture that rule names as common. One switch governing both
+    # would make that posture unreachable at the point the bodies are written.
+    a.add_argument("--no-doc-source", action="store_true",
+                   help="do not keep a copy of the documents beside the map")
     a.add_argument("--quiet", action="store_true")
     a.set_defaults(func=cmd_analyze)
 

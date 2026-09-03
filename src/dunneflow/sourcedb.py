@@ -169,6 +169,18 @@ class WrongStoreKind(ValueError):
 class SourceStore:
     """The source bodies for one analysed program."""
 
+    #: What this store *is*, stamped into `meta.kind` and checked on every open (rule 16).
+    #:
+    #: A class attribute rather than a literal in two places, because everything below it is
+    #: about **file bodies** and nothing about code: the blobs, the paths, the revisions, the
+    #: inflate cache and every reader work the same on prose. `DocSourceStore` is that
+    #: observation with a different stamp on it, and the stamp is the whole difference --
+    #: opening one as the other would run this schema over that content, which is exactly the
+    #: accident rule 16 was written from.
+    KIND = "source"
+    #: How this store is described when it refuses to be opened as something else.
+    WHAT = "a source sidecar"
+
     def __init__(self, path: Path | str, *, writable: bool = True,
                  shared: bool = False) -> None:
         self.path = Path(path)
@@ -188,13 +200,28 @@ class SourceStore:
             return
         self.conn.executescript(SCHEMA_SQL)
         self._add_missing_columns()
-        self.set_meta("kind", "source")
+        self.set_meta("kind", self.KIND)
         self.set_meta("schema_version", str(SOURCE_SCHEMA_VERSION))
         # Paths here are relative to the tree each revision was read from, and that tree
         # is not recorded anywhere -- see `migrate.py`. Marked rather than inferred: an
         # empty sidecar holds no absolute path to find, and "nothing to see" is not the
         # same claim as "already relative".
         self.set_meta(META_PATHS, PATHS_RELATIVE)
+        # **Committed here, because a store's identity must outlive the process that made
+        # it.** `executescript` autocommits the schema; these three `INSERT`s do not, and
+        # `close()` closes without committing -- so a sidecar created and closed with no
+        # write in between landed on disk with all four tables and an **empty `meta`**. No
+        # kind, no schema version, no `paths=relative` marker.
+        #
+        # Rule 16 was then bypassed on that file entirely: `_refuse_wrong_kind` reads no row,
+        # correctly treats "no meta table yet" and "no kind row" alike as a fresh database,
+        # and lets the wrong class open it -- which **restamps** it. Found by building the
+        # document sidecar and asserting the two refuse each other; the pair is what made it
+        # visible, because with one kind there was nothing to be mistaken for.
+        #
+        # Production never hit it: `analyze` always follows with `capture()`, which commits.
+        # That is the whole hazard -- the guard was intact everywhere it was exercised.
+        self.conn.commit()
         self._stamp_legacy_paths()
 
     # -------------------------------------------------------------- additive --- #
@@ -224,18 +251,23 @@ class SourceStore:
     # ------------------------------------------------------------------ kind --- #
 
     def _refuse_wrong_kind(self) -> None:
-        """Refuse anything that is not a source sidecar.
+        """Refuse anything that is not this kind of sidecar.
 
         Rule 16. Pointing `--db` at the wrong file once dropped every table in a document
         store, so the kind is checked before this class is allowed to run its schema.
+
+        Against `self.KIND`, not against a literal, so the two sidecars refuse **each other**
+        as well as refusing a graph. They have identical schemas, which is what makes that
+        worth saying: running this one's `executescript` over the other's file would not
+        error, it would succeed and quietly claim the wrong corpus.
         """
         try:
             row = self.conn.execute("SELECT value FROM meta WHERE key = 'kind'").fetchone()
         except sqlite3.Error:
             return                              # no meta table yet: a fresh database
-        if row is not None and str(row[0]) != "source":
+        if row is not None and str(row[0]) != self.KIND:
             raise WrongStoreKind(
-                f"{self.path} is a {row[0]} database, not a source sidecar -- refusing "
+                f"{self.path} is a {row[0]} database, not {self.WHAT} -- refusing "
                 f"to open it as one, because doing so would discard its contents"
             )
 
@@ -390,6 +422,39 @@ class SourceStore:
         if revision is not None:
             return revision
         return self.open_working()
+
+    def adopt_revision(self, revision: str, *, tree: str = "") -> str:
+        """Open a revision under an id **somebody else decided**, and return it.
+
+        `open_working` mints its own identity from the clock, which is right for the store
+        that *is* the authority on what a revision is -- `source.db`, whose id the graph and
+        the document store are then named after (`cli.py`). A second sidecar is not that
+        authority: `docsource.db` has to land its paths under the id the first one already
+        chose, or the two describe different snapshots of the same analysis.
+
+        Found by building it without this. The capture wrote 2,064 path rows at the right
+        revision and `revisions` stayed **empty**, because nothing had opened one -- so
+        `resolve_revision(None)` fell through to `LEGACY_REVISION` and `counts()` reported
+        *"2,056 bodies for 0 paths"*. The rows were all there; there was no row saying the
+        snapshot existed, and every read resolves through that. A store that holds bodies
+        nothing can name is a store with no readers.
+
+        Idempotent: re-analysing the same revision reuses its row and fills a `tree` that
+        was empty, exactly as `open_working` does.
+        """
+        self._require_writable("open a revision")
+        row = self.conn.execute(
+            "SELECT tree FROM revisions WHERE revision = ?", (revision,)).fetchone()
+        if row is None:
+            self.conn.execute(
+                "INSERT INTO revisions(revision, state, captured_at, tree) "
+                "VALUES(?, ?, ?, ?)",
+                (revision, STATE_WORKING, revision, tree),
+            )
+        elif tree and not str(row[0]):
+            self.conn.execute(
+                "UPDATE revisions SET tree = ? WHERE revision = ?", (tree, revision))
+        return revision
 
     def open_working(self, *, at: str | None = None, tree: str = "") -> str:
         """The revision new bodies are mapped into, created and stamped if there is none.
@@ -763,6 +828,36 @@ class SourceStore:
 
     def close(self) -> None:
         self.conn.close()
+
+
+class DocSourceStore(SourceStore):
+    """The **document** bodies for one analysed program.
+
+    Everything above is about file bodies and nothing about code: content-addressed blobs,
+    paths per revision, the revision spine, the inflate cache and every reader work the same
+    on prose. So this is that class with a different stamp, and the stamp is the whole
+    difference -- the two schemas are identical, which is precisely why they must refuse each
+    other (rule 16). Opening one as the other would not fail; it would succeed and claim the
+    wrong corpus.
+
+    **Separate from `source.db` rather than a second lane inside it**, and the reason is not
+    tidiness. Design rule 14: *"many will send documentation and never source"*. A corpus a
+    reader can hand over, or an egress posture that permits documents and refuses code, needs
+    the two to be **separately handable files** -- the same argument `docstore.py` makes for
+    keeping `docs.db` out of the graph. A `lang` column would have made them one file and one
+    decision.
+
+    `docs.db` says what a document *says*; this says what it **is**. Neither is derivable from
+    the other, and only this one is a body.
+
+    One file per program holding every revision, the shape `source.db` has -- not per revision
+    like `docs@<rev>.db` -- because a body is content-addressed and two revisions of a corpus
+    share almost all of theirs. Measured on Mensores: 2,064 documents, 38.72 MB of text in
+    **14.87 MB** at zlib-6. Prose compresses about 2.6:1 where code manages 4:1.
+    """
+
+    KIND = "docsource"
+    WHAT = "a document sidecar"
 
 
 def capture(store_hashes: dict[str, str], source: SourceStore, *,

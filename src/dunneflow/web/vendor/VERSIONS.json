@@ -2,8 +2,11 @@
   "deck.gl": "9.3.10",
   "mermaid": "11.17.2",
   "@hpcc-js/wasm": "2.35.0",
+  "markdown-it": "14.3.1",
   "license": "MIT",
   "graphviz": "15.1.0, compiled to WebAssembly inside graphviz.umd.js. The wasm is embedded in that one file, so a plain script tag works with no bundler and no second fetch -- the same shape as the deck.gl vendoring. All seven engines are compiled in: dot, neato, fdp, circo, twopi, osage, patchwork.",
   "why-graphviz-draws": "dot with pack=true packs disconnected components instead of laying them out in a row. Measured on Mensores: pkg:cli goes from 11991x514 (23:1) under Mermaid's dagre to 782x744 (1.1:1), and from 2.5 s to 83 ms. dagre has no component-packing, aspect-ratio or width option at all. Pass pack=true ALONE -- size merely scales a finished drawing and ratio fights the packing.",
-  "why-mermaid-stays": "Mermaid is kept to EMIT source a reader can copy into other tools. It does not draw. If it is ever made to draw again it must be initialised htmlLabels:false -- an SVG carrying <foreignObject> refuses to rasterise into a canvas, so anything built from one is silently blank."
+  "why-mermaid-stays": "Mermaid is kept to EMIT source a reader can copy into other tools. It does not draw. If it is ever made to draw again it must be initialised htmlLabels:false -- an SVG carrying <foreignObject> refuses to rasterise into a canvas, so anything built from one is silently blank.",
+  "why-markdown-it": "Document mode renders the analysed program's own documentation -- 2,019 Markdown documents on Mensores, 38.7 MB. Chosen for two properties and not for its parser: block tokens carry map:[startLine,endLine], which is what lets a glossary citation open the document at the line it was read from (design rule 13), and html:false refuses raw HTML outright, so a document containing a script tag renders as text -- verified, along with validateLink refusing javascript: and vbscript: URLs, which are dropped rather than rendered. Rendered through md.parse() to tokens rather than md.render(), because the line map is the whole reason it is here.",
+  "why-a-renderer-may-be-vendored-when-the-extractor-may-not": "CLAUDE.md says extractors/docs/ is scanned by hand, no markdown library. That rule is about FACTS: the extractor's output is a contract, it is hashed into the cache key by doc_extraction_inputs(), and it must not depend on a third party's reading of a document. A renderer produces pixels, sits in no cache key, and no fact depends on it. Nothing under extractors/ may import this, and a test asserts it."
 }

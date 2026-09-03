@@ -8284,3 +8284,101 @@ files with the centre untouched. The centre renders no back button at all.
 inside the *rail* must not trip the guard, because the guard is scoped to `viewCode` and the
 rail is where that button belongs. A guard that fired on both would be asserting the opposite
 of the fix.
+
+## Document mode, chunk 1: a body sidecar for documents — 2026-09-03
+
+**Paused here.** Chunk 1 of six is built and committed; the plan for the rest is at
+`~/.claude/plans/polymorphic-finding-swan.md` and was approved.
+
+### Why the feature exists
+
+Tom asked whether Document mode still had value now that Code mode works. Reading the record
+gave a better answer than either of us started with: **Document mode was never "browse
+documentation"**. The ratified `viewDoc()` (artifact `f993d319`) is a hand-written sample of
+narrative prose about the current selection, noting it *"would read live from
+`output/mensores/source.db`"*. Half of that arrived as Code mode; the other half — the
+selection read as a document, scrolled to the routine you picked — has been buildable since
+`documents.py` started putting a graph node id on every row, and simply had no view.
+
+And the name promises a second thing that is real and entirely unmet. **Nothing in DunneFlow
+could read a program's documentation.** `docs.db` stores what documents *say* — 29,980
+headings, 235 definitions — and has no body column; `source.db` holds only the code the graph
+was built from. Two rules were unmet: **design rule 13** (`senseOpens()` is
+`provenance === "DECLARED_CODE"`, so all 235 documentation-derived definitions are a dead end)
+and **design rule 11** (documentation and source are *equal inputs*; source had a sidecar and
+a browser, documentation had neither).
+
+Tom's direction: *"I don't want to abandon the old code, I want to resolve it."* Nothing is
+being deleted for being unfinished — the narrative view's two claims each get a home, and the
+eight generated documents get the reader they never had.
+
+### What chunk 1 is
+
+`sourcedb.py` was already a generic content-addressed blob store: blobs, paths per revision,
+the revision spine, the inflate cache and every reader work the same on prose. The **only**
+thing hard-coded to code was the `kind` stamp, so that is a class attribute now and
+`DocSourceStore` is the same class with a different one. Its own file rather than a lane in
+`source.db`, because design rule 14 turns on the two being separately handable — *"many will
+send documentation and never source"*.
+
+**`capture()` needed no change at all.** It takes a `dict[str, str]` and a root;
+`DocStore.known_hashes()` returns exactly that. So there is no new capture path, no change to
+`walk.py`, and no body carried back out of the extraction subprocesses — the bodies are
+re-read from disk by the hashes the scan just recorded.
+
+Measured on Mensores: **2,056 bodies for 2,064 paths, 38.7 MB of prose in 14.8 MB stored**,
+against a prediction of 14.87. Prose compresses 2.6:1 where code manages 4:1. The 8 duplicate
+documents cost nothing.
+
+### Two defects found in the building
+
+**`adopt_revision` exists because the first build had none.** `open_working` mints an id from
+the clock, which is right for the store that *is* the authority — `source.db`, whose id the
+graph and the document store are named after. A second sidecar is not that authority, and
+without a way to say so the capture wrote 2,064 path rows under the right revision while
+`revisions` stayed **empty**. Every row present, nothing saying the snapshot existed, and
+every read resolves through that: the analyze line read *"2,056 bodies for 0 paths"*.
+
+**And rule 16 had a hole, which is the one worth having.** `set_meta` does not commit and
+`close()` does not either, so a sidecar created and closed with no write between landed with
+all four tables and an **empty `meta`** — no kind, no schema version, no `paths=relative`
+marker. `_refuse_wrong_kind` cannot tell *"no kind row"* from *"fresh database"*, so the wrong
+class opened it and **restamped** it.
+
+Production never reached it, because `analyze` always follows with a `capture()` that commits.
+That is exactly the hazard: **the guard was intact everywhere it was exercised.** It became
+visible only on building a second kind and asserting the two refuse each other — with one
+kind there was nothing to be mistaken for. The stamp is committed in `__init__` now, because
+a store's identity must outlive the process that made it.
+
+### The library
+
+`markdown-it 14.3.1` is vendored (125 KB, MIT) and recorded in `VERSIONS.json`, with the
+extractor/renderer line written down beside it: `CLAUDE.md`'s *"no markdown library"* is about
+**facts** — the extractor's output is a contract hashed into the cache key — and a renderer is
+in no cache key and no fact depends on it. Nothing under `extractors/` may import it.
+
+Both properties it was chosen for are **verified in the browser**, not assumed: every block
+token carries `map: [startLine, endLine]`, and `html: false` renders `<script>alert(1)</script>`
+as `&lt;script&gt;…`. `validateLink` also drops `javascript:` and `vbscript:` outright — I
+briefly reported that as broken after matching the literal text rather than the `href`, and it
+is not.
+
+*Found while checking, and not yet handled:* `./rel.md` and `#anchor` render as **live hrefs**.
+A relative link between documents would navigate the dashboard, so chunk 3 must route them to
+open that document instead.
+
+### Verified
+
+850 tests (6 new), mypy clean, ruff clean. Five mutations, all CAUGHT — including the CLI
+wiring, which was MISSED first: `tests/test_source.py` could not see `cli.py`, so removing
+`adopt_revision` from the analyze path passed. Pinned on the caller, the way
+`open_working`'s `tree=tree_leaf` already is.
+
+### Where to pick up
+
+Chunk 2 (serving: `/api/docs`, `/api/doc`, `/api/docsource`, and `_Base` gaining a `docs`
+field), then chunk 4's lane 2 and the `where_` bug, then chunk 3's renderer, then chunk 5's
+citations. Chunks 2, 4 and 5 need no library; the plan file has the detail.
+
+**The server is stopped** — it was killed to re-analyse and not restarted.

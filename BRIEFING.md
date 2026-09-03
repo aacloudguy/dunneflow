@@ -163,8 +163,15 @@ program has a most-commented routine and a maximum alone is a claim nobody can w
 
 ## What we are doing now
 
-**Paused 2026-09-03, after chunk B, rule 78, and three rounds of looking at the code view.**
-844 tests, mypy clean, ruff clean, self-check green, console clean, working tree clean.
+**Paused 2026-09-03, mid-feature: Document mode, chunk 1 of 6.**
+850 tests, mypy clean, ruff clean, working tree clean. Nothing is half-written — chunk 1 is
+whole, guarded and committed; chunks 2-6 have an approved plan and no code yet.
+
+*Earlier the same day:* chunk B of the shortening work, rule 78, and three rounds of looking at
+the code view — the greenbar, the margin fold, three broken buttons, and the rail/centre split.
+
+*The paragraphs below are that day's earlier work, kept because the reasoning is recent and
+load-bearing; the current task is the one named above.*
 
 *The shortening work is complete.* The remaining twelve `text-overflow: ellipsis` sites were
 measured before being changed, and measuring struck three of them, changed the mechanism from
@@ -186,13 +193,22 @@ never the predicate. A caller row **stacks** its module under its name — side 
 split measured as a trade rather than a fix, and all 11 rows now show both entire where 7 of
 11 used to overflow.
 
-**Next, and it is the item that has been waiting behind this one:** the flow panel's real
-worst case — `session.add_turn` at `_extraction_state.py:742`, 3,323 bytes over 53 lines, on a
-*resolved* call, so its arrow can be opened. One outlier and not a class: the next largest
-resolved call argument in the corpus is 923 bytes.
+**Next: Document mode, chunk 2 — serving.** `/api/docs`, `/api/doc`, `/api/docsource`, and
+`_Base` gaining a `docs` field so a document list has a live handle to answer from. Then
+chunk 4's lane 2 with the `where_` bug, chunk 3's renderer, chunk 5's citations. **Only chunk 3
+needs the vendored library**, so the order is deliberate. The approved plan is at
+`~/.claude/plans/polymorphic-finding-swan.md` — read it first; it carries the measured figures
+and the reasoning for each choice.
 
-**A server is running** on `http://127.0.0.1:8787/` against `output/mensores`, the
-two-revision pair. Nothing depends on it; `pkill -f "dunneflow serve"` ends it. Note that
+*Still queued behind that:* the flow panel's real worst case — `session.add_turn` at
+`_extraction_state.py:742`, 3,323 bytes over 53 lines, on a *resolved* call, so its arrow can
+be opened. One outlier and not a class: the next largest resolved call argument in the corpus
+is 923 bytes.
+
+**No server is running** — it was stopped to re-analyse and not restarted. Bring one back with
+`uv run dunneflow serve output/mensores --port 8787 --no-open`; note `--port` yields to any free
+port if 8787 is taken and says so on its last line. `output/mensores` now also holds
+`docsource.db` (17 MB on disk). Nothing depends on it; `pkill -f "dunneflow serve"` ends it. Note that
 `--port` yields to any free port if the asked-for one is taken, so a second server started
 over a stale one lands somewhere else and says so on its last line.
 
@@ -203,7 +219,54 @@ beside it. Every number above is a measurement and every guard is a guard; what 
 is a look. Three things now wait on a real window: the constants surface, the blank-graph fix,
 and this.
 
-### The latest: one file, two panes, and one button for both (2026-09-03)
+### The latest: Document mode, chunk 1 of 6 — a body sidecar for documents (2026-09-03)
+
+**Paused mid-feature. The approved plan is at `~/.claude/plans/polymorphic-finding-swan.md`;
+read it before resuming.**
+
+**Document mode was never "browse documentation", and that is what makes the question
+interesting.** The ratified `viewDoc()` is a hand-written sample of narrative prose *about the
+current selection*. Half of it arrived as Code mode; the other half — the selection read as a
+document, scrolled to the routine you picked — has been buildable since `documents.py` started
+putting a graph node id on every row, and simply had no view. Meanwhile the **name** promises
+something real and entirely unmet: nothing in DunneFlow could read a program's documentation.
+2,064 documents mined for 29,980 headings and 235 definitions, and **zero** of them readable.
+
+Tom's direction, and it shaped the plan: *"I don't want to abandon the old code, I want to
+resolve it."* The narrative view's two claims each get a home and the eight generated
+documents get the reader they never had — nothing is deleted for being unfinished.
+
+**Chunk 1 is built and committed.** `sourcedb.py` was already a generic blob store; the only
+thing hard-coded to code was the `kind` stamp, so `DocSourceStore` is that class with a
+different one, in its own file because design rule 14 turns on documentation and source being
+separately handable. **`capture()` needed no change at all** — `DocStore.known_hashes()`
+returns exactly the map it wants — so there is no new capture path and no change to `walk.py`.
+Measured: **2,056 bodies for 2,064 paths, 38.7 MB of prose in 14.8 MB**, against a predicted
+14.87.
+
+**Two defects found in the building.** `adopt_revision` exists because the first build had
+none: `open_working` mints an id from the clock, which is right for the store that *is* the
+authority, and a second sidecar is not — without it the capture wrote 2,064 path rows and left
+`revisions` **empty**, so nothing could resolve them (*"2,056 bodies for 0 paths"*). And **rule
+16 had a hole**: `set_meta` does not commit and `close()` does not either, so a sidecar created
+and closed landed with an empty `meta` — no kind — and the wrong class then opened and
+**restamped** it. Production never reached it because `analyze` always commits afterwards,
+which is the hazard exactly: *the guard was intact everywhere it was exercised*. It took a
+second kind to be mistaken for before anyone could see it.
+
+**`markdown-it 14.3.1` is vendored and recorded**, with the line that matters written beside
+it: `CLAUDE.md`'s *"no markdown library"* governs the **extractor**, whose output is a contract
+hashed into the cache key. A renderer is in no cache key and no fact depends on it, and nothing
+under `extractors/` may import it. Both properties it was chosen for are verified in the
+browser — `token.map` on every block, and `html: false` rendering a `<script>` as text.
+
+*Open and not yet handled:* relative links (`./rel.md`, `#anchor`) render as **live hrefs** and
+would navigate the dashboard. Chunk 3 must route them.
+
+**Next:** chunk 2 (serving), then chunk 4's lane 2 and the `where_` bug, then chunk 3's
+renderer, then chunk 5's citations. Only chunk 3 needs the library.
+
+### Before that: one file, two panes, and one button for both (2026-09-03)
 
 **Reported as a question about whether the tool was telling the truth**, which is the form the
 useful ones take: *"Once again, I'm told there is no file open... The list of files is on the

@@ -1246,6 +1246,14 @@ const CHANGE_FILE_BANDS = {
        30 says name both rather than let one stand in for the other. */
     id: "path",
     label: "module",
+    /* **What kind of string each printed column holds**, so `fitFields` shortens it by the
+       right rule. This band is the reason they are stated rather than assumed: its meta
+       column is a `path` where every other band's is a dotted `module`, and its *label* is
+       a module where every other band's is a leaf name -- exactly inverted. Dropping the
+       program root off a path would find no prefix to drop and would be a lie in the
+       markup rather than a visible fault, which is rule 30 in the quietest place it lands. */
+    labelFit: "module",
+    metaFit: "name",
   },
 };
 
@@ -1273,7 +1281,8 @@ const CHANGE_FILE_BANDS = {
  * separated by being a band of structures, which is a stronger separation than a glyph. */
 const CHANGE_STRUCT_BANDS = {
   structures_only_in_base: {
-    nav: "chg", id: "id", label: "name", meta: "module", badge: "kind", tone: "gone",
+    nav: "chg", id: "id", label: "name", meta: "module", badge: "kind",
+    labelFit: "name", metaFit: "module", tone: "gone",
     title: "Structures only in the base",
     why: `A class, dataclass, enum or type alias the base version declares and the compared
        one does not. Compared by nothing at all until 2026-09-02 — on Mensores' pair that
@@ -1283,7 +1292,8 @@ const CHANGE_STRUCT_BANDS = {
     statWhy: "structures, not routines",
   },
   structures_only_in_compared: {
-    nav: "chg", id: "id", label: "name", meta: "module", badge: "kind", tone: "new",
+    nav: "chg", id: "id", label: "name", meta: "module", badge: "kind",
+    labelFit: "name", metaFit: "module", tone: "new",
     title: "Structures only in the compared",
     why: `Declared in the compared version and not in the base. Which side is
        <em>added</em> is the reader's to say — this band names where a thing is, never what
@@ -1292,7 +1302,8 @@ const CHANGE_STRUCT_BANDS = {
     statWhy: "structures, not routines",
   },
   structures_declared: {
-    nav: "chg", id: "id", label: "name", meta: "module", badge: "kind", tone: "moved",
+    nav: "chg", id: "id", label: "name", meta: "module", badge: "kind",
+    labelFit: "name", metaFit: "module", tone: "moved",
     title: "Structures declaring differently",
     why: `The same structure, and what it <em>declares</em> has moved — the tag says which:
        <code>kind</code> if a dataclass became a plain class, <code>bases</code> if it
@@ -1302,7 +1313,8 @@ const CHANGE_STRUCT_BANDS = {
     statWhy: "structures, not routines",
   },
   structures_explained: {
-    nav: "chg", id: "id", label: "name", meta: "module", badge: "kind", tone: "moved",
+    nav: "chg", id: "id", label: "name", meta: "module", badge: "kind",
+    labelFit: "name", metaFit: "module", tone: "moved",
     title: "Structures explained differently",
     why: `The same structure, declaring the same thing, and what it says about
        <em>itself</em> has moved — a rewritten docstring. Its own band rather than a tag,
@@ -2573,7 +2585,7 @@ document.addEventListener("click", (ev) => {
   b.setAttribute("aria-current", "true");
   route(b);
   const lbl = b.querySelector(".navlabel");
-  pushTrail(state.view, (lbl ? lbl.textContent : b.textContent).replace(/\s+/g, " ").trim());
+  pushTrail(state.view, labelOf(lbl || b));
   render();
 });
 
@@ -2992,7 +3004,7 @@ function markDiagramSelection() {
 $$("#modes button").forEach(b => b.addEventListener("click", () => {
   state.mode = b.dataset.mode;
   state.view = state.mode;
-  pushTrail(state.mode, b.textContent.trim());
+  pushTrail(state.mode, labelOf(b));
   used(state.mode);
   /* **Paint before mounting.** This ran `ensureGraph()` first, so the engine measured
    * `#graphMount` while it was still `hidden` from the previous render -- and a hidden
@@ -3302,7 +3314,7 @@ document.addEventListener("click", (ev) => {
   if (!b) return;
   state.graphLayout = b.dataset.layout;
   used("layout:" + state.graphLayout);
-  if (state.view === "graph") pushTrail("graph", b.textContent.trim());
+  if (state.view === "graph") pushTrail("graph", labelOf(b));
   if (state.graphLayout === "stack") ensureGraph();
   render();
 });
@@ -3382,6 +3394,15 @@ const BKIND_GLYPH = {
   PROCESS: "▶", LLM_API: "✧", NETWORK: "◆", QUEUE: "◇", CLOUD: "☁",
 };
 
+/* **"Where to start" fits its names**, and it is the field on this page where losing a tail
+ * costs most. Measured on Mensores: **3 of its 14 rows overflowed**, and two of them were
+ * `python -m mensores.chaos.chaos_scriba_kill` and `…chaos_broker_kill` in a 156px box,
+ * both reading `python -m mensores.ch…`. Two different ways into the program, drawn as one
+ * string, on the panel whose entire job is to say where to start.
+ *
+ * Fitted rather than budgeted because the box differs **per row inside one window**: 156px
+ * on that row and 112px on the one below it, because the `kind-tag` beside it is a
+ * different width. A constant cannot be right for both. */
 function viewCover() {
   if (!ENTRYPOINTS.length) {
     return `<div class="panel" style="padding:1.25rem">
@@ -3421,7 +3442,7 @@ function viewCover() {
           ${ENTRYPOINTS.map(e => `
             <button class="rank-row" data-ep="${esc(e.name)}">
               <span class="rank-name">
-                <code>${esc(e.name)}</code>
+                <code data-fit="name">${esc(e.name)}</code>
                 <span class="kind-tag">${esc(e.kind)}</span>
               </span>
               <span class="rank-reach num">${e.reach.toLocaleString()}</span>
@@ -4077,9 +4098,9 @@ function viewChanges() {
    * "claim_status_cmd mensores.cli.scribe boundariescallssql_ops". */
   const rows = (list) => list.map(r => `
     <li><button class="chg-item" data-nav="chg" data-navid="${esc(r.id)}">
-      <span class="chg-title navlabel">${esc(r.name)}</span>
+      <span class="chg-title navlabel" data-fit="name">${esc(r.name)}</span>
       <span class="chg-meta">
-        <span class="mono chg-mod">${esc(r.module)}</span>
+        <span class="mono chg-mod" data-fit="module">${esc(r.module)}</span>
         ${(r.moved || []).map(m => `<span class="kind-tag">${esc(m)}</span>`).join("")}
       </span>
     </button></li>`).join("");
@@ -4306,6 +4327,13 @@ function modband(b, rows) {
      instead, and says which **kind** of thing it is: a vanished TYPE_ALIAS and a vanished
      CLASS are different news, and a band that prints only a name says neither. */
   const metaKey = b.meta || b.id;
+  /* **No `|| "name"` behind the two `data-fit` values below.** A band that forgets to say
+     what kind of string its columns hold writes `data-fit=""`, and `fitFields` answers that
+     with a named error against the element itself -- design rule 16, where a plausible
+     default would shorten a *path* by the module rule and look entirely deliberate.
+     `modules_explained` is why they are declared at all: its meta column is a path where
+     every other band's is a dotted module, and its label is a module where every other
+     band's is a leaf name. Exactly inverted, and silent if guessed. */
   return `
     <section class="chgsection">
       <h3 class="tone-${esc(b.tone || "moved")}">${b.title}
@@ -4314,8 +4342,10 @@ function modband(b, rows) {
       <ol class="chg-list">${rows.map(r => `
         <li><button class="chg-item" data-nav="${esc(b.nav)}"
                     data-navid="${esc(r[b.id])}">
-          <span class="chg-title navlabel">${esc(r[b.label] || r[b.id])}</span>
-          <span class="chg-meta"><span class="mono chg-mod">${esc(r[metaKey] || "")}</span>
+          <span class="chg-title navlabel" data-fit="${esc(b.labelFit || "")}"
+            >${esc(r[b.label] || r[b.id])}</span>
+          <span class="chg-meta"><span class="mono chg-mod"
+            data-fit="${esc(b.metaFit || "")}">${esc(r[metaKey] || "")}</span>
             ${b.badge && r[b.badge]
                 ? `<span class="kind-tag">${esc(r[b.badge])}</span>` : ""}
             ${(r.moved || []).map(m => `<span class="kind-tag">${esc(m)}</span>`).join("")}
@@ -4483,6 +4513,16 @@ function viewAnomalies() {
       <span class="tabn num">${n}</span>
     </button>`;
 
+  /* **The title is `prose`, the one fit kind that refuses to shorten.** Measured over
+   * Mensores' 107 findings: every one contains a space and 80 contain a dot, so `shorten()`
+   * would read a title as a dotted name, decide the head was ``self`` and the leaf was the
+   * whole predicate, and elide the *subject* out of the middle of a sentence. Prose is cut
+   * at its tail, where a sentence carries least; the stylesheet clamps it to two lines and
+   * the kind hangs the whole of it on the hover.
+   *
+   * Before this it was **one clipped line, 94 of 94 rows** -- a 172px box against a median
+   * title of 73 characters needing about 420. Every reader saw the first thirty characters
+   * of every finding and none of them ever saw the predicate. */
   const item = (x, idx) => {
     const t = triageOf(x.a);
     const chip = anomalyChip(x.a.ident);
@@ -4490,7 +4530,7 @@ function viewAnomalies() {
       <button class="wl-item" data-cursor="${idx}" aria-current="${idx === state.cursor}"
               ${t ? 'data-triaged="' + t + '"' : ""}>
         <span class="wl-stripe" style="background:var(--sev-${x.a.sev})"></span>
-        <span class="wl-title">${esc(x.a.title)}</span>
+        <span class="wl-title" data-fit="prose">${esc(x.a.title)}</span>
         <span class="wl-meta">
           ${chip.title ? `<span class="${chip.cls.trim()}" data-titled="1"
              title="${esc(chip.title)}">${chip.glyph}</span>` : ""}
@@ -5474,9 +5514,20 @@ function trailBar() {
            the same as the past would say the journey ends here, which is the opposite of
            what a history with a cursor knows. */
         const where = i === trailAt ? "here" : (i > trailAt ? "ahead" : "");
+        /* `data-label` as well as `data-fit`: the step's label is what the trail **is**, and
+           it already exists on `t.label`, so nothing has to read the shortened text back out
+           to find where a step goes (rule 33).
+
+           **The title carries the label as well as the note now**, where it carried
+           `note || label`. That was right while the label was always wholly on screen and
+           the note was the only thing a hover could add. Once the label can be elided, a
+           step *with* a note had the whole of it nowhere -- its text cut, and its hover
+           talking about something else. */
         return `
-        <li><button class="trailstep ${where}"
-              data-trail="${i}" title="${esc(t.note || t.label)}">${esc(t.label)}</button></li>`;
+        <li><button class="trailstep ${where}" data-fit="name"
+              data-label="${esc(t.label)}"
+              title="${esc(t.note ? `${t.label} — ${t.note}` : t.label)}"
+              >${esc(t.label)}</button></li>`;
       }).join("")}
     </ol>
     ${ahead ? `<span class="trail-behind" title="Forward reaches them; the bar shows ${
@@ -7303,8 +7354,8 @@ function viewInspectorFold(s) {
       <div class="flowitem">
         <span class="arrow">${arrow}</span>
         <button class="gotonode" data-box="${esc(r.id || "")}"
-          title="${esc(r.id || "")}"><code>${esc(r.label || r.id || "")}${
-          r.box_kind ? `<span class="dim">  ${esc(r.box_kind)}</span>` : ""}</code></button>
+          title="${esc(r.id || "")}"><code data-fit="name">${esc(r.label || r.id || "")}</code>${
+          r.box_kind ? `<span class="dim">${esc(r.box_kind)}</span>` : ""}</button>
         <span class="conf badge ${r.crosses ? "" : "certain"}">${
           r.weight}${r.crosses ? " · crosses" : ""}</span>
       </div>`;
@@ -7321,6 +7372,13 @@ function viewInspectorFold(s) {
      class in order to find one of them, and a list cut at forty hides exactly the case
      where the cut matters. Each row is an ordinary node id, so opening one is the same
      selection every other row in this pane makes. */
+  /* **Not fitted, and that is a decision rather than an omission.** A member row carries an
+     invocation line -- `_profile_name_or_none(self) → str | None` -- which is not a jointed
+     name, so `shorten()`'s middle-elide would cut it to `_profile…→ str` and throw away the
+     parameters, which are the reason to have opened the class. A signature's identity is at
+     its **head**, like prose and unlike a qualname, so the stylesheet's tail cut is already
+     the right end. Left on the backstop deliberately; `selfCheck` does not watch it, because
+     nothing here claims it fits. */
   const holdsBody = held.length ? held.map(m => `
       <div class="flowitem">
         <span class="arrow">${m.is_async ? "≈" : "▸"}</span>
@@ -7709,8 +7767,8 @@ function viewInspector() {
         <span class="arrow">←</span>
         <button class="gotonode" data-node="${esc(c.id || "")}"
           title="${esc(c.qualname || c.name || "")}"
-          ><code>${esc(c.name || c.callee_expr)}${c.module
-              ? `<span class="dim">  ${esc(c.module)}</span>` : ""}</code></button>
+          ><code data-fit="name">${esc(c.name || c.callee_expr)}</code>${c.module
+              ? `<span class="dim" data-fit="module">${esc(c.module)}</span>` : ""}</button>
         ${callBadge(c)}
       </div>`).join("")
       : (eps.length ? "" : `<div class="hint">Nothing in this map calls it. That is either a
@@ -7727,9 +7785,9 @@ function viewInspector() {
       <div class="flowitem">
         <span class="arrow">→</span>
         ${c.id ? `<button class="gotonode" data-node="${esc(c.id)}"
-            title="${esc(c.qualname || c.name || "")}"><code>${
-            esc(c.name || c.callee_expr)}${c.module
-              ? `<span class="dim">  ${esc(c.module)}</span>` : ""}</code></button>`
+            title="${esc(c.qualname || c.name || "")}"><code data-fit="name">${
+            esc(c.name || c.callee_expr)}</code>${c.module
+              ? `<span class="dim" data-fit="module">${esc(c.module)}</span>` : ""}</button>`
           : `<code>${esc(c.callee_expr)}${c.at_boundary
               ? `<span class="dim">  at the boundary</span>` : ""}</code>`}
         ${callBadge(c)}
@@ -8122,6 +8180,12 @@ function render() {
   const np = $("#navPins");
   if (np) { np.textContent = state.pins.length; np.className = "n" + (state.pins.length ? " sevcount info" : ""); }
   renderFilters();
+  /* **After every pane is written and before this function returns.** Every mount above
+   * has had its `innerHTML` replaced, so this is the first point at which a fitted field
+   * has a box to be measured against -- and the last point before the browser paints, which
+   * is what keeps the untruncated string from being shown for a frame on every keystroke.
+   * 4.5 ms over the largest population on the page; see `fitFields`. */
+  fitFields();
   wire();
   /* Persisted here rather than in each handler. Forty controls change settings and every
    * one of them ends in `render()`, so this is the one place that cannot be forgotten --
@@ -8178,9 +8242,13 @@ function wire() {
     /* `data-label` where the row has one. A caller row is a bare name and its text is the
        right label; a **fold's member** row carries its whole invocation line, so the
        trail read `_profile_name_or_none(self) → str | None` where a step wants a name.
-       The row that knows the difference is the row that says so. */
-    pushTrail(state.view, b.dataset.label || b.textContent.trim(),
-              "followed from the inspector");
+       The row that knows the difference is the row that says so.
+
+       Through `labelOf` rather than reading the attribute here, because a caller row's
+       text is now a **fitted** one: taking it raw would file `mensores.chaos.cha…` as the
+       step you were on, and a trail step that cannot name where it goes is the whole of
+       rule 33. One accessor, so the shortener and the trail cannot disagree (rule 51). */
+    pushTrail(state.view, labelOf(b), "followed from the inspector");
   }));
 
   /* **The one way to the code, wherever it is asked from.** The inspector's location line,
@@ -8554,7 +8622,7 @@ function wire() {
 
   $$("[data-crumb]").forEach(b => b.addEventListener("click", () => {
     state.view = b.dataset.crumb;
-    pushTrail(state.view, b.textContent.trim());
+    pushTrail(state.view, labelOf(b));
     render();
   }));
 
@@ -8919,6 +8987,18 @@ const WIRED_ATTRS = new Set([
      data attribute are both global, and the obvious spelling here would have railed the
      inspector on every neighbour row (rule 71). */
   "box", "gotocode", "gotoline", "label", "dgmup",
+  /* The three the fitter writes, and none of them is a control -- which is the point of
+     putting them here rather than exempting them. `selfCheck` reports every `data-` the
+     page carries that nothing accounts for, so a stamp is as much this roster's business as
+     a route is: three unaccounted attributes on a thousand rows would be three standing
+     false alarms, and standing false alarms are how a real one goes unread (rule 43).
+
+     `fit` says what kind of string a field holds and is answered by `FIT_KINDS`. `full`
+     keeps the unshortened text, so a later pass shortens the original rather than the
+     shortened -- and so `labelOf` can hand the trail a name and not a mark. `fit-title`
+     records whether the author had already put a title on the field, because a trail step
+     brings its own and the fitter must not overwrite it. */
+  "fit", "full", "fit-title",
   /* The base switch's one control: dismiss a switch that failed. Only ever rendered in the
      failed state -- there is nothing to dismiss while a rebuild is running, and offering a
      cancel that cannot stop the server would be a control that looks live and is not. */
@@ -8980,6 +9060,33 @@ function selfCheck() {
   document.querySelectorAll("[data-gact]").forEach(el => {
     if (!(el.dataset.gact in GRAPH_ACTIONS)) {
       problems.push(`graph control [data-gact="${el.dataset.gact}"] has no action`);
+    }
+  });
+
+  /* **The CSS backstop must never fire**, and this is the check `shorten()`'s docstring has
+   * been promising since it was written. It could not be made until the budgets were
+   * measured: against a constant it would report every window that constant was not
+   * measured at, which is rule 43 -- a check that cries wolf is a check nobody reads. Now
+   * that `fitFields` takes each budget off the box the text is in, an overflow is a real
+   * defect every time, at every width and at any root font size.
+   *
+   * A field that overflows here has been cut by the stylesheet, from the **tail** -- so a
+   * qualified name has lost its leaf, silently and with a mark that says nothing about how
+   * much went. That is the defect this whole surface exists to prevent, and it is invisible
+   * on screen: the row looks deliberate.
+   *
+   * `prose` is skipped because it is clamped in the block direction rather than the inline
+   * one -- its overflow is a *height*, it is meant to happen, and it says so with a mark and
+   * a hover. Checking it here would report the design as a fault (rule 24: measure the thing
+   * you name).
+   *
+   * A field that has not been laid out reports 0 against 0 and cannot overflow, so a hidden
+   * pane contributes nothing rather than contributing a false alarm. */
+  document.querySelectorAll("[data-fit]").forEach(el => {
+    if (el.dataset.fit === "prose") return;
+    if (el.scrollWidth - el.clientWidth > FIT_SLACK) {
+      problems.push(`fitted field [data-fit="${el.dataset.fit}"] still overflows its box, `
+        + `so the stylesheet is cutting its tail: "${el.textContent}"`);
     }
   });
 
@@ -9323,9 +9430,16 @@ function routineFan(id) {
  * browser choose, and it is the defect this function was extracted from.
  *
  * **The budget is the caller's**, because it comes from the width of the caller's own
- * field. CSS keeps its `text-overflow: ellipsis` underneath as a backstop for the window
- * width this arithmetic did not predict (rule 53) -- a budget alone is right at one window
- * size. `selfCheck` asserts the backstop never fires.
+ * field. Two callers pass a constant -- `.navsub` and the detail window's flow column, both
+ * of which are the same box on every row -- and everything else passes through
+ * `fitFields`, which measures the box each string is actually in. CSS keeps its
+ * `text-overflow: ellipsis` underneath as a backstop, and `selfCheck` asserts it never
+ * fires.
+ *
+ * That assertion stood in this comment for a session before it existed, which is the thing
+ * worth keeping: a sentence promising a guard reads exactly like a guard, and the next
+ * person to lean on it has no way to tell. It is real now -- see `selfCheck` -- and it only
+ * became possible once the budgets stopped being arithmetic (rule 53).
  *
  * Returns the count as well as the text: a caller that cannot say how much it cut cannot
  * obey design rule 1, and `moduleTail` could not -- it shortened to a fixed two segments
@@ -9445,9 +9559,307 @@ function shorten(text, budget) {
  * shortened to make room for a prefix nobody needed -- 81% of Mensores' 566 at the
  * navigator's width. */
 function moduleLabel(module, budget) {
+  return shorten(stripRoot(module), budget);
+}
+
+/* The root-drop on its own, because two things now need it and only one of them budgets.
+ *
+ * `moduleLabel` shortens straight afterwards; `fitFields` has to know the string a module
+ * field would *like* to show before it can ask whether that string fits. Splitting them
+ * keeps one answer to "what is the program's own prefix" (rule 51) -- the alternative was
+ * a second `startsWith(ROOT + ".")` in the fitter, which is the copy that drifts the day
+ * `ROOT` learns about namespace packages. */
+function stripRoot(module) {
   const s = String(module == null ? "" : module);
   const pre = ROOT ? ROOT + "." : "";
-  return shorten(pre && s.startsWith(pre) ? s.slice(pre.length) : s, budget);
+  return pre && s.startsWith(pre) ? s.slice(pre.length) : s;
+}
+
+/* ══ fitting a field to its own box ═══════════════════════════════════════════════════
+ *
+ * `shorten()` takes a budget in **characters**; a field is a width in **pixels**. Those
+ * are the same number at exactly one root font size and one window width.
+ *
+ * The navigator can afford a constant, and that is why `MODULE_BUDGET_NAV` is one:
+ * `.navsub` is `max-width: 11rem`, so all 1,175 of them are the same box and 30 was
+ * measured in that box. **The seven fields left over are not like that.** They are flex
+ * children with `min-width: 0`, so each one's width is whatever is left after a badge, a
+ * count and a line number have taken theirs -- which differs *per row inside one window*
+ * as well as between windows. Measured on the cover: `.rank-name code` is 156px on one row
+ * and 112px on the row below it, because the `kind-tag` beside it is a different width.
+ * Measured in the inspector: `.gotonode` gets 242px and **7 of its 11 rows overflowed it**,
+ * losing the module leaf off the end -- `mensores.chaos.chaos_scriba_kill` and
+ * `mensores.chaos.chaos_broker_kill` both read `mensores.chaos.cha…`, which is the exact
+ * failure `shorten()` was extracted to stop and it was still happening one pane away.
+ *
+ * A constant for a field like that is arithmetic wearing a measurement's clothes -- rule
+ * 53, with rule 24 underneath it: a budget named for a field has to be measured *on* that
+ * field. So the budget is taken from the box the text is in, at the moment it is in it.
+ *
+ * **This is also what makes `selfCheck`'s assertion honest.** "The CSS backstop never
+ * fires" cannot be asserted against a constant, because a constant is wrong at every width
+ * it was not measured at and the check would cry wolf on a narrow window (rule 43). It can
+ * be asserted against a measurement, and it is.
+ *
+ * **Reads first, then writes**, which is what makes it affordable: every
+ * `getBoundingClientRect` runs against one flushed layout instead of forcing its own.
+ * Measured over the navigator's 1,175 subtitles -- the largest population on the page --
+ * the whole pass is **4.5 ms**. So it runs at the end of `render()` and does *not* wait for
+ * an animation frame: waiting costs more than it saves, because a frame painted before the
+ * pass is a frame of the untruncated string, and that is a visible flicker on every
+ * keystroke.
+ *
+ * **Candidate strings are measured on a canvas, never in the DOM.** `shorten()` is
+ * monotonic in its budget -- verified over module names, qualnames, paths and command
+ * lines, 0 non-monotonic steps -- so the widest budget that fits is a bisection: about
+ * seven `measureText` calls per field, and not one layout in the middle of them.
+ */
+
+/* What kind of string a field holds, which is what decides how it may be cut.
+ *
+ * A table rather than a branch, for design rule 16's reason: a field marked with a kind
+ * nothing here answers is a **named error**, not a fall-through that shortens it plausibly
+ * by the wrong rule.
+ *
+ * `prose` is in this table in order to be refused, and that refusal is the measurement
+ * that earned it. An anomaly title is a sentence -- all 107 of them contain a space, 80
+ * contain a dot -- so `shorten()` would split "`self.citation_validator.validate` could
+ * not be connected: 7 definitions share the name" on its **dots**, decide the head was
+ * `` `self `` and the leaf was the whole predicate, and elide the subject out of the
+ * middle of a sentence. Prose is cut at its tail, which is where a sentence carries least
+ * and a dotted name carries most; the stylesheet does that, and all this kind does is hang
+ * the whole of it on the hover. */
+const FIT_KINDS = {
+  /* The program's own root goes first and **unconditionally**, not only when short of
+     room: all 566 of Mensores' modules begin `mensores.`, so those nine characters say
+     nothing on any row whether or not there is space for them. */
+  module: stripRoot,
+  /* Any other jointed string as written -- a qualname, a path, a command line. */
+  name: (s) => s,
+  /* Never shortened here. See above. */
+  prose: null,
+};
+
+/* Where the unshortened string is kept, as `data-full`. */
+const FIT_FULL = "full";
+
+/* **How far past its box a string may measure and still be called a fit**, in CSS pixels.
+ *
+ * Not noise, and not a fudge: a fitted field is usually sized *to* its own content -- a flex
+ * item with an `auto` basis -- so the space available and the space needed are computed from
+ * the same text and come out **exactly equal**. A strict `<=` between two floats derived that
+ * way is a coin flip on the last bit, and `mensores` lost it: 53.3px of text in 53.3px of
+ * room, declared too long, and shortened to `men…res`. Eight characters cut to seven.
+ *
+ * **The same number `selfCheck` forgives**, and that is the whole reason it is a constant
+ * rather than a literal in two places. The fitter may leave exactly what the check will not
+ * report, so the two cannot disagree about what fits (rule 13) -- a looser check would hide
+ * a real overflow and a tighter one would fail every field the fitter had just finished. */
+const FIT_SLACK = 1;
+
+function fitFields(root) {
+  const els = [...(root || document).querySelectorAll("[data-fit]")];
+  if (!els.length) return { fitted: 0, cut: 0 };
+
+  /* One canvas for the page, kept between passes so this is not a fresh 2D context per
+     render. `measureText` needs the *field's* font and no two of these share one: they run
+     from 10.24px sans to 12.48px mono at a 16px root, and all of it again at Tom's 24. */
+  const cx = fitFields.cx
+    || (fitFields.cx = document.createElement("canvas").getContext("2d"));
+
+  /* ── phase 1: put every field back to the whole string it wants to show ──
+   *
+   * **The width read in phase 2 is meaningless without this, and that is not obvious.** A
+   * fitted field is `min-width: 0` inside a clip, so it can never be *wider* than the space
+   * it is given -- but nothing makes it as wide as that space either. `.rank-name code` is
+   * a flex item whose basis is its own content, so the moment its text is shortened the box
+   * shrinks to the shortened text, and the next pass measures **the width the last pass
+   * left it**, not the width it has. It ratchets: 156px, then 81px, then narrower, and it
+   * can never grow back, because there is no headroom left to discover. Driven across four
+   * container widths from 300px to released, the box read 81px at every one of them and the
+   * text never changed. The first version of this pass had a comment claiming the loop was
+   * impossible; it was measured on screen an hour later.
+   *
+   * So the whole string goes back first. It costs nothing: all three phases are one
+   * synchronous task, so the browser paints only what phase 3 leaves behind -- and the
+   * layout is flushed **once**, at the first read in phase 2, however many fields there
+   * are. */
+  const jobs = els.map((el) => {
+    /* The **unshortened** string, kept the first time this field is seen. Reading the
+       element's own text on a later pass would shorten what is already shortened, and it
+       would compound: two renders turn
+       `mensores.storage.sqlite.migrations.0028_add_work_items` into
+       `storage.….0028_add_work_items` and then into `stor…items`, each pass eating the one
+       before it and none of them saying so. */
+    if (el.dataset[FIT_FULL] == null) el.dataset[FIT_FULL] = el.textContent;
+    /* **Whose title is it.** A trail step arrives with one already -- the step's own note --
+       and overwriting that with the string this pass just cut would answer a question the
+       author had already answered better. Recorded once, when the field is first seen, so
+       the answer cannot change under a later pass. */
+    if (el.dataset.fitTitle == null) el.dataset.fitTitle = el.hasAttribute("title") ? "" : "1";
+    const kind = el.dataset.fit;
+    if (!(kind in FIT_KINDS)) {
+      console.error(`DunneFlow: no fit rule for [data-fit="${kind}"]`, el);
+      return null;
+    }
+    const base = FIT_KINDS[kind];
+    const full = el.dataset[FIT_FULL];
+    /* `prose` is never rewritten, so it is never put back either -- and it must not be, or
+       the clamp measured in phase 3 would be measured against a height this pass had just
+       changed for no reason. */
+    const want = base === null ? null : base(full);
+    if (want !== null) el.textContent = want;
+    return { el, kind, base, full, want };
+  }).filter(Boolean);
+
+  /* ── phase 2: read ── every width against one flushed layout, nothing written between. */
+  for (const j of jobs) {
+    const cs = getComputedStyle(j.el);
+    /* **The content box, not the border box.** `getBoundingClientRect().width` includes the
+       padding and the border, and text does not sit in either -- so measuring a string
+       against it hands the field its own padding twice and lets a string through that then
+       overflows. `.trailstep` has `.3rem` of it a side and was the one field of eight still
+       spilling after a pass that reported fitting it: 201px of text written into 192px of
+       room, by a measurement that thought it had 201.
+
+       Subtracted from the rect rather than read off `clientWidth`, because `clientWidth` is
+       0 on an inline element and would collapse every such field to a single mark -- the
+       same refusal `width <= 0` is for, arriving as a silent wrong answer instead. */
+    const px = (v) => parseFloat(v) || 0;
+    j.width = j.el.getBoundingClientRect().width
+      - px(cs.paddingLeft) - px(cs.paddingRight)
+      - px(cs.borderLeftWidth) - px(cs.borderRightWidth);
+    j.font = `${cs.fontStyle} ${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+    /* The clamp, for prose, and read here for the same reason a width is: it is a property
+       of the laid-out element, and phase 1 has already stopped touching the DOM. */
+    if (j.base === null) j.clamped = j.el.scrollHeight - j.el.clientHeight > 1;
+  }
+
+  /* ── phase 3: write ── */
+  let cut = 0;
+  for (const j of jobs) {
+    /* Prose: the stylesheet clamps it in the block direction, so what was measured is a
+       *height* and not a width. Nothing is rewritten; the hover is the whole answer. */
+    if (j.base === null) {
+      if (j.clamped) cut++;
+      if (j.el.dataset.fitTitle === "1") {
+        if (j.clamped) j.el.title = j.full; else j.el.removeAttribute("title");
+      }
+      continue;
+    }
+
+    /* **A field with no width has not been laid out** -- a pane behind `hidden`, a detail
+       window that is not on screen yet. Measuring one says every string is too long, and
+       every field in it would collapse to a single mark. Leave it whole and wait: there is
+       always another render to pay it on, and refusing beats inventing (rule 49). */
+    if (j.width <= 0) { setFitted(j.el, j.want, j.full); continue; }
+
+    cx.font = j.font;
+    if (cx.measureText(j.want).width <= j.width + FIT_SLACK) {
+      setFitted(j.el, j.want, j.full); continue;
+    }
+
+    /* The widest budget whose shortened form still fits, by bisection. The predicate is a
+       step function because `shorten()` is monotonic, so this lands on the step. */
+    let lo = 1, hi = j.want.length;
+    while (lo < hi) {
+      const mid = Math.ceil((lo + hi) / 2);
+      if (cx.measureText(shorten(j.want, mid).text).width <= j.width + FIT_SLACK) lo = mid;
+      else hi = mid - 1;
+    }
+    setFitted(j.el, shorten(j.want, lo).text, j.full);
+    cut++;
+  }
+  return { fitted: jobs.length, cut };
+}
+
+/* **The panes are watched, because a pane finishes moving after `render()` has finished
+ * running**, and that is a defect this found on screen rather than in a test.
+ *
+ * `.body` carries `transition: all`, so collapsing the inspector animates the grid's
+ * columns over some hundreds of milliseconds. `render()` is synchronous: it calls
+ * `applyPanels()`, writes the new attribute, and `fitFields()` measures a frame later --
+ * while the columns are still on their way. The width it reads is the one the pane is
+ * *leaving*. Every field fitted itself perfectly to a layout that no longer existed by the
+ * time anyone looked, and the tell was three fields still overflowing after a pass that
+ * reported cutting nothing. Rule 24 in its least obvious costume: the measurement was of
+ * the right field at the wrong moment.
+ *
+ * A `ResizeObserver` answers it for every cause at once rather than for this one -- a pane
+ * toggled, a rail dragged, a transition running, a window resized, a reader changing their
+ * browser's font size, which is a width change no event reports at all (rule 51). It fires
+ * on each frame of a transition, so the text is right *during* the animation and not only
+ * after it.
+ *
+ * **The panes are observed and the fields are not.** A fitted field's own size is exactly
+ * what this pass changes -- `.rank-name code` is a flex item whose basis is its content, so
+ * shortening its text shrinks its box -- and an observer on one would see its own write and
+ * ask for another pass. That is the same fact `fitFields`' phase 1 exists for, arriving
+ * from the other side: there, it contaminates the *measurement*; here, it would be a loop.
+ * A pane's size is decided outside it and nothing this writes can reach it.
+ *
+ * Coalesced to one pass per frame, because a grid animating three columns reports three
+ * times for one change. */
+let fitFramePending = false;
+
+function scheduleFit() {
+  if (fitFramePending) return;
+  fitFramePending = true;
+  requestAnimationFrame(() => { fitFramePending = false; fitFields(); });
+}
+
+function wireFitOnce() {
+  if (wireFitOnce.done || typeof ResizeObserver === "undefined") return;
+  wireFitOnce.done = true;
+  const ro = new ResizeObserver(scheduleFit);
+  /* By id, and only the ones `render()` keeps. These three elements survive every repaint
+     -- their `innerHTML` is replaced, they are not -- so one observation holds for the life
+     of the page. A missing one is skipped rather than thrown on: this is an improvement to
+     when the fit happens, never the thing that makes it happen. */
+  ["navigator", "viewMount", "inspector", "trailMount"].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) ro.observe(el);
+  });
+}
+
+/* Write one fitted field, and hang the whole string on it wherever the two differ.
+ *
+ * The title goes on for a **root that was dropped** as well as for a middle that was
+ * elided, because both are things the reader can no longer see. Design rule 1: the mark
+ * says *that* something went, and the hover is the only thing that says **what**. */
+function setFitted(el, text, full) {
+  el.textContent = text;
+  if (el.dataset.fitTitle !== "1") return;   // the author's, not this pass's
+  if (text === full) el.removeAttribute("title");
+  else el.title = full;
+}
+
+/* The label a control carries, which is **not** always the text it displays.
+ *
+ * A fitted field's text is a shortened one, and a trail step built from it would record
+ * `stor…items` as the place you were -- a step that cannot say where it goes, which is
+ * rule 33 and rule 30 together in the one surface built to take a reader back. So the
+ * readers of a label go through here rather than reaching for `textContent`, and the fit
+ * pass has somewhere to put the truth (rule 51: one place answers it, so the shortener and
+ * the trail cannot disagree about what a row is called). */
+function labelOf(el) {
+  if (!el) return "";
+  if (el.dataset && el.dataset.label) return el.dataset.label;
+  const tidy = (s) => String(s || "").replace(/\s+/g, " ").trim();
+  if (el.dataset && el.dataset[FIT_FULL] != null) return tidy(el.dataset[FIT_FULL]);
+  /* Rebuilt from the children rather than read off the element, because the fitted field
+     is usually *inside* the control -- `.chg-title` inside a `.chg-item`, the module half
+     inside a `.gotonode`. Walking it gives what the control would have said had nothing
+     been shortened, whichever part of it was. */
+  let out = "";
+  const walk = (n) => {
+    if (n.nodeType === 3) { out += n.textContent; return; }
+    if (n.nodeType !== 1) return;
+    if (n.dataset && n.dataset[FIT_FULL] != null) { out += n.dataset[FIT_FULL]; return; }
+    n.childNodes.forEach(walk);
+  };
+  el.childNodes.forEach(walk);
+  return tidy(out);
 }
 
 /* ══ the code browser ═══════════════════════════════════════════════════════════════
@@ -12135,7 +12547,9 @@ const NAV_CARD_KINDS = { routine: "ROUTINE" };
 
 function navHoverSkeleton(row) {
   const kind = NAV_CARD_KINDS[row.dataset.nav] || "";
-  const label = (row.querySelector(".navlabel") || {}).textContent || "";
+  /* `labelOf`, not the text: a `.navlabel` may be a fitted field, and a hover card
+     titled `stor…items` describes a routine by a string that is not its name. */
+  const label = labelOf(row.querySelector(".navlabel"));
   const qual = row.dataset.qual || "";
   const fan = ((row.querySelector(".n") || {}).textContent || "").trim();
   /* The plate is the package heading this row sits under, read off the heading's own
@@ -13724,6 +14138,15 @@ function wireNavGripOnce() {
 addEventListener("resize", () => {
   applyNavWidth();
   if (Graph.mounted()) Graph.resize();
+  /* **A budget measured in one window is not a budget in the next one**, which is the whole
+   * reason these fields are fitted rather than given a constant -- so a resize has to ask
+   * again. It runs *both* ways: `fitFields` shortens from `data-full` every time, so
+   * widening the window puts back what narrowing it took, and nothing compounds.
+   *
+   * Through `scheduleFit` rather than calling the pass, so a resize and the pane observer
+   * that is also firing during it coalesce into **one** pass for the frame instead of
+   * racing to write the same fields twice (rule 51 -- one place decides when). */
+  scheduleFit();
 });
 
 /* Typing in the file filter rewrites the rows and **not the pane**.
@@ -13965,6 +14388,7 @@ async function boot() {
   wireGraphOnce();
   wireSearchOnce();
   wireNavGripOnce();
+  wireFitOnce();
   render();
   if (state.view === "graph") ensureGraph();
   selfCheck();

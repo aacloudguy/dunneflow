@@ -7720,3 +7720,187 @@ Two of them were blind first, and the second is the one worth keeping:
 **Not exercised on screen:** the fold and flow pin kinds, which need a compartment drawn.
 The pairing is guarded at the source in both directions, which is why that guard exists
 rather than a click.
+
+## Chunk B: every field fits its own box — built 2026-09-03
+
+The record's plan was *"the remaining twelve `text-overflow: ellipsis` sites all still cut
+the tail; they move onto `shorten()`, and with them the `selfCheck` assertion that the CSS
+backstop never fires."* Measuring first changed three of those twelve, changed the
+mechanism, and found the assertion had been **promised in a comment for a session without
+existing**.
+
+### The assertion `shorten()` already claimed to have
+
+`shorten()`'s docstring ended *"`selfCheck` asserts the backstop never fires."* It did not.
+`selfCheck` checked three things and none of them was a width. A sentence promising a guard
+reads exactly like a guard, and the next person to lean on it has no way to tell — rule 37
+in the documents rather than in a check.
+
+It could not have been written earlier, and that is the interesting half. Against a
+**constant** budget the assertion is rule 43: a constant is wrong at every width it was not
+measured at, so the check would report a narrow window as a defect and be switched off. It
+became writable the moment the budgets stopped being arithmetic.
+
+### A constant is arithmetic wearing a measurement's clothes
+
+`MODULE_BUDGET_NAV = 30` is honest because `.navsub` is `max-width: 11rem` — every one of
+its 1,175 rows is the same box, at any window and any root font size. **None of the seven
+fields left over is like that.** They are flex children with `min-width: 0`, so each one's
+width is what is left after a badge, a count and a line number have taken theirs, and it
+differs *per row inside one window*: `.rank-name code` is 156px on one row of the cover and
+112px on the row below it, because the `kind-tag` beside it is a different width.
+
+So `fitFields` takes each budget off the box the text is actually in. Reads batched before
+writes, candidates measured on a **canvas** rather than in the DOM — `shorten()` is
+monotonic in its budget, verified over module names, qualnames, paths and command lines with
+**0 non-monotonic steps**, so the widest budget that fits is a bisection of about seven
+`measureText` calls and not one layout between them. **4 ms over 120 fields; 4.5 ms over the
+navigator's 1,175**, which is why it runs at the end of every `render()` and does not wait
+for a frame. Waiting would cost more than it saves: a frame painted before the pass is a
+frame of the untruncated string, on every keystroke.
+
+### What measuring struck from the list
+
+Three of the twelve came off, and each for its own reason.
+
+**`.wl-title` is prose and `shorten()` would have destroyed it.** All 107 of Mensores'
+findings contain a space and 80 contain a dot, so the middle-elide reads a title as a dotted
+name: the head becomes ``self`` and the leaf becomes the whole predicate, and the *subject*
+is elided out of the middle of a sentence. Prose is cut at its tail, where a sentence carries
+least and a qualified name carries most.
+
+But the field was in far worse shape than the list said. **94 of 94 rows clipped** — a 172px
+box against a median title of 73 characters needing about 420. Every reader saw the first
+thirty characters of every finding and none of them ever saw the predicate, on the surface
+Tom clears. Tom's call: **two lines, then a mark, with the whole title on the hover**.
+`-webkit-line-clamp` was struck from the constants card for being a *silent* filter and this
+is the same mechanism without that fault — the clamp draws its own ellipsis and `prose` hangs
+the full text on the hover, so the mark says something went and the hover says what.
+92 of the 94 carry that hover; the two that fit in two lines carry none.
+
+**`.srcpath-v` is a dead field.** `#srcPathV` is written by nothing in the whole tree — the
+entirety of it is the 28-character literal in `index.html`, which fits with room to spare. Its
+`overflow`, `text-overflow` and `max-width` were sizing a string that cannot arrive: the same
+dead-CSS fault as the three rules struck beside it when the button went (rules 44 and 48).
+
+**`.callhead code` was a contradiction, not a budget.** The expression is rendered through
+`breakable()`, which marks every joint with a `<wbr>` so a name breaks on a dot instead of
+mid-token — and `white-space: nowrap` here forbade breaking at all, so every one of those
+marks was inert. `.callin code` and `.calldecl code` render the same strings through the same
+function and wrap correctly: measured, **98 and 88 characters with no overflow**, against this
+one clipping 1 row in 6 at 29 characters. One idea, two answers, and the wrong one was the odd
+rule out (rule 13). It wraps now and needs no fitting at all.
+
+### Four defects in the fitter itself, every one found on screen
+
+*None of these was found by review, and three of them had a comment beside them asserting the
+opposite.*
+
+**It measured the pane mid-transition.** `.body` carries `transition: all`, so collapsing the
+inspector animates the grid's columns. `render()` is synchronous: it writes the attribute and
+the pass measures while the columns are still on their way, reading the width the pane is
+*leaving*. Every field fitted itself perfectly to a layout that had already gone, and the tell
+was three fields still overflowing after a pass that reported cutting nothing. A
+`ResizeObserver` on the panes answers it for every cause at once — a pane toggled, a rail
+dragged, a window resized, a reader changing their browser's font size, which reports no event
+at all (rule 51).
+
+**It measured a box its own last write had shrunk.** `.rank-name code` is a flex item with an
+`auto` basis, so shortening its text shrinks the box to the shortened text and the next pass
+measures what the last one left. It ratchets and can never grow back: driven across four
+container widths from 300px to released, the box read **81px at every one of them** and the
+string never changed. The first version of this pass carried a comment claiming the loop was
+impossible; it was measured happening an hour later. Phase 1 now writes the whole string into
+every field before phase 2 reads a single width — free, because all three phases are one
+synchronous task and the layout flushes once however many fields there are.
+
+**It measured the border box.** `getBoundingClientRect().width` includes padding and border and
+text sits in neither, so every field was handed its own padding twice. `.trailstep` has `.3rem`
+a side and was the one field of eight still spilling after a pass that reported fitting it:
+**201px of text written into 192px of room**, by arithmetic that thought it had 201.
+Subtracted from the rect rather than read off `clientWidth`, which is 0 on an inline element
+and would collapse every such field to a single mark.
+
+**It compared two floats for exact fit.** A fitted field is usually sized *to* its own content,
+so the space available and the space needed are computed from the same text and come out
+**exactly equal** — a strict `<=` is a coin flip on the last bit, and `mensores` lost it:
+53.3px of text in 53.3px of room, declared too long, cut to `men…res`. Eight characters to
+seven. `FIT_SLACK` is one constant used by the fitter **and** by `selfCheck`, so the two cannot
+disagree about what fits (rule 13).
+
+### And two layouts that were wearing a shortening rule's clothes
+
+**The trail squeezed its steps instead of scrolling them.** `.trail` is `overflow-x: auto` and
+`render()` scrolls the current step into view, so scrolling is what the bar was built to do —
+but its items were left shrinkable, and a flex item that can shrink does, before its container
+ever overflows. Three steps in a 404px bar were squeezed to fit and clipped. It looked like a
+shortening rule for as long as the stylesheet was doing the cutting; `fitFields` is what named
+it, by reporting `mensores` as `men…res`. A shortening that saves one character is not a
+shortening, and the box was the thing that was wrong.
+
+**A caller row cannot hold a name and a module on one line.** Splitting `.gotonode` into two
+boxes fixed the *tail* — 7 of 11 rows had been overflowing 242px, with
+`mensores.chaos.chaos_scriba_kill` and `mensores.chaos.chaos_broker_kill` both reading
+`mensores.chaos.cha…`, two different modules drawn as one string — and could not fix the
+*room*. On a 344px pane every side-by-side split measured as a trade: protect the name and
+`mensores.disceptator._architect_dispatch` reduces to `dis…tch`; floor the module at 6rem and
+the name goes to `resolve_a…_dispatch`. Neither field is worth having in those states.
+**Tom's call, put to him with the three measured against each other: stack them**, which is
+the shape the navigator has always used for this pair. Both whole, at 36px a row instead of 18.
+All 11 rows now show their name and their module entire.
+
+### A label is not the text on screen
+
+A fitted field's text is a shortened one, so a trail step built from it records `stor…items`
+as the place you were — rule 33 and rule 30 in the surface built to take a reader back. Every
+label reader goes through `labelOf` now: `data-label`, then the unshortened `data-full`, then
+the text, rebuilt from the children so a control *containing* a fitted field reads as it would
+have read unfitted. Five call sites, one accessor (rule 51).
+
+`.trailstep`'s title carried `note || label`, which was right while the label was always
+wholly on screen. Once it can be elided, a step *with* a note had the whole of it nowhere —
+its text cut and its hover talking about something else. It carries both.
+
+### The band tables say what kind of string each column holds
+
+`modules_explained` is why. Its meta column is a **path** where every other band's is a dotted
+module, and its label is a **module** where every other band's is a leaf name — exactly
+inverted. A kind guessed from the shape of the markup would drop a program root off a path,
+find none, and look entirely deliberate. `labelFit` and `metaFit` are declared per band and
+there is no default behind them: a band that forgets writes `data-fit=""` and the fitter
+answers with a named error (design rule 16).
+
+### Verified
+
+**835 tests** (12 new), mypy clean, ruff clean, self-check green, console clean. Driven in
+Chrome against the real pair at 1396px: **zero fitted fields overflow** on the cover, the
+navigator, the change list, the worklist, the inspector and the flow panel; ten passes back to
+back drift **not one character**; a field put through four container widths shortens and grows
+back; 4 ms a pass.
+
+**Twelve guards, each run against the defect it names, all twelve CAUGHT.** The mutation
+harness proves its baseline green first (rule 59).
+
+*One existing guard earned its keep.* Four of the explanations above were first written as
+HTML comments **inside template literals**, where a backtick closes the literal and the page
+comes up empty — the defect `test_no_backtick_hides_in_an_html_comment` was written for, on its
+third occurrence. They were moved to JS comments above their functions, which they should have
+been anyway: inside a `.map()` body each one shipped once per row.
+
+### Not done, and why
+
+`.navsub` keeps its constant. `max-width: 11rem` makes every row of it the same box at every
+window and every root size, so 30 is honest there, and 1,175 fields through the fitter on every
+keystroke is a real cost for no gain. The boundary is stated in `shorten()`'s docstring: a
+**fixed rem width takes a constant, a flex-derived one is fitted**.
+
+The fold's member rows keep the backstop deliberately. A member row carries an invocation line
+— `_profile_name_or_none(self) → str | None` — which is not a jointed name, so the middle-elide
+would cut it to `_profile…→ str` and throw away the parameters, which are the reason to have
+opened the class. A signature's identity is at its head, like prose, so the tail cut is already
+the right end. `selfCheck` does not watch it, because nothing there claims it fits.
+
+**Still owed: a real window.** Everything above was measured at 1396px in a browser context
+that reports `outerWidth: 0`, refuses to resize, and whose screenshots did not track the live
+DOM — rule 38, the same debt the blank-graph fix carries. The numbers are measurements and the
+guards are guards; what none of them is, is a look.

@@ -617,8 +617,14 @@ body {
    affordances of a thing you can press. Restore them with the binding, not before. */
 .srcpath-k { font-size: .52rem; letter-spacing: .09em; text-transform: uppercase;
   color: var(--chrome-muted); }
-.srcpath-v { font-family: var(--f-mono); font-size: .72rem; white-space: nowrap;
-  overflow: hidden; text-overflow: ellipsis; max-width: 16rem; }
+/* **The clip went with the path.** This field held one once and `#srcPathV` is now written
+   by nothing at all -- the whole of it is the 28-character literal in `index.html`, which
+   fits its box with room to spare. `overflow`, `text-overflow` and `max-width` were sizing
+   a string that cannot arrive, which is the same dead-CSS fault as the three rules struck
+   below and was the reason this field appeared on the shortening list at all. It came off
+   that list by being measured: there is nothing here to shorten. Restore them with the
+   binding, not before. */
+.srcpath-v { font-family: var(--f-mono); font-size: .72rem; white-space: nowrap; }
 /* Three rules were removed here with the button: two `[aria-expanded="true"]` states for
    an element that no longer expands, and `.srcpath-was`, which showed the *other* end's
    tree while two points in time were being compared. All three styled a root that is no
@@ -1595,9 +1601,42 @@ table.grid tbody tr[aria-selected="true"] td:first-child { box-shadow: inset .18
 /* A caller or callee is a doorway, so it looks like one. `code` inside keeps the
  * monospace the rest of the flow list uses; the button exists for the click and the
  * focus ring, not for a different appearance. */
+/* **The name over its module, not beside it** -- the shape the navigator already uses for
+ * this exact pair, arrived at here by measuring that nothing else works.
+ *
+ * It was `<code>name<span class=dim>  module</span></code>` inside a clipped button: one
+ * width between the two, and the stylesheet cut whatever reached the end -- always the
+ * module, always at its tail, always losing the leaf. **7 of 11 rows overflowed** a 242px
+ * box, and `mensores.chaos.chaos_scriba_kill` and `mensores.chaos.chaos_broker_kill` both
+ * read `mensores.chaos.cha…`: two different modules drawn as one string.
+ *
+ * Two boxes side by side fixed the *tail* and could not fix the *room*. On a 344px pane a
+ * 26-character name and a 31-character module do not both fit on one line, and every split
+ * measured was a trade rather than a fix: protect the name and
+ * `mensores.disceptator._architect_dispatch` reduces to `dis…tch`; floor the module at 6rem
+ * and the name goes to `resolve_a…_dispatch`. Neither field is worth having in those
+ * states, and no arithmetic makes 344px into the 500 the row wants.
+ *
+ * Stacked, both are whole -- `resolve_architect_dispatch` over
+ * `disceptator._architect_dispatch` -- at 36px a row instead of 18. Tom's call, put to him
+ * with the three measured against each other. Each half is still its own box, so
+ * `fitFields` measures and elides each in its **middle** when a genuinely long one arrives. */
 .gotonode { background: none; border: 0; padding: 0; font: inherit; color: inherit;
-            text-align: left; cursor: pointer; min-width: 0; overflow: hidden;
-            text-overflow: ellipsis; white-space: nowrap; }
+            text-align: left; cursor: pointer; min-width: 0;
+            display: flex; flex-direction: column; align-items: stretch; }
+/* Every child, so the fold's neighbour rows and its member signatures are covered by the
+   same rule as a caller row rather than by a second one that drifts (rule 51). The clip is
+   the backstop `selfCheck` asserts never fires; `fitFields` is what is meant to do the
+   cutting, and it cuts in the middle. */
+.gotonode > * { min-width: 0; overflow: hidden;
+                text-overflow: ellipsis; white-space: nowrap; }
+/* Stacked, so neither takes width from the other and `flex` has nothing left to arbitrate:
+   each line gets the whole row and shortens only against a row that is genuinely too narrow
+   for it. The module keeps the dimmed, smaller treatment `.navsub` gives it in the
+   navigator -- it is the subtitle in both places, and reading as one in only one of them is
+   how two surfaces stop looking like one instrument. */
+.gotonode > code { flex: none; }
+.gotonode > .dim { flex: none; font-size: .92em; }
 /* Never mid-token. A qualified name has no spaces, so a wrap breaks it wherever the box
  * happens to end -- `AnthropicAdrDrafterProvider` became "Anthropi / cAdrDrafterProvider",
  * which is the same defect that once read "do_PO / ST" and is invisible to every check
@@ -1618,8 +1657,19 @@ table.grid tbody tr[aria-selected="true"] td:first-child { box-shadow: inset .18
 }
 .callsite + .callsite { border-top: 1px solid var(--border); padding-top: .35rem; }
 .callhead { display: flex; gap: .4rem; align-items: baseline; font-size: .76rem; }
-.callhead code { font-family: var(--f-mono); font-size: .74rem; white-space: nowrap;
-                 overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+/* **Wrapped, like the two rows under it**, and this one was a contradiction rather than a
+ * budget.
+ *
+ * The expression is rendered through `breakable()`, which marks every joint with a `<wbr>`
+ * so a qualified name breaks on a dot instead of mid-token -- and `white-space: nowrap` here
+ * forbade breaking at all, so every one of those marks was inert. `.callin code` and
+ * `.calldecl code` render the same kind of string through the same function and wrap
+ * correctly: measured, they carry 98 and 88 characters with **no** overflow, while this one
+ * clipped 1 row in 6 at 29 characters. One idea, two answers, and the wrong one was the odd
+ * rule out (rule 13). Not fitted, because it does not need to be: there is nothing to
+ * shorten once it is allowed to wrap where the JS already said it may. */
+.callhead code { font-family: var(--f-mono); font-size: .74rem; min-width: 0;
+                 overflow-wrap: anywhere; }
 .callin, .calldecl { font-size: .72rem; color: var(--text-muted); padding: .05rem 0; }
 .callin code, .calldecl code { font-family: var(--f-mono); font-size: .7rem; }
 /* An argument is a row of three: which one it is, what was written, and what it lands on.
@@ -1758,7 +1808,26 @@ kbd { font-family: var(--f-mono); font-size: .66rem; background: var(--sunken);
 .wl-item[aria-current="true"] { background: var(--accent-soft); }
 .wl-item[data-triaged] .wl-title { text-decoration: line-through; color: var(--text-faint); }
 .wl-stripe { width: .1875rem; height: 1.6rem; border-radius: 0 2px 2px 0; }
-.wl-title { font-size: .74rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* **Two lines, then a mark**, where it was one clipped line.
+ *
+ * Measured on Mensores: a 172px box, a median title of 73 characters needing about 420px,
+ * and **94 of 94 rows clipped**. Every finding showed its first thirty characters and none
+ * of them showed the predicate -- `` `self.citation_validator.va… `` for a row whose point
+ * is *could not be connected: 7 definitions share the name*. A worklist is the surface Tom
+ * clears, and a finding that cannot be read cannot be triaged.
+ *
+ * Not `shorten()`, which is what every other field on this list moved onto: a title is a
+ * **sentence** -- all 107 contain a space and 80 contain a dot -- so the middle-elide would
+ * split one on its dots and cut the subject out of it. Prose is cut at the tail, where a
+ * sentence carries least.
+ *
+ * `-webkit-line-clamp` was struck from the constants card for being a *silent* filter, and
+ * this is the same mechanism without that fault: the clamp draws its own ellipsis, and
+ * `fitFields`' `prose` kind puts the whole title on the hover. The mark says something
+ * went; the hover says what (design rule 1). Two lines rather than none, because the list is
+ * scanned and an unbounded row makes 94 of them unscannable. */
+.wl-title { font-size: .74rem; overflow: hidden; white-space: normal;
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; }
 .wl-meta { display: flex; align-items: center; gap: .3rem; font-size: .66rem; color: var(--text-faint); }
 .wl-done { font-size: .6rem; }
 
@@ -1841,7 +1910,17 @@ kbd { font-family: var(--f-mono); font-size: .66rem; background: var(--sunken);
    rather than wrapped: the bar is one row, and the whole label is on the title either
    way. */
 .trailstep { max-width: 12rem; overflow: hidden; text-overflow: ellipsis; }
-.trail li { display: flex; align-items: center; }
+/* **`flex: none`, so the bar scrolls rather than squeezing.** `.trail` is `overflow-x: auto`
+   and `render()` scrolls the current step into view, so scrolling is what this bar was built
+   to do -- but its items were left shrinkable, and a flex item that can shrink does, before
+   its container ever overflows. Three steps in a 404px bar were squeezed to fit it and the
+   stylesheet clipped their tails, which looked like a shortening rule and was a layout.
+
+   The tell came from `fitFields`: `mensores` came out as `men…res`, eight characters cut to
+   seven. A shortening that saves one character is not a shortening, and the box was the
+   thing that was wrong. Bounded by `max-width: 12rem` on the step and by the number of steps
+   the bar draws at once, so "it can scroll" is not "it can grow without limit". */
+.trail li { display: flex; align-items: center; flex: none; }
 .trail li + li::before { content: "\203a"; color: var(--text-faint); margin-right: .25rem; }
 .trailstep { font: inherit; font-size: .72rem; background: none; border: 0; cursor: pointer;
   color: var(--text-muted); padding: .1rem .3rem; border-radius: .1875rem; white-space: nowrap; }

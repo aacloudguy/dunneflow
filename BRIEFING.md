@@ -163,46 +163,86 @@ program has a most-commented routine and a maximum alone is a claim nobody can w
 
 ## What we are doing now
 
-**Paused 2026-09-02, after the constants surface and two dead controls Tom found.**
-823 tests, mypy clean, ruff clean, working tree clean. Nothing is half-done.
+**Paused 2026-09-03, after chunk B — every field fits its own box.**
+835 tests, mypy clean, ruff clean, self-check green, console clean, working tree clean.
 
-*Four commits: the constants surface and the shortening rule it needed · the record ·
-"on its own" doing what it says · the shelf taking you back.* **Tom tested the last two at
-the keyboard and confirmed both.**
+*The shortening work is complete.* The remaining twelve `text-overflow: ellipsis` sites were
+measured before being changed, and measuring struck three of them, changed the mechanism from
+a constant budget to one taken off the box at render time, and found that `shorten()`'s
+docstring had been **promising a `selfCheck` assertion for a session without it existing**.
+That assertion is real now, and it could not have been written against constants (rule 43).
 
-**Next, and it is chunk B of the same work:** the remaining twelve `text-overflow: ellipsis`
-sites all still cut the **tail**, which is the end that carries least — `.chg-mod`,
-`.gotonode` (caller and callee qualnames), `.wl-title`, `.trailstep`, `.rank-name code`,
-`.callhead code`, `.srcpath-v`. They move onto `shorten()`, and with them the `selfCheck`
-assertion that the CSS backstop never fires. `.argrow` keeps its recorded *wrapped, not
-elided* decision and `.leg .nm` is left alone.
+**Four defects in the fitter, every one found on screen and three of them with a comment
+beside them asserting the opposite** — a pane measured mid-transition, a box shrunk by the
+pass's own previous write, the border box measured instead of the content box, and two floats
+compared for exact equality. And two *layouts* that had been wearing a shortening rule's
+clothes: the trail squeezing its steps rather than scrolling them, and a caller row that
+cannot hold a name and a module on one line at all.
 
-**After that**, the flow panel's real worst case: `session.add_turn` at
-`_extraction_state.py:742` — 3,323 bytes over 53 lines, on a *resolved* call, so its arrow
-can be opened. It is one outlier and not a class: the next largest resolved call argument in
-the corpus is 923 bytes.
+**Two of Tom's calls, both put to him with the alternatives measured against each other.**
+A worklist title is **two lines then a mark**, with the whole of it on the hover — it had been
+one clipped line, *94 of 94 rows*, showing the first thirty characters of every finding and
+never the predicate. A caller row **stacks** its module under its name — side by side, every
+split measured as a trade rather than a fix, and all 11 rows now show both entire where 7 of
+11 used to overflow.
+
+**Next, and it is the item that has been waiting behind this one:** the flow panel's real
+worst case — `session.add_turn` at `_extraction_state.py:742`, 3,323 bytes over 53 lines, on a
+*resolved* call, so its arrow can be opened. One outlier and not a class: the next largest
+resolved call argument in the corpus is 923 bytes.
 
 **A server is running** on `http://127.0.0.1:8787/` against `output/mensores`, the
-two-revision pair. Nothing depends on it; `pkill -f "dunneflow serve"` ends it. It has been
-restarted since the schema of `/api/cover` changed — the cover is built once at boot, so a
-stale server serves a payload with no `root` and every module shortens with its prefix on.
+two-revision pair. Nothing depends on it; `pkill -f "dunneflow serve"` ends it. Note that
+`--port` yields to any free port if the asked-for one is taken, so a second server started
+over a stale one lands somewhere else and says so on its last line.
 
-**Two dead controls in one session, both found by Tom and neither by a test.** *"I have
-selected society-2026-08-29 on its own… the next line down still shows BASE then compared
-with"* and *"I see my Kept item, but there is no way to select it… I can Drop it, but nothing
-else."* Both were **design rule 16 with every part working**, and rule 30 underneath. That is
-three sessions running where the report was an account of what was tried rather than a
-diagnosis, and the account was worth more than the diagnosis would have been.
+**The debt is unchanged and it is rule 38's.** Everything in chunk B was measured at 1396px in
+a browser context that reports `outerWidth: 0`, refuses to resize, and whose **screenshots did
+not track the live DOM** — the region under a freshly measured element kept rendering the pane
+beside it. Every number above is a measurement and every guard is a guard; what none of them is
+is a look. Three things now wait on a real window: the constants surface, the blank-graph fix,
+and this.
 
-**A debt, and it is rule 38's.** Everything measured by automation this session was at a
-**900px viewport in a browser context that reports `outerWidth: 0` and will not resize** —
-where the narrow layout sets `#inspector { display: none }`. The pane was forced visible with
-an injected stylesheet to measure it, and every click was scripted. A scripted click proves
-the handler and not the path to it (rule 48). Tom's own testing covers the two fixes above;
-**the constants surface has still not been looked at in a real window**, and that is the same
-debt the blank-graph fix has been carrying.
+### The latest: every field fits its own box (2026-09-03)
 
-### The latest: two dead controls, reported at the keyboard (2026-09-02)
+**A constant is arithmetic wearing a measurement's clothes.** `MODULE_BUDGET_NAV = 30` is
+honest because `.navsub` is `max-width: 11rem` — all 1,175 rows are the same box at any window
+and any root size. None of the seven fields left over is like that: they are flex children
+whose width is what a badge, a count and a line number leave them, and it differs *per row
+inside one window*. `.rank-name code` is 156px on one cover row and 112px on the next, because
+the `kind-tag` beside it is a different width. Rule 53, with rule 24 underneath it.
+
+So `fitFields` measures the box each string is in. Reads batched before writes; candidates
+measured on a **canvas**, never in the DOM, because `shorten()` is monotonic in its budget
+(0 non-monotonic steps over module names, qualnames, paths and command lines) and the widest
+budget that fits is therefore a seven-call bisection with no layout in the middle. **4 ms over
+120 fields, 4.5 ms over 1,175** — so it runs at the end of every `render()` rather than waiting
+for a frame, because a frame painted before the pass is a frame of the untruncated string.
+
+*Three fields came off the list by being measured.* `.wl-title` is **prose** — every one of
+the 107 findings contains a space and 80 contain a dot, so the middle-elide would decide the
+head was ``self``, the leaf was the whole predicate, and elide the subject out of a sentence.
+`.srcpath-v` is a **dead field**: `#srcPathV` is written by nothing and holds a 28-character
+literal that fits. `.callhead code` was a **contradiction** — `breakable()` marks its joints
+with `<wbr>` and `white-space: nowrap` made every mark inert, while its two siblings render the
+same strings through the same function and carry 98 and 88 characters with no overflow (rule 13).
+
+*A label is not the text on screen.* Every label reader goes through `labelOf` — `data-label`,
+then the unshortened `data-full`, then the text — or a trail step records `stor…items` as the
+place you were, which is rule 33 and rule 30 in the one surface built to take a reader back.
+
+*The band tables now say what kind of string each column holds*, with **no default behind
+them**: `modules_explained` prints a path where every other band prints a module and a module
+where every other band prints a leaf name, exactly inverted, so a kind guessed from the markup
+would strip a program root off a path, find none, and look deliberate.
+
+**Twelve guards, each run against the defect it names, all twelve CAUGHT.** One existing guard
+earned its keep on the way: four explanations were first written as HTML comments *inside
+template literals*, where a backtick closes the literal and the page comes up empty — the third
+occurrence of the defect `test_no_backtick_hides_in_an_html_comment` was written for. They
+belonged above their functions anyway; inside a `.map()` body each shipped once per row.
+
+### Before that: two dead controls, reported at the keyboard (2026-09-02)
 
 **"On its own" could not be chosen.** The option existed, was selected, and the handler was
 correct — it even carried a comment saying *"On its own is a real answer"*. Two things put
@@ -528,12 +568,20 @@ feature was blocked on an answer nobody owed.
 - ~~**A class docstring is still compared by nothing.**~~ *Built 2026-09-02, and it was
   three lanes rather than one — presence, declaration and docstring. See the top of this
   file.*
-- **Chunk B of the shortening work: twelve fields still cut the tail.** `shorten()` exists
-  and two callers use it; `.chg-mod`, `.gotonode`, `.wl-title`, `.trailstep`,
-  `.rank-name code`, `.callhead code` and `.srcpath-v` are still `text-overflow: ellipsis`,
-  which drops the leaf. With them, the `selfCheck` assertion that the CSS backstop never
-  fires — measured at 0 on the navigator already, unguarded everywhere else. `.argrow` keeps
-  its *wrapped, not elided* decision; `.leg .nm` is short enough to leave alone.
+- ~~**Chunk B of the shortening work: twelve fields still cut the tail.**~~ *Built
+  2026-09-03, and measuring first struck three of the twelve and changed the mechanism — see
+  the top of this file. The budgets are **measured at render time**, not constants; the
+  `selfCheck` assertion exists and is honest; `.wl-title` is prose and refuses the
+  middle-elide; `.srcpath-v` was a dead field; `.callhead code` wraps. `.navsub` keeps its
+  constant and the boundary is stated. `.argrow` keeps its* wrapped, not elided *decision;
+  `.leg .nm` is left alone.*
+- **Three surfaces have never been *looked* at in a real window** — the constants surface,
+  the blank-graph fix (rule 49), and now chunk B. Not three items: one debt, rule 38's, and
+  it grew this session rather than shrinking. The automation tab reports `outerWidth: 0`,
+  refuses `resize_window`, and its **screenshots did not track the live DOM** — the region
+  under a freshly measured element kept rendering the pane beside it, so even a zoom on
+  correct coordinates showed the wrong thing. Measurement through the DOM still works and is
+  what every figure in this session rests on.
 - **Clicking a change row files two trail steps**, for a structure and for a routine alike.
   Found 2026-09-02 and verified pre-existing rather than introduced. Rule 76's family — an
   echo arriving as an act — and the fix is to the selection path, not to any one lane.

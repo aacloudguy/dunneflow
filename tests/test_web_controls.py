@@ -9132,10 +9132,17 @@ def _engine() -> str | None:
 
 
 def _run_shorten(body: str) -> str:
-    """Run `body` with `shorten`, `moduleLabel` and `ELLIPSIS` in scope.
+    """Run `body` with `shorten`, `moduleLabel`, `stripRoot` and `ELLIPSIS` in scope.
 
     The functions are sliced out of `shell.js` by name rather than copied here, so a test
     cannot go on passing against a version of the rule the shell no longer has.
+
+    **The slice runs to the end of `stripRoot`, and it has to.** The root-drop used to be
+    two lines inside `moduleLabel`; `fitFields` needs it on its own, so it moved out and
+    `moduleLabel` now calls it. A slice that stopped where it used to stop still contained
+    `moduleLabel` -- so the assertion below went on passing -- and the snippet died at run
+    time with `stripRoot is not defined`. The names a slice must carry are asserted, not
+    assumed, for exactly that reason.
     """
     engine = _engine()
     if engine is None:
@@ -9143,12 +9150,13 @@ def _run_shorten(body: str) -> str:
     assert engine is not None
     js = _read("shell.js")
     start = js.index("const ELLIPSIS")
-    end = js.index("\n/* A module as a field shows it")
-    end = js.index("\n}", js.index("return shorten(", end)) + 2
+    end = js.index("\nfunction stripRoot(")
+    end = js.index("\n}", end) + 2
     src = js[start:end]
-    assert "function shorten(" in src and "function moduleLabel(" in src, (
-        "shorten/moduleLabel are no longer where this test slices them from"
-    )
+    for name in ("shorten", "moduleLabel", "stripRoot"):
+        assert f"function {name}(" in src, (
+            f"{name} is no longer where this test slices it from"
+        )
     prog = f'var ROOT = "mensores";\n{src}\n{body}'
     r = subprocess.run([engine, "-e", prog], capture_output=True, text=True)
     assert r.returncode == 0, f"the snippet failed:\n{r.stderr}"
@@ -9435,4 +9443,262 @@ def test_a_pin_is_keyed_on_what_it_is_not_on_what_it_is_called() -> None:
     assert "function pinKey(" in js, "pins are no longer keyed by a stated function"
     assert not re.search(r"state\.pins\.(some|findIndex)\(\s*\w+\s*=>\s*\w+\.label ===", js), (
         "a pin is being matched by its label again"
+    )
+
+
+# ------------------------------------------- fitting a field to its own box --- #
+#
+# Chunk B of the shortening work. `shorten()` cuts a name in its middle and keeps both
+# ends; twelve fields were still letting the stylesheet cut their tails, which drops the
+# leaf -- the one part that tells two rows apart. Each guard below is run against the
+# defect it names, and every defect named here was found on screen or by measurement,
+# never by review.
+
+
+def test_every_field_marked_for_fitting_names_a_kind_the_fitter_answers() -> None:
+    """`data-fit="module"` and a `FIT_KINDS` with no `module` is a silent wrong rule.
+
+    Design rule 16 in the fitter: a kind nobody answers must be a named error, not a
+    plausible shortening. The band tables are why this matters rather than being tidy --
+    `modules_explained` prints a *path* where every other band prints a dotted module, so a
+    kind guessed from the shape of the markup would drop a program root off a path, find
+    none, and look entirely deliberate.
+    """
+    js = _read("shell.js")
+    body = _code(js)
+    written = set(re.findall(r'data-fit="\$\{esc\(b\.(\w+)', body))
+    literal = set(re.findall(r'data-fit="([a-z]+)"', body))
+    m = re.search(r"const FIT_KINDS = \{(.*?)\n\};", body, re.S)
+    assert m, "FIT_KINDS is no longer an object literal; this guard is blind"
+    kinds = set(re.findall(r"^\s+(\w+):", m.group(1), re.M))
+    assert kinds, "FIT_KINDS is empty -- the fitter answers nothing"
+    assert literal <= kinds, (
+        f"fields marked with a kind FIT_KINDS does not answer: {sorted(literal - kinds)}"
+    )
+    # The table-driven ones name a band field rather than a literal, so what is checked is
+    # that every band declares it. Both halves, because the two are different columns.
+    for table in ("CHANGE_STRUCT_BANDS", "CHANGE_FILE_BANDS"):
+        block = body.split(f"const {table} = {{", 1)[1].split("\n};", 1)[0]
+        bands = re.findall(r"^  (\w+): \{", block, re.M)
+        assert bands, f"{table} changed shape -- this guard is blind"
+        for key in written:
+            assert block.count(f"{key}:") >= len(bands), (
+                f"{table}: a band does not declare {key}, so it writes data-fit=\"\" and "
+                "the fitter can only report it as an error at run time"
+            )
+
+
+def test_prose_is_never_put_through_the_middle_elide() -> None:
+    """An anomaly title is a sentence, and `shorten()` would cut its subject out.
+
+    All 107 of Mensores' findings contain a space and 80 contain a dot, so the middle-elide
+    reads one as a dotted name: the head becomes ``self`` and the leaf becomes the whole
+    predicate. `prose` is in `FIT_KINDS` in order to be **refused** -- a null, not a
+    shortener -- and the guard is that it stays one.
+    """
+    body = _code(_read("shell.js"))
+    m = re.search(r"const FIT_KINDS = \{(.*?)\n\};", body, re.S)
+    assert m, "FIT_KINDS is no longer an object literal; this guard is blind"
+    assert re.search(r"^\s+prose:\s*null,", m.group(1), re.M), (
+        "prose has been given a shortener; a worklist title is a sentence and the "
+        "middle-elide will split it on its dots"
+    )
+    assert 'class="wl-title" data-fit="prose"' in body, (
+        "the worklist title is no longer the prose kind"
+    )
+
+
+def test_the_fitter_measures_the_field_before_its_own_last_write() -> None:
+    """The box is sized *to* the text, so a second pass measures what the first one left.
+
+    `.rank-name code` is a flex item with an `auto` basis: shorten its text and the box
+    shrinks to the shortened text. Measured across four container widths from 300px to
+    released, the box read 81px at **every** one of them and the string never changed --
+    it ratchets down and can never grow back. Phase 1 writes the whole string into every
+    field before phase 2 reads a single width, which costs nothing because all three phases
+    are one synchronous task.
+    """
+    fit = _fn_body(_read("shell.js"), "fitFields")
+    # On the code, never on the phase headings: `_fn_body` strips comments, and a guard
+    # that read them would pass on the prose describing the order rather than the order.
+    restore = fit.index("el.textContent = want")
+    read = fit.index("getBoundingClientRect")
+    shorten_write = fit.index("setFitted(")
+    assert restore < read < shorten_write, (
+        "the fitter reads a width before putting the whole string back, so it measures the "
+        "box its own previous pass left behind -- the field ratchets down and never grows"
+    )
+
+
+def test_the_fitter_measures_the_content_box_and_not_the_border_box() -> None:
+    """Padding counted twice let a string through that then overflowed.
+
+    `.trailstep` has `.3rem` a side and was the one field of eight still spilling after a
+    pass that reported fitting it: 201px of text written into 192px of room, by arithmetic
+    that thought it had 201. Subtracted from the rect rather than read off `clientWidth`,
+    which is 0 on an inline element and would collapse every such field to a single mark.
+    """
+    fit = _fn_body(_read("shell.js"), "fitFields")
+    for prop in ("paddingLeft", "paddingRight", "borderLeftWidth", "borderRightWidth"):
+        assert prop in fit, (
+            f"the fitter no longer subtracts {prop}, so it measures text against a box "
+            "that includes space the text cannot use"
+        )
+
+
+def test_the_fitter_and_the_check_forgive_the_same_overflow() -> None:
+    """One tolerance, or the two disagree about what fits.
+
+    A fitted field is usually sized to its own content, so the space available and the
+    space needed are computed from the same text and come out exactly equal -- `mensores`
+    was cut to `men…res` by a float comparison losing on the last bit. A looser check than
+    the fitter would hide a real overflow; a tighter one would fail every field the fitter
+    had just finished (rule 13).
+    """
+    body = _code(_read("shell.js"))
+    assert re.search(r"const FIT_SLACK = \d", body), "FIT_SLACK is gone"
+    fit = _fn_body(_read("shell.js"), "fitFields")
+    check = _fn_body(_read("shell.js"), "selfCheck")
+    assert "FIT_SLACK" in fit, "the fitter no longer uses the shared tolerance"
+    assert "FIT_SLACK" in check, (
+        "the self-check no longer uses the shared tolerance, so it can report an overflow "
+        "the fitter was entitled to leave"
+    )
+
+
+def test_the_self_check_asserts_the_css_backstop_never_fires() -> None:
+    """The promise `shorten()`'s docstring made for a session before it was kept.
+
+    A sentence claiming a guard reads exactly like a guard. It could not be written while
+    the budgets were constants -- against those it would report every window the constant
+    was not measured at, which is rule 43 -- and it became possible the moment `fitFields`
+    started taking each budget off the box the text is in.
+    """
+    check = _fn_body(_read("shell.js"), "selfCheck")
+    assert "[data-fit]" in check, (
+        "the self-check no longer looks at fitted fields, so a field whose budget is wrong "
+        "is cut by the stylesheet at its tail, silently and with no mark saying how much"
+    )
+    assert "scrollWidth" in check and "clientWidth" in check, (
+        "the self-check no longer measures overflow"
+    )
+    assert 'dataset.fit === "prose"' in check, (
+        "prose is no longer skipped; it is clamped in the block direction on purpose and "
+        "checking it reports the design as a fault"
+    )
+
+
+def test_a_fitted_field_never_becomes_a_trail_step() -> None:
+    """A step labelled `stor…items` cannot say where it goes -- rule 33 and rule 30.
+
+    Every label reader goes through `labelOf`, which prefers `data-label`, then the
+    unshortened `data-full`, and only then the text. One accessor, so the shortener and the
+    trail cannot disagree about what a row is called (rule 51).
+    """
+    body = _code(_read("shell.js"))
+    assert "function labelOf(" in body, "labelOf is gone"
+    bare = re.findall(r"pushTrail\([^)]*?\bb\.textContent", body)
+    assert not bare, (
+        f"a trail step is built from an element's text again: {bare} -- if that element "
+        "holds a fitted field the step records the shortened string as the place you were"
+    )
+
+
+def test_the_panes_are_watched_because_they_finish_moving_after_render_returns() -> None:
+    """`.body` carries `transition: all`, so a pane toggle animates its grid columns.
+
+    `render()` is synchronous: it writes the attribute and the fit pass measures a frame
+    later, while the columns are still on their way, so every field fitted itself to a
+    layout that had already gone. Three fields overflowed after a pass reporting no cuts.
+    A `ResizeObserver` answers it for every cause at once -- a pane toggled, a rail dragged,
+    a window resized, a reader changing their browser's font size, which reports no event
+    at all.
+    """
+    body = _code(_read("shell.js"))
+    assert "new ResizeObserver(scheduleFit)" in body, (
+        "the panes are no longer watched, so a fit taken mid-transition is never corrected"
+    )
+    assert "function wireFitOnce(" in body and "wireFitOnce();" in body, (
+        "the pane observer is never wired"
+    )
+    # And it must watch the panes, never the fields: a fitted field's own size is what the
+    # pass changes, so an observer on one would see its own write.
+    watched = re.search(r'\[([^\]]*)\]\.forEach\(id => \{', body)
+    assert watched and "viewMount" in watched.group(1) and "inspector" in watched.group(1), (
+        "the observer no longer watches the panes the fitted fields live in"
+    )
+
+
+def test_the_trail_scrolls_rather_than_squeezing_its_steps() -> None:
+    """A flex item that can shrink does, before its container ever overflows.
+
+    `.trail` is `overflow-x: auto` and `render()` scrolls the current step into view, so
+    scrolling is what the bar was built to do -- but its items were shrinkable, and three
+    steps in a 404px bar were squeezed to fit and clipped. It looked like a shortening rule
+    and was a layout. The tell was `mensores` coming out as `men…res`: eight characters cut
+    to seven, which is not a shortening.
+    """
+    css = _css_code(_read("tokens.css"))
+    m = re.search(r"\.trail li \{([^}]*)\}", css)
+    assert m, ".trail li is gone; this guard is blind"
+    assert "flex: none" in m.group(1), (
+        ".trail li can shrink again, so the bar squeezes its steps instead of scrolling "
+        "and every step is clipped before the container overflows"
+    )
+
+
+def test_a_caller_row_stacks_its_module_under_its_name() -> None:
+    """Side by side, a 344px pane cannot hold a 26-character name and a 31-character module.
+
+    Two boxes fixed the *tail* and could not fix the *room*: protect the name and
+    `mensores.disceptator._architect_dispatch` reduces to `dis…tch`; floor the module and
+    the name goes to `resolve_a…_dispatch`. Both measured, neither worth having. Stacked,
+    both are whole, which is the shape the navigator already uses for this pair.
+    """
+    css = _css_code(_read("tokens.css"))
+    m = re.search(r"\.gotonode \{([^}]*)\}", css)
+    assert m, ".gotonode is gone; this guard is blind"
+    assert "display: flex" in m.group(1), (
+        ".gotonode is no longer a flex container, so its name and its module share one box "
+        "again and the stylesheet cuts whichever reaches the end -- always the module"
+    )
+    assert "flex-direction: column" in m.group(1), (
+        "the caller row puts its name beside its module again; there is not room for both "
+        "on one line and every side-by-side split was measured as a trade, not a fix"
+    )
+
+
+def test_the_call_head_may_wrap_where_the_shell_marked_its_joints() -> None:
+    """`breakable()` writes a `<wbr>` at every joint and `nowrap` forbade all of them.
+
+    `.callin code` and `.calldecl code` render the same kind of string through the same
+    function and wrap correctly -- measured, they carry 98 and 88 characters with no
+    overflow, while this one clipped 1 row in 6 at 29 characters. One idea, two answers,
+    and the wrong one was the odd rule out (rule 13).
+    """
+    css = _css_code(_read("tokens.css"))
+    m = re.search(r"\.callhead code \{([^}]*)\}", css)
+    assert m, ".callhead code is gone; this guard is blind"
+    assert "nowrap" not in m.group(1), (
+        "the call head forbids wrapping again, so every <wbr> breakable() writes into it "
+        "is inert and the expression is cut at its tail instead"
+    )
+
+
+def test_the_source_path_readout_no_longer_sizes_a_string_it_cannot_receive() -> None:
+    """`#srcPathV` is written by nothing; the whole of it is a literal in the markup.
+
+    It reached the shortening list as a `text-overflow: ellipsis` and came off it by being
+    measured: there is nothing here to shorten. Dead CSS is how a control keeps looking
+    wired (rules 44 and 48), and this was the readout's version of it.
+    """
+    assert "srcPathV" not in _code(_read("shell.js")), (
+        "something writes #srcPathV now -- it holds a path again, so the clip it used to "
+        "carry has to come back with the binding"
+    )
+    css = _css_code(_read("tokens.css"))
+    m = re.search(r"\.srcpath-v \{([^}]*)\}", css)
+    assert m, ".srcpath-v is gone; this guard is blind"
+    assert "text-overflow" not in m.group(1), (
+        "the readout clips a string that cannot arrive"
     )

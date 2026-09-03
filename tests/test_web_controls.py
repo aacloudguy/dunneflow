@@ -2160,13 +2160,27 @@ def test_the_graph_is_never_framed_against_a_container_it_cannot_measure() -> No
     The fallback is the half worth keeping a check on. A substitution that yields a plausible
     measurement is worse than one that refuses, because nothing downstream can tell.
     """
-    shell, engine = _code(_read("shell.js")), _code(_read("graph.js"))
+    engine = _code(_read("graph.js"))
 
-    # Paint, then mount. `boot()` had this right and the mode toggle did not.
-    toggle = shell.split('$$("#modes button").forEach', 1)[1].split("}));", 1)[0]
-    assert toggle.index("render();") < toggle.index("ensureGraph();"), (
-        "the mode toggle mounts the graph before painting it, so the engine measures a "
-        "container that is still hidden and frames the stack for the whole window"
+    # Paint, then mount -- and the check moved with the code that decides it.
+    #
+    # This used to read the mode toggle, because that was the handler that had the order
+    # wrong. The order is not a handler's to get right any more: `render()` reconciles every
+    # pane at the point every route arrives, so what has to hold is that its own call sits
+    # **after** it has set `hidden` on the three mounts. That is the same invariant for the
+    # toggle, the crumbs, boot, a trail step and every route nobody has written yet, where
+    # the old check could only ever speak for one of them.
+    rend = _fn_body(_read("shell.js"), "render")
+    assert "ensureGraph();" in rend, (
+        "render() no longer mounts the stack, so mounting is back to being something each "
+        "route has to remember -- and a route that forgets shows an empty pane"
+    )
+    assert rend.index('$("#graphMount").hidden') < rend.index("ensureGraph();"), (
+        "render() mounts the graph before it has unhidden the mount, so the engine measures "
+        "a container that is still 0x0 and frames the stack for the whole window"
+    )
+    assert rend.index('$("#diagramMount").hidden') < rend.index("ensureDiagram();"), (
+        "render() draws the diagram before it has unhidden the mount"
     )
 
     fit = _fn(engine, "fitView")
@@ -9328,10 +9342,15 @@ def _fn_body(js: str, name: str) -> str:
     the span it is taken over (rule 37), and a comment is not code.
     """
     js = _code(js)
-    m = re.search(rf"\nfunction {name}\(", js)
+    # `async function` too, and both ends of the slice. Without it a guard aimed at an async
+    # function fails as "no longer a function declaration" -- which reads as the code having
+    # moved rather than the helper being unable to see it, and the obvious response to that
+    # message is to weaken a guard that was pointing at the right thing.
+    m = re.search(rf"\n(?:async )?function {name}\(", js)
     assert m, f"{name} is no longer a function declaration; this guard is blind"
-    end = js.find("\nfunction ", m.end())
-    return js[m.start():end if end > 0 else len(js)]
+    nxt = re.search(r"\n(?:async )?function ", js[m.end():])
+    end = m.end() + nxt.start() if nxt else len(js)
+    return js[m.start():end]
 
 
 def test_choosing_one_version_is_a_state_and_not_an_absence() -> None:
@@ -9701,4 +9720,124 @@ def test_the_source_path_readout_no_longer_sizes_a_string_it_cannot_receive() ->
     assert m, ".srcpath-v is gone; this guard is blind"
     assert "text-overflow" not in m.group(1), (
         "the readout clips a string that cannot arrive"
+    )
+
+
+# --------------------------- no pane assumes what it shows is still true --- #
+#
+# Tom's rule, from a pane that assumed it: *"EVERY mode switch should re-verify where it
+# should be ... no control should ever expect that it 'knows' what it was showing before is
+# still true."* A reader moves the point of view from the navigator, the centre, the
+# inspector, the trail, the shelf, the crumbs, a hovered row, a diagram box, a search hit
+# and a second window, so a pane brought up to date by the control that moved it is only as
+# correct as the last person to add a control.
+
+
+def test_every_pane_reconciles_where_every_route_arrives() -> None:
+    """`render()` reconciles; no handler is trusted to remember.
+
+    The table's own branch has said this since it was written -- *"there are five ways into
+    table mode ... a call at each is exactly the list rule 51 says grows. Every one of them
+    arrives here."* The code pane, the stack and the diagram had not learned it.
+    """
+    rend = _fn_body(_read("shell.js"), "render")
+    for call in ("followSelectionIntoCode();", "ensureGraph();", "ensureDiagram();",
+                 "ensureTableOverlay();"):
+        assert call in rend, (
+            f"render() no longer calls {call} -- that pane is back to being brought up to "
+            "date by whichever control happened to move it, and a route that forgets shows "
+            "the reader a view of something they are no longer looking at"
+        )
+    # The code walk decides what the branches below it paint, so it runs before them.
+    assert rend.index("followSelectionIntoCode();") < rend.index('state.view === "code"'), (
+        "the code pane is reconciled after it has been painted, so a stale file is shown "
+        "for a frame and corrected on the next repaint"
+    )
+
+
+def test_switching_to_code_shows_the_file_the_selection_lives_in() -> None:
+    """Reported at the keyboard, on `disceptator._extraction_state.<module>`.
+
+    *"When I change the center panel to Code, that panel shows
+    mensores/_internal/_governed_gates.py which is not what I expect to see."* It was not:
+    `/api/node` gave `mensores/disceptator/_extraction_state.py` for that node all along.
+
+    The walk is guarded on the pane being on screen, which is right, and it was invited from
+    exactly one place -- the end of `loadSpecimen`. Selecting while Code was behind another
+    mode returned at the guard and left no trace, and the mode switch never asked again. What
+    the reader then saw was `state.codeFile`, which is **persisted**: a file from a previous
+    session, in a package they had never opened, looking entirely deliberate.
+    """
+    js = _code(_read("shell.js"))
+    walk = _fn_body(_read("shell.js"), "followSelectionIntoCode")
+    assert "codeFollowedFor" in walk, (
+        "the walk no longer records which selection it has serviced, so it either fights a "
+        "deliberate file open on every repaint or never runs when the pane appears"
+    )
+    assert walk.index("codeOnScreen()") < walk.index("codeFollowedFor = inspectorFor"), (
+        "the walk marks a selection serviced while the pane is off screen, which is the "
+        "defect itself: nothing walks when the pane is brought up"
+    )
+    # And it must *stop* on an already-serviced subject. Naming the variable is not using it:
+    # without this the walk runs on every repaint, and a file the reader opened by hand is
+    # replaced by the selection's on the very next keystroke. Found by mutation -- the first
+    # version of this guard passed with the early return deleted (rule 37).
+    assert re.search(r"codeFollowedFor === inspectorFor\)\s*return", walk), (
+        "the walk does not stop on a selection it has already serviced, so it re-walks on "
+        "every repaint and overrides any file the reader opened themselves"
+    )
+    # And the one place a reader opens a file by hand must outrank it.
+    opener = _fn_body(_read("shell.js"), "openCodeFile")
+    assert "codeFollowedFor = inspectorFor" in opener, (
+        "opening a file by hand does not mark the selection serviced, so the reconcile puts "
+        "the pane back on the next repaint -- an automatic move fighting a deliberate one"
+    )
+    assert "let codeFollowedFor" in js, "codeFollowedFor is not declared"
+
+
+def test_a_reconcile_is_silent_when_there_is_nothing_to_do() -> None:
+    """`render()` runs on every keystroke, so a reconcile that repaints is a reconcile that
+    destroys the reader's place.
+
+    `ensureDiagram` ran to the bottom on every call, found both content guards satisfied and
+    still finished with `renderDiagram()` -- which rewrites `#diagramMount`, the mount that
+    exists so `render()` does *not* touch it, and takes the laid-out SVG and the reader's pan
+    and zoom with it.
+    """
+    dg = _fn_body(_read("shell.js"), "ensureDiagram")
+    early = dg.index("diagramBusy = true;")
+    guard = dg.find("diagramNow.svg && diagramNow.id === showing")
+    assert guard != -1 and guard < early, (
+        "ensureDiagram claims the lock before asking whether it has anything to do, so a "
+        "call from render() repaints the mount and throws away the reader's pan"
+    )
+    gr = _fn_body(_read("shell.js"), "ensureGraph")
+    assert "Graph.mounted() || graphLoading" in gr, (
+        "ensureGraph no longer decides for itself, so calling it from render() remounts the "
+        "engine on every keystroke"
+    )
+
+
+def test_no_route_mounts_a_pane_on_its_own_way_in() -> None:
+    """Four `ensureGraph()` calls, and every one of them sat *before* its `render()`.
+
+    So each was mounting into the previous view's layout and relying on a later resize to
+    correct it -- the defect that was found once, on the mode toggle, and fixed there only.
+    They are gone; `render()` is ordered right by construction for every route including the
+    ones nobody has written yet.
+    """
+    js = _code(_read("shell.js"))
+    rend = _fn_body(_read("shell.js"), "render")
+    outside = js.replace(rend, "")
+    # `await ensureGraph()` in the selection path is a different thing: it needs the stack up
+    # before it can apply picks, and it says so. A bare call on the way into a view is not.
+    bare = re.findall(r"(?<!await )\bensureGraph\(\);", outside)
+    assert not bare, (
+        f"{len(bare)} route(s) still mount the stack on their own way in -- each is a place "
+        "that has to remember, and each is ordered before its own paint"
+    )
+    toggle = js.split('$$("#modes button").forEach', 1)[1].split("}));", 1)[0]
+    assert "ensure" not in toggle, (
+        "the mode toggle names the modes that need mounting again -- knowledge that is right "
+        "until a mode is added, and wrong silently"
     )

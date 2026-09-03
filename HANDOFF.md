@@ -7904,3 +7904,118 @@ the right end. `selfCheck` does not watch it, because nothing there claims it fi
 that reports `outerWidth: 0`, refuses to resize, and whose screenshots did not track the live
 DOM — rule 38, the same debt the blank-graph fix carries. The numbers are measurements and the
 guards are guards; what none of them is, is a look.
+
+
+## No pane assumes what it was showing is still true — 2026-09-03
+
+Reported at the keyboard, mid-rabbit: *"Found myself at `disceptator._extraction_state
+<module>` ... When I change the center panel to Code, that panel shows
+`mensores/_internal/_governed_gates.py` which is not what I expect to see. Is this accurate,
+and I am seeing what I should, or is the center panel off?"*
+
+**The panel was off.** `/api/node` gave `mensores/disceptator/_extraction_state.py` for that
+node all along. What was on screen was `state.codeFile` — which is **persisted** — so it was
+the file the constants session left open two days earlier, from a package the reader had never
+opened, rendered with a title and a path and nothing to say it was stale. The store was right,
+the selection was right, and the walk was right.
+
+### One caller, and it was the wrong one
+
+`followSelectionIntoCode()` opens with `if (!codeOnScreen()) return;` — correct, there is
+nothing to walk when the pane is not up. It was invited from **exactly one place**, the end of
+`loadSpecimen`. So selecting a routine while Code sat behind another mode returned at that
+guard and left no trace, and the mode switch never asked again. The condition has two halves —
+*the selection changed* and *the pane became visible* — and only the first was served.
+
+### Tom's rule, which is larger than the defect
+
+*"EVERY mode switch should re-verify where it should be ... Users can move around using nearly
+any panel — left, center, or Inspector. Every possible venue that can change the point of view
+should be considered, so no control should ever expect that it 'knows' what it was showing
+before is still true."*
+
+**This file already said so, in one branch.** The table's:
+
+> *"Here rather than on the mode toggle because there are five ways into table mode — the
+> toggle, `Enter` on a hovered navigator row, two crumb routes and the code browser's hand-off
+> — and a call at each is exactly the list rule 51 says grows. Every one of them arrives here."*
+
+The audit found three panes on each side of that lesson. Reconciling inside `render()`:
+**table** (`ensureTableOverlay` + `revealSelectedRow`), **glossary/naming**
+(`ensureVocabulary`), **curiosities** (`ensureCuriosities`). Relying on every call site to
+remember: **code** (1 site, and the wrong one), **stack** (4 sites), **diagram** (7 sites).
+
+So all three moved into `render()`, where every route arrives.
+
+### And the four graph call sites were mis-ordered as well as incomplete
+
+Every one of them sat **before** its own `render()`:
+
+```js
+if (state.graphLayout === "stack") ensureGraph();
+render();
+```
+
+so each was mounting into the *previous* view's layout — the exact defect recorded on the mode
+toggle as *"the graph should have been there"*, fixed there in 2026-08 and left standing at the
+other three. A hidden container is 0x0 and `fitView` framed the stack for the whole window.
+Arriving in `render()` they are ordered right by construction, for every route including the
+ones nobody has written yet. The guard that watched the toggle now watches `render()`, which is
+a stronger statement: it speaks for every route rather than for one handler.
+
+### What it cost to make the reconcile safe
+
+`render()` runs on every keystroke, so a reconcile must be **silent when there is nothing to
+do**. Two of the three needed work for that.
+
+**`ensureDiagram` claimed its lock before asking whether it had anything to do.** It ran to the
+bottom on every call, found both content guards satisfied, and still finished with
+`renderDiagram()` — which rewrites `#diagramMount`, the mount that exists precisely so
+`render()` does not touch it, and takes the laid-out SVG and the reader's pan and zoom with it.
+It compares the drawing it has against the drawing that is wanted first now. Verified: the
+`<svg>` node is the same object after five renders, transform unchanged.
+
+**The code walk had to stop fighting the reader.** An unconditional walk puts the pane back on
+the next repaint, so a reader who opens a second file to compare it with the first could not
+keep it for one paint — an automatic move fighting a deliberate one, which `revealSelectedRow`
+and the trail scroller are both careful about. `codeFollowedFor` records *which subject* the
+pane has been walked for, not *whether* it has been walked: a flag would be cleared by every
+selection and set by every walk, and the deliberate open undone immediately. `openCodeFile`
+marks the subject serviced, so the reader may go anywhere inside one selection and is still
+followed the moment they pick something new.
+
+`ensureGraph` needed nothing — *"cheap to call from anywhere that might land in graph mode; it
+decides for itself"* was already true and already written down.
+
+### Verified
+
+839 tests (4 new), mypy clean, ruff clean, self-check green, console clean. Driven in Chrome on
+the real pair, Tom's sequence exactly: land on `<module>` from graph mode with
+`_governed_gates.py` persisted, switch the centre to Code — **`_extraction_state.py`**, the file
+the node lives in. Then the two things a render-time reconcile could have broken: a file opened
+by hand **held its ground across three repaints**, and picking a new routine **followed again**.
+Seven centre-mode switches in a row, every one showing the selection's own file.
+
+**Five guards, each run against the defect it names, all CAUGHT** — and one was blind first and
+found by mutation: it asserted `codeFollowedFor` was *named* in the walk and passed with the
+early return deleted, which is rule 37 again (naming a thing is not using it).
+
+*`_fn_body` could not see an `async function`* and reported `ensureDiagram` as "no longer a
+function declaration" — a message that reads as the code having moved rather than the helper
+being blind, and whose obvious response is to weaken a guard that was pointing at the right
+thing. Both ends of the slice take `async` now.
+
+### Checked and not a regression
+
+The stack's backing store is 300×150 against a 245×293 stage in the automation tab. Measured
+against `HEAD` with the change stashed: **identical**, so it is the recorded rule-38 context and
+not this. It is the same context that reports `canvas MISSING, frames 0`.
+
+### Left open
+
+**`<module>` is answered in a routine-shaped inspector.** It draws *"Nothing in this map calls
+it. That is either a way in, dead code, or a call DunneFlow cannot see"* — three plausible
+sentences, none of them the true one, which the routine list already carries as its own `why`:
+*"Module-level code: runs at import, before anything is called."* Same shape as the constants
+defect: a pane answering a question this kind cannot be asked. `viewInspectorConstant` is the
+precedent — route on kind. Not built; Tom found it on the way past this one.

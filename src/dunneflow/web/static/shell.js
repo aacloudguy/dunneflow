@@ -2685,6 +2685,22 @@ function diagramWanted() {
 
 async function ensureDiagram() {
   if (state.view !== "diagram" || diagramBusy) return;
+  /* **Silent when there is nothing to do**, and that is what makes this safe to call from
+   * `render()` rather than from the seven places that currently remember to.
+   *
+   * Without it the function ran to the bottom on every call, found both of its content
+   * guards satisfied, and still finished with `renderDiagram()` -- which rewrites
+   * `#diagramMount`. That mount exists precisely so `render()` does *not* touch it: rewriting
+   * it throws away a laid-out SVG and the reader's pan and zoom, and `render()` runs on every
+   * keystroke. So the drawing on screen is compared with the drawing that is wanted **before**
+   * anything is claimed or repainted, and a call with nothing to do costs two comparisons.
+   *
+   * `diagramNow = null` is how the five callers that change *what is wanted* say so; they
+   * still call, because a subject that changed wants its redraw now rather than whenever the
+   * next repaint happens to arrive. What they no longer have to be is exhaustive. */
+  const showing = state.diagramBox || diagramWanted();
+  if (diagramNow && diagramNow.svg && diagramNow.id === showing
+      && !!diagramNow.portsDrawn === !!state.diagramPorts) return;
   diagramBusy = true;
   diagramErr = null;
   renderDiagram();
@@ -3006,19 +3022,23 @@ $$("#modes button").forEach(b => b.addEventListener("click", () => {
   state.view = state.mode;
   pushTrail(state.mode, labelOf(b));
   used(state.mode);
-  /* **Paint before mounting.** This ran `ensureGraph()` first, so the engine measured
-   * `#graphMount` while it was still `hidden` from the previous render -- and a hidden
-   * container is 0x0. `fitView` then framed the stack for the whole window instead of the
-   * pane, and switching to the graph from the table showed an empty canvas until the reader
-   * found snap-to-fit. `boot()` had the order right; this call site did not.
+  /* **`render()` alone**, and it reconciles the stack and the diagram itself.
    *
-   * Reported as *the graph should have been there*, and it should. */
+   * This handler used to name them: `render(); if (mode === "graph") ensureGraph(); if
+   * (mode === "diagram") ensureDiagram();`. Two things were wrong with that and only one of
+   * them had ever been found.
+   *
+   * The found one was an **order**. It ran `ensureGraph()` *first*, so the engine measured
+   * `#graphMount` while it was still `hidden` from the previous render -- a hidden container
+   * is 0x0, `fitView` framed the stack for the whole window instead of the pane, and
+   * switching to the graph from the table showed an empty canvas until the reader found
+   * snap-to-fit. Reported as *the graph should have been there*, and it should.
+   *
+   * The unfound one is that a handler naming the modes that need mounting is **knowledge
+   * with a shelf life** -- it is right until a mode is added, and wrong silently. Both are
+   * gone: `render()` reconciles every pane at the point every route arrives, in the order
+   * that was fixed here and is now fixed for routes nobody has written. */
   render();
-  if (state.mode === "graph") ensureGraph();
-  /* Paint, then build -- the same order the graph needed and for the same reason: the mount
-     is `hidden` from the previous render until `render()` has run, and a pane measured while
-     hidden is 0x0. */
-  if (state.mode === "diagram") ensureDiagram();
 }));
 
 /* How long a second click on the same box still counts as opening it. Chrome's own
@@ -3315,7 +3335,6 @@ document.addEventListener("click", (ev) => {
   state.graphLayout = b.dataset.layout;
   used("layout:" + state.graphLayout);
   if (state.view === "graph") pushTrail("graph", labelOf(b));
-  if (state.graphLayout === "stack") ensureGraph();
   render();
 });
 
@@ -7197,9 +7216,38 @@ function codeOnScreen() {
       || groupOpen(NAV_GROUPS.find(g => g.id === "navCode"));
 }
 
+/* Which selection the code pane has already been walked for.
+ *
+ * **Not a "have I walked" flag but a "walked for *what*" one**, and the difference is the
+ * whole reason a reader can still open a file by hand. A flag would be cleared by every
+ * selection and set by every walk, and the deliberate open in `openCodeFile` would be
+ * undone on the very next repaint -- an automatic move fighting a deliberate one, which is
+ * the thing `revealSelectedRow` and the trail scroller are both careful about. Marking the
+ * *subject* as serviced lets the reader go anywhere they like inside one selection, and
+ * still follows them the moment they pick something new. */
+let codeFollowedFor = null;
+
 function followSelectionIntoCode() {
+  /* **Nothing is marked when the pane is not on screen**, which is the half that was
+   * missing and the whole of the defect Tom found. Selecting a routine while Code is behind
+   * another mode used to return here and leave no trace, and switching to Code afterwards
+   * painted `state.codeFile` -- a **persisted** value, so the file a previous session left
+   * open, from a package the reader had never touched, looking entirely deliberate.
+   *
+   * Reported as *"the panel shows `mensores/_internal/_governed_gates.py` which is not what
+   * I expect to see"*, on a node whose own `where.file` was
+   * `mensores/disceptator/_extraction_state.py` all along. The store was right, the walk was
+   * right, and nothing invited the walk a second time. */
   if (!codeOnScreen()) return;
+  if (codeFollowedFor === inspectorFor) return;
   const w = SPECIMEN && SPECIMEN.where;
+  /* No answer yet -- the specimen is still in flight. Left unmarked so the next render asks
+     again, rather than marked and never asked again (rule 49: refuse, do not invent). */
+  if (!SPECIMEN) return;
+  /* From here the question *has* been answered for this subject, whatever the answer was.
+     A specimen with no file -- a boundary, a fold, a table -- is a real answer and marking
+     it is what stops this retrying on every repaint for as long as it is selected. */
+  codeFollowedFor = inspectorFor;
   if (!w || !w.file) return;
   /* One spelling. This read an absolute path the file list used to carry beside the short
    * one, and fell back to an `endsWith` on the short one -- a name match wearing a suffix
@@ -7983,6 +8031,33 @@ function crumbsFor() {
 
 function render() {
   const vp = $("#viewMount");
+  /* ══ reconcile, before anything is painted ═══════════════════════════════════════════
+   *
+   * **No control may assume that what it was showing is still true.** Tom's rule, and it
+   * came from a pane that was: selecting a routine while Code was behind another mode left
+   * the walk uninvited, and switching to Code afterwards showed a **persisted** file from a
+   * previous session with nothing to say it was stale.
+   *
+   * A reader moves the point of view from the navigator, the centre, the inspector, the
+   * trail, the shelf, the crumbs, a hovered row, a diagram box, a search hit and a second
+   * window. A pane that is brought up to date *by the control that moved it* is only as
+   * correct as the last person to add a control -- which is the list rule 51 says grows, and
+   * this file already says so in the table's own branch below: *"there are five ways into
+   * table mode ... a call at each is exactly the list rule 51 says grows. Every one of them
+   * arrives here."* The table learned it; the code pane, the stack and the diagram had not.
+   *
+   * So the panes reconcile **here**, where every route arrives, and no route has to remember.
+   * The cost of that is a condition on each: a reconcile must be *silent* when there is
+   * nothing to do, because `render()` runs on every keystroke. `followSelectionIntoCode`
+   * marks the subject it has serviced, `ensureGraph` decides for itself and always has, and
+   * `ensureDiagram` now compares the drawing it has with the one that is wanted before it
+   * repaints a mount holding the reader's pan.
+   *
+   * **Before the paint**, because this one decides *what* is painted -- `state.codeFile` is
+   * read by the code branch a few lines down, and reconciling after it would show the stale
+   * file for a frame and correct it on the next. The two that mount into a *painted*
+   * container are at the foot of this function instead, and say so there. */
+  followSelectionIntoCode();
   $("#crumbs").innerHTML = crumbsFor();
   $("#modes").style.visibility = CENTRE_MODES.includes(state.view) ? "visible" : "hidden";
   /* The layout choice sits inside graph mode, never beside it. Graph / table / document are
@@ -8179,6 +8254,22 @@ function render() {
   }
   const np = $("#navPins");
   if (np) { np.textContent = state.pins.length; np.className = "n" + (state.pins.length ? " sevcount info" : ""); }
+  /* ══ reconcile, now that there is something to mount into ════════════════════════════
+   *
+   * The other half of the rule at the top of this function. These two mount an engine into a
+   * container, so they have to run **after** the branches above have set `hidden` on the
+   * three mounts -- a pane measured while hidden is 0x0, which is the defect the mode
+   * toggle's own comment records ("the graph should have been there") and the diagram's
+   * deferred fit exists for.
+   *
+   * That is also why the four `ensureGraph()` calls this replaces were wrong as well as
+   * incomplete: every one of them sat *before* its `render()`, so each was mounting into the
+   * previous view's layout and relying on a later resize to correct it. Arriving here they
+   * are ordered right by construction, for every route including the ones nobody has written
+   * yet. Both are silent when there is nothing to do. */
+  ensureGraph();
+  ensureDiagram();
+
   renderFilters();
   /* **After every pane is written and before this function returns.** Every mount above
    * has had its `innerHTML` replaced, so this is the first point at which a fitted field
@@ -8277,7 +8368,7 @@ function wire() {
 
   /* cover → graph */
   $$("[data-ep]").forEach(b => b.addEventListener("click", () => {
-    state.view = "graph"; state.mode = "graph"; used("graph"); ensureGraph(); render();
+    state.view = "graph"; state.mode = "graph"; used("graph"); render();
   }));
 
   /* graph nodes: click, and arrow-key traversal */
@@ -9947,6 +10038,12 @@ async function loadCodeFile(path) {
  * click that selects. */
 function openCodeFile(path) {
   state.codeFile = path || "";
+  /* **This selection is serviced, by the reader.** Without this the walk would see a file
+     that is not the selection's, decide the pane had drifted, and put it back on the next
+     repaint -- so a reader who opened a second file to compare it with the first could not
+     keep it on screen for one paint. A deliberate move outranks an automatic one; saying so
+     here is what lets the reconcile below be unconditional. */
+  codeFollowedFor = inspectorFor;
   persist();
   loadCodeFile(state.codeFile);
   buildNav();
@@ -14390,7 +14487,6 @@ async function boot() {
   wireNavGripOnce();
   wireFitOnce();
   render();
-  if (state.view === "graph") ensureGraph();
   selfCheck();
 
   /* The routine list is the way in, so it is fetched immediately -- but *after* the first

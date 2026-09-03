@@ -163,8 +163,8 @@ program has a most-commented routine and a maximum alone is a claim nobody can w
 
 ## What we are doing now
 
-**Paused 2026-09-03, after chunk B — every field fits its own box.**
-835 tests, mypy clean, ruff clean, self-check green, console clean, working tree clean.
+**Paused 2026-09-03, after chunk B and the pane-reconcile rule it uncovered.**
+839 tests, mypy clean, ruff clean, self-check green, console clean, working tree clean.
 
 *The shortening work is complete.* The remaining twelve `text-overflow: ellipsis` sites were
 measured before being changed, and measuring struck three of them, changed the mechanism from
@@ -203,7 +203,47 @@ beside it. Every number above is a measurement and every guard is a guard; what 
 is a look. Three things now wait on a real window: the constants surface, the blank-graph fix,
 and this.
 
-### The latest: every field fits its own box (2026-09-03)
+### The latest: no pane assumes what it was showing is still true (2026-09-03)
+
+**Found by Tom mid-rabbit, and it relocated the defect twice.** *"When I change the center
+panel to Code, that panel shows `mensores/_internal/_governed_gates.py` which is not what I
+expect to see."* It was not: `/api/node` gave `mensores/disceptator/_extraction_state.py` for
+that node all along. What was on screen was `state.codeFile`, which is **persisted** — the
+file a session two days earlier left open, from a package the reader had never touched, drawn
+with a title and a path and nothing to say it was stale.
+
+`followSelectionIntoCode()` is guarded on the pane being on screen, which is right, and was
+invited from **exactly one place**. The condition has two halves — the selection changed, and
+the pane became visible — and only the first was ever served.
+
+**Tom's rule is larger than the defect, and this file already contained it in one branch.**
+*"Every possible venue that can change the point of view should be considered, so no control
+should ever expect that it 'knows' what it was showing before is still true."* The table's own
+comment has said exactly that since it was written: *"there are five ways into table mode ...
+a call at each is exactly the list rule 51 says grows. Every one of them arrives here."*
+
+The audit found three panes on each side of that lesson. **Reconciling inside `render()`:**
+table, glossary/naming, curiosities. **Relying on every call site to remember:** the code pane
+(1 site, and the wrong one), the stack (4), the diagram (7). All three moved.
+
+**The four stack calls were mis-ordered as well as incomplete** — every one sat *before* its
+own `render()`, so each was mounting into the previous view's layout. That is the defect
+recorded as *"the graph should have been there"*, fixed on the mode toggle in 2026-08 and left
+standing at the other three. In `render()` they are ordered right by construction, for routes
+nobody has written yet.
+
+**The price of a render-time reconcile is that it must be silent when there is nothing to do**,
+because `render()` runs on every keystroke. `ensureDiagram` claimed its lock before asking, and
+finished by rewriting the mount that exists so `render()` will not touch it — taking the
+laid-out SVG and the reader's pan with it. And the code walk had to stop fighting a deliberate
+file open: `codeFollowedFor` records **which subject** the pane was walked for, never merely
+that it was, so a reader may open anything they like inside one selection and is still followed
+the moment they pick something new.
+
+*One guard was blind first and found by mutation*: it asserted `codeFollowedFor` was **named**
+in the walk and passed with the early return deleted. Rule 37, again.
+
+### Before that: every field fits its own box (2026-09-03)
 
 **A constant is arithmetic wearing a measurement's clothes.** `MODULE_BUDGET_NAV = 30` is
 honest because `.navsub` is `max-width: 11rem` — all 1,175 rows are the same box at any window
@@ -582,6 +622,12 @@ feature was blocked on an answer nobody owed.
   under a freshly measured element kept rendering the pane beside it, so even a zoom on
   correct coordinates showed the wrong thing. Measurement through the DOM still works and is
   what every figure in this session rests on.
+- **`<module>` is answered in a routine-shaped inspector.** It draws *"Nothing in this map
+  calls it — that is either a way in, dead code, or a call DunneFlow cannot see"*: three
+  plausible sentences and none of them the true one, which the routine list already carries as
+  its own `why` — *"Module-level code: runs at import, before anything is called."* The same
+  shape as the constants defect, and `viewInspectorConstant` is the precedent: route on kind.
+  Found by Tom on the way past the Code-pane defect, 2026-09-03.
 - **Clicking a change row files two trail steps**, for a structure and for a routine alike.
   Found 2026-09-02 and verified pre-existing rather than introduced. Rule 76's family — an
   echo arriving as an act — and the fix is to the selection path, not to any one lane.

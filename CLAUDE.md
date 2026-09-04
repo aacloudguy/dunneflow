@@ -51,6 +51,37 @@ uv run dunneflow migrate  <dir>                     # stored paths: absolute -> 
 uv run dunneflow serve    <dir> [--revision <rev>]  # the dashboard, on one version
 ```
 
+`analyze --progress-json` reports one JSON object per line on stdout instead of the summary,
+which is how `serve` runs it. See the `serve` section below.
+
+**`serve` also *makes* a program.** The `<select>`'s last option, `+ Analyze a directory…`,
+reads a source tree into a new directory under the output root and puts it in the list —
+`POST /api/analyze`, `GET /api/analysis`, `web/analysis.py`. Four things about it:
+
+* **A subprocess running `dunneflow analyze`, never an in-process call.** Every store this
+  process opens is `writable=False` (rule 20), and an in-process analysis would make the
+  serving process a writer to the tree it serves. It also keeps `walk.py`'s
+  `ProcessPoolExecutor` out of a request thread, and makes what runs *exactly* the tested
+  command rather than a second assembly of the same steps (rule 51).
+* **Two channels, and `--progress-json` is why.** The child's **stdout** is one JSON object
+  per line; its **stderr**, emptied by `--quiet`, is where a failure says why. Scraping
+  prose written for a human would promote a sentence to a contract (rule 30). The step list
+  is **computed for the run** — four flags remove work, so a fixed total is a bar a
+  `--no-docs` run can never reach (rule 32) — and is printed as sent all the way to the
+  screen. A failure's reason **leads with the child's last line** and keeps the rest as
+  evidence: a traceback says the useful thing last, and this reader does not write code.
+* **Its own slot, not the switch's.** `claim_analysis` beside `claim`. A switch replaces
+  what is on screen; an analysis replaces nothing, so one slot would mean a ninety-second
+  read of an unrelated tree locking the reader out of changing versions. That is also why
+  the panel is dismissible rather than the base switch's blocking scrim — *the map on
+  screen stays true for the whole run*, and it says so.
+* **The served program is refused, and it is not caution.** `Store._discard_if_stale` drops
+  every table of a graph written by another build, and this server is holding that graph
+  open — so an analysis aimed here can empty the map under a live reader. Every other
+  refusal has its own sentence too (`analysis.check`, one function for the dialog's live
+  warning and the endpoint's answer, rule 41); analysing into a name that **already exists**
+  is allowed and *says* it rewrites that program's working snapshot.
+
 `serve` also switches **program**, which is the same operation one axis over. The topbar's
 first control lists every directory under the output root that holds a map —
 `revisions.program_dirs()`, the same question `analyze` asks to keep a program's own output

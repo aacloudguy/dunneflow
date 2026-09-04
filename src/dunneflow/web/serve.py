@@ -23,6 +23,7 @@ import socket
 import threading
 import time
 import webbrowser
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from functools import partial
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -35,7 +36,7 @@ from ..docstore import DocStore
 from ..resolve import version as version_order
 from ..sourcedb import DocSourceStore, SourceStore
 from ..store import StaleGraphError, Store
-from . import anomalychanges, changes, diagram, filediff, packages, queries
+from . import analysis, anomalychanges, changes, diagram, filediff, packages, queries
 from .code import build_file, build_files
 from .corpus import build_corpus, build_document, serving
 from .cover import anomalies as build_anomalies
@@ -486,6 +487,21 @@ class _Live:
         self.build_lock = threading.Lock()
         self.build: dict[str, Any] = {"state": "idle"}
 
+        # **A second slot, and it is not the build slot.** A switch replaces what is on
+        # screen; an analysis replaces nothing -- it reads some other tree into some other
+        # directory, and every number the reader is looking at stays true throughout. So
+        # the two must not contend: one slot would mean a ninety-second read of an
+        # unrelated program locking a reader out of changing versions, for no reason
+        # anybody could state.
+        #
+        # Its own pair of fields rather than a second key in `build`, for `PROGRAM_CACHES`'
+        # reason (rule 36): the two answer different questions and a reader has to be able
+        # to see both answers at once. Behind its own lock, for `build_lock`'s -- a poll
+        # that queued behind the work would report nothing until there was nothing left to
+        # report.
+        self.analysis_lock = threading.Lock()
+        self.analysis: dict[str, Any] = {"state": "idle"}
+
     # -- the one door onto a version -------------------------------------- #
 
     def open(self, graph_db: Path,
@@ -777,6 +793,29 @@ class _Live:
             return
         self.note(state="done", revision=revision, step="",
                   done_steps=len(BUILD_STEPS), steps=len(BUILD_STEPS), ms=ms())
+
+    def claim_analysis(self, name: str) -> bool:
+        """Take the analysis slot, or say it is taken. `claim`'s shape, its own slot.
+
+        One analysis at a time, because two reading into the same output root can collide
+        on a directory -- and because the panel shows one. The loser is **told**, never
+        answered as though its own run were the one now going (design rule 1).
+        """
+        with self.analysis_lock:
+            if self.analysis.get("state") == "working":
+                return False
+            self.analysis = {"state": "working", "program": name, "step": "",
+                             "done_steps": 0, "steps": 0, "detail": ""}
+            return True
+
+    def note_analysis(self, **fields: Any) -> None:
+        """Replace the analysis report. Whole, never field by field -- see `note`."""
+        with self.analysis_lock:
+            self.analysis = dict(fields)
+
+    def analysis_progress(self) -> dict[str, Any]:
+        with self.analysis_lock:
+            return dict(self.analysis)
 
     def note(self, **fields: Any) -> None:
         """Replace the progress report. Whole, never field by field.
@@ -1941,6 +1980,63 @@ class _Handler(BaseHTTPRequestHandler):
                          name=f"dunneflow-program-{asked}", daemon=True).start()
         self._started(True, "")
 
+    def _r_analysis(self, q: dict[str, list[str]]) -> None:
+        """What an analysis is doing, or that none is. `_r_base`'s half about a switch.
+
+        Its own route rather than a field on `/api/base`, because the two are watched by
+        different things for different lengths of time: a switch is ten seconds behind a
+        scrim, an analysis is a minute and a half behind nothing, and a page reads one
+        without reading the other.
+
+        Never takes `live.lock`, for the reason `_r_base` states.
+        """
+        body: dict[str, Any] = {"analysis": self._live.analysis_progress()}
+        # The pre-flight, live, for whoever is typing into the dialog. Answered here as
+        # well as at the POST so the warning under the name field and the refusal at the
+        # button are the same sentence from the same function (rule 41).
+        asked = (q.get("path") or [""])[0]
+        if asked:
+            with self._live.lock:
+                here = self._live.out_dir.resolve()
+            v = analysis.check(asked, (q.get("name") or [""])[0], here.parent, here)
+            body["check"] = {"ok": v.ok, "refusal": v.refusal, "note": v.note}
+        self._json(body)
+
+    def _p_analyze(self, q: dict[str, list[str]]) -> None:
+        """Read a directory into a new program. **A POST, and the sharpest case for one.**
+
+        `_p_base` is a POST because a GET that swaps the map is one a prefetch fires by
+        itself. This one starts work on the filesystem, so the same argument applies with
+        nothing left to argue about.
+
+        Every refusal comes from `analysis.check`, which is the same function the dialog
+        asked while the reader was typing -- so the button never refuses something the
+        field said was fine (rule 41). The two answers this adds are about the *server*
+        rather than the request: an analysis already running, and nothing to run it with.
+        """
+        with self._live.lock:
+            here = self._live.out_dir.resolve()
+        out_root = here.parent
+        verdict = analysis.check((q.get("path") or [""])[0],
+                                 (q.get("name") or [""])[0], out_root, here)
+        if not verdict.ok:
+            self._started(False, verdict.refusal, steps=())
+            return
+        source = Path((q.get("path") or [""])[0].strip()).expanduser().resolve()
+        name = ((q.get("name") or [""])[0] or source.name).strip()
+        # `0` and only `0` is off. An absent parameter means the caller did not say, and
+        # documentation is an input this tool reads by default (design rule 11).
+        docs = (q.get("docs") or ["1"])[0] != "0"
+        if not self._live.claim_analysis(name):
+            running = self._live.analysis_progress().get("program", "")
+            self._started(False, f"an analysis of {running} is already running", steps=())
+            return
+        threading.Thread(
+            target=analysis.run,
+            args=(source, name, out_root, docs, self._live.note_analysis),
+            name=f"dunneflow-analyze-{name}", daemon=True).start()
+        self._started(True, verdict.note, progress=self._live.analysis_progress, steps=())
+
     def _p_base(self, q: dict[str, list[str]]) -> None:
         """Make another version the base. **A POST, and that is not ceremony.**
 
@@ -1977,7 +2073,9 @@ class _Handler(BaseHTTPRequestHandler):
                          name=f"dunneflow-base-{asked}", daemon=True).start()
         self._started(True, "")
 
-    def _started(self, ok: bool, reason: str) -> None:
+    def _started(self, ok: bool, reason: str,
+                 progress: Callable[[], dict[str, Any]] | None = None,
+                 steps: tuple[str, ...] = BUILD_STEPS) -> None:
         """The answer to a switch request, and the progress **only when one started**.
 
         200 either way, with one field saying whether anything started. Not a 409 for the
@@ -1989,11 +2087,16 @@ class _Handler(BaseHTTPRequestHandler):
         no graph replied `started: false` beside `state: "done"` and the *previous*
         switch's revision -- three fields about three different things under one answer.
         A refusal is about the request; it has no progress, because nothing is running.
+
+        **Which slot it reports is the caller's**, and the default is the build one so
+        the two switch routes read as they always did. An analysis has its own slot and
+        its own steps -- the child names those, so it passes an empty list and the panel
+        draws no bar until the first line arrives, which is the same honesty
+        `rebuildPanel` already keeps about a total it has not been told (rule 44).
         """
-        body: dict[str, Any] = {"started": ok, "reason": reason,
-                                "steps": list(BUILD_STEPS)}
+        body: dict[str, Any] = {"started": ok, "reason": reason, "steps": list(steps)}
         if ok:
-            body.update(self._live.progress())
+            body.update((progress or self._live.progress)())
         self._json(body)
 
     def _r_favicon(self, q: dict[str, list[str]]) -> None:
@@ -2038,6 +2141,7 @@ class _Handler(BaseHTTPRequestHandler):
         "/api/anomalychanges": "_r_anomalychanges",
         "/api/base": "_r_base",
         "/api/programs": "_r_programs",
+        "/api/analysis": "_r_analysis",
         "/favicon.ico": "_r_favicon",
     }
 
@@ -2048,6 +2152,11 @@ class _Handler(BaseHTTPRequestHandler):
     POST_ROUTES: dict[str, str] = {
         "/api/base": "_p_base",
         "/api/program": "_p_program",
+        # Not a switch, and the odd one out in this table: it changes nothing this server
+        # is showing. It is here because it is the other thing a GET must never start --
+        # a prefetch that reads a source tree into a new directory is worse than one that
+        # swaps the map, not better.
+        "/api/analyze": "_p_analyze",
     }
 
     # Served directories, checked in order. Kept beside the route table rather than

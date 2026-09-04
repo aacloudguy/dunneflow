@@ -1075,6 +1075,21 @@ body {
   padding: .15rem .5rem; cursor: pointer;
 }
 .linkbtn:hover { background: var(--raised); }
+/* **A disabled `.linkbtn` has to look disabled**, and it does not by default: the rules
+ * above set an explicit background and colour, which overrides everything the browser
+ * would otherwise do to say a button cannot act. Left alone it renders identically to a
+ * live one -- design rule 16's defect exactly, arriving through a stylesheet instead of
+ * through a missing handler.
+ *
+ * Here rather than beside a caller, because there are two and there was one: this lived
+ * under `.trailbar` until the analyse dialog became the second button that can be
+ * genuinely inert, and a rule kept at a call site rots as callers are added (rule 51).
+ *
+ * Only for the case where a control **truly cannot work**. Dimming to say "not current"
+ * is a different claim and is not spelled `disabled` anywhere in this application.
+ */
+.linkbtn:disabled { opacity: .45; cursor: default; }
+.linkbtn:disabled:hover { background: var(--surface); }
 .hiddenlist {
   width: 100%; margin-top: .3rem; background: var(--surface);
   border: 1px solid var(--border); border-radius: .375rem; padding: .5rem .6rem;
@@ -2195,8 +2210,8 @@ kbd { font-family: var(--f-mono); font-size: .66rem; background: var(--sunken);
    kept, so a reader has to be told Back reaches further than they can see (design rule 1). */
 .trail-behind { font-size: .66rem; color: var(--text-faint); white-space: nowrap; }
 .trailbar .linkbtn { white-space: nowrap; }
-.trailbar .linkbtn:disabled { opacity: .45; cursor: default; }
-.trailbar .linkbtn:disabled:hover { background: none; }
+/* Its disabled state was written here first and now lives beside `.linkbtn` itself, where
+ * both callers pass through it. See the note there. */
 .linkbtn.pinned { background: var(--accent-soft); color: var(--accent-text); border-color: var(--accent); }
 
 .curigrid { display: grid; gap: .6rem; }
@@ -2317,6 +2332,71 @@ kbd { font-family: var(--f-mono); font-size: .66rem; background: var(--sunken);
 .rebuild-step { font-size: .8rem; margin: .5rem 0 .3rem; }
 .rebuild-why { font-size: .85rem; margin: 0 0 .5rem; color: var(--diff-gone); }
 .rebuild .hint { margin: 0 0 .6rem; }
+
+/* ═══ analysing a directory ═══ */
+/* ── a fourth pair, and a panel that is not one of the pairs at all ──
+ *
+ * The **dialog** is modal and sits between the source viewer's pair (90/91) and the base
+ * switch's (96/97): a reader filling this in must be able to cover a citation they opened
+ * to read a path out of, and a base switch must still win over everything, because while
+ * one is running the map underneath is on its way out.
+ *
+ * The **panel** has no scrim and is deliberately below every pair, at 86. It is not modal
+ * and must not behave as though it were: an analysis reads some other tree into some other
+ * directory, and every number on this page stays true for the whole ninety seconds. That
+ * is the entire reason it is a panel rather than the overlay a switch gets — so covering
+ * it with a detail window the reader opened meanwhile is correct, not a defect.
+ */
+.analyze-scrim { position: fixed; inset: 0; background: rgba(8,12,18,.55); z-index: 92; }
+.analyze {
+  position: fixed; z-index: 93; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  width: min(40rem, 94vw); padding: 1.1rem 1.3rem;
+  background: var(--surface); color: var(--text);
+  border: 1px solid var(--border-strong); border-radius: .4rem; box-shadow: var(--shadow);
+}
+.analyze-title { font-size: .78rem; font-weight: 600; letter-spacing: .04em;
+                 text-transform: uppercase; color: var(--text-muted); margin: 0 0 .6rem; }
+.analyze-field { display: block; margin: 0 0 .7rem; }
+.analyze-field > span { display: block; font-size: .75rem; font-weight: 600;
+                        margin-bottom: .2rem; }
+.analyze-field input[type=text] {
+  width: 100%; box-sizing: border-box; padding: .35rem .5rem;
+  font: inherit; font-size: .85rem;
+  background: var(--sunken); color: var(--text);
+  border: 1px solid var(--border-strong); border-radius: .25rem;
+}
+/* `.hint` has **no base rule** in this stylesheet — only nine descendant overrides, each
+ * scoped to a container. So a hint in a new surface is unstyled prose unless it is styled
+ * here, and adding a global `.hint` would restyle all nine (rule 71: a class name is
+ * global, and a stylesheet gives no warning). Scoped, like every one before it. */
+.analyze .hint, .analysispanel .hint { font-size: .72rem; color: var(--text-muted); }
+.analyze-field .hint { margin: .2rem 0 0; }
+.analyze-check { display: flex; align-items: center; gap: .4rem; font-size: .85rem;
+                 margin: 0 0 .8rem; }
+/* A refusal and a note are **different colours because they are different facts**: one
+ * says this cannot happen, the other says it can and here is what it will do. Rendering
+ * both in the same warning colour would make the second read as a second kind of error. */
+.analyze-refusal { font-size: .82rem; margin: 0 0 .7rem; color: var(--diff-gone); }
+.analyze-note { font-size: .82rem; margin: 0 0 .7rem; color: var(--text-muted);
+                border-left: 2px solid var(--border-strong); padding-left: .5rem; }
+.analyze-foot { display: flex; gap: .5rem; align-items: center; }
+.analyze-foot .hint { margin: 0; margin-left: auto; text-align: right; }
+
+.analysispanel {
+  position: fixed; z-index: 86; right: 1rem; bottom: 1rem;
+  width: min(26rem, 92vw); padding: .8rem .9rem;
+  background: var(--surface); color: var(--text);
+  border: 1px solid var(--border-strong); border-radius: .4rem; box-shadow: var(--shadow);
+}
+.analysispanel h3 { font-size: .72rem; font-weight: 600; letter-spacing: .04em;
+                    text-transform: uppercase; color: var(--text-muted);
+                    margin: 0 0 .15rem; }
+.analysispanel .an-name { font-size: .92rem; font-weight: 600; margin: 0 0 .5rem;
+                          word-break: break-all; }
+.analysispanel .an-step { font-size: .78rem; margin: .4rem 0 .2rem; }
+.analysispanel .an-why { font-size: .8rem; margin: 0 0 .5rem; color: var(--diff-gone);
+                         white-space: pre-wrap; max-height: 9rem; overflow: auto; }
+.analysispanel .an-foot { display: flex; gap: .5rem; margin-top: .6rem; }
 
 /* ── the detail window ──
  *

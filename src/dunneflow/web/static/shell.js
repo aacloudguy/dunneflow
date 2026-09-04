@@ -10251,6 +10251,17 @@ function wire() {
     progSel.dataset.bound = "1";
     progSel.addEventListener("change", () => {
       const want = String(progSel.value);
+      /* The last option makes a program rather than choosing one, so it is routed away
+         before anything here treats it as a name. **And the control is repainted**: a
+         `<select>` left reading "+ Analyze a directory..." is a claim about what is being
+         served, and it is the control the reader will believe because it is the one they
+         touched (`programSwitchFailed`'s reason, one gesture over). */
+      if (want === ANALYZE_OPTION) {
+        paintPrograms(PROGRAMS);
+        used("program:analyze:open");
+        openAnalyze();
+        return;
+      }
       /* The served program is `selected`, so choosing it again is a no-op the server would
          refuse by name. Returning here keeps that out of the progress overlay, which exists
          for switches that are actually happening. */
@@ -10551,6 +10562,12 @@ const WIRED_ATTRS = new Set([
      failed state -- there is nothing to dismiss while a rebuild is running, and offering a
      cancel that cannot stop the server would be a control that looks live and is not. */
   "rebuilddismiss",
+  /* Analysing a directory: the dialog's three and the panel's two. `anfield` names which
+     field an `input` event is about and routes no click -- the roster is every attribute
+     the shell writes, because the self-check reads the DOM and cannot tell a carried one
+     from a dead one. `anopen` carries the program name on the button that opens what was
+     just read, the way `pinid` carries a subject beside `pinopen`. */
+  "closeanalyze", "anstart", "anfield", "andismiss", "anopen",
   /* The search's four. `searchline` rides with `searchgo` on the same button and carries no
      handler of its own -- it is the line the click is about, and the roster is a list of
      attributes the shell writes, not only of the ones that are clicked. */
@@ -13229,8 +13246,8 @@ function paintPrograms(rows) {
        the one case where a control that cannot act should not pretend it can. */
     return `<option value="${esc(p.name)}"${p.serving ? " selected" : ""}${
       p.openable ? "" : " disabled"}>${esc(p.name)}${n}${
-      p.openable ? "" : " — no map here"}</option>`;
-  }).join("");
+      p.openable ? "" : " \u2014 no map here"}</option>`;
+  }).join("") + `<option value="${esc(ANALYZE_OPTION)}">+ Analyze a directory\u2026</option>`;
 }
 
 /* Switching program, which is `switchBase` with a wider blast radius on the server.
@@ -13264,6 +13281,347 @@ async function switchProgram(name) {
   render();
   pollBase(name);
 }
+
+/* -- Analysing a directory -------------------------------------------------
+ *
+ * The last option in the program select, and the one that makes a program rather than
+ * choosing one. It was in the ratified artifact from the beginning and did nothing there
+ * either; it is added here only now, because a third option that does nothing is exactly
+ * the defect the selector was built to fix (design rule 16).
+ *
+ * **Not the switch overlay, and that is the whole shape of it.** A base switch blocks the
+ * page because every count underneath belongs to the version being replaced. This reads
+ * some *other* tree into some *other* directory: nothing on screen becomes untrue, so
+ * nothing on screen is taken away. A dismissible panel, a separate slot on the server, and
+ * the reader keeps working for the ninety seconds it takes.
+ */
+/* A value a directory name **cannot** be, rather than one it is unlikely to be. A program
+   name is one path segment, and `analysis.check` refuses any name carrying a separator — so
+   a leading slash is the one thing that can never arrive here as a real program (rule 30: a
+   label is not an identity, and a sentinel that a name could equal is exactly that mistake).
+   It was " analyze" for an hour, which is only unlikely. */
+const ANALYZE_OPTION = "/analyze";
+
+/* The dialog's fields while it is open, and `null` when it is not. Module-level like
+   `REBUILD` rather than in `state`: it belongs to this gesture, not to this program, and
+   `settings.js` must not persist a half-typed path across a reload. */
+let ANALYZE = null;
+/* What the server says about the fields as they are typed -- `{ok, refusal, note}` from
+   `analysis.check`, which is the same function the POST will use. Asked rather than
+   guessed, so the sentence under the field and the sentence on the button cannot differ
+   (rule 41). */
+let ANALYZE_CHECK = null;
+let ANALYZE_SEQ = 0;
+/* A run in flight, or the last one to finish. Its own state, not `REBUILD`: they are two
+   slots on the server for the reason stated there, and sharing one here would put an
+   analysis behind the switch scrim after all. */
+let ANALYSIS = null;
+
+function openAnalyze(prefill) {
+  ANALYZE = Object.assign({ path: "", name: "", docs: true, busy: false }, prefill || {});
+  ANALYZE_CHECK = null;
+  paintAnalyze();
+  askAnalyzeCheck();
+  const el = document.getElementById("anPath");
+  if (el) { el.focus(); el.select(); }
+}
+
+function closeAnalyze() {
+  ANALYZE = null;
+  ANALYZE_CHECK = null;
+  paintAnalyze();
+}
+
+/* The pre-flight, from the server, debounced by a sequence number rather than a timer.
+ *
+ * A number rather than `clearTimeout` because the hazard is not extra requests, it is an
+ * **older answer landing after a newer one** -- the reader types `/tmp/x` and then
+ * `/tmp/xy`, and the first reply arrives second and says the directory does not exist.
+ * Every reply checks it is still the newest before it is allowed to speak (rule 49's
+ * shape: a stale value that looks plausible has hidden the thing it was meant to report). */
+async function askAnalyzeCheck() {
+  if (!ANALYZE) return;
+  const seq = ++ANALYZE_SEQ;
+  const { path, name } = ANALYZE;
+  if (!path.trim()) { ANALYZE_CHECK = null; paintAnalyze(); return; }
+  let d;
+  try {
+    d = await fetch("/api/analysis?path=" + encodeURIComponent(path) +
+                    "&name=" + encodeURIComponent(name)).then(r => r.json());
+  } catch {
+    /* Left as it was rather than replaced with an invented verdict. The button asks the
+       server again anyway, and that answer is the one that decides. */
+    return;
+  }
+  if (seq !== ANALYZE_SEQ || !ANALYZE) return;
+  ANALYZE_CHECK = d.check || null;
+  paintAnalyze();
+}
+
+/* The name a blank field will use, shown rather than left to be discovered.
+ *
+ * The server does the same thing (`check` falls through to `source.name`), so this is the
+ * *same* rule in two places -- which is only safe because what is drawn is a placeholder
+ * the reader can see and correct, not a second decision. */
+function analyzeLeaf(path) {
+  const parts = String(path || "").replace(/[/\\]+$/, "").split(/[/\\]/);
+  return parts[parts.length - 1] || "";
+}
+
+function analyzeDialog() {
+  if (!ANALYZE) return "";
+  const a = ANALYZE;
+  const c = ANALYZE_CHECK;
+  const leaf = analyzeLeaf(a.path);
+  /* Blocked until the server has said yes. A dialog that lets the button be pressed and
+     then reports the refusal has made the reader do the work twice -- and `check` already
+     knows the answer while they are still typing. */
+  const ready = !!(a.path.trim() && c && c.ok && !a.busy);
+  return `
+  <div class="analyze-scrim" data-closeanalyze></div>
+  <div class="analyze" role="dialog" aria-modal="true" aria-label="Analyse a directory">
+    <h2 class="analyze-title">Analyse a directory</h2>
+
+    <label class="analyze-field">
+      <span>Directory to read</span>
+      <input type="text" id="anPath" data-anfield="path" spellcheck="false"
+             autocomplete="off" value="${esc(a.path)}"
+             placeholder="/Users/you/code/some-project/src">
+      <p class="hint">The whole path, as this machine sees it &mdash; the server reads the
+         tree itself, so a path relative to your terminal would mean nothing to it.</p>
+    </label>
+
+    <label class="analyze-field">
+      <span>Call it</span>
+      <input type="text" id="anName" data-anfield="name" spellcheck="false"
+             autocomplete="off" value="${esc(a.name)}"
+             placeholder="${esc(leaf) || "the directory&rsquo;s own name"}">
+      <p class="hint">This names the directory the map is written to, beside the programs
+         already in the list.</p>
+    </label>
+
+    <label class="analyze-check">
+      <input type="checkbox" data-anfield="docs"${a.docs ? " checked" : ""}>
+      <span>Read the documentation too</span>
+    </label>
+
+    ${c && c.refusal ? `<p class="analyze-refusal">${esc(c.refusal)}</p>` : ""}
+    ${c && c.note ? `<p class="analyze-note">${esc(c.note)}</p>` : ""}
+
+    <div class="analyze-foot">
+      <button class="linkbtn" data-anstart${ready ? "" : " disabled"}>${
+        a.busy ? "Starting&hellip;" : "Analyse"}</button>
+      <button class="linkbtn" data-closeanalyze>Cancel</button>
+      <span class="hint">It runs behind this page &mdash; the map you are reading stays
+         open and stays true.</span>
+    </div>
+  </div>`;
+}
+
+/* Its own mount, like `paintRebuild`: `render()` rewrites four panes and the navigator, and
+   a repaint of those under a half-typed field would take the caret with it (rule 78's
+   family -- and the corpus filter paid for this one already). */
+function paintAnalyze() {
+  let m = document.getElementById("analyzeMount");
+  if (!m) {
+    m = document.createElement("div");
+    m.id = "analyzeMount";
+    document.body.appendChild(m);
+  }
+  /* The caret, kept across a repaint. The verdict under the field arrives while somebody
+     is still typing into it, so this element is rewritten mid-word -- and rewriting an
+     `<input>` puts the caret at the end of whatever it now holds. Restored by id and
+     offset rather than by refocusing, because focus alone moves it. */
+  const active = document.activeElement;
+  const keep = (active && active.dataset && active.dataset.anfield)
+    ? { id: active.id, start: active.selectionStart, end: active.selectionEnd } : null;
+  m.innerHTML = analyzeDialog();
+  if (keep) {
+    const back = document.getElementById(keep.id);
+    if (back) {
+      back.focus();
+      try { back.setSelectionRange(keep.start, keep.end); } catch { /* not a text input */ }
+    }
+  }
+}
+
+/* Start it, and hand over to the panel. */
+async function startAnalyze() {
+  if (!ANALYZE || ANALYZE.busy) return;
+  const { path, name, docs } = ANALYZE;
+  ANALYZE.busy = true;
+  paintAnalyze();
+  let d;
+  try {
+    d = await fetch("/api/analyze?path=" + encodeURIComponent(path) +
+                    "&name=" + encodeURIComponent(name) +
+                    "&docs=" + (docs ? "1" : "0"), { method: "POST" }).then(r => r.json());
+  } catch (err) {
+    ANALYZE.busy = false;
+    ANALYZE_CHECK = { ok: false, refusal: "the server could not be asked: " + err.message,
+                      note: "" };
+    paintAnalyze();
+    return;
+  }
+  if (!d.started) {
+    /* Back into the dialog rather than into the panel. Nothing is running, so a panel
+       reporting a failure would be reporting one about a run that never began -- the
+       distinction `_started` makes on the server, kept on this side too. */
+    ANALYZE.busy = false;
+    ANALYZE_CHECK = { ok: false,
+                      refusal: d.reason || "the analysis was refused, with no reason given",
+                      note: "" };
+    paintAnalyze();
+    return;
+  }
+  const asked = (name || analyzeLeaf(path));
+  closeAnalyze();
+  ANALYSIS = Object.assign({ state: "working", step: "", done_steps: 0, steps: 0,
+                             detail: "" }, d,
+                           { program: asked, since: Date.now() });
+  paintAnalysis();
+  pollAnalysis(asked);
+}
+
+/* Watch it. `pollBase`'s shape and none of its ending: a finished analysis **does not
+   reload the page**, because it did not change what this page is showing. It offers. */
+function pollAnalysis(name) {
+  const since = ANALYSIS ? ANALYSIS.since : Date.now();
+  const tick = async () => {
+    let d;
+    try {
+      d = await fetch("/api/analysis").then(r => r.json());
+    } catch (err) {
+      ANALYSIS = { program: name, state: "failed", since: since,
+                   reason: "lost contact with the server: " + err.message };
+      paintAnalysis();
+      return;
+    }
+    const a = d.analysis || {};
+    ANALYSIS = Object.assign({}, a, { program: a.program || name, since: since });
+    if (a.state === "done") {
+      /* The list, refreshed, so the program that was just made is in the control before
+         the reader is invited to open it. Without this the offer below names something the
+         `<select>` has never heard of. */
+      await loadPrograms();
+      paintAnalysis();
+      return;
+    }
+    paintAnalysis();
+    if (a.state === "failed") return;
+    window.setTimeout(tick, 600);
+  };
+  window.setTimeout(tick, 400);
+}
+
+function analysisPanel() {
+  if (!ANALYSIS) return "";
+  const a = ANALYSIS;
+  const secs = (Date.now() - (a.since || Date.now())) / 1000;
+  const steps = Number(a.steps) || 0;
+  const done = Number(a.done_steps) || 0;
+  /* No bar until the child has said how many steps it is taking, for `rebuildPanel`'s
+     reason and one more of its own: the count depends on the flags, so a bar drawn against
+     a guess would be a bar against a total this run is never going to reach (rule 44). */
+  const pct = steps ? Math.round((done / steps) * 100) : 0;
+
+  let head = "Analysing";
+  let body = "";
+  if (a.state === "failed") {
+    head = "That analysis did not finish";
+    body = `<p class="an-why">${esc(a.reason || "no reason was given")}</p>
+      <p class="hint">Nothing was added to the program list. The map you are reading was
+         never touched.</p>
+      <div class="an-foot"><button class="linkbtn" data-andismiss>Close</button></div>`;
+  } else if (a.state === "done") {
+    head = "Read";
+    const bits = [];
+    if (a.files) bits.push(`${Number(a.files).toLocaleString()} files`);
+    if (a.routines) bits.push(`${Number(a.routines).toLocaleString()} routines`);
+    if (a.documents) bits.push(`${Number(a.documents).toLocaleString()} documents`);
+    body = `<p class="an-step">${bits.length ? esc(bits.join(" · ")) : "finished"}
+              · ${secs.toFixed(1)} s</p>
+      <p class="hint">Opening it reloads the page, because a program switch cannot keep
+         the selection, the trail or the version you are on.</p>
+      <div class="an-foot">
+        <button class="linkbtn" data-anopen="${esc(a.program || "")}">Open it</button>
+        <button class="linkbtn" data-andismiss>Not now</button>
+      </div>`;
+  } else {
+    body = `<div class="rebuild-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100"
+              aria-valuenow="${pct}"><i style="width:${steps ? pct : 0}%"></i></div>
+      <p class="an-step">${steps
+          ? `${esc(a.step || "")}${a.detail ? " — " + esc(a.detail) : ""} — step ${
+              done + 1} of ${steps}`
+          : "asking the server&hellip;"} · ${secs.toFixed(1)} s</p>
+      <p class="hint">The map on screen is untouched. Keep reading.</p>`;
+  }
+  return `<div class="analysispanel" role="status" aria-live="polite">
+      <h3>${head}</h3>
+      <p class="an-name">${esc(a.program || "")}</p>
+      ${body}
+    </div>`;
+}
+
+function paintAnalysis() {
+  let m = document.getElementById("analysisMount");
+  if (!m) {
+    m = document.createElement("div");
+    m.id = "analysisMount";
+    document.body.appendChild(m);
+  }
+  m.innerHTML = analysisPanel();
+}
+
+/* One delegated listener for both surfaces, because both mounts are rewritten on every
+   poll and a listener bound to an element inside them would be bound to a corpse (rule 78's
+   neighbourhood). */
+document.addEventListener("click", (ev) => {
+  const t = ev.target;
+  if (!t || !t.closest) return;
+  if (t.closest("[data-closeanalyze]")) { closeAnalyze(); return; }
+  const start = t.closest("[data-anstart]");
+  if (start) {
+    if (!start.disabled) { used("program:analyze"); startAnalyze(); }
+    return;
+  }
+  if (t.closest("[data-andismiss]")) { ANALYSIS = null; paintAnalysis(); return; }
+  const open = t.closest("[data-anopen]");
+  if (open) {
+    const name = open.getAttribute("data-anopen");
+    ANALYSIS = null;
+    paintAnalysis();
+    if (name) switchProgram(name);
+  }
+});
+
+document.addEventListener("input", (ev) => {
+  const t = ev.target;
+  if (!ANALYZE || !t || !t.dataset || !t.dataset.anfield) return;
+  const f = t.dataset.anfield;
+  if (f === "docs") return;              // a checkbox answers on `change`, below
+  ANALYZE[f] = t.value;
+  askAnalyzeCheck();
+});
+
+document.addEventListener("change", (ev) => {
+  const t = ev.target;
+  if (!ANALYZE || !t || !t.dataset || t.dataset.anfield !== "docs") return;
+  /* The verdict is about the path and the name; the documentation switch changes nothing
+     about whether this may run, so it does not ask again. */
+  ANALYZE.docs = !!t.checked;
+  paintAnalyze();
+});
+
+document.addEventListener("keydown", (ev) => {
+  if (!ANALYZE) return;
+  if (ev.key === "Escape") { closeAnalyze(); return; }
+  if (ev.key === "Enter" && ANALYZE_CHECK && ANALYZE_CHECK.ok && !ANALYZE.busy) {
+    ev.preventDefault();
+    used("program:analyze");
+    startAnalyze();
+  }
+});
 
 /* A refused switch must leave the control naming the program actually being served.
  *

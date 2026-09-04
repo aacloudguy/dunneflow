@@ -9310,3 +9310,133 @@ to learn, and a count nobody can afford is worse than no count.
 Tom wants it next, and it is deliberately **not** in the `<select>` yet — adding a third
 option that does nothing is the defect this chunk just fixed. It means running an analysis
 from the server: progress, failure, and a new program appearing in this list.
+
+## "+ Analyze a directory…" — the dashboard makes a program — 2026-09-04
+
+The selector's second half, and the entry closes with it. The `<select>`'s last option opens
+a dialog, the server reads a source tree, a panel reports each step, and the new program
+arrives in the list with an *Open it* that is the program switch built the same day.
+
+### A subprocess, and everything else follows from it
+
+`sys.executable -m dunneflow.cli analyze …`, never an in-process call. Every store this
+process opens is `writable=False` because rule 20 says serving may refuse but may never
+repair — and an in-process analysis makes the serving process a writer to the tree it is
+serving, which is that rule undone by construction rather than by accident. It also keeps
+`walk.py`'s `ProcessPoolExecutor` out of a `ThreadingHTTPServer` request thread, and makes
+what runs **exactly** the tested command rather than a second assembly of the same steps
+that can drift from it (rule 51).
+
+### Not the switch overlay, and not the switch's slot
+
+A base switch blocks the whole page because every count underneath belongs to the version
+being replaced. This reads some *other* tree into some *other* directory: nothing on screen
+becomes untrue, so nothing is taken away. A dismissible panel that says so — *"The map on
+screen is untouched. Keep reading."* — and it was driven for a full run with the map behind
+it live and readable.
+
+That forces a **second slot** on `_Live`. `claim`/`note`/`progress` are one build slot shared
+by base and program switches; an analysis taking it would mean a ninety-second read of an
+unrelated program locking the reader out of changing versions, for work that replaces
+nothing. `claim_analysis`/`note_analysis`/`analysis_progress` sit beside them, written out
+rather than derived, for `PROGRAM_CACHES`' reason (rule 36). `_started` gained the slot as an
+argument so its *refusal carries no progress* rule is held once for both rather than copied.
+
+*Candidate engineering rule, not minted, for Tom:* **a long job is not a switch — a slot names
+what is being replaced, not what is running.**
+
+### `--progress-json` is a contract, not a scrape
+
+The child's **stdout** is one JSON object per line; its **stderr**, emptied by `--quiet`, is
+where a failure says why. Two channels because scraping prose written for a human promotes a
+sentence to a contract (rule 30), and the day somebody rewords `extracting 412/628` the bar
+stops moving with no error anywhere.
+
+The step list is **computed for the run**, not declared once: `--no-docs` drops two steps,
+`--no-source` and `--no-render` one each, and a fixed total of seven is a bar a `--no-docs`
+run can never reach — indistinguishable from a run that died at step five (rule 32). The
+labels and the count are printed as sent, server to panel, so there is one answer to *what
+does an analysis involve*.
+
+`analyze_docs_tree` has taken a `progress` callback since it was written and had never been
+given one; on a 2,064-document corpus the bar would have sat still through most of a minute.
+
+Verified on the real corpus — `../society-2026-08-29/src`, 628 files, 2,064 documents: **63
+lines, one total of 7, empty stderr, exit 0**, and the four `[project.scripts]` executables
+still in *Where to start* with reach 1,381 · 423 · 292 · 112.
+
+### Eight refusals, one function, and the sharp one
+
+`analysis.check` answers *may this run* once, and both the dialog's live warning and the
+endpoint's answer go through it — two readings would agree the day they were written and
+drift on every day after (rule 41). Each refusal has **its own sentence**, asserted as words
+rather than as a boolean, because a boolean is what a reader cannot act on: nothing named ·
+a relative path · does not exist · is a file · **inside the output root** (rule 57 one
+directory up) · not a name a directory can have · **the program being read** · a file sitting
+where the directory would go · an analysis already running.
+
+The served program is refused and **it is not caution**: `Store._discard_if_stale` drops
+every table of a graph written by another build, and this server is holding that graph open,
+so an analysis aimed here can empty the map under a live reader. A test asserts
+`_discard_if_stale` still drops tables — a refusal whose reason has gone stale is one
+somebody will remove.
+
+Analysing into a name that **already exists** is allowed and *says* what it will do: it
+rewrites that program's working snapshot rather than adding a point in time. Tom's call.
+
+### Two defects found by looking, which is rule 38's whole argument
+
+1. **A disabled `.linkbtn` did not look disabled.** The class sets an explicit background and
+   colour, overriding everything the browser does to say a control cannot act — design rule
+   16's defect arriving through a stylesheet instead of a missing handler. The rule already
+   existed, scoped under `.trailbar`, and had rotted the moment a second caller appeared; it
+   is beside `.linkbtn` itself now, where both pass (rule 51). Only for the case where a
+   control **truly cannot work** — dimming to say *not current* is a different claim.
+2. **A failed analysis handed the reader a fourteen-line traceback with the useful line
+   last.** `FileExistsError: … output/blocked` under thirteen frames of `runpy`. True, and not
+   a thing the reader this tool is written for can act on. The reason now **leads with the
+   child's last line** and keeps everything it said underneath as the evidence — nothing
+   invented, nothing dropped. And the case that produced it is a pre-flight sentence now.
+
+### Looked at, with a real pointer
+
+`elementFromPoint` on every control: each returns the element itself, not the scrim — rule
+48's check, and the layers are 92/93 between the viewer's pair and the base switch's. 75
+characters typed into the path field survived **75 repaints** with the caret held, which is
+what the save-and-restore in `paintAnalyze` is for: the verdict arrives mid-word and rewriting
+an `<input>` sends the caret to the end. And `/` does not leak to the topbar search, which
+matters because every path on this machine begins with one.
+
+The whole loop from a real click: analysed `src/dunneflow/render` as `rendercheck` — 11 files
+· 90 routines · 9 documents · 6.6 s — appeared in the `<select>`, opened, served. The
+directory was removed afterwards; it existed only to be driven.
+
+**Still the automation tab**, though: 1,259×523 at a 16px root, screenshots cropping at
+784×326, so each surface was seen by parking it inside the frame. Rule 38's debt is *reduced*,
+not paid — Tom's 24px 4K window is still owed a look at the dialog's field widths.
+
+### A coordinate trap, and one false bug it cost
+
+The `computer` tool's coordinates are **screenshot space, not viewport space**. A click asked
+for at (626, 186) landed at (1005, 298) — the 1.606× ratio of 1,259 to 784. The first click
+therefore hit the scrim, closed the dialog, and let `/` focus the topbar search, which looked
+exactly like *a global shortcut steals the first character of every path*. It is not; the
+`typing` guard was correct all along. Multiply viewport coordinates by `784 / innerWidth`.
+This is the *"clicks did not land where `getBoundingClientRect` said"* note from chunk 5,
+explained rather than worked around.
+
+### Cold, and it is the disk
+
+A boot of `output/mensores` took **7.0 s warm and 63.7 s cold**, the cold one immediately
+after a full analysis of the Society tree had evicted its pages. `STAT UN` throughout —
+uninterruptible I/O, 0.25 s of CPU in three seconds. The external volume, as every cold row
+in `PERFORMANCE.md` says.
+
+967 tests, mypy clean, ruff clean.
+
+### Next: "About this map"
+
+Chunk 2 of the same plan, approved and not built: what read this directory, shown so a reader
+can decide to read it again. Tom asked for the **model** an analysis used; there is none, and
+checking that first is what turned the feature from a placeholder into a guarantee — see the
+open list in `BRIEFING.md`.

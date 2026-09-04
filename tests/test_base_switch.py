@@ -368,15 +368,22 @@ def test_a_refusal_carries_no_progress_because_nothing_is_running() -> None:
     switch's revision. Rule 13: the answer beside a claim has to be about that claim. A
     refusal is about the request, and there is no progress to report because nothing has
     started.
+
+    **On the merge, not on a spelling.** This asked for the literal `progress()` until the
+    slot became the caller's -- `(progress or self._live.progress)()`, so an analysis can
+    report its own -- and then failed saying the route carried no progress at all, which
+    was true of no version of the code. The invariant is that the *merge* happens under
+    `if ok:`, whichever slot is being read; naming the merge is what makes this survive a
+    third caller (rule 43: a check that cries wolf has already failed).
     """
     src = inspect.getsource(serve_mod._Handler._started)
-    assert "progress()" in src, "the started answer carries no progress at all"
+    assert "body.update(" in src, "the started answer carries no progress at all"
     guarded = src.split("if ok:", 1)
     assert len(guarded) == 2, (
         "the progress is not conditional on anything having started -- a refusal would "
         "carry the previous switch's report"
     )
-    assert "progress()" not in guarded[0], (
+    assert "body.update(" not in guarded[0], (
         "the progress is merged before the `started` test, so a refusal carries it"
     )
 

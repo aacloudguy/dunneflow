@@ -12,6 +12,7 @@ re-read.
 from __future__ import annotations
 
 import argparse
+import json
 import sqlite3
 import sys
 import time
@@ -49,6 +50,100 @@ def _emit(msg: str) -> None:
     print(msg, file=sys.stderr)
 
 
+# -- what an analysis is doing, for whoever is watching it ------------------ #
+#
+# The dashboard runs `analyze` as a subprocess and draws a bar against these. The labels
+# and the count both come from here and are **printed as sent** all the way to the screen,
+# so there is one answer to "what does an analysis involve" and no copy of it downstream to
+# fall behind (rule 51). `serve.py`'s `BUILD_STEPS` is the same shape one subject over.
+
+STEP_EXTRACT = "reading the source tree"
+STEP_DOCS = "reading the documents"
+STEP_DOC_BODIES = "capturing the document bodies"
+STEP_RESOLVE = "resolving calls and command trees"
+STEP_BODIES = "capturing the source bodies"
+STEP_RENDER = "writing the map"
+STEP_ANOMALIES = "looking for anomalies"
+
+# Every label that exists, so a step advanced under a name nobody declared is caught here
+# rather than becoming a bar that silently never moves.
+ALL_STEPS = frozenset({
+    STEP_EXTRACT, STEP_DOCS, STEP_DOC_BODIES, STEP_RESOLVE,
+    STEP_BODIES, STEP_RENDER, STEP_ANOMALIES,
+})
+
+
+def analysis_steps(args: argparse.Namespace) -> tuple[str, ...]:
+    """The steps *this* run will take, in order.
+
+    **Computed for the run, never a constant**, and that is rule 32 rather than
+    fastidiousness: four flags remove work. `--no-docs` drops two of these, `--no-source`
+    and `--no-render` one each. A fixed tuple would put a total on the bar that a
+    `--no-docs` run can never reach -- and a progress bar that stops at five of seven is
+    indistinguishable from a run that died at step five.
+    """
+    steps = [STEP_EXTRACT]
+    if not args.no_docs:
+        steps.append(STEP_DOCS)
+        if not args.no_doc_source:
+            steps.append(STEP_DOC_BODIES)
+    steps.append(STEP_RESOLVE)
+    if not args.no_source:
+        steps.append(STEP_BODIES)
+    if not args.no_render:
+        steps.append(STEP_RENDER)
+    steps.append(STEP_ANOMALIES)
+    return tuple(steps)
+
+
+class _Progress:
+    """`--progress-json`: one JSON object per line on **stdout**, or nothing at all.
+
+    Two channels, and keeping them apart is the whole point. stdout is the machine
+    channel; stderr keeps the prose it has always printed and stays governed by
+    `--quiet`, which is where a failure's reason comes from. Scraping the prose instead
+    would make a sentence written for a human into a contract (rule 30).
+
+    Flushed every line. A buffered pipe reports nothing for ninety seconds and then
+    everything at once, which is a progress report that is only correct after it stops
+    being needed.
+
+    **The step label is asserted against the list**, because a step advanced under a name
+    `analysis_steps` did not produce is a bar that silently never moves -- the shape of
+    rule 44, arriving from the other end.
+    """
+
+    def __init__(self, steps: tuple[str, ...], on: bool) -> None:
+        self.steps = steps
+        self.on = on
+        self.i = 0
+        self.label = steps[0] if steps else ""
+
+    def _say(self, **fields: object) -> None:
+        if not self.on:
+            return
+        print(json.dumps(fields), flush=True)
+
+    def step(self, label: str) -> None:
+        """Advance to a named step. A step this run is not taking is not an error here."""
+        assert label in ALL_STEPS, f"unknown analysis step {label!r}"
+        if label not in self.steps:
+            return
+        self.i = self.steps.index(label)
+        self.label = label
+        self._say(state="working", step=label, done_steps=self.i,
+                  steps=len(self.steps), detail="")
+
+    def detail(self, done: int, total: int) -> None:
+        """Restate the current step with a count. The step is unchanged; only the inside."""
+        self._say(state="working", step=self.label, done_steps=self.i,
+                  steps=len(self.steps), detail=f"{done:,}/{total:,}")
+
+    def done(self, **fields: object) -> None:
+        self._say(state="done", step="", done_steps=len(self.steps),
+                  steps=len(self.steps), **fields)
+
+
 def cmd_analyze(args: argparse.Namespace) -> int:
     target = Path(args.path).resolve()
     if not target.exists():
@@ -57,6 +152,9 @@ def cmd_analyze(args: argparse.Namespace) -> int:
 
     source_root = target
     program, out_dir = _default_paths(target, args.name, Path(args.output))
+    # What this run will do, decided before it starts doing it: the dashboard draws a bar
+    # against this list and it has to be right from the first line.
+    prog = _Progress(analysis_steps(args), on=args.progress_json)
 
     # Which snapshot this analysis writes, decided before anything is opened because it
     # names the files. The sidecar is the authority: `open_working` reuses the revision
@@ -119,11 +217,14 @@ def cmd_analyze(args: argparse.Namespace) -> int:
                    datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC"))
 
     def progress(path: str, i: int, total: int) -> None:
+        if i % 50 == 0 or i == total:
+            prog.detail(i, total)
         if args.quiet:
             return
         if i % 50 == 0 or i == total:
             _emit(f"  extracting {i}/{total}")
 
+    prog.step(STEP_EXTRACT)
     stats = analyze_tree(
         source_root, store, include_tests=args.include_tests,
         jobs=args.jobs, progress=progress,
@@ -164,8 +265,17 @@ def cmd_analyze(args: argparse.Namespace) -> int:
         #
         # Directories holding a graph, never the *name* `output` -- so a folder of
         # hand-written prose sitting beside two program directories is still read.
+        # `analyze_docs_tree` has taken a `progress` callback since it was written and was
+        # never given one, so on a 2,064-document corpus the bar sat still through most of
+        # a minute. The terminal never noticed -- there was nothing drawing a bar.
+        def doc_progress(path: str, i: int, total: int) -> None:
+            if i % 50 == 0 or i == total:
+                prog.detail(i, total)
+
+        prog.step(STEP_DOCS)
         doc_stats = analyze_docs_tree(
             docs_root, doc_store, jobs=args.jobs, recheck=args.recheck_docs,
+            progress=doc_progress,
             exclude=frozenset({out_dir}) | revisions.program_dirs(out_dir.parent))
         duplicates = doc_store.mark_duplicates()
         dc = doc_store.counts()
@@ -205,6 +315,7 @@ def cmd_analyze(args: argparse.Namespace) -> int:
         # Its own file rather than a lane in `source.db`, because design rule 14 turns on the
         # two being separately handable -- *"many will send documentation and never source"*.
         if not args.no_doc_source:
+            prog.step(STEP_DOC_BODIES)
             docsource = DocSourceStore(out_dir / "docsource.db")
             docsource.set_meta("program", program)
             # Under the id `source.db` already chose, never one of its own: two sidecars
@@ -224,6 +335,7 @@ def cmd_analyze(args: argparse.Namespace) -> int:
                 )
             docsource.close()
 
+    prog.step(STEP_RESOLVE)
     t1 = time.perf_counter()
     rstats = resolve_calls(store)
     clistats = resolve_cli(store)
@@ -256,6 +368,7 @@ def cmd_analyze(args: argparse.Namespace) -> int:
     # is also the store the temporal layers will be built on.
     src_stats = None
     if source is not None:
+        prog.step(STEP_BODIES)
         src_stats = capture_source(store.known_hashes(), source, root=source_root,
                                    langs=store.known_langs(), revision=revision)
         sc = source.counts()
@@ -279,6 +392,7 @@ def cmd_analyze(args: argparse.Namespace) -> int:
         source.close()
 
     if not args.no_render:
+        prog.step(STEP_RENDER)
         t2 = time.perf_counter()
         store.warm()
         files = render_all(store, out_dir, source_root, program,
@@ -288,6 +402,7 @@ def cmd_analyze(args: argparse.Namespace) -> int:
             _emit(f"wrote {len(files)} documents to {out_dir} in "
                   f"{time.perf_counter() - t2:.1f}s")
 
+    prog.step(STEP_ANOMALIES)
     store.warm()
     rep = detect(store, include_tests=args.include_tests)
     ac = rep.counts()
@@ -298,16 +413,27 @@ def cmd_analyze(args: argparse.Namespace) -> int:
         )
 
     c = store.counts()
-    print(
-        f"{program}: {c['routines']:,} routines · {c['resolved_calls']:,} internal calls · "
-        f"{c['boundaries']:,} boundary touches · {c['structures']:,} structures · "
-        f"{c['entrypoints']:,} ways in"
-    )
-    print(f"graph: {db_path}")
-    if doc_stats is not None:
-        print(f"docs:  {revisions.db_path(out_dir, revisions.DOCS, revision)}")
-    if not args.no_render:
-        print(f"map:   {out_dir}/README.md")
+    # **stdout is one channel or the other, never both.** With `--progress-json` it is the
+    # machine channel and these four lines would arrive in the middle of it; without it,
+    # they are the summary the terminal has always printed. The counts are the same either
+    # way -- one is the sentence and one is the object (rule 13).
+    if prog.on:
+        prog.done(program=program, revision=revision, graph=str(db_path),
+                  routines=c["routines"], calls=c["resolved_calls"],
+                  boundaries=c["boundaries"], structures=c["structures"],
+                  entrypoints=c["entrypoints"],
+                  files=stats.found, documents=doc_stats.found if doc_stats else 0)
+    else:
+        print(
+            f"{program}: {c['routines']:,} routines · {c['resolved_calls']:,} internal "
+            f"calls · {c['boundaries']:,} boundary touches · {c['structures']:,} "
+            f"structures · {c['entrypoints']:,} ways in"
+        )
+        print(f"graph: {db_path}")
+        if doc_stats is not None:
+            print(f"docs:  {revisions.db_path(out_dir, revisions.DOCS, revision)}")
+        if not args.no_render:
+            print(f"map:   {out_dir}/README.md")
     if doc_store is not None:
         doc_store.close()
     store.close()
@@ -726,6 +852,11 @@ def build_parser() -> argparse.ArgumentParser:
     a.add_argument("--no-doc-source", action="store_true",
                    help="do not keep a copy of the documents beside the map")
     a.add_argument("--quiet", action="store_true")
+    # The machine channel, for `dunneflow serve`, which runs this as a subprocess and draws
+    # a bar against what it says. On stdout, because stderr is where the prose goes and a
+    # failure's reason has to survive somewhere a parser is not reading (see `_Progress`).
+    a.add_argument("--progress-json", action="store_true",
+                   help="report progress as one JSON object per line on stdout")
     a.set_defaults(func=cmd_analyze)
 
     t = sub.add_parser("touches", help="what does this routine reach?")

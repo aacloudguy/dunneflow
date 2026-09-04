@@ -179,7 +179,74 @@ program has a most-commented routine and a maximum alone is a claim nobody can w
 
 ## What we are doing now
 
-**Paused 2026-09-04, between features. Nothing is half-written.** 951 tests, mypy clean,
+### The latest: "+ Analyze a directory…" works (2026-09-04)
+
+**The dashboard can now make a program, not only choose one.** The `<select>`'s last option
+opens a dialog, the server reads a source tree in a subprocess, a panel reports each step,
+and the new program appears in the list with an *Open it* that is the program switch already
+built. It is the second half of the selector entry, and it closes it.
+
+**Four decisions, and the first is the one everything else follows from.** It runs
+`dunneflow analyze` as a **subprocess**: every store this process holds is `writable=False`
+by rule 20, and an in-process analysis would make the serving process a writer to the tree
+it serves. It also keeps `walk.py`'s `ProcessPoolExecutor` out of a request thread, and makes
+what runs *exactly* the tested command (rule 51).
+
+**It is not the switch overlay, and that is the shape of the whole feature.** A base switch
+blocks the page because every count underneath belongs to the version being replaced. This
+reads some *other* tree into some *other* directory, so nothing on screen becomes untrue and
+nothing is taken away — a dismissible panel, and a **second slot** on `_Live` beside the
+build one, or a ninety-second read of an unrelated program would lock the reader out of
+changing versions for no reason anybody could state.
+
+**`--progress-json` is a contract, not a scrape.** stdout is one JSON object per line;
+stderr, emptied by `--quiet`, is where a failure says why. The step list is **computed for
+the run** — `--no-docs` makes it five and not seven — because a bar drawn against a total
+this run can never reach is a run that looks like it died at step five (rule 32). Verified on
+the real corpus: 63 lines, one total, 628 files and 2,064 documents, empty stderr.
+
+**Eight refusals, each with its own sentence**, from one `analysis.check` that both the
+dialog's live warning and the endpoint's answer go through (rule 41). The sharpest is the
+**served program**, and it is not caution: `Store._discard_if_stale` drops every table of a
+graph written by another build, and this server is holding that graph open. Analysing into a
+name that already exists is *allowed* and says it rewrites that program's working snapshot —
+Tom's call.
+
+**Two defects found by looking rather than by testing**, which is the whole argument for
+rule 38:
+
+1. **A disabled `.linkbtn` did not look disabled.** The class sets an explicit background and
+   colour, which overrides everything the browser does to say a control cannot act — design
+   rule 16's defect arriving through a stylesheet. The rule existed under `.trailbar` and has
+   moved beside `.linkbtn` itself, where both callers pass (rule 51).
+2. **A failed analysis handed the reader a fourteen-line traceback with the useful line
+   last.** The reason now **leads with the child's last line** and keeps the rest as evidence.
+   And the case that produced it — a file sitting where the program directory would go — is
+   a pre-flight sentence now, not a `FileExistsError`.
+
+**Looked at in a browser, with a real pointer.** `elementFromPoint` confirms every control is
+reachable rather than merely wired (rule 48); 75 characters typed into the path field
+survived 75 repaints with the caret held; and `/` does not leak to the topbar search, which
+matters because every path on this machine starts with one. The full loop was driven from a
+real click: analysed, appeared in the selector, opened, served. **Still the automation tab
+though** — 1,259×523 at a 16px root, and screenshots crop at 784×326, so the surfaces were
+seen by parking the dialog inside the frame. Rule 38's debt is *reduced*, not paid.
+
+*A coordinate trap worth knowing:* the `computer` tool's coordinates are **screenshot space**,
+not viewport space. A click asked for at (626, 186) landed at (1005, 298) — the 1.606× ratio
+of 1,259 to 784. That is the "clicks did not land where `getBoundingClientRect` said" note
+from chunk 5, explained: multiply viewport coordinates by `784 / innerWidth`. It cost one
+false bug report before it was checked.
+
+*Candidate engineering rule, for Tom to mint or refuse:* **a long job is not a switch — a slot
+names what is being replaced, not what is running.** Not minted.
+
+**Chunk 2 is planned and not built:** *"About this map"* — what read this directory, shown so
+a reader can decide to read it again. See "What is next" below.
+
+---
+
+**Before that — paused 2026-09-04, between features. Nothing is half-written.** 951 tests, mypy clean,
 ruff clean, console clean, working tree clean, `check` reports 0 broken. Five things landed
 that day, each whole and committed on its own:
 
@@ -1090,11 +1157,9 @@ feature was blocked on an answer nobody owed.
   middle-elide; `.srcpath-v` was a dead field; `.callhead code` wraps. `.navsub` keeps its
   constant and the boundary is stated. `.argrow` keeps its* wrapped, not elided *decision;
   `.leg .nm` is left alone.*
-- ~~**A program selector**~~ *— built 2026-09-04; see the top of this file. What remains of
-  this entry is the second half.* **"+ Analyze a directory…"** — running an analysis from the
-  server, with progress, failure, and a new program appearing in the selector. Tom wants it
-  next, and it is deliberately not in the `<select>` yet: a third option that does nothing is
-  the defect the selector just fixed. *The original entry:* Tom, 2026-09-04: *"What is
+- ~~**A program selector**~~ *— built 2026-09-04.* ~~**"+ Analyze a directory…"**~~ *— built
+  2026-09-04 too, and the option is in the `<select>` now that it does something. See the top
+  of this file. The original entry:* Tom, 2026-09-04: *"What is
   missing is a way to switch between the two — that used to exist… I definitely want to add
   the Analyze a directory part next. That's what I'm looking for at the moment."* The
   ratified artifact `f993d319` has the selector — three options, `mensores — 623 files`,
@@ -1108,6 +1173,32 @@ feature was blocked on an answer nobody owed.
   switch cannot keep the selection, the trail or the revision, all of which belong to the old
   program; and the list must say what it found *and* what it cannot open, because
   `output/` here holds four candidates of which two are stale or old-style.
+- **"About this map": what read this directory, and whether anything was inferred.**
+  *Planned and approved 2026-09-04, not built* — chunk 2 of the plan the analyse work is
+  chunk 1 of. Tom asked that an analysis record **what model was used**, in an *"About this
+  directory"* dialog, so a reader might analyse again when a better one exists.
+
+  **No model is used**, and that was checked before it was planned: the extractors are
+  stdlib `ast` and `tokenize`, the document scanner is hand-written, and there is no LLM call
+  and no network egress anywhere on the analysis path. `Provenance` declares four tiers and
+  only the two free ones are built — `CITED` and `INFERRED` are designed and unbuilt.
+
+  Tom, on being told: *"Perfect, keep it that way as much as possible! Inference should
+  always be voluntary and secondary."* So the row is **a standing guarantee, not a
+  placeholder** — *nothing in this map was inferred, and nothing was read by a model* — and
+  the model field exists so that a reader who ever turns inference on **voluntarily** can see
+  which facts it paid for.
+
+  **And the live re-analysis trigger already exists and is surfaced nowhere.** Every store
+  records `extractor = f"{SCHEMA_VERSION}:{rules_fingerprint()}"`, and `_is_stale` compares
+  it against this build's — today only to refuse. That comparison *is* "would a newer
+  DunneFlow read this differently?", which is the question Tom wants answered; it has never
+  had a reader. The plan is at `~/.claude/plans/wondrous-crunching-ocean.md`.
+
+  *Candidate design rule, for Tom to mint or refuse:* **inference is voluntary and secondary,
+  and a map states whether any was used.** One step over from design rule 14, which scopes
+  *egress*; this scopes whether a fact was *guessed*.
+
 - **Four surfaces have never been *looked* at in a real window** — the constants surface,
   the blank-graph fix (rule 49), chunk B, and now **chunk 5's citation viewer**, whose foot is
   56rem wide against a 784px capture frame and so never appeared in a screenshot at all. Not

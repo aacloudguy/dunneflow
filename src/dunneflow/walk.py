@@ -118,14 +118,30 @@ def discover(root: Path, include_tests: bool = False,
 
 
 def discover_docs(root: Path, suffixes: frozenset[str] = DOC_SUFFIXES,
-                  nested: list[str] | None = None) -> Iterator[Path]:
+                  nested: list[str] | None = None,
+                  exclude: frozenset[Path] = frozenset()) -> Iterator[Path]:
     """Every document under `root` that is plausibly about the program.
 
     Nested checkouts are pruned and, when `nested` is given, named -- see `VCS_MARKERS`.
     The test costs nothing: `os.walk` has already listed this directory, so the marker
     is in `dirnames` (a clone) or in `filenames` (a worktree) and needs no `stat`.
+
+    **`exclude` is how a program's own output stays out of its own corpus**, and it is a
+    path rather than a name on purpose. Pointing DunneFlow at itself read 46 of 54
+    documents out of `output/` -- its own generated reports, including 369,684 words of
+    `06-governance.md` *about a different program* -- and every one of the 942 rules it
+    then claimed to have found came from them. That is rule 57 with the tool's own output
+    in place of a stale worktree, and worse, because the output is about somebody else.
+
+    Blacklisting the *name* `output` was the obvious fix and is the wrong one: it is a
+    perfectly good name for a directory of hand-written documents, and no scanner should
+    silently drop one because a tool it has never heard of writes there. What is actually
+    known is a **path** -- `analyze` is writing to it in this very run -- so that is what is
+    passed. A project whose generated docs live somewhere else is unaffected either way,
+    which is honest: DunneFlow can only exclude what it can know.
     """
     root = root.resolve()
+    skip = {p.resolve() for p in exclude}
     for dirpath, dirnames, filenames in os.walk(root):
         here = Path(dirpath)
         if here != root and (VCS_MARKERS & (set(dirnames) | set(filenames))):
@@ -133,7 +149,8 @@ def discover_docs(root: Path, suffixes: frozenset[str] = DOC_SUFFIXES,
             if nested is not None:
                 nested.append(str(here))
             continue
-        dirnames[:] = [d for d in dirnames if d not in DOC_SKIP_DIRS]
+        dirnames[:] = [d for d in dirnames
+                       if d not in DOC_SKIP_DIRS and (here / d).resolve() not in skip]
         for fn in filenames:
             p = here / fn
             if p.suffix.lower() in suffixes:
@@ -152,6 +169,7 @@ def analyze_docs_tree(
     jobs: int | None = None,
     progress: Callable[[str, int, int], None] | None = None,
     recheck: bool = False,
+    exclude: frozenset[Path] = frozenset(),
 ) -> WalkStats:
     """Read every changed document under `root` into `store`.
 
@@ -161,7 +179,7 @@ def analyze_docs_tree(
     root = root.resolve()
     stats = WalkStats()
 
-    docs = sorted(discover_docs(root, nested=stats.nested))
+    docs = sorted(discover_docs(root, nested=stats.nested, exclude=exclude))
     stats.found = len(docs)
 
     known = store.known_hashes()

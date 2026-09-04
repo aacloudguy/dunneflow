@@ -144,6 +144,10 @@
           <button data-layout="stack" aria-pressed="true">Stack</button>
           <button data-layout="packages" aria-pressed="false">Overview</button>
         </div>
+        <!-- Why the toggle is dimmed, when it is. Written here rather than generated
+             because the crumbbar is static markup that `render()` never rebuilds -- the
+             same reason the search flags are written here. `paintModes()` fills it. -->
+        <p class="modes-why" id="modesWhy" hidden></p>
         <div class="modes" role="group" aria-label="View mode" id="modes">
           <button data-mode="graph" aria-pressed="true">Graph</button>
           <button data-mode="table" aria-pressed="false">Table</button>

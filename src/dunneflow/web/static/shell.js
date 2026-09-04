@@ -6615,6 +6615,57 @@ function redoSelection() {
  */
 const CENTRE_MODES = ["graph", "table", "doc", "code", "diagram"];
 
+/* What a destination page is called, for the sentence that says why the toggle is dimmed.
+ * Named rather than derived from the breadcrumb: `crumbsFor()` returns markup for a trail
+ * of two or three, and the last of them is not always the page (`anomalies` ends on the
+ * severity). A label a reader recognises is the whole value of the sentence. */
+const OFF_MODE_PAGE = {
+  cover: "the overview", anomalies: "the worklist", changes: "the comparison",
+  glossary: "the glossary", naming: "the derived naming standard",
+  curiosities: "the doorway panel", pins: "what you have kept",
+  inference: "the inference settings", settings: "Settings",
+};
+
+/* The toggle, off-mode: dimmed and still live, with the reason beside it.
+ *
+ * **It used to be `visibility: hidden`**, which kept its 321x31px and left a hole in the
+ * toolbar where five buttons had been -- on **nine of fourteen views**, which is more than
+ * half the app. Reported at the keyboard as *"middle panel seems broken… just disappeared
+ * in this mode"*, and an empty gap is exactly what that reads as.
+ *
+ * Three things are true at once and the treatment says all three. The modes are five ways
+ * of looking at one selection, and a destination is not one -- so none is pressed. Nothing
+ * here is *unavailable*, because `state.mode` survives a visit to a destination and every
+ * button has somewhere to go -- so they stay clickable, and pressing one is *put me back on
+ * my selection*, a gesture that was unreachable from more than half the app. And "none of
+ * these is current" is a third state rather than the absence of the first two, so it gets a
+ * look of its own instead of being mistaken for a paint that failed.
+ *
+ * A narrow write, because the crumbbar is chrome that `render()` does not rebuild -- set
+ * without one it would render nothing and throw nothing (rule 44). */
+function paintModes() {
+  const modes = $("#modes"), why = $("#modesWhy");
+  if (!modes) return;
+  const on = CENTRE_MODES.includes(state.view);
+  modes.dataset.offmode = String(!on);
+  /* **Nothing is pressed off-mode**, and this function owns that rather than the loop that
+     used to sit beside it in `render()`. Left there, the toolbar went on marking
+     `state.mode` while the reader was on the glossary -- the remembered mode shown as the
+     current one, which is a pane claiming what it is not showing (rule 78) and precisely
+     the false claim this change was supposed to remove. One function decides how the
+     toggle looks, so its three states cannot disagree (rule 51). */
+  $$("#modes button").forEach(b => b.setAttribute(
+    "aria-pressed", String(on && b.dataset.mode === state.mode)));
+  if (!why) return;
+  why.hidden = on;
+  /* Named, never blank: a page this table has no name for still gets a sentence, because
+     the alternative is a dimmed control with no explanation -- which is the thing being
+     fixed, wearing a different face (design rule 21). */
+  why.textContent = on ? "" :
+    `These are five ways of reading one selection. You are on ${
+      OFF_MODE_PAGE[state.view] || "a page that is not one of them"} — pick one to go back to it.`;
+}
+
 /* Going back to a step, and the one thing that surprised a reader about it.
  *
  * A step records the view it was made in, and replaying it set that view -- so a reader
@@ -9361,7 +9412,7 @@ function render() {
   followSelectionIntoCode();
   applyCodeMarks();
   $("#crumbs").innerHTML = crumbsFor();
-  $("#modes").style.visibility = CENTRE_MODES.includes(state.view) ? "visible" : "hidden";
+  paintModes();
   /* The layout choice sits inside graph mode, never beside it. Graph / table / document are
    * three ways of reading one selection; stack / packages are two drawings of one of them,
    * and promoting a layout to a mode would say they answer different questions. */
@@ -9371,7 +9422,6 @@ function render() {
     $$("#layouts button").forEach(b =>
       b.setAttribute("aria-pressed", String(b.dataset.layout === state.graphLayout)));
   }
-  $$("#modes button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.mode === state.mode)));
   $("#settingsBtn").setAttribute("aria-pressed", String(state.view === "settings"));
   document.documentElement.style.setProperty("--row-pad",
     { compact: "0.18rem", comfortable: "0.34rem", spacious: "0.55rem" }[state.density]);
@@ -10412,6 +10462,10 @@ const WIRED_ATTRS = new Set([
      `DOC_ROUTES`, because the viewer is a modal outside `#docMount` and rebuilt whole on
      every render — `docopenline` carries the line beside it and routes nothing. */
   "docopenat", "docopenline",
+  /* State the stylesheet reads, not a control: `offmode` says none of the five modes is
+     current, so the toggle can look like the third state it is in rather than like a paint
+     that failed. Nothing listens for it and nothing should. */
+  "offmode",
   "docrowfor", "hay", "doccount",
   /* `line` is `prose.js`'s, stamped on every rendered block from `token.map`, and the shell
      reads it to scroll a heading into view. In the roster because the roster is about what

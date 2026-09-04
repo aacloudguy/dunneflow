@@ -695,3 +695,62 @@ def test_a_conventions_table_in_a_plan_states_no_rules(tmp_path: Path) -> None:
     facts = _extract(tmp_path, "phases/03-storage/03-01-PLAN.md", CONVENTION_TABLE)
     assert facts.doc_class is not DocClass.NAMING_STANDARD
     assert _form(facts) == [], "a table in a plan was mined as a standard"
+
+
+# --------------------------------------------------------------------------- #
+# A program's own output is not its own documentation
+#
+# Found by pointing DunneFlow at itself: 46 of 54 documents came out of
+# `output/`, including 369,684 words of `06-governance.md` about a *different*
+# program, and all 942 rules it then claimed came from them. Rule 57 with the
+# tool's own output in place of a stale worktree.
+# --------------------------------------------------------------------------- #
+
+def test_a_map_beside_the_docs_is_not_documentation(tmp_path: Path) -> None:
+    """Every directory holding a graph is pruned; the rest of the tree is not."""
+    from dunneflow import revisions
+    from dunneflow.walk import discover_docs
+
+    (tmp_path / "README.md").write_text("# Real prose", encoding="utf-8")
+    out = tmp_path / "output"
+    for prog in ("mensores", "dunneflow"):
+        d = out / prog
+        d.mkdir(parents=True)
+        (d / "graph@2026-01-01T00-00-00Z.db").write_bytes(b"")
+        (d / "11-naming.md").write_text("# Generated report", encoding="utf-8")
+    # A directory of hand-written prose, sitting right beside the maps.
+    notes = out / "notes"
+    notes.mkdir()
+    (notes / "decisions.md").write_text("# Ours", encoding="utf-8")
+
+    exclude = frozenset({out / "mensores"}) | revisions.program_dirs(out)
+    found = {p.relative_to(tmp_path).as_posix()
+             for p in discover_docs(tmp_path, exclude=exclude)}
+    assert "README.md" in found
+    assert "output/notes/decisions.md" in found, (
+        "hand-written prose beside the maps was dropped — the name `output` was "
+        "blacklisted rather than the maps recognised"
+    )
+    assert not [f for f in found if f.startswith("output/mensores")], (
+        "the program's own generated report was read as its documentation"
+    )
+    assert not [f for f in found if f.startswith("output/dunneflow")], (
+        "another program's generated report was read as this one's documentation — the "
+        "same mistake one directory up, and the one that actually happened"
+    )
+
+
+def test_program_dirs_recognises_a_map_and_not_a_name(tmp_path: Path) -> None:
+    """A graph makes a program directory. Being called `output` does not."""
+    from dunneflow import revisions
+
+    root = tmp_path / "output"
+    (root / "withmap").mkdir(parents=True)
+    (root / "withmap" / "graph.db").write_bytes(b"")
+    (root / "justdocs").mkdir()
+    (root / "justdocs" / "notes.md").write_text("hi", encoding="utf-8")
+    got = {p.name for p in revisions.program_dirs(root)}
+    assert got == {"withmap"}, f"recognised on something other than a graph: {got}"
+    assert revisions.program_dirs(tmp_path / "nope") == frozenset(), (
+        "a missing directory raised instead of answering nothing"
+    )

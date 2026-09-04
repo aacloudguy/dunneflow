@@ -9125,3 +9125,87 @@ landing on the table is enough or whether the row wants marking.
 
 **The detector costs +4 ms**, 0.1%, over 2,024 documents and 5,230 tables — median of three
 alternating sweeps in one process against bodies already in memory. See `PERFORMANCE.md`.
+
+## The mode toggle is dimmed, not hidden — and a program's output is not its documentation — 2026-09-04
+
+Two small things finished before the program selector.
+
+### The toggle, reported at the keyboard
+
+Tom, with two screenshots: *"Middle panel seems broken — should have buttons to show
+Graph/Code/Diagram and so on. Just disappeared in this mode."*
+
+It was `visibility: hidden`, which **keeps the box**: 321×31px of empty toolbar where five
+buttons had been, on **nine of fourteen views** — `anomalies`, `changes`, `cover`,
+`curiosities`, `glossary`, `inference`, `naming`, `pins`, `settings`. Its immediate
+neighbour `#layouts` uses `hidden` and collapses to 0×0. Two adjacent controls in one
+toolbar, two hiding mechanisms, and the one that leaves a hole is the one that got reported.
+
+The intent was defensible — the modes are five ways of looking at one selection, and a
+destination is not one — but the scope was more than half the app, which is why it read as a
+fault rather than a rule.
+
+**Tom chose dimmed with a reason**, over hiding it properly or leaving it live-and-unpressed,
+and then settled the detail I had left open: *"a dimmed button should still act — the user is
+always right, even if they're wrong. Unless it CANNOT work, in which case it just doesn't
+work."* That is a better statement of the rule than the reasoning that produced it, and it
+generalises past this control. **A candidate design rule, not minted** — design rule numbers
+are permanent addresses like the engineering ones, so it wants his call.
+
+Three states, and the treatment now says all three:
+
+| Where you are | Toggle |
+|---|---|
+| in a mode | full opacity, the current mode pressed |
+| on a destination | **dimmed, nothing pressed**, with the reason beside it |
+| pressing a dimmed button | goes back to that mode **on your selection** |
+
+Verified live: on the doorway panel, opacity 0.55, `pressed: []`, and *"These are five ways of
+reading one selection. You are on the doorway panel — pick one to go back to it."* Pressing
+the dimmed **Graph** returned to `mensores › mensores.cli._root › _root`.
+
+**And it caught its own defect on the way.** The first build dimmed correctly and still
+marked `state.mode` as pressed, because the `aria-pressed` loop sat in `render()` beside the
+old visibility line — so the toolbar said **Document** over the doorway panel. That is rule
+78's shape exactly: a pane claiming what it is not showing, and the very claim the change was
+meant to remove. `paintModes()` owns all three now, so they cannot disagree (rule 51).
+
+### A program's own output is not its own documentation
+
+Found by answering Tom's question *"can I open a different corpus"* with a demonstration
+rather than a description. Analysing DunneFlow itself reported **942 stated rules and 654
+definitions** from a 61-file tool, which is not plausible, so it was worth checking where they
+came from.
+
+**All 942 came from `output/`.** 46 of 54 documents were DunneFlow's own generated reports —
+including 369,684 words of `output/mensores/06-governance.md`, which is a report about a
+*different program*, and a second copy of all of it under `output/mensores@2026-08-29…/`.
+`DOC_SKIP_DIRS` excludes `build`, `dist`, `site`, `_build`, `coverage` and `target`, but not
+`output`, which is `DEFAULT_OUTPUT`. Rule 57 with the tool's own output in place of a stale
+worktree, and worse, because the output is about somebody else's program.
+
+**A path, never a name.** Blacklisting `output` was the obvious fix and is the wrong one: it
+is a fine name for a directory of hand-written documents, and no scanner should silently drop
+one because a tool the author has never heard of writes there. `revisions.program_dirs()`
+recognises a directory holding a **graph**, and `analyze` excludes those — the map it is
+writing and every other map beside it, because reading a report about another program as
+documentation about this one is the same mistake one directory up.
+
+Measured on the case that found it: **54 documents → 9, 45 removed; 942 stated rules → 0; 654
+definitions → 14.** The nine are DunneFlow's real documents — and `output/dashboard-uitest.md`,
+a hand-written note sitting in `output/` beside the maps, **is still read**, which is exactly
+the case that argued against blacklisting the name and is now proven on real data rather than
+asserted.
+
+944 tests, mypy clean, ruff clean.
+
+### Next, in Tom's order
+
+**The program selector**, then **"+ Analyze a directory…"** — he wants both, in that order.
+The ratified artifact `f993d319` has the selector with three options (`mensores — 623 files`,
+`dunneflow — 23 files`, `+ Analyze a directory…`) and **no change handler even there**: it
+was a statement of intent that looked like a working control, carried into the shipped shell
+as a one-option `<select>` and never given the endpoint every other pinned array got. Design
+rule 16's own text, in the topbar of the mockup that ratified the rule. *Check the artifact
+before concluding a view never existed — `git log` was the wrong place to look and said the
+opposite.*

@@ -82,6 +82,37 @@ def resolve(out_dir: Path, stem: str, revision: str | None = None) -> Path | Non
     return p if p.exists() else None
 
 
+def program_dirs(out_root: Path) -> frozenset[Path]:
+    """Every directory under `out_root` that holds a DunneFlow map, `out_root` included.
+
+    Written for one job: keeping a program's own output out of its own document corpus.
+    Analysing DunneFlow itself read 46 of 54 documents out of `output/` -- its own generated
+    reports, including 369,684 words about a *different* program -- and every rule it then
+    claimed came from them. That is rule 57 with the tool's own output in place of a stale
+    worktree.
+
+    **A directory holding a graph, never a directory called `output`.** Blacklisting the
+    name was the obvious fix and is the wrong one: `output/` is a fine name for a directory
+    of hand-written documents, and nothing should silently drop one because a tool the
+    author has never heard of writes there. This recognises a *map* -- a `graph.db` or a
+    `graph@<revision>.db` -- so a sibling directory of real prose beside two program
+    directories is kept, which is the honest outcome.
+
+    One level down and no deeper. Program directories are siblings by construction
+    (`--output` names their parent), and a recursive search of a documentation root for
+    databases would cost every project a walk to protect against a layout nobody uses.
+    """
+    if not out_root.is_dir():
+        return frozenset()
+    found = {out_root} if any(out_root.glob(f"{GRAPH}*.db")) else set()
+    for child in out_root.iterdir():
+        # `is_dir()` rather than a `try`: an unreadable entry is not a program directory,
+        # and an analysis must not fail because something odd sits beside its output.
+        if child.is_dir() and any(child.glob(f"{GRAPH}*.db")):
+            found.add(child)
+    return frozenset(found)
+
+
 def revision_of(path: Path) -> str | None:
     """The revision a filename claims, or None for a legacy bare name.
 

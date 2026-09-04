@@ -156,8 +156,17 @@ def cmd_analyze(args: argparse.Namespace) -> int:
         doc_store = DocStore(revisions.db_path(out_dir, revisions.DOCS, revision))
         doc_store.set_meta("revision", revision)
         doc_store.set_meta("program", program)
-        doc_stats = analyze_docs_tree(docs_root, doc_store, jobs=args.jobs,
-                                      recheck=args.recheck_docs)
+        # **Every map under the output root, kept out of this run's corpus.** Not just this
+        # program's directory: `output/mensores` is where this map goes and `output/` is
+        # where every *other* map goes, and reading a report about some other program as
+        # documentation about this one is the same mistake one directory up. Analysing
+        # DunneFlow itself read 46 of 54 documents that way.
+        #
+        # Directories holding a graph, never the *name* `output` -- so a folder of
+        # hand-written prose sitting beside two program directories is still read.
+        doc_stats = analyze_docs_tree(
+            docs_root, doc_store, jobs=args.jobs, recheck=args.recheck_docs,
+            exclude=frozenset({out_dir}) | revisions.program_dirs(out_dir.parent))
         duplicates = doc_store.mark_duplicates()
         dc = doc_store.counts()
         if not args.quiet:

@@ -1043,6 +1043,20 @@ feature was blocked on an answer nobody owed.
   middle-elide; `.srcpath-v` was a dead field; `.callhead code` wraps. `.navsub` keeps its
   constant and the boundary is stated. `.argrow` keeps its* wrapped, not elided *decision;
   `.leg .nm` is left alone.*
+- **A program selector, and then "+ Analyze a directory…".** Tom, 2026-09-04: *"What is
+  missing is a way to switch between the two — that used to exist… I definitely want to add
+  the Analyze a directory part next. That's what I'm looking for at the moment."* The
+  ratified artifact `f993d319` has the selector — three options, `mensores — 623 files`,
+  `dunneflow — 23 files`, `+ Analyze a directory…` — and **no change handler even there**.
+  The port carried the markup and emptied the options with every other pinned array; unlike
+  the others it never got the endpoint that fills it. What exists to build on: `_Live.open()`
+  already rebuilds a whole base atomically against a different graph and refuses without
+  leaving a broken one behind, which is the revision switch — a program switch is the same
+  operation pointed at a different directory. What has to be decided: `serve` takes a
+  program directory today and would take the root while still accepting either; a program
+  switch cannot keep the selection, the trail or the revision, all of which belong to the old
+  program; and the list must say what it found *and* what it cannot open, because
+  `output/` here holds four candidates of which two are stale or old-style.
 - **Four surfaces have never been *looked* at in a real window** — the constants surface,
   the blank-graph fix (rule 49), chunk B, and now **chunk 5's citation viewer**, whose foot is
   56rem wide against a 784px capture frame and so never appeared in a screenshot at all. Not

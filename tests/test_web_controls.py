@@ -10859,3 +10859,51 @@ def test_the_report_calls_one_lane_derived_and_the_other_quoted() -> None:
     assert "Nothing here was required of this program." in src, (
         "the report does not open by saying nothing on it is a requirement"
     )
+
+
+def test_the_mode_toggle_is_dimmed_off_mode_and_still_acts() -> None:
+    """Reported at the keyboard: *"middle panel seems broken … just disappeared."*
+
+    It was `visibility: hidden` on the **nine of fourteen** views that are destinations
+    rather than modes — and `visibility` keeps the box, so the toolbar carried an empty
+    321×31px hole where five buttons had been. Its neighbour `#layouts` uses `hidden` and
+    collapses to nothing; two adjacent controls in one toolbar, two hiding mechanisms, and
+    the one that leaves a gap is the one that got reported.
+
+    Tom's rule, and it is larger than this control: *"a dimmed button should still act —
+    unless it CANNOT work, in which case it just doesn't work."* Every mode button here can
+    work: `state.mode` survives a visit to a destination, so pressing one is *put me back on
+    my selection*, and that gesture was unreachable from more than half the app.
+    """
+    js = _code(_read("shell.js"))
+    fn = _fn(js, "paintModes")
+    assert "CENTRE_MODES.includes(state.view)" in fn, (
+        "nothing decides whether the toggle is off-mode"
+    )
+    assert "dataset.offmode" in fn, "the toggle carries no off-mode state to be styled by"
+    # **The absence matters as much.** Hiding it at all is the defect, in either spelling.
+    assert "visibility" not in fn and ".hidden = " not in fn.split("why.hidden")[0], (
+        "the toggle is hidden again rather than dimmed, so it reads as a paint that failed"
+    )
+    assert "why.textContent" in fn, (
+        "it dims with no reason given, which is the dead control wearing a new face "
+        "(design rule 21)"
+    )
+    # It must never be disabled: a control that can act and looks like it cannot is the
+    # same lie as one that cannot act and looks like it can.
+    assert "disabled" not in fn, (
+        "an off-mode button is disabled, so a destination page has no way back to the "
+        "selection — and every one of these buttons can act"
+    )
+    # **Nothing is pressed off-mode.** The remembered mode marked as current, while the
+    # reader is on the glossary, is a pane claiming what it is not showing — rule 78, and
+    # the very claim this change removes. The `on &&` is the whole of it.
+    assert 'String(on && b.dataset.mode === state.mode)' in fn, (
+        "the toolbar marks the remembered mode as current while off-mode, so it says "
+        "“Document” over the doorway panel (rule 78)"
+    )
+    css = _css_code(_read("tokens.css"))
+    assert '.modes[data-offmode="true"]' in css, "nothing styles the off-mode state"
+    assert "pointer-events: none" not in css.split('.modes[data-offmode="true"]')[1][:400], (
+        "the dimmed toggle is made inert by CSS, which is `disabled` by another name"
+    )

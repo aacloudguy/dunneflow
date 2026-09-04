@@ -1015,6 +1015,31 @@ body {
   box-shadow: 0 0.0625rem 0.125rem rgba(0, 0, 0, .25);
 }
 
+/* **Off-mode: dimmed, and still live.** The toggle used to be `visibility: hidden` on the
+   nine views that are destinations rather than modes -- while still occupying its 321x31px,
+   so the toolbar carried a hole where five buttons had been. Reported as breakage, which is
+   exactly what an empty gap reads as.
+
+   Dimmed rather than gone, because a mode button always has somewhere to go: `state.mode`
+   survives while you are on a destination, so pressing Graph from the doorway panel means
+   *put me back on my selection, as a graph* -- a real gesture, and previously unavailable
+   from more than half the app.
+
+   Dimmed rather than merely unpressed, because *none of these is current* is a third state
+   and deserves to look like one. And clickable rather than inert: an inert control that can
+   never become active on this page is the dead control design rule 16 is about, where one
+   that says why and still acts is a way out. Design rule 47 is the risk -- dimming says what
+   is not yours without saying which one is -- and the sentence beside it is the answer. */
+.modes[data-offmode="true"] { opacity: .55; }
+.modes[data-offmode="true"] button { font-weight: 600; }
+.modes-why {
+  font-size: .68rem; color: var(--text-faint); margin-left: auto; padding-right: .5rem;
+  max-width: 22rem; text-align: right;
+}
+/* The reason takes the `margin-left:auto` when it is present, so the toggle sits beside it
+   rather than both fighting for the same push. */
+.modes-why + .modes { margin-left: 0; }
+
 /* ═══ THE FILTER STRIP — no filter is ever silent ═══ */
 .filterstrip {
   display: flex; align-items: flex-start; gap: .6rem; flex-wrap: wrap;

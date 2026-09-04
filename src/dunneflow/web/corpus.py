@@ -75,8 +75,9 @@ NOT_HELD = "the document sidecar does not hold this file at this revision"
 NOT_SCANNED = "the documentation scan did not read this file"
 
 
-def serving(bodies: SourceStore | None,
-            revision: str | None) -> tuple[SourceStore | None, str | None]:
+def serving(bodies: SourceStore | None, revision: str | None, *,
+            absent: str = NO_SIDECAR,
+            stale: str = NO_REVISION) -> tuple[SourceStore | None, str | None]:
     """The sidecar to read *this version's* prose out of, or the reason there is none.
 
     **The whole of this function is one `None` that means two things.** `_sidecar_revision`
@@ -92,11 +93,17 @@ def serving(bodies: SourceStore | None,
     refusal with a sentence to go with it. Its own function because three readers need the
     same decision (rule 51), and because the states it separates are the ones design rule
     21 exists for -- an absence with no reason reads as an empty program.
+
+    The two sentences are arguments with document-corpus defaults, because the *decision*
+    is the same for both sidecars and only the wording differs. `/api/source` and the
+    glossary's capability block ask this question of `source.db` and have their own two
+    spellings; a second implementation of the decision beside them would be correct on the
+    day it was written and would be the thing that drifts (rule 51).
     """
     if bodies is None:
-        return None, NO_SIDECAR
+        return None, absent
     if revision is None:
-        return None, NO_REVISION
+        return None, stale
     return bodies, None
 
 

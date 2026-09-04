@@ -8798,3 +8798,126 @@ to open and **2 ms** to repaint.
 **Next: chunk 5** — `senseOpens()` becomes a capability test rather than a provenance test, so
 the 235 documentation-derived definitions open at their line. Everything it needs is now in
 place: `/api/docsource`, the renderer, and `data-line-end`. Then chunk 6's records.
+
+## Document mode, chunk 5: a citation into the corpus opens — 2026-09-04
+
+The last chunk of the feature, and it is the one design rule 13 was waiting on: *every
+reported meaning must carry its provenance, and the provenance must open*. Documentation
+citations rendered a dead end for as long as `source.db` was the only sidecar. They open now.
+
+**`senseOpens()` is a capability test rather than a provenance test, and that is the whole
+change.** It read `s.provenance === "DECLARED_CODE"`, which was a true statement about the
+tool until chunk 1 gave the document corpus a sidecar and stopped being true the moment it
+landed. The question is no longer *which tier is this* but *does the corpus this tier quotes
+have a sidecar this base can read* — and the page has no way to know that, so `/api/glossary`
+carries it: a `sidecars` block, one entry per tier, `{opens, reason}`, computed from the live
+stores and the base's two revisions. The two model tiers answer `false` by having no entry
+rather than by being named, because a corpus that does not exist cannot be opened and listing
+them would be a second place to keep the tiers in step (rule 51).
+
+**Correcting the plan's number, which was wrong and had been carried into `BRIEFING.md`.**
+The plan said *"all 235 documentation-derived definitions render a dead end"*. 235 is
+`definitions_seen` — every definition the scan mined. Of those, **32 bind to a term the code
+actually uses as an identifier and become citations**; the other 203 define words this program
+never names, and they are the *mirror's* subject rather than the glossary's. So what was fixed
+is 32 citations across 22 terms in 10 documents, measured on the served payload rather than
+assumed. Counted before the change: 60 citation buttons on the glossary page. After: **92 —
+60 code and 32 docs** — which is the number matching exactly, and the check that the tier
+counts and the button counts are one answer (rule 13).
+
+The 22 terms are the ones `CLAUDE.md`'s ground truth names: `groma`, `disceptator`,
+`quaestor`, `scriba`, `signator`, `procurator`, `custos`, `dispensator`, `mensor`,
+`mensores` — the pantheon, out of `NAMING.md` and `PROJECT.md`, plus `contract`, `decision`,
+`worktree`, `drift`, `lifecycle`, `allowlist`, `citations` and four SCREAMING-case ones.
+
+### The refusal, which is where the honest half is
+
+Both sidecars can be absent independently, so `_sidecar_state` states which. Verified against
+a real base rather than a fixture: `output/mensores` holds **source** bodies for both
+revisions and **document** bodies for only the newer one, so serving the 2026-08-26 base is
+the asymmetric case as it actually occurs.
+
+| | `DECLARED_CODE` | `DECLARED_DOCS` |
+|---|---|---|
+| base 2026-08-31T22:53:57Z (08-29 tree) | opens | opens |
+| base 2026-08-31T22:53:15Z (08-26 tree) | opens | *this sidecar holds nothing for the version on screen* |
+
+On the older base the 32 documentation rows render as **plain text with no button** — no
+control that resolves to nothing (design rule 16) — while the 60 code rows keep theirs. And
+`/api/docsource` refuses rather than serving the newer prose under the older headings, which
+is rule 70 holding at the place it was written for.
+
+**The sentence was wrong when I first read it out loud, and only reading it caught it.** The
+server's four reasons are not one part of speech: *"no document sidecar beside this map"* is a
+noun phrase, *"this sidecar holds nothing for the version on screen"* is a clause. The first
+draft embedded them in `because there is …` and produced **"It cannot be opened because there
+is this sidecar holds nothing for the version on screen."** Every test passed. A dash takes
+both, and the wording stays the server's own rather than being paraphrased into a third
+spelling here (rule 51) — there is now a guard that the shell carries **none** of the three
+sentences as a literal, and it tripped on the comment explaining the fix before it was taken
+over `_code()`. That is the sixth time a guard in this file has failed on its own prose.
+
+### Two readings of one citation, and both are wanted
+
+The pane above the foot is the document **as measured** — Markdown syntax and all — which is
+what proves the citation and is not how the sentence was meant to be read. So the foot offers
+*Read it in the document →* for a documentation citation and for nothing else: it closes the
+viewer, switches to Document mode lane 1, opens the document and scrolls to the block holding
+the line.
+
+**The line is held rather than scrolled to**, because `openDocumentAt` returns two awaits
+before there is a block to scroll to — a 546 KB corpus list and then the document itself. It
+is consumed by the paint that has it, after `attachDoc()` and after the scroll restore, and it
+checks the *path* rather than a flag: consuming it against whatever document happens to be
+mounted is how a reader who moved on lands somewhere arbitrary (rule 42).
+
+Verified end to end on the live corpus: `mensores` → `.groma/PROJECT.md:474` → the viewer
+shows lines 468–482 with 474 highlighted → the hop lands in the document, **scrolled 55,810px
+into 459 blocks**, with the `<p>` spanning lines 474–475 flashed. That is the innermost
+containing block, not the heading above it and not the paragraph after — which is exactly the
+`data-line-end` lookup chunk 4 built and named as the thing chunk 5 would need.
+
+**The refusal path switches mode anyway.** A base can move between the glossary being loaded
+and the button being clicked, so the path is checked against the corpus first, `doclink`-style
+— and the note goes in `docNote`, which renders in that pane and nowhere else. Setting it and
+staying on the glossary would be a notice nobody sees, which this file has already paid for
+twice (`revNote`, `navNote`).
+
+### Measured
+
+| | |
+|---|---|
+| `/api/docsource`, a 15-line span | **0.56–0.65 ms**, five reads |
+| `/api/source`, the same shape | 0.60–0.61 ms |
+| `/api/glossary` with the `sidecars` block | **1.53–1.57 ms** (cached payload plus a shallow copy) |
+| a documentation citation opening, in the page | **999 ms** |
+| a **code** citation opening, in the page | **999 ms** |
+
+The last two are the point: a documentation citation costs exactly what a code one does. The
+999 ms is the glossary page's own repaint of 1,214 terms on the render that follows the fetch
+— pre-existing, identical for both tiers, and not this chunk's to fix. Taken at a 1,264×523
+viewport and a 16px root font.
+
+### 17 mutations, all CAUGHT
+
+Baseline green first (rule 59), every file backed up to disk and verified restored against the
+backup at the end. Ten against the shell — `senseOpens` reverted to a provenance test, the
+fetch given a literal route, the unroutable refusal removed, the reason re-embedded as a noun
+phrase, the hop offered under every citation, the pending line consumed against any document,
+the scroll moved before `attachDoc()`, the corpus list never fetched, the mode switched only
+on success, the binding renamed — and seven against the server, including the two sidecar
+revisions crossed, which is the mutation that would silently report a documentation citation
+as openable because the *code* sidecar has bodies for that version.
+
+**928 tests** (912 + 16), mypy clean, ruff clean, console clean, self-check green.
+
+### Still owed, and it grew rather than shrank
+
+**A real window.** Every figure here was taken in the automation tab at 1,264×523 and a 16px
+root font. Tom's Chrome is 24px on a 4K screen. Two things were measurable and are: the foot
+lays the sentence and the button on one row down to 34rem of modal width and wraps the button
+beneath at 26rem, and the button sits at the right edge, inside the foot, not overlapping.
+Two things were not seeable at all: the button never appeared in a capture, because the modal
+is 56rem wide and the capture frame is 784px; and the pointer path is unprovable here — clicks
+did not land where `getBoundingClientRect` said the element was, so every interaction in this
+session was driven by `.click()`, which proves the handler and not the path to it (rule 48).

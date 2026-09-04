@@ -2425,8 +2425,17 @@ kbd { font-family: var(--f-mono); font-size: .66rem; background: var(--sunken);
 .codeview .cl.hit { background: var(--accent-soft); box-shadow: inset .1875rem 0 0 var(--accent); }
 .codeview .cn { display: inline-block; width: 3.5rem; padding-right: .75rem; text-align: right;
   color: var(--text-faint); user-select: none; }
+/* The sentence and, for a documentation citation, the way out of it. `align-items:
+   flex-start` rather than `center`, because the sentence wraps to two and three lines in a
+   narrow window and a button centred against three lines of prose sits nowhere in
+   particular. `flex-wrap` so the button drops beneath the sentence rather than squeezing
+   it — the bases are in `rem`, so where that happens moves with the scale control (rule 28
+   and design rule 3). */
 .viewer-foot { padding: .45rem .75rem; border-top: 1px solid var(--border);
-  background: var(--raised); font-size: .7rem; color: var(--text-muted); }
+  background: var(--raised); font-size: .7rem; color: var(--text-muted);
+  display: flex; align-items: flex-start; gap: .75rem; flex-wrap: wrap; }
+.viewer-footsay { flex: 1 1 18rem; }
+.viewer-goto { flex: 0 0 auto; white-space: nowrap; }
 
 .prov { margin-top: .5rem; }
 .sqlblock { margin-top: .35rem; color: var(--text); }

@@ -14,7 +14,7 @@ by *how often you need it*, not by importance:
 | File | What it holds | When to read it |
 |---|---|---|
 | `CLAUDE.md` | commands, verification gates, architecture, and the **index** of every rule | every session — it is loaded for you |
-| `RULES.md` | the 77 engineering rules **in full**, with the false result each came from | before working in the area a rule governs |
+| `RULES.md` | the 78 engineering rules **in full**, with the false result each came from | before working in the area a rule governs |
 | `DESIGN-RULES.md` | the 27 dashboard design rules in full | before building or changing a view |
 | `PERFORMANCE.md` | every measured figure, with its budget and its conditions | before quoting or retaking a number |
 | `BRIEFING.md` | state: what is built, what is next, what is closed | at the start of a session |
@@ -259,6 +259,32 @@ docs   ──► extract ──► docs.db  (SQLite) ─────────
   is rule 70 one corpus over from where it was first paid for. A document is sent **whole
   and as one string**, unlike `/api/source`'s numbered lines, because a renderer needs
   block structure intact and takes its line numbers from `token.map`.
+
+  `serving()` is the one decision *"can this sidecar serve the version on screen"*, and it
+  answers for **both** corpora: its two sentences are arguments with document defaults, so
+  `/api/source`, `/api/docsource` and the glossary's capability block share one reading of
+  the question and differ only in wording (rule 51).
+- **A glossary citation is a *capability* test, not a provenance test.** `senseOpens()` in
+  the shell was `s.provenance === "DECLARED_CODE"` for as long as `source.db` was the only
+  sidecar, so every documentation-derived definition rendered a dead end and design rule 13
+  went unmet for the tier that quotes the program's own words. `/api/glossary` now carries a
+  `sidecars` block — one entry per tier, `{opens, reason}` — computed from the live stores
+  and the base's two revisions, so the question is *does the corpus this tier quotes have a
+  sidecar this base can read*. Deliberately **not per path**: whether the corpus opens is
+  what decides whether a button is drawn at all, and a sidecar that holds bodies but not
+  *this* path is a fourth state stated by `_span` when the reader asks — pre-empting it
+  would be a `held_paths` lookup per citation to grey out a button that already says what
+  happened when it is pressed. The block rides on the route rather than in `bind_glossary`
+  because the two have different lifetimes: the terms belong to the base, the sidecars to
+  the process and to which version is on screen.
+
+  **The two tiers are two routes**, `VIEWER_ROUTE` in the shell, for `_r_docsource`'s
+  reason: a `corpus=` parameter with a default is right until somebody omits it. And the
+  viewer offers a documentation citation a second reading — *Read it in the document →* —
+  because the pane above it is the bytes **as measured**, Markdown syntax and all, which is
+  what proves the citation and is not how that sentence was meant to be read. The hop holds
+  its line until the paint that has a block to scroll to; `openDocumentAt` returns two
+  awaits before there is one.
 - `call_args` — what a caller passed, **as written**, hanging off `calls.site_id` rather
   than off a rowid: an argument has to stay attached to its call site across two versions
   of the same program. Sliced out of the file's own text on **byte** offsets (rule 75),
@@ -507,6 +533,7 @@ it was written from.
      not share it.
  78. A pane brought up to date by the control that moved it is only as correct as the
      last person to add a control.
+ 79. A lifetime change is an access-pattern change.
 ```
 
 ## Anomalies: the discipline

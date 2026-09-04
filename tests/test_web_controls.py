@@ -10594,3 +10594,214 @@ def test_coming_back_from_a_document_says_where_you_were() -> None:
         "the reveal runs before the paint, so it scrolls a pane that does not hold the rows "
         "yet (rule 49's companion)"
     )
+
+
+# --------------------------------------------------------------------------- #
+# Document mode, chunk 5: a citation into the document corpus opens
+#
+# `senseOpens` was `s.provenance === "DECLARED_CODE"` for as long as `source.db`
+# was the only sidecar. `docsource.db` holds the other corpus now, so the question
+# is no longer *which tier is this* but *does the corpus this tier quotes have a
+# sidecar the base can read* -- and that is a fact only the server knows.
+# --------------------------------------------------------------------------- #
+
+def test_a_citation_asks_whether_its_corpus_can_be_read_not_which_tier_it_is() -> None:
+    """The capability test, and the **absence** of the provenance test it replaced.
+
+    A presence check alone would pass on `senseOpens` unchanged with a `SIDECARS` lookup
+    added beside the old comparison and never consulted — which is rule 37's shape, and the
+    shape three of this feature's own guards failed in. So this asserts what the function
+    must no longer contain as well as what it must.
+    """
+    js = _code(_read("shell.js"))
+    fn = _fn(js, "senseOpens")
+    assert "senseCorpus(" in fn, (
+        "`senseOpens` no longer asks the corpus, so which sidecars this map has cannot "
+        "decide whether a citation offers to open"
+    )
+    assert "DECLARED_CODE" not in fn, (
+        "the provenance test is still in `senseOpens`: a documentation citation renders a "
+        "dead end however many sidecars are beside the map (design rule 13)"
+    )
+    corpus = _fn(js, "senseCorpus")
+    assert "SIDECARS[" in corpus, (
+        "the corpus is not looked up in `SIDECARS`, so the page decides for itself what the "
+        "server is the only thing that knows"
+    )
+
+
+def test_the_two_corpora_have_two_routes_and_neither_is_a_default() -> None:
+    """Two stores, two routes, nothing guessed — `_r_docsource` says the same from its end.
+
+    A `corpus=` parameter with a default is the version of this that is right until somebody
+    omits it, at which point a citation into `docs/glossary.md` is answered out of the code
+    sidecar, which holds no such path and reports the document as missing (rule 16's spirit).
+    """
+    js = _code(_read("shell.js"))
+    table = js.split("const VIEWER_ROUTE = {", 1)[1].split("}", 1)[0]
+    assert "/api/source" in table and "/api/docsource" in table, (
+        "one of the two corpora has no route, so its citations cannot be served"
+    )
+    fn = _fn(js, "loadViewerSource")
+    assert "VIEWER_ROUTE[s.provenance]" in fn, (
+        "the route is not chosen from the table, so a second reading of which store serves "
+        "which tier lives in the fetch (rule 51)"
+    )
+    assert "/api/source?" not in fn, (
+        "the fetch still names one route literally, so every citation is answered out of "
+        "the code sidecar whatever the table says"
+    )
+
+
+def test_a_citation_that_opens_with_no_route_says_so_rather_than_spinning() -> None:
+    """Openable and unroutable cannot both be true, so reaching it is a wiring failure.
+
+    Left to fall through, `VIEWER_SRC` stays `{lines: null, error: null}` for ever and the
+    viewer reads "Reading …" with nothing on the way — a fallback that yields a plausible
+    value and hides the failure it was written for (rule 49).
+    """
+    js = _code(_read("shell.js"))
+    fn = _fn(js, "loadViewerSource")
+    guard = fn.split("const route =", 1)[1].split("const key =", 1)[0]
+    assert "if (!route)" in guard, "no refusal: an unroutable citation spins for ever"
+    assert "console.error(" in guard and "return;" in guard, (
+        "the refusal does not stop the fetch or does not report itself"
+    )
+
+
+def test_the_refusal_names_which_sidecar_and_does_not_paraphrase_it() -> None:
+    """The server's own sentence, joined as a clause.
+
+    Its four reasons are not one part of speech — "no document sidecar beside this map" is a
+    noun phrase and "this sidecar holds nothing for the version on screen" is a clause. An
+    earlier draft read them into `because there is …` and produced *"because there is this
+    sidecar holds nothing for the version on screen"*, which was found by opening it rather
+    than by any check here. A dash takes both, and the wording stays the server's (rule 51).
+    """
+    # `_code` before either check, and the second is the reason: the comment beside the fix
+    # *quotes* the sentences it must not carry, and the first draft of this guard tripped on
+    # its own prose — which is the failure `_code` exists for, arriving a sixth time.
+    js = _code(_read("shell.js"))
+    panel = _fn(js, "viewerPanel")
+    absent = panel.split("if (!openable)", 1)[1].split("} else if", 1)[0]
+    assert "corpus.reason" in absent, (
+        "the pane states an absence with no reason, which reads as an empty program "
+        "(design rule 21)"
+    )
+    assert "because there is" not in absent, (
+        "the reason is embedded as a noun phrase, and two of the four are clauses"
+    )
+    # The wording is the server's. A copy here is a second spelling of "there is no sidecar",
+    # and the two drift the first time either is reworded.
+    for sentence in ("no source sidecar beside this map",
+                     "no document sidecar beside this map",
+                     "holds nothing for the version on screen"):
+        assert sentence not in js, (
+            f"the shell carries its own copy of “{sentence}”, so the page and the route can "
+            "tell a reader two different things about one program (rule 51)"
+        )
+
+
+def test_a_documentation_citation_offers_the_document_and_a_code_one_does_not() -> None:
+    """The bytes and the prose are two readings, and only one corpus has the second.
+
+    Above the foot is the document as measured — Markdown syntax and all — which is what
+    proves the citation. The button is the same lines as their author meant them. There is no
+    such second reading of a `.py` span, and offering one would be a control that renders and
+    resolves to nothing (design rule 16).
+    """
+    js = _code(_read("shell.js"))
+    panel = _fn(js, "viewerPanel")
+    foot = panel.split('class="viewer-foot"', 1)[1]
+    assert "data-docopenat" in foot, "the hop is not offered at all"
+    # The **condition**, not the attribute: dropping `s.provenance === "DECLARED_DOCS"` puts
+    # the button under every code citation too, and a presence check passes on that.
+    assert 'openable && s.provenance === "DECLARED_DOCS"' in foot, (
+        "the hop is offered for citations it cannot honour — a code span has no document to "
+        "open, and a citation that cannot open has nothing to hop to"
+    )
+
+
+def test_the_hop_scrolls_after_the_paint_and_only_in_the_document_it_asked_for() -> None:
+    """A line asked for two awaits before there is a block to scroll to.
+
+    `openDocumentAt` returns before the render it triggers has painted anything, so the line
+    is held and consumed by the paint that has it. Consuming it against whatever document
+    happens to be mounted is how a reader who moved on lands somewhere arbitrary — rule 42:
+    the guard has to check that the comparison is there, not that the name is.
+    """
+    js = _code(_read("shell.js"))
+    fn = _fn(js, "consumePendingDocLine")
+    assert "state.docPath !== pendingDocPath" in fn, (
+        "the pending line is consumed against whatever document is mounted, so a hop can "
+        "scroll a document nobody asked for"
+    )
+    assert "DOCFILE.loading" in fn, (
+        "it scrolls a document still in flight, whose blocks are not in the DOM yet "
+        "(rule 49's companion)"
+    )
+    assert "scrollToDocLine(line)" in fn and "pendingDocLine = 0" in fn, (
+        "the line is never used, or never cleared and every later paint re-scrolls"
+    )
+    # **After the paint, and after the scroll restore.** Doing it before `vp.scrollTop = keep`
+    # would be undone by it, which looks exactly like a hop that did not scroll.
+    render = js.split('else if (state.view === "doc")', 1)[1].split("else if (state.view", 1)[0]
+    assert render.index("attachDoc();") < render.index("consumePendingDocLine();"), (
+        "the pending line is consumed before the document is attached, so there is nothing "
+        "to scroll to"
+    )
+    assert render.index("vp.scrollTop = keep") < render.index("consumePendingDocLine();"), (
+        "the restore runs after the scroll and undoes it"
+    )
+
+
+def test_the_hop_refuses_a_path_this_version_never_scanned() -> None:
+    """Checked against the corpus first, exactly as `doclink` checks one.
+
+    The base can move between the glossary being loaded and this being clicked, and a
+    document the new base never scanned would open a pane that is blank with no explanation.
+    The refusal goes in `docNote` and the mode is switched anyway, because `docNote` renders
+    in that pane and nowhere else — a notice left behind on the glossary is a notice nobody
+    sees, which this file has already paid for twice (`revNote`, `navNote`).
+    """
+    js = _code(_read("shell.js"))
+    fn = _fn(js, "openDocumentAt")
+    assert "DOCS.documents.some(" in fn, (
+        "the path is not checked against the corpus, so a stale citation opens a blank pane"
+    )
+    assert "if (!DOCS) await loadDocs()" in fn, (
+        "the check runs against a list that has not been fetched, so every hop from the "
+        "glossary is refused on the first click of a session (rule 37: the guard is there "
+        "and catches nothing true)"
+    )
+    assert "state.docNote =" in fn, "the refusal says nothing"
+    switched, refused = 'state.view = "doc"', "if (!known)"
+    assert switched in fn and fn.index(switched) < fn.index(refused), (
+        "the mode is switched only on success, so a refused hop writes its note into a pane "
+        "the reader is not looking at (rule 44)"
+    )
+    assert "state.viewer = null" in fn, "the viewer is left open over the document it opened"
+
+
+def test_the_viewers_hop_is_bound_where_the_viewers_other_controls_are() -> None:
+    """In `wire()`, not in `DOC_ROUTES`, and the two are not interchangeable.
+
+    That table is delegated from `#docMount`; this button is in a modal rebuilt whole on
+    every render and living outside the document pane entirely. Routed from `DOC_ROUTES` it
+    would never fire, and `wire()`'s per-render rebinding — which is rule 78's problem for a
+    subtree that persists — is exactly right for one that does not.
+    """
+    js = _code(_read("shell.js"))
+    wired = js.split("const WIRED_ATTRS = new Set([", 1)[1].split("])", 1)[0]
+    for attr in ("docopenat", "docopenline"):
+        assert f'"{attr}"' in wired, (
+            f"`data-{attr}` is not in the roster, so the self-check reports it as a dead "
+            "control on every page load (rule 43)"
+        )
+    wire = _fn(js, "wire")
+    assert '$$("[data-docopenat]")' in wire, "the hop is written and listened for by nothing"
+    assert "openDocumentAt(" in wire, "the listener is bound to something else"
+    routes = js.split("const DOC_ROUTES = {", 1)[1].split("\n};", 1)[0]
+    assert "docopenat" not in routes, (
+        "the hop is also routed from the delegated table, so one click runs two handlers"
+    )

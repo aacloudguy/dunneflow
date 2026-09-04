@@ -5,7 +5,7 @@ It exists so a fresh context can be useful in a few minutes instead of an hour.
 
 | Read | For |
 |---|---|
-| `CLAUDE.md` | The rules. 77 engineering rules and 27 dashboard design rules, each earned from a false result on real code. **Binding.** |
+| `CLAUDE.md` | The rules. 78 engineering rules and 27 dashboard design rules, each earned from a false result on real code. **Binding.** |
 | `HANDOFF.md` | The chronological record — what was built when, what it cost, what broke. ~1,700 lines. Read *sections*, not the whole thing. |
 | **this file** | Where things are, what is done, what we are doing now, what not to re-open. |
 | Artifact `f993d319-d2b7-4217-9130-cdbba698d1bc` | The ratified dashboard design — a complete working UI, the source of truth for every view. Read it with the **Artifact tool**, not from a screenshot. |
@@ -147,10 +147,19 @@ were layered 2026-08-30; the **anomaly worklist joined them 2026-09-01**, once a
 carried an identity to be paired on.
 
 **Not built:** `dunneflow infer` (the model pass) · attestation · the project profile ·
-packaging as a binary · any language but Python. **Document mode is being built now** —
-chunks 1, 2, 3 and **both lanes** of chunk 4 are in, so the pane reads both the map's eight
-documents and the program's own 2,064. What is left is chunk 5: the glossary's 235
-documentation-derived definitions still render a dead end instead of opening.
+packaging as a binary · any language but Python. **Document mode is complete** — chunks 1, 2,
+3, both lanes of 4, and **chunk 5 as of 2026-09-04**. The pane reads the map's eight documents
+and the program's own 2,064, and a glossary citation into the corpus **opens**: `senseOpens()`
+is a capability test rather than a provenance test, the viewer serves the span out of
+`docsource.db`, and its foot hops into the document itself at the block holding the line.
+Design rule 13 is met for both tiers.
+
+*The number that was carried for two sessions was wrong.* The plan and this file both said
+*"235 documentation-derived definitions render a dead end"*. **235 is `definitions_seen`** —
+every definition the scan mined — and only **32 of them bind to a term the code uses as an
+identifier** and become citations; the other 203 define words this program never names and
+belong to the *mirror*. So chunk 5 fixed **32 citations across 22 terms in 10 documents**:
+60 citation buttons on the glossary page before, **92 after** (60 code, 32 docs).
 
 **The revision spine is in, and both ends of a pair are readable.** `WORKING` is a *state*
 rather than an id, and a revision is identified by when it was captured; `seal()` keeps the
@@ -170,19 +179,18 @@ program has a most-commented routine and a maximum alone is a claim nobody can w
 
 ## What we are doing now
 
-**Paused 2026-09-03, between chunks: Document mode is built, chunks 5 and 6 remain.**
-912 tests, mypy clean, ruff clean, working tree clean, self-check green. Nothing is
-half-written — chunks 1, 2, 3 and both lanes of 4 are whole, guarded and committed across
-four commits; chunk 5 has an approved plan and no code. The approved plan is at
-`~/.claude/plans/polymorphic-finding-swan.md` — read it before resuming.
+**Document mode is finished. Chunk 5 landed 2026-09-04; only chunk 6's records remain,
+and most of them are written.** 928 tests, mypy clean, ruff clean, self-check green, console
+clean. 17 mutations against chunk 5, all CAUGHT, baseline green first (rule 59). The approved
+plan is at `~/.claude/plans/polymorphic-finding-swan.md`; chunk 5 there is superseded by two
+decisions Tom took on 2026-09-04 — the viewer keeps its raw span **and** gains a hop into the
+prose reader, and rule 79 was minted.
 
-**Three things are waiting on Tom, and none of them blocks chunk 5:**
+**Three things are waiting on Tom, one of them now closed, and none blocks anything:**
 
-1. **A candidate engineering rule, not minted** — *a lifetime change is an access-pattern
-   change.* Nothing about `DocStore` changed when chunk 2 held it on `_Base`; what changed is
-   *who reads it*, and sqlite refused the connection from a request thread by name, on the
-   routes that touch it and nowhere else. Every unit test passed. The number is a permanent
-   address, so it wants his call rather than mine. Written up in `HANDOFF.md` under chunk 2.
+1. ~~**A candidate engineering rule, not minted.**~~ *Minted 2026-09-04 as **rule 79** —
+   a lifetime change is an access-pattern change — on Tom's call. In `RULES.md` in full,
+   indexed in `CLAUDE.md`.*
 2. **A real window is owed a look.** Every figure in three sessions was taken at a 537–1,285px
    centre pane and a **16px root font**, in a browser context that reports 1,267×539, refuses
    `resize_window`, and crops its screenshots. His Chrome is **24px on a 4K screen**, where
@@ -196,11 +204,11 @@ four commits; chunk 5 has an approved plan and no code. The approved plan is at
    contract, busts every cached graph, and rewrites 29,980 rows for four of them. Named here
    rather than filed, because it may never be worth doing.
 
-**Next: chunk 5** — `senseOpens()` becomes a *capability* test rather than a provenance test,
-so the **235 documentation-derived definitions** open at their line instead of rendering a
-dead end. Everything it needs is in place: `/api/docsource` serves the spans, `prose.js`
-renders the document, and `data-line-end` is what makes a definition's mid-paragraph line
-resolve to the block that holds it. Then chunk 6's records.
+**Next: whatever Tom picks.** Document mode is done and the open list below owns the rest.
+The two nearest things are both his eye rather than my keyboard: the three surfaces never seen
+in a real window (rule 38's debt, and chunk 5 added a fourth — the viewer's foot is 56rem wide
+and never appeared in a capture), and the `<module>` inspector routing that he found on the
+way past the Code-pane defect.
 
 **Both lanes work.** Lane 2 is the map's own eight documents, every row an ordinary
 selection. Lane 1 is the program's own 2,064 — a list grouped by class, a filter, a reader
@@ -212,7 +220,41 @@ the code view — the greenbar, the margin fold, three broken buttons, and the r
 *The paragraphs below are that day's earlier work, kept because the reasoning is recent and
 load-bearing; the current task is the one named above.*
 
-### The latest: Document mode, chunk 4 lane 1 — the program's documents, read (2026-09-03)
+### The latest: Document mode, chunk 5 — a citation into the corpus opens (2026-09-04)
+
+Design rule 13's last unmet half. **`senseOpens()` is a capability test rather than a
+provenance test** — `s.provenance === "DECLARED_CODE"` was true of the tool until chunk 1 gave
+the document corpus a sidecar, and stopped being true the moment it landed. `/api/glossary`
+now carries a `sidecars` block, `{opens, reason}` per tier, computed from the live stores and
+the base's two revisions, because whether a corpus can be read is a fact about the *directory
+and the base* that the page has no other way to learn.
+
+**Both halves of the reading are offered.** The viewer shows the span out of `docsource.db` —
+the bytes **as measured**, Markdown syntax and all, which is what proves the citation — and
+its foot offers *Read it in the document →*, which closes the viewer, opens lane 1 and scrolls
+to the block holding the line. Verified live: `mensores` → `.groma/PROJECT.md:474` → the
+paragraph spanning 474–475 flashed, **55,810px into 459 blocks**. That is chunk 4's
+`data-line-end` innermost-containing lookup doing the thing it was named for.
+
+**The refusal is per corpus and was verified on a real asymmetric base.** `output/mensores`
+holds source bodies for both revisions and document bodies only for the newer, so serving the
+2026-08-26 base gives code citations that open and documentation citations that do not, with
+the version reason stated — and `/api/docsource` refuses rather than serving newer prose under
+older headings (rule 70). On that base the 32 documentation rows render as plain text with no
+button at all: no control that resolves to nothing.
+
+**Reading the sentence out loud is what caught the defect.** The server's four reasons are not
+one part of speech, and embedding a clause in `because there is …` produced *"because there is
+this sidecar holds nothing for the version on screen"*. Every test passed. A dash takes both,
+the wording stays the server's, and the guard that the shell carries none of the three
+sentences tripped on the comment explaining the fix — the sixth time a guard in that file has
+failed on its own prose.
+
+**17 mutations, all CAUGHT.** 928 tests. Every measured figure is in `PERFORMANCE.md`; the one
+worth carrying is that a documentation citation costs **999 ms** and a code citation costs
+**999 ms**, which is the glossary's own repaint and not either route.
+
+### Before that: Document mode, chunk 4 lane 1 — the program's documents, read (2026-09-03)
 
 The last piece. 2,064 documents mined for 29,980 headings and readable nowhere now have a
 list, a filter, a reader and a side nav.
@@ -926,8 +968,11 @@ and unified on `--diff-moved`; see the top of this file.*
 
 ### What is next, and it is open
 
-Nothing in chunk 5 is outstanding, the argument gap is closed, and the two small things
-filed as known are done.
+Nothing in the anomaly worklist's chunk 5 is outstanding, the argument gap is closed, and
+the two small things filed as known are done. *(That is the worklist's chunk 5, written here
+2026-09-01 and unrelated to Document mode's chunk 5, which landed 2026-09-04 and is at the top
+of this file. Two features numbered their chunks from one; the sentence was unambiguous until
+the second one existed.)*
 
 1. ~~**`CURIOSITIES` has never been put on screen.**~~ *Built 2026-09-01.*
 2. ~~**A rewritten docstring is not compared either.**~~ *Built 2026-09-01, and it was two
@@ -959,9 +1004,13 @@ feature was blocked on an answer nobody owed.
   middle-elide; `.srcpath-v` was a dead field; `.callhead code` wraps. `.navsub` keeps its
   constant and the boundary is stated. `.argrow` keeps its* wrapped, not elided *decision;
   `.leg .nm` is left alone.*
-- **Three surfaces have never been *looked* at in a real window** — the constants surface,
-  the blank-graph fix (rule 49), and now chunk B. Not three items: one debt, rule 38's, and
-  it grew this session rather than shrinking. The automation tab reports `outerWidth: 0`,
+- **Four surfaces have never been *looked* at in a real window** — the constants surface,
+  the blank-graph fix (rule 49), chunk B, and now **chunk 5's citation viewer**, whose foot is
+  56rem wide against a 784px capture frame and so never appeared in a screenshot at all. Not
+  four items: one debt, rule 38's, and it has grown in each of the last three sessions rather
+  than shrinking. Chunk 5 also could not prove its *pointer* path — clicks did not land where
+  `getBoundingClientRect` said the element was, so every interaction was driven by `.click()`,
+  which proves the handler and not the path to it (rule 48). The automation tab reports `outerWidth: 0`,
   refuses `resize_window`, and its **screenshots did not track the live DOM** — the region
   under a freshly measured element kept rendering the pane beside it, so even a zoom on
   correct coordinates showed the wrong thing. Measurement through the DOM still works and is

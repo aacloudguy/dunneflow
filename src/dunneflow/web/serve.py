@@ -37,7 +37,7 @@ from ..sourcedb import DocSourceStore, SourceStore
 from ..store import StaleGraphError, Store
 from . import anomalychanges, changes, diagram, filediff, packages, queries
 from .code import build_file, build_files
-from .corpus import build_corpus, build_document
+from .corpus import build_corpus, build_document, serving
 from .cover import anomalies as build_anomalies
 from .cover import build as build_cover
 from .curiosities import for_program
@@ -62,6 +62,17 @@ from .vocabulary import bind_glossary, measure_naming
 STATIC = Path(__file__).parent / "static"
 VENDOR = Path(__file__).parent / "vendor"
 
+# Why a sidecar cannot answer, one sentence per corpus and one for the case that is
+# neither. Constants because three readers say them -- `/api/source`, `/api/docsource`, and
+# the glossary payload that decides whether a citation offers to open at all -- and rule 51
+# puts the wording where all of them pass. Two spellings of "there is no sidecar here" is a
+# reader being told two different things about one program.
+NO_SOURCE_SIDECAR = "no source sidecar beside this map"
+NO_DOC_SIDECAR = "no document sidecar beside this map (--no-doc-source)"
+# Not corpus-specific, and deliberately so: `_sidecar_revision` returns `None` for exactly
+# one reason in both stores, and the sentence names the version rather than the store.
+SIDECAR_NO_VERSION = "this sidecar holds nothing for the version on screen"
+
 _TYPES = {
     ".html": "text/html; charset=utf-8",
     ".js": "text/javascript; charset=utf-8",
@@ -70,6 +81,24 @@ _TYPES = {
     ".svg": "image/svg+xml",
     ".woff2": "font/woff2",
 }
+
+
+def _sidecar_state(sidecar: SourceStore | None, revision: str | None, *,
+                   absent: str) -> dict[str, Any]:
+    """Whether one sidecar can serve the version on screen, and why not when it cannot.
+
+    `opens` is a **capability**, and it is deliberately not per path: whether this corpus
+    can be read at all, which is what decides whether a citation renders a button. The
+    fourth state -- a sidecar that holds bodies but not *this* path -- is per path, cannot
+    be known without asking, and is stated by `_span` when the reader asks. Pre-empting it
+    here would mean 235 `held_paths` lookups to grey out a button that already says what
+    happened when it is pressed.
+
+    The decision is `corpus.serving`'s, called rather than repeated. Only the two sentences
+    are this corpus's own (rule 51).
+    """
+    store, why = serving(sidecar, revision, absent=absent, stale=SIDECAR_NO_VERSION)
+    return {"opens": store is not None, "reason": why}
 
 
 def columnar(model: GraphModel) -> dict[str, Any]:
@@ -1234,9 +1263,30 @@ class _Handler(BaseHTTPRequestHandler):
             self._json(self._live.current.naming)
 
     def _r_glossary(self, q: dict[str, list[str]]) -> None:
-        """The Vocabulary lane: the program's words and who says what they mean."""
+        """The Vocabulary lane: the program's words and who says what they mean.
+
+        **The `sidecars` block is what makes a citation's button a capability test rather
+        than a provenance test.** Design rule 13 says every reported meaning must carry its
+        provenance and the provenance must open; which of them *can* open is a fact about
+        this program's directory and this base's revision, and the page has no other way to
+        learn it -- `/api/docs` carries the document half but is a 546 KB list a reader who
+        never leaves the glossary should not be made to fetch to find out whether a button
+        is live.
+
+        Sent from here rather than folded into `bind_glossary`, because the two are
+        answers with different lifetimes: the terms belong to the base and are built once,
+        the sidecars belong to the *process* and to which version the base is on. A shallow
+        copy, so the cached payload is never mutated by the route that serves it.
+        """
         with self._live.lock:
-            self._json(self._live.current.glossary)
+            base = self._live.current
+            self._json({**base.glossary, "sidecars": {
+                "DECLARED_CODE": _sidecar_state(self._live.source, base.source_revision,
+                                                absent=NO_SOURCE_SIDECAR),
+                "DECLARED_DOCS": _sidecar_state(self._live.docsource,
+                                                base.docsource_revision,
+                                                absent=NO_DOC_SIDECAR),
+            }})
 
     def _r_table(self, q: dict[str, list[str]]) -> None:
         """The routines that touch one table.
@@ -1311,8 +1361,7 @@ class _Handler(BaseHTTPRequestHandler):
         surrounding file only if asked. Sending a whole file with every selection would
         put a megabyte behind every click for a view most clicks never open.
         """
-        self._span(q, self._live.source, "source_revision",
-                   absent="no source sidecar beside this map")
+        self._span(q, self._live.source, "source_revision", absent=NO_SOURCE_SIDECAR)
 
     def _r_docsource(self, q: dict[str, list[str]]) -> None:
         """The same span of one document, out of the **document** sidecar.
@@ -1326,8 +1375,7 @@ class _Handler(BaseHTTPRequestHandler):
 
         This is what chunk 5 opens a `DECLARED_DOCS` citation against.
         """
-        self._span(q, self._live.docsource, "docsource_revision",
-                   absent="no document sidecar beside this map (--no-doc-source)")
+        self._span(q, self._live.docsource, "docsource_revision", absent=NO_DOC_SIDECAR)
 
     def _span(self, q: dict[str, list[str]], sidecar: SourceStore | None,
               revision_field: str, *, absent: str) -> None:
@@ -1368,8 +1416,7 @@ class _Handler(BaseHTTPRequestHandler):
             rev = getattr(self._live.current, revision_field)
             if rev is None:
                 self._json({"available": False, "file": path,
-                            "reason": "this sidecar holds nothing for the version on "
-                                      "screen"})
+                            "reason": SIDECAR_NO_VERSION})
                 return
             if last <= 0:
                 whole = sidecar.text(path, revision=rev)

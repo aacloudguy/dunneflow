@@ -1333,3 +1333,29 @@ rule of that number — a blank canvas must say why it is blank — which does e
     walk, so a reader opening a second file to compare against the first could not keep it on
     screen for one paint. Marking the subject serviced lets them go anywhere inside one
     selection, and still follows them the moment they pick something new.
+
+79. **A lifetime change is an access-pattern change.** Chunk 2 of Document mode moved
+    `DocStore` from a handle opened and closed inside `_docs_for()` onto `_Base`, so a
+    document list could be served from a store that was still open. Nothing about the store
+    changed — not its schema, not its file, not one line of `docstore.py` — and every unit
+    test passed, because a unit test opens a store and reads it on the thread that opened it.
+
+    The server does not. A held store is opened on the thread that builds the base and read
+    from a **request** thread, and sqlite refuses that connection **by name**:
+    *"SQLite objects created in a thread can only be used in that same thread."* It failed on
+    the routes that touch documents and nowhere else, which is the worst shape a failure can
+    have — the map, the stack, the code browser and the glossary all kept working, so the
+    thing that looked broken was Document mode rather than the decision that broke it.
+
+    The rule the number is for: **who reads a thing is part of what it is.** Widening a
+    lifetime — a handle held across requests, a cache promoted from local to module scope, a
+    connection moved onto a long-lived object — changes nothing about the object and
+    everything about the contract it is under, and the tests that cover the object are
+    exactly the ones that cannot see it. `shared=True` is the fix here; noticing that a
+    lifetime change needs a fix at all is the rule.
+
+    Every other store this server holds was already opened `shared`, which is the tell: the
+    correct posture was one line away and written down three times over, and the change that
+    needed it did not look like a change to a store at all. So the guard is not a unit test —
+    it starts a thread, reads the held store from it, and fails with sqlite's own sentence
+    (`test_a_held_document_store_can_be_read_from_a_request_thread`).

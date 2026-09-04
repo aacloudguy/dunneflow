@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import ast
 import inspect
+import re
 from collections import Counter
 from pathlib import Path
 
@@ -475,4 +476,142 @@ def test_a_base_carries_what_document_mode_needs(field: str) -> None:
     """
     assert field in serve_mod._Base.__dataclass_fields__, (
         f"`{field}` is not part of the base, so a switch does not replace it"
+    )
+
+
+# --------------------------------------------------------------------------- #
+# Chunk 5: which corpora a citation can open
+#
+# `senseOpens` in the shell was a *provenance* test for as long as `source.db` was
+# the only sidecar. It is a *capability* test now, and the capability is a fact
+# about this directory and this base -- which only the server knows.
+# --------------------------------------------------------------------------- #
+
+def test_the_glossary_says_which_corpora_can_be_opened() -> None:
+    """One entry per tier a citation can be read from, each with `opens` and a reason.
+
+    Sent with the terms because it is the answer the page's test *is*. Not folded into
+    `bind_glossary`, because the two have different lifetimes: the terms belong to the base
+    and are built once, the sidecars belong to the process and to which version the base is
+    on -- so a base switched to a version whose bodies were never captured must change this
+    without rebuilding a glossary that has not changed.
+    """
+    body = inspect.getsource(serve_mod._Handler._r_glossary)
+    assert '"sidecars"' in body, (
+        "the glossary payload states nothing about which sidecars this map has, so the page "
+        "has to decide for itself and every documentation citation is a guess"
+    )
+    for tier in ("DECLARED_CODE", "DECLARED_DOCS"):
+        assert f'"{tier}"' in body, f"{tier} citations have no capability to test"
+    # A shallow copy, never a mutation: the base's glossary is built once and served on
+    # every request, and writing into it would make one request's answer the next one's.
+    assert "**base.glossary" in body, (
+        "the cached payload is mutated by the route that serves it"
+    )
+
+
+@pytest.mark.parametrize("bodies,revision,opens", [
+    (True, REV, True),      # a sidecar that can serve this version
+    (True, None, False),    # a sidecar with nothing for the version on screen (rule 70)
+    (False, REV, False),    # no sidecar at all
+])
+def test_a_sidecars_capability_is_the_stores_own_decision(
+        tmp_path: Path, bodies: bool, revision: str | None, opens: bool) -> None:
+    """Three states, and `_sidecar_state` reaches all of them through `corpus.serving`.
+
+    Deliberately *not* per path. Whether this corpus can be read at all is what decides
+    whether a citation renders a button; a sidecar that holds bodies but not *this* path is
+    a fourth state, cannot be known without asking, and is stated by `_span` when the reader
+    asks. Pre-empting it would mean a `held_paths` lookup per citation to grey out a button
+    that already says what happened when it is pressed.
+    """
+    out, _ = _corpus(tmp_path, bodies=bodies)
+    _, docsource = _open(out, bodies=bodies)
+    try:
+        state = serve_mod._sidecar_state(docsource, revision,
+                                         absent=serve_mod.NO_DOC_SIDECAR)
+        assert state["opens"] is opens
+        # Never both, and never neither: a refusal with no reason reads as an empty program
+        # (design rule 21), and a reason beside `opens: true` is a sentence nothing shows.
+        assert (state["reason"] is None) is opens, (
+            f"opens={state['opens']} with reason={state['reason']!r}"
+        )
+    finally:
+        if docsource is not None:
+            docsource.close()
+
+
+def test_one_decision_answers_for_both_sidecars() -> None:
+    """Rule 51 again, and this is the second reader `corpus.serving` was written for.
+
+    "Can this store serve the version on screen" is one question asked of two stores, and
+    only the wording of the refusal is each corpus's own. A second implementation beside
+    `serving` would be correct on the day it was written and would then be the thing that
+    drifts -- which is how `revision=None` came to mean both "the newest" and "cannot serve
+    this version" in the first place.
+    """
+    body = ast.parse(inspect.getsource(serve_mod._sidecar_state).strip())
+    calls = [n for n in ast.walk(body) if isinstance(n, ast.Call)
+             and isinstance(n.func, ast.Name) and n.func.id == "serving"]
+    assert len(calls) == 1, (
+        "the capability is decided somewhere other than `corpus.serving`, so the page and "
+        "the span route can disagree about whether a version has bodies"
+    )
+
+
+def test_each_absence_is_defined_once_and_never_written_out_again() -> None:
+    """The sentences are constants because three readers say them.
+
+    `/api/source`, `/api/docsource` and the glossary's capability block. Written out at each
+    of those, "there is no sidecar here" would have three spellings, and a reader would be
+    told two different things about one program depending on which door they came through.
+    The shell must carry none of them either, which is
+    `test_the_refusal_names_which_sidecar_and_does_not_paraphrase_it`'s half.
+    """
+    src = Path(serve_mod.__file__).read_text(encoding="utf-8")
+    for name in ("NO_SOURCE_SIDECAR", "NO_DOC_SIDECAR", "SIDECAR_NO_VERSION"):
+        sentence = getattr(serve_mod, name)
+        assert src.count(f'"{sentence}"') == 1, (
+            f"{name}'s sentence is written out as a literal as well as defined, so the two "
+            "can be reworded apart (rule 51)"
+        )
+
+
+def test_the_two_sidecars_are_asked_about_their_own_revisions() -> None:
+    """`source_revision` for the code corpus and `docsource_revision` for the documents.
+
+    They agree on every program analysed in one pass, which is exactly the kind of
+    coincidence rule 51 is about: `--no-doc-source` on one run and not the next parts them,
+    and crossing them here would report a documentation citation as openable because the
+    *code* sidecar has bodies for this version.
+    """
+    body = inspect.getsource(serve_mod._Handler._r_glossary)
+    code = body.split('"DECLARED_CODE"', 1)[1].split('"DECLARED_DOCS"', 1)[0]
+    docs = body.split('"DECLARED_DOCS"', 1)[1]
+    assert "source_revision" in code and "docsource_revision" not in code, (
+        "the code corpus is asked about the document sidecar's revision"
+    )
+    assert "docsource_revision" in docs, (
+        "the document corpus is asked about the source sidecar's revision, so its citations "
+        "open at a version whose prose was never captured (rule 70)"
+    )
+
+
+def test_the_client_routes_exactly_the_tiers_the_server_reports() -> None:
+    """The two tables are two halves of one contract, and nothing checks them but this.
+
+    `SIDECARS` decides whether a citation offers to open; `VIEWER_ROUTE` decides where its
+    bytes come from. A tier in one and not the other is either a button that opens nothing
+    (design rule 16) or a route nobody can reach — and both look exactly like working code
+    from either end alone.
+    """
+    shell = (Path(serve_mod.__file__).parent / "static" / "shell.js").read_text(
+        encoding="utf-8")
+    routed = set(re.findall(r"(\w+): \"/api/\w+\"",
+                            shell.split("const VIEWER_ROUTE = {", 1)[1].split("}", 1)[0]))
+    reported = set(re.findall(r'"(DECLARED_\w+)": _sidecar_state',
+                              inspect.getsource(serve_mod._Handler._r_glossary)))
+    assert routed == reported, (
+        f"the shell routes {sorted(routed)} and the server reports {sorted(reported)}: a "
+        "tier in one and not the other is a dead control or an unreachable route"
     )

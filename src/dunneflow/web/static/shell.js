@@ -85,6 +85,14 @@ let UNDEFINED = [];    // words it uses and nothing defines -- the mirror's find
 let CONVENTIONS = [];  // measured naming conventions, each with the query that counted it -- served
 let VOCAB = {};        // the scalars beside them: coverage, thresholds, gaps, and which lane is loaded
 
+/* Which sidecars this map has, keyed by the provenance whose citations read them, each
+ * `{opens, reason}`. Served with the glossary because that is the one page that needs it,
+ * and it is a fact about the *directory and the base* rather than about a term: `source.db`
+ * may be beside a map and `docsource.db` not, and a base switched to a version whose bodies
+ * were never captured can serve neither (rule 70). Empty until the glossary is loaded, which
+ * is the honest state and not "no sidecars" -- nothing offers to open before then. */
+let SIDECARS = {};
+
 /* One span of one file, fetched for the citation currently open. Not a cache of the
    program: the viewer shows one place at a time and asking again costs a local request. */
 let VIEWER_SRC = null;
@@ -2848,6 +2856,70 @@ const DOC_ROUTES = {
     render();
   },
 };
+
+/* A line asked for before the document that holds it is on the page.
+ *
+ * `scrollToDocLine` is a DOM operation and the DOM is two awaits away: a citation's hop
+ * arrives from the glossary, where `DOCFILE` is some other document or nothing at all, and
+ * the fetch and the parse both have to land before there is a block to scroll to. So the
+ * line is *held* and consumed by the paint that has it — not by a timer, which would be a
+ * guess at how long 1.32 MB takes, and not by `loadDocFile`, which returns before the
+ * render it triggers has painted anything.
+ *
+ * Cleared where it is consumed and nowhere else, so a hop that never paints leaves it set
+ * and the next paint of that document honours it. It is one number and it is only ever
+ * about the document named beside it. */
+let pendingDocLine = 0, pendingDocPath = "";
+
+/* The paint's half of that. Called after `attachDoc()`, and it checks the document rather
+ * than the flag: a pending line belongs to one path, and consuming it against whatever
+ * document happens to be mounted is how a reader who moved on lands somewhere arbitrary
+ * (rule 42 — check that the guard catches, not that it mentions). */
+function consumePendingDocLine() {
+  if (!pendingDocLine) return;
+  if (state.docLane !== "program" || state.docPath !== pendingDocPath) return;
+  if (!DOCFILE || DOCFILE.path !== pendingDocPath || DOCFILE.loading) return;
+  const line = pendingDocLine;
+  pendingDocLine = 0; pendingDocPath = "";
+  scrollToDocLine(line);
+}
+
+/* Open one of the program's documents **at a line**, from anywhere in the shell.
+ *
+ * The glossary's citation viewer is its only caller today and the reason it is a function
+ * rather than a handler: `docopen` sets a path and nothing else, and a caller that also
+ * wants a line would otherwise reach past it into `state` — which is the shape rule 51
+ * warns about, a rule kept at a call site while callers accumulate.
+ *
+ * The path is checked against the corpus first, exactly as `doclink` checks one, and for a
+ * sharper reason here: the base can move between the glossary being loaded and this being
+ * clicked, and a document the new base never scanned would open a pane that is blank with
+ * no explanation. The refusal goes in `docNote` and the mode is switched anyway, because
+ * `docNote` renders in this pane and nowhere else — a notice left behind on the glossary is
+ * a notice nobody sees, which this file has already paid for twice. */
+async function openDocumentAt(path, line) {
+  state.mode = "doc";
+  state.view = "doc";
+  if (!DOCS) await loadDocs();
+  const known = DOCS && Array.isArray(DOCS.documents) && DOCS.documents.some(d => d.path === path);
+  if (!known) {
+    state.docPath = "";
+    state.docNote = `“${path}” is not a document this map read`
+      + ` — the glossary quotes it, but this version's scan did not read it.`;
+    pendingDocLine = 0; pendingDocPath = "";
+  } else {
+    state.docLane = "program";
+    state.docPath = path;
+    state.docNote = "";
+    lastDocRead = path;
+    pendingDocLine = line; pendingDocPath = path;
+    pushTrail("doc", baseOf(path), "opened a document from a citation");
+  }
+  state.viewer = null;
+  used("doc:citation");
+  persist();
+  render();
+}
 
 /* Scroll to the block a given source line was rendered from, and mark it.
  *
@@ -7426,20 +7498,33 @@ function viewerPanel() {
   const s = senses[state.viewer.idx];
   if (!s) return "";
 
-  /* A docstring lives in a file the map holds; a definition in a Markdown file does not.
-   * `source.db` is the sidecar of everything the *graph* was built from, and the document
-   * corpus is scanned rather than stored -- so this says which of the two it is looking at
-   * instead of opening an empty pane. */
+  /* **Both corpora open now, and what is left to state is which sidecar is missing.**
+   *
+   * This said "a docstring opens here and a document does not" for as long as that was
+   * true. It stopped being a property of the *tier* when `docsource.db` arrived and became
+   * a property of the *map*: a program analysed with `--no-doc-source` has a complete
+   * glossary whose documentation citations cannot open, and one analysed with `--no-source`
+   * is the mirror of it. The server names which, in its own words, so the page has one
+   * sentence rather than a guess at which of them applies (design rule 21). */
   const openable = senseOpens(s);
+  const corpus = senseCorpus(s);
   const src = VIEWER_SRC && VIEWER_SRC.key === viewerKey(s) ? VIEWER_SRC : null;
 
   let body;
   if (!openable) {
+    /* **The reason is a clause, so it is joined as one.** The server's four sentences are
+       not all the same part of speech — "no document sidecar beside this map" is a noun
+       phrase and "this sidecar holds nothing for the version on screen" is a clause — and
+       an earlier draft read them into `because there is …`, which produced *"because there
+       is this sidecar holds nothing for the version on screen"*. A dash takes both, and
+       the wording stays the server's own rather than being paraphrased into a third
+       spelling here (rule 51). Found by opening it. */
     body = `<div class="viewer-absent">
-      <b>This map does not hold the document, only what it says.</b>
+      <b>The file this was read from cannot be opened here.</b>
       The definition above was read from <span class="mono">${esc(s.source)}</span> at line ${s.line},
-      and that line is quoted whole. The source sidecar carries the files the graph was built
-      from — the program's own code — so a docstring opens here and a document does not.
+      and that line is quoted whole — ${corpus && corpus.reason
+        ? esc(corpus.reason)
+        : `nothing in this map holds the bytes a ${esc(s.provenance)} definition was read from`}.
     </div>`;
   } else if (!src) {
     body = `<div class="viewer-absent">Reading ${esc(srcShort(s.source))}…</div>`;
@@ -7483,31 +7568,69 @@ function viewerPanel() {
     <div class="viewer-body">${body}</div>
 
     <div class="viewer-foot">
-      ${openable
+      <span class="viewer-footsay">${openable
         ? `Read from the content-addressed sidecar — the file as measured${stamp ? " on " + esc(stamp) : ""},
            not as the tree stands now. The highlighted line is the citation.`
         : `${senses.length > 1 ? "Other tabs may open." : "Nothing to open here."}
-           Everything this program says about “${esc(state.viewer.term)}” is on the glossary page.`}
+           Everything this program says about “${esc(state.viewer.term)}” is on the glossary page.`}</span>
+      ${openable && s.provenance === "DECLARED_DOCS"
+        /* **The bytes and the prose are two different readings, and both are wanted.**
+           Above is the document as measured — Markdown syntax and all — which is what
+           proves the citation. This is the same lines as their author meant them: the
+           definition rendered, in the document that holds it, with its headings beside it.
+           Offered only where it can be honoured: a document the scan read is in `DOCS`, and
+           `docopenat` refuses rather than opening a blank pane if it is not. */
+        ? `<button class="linkbtn viewer-goto" data-docopenat="${esc(s.source)}"
+             data-docopenline="${s.line}">Read it in the document →</button>`
+        : ""}
     </div>
   </div>`;
 }
 
-/* One key per span, so a repaint does not re-fetch and switching tabs does. */
+/* One key per span, so a repaint does not re-fetch and switching tabs does.
+ *
+ * Still `path#line` with the two corpora in play, and that is checkable rather than hoped
+ * for: a code path is a file the graph was built from and a document path is one the scan
+ * read, and no path is both — `analyze` puts a `.py` in one store and a `.md` in the other.
+ * Were they ever to collide, the collision would be two senses of one term at one line in
+ * two corpora, and the tab strip already keys on the index rather than on this. */
 function viewerKey(s) { return `${s.source}#${s.line}`; }
 
+/* Which route serves this citation's bytes. Two stores, two routes, nothing guessed —
+   `_r_docsource` states the same rule from the other side, and a `corpus=` parameter with a
+   default is the version of this that is right until somebody omits it (rule 16). */
+const VIEWER_ROUTE = { DECLARED_CODE: "/api/source", DECLARED_DOCS: "/api/docsource" };
+
 /* Six lines above and eight below: enough for a docstring's first line to sit inside the
- * definition it belongs to, which is the context the citation is being opened for. */
+ * definition it belongs to, which is the context the citation is being opened for.
+ *
+ * The same window serves a document, and it is the same argument rather than a coincidence
+ * worth parameterising: a `**term**` lead sits under the heading that scopes it, and the
+ * sentence that defines it runs below. What the window cannot do is show a definition
+ * *rendered*, which is why the foot offers the document — this pane is the bytes as
+ * measured, and that is a claim about provenance rather than a way to read prose. */
 async function loadViewerSource() {
   if (!state.viewer) return;
   const term = TERMS.find(t => t.term === state.viewer.term);
   const s = ((term && term.senses) || [])[state.viewer.idx];
   if (!s || !senseOpens(s)) return;
+  const route = VIEWER_ROUTE[s.provenance];
+  /* Openable and unroutable cannot both be true — `SIDECARS` is keyed by the same two
+     provenances this table is — so reaching here is a wiring failure and is said out loud
+     rather than left as a viewer that spins on "Reading…" for ever (rule 49). */
+  if (!route) {
+    console.error("DunneFlow: a citation that opens with no route", s.provenance);
+    VIEWER_SRC = { key: viewerKey(s), lines: null,
+                   error: `no route serves a ${s.provenance} citation` };
+    render();
+    return;
+  }
   const key = viewerKey(s);
   if (VIEWER_SRC && VIEWER_SRC.key === key) return;
   VIEWER_SRC = { key, lines: null, error: null };
   const first = Math.max(1, s.line - 6), last = s.line + 8;
   try {
-    const r = await fetch(`/api/source?path=${encodeURIComponent(s.source)}&first=${first}&last=${last}`);
+    const r = await fetch(`${route}?path=${encodeURIComponent(s.source)}&first=${first}&last=${last}`);
     if (!r.ok) throw new Error(`the server answered ${r.status}`);
     const d = await r.json();
     if (!VIEWER_SRC || VIEWER_SRC.key !== key) return;      // the reader moved on
@@ -7712,6 +7835,11 @@ async function loadGlossary() {
     VOCAB.coverage = d.coverage || [0, 0];
     VOCAB.definitionsSeen = d.definitions_seen || 0;
     VOCAB.documentsSeen = d.documents_seen || 0;
+    /* **Which corpora can be opened at all**, and it arrives with the terms because it is
+     * the answer `senseOpens` is a test of. Empty rather than assumed-true when the server
+     * does not send it: a citation that offers to open a sidecar this map has not got is
+     * rule 44's shape, and a button that opens nothing is design rule 16's. */
+    SIDECARS = d.sidecars || {};
     VOCAB.glossary = "ready";
   } catch (err) {
     VOCAB.glossary = "failed";
@@ -8016,11 +8144,23 @@ function tierBadge(p) {
   return `<span class="badge ${t[0]}" title="${esc(t[2])}">${esc(t[1])}</span>`;
 }
 
-/* Only code can be opened. `source.db` holds the file bodies the graph was built from --
- * 626 of them on the sample program -- and the document corpus is scanned but not stored,
- * so a definition quoted out of a Markdown file names its file and line and stops there.
- * That is a limitation to state, not to hide behind a button that opens nothing. */
-function senseOpens(s) { return s.provenance === "DECLARED_CODE"; }
+/* **A capability test, not a provenance test**, and that is the whole of chunk 5.
+ *
+ * It read `s.provenance === "DECLARED_CODE"` for as long as `source.db` was the only
+ * sidecar: the document corpus was scanned but not stored, so all 235 documentation-derived
+ * definitions named a file and a line and stopped there — a dead end, and design rule 13
+ * left unmet for the tier that quotes the program's own words.
+ *
+ * `docsource.db` holds those bodies now, so the question is no longer *which tier is this*
+ * but *does the corpus this tier quotes have a sidecar the base can read*. Two tiers, two
+ * corpora, one test — and the two model tiers answer `false` by having no entry rather than
+ * by being named here, because a corpus that does not exist cannot be opened and listing
+ * them would be a second place to keep the tiers in step (rule 51).
+ *
+ * `SIDECARS` is empty until the glossary is loaded, and every citation is rendered from that
+ * same payload — so there is no paint in which this can be asked before the answer is in. */
+function senseCorpus(s) { return SIDECARS[s.provenance] || null; }
+function senseOpens(s) { const c = senseCorpus(s); return !!(c && c.opens); }
 
 /* Which tiers this program actually produced. The key lists all four because the four are
    what a tier badge can mean, and a reader who sees only two has no way to know whether the
@@ -9335,6 +9475,12 @@ function render() {
          thirty-two-row `network` puts the reader at the bottom of a page they have never
          seen; the key is what tells the two cases apart. */
       if (docPaintedFor === was) vp.scrollTop = keep;
+      /* **After the paint, and after the scroll restore above.** A citation's hop asked for
+         a line before this document existed; this is the first moment there is a block to
+         scroll to, and doing it before `vp.scrollTop = keep` would be undone by it. Both
+         doors into the mounted document run through here, which is why it is not in
+         `openDocumentAt` — that function returns before anything is painted. */
+      consumePendingDocLine();
     } else {
       /* The two things that move without the document moving. Narrow writes, because the
          whole point of the branch above is that this one touches nothing expensive. */
@@ -10093,6 +10239,12 @@ function wire() {
     render();
     loadViewerSource();
   }));
+  /* Bound here rather than in `DOC_ROUTES`, and the two are not interchangeable: that table
+     is delegated from `#docMount`, and this button is in the viewer — a modal that is
+     rebuilt whole on every render and lives outside the document pane entirely. */
+  $$("[data-docopenat]").forEach(b => b.addEventListener("click", () => {
+    openDocumentAt(b.dataset.docopenat, Number(b.dataset.docopenline || 0));
+  }));
 
   /* egress posture + manifest */
   $$("[data-egress]").forEach(b => b.addEventListener("click", () => {
@@ -10249,6 +10401,10 @@ const WIRED_ATTRS = new Set([
      in the roster because they are routed from `DOC_ROUTES` like the rest. */
   "doclane", "docopen", "docclose", "docline", "docanchor", "doclink", "dochref",
   "doccomments",
+  /* The citation viewer's hop into lane 1. Bound in `wire()` rather than routed from
+     `DOC_ROUTES`, because the viewer is a modal outside `#docMount` and rebuilt whole on
+     every render — `docopenline` carries the line beside it and routes nothing. */
+  "docopenat", "docopenline",
   "docrowfor", "hay", "doccount",
   /* `line` is `prose.js`'s, stamped on every rendered block from `token.map`, and the shell
      reads it to scroll a heading into view. In the roster because the roster is about what

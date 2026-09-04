@@ -449,5 +449,27 @@ grouped counts over a store the server already holds open, and 38.7 MB of prose 
 sidecar until somebody opens a document. **The cold row is the external volume**, as every
 cold row in this file is: 1.7 s and 2.3 s on two first reads, 18 ms on every one after.
 
+**A glossary citation into the corpus** — chunk 5, measured 2026-09-04 on the same base:
+
+| Measure | Budget | Measured 2026-09-04 |
+|---|---|---|
+| `/api/docsource`, a 15-line span | < 50 ms | **0.56–0.65 ms**, five reads |
+| `/api/source`, the same shape | < 50 ms | 0.60–0.61 ms |
+| `/api/glossary`, now carrying `sidecars` | < 50 ms | **1.53–1.57 ms** |
+| a documentation citation, opened in the page | < 1.5 s | **999 ms** |
+| a **code** citation, opened in the page | < 1.5 s | **999 ms** |
+
+The last two rows are the measurement, and they are a pair on purpose: **a documentation
+citation costs exactly what a code one does**, which is the claim chunk 5 has to be able to
+make. The 999 ms is neither route — both answer in under a millisecond — it is the glossary
+page repainting its 1,214 terms on the `render()` that follows the fetch. Pre-existing,
+identical for both tiers, and not chunk 5's; naming it here stops the next person retaking
+this row and reporting it as a cost of the corpus (rule 24).
+
+Conditions, because they are load-bearing: taken in the automation tab at a **1,264×523
+viewport and a 16px root font**, on a warm sidecar, with the glossary page already painted.
+The `sidecars` block adds a shallow copy of a five-key dict and two `serving()` calls to a
+payload that is otherwise built once at boot — which is why the route stays at its old figure.
+
 The machine's source volume is a slow external disk; cold reads cost far more than
 warm ones. That is expected and is not a regression.

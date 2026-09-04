@@ -9209,3 +9209,104 @@ as a one-option `<select>` and never given the endpoint every other pinned array
 rule 16's own text, in the topbar of the mockup that ratified the rule. *Check the artifact
 before concluding a view never existed — `git log` was the wrong place to look and said the
 opposite.*
+
+## The program selector, built at last — 2026-09-04
+
+Tom: *"What's missing is a way to switch between the two — that used to exist."* It did, in
+the ratified artifact `f993d319`: a `<select id="prog">` with `mensores — 623 files`,
+`dunneflow — 23 files` and `+ Analyze a directory…`. **And no change handler even there** —
+a statement of intent wearing a working control's clothes. The port carried the markup across
+and emptied the options with every other pinned array; unlike all of those it never got the
+endpoint that fills it, so it has shipped since day one as a one-option `<select>`. Design
+rule 16's own text, in the topbar of the mockup that ratified the rule.
+
+*Method note: I looked in `git log` first and concluded it was never a switcher. The artifact
+is the source of truth for every view and my own notes say to read it before designing one.
+Check the artifact.*
+
+### It is the revision switch, one axis over
+
+`_Live.switch()` already rebuilds on a thread, reports each step, swaps under the lock and
+refuses without leaving a broken base. `_p_base` already claims a slot. The client already
+polls `/api/base` and paints an overlay — and **ends with `window.location.reload()`**, which
+is what made this small. A program switch cannot keep the selection, the trail or the
+revision, because all three belong to the program being left; the reload discards them, and
+`loadSettings(program)` restores the settings of the program being arrived at, because those
+have been keyed per program all along. **No client state reconciliation had to be designed.**
+
+`serve` needed **no CLI change**. It still takes a program directory; the siblings come from
+`revisions.program_dirs(out_dir.parent)` — written earlier the same day to keep a program's
+output out of its own corpus, and exactly the right question here.
+
+### The two things that are not a mirror image
+
+**The sidecars are repointed.** `source` and `docsource` live on `_Live` rather than `_Base`
+because a *revision* switch does not change them. A program switch does, and forgetting it
+would serve one program's bodies under another's map — rule 70 one axis over.
+
+**Every cache is cleared, and `PROGRAM_CACHES` is stated separately.** Two caches survive a
+revision switch deliberately, both documented as safe because they are keyed on one thing
+rather than a pair. Neither is safe across programs:
+
+- `findings` is keyed on `graph_db.name` — a **basename**. `output/mensores/graph@X.db` and
+  `output/dunneflow/graph@X.db` key identically.
+- `filepairs` is keyed on a pair of revision strings, and an unrevisioned directory yields
+  `("", "")`. `output/beads` and `output/dunneflow` both do.
+
+Neither needs a coincidence; it is what the keys are. The list is written out rather than
+derived from `COMPARISON_CACHES`, because rule 36 cuts both ways — a generic loop narrowed to
+a literal loses a feature silently, and a second switch reusing the first switch's literal
+keeps a stale cache just as silently. The test fixture gives two programs the **same revision
+id on purpose**, so a fix that did not clear `findings` cannot pass.
+
+### Verified against the real output root
+
+| | |
+|---|---|
+| the list | `beads`, `dunneflow`, `mensores` (serving, 628 files), `mensores@2026-08-29…` |
+| switch to `dunneflow` | cover, navigator, graph and glossary all follow — 61 files, 707 routines |
+| the sidecars follow | `walk.py` reads from dunneflow's sidecar; a mensores path is correctly *not held* |
+| settings stay apart | scale 1.25 saved under `dunneflow:dunneflow:v5`; mensores comes back at 1 |
+| four refusals, by name | no name · no such program · already being read · a switch already running |
+| a name with separators | `../../etc` addresses nothing — the sibling list is the authority (rule 30) |
+
+**And the failure that matters, on a real stale program.** Switching to `beads` failed with
+the store's own sentence — *"stores absolute paths… run `dunneflow migrate …`"* — and the
+server went on serving `dunneflow` with a working sidecar. That is the mode that would
+otherwise take the whole dashboard down, tested against a directory that is genuinely stale
+rather than a fixture pretending to be.
+
+### A switch that replaces everything now says so
+
+Both switches end in the same reload and leave the same one-shot note, and after a program
+switch `switched.to` is a program name while `serving` is a revision — so the version branch
+never matched and said nothing. Nothing false, but the one thing worth saying went unsaid: a
+version switch *may* cost you your selection and a program switch certainly does.
+`fromProgram` rides in the payload and the note reads *"Now reading dunneflow, switched from
+mensores. This is a different program, so nothing you had selected or kept is on this map —
+mensores's own settings and trail are waiting where you left them."*
+
+*I reported that note as unrendered before checking the right selector; it renders in
+`.verstrip-lost`, in the version strip, and always did.*
+
+### 9 mutations, all CAUGHT — after 2 survived
+
+Both survivors were my guards, not the code. The failure test used a directory with **no
+graph**, which is refused before anything is repointed, so a mutation deleting the whole
+restore line passed — a second test now fails *inside* the build, with a real sidecar beside a
+corrupt graph, and asserts the abandoned handle is closed as well as the field put back. And
+the POST guard looked for `_p_program` among the handler's string constants, which the route
+table satisfies whatever path it is filed under, so renaming the route to `/api/programx`
+passed it; it asserts the table now.
+
+`/api/programs` is **1.0–1.2 ms warm**, 1.0 s cold, asked once at boot and not awaited. The
+file count is carried only for the served program — every other would cost a 27 MB graph open
+to learn, and a count nobody can afford is worse than no count.
+
+951 tests, mypy clean, ruff clean, console clean.
+
+### Next: "+ Analyze a directory…"
+
+Tom wants it next, and it is deliberately **not** in the `<select>` yet — adding a third
+option that does nothing is the defect this chunk just fixed. It means running an analysis
+from the server: progress, failure, and a new program appearing in this list.

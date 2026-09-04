@@ -220,7 +220,32 @@ the code view — the greenbar, the margin fold, three broken buttons, and the r
 *The paragraphs below are that day's earlier work, kept because the reasoning is recent and
 load-bearing; the current task is the one named above.*
 
-### The latest: a naming standard written as a table is read at last (2026-09-04)
+### The latest: the program selector works (2026-09-04)
+
+The topbar's first control has never worked — three options and no change handler in the
+ratified artifact, one served option in every shipped build, and no endpoint to fill it. It
+switches programs now: `/api/programs` lists every directory under the output root holding a
+map, `POST /api/program` rebuilds against one.
+
+**It is the revision switch one axis over, and the reload is what made it small.** A program
+switch cannot keep the selection, the trail or the revision; the reload discards them and
+`loadSettings(program)` restores the arrived-at program's own settings, which have been keyed
+per program all along. `serve` needed no CLI change — the siblings come from
+`revisions.program_dirs()`, written that morning for the docs-corpus fix.
+
+**Two things are not a mirror image.** The sidecars are repointed, because `source.db` and
+`docsource.db` belong to the program. And **every** cache is cleared, because `findings` is
+keyed on a graph's *basename* and `filepairs` on a pair of revision strings — two program
+directories collide on both, without needing a coincidence. `PROGRAM_CACHES` is written out
+rather than derived from `COMPARISON_CACHES` (rule 36 in both directions).
+
+Verified on the real output root: `mensores` → `dunneflow` moves cover, navigator, graph and
+glossary; the sidecars follow; settings stay apart. **And a switch to the genuinely stale
+`beads` failed with the store's own sentence and left `dunneflow` still being served** — the
+mode that would otherwise take the dashboard down. **9 mutations, all CAUGHT**, after two
+survivors that were both my own guards failing to reach the code.
+
+### Before that: a naming standard written as a table is read at last (2026-09-04)
 
 **The FORM lane was empty across 2,064 documents**, and the reason was one shape: `_table()`
 consumes a table whole and the loop `continue`s, so the prose rule detector is never offered
@@ -1043,7 +1068,11 @@ feature was blocked on an answer nobody owed.
   middle-elide; `.srcpath-v` was a dead field; `.callhead code` wraps. `.navsub` keeps its
   constant and the boundary is stated. `.argrow` keeps its* wrapped, not elided *decision;
   `.leg .nm` is left alone.*
-- **A program selector, and then "+ Analyze a directory…".** Tom, 2026-09-04: *"What is
+- ~~**A program selector**~~ *— built 2026-09-04; see the top of this file. What remains of
+  this entry is the second half.* **"+ Analyze a directory…"** — running an analysis from the
+  server, with progress, failure, and a new program appearing in the selector. Tom wants it
+  next, and it is deliberately not in the `<select>` yet: a third option that does nothing is
+  the defect the selector just fixed. *The original entry:* Tom, 2026-09-04: *"What is
   missing is a way to switch between the two — that used to exist… I definitely want to add
   the Analyze a directory part next. That's what I'm looking for at the moment."* The
   ratified artifact `f993d319` has the selector — three options, `mensores — 623 files`,

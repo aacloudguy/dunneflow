@@ -2013,7 +2013,17 @@ function reconcileBase() {
     }
   } catch { /* a private window refuses storage; the switch still happened */ }
 
-  if (switched && switched.to === serving) {
+  /* **A program switch, told apart by the program it came from.** Both switches end in the
+     same reload and leave the same one-shot note, and after a program switch `switched.to`
+     is a program name while `serving` is a revision -- so the version branch below simply
+     never matches and, before this, said nothing at all. Nothing false, but the one thing
+     worth saying went unsaid: a version switch may cost you your selection and a program
+     switch certainly does, because the map is a different program entirely. */
+  if (switched && switched.fromProgram && program && switched.fromProgram !== program) {
+    state.revNote = `Now reading ${program}, switched from ${switched.fromProgram}. `
+      + `This is a different program, so nothing you had selected or kept is on this map — `
+      + `${switched.fromProgram}'s own settings and trail are waiting where you left them.`;
+  } else if (switched && switched.to === serving) {
     const was = REVISIONS.find(r => r.revision === switched.from);
     state.revNote = `Now reading ${versionName(REVISIONS.find(r => r.revision === serving))}`
       + (was ? `, switched from ${versionName(was)}` : "")
@@ -2159,8 +2169,12 @@ function pollBase(rev) {
          had selected may honestly report "Not in this map". Session storage rather than
          the settings blob, because it belongs to this reload and not to this program. */
       try {
+        /* `program` is what tells a program switch from a version one on the other side of
+           the reload. Both end here, both look identical to `pollBase`, and the sentence
+           each deserves is different: a version switch says a selection *may* be missing,
+           a program switch says everything is. */
         window.sessionStorage.setItem("dunneflow:switched",
-          JSON.stringify({ from: servingRevision(), to: rev }));
+          JSON.stringify({ from: servingRevision(), to: rev, fromProgram: program }));
       } catch { /* private windows refuse storage; the reload is still right */ }
       window.location.reload();
       return;
@@ -10229,6 +10243,23 @@ function wire() {
    * control that looks pressable, responds to a press, and changes nothing. */
 
   /* The pair. Its value names both ends -- `base|compared` -- see `buildRevControls`. */
+  /* The program select. Bound once, `dataset.bound`-style like `#rev` beside it, because
+     the topbar is static markup that `render()` never rebuilds — a `wire()` binding here
+     would pile a listener on every repaint (rule 78). */
+  const progSel = $("#prog");
+  if (progSel && !progSel.dataset.bound) {
+    progSel.dataset.bound = "1";
+    progSel.addEventListener("change", () => {
+      const want = String(progSel.value);
+      /* The served program is `selected`, so choosing it again is a no-op the server would
+         refuse by name. Returning here keeps that out of the progress overlay, which exists
+         for switches that are actually happening. */
+      if (!want || want === (PROGRAMS.find(x => x.serving) || {}).name) return;
+      used("program:switch");
+      switchProgram(want);
+    });
+  }
+
   const rev = $("#rev");
   if (rev && !rev.dataset.bound) {
     rev.dataset.bound = "1";
@@ -13148,10 +13179,101 @@ async function loadCover() {
   STATS       = Object.assign({}, d.stats, { anomalies: d.anomalies, program: d.program,
                                              vocabulary: d.vocabulary || null });
 
-  const prog = $("#prog");
-  if (prog) {
-    prog.innerHTML = `<option>${esc(d.program)} — ${Number(d.stats.files).toLocaleString()} files</option>`;
+  /* The served program, on the control, immediately. `loadPrograms()` fills in the
+     siblings when its fetch lands; until it does this says the true thing rather than
+     nothing, because the cover is already in hand and the select is already on screen. */
+  PROGRAM_FILES = Number(d.stats.files) || 0;
+  paintPrograms([{ name: d.program, serving: true, openable: true, files: PROGRAM_FILES }]);
+}
+
+/* Every program beside this one, for the topbar's first control.
+ *
+ * **It has never worked, and it looked as though it did.** The ratified design has this
+ * select with three options -- `mensores — 623 files`, `dunneflow — 23 files`,
+ * `+ Analyze a directory…` -- and no change handler even there: a statement of intent
+ * wearing a working control's clothes. The port carried the markup across and emptied the
+ * options with every other pinned array, and unlike all of those it never got the endpoint
+ * that fills it. Design rule 16's own text, in the topbar of the mockup that ratified it.
+ *
+ * Asked once, at boot, beside the cover: a directory listing over the output root, which
+ * costs nothing, and no graph is opened to build it (see `_r_programs`).
+ */
+let PROGRAMS = [], PROGRAM_FILES = 0;
+
+async function loadPrograms() {
+  try {
+    const r = await fetch("/api/programs");
+    if (!r.ok) throw new Error(`the server answered ${r.status}`);
+    const d = await r.json();
+    PROGRAMS = d.programs || [];
+  } catch {
+    /* The control keeps the one option the cover gave it. A program list that could not be
+       fetched is not a program list of one, but the *served* program is known either way
+       and saying so is better than emptying the control (rule 49). */
+    return;
   }
+  paintPrograms(PROGRAMS);
+}
+
+/* A narrow write: the topbar is static markup `render()` never rebuilds, so this is set
+ * here or it is not set at all (rule 44). */
+function paintPrograms(rows) {
+  const prog = $("#prog");
+  if (!prog) return;
+  prog.innerHTML = rows.map(p => {
+    const n = p.files ? ` — ${Number(p.files).toLocaleString()} files` : "";
+    /* **Listed and marked, never dropped.** A directory under the output root with no
+       graph in it is a program that cannot be opened, which is a different fact from a
+       program that does not exist — and only one of them is worth a reader's sentence
+       (design rule 1). It is `disabled` because there is genuinely nothing to switch to:
+       the one case where a control that cannot act should not pretend it can. */
+    return `<option value="${esc(p.name)}"${p.serving ? " selected" : ""}${
+      p.openable ? "" : " disabled"}>${esc(p.name)}${n}${
+      p.openable ? "" : " — no map here"}</option>`;
+  }).join("");
+}
+
+/* Switching program, which is `switchBase` with a wider blast radius on the server.
+ *
+ * The client half is the same because the *end* is the same: a full reload. That is what
+ * makes this small — a program switch cannot keep the selection, the trail or the revision,
+ * because all three belong to the program being left, and the reload discards them.
+ * `loadSettings(program)` then restores the settings of the program being *arrived at*,
+ * because those have always been keyed per program. */
+async function switchProgram(name) {
+  REBUILD = { revision: name, program: name, state: "asking", step: "",
+              done_steps: 0, steps: 0, since: Date.now() };
+  render();
+  let d;
+  try {
+    const r = await fetch("/api/program?name=" + encodeURIComponent(name), { method: "POST" });
+    d = await r.json();
+  } catch (err) {
+    REBUILD = { revision: name, state: "failed",
+                reason: "the server could not be asked: " + err.message };
+    programSwitchFailed();
+    return;
+  }
+  if (!d.started) {
+    REBUILD = { revision: name, state: "failed",
+                reason: d.reason || "the switch was refused, with no reason given" };
+    programSwitchFailed();
+    return;
+  }
+  REBUILD = Object.assign({ revision: name, program: name, since: REBUILD.since }, d);
+  render();
+  pollBase(name);
+}
+
+/* A refused switch must leave the control naming the program actually being served.
+ *
+ * `switchFailed`'s reason, one control over: the `<select>` is showing what the reader just
+ * chose, which is now a claim about a state the page is not in — and it is the control they
+ * will believe, because it is the one they touched. Repainted from `PROGRAMS`, where
+ * `serving` was never moved, rather than from a remembered previous value (rule 51). */
+function programSwitchFailed() {
+  paintPrograms(PROGRAMS);
+  render();
 }
 
 /* The routine list, from the document backend that already carries what is needed.
@@ -15878,6 +16000,10 @@ async function boot() {
   state.view = state.startup;
   try {
     await loadCover();
+    /* After the cover, never before: the cover names the served program, and this fills in
+       the siblings beside it. Not awaited — a slow directory listing must not hold up the
+       first paint, and the control is already correct with one option until it lands. */
+    loadPrograms();
   } catch (err) {
     /* A blank dashboard must never be a mystery -- the same rule the graph's missing
        WebGL context taught. Name what failed and what it means. */

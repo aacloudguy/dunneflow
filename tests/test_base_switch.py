@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import ast
 import inspect
+import sqlite3
 from pathlib import Path
 from typing import Any
 
@@ -31,6 +32,7 @@ from dunneflow import revisions
 from dunneflow.docstore import DocStore
 from dunneflow.extractors.docs import extract_doc
 from dunneflow.extractors.python.extract import extract_file
+from dunneflow.sourcedb import SourceStore
 from dunneflow.store import Store
 from dunneflow.web import serve as serve_mod
 
@@ -538,4 +540,204 @@ def test_the_steps_are_named_once_and_counted_from_that_list(live: Any) -> None:
     )
     assert {t for _n, _i, t in seen} == {len(serve_mod.BUILD_STEPS)}, (
         "the total a step reports is not the number of steps there are"
+    )
+
+
+# --------------------------------------------------------------------------- #
+# Switching program
+#
+# The same shape as a revision switch and a wider blast radius. The ratified
+# design had this control with three options and no change handler even there;
+# the port carried the markup and never built the endpoint. What follows is the
+# part that is not a mirror image: the caches, and the sidecars.
+# --------------------------------------------------------------------------- #
+
+@pytest.fixture()
+def two_programs(tmp_path: Path) -> Any:
+    """Two program directories under one root, as `--output` leaves them.
+
+    **Their newest graphs share a basename on purpose.** `findings` is keyed on
+    `graph_db.name`, so this is the collision the cache list exists for, and a fixture
+    that gave them different revisions would let a broken fix pass.
+    """
+    root = tmp_path / "output"
+    made = []
+    for name in ("alpha", "beta"):
+        out = root / name
+        out.mkdir(parents=True)
+        tree = tmp_path / f"src-{name}"
+        tree.mkdir()
+        (tree / "m.py").write_text(ONE if name == "alpha" else TWO)
+        (tree / "README.md").write_text(f"# {name}\n\nProse for {name}.\n")
+        rev = "2026-08-30T10:00:00Z"                      # the same, deliberately
+        store = Store(revisions.db_path(out, revisions.GRAPH, rev))
+        store.write_file_facts(extract_file(tree / "m.py", tree))
+        store.set_meta("revision", rev)
+        store.conn.commit()
+        store.close()
+        docs = DocStore(revisions.db_path(out, revisions.DOCS, rev))
+        docs.set_meta("revision", rev)
+        docs.write_doc_facts(extract_doc(tree / "README.md", tree))
+        docs.conn.commit()
+        docs.close()
+        made.append(out)
+    lv = serve_mod._Live(made[0] / "source.db", made[0])
+    lv.open(revisions.db_path(made[0], revisions.GRAPH, "2026-08-30T10:00:00Z"))
+    try:
+        yield lv, root, made[0], made[1]
+    finally:
+        lv.close()
+
+
+def test_a_program_switch_clears_every_cache(two_programs: Any) -> None:
+    """Not a superset of the revision switch's list — a different question.
+
+    `findings` and `filepairs` survive a revision switch deliberately, both because they
+    are keyed on one thing rather than on a pair. Neither key is safe across programs:
+    `findings` is keyed on `graph_db.name`, a **basename** two directories share, and
+    `filepairs` on revision strings that two unrevisioned directories both render `("",
+    "")`. Serving one program's anomalies for another is what this prevents.
+    """
+    lv, _root, _alpha, beta = two_programs
+    for cache in serve_mod._Live.PROGRAM_CACHES:
+        getattr(lv, cache)["poisoned"] = ["from the program we are leaving"]
+    lv.switch_program(beta, "beta")
+    assert lv.progress()["state"] == "done", lv.progress()
+    for cache in serve_mod._Live.PROGRAM_CACHES:
+        assert not getattr(lv, cache), (
+            f"`{cache}` survived a program switch — its keys are shared between programs, "
+            "so the next read serves the program you just left"
+        )
+
+
+def test_the_two_cache_lists_are_stated_separately(two_programs: Any) -> None:
+    """One is not a slice of the other, and a reader must see both answers.
+
+    Rule 36 cuts both ways: a generic loop narrowed to a literal loses a feature silently,
+    and a second switch reusing the first switch's literal keeps a stale cache just as
+    silently. The two that differ are named here so a third switch cannot quietly adopt
+    the wrong list.
+    """
+    kept = set(serve_mod._Live.PROGRAM_CACHES) - set(serve_mod._Live.COMPARISON_CACHES)
+    assert kept == {"findings", "filepairs"}, (
+        f"the lists no longer differ by exactly the per-graph caches: {kept}"
+    )
+
+
+def test_a_program_switch_repoints_the_sidecars(two_programs: Any) -> None:
+    """A program's bodies are that program's, and they are not part of `_Base`.
+
+    They live on `_Live` because a *revision* switch does not change them. A program
+    switch does, and forgetting it would serve one program's source under another's map —
+    the same class of mistake as rule 70, one axis over.
+    """
+    lv, _root, alpha, beta = two_programs
+    assert lv.out_dir == alpha
+    lv.switch_program(beta, "beta")
+    assert lv.out_dir == beta, "the output directory did not follow the switch"
+    assert lv.current.store.path.parent == beta, "the base was built from the old directory"
+
+
+def test_a_failed_program_switch_leaves_the_old_one_serving(
+        two_programs: Any, tmp_path: Path) -> None:
+    """The important failure, because the alternative takes the dashboard down.
+
+    Nothing is closed or repointed until `open()` has returned a base built from the new
+    directory, so a stale program, a missing graph or a schema bump leaves the reader
+    looking at what they had — with the reason in the progress report (rule 20).
+    """
+    lv, _root, alpha, _beta = two_programs
+    empty = tmp_path / "output" / "gamma"
+    empty.mkdir(parents=True)
+    before = lv.current
+    lv.switch_program(empty, "gamma")
+    report = lv.progress()
+    assert report["state"] == "failed", report
+    assert "gamma" in report.get("reason", ""), report
+    assert lv.current is before, "a failed switch replaced the base it could not build"
+    assert lv.out_dir == alpha, "a failed switch left the output directory pointing away"
+    # The store the reader is still looking at must be usable, not a closed handle.
+    assert lv.current.store.query("SELECT 1 AS n")[0]["n"] == 1
+
+
+def test_a_switch_that_fails_inside_the_build_puts_the_program_back(
+        two_programs: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The other failure, and the one that reaches further into the method.
+
+    A directory with **no graph at all** is refused before anything is repointed, so it
+    never exercises the restore — the first version of this pair tested only that, and a
+    mutation deleting the whole `self.out_dir, ... = was` line passed. This one has a graph
+    that cannot be opened, so the build fails *after* the fields have been moved and the
+    restore is the only thing that puts them back (rule 37: the guard has to reach the code).
+    """
+    lv, _root, alpha, _beta = two_programs
+    broken = tmp_path / "output" / "delta"
+    broken.mkdir(parents=True)
+    # A file where a graph should be, which is what a truncated copy or an interrupted
+    # analyse leaves behind. **With a real sidecar beside it**, so the switch genuinely
+    # opens a handle before it fails — without one there is nothing to leak and the guard
+    # below would pass against code that leaks every time.
+    (broken / "graph@2026-08-30T10:00:00Z.db").write_text("not a database at all")
+    SourceStore(broken / "source.db").close()
+
+    opened: list[Any] = []
+    real = serve_mod._Live._open_source
+
+    def capture(path: Path) -> Any:
+        got = real(path)
+        if got is not None:
+            opened.append(got)
+        return got
+
+    monkeypatch.setattr(serve_mod._Live, "_open_source", staticmethod(capture))
+    before, before_source = lv.current, lv.source
+    lv.switch_program(broken, "delta")
+    assert lv.progress()["state"] == "failed", lv.progress()
+    assert lv.current is before, "a failed build replaced the base"
+    assert lv.out_dir == alpha, (
+        "the output directory stayed pointed at the program that could not be opened, so "
+        "every revision and sidecar lookup now answers for a map nobody is serving"
+    )
+    assert lv.source is before_source, "the sidecar was left repointed by a failed switch"
+    assert lv.current.store.query("SELECT 1 AS n")[0]["n"] == 1
+    # **And the handle it opened and abandoned is closed.** The field being put back is
+    # only half of it: a sidecar opened for a program nobody ends up serving is a file
+    # descriptor on a store with no reader, and one per failed switch. Captured through the
+    # opener because the store itself is a local inside `switch_program` and there is no
+    # other way to reach it.
+    assert opened, "no sidecar was opened, so this guard proves nothing about closing one"
+    with pytest.raises(sqlite3.ProgrammingError):
+        opened[-1].conn.execute("SELECT 1")
+
+
+def test_the_program_routes_refuse_by_name() -> None:
+    """Four refusals, as `_p_base` has four. "Nothing happened" is not an answer."""
+    src = inspect.getsource(serve_mod._Handler._p_program)
+    for reason in ("no program was named", "beside this one",
+                   "already the program being read", "already running"):
+        assert reason in src, f"the switch cannot say “{reason}”"
+    # **A name is looked up, never joined onto a path.** `output/../../etc` must address
+    # nothing; the list of siblings is the authority on what may be switched to (rule 30).
+    assert "candidates.get(asked)" in src, (
+        "the asked-for name is turned into a directory by construction rather than by "
+        "lookup, so a name carrying a separator addresses a directory outside the root"
+    )
+
+
+def test_switching_program_is_a_post_like_switching_version() -> None:
+    """A GET that swaps the whole map is one a prefetch fires by itself.
+
+    The **tables**, not a string somewhere in the class: the first version of this guard
+    looked for `_p_program` anywhere among the handler's string constants, which the POST
+    table's own value satisfies whatever path it is filed under — so renaming the route to
+    `/api/programx` passed it. Rule 37, one line long.
+    """
+    assert serve_mod._Handler.POST_ROUTES.get("/api/program") == "_p_program", (
+        "the program switch is not reachable as a POST at the path the client asks for"
+    )
+    assert "/api/program" not in serve_mod._Handler.ROUTES, (
+        "the program switch is reachable by GET, so a browser prefetch can swap the map"
+    )
+    assert serve_mod._Handler.ROUTES.get("/api/programs") == "_r_programs", (
+        "the list is not a GET"
     )

@@ -51,6 +51,18 @@ uv run dunneflow migrate  <dir>                     # stored paths: absolute -> 
 uv run dunneflow serve    <dir> [--revision <rev>]  # the dashboard, on one version
 ```
 
+`serve` also switches **program**, which is the same operation one axis over. The topbar's
+first control lists every directory under the output root that holds a map —
+`revisions.program_dirs()`, the same question `analyze` asks to keep a program's own output
+out of its own corpus — and `POST /api/program` rebuilds against one of them. Two things
+differ from a revision switch and both are in `_Live.switch_program`: the sidecars are
+repointed, because `source.db` and `docsource.db` belong to the *program*; and **every**
+cache is cleared, because `findings` is keyed on a graph's *basename* and `filepairs` on a
+pair of revision strings, and two program directories collide on both. `PROGRAM_CACHES` is
+stated separately from `COMPARISON_CACHES` rather than derived from it (rule 36). Nothing is
+closed or repointed until the new base is built, so a stale program leaves the reader looking
+at what they had, with the store's own sentence in the progress report (rule 20).
+
 `serve --revision` chooses which point in time the server opens as the **base** -- the
 version the cover, the routine list, the code browser, the glossary and the stack all
 show. It defaults to the newest. The reader can switch it from the toolbar, and that

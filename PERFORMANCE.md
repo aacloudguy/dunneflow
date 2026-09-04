@@ -449,6 +449,25 @@ grouped counts over a store the server already holds open, and 38.7 MB of prose 
 sidecar until somebody opens a document. **The cold row is the external volume**, as every
 cold row in this file is: 1.7 s and 2.3 s on two first reads, 18 ms on every one after.
 
+**Switching program** — measured 2026-09-04 on an output root holding four programs:
+
+| Measure | Budget | Measured 2026-09-04 |
+|---|---|---|
+| `/api/programs` | < 50 ms | **1.0–1.2 ms** warm, 1.0 s cold |
+| `/api/cover`, beside it | — | 0.54–0.72 ms |
+| a switch, `mensores` → `dunneflow` | < 30 s | **5.0 s** server-side, then a reload |
+
+**The cold second is the external volume**, as every cold row here is: four directory
+listings and a `glob` apiece on a disk that has not been touched. It is paid once, at boot,
+by a fetch that is deliberately **not awaited** — the control is already correct with the
+served program on it, and the siblings arrive when they arrive.
+
+The file count is carried **only for the program being served**, and that is why the route is
+1 ms rather than seconds: the served program's count is already in the base's cover, and every
+other program's would cost a 27 MB graph open apiece to learn. A count nobody can afford is
+worse than no count (rule 32 — a count must say what it counts, and this one says which
+program it is about by being the only one there).
+
 **Reading a naming standard out of a table** — measured 2026-09-04 over the 2,024 Markdown
 documents of the corpus, which hold **5,230 tables** between them:
 

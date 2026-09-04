@@ -381,11 +381,24 @@ def test_the_document_sidecar_is_opened_as_its_own_kind() -> None:
     — and would then serve prose while believing it held code. The stamp is the only thing
     between them, and it only bites if the right class is asked for.
     """
-    src = inspect.getsource(serve_mod._Live.__init__)
-    assert "DocSourceStore(docsource_db" in src, (
+    src = inspect.getsource(serve_mod._Live._open_docsource)
+    assert "DocSourceStore(" in src, (
         "the document sidecar is opened as something other than a document sidecar"
     )
+    assert "SourceStore(" not in src.replace("DocSourceStore(", ""), (
+        "it can be opened as a code sidecar, which the identical schemas would allow"
+    )
     assert "writable=False" in src, "rule 20: serving may refuse, it may never repair"
+    # **Two callers now, and that is why the open was lifted out of `__init__`.** A
+    # program switch repoints the sidecars at another directory, and boot and switch
+    # opening them two different ways is how the `try` drifts (rule 51). This guard used
+    # to read `__init__` and went blind the moment the code moved — it failed loudly,
+    # which is the only reason it was noticed.
+    for caller in (serve_mod._Live.__init__, serve_mod._Live.switch_program):
+        body = inspect.getsource(caller)
+        assert "_open_docsource(" in body and "_open_source(" in body, (
+            f"{caller.__name__} opens a sidecar without going through the shared opener"
+        )
 
 
 def test_a_document_sidecar_of_the_wrong_kind_is_refused_not_served(tmp_path: Path) -> None:

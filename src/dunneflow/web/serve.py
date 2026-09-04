@@ -400,6 +400,19 @@ class _Live:
     # clearing it would make every switch pay four seconds to learn what it already knew.
     COMPARISON_CACHES: tuple[str, ...] = ("changes", "anomalypairs")
 
+    # What a **program** switch clears, which is everything. Its own list rather than a
+    # superset expression over the one above, because the two answer different questions
+    # and a reader has to be able to see both answers at once: a revision switch keeps
+    # `findings` and `filepairs` deliberately, and a program switch cannot.
+    #
+    # Not a judgement about staleness but about **keys**. `findings` is keyed on
+    # `graph_db.name`, a basename that two program directories share; `filepairs` on a pair
+    # of revision strings, which two unrevisioned directories both render as `("", "")`.
+    # Neither collision needs a coincidence -- it is what the keys are. Rule 36 cuts both
+    # ways here: a generic loop narrowed to a literal loses a feature silently, and a second
+    # switch reusing the first switch's literal keeps a stale cache just as silently.
+    PROGRAM_CACHES: tuple[str, ...] = ("changes", "anomalypairs", "filepairs", "findings")
+
     def __init__(self, source_db: Path, out_dir: Path) -> None:
         self.lock = threading.Lock()
         # The program directory, so a second point in time can be found. The graph being
@@ -445,11 +458,7 @@ class _Live:
         # directory holding every revision's bodies, content-addressed, so it is not a
         # thing a version owns. That is also why it is not a field of `_Base`.
         self.source: SourceStore | None = None
-        if source_db.exists():
-            try:
-                self.source = SourceStore(source_db, writable=False, shared=True)
-            except (ValueError, OSError):
-                self.source = None
+        self.source = self._open_source(source_db)
 
         # The **document** bodies, and the same posture for the same reasons: optional,
         # read-only, one per program, and outside `_Base` because it is not a thing a
@@ -462,12 +471,7 @@ class _Live:
         # tell this open from opening `source.db` by mistake, and rule 16 refuses it by
         # name.
         self.docsource: DocSourceStore | None = None
-        docsource_db = out_dir / "docsource.db"
-        if docsource_db.exists():
-            try:
-                self.docsource = DocSourceStore(docsource_db, writable=False, shared=True)
-            except (ValueError, OSError):
-                self.docsource = None
+        self.docsource = self._open_docsource(out_dir / "docsource.db")
 
         # Filled by `open()`, which every caller goes through -- boot included. Typed as
         # the real thing rather than `| None` because a server with no base has never
@@ -650,6 +654,102 @@ class _Live:
                           "step": BUILD_STEPS[0], "done_steps": 0,
                           "steps": len(BUILD_STEPS), "ms": 0}
             return True
+
+    @staticmethod
+    def _open_source(path: Path) -> SourceStore | None:
+        """The code sidecar, or nothing. Absent is a real state, never an error.
+
+        Lifted out of `__init__` when a **program** switch arrived, because a program's
+        sidecars are that program's: the boot and the switch have to open them the same
+        way or the two paths drift, and the way that drifts first is the `try` (rule 51).
+        """
+        if not path.exists():
+            return None
+        try:
+            return SourceStore(path, writable=False, shared=True)
+        except (ValueError, OSError):
+            return None
+
+    @staticmethod
+    def _open_docsource(path: Path) -> DocSourceStore | None:
+        """The document sidecar. `DocSourceStore`, never `SourceStore` -- see rule 16."""
+        if not path.exists():
+            return None
+        try:
+            return DocSourceStore(path, writable=False, shared=True)
+        except (ValueError, OSError):
+            return None
+
+    def switch_program(self, out_dir: Path, name: str) -> None:
+        """Serve a different **program**. Runs on its own thread, like `switch`.
+
+        The same shape as a revision switch and a wider blast radius, and the difference is
+        the whole of this method. A revision switch replaces the base; the sidecars, the
+        output directory and two of the four caches survive it because they belong to the
+        *program* rather than to the version. A program switch is the case where that stops
+        being true.
+
+        **Every cache goes**, and the two that survive a revision switch are the reason this
+        cannot reuse `COMPARISON_CACHES`:
+
+        * `findings` is keyed on `graph_db.name` -- a **basename**. `output/mensores/
+          graph@X.db` and `output/dunneflow/graph@X.db` key identically, so one program's
+          anomaly findings would be served for the other, confidently and wrongly.
+        * `filepairs` is keyed on a pair of revision strings, and an unrevisioned program
+          directory yields `("", "")`. Two of those key identically as well.
+
+        Neither collision needs an unlikely coincidence; both are what the keys *are*.
+
+        **The old program stays whole if this fails.** Nothing is closed or repointed until
+        `open()` has returned a base built from the new directory -- so a stale program, a
+        missing graph or a schema bump leaves the reader looking at what they had, with the
+        store's own sentence in the progress report. That is `open()`'s own rule (20) and
+        the reason the build happens before the swap rather than after it.
+        """
+        t = time.perf_counter()
+
+        def ms() -> int:
+            return round((time.perf_counter() - t) * 1000)
+
+        def step(label: str, i: int, n: int) -> None:
+            self.note(state="working", revision=name, program=name, step=label,
+                      done_steps=i, steps=n, ms=ms())
+
+        graph_db = revisions.newest(out_dir, revisions.GRAPH)
+        if graph_db is None:
+            self.note(state="failed", revision=name, program=name, steps=len(BUILD_STEPS),
+                      ms=ms(), reason=f"{name} holds no graph to read")
+            return
+
+        # Opened before anything is closed, and *not* stored on `self` until it succeeds.
+        # A sidecar opened into the field and then abandoned by a failed build is a handle
+        # on a program nobody is serving.
+        source = self._open_source(out_dir / "source.db")
+        docsource = self._open_docsource(out_dir / "docsource.db")
+        was = (self.out_dir, self.source, self.docsource)
+        try:
+            self.out_dir, self.source, self.docsource = out_dir, source, docsource
+            self.open(graph_db, step)
+        except Exception as exc:                  # noqa: BLE001 -- a report, not a swallow
+            self.out_dir, self.source, self.docsource = was
+            if source is not None:
+                source.close()
+            if docsource is not None:
+                docsource.close()
+            self.note(state="failed", revision=name, program=name, steps=len(BUILD_STEPS),
+                      ms=ms(), reason=f"{type(exc).__name__}: {exc}")
+            return
+
+        # After the swap, never before: a failed build above must leave the outgoing
+        # program's sidecars open, because it is still the one being served.
+        with self.lock:
+            for cache in self.PROGRAM_CACHES:
+                getattr(self, cache).clear()
+        for old in (was[1], was[2]):
+            if old is not None:
+                old.close()
+        self.note(state="done", revision=name, program=name, step="",
+                  done_steps=len(BUILD_STEPS), steps=len(BUILD_STEPS), ms=ms())
 
     def switch(self, graph_db: Path, revision: str) -> None:
         """Make `graph_db` the base, reporting each step. Runs on its own thread.
@@ -1768,6 +1868,79 @@ class _Handler(BaseHTTPRequestHandler):
             **self._live.progress(),
         })
 
+    def _r_programs(self, q: dict[str, list[str]]) -> None:
+        """Every program beside this one, and which is being read.
+
+        The siblings come from `revisions.program_dirs(out_dir.parent)` -- *which
+        directories under this root hold a map* -- so `serve` keeps taking a program
+        directory and needs no new argument. A program served from somewhere with no
+        siblings gets a list of one, which is the honest answer rather than an empty
+        control.
+
+        **Named but not opened.** Whether a program's stores are readable by *this* build of
+        DunneFlow is a question that costs a graph open and a document-store open apiece,
+        and this route is behind a `<select>` the reader clicks. The switch answers it, with
+        the store's own sentence, and refuses (rule 20). Listing a program that turns out to
+        be stale is not a lie; hiding it, or stalling the toolbar to find out, would be
+        worse.
+
+        `files` is `None` for every program but the served one, for the same reason -- see
+        `PERFORMANCE.md`. The served one is free: the base already knows.
+        """
+        with self._live.lock:
+            here = self._live.out_dir.resolve()
+            served_files = int(self._live.current.cover.get("stats", {}).get("files", 0))
+        found = revisions.program_dirs(here.parent)
+        # The served program is in the list whatever the walk found -- it is being read
+        # right now, so a list without it would be a control that cannot name the thing it
+        # is showing. Sorted by name so the order is total and does not move between polls.
+        rows = []
+        for d in sorted(found | {here}, key=lambda p: p.name.lower()):
+            is_here = d == here
+            rows.append({
+                "name": d.name,
+                "serving": is_here,
+                # A directory with no graph is **listed and marked**, never dropped: a
+                # program that cannot be opened and a program that does not exist are
+                # different facts, and only one of them is worth a sentence (design rule 1).
+                "openable": revisions.newest(d, revisions.GRAPH) is not None,
+                "files": served_files if is_here else None,
+            })
+        self._json({"programs": rows, "serving": here.name})
+
+    def _p_program(self, q: dict[str, list[str]]) -> None:
+        """Serve a different program. A POST, for `_p_base`'s reason.
+
+        Refuses by name in the same four shapes: nothing named, no such directory beside
+        this one, already being read, and a switch already running. A reader must never
+        have to guess which of those they got.
+        """
+        asked = (q.get("name") or [""])[0]
+        if not asked:
+            self._started(False, "no program was named")
+            return
+        with self._live.lock:
+            here = self._live.out_dir.resolve()
+        # Resolved against the siblings rather than joined onto the parent, so a name
+        # carrying `..` or a separator cannot address a directory outside the output root.
+        # The list is the authority on what may be switched to (rule 30: a label is not an
+        # identity, and this turns one into the other by lookup).
+        candidates = {d.name: d for d in revisions.program_dirs(here.parent) | {here}}
+        target = candidates.get(asked)
+        if target is None:
+            self._started(False, f"there is no program called {asked} beside this one")
+            return
+        if target == here:
+            self._started(False, f"{asked} is already the program being read")
+            return
+        if not self._live.claim(asked):
+            running = self._live.progress().get("revision", "")
+            self._started(False, f"a switch to {running} is already running")
+            return
+        threading.Thread(target=self._live.switch_program, args=(target, asked),
+                         name=f"dunneflow-program-{asked}", daemon=True).start()
+        self._started(True, "")
+
     def _p_base(self, q: dict[str, list[str]]) -> None:
         """Make another version the base. **A POST, and that is not ceremony.**
 
@@ -1864,6 +2037,7 @@ class _Handler(BaseHTTPRequestHandler):
         "/api/filechanges": "_r_filechanges",
         "/api/anomalychanges": "_r_anomalychanges",
         "/api/base": "_r_base",
+        "/api/programs": "_r_programs",
         "/favicon.ico": "_r_favicon",
     }
 
@@ -1873,6 +2047,7 @@ class _Handler(BaseHTTPRequestHandler):
     # flagged inside it, so "does a GET ever swap the base" is a question about a list.
     POST_ROUTES: dict[str, str] = {
         "/api/base": "_p_base",
+        "/api/program": "_p_program",
     }
 
     # Served directories, checked in order. Kept beside the route table rather than

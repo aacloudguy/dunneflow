@@ -364,7 +364,7 @@ BUILD_STEPS: tuple[str, ...] = (
     "opening the graph",
     "the 2.5D model and its payload",
     "the file list",
-    "the naming standard",
+    "the derived naming standard",
     "the glossary",
     "the cover",
 )

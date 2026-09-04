@@ -44,7 +44,7 @@ uv run dunneflow analyze  <path> --name <program>   # extract, resolve, write th
 uv run dunneflow touches  <path> --routine <name>   # what does this reach?
 uv run dunneflow impact   <path> --routine <name>   # what breaks if I change it?
 uv run dunneflow glossary <path>                    # what its words mean, and who says so
-uv run dunneflow naming   <path>                    # the naming standard, stated and measured
+uv run dunneflow naming   <path>                    # the naming standard as found: derived, and quoted
 uv run dunneflow mirror   <path>                    # words the docs define that the code never uses
 uv run dunneflow query    <path> --sql "..."        # ask the graph directly
 uv run dunneflow migrate  <dir>                     # stored paths: absolute -> relative
@@ -361,6 +361,15 @@ docs   ──► extract ──► docs.db  (SQLite) ─────────
 - `web/vocabulary.py` — the two naming lanes served, and matched against one name. The
   membership test is `Convention.glob`, which is the same string the exceptions query is
   built from, so the claim and the population cannot drift (rule 41).
+
+  **The dashboard serves the Form lane and only the Form lane**, so its page is titled
+  *Derived naming standard* and says on its face that nothing on it was required and nothing
+  was compared. That is not modesty: a page of conventions holding 100% of the time, headed
+  "Naming standard", reads as conformance to a rule somebody wrote, and DunneFlow has no
+  evidence for that and cannot yet import a standard to get any. The Markdown report carries
+  **both** lanes and is titled *as found* instead — Form is derived, Vocabulary is *quoted*
+  from the project's own documents, and flattening the two under one word would relabel a
+  quotation as an inference, which is what the four provenance tiers exist to prevent.
 - `web/changes.py` — the **fact lane**: what a routine does differently, which routines and
   tables and constants each version has, **what a caller passes**, and **what explains it**. `call_args` is
   compared by joining through `calls.site_id` to reach an owner — and `site_id` itself is

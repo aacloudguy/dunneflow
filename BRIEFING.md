@@ -1042,6 +1042,45 @@ feature was blocked on an answer nobody owed.
 - **The blank-graph fix (rule 49) is reasoned and guarded, never *seen*.** The automation
   tab never mounts the graph — `canvas MISSING`, `frames 0` — so rule 38 applies and it
   wants a real window before anyone calls it verified.
+- **A known-standards directory, to compare reality against intent.** Tom, 2026-09-04:
+  *"I am interested in creating a known standards directory as a baseline against which to
+  compare what is really found. The goal is to show reality, not the plan."* The wording
+  change of that date is the honest stopgap, not the feature. What was found while surveying
+  it, all measured on Mensores:
+
+  - **Ingest exists and is narrow.** `_maybe_rule()` mines `doc_rules` during the ordinary
+    docs scan — `lane`, `scope`, `pattern`, `checkable` all in the schema already. Gated to
+    six rule-bearing classes on evidence (a research paper *about* naming standards yielded
+    ten confident false FORM rules). There is **no import gesture**: `--docs` takes one root
+    and replaces the default, so an outside standards directory cannot be added to a scan.
+  - **Yield: 5 rules, from 1 of 29 rule-bearing documents.** All VOCABULARY, all
+    `checkable = 0`. **Zero FORM rules across the whole corpus**, so the checkable machinery
+    has never had an input.
+  - **Nothing compares.** `checkable` is read by one thing: a sentence in the report saying
+    whether it is checkable. `scope` and `pattern` are stored and consumed by nothing.
+  - **The best standard in the corpus is a table, and the detector cannot see it.**
+    `harness/rules/style.md:30`, heading "Naming Conventions", header
+    `Type | Convention | Example`, **seven rows** — Files kebab-case, Commands
+    `paul:kebab-case`, Step names snake_case, Bash variables CAPS_UNDERSCORES, Type
+    attributes colon separator, Phase directories `NN-kebab-name`, Plan files
+    `NN-NN-PLAN.md`. Every row is a `scope` and a `pattern`, which is exactly the pair the
+    FORM lane needs. The table **is fully captured** in `doc_tables`/`doc_table_rows`; the
+    rule detector returns on `text.startswith("|")` at `markdown.py:468` and never sees it.
+    A table is how most enterprises write a naming standard.
+  - **The scoping mechanism is already in the store and read by nothing.**
+    `harness/rules/style.md` carries frontmatter `paths: ['src/**/*.md']`, and **62 documents
+    in this corpus carry a `paths`, `area` or `applies_to` key** — captured in
+    `documents.frontmatter`. That is the "only some parts are relevant" half, present and
+    unused. `Society-Specs/01-naming-standards.md` is Society's own spec asking for exactly
+    this: *"a naming standard directory that contains multiple documents, each of which
+    identifies one or more subsystems."*
+
+  Order, cheapest and highest-value first: **(1)** read a table as rules — 0 FORM rules
+  becomes 7 on this corpus, against a structure already stored; **(2)** serve the stated lane
+  to the dashboard, which shows none of it today; **(3)** compare a checkable rule against the
+  graph the way a measured convention already is; **(4)** `--standards <dir>`, scoped by
+  `paths`/`applies_to`, with rule 57 governing the hazard of admitting an outside directory.
+  4 is larger than 1–3 together and is where the enterprise case actually lives.
 - **`m.<module>` as a language feature, with research owed on prior art** — how other tools
   present a construct the *language* put there rather than an author. Decided 2026-08-30:
   not filtered and not bare, but a curiosity carrying its own explanation, scoped to the

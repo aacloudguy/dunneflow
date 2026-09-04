@@ -88,12 +88,26 @@ def render_naming(store: Store, docs: DocStore | None, out_dir: Path, root: Path
     # absolute path halfway across the disk.
     doc_root = docs_root or root
     lines: list[str] = [
-        f"# {program} — Naming standard\n",
+        # **"as found", not "derived"**, and the difference is the Vocabulary lane. This
+        # document carries two lanes and only one of them is derived: Form is counted off
+        # the code, Vocabulary is *quoted* from the project's own documents. Titling the
+        # whole thing "derived" would relabel a quotation as an inference, which is the one
+        # thing the four provenance tiers exist to prevent. "As found" is true of both --
+        # found in the code, found in the documents -- and claims of neither that anybody
+        # required it. The dashboard's page *is* measured-only, and is titled "Derived
+        # naming standard" for that reason.
+        f"# {program} — Naming standard, as found\n",
         f"*Generated {stamp} by DunneFlow.*\n",
+        "**Nothing here was required of this program.** This is the standard the code and "
+        "its documents were found to keep, not one anybody imposed and not one DunneFlow "
+        "checked them against — a standard of your own cannot yet be imported, so nothing "
+        "on this page is a comparison. A convention holding every time means the code is "
+        "consistent; it does not mean the code is right.\n",
         "Two kinds of rule live here and they are kept apart. **Form** is how a name is "
-        "spelled — case, underscores, prefixes and suffixes — and it is counted against "
-        "the code. **Vocabulary** is what a name may be drawn from or must mean, and it "
-        "is quoted from documentation, because no query can check it.\n",
+        "spelled — case, underscores, prefixes and suffixes — and it is **derived**, "
+        "counted off the code itself. **Vocabulary** is what a name may be drawn from or "
+        "must mean, and it is **quoted** from documentation, because no query can check "
+        "it. Derived and quoted are different claims and are never blended.\n",
         "Nothing on this page is guessed. A `STATED` line is a quotation with a file and "
         "a line. A `MEASURED` line is a count with the query that produced it and every "
         "exception it found. If a model has been run, its contributions appear as "
@@ -169,7 +183,8 @@ def _stated_rules(docs: DocStore | None) -> list[StatedRule]:
 
 
 def _form_section(m: NamingMeasurement, root: Path) -> list[str]:
-    lines = ["\n## Form — the technical standard\n",
+    lines = ["\n## Form — derived from the code\n",
+             "**Not a standard anyone wrote: a standard the code was found to keep.** "
              "How names are spelled, counted over the code itself. Each convention "
              "carries the population it was counted over, the query that reproduces it, "
              "and every exception — never a sample. The exceptions are the point: a "
@@ -216,7 +231,8 @@ def _convention_detail(c: Convention, root: Path) -> list[str]:
 
 def _vocabulary_section(stated: list[StatedRule], root: Path) -> list[str]:
     vocab = [r for r in stated if r.lane == "VOCABULARY"]
-    lines = ["\n## Vocabulary — the house style\n",
+    lines = ["\n## Vocabulary — quoted, not derived\n",
+             "**The one lane on this page somebody actually wrote.** "
              "What a name may be drawn from, or must mean. Quoted whole from the "
              "project's own documentation, because compressing a rule of this kind into "
              "a table cell loses it. Most of these cannot be checked by any query, and "

@@ -8921,3 +8921,70 @@ Two things were not seeable at all: the button never appeared in a capture, beca
 is 56rem wide and the capture frame is 784px; and the pointer path is unprovable here — clicks
 did not land where `getBoundingClientRect` said the element was, so every interaction in this
 session was driven by `.click()`, which proves the handler and not the path to it (rule 48).
+
+## The naming standard says it was derived — 2026-09-04
+
+Tom, on the Naming standard page: *"We're showing what is actually in the code, not what was
+intended or required… we just need to talk more openly about the fact that we derived this
+list of naming standards from what we discovered."*
+
+He is right, and the dashboard was the place it was wrong. **`/api/naming` serves the Form
+lane and only the Form lane** — 27 conventions counted off the graph, no stated rule at all —
+and the page was headed *Naming standard*. Twenty-seven conventions, several holding 100% of
+the time, under that heading reads as conformance to a rule somebody wrote. DunneFlow has no
+evidence for that and, until a standards directory can be imported, no way to get any.
+
+**What changed, and it is four surfaces rather than one label.** A reader arriving mid-page by
+scroll wheel never sees a navigator label, so the label alone would have been the fix that
+looks like a fix:
+
+| Surface | Was | Is |
+|---|---|---|
+| navigator row | Naming standard | **Derived naming standard** |
+| breadcrumb / trail | naming standard | derived naming standard |
+| the page's leading note | *(none — it opened on "every figure here is counted")* | *"This standard was derived from the code, not required of it… none of it has been checked against a standard your team wrote — DunneFlow cannot yet import one. So a convention holding 100% of the time means the code is consistent, not that it is correct."* |
+| the boot step | the naming standard | the derived naming standard |
+
+### The one place "derived" would have been a lie
+
+**The Markdown report carries both lanes**, and only one of them is derived: **Form** is
+counted off the code, **Vocabulary** is *quoted* out of the project's own documents. Titling
+that document "derived" would relabel a quotation as an inference — the single thing the four
+provenance tiers exist to prevent, and rule 6's shape in prose.
+
+So the report is titled **"Naming standard, as found"**, which is true of both lanes — found
+in the code, found in the documents, required by neither — and its two section headings now
+carry the claim each is making: **"Form — derived from the code"** and **"Vocabulary — quoted,
+not derived"**. Its opening paragraph leads with *"Nothing here was required of this program."*
+The per-line `STATED ·` / `MEASURED ·` badges were already honest and are untouched.
+
+Both are guarded, and the guards check the page's own prose as well as the label, because a
+label a scrolling reader cannot see is design rule 21's blank pane in another costume.
+
+### What the survey behind it found, and it is filed rather than fixed
+
+Tom's question was *can we import a standard and compare against it*. Surveying to answer it
+turned up four things, all measured, all now in `BRIEFING.md`'s open list under **a known
+standards directory**:
+
+- Ingest exists — `doc_rules` already has `lane`, `scope`, `pattern`, `checkable` — but there
+  is **no import gesture**, and it yields **5 rules from 1 of 29 rule-bearing documents**, all
+  VOCABULARY, all `checkable = 0`. **Zero FORM rules corpus-wide**, so nothing checkable has
+  ever existed to check.
+- **Nothing compares.** `checkable` is read by exactly one sentence in the report; `scope` and
+  `pattern` are read by nothing at all.
+- **The best standard in this corpus is a table and the detector cannot see it.**
+  `harness/rules/style.md:30` states seven conventions as `Type | Convention | Example` —
+  Files kebab-case, Commands `paul:kebab-case`, Step names snake_case, and four more. Every
+  row is a `scope` and a `pattern`, which is precisely what the FORM lane wants. The table is
+  **fully captured** in `doc_tables`/`doc_table_rows`; `_maybe_rule` returns on
+  `text.startswith("|")` (`markdown.py:468`) and never reads one. A table is how most
+  enterprises write a naming standard, and this is the cheapest high-value fix on the list.
+- **The scoping mechanism is already stored and unread.** `harness/rules/style.md` carries
+  `paths: ['src/**/*.md']`, and **62 documents carry a `paths`, `area` or `applies_to` key**
+  in `documents.frontmatter`. That is the *"only some parts are relevant"* half of the
+  enterprise case, sitting in the store. `Society-Specs/01-naming-standards.md` is Society's
+  own spec asking for the whole feature by name.
+
+930 tests, mypy clean, ruff clean. The report was re-rendered against the real store to read
+the new wording rather than trusting the template, and the page was read back out of the DOM.

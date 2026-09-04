@@ -10805,3 +10805,57 @@ def test_the_viewers_hop_is_bound_where_the_viewers_other_controls_are() -> None
     assert "docopenat" not in routes, (
         "the hop is also routed from the delegated table, so one click runs two handlers"
     )
+
+
+def test_the_naming_page_says_the_standard_was_derived_and_not_required() -> None:
+    """A measured convention is what the code *does*, never what it was supposed to do.
+
+    Reported by Tom, 2026-09-04, on reading the page: *"We're showing what is actually in
+    the code, not what was intended or required."* The dashboard serves the **Form** lane
+    alone — 27 conventions counted off the graph, and no stated rule at all — and called the
+    whole page "Naming standard", which reads as the rule the program was written to. That
+    is a claim with no evidence behind it and the opposite of what the tool is for.
+
+    The label alone is not the fix and this guard says so by checking both: a reader
+    scrolling in mid-page never sees a navigator label, so the page itself has to state it
+    (`user-tom-navigates-by-scroll-wheel`'s reason, and design rule 21's).
+    """
+    js = _code(_read("shell.js"))
+    nav = js.split('{ nav: "naming",', 1)[1].split("},", 1)[0]
+    assert "Derived naming standard" in nav, (
+        "the navigator calls it a naming standard, which reads as a requirement the "
+        "program was written to rather than a count of what it does"
+    )
+    view = _fn(js, "viewNaming")
+    assert "derived from the code, not required of it" in view, (
+        "the page itself does not say the standard was derived, so a reader who arrives "
+        "mid-page by scrolling has only a label they cannot see"
+    )
+    assert "cannot yet import one" in view, (
+        "the page does not say that nothing was compared, so a convention holding 100% of "
+        "the time reads as conformance to a standard nobody supplied"
+    )
+
+
+def test_the_report_calls_one_lane_derived_and_the_other_quoted() -> None:
+    """Two lanes, two claims, and the title may not flatten them.
+
+    The Markdown report carries **both** lanes, so titling the whole document "derived"
+    would relabel a quotation as an inference — the one thing the four provenance tiers
+    exist to prevent. *As found* is true of both: found in the code, found in the documents,
+    and required by neither. The dashboard's page is measured-only and is titled *Derived
+    naming standard* for exactly that reason.
+    """
+    src = (Path(__file__).resolve().parents[1] / "src" / "dunneflow" / "render"
+           / "naming.py").read_text(encoding="utf-8")
+    assert "Naming standard, as found" in src, "the report's title claims a requirement"
+    assert "## Form — derived from the code" in src, (
+        "the Form lane does not say it was derived"
+    )
+    assert "## Vocabulary — quoted, not derived" in src, (
+        "the Vocabulary lane is not marked as quoted, so the report's own title would make "
+        "a quotation read as an inference"
+    )
+    assert "Nothing here was required of this program." in src, (
+        "the report does not open by saying nothing on it is a requirement"
+    )

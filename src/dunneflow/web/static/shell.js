@@ -8045,7 +8045,7 @@ function conventionPanel(cv, i) {
 }
 
 function viewNaming() {
-  const waiting = laneState(VOCAB, "naming", "namingError", "the naming standard");
+  const waiting = laneState(VOCAB, "naming", "namingError", "the derived naming standard");
   if (waiting) return `<div style="max-width:58rem">${waiting}</div>`;
 
   const th = VOCAB.thresholds || {};
@@ -8076,6 +8076,13 @@ function viewNaming() {
   let n = 0;
   return `
   <div style="max-width:58rem;display:flex;flex-direction:column;gap:.75rem">
+    <div class="note">
+      <b>This standard was derived from the code, not required of it.</b> Every convention below was
+      found by counting what the program actually does. None of it was imposed by anyone, and none of
+      it has been checked against a standard your team wrote — DunneFlow cannot yet import one. So a
+      convention holding 100% of the time means the code is consistent, not that it is correct.
+    </div>
+
     <div class="note">
       <b>Every figure here is counted, not guessed.</b> The exceptions are the point: a convention
       followed every time tells you how to read the program, and a convention followed nearly every
@@ -9307,7 +9314,7 @@ function crumbsFor() {
                   { label: { broken: "Broken", suspect: "Suspect", info: "Informational" }[state.sev],
                     cur: true }],
     glossary:    [{ label: "vocabulary" }, { label: "glossary", cur: true }],
-    naming:      [{ label: "vocabulary" }, { label: "naming standard", cur: true }],
+    naming:      [{ label: "vocabulary" }, { label: "derived naming standard", cur: true }],
     inference:   [{ label: "inference", cur: true }],
     curiosities: [{ label: "explore" }, { label: "worth a look", cur: true }],
     pins:        [{ label: "explore" }, { label: "kept", cur: true }],
@@ -12582,7 +12589,12 @@ const NAV_GROUPS = [
          so the row read as "nothing here" on every session that had not been there yet.
          An absent count and a count of nothing are opposite claims. */
       { nav: "glossary", label: "Glossary",        n: vocabCount("terms") },
-      { nav: "naming",   label: "Naming standard", n: vocabCount("conventions") },
+      /* **"Derived"**, and the word is load-bearing rather than modest. This page counts
+         what the code *does*; nothing on it was required by anyone, and nothing on it has
+         been checked against a standard, because no standard can yet be imported. Called
+         "Naming standard" it reads as the rule the program was written to — which is a
+         claim this tool has no evidence for and is the opposite of what it is for. */
+      { nav: "naming",   label: "Derived naming standard", n: vocabCount("conventions") },
       { nav: "inference", label: "Inference",      n: "off", id: "navEgress" },
     ] },
   { id: "navAnom", title: "Anomalies", open: true, items: () => {

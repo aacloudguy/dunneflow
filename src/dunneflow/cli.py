@@ -443,7 +443,12 @@ def cmd_glossary(args: argparse.Namespace) -> int:
 
 
 def cmd_naming(args: argparse.Namespace) -> int:
-    """The naming standard: stated in documentation, measured against the code."""
+    """The naming standard **as found**: derived from the code, quoted from the documents.
+
+    Neither lane is a requirement and neither is a comparison. Form is counted off the
+    graph; Vocabulary is quoted out of whatever the project happens to have written down.
+    Checking either against a standard a team supplies is not built -- see `BRIEFING.md`.
+    """
     opened = _open_store(args)
     if not opened:
         return 2
@@ -741,7 +746,8 @@ def build_parser() -> argparse.ArgumentParser:
     g.add_argument("--limit", type=int, default=20)
     g.set_defaults(func=cmd_glossary)
 
-    nm = sub.add_parser("naming", help="the naming standard: stated, and measured")
+    nm = sub.add_parser("naming",
+                        help="the naming standard as found: derived, and quoted")
     common(nm)
     nm.add_argument("--limit", type=int, default=15)
     nm.set_defaults(func=cmd_naming)

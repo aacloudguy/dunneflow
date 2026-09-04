@@ -449,6 +449,23 @@ grouped counts over a store the server already holds open, and 38.7 MB of prose 
 sidecar until somebody opens a document. **The cold row is the external volume**, as every
 cold row in this file is: 1.7 s and 2.3 s on two first reads, 18 ms on every one after.
 
+**Reading a naming standard out of a table** — measured 2026-09-04 over the 2,024 Markdown
+documents of the corpus, which hold **5,230 tables** between them:
+
+| Measure | Budget | Measured 2026-09-04 |
+|---|---|---|
+| full document scan, with the table rule detector | — | 5.75 s |
+| the same scan, detector stubbed out | — | 5.74 s |
+| **what the detector costs** | < 5% | **+4 ms, +0.1%** |
+
+Median of three sweeps each, alternating, in one process against bodies already in memory —
+which is the point of the conditions: this isolates the *detector* from the disk, and the
+disk is what the 5.7 s is. The detector runs once per table and does two regex passes per
+column over cells it has already been handed by `_table`, so there was no reason to expect a
+cost and there is not one. It is recorded because a per-table pass over 5,230 tables is
+exactly the shape of thing that turns out to cost something, and a number nobody took is a
+number somebody will guess at later.
+
 **A glossary citation into the corpus** — chunk 5, measured 2026-09-04 on the same base:
 
 | Measure | Budget | Measured 2026-09-04 |

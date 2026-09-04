@@ -12,6 +12,7 @@ they are stored apart.
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
@@ -43,6 +44,8 @@ class ProseRules:
     naming_headings: re.Pattern[str]
     term_columns: re.Pattern[str]
     meaning_columns: re.Pattern[str]
+    scope_columns: re.Pattern[str]
+    pattern_columns: re.Pattern[str]
     modals: re.Pattern[str]
     excluded_headings: re.Pattern[str]
     rule_bearing_classes: frozenset[DocClass]
@@ -88,6 +91,8 @@ def load_prose_rules() -> ProseRules:
         naming_headings=re.compile(str(data["naming_headings"])),
         term_columns=re.compile(str(data["term_columns"])),
         meaning_columns=re.compile(str(data["meaning_columns"])),
+        scope_columns=re.compile(str(data["scope_columns"])),
+        pattern_columns=re.compile(str(data["pattern_columns"])),
         modals=re.compile(str(data["modals"])),
         excluded_headings=re.compile(str(data["excluded_headings"])),
         ordinary_words=frozenset(
@@ -204,23 +209,104 @@ def rule_lane(text: str) -> tuple[RuleLane, str, str] | None:
     Returns None when neither lane applies; the caller decides whether the sentence is
     admissible as VOCABULARY on the strength of its section instead.
     """
-    rules = load_prose_rules()
-
-    scope = ""
-    m = rules.identifier_classes.search(text)
-    if m:
-        scope = m.group(1).lower()
-
-    pattern = ""
-    for pat in rules.pattern_tokens:
-        hit = pat.search(text)
-        if hit:
-            pattern = hit.group(0)
-            break
-
+    # **The same two questions a table cell is asked**, and asked by the same code. They
+    # were written out here and again in `table_rule_columns` for about an hour, which is
+    # rule 51 arriving before the second caller had finished being written: a sentence and
+    # a cell must agree about what counts as a scope, or a rule mined from a table and the
+    # same rule written in prose would carry different scopes.
+    scope, pattern = rule_scope(text), rule_pattern(text)
     if scope or pattern:
         return RuleLane.FORM, scope, pattern
     return None
+
+
+# The share of a column's non-empty cells that must carry the evidence before the column is
+# taken to be playing that role. Half, and measured rather than chosen: the one real naming
+# table in the corpus scores 86% on its scope column and 71% on its pattern column, and the
+# nearest false positive scores nothing at all -- so the threshold is nowhere near either
+# and moving it between 0.5 and 0.6 changes no result. A named constant because a bare 0.5
+# in the middle of a loop is a number nobody can weigh.
+COLUMN_EVIDENCE = 0.5
+
+# Fewer rows than this and a majority means nothing: one row out of one is 100%.
+MIN_RULE_TABLE_ROWS = 2
+
+
+def rule_scope(text: str) -> str:
+    """The class of identifier this text names, normalised, or `""`.
+
+    `rule_lane`'s first half, lifted out so a table cell and a prose sentence are asked the
+    same question by the same code. They were the same three lines twice for about an hour,
+    which is rule 51 arriving before the second caller had finished being written.
+    """
+    m = load_prose_rules().identifier_classes.search(text)
+    return m.group(1).lower() if m else ""
+
+
+def rule_pattern(text: str) -> str:
+    """The concrete spelling pattern this text shows, as written, or `""`."""
+    for pat in load_prose_rules().pattern_tokens:
+        hit = pat.search(text)
+        if hit:
+            return hit.group(0)
+    return ""
+
+
+def table_rule_columns(header: list[str],
+                       rows: list[list[str]]) -> tuple[int, int] | None:
+    """Which column names the thing and which gives its spelling, or neither.
+
+    **A naming standard is usually a table**, and until this existed DunneFlow could not
+    read one: `_table` consumes a table whole, so the prose rule detector is never offered
+    its lines, and the corpus yielded **zero** FORM rules in consequence. The best standard
+    in it is seven rows of `Type | Convention | Example`, every row a class of identifier
+    and the spelling it must have -- exactly the pair the FORM lane wants.
+
+    Modelled on `term_columns`/`meaning_columns` beside it, including the rule that matters:
+    **both halves are required, on different columns.** `| Name | Port |` is not a glossary
+    and `| Phase | Status |` is not a naming standard.
+
+    A column qualifies on its **header or its cells**, and taking either is what makes this
+    land. Headers vary between organisations -- Type/Convention, Element/Style, What/How --
+    so matching headers alone is brittle; and cells alone miss the one real table here,
+    whose `Convention` column scores 43% against regexes tuned for prose sentences. Together
+    it fires on that table and on nothing else in 5,230.
+
+    Returns `(scope_col, pattern_col)`, or `None` when either half is missing or both
+    resolve to the same column -- which is a table saying one thing, not two.
+    """
+    if len(rows) < MIN_RULE_TABLE_ROWS:
+        return None
+    rules = load_prose_rules()
+    width = max([len(r) for r in rows] + [len(header)])
+
+    def cells(k: int) -> list[str]:
+        return [r[k].strip() for r in rows if k < len(r) and r[k].strip()]
+
+    def head(k: int) -> str:
+        return header[k] if k < len(header) else ""
+
+    def share(got: list[str], test: Callable[[str], str]) -> float:
+        return sum(1 for c in got if test(c)) / len(got) if got else 0.0
+
+    scope = pattern = None
+    best_scope = best_pattern = -1.0
+    for k in range(width):
+        got = cells(k)
+        s = share(got, rule_scope)
+        p = share(got, rule_pattern)
+        # The header is evidence, never proof: "Type" heads a great many tables that say
+        # nothing about names, and it is the cells that decide whether this is one of them.
+        # A header match admits a column whose cells are too terse to score; the cell
+        # majority admits one whose header this list has never seen.
+        if (rules.scope_columns.match(head(k)) or s >= COLUMN_EVIDENCE) and s > best_scope:
+            scope, best_scope = k, s
+        if (rules.pattern_columns.match(head(k)) or p >= COLUMN_EVIDENCE) and p > best_pattern:
+            pattern, best_pattern = k, p
+
+    if scope is None or pattern is None or scope == pattern:
+        return None
+    return scope, pattern
 
 
 def is_ordinary(word: str) -> bool:

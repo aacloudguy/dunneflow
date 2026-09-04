@@ -34,6 +34,8 @@ from ...detectors.prose import (
     may_state_rules,
     reports_rather_than_rules,
     rule_lane,
+    rule_scope,
+    table_rule_columns,
 )
 from ...schema import (
     DefForm,
@@ -363,6 +365,8 @@ class _Scanner:
         table = DocTable(line=i + 1, header=header, rows=rows, heading=self.heading)
         self.facts.tables.append(table)
 
+        self._table_rules(header, rows, i)
+
         term_cols = [k for k, c in enumerate(header) if self.rules.term_columns.match(c)]
         mean_cols = [k for k, c in enumerate(header) if self.rules.meaning_columns.match(c)]
         # Both halves required. `| Name | Port |` is not a glossary.
@@ -389,6 +393,64 @@ class _Scanner:
             if has_annotation(line):
                 self.facts.annotations.extend(mine_annotations(line, i + 1 + offset))
         return j
+
+    def _table_rules(self, header: list[str], rows: list[list[str]], i: int) -> None:
+        """A naming-conventions table, read as rules. The corpus's FORM lane was empty.
+
+        **A naming standard is usually a table**, and nothing here could read one: `_table`
+        consumes a table whole and the loop `continue`s, so the prose rule detector is never
+        offered its lines. Mensores states 5 rules in prose and **zero** in the FORM lane in
+        consequence -- while `harness/rules/style.md:30` states seven conventions as
+        `Type | Convention | Example`, every row a class of identifier and the spelling it
+        must have. `checkable` has therefore never once been true, and the whole point of
+        the field is to be the input to a comparison.
+
+        Two gates, and the second is new to this branch. `may_state_rules` is the one the
+        prose detector already applies -- a research paper *about* naming standards yielded
+        ten confident false rules once. `reports_rather_than_rules` was applied to
+        sentences and not to tables, and it is what keeps `NAMING.md:63` out: a table headed
+        "Sub-name availability pass -- RESULTS" is a registry lookup, in a naming standard,
+        stated as `Name | PyPI | npm | ...`, and it would otherwise be seven naming rules
+        about nothing.
+
+        A row whose scope cell names no identifier class **still becomes a rule** -- the
+        document said it, and dropping it would be the silent filter design rule 1 exists to
+        prevent. It carries `scope=""` and so is not `checkable`, which is the honest pair:
+        "Step names: snake_case" is a real rule this tool has no population for.
+        """
+        if not may_state_rules(self.facts.doc_class):
+            return
+        if reports_rather_than_rules(self.heading):
+            return
+        cols = table_rule_columns(header, rows)
+        if cols is None:
+            return
+        scope_col, pattern_col = cols
+        for r, row in enumerate(rows):
+            if scope_col >= len(row) or pattern_col >= len(row):
+                continue
+            named, spelling = row[scope_col].strip(), row[pattern_col].strip()
+            if not named or not spelling:
+                continue
+            scope = rule_scope(named)
+            # The **line of the row**, not of the table, and it is the arithmetic `_add_def`
+            # already uses: the header, its separator, then the rows. A citation that opens
+            # at the table's first line lands the reader on the header rather than on the
+            # rule they clicked -- adjacent, plausible, and wrong.
+            self.facts.rules.append(DocRule(
+                # Joined rather than the whole row: the report quotes this, and an
+                # `Example` column repeated into every quotation is noise. The row stays
+                # readable in full at the line beside it.
+                text=f"{named}: {spelling}",
+                line=i + 3 + r,
+                lane=RuleLane.FORM,
+                # As written for the pattern, normalised for the scope -- which is how the
+                # prose lane already stores them, through the same two functions (rule 51).
+                scope=scope,
+                pattern=spelling,
+                heading=self.heading,
+                checkable=bool(scope and spelling),
+            ))
 
     def _deflist(self, i: int) -> int:
         """An HTML definition list, as `docs/reference/glossary.md` actually writes them."""

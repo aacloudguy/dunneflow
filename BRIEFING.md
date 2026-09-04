@@ -220,7 +220,46 @@ the code view — the greenbar, the margin fold, three broken buttons, and the r
 *The paragraphs below are that day's earlier work, kept because the reasoning is recent and
 load-bearing; the current task is the one named above.*
 
-### The latest: Document mode, chunk 5 — a citation into the corpus opens (2026-09-04)
+### The latest: a naming standard written as a table is read at last (2026-09-04)
+
+**The FORM lane was empty across 2,064 documents**, and the reason was one shape: `_table()`
+consumes a table whole and the loop `continue`s, so the prose rule detector is never offered
+its lines. A naming standard is usually a table. `harness/rules/style.md:30` states seven
+conventions as `Type | Convention | Example` — every row a class of identifier and the
+spelling it must have — and DunneFlow could not read one of them. **`checkable` had therefore
+never once been true**, and the whole point of that field is to be a comparison's input.
+
+`table_rule_columns()` decides which column names the thing and which gives its spelling, on
+the model of `term_columns`/`meaning_columns` beside it and keeping the rule that matters:
+**both halves, on different columns.** A column qualifies on its **header or its cells** —
+headers vary between organisations, and cells alone miss a column headed `Convention` whose
+contents are too terse to score.
+
+**Measured over the whole corpus before a line was written: 5,230 tables, one fires.** It
+mints 7 rules, 6 of them checkable. The 100-row *Key Decisions* table does not fire; nor does
+the pantheon, which is a glossary in a naming standard under a naming heading and is the most
+dangerous near-miss there is. Corpus-wide FORM rules: **0 → 7**. VOCABULARY unchanged at 5.
+
+**Two things the plan got wrong and measuring caught.** The two table-cell regexes added for
+`CAPS_UNDERSCORES` and `colon separator` earn **nothing** on this corpus — the column is
+headed `Convention`, which the header list matches, so it yields all seven rules with them
+removed. What they earn is the *cell* path, which is what has to carry a standard written by
+somebody who does not work here; the comment now says that instead of overclaiming. And the
+seven new rules would have had **seven dead links**: the handbook links each stated rule to
+`[the rule in full](#slug)` and only the Vocabulary section ever emitted a heading to slug,
+so a FORM rule pointed at nothing. That is the `where_` defect's shape and it is why **Form**
+now has a *Stated* half above its *Measured* half.
+
+**And a sentence that had never been printed said something false the first time it was.**
+`checkable` had no true branch in practice, so *"Mechanically checkable."* went out beside
+"Type attributes: colon separator" — for which this tool has no population and no check. It
+now says what is true: a check *could* be written, and DunneFlow does not run one.
+
+**10 mutations, all CAUGHT** — after a first pass where 5 survived, every one of them a
+fixture missing *both* column halves rather than one, so a mutation dropping either still
+passed. Rule 37, in the guards written for it.
+
+### Before that: Document mode, chunk 5 — a citation into the corpus opens (2026-09-04)
 
 Design rule 13's last unmet half. **`senseOpens()` is a capability test rather than a
 provenance test** — `s.provenance === "DECLARED_CODE"` was true of the tool until chunk 1 gave
@@ -1075,12 +1114,13 @@ feature was blocked on an answer nobody owed.
     this: *"a naming standard directory that contains multiple documents, each of which
     identifies one or more subsystems."*
 
-  Order, cheapest and highest-value first: **(1)** read a table as rules — 0 FORM rules
-  becomes 7 on this corpus, against a structure already stored; **(2)** serve the stated lane
-  to the dashboard, which shows none of it today; **(3)** compare a checkable rule against the
-  graph the way a measured convention already is; **(4)** `--standards <dir>`, scoped by
-  `paths`/`applies_to`, with rule 57 governing the hazard of admitting an outside directory.
-  4 is larger than 1–3 together and is where the enterprise case actually lives.
+  Order, cheapest and highest-value first: ~~**(1)** read a table as rules~~ — *built
+  2026-09-04, see the top of this file: 0 FORM rules became 7, and one table of 5,230
+  fires*; **(2)** serve the stated lane to the dashboard, which shows none of it today;
+  **(3)** compare a checkable rule against the graph the way a measured convention already
+  is; **(4)** `--standards <dir>`, scoped by `paths`/`applies_to`, with rule 57 governing the
+  hazard of admitting an outside directory. 4 is larger than 2–3 together and is where the
+  enterprise case actually lives.
 - **`m.<module>` as a language feature, with research owed on prior art** — how other tools
   present a construct the *language* put there rather than an author. Decided 2026-08-30:
   not filtered and not bare, but a curiosity carrying its own explanation, scoped to the

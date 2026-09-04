@@ -142,7 +142,7 @@ def render_naming(store: Store, docs: DocStore | None, out_dir: Path, root: Path
             f"listed in full under **Form**; none is omitted.\n"
         )
 
-    lines.extend(_form_section(m, root))
+    lines.extend(_form_section(m, stated, root))
     lines.extend(_vocabulary_section(stated, doc_root))
     lines.extend(_gaps_section(m))
     lines.extend(_scanned_section(m, docs, stated))
@@ -182,7 +182,66 @@ def _stated_rules(docs: DocStore | None) -> list[StatedRule]:
     ]
 
 
-def _form_section(m: NamingMeasurement, root: Path) -> list[str]:
+def _checkable_line(r: StatedRule) -> str:
+    """What `checkable` actually means, said without over-claiming.
+
+    **This sentence had never been printed.** No rule in any corpus had ever carried
+    `checkable = 1` until tables were read, so its true branch was written, shipped and
+    never seen. The first thing it said, on its first outing, was *"Mechanically
+    checkable."* beside **"Type attributes: colon separator"** — for which DunneFlow has no
+    population and no check, and will not have one until a standards directory can be
+    imported and compared.
+
+    The field is right and the sentence was wrong. `checkable` means the rule *names both a
+    class of identifier and a spelling*, which is what makes a check writable; it has never
+    meant that one is run. Rule 51 keeps it in one place, because both lanes say it now.
+    """
+    if r.checkable:
+        return ("Names a class of identifier and a spelling, so a check could be written "
+                "for it. DunneFlow does not yet run one.")
+    return "No query can decide this one."
+
+
+def _stated_form(stated: list[StatedRule]) -> list[str]:
+    """The Form lane's *stated* half: rules a document gives, not counts off the code.
+
+    **Its own block because every one of these needs an anchor to land on.** The handbook
+    at the top of this page links each stated rule to `[the rule in full](#slug)`, and only
+    the Vocabulary section ever emitted a heading to slug — so the day a FORM rule first
+    existed, that link went nowhere. Seven dead links, from a change that never touched this
+    file. It is the `where_` defect's shape: a link correct in every respect except that
+    nothing is at the other end of it.
+
+    Stated and measured sit under one heading on purpose. This section is *Form*, and both
+    halves answer the same question about spelling — one from a document, one from the code.
+    Comparing them is not built; putting them beside each other is the beginning of it.
+
+    **No root, deliberately.** `_form_section` is handed the *source* root and these rules
+    come out of *documents*, which live above it — the mix-up this file records paying for
+    once already, where every citation printed as an absolute path halfway across the disk.
+    A path is not needed here, so the parameter that could be the wrong one is not taken.
+    """
+    form = [r for r in stated if r.lane == "FORM"]
+    if not form:
+        return []
+    lines = [f"\n### Stated — {len(form)} rule{'s' if len(form) != 1 else ''} "
+             "a document gives\n",
+             "Quoted from the project's own documentation rather than counted. **Nothing "
+             "below has been checked against the code** — that comparison is not built, so "
+             "a stated rule and the measured conventions beneath it may disagree and this "
+             "page will not say so.\n"]
+    for r in form:
+        src = f"{r.doc}:{r.line}"
+        lines.append(f"\n#### {src}\n")
+        lines.append(f"> {_esc(r.text)}\n")
+        heading = _esc(r.heading) or "—"
+        where = f"*Stated under “{heading}”.*"
+        lines.append(f"{where} {_checkable_line(r)}\n")
+    return lines
+
+
+def _form_section(m: NamingMeasurement, stated: list[StatedRule],
+                  root: Path) -> list[str]:
     lines = ["\n## Form — derived from the code\n",
              "**Not a standard anyone wrote: a standard the code was found to keep.** "
              "How names are spelled, counted over the code itself. Each convention "
@@ -190,10 +249,14 @@ def _form_section(m: NamingMeasurement, root: Path) -> list[str]:
              "and every exception — never a sample. The exceptions are the point: a "
              "convention holding in 372 of 375 cases is mildly interesting, and the "
              "three that break it are the finding.\n"]
+    lines.extend(_stated_form(stated))
     if not m.conventions:
+        lines.append("\n### Measured — nothing reaches the thresholds\n")
         lines.append("*No convention in this program reaches the thresholds below.*\n")
         return lines
 
+    lines.append(f"\n### Measured — {len(m.conventions)} convention"
+                 f"{'s' if len(m.conventions) != 1 else ''} counted off the code\n")
     lines.append("| Convention | Population | Holds | Rate | Exceptions |")
     lines.append("|---|---|---:|---:|---:|")
     for c in m.conventions:
@@ -251,11 +314,7 @@ def _vocabulary_section(stated: list[StatedRule], root: Path) -> list[str]:
         lines.append(f"\n#### {src}\n")
         lines.append(f"> {_esc(r.text)}\n")
         heading = _esc(r.heading) or "—"
-        checkable = (
-            "Mechanically checkable." if r.checkable
-            else "Not mechanically checkable — no query can decide it."
-        )
-        lines.append(f"*Stated under “{heading}”. {checkable}*\n")
+        lines.append(f"*Stated under “{heading}”.* {_checkable_line(r)}\n")
     return lines
 
 

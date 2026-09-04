@@ -8988,3 +8988,140 @@ standards directory**:
 
 930 tests, mypy clean, ruff clean. The report was re-rendered against the real store to read
 the new wording rather than trusting the template, and the page was read back out of the DOM.
+
+## A naming standard written as a table is read at last — 2026-09-04
+
+Chunk 1 of the known-standards work Tom asked for, and the reason it is first: **the
+comparison machinery had never had an input.** `doc_rules` carries `lane`, `scope`, `pattern`
+and `checkable`, and across 2,064 documents it held 5 rules, all VOCABULARY, none checkable.
+**Zero FORM rules.** There was nothing for a comparison to compare.
+
+**One shape accounts for all of it.** `_table()` consumes a table whole and the loop
+`continue`s (`markdown.py:315-318`), so `_maybe_rule` is never offered a table's lines — the
+`text.startswith("|")` guard I first blamed is real but not the operative reason, and the
+correction makes the fix better: the hook point already has header and cells parsed. And a
+naming standard is usually a table. `harness/rules/style.md:30` states seven conventions as
+`Type | Convention | Example`, every row a class of identifier and the spelling it must have.
+
+### The detector, and the rule it inherits
+
+`table_rule_columns()` in `detectors/prose.py`, modelled on `term_columns`/`meaning_columns`
+sitting a few lines above it in the same YAML — including the rule that carries the weight:
+**both halves are required, on different columns.** *"`| Name | Port |` is not a glossary"*
+becomes *"`| Phase | Status |` is not a standard."*
+
+A column qualifies on its **header or its cells**, and taking either is what makes it land.
+Headers vary between organisations — Type/Convention, Element/Style, What/How — so header
+matching alone is brittle; and cells alone miss the one real table here, whose `Convention`
+column scores 43% against regexes tuned for prose sentences. `rule_scope` and `rule_pattern`
+were lifted out of `rule_lane` so a cell and a sentence are asked the same question by the
+same code — they were the same three lines twice for about an hour, which is rule 51 arriving
+before its second caller had finished being written.
+
+Two gates now apply to tables that did not before: `may_state_rules` (the class gate) and
+`reports_rather_than_rules`, which was applied to sentences only. The second is load-bearing:
+it is what keeps `NAMING.md:63` — *"Sub-name availability pass — RESULTS"* — out of the
+standard.
+
+### Measured over the corpus before a line was written
+
+| | |
+|---|---|
+| tables in the corpus | **5,230** |
+| tables in rule-bearing documents | 27 |
+| tables that fire | **1** — `harness/rules/style.md:30`, scope "Type" 86%, pattern "Convention" 71% |
+| rules minted | **7**, at lines 32–38 — the rows, not the header |
+| corpus-wide FORM rules | **0 → 7**; VOCABULARY unchanged at 5 |
+
+The 26 that do not fire include `.groma/PROJECT.md:328` *Key Decisions* (**100 rows**) and
+`NAMING.md:23` *The pantheon* — a glossary, in a naming standard, under a naming heading,
+already mined as definitions, and the most dangerous near-miss in the corpus. Stable at
+thresholds 0.5 and 0.6. The class gate loses 18 tables, 16 correctly; the two plausible ones
+are an ADR and a research doc, which is the trade `prose.yaml` already documents in prose.
+
+A row whose scope names no identifier class is **kept, not dropped** — *"Step names:
+snake_case"* is a real rule this tool has no population for, and dropping it would be the
+silent filter design rule 1 exists to prevent. It carries `scope=""` and is not checkable.
+
+### Three things measuring caught that the plan had wrong
+
+**The two new regexes earn nothing here, and the comment said they were load-bearing.**
+`CAPS_UNDERSCORES` and `colon separator` were added because the pattern column scored 3 of 7
+without them — true of the cells-only design I simulated first, and false of the header-or-
+cells design I built, because `Convention` is in the header list. Removed, the real file still
+yields all seven rules. They are kept, because what they earn is the **cell** path — 3 of 7
+against 5 of 7 — and that is the path that has to carry a standard written by somebody who
+does not work here, which is the entire point of the feature. The comment now says that.
+
+**Seven dead links, from a change that never touched the file they were in.** The handbook at
+the top of `11-naming.md` links every stated rule to `[the rule in full](#slug)`, and only
+`_vocabulary_section` ever emitted a heading to slug — it filters to `lane == "VOCABULARY"`.
+The day a FORM rule first existed, seven links pointed at nothing. That is the `where_`
+defect's shape exactly: correct in every respect except that nothing is at the other end. So
+**Form** now has a *Stated* half above its *Measured* half, which is also the shape the
+comparison wants — the document's claim and the code's count under one heading.
+
+**A sentence that had never been printed was false the first time it was.** No rule had ever
+carried `checkable = 1`, so the true branch of `render/naming.py`'s checkable line had been
+written, shipped and never seen. Its first outing said *"Mechanically checkable."* beside
+**"Type attributes: colon separator"** — for which DunneFlow has no population, no check, and
+will not have one until a standards directory can be imported. The field is right; the
+sentence over-claimed. It now says a check *could* be written and that DunneFlow does not run
+one, in one place because both lanes say it (rule 51).
+
+### 10 mutations, all CAUGHT — after 5 survived the first pass
+
+Every one of the five was the same defect in my own guards: a fixture missing **both** column
+halves rather than one. A table with neither a scope column nor a pattern column is refused
+twice over, so a mutation dropping either half still passes — and the availability fixture had
+no scope column at all, so the heading gate it was written for was never reached. Rule 37, in
+guards written for a chunk about corroboration. Replaced with `SCOPE_ONLY_TABLE`,
+`PATTERN_ONLY_TABLE`, a one-row table, an unfamiliar-header table (the only thing the cell
+vocabulary earns), and a table with a blank cell — which found a real gap: a half-empty row
+would have been minted as the rule *"Classes:"*.
+
+941 tests, mypy clean, ruff clean.
+
+### The cost, paid rather than deferred
+
+`doc_rules_fingerprint()` hashes `prose.yaml` **and** `markdown.py`, so this bumps it and
+every `docs.db` goes stale. Verified: `dunneflow serve output/mensores` refuses at step 5 of 6
+with *"was written by a different version of DunneFlow … re-run `dunneflow analyze`"* —
+`StaleGraphError` is a `RuntimeError` and is not caught by `_docs_for`'s
+`except (ValueError, OSError)`, so the base build raises rather than silently serving a map
+with no documentation. That is rule 20 working. The pair was rebuilt with CLAUDE.md's
+sequence: analyze 08-26, seal, analyze 08-29.
+
+**And rebuilt twice, because the first one was started too early.** The rebuild ran in the
+background while the last of the code was still being tidied — a two-line change to
+`markdown.py` removing a double `rule_scope()` lookup, made at 12:19 against an analyze that
+had read the file at 12:16. `doc_rules_fingerprint()` hashes the extractor, so both
+freshly-written stores carried `6:d25aa80da4c9c394` against a current `6:37052ebf5f84302a`
+and `serve` refused them exactly as it had refused the old ones. Diagnosed by comparing the
+stored `extractor` key with the computed one rather than by guessing.
+
+The rule is dull and worth writing down anyway: **the rebuild is the last step, not a
+parallel one.** Any edit to `prose.yaml`, `markdown.py` or the reader after an analyze has
+begun invalidates what that analyze wrote, and the failure is silent until something tries
+to read it.
+
+**Two stale revisions are left behind, and only one of them is this session's.**
+`output/mensores` now holds four: `2026-09-04T16:25:20Z` (WORKING, the 08-29 tree) and
+`2026-09-04T16:16:48Z` (FOR_COMPARISON, the 08-26 tree) are the pair, both fingerprint-fresh
+and both carrying the 7 rules. `2026-08-31T22:53:57Z` is this session's orphan, from the
+rebuild that was started too early; `2026-08-31T22:53:15Z` predates the session entirely and
+has 0 FORM rules because it predates the detector. Both are stale and a reader refuses them
+by name. They are derived output and can be deleted; they are named here rather than removed,
+because the directory is Tom's.
+
+**A table rule's citation opens the table, not the row.** Verified end to end through
+`openDocumentAt("harness/rules/style.md", 32)`: the reader lands in Document mode on the
+`<table>` block spanning lines 30–38, which is the innermost block *containing* line 32 and
+therefore the right answer to the question `scrollToDocLine` asks. It cannot be sharper,
+because markdown-it stamps `token.map` on the table token and a row inside one has no map of
+its own. Not a defect and not this chunk's to fix — recorded because **chunk 2 is what will
+put a citation on these rules**, and whoever builds it should decide deliberately whether
+landing on the table is enough or whether the row wants marking.
+
+**The detector costs +4 ms**, 0.1%, over 2,024 documents and 5,230 tables — median of three
+alternating sweeps in one process against bodies already in memory. See `PERFORMANCE.md`.

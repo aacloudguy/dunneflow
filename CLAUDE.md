@@ -180,6 +180,20 @@ docs   ──► extract ──► docs.db  (SQLite) ─────────
 - `extractors/docs/` — Markdown, reStructuredText and plain text, scanned by hand for
   the same reason: no markdown library. Emits `DocFacts`.
 
+  **A naming standard is usually a table, and `_table()` reads one.** The FORM lane was
+  empty across all 2,064 of Mensores' documents — 5 rules, all VOCABULARY, none
+  `checkable` — because `_table()` consumes a table whole and the loop `continue`s, so the
+  prose rule detector is never offered its lines. `table_rule_columns()` decides which
+  column names the thing and which gives its spelling, on the model of
+  `term_columns`/`meaning_columns` beside it and with the rule that matters kept: **both
+  halves are required, on different columns.** A column qualifies on its **header or its
+  cells** — headers vary between organisations, and cells alone miss a column headed
+  `Convention` whose contents are too terse to score. Measured over 5,230 tables: it fires
+  on **one**, `harness/rules/style.md:30`, and mints its seven rows; the 100-row *Key
+  Decisions* table and the pantheon glossary do not fire. A row whose scope names no
+  identifier class is **kept, not dropped** (design rule 1) with `scope=""`, so it is a
+  rule this tool has no population for rather than a rule that vanished.
+
   **That rule governs the extractor, and only the extractor.** Its output is a contract,
   hashed into the cache key by `doc_extraction_inputs()`, so a third party's reading of a
   document must never become a fact this tool asserts. A **renderer** produces pixels, is

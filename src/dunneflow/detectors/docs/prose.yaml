@@ -109,6 +109,20 @@ naming_headings: '(?i)\b(naming|nomenclature|conventions?|style guide|house styl
 term_columns: '(?i)^\s*(?:the\s+)?(term|name|word|component|concept|abbreviation|acronym|symbol|latin name|role name)\b'
 meaning_columns: '(?i)^\s*(?:the\s+)?(meaning|definition|description|role|what it (is|does)|purpose|gloss)\b'
 
+# Table headers that make a table a **naming standard**, and the same both-halves rule for
+# the same reason: a scope column and a pattern column, or it is not a standard. These are
+# matched as *whole* headers rather than as a prefix, because the words are ordinary --
+# "Type" and "Rule" head a great many tables that state nothing about names, and the cell
+# corroboration below is what admits or refuses those.
+#
+# A header match is only ever half the evidence. A column also qualifies on its **cells**:
+# see `table_rule_columns`, which takes either. Headers vary between organisations
+# ("Type/Convention", "Element/Style", "What/How") so header-matching alone is brittle;
+# cells alone missed the one real table in this corpus, whose pattern column scores 43% on
+# regexes tuned for prose sentences.
+scope_columns: '(?i)^\s*(type|kind|element|identifier|artefact|artifact|what|item|construct|object|thing|context)s?\s*$'
+pattern_columns: '(?i)^\s*(convention|style|case|casing|format|pattern|spelling|rule|naming)s?\s*$'
+
 # --------------------------------------------------------------------------- #
 # Stated naming rules.
 #
@@ -199,6 +213,29 @@ pattern_tokens:
   - '`[A-Za-z0-9_./-]*[*?][A-Za-z0-9_./*?-]*`'
   - '(?i)\b(prefix|suffix|prefixed|suffixed|begins? with|starts? with|ends? with|leading underscore|trailing underscore)\b'
   - '(?i)\b(regex|pattern)\b\s*[:`]'
+  # The two below are for **table cells**, which are compressed in ways prose is not, and
+  # each is taken from a cell that actually occurs rather than imagined. Both are from
+  # `harness/rules/style.md:30`, the corpus's one real naming-convention table:
+  #
+  #   | Bash variables  | CAPS_UNDERSCORES |
+  #   | Type attributes | colon separator  |
+  #
+  # **What they earn, measured, because the first version of this comment overclaimed.**
+  # On this corpus they change *no result*: that table's column is headed `Convention`,
+  # which `pattern_columns` matches, so it qualifies on its header and yields its seven
+  # rules with these regexes removed. What they earn is the **cell** path — 3 of 7 cells
+  # match without them and 5 of 7 with — and the cell path is the one that has to carry a
+  # table whose header this list has never seen, which is every standard written by
+  # somebody who does not work here. That is the whole point of the feature, so the
+  # vocabulary is kept broader than this corpus exercises, exactly as `identifier_classes`
+  # already is.
+  #
+  # Deliberately absent: a rule for a backticked *template* -- `NN-kebab-name`,
+  # `NN-NN-PLAN.md`. That is what the comment above warns about, a backticked token read as
+  # a spelling rule, and it is not needed: the column already qualifies without it, and
+  # those rows become rules anyway once the column is established.
+  - '(?i)\b(caps[_ ]?underscores?|all[_ ]?caps|upper[_ ]?underscores?)\b'
+  - '(?i)\b(colon|hyphen|underscore|dot|dash|slash)[- ]?(separator|separated|delimited|delimiter)\b'
 
 # A rule that governs what a name may be drawn from or must mean, rather than how it
 # is spelled. Admitted from a naming section by shape (a list item), or anywhere in a

@@ -414,3 +414,284 @@ def test_the_walk_reports_what_it_skipped(tmp_path: Path) -> None:
     assert stats.found == 2, stats.found          # README.md and .claude/CLAUDE.md
     assert len(stats.nested) == 1, stats.nested
     assert "agent-1" in stats.nested[0]
+
+
+# --------------------------------------------------------------------------- #
+# A naming standard written as a table
+#
+# The shape the extractor could not read, and the reason the FORM lane was empty
+# across a 2,064-document corpus. `_table` consumes a table whole and the loop
+# `continue`s, so the prose rule detector is never offered its lines -- while the
+# best standard in that corpus states seven conventions as `Type | Convention |
+# Example`. Every fixture below is taken from a real table, including every one
+# that must yield nothing.
+# --------------------------------------------------------------------------- #
+
+CONVENTION_TABLE = """\
+# PAUL Style Rules
+
+## Naming Conventions
+
+| Type | Convention | Example |
+|------|------------|---------|
+| Files | kebab-case | `plan-phase.md` |
+| Commands | `paul:kebab-case` | `paul:plan` |
+| Step names | snake_case | `name="load_project_state"` |
+| Bash variables | CAPS_UNDERSCORES | `PHASE_ARG` |
+| Phase directories | `NN-kebab-name` | `02-rules-layer` |
+"""
+
+# The most dangerous near-miss in the corpus: a **glossary** table, in a naming
+# standard, under a naming heading, already mined as definitions.
+PANTHEON_TABLE = """\
+# Naming
+
+## The pantheon
+
+| Component | Latin name | Role / meaning |
+|---|---|---|
+| Interview engine | `disceptator` | the one who debates |
+| Ledger | `quaestor` | the one who audits |
+| Surveyor | `groma` | the surveying instrument |
+"""
+
+# Normative in voice, in a naming standard, and a registry lookup rather than a rule.
+AVAILABILITY_TABLE = """\
+# Naming
+
+## Sub-name availability pass — RESULTS
+
+| Type | Convention | PyPI |
+|---|---|---|
+| Files | kebab-case | free |
+| Commands | snake_case | taken |
+| Modules | kebab-case | free |
+"""
+
+# The header is unrecognised on both halves, so **only the cells** can carry this one —
+# which is the path that has to work for a standard written by somebody who does not work
+# here, and the only thing the table-cell pattern vocabulary earns.
+UNFAMILIAR_HEADER_TABLE = """\
+# Engineering handbook
+
+## Naming
+
+| Thing we mean | How we spell it |
+|---|---|
+| Modules | CAPS_UNDERSCORES |
+| Packages | colon separator |
+| Classes | kebab-case |
+"""
+
+# One row, so a majority means nothing: one of one is 100%.
+ONE_ROW_TABLE = """\
+# Engineering handbook
+
+## Naming
+
+| Whatever | However |
+|---|---|
+| Modules | kebab-case |
+"""
+
+# **One half each**, which is what the both-halves rule is actually about. A fixture missing
+# *both* halves cannot tell you the rule is enforced — it is refused twice over, and every
+# mutation that drops one half still passes. These two isolate it.
+SCOPE_ONLY_TABLE = """\
+# Engineering handbook
+
+## Naming
+
+| Type | Owner |
+|---|---|
+| Modules | platform |
+| Classes | core |
+| Packages | platform |
+"""
+
+PATTERN_ONLY_TABLE = """\
+# Engineering handbook
+
+## Naming
+
+| Style | Example |
+|---|---|
+| kebab-case | `a-b` |
+| snake_case | `a_b` |
+| PascalCase | `Ab` |
+"""
+
+# A real table with a gap in it. Documents are written by people and a cell is often left
+# blank; a rule minted from one says "Modules:" and nothing else.
+GAPPY_TABLE = """\
+# Engineering handbook
+
+## Naming
+
+| Type | Convention |
+|---|---|
+| Modules | kebab-case |
+| Classes |  |
+|  | snake_case |
+| Packages | PascalCase |
+"""
+
+# Neither half. `| Name | Port |` is not a glossary, and this is not a standard.
+HALF_A_TABLE = """\
+# Contributing
+
+## Conventions
+
+| Phase | Status |
+|---|---|
+| PLAN | done |
+| APPLY | done |
+| UNIFY | open |
+"""
+
+
+def _form(facts) -> list:
+    return [r for r in facts.rules if r.lane is RuleLane.FORM]
+
+
+def test_a_conventions_table_becomes_one_rule_per_row(tmp_path: Path) -> None:
+    """Five rows, five rules, each carrying the row's own line.
+
+    The line matters as much as the rule. `_add_def`'s arithmetic is header, separator,
+    then rows, and a citation that opens at the table's first line lands the reader on the
+    header rather than on the rule they clicked — adjacent, plausible, and wrong.
+    """
+    facts = _extract(tmp_path, "rules/style.md", CONVENTION_TABLE)
+    form = _form(facts)
+    assert len(form) == 5, f"expected one rule per row, got {[r.text for r in form]}"
+    by_text = {r.text: r for r in form}
+    assert "Files: kebab-case" in by_text
+    files = by_text["Files: kebab-case"]
+    assert files.scope == "files" and files.pattern == "kebab-case"
+    assert files.checkable
+    # Rows start at the header's line + 2. The table's header is on line 5 here.
+    assert [r.line for r in form] == [7, 8, 9, 10, 11], (
+        "the rules do not carry their own rows' lines, so a citation opens at the header"
+    )
+
+
+def test_a_row_naming_no_identifier_class_is_kept_and_not_checkable(
+        tmp_path: Path) -> None:
+    """Dropping it would be the silent filter design rule 1 exists to prevent.
+
+    "Step names: snake_case" is a real rule somebody wrote. DunneFlow has no population
+    called *step names*, so it carries no scope and is not checkable — which is the honest
+    pair, and a different claim from the rule not existing.
+    """
+    facts = _extract(tmp_path, "rules/style.md", CONVENTION_TABLE)
+    step = [r for r in _form(facts) if r.text.startswith("Step names")]
+    assert step, "a row whose scope is unrecognised was dropped rather than kept"
+    assert step[0].scope == "" and not step[0].checkable
+    assert step[0].pattern == "snake_case", "the pattern was lost with the scope"
+
+
+def test_a_glossary_table_in_a_naming_standard_states_no_rules(tmp_path: Path) -> None:
+    """The near-miss that would have put ten pantheon mappings into the standard.
+
+    It is a table, in a NAMING_STANDARD, under a heading matching `naming_headings`, and
+    every cell is a name. What it is not is a *spelling* rule: no column shows a pattern,
+    so the pattern half is missing and the table yields nothing. It is already mined as
+    definitions, which is the right lane for it.
+    """
+    facts = _extract(tmp_path, "NAMING.md", PANTHEON_TABLE)
+    assert facts.doc_class is DocClass.NAMING_STANDARD
+    assert _form(facts) == [], (
+        "a glossary table was read as a naming standard — the pattern half was not required"
+    )
+    assert facts.definitions, "and it stopped being read as the definitions it is"
+
+
+def test_a_reporting_table_states_no_rules_even_in_a_naming_standard(
+        tmp_path: Path) -> None:
+    """`reports_rather_than_rules` applied to tables, which it was not before.
+
+    A registry availability pass is normative in voice, sits in a naming standard, and is
+    a lookup rather than a rule anyone follows when naming a function.
+    """
+    facts = _extract(tmp_path, "NAMING.md", AVAILABILITY_TABLE)
+    assert facts.doc_class is DocClass.NAMING_STANDARD
+    assert _form(facts) == [], "a results table entered the standard"
+
+
+def test_a_scope_column_alone_is_not_a_standard(tmp_path: Path) -> None:
+    """Names a class of identifier per row and says nothing about spelling.
+
+    Isolated deliberately. A fixture missing *both* halves is refused twice over, so every
+    mutation that drops one half still passes against it — which is how the first version of
+    this guard survived three of them (rule 37: it named the right rule and caught nothing).
+    """
+    facts = _extract(tmp_path, "handbook.md", SCOPE_ONLY_TABLE)
+    assert _form(facts) == [], (
+        "a table with a scope column and no pattern column was read as a standard, so "
+        "`| Type | Owner |` states a naming rule"
+    )
+
+
+def test_a_pattern_column_alone_is_not_a_standard(tmp_path: Path) -> None:
+    """Shows spellings and never says what they are the spelling *of*."""
+    facts = _extract(tmp_path, "handbook.md", PATTERN_ONLY_TABLE)
+    assert _form(facts) == [], (
+        "a table of spellings with nothing to attach them to was read as a standard"
+    )
+
+
+def test_neither_half_is_not_a_standard(tmp_path: Path) -> None:
+    """`| Name | Port |` is not a glossary, and `| Phase | Status |` is not a standard."""
+    facts = _extract(tmp_path, "CONTRIBUTING.md", HALF_A_TABLE)
+    assert _form(facts) == [], (
+        "a table with neither column role was read as a naming standard"
+    )
+
+
+def test_the_cells_carry_a_table_whose_header_is_unrecognised(tmp_path: Path) -> None:
+    """The path the table-cell pattern vocabulary exists for, and the only thing it earns.
+
+    Measured: the one real table in the corpus is headed `Convention`, which
+    `pattern_columns` matches, so it yields its rules with those regexes removed. They earn
+    the **cell** path instead — 3 of 7 cells match without them, 5 of 7 with — and the cell
+    path is what has to carry a standard written by somebody who does not work here. No
+    header here is in either list; if this passes on the headers alone, the guard is blind.
+    """
+    facts = _extract(tmp_path, "handbook.md", UNFAMILIAR_HEADER_TABLE)
+    form = _form(facts)
+    assert len(form) == 3, (
+        "a table whose header neither list knows was not read from its cells, so a standard "
+        f"written outside this project cannot be imported at all: {[r.text for r in form]}"
+    )
+    assert {r.scope for r in form} == {"modules", "packages", "classes"}
+
+
+def test_one_row_is_never_a_majority(tmp_path: Path) -> None:
+    """One cell of one is 100%, which is not evidence of anything."""
+    facts = _extract(tmp_path, "handbook.md", ONE_ROW_TABLE)
+    assert _form(facts) == [], "a single-row table was read as a standard on a 100% majority"
+
+
+def test_a_row_with_an_empty_cell_states_no_rule(tmp_path: Path) -> None:
+    """A blank cell is not a rule, and a rule that reads "Classes:" is worse than none.
+
+    Documents are written by people and half a row is common. Both halves are needed for
+    the row for the same reason both are needed for the table: without the spelling there
+    is no rule, and without the thing there is nothing the spelling is *of*.
+    """
+    facts = _extract(tmp_path, "handbook.md", GAPPY_TABLE)
+    form = _form(facts)
+    assert [r.text for r in form] == ["Modules: kebab-case", "Packages: PascalCase"], (
+        f"a half-empty row was minted as a rule: {[r.text for r in form]}"
+    )
+
+
+def test_a_conventions_table_in_a_plan_states_no_rules(tmp_path: Path) -> None:
+    """The class gate, which tables did not go through at all before.
+
+    Recall is what precision costs: a plan really can settle a convention and that rule is
+    lost here, exactly as it is for prose. The model pass is where it comes back.
+    """
+    facts = _extract(tmp_path, "phases/03-storage/03-01-PLAN.md", CONVENTION_TABLE)
+    assert facts.doc_class is not DocClass.NAMING_STANDARD
+    assert _form(facts) == [], "a table in a plan was mined as a standard"

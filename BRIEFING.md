@@ -179,12 +179,34 @@ program has a most-commented routine and a maximum alone is a claim nobody can w
 
 ## What we are doing now
 
-**Document mode is finished. Chunk 5 landed 2026-09-04; only chunk 6's records remain,
-and most of them are written.** 928 tests, mypy clean, ruff clean, self-check green, console
-clean. 17 mutations against chunk 5, all CAUGHT, baseline green first (rule 59). The approved
-plan is at `~/.claude/plans/polymorphic-finding-swan.md`; chunk 5 there is superseded by two
-decisions Tom took on 2026-09-04 — the viewer keeps its raw span **and** gains a hop into the
-prose reader, and rule 79 was minted.
+**Paused 2026-09-04, between features. Nothing is half-written.** 951 tests, mypy clean,
+ruff clean, console clean, working tree clean, `check` reports 0 broken. Five things landed
+that day, each whole and committed on its own:
+
+| Commit | What |
+|---|---|
+| `94858d5` | Document mode **chunk 5** — a glossary citation into the corpus opens; **rule 79** minted |
+| `3ce4c4a` | the naming standard says it was **derived**, not required |
+| `427bace` | a naming standard written as a **table** is read — corpus FORM rules 0 → 7 |
+| `b92dec0` | the mode toggle **dims** instead of vanishing; a program's own output leaves its corpus |
+| `36a6439` | the **program selector** works |
+
+**Next, and Tom has asked for it in this order:** *"+ Analyze a directory…"* — running an
+analysis from the server, with progress, failure, and a new program appearing in the
+selector. It is deliberately **not** in the `<select>` yet, because a third option that does
+nothing is the defect the selector just fixed. No plan written; the approved plan file
+`~/.claude/plans/async-hugging-whistle.md` holds the selector's, now built.
+
+*Document mode is finished — chunk 5's approved plan was at
+`~/.claude/plans/polymorphic-finding-swan.md`, superseded on the day by two decisions: the
+viewer keeps its raw span **and** gains a hop into the prose reader, and rule 79 was minted.*
+
+**Two servers were running at the pause and are stopped now**: `serve output/mensores` and
+`serve output/dunneflow`. Both directories are current — the pair was rebuilt after the table
+detector bumped the documentation fingerprint, and `output/dunneflow` was re-analysed after
+the corpus fix. `output/beads` is stale by design and is what the selector's failure path was
+tested against; `output/mensores@2026-08-29T19-43-39Z` and two `2026-08-31…` revisions inside
+`output/mensores` are orphans, named in the record and left for Tom to delete or keep.
 
 **Three things are waiting on Tom, one of them now closed, and none blocks anything:**
 

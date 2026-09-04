@@ -1359,3 +1359,50 @@ rule of that number — a blank canvas must say why it is blank — which does e
     needed it did not look like a change to a store at all. So the guard is not a unit test —
     it starts a thread, reads the held store from it, and fails with sqlite's own sentence
     (`test_a_held_document_store_can_be_read_from_a_request_thread`).
+
+80. **A job that can be interrupted must leave something that cannot be mistaken for a
+    finished one.** Stopping `analyze` twelve seconds into the Society tree left a graph that
+    opened perfectly and reported 628 files, 4,786 routines, 4,070 boundary touches — and
+    `resolved_calls = 0`, because it died before `resolve_calls`. A program that calls
+    nothing. It carried `analysed_at`, `tool_version` and `inference = none`, so the cover
+    dated it, the selector offered it, the switch opened it and *About this map* vouched for
+    its determinism. Every part of the tool agreed it was a map of a program, and the only
+    thing wrong with it was everything.
+
+    **The interruption is not the rare case.** This was reachable before any stop button
+    existed: Ctrl-C in a terminal, a laptop that slept, an OOM kill, a full disk. The rule
+    was earned while *adding* a cancel button, and the button was not what earned it — it
+    only made a standing accident easy to reach.
+
+    The rule the number is for: **a partial result is not a small result.** Work that writes
+    as it goes will be stopped somewhere, and the half it finished is often the half that
+    looks complete — 628 files really were read. What makes it a lie is the half that was
+    not, and nothing in the artefact says which half that is. So the *writer* records that it
+    has started and records again that it finished, and every reader that presents the
+    artefact as whole refuses one that never said so.
+
+    Three states, never two. `complete` missing means *written before this key existed* and
+    is fine; `""` means *started and never finished*; `"yes"` means finished. Refusing on
+    absence alone would refuse every artefact made before the rule, none of which is broken
+    — the same missing-versus-blank distinction `/api/about` keeps for `inference` and
+    `model`, one store over.
+
+    **The marker must be durable at the moment of the interruption, or it is not a marker.**
+    `Store.set_meta` does not commit; an uncommitted `complete = ""` is lost by exactly the
+    `kill -9` it exists for, and the graph then reads as one that predates the key. That is
+    the failure this rule prevents, arriving through the back door of the fix for it. Hence
+    `set_meta_now`, and a test that kills a real child rather than reading the source for a
+    `commit()` (rule 37).
+
+    **Refuse on read, never on write.** `UnfinishedMapError` is raised by `_Live.open`, by
+    `_open_store` and so by `check`, and by `serve`'s boot. `analyze` is deliberately exempt,
+    because opening an unfinished map is exactly how it finishes one — 34 s against a 90 s
+    cold run, since the extraction is content-hashed. Rule 20's shape: a read may refuse but
+    may never repair, and the thing that *can* repair must not be locked out. `query` is the
+    one reader that proceeds, and warns: its whole contract is that you get the rows that are
+    there, and an escape hatch that quietly hands over a half-written artefact is not an
+    escape hatch.
+
+    **And the refusal has to name the way out.** *"Never finished"* is a dead end; *"analysing
+    it again completes it — the extraction is cached, so it takes seconds"* is a fix the
+    reader can press. A rule that only ever says no teaches people to work around it.

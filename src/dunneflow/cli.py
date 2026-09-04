@@ -266,7 +266,7 @@ def cmd_analyze(args: argparse.Namespace) -> int:
     # a program at a moment and a reader who cannot see the moment cannot judge the map.
     store.set_meta("analysed_at",
                    datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC"))
-    # **Unfinished until proven otherwise, and committed now.** A killed `analyze` leaves a
+    # **Unfinished until proven otherwise, and committed now.** Rule 80. A killed `analyze` leaves a
     # graph that opens perfectly and reports a program that calls nothing -- see
     # `UnfinishedMapError`. This is the only thing that can speak for a run that does not
     # reach its own last line, so it is written before any work starts and committed on the

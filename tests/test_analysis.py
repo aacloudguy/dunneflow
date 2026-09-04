@@ -545,7 +545,8 @@ def test_the_pre_flight_is_one_function_for_the_field_and_the_button() -> None:
 
 # ------------------------------------------- a run that never finished writing --- #
 #
-# The finding that reframed this whole chunk. A killed `analyze` leaves a graph that **opens
+# **Rule 80**, and the finding that reframed this whole chunk. A killed `analyze` leaves a
+# graph that **opens
 # perfectly and lies**: one stopped twelve seconds into the Society tree reported 628 files,
 # 4,786 routines and `resolved_calls = 0` -- a program that calls nothing -- over a
 # timestamp, a tool version and chunk 2's determinism guarantee. Reachable with no stop

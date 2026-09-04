@@ -5,7 +5,7 @@ It exists so a fresh context can be useful in a few minutes instead of an hour.
 
 | Read | For |
 |---|---|
-| `CLAUDE.md` | The rules. 78 engineering rules and 27 dashboard design rules, each earned from a false result on real code. **Binding.** |
+| `CLAUDE.md` | The rules. 79 engineering rules — numbered to 80, since 21 does not exist — and 27 dashboard design rules, each earned from a false result on real code. **Binding.** |
 | `HANDOFF.md` | The chronological record — what was built when, what it cost, what broke. ~1,700 lines. Read *sections*, not the whole thing. |
 | **this file** | Where things are, what is done, what we are doing now, what not to re-open. |
 | Artifact `f993d319-d2b7-4217-9130-cdbba698d1bc` | The ratified dashboard design — a complete working UI, the source of truth for every view. Read it with the **Artifact tool**, not from a screenshot. |
@@ -179,6 +179,46 @@ program has a most-commented routine and a maximum alone is a claim nobody can w
 
 ## What we are doing now
 
+**Paused 2026-09-04, between features. Nothing is half-written.** 990 tests, mypy clean, ruff
+clean, working tree clean, `check` reports 0 broken on `output/mensores`. Three things landed
+that day beyond the five before them, each whole and committed on its own:
+
+| Commit | What |
+|---|---|
+| `6941d5d` | **"+ Analyze a directory…"** — the dashboard can make a program, not only choose one |
+| `195ca0a` | **"About this map"** — what read it, and whether anything was guessed |
+| `614a6f0` | **a stopped analysis, and the map it leaves behind** — and **rule 80** |
+
+**No servers are running** and `output/` is exactly as it was: `beads`, `dunneflow`,
+`mensores`, and the `mensores@2026-08-29T19-43-39Z` orphan the record already named. Every
+program made while verifying (`rendercheck`, `slotcheck`, and the `coldrun`/`grptest` family)
+was written to the scratchpad or removed.
+
+**Two candidate rules are still open and neither blocks anything** — Tom minted rule 80 and
+left these:
+
+1. **A long job is not a switch — a slot names what is being replaced, not what is running.**
+   *Engineering.* From the analyse work: `claim_analysis` sits beside `claim` rather than
+   sharing it, because a ninety-second read of an unrelated program must not lock a reader out
+   of changing versions.
+2. **Inference is voluntary and secondary, and a map states whether any was used.**
+   *Design.* One step over from design rule 14, which scopes *egress*; this scopes whether a
+   fact was *guessed*.
+
+**Next: whatever Tom picks.** The open list below owns the rest. The nearest things are still
+his eye rather than my keyboard — rule 38's debt is **reduced but not paid**: the analyse
+dialog, the progress panel, the About dialog and the stop/refusal surfaces were all looked at,
+but at 1,259×523 and a 16px root, never at his 24px 4K window, where the dialog's field widths
+are what I would expect to want adjusting.
+
+*Two harness traps were learned the hard way and are written up in `HANDOFF.md`: click
+coordinates and screenshot coordinates are **different scales and neither is stable between
+tabs** (calibrate with markers at known viewport coordinates), and **the topbar cannot be
+clicked at all** — anything above roughly viewport y=48 never reaches the page, so topbar
+controls are driven from the keyboard.*
+
+---
+
 ### The latest: a stopped analysis, and the map it leaves behind (2026-09-04)
 
 Tom asked what happens when a background analysis hangs, crashes, or gets in the way of the
@@ -225,8 +265,16 @@ being watched — and the panel says *"Nothing new for 48 s. Some steps are quie
 so this may be working. It may also be stuck."* Resolution is legitimately silent for tens of
 seconds, so the judgement is the reader's, not the server's.
 
-*Candidate engineering rule, for Tom to mint or refuse:* **a job that can be interrupted must
-leave something that cannot be mistaken for a finished one.**
+***Minted as rule 80** on Tom's call:* **a job that can be interrupted must leave something
+that cannot be mistaken for a finished one.** In `RULES.md` in full, indexed in `CLAUDE.md`,
+cited six times across `store.py`, `cli.py` and the tests. *(The stated rule count was already
+stale by one when 79 was minted; it now reads 79 rules **numbered to 80**, since 21 does not
+exist and the numbers are addresses.)*
+
+***`query` warns rather than refusing** — closed by Tom, not open:* *"I like the fact that
+query returns but warns, that seems correct behavior for that feature."* It is the one reader
+that opens an unfinished map, because its whole contract is that you get the rows that are
+there; the other five refuse.
 
 **Driven in a browser**, all four cases: the panel came back after a mid-run reload with its
 elapsed time correctly reconstructed; the refusal named the running job and its Stop worked;
@@ -351,7 +399,7 @@ a reader can decide to read it again. See "What is next" below.
 
 ---
 
-**Before that — paused 2026-09-04, between features. Nothing is half-written.** 951 tests, mypy clean,
+**Before all three — the earlier pause of 2026-09-04, five features back.** 951 tests, mypy clean,
 ruff clean, console clean, working tree clean, `check` reports 0 broken. Five things landed
 that day, each whole and committed on its own:
 

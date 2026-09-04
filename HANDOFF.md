@@ -9651,8 +9651,31 @@ to spend on a single dimension at a time.
   z-96 that would have been left standing. Cleared before opening, which is the layer note in
   `tokens.css` applying to a second window that can open a third.
 
-*Candidate engineering rule, not minted, for Tom:* **a job that can be interrupted must leave
-something that cannot be mistaken for a finished one.**
+### Rule 80, minted
+
+Tom, on being shown it: *"Good rule, mint that one."* **A job that can be interrupted must
+leave something that cannot be mistaken for a finished one.** In `RULES.md` in full, indexed
+in `CLAUDE.md`, and cited six times — the exception, the durable write, the read-path refusal,
+the sentence that names the way out, the marker itself, and the tests.
+
+The body carries the four halves that were paid for separately: a **partial result is not a
+small result** (628 files really were read; what makes it a lie is the half that was not);
+**three states, never two**, because refusing on absence would refuse every artefact made
+before the rule; **the marker must be durable at the moment of the interruption**, or the
+fix fails by its own failure mode; and **refuse on read, never on write** — `analyze` opening
+an unfinished map is how it finishes one, so a refusal that locked out the only thing that
+can repair would be rule 20 turned against itself.
+
+*The stated rule count was already stale by one before this — it said 78 when 79 had been
+minted. It now reads **79 rules numbered to 80**, since 21 does not exist and the numbers are
+addresses.*
+
+**`query` stays as it is, and that is now a decision rather than an open question.** Tom:
+*"I like the fact that query returns but warns, that seems correct behavior for that
+feature."*
+
+*The other two candidates from this session are not minted and are named in `BRIEFING.md`:
+a long job is not a switch, and inference is voluntary and secondary.*
 
 ### Looked at
 

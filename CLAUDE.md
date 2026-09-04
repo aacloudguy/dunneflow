@@ -14,7 +14,7 @@ by *how often you need it*, not by importance:
 | File | What it holds | When to read it |
 |---|---|---|
 | `CLAUDE.md` | commands, verification gates, architecture, and the **index** of every rule | every session — it is loaded for you |
-| `RULES.md` | the 78 engineering rules **in full**, with the false result each came from | before working in the area a rule governs |
+| `RULES.md` | the 79 engineering rules **in full**, with the false result each came from — numbered to 80, because 21 does not exist and the numbers are addresses | before working in the area a rule governs |
 | `DESIGN-RULES.md` | the 27 dashboard design rules in full | before building or changing a view |
 | `PERFORMANCE.md` | every measured figure, with its budget and its conditions | before quoting or retaking a number |
 | `BRIEFING.md` | state: what is built, what is next, what is closed | at the start of a session |
@@ -671,6 +671,8 @@ it was written from.
  78. A pane brought up to date by the control that moved it is only as correct as the
      last person to add a control.
  79. A lifetime change is an access-pattern change.
+ 80. A job that can be interrupted must leave something that cannot be mistaken for
+     a finished one.
 ```
 
 ## Anomalies: the discipline

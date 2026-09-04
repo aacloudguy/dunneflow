@@ -357,7 +357,7 @@ CREATE INDEX IF NOT EXISTS ix_constants_module ON constants(module);
 
 
 class UnfinishedMapError(RuntimeError):
-    """An analysis started writing this map and never finished.
+    """An analysis started writing this map and never finished. **Rule 80.**
 
     A killed `analyze` leaves a graph that **opens perfectly and lies**. Measured on the
     Society tree by stopping one twelve seconds in: 628 files, 4,786 routines, 4,070
@@ -386,6 +386,9 @@ def unfinished_sentence(name: str, step: str) -> str:
     **It names the step and stops there.** Saying *"nothing resolved its calls"* would be
     a claim about which step it died on, true of the one measured case and false of the
     others; what is always true is that a part of a program is not a program (rule 13).
+
+    And it names the **way out**, because rule 80's last line is that a refusal which only
+    ever says no teaches people to work around it.
     """
     where = f" while {step}" if step else ""
     return (f"{name} was never finished: an analysis stopped{where}. What it holds is part "
@@ -576,6 +579,9 @@ class Store:
         Its own method rather than a flag on `set_meta`, because the choice is about the
         fact rather than about the caller (rule 51) -- and a `commit=True` default nobody
         passes is how a durability decision goes quiet.
+
+        Rule 80's second half: a marker that is not durable at the moment of the
+        interruption is not a marker.
         """
         self.set_meta(key, value)
         self.conn.commit()
@@ -588,8 +594,10 @@ class Store:
         run that started and stopped -- the same missing-versus-blank distinction
         `/api/about` keeps, one store over.
 
-        A **read**-path rule, like `StaleGraphError`. `analyze` never calls it: opening an
-        unfinished map is exactly how it finishes one.
+        A **read**-path rule, like `StaleGraphError`, and rule 80's third half. `analyze`
+        never calls it: opening an unfinished map is exactly how it finishes one, and a
+        refusal that locked out the only thing that can repair would be rule 20 turned
+        against itself.
         """
         state = self.finished()
         if state is None or state == "yes":

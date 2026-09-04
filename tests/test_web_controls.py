@@ -5225,41 +5225,67 @@ def test_the_source_directory_readout_is_not_overwritten_by_the_client() -> None
     DIRECTORY, on every load. Nothing threw, no test failed, and the markup was correct
     the whole time.
 
-    Both halves are asserted, because either alone passes while the box is blank: the
-    static text must be *in* the markup, and nothing may write over it.
+    It asserted both halves — the static text must be *in* the markup, and nothing may
+    write over it — because either alone passes while the box is blank.
+
+    **What was binding here and what has flipped.** The ban on the *client writing it* was
+    the accident of the moment -- nothing sent a field to write. The rule underneath is
+    rule 44's: the client must not read a field the server does not send. `/api/about`
+    sends one now, so the write is correct and `source_root` is still forbidden. Only the
+    second half survives, and it is the half that was ever the rule.
     """
     html, shell = _read("index.html"), _code(_read("shell.js"))
-    assert 'id="srcPathV">not bound' in html, "the readout must state its state, not blank"
     assert "applySourcePath" not in shell
-    assert "source_root" not in shell, "the client must not read a field nothing sends"
-    for writer in ("#srcPathV", "srcPathV"):
-        assert writer not in shell, f"{writer} is written by the client again"
+    assert "source_root" not in shell, (
+        "the client reads `source_root` again -- a stored root is one machine's directory "
+        "layout, and no store has recorded one since rule 60 (see migrate.py)"
+    )
+    # It writes the readout, and what it writes is a field `/api/about` really sends.
+    assert "srcPathV" in shell, "nothing fills the readout; it renders its placeholder"
+    assert re.search(r"\.tree\b", shell), (
+        "the readout is written from something other than `tree` -- the only name the "
+        "store records for a source tree"
+    )
+    assert 'id="srcPathV">' in html, "the readout must state its state, never start blank"
 
 
-def test_the_source_directory_is_a_readout_and_does_not_present_as_a_button() -> None:
-    """Design rule 16: a control that renders but does nothing looks like one that works.
+def test_the_source_directory_presents_as_a_button_and_is_routed() -> None:
+    """**Design rule 16, the other way round, and it is the same rule.**
 
-    Nothing binds a source tree yet — nothing at read time opens a file from disk — so
-    this must not offer the affordances of a control. It was a `<button>` with
-    `aria-expanded` and a pointer cursor, all three of which promise a press.
+    This asserted the opposite for as long as nothing bound a source tree: a control that
+    renders and does nothing looks exactly like one that works, so the element was a
+    `<div>` with no pointer cursor and no hover. Its own markup set the condition --
+    *"it becomes interactive when something needs to open a file from disk"* -- and
+    `About this map` met it.
+
+    So the guard inverts rather than being deleted, because the rule it enforces has not
+    changed: **what presents as a control must act.** Now that it looks pressable, the
+    check is that pressing it does something -- the attribute is in the roster the runtime
+    self-check reads, and a listener routes it.
     """
     html, css = _read("index.html"), _read("tokens.css")
     block = html.split('id="srcPath"', 1)[1].split(">", 1)[0]
     assert "aria-expanded" not in block, "nothing expands; the attribute is a promise"
-    assert '<div class="srcpath" id="srcPath"' in html, "a readout, not a button"
+    assert '<button class="srcpath" id="srcPath"' in html, (
+        "a control that opens a dialog is a button, not a div -- keyboard and screen "
+        "reader users reach it no other way"
+    )
+    assert "data-aboutopen" in block, "the button routes nothing; design rule 16 exactly"
 
-    # Read over the *rules*, never the whole file. The first version of this asserted the
-    # bare selector was absent and failed on the comment saying it had been removed; the
-    # second matched only a selector sitting immediately before its `{`, and so missed
-    # `.srcpath[aria-expanded="true"] .srcpath-v { … }` — a descendant selector, which is
-    # the exact shape that was there. Both are rule 37 in the check rather than the code:
-    # run it against the defect, and against a version where only half the feature works.
+    shell = _code(_read("shell.js"))
+    assert '"aboutopen"' in shell, (
+        "data-aboutopen is not in WIRED_ATTRS, so the runtime self-check calls it dead"
+    )
+    assert "data-aboutopen" in shell, "nothing listens for it"
+
+    # Read over the *rules*, never the whole file -- see the note this guard carried when
+    # it asserted the reverse. It must now *offer* the affordances it once had to refuse.
     styles = _css_code(css)
     rule = styles.split(".srcpath {", 1)[1].split("}", 1)[0]
-    assert "cursor: pointer" not in rule, "a pointer cursor promises a press"
-    assert ".srcpath:hover" not in styles, "a hover lift promises a press"
-    # Styles for states this element no longer has are how a dead control keeps looking
-    # alive; they were removed with the button rather than left behind.
+    assert "cursor: pointer" in rule, "it opens a dialog and does not say so to the pointer"
+    assert ".srcpath:hover" in styles, "nothing answers a hover; it reads as a readout"
+    # Styles for states this element does not have are how a dead control keeps looking
+    # alive. It gained a press, not an expansion.
     assert '.srcpath[aria-expanded="true"]' not in styles
     assert ".srcpath-was" not in styles
 
@@ -9727,22 +9753,37 @@ def test_the_call_head_may_wrap_where_the_shell_marked_its_joints() -> None:
     )
 
 
-def test_the_source_path_readout_no_longer_sizes_a_string_it_cannot_receive() -> None:
-    """`#srcPathV` is written by nothing; the whole of it is a literal in the markup.
+def test_the_source_path_readout_clips_because_it_is_written_again() -> None:
+    """**The condition this guard set has been met, so it is the other way round now.**
 
-    It reached the shortening list as a `text-overflow: ellipsis` and came off it by being
-    measured: there is nothing here to shorten. Dead CSS is how a control keeps looking
-    wired (rules 44 and 48), and this was the readout's version of it.
+    It used to assert `#srcPathV` was written by nothing and therefore carried no clip:
+    the field held a literal, and a `text-overflow` for a string that cannot arrive is
+    dead CSS, which is how a control keeps looking wired (rules 44 and 48). Its own
+    message named the reversal -- *"it holds a path again, so the clip it used to carry
+    has to come back with the binding"* -- and `/api/about` is that binding.
+
+    So both halves flip together, and asserting them together is the point: a writer with
+    no clip is a topbar pushed off a narrow window by a long name, and a clip with no
+    writer is the dead CSS this was written against. Neither half alone is the rule.
+
+    What it holds is a **leaf**, never a path (rule 60), and `max-width` is in `rem`
+    because a pixel count is right at one font size (design rule 3, rule 53).
     """
-    assert "srcPathV" not in _code(_read("shell.js")), (
-        "something writes #srcPathV now -- it holds a path again, so the clip it used to "
-        "carry has to come back with the binding"
+    shell = _code(_read("shell.js"))
+    assert "srcPathV" in shell, (
+        "nothing writes #srcPathV -- if the readout is a literal again, the clip below is "
+        "dead CSS and both halves of this guard have to go back the other way"
     )
     css = _css_code(_read("tokens.css"))
-    m = re.search(r"\.srcpath-v \{([^}]*)\}", css)
+    m = re.search(r"\.srcpath-v \{([^}]*)\}", css, re.S)
     assert m, ".srcpath-v is gone; this guard is blind"
-    assert "text-overflow" not in m.group(1), (
-        "the readout clips a string that cannot arrive"
+    rule = m.group(1)
+    assert "text-overflow" in rule and "overflow: hidden" in rule, (
+        "the readout is written by the client and does not clip -- a long tree name pushes "
+        "the search box and the right-hand group off a narrow window"
+    )
+    assert "max-width" in rule and "px" not in rule, (
+        "the clip is unbounded, or bounded in px -- design rule 3"
     )
 
 

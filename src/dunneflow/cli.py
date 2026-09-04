@@ -17,6 +17,7 @@ import sqlite3
 import sys
 import time
 from datetime import UTC, datetime
+from importlib import metadata
 from pathlib import Path
 
 from . import revisions
@@ -48,6 +49,42 @@ def _default_paths(target: Path, name: str | None, out_root: Path) -> tuple[str,
 
 def _emit(msg: str) -> None:
     print(msg, file=sys.stderr)
+
+
+def _tool_version() -> str:
+    """Which DunneFlow read this map. From the package, never a literal beside it.
+
+    A literal is a second answer to a question `pyproject.toml` already answers, and it is
+    the copy that goes stale (rule 51). An editable install with no metadata is a real
+    state and says so rather than claiming a version it cannot know.
+    """
+    try:
+        return metadata.version("dunneflow")
+    except metadata.PackageNotFoundError:
+        return ""
+
+
+def _args_said(args: argparse.Namespace) -> str:
+    """What this run was told, as a short readable phrase.
+
+    Only what **removes** something. A map with no documents and a map analysed
+    `--no-docs` look identical from the inside, and only one of them is a program that has
+    no documentation -- design rule 1 again, one store over.
+    """
+    said = []
+    if args.include_tests:
+        said.append("tests included")
+    if args.no_docs:
+        said.append("documentation not read")
+    elif args.docs:
+        said.append(f"documentation from {Path(args.docs).name}")
+    if args.no_source:
+        said.append("source bodies not kept")
+    if args.no_doc_source:
+        said.append("document bodies not kept")
+    if args.no_render:
+        said.append("map not written")
+    return "; ".join(said)
 
 
 # -- what an analysis is doing, for whoever is watching it ------------------ #
@@ -215,6 +252,26 @@ def cmd_analyze(args: argparse.Namespace) -> int:
     # a program at a moment and a reader who cannot see the moment cannot judge the map.
     store.set_meta("analysed_at",
                    datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC"))
+
+    # -- what read this map, and whether anything was guessed ---------------- #
+    #
+    # **A standing guarantee, not a placeholder waiting for a model.** Nothing on this path
+    # calls a model or touches a network: the extractors are stdlib `ast` and `tokenize`,
+    # the document scanner is hand-written, and `Provenance`'s two paid tiers (CITED,
+    # INFERRED) are declared and unbuilt. So `inference` says `none` because that is the
+    # fact, and design rule 21 says a thing worth knowing is stated rather than left absent.
+    #
+    # `model` is written **empty** rather than omitted, and the difference is the whole
+    # reason it is here: a key that is missing means *this map predates the question* and a
+    # key that is blank means *nothing read it but the code* -- two different facts that a
+    # reader would otherwise have to tell apart by the absence of a row (rule 30). When a
+    # reader ever turns inference on, voluntarily, this is where the answer goes.
+    store.set_meta("tool_version", _tool_version())
+    store.set_meta("inference", "none")
+    store.set_meta("model", "")
+    # What the run was told, so a thin map can say it was asked to be thin rather than
+    # leaving a reader to wonder why a program has no documents (design rule 1).
+    store.set_meta("analysis_args", _args_said(args))
 
     def progress(path: str, i: int, total: int) -> None:
         if i % 50 == 0 or i == total:

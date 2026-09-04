@@ -1595,6 +1595,92 @@ class _Handler(BaseHTTPRequestHandler):
                                       (q.get("path") or [""])[0],
                                       revision=base.docsource_revision))
 
+    def _r_about(self, q: dict[str, list[str]]) -> None:
+        """What read this map, and whether anything in it was guessed.
+
+        **Every row is a recorded fact or a stated absence**, and the two are never blurred:
+        a key that is *missing* means this map predates the question, a key that is *blank*
+        means the answer is nothing. Design rule 21 says a blank must say why it is blank,
+        and here there are two different whys.
+
+        The two rows this exists for are the last two, and they are a **standing guarantee**
+        rather than a placeholder waiting for a model. Nothing on the analysis path calls a
+        model or touches a network -- the extractors are stdlib `ast` and `tokenize`, the
+        document scanner is hand-written, and `Provenance`'s two paid tiers are declared and
+        unbuilt. A reader handed a map is entitled to know that in as many words, and to be
+        told plainly when an older map cannot say.
+
+        **The fingerprint is not offered as a comparison, and that was a correction.** The
+        obvious row is *"would a newer DunneFlow read this differently?"* -- and for the map
+        on screen it can only ever answer no, because `Store` opened read-only calls
+        `_refuse_if_stale` and a mismatched graph never becomes the base at all. So what is
+        stated is the guarantee that produces: this map was read by the build serving it,
+        necessarily. The honest *"should I read this again?"* signal is the date beside it
+        and the tree it was read from, which have moved on and say nothing about it.
+        """
+        with self._live.lock:
+            base = self._live.current
+            meta = {k: base.store.get_meta(k) for k in (
+                "program", "revision", "analysed_at", "tool_version", "extractor",
+                "schema_version", "inference", "model", "analysis_args")}
+            counts = base.store.counts()
+            docs = base.docs.counts() if base.docs is not None else None
+            source_revision = base.source_revision
+            out_name = self._live.out_dir.name
+            sidecar = self._live.source
+
+        # The leaf of the tree this snapshot was read from -- a name, never a path (rule
+        # 60). Only the sidecar knows it, and a map handed over without one simply cannot
+        # say, which is a different answer from a map read from a tree with no name.
+        tree = None
+        if sidecar is not None and source_revision is not None:
+            for row in sidecar.revisions():
+                if row.get("revision") == source_revision:
+                    tree = str(row.get("tree") or "")
+                    break
+
+        # What a value meaning *nothing* looks like in the store. Two spellings because two
+        # fields chose differently and both are right where they are: `inference` says
+        # `none` so `dunneflow query` over `meta` reads as prose, and `model` is blank
+        # because there is no word for the model that did not run.
+        NOTHING = {"", "none"}
+
+        def said(key: str) -> dict[str, Any]:
+            """One recorded field: its value, whether it was recorded, and what it means.
+
+            **`none` is decided here rather than on the page**, because this is the layer
+            that knows what `analyze` writes. A renderer testing for the literal `"none"`
+            would be a second reading of a value it does not own, and it would go on
+            looking right on the day the word changed (rule 51).
+
+            Three states, never two: not recorded, recorded as nothing, recorded as
+            something. The first two are the distinction the whole guarantee rests on --
+            *this map cannot say* and *nothing was inferred* are different claims.
+            """
+            v = meta.get(key)
+            return {"recorded": v is not None, "value": (v or ""),
+                    "none": v is not None and v.strip().lower() in NOTHING}
+
+        self._json({
+            "program": meta.get("program") or out_name,
+            "revision": meta.get("revision") or "",
+            "analysed_at": meta.get("analysed_at") or "",
+            "tree": tree,
+            "tool_version": said("tool_version"),
+            "extractor": said("extractor"),
+            "schema_version": said("schema_version"),
+            "analysis_args": said("analysis_args"),
+            # The two the dialog exists for.
+            "inference": said("inference"),
+            "model": said("model"),
+            "counts": {"files": counts.get("files", 0),
+                       "routines": counts.get("routines", 0),
+                       # `None`, not 0: a corpus nobody scanned and a corpus with nothing
+                       # in it are different facts (design rule 11 -- documentation is
+                       # optional, and its absence is stated rather than shown as zero).
+                       "documents": (docs or {}).get("documents") if docs else None},
+        })
+
     def _version_of(self, graph: Path) -> dict[str, Any]:
         """What one version says its own version is, or nothing at all.
 
@@ -2142,6 +2228,7 @@ class _Handler(BaseHTTPRequestHandler):
         "/api/base": "_r_base",
         "/api/programs": "_r_programs",
         "/api/analysis": "_r_analysis",
+        "/api/about": "_r_about",
         "/favicon.ico": "_r_favicon",
     }
 

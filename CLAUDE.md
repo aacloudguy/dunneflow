@@ -82,6 +82,34 @@ reads a source tree into a new directory under the output root and puts it in th
   warning and the endpoint's answer, rule 41); analysing into a name that **already exists**
   is allowed and *says* it rewrites that program's working snapshot.
 
+**`serve` says what read the map, and whether anything in it was guessed.** The topbar's
+`source directory` control — a readout until there was something true to put in it — opens
+*About this map*: `GET /api/about`, and the two rows it exists for are
+
+| Inferred facts | none — every fact here was read, not guessed |
+| Read by a model | none — this analysis is deterministic and local |
+
+**A standing guarantee, not a placeholder waiting for a model.** Nothing on the analysis
+path calls a model or touches a network: the extractors are stdlib `ast` and `tokenize`, the
+document scanner is hand-written, and `Provenance`'s two paid tiers (`CITED`, `INFERRED`) are
+declared and unbuilt. Tom, 2026-09-04: *"Inference should always be voluntary and secondary."*
+A test asserts nothing under `extractors/`, `resolve/` or `canonical/` imports an HTTP client
+or an LLM SDK, because a claim on screen that no query can return is prose (rule 13).
+
+**Missing and blank are different answers**, and flattening them would turn a silence into a
+promise. Every field arrives as `{recorded, value, none}`: a map written before `analyze`
+recorded any of this reports `recorded: false` and says *"not recorded — written before this
+map could say"*. **`none` is the server's decision**, never a test for the word on the page —
+`inference` stores `none` so `dunneflow query` over `meta` reads as prose and `model` stores
+blank because there is no word for the model that did not run, and the page owns neither
+spelling (rule 51).
+
+*What is deliberately **not** offered is a "would a newer build read this differently?" row.*
+For the map on screen it can only ever answer no: `Store` opened read-only calls
+`_refuse_if_stale`, so a mismatched graph never becomes the base at all. What is stated is the
+guarantee that produces. The honest *should I read this again?* signal is the date beside it
+and the **tree leaf** it was read from — a leaf, never a path (rule 60).
+
 `serve` also switches **program**, which is the same operation one axis over. The topbar's
 first control lists every directory under the output root that holds a map —
 `revisions.program_dirs()`, the same question `analyze` asks to keep a program's own output

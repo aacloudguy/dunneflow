@@ -35,25 +35,28 @@
     <label class="sr-only" for="prog">Program</label>
     <select class="tb-select" id="prog"></select>
 
-    <!-- The source directory is where the **binding** will live: the tree this
-         installation points a program directory at. It is a readout and not a button,
-         because nothing binds one yet and a control that looks settable and is not is the
-         dead control design rule 16 exists to catch. It becomes interactive when something
-         needs to open a file from disk.
+    <!-- **This was a readout, and it is a button now.** Its own comment set the condition:
+         *"it becomes interactive when something needs to open a file from disk"* -- and
+         `About this map` is that, one step in. Rewritten as the reversal it is rather than
+         left standing beside markup that contradicts it.
 
-         Nothing at read time needs one today. Bodies come out of `source.db` by content
-         hash, never by opening a path, so the dashboard is complete with no tree in sight.
+         It never was a *path* and still is not: a map records the **leaf** of the tree it
+         was read from and never the tree, because a path is one machine's directory layout
+         in an artefact built to be handed over (rule 60). The leaf names the tree; that is
+         all a reader looking at this label wants, and it is all the store can honestly give.
 
-         **Not bound is stated, never left blank.** A blank readout and "we could not say"
-         are indistinguishable, and design rule 21 says a blank must say why it is blank.
+         Filled by `paintSrcPath` from `/api/about`, which is also what the button opens.
+         **Not bound is stated, never left blank** -- and there are three of those now, not
+         one: no sidecar to ask, a sidecar recording no name, and a name (design rule 21).
 
          It used to be filled from `meta.source_root` -- one developer's disk in a tooltip
          on every other machine, which its own comment said and which is exactly why the
          root is no longer recorded at all. See `migrate.py`. -->
-    <div class="srcpath" id="srcPath">
+    <button class="srcpath" id="srcPath" data-aboutopen
+            title="What read this map, and whether anything in it was guessed">
       <span class="srcpath-k">source directory</span>
-      <span class="srcpath-v" id="srcPathV">not bound — none needed here</span>
-    </div>
+      <span class="srcpath-v" id="srcPathV">reading...</span>
+    </button>
 
     <!-- Filled from /api/revisions by buildRevControls(). Empty here on purpose: an
          option written into the markup is a claim about a program this page has not read

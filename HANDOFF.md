@@ -9440,3 +9440,101 @@ Chunk 2 of the same plan, approved and not built: what read this directory, show
 can decide to read it again. Tom asked for the **model** an analysis used; there is none, and
 checking that first is what turned the feature from a placeholder into a guarantee — see the
 open list in `BRIEFING.md`.
+
+## "About this map" — what read it, and whether anything was guessed — 2026-09-04
+
+Chunk 2 of the same plan. Tom asked that an analysis **record what model was used**, in an
+*"About this directory"* dialog, so a reader might analyse again when a better one exists.
+
+### The premise was checked before it was built, and it was wrong in the best way
+
+**No model is used.** Verified across `src/`: the extractors are stdlib `ast` and `tokenize`,
+the document scanner is hand-written, and there is no LLM call and no network egress anywhere
+on the analysis path. `Provenance` (`schema.py`) declares four tiers and only the two free
+ones are implemented -- `CITED` ("a model found it in prose and cited file:line") and
+`INFERRED` ("nothing states it; a guess") are both designed and both unbuilt.
+
+Tom, on being told: *"Perfect, keep it that way as much as possible! Inference should always
+be voluntary and secondary."*
+
+That turned the feature from a placeholder into a **standing guarantee**. The two rows read
+*none -- every fact here was read, not guessed* and *none -- this analysis is deterministic
+and local*, and a reader handed a map is entitled to that in as many words rather than by
+inferring it from an absence (design rule 21). The field that names a model exists so that a
+reader who ever turns inference on, **voluntarily**, can see which facts it paid for.
+
+A test asserts nothing under `extractors/`, `resolve/` or `canonical/` imports an HTTP client
+or an LLM SDK. `web/` is excluded on purpose: it *is* an HTTP server, and the claim is about
+what produced the facts rather than what serves them. A claim on screen that no query can
+return is prose (rule 13).
+
+### Missing and blank are different answers, and the whole thing rests on it
+
+*This map cannot say* and *nothing was inferred* look identical in a blank cell, and only one
+is a promise. Every field arrives as `{recorded, value, none}`. `output/dunneflow`, analysed
+before these keys existed, renders *"not recorded -- written before this map could say"* in
+italic, visibly apart from the guarantee; `output/mensores` is the same. Both were looked at.
+
+**`none` is the server's decision, not the page's.** `inference` stores the word `none` so
+`dunneflow query` over `meta` reads as prose; `model` stores blank, because there is no word
+for the model that did not run. The page owned one spelling for an hour and rendered
+*"Inferred facts: none"* -- a bare word where the sentence was the entire point of the row --
+which is rule 51 caught on screen rather than in review. The layer that writes the value now
+decides what it means, and the renderer reads a flag.
+
+### The row that was planned and struck
+
+*"Would a newer DunneFlow read this differently?"* was in the approved plan and is not built,
+because for the map on screen it can only ever answer **no**: `Store` opened read-only calls
+`_refuse_if_stale`, so a mismatched graph never becomes the base at all. Stating a comparison
+whose answer is fixed by construction is worse than stating the guarantee that produces it.
+The honest *should I read this again?* signal is the date beside it and the **tree leaf** it
+was read from -- a leaf, never a path (rule 60), because a path is one machine's directory
+layout in an artefact built to be handed over.
+
+*Candidate design rule, not minted, for Tom:* **inference is voluntary and secondary, and a
+map states whether any was used.** One step over from design rule 14, which scopes *egress*;
+this scopes whether a fact was *guessed*.
+
+### Four guards flipped, and none was deleted
+
+The doorway is the topbar's `source directory` control, which was a `<div>` readout with no
+pointer cursor and no hover -- deliberately, because nothing bound a source tree and a control
+that renders while doing nothing looks exactly like one that works (design rule 16). Its own
+markup set the condition: *"it becomes interactive when something needs to open a file from
+disk."* This met it.
+
+So each guard now protects the new decision, in the same rule read the other way round:
+
+* *is a readout and does not present as a button* -> **presents as a button and is routed.**
+  The rule was never "be a div"; it was *what presents as a control must act*.
+* *is not overwritten by the client* -> **is written, from a field the server sends.** The
+  ban on writing was the accident of the moment; rule 44's real content -- do not read a
+  field nothing sends -- survives, and `source_root` is still forbidden (rule 60).
+* *no longer sizes a string it cannot receive* -> **clips because it is written again.** Its
+  own failure message had already named the reversal: *"it holds a path again, so the clip it
+  used to carry has to come back with the binding."* Both halves flip together, and asserting
+  them together is the point.
+* And a fourth, `every_loading_placeholder_is_replaced_by_an_answer`, was satisfied rather
+  than flipped -- `openAbout` gained its own `try`/`catch` so a failed fetch answers the
+  placeholder instead of leaving it at "asking the server..." for ever.
+
+One `.srcpath { ... }` block, not two: a second rule for the same selector wins on source
+order and is invisible from the first (rule 29). The stale note above `.srcpath-v` was
+rewritten as the reversal it is rather than left standing beside CSS that contradicts it.
+
+### A second harness trap, and it cost another false start
+
+**Click coordinates and screenshot coordinates are not the same scale, and neither is stable
+between tabs.** The first tab took clicks at viewport x 0.62 and captured at viewport x 0.62.
+The next took clicks at the same 0.62 and captured at **1.25** -- a *crop* of a magnified
+render, not a downscale, so a centred dialog fell outside the frame entirely. Calibrate with
+markers at known viewport coordinates before trusting either number.
+
+And **clicks below roughly viewport y=48 never reached the page at all** -- no `pointerdown`,
+not on any element. The topbar lives at y 8..45, so it cannot be clicked in this harness. The
+button was proven from the **real keyboard** instead: it is a `<button>`, so it is in the tab
+order, and Enter opened the dialog. For a control that has to be reachable without a pointer
+that is the better proof anyway -- and it is a thing a `<div>` could never have passed.
+
+977 tests, mypy clean, ruff clean, 0 broken.

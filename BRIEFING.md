@@ -179,7 +179,57 @@ program has a most-commented routine and a maximum alone is a claim nobody can w
 
 ## What we are doing now
 
-### The latest: "+ Analyze a directory…" works (2026-09-04)
+### The latest: "About this map" — what read it, and whether anything was guessed (2026-09-04)
+
+**Tom asked for the model an analysis used. There is none, and checking that first turned the
+feature from a placeholder into a guarantee.** Nothing on the analysis path calls a model or
+touches a network: stdlib `ast` and `tokenize`, a hand-written document scanner, and
+`Provenance`'s two paid tiers declared and unbuilt. On being told: *"Perfect, keep it that way
+as much as possible! Inference should always be voluntary and secondary."*
+
+So the two rows read *none — every fact here was read, not guessed* and *none — this analysis
+is deterministic and local*, and a test asserts nothing under `extractors/`, `resolve/` or
+`canonical/` imports an HTTP client or an LLM SDK — a claim on screen that no query can return
+is prose (rule 13).
+
+**Missing and blank are different answers**, and that distinction is the whole thing. Every
+field arrives as `{recorded, value, none}`; `output/dunneflow`, analysed before these keys
+existed, renders *"not recorded — written before this map could say"* in italic, visibly
+apart from the guarantee. Both cases were looked at on real maps.
+
+**`none` is the server's decision.** `inference` stores the word `none` so `dunneflow query`
+over `meta` reads as prose; `model` stores blank, because there is no word for the model that
+did not run. The page owned one spelling for an hour and rendered *"Inferred facts: none"* —
+a bare word where the sentence was the point — which is rule 51 caught on screen.
+
+**The row that was planned and struck.** *"Would a newer build read this differently?"* can
+only ever answer no for the map on screen: `Store` opened read-only calls `_refuse_if_stale`,
+so a mismatched graph never becomes the base. What is stated is the guarantee that produces.
+The honest *read it again?* signal is the date and the **tree leaf** — a leaf, never a path
+(rule 60).
+
+**The topbar's `source directory` readout is the doorway**, and four guards flipped with it
+rather than being deleted. It was a `<div>` with no pointer and no hover *because nothing
+bound a tree*; its own markup set the condition — *"it becomes interactive when something
+needs to open a file from disk"* — and this met it. So: it is a `<button>`, it carries the
+affordances it used to have to refuse, and **the clip came back with the binding**, which is
+what its own guard's failure message asked for in as many words. Each guard now protects the
+new decision, in the same rule read the other way round.
+
+*Candidate design rule, for Tom to mint or refuse:* **inference is voluntary and secondary, and
+a map states whether any was used.** One step over from design rule 14, which scopes *egress*;
+this scopes whether a fact was *guessed*.
+
+*A second harness trap, and it cost another false start:* **click coordinates and screenshot
+coordinates are not the same scale, and neither is stable between tabs.** One tab took clicks
+at viewport×0.62 and captured at viewport×0.62; the next took clicks at viewport×0.62 and
+captured at viewport×1.25 — a *crop* of a magnified render, not a downscale. Calibrate with
+markers at known viewport coordinates before trusting either. Clicks below about viewport
+y=48 never reached the page at all, so **the topbar cannot be clicked in this harness**; the
+button was proven from the real keyboard instead, which is the better proof for a control
+that has to be reachable without a pointer.
+
+### Before that: "+ Analyze a directory…" works (2026-09-04)
 
 **The dashboard can now make a program, not only choose one.** The `<select>`'s last option
 opens a dialog, the server reads a source tree in a subprocess, a panel reports each step,
@@ -1173,10 +1223,10 @@ feature was blocked on an answer nobody owed.
   switch cannot keep the selection, the trail or the revision, all of which belong to the old
   program; and the list must say what it found *and* what it cannot open, because
   `output/` here holds four candidates of which two are stale or old-style.
-- **"About this map": what read this directory, and whether anything was inferred.**
-  *Planned and approved 2026-09-04, not built* — chunk 2 of the plan the analyse work is
-  chunk 1 of. Tom asked that an analysis record **what model was used**, in an *"About this
-  directory"* dialog, so a reader might analyse again when a better one exists.
+- ~~**"About this map": what read this directory, and whether anything was inferred.**~~
+  *Built 2026-09-04 — see the top of this file. The entry as it was filed:* Tom asked that an
+  analysis record **what model was used**, in an *"About this directory"* dialog, so a reader
+  might analyse again when a better one exists.
 
   **No model is used**, and that was checked before it was planned: the extractors are
   stdlib `ast` and `tokenize`, the document scanner is hand-written, and there is no LLM call

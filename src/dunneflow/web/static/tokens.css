@@ -612,19 +612,26 @@ body {
 .srcpath { display: flex; flex-direction: column; align-items: flex-start; gap: .02rem;
   font: inherit; background: rgba(255,255,255,.09); color: var(--chrome-text);
   border: 1px solid rgba(255,255,255,.18); border-radius: .3125rem;
-  padding: .16rem .5rem; text-align: left; min-width: 0; }
-/* No `cursor: pointer` and no hover lift: this is a readout, and both of those are the
-   affordances of a thing you can press. Restore them with the binding, not before. */
+  padding: .16rem .5rem; text-align: left; min-width: 0; cursor: pointer; }
+.srcpath:hover { background: rgba(255,255,255,.16); }
+/* **The pointer and the hover came back with the binding.** This said *"no `cursor:
+   pointer` and no hover lift: this is a readout... restore them with the binding, not
+   before"*, and `About this map` is the binding -- the condition its own note set. It is
+   a `<button>` in the markup now; `font: inherit` and `text-align: left` were already
+   here from the last time it was one, so only the two affordances are new.
+
+   One block for one selector, deliberately: a second `.srcpath { ... }` further down
+   wins on source order and is invisible from here (rule 29). */
 .srcpath-k { font-size: .52rem; letter-spacing: .09em; text-transform: uppercase;
   color: var(--chrome-muted); }
-/* **The clip went with the path.** This field held one once and `#srcPathV` is now written
-   by nothing at all -- the whole of it is the 28-character literal in `index.html`, which
-   fits its box with room to spare. `overflow`, `text-overflow` and `max-width` were sizing
-   a string that cannot arrive, which is the same dead-CSS fault as the three rules struck
-   below and was the reason this field appeared on the shortening list at all. It came off
-   that list by being measured: there is nothing here to shorten. Restore them with the
-   binding, not before. */
-.srcpath-v { font-family: var(--f-mono); font-size: .72rem; white-space: nowrap; }
+/* **The clip came back with the binding**, which is the condition its own guard set:
+ * this held a literal and needed none, and it holds a tree leaf now. A leaf is short
+ * and it is not *bounded* -- `nowrap` with nothing to stop it pushes the search box
+ * and the whole right-hand group off a narrow window, which two selects did once
+ * already. `max-width` in `rem` (design rule 3), so it scales with the reader's font
+ * rather than holding a pixel count that is right at one size (rule 53). */
+.srcpath-v { font-family: var(--f-mono); font-size: .72rem; white-space: nowrap;
+             max-width: 11rem; overflow: hidden; text-overflow: ellipsis; }
 /* Three rules were removed here with the button: two `[aria-expanded="true"]` states for
    an element that no longer expands, and `.srcpath-was`, which showed the *other* end's
    tree while two points in time were being compared. All three styled a root that is no
@@ -2397,6 +2404,38 @@ kbd { font-family: var(--f-mono); font-size: .66rem; background: var(--sunken);
 .analysispanel .an-why { font-size: .8rem; margin: 0 0 .5rem; color: var(--diff-gone);
                          white-space: pre-wrap; max-height: 9rem; overflow: auto; }
 .analysispanel .an-foot { display: flex; gap: .5rem; margin-top: .6rem; }
+
+/* == about this map == */
+/* A fifth pair, between the analyse dialog (92/93) and the base switch (96/97). Above the
+ * analyse dialog because *Analyse this again...* opens that one from inside this one, and a
+ * window that opens another has to be behind what it opened -- the detail window and the
+ * source viewer settled this once already, at the cost of a scrim that swallowed every
+ * click. Below the base switch, like everything else, because while one runs the map
+ * underneath is on its way out. */
+.about-scrim { position: fixed; inset: 0; background: rgba(8,12,18,.55); z-index: 94; }
+.about {
+  position: fixed; z-index: 95; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  width: min(42rem, 94vw); max-height: 88vh; overflow: auto; padding: 1.1rem 1.3rem;
+  background: var(--surface); color: var(--text);
+  border: 1px solid var(--border-strong); border-radius: .4rem; box-shadow: var(--shadow);
+}
+.about-title { font-size: .78rem; font-weight: 600; letter-spacing: .04em;
+               text-transform: uppercase; color: var(--text-muted); margin: 0 0 .7rem; }
+.about-grid, .about-vow { display: grid; grid-template-columns: auto 1fr;
+                          gap: .3rem .8rem; align-items: baseline; }
+.about-k { font-size: .72rem; font-weight: 600; color: var(--text-muted);
+           white-space: nowrap; }
+.about-v { font-size: .82rem; overflow-wrap: anywhere; }
+.about-v i { color: var(--text-muted); }
+.about-dim { color: var(--text-muted); font-size: .74rem; }
+/* The two rows the dialog exists for, set apart because they are a different kind of claim
+ * from the rows above: those record what happened, these promise what did not. */
+.about-vow { margin: .9rem 0 .5rem; padding: .7rem .8rem; border-radius: .3rem;
+             background: var(--sunken); border: 1px solid var(--border); }
+.about-vow .about-v { font-weight: 600; }
+.about .hint { font-size: .72rem; color: var(--text-muted); margin: .5rem 0 0; }
+.about-foot { display: flex; gap: .5rem; align-items: center; margin-top: .9rem; }
+.about-foot .hint { margin: 0; margin-left: auto; text-align: right; max-width: 20rem; }
 
 /* ── the detail window ──
  *

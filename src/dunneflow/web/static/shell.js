@@ -10568,6 +10568,10 @@ const WIRED_ATTRS = new Set([
      from a dead one. `anopen` carries the program name on the button that opens what was
      just read, the way `pinid` carries a subject beside `pinopen`. */
   "closeanalyze", "anstart", "anfield", "andismiss", "anopen",
+  /* About this map: the topbar readout that opens it, and the dialog's two controls.
+     `aboutopen` sits on the `.srcpath` button, which was a readout until there was
+     something true to put in it -- see the markup. */
+  "aboutopen", "aboutagain", "closeabout",
   /* The search's four. `searchline` rides with `searchgo` on the same button and carries no
      handler of its own -- it is the line the click is about, and the roster is a list of
      attributes the shell writes, not only of the ones that are clicked. */
@@ -13281,6 +13285,197 @@ async function switchProgram(name) {
   render();
   pollBase(name);
 }
+
+/* -- About this map --------------------------------------------------------
+ *
+ * What read this directory, and whether anything in it was guessed.
+ *
+ * **The last two rows are why this exists, and they are a standing guarantee rather than a
+ * readout that happens to say nothing.** Nothing on the analysis path calls a model or
+ * touches a network, so `inference` and `model` say `none` because that is the fact -- and
+ * a reader handed a map is entitled to that in as many words rather than by inferring it
+ * from an absence (design rule 21).
+ *
+ * **Missing and blank are different answers.** A map written before DunneFlow recorded any
+ * of this cannot say, and that is not the same claim as *nothing was inferred*. The server
+ * sends `{recorded, value}` per field for exactly that reason (rule 30), and this renders
+ * the two differently or the guarantee is worthless.
+ */
+let ABOUT = null;        /* the dialog's contents while it is open, null when it is not */
+let ABOUT_TREE = null;   /* the tree leaf, for the topbar readout; "" = the map cannot say */
+
+/* One fetch, two callers, two different things to say when it fails -- so the fetch throws
+   and each caller answers for its own surface (rule 51: the rule lives where they all pass,
+   the *rendering* of a failure does not). */
+async function fetchAbout() {
+  const r = await fetch("/api/about");
+  if (!r.ok) throw new Error(`the server answered ${r.status}`);
+  return await r.json();
+}
+
+/* Asked once at boot, beside the cover, because the readout in the topbar wants one field
+   of it and the topbar is static markup nothing else fills (rule 44). */
+async function loadAbout() {
+  let d;
+  try {
+    d = await fetchAbout();
+  } catch {
+    /* The readout says so rather than sitting at "reading..." for ever, which on screen is
+       a slow disk rather than a failure -- and this project has plenty of slow disk. */
+    paintSrcPath(null, "could not be asked");
+    return;
+  }
+  ABOUT_TREE = d.tree;
+  paintSrcPath(d);
+}
+
+/* The topbar readout, which was a dead field until there was something true to put in it.
+ *
+ * It said *"not bound -- none needed here"*, which was right while nothing recorded a tree
+ * and nothing at read time wanted one. A **leaf** is not a path (rule 60) -- it names the
+ * tree without carrying one machine's directory layout into a map built to be handed over --
+ * and it is the one thing a reader looking at this label actually wants to know. */
+function paintSrcPath(d, failed) {
+  const v = document.getElementById("srcPathV");
+  if (!v) return;
+  /* Four states, four sentences, and none of them blank. `null` is *no sidecar to ask*,
+     `""` is *a sidecar that does not record it*, a name is a name, and `failed` is the
+     server not answering -- only one of the four is a fact about the program, and design
+     rule 21 says the other three have to say which they are. */
+  v.textContent = failed ? failed
+    : (d && d.tree) ? d.tree
+    : (d && d.tree === "") ? "read from a tree with no name recorded"
+    : "no sidecar here to ask";
+}
+
+async function openAbout() {
+  ABOUT = { loading: true };
+  paintAbout();
+  try {
+    ABOUT = await fetchAbout();
+  } catch (err) {
+    ABOUT = { failed: "the server could not be asked: " + err.message };
+  }
+  paintAbout();
+}
+
+function closeAbout() { ABOUT = null; paintAbout(); }
+
+/* One field, rendered as the three answers it can have.
+ *
+ * `notRecorded` is its own sentence and never the empty one: *this map predates the
+ * question* and *the answer is nothing* look identical in a blank cell, and only one of
+ * them is a guarantee. */
+function aboutSays(field, whenNone, notRecorded) {
+  if (!field || !field.recorded) return `<i>${esc(notRecorded)}</i>`;
+  /* `none` is the server's decision, never a test for the word here: two fields spell
+     nothing differently in the store (`none` and blank) and this page owns neither
+     spelling. Reading the flag is what stops "Inferred facts: none" -- a bare word where
+     the sentence was the point -- from coming back the next time one of them changes. */
+  return field.none ? esc(whenNone) : esc(field.value);
+}
+
+function aboutDialog() {
+  if (!ABOUT) return "";
+  if (ABOUT.loading || ABOUT.failed) {
+    return `<div class="about-scrim" data-closeabout></div>
+      <div class="about" role="dialog" aria-modal="true" aria-label="About this map">
+        <h2 class="about-title">About this map</h2>
+        <p class="${ABOUT.failed ? "analyze-refusal" : "hint"}">${
+          esc(ABOUT.failed || "asking the server\u2026")}</p>
+        <div class="about-foot"><button class="linkbtn" data-closeabout>Close</button></div>
+      </div>`;
+  }
+  const d = ABOUT;
+  const rows = [];
+  const row = (k, v) => rows.push(`<div class="about-k">${esc(k)}</div>
+                                   <div class="about-v">${v}</div>`);
+
+  row("Program", esc(d.program || "") + (d.revision ? ` <span class="about-dim">${
+        esc(d.revision)}</span>` : ""));
+  row("Read at", d.analysed_at ? esc(d.analysed_at)
+        : "<i>not recorded &mdash; this map predates the question</i>");
+  row("From a tree called", d.tree ? esc(d.tree)
+        : (d.tree === "" ? "<i>the sidecar records no name for it</i>"
+                         : "<i>no sidecar here to ask</i>"));
+  row("Read by", [
+        aboutSays(d.tool_version, "", "an unrecorded build of DunneFlow"),
+        d.extractor && d.extractor.recorded
+          ? `<span class="about-dim">extractor ${esc(d.extractor.value)}</span>` : "",
+      ].filter(Boolean).join(" &middot; "));
+  const c = d.counts || {};
+  row("What it holds", [
+        c.files ? `${Number(c.files).toLocaleString()} files` : "",
+        c.routines ? `${Number(c.routines).toLocaleString()} routines` : "",
+        /* `null` is *nobody scanned any*, `0` is *there are none*. Documentation is an
+           optional input (design rule 11) and the two absences are different. */
+        c.documents === null || c.documents === undefined
+          ? "<span class=\"about-dim\">documentation not scanned</span>"
+          : `${Number(c.documents).toLocaleString()} documents`,
+      ].filter(Boolean).join(" &middot; "));
+  if (d.analysis_args && d.analysis_args.recorded && d.analysis_args.value) {
+    row("It was told", esc(d.analysis_args.value));
+  }
+
+  return `
+  <div class="about-scrim" data-closeabout></div>
+  <div class="about" role="dialog" aria-modal="true" aria-label="About this map">
+    <h2 class="about-title">About this map</h2>
+    <div class="about-grid">${rows.join("")}</div>
+
+    <div class="about-vow">
+      <div class="about-k">Inferred facts</div>
+      <div class="about-v">${aboutSays(d.inference,
+          "none \u2014 every fact here was read, not guessed",
+          "not recorded \u2014 written before this map could say")}</div>
+      <div class="about-k">Read by a model</div>
+      <div class="about-v">${aboutSays(d.model,
+          "none \u2014 this analysis is deterministic and local",
+          "not recorded \u2014 written before this map could say")}</div>
+    </div>
+    <p class="hint">DunneFlow reads code with the standard library and reads prose by hand.
+       Nothing here was asked of a model and nothing left this machine. If that ever
+       changes it will be something you turn on, and this is where it will say so.</p>
+
+    <div class="about-foot">
+      <button class="linkbtn" data-aboutagain>Analyse this again&hellip;</button>
+      <button class="linkbtn" data-closeabout>Close</button>
+      <span class="hint">A map is a reading of a program at a moment. The tree it was read
+         from has moved on since; this map has not.</span>
+    </div>
+  </div>`;
+}
+
+function paintAbout() {
+  let m = document.getElementById("aboutMount");
+  if (!m) {
+    m = document.createElement("div");
+    m.id = "aboutMount";
+    document.body.appendChild(m);
+  }
+  m.innerHTML = aboutDialog();
+}
+
+document.addEventListener("click", (ev) => {
+  const t = ev.target;
+  if (!t || !t.closest) return;
+  if (t.closest("[data-aboutopen]")) { used("about:open"); openAbout(); return; }
+  if (t.closest("[data-aboutagain]")) {
+    /* Straight into the analyse dialog, with nothing filled in but the name. The **path is
+       deliberately blank**: this map records a tree's *leaf* and never its path (rule 60),
+       so pre-filling one would mean inventing it -- and an invented path that looks right
+       is worse than an empty field. */
+    const name = (ABOUT && ABOUT.program) || "";
+    closeAbout();
+    openAnalyze({ name: name });
+    return;
+  }
+  if (t.closest("[data-closeabout]")) { closeAbout(); }
+});
+
+document.addEventListener("keydown", (ev) => {
+  if (ABOUT && ev.key === "Escape" && !ANALYZE) { closeAbout(); }
+});
 
 /* -- Analysing a directory -------------------------------------------------
  *
@@ -16362,6 +16557,10 @@ async function boot() {
        the siblings beside it. Not awaited — a slow directory listing must not hold up the
        first paint, and the control is already correct with one option until it lands. */
     loadPrograms();
+    /* And the topbar's other readout, on the same terms and for the same reason: one field
+       of it is static markup nothing else fills (rule 44), and a listing that is slow must
+       not hold up the first paint. */
+    loadAbout();
   } catch (err) {
     /* A blank dashboard must never be a mystery -- the same rule the graph's missing
        WebGL context taught. Name what failed and what it means. */

@@ -2403,7 +2403,20 @@ kbd { font-family: var(--f-mono); font-size: .66rem; background: var(--sunken);
 .analysispanel .an-step { font-size: .78rem; margin: .4rem 0 .2rem; }
 .analysispanel .an-why { font-size: .8rem; margin: 0 0 .5rem; color: var(--diff-gone);
                          white-space: pre-wrap; max-height: 9rem; overflow: auto; }
-.analysispanel .an-foot { display: flex; gap: .5rem; margin-top: .6rem; }
+.analysispanel .an-foot { display: flex; gap: .5rem; margin-top: .6rem;
+                          align-items: center; }
+/* **A silence is not a severity.** It is drawn in the muted text colour on a plain rule,
+ * not in `--diff-gone` beside the failures: the server does not know whether a quiet run is
+ * wedged, and colouring it as trouble would make that judgement on the reader's behalf in
+ * the one channel design rule 4 says to spend on a single dimension at a time. */
+.analysispanel .an-quiet { font-size: .76rem; color: var(--text-muted); margin: .4rem 0 0;
+                           padding-left: .5rem; border-left: 2px solid var(--border-strong); }
+/* The same, in the analyse dialog, where it explains why Analyse will not go yet. */
+.analyze-blocked { margin: 0 0 .7rem; padding: .6rem .7rem; border-radius: .3rem;
+                   background: var(--sunken); border: 1px solid var(--border); }
+.analyze-blocked p { font-size: .82rem; margin: 0 0 .5rem; }
+.analyze-blocked .an-foot { display: flex; gap: .5rem; align-items: center; }
+.analyze-blocked .hint { font-size: .72rem; color: var(--text-muted); }
 
 /* == about this map == */
 /* A fifth pair, between the analyse dialog (92/93) and the base switch (96/97). Above the

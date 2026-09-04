@@ -24,6 +24,8 @@ anywhere.
 from __future__ import annotations
 
 import json
+import os
+import signal
 import subprocess
 import sys
 import threading
@@ -147,9 +149,66 @@ def argv(source: Path, name: str, out_root: Path, docs: bool) -> list[str]:
     return out
 
 
+def _signal_group(proc: Any, sig: int) -> bool:
+    """Signal the child **and everything it started**, falling back to the child alone.
+
+    `analyze` runs a `ProcessPoolExecutor`, and its workers inherit the pipes. Signalling
+    the parent alone kills the parent and leaves up to eleven workers alive holding stdout
+    open -- measured -- so `run`'s read loop never ends and the report says `working` for
+    ever over a child that has gone. That is the jam this whole chunk is about, arriving
+    through the fix for it.
+
+    So the child is started in its **own session** (`start_new_session`) and the signal goes
+    to the group. The fallback is for a `Popen` that has no group to speak of -- a test
+    double, or a platform without one -- where signalling the child is the best available
+    answer rather than an error.
+    """
+    try:
+        os.killpg(os.getpgid(proc.pid), sig)
+        return True
+    except (OSError, AttributeError, TypeError):
+        try:
+            proc.send_signal(sig)
+            return True
+        except (OSError, AttributeError, TypeError):
+            return False
+
+
+def stop(proc: Any, *, grace: float = 3.0) -> str:
+    """End a running analysis, and say how it ended.
+
+    `SIGTERM` first, because `analyze` holds three SQLite connections and a process pool and
+    a clean exit closes them; `SIGKILL` only if it will not go. **To the whole group either
+    way** -- see `_signal_group`, which is where the interesting part is.
+
+    The map it was writing is left marked unfinished by its own hand: the marker is
+    committed as the run starts, so there is nothing for this to write and nothing here
+    that could (rule 20 -- this process never writes to a map).
+
+    Returns what actually happened, because *asked to stop* and *had to be killed* are
+    different facts about the child and only one of them is tidy.
+    """
+    if proc is None or proc.poll() is not None:
+        return "it had already ended"
+    if not _signal_group(proc, signal.SIGTERM):
+        return "it could not be signalled"
+    try:
+        proc.wait(timeout=grace)
+        return "stopped"
+    except subprocess.TimeoutExpired:
+        pass
+    _signal_group(proc, signal.SIGKILL)
+    try:
+        proc.wait(timeout=grace)
+        return "killed — it did not stop when asked"
+    except subprocess.TimeoutExpired:
+        return "it would not stop, even when killed"
+
+
 def run(source: Path, name: str, out_root: Path, docs: bool,
         note: Callable[..., None], *,
-        popen: Any = subprocess.Popen) -> None:
+        popen: Any = subprocess.Popen,
+        on_start: Callable[[Any], None] | None = None) -> None:
     """Read `source` into `out_root/name`, reporting every step through `note`.
 
     Runs on its own thread. A failure is **reported, never raised** -- the reader asked
@@ -163,10 +222,20 @@ def run(source: Path, name: str, out_root: Path, docs: bool,
     cmd = argv(source, name, out_root, docs)
     tail: deque[str] = deque(maxlen=REASON_LINES)
     try:
-        proc = popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        # **Its own session**, so stopping it can reach the pool workers it will start.
+        # Without this the parent dies and its workers keep the pipes open -- see
+        # `_signal_group`.
+        proc = popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                     start_new_session=True)
     except OSError as exc:
         note(state="failed", program=name, reason=f"could not start the analysis: {exc}")
         return
+    # **Handed out before anything is read**, so the child is reachable for the whole of
+    # its life rather than only once this function returns. It was a local here, which
+    # meant nothing on the server could stop a run at all -- no route, no button, and a
+    # hung child holding the slot until somebody killed the server.
+    if on_start is not None:
+        on_start(proc)
 
     # Drained on its own thread. A child that writes more to stderr than the pipe holds
     # blocks in `write` while this thread blocks in `read` on the other pipe, and neither
@@ -203,6 +272,15 @@ def run(source: Path, name: str, out_root: Path, docs: bool,
     code = proc.wait()
     drainer.join(timeout=2.0)
     if code != 0:
+        # **A run somebody stopped is not a run that broke**, and the panel says a different
+        # thing about each. A terminated child exits on a signal, which POSIX reports as a
+        # negative return code -- so the distinction is in the code itself and does not need
+        # a flag set from outside that could disagree with what actually happened (rule 13).
+        if code < 0:
+            note(state="stopped", program=name,
+                 reason=f"stopped on signal {-code}. What it had written is left marked "
+                        f"unfinished — analysing {name} again completes it.")
+            return
         note(state="failed", program=name, reason=_reason(tail, code))
         return
     if not finished:

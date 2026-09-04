@@ -16,6 +16,7 @@ import json
 import sqlite3
 import sys
 import time
+from collections.abc import Callable
 from datetime import UTC, datetime
 from importlib import metadata
 from pathlib import Path
@@ -36,7 +37,7 @@ from .resolve.mirror import measure as measure_mirror
 from .resolve.naming import measure
 from .sourcedb import STATE_FOR_COMPARISON, DocSourceStore, SourceStore
 from .sourcedb import capture as capture_source
-from .store import StaleGraphError, Store
+from .store import StaleGraphError, Store, UnfinishedMapError, unfinished_sentence
 from .walk import analyze_docs_tree, analyze_tree
 
 DEFAULT_OUTPUT = Path("output")
@@ -155,6 +156,14 @@ class _Progress:
         self.on = on
         self.i = 0
         self.label = steps[0] if steps else ""
+        # Where a step is also **recorded**, so a map that never finished can name where it
+        # stopped. Wired to the store once there is one -- the reporter is built before the
+        # graph is opened, because it has to be able to report the opening.
+        #
+        # `None` until then, and nothing here fills it in: a `_Progress` with no store has
+        # nothing to record into, and a fallback that wrote somewhere plausible instead
+        # would hide exactly the run this exists for (rule 49).
+        self.mark: Callable[[str, str], None] | None = None
 
     def _say(self, **fields: object) -> None:
         if not self.on:
@@ -168,6 +177,11 @@ class _Progress:
             return
         self.i = self.steps.index(label)
         self.label = label
+        # Committed as it goes, so a killed run leaves a map that can say *"stopped while
+        # reading the documents"* rather than only *"stopped"*. Seven commits over a
+        # ninety-second run.
+        if self.mark is not None:
+            self.mark("step", label)
         self._say(state="working", step=label, done_steps=self.i,
                   steps=len(self.steps), detail="")
 
@@ -252,6 +266,13 @@ def cmd_analyze(args: argparse.Namespace) -> int:
     # a program at a moment and a reader who cannot see the moment cannot judge the map.
     store.set_meta("analysed_at",
                    datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC"))
+    # **Unfinished until proven otherwise, and committed now.** A killed `analyze` leaves a
+    # graph that opens perfectly and reports a program that calls nothing -- see
+    # `UnfinishedMapError`. This is the only thing that can speak for a run that does not
+    # reach its own last line, so it is written before any work starts and committed on the
+    # spot: an uncommitted marker is lost by exactly the `kill -9` it exists for.
+    store.set_meta_now("complete", "")
+    prog.mark = store.set_meta_now
 
     # -- what read this map, and whether anything was guessed ---------------- #
     #
@@ -493,6 +514,9 @@ def cmd_analyze(args: argparse.Namespace) -> int:
             print(f"map:   {out_dir}/README.md")
     if doc_store is not None:
         doc_store.close()
+    # The last act before the store is closed, and committed like its opposite above. Every
+    # reader that presents this map as finished asks for this one value.
+    store.set_meta_now("complete", "yes")
     store.close()
     return 0
 
@@ -512,7 +536,19 @@ def _find_routine(store: Store, needle: str) -> list[dict]:
     return [dict(r) for r in rows]
 
 
-def _open_store(args: argparse.Namespace) -> tuple[Store, Path] | None:
+def _open_store(args: argparse.Namespace, *,
+                finished_only: bool = True) -> tuple[Store, Path] | None:
+    """The read path every orientation command shares.
+
+    **`finished_only` defaults to refusing**, because every command that comes through here
+    presents its answer as a fact about a program: `touches`, `impact`, `glossary`,
+    `naming`, `mirror` and `check` all do. An unfinished map answers all six confidently
+    and wrongly -- `check` most expensively, since it is the one that gates CI and would
+    report a half-read program as `0 broken`.
+
+    `query` is the one caller that passes `False`, and it **says so out loud** rather than
+    reading in silence: its whole contract is that you get the rows that are there.
+    """
     target = Path(args.path).resolve()
     program, out_dir = _default_paths(target, args.name, Path(args.output))
     db_path = (Path(args.db) if args.db
@@ -525,10 +561,22 @@ def _open_store(args: argparse.Namespace) -> tuple[Store, Path] | None:
         return None
     try:
         # Read-only: an orientation command must never drop the map it came to read.
-        return Store(db_path, writable=False), db_path
+        store = Store(db_path, writable=False)
     except StaleGraphError as exc:
         _emit(f"error: {exc}")
         return None
+    if store.finished() == "":
+        # The step is read **before** anything is closed. It was read after, once, and
+        # `check` died on a closed connection while trying to explain why it was refusing.
+        said = unfinished_sentence(program, store.get_meta("step") or "")
+        if finished_only:
+            store.close()
+            _emit(f"error: {said}")
+            return None
+        # Read anyway, and say what is being read. An escape hatch that quietly hands over
+        # a half-written map is not an escape hatch, it is a trap.
+        _emit(f"warning: {said}")
+    return store, db_path
 
 
 def cmd_touches(args: argparse.Namespace) -> int:
@@ -845,7 +893,10 @@ def _analysed_at(graph_db: Path | None) -> str:
 
 
 def cmd_query(args: argparse.Namespace) -> int:
-    opened = _open_store(args)
+    # The one reader that will open an unfinished map, because its whole contract is that
+    # you get the rows that are there. It warns rather than refusing, and rather than
+    # reading in silence -- see `_open_store`.
+    opened = _open_store(args, finished_only=False)
     if not opened:
         return 2
     store, db_path = opened
@@ -1042,7 +1093,7 @@ def cmd_serve(args: argparse.Namespace) -> int:
     try:
         serve(Path(args.out_dir), port=args.port,
               open_browser=not args.no_open, revision=args.revision, emit=_emit)
-    except (FileNotFoundError, StaleGraphError) as exc:
+    except (FileNotFoundError, StaleGraphError, UnfinishedMapError) as exc:
         _emit(f"error: {exc}")
         return 2
     return 0

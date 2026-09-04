@@ -356,6 +356,43 @@ CREATE INDEX IF NOT EXISTS ix_constants_module ON constants(module);
 """
 
 
+class UnfinishedMapError(RuntimeError):
+    """An analysis started writing this map and never finished.
+
+    A killed `analyze` leaves a graph that **opens perfectly and lies**. Measured on the
+    Society tree by stopping one twelve seconds in: 628 files, 4,786 routines, 4,070
+    boundary touches -- and `resolved_calls = 0`, because it died before `resolve_calls`.
+    It carries `analysed_at`, `tool_version` and `inference = none`, so every part of the
+    dashboard vouches for it, and it reports a program that calls nothing.
+
+    Reachable with no stop button anywhere: Ctrl-C, a laptop that slept, an OOM kill, a
+    full disk. So the writer records its own state and every reader that presents a map as
+    *finished* refuses -- rule 20's shape, with `analyze` itself deliberately exempt,
+    because opening one is exactly how it recovers.
+
+    **Three states, never two.** `complete` missing means the map predates this key and is
+    fine; `""` means started and never finished; `"yes"` means finished. Absence alone
+    cannot carry the claim, because every map made before today lacks the key.
+    """
+
+
+def unfinished_sentence(name: str, step: str) -> str:
+    """Why this map may not be read, in one sentence, said the same way everywhere.
+
+    Four readers refuse an unfinished map -- the dashboard's switch, `serve`'s boot, the
+    program list and `check` -- and a sentence written at each of them would be four
+    readings of one fact by the fourth time somebody added a reader (rule 51).
+
+    **It names the step and stops there.** Saying *"nothing resolved its calls"* would be
+    a claim about which step it died on, true of the one measured case and false of the
+    others; what is always true is that a part of a program is not a program (rule 13).
+    """
+    where = f" while {step}" if step else ""
+    return (f"{name} was never finished: an analysis stopped{where}. What it holds is part "
+            f"of a program, not a program. Analysing it again completes it — the "
+            f"extraction is cached, so it takes seconds rather than the whole run.")
+
+
 class StaleGraphError(RuntimeError):
     """A stored map was written by a different version of DunneFlow.
 
@@ -527,6 +564,47 @@ class Store:
             "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
             (key, value),
         )
+
+    def set_meta_now(self, key: str, value: str) -> None:
+        """`set_meta`, committed -- for the facts that have to survive a `kill -9`.
+
+        Ordinary meta rides out on whatever commit comes next, which is right for
+        everything that only matters if the run finishes. The completion marker is the
+        opposite: it exists **for** the run that does not finish, and an uncommitted one is
+        lost exactly when it was the only thing that could have spoken.
+
+        Its own method rather than a flag on `set_meta`, because the choice is about the
+        fact rather than about the caller (rule 51) -- and a `commit=True` default nobody
+        passes is how a durability decision goes quiet.
+        """
+        self.set_meta(key, value)
+        self.conn.commit()
+
+    def refuse_if_unfinished(self, name: str) -> None:
+        """Raise unless this map's own analysis said it had finished.
+
+        `None` passes: a map written before the key existed is not broken, and refusing one
+        would refuse every map made before today. Only a recorded-and-not-`yes` marker is a
+        run that started and stopped -- the same missing-versus-blank distinction
+        `/api/about` keeps, one store over.
+
+        A **read**-path rule, like `StaleGraphError`. `analyze` never calls it: opening an
+        unfinished map is exactly how it finishes one.
+        """
+        state = self.finished()
+        if state is None or state == "yes":
+            return
+        raise UnfinishedMapError(unfinished_sentence(name, self.get_meta("step") or ""))
+
+    def finished(self) -> str | None:
+        """Did the analysis that wrote this map finish? `None` if the map cannot say.
+
+        The three states are the caller's to tell apart, so this returns the raw value:
+        `None` (predates the key), `""` (started, never finished), `"yes"`. Flattening
+        them here would put the missing-versus-blank decision in the wrong place -- the
+        same distinction `/api/about` keeps for `inference` and `model`.
+        """
+        return self.get_meta("complete")
 
     def get_meta(self, key: str, default: str | None = None) -> str | None:
         row = self.conn.execute("SELECT value FROM meta WHERE key = ?", (key,)).fetchone()

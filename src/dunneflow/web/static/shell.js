@@ -2220,7 +2220,13 @@ function rebuildPanel() {
     ? `<p class="rebuild-why">${esc(REBUILD.reason || "the switch did not happen")}</p>
        <p class="hint">Nothing changed. The version you were reading is still the one on
           screen — a switch that cannot finish leaves the map it found.</p>
-       <button class="btn" data-rebuilddismiss>Close</button>`
+       ${REBUILD.unfinished
+         /* The one failure with a fix the reader can press. Offered on the server's own
+            field rather than on the shape of its sentence (rule 30), and the name comes
+            from the switch that was refused, so it fills the dialog in for them. */
+         ? `<button class="linkbtn" data-anagain="${esc(REBUILD.program || "")}"
+              >Analyse it again</button> ` : ""}
+       <button class="linkbtn" data-rebuilddismiss>Close</button>`
     : `<div class="rebuild-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100"
             aria-valuenow="${pct}"><i style="width:${steps ? pct : 0}%"></i></div>
        <p class="rebuild-step">${
@@ -10568,6 +10574,10 @@ const WIRED_ATTRS = new Set([
      from a dead one. `anopen` carries the program name on the button that opens what was
      just read, the way `pinid` carries a subject beside `pinopen`. */
   "closeanalyze", "anstart", "anfield", "andismiss", "anopen",
+  /* The way out of a run, and the way back into one. `anstop` is drawn in two places -- on
+     the running panel and inside the dialog's refusal -- and routed once, because they are
+     one act. `anagain` carries the program name, like `anopen` beside it. */
+  "anstop", "anagain",
   /* About this map: the topbar readout that opens it, and the dialog's two controls.
      `aboutopen` sits on the `.srcpath` button, which was a readout until there was
      something true to put in it -- see the markup. */
@@ -13248,9 +13258,15 @@ function paintPrograms(rows) {
        program that does not exist — and only one of them is worth a reader's sentence
        (design rule 1). It is `disabled` because there is genuinely nothing to switch to:
        the one case where a control that cannot act should not pretend it can. */
+    /* **Marked, and still selectable.** `openable: false` is disabled because there is
+       genuinely nothing to switch to; this is the opposite case -- there is something,
+       and choosing it produces a refusal that names the way out of it. Dimming it into
+       silence would take away the only place that sentence gets said. */
+    const unfinished = p.finished === false;
     return `<option value="${esc(p.name)}"${p.serving ? " selected" : ""}${
       p.openable ? "" : " disabled"}>${esc(p.name)}${n}${
-      p.openable ? "" : " \u2014 no map here"}</option>`;
+      p.openable ? "" : " \u2014 no map here"}${
+      unfinished ? " \u2014 never finished being read" : ""}</option>`;
   }).join("") + `<option value="${esc(ANALYZE_OPTION)}">+ Analyze a directory\u2026</option>`;
 }
 
@@ -13512,8 +13528,35 @@ let ANALYZE_SEQ = 0;
    analysis behind the switch scrim after all. */
 let ANALYSIS = null;
 
+/* **A run outlives the page that started it, so the page has to ask.**
+ *
+ * `pollAnalysis` was called from `startAnalyze` and nowhere else, and nothing asked at boot
+ * -- so a reload during an analysis left the run going with no panel anywhere, and the next
+ * attempt was refused by a sentence naming a job the reader could not see. The server is
+ * the truth about what is running, exactly as `/api/base` is the truth about which version
+ * is on screen rather than anything the browser remembered.
+ *
+ * Only a **live** run is picked up. A finished or failed one belongs to the session that
+ * asked for it; re-raising it on every reload afterwards would be a panel nobody can get
+ * rid of. */
+async function resumeAnalysis() {
+  let d;
+  try {
+    d = await fetch("/api/analysis").then(r => r.json());
+  } catch {
+    return;
+  }
+  const a = d.analysis || {};
+  if (!a.running) return;
+  ANALYSIS = Object.assign({}, a,
+    { since: Date.now() - (Number(a.running_for) || 0) * 1000 });
+  paintAnalysis();
+  pollAnalysis(a.program || "");
+}
+
 function openAnalyze(prefill) {
-  ANALYZE = Object.assign({ path: "", name: "", docs: true, busy: false }, prefill || {});
+  ANALYZE = Object.assign({ path: "", name: "", docs: true, busy: false, blocked: null },
+                         prefill || {});
   ANALYZE_CHECK = null;
   paintAnalyze();
   askAnalyzeCheck();
@@ -13602,6 +13645,13 @@ function analyzeDialog() {
 
     ${c && c.refusal ? `<p class="analyze-refusal">${esc(c.refusal)}</p>` : ""}
     ${c && c.note ? `<p class="analyze-note">${esc(c.note)}</p>` : ""}
+    ${a.blocked ? `<div class="analyze-blocked">
+      <p>${esc(a.blocked)}</p>
+      <div class="an-foot">
+        <button class="linkbtn" data-anstop>Stop it</button>
+        <span class="hint">Or leave it — this dialog stays, and Analyse works again as
+           soon as it finishes.</span>
+      </div></div>` : ""}
 
     <div class="analyze-foot">
       <button class="linkbtn" data-anstart${ready ? "" : " disabled"}>${
@@ -13666,6 +13716,12 @@ async function startAnalyze() {
     ANALYZE_CHECK = { ok: false,
                       refusal: d.reason || "the analysis was refused, with no reason given",
                       note: "" };
+    /* **A refusal that can be acted on carries the action.** "An analysis of X is already
+       running" was true and a dead end: the one thing the reader might want to do about it
+       is end it, and nothing on the page offered that. Asked rather than parsed out of the
+       sentence -- the server's words are written for the reader, not for this (rule 30). */
+    ANALYZE.blocked = null;
+    await watchBlocked();
     paintAnalyze();
     return;
   }
@@ -13676,6 +13732,71 @@ async function startAnalyze() {
                            { program: asked, since: Date.now() });
   paintAnalysis();
   pollAnalysis(asked);
+}
+
+/* **What is blocking this dialog, kept current for as long as it is on screen.**
+ *
+ * Two things go wrong with a one-shot answer, and both are the same defect: a claim nobody
+ * keeps. The elapsed time freezes at the instant the reader pressed Analyse, so a dialog
+ * left open says *"going 4.8 s"* about a run five minutes old -- and the sentence beside it
+ * promises *"Analyse works again as soon as it finishes"*, which nothing was implementing.
+ * A control that states a behaviour and does not have it is design rule 16 in prose (rule
+ * 44's family).
+ *
+ * So it re-asks while it is blocked, and **clears itself the moment the run ends** -- at
+ * which point `paintAnalyze` re-enables the button, which is what the sentence said would
+ * happen. Stops when the dialog closes, because `ANALYZE` going null ends the chain. */
+async function watchBlocked() {
+  if (!ANALYZE) return;
+  let live;
+  try {
+    live = (await fetch("/api/analysis").then(r => r.json())).analysis || {};
+  } catch {
+    return;                       /* the refusal already on screen says what happened */
+  }
+  if (!ANALYZE) return;           /* closed while we were asking */
+  if (!live.running) {
+    /* It finished. Drop the block and let the reader try again -- and say so, because a
+       refusal that silently becomes stale is indistinguishable from one still in force. */
+    if (ANALYZE.blocked) {
+      ANALYZE.blocked = null;
+      ANALYZE_CHECK = null;
+      askAnalyzeCheck();
+    }
+    return;
+  }
+  const quiet = Number(live.silent_for) || 0;
+  ANALYZE.blocked =
+    `An analysis of ${live.program} is running — ${live.step}, step ${
+      (Number(live.done_steps) || 0) + 1} of ${live.steps}, going ${
+      forHowLong(live.running_for)}` +
+    (quiet > 45 ? `, and nothing new for ${forHowLong(quiet)}.` : ".");
+  paintAnalyze();
+  window.setTimeout(watchBlocked, 1500);
+}
+
+/* Ask the server to end the run. It answers with what actually happened -- *stopped* or
+ * *killed, it did not stop when asked* -- and the poll already running renders the child's
+ * own last word a moment later. Nothing is assumed here: a Stop that failed must not leave
+ * a panel claiming success (rule 49). */
+async function stopAnalysis() {
+  let d;
+  try {
+    d = await fetch("/api/analyze/stop", { method: "POST" }).then(r => r.json());
+  } catch (err) {
+    ANALYSIS = Object.assign({}, ANALYSIS,
+      { state: "failed", reason: "the server could not be asked to stop it: " + err.message });
+    paintAnalysis();
+    return;
+  }
+  if (!d.started) {
+    /* Nothing was running -- which the reader could not have known, because the panel they
+       pressed was drawn from a report that had outlived its process. Say so and clear it
+       rather than leaving a Stop button over a job that is not there. */
+    ANALYSIS = Object.assign({}, ANALYSIS, { state: "stopped",
+      reason: d.reason || "there was nothing running to stop" });
+  }
+  paintAnalysis();
 }
 
 /* Watch it. `pollBase`'s shape and none of its ending: a finished analysis **does not
@@ -13703,10 +13824,23 @@ function pollAnalysis(name) {
       return;
     }
     paintAnalysis();
-    if (a.state === "failed") return;
+    /* Three endings, not one. `stopped` settles like `failed` does -- the run is over and
+       polling a finished slot for ever is a request every 600 ms that can never say
+       anything new. */
+    if (a.state === "failed" || a.state === "stopped") return;
     window.setTimeout(tick, 600);
   };
   window.setTimeout(tick, 400);
+}
+
+/* How long, in words. `4 m 10 s` rather than `250.4 s`, because the number a reader is
+   weighing is *has this been quiet too long*, and minutes are the unit that question is
+   asked in. Under a minute stays in seconds, where a decimal still means something. */
+function forHowLong(secs) {
+  const n = Number(secs) || 0;
+  if (n < 60) return `${n.toFixed(1)} s`;
+  const m = Math.floor(n / 60);
+  return `${m} m ${Math.round(n - m * 60)} s`;
 }
 
 function analysisPanel() {
@@ -13722,7 +13856,17 @@ function analysisPanel() {
 
   let head = "Analysing";
   let body = "";
-  if (a.state === "failed") {
+  if (a.state === "stopped") {
+    /* Its own head and its own words. A run the reader ended on purpose must not be
+       reported back to them as one that broke -- they know what they did, and being told
+       it "did not finish" reads as the tool disagreeing with them. */
+    head = "Stopped";
+    body = `<p class="an-step">${esc(a.reason || "it was stopped")}</p>
+      <div class="an-foot">
+        <button class="linkbtn" data-anagain="${esc(a.program || "")}">Analyse it again</button>
+        <button class="linkbtn" data-andismiss>Close</button>
+      </div>`;
+  } else if (a.state === "failed") {
     head = "That analysis did not finish";
     body = `<p class="an-why">${esc(a.reason || "no reason was given")}</p>
       <p class="hint">Nothing was added to the program list. The map you are reading was
@@ -13743,13 +13887,25 @@ function analysisPanel() {
         <button class="linkbtn" data-andismiss>Not now</button>
       </div>`;
   } else {
+    /* **The silence is stated, and nothing acts on it.** A run is legitimately quiet for
+       tens of seconds -- resolving the Society tree says nothing at all for a while -- so a
+       server that decided for itself when a run had hung would kill healthy work. What the
+       reader gets is the fact and the button; the judgement is theirs. */
+    const quiet = Number(a.silent_for) || 0;
     body = `<div class="rebuild-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100"
               aria-valuenow="${pct}"><i style="width:${steps ? pct : 0}%"></i></div>
       <p class="an-step">${steps
           ? `${esc(a.step || "")}${a.detail ? " — " + esc(a.detail) : ""} — step ${
               done + 1} of ${steps}`
-          : "asking the server&hellip;"} · ${secs.toFixed(1)} s</p>
-      <p class="hint">The map on screen is untouched. Keep reading.</p>`;
+          : "asking the server&hellip;"} · ${forHowLong(a.running_for ?? secs)}</p>
+      ${quiet > 45 ? `<p class="an-quiet">Nothing new for ${forHowLong(quiet)}. Some steps
+         are quiet for a while — resolving a large program says nothing until it is
+         done — so this may be working. It may also be stuck.</p>` : ""}
+      <p class="hint">The map on screen is untouched. Keep reading.</p>
+      <div class="an-foot">
+        <button class="linkbtn" data-anstop>Stop it</button>
+        <span class="hint">What it has written stays, marked unfinished.</span>
+      </div>`;
   }
   return `<div class="analysispanel" role="status" aria-live="polite">
       <h3>${head}</h3>
@@ -13781,6 +13937,24 @@ document.addEventListener("click", (ev) => {
     return;
   }
   if (t.closest("[data-andismiss]")) { ANALYSIS = null; paintAnalysis(); return; }
+  if (t.closest("[data-anstop]")) { used("program:analyze:stop"); stopAnalysis(); return; }
+  const again = t.closest("[data-anagain]");
+  if (again) {
+    /* Straight back into the dialog with the name filled and the **path blank**: a map
+       records a tree's leaf and never its path (rule 60), so there is nothing honest to
+       pre-fill it with. Same bargain as About's *Analyse this again*. */
+    const name = again.getAttribute("data-anagain") || "";
+    ANALYSIS = null;
+    paintAnalysis();
+    /* **And the switch overlay, if that is where this was pressed.** It is drawn at 96/97
+       and the analyse dialog at 92/93, so leaving it up would put the dialog underneath a
+       scrim -- rendered perfectly, greyed, and swallowing every click. That is the exact
+       defect the layer note in `tokens.css` was written from, and this is the second window
+       that can open a third. */
+    if (REBUILD) { REBUILD = null; paintRebuild(); }
+    openAnalyze({ name: name });
+    return;
+  }
   const open = t.closest("[data-anopen]");
   if (open) {
     const name = open.getAttribute("data-anopen");
@@ -16561,6 +16735,8 @@ async function boot() {
        of it is static markup nothing else fills (rule 44), and a listing that is slow must
        not hold up the first paint. */
     loadAbout();
+    /* And any analysis still running from before this page existed -- see `resumeAnalysis`. */
+    resumeAnalysis();
   } catch (err) {
     /* A blank dashboard must never be a mystery -- the same rule the graph's missing
        WebGL context taught. Name what failed and what it means. */

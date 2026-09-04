@@ -82,6 +82,49 @@ reads a source tree into a new directory under the output root and puts it in th
   warning and the endpoint's answer, rule 41); analysing into a name that **already exists**
   is allowed and *says* it rewrites that program's working snapshot.
 
+**A map records whether its own analysis finished, and every reader that vouches for one
+checks.** `analyze` commits `complete = ""` as it opens the graph and `"yes"` as its last
+act, and commits the **step** as it goes. This is not housekeeping: a killed `analyze` leaves
+a graph that *opens perfectly and lies* — one stopped twelve seconds into Society reported
+628 files, 4,786 routines and **`resolved_calls = 0`**, over a timestamp, a tool version and
+the determinism guarantee. Reachable with no stop button anywhere: Ctrl-C, a sleeping laptop,
+an OOM kill.
+
+**Three states, never two** (`Store.finished`): missing means *written before this key
+existed* and is fine, `""` means *started and never finished*, `"yes"` means finished.
+Refusing on absence would refuse every map made before it. `UnfinishedMapError` is raised on
+**read** paths only — `_Live.open`, `_open_store` and so `check`, and `serve`'s boot — with
+`analyze` deliberately exempt, because opening one is how it recovers (34 s on Society, since
+the extraction is content-hashed). `query` is the one reader that proceeds, and **warns**:
+its contract is that you get the rows that are there. `unfinished_sentence` is the one place
+those words live, and `serve.why()` strips the class name from the two exceptions written to
+be read.
+
+**An analysis can be stopped, and the slot asks the process rather than a flag.**
+`POST /api/analyze/stop`. Three things make it work:
+
+* `_Live.analysis_proc` holds the child. It was a local inside `analysis.run`, so nothing
+  could stop a run at all — no route, no button, and a hung child held the slot until
+  somebody killed the server.
+* **`claim_analysis` asks `poll()`, not `state == "working"`** (rule 30). A watcher that dies
+  without noting used to leave that label true for ever; the stale lock is now cleared rather
+  than left for somebody to notice. This is the *"or locked"* half.
+* **The child gets its own session and the signal goes to the group.** `analyze` runs a
+  `ProcessPoolExecutor` whose workers inherit the pipes: signalling the parent alone left
+  **eleven workers** holding stdout open, so `run`'s read loop never returned and the report
+  said `working` over a child that had gone — the very jam, arriving through the fix for it.
+* A stopped run is `state: "stopped"`, **not `failed`** — the reader did it on purpose, and a
+  negative exit code is the child's own evidence rather than a flag set from outside (rule 13).
+
+The slot records `began` and `moved`, and `moved` bumps **only when something changed** — a
+timestamp refreshed by being polled would say a run was moving because it was being watched,
+and *silent for 4 m* is the only thing separating a wedged child from a long step. The panel
+**states the silence and acts on nothing**: resolution is legitimately quiet for tens of
+seconds, so the judgement is the reader's. A refusal to start a second analysis carries the
+running job and a **Stop it**, kept live while the dialog is open and clearing itself the
+moment the run ends — the sentence promises that, so something has to keep it (rule 44). And
+the page asks `/api/analysis` at boot, because a run outlives the page that started it.
+
 **`serve` says what read the map, and whether anything in it was guessed.** The topbar's
 `source directory` control — a readout until there was something true to put in it — opens
 *About this map*: `GET /api/about`, and the two rows it exists for are

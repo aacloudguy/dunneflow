@@ -35,7 +35,7 @@ from .. import revisions
 from ..docstore import DocStore
 from ..resolve import version as version_order
 from ..sourcedb import DocSourceStore, SourceStore
-from ..store import StaleGraphError, Store
+from ..store import StaleGraphError, Store, UnfinishedMapError
 from . import analysis, anomalychanges, changes, diagram, filediff, packages, queries
 from .code import build_file, build_files
 from .corpus import build_corpus, build_document, serving
@@ -361,6 +361,20 @@ class _Base:
 # inside `_Live.open` because the count has to be knowable before the work starts -- "step
 # 4 of 6" needs the 6 up front, and a hand-counted 6 beside a six-branch function is two
 # numbers about one thing (rule 32).
+def why(exc: BaseException) -> str:
+    """A failed build, in words a reader can act on.
+
+    `type(exc).__name__` earns its place in front of an `OSError` or a `ValueError`, which
+    say little on their own. It is **noise** in front of the two exceptions written to be
+    read: `StaleGraphError` and `UnfinishedMapError` are already whole sentences aimed at
+    the person on the other side of the screen, and prefixing them with a class name puts a
+    Python word first in the one place where the reader is not a programmer.
+    """
+    if isinstance(exc, StaleGraphError | UnfinishedMapError):
+        return str(exc)
+    return f"{type(exc).__name__}: {exc}"
+
+
 BUILD_STEPS: tuple[str, ...] = (
     "opening the graph",
     "the 2.5D model and its payload",
@@ -501,6 +515,13 @@ class _Live:
         # report.
         self.analysis_lock = threading.Lock()
         self.analysis: dict[str, Any] = {"state": "idle"}
+        # **The running child itself, because a label is not a fact (rule 30).** The slot
+        # used to be held by `analysis["state"] == "working"` alone, which is true for ever
+        # if the watching thread dies without saying so -- and there was no way to stop a
+        # run either, because the handle was a local inside `analysis.run`. Holding it
+        # answers both: the claim asks whether anything is actually alive, and `stop` has
+        # something to signal.
+        self.analysis_proc: Any = None
 
     # -- the one door onto a version -------------------------------------- #
 
@@ -528,6 +549,17 @@ class _Live:
         # repaired (rule 20), and `revisions.known` will list it as comparable regardless
         # -- so this is a real outcome of a real switch, not a defensive branch.
         store = Store(graph_db, writable=False, shared=True)
+        # **A map that never finished being written is refused here**, before anything is
+        # built from it and before anything is swapped. It opens perfectly -- that is the
+        # whole problem: one killed twelve seconds into the Society tree reports 4,786
+        # routines and *no internal calls at all*, over a timestamp and a determinism
+        # guarantee. Closed by hand rather than by the `try` below, which does not start
+        # until the build does.
+        try:
+            store.refuse_if_unfinished(self.out_dir.name)
+        except BaseException:
+            store.close()
+            raise
         revision = revisions.revision_of(graph_db) or ""
         source_revision = self._sidecar_revision(self.source, revision)
         docsource_revision = self._sidecar_revision(self.docsource, revision)
@@ -752,8 +784,12 @@ class _Live:
                 source.close()
             if docsource is not None:
                 docsource.close()
+            # **Which failure it is, as a field.** The page offers *Analyse it again* on
+            # this one and nothing on the others, and deciding that by reading the reason
+            # would make a sentence written for a reader into a wire format (rule 30).
             self.note(state="failed", revision=name, program=name, steps=len(BUILD_STEPS),
-                      ms=ms(), reason=f"{type(exc).__name__}: {exc}")
+                      ms=ms(), reason=why(exc),
+                      unfinished=isinstance(exc, UnfinishedMapError))
             return
 
         # After the swap, never before: a failed build above must leave the outgoing
@@ -788,11 +824,23 @@ class _Live:
             self.open(graph_db, step)
         except Exception as exc:                  # noqa: BLE001 -- see the docstring:
             self.note(state="failed", revision=revision,   # this is a report, not a swallow
-                      steps=len(BUILD_STEPS), ms=ms(),
-                      reason=f"{type(exc).__name__}: {exc}")
+                      steps=len(BUILD_STEPS), ms=ms(), reason=why(exc))
             return
         self.note(state="done", revision=revision, step="",
                   done_steps=len(BUILD_STEPS), steps=len(BUILD_STEPS), ms=ms())
+
+    def analysis_running(self) -> bool:
+        """Is an analysis *actually* running -- asked of the process, not of the report.
+
+        `state == "working"` is a **label**, and a label outlives the thing it names: a
+        watcher that dies without noting leaves it true for ever, and nothing short of
+        restarting the server could then start another analysis. This asks the child
+        (rule 30), which is the one answer that cannot be stale.
+
+        Caller holds `analysis_lock`.
+        """
+        proc = self.analysis_proc
+        return proc is not None and proc.poll() is None
 
     def claim_analysis(self, name: str) -> bool:
         """Take the analysis slot, or say it is taken. `claim`'s shape, its own slot.
@@ -800,22 +848,73 @@ class _Live:
         One analysis at a time, because two reading into the same output root can collide
         on a directory -- and because the panel shows one. The loser is **told**, never
         answered as though its own run were the one now going (design rule 1).
+
+        **The refusal is the process's, not the report's.** A report still saying `working`
+        over a child that has gone is a stale lock, and it is *cleared here* rather than
+        left for somebody to notice -- which is the difference between a slot and a jam.
         """
         with self.analysis_lock:
-            if self.analysis.get("state") == "working":
+            if self.analysis_running():
                 return False
+            self.analysis_proc = None
             self.analysis = {"state": "working", "program": name, "step": "",
-                             "done_steps": 0, "steps": 0, "detail": ""}
+                             "done_steps": 0, "steps": 0, "detail": "",
+                             # Both stamped now and only `moved` bumped afterwards, so the
+                             # panel can say *how long it has been running* and *how long it
+                             # has been silent* -- two different questions, and the second is
+                             # the one that tells a hang from a long step.
+                             "began": time.time(), "moved": time.time()}
             return True
 
-    def note_analysis(self, **fields: Any) -> None:
-        """Replace the analysis report. Whole, never field by field -- see `note`."""
+    def stop_analysis(self) -> tuple[bool, str]:
+        """End the running analysis. Returns whether there was one, and what happened.
+
+        The map it was writing marked itself unfinished as it started, so there is nothing
+        to clean up here and nothing this process could write if there were (rule 20).
+        """
         with self.analysis_lock:
-            self.analysis = dict(fields)
+            if not self.analysis_running():
+                return False, "no analysis is running"
+            proc, name = self.analysis_proc, self.analysis.get("program", "")
+        # Outside the lock: `terminate` then up to six seconds of waiting, and a progress
+        # poll must not queue behind it -- the reader pressed Stop and is watching to see
+        # whether it worked.
+        said = analysis.stop(proc)
+        return True, f"{name}: {said}"
+
+    def note_analysis(self, **fields: Any) -> None:
+        """Replace the analysis report. Whole, never field by field -- see `note`.
+
+        **`began` and `moved` are carried across, and `moved` only bumps when something
+        actually changed.** A timestamp refreshed on every identical report would say a run
+        was moving because it was being watched, which is the one thing a silence detector
+        must not do -- and silence is exactly what tells a hang from a long step. Resolution
+        on the Society tree is quiet for tens of seconds and is perfectly healthy.
+        """
+        with self.analysis_lock:
+            was = self.analysis
+            fresh = dict(fields)
+            fresh["began"] = was.get("began", time.time())
+            changed = any(was.get(k) != fresh.get(k)
+                          for k in ("state", "step", "done_steps", "detail"))
+            fresh["moved"] = time.time() if changed else was.get("moved", time.time())
+            self.analysis = fresh
 
     def analysis_progress(self) -> dict[str, Any]:
+        """The report, plus the two elapsed times, plus whether it is *really* running.
+
+        `running` is the process's answer beside the report's own word, deliberately: they
+        agree until a watcher dies, and the pane that has to explain a refusal is the one
+        that needs to know they have stopped agreeing.
+        """
         with self.analysis_lock:
-            return dict(self.analysis)
+            out = dict(self.analysis)
+            now = time.time()
+            if "began" in out:
+                out["running_for"] = round(now - float(out["began"]), 1)
+                out["silent_for"] = round(now - float(out.get("moved", now)), 1)
+            out["running"] = self.analysis_running()
+            return out
 
     def note(self, **fields: Any) -> None:
         """Replace the progress report. Whole, never field by field.
@@ -2029,9 +2128,40 @@ class _Handler(BaseHTTPRequestHandler):
                 # program that cannot be opened and a program that does not exist are
                 # different facts, and only one of them is worth a sentence (design rule 1).
                 "openable": revisions.newest(d, revisions.GRAPH) is not None,
+                # **Listed and marked, never dropped** -- design rule 1, and the same
+                # bargain `openable` makes one column over. A directory whose analysis was
+                # stopped is a real thing a reader made and will look for; hiding it would
+                # leave them hunting for a program they know they started. The switch
+                # refuses it with the store's own sentence.
+                "finished": self._finished(d, is_here),
                 "files": served_files if is_here else None,
             })
         self._json({"programs": rows, "serving": here.name})
+
+    def _finished(self, d: Path, is_here: bool) -> bool:
+        """Did the analysis that wrote this program's newest map finish?
+
+        **One meta read, and only one**, against `_r_programs`' standing bargain: that route
+        names programs without opening them, because whether a map is readable costs a graph
+        open apiece behind a `<select>` the reader clicks. This is the exception, and it
+        earns it -- an unopenable program wastes a click, an *unfinished* one is read as a
+        program that calls nothing. `True` on any failure to say otherwise: this column
+        marks a row, it does not decide whether the switch may happen, and the switch asks
+        the store itself.
+        """
+        if is_here:
+            return True             # it is being served, so it passed the check to get here
+        graph = revisions.newest(d, revisions.GRAPH)
+        if graph is None:
+            return True             # `openable` already says this row has nothing to read
+        try:
+            store = Store(graph, writable=False)
+        except Exception:           # noqa: BLE001 -- stale, wrong kind, unreadable: all
+            return True             # `openable`'s business, and none of this column's
+        try:
+            return store.finished() != ""
+        finally:
+            store.close()
 
     def _p_program(self, q: dict[str, list[str]]) -> None:
         """Serve a different program. A POST, for `_p_base`'s reason.
@@ -2088,6 +2218,23 @@ class _Handler(BaseHTTPRequestHandler):
             body["check"] = {"ok": v.ok, "refusal": v.refusal, "note": v.note}
         self._json(body)
 
+    def _p_stop_analysis(self, q: dict[str, list[str]]) -> None:
+        """Stop the running analysis. A POST, for `_p_analyze`'s reason and its own.
+
+        The reader may want this because the run has hung, because they changed their mind,
+        or because they need the slot for a different tree -- and the server cannot tell
+        those apart and does not try. **What it does not do is judge**: a run that is
+        genuinely healthy and one that is wedged look identical from here, so the panel
+        states how long it has been silent and the person decides.
+
+        Answered with `started` like every other control-the-server route, so one client
+        function reads them all -- and with the outcome in words, because *asked to stop*
+        and *had to be killed* are different facts about the child.
+        """
+        stopped, said = self._live.stop_analysis()
+        self._json({"started": stopped, "reason": said, "steps": [],
+                    **({} if not stopped else self._live.analysis_progress())})
+
     def _p_analyze(self, q: dict[str, list[str]]) -> None:
         """Read a directory into a new program. **A POST, and the sharpest case for one.**
 
@@ -2114,12 +2261,21 @@ class _Handler(BaseHTTPRequestHandler):
         # documentation is an input this tool reads by default (design rule 11).
         docs = (q.get("docs") or ["1"])[0] != "0"
         if not self._live.claim_analysis(name):
-            running = self._live.analysis_progress().get("program", "")
+            # **The refusal carries the running job, so the reader can act on it.** It used
+            # to be a sentence and nothing else -- true, and a dead end: the one thing they
+            # might want to do about it is stop it, and nothing on the page offered that.
+            live = self._live.analysis_progress()
+            running = live.get("program", "")
             self._started(False, f"an analysis of {running} is already running", steps=())
             return
+        def hold(proc: Any) -> None:
+            with self._live.analysis_lock:
+                self._live.analysis_proc = proc
+
         threading.Thread(
             target=analysis.run,
-            args=(source, name, out_root, docs, self._live.note_analysis),
+            kwargs={"source": source, "name": name, "out_root": out_root, "docs": docs,
+                    "note": self._live.note_analysis, "on_start": hold},
             name=f"dunneflow-analyze-{name}", daemon=True).start()
         self._started(True, verdict.note, progress=self._live.analysis_progress, steps=())
 
@@ -2244,6 +2400,9 @@ class _Handler(BaseHTTPRequestHandler):
         # a prefetch that reads a source tree into a new directory is worse than one that
         # swaps the map, not better.
         "/api/analyze": "_p_analyze",
+        # The way out of the one above. A POST for the same reason and a sharper one: it
+        # ends a process, which is not a thing a prefetch may do.
+        "/api/analyze/stop": "_p_stop_analysis",
     }
 
     # Served directories, checked in order. Kept beside the route table rather than

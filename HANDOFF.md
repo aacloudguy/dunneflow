@@ -9538,3 +9538,129 @@ order, and Enter opened the dialog. For a control that has to be reachable witho
 that is the better proof anyway -- and it is a thing a `<div>` could never have passed.
 
 977 tests, mypy clean, ruff clean, 0 broken.
+
+## A stopped analysis, and the map it leaves behind — 2026-09-04
+
+Tom, on the chunk that had just landed: *"what happens when a background analysis hangs,
+crashes, or otherwise interferes with the user's next choice… the user disagrees, or asks to
+override."* Four things were checked against the running code rather than reasoned about.
+Three were defects. The fourth was worse than the question that prompted it.
+
+### The finding that reframed it
+
+**A killed `analyze` left a map that opens and lies.** Measured by stopping one twelve
+seconds into the Society tree:
+
+```
+files 628 · routines 4,786 · boundaries 4,070 · resolved_calls 0
+analysed_at 2026-09-04 21:54 UTC · tool_version 0.1.0 · inference none
+```
+
+It died before `resolve_calls`, so it reported a program that **calls nothing** -- with a
+timestamp, a tool version and chunk 2's determinism guarantee on it, listed by
+`program_dirs`, and opened by the switch without a word. That is a map that is wrong and says
+nothing about being wrong, which `CLAUDE.md` names as the one outcome this tool may not
+produce -- and it was reachable **with no stop button anywhere**: Ctrl-C, a laptop that slept,
+an OOM kill, a full disk.
+
+So the marker was the prerequisite rather than an extra. Cancelling without it would have
+turned a rare accident into a button.
+
+### The marker, and why it needed a commit
+
+`analyze` writes `complete = ""` immediately after the revision is stamped and `"yes"` as its
+last act, and records the **step** as each begins. All of it through `Store.set_meta_now`,
+because `set_meta` does not commit and an uncommitted marker is lost by exactly the `kill -9`
+it exists for -- at which point the graph reads as one that *predates the key*, which is the
+ambiguity this exists to prevent arriving through the back door.
+
+**Three states, never two.** Missing means written before the key existed and is fine; `""`
+means started and never finished; `"yes"` means finished. Refusing on absence would refuse
+every map made before today, none of which is broken. It is chunk 2's missing-versus-blank
+distinction, one store over, and the reason the marker is written on the way *in*.
+
+Verified against a real `kill -9` on the Society tree: `complete = ''`,
+`step = 'reading the documents'`. **Re-analysing recovers it in 34 s** against a ~90 s cold
+run, because the extraction is content-hashed and the working revision is reused -- so
+*Analyse it again* is a fix and not advice.
+
+`unfinished_sentence` is the one place those words live; four readers say it and a fifth
+warns. `_Live.open` refuses (so the switch and `serve`'s boot both do), `_open_store` refuses
+(so `touches`, `impact`, `glossary`, `naming`, `mirror` and **`check`** do -- `check` most
+expensively, since a half-written map otherwise reports `0 broken` and greens a build).
+`query` is the one exemption and it **warns**: its whole contract is that you get the rows
+that are there, and an escape hatch that quietly hands over a half-written map is not an
+escape hatch. `serve.why()` strips the class name from the two exceptions written to be read
+-- a Python word landing first, in the one place the reader is not a programmer.
+
+### The three defects that already existed
+
+1. **Nothing could stop a run.** The `Popen` handle was a local inside `analysis.run`, so no
+   route, no button and nothing short of killing the server could reach it. `_Live` holds it
+   now and `POST /api/analyze/stop` ends it.
+2. **The slot trusted a label.** `claim_analysis` refused on `state == "working"`, which a
+   watcher dying without noting leaves true for ever -- a reader can see nothing running and
+   still be refused. It asks `poll()` now and clears the stale lock rather than leaving it for
+   somebody to notice. Rule 30, and the *"or locked"* half of the question.
+3. **A reload orphaned the run.** `pollAnalysis` was called from `startAnalyze` and nowhere
+   else, and nothing asked at boot. `resumeAnalysis` picks up a **live** run only -- a
+   finished one belongs to the session that asked for it, and re-raising it every reload would
+   be a panel nobody can dismiss.
+
+### And the jam came back through the fix for it
+
+`analyze` runs a `ProcessPoolExecutor`, and its workers inherit the pipes. `terminate()` on
+the parent killed the parent and left **eleven workers** alive holding stdout open, so
+`run`'s read loop never returned: `state: working` beside `running: false`, over a child that
+had gone. The exact label-outlives-the-fact shape this chunk exists to remove, reintroduced
+by its own cure.
+
+Found by looking at `ps`, not by a test -- the tests were green, because the report *had*
+settled correctly on the run before. The child gets `start_new_session=True` now and `stop`
+signals the **group**, `SIGTERM` then `SIGKILL`. A test drives a real 400-file analysis and
+asserts the reader thread **returns**, which it only does once every writer of the pipe is
+gone.
+
+A stopped run reports `state: "stopped"`, not `failed`. The distinction is read off the
+child's own negative exit code rather than a flag set from outside that could disagree with
+what happened (rule 13) -- and a reader who cancelled deliberately must not be told their run
+broke.
+
+### The silence is stated, and nothing acts on it
+
+The slot records `began` and `moved`, and **`moved` bumps only when something actually
+changed**: a timestamp refreshed on every identical poll would say a run was moving because
+somebody was watching it, and *silent for 4 m* is the only thing separating a wedged child
+from a long step. The panel says so in as many words -- *"Some steps are quiet for a while --
+resolving a large program says nothing until it is done -- so this may be working. It may also
+be stuck."* Resolution on Society is legitimately silent for tens of seconds, so a server that
+decided for itself when a run had hung would kill healthy work. The reader decides.
+
+Drawn in `--text-muted` on a plain rule rather than beside the failures in `--diff-gone`:
+colouring a silence as trouble would make that judgement in the one channel design rule 4 says
+to spend on a single dimension at a time.
+
+### Two things written and then made true
+
+* The refusal's *"Analyse works again as soon as it finishes"* was a promise nothing kept --
+  the reader would have had to press the button to find out, and the elapsed time froze at the
+  instant they pressed. `watchBlocked` re-asks while the dialog is open and **clears itself**
+  when the run ends. A control that states a behaviour and does not have it is design rule 16
+  in prose.
+* *Analyse it again* on the switch-failure panel opens a dialog at z-93 -- under a scrim at
+  z-96 that would have been left standing. Cleared before opening, which is the layer note in
+  `tokens.css` applying to a second window that can open a third.
+
+*Candidate engineering rule, not minted, for Tom:* **a job that can be interrupted must leave
+something that cannot be mistaken for a finished one.**
+
+### Looked at
+
+All four cases driven in a browser. The panel came back after a mid-run reload with its
+elapsed time reconstructed from `running_for` rather than restarted at zero; a second analysis
+was refused with the running job named and a working **Stop it**; the elapsed figure was
+watched ticking 7.0 s → 11.0 s to prove it was live; the selector reads *"coldrun2 — never
+finished being read"*; and the switch to it is refused with the store's own sentence over an
+**Analyse it again** that lands in the dialog name-filled and pointer-reachable.
+
+990 tests, mypy clean, ruff clean.

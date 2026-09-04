@@ -179,7 +179,62 @@ program has a most-commented routine and a maximum alone is a claim nobody can w
 
 ## What we are doing now
 
-### The latest: "About this map" — what read it, and whether anything was guessed (2026-09-04)
+### The latest: a stopped analysis, and the map it leaves behind (2026-09-04)
+
+Tom asked what happens when a background analysis hangs, crashes, or gets in the way of the
+next one — *"the user disagrees, or asks to override."* Four things were checked against the
+running code. Three were defects. **The fourth was worse than the question.**
+
+**A killed `analyze` left a map that opens and lies.** Measured by stopping one twelve
+seconds into the Society tree: 628 files, 4,786 routines, 4,070 boundary touches — and
+`resolved_calls = 0`, a program that calls nothing — carrying a timestamp, a tool version and
+chunk 2's determinism guarantee, listed by `program_dirs` and opened by the switch without a
+word. **Reachable with no stop button anywhere**: Ctrl-C, a sleeping laptop, an OOM kill. So
+the marker was the prerequisite, not an extra: cancelling without it would have turned a rare
+accident into a button.
+
+`analyze` now commits `complete = ""` on the way in, the **step** as it goes, and `"yes"` on
+the way out. Three states and not two — missing means *predates the key* and is fine, which
+matters because every map made before today lacks it. Verified against a real `kill -9`:
+`complete = ''`, `step = 'reading the documents'`. **Re-analysing recovers it in 34 s**,
+because the extraction is content-hashed, so *Analyse it again* is a fix rather than advice.
+
+**Three defects that existed and are fixed:**
+
+1. **Nothing could stop a run.** The `Popen` was a local inside `analysis.run` — no route, no
+   button, and a hung child held the slot until somebody killed the server.
+2. **The slot trusted a label.** `state == "working"` is true for ever if the watcher dies
+   without noting. It asks `poll()` now, and clears the stale lock (rule 30). That is the
+   *"or locked"* half of the question.
+3. **A reload orphaned the run.** Nothing asked `/api/analysis` at boot, so the panel vanished
+   while the run continued and the next attempt was refused by a sentence naming a job with
+   nothing on screen to point at. The refusal was also a dead end — it now carries the running
+   job and a **Stop it**.
+
+**And the jam came back through the fix for it, which is the finding worth keeping.**
+`analyze` runs a `ProcessPoolExecutor` and its workers inherit the pipes. `terminate()` on the
+parent killed the parent and left **eleven workers** alive holding stdout open, so `run`'s
+read loop never returned and the report said `working` over a child that had gone —
+`state: working` beside `running: false`, the exact label-outlives-fact shape this chunk
+exists to remove. The child gets its own session now and the signal goes to the **group**.
+Found by looking at `ps`, not by a test.
+
+**The silence is stated and acted on by nothing.** `moved` bumps only when something actually
+changed — a timestamp refreshed by being polled would say a run was moving because it was
+being watched — and the panel says *"Nothing new for 48 s. Some steps are quiet for a while…
+so this may be working. It may also be stuck."* Resolution is legitimately silent for tens of
+seconds, so the judgement is the reader's, not the server's.
+
+*Candidate engineering rule, for Tom to mint or refuse:* **a job that can be interrupted must
+leave something that cannot be mistaken for a finished one.**
+
+**Driven in a browser**, all four cases: the panel came back after a mid-run reload with its
+elapsed time correctly reconstructed; the refusal named the running job and its Stop worked;
+the selector reads *"coldrun2 — never finished being read"*; and the switch to it is refused
+with the store's own sentence over an **Analyse it again** that opens the dialog name-filled —
+after clearing the switch scrim, which would otherwise have sat at z-96 over a dialog at 92.
+
+### Before that: "About this map" — what read it, and whether anything was guessed (2026-09-04)
 
 **Tom asked for the model an analysis used. There is none, and checking that first turned the
 feature from a placeholder into a guarantee.** Nothing on the analysis path calls a model or

@@ -9912,3 +9912,120 @@ precedent — route on kind — or narrowing the table, or both. That is a desig
 verified by stashing the source and keeping the tests — stashing both proves nothing, which
 cost one wasted check). mypy clean, ruff clean. Mensores' package grouping is unchanged: root
 `mensores`, 46 packages, 0 outside.
+
+---
+
+## 2026-09-05 — ways in say what they are, and an application opens as one
+
+Tom, reading Mensores' cover: *"they don't make sense in the way that code does… Are these
+packages, modules, or applications? What is `mensores`, `mensores-mcp`, `run`?"*
+
+**None of the three.** A way in is *how the outside world starts this program*, and the
+fourteen on that cover are four kinds under two authorities:
+
+| What | Which | Authority |
+|---|---|---|
+| `mensores`, `mensores-mcp`, `mensores-scriba`, `mensores-signator` | installed executables, `pyproject.toml [project.scripts]` | **declared** |
+| `run`, `serve`, `main` ×5 | a module-level function recognised by its **name** | guessed |
+| `WitnessHandler.do_POST` | an HTTP route — started by a request | guessed |
+| `python -m mensores.chaos.*` | a `__main__` guard | guessed |
+
+The cover drew all fourteen as a name, a kind tag and a bar. `ways_in()` computed `evidence`
+and `declared` and `cover.py` dropped both before the wire — and five of the rows are called
+`main`, distinguishable only by aliases that were on the wire and never drawn.
+
+### (i) The row says what it is
+
+`web/waysin.py` owns the answer, because the pane behind a click needs the same one (rule 51).
+`DECLARED` / `GUESSED` on the row, the evidence **verbatim and unparsed** — it is this tool's
+own sentence and it *is* the answer, and tidying it into fields would promote a sentence to a
+contract for a column nobody asked for (rule 30) — and where it lives.
+
+**A command tree has no definition site**, and none is invented (rule 1). `mensores` names
+`mensores.cli:app`, a Typer object; the nearest true answer is the file the app is assembled
+in, from `cli_mounts`, and `None` where even that is unrecorded. It says what it *spans*
+instead — 107 routines across 44 files.
+
+Neither badge is coloured. Green already means *here is a route* on that page and the severity
+palette says something is wrong; a guess is neither (design rule 4).
+
+### (ii) Clicking an application opens the application
+
+`mensores` expands to 107 roots across 44 files. Selecting all 107 landed the reader on
+whichever the query returned first — `mensores.cli.examples.list_cmd` from one, `_root` from
+another. Not wrong so much as arbitrary, and nothing on screen explained it.
+
+`/api/wayin` answers with the tree: **where execution begins**, the **sub-applications**
+mounted on it with what each holds, and the **commands** hung directly on it — every row
+carrying the node id that makes it an ordinary selection, so the stack lights, the inspector
+fills, Code opens the file and the trail records the hop. Verified end to end with a real
+pointer: cover row → pane → `quaestor` → `accept_cmd` → `mensores/cli/audit.py`.
+
+Which of the two a way in *is* arrives as a declared field, never `len(nodes) > 1`: "this is a
+tree" and "this happens to start several routines" look identical on the wire (rule 30).
+
+A sub-application opens too, and **every count is recomputed for it** — carried down they read
+107, 44 and 1,381 under a heading naming a group of 34, three numbers each true of something
+the reader is not looking at (rule 24). The id is **verified to be mounted under this way in**,
+never trusted: a parameter is not a permission, and falling back to the root would hide the
+failure it was written for (rule 49).
+
+### Three found while building it
+
+1. **The application listed itself as one of its own commands** (rule 74) — the console-script
+   row is a child of the app object too. Filtered on `grp`, the schema's own field for *the app
+   object this command attaches to*, rather than on the name matching, because a command named
+   after its executable is a thing programs do (rule 5).
+2. **Keeping it out then left the entry routine named by nothing**, so `unlisted` counted the
+   program's own front door as *"a registration idiom DunneFlow followed far enough to count
+   and not far enough to name"* — a limitation confessed where there is none (rule 32). `entry`
+   is its own answer now, and it is the most interesting routine in the tree.
+3. **A group counted by its direct children read `telemetry 0`** for a group holding commands
+   one mount further down. Counted with `app_command_routines`, the same function `ways_in`
+   counts the whole tree with, so a count and the claim beside it cannot disagree (rule 13).
+
+### And one that was mine, caught by the guard it prompted
+
+`selectionSnapshot()` and `sameSelection()` were **two hand-kept lists of the same fields**.
+`wayIn` went into the snapshot and not into the comparator, so drilling into a sub-application
+filed a step labelled `mensores ▸ quaestor` which was deduplicated against `mensores` and
+discarded — **rule 33's symptom with the subject present and correct**. The comments on
+`diagramId`, `diagramBox` and `codeFile` each record paying this once, in the snapshot, where
+the lesson never reached the half that forgets.
+
+`SUBJECT_KEYS` is the one list now, and a new guard asserts the two agree. **It immediately
+caught a second field**: `wayInsideName`, which is a *label* and is excluded deliberately —
+`recordSelection` gave up deduplicating on labels because two routines can share a name, and a
+subject that is partly a label is that mistake returning one field at a time (rule 30).
+
+Two existing guards read the field name out of `sameSelection`'s body and had to be repointed
+at the list. They are **stricter** than before, which passed on the name appearing anywhere in
+the body, a comment included — and both were re-proved by breaking the source with the tests
+kept.
+
+### Not proven, and said rather than claimed
+
+* **The pointer path for the sub-application button.** `elementFromPoint` says it is topmost
+  and a scripted click drives the whole chain, but three real clicks in a row reported
+  *"Clicked at (x, y)"* and delivered **no event at all** — a capture-phase listener on
+  `document` recorded nothing. The harness stopped delivering clicks mid-session, having
+  delivered two earlier in the same tab. Rule 48: the handler is proven, the path to it is not.
+  The cover row and the command row *were* pointer-proven before it stopped.
+* **A one-off boot failure I could not reproduce.** After a server restart the page rendered
+  *"showing 0 of 0 routines"* with every endpoint healthy — `/api/cover` returning 14 ways in
+  and 46 packages, `shell.js` parsing. Clearing `localStorage` fixed it; re-setting the one
+  field that looked suspect (`mode: "code"`) did **not** reproduce it, and the stale blob is
+  gone. Unexplained, and filed as unexplained rather than as fixed.
+
+### A mistake worth recording
+
+`git checkout <file>` to undo a one-line probe **reverted the whole day's work in that file**.
+Recovered from a scratchpad copy plus re-applying nine edits by hand, and re-verified from the
+gates and the browser. A scratchpad copy before a destructive probe is what made it a
+twenty-minute detour rather than a lost afternoon; the lesson is to revert the probe, not the
+file.
+
+### Gates
+
+1,023 tests (18 new: `tests/test_waysin.py`, plus the subject-keys guard), mypy clean, ruff
+clean, `output/` untouched.

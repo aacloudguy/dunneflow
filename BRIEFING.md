@@ -179,7 +179,21 @@ program has a most-commented routine and a maximum alone is a claim nobody can w
 
 ## What we are doing now
 
-**A root package was elected by no vote — fixed 2026-09-05, and Tom found it.** He opened a
+**Ways in say what they are — built 2026-09-05.** Tom asked what the six things on Mensores'
+cover actually *are*: *"Are these packages, modules, or applications?"* None of the three — a
+way in is how the outside world starts the program, and the fourteen are four **declared**
+executables, one HTTP route and nine **guesses** from a name or a `__main__` guard, drawn
+identically. The row now says which, with the evidence verbatim; and clicking an application
+opens the application — its entry routine, its 22 sub-applications and its commands, each an
+ordinary selection — instead of selecting 107 routines and landing on one at random.
+
+**Deliberately not built: ways in as nodes on the Diagram**, which was his option (iii) and is
+where chasing data *inbound* would live. It wants (ii) to have settled what a way in is as a
+subject, which it now has.
+
+**1,023 tests, mypy clean, ruff clean, working tree clean**, `output/` untouched.
+
+**Before that, the same day: a root package was elected by no vote — and Tom found it.** He opened a
 map I had made by pointing `analyze` at `src/dunneflow` instead of `src` and found two real
 defects: `root_package` returned the *modal* first segment and could not fail, so **750 of 752
 routines were drawn as `<external>`** over a map whose cover counts were all correct (rule 49);
@@ -251,7 +265,48 @@ controls are driven from the keyboard.*
 
 ---
 
-### The latest: a root elected by no vote, and a package row that selects nothing (2026-09-05)
+### The latest: ways in say what they are, and an application opens as one (2026-09-05)
+
+**Tom's question was the bug report.** *"They don't make sense in the way that code does… what
+is `mensores`, `mensores-mcp`, `run`?"* A way in is **how the outside world starts this
+program**; Mensores' fourteen are four *declared* executables from `pyproject.toml`, one HTTP
+route, and nine *guesses* from a conventional name or a `__main__` guard — and the cover drew
+all fourteen as a name, a kind tag and a bar. `ways_in()` computed the evidence and `cover.py`
+threw it away before the wire. Five rows are called `main`.
+
+**The row now says which**, with the evidence verbatim and unparsed (rule 30) and where it
+lives — or, for a command tree, what it *spans*, because `mensores.cli:app` is a Typer object
+with no definition site and inventing one would mean picking one of 44 files (rule 1). Neither
+badge is coloured: green already means *here is a route* on that page (design rule 4).
+
+**And clicking an application opens the application.** `web/waysin.py` + `/api/wayin` answer
+with the tree — where execution begins, the 22 sub-applications with what each holds, and the
+commands hung directly on it, every row carrying the node id that makes it an ordinary
+selection. A sub-application opens too, with **every count recomputed for it** (rule 24), and
+its id verified to be mounted under this way in rather than trusted (rule 49). Driven end to
+end with a real pointer: cover → pane → `quaestor` → `accept_cmd` → `mensores/cli/audit.py`.
+
+*Three found while building it, all in the record:* the application listed **itself** as one of
+its own commands (rule 74); keeping it out then made the program's own front door read as a
+limitation of the tool (rule 32); and a group counted by direct children read `telemetry 0` for
+a group holding commands one mount down (rule 13).
+
+***And one that was mine.*** `selectionSnapshot` and `sameSelection` were two hand-kept lists of
+the same fields, and `wayIn` went into one — so a step carrying its subject perfectly was
+deduplicated away, which is rule 33's symptom with nothing missing. `SUBJECT_KEYS` is the one
+list now, and the guard asserting the two agree **immediately caught a second field**.
+
+*Two things not proven, and said rather than claimed:* the **pointer path** for the
+sub-application button — three real clicks reported success and delivered no event, the harness
+having stopped mid-session (rule 48; the cover row and command row were pointer-proven before
+it stopped) — and a **one-off boot failure** from a stale `localStorage` blob that cleared on
+reset and did not reproduce. Both are in `HANDOFF.md`.
+
+*A mistake worth knowing:* `git checkout <file>` to undo a one-line probe reverted the whole
+day's work in that file. Recovered from a scratchpad copy plus nine re-applied edits. Revert
+the probe, not the file.
+
+### Before that: a root elected by no vote, and a package row that selects nothing (2026-09-05)
 
 **Tom opened the throwaway `nodocs` map and found it broken. He was right, and it was two
 things.** Mine: the map was `analyze src/dunneflow`, and the prescribed shape is the *parent*
@@ -1478,6 +1533,11 @@ feature was blocked on an answer nobody owed.
   under a freshly measured element kept rendering the pane beside it, so even a zoom on
   correct coordinates showed the wrong thing. Measurement through the DOM still works and is
   what every figure in this session rests on.
+- **Ways in as nodes on the Diagram** — Tom's option (iii), deliberately deferred 2026-09-05
+  after (i) and (ii) landed. A `way-in` box kind on the compartment holding its root, with an
+  arrow inbound, so chasing data *into* the system uses the arrow-opening machinery that
+  already exists (`/api/flow` gives every call site with its arguments as written). It wanted
+  (ii) to settle what a way in is as a subject first, which it now has.
 - **A package row does not make a selection.** Found by Tom 2026-09-05 and verified
   pre-existing on Mensores rather than introduced. Clicking a package marks the row
   `aria-current="true"` and switches the pane, then leaves the crumb at *"nothing selected"*,

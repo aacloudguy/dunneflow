@@ -10118,3 +10118,108 @@ the browser draws, at a size a person can read.
 ### Gates
 
 1,030 tests (7 new in `test_diagram.py`), mypy clean, ruff clean, `output/` untouched.
+
+---
+
+## 2026-09-05 — Document mode is about the selection, and the contents stops sitting on the prose
+
+Tom, with a screenshot: he selected `signator.__main__`, pressed **Document**, and got a
+document about PAUL style rules stored in `harness/rules/style.md`. *"Not at all sure why
+that appeared, what is the relevance, if any?"* And scrolling, the table of contents stayed
+put on top of the text.
+
+Two defects, unrelated to each other.
+
+### 1. The pane was a place, not a view of the selection
+
+`state.docPath` held whatever document had last been opened — his came from a stated naming
+rule's *Read it in the document*, twenty minutes earlier — and **nothing ever connected it to
+what was selected**. The mode toggle's own sentence is *"five ways of reading one selection"*,
+and one of them was not. The 2026-09-03 session *"no pane assumes what it was showing is still
+true"* is the precedent; this pane was missed in that pass.
+
+### The obvious relation does not exist, and it is written down so nobody mines it again
+
+`doc_refs` holds **37,150 PATH** and **114,067 CODE** references, which sound exactly like the
+answer. They are not:
+
+* the PATHs are **document** paths — `INTENT.md`, `GLOSSARY.md` — and
+  `mensores/signator/__main__.py` matches **zero** of them;
+* the CODE refs are CLI flags and template placeholders (`--codebase`, `{{ crash_payload }}`),
+  so `WitnessHandler` matches **zero** and `main` matches **38**, which is rule 5 waiting to
+  happen.
+
+### And naming an id is not the same as being related
+
+The governance join is real — **6,976 of 6,993** code annotations carry an id some document
+also names — but it is not selective:
+
+| | |
+|---|---|
+| ids a routine carries | median **2** |
+| documents naming at least one | median **281**, p90 1,077, max 1,679 of 2,064 |
+| documents naming **every** one | median **4** |
+| routines with ≥2 ids landing in 1–10 | **617 of 1,021** |
+
+A filter that returns a seventh of the corpus has not filtered. So `related.py` **ranks rather
+than filters**: the band naming every id is the answer, the rest is counted and offered behind
+a fold, and both numbers are on the page (design rule 1, rule 32). On the real corpus a
+routine citing `CW-2` and `PLAN-75-1` gets **2 documents naming both** — `.groma/ROADMAP.md`
+and `75-01-PLAN.md`, the plan itself — with 51 more naming one.
+
+**Answered per selection at 6.8 ms**, measured over 100 routines, not built at boot:
+`traceability.measure()` does the whole join in **4.7 s**, which is right for a report and
+wrong for a click. It borrows that module's `normalise` and nothing else (rule 51) — 14 ids
+are spelled differently between the two stores, so raw matching would miss them.
+
+**The open document is not closed when the selection moves** — Tom's call, over closing it:
+a reader who is reading should not have the page taken away. What changed is that it *says*
+which it is. Related, it names the shared ids; unrelated, it says so and how the reader got
+there, with a button to what is related. **59% of routines carry no id at all**, so that is the
+common case and it gets a sentence rather than an empty list (design rule 21).
+
+### 2. The contents was sticky inside a wrapping flex box
+
+`.docnav` is `position: sticky; top: 0` inside `.docread`, which is `display: flex;
+flex-wrap: wrap`. Sticky is right while the nav is a **side column**. Its two bases are
+12rem + 26rem + a 1.2rem gap ≈ **941px**, wider than the centre pane at a 24px root — so it
+wraps to its own full-width row, and sticky then pins that row over the prose. Design rule
+53's shape: a layout right at one window size.
+
+**A `@media` query cannot fix it.** It answers about the *viewport* rather than about this
+pane, and `rem` inside one resolves against the initial font size rather than the page's —
+rule 28, already paid for once in this file. `@container` answers about the pane and its `rem`
+*is* the page's, so the threshold moves with the scale control like every other dimension
+(design rule 3). Measured through the DOM at four widths: **sticky at 77.8rem and 43.8rem,
+static and stacked at 35.0rem and 30.0rem** — it stops sticking in the same breath it stops
+being a column.
+
+### And one I caused, found by looking
+
+The doc chrome repaints **only when `docDomKey()` changes** — a bargain measured at 9.5 s per
+`render()` without it. The related block lives in that chrome, so it painted *"Looking for
+documents related to `<module>`…"*, the answer arrived 7 ms later, `render()` ran, and the
+sentence never changed. The key carries `relDomKey()` now, and says in as many words that
+every field added to this pane has to be added there too or it is invisible the moment it
+settles.
+
+### A fixture that was wrong, not the code
+
+The first draft of `test_related.py` expected `ROADMAP.md` to match `PLAN-75-1` from the prose
+`PLAN-75-1`. It does not: in prose that is mined as the **ticket** `PLAN-75`, and only the
+spelled-out `Plan 75-01` normalises to `PLAN-75-1`. The fixture was corrected and the reason
+kept in a comment, because it is the same trap a reader of the real corpus would hit.
+
+### Not chased
+
+* The inspector's *"GOVERNANCE 6"* on that module is its six `noqa: E402` **comments** — that
+  block renders annotations and comments together. Existing behaviour; the label does double
+  duty and it is not wrong.
+* `serve --port 8787` **fell back to a free port** when the previous process still held it,
+  and said which port it was using but not that it could not have the one asked for.
+* Full-text search of the corpus for a routine's name would raise the 41%, and is rule 5's
+  territory — it wants its own measurement before anyone builds it.
+
+### Gates
+
+1,037 tests (7 new in `test_related.py`), mypy clean, ruff clean, `output/` untouched.

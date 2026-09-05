@@ -179,7 +179,18 @@ program has a most-commented routine and a maximum alone is a claim nobody can w
 
 ## What we are doing now
 
-**Ways in are nodes on the Diagram — built 2026-09-05.** Option (iii), taken up an hour after
+**Document mode is about the selection — built 2026-09-05, and Tom found it.** He selected a
+routine, pressed Document, and got an unrelated document opened twenty minutes earlier from a
+citation; the table of contents also sat on top of the prose when he scrolled. Both fixed.
+The pane now leads with the documents that share a governance id with the selection, **ranked
+rather than filtered** — naming an id is a median of 281 documents, naming *every* id is a
+median of 4 — and an open document stays open but says whether it is related and how you got
+there. The contents sticks only while it is a side column, decided by a container query rather
+than a `@media` breakpoint (rule 28).
+
+**1,037 tests, mypy clean, ruff clean, working tree clean**, `output/` untouched.
+
+**Before that, the same day: ways in are nodes on the Diagram.** Option (iii), taken up an hour after
 being deferred. A way in is a box on every compartment it enters, with bold arrows into what it
 starts, and the ordinary arrows carry on inward from there. **Drawn by default unlike a port**,
 on a measurement: ports are max 41 per compartment, ways in max 3 and absent from 46 of 53.
@@ -278,7 +289,35 @@ controls are driven from the keyboard.*
 
 ---
 
-### The latest: ways in say what they are, and an application opens as one (2026-09-05)
+### The latest: Document mode is about the selection (2026-09-05)
+
+**Tom's screenshot was the bug report**, and it was two defects. `state.docPath` held whatever
+was last opened and nothing connected it to the selection, while the mode toggle claims *"five
+ways of reading one selection"*. And `.docnav` is `position: sticky` inside a `flex-wrap` box:
+right while it is a side column, and at a 24px root its bases (12 + 26 + 1.2 rem ≈ 941px)
+exceed the centre pane, so it wraps to a full-width row and pins itself over the prose.
+
+**The obvious relation does not exist and is written down so nobody mines it again**:
+`doc_refs`' 37,150 PATH entries are *document* paths, and a source file matches **zero**; its
+CODE entries are CLI flags. What exists is the governance join — and **naming an id is not
+being related**: a routine carries a median of 2 ids named by a median of **281** documents,
+14% of the corpus. The **intersection** is selective, median **4**. So the pane ranks rather
+than filters, states both numbers, and answers in 6.8 ms per selection rather than the 4.7 s
+`traceability.measure()` takes for the whole program.
+
+On Tom's call an open document **stays open** and says which it is — related, it names the
+shared ids; unrelated, it says so and how you got there. 59% of routines carry no id at all
+and get a sentence, not an empty list.
+
+The contents fix is a **container query**: `@media` answers about the viewport and its `rem` is
+not the page's (rule 28), `@container` answers about the pane and its `rem` is. Measured
+sticky at 43.8rem, static and stacked at 35.0rem.
+
+*And one I caused:* the doc chrome repaints only when `docDomKey()` changes, so the related
+block froze on "Looking for…" seven milliseconds before the answer landed. The key carries it
+now.
+
+### Before that: ways in are nodes on the Diagram (2026-09-05)
 
 **Tom's question was the bug report.** *"They don't make sense in the way that code does… what
 is `mensores`, `mensores-mcp`, `run`?"* A way in is **how the outside world starts this

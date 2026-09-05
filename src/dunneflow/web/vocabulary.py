@@ -1,10 +1,16 @@
 """The program's own words, as the dashboard serves them.
 
-Two lanes, and design rule 13 says they prove themselves differently. A **quoted**
-definition proves itself with a file and a line the reader can open and read in context; a
-**measured** convention proves itself with the query that counted it, reproducible via
-`dunneflow query`. Neither is worth anything without that route back, so nothing here
-crosses the wire without it.
+Three lanes, and design rule 13 says they do not prove themselves the same way. A
+**quoted** definition, and a **stated** naming rule, prove themselves with a file and a
+line the reader can open and read in context; a **measured** convention proves itself with
+the query that counted it, reproducible via `dunneflow query`. Neither is worth anything
+without that route back, so nothing here crosses the wire without it.
+
+It was two lanes until the stated one was served. `11-naming.md` had carried it since the
+scanner was written and the dashboard had never shown a line of it -- which is why the two
+naming pages are titled differently and are two pages: *derived* is a load-bearing word
+about a page that counts, and putting a rule somebody wrote on it would have made that word
+false of half its contents.
 
 `resolve/naming.py` and `resolve/glossary.py` do the work and are unchanged; this is
 exposure. Both were built, tested and reachable only from the command line -- the shell's
@@ -26,6 +32,7 @@ from typing import Any
 from ..docstore import DocStore
 from ..resolve import glossary as glossary_resolve
 from ..resolve import naming as naming_resolve
+from ..resolve.stated import checkable_sentence, stated_rules
 from ..store import Store
 
 
@@ -68,6 +75,69 @@ def measure_naming(store: Store) -> dict[str, Any]:
         "gaps": [{"population": g.population, "total": g.total,
                   "spread": [[k, n] for k, n in g.spread]} for g in m.gaps],
         "thresholds": m.thresholds,
+    }
+
+
+def stated_naming(docs: DocStore | None) -> dict[str, Any]:
+    """The **stated** lane: the naming rules this project's documents actually contain.
+
+    `measure_naming` above counts what the code does. This quotes what somebody wrote, and
+    the two are never blended -- a derived convention holding 100% of the time and a rule a
+    person set down are different claims, which is why they are two pages rather than two
+    sections of one.
+
+    **Nothing here is compared against anything**, and the page says so in its own first
+    line. `checkable` records only that a rule names both a class of identifier and a
+    spelling, so a check *could* be written; DunneFlow does not run one, and will not until
+    a standards directory can be imported.
+
+    **Three absences, and they are three different answers** (design rule 21). No store at
+    all means the analysis never read documentation; a store with no rules means documents
+    were read and none of them states a naming rule; and a rule count of zero over a
+    document count of zero means the scan found nothing to read. Flattening them into one
+    empty list would turn *"we did not look"* into *"there is nothing there"*, which is the
+    claim this tool exists not to make. So the counts travel with the rules, whether or not
+    there are any.
+
+    Unbounded, like every list that is not a diagram (rule 8). The largest corpus measured
+    here yields twelve; a stale self-analysis in `output/` yields 136, and the page renders
+    all of them rather than the first few, because a stated rule nobody is shown is a rule
+    that might as well not have been read.
+    """
+    rules = stated_rules(docs)
+    counts = docs.counts() if docs is not None else {}
+    return {
+        # `read` is the flag that separates the first absence from the second two: it is
+        # about the *analysis*, not about the corpus, and no count can stand in for it --
+        # a program whose documentation is genuinely empty and one analysed with
+        # `--no-docs` both report zero documents.
+        "read": docs is not None,
+        "rules": [
+            {
+                "doc": r.doc,
+                "line": r.line,
+                "lane": r.lane,
+                "text": r.text,
+                "heading": r.heading,
+                "checkable": r.checkable,
+                # The pair `checkable` is computed from, carried rather than summarised.
+                # They have been in the schema since the scanner was written and read by
+                # nothing; a reader deciding whether to trust a rule wants the halves that
+                # made it checkable, not the verdict on its own.
+                "scope": r.scope,
+                "pattern": r.pattern,
+                # One sentence, from the one place it lives. The Markdown report prints
+                # the same string (rule 51) -- two surfaces spelling one fact two ways is
+                # how a reader learns the tool does not know which it means.
+                "note": checkable_sentence(r),
+            }
+            for r in rules
+        ],
+        # What was looked at, so an empty list can say why it is empty rather than merely
+        # being empty. `duplicates` is the one filter in the query and design rule 1 says
+        # it is never silent: byte-identical copies are folded, and the page states it.
+        "documents_seen": int(counts.get("documents", 0)),
+        "duplicates": int(counts.get("duplicates", 0)),
     }
 
 

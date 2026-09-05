@@ -83,6 +83,7 @@ let MANIFEST = [];   // the files a model pass would send, shown before anything
 let TERMS = [];        // words this program uses as names that something defines -- served, not pinned
 let UNDEFINED = [];    // words it uses and nothing defines -- the mirror's finding, served
 let CONVENTIONS = [];  // measured naming conventions, each with the query that counted it -- served
+let STATED = [];       // naming rules the project's own documents state -- quoted, never counted
 let VOCAB = {};        // the scalars beside them: coverage, thresholds, gaps, and which lane is loaded
 
 /* Which sidecars this map has, keyed by the provenance whose citations read them, each
@@ -92,6 +93,11 @@ let VOCAB = {};        // the scalars beside them: coverage, thresholds, gaps, a
  * were never captured can serve neither (rule 70). Empty until the glossary is loaded, which
  * is the honest state and not "no sidecars" -- nothing offers to open before then. */
 let SIDECARS = {};
+
+/* The same question for the stated lane: can this base open the corpus its rules are
+ * quoted from. One entry rather than a table keyed by provenance, because there is one
+ * corpus here -- a naming rule always comes out of a document, never out of a docstring. */
+let STATED_CORPUS = { opens: false, reason: "" };
 
 /* One span of one file, fetched for the citation currently open. Not a cache of the
    program: the viewer shows one place at a time and asking again costs a local request. */
@@ -879,6 +885,7 @@ const NAV_ROUTES = {
      the other four. `render()` asks, once, for whichever view is about to be painted. */
   glossary:    () => { state.view = "glossary"; },
   naming:      () => { state.view = "naming"; },
+  stated:      () => { state.view = "stated"; },
   inference:   () => { state.view = "inference"; },
   curiosities: () => { state.view = "curiosities"; },
   pins:        () => { state.view = "pins"; },
@@ -6642,6 +6649,7 @@ const CENTRE_MODES = ["graph", "table", "doc", "code", "diagram"];
 const OFF_MODE_PAGE = {
   cover: "the overview", anomalies: "the worklist", changes: "the comparison",
   glossary: "the glossary", naming: "the derived naming standard",
+  stated: "the stated naming rules",
   curiosities: "the doorway panel", pins: "what you have kept",
   inference: "the inference settings", settings: "Settings",
 };
@@ -7891,6 +7899,35 @@ async function loadNaming() {
   }
 }
 
+/* The stated lane, on its own route because it is its own page.
+ *
+ * `STATED_CORPUS` is the capability the "read it in the document" hop needs -- whether
+ * `docsource.db` holds the version on screen. It is emptied to a refusal rather than left
+ * undefined when the server sends none, because `{}` read as "openable" is exactly the
+ * button that renders and does nothing (design rule 16), and a hop offered over a sidecar
+ * this map has not got is rule 44's shape one page over. */
+async function loadStated() {
+  if (VOCAB.stated) return;
+  VOCAB.stated = "loading";
+  try {
+    const r = await fetch("/api/stated");
+    if (!r.ok) throw new Error(`the server answered ${r.status}`);
+    const d = await r.json();
+    STATED = d.rules || [];
+    /* `read` is not `documents_seen > 0`, and the difference is the whole of design rule
+       21 here: a program analysed with `--no-docs` and one whose documents genuinely say
+       nothing both report zero rules, and only the server knows which happened. */
+    VOCAB.statedRead = !!d.read;
+    VOCAB.statedDocs = d.documents_seen || 0;
+    VOCAB.statedDupes = d.duplicates || 0;
+    STATED_CORPUS = d.corpus || { opens: false, reason: "the server did not say whether the document sidecar opens" };
+    VOCAB.stated = "ready";
+  } catch (err) {
+    VOCAB.stated = "failed";
+    VOCAB.statedError = err.message;
+  }
+}
+
 async function loadGlossary() {
   if (VOCAB.glossary) return;
   VOCAB.glossary = "loading";
@@ -7957,6 +7994,7 @@ function bindCitations(within) {
 function ensureVocabulary() {
   if (state.view === "glossary" && !VOCAB.glossary) loadGlossary().then(render);
   if (state.view === "naming" && !VOCAB.naming) loadNaming().then(render);
+  if (state.view === "stated" && !VOCAB.stated) loadStated().then(render);
 }
 
 /* Which provenance block is open, keyed by **pane and card** rather than by card alone.
@@ -8115,6 +8153,223 @@ function conventionPanel(cv, i) {
   </section>`;
 }
 
+/* ═══ stated naming rules: the ones somebody actually wrote ═══ */
+
+/* **Its own page, and the word on the other one is why.** `viewNaming` counts what the code
+ * does and is called *derived* on purpose — called "Naming standard" it would read as the
+ * rule the program was written to, which this tool has no evidence for. A rule quoted out of
+ * a document is exactly that evidence, for the rules it covers, and putting the two on one
+ * page would have made *derived* false of half its contents while leaving the word in place.
+ *
+ * Nothing here is compared against anything, and the page leads with that rather than
+ * mentioning it: a stated rule sitting above a measured convention invites the reading that
+ * one was checked against the other, and DunneFlow cannot yet import a standard to check
+ * against. That comparison is the next step and it is not this one.
+ *
+ * Unbounded (rule 8). Mensores states twelve; a stale self-analysis in `output/` states 136,
+ * and all 136 would be drawn. Grouped by document because the document is both what makes a
+ * long list readable and the thing the reader can open. */
+
+/* Two lanes travel in one list from the server, and they are drawn apart here, because they
+ * are read for different reasons: a FORM rule names a spelling and could one day be checked,
+ * a VOCABULARY rule names what a word may mean and mostly never can be. Routed from a table,
+ * as the conventions are: a lane this shell has no heading for is named on the page and in
+ * the console rather than folded into whichever group comes first (design rule 16). */
+const STATED_LANES = [
+  ["FORM", "How a name must be spelled",
+   "Case, separators, prefixes, suffixes — the mechanical half. Where a rule names both a class of identifier and a spelling, a check could be written for it; DunneFlow does not yet run one, and each rule says which it is."],
+  ["VOCABULARY", "What a name must mean",
+   "What a name may be drawn from, or must stand for. Quoted whole rather than summarised, because compressing a rule of this kind into a table cell loses it — and most of these cannot be decided by any query."],
+];
+
+/* The hop into the document, offered only where the corpus can be opened.
+ *
+ * `openDocumentAt` is chunk 5's, already bound from `[data-docopenat]`, and it checks the
+ * path against the corpus itself before switching — so this is the *capability* half only:
+ * whether `docsource.db` holds the version on screen at all. When it does not, the reason is
+ * printed rather than the button being quietly dropped, because a citation that silently
+ * stops being openable looks exactly like one that was never meant to be. */
+function statedHop(r) {
+  const where = `${esc(srcShort(r.doc))}:${r.line}`;
+  if (!STATED_CORPUS.opens) {
+    return `<span class="mono" title="${esc(r.doc)}">${where}</span>
+      <span class="hint"> — ${esc(STATED_CORPUS.reason || "this map cannot open the document")}</span>`;
+  }
+  return `<button class="cite" data-docopenat="${esc(r.doc)}" data-docopenline="${r.line}">
+    <span class="citeicon" aria-hidden="true">⌗</span>${where}<span class="citego">read it in the document</span></button>`;
+}
+
+function statedRow(r) {
+  /* `scope` and `pattern` are the pair `checkable` is computed from, and this is the first
+     surface ever to draw them — they have been in the schema since the scanner was written
+     and read by nothing. Shown as the halves they are, and a missing half is stated rather
+     than left blank: "Step names: snake_case" names a spelling and no identifier class, and
+     that is precisely why it is the one FORM rule here that is not checkable. */
+  const pair = (r.scope || r.pattern) ? `
+    <div class="statedpair">
+      <span class="k">names</span> ${r.scope
+        ? `<span class="mono">${esc(r.scope)}</span>`
+        : `<span class="hint">no class of identifier</span>`}
+      <span class="k">spelled</span> ${r.pattern
+        ? `<span class="mono">${esc(r.pattern)}</span>`
+        : `<span class="hint">nothing this scanner could read</span>`}
+    </div>` : "";
+  return `
+  <div class="termrow">
+    ${/* **Both badges neutral, and that is design rule 4 rather than timidity.** The first
+          drawing gave CHECKABLE the accent green the glossary spends on a DECLARED tier and
+          the naming page on an A grade, which put a pass/fail reading on a distinction that
+          is not one: a Latin-only rule is not a worse rule than a kebab-case one, it is a
+          rule no query can decide. Green already means *here is a route* on this page — the
+          `.citego` on every citation — so a green badge would be a second meaning for one
+          colour on one screen. The word carries it, and the sentence below spells it out. */""}
+    <span class="badge opaque"
+          title="${esc(r.note)}">${r.checkable ? "CHECKABLE" : "PROSE"}</span>
+    <div class="termdef">
+      <span class="quoted">${esc(r.text)}</span>
+      ${pair}
+      <div class="src">
+        ${statedHop(r)}
+        ${r.heading ? ` · under ${esc(r.heading)}` : ""}
+      </div>
+      <div class="hint" style="margin-top:.2rem">${esc(r.note)}</div>
+    </div>
+  </div>`;
+}
+
+/* Why the list is empty, in the reader's terms and never as a blank (design rule 21).
+ *
+ * Three answers, and they are three different facts: the analysis never read documentation
+ * at all; it read some and none of them states a naming rule; or it read none because there
+ * were none to read. Flattening them turns *"we did not look"* into *"there is nothing
+ * there"*, which is the one claim this tool exists not to make. */
+function statedBlank() {
+  if (!VOCAB.statedRead) {
+    return `<div class="note">
+      <b>This map was made without reading documentation.</b> Nothing states a naming rule
+      because nothing was scanned for one — <span class="mono">analyze --no-docs</span>, or a
+      map made before the document scan existed. The
+      <b>derived naming standard</b> is unaffected: it is counted off the code and needs no
+      documents. Analyse this directory again with documentation to fill this page.
+    </div>`;
+  }
+  if (!VOCAB.statedDocs) {
+    return `<div class="note">
+      <b>Documentation was scanned and there was none to read.</b> No document was found under
+      the documentation root, so no rule could be quoted from one. That is a fact about this
+      tree rather than about its names — the <b>derived naming standard</b> counts what the
+      code does regardless.
+    </div>`;
+  }
+  return `<div class="note">
+    <b>${VOCAB.statedDocs.toLocaleString()} document${VOCAB.statedDocs === 1 ? "" : "s"} were read,
+    and not one of them states a naming rule.</b> That is a finding rather than an absence of
+    one: the <b>derived naming standard</b> shows what the code does about names, and nothing
+    in this project records what it was supposed to do. A rule has to name a class of
+    identifier or a house word to be recognised here; a paragraph that merely discusses naming
+    is deliberately not mined, because a research paper <i>about</i> naming standards once
+    yielded ten confident rules that were not rules at all.
+  </div>`;
+}
+
+function viewStated() {
+  const waiting = laneState(VOCAB, "stated", "statedError", "the stated naming rules");
+  if (waiting) return `<div style="max-width:58rem">${waiting}</div>`;
+
+  const grouped = [];
+  const seen = new Set();
+  for (const [lane, title, blurb] of STATED_LANES) {
+    const rows = STATED.filter(r => r.lane === lane);
+    rows.forEach(r => seen.add(r));
+    if (!rows.length) continue;
+    grouped.push({ lane, title, blurb, rows });
+  }
+  const strays = STATED.filter(r => !seen.has(r));
+  if (strays.length) {
+    console.error("[dunneflow] stated naming rules in a lane this shell has no heading for:",
+                  [...new Set(strays.map(r => r.lane))]);
+    grouped.push({
+      lane: "unknown", title: "Stated, and not described here",
+      blurb: "This shell has no heading for these lanes — " +
+             [...new Set(strays.map(r => r.lane))].join(", ") +
+             ". They are shown as read rather than left out.",
+      rows: strays,
+    });
+  }
+
+  /* By document inside each lane, because a document is what a reader opens and because a
+     long list read flat gives no sense of how many sources it really came from. Insertion
+     order preserved: the server sends lane, then document, then line. */
+  const byDoc = rows => {
+    const m = new Map();
+    for (const r of rows) {
+      if (!m.has(r.doc)) m.set(r.doc, []);
+      m.get(r.doc).push(r);
+    }
+    return [...m.entries()];
+  };
+
+  const docs = new Set(STATED.map(r => r.doc));
+  const checkable = STATED.filter(r => r.checkable).length;
+
+  return `
+  <div style="max-width:58rem;display:flex;flex-direction:column;gap:.75rem">
+    <div class="note">
+      <b>These are quoted, not counted — and not one of them has been checked against this
+      program.</b> Every rule below was written by somebody and read out of a document with a
+      file and a line you can open. DunneFlow cannot yet import a standard and compare it, so
+      a rule here and a convention on the <b>derived naming standard</b> may contradict each
+      other and neither page will say so.
+    </div>
+
+    ${!STATED.length ? statedBlank() : `
+    <div class="note">
+      <b>${STATED.length.toLocaleString()} rule${STATED.length === 1 ? "" : "s"}</b>, read from
+      ${docs.size.toLocaleString()} of the ${VOCAB.statedDocs.toLocaleString()} documents this
+      map scanned${VOCAB.statedDupes
+        ? `, ${VOCAB.statedDupes.toLocaleString()} of which are byte-identical copies of another and are read once`
+        : ""}.
+      ${checkable.toLocaleString()} name${checkable === 1 ? "s" : ""} both a class of identifier
+      and a spelling, which is what would make a check writable — <b>no check is run</b>.
+    </div>`}
+
+    ${grouped.map(g => `
+      <div class="convgroup">
+        <div class="convgroup-head">${esc(g.title)}
+          <span class="num" style="font-weight:400;text-transform:none;letter-spacing:0"> · ${g.rows.length}</span></div>
+        <div class="hint" style="margin:-.25rem 0 0">${esc(g.blurb)}</div>
+        ${byDoc(g.rows).map(([doc, rules]) => `
+          <section class="panel">
+            <div class="panel-head">
+              <h2 style="text-transform:none;letter-spacing:0;font-size:.9rem;color:var(--text);font-family:var(--f-mono)"
+                  title="${esc(doc)}">${esc(srcShort(doc))}</h2>
+              <span class="hint">${rules.length} rule${rules.length === 1 ? "" : "s"}</span>
+            </div>
+            <div class="panel-body">
+              ${rules.map(statedRow).join("")}
+            </div>
+          </section>`).join("")}
+      </div>`).join("")}
+
+    <section class="panel">
+      <div class="panel-head">
+        <h2>What the code actually does</h2>
+        <span class="hint">the other lane</span>
+      </div>
+      <div class="panel-body">
+        <p class="hint">This page is what your documents say. The
+          <b>derived naming standard</b> is what the code was found to do — measured, with the
+          query behind every number and every exception it found. They are two answers to one
+          question and comparing them is not built.</p>
+        <div class="prov">
+          <button class="cite" data-goto="naming">
+            <span class="citeicon" aria-hidden="true">◈</span>Derived naming standard<span class="citego">${esc(vocabCount("conventions") || "0")} conventions</span></button>
+        </div>
+      </div>
+    </section>
+  </div>`;
+}
+
 function viewNaming() {
   const waiting = laneState(VOCAB, "naming", "namingError", "the derived naming standard");
   if (waiting) return `<div style="max-width:58rem">${waiting}</div>`;
@@ -8152,6 +8407,22 @@ function viewNaming() {
       found by counting what the program actually does. None of it was imposed by anyone, and none of
       it has been checked against a standard your team wrote — DunneFlow cannot yet import one. So a
       convention holding 100% of the time means the code is consistent, not that it is correct.
+    </div>
+
+    ${/* The other lane, named on this page because a reader who lands here is one step from
+          asking whether anybody wrote any of this down. The number is the honest half: a
+          zero is a real answer and reads as one, which is why the button is drawn either
+          way rather than only when there is something behind it. */""}
+    <div class="note">
+      <b>Somebody may also have written naming rules down.</b> Those are quoted rather than
+      counted, and they live on their own page so that neither can be mistaken for the other.
+      <b>Nothing compares them</b>: a stated rule and a convention below may contradict each
+      other and neither page will say so.
+      <div class="prov">
+        <button class="cite" data-goto="stated">
+          <span class="citeicon" aria-hidden="true">◈</span>Stated naming rules<span class="citego">${
+            esc(vocabCount("stated") || "0")} read from your documents</span></button>
+      </div>
     </div>
 
     <div class="note">
@@ -9386,6 +9657,7 @@ function crumbsFor() {
                     cur: true }],
     glossary:    [{ label: "vocabulary" }, { label: "glossary", cur: true }],
     naming:      [{ label: "vocabulary" }, { label: "derived naming standard", cur: true }],
+    stated:      [{ label: "vocabulary" }, { label: "stated naming rules", cur: true }],
     inference:   [{ label: "inference", cur: true }],
     curiosities: [{ label: "explore" }, { label: "worth a look", cur: true }],
     pins:        [{ label: "explore" }, { label: "kept", cur: true }],
@@ -9595,6 +9867,7 @@ function render() {
   else if (state.view === "changes")   vp.innerHTML = viewChanges();
   else if (state.view === "glossary")  { ensureVocabulary(); vp.innerHTML = viewGlossary(); }
   else if (state.view === "naming")    { ensureVocabulary(); vp.innerHTML = viewNaming(); }
+  else if (state.view === "stated")    { ensureVocabulary(); vp.innerHTML = viewStated(); }
   else if (state.view === "inference") vp.innerHTML = viewInference();
   else if (state.view === "curiosities") { ensureCuriosities(); vp.innerHTML = viewCuriosities(); }
   else if (state.view === "pins")       vp.innerHTML = viewPins();
@@ -12710,6 +12983,11 @@ const NAV_GROUPS = [
          been checked against a standard, because no standard can yet be imported. Called
          "Naming standard" it reads as the rule the program was written to — which is a
          claim this tool has no evidence for and is the opposite of what it is for. */
+      /* **Its own row rather than a section of the page below**, and the word "derived"
+         down there is the reason: this lane is quoted from documents somebody wrote, and
+         the two claims must never be one page a reader could take for a comparison. Above
+         it, because what was written comes before what was done. */
+      { nav: "stated",   label: "Stated naming rules", n: vocabCount("stated") },
       { nav: "naming",   label: "Derived naming standard", n: vocabCount("conventions") },
       { nav: "inference", label: "Inference",      n: "off", id: "navEgress" },
     ] },

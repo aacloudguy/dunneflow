@@ -2621,6 +2621,16 @@ kbd { font-family: var(--f-mono); font-size: .66rem; background: var(--sunken);
 .guess { font-family: var(--f-serif); font-style: italic; color: var(--text-muted); }
 .notrun { color: var(--text-faint); font-style: italic; font-size: .76rem; }
 .termdef .src { font-size: .68rem; color: var(--text-faint); margin-top: .2rem; }
+
+/* The two halves a stated naming rule is judged checkable on: the class of identifier it
+   names, and the spelling it requires. Drawn as a pair rather than a sentence because a
+   missing half is the finding -- "Step names: snake_case" gives a spelling and no class,
+   and a prose rendering would let that read as a rule with nothing wrong with it. Sizes in
+   `rem`, like everything dimensional (design rule 3). */
+.statedpair { display: flex; flex-wrap: wrap; align-items: baseline; gap: .3rem .5rem;
+  margin-top: .3rem; font-size: .72rem; color: var(--text-muted); }
+.statedpair .k { font-size: .62rem; font-weight: 700; letter-spacing: .07em;
+  text-transform: uppercase; color: var(--text-faint); }
 .termdef .src.blind { color: var(--sev-suspect); }
 .convbar { display: flex; align-items: center; gap: .5rem; margin-bottom: .45rem; }
 .excepthead { font-size: .68rem; font-weight: 700; letter-spacing: .07em; text-transform: uppercase;

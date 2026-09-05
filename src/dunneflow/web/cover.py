@@ -88,12 +88,17 @@ def build(store: Store, source: SourceStore | None, program: str, *,
           revision: str | None = None) -> dict[str, Any]:
     """Everything the first screen shows.
 
-    `vocabulary` is the two lanes' *sizes* only -- how many conventions were measured, how
-    many words the program uses as names, how many of those anything defines. The lanes
-    themselves are a quarter of a megabyte and are fetched when their pages are opened;
-    these three numbers ride with the cover because the navigator states a count beside
-    every other row, and a blank beside "Glossary" reads as "nothing there" rather than as
-    "not asked for yet". Those are opposite claims and must not look alike.
+    `vocabulary` is the three lanes' *sizes* only -- how many conventions were measured,
+    how many naming rules the documents state, how many words the program uses as names,
+    how many of those anything defines. The lanes themselves are a quarter of a megabyte
+    and are fetched when their pages are opened; these numbers ride with the cover because
+    the navigator states a count beside every other row, and a blank beside "Glossary"
+    reads as "nothing there" rather than as "not asked for yet". Those are opposite claims
+    and must not look alike.
+
+    **`stated` is a zero worth sending.** Most programs state no naming rule at all, and a
+    navigator row reading 0 beside "Stated naming rules" is the honest answer -- it is the
+    row being *absent* that would mislead, by reading as a lane nobody has measured yet.
     """
     counts = store.counts()
 

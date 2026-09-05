@@ -19,11 +19,11 @@ abbreviate only where the complete content sits beside it.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
 from pathlib import Path
 
 from ..docstore import DocStore
 from ..resolve.naming import Convention, NamingMeasurement, measure
+from ..resolve.stated import StatedRule, checkable_sentence, stated_rules
 from ..store import Store
 
 HANDBOOK_LINES = 12
@@ -82,7 +82,7 @@ def _pct(holds: int, total: int) -> str:
 def render_naming(store: Store, docs: DocStore | None, out_dir: Path, root: Path,
                   program: str, stamp: str, docs_root: Path | None = None) -> Path:
     m = measure(store)
-    stated = _stated_rules(docs)
+    stated = stated_rules(docs)
     # Documents live above `src/`, so they are relative to the documentation root, not
     # the source root. Measuring one against the other printed every citation as an
     # absolute path halfway across the disk.
@@ -152,54 +152,11 @@ def render_naming(store: Store, docs: DocStore | None, out_dir: Path, root: Path
     return path
 
 
-@dataclass(slots=True)
-class StatedRule:
-    """One naming rule a document states, as it will be rendered."""
-
-    doc: str
-    text: str
-    line: int
-    lane: str
-    heading: str
-    checkable: bool
-
-
-def _stated_rules(docs: DocStore | None) -> list[StatedRule]:
-    if docs is None:
-        return []
-    return [
-        StatedRule(
-            doc=str(r["doc"]), text=str(r["text"]), line=int(r["line"]),
-            lane=str(r["lane"]), heading=str(r["heading"]),
-            checkable=bool(r["checkable"]),
-        )
-        for r in docs.query(
-            "SELECT r.doc, r.text, r.line, r.lane, r.heading, r.checkable"
-            "  FROM doc_rules r JOIN documents d ON d.path = r.doc"
-            " WHERE d.duplicate_of = ''"
-            " ORDER BY r.lane, r.doc, r.line"
-        )
-    ]
-
-
-def _checkable_line(r: StatedRule) -> str:
-    """What `checkable` actually means, said without over-claiming.
-
-    **This sentence had never been printed.** No rule in any corpus had ever carried
-    `checkable = 1` until tables were read, so its true branch was written, shipped and
-    never seen. The first thing it said, on its first outing, was *"Mechanically
-    checkable."* beside **"Type attributes: colon separator"** — for which DunneFlow has no
-    population and no check, and will not have one until a standards directory can be
-    imported and compared.
-
-    The field is right and the sentence was wrong. `checkable` means the rule *names both a
-    class of identifier and a spelling*, which is what makes a check writable; it has never
-    meant that one is run. Rule 51 keeps it in one place, because both lanes say it now.
-    """
-    if r.checkable:
-        return ("Names a class of identifier and a spelling, so a check could be written "
-                "for it. DunneFlow does not yet run one.")
-    return "No query can decide this one."
+# `StatedRule`, the query behind it and the `checkable` sentence all used to live here,
+# because this was the only reader. The dashboard is the second and the tests are the
+# third, so they moved to `resolve/stated.py` where all three pass (rule 51). Nothing about
+# them changed in the move except that `scope` and `pattern` now travel too -- this file
+# does not print them, and the page that does would otherwise have queried the table itself.
 
 
 def _stated_form(stated: list[StatedRule]) -> list[str]:
@@ -236,7 +193,7 @@ def _stated_form(stated: list[StatedRule]) -> list[str]:
         lines.append(f"> {_esc(r.text)}\n")
         heading = _esc(r.heading) or "—"
         where = f"*Stated under “{heading}”.*"
-        lines.append(f"{where} {_checkable_line(r)}\n")
+        lines.append(f"{where} {checkable_sentence(r)}\n")
     return lines
 
 
@@ -314,7 +271,7 @@ def _vocabulary_section(stated: list[StatedRule], root: Path) -> list[str]:
         lines.append(f"\n#### {src}\n")
         lines.append(f"> {_esc(r.text)}\n")
         heading = _esc(r.heading) or "—"
-        lines.append(f"*Stated under “{heading}”.* {_checkable_line(r)}\n")
+        lines.append(f"*Stated under “{heading}”.* {checkable_sentence(r)}\n")
     return lines
 
 

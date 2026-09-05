@@ -43,7 +43,7 @@ docs   ──► extract ──► docs.db  ──────ATTACH──┘
 | `extractors/docs/` | Markdown / rST / text, scanned by hand. No markdown library. |
 | `detectors/*.yaml` | **The extension point.** Teach a framework here, not in code. |
 | `canonical/` | Whether two writings are the same expression, per language. **Beside** the extractors, never inside one — see the cache-key note in `CLAUDE.md`. |
-| `resolve/` | Call graph, CLI trees, flows, naming, glossary, traceability, mirror. |
+| `resolve/` | Call graph, CLI trees, flows, naming, glossary, traceability, mirror. `naming.py` is the **derived** lane, `stated.py` the **quoted** one — read in one place, by three readers. |
 | `render/` | Markdown and Mermaid, complete — never abbreviated (rule 8). |
 | `anomalies.py` | What looks wrong. Every finding states what would make it a false alarm. |
 | `sql.py` | Reads schemas out of the `CREATE TABLE` statements the code contains. |
@@ -60,7 +60,7 @@ no build step. deck.gl is vendored into `web/vendor/`.
 | `cover.py` · `detail.py` | the cover · the inspector and the hover card |
 | `threads.py` | adjacency by *interest* — why a neighbour is worth a detour |
 | `curiosities.py` | the doorway panel — ten measured extrema, each with **its middle** |
-| `vocabulary.py` | the naming and glossary lanes, served and matched against one name |
+| `vocabulary.py` | the three naming lanes served — derived, **stated**, glossary — and matched against one name |
 | `graph.py` · `layout.py` | the 2.5D model at two levels of detail, and where things sit |
 | `packages.py` | the package overview — the other graph layout |
 | `code.py` | the code browser — a file, its clickable names and what each line *is* |
@@ -92,7 +92,7 @@ traceability across both stores · named artefacts · the mirror · comments (18
 18,208) · constants and type aliases · stable identity · source sidecar.
 
 **Dashboard:** one application — the ratified shell (cover, navigator, worklist, table,
-document, glossary, naming, settings) with the 2.5D stack and the package overview as two
+document, glossary, **both naming lanes**, settings) with the 2.5D stack and the package overview as two
 layouts inside graph mode and **two levels of detail inside the stack**, one inspector
 reading `/api/node`, and the graph following the theme. The reading loop: the navigator is the routine list grouped by package, hovering a
 node gives a card, picking one lights its hop and fills the inspector, threads lead sideways,
@@ -179,7 +179,24 @@ program has a most-commented routine and a maximum alone is a claim nobody can w
 
 ## What we are doing now
 
-**Paused 2026-09-04, between features. Nothing is half-written.** 990 tests, mypy clean, ruff
+**The stated naming lane is on screen — built 2026-09-05.** Step 2 of the four Tom ordered for
+the standards work, and the first thing the dashboard has ever shown of `doc_rules`: a second
+navigator row, *Stated naming rules*, quoting what somebody wrote beside the derived page that
+counts what the code does. Neither page compares them and both say so. See the section at the
+top of the record below.
+
+**1,002 tests, mypy clean, ruff clean, console clean, working tree clean**, `check` reports 0
+broken on `output/mensores`. `output/` holds exactly what it held before — the `--no-docs` map
+made while verifying the blank state went to the scratchpad.
+
+**Next: step 3, or whatever Tom picks.** The remaining standards order is **(3)** compare a
+checkable rule against the graph the way a measured convention already is, and **(4)**
+`--standards <dir>` scoped by `paths`/`applies_to`, which is larger than 2–3 together and is
+where the enterprise case lives.
+
+---
+
+**Before that — paused 2026-09-04, between features.** 990 tests, mypy clean, ruff
 clean, working tree clean, `check` reports 0 broken on `output/mensores`. Three things landed
 that day beyond the five before them, each whole and committed on its own:
 
@@ -219,7 +236,61 @@ controls are driven from the keyboard.*
 
 ---
 
-### The latest: a stopped analysis, and the map it leaves behind (2026-09-04)
+### The latest: the stated naming lane, on screen at last (2026-09-05)
+
+**`doc_rules` has held naming rules somebody wrote since the document scanner existed, and the
+dashboard had never shown one of them.** `11-naming.md` quoted them from the day the column was
+added; `/api/naming` served the derived lane and nothing else. This is standards **step 2**, and
+it is exposure rather than comparison.
+
+Measured before it was built, which is what shaped it: `output/mensores` states **12** rules
+(7 FORM, 5 VOCABULARY) out of 2,064 documents; `output/dunneflow` states **0** out of 9. Both
+cases were already on disk, so the good one and the blank one were each looked at.
+
+**Two pages, and Tom chose which.** The obvious move was one page retitled *"Naming standard, as
+found"* to match the Markdown report. Tom took the other option — keep *Derived naming standard*
+and add a second row — because *derived* is load-bearing, and a rule somebody wrote on that page
+would have made the word false of half its contents while leaving it standing. Stated sits above
+derived: what was written comes before what was done. Each page names the other and says in the
+same sentence that **nothing compares them**.
+
+**One reading, three readers.** `resolve/stated.py`, beside `resolve/naming.py`'s Form lane,
+takes the query, `StatedRule` and the `checkable` sentence out of `render/naming.py`. The
+report's output is byte-identical across the move. **`scope` and `pattern` are drawn for the
+first time** — in the schema since the scanner was written and read by nothing — which is what
+makes *"Step names: snake_case"* legible as the one rule here that names a spelling and no
+identifier class, kept rather than dropped (design rule 1).
+
+**Three absences, three answers**, all driven on real maps: `--no-docs`, nine documents that
+state nothing, and a scan that found none. `read` travels beside the counts because no count can
+stand in for it. *(`output/beads` was a fourth candidate and refused to open — unmigrated
+absolute paths, rule 60's refusal naming `dunneflow migrate`, not repaired on the way past.)*
+
+**The hop is a capability test, not a hope.** `/api/stated` carries a `corpus` block for the
+reason `/api/glossary` carries `sidecars`, and where it says no the reason is printed rather than
+the button dropped. Driven with a real pointer: `NAMING.md:17` opened the document scrolled to
+the *Latin-only* block with `docflash` on it, rendered as prose.
+
+**And the thing only looking caught.** The first drawing gave **CHECKABLE the accent green** the
+glossary spends on a DECLARED tier — on screen it read as pass/fail, which is not the claim: a
+Latin-only rule is not a worse rule, it is one no query can decide. Green already means *here is
+a route* on that page. Both badges are neutral now (design rule 4).
+
+*Worth keeping:* the **old-style** `output/dunneflow/docs.db` yields **136** stated rules and all
+136 come out of DunneFlow's own generated `11-naming.md` files — rule 57's hazard, closed by
+`b92dec0`, preserved in a stale artefact. The current revision yields 0. It is why the page
+renders an unbounded list grouped by document rather than assuming twelve.
+
+*The harness trap, re-measured because it is not stable between tabs:* this tab took **clicks at
+viewport × 0.395** and **captured at viewport × 0.79**, cropped to the top-left quadrant.
+Calibrate with labelled markers at known viewport coordinates *and* a click listener reading back
+`clientX/clientY` — that is the only method that settles both scales at once. Viewport 1,920×991
+at a **16px root**, so rule 38's debt is reduced again and **not paid**. Two smaller ones: a
+collapsed pane's own fold button has zero size, so the way back is the **rail** and a scripted
+click on the fold is a silent no-op; and `state.view` is not persisted for any page, so a reload
+landing on the cover is design rule 17 rather than a regression.
+
+### Before that: a stopped analysis, and the map it leaves behind (2026-09-04)
 
 Tom asked what happens when a background analysis hangs, crashes, or gets in the way of the
 next one — *"the user disagrees, or asks to override."* Four things were checked against the
@@ -462,7 +533,7 @@ the code view — the greenbar, the margin fold, three broken buttons, and the r
 *The paragraphs below are that day's earlier work, kept because the reasoning is recent and
 load-bearing; the current task is the one named above.*
 
-### The latest: the program selector works (2026-09-04)
+### Before that: the program selector works (2026-09-04)
 
 The topbar's first control has never worked — three options and no change handler in the
 ratified artifact, one served option in every shipped build, and no endpoint to fill it. It
@@ -1424,11 +1495,13 @@ feature was blocked on an answer nobody owed.
     identifies one or more subsystems."*
 
   Order, cheapest and highest-value first: ~~**(1)** read a table as rules~~ — *built
-  2026-09-04, see the top of this file: 0 FORM rules became 7, and one table of 5,230
-  fires*; **(2)** serve the stated lane to the dashboard, which shows none of it today;
+  2026-09-04, see the record: 0 FORM rules became 7, and one table of 5,230 fires*;
+  ~~**(2)** serve the stated lane to the dashboard~~ — *built 2026-09-05, and it is two pages
+  rather than one section: see the top of this file. `scope` and `pattern` reach a screen for
+  the first time, and the three ways a program can state nothing each got their own sentence*;
   **(3)** compare a checkable rule against the graph the way a measured convention already
   is; **(4)** `--standards <dir>`, scoped by `paths`/`applies_to`, with rule 57 governing the
-  hazard of admitting an outside directory. 4 is larger than 2–3 together and is where the
+  hazard of admitting an outside directory. 4 is larger than 3 and is where the
   enterprise case actually lives.
 - **`m.<module>` as a language feature, with research owed on prior art** — how other tools
   present a construct the *language* put there rather than an author. Decided 2026-08-30:

@@ -486,18 +486,35 @@ docs   ──► extract ──► docs.db  (SQLite) ─────────
   **and** its separation (rule 69). `--graph-unchanged`, `--graph-unclaimed` and
   `--graph-mixed` sit outside the sets on purpose: a set covers the *directions* of
   difference, and a ground — or "more than one direction" — is not one of them.
-- `web/vocabulary.py` — the two naming lanes served, and matched against one name. The
+- `web/vocabulary.py` — the three naming lanes served, and matched against one name. The
   membership test is `Convention.glob`, which is the same string the exceptions query is
   built from, so the claim and the population cannot drift (rule 41).
 
-  **The dashboard serves the Form lane and only the Form lane**, so its page is titled
-  *Derived naming standard* and says on its face that nothing on it was required and nothing
-  was compared. That is not modesty: a page of conventions holding 100% of the time, headed
-  "Naming standard", reads as conformance to a rule somebody wrote, and DunneFlow has no
-  evidence for that and cannot yet import a standard to get any. The Markdown report carries
-  **both** lanes and is titled *as found* instead — Form is derived, Vocabulary is *quoted*
-  from the project's own documents, and flattening the two under one word would relabel a
-  quotation as an inference, which is what the four provenance tiers exist to prevent.
+  **Derived and stated are two pages, and the word *derived* is why.** A page of conventions
+  holding 100% of the time, headed "Naming standard", reads as conformance to a rule somebody
+  wrote — which DunneFlow has no evidence for and cannot yet import a standard to get any. So
+  *Derived naming standard* counts what the code does, *Stated naming rules* quotes what
+  somebody wrote, and they never share a screen a reader could take for a comparison. The
+  Markdown report carries both under one title, *as found*, because a document is read top to
+  bottom and its two sections announce themselves; a navigator row is read one word at a time.
+  Flattening the two under one word would relabel a quotation as an inference, which is what
+  the four provenance tiers exist to prevent.
+
+  **The stated lane is read in one place**, `resolve/stated.py`, beside `resolve/naming.py`'s
+  Form lane — the query, `StatedRule`, and the `checkable` sentence. It lived beside the
+  renderer while the renderer was its only caller (rule 51). `checkable` means the rule *names
+  both a class of identifier and a spelling*, so a check could be written; **no check is run**,
+  and both surfaces print the one sentence that says so. `scope` and `pattern` were in the
+  schema from the day the scanner was written and read by nothing until the stated page drew
+  them — a rule that names a spelling and no identifier class is kept with an empty `scope`
+  and says which half it is missing (design rule 1).
+
+  **Three absences, three answers** (design rule 21). No documentation was read at all; some
+  was read and there was none; documents were read and none of them states a naming rule. They
+  arrive as the same empty list, so `read` travels beside the counts — flattening them turns
+  *"we did not look"* into *"there is nothing there"*. And *"read it in the document"* is drawn
+  only where `/api/stated`'s `corpus` block says `docsource.db` can serve the version on screen,
+  which is the glossary's `sidecars` argument one page over: a capability, never a hope.
 - `web/changes.py` — the **fact lane**: what a routine does differently, which routines and
   tables and constants each version has, **what a caller passes**, and **what explains it**. `call_args` is
   compared by joining through `calls.site_id` to reach an owner — and `site_id` itself is

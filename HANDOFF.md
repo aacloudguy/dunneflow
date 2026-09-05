@@ -9687,3 +9687,123 @@ finished being read"*; and the switch to it is refused with the store's own sent
 **Analyse it again** that lands in the dialog name-filled and pointer-reachable.
 
 990 tests, mypy clean, ruff clean.
+
+---
+
+## 2026-09-05 — the stated naming lane, on screen at last
+
+**`doc_rules` has held naming rules somebody wrote since the document scanner existed, and
+the dashboard had never shown one of them.** `11-naming.md` quoted them from the day the
+column was added; `/api/naming` served `measure_naming(store)` and nothing else. This is step
+2 of the four Tom ordered for the standards work — *serve the stated lane to the dashboard,
+which shows none of it today* — and it is exposure, not comparison.
+
+Measured before it was built, which is what shaped it:
+
+| Map | Stated rules | Split | Documents |
+|---|---|---|---|
+| `output/mensores`, current revision | **12** | 7 FORM, 5 VOCABULARY | 2 of 2,064 |
+| `output/dunneflow`, current revision | **0** | — | 9 read, none states a rule |
+
+Both cases were already on disk, so the good one and the blank one could each be looked at
+rather than reasoned about.
+
+### Two pages, and Tom chose which
+
+The obvious move was one page retitled *"Naming standard, as found"*, matching the Markdown
+report exactly. Tom took the other option: **keep "Derived naming standard" and add a second
+navigator row.** The word *derived* is load-bearing — the shell says so in a comment — and
+putting a rule somebody wrote onto that page would have made it false of half the contents
+while leaving the word standing. Two rows under Vocabulary now, stated above derived, because
+what was written comes before what was done. Each page names the other and says, in the same
+sentence, that **nothing compares them**.
+
+Why the report can do what the navigator cannot: a document is read top to bottom and its two
+sections announce themselves; a navigator row is read one word at a time.
+
+### One reading, three readers
+
+`resolve/stated.py`, beside `resolve/naming.py` whose first line says it is the Form lane and
+means it. It takes `StatedRule`, the `doc_rules` query and the `checkable` sentence out of
+`render/naming.py`, which had them because it was the only caller. `_checkable_line`'s own
+docstring had already argued rule 51 for two lanes; a third surface is when that stops being
+an argument and becomes a defect. The report's output is byte-identical across the move — only
+the generation timestamp differs.
+
+**`scope` and `pattern` are drawn for the first time.** They have been in the schema since the
+scanner was written and read by nothing at all: `checkable` is computed from them and the
+verdict was the only thing that ever left the store. A reader deciding whether to trust a rule
+wants the halves, and the halves are where the interesting row is — *"Step names: snake_case"*
+gives a spelling and names no identifier class, which is exactly why it is the one FORM rule
+in this corpus that is not checkable. It is kept and says which half it is missing (design
+rule 1), rather than being a rule with nothing visibly wrong with it.
+
+### Three absences, three answers
+
+Most programs state no naming rule, so the blank state is the common case and not the edge.
+`read` travels beside the counts because no count can stand in for it: a map made with
+`--no-docs` and a project whose documents genuinely say nothing both report zero. All three
+were driven on real maps rather than reasoned about —
+
+* **`--no-docs`**: *"This map was made without reading documentation… The derived naming
+  standard is unaffected: it is counted off the code and needs no documents."*
+* **nine documents, no rule**: *"9 documents were read, and not one of them states a naming
+  rule. That is a finding rather than an absence of one…"*
+* **documents scanned, none found**: its own sentence again.
+
+`output/beads` was the fourth candidate and refused to open at all — unmigrated absolute paths,
+rule 60's refusal naming `dunneflow migrate`, working exactly as written. Not repaired on the
+way past (rule 20). The `--no-docs` map was made in the scratchpad and `output/` is untouched.
+
+### The hop, and why it is a capability test
+
+Every stated rule names a document and a line, so design rule 13 wants it to **open**.
+`openDocumentAt` is chunk 5's and was already bound — but whether it can work depends on
+`docsource.db` holding the version on screen, which is a fact about the process and the base
+rather than about the rules. `/api/stated` carries a `corpus` block for exactly the reason
+`/api/glossary` carries `sidecars`, and where it says no the reason is printed rather than the
+button quietly dropped. Driven with a real pointer: a rule in `NAMING.md:17` opened the
+document scrolled to the *Latin-only* block with `docflash` on it, rendered as prose — the
+second reading, since the pane above is the bytes as measured.
+
+### The thing only looking caught
+
+The first drawing gave **CHECKABLE the accent green** the glossary spends on a DECLARED tier
+and the naming page on an A grade. On screen it read as pass/fail, and that is not the claim:
+a Latin-only rule is not a worse rule than a kebab-case one, it is a rule no query can decide.
+Green already means *here is a route* on that page — the `.citego` on every citation — so the
+badge was a second meaning for one colour on one screen (design rule 4). **Both badges are
+neutral now**; the word carries the distinction and the sentence below spells it out.
+
+### Also worth keeping
+
+The **old-style** `output/dunneflow/docs.db` — pre-rule-60, absolute paths, superseded by the
+revisioned store beside it — yields **136** stated rules, and all 136 come out of
+`output/dunneflow/11-naming.md` and `output/mensores/11-naming.md`. That is DunneFlow mining
+its own generated naming report back as somebody's naming standard: rule 57's hazard, closed by
+`b92dec0`, preserved in a stale artefact. The current revision yields 0. It is not a live
+defect, and it is why the page is built to render an unbounded list grouped by document rather
+than to assume twelve (rule 8).
+
+### The harness, calibrated again
+
+Same trap, new numbers, and it must be re-measured every session because it is not stable
+between tabs: this tab took **clicks at viewport × 0.395** and **captured at viewport × 0.79**,
+cropped to the top-left quadrant — a 2× crop of a magnified render, exactly the shape the last
+session recorded. Calibrated with five labelled markers at known viewport coordinates plus a
+capturing click listener reading back `clientX/clientY`, which is the only method that settles
+both scales at once. Viewport was 1,920 × 991 at a **16px root** — better than the 1,259 × 523
+of the last session, still not Tom's 24px window, so **rule 38's debt is reduced again and not
+paid**.
+
+Two smaller things learned: a collapsed pane's own fold button has zero size, so the way back is
+the **rail** (design rule 24 working as designed, and a scripted click on the fold is a silent
+no-op); and `state.view` is not persisted for any page, so a reload landing on the cover is
+design rule 17 rather than a regression — checked against `naming` before believing it.
+
+### Gates
+
+1,002 tests (12 new in `tests/test_stated.py`), mypy clean, ruff clean, console clean,
+self-check *"every control is wired"*. `analyze` against Society: 628 files, 12 stated rules,
+all four executables in "Where to start" with reach 1,381 / 423 / 292 / 112. `output/` holds
+exactly what it held before.

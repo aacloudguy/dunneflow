@@ -58,7 +58,7 @@ from .graph import (
 from .layout import structural
 from .search import search_files, search_in_file
 from .threads import cohort, for_node
-from .vocabulary import bind_glossary, measure_naming
+from .vocabulary import bind_glossary, measure_naming, stated_naming
 
 STATIC = Path(__file__).parent / "static"
 VENDOR = Path(__file__).parent / "vendor"
@@ -306,6 +306,11 @@ class _Base:
     # every session. Measured on Mensores at 0.4 s for the naming pass and 2.1 s for the
     # glossary, which reads a 176 MB document store.
     naming: dict[str, Any]
+    # The stated lane, beside the derived one rather than inside it. Two fields because
+    # they are two answers to two questions -- what the code does about names, and what
+    # somebody wrote down about them -- and the dashboard shows them on two pages for the
+    # same reason. Folding them into one dict would make "derived" false of half of it.
+    stated: dict[str, Any]
     glossary: dict[str, Any]
     # **This version's document store, held open.** It used to be opened for the glossary
     # and closed in the same breath, because one held across a base switch leaked a 148 MB
@@ -379,7 +384,7 @@ BUILD_STEPS: tuple[str, ...] = (
     "opening the graph",
     "the 2.5D model and its payload",
     "the file list",
-    "the derived naming standard",
+    "the naming standard, stated and derived",
     "the glossary",
     "the cover",
 )
@@ -576,9 +581,6 @@ class _Live:
             files = build_files(store, self.source, revision=source_revision)
 
             _step(3)
-            naming = measure_naming(store)
-
-            _step(4)
             # Documentation is optional by design (design rule 11): with no `docs.db` the
             # glossary keeps every code-derived term and loses only the tier that quotes a
             # document. It is never a prerequisite for a code-derived fact. Per revision,
@@ -590,7 +592,17 @@ class _Live:
             # `_Base` the leak is answered rather than avoided -- the swap below closes the
             # outgoing one, and the failure path a few lines down closes this one -- and
             # the document list has the live handle it cannot be served without.
+            #
+            # **Opened a step earlier than it used to be**, because the naming standard has
+            # two lanes and one of them is quoted out of these documents. Building the
+            # derived lane under a step called "the naming standard" while the stated lane
+            # waited for the glossary's store would be a step that names one thing and does
+            # half of it (rule 32) -- and the reader watches these go past.
             docs = self._docs_for(graph_db)
+            naming = measure_naming(store)
+            stated = stated_naming(docs)
+
+            _step(4)
             glossary = bind_glossary(store, docs)
 
             _step(5)
@@ -598,6 +610,7 @@ class _Live:
             cover = build_cover(store, self.source, self.out_dir.name,
                                 revision=source_revision, vocabulary={
                                     "conventions": len(naming["conventions"]),
+                                    "stated": len(stated["rules"]),
                                     "terms": total,
                                     "defined": defined,
                                 })
@@ -610,7 +623,8 @@ class _Live:
         fresh = _Base(graph_db=graph_db, store=store, revision=revision,
                       source_revision=source_revision,
                       docsource_revision=docsource_revision, payload=payload, root=root,
-                      files=files, naming=naming, glossary=glossary, docs=docs,
+                      files=files, naming=naming, stated=stated, glossary=glossary,
+                      docs=docs,
                       cover=cover,
                       # The default under its own key, and the *same object*: `payload` and
                       # `payloads[default_level()]` are one truth with an index over it.
@@ -1500,6 +1514,28 @@ class _Handler(BaseHTTPRequestHandler):
         with self._live.lock:
             self._json(self._live.current.naming)
 
+    def _r_stated(self, q: dict[str, list[str]]) -> None:
+        """The stated lane: the naming rules this project's documents contain.
+
+        Its own route rather than a key on `/api/naming`, because it is its own page: what
+        the code was found to do and what somebody wrote down about it are two claims, and
+        the one word that keeps them apart on the derived page is *derived*. A reader who
+        never opens this page should not pay for it either.
+
+        **`corpus` is what makes "Read it in the document" a capability rather than a
+        hope.** Every rule here names a document and a line, and the hop into that document
+        needs `docsource.db` to hold the version on screen -- which is a fact about this
+        process and this base, not about the rules, so it rides on the route exactly as the
+        glossary's `sidecars` block does and for the same stated reason. Without it the
+        button would render on a map with no document sidecar and do nothing, which is
+        design rule 16's defect with a citation attached.
+        """
+        with self._live.lock:
+            base = self._live.current
+            self._json({**base.stated, "corpus": _sidecar_state(
+                self._live.docsource, base.docsource_revision,
+                absent=NO_DOC_SIDECAR)})
+
     def _r_glossary(self, q: dict[str, list[str]]) -> None:
         """The Vocabulary lane: the program's words and who says what they mean.
 
@@ -2368,6 +2404,7 @@ class _Handler(BaseHTTPRequestHandler):
         "/api/threads": "_r_threads",
         "/api/thread": "_r_thread",
         "/api/naming": "_r_naming",
+        "/api/stated": "_r_stated",
         "/api/glossary": "_r_glossary",
         "/api/table": "_r_table",
         "/api/source": "_r_source",

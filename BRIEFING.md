@@ -179,52 +179,95 @@ program has a most-commented routine and a maximum alone is a claim nobody can w
 
 ## What we are doing now
 
-**Paused 2026-09-05, between features. Nothing is half-written.** 1,037 tests, mypy clean,
+**Paused 2026-09-05, between features. Nothing is half-written.** 1,070 tests, mypy clean,
 ruff clean, working tree clean, `check` reports 0 broken on `output/mensores`, no servers
 running, and `output/` holds exactly what it held at the start — `beads`, `dunneflow`,
-`mensores` and the named orphan. The two throwaway maps made while verifying (`nodocs`,
-`rootcheck`) are in the scratchpad, not in `output/`.
+`mensores` and the named orphan.
 
-**Five features and three rules landed, each whole and committed on its own** — and **three
-of the five features started as something Tom found by using the thing:**
+**Three commits, each whole and committed on its own. Two of the three were Tom's, and the
+third was a defect this session caused and then found:**
 
 | Commit | What |
 |---|---|
-| `5845513` | the **stated naming lane** is served — standards step 2, two pages rather than one |
-| `8033afd` | **a root package elected by no vote** — 750 of 752 routines were drawn as external |
-| `8dacd24` | **ways in say what they are**, and an application opens as an application |
-| `d7153fb` | **ways in are nodes on the Diagram**, arrows bounded on evidence |
-| `ec0673e` | **Document mode is about the selection**, and the contents stops sitting on the prose |
-| `1303fa2` | **rules 81 and 82 and design rule 28 minted** — no candidate is left standing |
+| `8a76b43` | **a read never brings a database into being** — a read-only open was creating the file it was refusing to read |
+| `c54f2fb` | **`<module>` is answered as what it is**, not as a routine — two false statements, one of them unfiled |
+| `4db9fc5` | **a plate is a subject** — the package row that selected nothing, and three surfaces that said so |
 
-**Four things are open and named below**, none of them blocking: the surfaces nobody has
-*looked* at, standards step 3 (compare a checkable rule against the graph), the package row
-that selects nothing, and `<module>` answered in a routine-shaped inspector.
+**Two things are open and named below**, neither blocking: the surfaces nobody has *looked*
+at, and standards step 3 (compare a checkable rule against the graph). Both entries Tom
+found by using the thing are now closed.
 
-**Two things could not be proven and are recorded as unproven, not as done:** the pointer path
-for the Diagram's sub-application button — three real clicks reported success and delivered no
-event, the harness having stopped mid-session (rule 48) — and a one-off boot failure from a
-stale `localStorage` blob that cleared on reset and did not reproduce.
+**One thing is recorded as unproven rather than as done, and it is the standing debt.** The
+plate inspector has **never been seen**. Every figure in `PERFORMANCE.md`'s new rows was read
+back through the DOM of a live page; the automation tab captures 784 px of a 1,259 px
+viewport, so the inspector at x=1012 is outside every screenshot taken of it, and every
+click was a dispatched `MouseEvent` — the handler, not the path to it (rules 38 and 48). It
+is the fifth surface on that list and the debt has now grown in four consecutive sessions.
 
-**Three rules were minted on Tom's call, and nothing is left as a candidate.**
+**A mistake worth carrying forward, and it is not the one from last session.** A one-line
+probe — `Store(Path("output/mensores/graph.db"), writable=False)` — put a **0-byte file into
+`output/`**, because `sqlite3.connect` creates and that path does not exist in that
+directory. `git status` could not see it: `output/` is untracked. `revisions.py` would have
+read it as mensores' one legacy revision, holding nothing. Removed on Tom's say-so, and the
+fix is `8a76b43`. **Use absolute paths when opening a store by hand, and prefer the CLI.**
+
+**Two rule candidates, put to Tom and neither minted.**
 
 | | |
 |---|---|
-| **rule 81** | *A key that decides whether to skip work must carry everything the work depends on.* Checked against rule 78 before taking a number and it is not that one: 78 is a pane nobody asked to update, this is a pane that asked, got the right answer, and skipped the paint. It found its second instance while being written — the guard over `SUBJECT_KEYS` caught `wayInsideName` immediately. |
-| **rule 82** | *A long job is not a switch — a slot names what is being replaced, not what is running.* Carried from 2026-09-04. The test is what the reader **loses** while it runs, not how long it takes. |
-| **design rule 28** | *Inference is voluntary and secondary, and a map states whether any was used.* Carried from 2026-09-04. One step over from design rule 14, which scopes egress; this scopes whether a fact was **guessed**. |
+| *candidate* | **A guard can only see that a function was called, never what it returned.** `&minDisk=${minDiskNow()}` spelled an unset threshold as the literal `null`, got a 400, and sent every package click to *"Not in this map"*. The guard asserted `minDiskNow()` was consulted — it was. Found on the first click, by looking. May be rule 37's or design rule 16's; not claimed as new. |
+| *candidate* | **A derivation from the picture is only as available as the picture.** A plate's members were read off the drawn payload on a correct rule-13 argument — reading from the picture cannot disagree with it — resting on a premise false in half the modes: Table mode never mounts the graph, so a package click there marked *0 of 4,786 rows* beside a pane correctly reporting 469. |
 
-The counts now read **81 engineering rules numbered to 82** — 21 still does not exist — and
-**28 design rules**. All three are cited where they apply: `relDomKey`, `SUBJECT_KEYS`,
-`claim_analysis` and `_r_about`.
+The counts are unchanged: **81 engineering rules numbered to 82** — 21 still does not exist
+— and **28 design rules**.
 
-**A mistake worth carrying forward:** `git checkout <file>` to undo a one-line probe reverted
-a whole day's work in that file. Recovered from a scratchpad copy plus nine re-applied edits.
-Revert the probe, not the file.
+### Before the pause: a plate is a subject (2026-09-05)
 
----
+Tom's, and pre-existing. `pkg` routed to `selectFromNav({ disks })`, which sets no subject —
+so the crumb read *"nothing selected"*, the table showed all 4,786 rows, and the inspector
+offered *"Pick … a package from the navigator"*, naming the gesture that had just failed.
 
-### Before the pause: Document mode is about the selection (2026-09-05)
+**What it decided is what selecting a package is.** Not a nominated member — that is what
+`detail.fold` exists to undo, and a plate holding 926 would make it twenty times over. So
+`state.plate` is a fourth subject, `web/plate.py` answers, and the pane is routed on the kind
+above the first line that reads a routine's shape. Five plate kinds; `answers` is **declared**
+by the server, because a package with no callers and a plate outside the program both arrive
+as `[]` and mean opposite things — for one draft the external plates got the package queries
+and `ext:STDIO` reported *0 in, 0 out, 0 touches*, which on screen says nothing in Mensores
+writes to standard output.
+
+**Three things measurement changed and no source check could have seen.** A ways-in query of
+my own (`WHERE parent_id IS NULL`) dropped all 32 MCP tools and two of the four executables
+`CLAUDE.md` names as ground truth — `waysin.listing()` is the one answer (rule 51). Members
+read off the drawn payload marked *0 of 4,786 rows* in Table mode, which never mounts the
+graph. And `&minDisk=${minDiskNow()}` spelled an unset threshold `null`, got a 400, and sent
+every click to *"Not in this map"*.
+
+2.4–9.7 ms for a package plate, a flat ~15 ms beyond the boundary line, in `PERFORMANCE.md`.
+**Never seen** — measured entirely through the DOM.
+
+### Before that: `<module>` is answered as what it is (2026-09-05)
+
+Two false statements, not one. The three-way *"way in, dead code, or a call DunneFlow cannot
+see"* hint fires on all 487 module nodes, every one of which has **0 callers and 0
+entrypoints** — nothing can call module scope, because module scope is what runs *instead* of
+being called, and the true sentence was already on the page underneath it. And `def
+<module>():` — a copyable declaration of a routine nobody wrote, which `hoverSigHtml` already
+refuses one surface over and which was not in the filed entry.
+
+Not a separate pane: Out, Touches and Governance are all correct for module scope.
+
+### Before that: a read never brings a database into being (2026-09-05)
+
+Caused and then found. A one-line probe opened `output/mensores/graph.db` read-only — a path
+that does not exist there — and `sqlite3.connect` **created** it. The failed query was not the
+harm; the 0-byte file was, because `revisions.py` reads a bare `graph.db` as that program's one
+legacy revision. Rule 20 from the side nobody expects: the read repaired nothing, it wrote.
+
+Rule 51 with the count as the argument — **seven** read paths each carried their own
+`if not path.exists()`, every one correct, and the caller that forgot was none of them.
+
+### Before that: Document mode is about the selection (2026-09-05)
 
 **Tom's screenshot was the bug report**, and it was two defects. `state.docPath` held whatever
 was last opened and nothing connected it to the selection, while the mode toggle claims *"five
@@ -1536,11 +1579,11 @@ feature was blocked on an answer nobody owed.
   and a map states whether any was used.** One step over from design rule 14, which scopes
   *egress*; this scopes whether a fact was *guessed*.
 
-- **Four surfaces have never been *looked* at in a real window** — the constants surface,
-  the blank-graph fix (rule 49), chunk B, and now **chunk 5's citation viewer**, whose foot is
-  56rem wide against a 784px capture frame and so never appeared in a screenshot at all. Not
-  four items: one debt, rule 38's, and it has grown in each of the last three sessions rather
-  than shrinking. Chunk 5 also could not prove its *pointer* path — clicks did not land where
+- **Five surfaces have never been *looked* at in a real window** — the constants surface,
+  the blank-graph fix (rule 49), chunk B, chunk 5's citation viewer whose foot is 56rem wide
+  against a 784px capture frame, and now **the plate inspector**, which sits at x=1012 in a
+  1,259 px viewport the tab captures only 784 px of. Not five items: one debt, rule 38's, and
+  it has now grown in **four** consecutive sessions rather than shrinking. Chunk 5 also could not prove its *pointer* path — clicks did not land where
   `getBoundingClientRect` said the element was, so every interaction was driven by `.click()`,
   which proves the handler and not the path to it (rule 48). The automation tab reports `outerWidth: 0`,
   refuses `resize_window`, and its **screenshots did not track the live DOM** — the region
@@ -1551,21 +1594,24 @@ feature was blocked on an answer nobody owed.
   Drawn by default on a measurement (ports max 41 per compartment, ways in max 3), arrows
   bounded at 8 per way in with the bound stated, and clicking one opens the way-in pane. An
   entry arrow refuses to open as a flow and says why: the caller is the operating system.*
-- **A package row does not make a selection.** Found by Tom 2026-09-05 and verified
-  pre-existing on Mensores rather than introduced. Clicking a package marks the row
-  `aria-current="true"` and switches the pane, then leaves the crumb at *"nothing selected"*,
-  the table at all 4,786 rows, and the inspector saying *"Pick a way in from the cover, **a
-  package from the navigator**, or a node in the graph"* — naming the gesture that just failed.
-  Design rule 16's family and the *"Analyse works again as soon as it finishes"* shape. Not
-  fixed because it decides what selecting a package **is**: a plate is not a node (rule 30), so
-  it is a package-shaped inspector pane on the `viewInspectorConstant` precedent — route on
-  kind — or a narrowed table, or both.
-- **`<module>` is answered in a routine-shaped inspector.** It draws *"Nothing in this map
-  calls it — that is either a way in, dead code, or a call DunneFlow cannot see"*: three
-  plausible sentences and none of them the true one, which the routine list already carries as
-  its own `why` — *"Module-level code: runs at import, before anything is called."* The same
-  shape as the constants defect, and `viewInspectorConstant` is the precedent: route on kind.
-  Found by Tom on the way past the Code-pane defect, 2026-09-03.
+- ~~**A package row does not make a selection.**~~ *Built 2026-09-05 — see the top of this
+  file. A plate is a fourth subject beside `flow`, `fold` and `selected`, answered by
+  `web/plate.py` and drawn by `viewInspectorPlate` on the `viewInspectorConstant` precedent.
+  It decided what selecting a package **is**: not a nominated member (rules 30 and 74), and
+  **mark-and-state rather than a filter** — the fold's settled shape one level up, so the
+  rows are marked, the count says how many, and the table stays the whole program. Three
+  pre-existing gaps went with it: the table marked on `state.selected` alone, the crumb read
+  `state.selected` alone, and the package row lost its own `aria-current` to the rebuild its
+  own click triggers.*
+
+- ~~**`<module>` is answered in a routine-shaped inspector.**~~ *Built 2026-09-05 — see the
+  top of this file. It was **two** false statements rather than one: the three-way "way in,
+  dead code, or a call DunneFlow cannot see" hint, false of all 487 module nodes (0 callers,
+  0 entrypoints, measured); and `def <module>():`, a copyable declaration of a routine
+  nobody wrote, which `hoverSigHtml` already refuses one surface over. Not a separate pane —
+  Out, Touches and Governance are all correct for module scope, and copying them would be
+  rule 51's own defect.*
+
 - **Clicking a change row files two trail steps**, for a structure and for a routine alike.
   Found 2026-09-02 and verified pre-existing rather than introduced. Rule 76's family — an
   echo arriving as an act — and the fix is to the selection path, not to any one lane.

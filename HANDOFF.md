@@ -10282,3 +10282,139 @@ true on their date, and the record's convention is that a dated section is histo
 header tables are where the current count lives.
 
 1,037 tests, mypy clean, ruff clean.
+
+## 2026-09-05 — a read that wrote, `<module>` answered as itself, and a plate made a subject
+
+Three commits, and the first one is a defect this session **caused and then found**.
+
+### A read never brings a database into being — `8a76b43`
+
+Reconnoitring the plate model, a one-line probe opened
+`Store(Path("output/mensores/graph.db"), writable=False)`. That path does not exist in
+that directory — mensores keeps only `graph@<revision>.db` — and `sqlite3.connect`
+**creates**. A 0-byte file landed in the output tree, invisible to `git status` because
+`output/` is untracked.
+
+**The file is the harm, not the failed query.** The query that followed raised
+`no such table: files`, so nothing answered wrongly that time; what remained was the file.
+`revisions.py` reads a bare `graph.db` as *"a directory written before this layout
+existed"* — the one legacy revision of that program — so a **read** had given mensores a
+fifth revision holding nothing at all. Rule 20 from the side nobody expects: the read
+repaired nothing, it wrote.
+
+**And it is rule 51 exactly, with the count as the argument.** Seven read paths each
+carried their own `if not path.exists()` — `cli._open_store`, `_Live._docs_for`,
+`_open_source`, `_open_docsource`, and the version-listing branch of `_r_revisions`. Every
+one was correct, and the guard held for exactly as long as somebody remembered to write it.
+The caller that did not remember was none of them. `refuse_missing` moves it to where they
+all pass; all four stores obey it (rule 61), and `DocSourceStore` refuses as itself because
+the stamp is the difference (rule 16).
+
+`FileNotFoundError` rather than an exception of ours, for two reasons already in the code:
+it is an `OSError`, which is what the four sites in `serve.py` catch to mean *"absent is a
+real state, never an error"*, so `corpus.serving()`'s four states are untouched; and
+`serve.why()` states that a class name earns its place in front of one.
+
+**One test caught a defect in itself.** The phantom-revision claim sat *after* a
+`pytest.raises`, so against the unfixed constructors it failed on the raise and never
+executed the lines it existed to prove — a test that appeared to demonstrate the
+consequence and had never once run it. Rule 37, on the guard written for rule 51. Split in
+two: the fact about `revisions` is now asserted on its own and is true with the fix and
+without it.
+
+Ten tests. Six fail against the unfixed constructors and four pass — the writer, the absent
+sidecar, the empty-file boundary — which is the pair that says this is a refusal and not a
+wall. Tom's call: fix it now rather than file it.
+
+### `<module>` is answered as what it is — `c54f2fb`
+
+Carried from the open list. The inspector answered about module scope in a shape built for
+a routine, and so stated **two** things untrue of any of the 487 `<module>` nodes on
+Mensores.
+
+*"Nothing in this map calls it. That is either a way in, dead code, or a call DunneFlow
+cannot see."* Three explanations, all three false. Measured: **487 module nodes, 0 with any
+caller, 0 that are entrypoints**, against baselines of 6,441 calls over 2,866 callees and
+178 entrypoints of which 170 resolve — so the zeros are answers, not a broken join. Nothing
+can call module scope, because module scope is what runs *instead* of being called. The
+true sentence was already on the page directly underneath, as the extractor's own
+docstring, and a reader had to resolve the contradiction unaided. Both are kept: one says
+why nothing calls it, the other says when it runs.
+
+**`def <module>():`** — not in the filed entry, found while fixing the first. A complete,
+plausible, copyable declaration of a routine nobody wrote, offering a call that cannot be
+made. It is the same defect `hoverSigHtml` refuses to commit one surface over, and its note
+there names it exactly: *inventing an invocation to fill a row is inventing an id to make
+one clickable.* Two surfaces, one fact, and only one had been told. Replaced by a stated
+absence rather than an empty section (design rule 21).
+
+**Not a separate pane.** Out, Touches and Governance are all correct for module scope, and
+copying them would be rule 51's defect in the shape rule 51 is about. Two sentences routed,
+in the one function that draws them. `isModuleScope` because the fix needed the sentinel
+twice more and three literals agreeing is three literals until one of them does not; a test
+counts the spellings over `_code()` rather than trusting the intention.
+
+### A plate is a subject — `4db9fc5`
+
+Tom's, from 2026-09-05, and pre-existing rather than introduced. `pkg` routed to
+`selectFromNav({ disks })`, which sets no subject — so the crumb read *"nothing selected"*,
+the table showed all 4,786 rows, and the inspector offered *"Pick … a package from the
+navigator"*, naming the gesture that had just failed.
+
+**What it decided is what selecting a package *is*.** Not a nominated member: that is the
+defect `detail.fold` exists to undo, and a plate holding 926 would make it twenty times
+over (rules 30 and 74). So `state.plate` is a fourth subject beside `flow`, `fold` and
+`selected`; `web/plate.py` answers; `viewInspectorPlate` draws it on the
+`viewInspectorConstant` precedent — routed on the kind, above the first line that reads a
+routine's shape.
+
+**Five plate kinds, two bands, two different questions.** `answers` is declared by the
+server rather than inferred from an empty list, because a package with no callers and a
+plate outside the program both arrive as `[]` and mean opposite things (rule 30). Not
+hypothetical: for one draft the external plates got the package queries, whose ids are
+routine ids, and `ext:STDIO` — 991 nodes — reported **0 in, 0 out, 0 touches**, which on
+screen is the claim that nothing in Mensores writes to standard output.
+
+**Three things measurement changed, and none of them was visible from the source.**
+
+* **Ways in were a query of my own.** `WHERE parent_id IS NULL` looked like the way to keep
+  a command tree's root and drop its 107 subcommands. It dropped **all 32 MCP_TOOL
+  entrypoints**, every one of which has a parent, and **two of the four executables
+  `CLAUDE.md` names as ground truth** — `mensores` and `mensores-mcp` never appeared.
+  `waysin.listing()` is the one answer to that question (rule 51), and through it all four
+  appear with plausible reach — `mensores` putting 106 of its 107 roots on `pkg:cli` and one
+  on `pkg:validate` — and no way in lands on no plate.
+* **Members came from the drawn payload**, on the reasoning that reading them from the
+  picture is the one answer that cannot disagree with it. The reasoning was right and the
+  premise is false half the time: **Table mode never mounts the graph**, so a package click
+  there marked *0 of 4,786 rows* beside a pane correctly reporting 469. `plate.py` computes
+  them from that same payload, so rule 13 survives the move — one reading, done on the side
+  that always has it.
+* **`&minDisk=${minDiskNow()}` spelled an unset threshold as the four characters `null`**
+  and got a 400, so every package click landed on *"Not in this map"*. `minDiskNow()`
+  returns `null` for *let the server choose* and `graphUrl` **omits** the parameter; one
+  builder now, `levelQuery`. No source check could have seen it — the guard asserted the
+  function was consulted, which it was.
+
+**Three gaps fixed on the way, each pre-existing and each the same shape.** The table marked
+on `state.selected` alone, so a fold lit nothing beside a navigator lighting sixty-one; the
+crumb read `state.selected` alone, so three of the four subjects said *"nothing selected"*
+beside a pane describing one of them; and the package row lost its own `aria-current` to the
+`buildNav()` its own click triggers — the reader's click erasing its own highlight.
+
+Measured on Mensores and recorded in `PERFORMANCE.md`: **2.4–9.7 ms** for a package plate,
+a flat **~15 ms** beyond the boundary line (a different query, not a different size), over a
+**1.31 s** payload that is *not* `_r_graph`'s ~120 ms and must not be quoted as it.
+
+**The pane has never been seen, and that is recorded rather than glossed.** Every figure
+above was read back through the DOM of a live page. The automation tab captures 784 px of a
+1,259 px viewport, so the inspector at x=1012 is outside every screenshot taken of it, and
+every click was a dispatched `MouseEvent` — the handler, not the path to it. Rules 38 and
+48, and the debt grows again.
+
+**Two candidates for Tom, neither minted.** *A guard can only see that a function was
+called, never what it returned* — the `minDisk=null` defect, which passed every source
+check and failed on the first click. And *a derivation from the picture is only as available
+as the picture* — the members defect, where a correct rule-13 argument rested on a premise
+false in half the modes. Both may be instances of rules that exist; neither is claimed as
+new.

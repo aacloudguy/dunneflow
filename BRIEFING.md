@@ -179,117 +179,47 @@ program has a most-commented routine and a maximum alone is a claim nobody can w
 
 ## What we are doing now
 
-**Document mode is about the selection — built 2026-09-05, and Tom found it.** He selected a
-routine, pressed Document, and got an unrelated document opened twenty minutes earlier from a
-citation; the table of contents also sat on top of the prose when he scrolled. Both fixed.
-The pane now leads with the documents that share a governance id with the selection, **ranked
-rather than filtered** — naming an id is a median of 281 documents, naming *every* id is a
-median of 4 — and an open document stays open but says whether it is related and how you got
-there. The contents sticks only while it is a side column, decided by a container query rather
-than a `@media` breakpoint (rule 28).
+**Paused 2026-09-05, between features. Nothing is half-written.** 1,037 tests, mypy clean,
+ruff clean, working tree clean, `check` reports 0 broken on `output/mensores`, no servers
+running, and `output/` holds exactly what it held at the start — `beads`, `dunneflow`,
+`mensores` and the named orphan. The two throwaway maps made while verifying (`nodocs`,
+`rootcheck`) are in the scratchpad, not in `output/`.
 
-**1,037 tests, mypy clean, ruff clean, working tree clean**, `output/` untouched.
-
-**Before that, the same day: ways in are nodes on the Diagram.** Option (iii), taken up an hour after
-being deferred. A way in is a box on every compartment it enters, with bold arrows into what it
-starts, and the ordinary arrows carry on inward from there. **Drawn by default unlike a port**,
-on a measurement: ports are max 41 per compartment, ways in max 3 and absent from 46 of 53.
-Arrows **bounded at 8 per way in** because `mensores` enters 39 of `pkg:cli`'s boxes and
-unbounded takes it to 3647×428pt at 8.5:1; the panel states what the bound hid. Clicking a
-way-in box opens the way-in pane, so (ii) and (iii) are one path.
-
-**1,030 tests, mypy clean, ruff clean, working tree clean**, `output/` untouched.
-
-**Next: open.** The nearest things are the four surfaces nobody has *looked* at, standards
-step 3 (compare a checkable rule against the graph), and the package row that selects nothing.
-
-**Before that, the same day: ways in say what they are.** Tom asked what the six things on Mensores'
-cover actually *are*: *"Are these packages, modules, or applications?"* None of the three — a
-way in is how the outside world starts the program, and the fourteen are four **declared**
-executables, one HTTP route and nine **guesses** from a name or a `__main__` guard, drawn
-identically. The row now says which, with the evidence verbatim; and clicking an application
-opens the application — its entry routine, its 22 sub-applications and its commands, each an
-ordinary selection — instead of selecting 107 routines and landing on one at random.
-
-**Deliberately not built: ways in as nodes on the Diagram**, which was his option (iii) and is
-where chasing data *inbound* would live. It wants (ii) to have settled what a way in is as a
-subject, which it now has.
-
-**1,023 tests, mypy clean, ruff clean, working tree clean**, `output/` untouched.
-
-**Before that, the same day: a root package was elected by no vote — and Tom found it.** He opened a
-map I had made by pointing `analyze` at `src/dunneflow` instead of `src` and found two real
-defects: `root_package` returned the *modal* first segment and could not fail, so **750 of 752
-routines were drawn as `<external>`** over a map whose cover counts were all correct (rule 49);
-and `COVER_PACKAGES` was a **second** decomposition, so navigator package rows selected plates
-that do not exist — 36 of 48 on that map and **1 of 46 on Mensores**. Both fixes are at serve
-time, so every existing map is fixed without re-analysis. See the record below.
-
-**One thing he found is not fixed and is his call:** clicking a package in the navigator marks
-the row selected, switches the pane, and leaves the crumb at *"nothing selected"* — while the
-inspector's own sentence names *"a package from the navigator"* as one of three ways to select
-something. It reproduces on Mensores, so it is neither my map nor either defect. Fixing it
-means deciding what selecting a package *is* (a plate is not a node, rule 30) — the
-`viewInspectorConstant` precedent is to route on kind.
-
-**Before that, the same day: the stated naming lane is on screen.** Step 2 of the four Tom ordered for
-the standards work, and the first thing the dashboard has ever shown of `doc_rules`: a second
-navigator row, *Stated naming rules*, quoting what somebody wrote beside the derived page that
-counts what the code does. Neither page compares them and both say so. See the section at the
-top of the record below.
-
-**1,002 tests, mypy clean, ruff clean, console clean, working tree clean**, `check` reports 0
-broken on `output/mensores`. `output/` holds exactly what it held before — the `--no-docs` map
-made while verifying the blank state went to the scratchpad.
-
-**Next: step 3, or whatever Tom picks.** The remaining standards order is **(3)** compare a
-checkable rule against the graph the way a measured convention already is, and **(4)**
-`--standards <dir>` scoped by `paths`/`applies_to`, which is larger than 2–3 together and is
-where the enterprise case lives.
-
----
-
-**Before that — paused 2026-09-04, between features.** 990 tests, mypy clean, ruff
-clean, working tree clean, `check` reports 0 broken on `output/mensores`. Three things landed
-that day beyond the five before them, each whole and committed on its own:
+**Five things landed, each whole and committed on its own** — and **three of the five started
+as something Tom found by using the thing:**
 
 | Commit | What |
 |---|---|
-| `6941d5d` | **"+ Analyze a directory…"** — the dashboard can make a program, not only choose one |
-| `195ca0a` | **"About this map"** — what read it, and whether anything was guessed |
-| `614a6f0` | **a stopped analysis, and the map it leaves behind** — and **rule 80** |
+| `5845513` | the **stated naming lane** is served — standards step 2, two pages rather than one |
+| `8033afd` | **a root package elected by no vote** — 750 of 752 routines were drawn as external |
+| `8dacd24` | **ways in say what they are**, and an application opens as an application |
+| `d7153fb` | **ways in are nodes on the Diagram**, arrows bounded on evidence |
+| `ec0673e` | **Document mode is about the selection**, and the contents stops sitting on the prose |
 
-**No servers are running** and `output/` is exactly as it was: `beads`, `dunneflow`,
-`mensores`, and the `mensores@2026-08-29T19-43-39Z` orphan the record already named. Every
-program made while verifying (`rendercheck`, `slotcheck`, and the `coldrun`/`grptest` family)
-was written to the scratchpad or removed.
+**Four things are open and named below**, none of them blocking: the surfaces nobody has
+*looked* at, standards step 3 (compare a checkable rule against the graph), the package row
+that selects nothing, and `<module>` answered in a routine-shaped inspector.
 
-**Two candidate rules are still open and neither blocks anything** — Tom minted rule 80 and
-left these:
+**Two things could not be proven and are recorded as unproven, not as done:** the pointer path
+for the Diagram's sub-application button — three real clicks reported success and delivered no
+event, the harness having stopped mid-session (rule 48) — and a one-off boot failure from a
+stale `localStorage` blob that cleared on reset and did not reproduce.
 
-1. **A long job is not a switch — a slot names what is being replaced, not what is running.**
-   *Engineering.* From the analyse work: `claim_analysis` sits beside `claim` rather than
-   sharing it, because a ninety-second read of an unrelated program must not lock a reader out
-   of changing versions.
-2. **Inference is voluntary and secondary, and a map states whether any was used.**
-   *Design.* One step over from design rule 14, which scopes *egress*; this scopes whether a
-   fact was *guessed*.
+**Three rules are still candidates, none of them blocking.** Two carried from 2026-09-04 and
+never minted — *a long job is not a switch: a slot names what is being replaced, not what is
+running* (engineering), and *inference is voluntary and secondary, and a map states whether any
+was used* (design). One from today: *a cache key must carry everything its subtree is of* —
+which the doc pane's `docDomKey()` learnt twice, once for the lane and once for the related
+block, and which `selectionSnapshot`/`sameSelection` learnt in the same session from the other
+side. It may be rule 78 restated rather than a new one; that is Tom's call.
 
-**Next: whatever Tom picks.** The open list below owns the rest. The nearest things are still
-his eye rather than my keyboard — rule 38's debt is **reduced but not paid**: the analyse
-dialog, the progress panel, the About dialog and the stop/refusal surfaces were all looked at,
-but at 1,259×523 and a 16px root, never at his 24px 4K window, where the dialog's field widths
-are what I would expect to want adjusting.
-
-*Two harness traps were learned the hard way and are written up in `HANDOFF.md`: click
-coordinates and screenshot coordinates are **different scales and neither is stable between
-tabs** (calibrate with markers at known viewport coordinates), and **the topbar cannot be
-clicked at all** — anything above roughly viewport y=48 never reaches the page, so topbar
-controls are driven from the keyboard.*
+**A mistake worth carrying forward:** `git checkout <file>` to undo a one-line probe reverted
+a whole day's work in that file. Recovered from a scratchpad copy plus nine re-applied edits.
+Revert the probe, not the file.
 
 ---
 
-### The latest: Document mode is about the selection (2026-09-05)
+### Before the pause: Document mode is about the selection (2026-09-05)
 
 **Tom's screenshot was the bug report**, and it was two defects. `state.docPath` held whatever
 was last opened and nothing connected it to the selection, while the mode toggle claims *"five
@@ -318,6 +248,33 @@ block froze on "Looking for…" seven milliseconds before the answer landed. The
 now.
 
 ### Before that: ways in are nodes on the Diagram (2026-09-05)
+
+Tom's option (iii), taken up an hour after being deferred. A way in is a **box on every
+compartment it enters**, with bold arrows into what it starts, and the ordinary arrows carry on
+inward from there — `pkg:signator` reads as `mensores-signator` → `__main__.py`,
+`WitnessHandler.do_POST` → `WitnessHandler`, `serve` → `_server.py`, and down through
+`_keygen`, `_custody`, `_signing`.
+
+**Drawn by default, unlike a port, and the difference is measured.** Rule 19 turned ports off
+because they are median 13 and max 41 per compartment against a median of 10 boxes. Ways in
+are **max 3 and absent from 46 of 53**. Same rule, opposite answer, because it is a different
+population; both numbers are in the docstring. Told apart by a **note silhouette**, never
+colour (design rule 4).
+
+**The arrow bound is one compartment's number.** `mensores` enters **39 of `pkg:cli`'s boxes**;
+unbounded that compartment goes from 734×650pt at 1.1:1 to **3647×428pt at 8.5:1**, and
+bounded at eight it is 1017×674 at 1.5:1. **No other compartment reaches the bound** — the next
+largest fan-out in 53 is three. Bounded *per way in*, or one fan-out would push another's single
+arrow out of the picture; the panel says *"entered from 1 way in, reaching 43 boxes — 8 arrows
+drawn"* and opening the box lists all 106 (rule 8, design rule 1).
+
+`entries` and `entered` are their **own list and lane**, so every count the panel already
+printed is unchanged and a compartment with no way in emits a byte-identical drawing (rule 32).
+Clicking a way-in box opens the way-in pane, so (ii) and (iii) are one path. An **entry arrow
+refuses to open as a flow** and says why: the caller is the operating system, so there is no
+call site to list.
+
+### Before that: ways in say what they are, and an application opens as one (2026-09-05)
 
 **Tom's question was the bug report.** *"They don't make sense in the way that code does… what
 is `mensores`, `mensores-mcp`, `run`?"* A way in is **how the outside world starts this

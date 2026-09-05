@@ -2793,7 +2793,14 @@ def test_following_a_neighbour_reaches_both_selection_paths() -> None:
     """
     shell = _read("shell.js")
 
-    assert "followPickMode()" in shell.split("$$(\".gotonode\")", 1)[1][:1800], (
+    # **The handler, not a character count.** This read the 1,800 characters after the
+    # registration, which held for as long as the handler was shorter than that. A third id
+    # space -- `data-plate`, beside `data-node` and `data-box` -- pushed `followPickMode()`
+    # past the window, and the guard failed over a claim that was still perfectly true.
+    # An arbitrary span is exactly what rule 37 warns about, in the direction that at least
+    # fails loudly; the same window one branch shorter would have gone quiet instead.
+    handler = shell.split('$$(".gotonode")', 1)[1].split("\n  }));", 1)[0]
+    assert "followPickMode()" in handler, (
         "the inspector's follow does not consult followPickMode -- it always replaces, "
         "whatever the reader chose"
     )
@@ -11133,4 +11140,218 @@ def test_module_scope_is_not_given_a_signature_it_cannot_have() -> None:
     hover = _fn_body(js, "hoverSigHtml")
     assert "isModuleScope(card.name)" in hover, (
         "the hover card no longer refuses module scope, or refuses it by its own literal"
+    )
+
+
+# ----------------------------------------------------- a plate is a subject --- #
+#
+# Found by Tom, 2026-09-05, and verified pre-existing rather than introduced. Clicking a
+# package marked the row `aria-current="true"` and switched the pane, then left the crumb
+# at "nothing selected", the table at all 4,786 rows, and the inspector saying "Pick a way
+# in from the cover, **a package from the navigator**, or a node in the graph" -- naming
+# the gesture that had just failed. One cause, three symptoms.
+
+def test_picking_a_package_sets_a_subject() -> None:
+    """The cause, at the two lines it lived on.
+
+    `pkg` routed to `selectFromNav({ disks: … })`, and `setSubject` had three parameters.
+    So `state.selected` stayed null, `inspectorSubject()` returned null, and every surface
+    that asks what is selected answered honestly that nothing was.
+    """
+    js = _code(_read("shell.js"))
+    routes = js.split("const NAV_ROUTES = {", 1)[1].split("\n};", 1)[0]
+    for kind in ("pkg", "b"):
+        line = next(ln for ln in routes.splitlines() if ln.strip().startswith(f"{kind}:"))
+        assert "plate:" in line, (
+            f"the `{kind}` route selects a plate in the picture and names no subject, so "
+            f"the inspector will go on saying nothing is selected"
+        )
+    assert "plate = null" in _fn_body(js, "setSubject"), (
+        "setSubject cannot take a plate, so the route above is handing it a field nothing "
+        "reads -- rule 44, a control wired to a parameter that does not exist"
+    )
+    assert "loadPlate(plate)" in _fn_body(js, "setSubject"), "nothing fetches the answer"
+
+
+def test_a_plate_is_one_of_the_four_subjects_everywhere_that_asks() -> None:
+    """Every accessor, not only the one that made the click work.
+
+    This file records paying four times for a subject field added to the snapshot and
+    forgotten in the comparator, or added to one accessor and not another. The list is
+    derived from the functions rather than hand-kept for exactly that reason.
+    """
+    js = _code(_read("shell.js"))
+    assert "state.plate" in _fn_body(js, "inspectorSubject"), (
+        "the inspector does not count a plate as a subject, so the pane will render "
+        "'Nothing selected' over a plate it has just fetched"
+    )
+    assert "state.plate" in _fn_body(js, "subjectLabel"), (
+        "a plate step files itself as 'nothing selected', which is a trail with no map on it"
+    )
+    assert "state.plate" in _fn_body(js, "selectedRowIds"), (
+        "a plate marks no rows, so the list and the picture disagree (design rule 26)"
+    )
+    assert "plate: state.plate" in _fn_body(js, "selectionSnapshot"), (
+        "a trail step drops the plate, so Back cannot reverse a package click (rule 33)"
+    )
+    # Through the helper that asserts `sameSelection` actually walks the list, so this
+    # cannot pass against a `SUBJECT_KEYS` nothing reads.
+    keys = _compared_subject_keys(js)
+    assert "plate" in keys, (
+        "SUBJECT_KEYS does not compare the plate, so every package step is deduplicated "
+        "against the one before it -- which is the exact half that was forgotten when "
+        "`wayIn` was added"
+    )
+
+
+def test_a_plate_is_answered_by_its_own_pane_and_not_a_routines() -> None:
+    """Routed on the kind, above the first line that reads a routine's shape.
+
+    The same placement `FOLD`, `FLOW` and `CONSTANT` already have, and for the same reason:
+    a plate has no qualname, no params, no `where` and no source, so the sections below
+    would not merely be blank -- they would *answer*.
+    """
+    js = _code(_read("shell.js"))
+    body = _fn_body(js, "viewInspector")
+    assert 's.kind === "PLATE"' in body, "a plate is answered in a routine-shaped pane"
+    at_plate = body.index('s.kind === "PLATE"')
+    assert at_plate < body.index("const id = s.identity"), (
+        "the plate branch sits below the line that reads a routine's identity, so every "
+        "line above it has already read a routine's shape off something that is not one"
+    )
+    assert "function viewInspectorPlate(" in js, "the pane itself is gone"
+
+
+def test_an_outside_plate_is_told_apart_from_a_package_by_the_server() -> None:
+    """`answers`, not the length of a list (rule 30).
+
+    A boundary node's id is `bnd:<kind>:<target>`, so the queries that answer for a package
+    matched nothing at all on an external plate: measured on Mensores, `ext:STDIO` holds
+    991 nodes and reported **0 in, 0 out, 0 touches** -- on screen, the claim that nothing
+    in the program writes to standard output. Both a package with no callers and an
+    external plate arrive as `[]`, and they mean opposite things.
+    """
+    js = _code(_read("shell.js"))
+    pane = _fn_body(js, "viewInspectorPlate")
+    assert 's.answers === "outside"' in pane, (
+        "the pane infers which question was asked, so an empty list from one branch will "
+        "be rendered with the other branch's sentence"
+    )
+    py = (WEB / "plate.py").read_text(encoding="utf-8")
+    assert '"answers": "outside" if band == "ext" else "package"' in py, (
+        "the server no longer declares which question it answered"
+    )
+    assert "_reached_by" in py, (
+        "the external branch is gone, so `ext:DATABASE` says the database is touched by "
+        "nothing"
+    )
+
+
+def test_the_table_marks_what_the_navigator_marks() -> None:
+    """Design rule 26, and the third of Tom's three symptoms.
+
+    The table read `state.selected === r.id`, so a fold *and* a plate both left every row
+    unmarked while the navigator lit all of them -- the two halves of one instrument
+    disagreeing in the plainest possible way. The strip above it says how many are marked,
+    so the claim and the marks have to come from one set (rule 13).
+    """
+    js = _code(_read("shell.js"))
+    body = _fn_body(js, "viewTable")
+    assert "const tableMarks = selectedRowIds()" in body, (
+        "the table no longer marks from the same set the navigator does"
+    )
+    assert "tableMarks.has(r.id)" in body, "the rows are marked from something else"
+    assert "state.selected === r.id" not in body, (
+        "the row mark is back to the selected node alone, so a plate and a fold mark "
+        "nothing"
+    )
+    # And the count beside them is taken from the marks, never from the model's total --
+    # a plate holds structures and constants, and this table lists routines.
+    assert "rows.filter(r => tableMarks.has(r.id)).length" in body, (
+        "the strip counts something other than the rows it is describing (rule 32)"
+    )
+
+
+def test_the_crumb_names_whatever_is_being_inspected() -> None:
+    """It read `state.selected` alone, so three of the four subjects said 'nothing'.
+
+    A plate, a fold and an arrow all set no `selected`, and the crumb sat beside a pane
+    confidently describing one of them. `subjectLabel()` is the one function that names a
+    subject in words and already answered for all four -- the crumb had its own copy of the
+    question (rule 51).
+    """
+    js = _code(_read("shell.js"))
+    body = _fn_body(js, "crumbsFor")
+    assert "inspectorSubject()" in body, (
+        "the crumb still decides on `state.selected`, so a plate reads 'nothing selected'"
+    )
+    assert "subjectLabel()" in body, "the crumb names a subject some other way"
+
+
+def test_a_plates_members_come_from_the_answer_and_not_from_the_picture() -> None:
+    """Because there is not always a picture.
+
+    They were read off `graphPayload` for one draft, on the reasoning that a plate's members
+    *are* the nodes on that disk and taking them from the drawing is the one reading that
+    cannot disagree with it. The reasoning was right and the premise is false half the time:
+    **Table mode never mounts the graph**, so a package click there marked *0 of 4,786 rows*
+    while the pane beside it correctly reported 469. Found by clicking one, in the mode a
+    reader spends most of their time in -- no source check could have seen it, because the
+    call was to the right function and the function returned nothing.
+
+    Rule 13 survives the move: `plate.py` computes the list from that same payload, so it is
+    one reading done on the side that always has it -- and the shadow rule (rule 31) travels
+    with it, asserted over real plates in `test_plate.py` rather than over source here.
+    """
+    js = _code(_read("shell.js"))
+    body = _fn_body(js, "plateMembers")
+    assert "SPECIMEN.members" in body, (
+        "the members are derived on the client again, so they are empty in every mode that "
+        "has not mounted the graph"
+    )
+    assert "graphPayload" not in body, (
+        "plateMembers reads the drawn payload, which is null until the graph is mounted"
+    )
+    assert '"PLATE"' in body and "SPECIMEN.id === id" in body, (
+        "it does not check the specimen is this plate, so a stale answer marks the previous "
+        "plate's rows under the current plate's name"
+    )
+    # And the server has to be sending them at all.
+    py = (WEB / "plate.py").read_text(encoding="utf-8")
+    assert '"members": members' in py, "the answer no longer carries the member ids"
+
+
+def test_a_plate_is_named_by_the_answer_before_the_picture() -> None:
+    """Two surfaces disagreed about one plate, and the order of three fallbacks is the fix.
+
+    In Table view the crumb read `pkg:cli` -- the raw id -- while the inspector's own
+    heading two panes over read `cli`. `graphPayload` is null until the graph is mounted, so
+    a payload-first reading names every plate by its id in the mode a reader is most often
+    in. `labelFor` does exactly this for a node, and this is that shape one kind over.
+    """
+    body = _fn_body(_code(_read("shell.js")), "plateName")
+    at_spec = body.index("SPECIMEN")
+    assert at_spec < body.index("graphPayload"), (
+        "the payload is consulted before the answer, so a plate is named by its id in every "
+        "mode that has not drawn the stack"
+    )
+
+
+def test_the_plate_request_carries_the_altitude_it_is_asking_about() -> None:
+    """Rule 81: a key that decides whether to skip work carries everything it depends on.
+
+    The same package is a plate of its own at one altitude and merged into `<small>` at
+    another, so an id alone names two different things. `loadSpecimen` skips the fetch when
+    the key is unchanged, so a key of the bare id would hand back the previous altitude's
+    answer on a Detail change -- which looks exactly like a control that did nothing.
+    """
+    js = _code(_read("shell.js"))
+    body = _fn_body(js, "loadPlate")
+    assert "state.level" in body and "minDiskNow()" in body, (
+        "the plate request does not say which altitude it is about, so it will be answered "
+        "for whichever one the server has cached"
+    )
+    assert "plate:${q}" in body or "`plate:" in body, (
+        "the cache key does not carry the level, so changing Detail with a plate selected "
+        "returns the previous altitude's answer (rule 81)"
     )

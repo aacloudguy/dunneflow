@@ -36,7 +36,7 @@ from ..docstore import DocStore
 from ..resolve import version as version_order
 from ..sourcedb import DocSourceStore, SourceStore
 from ..store import StaleGraphError, Store, UnfinishedMapError
-from . import analysis, anomalychanges, changes, diagram, filediff, packages, queries
+from . import analysis, anomalychanges, changes, diagram, filediff, packages, plate, queries
 from .code import build_file, build_files
 from .corpus import build_corpus, build_document, serving
 from .cover import anomalies as build_anomalies
@@ -1022,6 +1022,56 @@ class _Handler(BaseHTTPRequestHandler):
                                         level=level, min_disk=min_disk)
                 base.payloads[key] = payload
         self._json(payload)
+
+    def _r_plate(self, q: dict[str, list[str]]) -> None:
+        """One plate of the stack, described as the thing it is.
+
+        **The same level the picture is at.** A plate that exists at routine level may be
+        merged into `<small>` at module level, and vice versa, so answering from the
+        default payload would describe a plate the reader is not looking at -- and would
+        do it plausibly, which is the expensive kind of wrong. `read_level` is `/api/graph`'s
+        own reader, so an unknown level is refused here exactly as it is there rather than
+        quietly defaulted (design rule 16 in a query string).
+
+        Built under the lock and cached beside the others, for `_r_graph`'s reason: this
+        reads `current.store`, and every use of that is under the lock or a request could
+        be querying a connection a switch has already closed. A plate asked for at a level
+        nobody has drawn yet pays that climb once and the picture that follows is free,
+        which is the right way round: the reader who asks about a plate is about to look
+        at it.
+
+        **The climb is not `_r_graph`'s ~120 ms on a program this size.** Measured on
+        Mensores, 2026-09-05: `build_payload` takes **1.31 s** for 15,870 drawn nodes over
+        53 plates on a warm store, and 10.0 s on the first open of a cold one -- the
+        external volume and nothing else, per `PERFORMANCE.md`. Written down rather than
+        inherited, because a figure taken on a smaller program and repeated here would be
+        a claim nobody had measured.
+        """
+        plate_id = (q.get("id") or [""])[0]
+        if not plate_id:
+            self._json({"found": False, "reason": "no id asked for"})
+            return
+        try:
+            key = read_level(q)
+        except ValueError as exc:
+            self.send_error(400, str(exc))
+            return
+        with self._live.lock:
+            base = self._live.current
+            payload = base.payloads.get(key)
+            if payload is None:
+                level, min_disk = key
+                payload = build_payload(base.store, self._live.out_dir.name,
+                                        level=level, min_disk=min_disk)
+                base.payloads[key] = payload
+            # `waysin.listing()` rather than a query of this route's own, because there is
+            # one answer to what a way in is and four surfaces read it (rule 51). Asked
+            # here rather than cached on `_Base`: it is fourteen rows on the largest
+            # program measured, the compartments already pay for it separately, and a
+            # third cache of the same list is a third thing a switch has to remember.
+            body = plate.describe(base.store, payload, plate_id,
+                                  ways_in_listing(base.store))
+        self._json(body)
 
     def _compartments(self) -> dict[str, Any]:
         """Every compartment of the base, built once and cached whole.
@@ -2477,6 +2527,7 @@ class _Handler(BaseHTTPRequestHandler):
         "/api/graph": "_r_graph",
         "/api/diagram": "_r_diagram",
         "/api/fold": "_r_fold",
+        "/api/plate": "_r_plate",
         "/api/inside": "_r_inside",
         "/api/flow": "_r_flow",
         "/api/cover": "_r_cover",

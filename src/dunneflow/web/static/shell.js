@@ -498,6 +498,17 @@ const state = {
    * saying where we are would be the detail window's defect again (rule 51): two answers
    * to one question, drifting the first time anything moves either. */
   flow: null,              // the edge id under inspection, or null
+  /* **The fourth subject: a plate.** The comment on `fold` above ends *"the stack has never
+   * made that mistake -- picking a plate clears the selection rather than electing a member
+   * of it"*, and that was true and only half the job: clearing the selection is honest, and
+   * it left the reader with a lit plate, a crumb reading "nothing selected", a table of all
+   * 4,786 rows and an inspector naming the gesture that had just failed. Honesty was never
+   * what was missing; an answer was.
+   *
+   * The plate id, which is the model's -- `pkg:mensores.cli`, `ext:DATABASE` -- and not a
+   * node id, because a plate is not a node (rule 30) and not one of the things it holds
+   * (rule 74). Found by Tom, 2026-09-05. */
+  plate: null,             // the plate id under inspection, or null
   /* What the reader asked for, in id space, before it is resolved to drawn indices.
    * Held here rather than only in the engine so a choice made from the navigator while
    * the centre pane is showing a table or a document is still a real choice. */
@@ -927,8 +938,18 @@ const NAV_ROUTES = {
     if (e && e.app) { openWayIn(e.name); return; }
     selectFromNav({ nodes: navIds(b) });
   },
-  pkg: (b) => selectFromNav({ disks: navIds(b) }),
-  b:   (b) => selectFromNav({ disks: navIds(b) }),
+  /* **A plate is a subject**, and until this line it was the one gesture in the dashboard
+     that lit the picture and told the rest of the page nothing. `{ disks }` alone sets no
+     subject, so the crumb read "nothing selected", the table showed every row, and the
+     inspector answered "Pick … a package from the navigator" -- the gesture that had just
+     failed. Found by Tom, 2026-09-05, and pre-existing rather than introduced.
+
+     `navIds` returns a list because a row may name several; a plate is one, and the first
+     is the row's own id. The two ids are the same value in two fields on purpose: `disks`
+     is what the *stack* lights and `plate` is what the *inspector* answers about, and
+     collapsing them would be reading a subject out of a selection (rule 30). */
+  pkg: (b) => selectFromNav({ disks: navIds(b), plate: navIds(b)[0] || null }),
+  b:   (b) => selectFromNav({ disks: navIds(b), plate: navIds(b)[0] || null }),
   t:   (b) => selectFromNav({ table: b.dataset.navid || "" }),
   /* A file is not a node: nothing lights in the stack and the inspector has nothing to
      answer about it, so this opens a pane rather than making a selection. What the reader
@@ -4516,10 +4537,41 @@ function viewTable() {
   const rows = sortedRoutines();
   const at = state.selected ? rows.findIndex(r => r.id === state.selected) : -1;
   const cur = at >= 0 ? rows[at] : null;
+  /* **A plate is a subject the table can say something true about**, and it is the third of
+     the three symptoms Tom reported: a package click left this strip reading *"Nothing
+     selected — every row is shown, none is yours yet"* over a table whose rows were,
+     several hundred of them, exactly what had just been picked.
+
+     It **states and marks** rather than filtering, which is the fold's settled shape one
+     level up (`selectedRowIds`): the rows are marked, the count says how many, and the
+     table stays the whole program so the reader can see where the plate sits in it. A
+     filter would need its own way out and its own sentence (design rule 1); marking needs
+     neither, and design rule 26 asks for the instrument to run both ways rather than for
+     the list to become a second view of the picture.
+
+     The count is taken from the marks, not from `identity.nodes` — a plate holds structures
+     and constants too, and this table lists routines, so the model's own total would be a
+     number that does not match the rows under it (rule 32). */
+  /* **The same set the navigator marks with**, which is what design rule 26 asks for and
+     what this table was not doing. It read `state.selected === r.id`, so a fold selection
+     and a plate selection both left every row unmarked -- the navigator lit sixty-one rows
+     and the table beside it lit none, which is the two halves of one instrument disagreeing
+     in the plainest possible way. Fixed here rather than only for plates, because the fold
+     had the identical gap and a fix for one of them is a fix for both (rule 51).
+
+     Hoisted out of the row loop deliberately: `selectedRowIds()` allocates a Set, and
+     calling it per row is 4,786 allocations to answer one question -- rule 45's shape on a
+     view that repaints on every sort. */
+  const tableMarks = selectedRowIds();
+  const marked = state.plate ? rows.filter(r => tableMarks.has(r.id)).length : 0;
   const subject = cur
     ? `<span class="tsub-name mono">${breakable(`${cur.module}.${cur.name}`)}</span>
        <span class="tsub-rank">row ${(at + 1).toLocaleString()} of ${rows.length.toLocaleString()}</span>
        <button class="linkbtn" data-tablego>Go to it</button>`
+    : state.plate
+      ? `<span class="tsub-name mono">${breakable(plateName(state.plate))}</span>
+         <span class="tsub-rank">${marked.toLocaleString()} of ${
+           rows.length.toLocaleString()} rows are on this plate, and marked</span>`
     : state.selected
       /* Selected, and not in this list. A structure, a constant, a boundary and an artefact
          are all nodes the rest of the shell can hold and this table cannot show -- saying so
@@ -4565,7 +4617,7 @@ function viewTable() {
              for one answer. */
           const chg = routineChip(r.id);
           return `
-          <tr data-row="${esc(r.id)}" aria-selected="${state.selected === r.id}" tabindex="0">
+          <tr data-row="${esc(r.id)}" aria-selected="${tableMarks.has(r.id)}" tabindex="0">
             <td><span class="qual"><span class="dim">${esc(r.module)}.</span>${esc(r.name)}</span></td>
             <td style="font-size:.72rem;color:var(--text-muted)">${esc(r.why)}</td>
             <td class="numeric">${esc(String(routineFan(r.id)))}</td>
@@ -6882,6 +6934,14 @@ function selectionSnapshot() {
      was written for). */
   return { picks: (state.picks || []).slice(), selected: state.selected,
            fold: state.fold || null,
+           /* **And the plate**, the fifth field of exactly this kind. Picking a package
+              sets no `selected` -- a plate is not a node -- so without this every package
+              click would file a step whose subject is `null`, be deduplicated against the
+              one before it by `sameSelection`, and leave Back stepping straight past the
+              thing the reader just did. That is rule 33 with the field simply missing, and
+              it is the fifth time this file has recorded paying for it. It is in
+              `SUBJECT_KEYS` too, which is the half that was forgotten the fourth time. */
+           plate: state.plate || null,
            /* The arrow rides too, for the same reason the fold does: opening one sets no
               `selected`, so a step without this field names nothing and takes nobody back. */
            flow: state.flow || null,
@@ -6939,8 +6999,8 @@ function selectionSnapshot() {
  *
  * **Rule 81** — a key that decides whether to skip work carries everything the work depends
  * on. `sameSelection` decides whether a step is skipped, so it is one of those keys. */
-const SUBJECT_KEYS = ["selected", "fold", "flow", "diagramId", "diagramBox", "codeFile",
-                      "wayIn", "wayInside"];
+const SUBJECT_KEYS = ["selected", "fold", "flow", "plate", "diagramId", "diagramBox",
+                      "codeFile", "wayIn", "wayInside"];
 
 function sameSelection(a, b) {
   return !!a && !!b &&
@@ -7016,7 +7076,14 @@ function applySelectionStep(step) {
   try {
     state.picks = step.picks.slice();
     if (Graph.mounted()) Graph.setSelection(state.picks);
-    setSubject({ node: step.selected, fold: step.fold, flow: step.flow });
+    setSubject({ node: step.selected, fold: step.fold, flow: step.flow,
+                 plate: step.plate });
+    /* **The plate is restored and nothing else has to be**, which is what moving the member
+       list onto the specimen bought. `selectedRowIds` reads `plateMembers(state.plate)` on
+       every render, so a restored step marks its rows the moment `setSubject` above has
+       fetched the answer -- no second field to keep in step, and no rule 68 hazard where a
+       restore has to remember to do what the setter did. */
+    if (step.plate) state.wanted = { disks: [step.plate], plate: step.plate };
     /* Restore where the drawing was, and redraw only when it actually moved: `ensureDiagram`
        refetches, and calling it on every Back would make stepping through a trail of
        selections re-request a compartment that never changed. */
@@ -9107,12 +9174,23 @@ let inspectorFor = null;
  *
  * Exclusive by construction, which is what lets `inspectorSubject()` be an accessor rather
  * than a rule every caller has to remember. */
-function setSubject({ node = null, fold = null, flow = null } = {}) {
+function setSubject({ node = null, fold = null, flow = null, plate = null } = {}) {
   state.flow = flow;
   state.fold = flow ? null : fold;
-  state.selected = (flow || fold) ? null : node;
+  /* **A plate is the fourth kind, and it is exclusive like the other three.** Picking a
+     package used to set `wanted.disks` and no subject at all, so `state.selected` stayed
+     null and three surfaces said so at once: the crumb read "nothing selected", the table
+     showed all 4,786 rows, and the inspector offered "Pick … a package from the navigator"
+     -- naming the gesture that had just failed. One cause, three symptoms.
+
+     Not a node, and never a member of itself. Electing `members[0]` is what the fold pane
+     exists to undo, and a plate holding 926 of them would make that mistake twenty times
+     over (rules 30 and 74). */
+  state.plate = (flow || fold) ? null : plate;
+  state.selected = (flow || fold || plate) ? null : node;
   if (flow) loadFlow(flow);
   else if (fold) loadFold(fold);
+  else if (plate) loadPlate(plate);
   else if (node) loadNode(node);
   else { inspectorFor = null; SPECIMEN = null; }
 }
@@ -9138,6 +9216,10 @@ function subjectLabel() {
     const box = diagramNow && diagramNow.by_id[state.fold];
     return (box && box.label) || state.fold;
   }
+  /* A plate is named by what the *legend* calls it, which is the name the model gave the
+     disk -- never by the id, which carries a band prefix and is not a name (rule 30). The
+     id is the fallback rather than the answer, exactly as a box's is above. */
+  if (state.plate) return plateName(state.plate);
   return state.selected ? labelFor(state.selected) : "nothing selected";
 }
 
@@ -9154,6 +9236,22 @@ function subjectLabel() {
  * say 3 functions, so highlighting all three might be problematic" -- and the alternative is
  * electing a member, which is exactly the defect the fold exists to undo. */
 function selectedRowIds() {
+  /* **A plate marks its members too, and for the same reason a fold does.** Design rule 26
+     says the list and the picture are one instrument and it has to run both ways: a package
+     click lights a plate in the stack, so the rows that plate holds are what the reader
+     picked and the list has to say so. Without this the navigator went on marking whatever
+     had been clicked before -- a stale highlight, which is worse than none (rule 51).
+
+     Marking 926 rows is the honest answer rather than an unfortunate one, exactly as
+     marking sixty-one is: they are what the reader picked, the pane beside them states the
+     number, and picking one of them narrows it to that one. The alternative is electing a
+     member, which is the defect a plate subject exists to undo. */
+  /* A plate reads its members from the **specimen**, not from `wanted`: the answer is in
+     flight when the selection settles, so `wanted` would be filled with an empty list once
+     and never revisited. `loadSpecimen` renders again when it lands, and this is read on
+     every render -- so the marks appear in the frame the pane fills, which is the frame a
+     reader is looking at anyway. */
+  if (state.plate) return new Set(plateMembers(state.plate));
   if (state.flow || state.fold) return new Set(((state.wanted || {}).nodes) || []);
   return new Set(state.selected ? [state.selected] : []);
 }
@@ -9186,7 +9284,57 @@ async function selectFold(boxId) {
  * what every caller has to remember and rule 51 is a list of the times one of them did not.
  * Everything that asks "what is being inspected" asks here. */
 function inspectorSubject() {
-  return state.flow || state.fold || state.selected || null;
+  return state.flow || state.fold || state.plate || state.selected || null;
+}
+
+/* **What the legend calls a plate.** The model gives every disk a `name` and the id carries
+ * a band prefix in front of it, so `pkg:mensores.cli` is an identity and `mensores.cli` is
+ * the word for it (rule 30). `graph.js` answers the same question the same way for a pick
+ * chip -- `disks.find(...)?.name ?? p.id` -- and the fallback matches on purpose: a plate
+ * the payload has not arrived for yet is named by its id rather than by nothing, because a
+ * crumb reading "" is a crumb that says the click failed.
+ *
+ * Not `partition(":")[2]`: `ext:<small outside>` would keep its angle brackets either way,
+ * but a name is the model's to give and re-deriving one here is a second answer to what a
+ * plate is called.
+ *
+ * **The specimen first, the payload second, the id last**, and the order is the whole of
+ * it. `graphPayload` is null until the graph has been *mounted*, and Table mode never
+ * mounts it -- so a payload-first reading names every plate by its id in the mode a reader
+ * spends most of their time in. Found by clicking a package in Table view: the crumb read
+ * `pkg:cli` while the inspector's own heading two panes over read `cli`, which is two
+ * surfaces disagreeing about one plate.
+ *
+ * `labelFor` does exactly this for a node and for the same reason; this is that function's
+ * shape one kind over. */
+function plateName(id) {
+  if (SPECIMEN && SPECIMEN.kind === "PLATE" && SPECIMEN.id === id) {
+    return SPECIMEN.label || id;
+  }
+  const rows = (graphPayload && graphPayload.disks) || [];
+  const row = rows.find(d => d.id === id);
+  return (row && row.name) || id;
+}
+
+/* **What is on a plate, from the answer the server already sent.**
+ *
+ * Read off `graphPayload` for one draft, on the reasoning that a plate's members *are* the
+ * nodes on that disk and taking them from the picture is the one reading that cannot
+ * disagree with it. The reasoning was right and the premise is false half the time: **there
+ * is not always a picture.** Table mode never mounts the graph, so a package click there
+ * marked *0 of 4,786 rows* while the pane beside it correctly reported 469 -- found by
+ * clicking one, in the mode a reader spends most of their time in.
+ *
+ * Rule 13 is unharmed. `plate.py` computes this list from that same payload, so it is the
+ * same reading done once, on the side that always has it. Shadows are skipped there:
+ * `pkg:cli` carries 469 real nodes and **1,044** shadows, so counting them would mark three
+ * times too many rows and two thirds of them wrongly (rule 31).
+ *
+ * Empty until the answer lands, which is honest rather than unfortunate -- the pane says
+ * "Reading" in the same frame, and `loadSpecimen` renders again when it arrives. */
+function plateMembers(id) {
+  return (SPECIMEN && SPECIMEN.kind === "PLATE" && SPECIMEN.id === id
+          && SPECIMEN.members) || [];
 }
 
 /* One fetch-and-paint, two subjects. `loadNode` and `loadFold` differ in the endpoint they
@@ -9223,6 +9371,29 @@ async function loadNode(id) {
  * `fetches: false` was added to the hover card to prevent, one surface over. */
 async function loadFold(boxId) {
   await loadSpecimen(boxId, `/api/fold?id=${encodeURIComponent(boxId)}`);
+}
+
+/* A plate, asked about at the altitude it is drawn at.
+ *
+ * **The level rides with the id, and it is not optional.** The same package is a plate of
+ * its own at one altitude and merged into `<small>` at another, so an id alone names two
+ * different things depending on where the Detail control is standing. Asking without it
+ * would get an answer about a plate the reader is not looking at -- plausibly, and with
+ * every number on it wrong, which is this tool's least forgivable failure.
+ *
+ * The cache key carries the level for the same reason (rule 81): `loadSpecimen` skips the
+ * fetch when the key is unchanged, so a key of the bare id would hand back the previous
+ * altitude's answer on a Detail change and look exactly like a control that did nothing.
+ *
+ * No `loadThreads`: `threads.py` answers adjacency by interest for one *node*, and there is
+ * no node here -- the same reason `loadFold` asks for none. */
+async function loadPlate(plateId) {
+  /* Through `levelQuery`, which is `graphUrl`'s own builder. Written by hand once and it
+     spelled an unset threshold as the literal `null`, which `read_level` refuses with a
+     400 -- so every package click landed on *"Not in this map"*. See the note there. */
+  const q = levelQuery(state.level, minDiskNow());
+  q.set("id", plateId);
+  await loadSpecimen(`plate:${q}`, `/api/plate?${q}`);
 }
 
 /* The separator between the two ends of an edge id, and the **only** place it is spelled on
@@ -9838,6 +10009,148 @@ function gotoCodeBtn(file, line) {
     data-gotoline="${line || 0}" title="Open ${esc(file)} in the code browser">code ▸</button>`;
 }
 
+/* ── a plate, described as the thing it is ────────────────────────────────
+ *
+ * The fourth specimen. A plate is not a node (rule 30) and it is not one of the things it
+ * holds (rule 74), so it gets a pane rather than a nominated member -- which is the defect
+ * `viewInspectorFold` exists to undo, and a plate holding 926 of them would make it twenty
+ * times over.
+ *
+ * **What it holds is counted, not listed**, and that is the one place this departs from the
+ * fold pane deliberately. A fold holds sixty-one methods and the reader opened it to find
+ * one of them; a plate holds up to 926 and *they are the routine list*, which marks every
+ * one of them the moment this plate is picked (design rule 26). Listing them again here
+ * would be the same rows in a narrower column. Rule 8 is not in tension with that: nothing
+ * is abbreviated here, because nothing is listed -- the complete content is the pane
+ * beside it, which is exactly the condition rule 8 asks for.
+ *
+ * **Which question was asked comes from the server** (`answers`), never from the length of
+ * a list. A package answers what calls in, what it calls and what it touches; a plate
+ * beyond the boundary line answers only what reaches it, and the other three are not
+ * questions about it. Both arrive as `[]` and they mean opposite things -- rendering the
+ * second as the first would say the database is touched by nothing, which `ext:DATABASE`
+ * did for as long as this route treated the two the same. */
+function viewInspectorPlate(s) {
+  const id = s.identity || {};
+  const outside = s.answers === "outside";
+  const holds = s.holds || {};
+  const total = Object.values(holds).reduce((a, b) => a + b, 0);
+
+  /* A neighbour is a **plate**, so the button selects one -- `data-plate`, its own
+     attribute, because `data-node` would hand the store an id from the model's space and
+     link to nothing, and `data-fold` collapses a pane (rule 71, caught on the way in
+     rather than on the screen). The unplaced row carries no id and is drawn as text: it is
+     a count of calls whose far end this map does not draw, and offering it as a selection
+     would be inventing a destination to make a row clickable. */
+  const flowRow = (arrow, r) => r.unplaced
+    ? `<div class="flowitem"><span class="arrow">${arrow}</span>
+         <code class="dim">${esc(r.name)}</code>
+         <span class="conf badge">${r.weight}</span></div>`
+    : `<div class="flowitem">
+        <span class="arrow">${arrow}</span>
+        <button class="gotonode" data-plate="${esc(r.plate)}" title="${esc(r.plate)}"
+          ><code data-fit="name">${esc(r.name || r.plate)}</code></button>
+        <span class="conf badge certain">${r.weight}</span>
+      </div>`;
+
+  const inRows = s.in || [], outRows = s.out || [];
+  const inBody = inRows.length ? inRows.map(r => flowRow("←", r)).join("")
+    : (outside
+      ? `<div class="hint">Nothing in this program reaches it. For a plate outside the
+         boundary that is a finding rather than a silence — it was drawn because something
+         named it, so what named it is no longer on any plate.</div>`
+      : `<div class="hint">No other plate calls into it. That makes it a way in, or a
+         corner of the program nothing else uses.</div>`);
+  const outBody = outside
+    ? `<div class="hint">Not a question about this plate. It is outside the program — what
+       it does is not something DunneFlow read, and an empty list here would be a claim
+       about code this map has never seen.</div>`
+    : (outRows.length ? outRows.map(r => flowRow("→", r)).join("")
+      : `<div class="hint">It calls no other plate. Everything it does, it does among its
+         own.</div>`);
+
+  /* What is on it, by kind, and never as one number. ROUTINE, STRUCTURE, CONSTANT and
+     BOUNDARY are four different things to find on a plate and a total says which of them
+     you are looking at exactly as well as no answer does (rule 32). */
+  const holdsBody = total
+    ? `<div class="govchips">${Object.entries(holds).map(([k, n]) =>
+        `<span class="govchip">${esc(k.toLowerCase())} <b>${n.toLocaleString()}</b></span>`
+        ).join("")}</div>
+       <div class="hint">Marked in the routine list, and lit in the stack — this pane
+         counts them rather than listing them again.</div>`
+    : `<div class="hint">Nothing is on it. A plate the model drew and put nothing on is a
+       defect in this tool rather than a fact about the program.</div>`;
+
+  const standsBody = id.merged
+    ? ((s.stands_for || []).length
+      ? (s.stands_for || []).map(h => `
+          <div class="flowitem">
+            <span class="arrow">▸</span>
+            <button class="gotonode" data-plate="${esc(h.plate)}" title="${esc(h.plate)}"
+              ><code data-fit="name">${esc(h.name || h.plate)}</code></button>
+            <span class="conf badge">${h.nodes.toLocaleString()}</span>
+          </div>`).join("")
+        + `<div class="hint">It is none of these — it is the place they were put, because
+           each holds fewer than the Detail control's threshold. Lower it and they are
+           drawn as plates of their own.</div>`
+      : `<div class="hint">It is the plate small ones are merged onto, and at this
+         threshold nothing was small enough.</div>`)
+    : "";
+
+  const touches = (s.touches || {}).kinds || [];
+  const touchBody = outside
+    ? `<div class="hint">It <em>is</em> the boundary. Asking what it touches would be
+       asking the far side of the line about our side of it.</div>`
+    : (touches.length
+      ? `<div class="govchips">${touches.map(t =>
+          `<span class="govchip">${esc(t.kind)} <b>${t.n.toLocaleString()}</b></span>`
+          ).join("")}</div>`
+      : `<div class="hint">Nothing on this plate touches a boundary. Everything it does, it
+         does in memory.</div>`);
+
+  const ways = s.ways_in || [];
+  const waysBody = outside
+    ? `<div class="hint">A way in is where a program starts, which is inside it.</div>`
+    : (ways.length
+      ? ways.map(w => `
+          <div class="flowitem">
+            <span class="arrow">▸</span>
+            <code data-fit="name">${esc(w.name)}</code>
+            <span class="conf badge ${w.declared ? "certain" : ""}">${esc(w.kind)}${
+              w.declared ? "" : " · by name"}</span>
+            ${/* How much of a tree is here, beside how big it is. `mensores` puts 106 of
+                 its 107 roots on `pkg:cli` and one on `pkg:validate`, and a bare name
+                 would say neither (rule 32). */""}
+            ${w.roots > 1 ? `<span class="dim" style="margin-left:auto">${w.here} of ${
+              w.roots}</span>` : ""}
+          </div>`).join("")
+      : `<div class="hint">No way in lands here. This is somewhere the program arrives at,
+         not somewhere it starts.</div>`);
+
+  return `
+    <div class="insp-head">
+      <h2>${breakable(s.label || s.id)}</h2>
+      <div class="loc">a plate of the stack, at <code>${esc(id.level || "")}</code> detail</div>
+      <div class="tags">
+        <span class="badge certain">ANALYZED</span>
+        <span class="kind-tag">${esc(id.tag || "PLATE")}</span>
+        ${id.merged ? `<span class="kind-tag">MERGED</span>` : ""}
+        <span class="kind-tag">${total.toLocaleString()} on it</span>
+        <span style="margin-left:auto;display:flex;gap:.3rem">
+          ${pinBtn({ kind: "plate", id: s.id }, s.label || s.id,
+                   `${total.toLocaleString()} nodes, ${inRows.length} plates reach it`)}
+          <button class="linkbtn" id="collapseAll">Collapse all</button>
+        </span>
+      </div>
+    </div>
+    ${sec("holds", "Holds", total || null, holdsBody)}
+    ${id.merged ? sec("stands", "Stands for", (s.stands_for || []).length, standsBody) : ""}
+    ${sec("in", outside ? "Reached by" : "In", inRows.length, inBody)}
+    ${sec("out", "Out", outside ? null : outRows.length, outBody)}
+    ${sec("touches", "Touches", outside ? null : touches.length, touchBody)}
+    ${sec("gov", "Ways in", outside ? null : ways.length, waysBody)}`;
+}
+
 /* **The one place this side spells DunneFlow's own name for module scope.**
  *
  * `extract.py` mints it as `MODULE_SCOPE`, and six modules under `web/` match the literal
@@ -9889,6 +10202,11 @@ function viewInspector() {
      calls and no touches, so every section below reads a routine's shape off a thing that
      has not got one -- and, worse, *answers*: see `viewInspectorConstant`. */
   if (s.kind === "CONSTANT") return viewInspectorConstant(s);
+  /* And a plate, above the same line and for the same reason as the three above it. It has
+     no qualname, no params, no `where` and no source, so every line below would read a
+     routine's shape off a thing that has not got one -- and the sections would *answer*,
+     which is what makes this class of defect expensive rather than merely ugly. */
+  if (s.kind === "PLATE") return viewInspectorPlate(s);
 
   const id = s.identity || {};
   const inn = s.in || { callers: [], entrypoints: [] };
@@ -10143,11 +10461,21 @@ function crumbsFor() {
    * or say that nothing is. */
   const prog = { label: STATS ? STATS.program : "", to: "cover" };
   const subject = () => {
-    if (!state.selected) return [{ label: "nothing selected", cur: true }];
-    const r = ROUTINES.find(x => x.id === state.selected);
+    /* **Whatever is being inspected, not only a node.** This read `state.selected` alone,
+       so the three subjects that are not nodes -- a plate, a fold, an arrow -- all landed
+       on *"nothing selected"* while the pane beside the crumb was confidently describing
+       one of them. `subjectLabel()` is the one function that names a subject in words, and
+       it already answers for all four (rule 51); it exists because the trail needed exactly
+       this and got its own copy of the question instead.
+
+       A plate's crumb is one part rather than two: `pkg:mensores.cli` has no module and a
+       name, and splitting the name on its last dot would invent a hierarchy the model does
+       not have. */
+    if (!inspectorSubject()) return [{ label: "nothing selected", cur: true }];
+    const r = state.selected && ROUTINES.find(x => x.id === state.selected);
     return r
       ? [{ label: r.module }, { label: r.name, cur: true }]
-      : [{ label: SPECIMEN ? SPECIMEN.label : "selection", cur: true }];
+      : [{ label: subjectLabel(), cur: true }];
   };
   const trail = {
     cover:       [],
@@ -10518,6 +10846,16 @@ function wire() {
        other is rule 47's companion in a pane: an identifier that means two things resolves
        plausibly and silently to the wrong thing. */
     if (b.dataset.box) { selectFold(b.dataset.box); return; }
+    /* A **third** id space, and the third branch of the same argument. A row in a plate's
+       pane names a plate -- `pkg:mensores.cli`, `ext:DATABASE` -- which means nothing to
+       `/api/node` and nothing to `/api/fold`. Through `selectFromNav` like every other
+       selection, so the stack lights it, the list marks what it holds, the trail records
+       the hop and undo reaches it (rule 51: a second path that only filled the inspector
+       would be a selection the rest of the dashboard never heard about). */
+    if (b.dataset.plate) {
+      selectFromNav({ disks: [b.dataset.plate], plate: b.dataset.plate });
+      return;
+    }
     const id = b.dataset.node;
     if (!id) return;
     const i = Graph.mounted() ? Graph.indexOfId(id) : -1;
@@ -11006,6 +11344,16 @@ function wire() {
     node: (id) => selectFromNav({ nodes: [id] }),
     fold: (id) => selectFold(id),
     flow: (id) => selectFlow(id),
+    /* **plate** goes through the route a package row goes through, so a kept plate opens
+       exactly as a clicked one does -- the stack lights it, the list marks what it holds,
+       the inspector answers about it. `selectFromNav` fills the members after the graph is
+       up, which is the same reason this cannot just set `state.plate`.
+
+       A plate kept at one altitude and opened at another is the honest limitation the
+       `flow` note above describes one line up: the id may name a plate that has since been
+       merged into `<small>`, and `/api/plate` answers *"no such plate at this level"*
+       rather than inventing one (design rule 21). */
+    plate: (id) => selectFromNav({ disks: [id], plate: id }),
   };
   $$("[data-pinopen]").forEach(b => b.addEventListener("click", () => {
     const pin = state.pins[parseInt(b.dataset.pinopen, 10)];
@@ -11392,8 +11740,12 @@ const WIRED_ATTRS = new Set([
      `pinnote` are parameters: the subject, read off the button the click already
      found. Kept as two fields rather than one packed string because a kind and an id
      are two questions, and `bnd:` already shows what packing them costs. */
+  /* `plate` is the third id space a `.gotonode` button can carry, beside `node` and `box`.
+     Its own attribute rather than a packed prefix on `node`, for the reason `bnd:` already
+     shows: an identifier that means two things resolves plausibly and silently to the
+     wrong thing. */
   "navid", "navtrack", "node", "open", "pane", "pin", "pinnote", "pinkind", "pinid",
-  "pinopen", "pkgnode", "pkgpick", "qual",
+  "pinopen", "pkgnode", "pkgpick", "plate", "qual",
   "resize", "row",
   /* `palette-set`, beside `theme-set` and for the same reason: `data-palette` and
      `data-theme` are stamps on `:root`, and an attribute that is both a route and a piece
@@ -11741,6 +12093,19 @@ function routineList() {
                 title="${open ? "Collapse" : "Expand"} ${esc(g.id)}"><span class="caret">▼</span></button>
         ${g.plate
           ? `<button class="nav-item nav-pkgname" data-nav="pkg" data-navid="${esc(g.plate)}"
+                     ${/* **It stays marked**, and it did not. The delegated nav handler
+                          sets `aria-current` on the button that was clicked, and then
+                          `selectFromNav` calls `buildNav()` -- which rebuilds this markup
+                          from the store and hands every row `current` except this one. So
+                          the package row was marked for the length of one frame and drawn
+                          unmarked from then on: the reader's own click erasing its own
+                          highlight, which reads as a click that did not take.
+
+                          From `state.plate` rather than from the DOM, because the rebuild
+                          is where the DOM's answer is lost. The routine rows beneath it
+                          already work this way (`rowMarks`); this is the row they hang
+                          under, and it was the one nobody had told. */""}
+                     aria-current="${state.plate === g.plate}"
                      data-titled="1" title="${esc(g.merged
                        ? `${g.id} is too small for a plate of its own — it is drawn on the small-packages plate`
                        : `Select the ${g.id} plate in the stack`)}">${esc(g.id)}${
@@ -15184,10 +15549,26 @@ function setPlateSizeNow(v) {
 /* The key **is** the question, so a cache hit and a fetch can never answer different ones. */
 function graphKey(level, min) { return `${level}:${min ?? ""}`; }
 
-function graphUrl(level, min) {
+/* **How an altitude is spelled in a query string, in one place.**
+ *
+ * `minDiskNow()` returns `null` for *"the reader has not chosen; let the server pick this
+ * level's default"* — a third state, not a number — and the wire spelling of that state is
+ * to **omit the parameter**, because `read_level` refuses anything it cannot parse rather
+ * than defaulting silently.
+ *
+ * `/api/plate` was written with its own `&minDisk=${minDiskNow()}`, which spells that state
+ * as the four characters `null` and gets a 400 back. It was found by clicking a package,
+ * not by a test: the guard asserted `minDiskNow()` was *consulted*, which it was, and no
+ * check can see from the source what a function returns. Two builders for one question is
+ * rule 51, and this is the second caller arriving exactly as that rule predicts. */
+function levelQuery(level, min) {
   const q = new URLSearchParams({ level });
   if (min != null) q.set("minDisk", String(min));
-  return `/api/graph?${q}`;
+  return q;
+}
+
+function graphUrl(level, min) {
+  return `/api/graph?${levelQuery(level, min)}`;
 }
 
 async function fetchPayload(level, min) {
@@ -16240,7 +16621,7 @@ async function selectFromNav(want) {
    * an accessor rather than a rule everyone has to remember. */
   // The inspector can answer from an id alone, so it does not wait for the stack.
   setSubject({ node: (want.nodes || [])[0] || null, fold: want.fold || null,
-               flow: want.flow || null });
+               flow: want.flow || null, plate: want.plate || null });
 
   await ensureGraph();
   applyWanted();

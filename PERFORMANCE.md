@@ -48,6 +48,36 @@ The second **level of detail**, measured 2026-08-31 on the same corpus. A module
 | …the same again, cached on the base | < 50 ms | 10 ms |
 | First paint at module level | < 2 s | **not measured — see below** |
 
+**One plate, opened** — `/api/plate`, measured 2026-09-05 on Mensores at routine level:
+53 plates over 15,870 drawn things, the largest holding 991.
+
+| Measure | Budget | Measured 2026-09-05 |
+|---|---|---|
+| One package plate, answered | < 200 ms | **2.4–9.7 ms** (49 to 959 nodes) |
+| One plate beyond the boundary line | < 200 ms | **14.8–15.3 ms** |
+| The payload it reads, warm store | < 2 s | **1.31 s** |
+| …the same on the first open of a cold store | — | **10.0 s** — the external volume |
+
+**The two bands cost differently and the reason is in the query, not the size.** A package
+asks `FOLD_CALLS_IN`/`OUT` over its own member ids, so it scales with what it holds — 2.4 ms
+for `pkg:mensor`'s 12 nodes, 9.7 ms for `pkg:quaestor`'s 926. A plate *outside* the program
+cannot: a boundary node's id is `bnd:<kind>:<target>`, which those queries do not match at
+all, so it scans `BOUNDARY_EDGES` and `ARTEFACT_EDGES` whole and lands at a flat ~15 ms
+whatever it holds. `ext:STDIO` with 991 nodes and `ext:NETWORK` with 9 cost the same.
+
+**The 1.31 s payload row is not `_r_graph`'s ~120 ms and must not be quoted as it.** That
+figure was taken on a smaller program; this is `build_payload` on a 100 MB graph. It is
+paid once per `(level, minDisk)` and cached on `_Base`, and a plate asked for at an
+undrawn altitude pays it — which is the right way round, since the reader who asks about a
+plate is about to look at it. The cold row is the external volume and nothing else.
+
+**What is absent: the pane rendered.** The plate inspector was driven and measured entirely
+through the DOM — the crumb, the trail, the sections, the member marks, all read back from
+a live page — and **never seen in a real window**. Rule 38, and rule 48 besides: every
+click here was a dispatched `MouseEvent`, which proves the handler and not the path to it.
+The automation tab captures 784 px of a 1,259 px viewport, so the inspector at x=1012 is
+outside every screenshot taken of it. This adds to the standing debt rather than paying it.
+
 **The build is cheap and it is held per level *and per threshold*, on `_Base`**, so a base
 switch throws all of it away for free. The routine payload is still built at boot, so the
 10.2 s start does not move; a level nobody climbs to costs nothing at all.

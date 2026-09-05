@@ -379,3 +379,131 @@ def test_a_plain_dotted_call_to_a_function_still_binds() -> None:
                               callee_expr="os.path.join", resolved=True)
     assert out[0]["binds"]["name"] == "path"
     assert why == ""
+
+
+# --------------------------------------------------------------------------- #
+# Ways in as nodes: the world outside, reaching in
+#
+# Tom: *"I could look at the Diagram and see the various Ways In as nodes on a Diagram and
+# chase them inbound to see how the data flows into the system."*
+#
+# Three properties matter and only the first is about drawing: the entries must not disturb
+# what the panel already counts, a box must measure *this* compartment, and the bound on the
+# arrows must be stated.
+# --------------------------------------------------------------------------- #
+
+
+def _ways_for(store: Store) -> dict[str, list[str]]:
+    from dunneflow.web.waysin import listing
+    out: dict[str, list[str]] = {}
+    for w in listing(store):
+        for nid in w["nodes"]:
+            names = out.setdefault(nid, [])
+            if w["name"] not in names:
+                names.append(w["name"])
+    return out
+
+
+def test_a_way_in_becomes_a_box_on_the_compartment_it_enters(analyzed: Store) -> None:
+    model = build(analyzed)
+    comps = diagram.build(model, _ways_for(analyzed))
+    entries = [b for c in comps.values() for b in c.entries]
+    assert entries, "no way in reached any compartment"
+    assert all(b.kind == "wayin" for b in entries)
+    assert all(b.detail.get("wayin") for b in entries), "an entry box cannot name its way in"
+
+
+def test_the_counts_a_panel_prints_do_not_change(analyzed: Store) -> None:
+    """Rule 32: a count says what it counts.
+
+    "24 boxes over 237 routines" is about the program's own code. A way in is the world
+    outside reaching into it, so it gets its own list and its own lane -- folded into `boxes`
+    it would have grown that number by one and quietly changed what it meant.
+    """
+    model = build(analyzed)
+    plain = diagram.build(model)
+    withways = diagram.build(model, _ways_for(analyzed))
+    for cid, c in plain.items():
+        a, b = c.stats, withways[cid].stats
+        for key in ("boxes", "routines", "inside", "crossing", "ports"):
+            assert a[key] == b[key], f"{cid}.{key} changed from {a[key]} to {b[key]}"
+
+
+def test_a_way_in_holds_what_it_starts_here_not_what_it_reaches(analyzed: Store) -> None:
+    """Rule 24: a measurement must measure the thing it names.
+
+    On Mensores `mensores` reaches 1,381 routines and starts 106 of them in `pkg:cli`. A box
+    on `pkg:cli` labelled with the first number would be a fact about somewhere else.
+    """
+    model = build(analyzed)
+    comps = diagram.build(model, _ways_for(analyzed))
+    for c in comps.values():
+        for b in c.entries:
+            assert b.holds == len(b.members) > 0
+            for nid in b.members:
+                assert any(nid in box.members for box in c.boxes), \
+                    "a way in claims a routine that is not in this compartment"
+
+
+def test_the_arrow_bound_is_per_way_in_and_is_stated(analyzed: Store) -> None:
+    """Rule 8: bound a diagram, and only a diagram -- and say by how much.
+
+    Bounded over the compartment instead of per entry, one way in fanning out to 39 boxes
+    would push another way in's single arrow out of the picture entirely.
+    """
+    model = build(analyzed)
+    comps = diagram.build(model, _ways_for(analyzed))
+    for c in comps.values():
+        drawn = c.entry_arrows()
+        per_src: dict[str, int] = {}
+        for src, _ in drawn:
+            per_src[src] = per_src.get(src, 0) + 1
+        assert all(n <= diagram.ENTRY_ARROWS for n in per_src.values())
+        assert c.stats["entry_hidden"] == len(c.entered) - len(drawn)
+        assert set(drawn) <= set(c.entered), "an arrow is drawn that is not in the lane"
+
+
+def test_a_compartment_with_no_way_in_draws_exactly_what_it_did(analyzed: Store) -> None:
+    """46 of Mensores' 53 compartments are entered from nowhere, and must be untouched."""
+    model = build(analyzed)
+    plain = diagram.build(model)
+    withways = diagram.build(model, _ways_for(analyzed))
+    quiet = [cid for cid, c in withways.items() if not c.entries]
+    assert quiet, "every compartment has a way in; this guard is blind"
+    for cid in quiet:
+        assert diagram.dot(plain[cid]) == diagram.dot(withways[cid])
+
+
+def test_both_emitters_draw_the_same_entries_under_the_same_bound(analyzed: Store) -> None:
+    """`dot` is drawn and `mermaid` is copied out; describing different graphs is the one
+    thing offering both may never do."""
+    model = build(analyzed)
+    comps = diagram.build(model, _ways_for(analyzed))
+    drew = 0
+    for c in comps.values():
+        if not c.entries:
+            continue
+        drew += 1
+        d, mm = diagram.dot(c), diagram.mermaid(c)
+        for b in c.entries:
+            assert b.label in d and b.label in mm
+        assert d.count("style=bold") == len(c.entry_arrows())
+        assert mm.count("==>") == len(c.entry_arrows())
+    assert drew, "no compartment had an entry to compare"
+
+
+def test_an_entry_box_is_findable_and_an_entry_arrow_is_known(analyzed: Store) -> None:
+    """A click has to resolve. A box the drawing carries and `find_box` cannot see is a
+    shape (rule 30), and an arrow missing from `edge_payload` gives no card at all."""
+    model = build(analyzed)
+    comps = diagram.build(model, _ways_for(analyzed))
+    c = next(x for x in comps.values() if x.entries and x.entry_arrows())
+    b = c.entries[0]
+    found = diagram.find_box(comps, b.id)
+    assert found and found[1].id == b.id
+    src, dst = c.entry_arrows()[0]
+    payload = diagram.edge_payload(c)
+    eid = diagram.edge_id(src, dst)
+    assert eid in payload, "an entry arrow carries no card"
+    assert payload[eid]["entry"] is True, "an entry arrow is not marked as one"
+    assert diagram.edge_flow(c, src, dst) is not None, "an entry arrow reads as no arrow"

@@ -110,7 +110,7 @@ class Box:
 
     id: str
     label: str
-    kind: str          # 'class' | 'file' | 'touch' | 'port'
+    kind: str          # 'class' | 'file' | 'touch' | 'port' | 'wayin'
     holds: int = 0     # how many routines are folded into it -- 0 for a touch or a port
     # The node ids this box stands for, so a click on the drawing reaches the selection the
     # rest of the dashboard shares. A box that cannot name what it holds is a shape (rule
@@ -156,6 +156,13 @@ class Compartment:
     name: str
     boxes: list[Box] = field(default_factory=list)
     ports: list[Box] = field(default_factory=list)
+    # **The ways in that enter this compartment**, and the flow from each into the boxes it
+    # starts. Their own list and their own lane rather than boxes and `inside`, because
+    # every count on the panel says what it counts (rule 32): "24 boxes over 237 routines"
+    # is about the program's own code, and a way in is the world outside reaching into it.
+    # Folding them in would have grown that number by one and changed what it meant.
+    entries: list[Box] = field(default_factory=list)
+    entered: Flow = field(default_factory=dict)
     inside: Flow = field(default_factory=dict)
     out: Flow = field(default_factory=dict)
     into: Flow = field(default_factory=dict)
@@ -171,11 +178,49 @@ class Compartment:
             "routines": sum(b.holds for b in self.boxes),
             "inside": len(self.inside),
             "crossing": len(self.out) + len(self.into),
+            # How many ways in reach this compartment, and how many boxes they reach
+            # between them. `entered` is the *drawable* population; `ENTRY_ARROWS` bounds
+            # what is drawn and `entry_hidden` says by how much, because a bound nobody
+            # states is a picture that quietly stops being complete (rule 8).
+            "entries": len(self.entries),
+            "entered": len(self.entered),
+            "entry_hidden": max(0, len(self.entered) - self.entry_drawn_count()),
             # Stated rather than hidden: a box with no flow at all is a real thing about the
             # program -- a file nothing here calls and which calls nothing here -- and it is
             # also exactly what made the first attempt at this a ribbon.
             "unlinked": len(drawn - linked),
         }
+
+    def entry_arrows(self) -> list[tuple[str, str]]:
+        """The entry arrows that are drawn, bounded per way in and stated in `stats`.
+
+        Bounded **per entry box**, not over the compartment: one way in fanning out to 39
+        boxes must not push another way in's single arrow out of the picture. Sorted so the
+        same compartment yields the same source on every run -- `layout.py` requires that of
+        positions for spatial memory and a drawing a reader has learnt the shape of has the
+        same claim.
+        """
+        by_entry: dict[str, list[tuple[str, str]]] = {}
+        for pair in sorted(self.entered):
+            by_entry.setdefault(pair[0], []).append(pair)
+        out: list[tuple[str, str]] = []
+        for src in sorted(by_entry):
+            out.extend(by_entry[src][:ENTRY_ARROWS])
+        return out
+
+    def entry_drawn_count(self) -> int:
+        return len(self.entry_arrows())
+
+
+# **The arrow bound, and it is one compartment's number.** Drawn unbounded, `mensores`
+# alone -- which enters 39 of `pkg:cli`'s boxes, nearly every file in the package -- takes
+# that compartment from 734x650pt at 1.1:1 to **3647x428pt at 8.5:1**: the horizontal strip
+# this module's docstring records Mermaid producing, arriving through a different door.
+# Bounded at eight it is 1017x674 at 1.5:1, and *no other compartment reaches the bound at
+# all* -- the next largest fan-out in 53 is three. So this is a bound on the one picture
+# that needs it (rule 8: bound a diagram, and only a diagram); opening the box lists every
+# routine the way in starts here, unbounded, because that is an answer and not a picture.
+ENTRY_ARROWS = 8
 
 
 def _clip(text: str) -> str:
@@ -188,7 +233,8 @@ def _box_id(disk: str, kind: str, key: str) -> str:
     return f"{disk}|{kind}|{key}"
 
 
-def build(model: GraphModel) -> dict[str, Compartment]:
+def build(model: GraphModel,
+          ways: dict[str, list[str]] | None = None) -> dict[str, Compartment]:
     """Fold the whole model into one compartment per plate, in a single pass.
 
     Built from `model.nodes` and `model.edges` rather than by a second walk over the store,
@@ -196,6 +242,13 @@ def build(model: GraphModel) -> dict[str, Compartment]:
     a shadow is a placement device and never an endpoint (rule 23), and `model.edges` already
     carries each crossing twice, once per plate -- which is why every crossing here is keyed
     by the *plate* of its far end rather than counted, or it would be counted twice.
+
+    `ways` maps a routine id to the ways in that start it, and is the **only** thing here
+    that did not come out of the model. It arrives as an argument rather than being looked
+    up, because this module takes a model and never a store: `waysin.listing()` is where
+    that question is asked, and asking it twice is how two answers begin (rule 51). `None`
+    means nobody asked for entries, which is a different thing from a program with none --
+    a compartment then has an empty `entries` list either way, and the panel says which.
     """
     box_of: dict[str, str] = {}
     comps: dict[str, Compartment] = {}
@@ -263,9 +316,41 @@ def build(model: GraphModel) -> dict[str, Compartment]:
             add_flow(comp(da).out, a, port(da, db).id, e.kind, e.weight)
             add_flow(comp(db).into, port(db, da).id, b, e.kind, e.weight)
 
+    # ── the ways in, and the boxes each one enters ──────────────────────────────────
+    #
+    # **A way in is not one of the things it starts** (rule 74). It gets its own box, holding
+    # the routines it starts *in this compartment* -- so opening it uses the second level
+    # already built for a class or a file, and the reader lands on an ordinary selection.
+    #
+    # `holds` counts what it starts **here** and not its whole reach: `mensores` reaches
+    # 1,381 routines and starts 106 of them in `pkg:cli`, and a box on `pkg:cli` labelled
+    # 1,381 would be a number about somewhere else (rule 24).
+    if ways:
+        entry_boxes: dict[tuple[str, str], Box] = {}
+        for node_id, names in ways.items():
+            bid_here = box_of.get(node_id)
+            disk = disk_of.get(node_id)
+            if not bid_here or disk is None:
+                continue
+            for name in names:
+                key = (disk, name)
+                entry = entry_boxes.get(key)
+                if entry is None:
+                    entry = Box(_box_id(disk, "wayin", name), _clip(name), "wayin",
+                                detail={"wayin": name})
+                    entry_boxes[key] = entry
+                    comp(disk).entries.append(entry)
+                entry.holds += 1
+                entry.members.append(node_id)
+                entry.labels.append(name)
+                # Weight is how many of this box's routines this way in starts, which is what
+                # makes one arrow heavier than another rather than every arrow being 1.
+                add_flow(comp(disk).entered, entry.id, bid_here, "ENTRY", 1)
+
     for c in comps.values():
         c.boxes.sort(key=lambda x: (x.kind, x.label.lower(), x.id))
         c.ports.sort(key=lambda x: (x.label.lower(), x.id))
+        c.entries.sort(key=lambda x: (x.label.lower(), x.id))
     return comps
 
 
@@ -276,7 +361,7 @@ def build(model: GraphModel) -> dict[str, Compartment]:
 # run and every machine -- `layout.py` requires that of positions for spatial memory, and a
 # diagram a reader has learned the shape of has exactly the same claim.
 def _ids(c: Compartment) -> dict[str, str]:
-    return {b.id: f"n{i}" for i, b in enumerate(c.boxes + c.ports)}
+    return {b.id: f"n{i}" for i, b in enumerate([*c.boxes, *c.ports, *c.entries])}
 
 
 def _quote(s: str) -> str:
@@ -353,6 +438,22 @@ def dot(c: Compartment, *, rankdir: str = "TB", ports: bool = False) -> str:
             # a store, and the bottom of the flow.
             out.append(f'  {n} [id="{_quote(b.id)}", label="{_quote(b.label)}", '
                        f'shape=cylinder, style=""];')
+    # **Drawn by default, unlike a port, and the difference is measured rather than felt.**
+    # Rule 19 turned ports off because they are median 13 and max 41 per compartment against
+    # a median of 10 boxes -- they outnumber the subject and they connect what `pack` needs
+    # disconnected. Ways in are **max 3 per compartment and absent from 46 of 53**. Same
+    # rule, opposite answer, because it is a different population; the numbers are here so
+    # the next reader can check that rather than take it.
+    #
+    # A **note** silhouette, never a colour: colour on this page is already spent on
+    # difference and severity (design rule 4), and a shape is what tells a reader that the
+    # thing outside the program is a different kind of thing (design rule 5's neighbour).
+    for b in c.entries:
+        out.append(f'  {ids[b.id]} [id="{_quote(b.id)}", label="{_quote(b.label)}", '
+                   f'shape=note, style="", fontsize=9];')
+    for src, dst in c.entry_arrows():
+        out.append(f'  {ids[src]} -> {ids[dst]} '
+                   f'[style=bold, id="{_quote(edge_id(src, dst))}"];')
     if ports:
         for b in c.ports:
             out.append(f'  {ids[b.id]} [id="{_quote(b.id)}", label="{_quote(b.label)}", '
@@ -395,6 +496,13 @@ def mermaid(c: Compartment) -> str:
             out.append(f'  {n}["{lab}"]')
         else:
             out.append(f'  {n}["{lab}{held}"]')
+    # The same entries `dot()` draws, from the same model and under the same bound, so the
+    # picture and the source a reader copies out cannot describe different graphs.
+    for b in c.entries:
+        lab = b.label.replace('"', "'")
+        out.append(f'  {ids[b.id]}[/"{lab}"/]')
+    for src, dst in c.entry_arrows():
+        out.append(f"  {ids[src]} ==> {ids[dst]}")
     for b in c.ports:
         out.append(f'  {ids[b.id]}(["{b.label}"])')
     for src, dst in sorted(c.inside):
@@ -418,7 +526,7 @@ def find_box(comps: dict[str, Compartment], box_id: str) -> tuple[Compartment, B
     c = comps.get(box_id.partition("|")[0])
     if c is None:
         return None
-    for b in (*c.boxes, *c.ports):
+    for b in (*c.boxes, *c.ports, *c.entries):
         if b.id == box_id:
             return c, b
     return None
@@ -484,7 +592,7 @@ def edge_flow(c: Compartment, src: str, dst: str) -> tuple[list[str], int] | Non
     rather than an empty answer: "there is no arrow between these two" and "the arrow
     carries nothing" are different claims, and an empty panel states the second.
     """
-    for lane in (c.inside, c.out, c.into):
+    for lane in (c.inside, c.out, c.into, c.entered):
         kinds = lane.get((src, dst))
         if kinds:
             return [k for k, _ in kinds.most_common()], sum(kinds.values())
@@ -504,14 +612,20 @@ def edge_payload(c: Compartment) -> dict[str, dict[str, Any]]:
     rather than to a thing.
     """
     ports = {b.id for b in c.ports}
+    entries = {b.id for b in c.entries}
     out: dict[str, dict[str, Any]] = {}
-    for lane in (c.inside, c.out, c.into):
+    for lane in (c.inside, c.out, c.into, c.entered):
         for (src, dst), kinds in lane.items():
             out[edge_id(src, dst)] = {
                 "from": src, "to": dst,
                 "kinds": [k for k, _ in kinds.most_common()],
                 "weight": sum(kinds.values()),
                 "crosses": src in ports or dst in ports,
+                # **An entry arrow is not a call**, and it is marked here so nothing
+                # downstream has to work that out from a box kind. It says *this is how
+                # these routines get started*; there is no call site to open, because the
+                # caller is the operating system.
+                "entry": src in entries,
             }
     return out
 

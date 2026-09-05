@@ -60,6 +60,7 @@ from .search import search_files, search_in_file
 from .threads import cohort, for_node
 from .vocabulary import bind_glossary, measure_naming, stated_naming
 from .waysin import describe as describe_way_in
+from .waysin import listing as ways_in_listing
 
 STATIC = Path(__file__).parent / "static"
 VENDOR = Path(__file__).parent / "vendor"
@@ -1032,7 +1033,19 @@ class _Handler(BaseHTTPRequestHandler):
                 # Filled in place, never reassigned: `_Base` is frozen so that a switch
                 # replaces every field together, and the payload cache above earns its
                 # mutability the same way.
-                base.compartments.update(diagram.build(model))
+                # **The ways in, folded in on the way past.** `waysin.listing()` is the
+                # one place that question is asked (rule 51) -- the cover row, the way-in
+                # pane and the diagram all read the same answer, so a way in cannot be
+                # declared on one surface and guessed on another. Built here rather than
+                # held on `_Base`, because the compartments are the only thing that wants
+                # it and they are already cached whole.
+                entered: dict[str, list[str]] = {}
+                for w in ways_in_listing(base.store):
+                    for node_id in w["nodes"]:
+                        names = entered.setdefault(node_id, [])
+                        if w["name"] not in names:
+                            names.append(w["name"])
+                base.compartments.update(diagram.build(model, entered))
                 by_node, by_box = diagram.box_index(base.compartments)
                 base.box_of.update(by_node)
                 base.box_label.update(by_box)
@@ -1143,7 +1156,7 @@ class _Handler(BaseHTTPRequestHandler):
                 self._json({"found": False, "reason": "no such compartment"})
                 return
 
-        by_id = {b.id: b for b in (*comp.boxes, *comp.ports)}
+        by_id = {b.id: b for b in (*comp.boxes, *comp.ports, *comp.entries)}
         src, dst = by_id.get(src_id), by_id.get(dst_id)
         if src is None or dst is None:
             self._json({"found": False, "id": diagram.edge_id(src_id, dst_id),
@@ -1155,6 +1168,23 @@ class _Handler(BaseHTTPRequestHandler):
                         "reason": "there is no arrow between those two boxes"})
             return
         kinds, weight = edge
+
+        # **An entry arrow has no call sites, and says so rather than answering emptily.**
+        # `/api/flow` opens an arrow by listing every call site with the arguments as
+        # written; a way in is started by the operating system, so there is no caller in
+        # this program to list. An empty panel would read as *"this arrow carries nothing"*,
+        # which is a different and false claim (design rule 21, and the same distinction
+        # `edge_flow` draws between no arrow and an empty one).
+        if src.kind == "wayin":
+            self._json({
+                "found": False, "id": diagram.edge_id(src_id, dst_id),
+                "reason": f"{src.label} is a way in — the program is started here, so there "
+                          f"is no call site to open. It starts {weight} routine"
+                          f"{'' if weight == 1 else 's'} in "
+                          f"{dst.label}; open the way in to see everything it can run.",
+                "wayin": src.label,
+            })
+            return
 
         with self._live.lock:
             store = self._live.current.store
@@ -1209,7 +1239,7 @@ class _Handler(BaseHTTPRequestHandler):
             "mermaid": diagram.mermaid(c),
             "by_id": {b.id: {"label": b.label, "kind": b.kind, "holds": b.holds,
                              "members": b.members, **b.detail}
-                      for b in c.boxes + c.ports},
+                      for b in c.boxes + c.ports + c.entries},
             # Every arrow, keyed by the id `dot()` wrote on it, so a hover over one costs
             # no request. Rule 45's own argument in the other direction: the answer rides
             # with the picture because it is already computed, and only the *contents* of
@@ -1270,7 +1300,7 @@ class _Handler(BaseHTTPRequestHandler):
             # rule 32 in a payload, and it is invisible because both halves are real.
             "by_id": {b.id: {"label": b.label, "kind": b.kind, "holds": b.holds,
                              "members": b.members, **b.detail}
-                      for b in c.boxes + c.ports},
+                      for b in c.boxes + c.ports + c.entries},
             # What each member is called, so a hover card can name what a box holds rather
             # than counting it. Sent with the diagram rather than fetched per hover: it is a
             # few hundred short strings against a request per box, and a card that is

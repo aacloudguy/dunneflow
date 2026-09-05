@@ -3287,7 +3287,16 @@ function renderDiagram() {
            <b class="num">${c.crossing}</b> crossing to
            <b class="num">${c.ports}</b> other compartments`}${
         c.portsDrawn ? "" : ` <span class="muted">(not drawn)</span>`}${
-        c.unlinked ? ` · <b class="num">${c.unlinked}</b> with no flow either way` : ""}
+        c.unlinked ? ` · <b class="num">${c.unlinked}</b> with no flow either way` : ""}${
+        /* **The ways in, and what the arrow bound hid** (rule 8, and design rule 1: a
+           filtered picture says what it removed). Drawn at all only because the population
+           is small — max 3 per compartment against a port's max of 41 — and the one
+           compartment that fans out further says so rather than looking complete. */
+        !inside && c.entries
+          ? ` · entered from <b class="num">${c.entries}</b> way${c.entries === 1 ? "" : "s"} in${
+              c.entry_hidden ? `, reaching <b class="num">${c.entered}</b> boxes — <b class="num">${
+                c.entered - c.entry_hidden}</b> arrows drawn` : ""}`
+          : ""}
         <span class="muted">· drawn in ${c.drawMs} ms${
         inside ? "" : " · double-click a box to open it"}</span></span>
       ${/* Rule 19's own switch, one level up. Drawn, the crossings connect what was
@@ -3332,10 +3341,17 @@ const DGM_CARD_NAMES = 6;
 function diagramCard(box) {
   const what = box.kind === "class" ? "class"
              : box.kind === "file" ? "file"
-             : box.kind === "port" ? "another compartment" : "what it touches";
-  const held = box.holds
-    ? `<div class="hc-sub">${box.holds} ${box.kind === "class" ? "methods" : "functions"}</div>`
-    : "";
+             : box.kind === "port" ? "another compartment"
+             : box.kind === "wayin" ? "a way in" : "what it touches";
+  /* **A way in counts what it starts *here*, and says so.** `holds` on this box is the
+     routines it starts in this compartment, not its reach — `mensores` reaches 1,381 and
+     starts 106 in `pkg:cli`, and "106 functions" unqualified would read as the second
+     number being the first (rule 32). */
+  const held = box.kind === "wayin"
+    ? `<div class="hc-sub">starts ${box.holds} routine${box.holds === 1 ? "" : "s"} in this compartment</div>`
+    : box.holds
+      ? `<div class="hc-sub">${box.holds} ${box.kind === "class" ? "methods" : "functions"}</div>`
+      : "";
   const names = (box.members || []).slice(0, DGM_CARD_NAMES)
     .map(id => (diagramNow.names || {})[id] || id.split(".").slice(-1)[0]);
   const more = (box.members || []).length - names.length;
@@ -3350,8 +3366,11 @@ function diagramCard(box) {
       more > 0 ? `<div class="hint">…and ${more} more</div>` : ""}</div>` : ""}
     ${box.kind === "port"
       ? `<div class="hint">Click to open this compartment.</div>`
-      : box.members && box.members.length
-        ? `<div class="hint">Click to select what it holds.</div>` : ""}`;
+      : box.kind === "wayin"
+        ? `<div class="hint">The program is started here. Click to open it — what declares it,
+           where it begins, and everything it can run.</div>`
+        : box.members && box.members.length
+          ? `<div class="hint">Click to select what it holds.</div>` : ""}`;
 }
 
 /* The same card for an arrow. It asks the server for nothing either, and for a better
@@ -3602,6 +3621,17 @@ document.addEventListener("click", (ev) => {
     return;
   }
   const { g, box } = at;
+
+  /* **A way in is not a thing in this compartment, so it does not select like one.** It is
+     the world outside reaching in, and the pane that describes it already exists — its
+     evidence, where it starts, and every command it can run. One click, because there is
+     no second level here that `openWayIn` does not do better: a `wayin` box holds only the
+     routines it starts *here*, and the pane holds all of them.
+     Placed above the double-click bookkeeping so the gesture is never half-armed. */
+  if (box.kind === "wayin") {
+    openWayIn((box.wayin || box.label || "").trim());
+    return;
+  }
 
   /* **Opening a box is a second click on the same box, not a `dblclick` event.**
    *

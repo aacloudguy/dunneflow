@@ -14,8 +14,8 @@ by *how often you need it*, not by importance:
 | File | What it holds | When to read it |
 |---|---|---|
 | `CLAUDE.md` | commands, verification gates, architecture, and the **index** of every rule | every session — it is loaded for you |
-| `RULES.md` | the 79 engineering rules **in full**, with the false result each came from — numbered to 80, because 21 does not exist and the numbers are addresses | before working in the area a rule governs |
-| `DESIGN-RULES.md` | the 27 dashboard design rules in full | before building or changing a view |
+| `RULES.md` | the 81 engineering rules **in full**, with the false result each came from — numbered to 82, because 21 does not exist and the numbers are addresses | before working in the area a rule governs |
+| `DESIGN-RULES.md` | the 28 dashboard design rules in full | before building or changing a view |
 | `PERFORMANCE.md` | every measured figure, with its budget and its conditions | before quoting or retaking a number |
 | `BRIEFING.md` | state: what is built, what is next, what is closed | at the start of a session |
 | `HANDOFF.md` | the full chronological record, session by session | when you need why something is the way it is |
@@ -690,6 +690,9 @@ it was written from.
  79. A lifetime change is an access-pattern change.
  80. A job that can be interrupted must leave something that cannot be mistaken for
      a finished one.
+ 81. A key that decides whether to skip work must carry everything the work depends on.
+ 82. A long job is not a switch — a slot names what is being replaced, not what is
+     running.
 ```
 
 ## Anomalies: the discipline
@@ -764,6 +767,7 @@ so read the body before building against one.
  26. The list and the picture are one instrument, and it has to run both ways.
  27. A container's affordance drowns out the affordances inside it, because it wins on
      area.
+ 28. Inference is voluntary and secondary, and a map states whether any was used.
 ```
 
 ## Adding a language

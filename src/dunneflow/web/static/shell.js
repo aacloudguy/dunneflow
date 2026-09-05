@@ -4796,7 +4796,11 @@ let docPaintedFor = "";
  * <module>…", the answer arrived 7 ms later, `render()` ran, and the sentence never changed
  * because the key had not. The same shape as the lane note above it -- a cache key has to
  * carry everything its subtree is *of*, and every field added to the pane has to be added
- * here too or it is invisible the moment it settles. */
+ * here too or it is invisible the moment it settles.
+ *
+ * **Rule 81**, and its other instance is `SUBJECT_KEYS` in the same session. Not rule 78:
+ * there every route asked and none had an event; here every route asked, the state was
+ * right, and the *paint* was skipped. */
 function relDomKey() {
   if (!state.selected) return "-";
   if (!RELDOCS || RELDOCS.loading || RELDOCS.node !== state.selected) return "…";
@@ -6931,7 +6935,10 @@ function selectionSnapshot() {
  * The comments on `diagramId`, `diagramBox` and `codeFile` each record paying this once, in
  * the snapshot, where the lesson does not reach the half that forgets. One list now, and the
  * next field is free (rule 36: a generic loop narrowed to a literal is how a feature
- * disappears without a trace — here it was two literals that had to agree). */
+ * disappears without a trace — here it was two literals that had to agree).
+ *
+ * **Rule 81** — a key that decides whether to skip work carries everything the work depends
+ * on. `sameSelection` decides whether a step is skipped, so it is one of those keys. */
 const SUBJECT_KEYS = ["selected", "fold", "flow", "diagramId", "diagramBox", "codeFile",
                       "wayIn", "wayInside"];
 

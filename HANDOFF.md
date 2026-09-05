@@ -10223,3 +10223,62 @@ kept in a comment, because it is the same trap a reader of the real corpus would
 ### Gates
 
 1,037 tests (7 new in `test_related.py`), mypy clean, ruff clean, `output/` untouched.
+
+---
+
+## 2026-09-05 — three rules minted: 81, 82, and design rule 28
+
+Tom: *"mint the cache key rule"*, then *"Also mint the rules for a long job is not a switch,
+and inference is voluntary and secondary."* All three had been standing as candidates — two
+since 2026-09-04, one from the same day as the minting.
+
+### Rule 81 — a key that decides whether to skip work must carry everything the work depends on
+
+**Checked against rule 78 before a number was taken**, because I had flagged it myself as
+possibly that rule restated. It is not. Rule 78 is a pane *nobody asked to update*: the guard
+had two halves and only one had an event. Rule 81 is a pane that **was** asked, whose state
+**was** correct, and whose paint was skipped — `render()` ran, `RELDOCS` held the right object
+with `loading: false`, and `relDocsBlock()` called by hand returned the right markup. The fixes
+land in different places: 78 moves the reconcile into `render()`, 81 puts the field in the key.
+
+**It happened twice in one session in two unrelated caches**, which is what earned it an
+address rather than a comment. `docDomKey()` did not carry the related block's state, so the
+sentence froze seven milliseconds before the answer arrived. `selectionSnapshot()` and
+`sameSelection()` were two hand-kept lists of the same fields and `wayIn` went into one, so a
+trail step that was correct in every respect was deduplicated away. The comments on
+`diagramId`, `diagramBox` and `codeFile` each record paying it once — in the snapshot, where
+the lesson never reached the half that forgets.
+
+And the guard written for it **caught its next instance while it was being written**:
+`wayInsideName`, recorded and deliberately not compared, because it is a label and the trail
+gave up deduplicating on labels for rule 30's reason.
+
+### Rule 82 — a long job is not a switch
+
+Carried from 2026-09-04's analyse work. The lesson is not about cost or duration: it is **what
+the reader loses while it runs**. A base switch replaces what is on screen, so blocking is
+honest; an analysis of some other tree replaces nothing, so it gets a dismissible panel and a
+second slot. Name the thing being replaced, and if the answer is *"nothing on this screen"* it
+is not a switch however long it takes. The second half is rule 30's: a slot asks the process,
+never a label.
+
+### Design rule 28 — inference is voluntary and secondary
+
+Carried from 2026-09-04's *About this map*. Filed as a **design** rule because that is what it
+was proposed as, and because it sits one step over from design rule 14: 14 scopes what may
+*leave* the machine, 28 scopes whether a fact was **guessed**. Tom's words are in the body —
+*"Perfect, keep it that way as much as possible! Inference should always be voluntary and
+secondary."*
+
+### Bookkeeping
+
+`RULES.md` carries 81 and 82 in full, `DESIGN-RULES.md` carries 28. `CLAUDE.md`'s two indexes
+list all three and its table now reads **81 engineering rules numbered to 82** — 21 still does
+not exist — and **28 design rules**; `BRIEFING.md`'s header table matches. Cited at
+`relDomKey`, `SUBJECT_KEYS`, `claim_analysis` and `_r_about`.
+
+**The two stale counts in the dated 2026-09-04 sections were left alone.** They say what was
+true on their date, and the record's convention is that a dated section is history; the two
+header tables are where the current count lives.
+
+1,037 tests, mypy clean, ruff clean.

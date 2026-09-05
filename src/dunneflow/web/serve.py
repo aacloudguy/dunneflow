@@ -869,6 +869,11 @@ class _Live:
         **The refusal is the process's, not the report's.** A report still saying `working`
         over a child that has gone is a stale lock, and it is *cleared here* rather than
         left for somebody to notice -- which is the difference between a slot and a jam.
+
+        **Rule 82** — a long job is not a switch. This slot sits beside `claim` rather than
+        sharing it because a base switch replaces what is on screen and an analysis of some
+        other tree replaces nothing; the map stays true for the whole run. And it asks the
+        process rather than a label (rule 30), which is the *"or locked"* half.
         """
         with self.analysis_lock:
             if self.analysis_running():
@@ -1822,6 +1827,10 @@ class _Handler(BaseHTTPRequestHandler):
         document scanner is hand-written, and `Provenance`'s two paid tiers are declared and
         unbuilt. A reader handed a map is entitled to know that in as many words, and to be
         told plainly when an older map cannot say.
+
+        **Design rule 28** is what these two rows are: inference is voluntary and secondary,
+        and a map states whether any was used. One step over from design rule 14, which
+        scopes what may *leave* the machine -- this scopes whether a fact was **guessed**.
 
         **The fingerprint is not offered as a comparison, and that was a correction.** The
         obvious row is *"would a newer DunneFlow read this differently?"* -- and for the map

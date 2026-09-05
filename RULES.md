@@ -1406,3 +1406,64 @@ rule of that number — a blank canvas must say why it is blank — which does e
     **And the refusal has to name the way out.** *"Never finished"* is a dead end; *"analysing
     it again completes it — the extraction is cached, so it takes seconds"* is a fix the
     reader can press. A rule that only ever says no teaches people to work around it.
+
+81. **A key that decides whether to skip work must carry everything the work depends on.**
+    Document mode's related-documents block painted *"Looking for documents related to
+    `<module>`…"*, the answer arrived **seven milliseconds later**, `render()` ran, and the
+    sentence never changed. Nothing was broken anywhere in the chain: the endpoint answered,
+    `RELDOCS` held the right object with `loading: false`, and calling `relDocsBlock()` by
+    hand in the console returned the correct markup. The screen was simply never told.
+
+    The doc pane repaints only when `docDomKey()` changes — a bargain worth 9.5 s per
+    `render()` on a function that runs on every keystroke, so the bargain is right. The new
+    block lived in that chrome and **its state was not in the key**, so the pane was told
+    nothing had changed and believed it.
+
+    **This is not rule 78.** That rule is about a pane nobody asked to update: the guard had
+    two halves and only one had an event. Here every route asked, the state was correct, and
+    the *paint* was skipped. Same silence, opposite cause — and the two are worth separate
+    addresses because the fix is in different places: rule 78 moves the reconcile into
+    `render()`, and this one puts the field in the key.
+
+    **It happened twice in one session, in two unrelated caches, which is what makes it a
+    rule rather than an oversight.** `selectionSnapshot()` writes a trail step's subject and
+    `sameSelection()` decides whether two steps are the same one; they were two hand-kept
+    lists of the same fields, `wayIn` went into the first and not the second, and drilling
+    into a sub-application filed a step labelled `mensores ▸ quaestor` that was correct in
+    every respect and deduplicated away. The comments on `diagramId`, `diagramBox` and
+    `codeFile` each record paying that once — **in the snapshot**, where the lesson never
+    reached the half that forgets.
+
+    So: name the fields once and derive both sides from the list. `SUBJECT_KEYS` is that
+    list, and the guard asserting the snapshot and the comparator agree **caught a second
+    field the moment it was written** — `wayInsideName`, which is deliberately excluded
+    because it is a *label* and the trail gave up deduplicating on labels for rule 30's
+    reason. A rule that finds its next instance while you are still writing it is the shape
+    worth an address.
+
+    The failure mode is the worst kind to find by eye: **no error, no log, no missing
+    element** — a stale sentence that was true when it was painted. Test it by changing the
+    thing the key does not carry and asserting the screen moved, never by asserting the
+    state is right; the state was always right.
+
+82. **A long job is not a switch — a slot names what is being replaced, not what is
+    running.** `serve` had one lock for *"something is rebuilding the base"*, and reading a
+    new source tree wanted a lock too. Sharing it was the obvious move and would have meant a
+    ninety-second analysis of an unrelated directory locking the reader out of changing
+    version for reasons nobody could state on screen.
+
+    The two are not the same act. **A base switch replaces what is on screen**, so every count
+    underneath belongs to the version being replaced and blocking the page is honest: the map
+    is about to stop being true. **An analysis of some other tree replaces nothing** — the map
+    on screen stays true for the whole run — so it gets a dismissible panel and a second slot,
+    `claim_analysis` beside `claim`.
+
+    The test is not *how long does it take* or *how much does it cost*. It is **what does the
+    reader lose while it runs**: name the thing being replaced, and if the answer is "nothing
+    on this screen", it is not a switch however long it takes and however much machinery it
+    shares. A slot exists to protect what is being replaced, not to serialise work.
+
+    **And a slot must ask the process, not a flag** (rule 30). `claim_analysis` refused on
+    `state == "working"`, which a watcher dying without noting leaves true for ever — a reader
+    seeing nothing running and still being refused. It asks `poll()` now and clears the stale
+    lock rather than leaving it for somebody to notice.

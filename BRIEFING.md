@@ -5,7 +5,7 @@ It exists so a fresh context can be useful in a few minutes instead of an hour.
 
 | Read | For |
 |---|---|
-| `CLAUDE.md` | The rules. 79 engineering rules — numbered to 80, since 21 does not exist — and 27 dashboard design rules, each earned from a false result on real code. **Binding.** |
+| `CLAUDE.md` | The rules. 81 engineering rules — numbered to 82, since 21 does not exist — and 28 dashboard design rules, each earned from a false result on real code. **Binding.** |
 | `HANDOFF.md` | The chronological record — what was built when, what it cost, what broke. ~1,700 lines. Read *sections*, not the whole thing. |
 | **this file** | Where things are, what is done, what we are doing now, what not to re-open. |
 | Artifact `f993d319-d2b7-4217-9130-cdbba698d1bc` | The ratified dashboard design — a complete working UI, the source of truth for every view. Read it with the **Artifact tool**, not from a screenshot. |
@@ -205,13 +205,17 @@ for the Diagram's sub-application button — three real clicks reported success 
 event, the harness having stopped mid-session (rule 48) — and a one-off boot failure from a
 stale `localStorage` blob that cleared on reset and did not reproduce.
 
-**Three rules are still candidates, none of them blocking.** Two carried from 2026-09-04 and
-never minted — *a long job is not a switch: a slot names what is being replaced, not what is
-running* (engineering), and *inference is voluntary and secondary, and a map states whether any
-was used* (design). One from today: *a cache key must carry everything its subtree is of* —
-which the doc pane's `docDomKey()` learnt twice, once for the lane and once for the related
-block, and which `selectionSnapshot`/`sameSelection` learnt in the same session from the other
-side. It may be rule 78 restated rather than a new one; that is Tom's call.
+**Three rules were minted on Tom's call, and nothing is left as a candidate.**
+
+| | |
+|---|---|
+| **rule 81** | *A key that decides whether to skip work must carry everything the work depends on.* Checked against rule 78 before taking a number and it is not that one: 78 is a pane nobody asked to update, this is a pane that asked, got the right answer, and skipped the paint. It found its second instance while being written — the guard over `SUBJECT_KEYS` caught `wayInsideName` immediately. |
+| **rule 82** | *A long job is not a switch — a slot names what is being replaced, not what is running.* Carried from 2026-09-04. The test is what the reader **loses** while it runs, not how long it takes. |
+| **design rule 28** | *Inference is voluntary and secondary, and a map states whether any was used.* Carried from 2026-09-04. One step over from design rule 14, which scopes egress; this scopes whether a fact was **guessed**. |
+
+The counts now read **81 engineering rules numbered to 82** — 21 still does not exist — and
+**28 design rules**. All three are cited where they apply: `relDomKey`, `SUBJECT_KEYS`,
+`claim_analysis` and `_r_about`.
 
 **A mistake worth carrying forward:** `git checkout <file>` to undo a one-line probe reverted
 a whole day's work in that file. Recovered from a scratchpad copy plus nine re-applied edits.

@@ -405,3 +405,42 @@ bought a rewrite of settled CSS, neither of which serves the thing the tool is f
 
     *Found by Tom driving it, and only by that. It began as a complaint about a 1 px arrow
     being thin to aim at — which was true, and was the smaller half of the problem.*
+
+28. **Inference is voluntary and secondary, and a map states whether any was used.** Tom
+    asked that an analysis record *what model was used*, so a reader could decide to read the
+    directory again when a better one existed. Checking before planning turned the feature
+    from a placeholder into a guarantee: **no model is used**. The extractors are stdlib
+    `ast` and `tokenize`, the document scanner is hand-written, nothing on the analysis path
+    touches a network, and `Provenance`'s two paid tiers — `CITED` and `INFERRED` — are
+    declared and unbuilt.
+
+    Tom, on being told: *"Perfect, keep it that way as much as possible! Inference should
+    always be voluntary and secondary."* So *About this map* reads **none — every fact here
+    was read, not guessed** and **none — this analysis is deterministic and local**, and a
+    test asserts that nothing under `extractors/`, `resolve/` or `canonical/` imports an HTTP
+    client or an LLM SDK. A claim on screen that no query can return is prose (rule 13).
+
+    **This is one step over from design rule 14**, which scopes what may *leave* the machine.
+    This scopes whether a fact was **guessed** — a different question with a different
+    failure. Egress is about trust in the outside world; this is about trust in the map
+    itself, and a reader weighing a finding is entitled to know which of the four provenance
+    tiers produced it without asking.
+
+    *Voluntary* means somebody turns it on, so the deterministic answer is the resting state
+    and never a fallback that happened to fire. *Secondary* means an inferred fact never
+    replaces a read one and never arrives unlabelled beside it — which is what the tiers are
+    for, and why a quotation and a guess must never look alike.
+
+    **Missing and blank are different answers**, and flattening them would turn a silence
+    into a promise. Every field arrives as `{recorded, value, none}`: a map written before
+    this existed reports `recorded: false` and says *"not recorded — written before this map
+    could say"*, in italic and visibly apart from the guarantee. `none` is the **server's**
+    word, never a test for the string on the page — `inference` stores `none` so
+    `dunneflow query` over `meta` reads as prose, `model` stores blank because there is no
+    word for the model that did not run, and the page owns neither spelling (rule 51).
+
+    *What is deliberately not offered is a "would a newer build read this differently?" row.*
+    For the map on screen it can only ever answer no — a `Store` opened read-only calls
+    `_refuse_if_stale`, so a mismatched graph never becomes the base at all. What is stated
+    is the guarantee that produces; the honest *should I read this again?* signal is the date
+    beside it and the tree leaf it was read from.

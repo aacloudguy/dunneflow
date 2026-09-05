@@ -1427,8 +1427,20 @@ body {
 }
 .rank-row:last-child { border-bottom: 0; }
 .rank-row:hover { background: var(--raised); }
-.rank-name { display: flex; align-items: center; gap: .4rem; min-width: 0; }
+/* Two lines now: the name with its tags, and what the way in actually *is*. It was one
+   line of name + kind tag, which is why fourteen rows — four installed executables, one
+   HTTP route and nine guesses — read as fourteen of the same thing. */
+.rank-name { display: flex; flex-direction: column; gap: .15rem; min-width: 0; }
+.rank-top { display: flex; align-items: center; gap: .4rem; min-width: 0; }
 .rank-name code { font-family: var(--f-mono); font-size: .76rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rank-what { font-size: .68rem; color: var(--text-faint); overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap; }
+.rank-what .mono { font-family: var(--f-mono); }
+/* `DECLARED` reads as read-from-packaging and `GUESSED` as recognised-by-shape. Weight and
+   a border, never the severity palette: a guess is not a fault and the accent already means
+   "here is a route" (design rule 4). */
+.kind-tag.declared { border: 1px solid var(--border-strong); color: var(--text); background: none; }
+.kind-tag.guessed { border: 1px dashed var(--border-strong); color: var(--text-faint); background: none; }
 .rank-reach { font-size: .76rem; text-align: right; font-variant-numeric: tabular-nums; color: var(--text-muted); }
 .bar { height: .4rem; background: var(--sunken); border-radius: .25rem; overflow: hidden; }
 .bar i { display: block; height: 100%; background: var(--accent); border-radius: .25rem; }
@@ -1438,6 +1450,25 @@ body {
   padding: .06rem .28rem; border-radius: .1875rem;
   background: var(--sunken); color: var(--text-muted); white-space: nowrap;
 }
+
+/* A row in the way-in pane: a command, or a sub-application. Three columns, because the
+   three things a reader wants are the name they would type, what it is in the program, and
+   where to open it. `static` is the sub-application variant -- a group is not itself a
+   selection (rule 74), so it does not offer to become one. */
+.wirow { display: grid; grid-template-columns: minmax(0, 12rem) 1fr minmax(0, 14rem);
+  gap: .5rem; align-items: baseline; width: 100%; text-align: left;
+  padding: var(--row-pad) .1rem; border: 0; border-bottom: 1px solid var(--border);
+  background: none; font: inherit; color: var(--text); cursor: pointer; }
+.wirow:last-child { border-bottom: 0; }
+.wirow.static { cursor: default; }
+.wirow:not(.static):hover { background: var(--raised); }
+.wirow .winame { font-size: .8rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wirow .wiqual { font-size: .7rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wirow .wiwhere { font-size: .68rem; text-align: right; color: var(--text-faint); }
+.wifacts { display: grid; grid-template-columns: 5rem 1fr; gap: .3rem .6rem;
+  align-items: baseline; font-size: .78rem; }
+.wifacts .k { font-size: .62rem; font-weight: 700; letter-spacing: .07em;
+  text-transform: uppercase; color: var(--text-faint); }
 
 .bkrow { display: grid; grid-template-columns: 1.2rem 1fr 3rem 5rem; gap: .45rem; align-items: center;
   padding: var(--row-pad) 0; border-bottom: 1px solid var(--border); font-size: .78rem; }

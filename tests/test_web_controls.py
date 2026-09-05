@@ -467,11 +467,45 @@ def test_every_subject_setting_nav_item_carries_a_subject() -> None:
         )
 
     routes = js.split("const NAV_ROUTES = {", 1)[1].split("\n};", 1)[0]
+
+    def route_text(kind: str) -> str | None:
+        """One route's whole body, brace-matched.
+
+        **The same lesson as `item_text` above, on the other half of the same test.** This
+        was `^\\s*ep:\\s*(.+)$` -- the first *line* of the route -- which was right while
+        every route was one line and reported a working route as dead the day one grew a
+        body. `ep` is two cases now (a command tree opens a pane, a single routine is
+        selected) and its `selectFromNav` is on the fourth line. A guard that reads one line
+        of a multi-line answer is rule 42's shape: it names the right case and cannot catch
+        it.
+        """
+        m = re.search(rf"^\s*{re.escape(kind)}:\s*", routes, re.M)
+        if not m:
+            return None
+        rest = routes[m.end():]
+        if not rest.lstrip().startswith("(") and not rest.lstrip().startswith("("):
+            return rest.split("\n", 1)[0]
+        depth = 0
+        started = False
+        for i, ch in enumerate(rest):
+            if ch in "({":
+                depth += 1
+                started = True
+            elif ch in ")}":
+                depth -= 1
+                if started and depth == 0:
+                    # past the arrow's parameter list; keep going to the end of the body
+                    tail = rest[i + 1:]
+                    if tail.lstrip().startswith("=>"):
+                        continue
+                    return rest[:i + 1]
+        return rest
+
     for kind in subject_kinds:
-        route = re.search(rf"^\s*{re.escape(kind)}:\s*(.+)$", routes, re.M)
+        route = route_text(kind)
         assert route, f'no route for nav kind "{kind}"'
-        assert "selectFromNav" in route.group(1), (
-            f'route "{kind}" does not select anything: {route.group(1).strip()}'
+        assert "selectFromNav" in route, (
+            f'route "{kind}" does not select anything: {route.strip()[:200]}'
         )
 
     assert 'data-navid="${esc(i.sel)}"' in js, (
@@ -7966,6 +8000,67 @@ def test_a_box_opens_into_its_own_routines() -> None:
     )
 
 
+def _compared_subject_keys(js: str) -> set[str]:
+    """The scalars `sameSelection` actually compares.
+
+    They used to be written out inside the function, so a guard could look for the field name
+    in its body. They are `SUBJECT_KEYS` now, because `selectionSnapshot` and `sameSelection`
+    were two hand-kept lists of the same fields and the fourth one added — `wayIn` — went into
+    the snapshot and not the comparator: a step carrying its subject perfectly and then
+    deduplicated against the step before it, which is rule 33's symptom with the field
+    present.
+
+    **Both halves are asserted**, or this reads a list nothing uses: the names must be in
+    `SUBJECT_KEYS`, and `sameSelection` must be the thing that walks it. That is stricter than
+    what it replaces, which passed on the field name appearing anywhere in the body —
+    a comment included.
+    """
+    same = _fn(js, "sameSelection")
+    assert "SUBJECT_KEYS" in same, (
+        "`sameSelection` no longer compares the named subject keys, so this guard is reading "
+        "a list nothing uses"
+    )
+    m = re.search(r"const SUBJECT_KEYS = \[(.*?)\];", js, re.S)
+    assert m, "SUBJECT_KEYS is gone; the snapshot and the comparator are two lists again"
+    return set(re.findall(r'"([A-Za-z]+)"', m.group(1)))
+
+
+def test_every_scalar_a_step_records_is_a_scalar_it_is_compared_on() -> None:
+    """The guard that would have caught it, and it is about the pair rather than a field.
+
+    `selectionSnapshot()` writes a step's subject and `sameSelection()` decides whether two
+    steps are the same one. They were two hand-maintained lists of the same fields, and three
+    separate comments in the snapshot record paying for a field that was missing from *it*.
+    The fourth field went the other way: `wayIn` was written into the snapshot and left out of
+    the comparator, so drilling from a way in into one of its sub-applications filed a step
+    labelled `mensores ▸ quaestor` which was deduplicated against `mensores` and discarded —
+    rule 33's symptom with the subject present and correct.
+
+    Asserted as a set equality rather than field by field, because the point is that a *new*
+    field cannot be added to one and forgotten in the other. `picks` is excluded: it is an
+    array and is compared element-wise below the scalars.
+    """
+    js = _code(_read("shell.js"))
+    snap = _fn(js, "selectionSnapshot")
+    recorded = set(re.findall(r"^\s*([A-Za-z]+):\s*state\.", snap, re.M))
+    recorded |= set(re.findall(r"[{,]\s*([A-Za-z]+):\s*state\.", snap))
+    recorded.discard("picks")
+    # **Labels ride along and are never compared** (rule 30). `wayInsideName` is the word a
+    # mount is known by, carried so a restored step can name itself without a second lookup;
+    # the identity beside it is `wayInside`. `recordSelection` gave up deduplicating on labels
+    # because two routines can share a name, and a subject that is partly a label is that
+    # mistake returning one field at a time. Named here rather than pattern-matched, so adding
+    # one is a decision somebody writes down.
+    recorded -= {"wayInsideName"}
+    compared = _compared_subject_keys(js)
+    assert recorded, "no fields were found in the snapshot; this guard is blind"
+    assert recorded == compared, (
+        "the snapshot and the comparator disagree about what a subject is. "
+        f"recorded and not compared: {sorted(recorded - compared)}; "
+        f"compared and not recorded: {sorted(compared - recorded)}"
+    )
+
+
 def test_moving_the_drawing_is_a_step_the_trail_can_reverse() -> None:
     """Three acts in Diagram mode change no selection at all.
 
@@ -7985,9 +8080,9 @@ def test_moving_the_drawing_is_a_step_the_trail_can_reverse() -> None:
             f"a step does not read `state.{field}`, so moving the drawing files a step "
             "indistinguishable from the one before it"
         )
-    same = _fn(js, "sameSelection")
+    compared = _compared_subject_keys(js)
     for field in ("diagramId", "diagramBox"):
-        assert field in same, (
+        assert field in compared, (
             f"two steps that differ only by `{field}` compare equal, so the second is "
             "deduplicated away and Back cannot reverse it"
         )
@@ -10033,13 +10128,12 @@ def test_going_back_restores_which_file_the_code_pane_had_open() -> None:
     """
     js = _read("shell.js")
     snap = _fn_body(js, "selectionSnapshot")
-    same = _fn_body(js, "sameSelection")
     step = _fn_body(js, "applySelectionStep")
     assert "codeFile:" in snap, (
         "a trail step no longer records which file was open, so opening one files a step "
         "that is identical to the last and is dropped"
     )
-    assert "codeFile" in same, (
+    assert "codeFile" in _compared_subject_keys(js), (
         "two steps differing only by their file read as the same step, so the one the reader "
         "just made is deduplicated away and Back skips past it"
     )

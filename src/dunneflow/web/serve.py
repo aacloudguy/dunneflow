@@ -59,6 +59,7 @@ from .layout import structural
 from .search import search_files, search_in_file
 from .threads import cohort, for_node
 from .vocabulary import bind_glossary, measure_naming, stated_naming
+from .waysin import describe as describe_way_in
 
 STATIC = Path(__file__).parent / "static"
 VENDOR = Path(__file__).parent / "vendor"
@@ -1514,6 +1515,31 @@ class _Handler(BaseHTTPRequestHandler):
         with self._live.lock:
             self._json(self._live.current.naming)
 
+    def _r_wayin(self, q: dict[str, list[str]]) -> None:
+        """One way in, opened: what starts it, and everything it can run.
+
+        **Answered on demand, because a way in is only sometimes a tree.** A single-routine
+        way in needs nothing this does not already have on the cover; a command tree costs a
+        recursive walk per mounted sub-application -- 22 of them on Mensores -- and a reader
+        who never clicks one must not pay for it at every boot (rule 45).
+
+        The name is the identity because the name is what the row printed and the cover has
+        no other. A name that matches nothing is a refusal with a sentence, never an empty
+        tree: an empty tree reads as an application with no commands, which is a different
+        and false claim (design rule 21).
+        """
+        name = (q.get("name") or [""])[0]
+        if not name:
+            self._json({"found": False, "reason": "no way in was named"})
+            return
+        # `inside` names a sub-application to open instead of the whole tree. Refused by
+        # `describe` unless it is genuinely mounted under this way in -- an id from the page
+        # is a parameter, not a permission, and one taken as given would render any app
+        # object in the store under any way in's heading.
+        inside = (q.get("inside") or [""])[0]
+        with self._live.lock:
+            self._json(describe_way_in(self._live.current.store, name, inside))
+
     def _r_stated(self, q: dict[str, list[str]]) -> None:
         """The stated lane: the naming rules this project's documents contain.
 
@@ -2405,6 +2431,7 @@ class _Handler(BaseHTTPRequestHandler):
         "/api/thread": "_r_thread",
         "/api/naming": "_r_naming",
         "/api/stated": "_r_stated",
+        "/api/wayin": "_r_wayin",
         "/api/glossary": "_r_glossary",
         "/api/table": "_r_table",
         "/api/source": "_r_source",

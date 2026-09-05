@@ -19,11 +19,11 @@ from __future__ import annotations
 from typing import Any
 
 from ..anomalies import BROKEN, INFO, SUSPECT, detect
-from ..resolve.flows import ways_in
 from ..sourcedb import SourceStore
 from ..store import Store
 from . import queries
 from .graph import pkg_params, root_package
+from .waysin import listing as ways_in_listing
 
 
 def _root(store: Store) -> str:
@@ -105,25 +105,12 @@ def build(store: Store, source: SourceStore | None, program: str, *,
 
     # Ways in, already deduplicated and ranked by reach. One entry is commonly detected
     # three ways at once, and listing it three times buries the others.
-    entrypoints = [
-        {
-            "name": w["name"],
-            "kind": w["kind"],
-            "reach": w["reach"],
-            # The boundary kinds this way in ends up touching, as plain words. An em dash
-            # rather than an empty string when it touches nothing: a way in that reaches
-            # the world nowhere is a fact worth seeing, not a blank.
-            "touches": " ".join(k.value for k in w["kinds"]) or "—",
-            "aliases": w.get("aliases", []),
-            # The routines this way in actually starts. `ways_in` has already computed
-            # them -- an app object contributes every command hung off it -- and the
-            # cover used to drop them on the floor, which left the navigator listing six
-            # ways in that could not say *which* one had been clicked. A label is not an
-            # identity: without these the four subject-setting routes had no subject.
-            "nodes": list(w["roots"]),
-        }
-        for w in ways_in(store)
-    ]
+    # **What each way in *is*, not only how far it reaches.** This used to build the rows
+    # here from `ways_in()` and drop `evidence` and `declared` on the floor, so an installed
+    # executable and a module-level function DunneFlow had guessed at by its name drew
+    # identically -- and five of Mensores' fourteen rows are all called `main`. `waysin.py`
+    # owns the answer now, because the pane behind a click needs the same one (rule 51).
+    entrypoints = ways_in_listing(store)
 
     boundaries = [
         {"kind": r["kind"], "n": r["n"], "common": r["common"] or "—"}

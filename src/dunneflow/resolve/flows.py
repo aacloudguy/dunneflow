@@ -225,6 +225,15 @@ def ways_in(store: Store) -> list[dict]:
                 "name": e.name, "kind": e.kind.value, "evidence": e.evidence,
                 "roots": roots, "reach": len(reach), "kinds": kinds,
                 "declared": declared, "aliases": [] if prev is None else prev["aliases"],
+                # **The app object, when this way in is a command tree rather than a
+                # routine.** `mensores` names `mensores.cli:app` -- a Typer object, which
+                # is not a routine and has no file to open -- and expands here to the 107
+                # commands hung off it. Carried rather than left to be guessed from
+                # `len(roots) > 1`, because "this is a tree" and "this happens to start
+                # several routines" are different facts that look identical (rule 30), and
+                # a reader who clicks the name is owed the tree rather than whichever of
+                # its commands a query returned first.
+                "app_id": e.parent_id,
                 "_score": score,
             }
             if prev is not None:

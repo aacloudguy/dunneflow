@@ -21,6 +21,7 @@
    ════════════════════════════════════════════════════════════ */
 
 let ENTRYPOINTS = [];   // ways in, deduplicated and ranked by reach
+let WAYIN = null;       // one way in, opened: its evidence, its commands, its sub-applications
 let BOUNDARIES  = [];   // boundary kinds with counts and their commonest target
 let PKGS        = [];   // top-level packages by routine count
 /* The program's own namespace -- `mensores` -- measured by the server over every module and
@@ -297,6 +298,9 @@ const state = {
    * drags it, and the cap is whatever the window can spare. */
   codeWidth: 44,          // rem
   codeFile: "",           // which file the Code group has open, "" for the list
+  wayIn: "",              // which way in the way-in pane has open, by name
+  wayInside: "",          // and which of its sub-applications, if the reader went in
+  wayInsideName: "",      // that one's mounted name, for the crumb and the trail
   /* Whether the code browser draws the difference from the compared version over the
    * lines it shows. On, because setting a compared version is already the reader saying
    * what they came for -- and off is a real want rather than a concession, because four
@@ -910,7 +914,18 @@ const NAV_ROUTES = {
    * tripped the no-route error below, because the route existed; it just had no subject
    * to act on, and no subject had ever reached the DOM. Design rule 16 one level down
    * again: a control that renders, routes, and resolves to nothing. */
-  ep:  (b) => selectFromNav({ nodes: navIds(b) }),
+  /* **A tree is not one of the things it holds** (rule 74), and which of the two this row
+     is comes from the server rather than from `nodes.length > 1` (rule 30). `mensores` is
+     `mensores.cli:app` — a Typer object with no file — expanding to 107 commands across 44
+     files, and selecting all 107 landed the reader in whichever one a query returned first:
+     `mensores.cli.examples.list_cmd` from one, `mensores/cli/_root.py` from another. Not
+     wrong so much as arbitrary, and nothing on screen explained it. A single-routine way in
+     is unchanged, because for those the ordinary selection was always the right answer. */
+  ep:  (b) => {
+    const e = ENTRYPOINTS.find(x => x.name === (b.dataset.epname || ""));
+    if (e && e.app) { openWayIn(e.name); return; }
+    selectFromNav({ nodes: navIds(b) });
+  },
   pkg: (b) => selectFromNav({ disks: navIds(b) }),
   b:   (b) => selectFromNav({ disks: navIds(b) }),
   t:   (b) => selectFromNav({ table: b.dataset.navid || "" }),
@@ -3896,6 +3911,205 @@ const BKIND_GLYPH = {
  * Fitted rather than budgeted because the box differs **per row inside one window**: 156px
  * on that row and 112px on the one below it, because the `kind-tag` beside it is a
  * different width. A constant cannot be right for both. */
+/* One way in, fetched when the reader opens it.
+ *
+ * On demand rather than with the cover, because a command tree costs a recursive walk per
+ * mounted sub-application — 22 of them on Mensores — and a reader who never opens one must
+ * not pay for it at every boot (rule 45).
+ *
+ * Keyed by name because the name is what the row printed and the cover has no other identity
+ * for a way in. A second open of the same name is a repaint, not a second fetch. */
+async function loadWayIn(name, inside) {
+  inside = inside || "";
+  if (WAYIN && WAYIN.name === name && (WAYIN.insideId || "") === inside && !WAYIN.loading) { render(); return; }
+  WAYIN = { name, insideId: inside, loading: true };
+  render();
+  try {
+    const r = await fetch(`/api/wayin?name=${encodeURIComponent(name)}`
+      + (inside ? `&inside=${encodeURIComponent(inside)}` : ""));
+    if (!r.ok) throw new Error(`the server answered ${r.status}`);
+    const d = await r.json();
+    if (state.wayIn !== name) return;                 // the reader moved on
+    WAYIN = { ...d, name, insideId: inside, loading: false };
+  } catch (err) {
+    if (state.wayIn === name) WAYIN = { name, insideId: inside, loading: false, error: err.message };
+  }
+  render();
+}
+
+/* The *act* of opening one, which is the fetch plus everything that makes it a move: the
+   view, the trail step, and the persisted state. `applySelectionStep` calls `loadWayIn`
+   alone, because a restore must not file a step while it is restoring one. */
+async function openWayIn(name, inside) {
+  /* **The label is the mount's name, never its id.** `quaestor` is what the row says and
+     what the reader clicked; `e932ebddd857f25f` is how the store finds it. A trail step
+     reading `mensores ▸ e932ebddd857f25f` names the right step in a language nobody on this
+     side of the screen speaks, and this reader does not write code. Read off the groups
+     already in `WAYIN`, which is the payload the button was drawn from, so the two cannot
+     disagree — and falling back to the id rather than to nothing, because a step that
+     cannot be named is still a step that has to be reachable (rule 33). */
+  const group = inside && WAYIN && (WAYIN.groups || []).find(g => g.child_id === inside);
+  state.view = "wayin";
+  state.wayIn = name;
+  state.wayInside = inside || "";
+  state.wayInsideName = inside ? ((group && group.name) || inside) : "";
+  used("wayin");
+  pushTrail("wayin", state.wayInside ? `${name} ▸ ${state.wayInsideName}` : name,
+            state.wayInside ? "opened a sub-application" : "opened a way in");
+  persist();
+  await loadWayIn(name, state.wayInside);
+}
+
+/* A row in the pane that names a routine is an **ordinary selection** — the same one the
+ * navigator and the graph make — so the stack lights, the inspector fills, Code walks to the
+ * file and the trail records the hop. That is the whole point of the pane: `mensores` is a
+ * tree of 107 commands, and picking one of them is the thing a reader came to do. */
+function wayInCmdRow(c) {
+  const where = c.file
+    ? `<span class="mono" title="${esc(c.file)}">${esc(srcShort(c.file))}${c.line ? `:${c.line}` : ""}</span>`
+    : `<span class="hint">no definition site recorded</span>`;
+  return `
+    <button class="wirow" data-navid="${esc(c.node)}" data-nav="routine">
+      <span class="winame mono">${esc(c.name)}</span>
+      <span class="wiqual hint">${esc(c.qualname || "")}</span>
+      <span class="wiwhere">${where}</span>
+    </button>`;
+}
+
+function viewWayIn() {
+  if (!WAYIN || WAYIN.loading) {
+    return `<div style="max-width:58rem"><div class="note">Reading ${esc(state.wayIn || "this way in")}…</div></div>`;
+  }
+  if (WAYIN.error) {
+    return `<div style="max-width:58rem"><div class="note"><b>That way in could not be read.</b>
+      ${esc(WAYIN.error)}. Nothing is being shown rather than something being guessed.</div></div>`;
+  }
+  if (WAYIN.found === false) {
+    return `<div style="max-width:58rem"><div class="note"><b>No such way in.</b>
+      ${esc(WAYIN.reason || "")}</div></div>`;
+  }
+  const e = WAYIN;
+  const groups = e.groups || [];
+  const cmds = e.commands || [];
+
+  const inside = e.inside || null;
+
+  return `
+  <div style="max-width:58rem;display:flex;flex-direction:column;gap:.75rem">
+    ${inside ? `
+    ${/* **Where you are, and the way back.** Every number below was recomputed for this
+          sub-tree rather than carried down from the way in -- left alone they read 107, 44
+          and 1,381 under a heading naming a group of 34, each true of something the reader
+          is not looking at (rule 24). Design rule 20's other half: always offer a way back. */""}
+    <div class="note">
+      You are inside <b>${esc(inside.name)}</b>, a sub-application of
+      <b>${esc(e.name)}</b>. Everything below is about ${esc(inside.name)}.
+      <div class="prov">
+        <button class="cite" data-wiback="1">
+          <span class="citeicon" aria-hidden="true">◈</span>Back out to ${esc(e.name)}<span class="citego">the whole way in</span></button>
+      </div>
+    </div>` : ""}
+
+    <div class="note">
+      <b>${esc(e.name)}</b> is ${e.declared
+        ? `a way in this project <b>declares</b> — read out of its own packaging, so this is
+           how the program is installed and started.`
+        : `<b>not declared</b> anywhere. DunneFlow recognised it as a way in from its name or
+           its shape, which is a reading of the code rather than a fact about the program.`}
+      <div class="prov"><span class="mono">${esc(e.evidence || "")}</span></div>
+    </div>
+
+    <section class="panel">
+      <div class="panel-head"><h2>What it starts</h2>
+        <span class="hint">${Number(e.reach || 0).toLocaleString()} routines reachable</span></div>
+      <div class="panel-body">
+        <div class="wifacts">
+          <span class="k">kind</span><span>${esc(e.kind)}</span>
+          <span class="k">starts</span><span>${Number(e.starts || 0).toLocaleString()} routine${e.starts === 1 ? "" : "s"} across ${Number(e.files || 0).toLocaleString()} file${e.files === 1 ? "" : "s"}</span>
+          <span class="k">touches</span><span>${esc(e.touches || "—")}</span>
+          <span class="k">where</span><span>${e.where && e.where.file
+            ? `<span class="mono">${esc(e.where.file)}${e.where.line ? `:${e.where.line}` : ""}</span>`
+            : `<span class="hint">${e.app
+                ? "this name is an application object, not a routine — it has no definition site of its own"
+                : "no definition site recorded"}</span>`}</span>
+          ${(e.aliases && e.aliases.length) ? `<span class="k">also</span><span class="hint">${esc(e.aliases.join(" · "))}</span>` : ""}
+        </div>
+      </div>
+    </section>
+
+    ${groups.length ? `
+    <section class="panel">
+      <div class="panel-head"><h2>Sub-applications</h2>
+        <span class="hint">${groups.length} mounted on it</span></div>
+      <div class="panel-body">
+        <p class="hint" style="margin:.1rem 0 .5rem">Each is a group of commands mounted on
+          this application. The count is every command it holds, including its own
+          sub-applications — a group that says <b>0</b> really is registered and empty.</p>
+        ${groups.map(g => `
+          <button class="wirow" data-wigroup="${esc(g.child_id)}"
+                  title="Open ${esc(g.name)} \u2014 the ${g.commands} command${g.commands === 1 ? "" : "s"} it holds">
+            <span class="winame mono">${esc(g.name)}</span>
+            <span class="wiqual hint">${g.commands.toLocaleString()} command${g.commands === 1 ? "" : "s"}</span>
+            <span class="wiwhere">${g.file
+              ? `<span class="mono" title="${esc(g.file)}">mounted ${esc(srcShort(g.file))}:${g.line}</span>`
+              : `<span class="hint">mount site not recorded</span>`}</span>
+          </button>`).join("")}
+      </div>
+    </section>` : ""}
+
+    <section class="panel">
+      <div class="panel-head"><h2>${e.app ? "Commands hung directly on it" : "What it runs"}</h2>
+        <span class="hint">${cmds.length}</span></div>
+      <div class="panel-body">
+        ${cmds.length ? cmds.map(wayInCmdRow).join("")
+          : `<p class="hint">Nothing is attached directly to this application — every command
+             it has is inside one of the sub-applications above.</p>`}
+        ${e.unlisted ? `<div class="provfoot"><b>${Number(e.unlisted).toLocaleString()}</b>
+          of the routines this way in starts are named by neither a command nor a
+          sub-application above. That is a registration idiom DunneFlow followed far enough
+          to count and not far enough to name — a limitation of this tool rather than of the
+          program.</div>` : ""}
+      </div>
+    </section>
+  </div>`;
+}
+
+/* ═══ ways in: what each one is, where it lives, and what it starts ═══ */
+
+/* **Declared or guessed, and they must not look alike.** Four of Mensores' fourteen ways in
+ * are console scripts read out of `pyproject.toml` — facts about how the program is
+ * installed. Nine are a module-level function DunneFlow recognised *by its name*, or a
+ * `__main__` guard. The cover drew all fourteen as a name, a kind tag and a bar, so an
+ * installed executable and a guess were the same row — and five of them are called `main`.
+ *
+ * Not spent on colour. The severity palette says something is wrong and the accent says here
+ * is a route; a guess is neither (design rule 4). The word does it. */
+function authorityTag(e) {
+  return e.declared
+    ? `<span class="kind-tag declared" title="Read out of the project's own packaging — this is how the program is installed.">DECLARED</span>`
+    : `<span class="kind-tag guessed" title="DunneFlow recognised this as a way in from its name or its shape. Nothing declares it one.">GUESSED</span>`;
+}
+
+/* What the row is *about*: the evidence, and where it lives.
+ *
+ * The evidence is printed verbatim and unparsed — `pyproject.toml [project.scripts] mensores
+ * = mensores.cli:app` is the answer to "what, exactly?", and tidying it into fields would
+ * promote this tool's own sentence to a contract for nothing (rule 30).
+ *
+ * **A command tree says what it spans instead of naming one file.** `mensores` is
+ * `mensores.cli:app` — a Typer object, not a routine, with no definition site — and it starts
+ * 107 routines across 44 files. A file invented to fill the column would be one of the 107
+ * chosen arbitrarily, which is what clicking used to do (rule 1). */
+function wayInWhat(e) {
+  const where = e.where && e.where.file
+    ? `<span class="mono">${esc(srcShort(e.where.file))}${e.where.line ? `:${e.where.line}` : ""}</span>`
+    : (e.app ? `<span class="hint">starts ${Number(e.starts || 0).toLocaleString()} routines across ${Number(e.files || 0).toLocaleString()} files</span>` : "");
+  const alias = (e.aliases && e.aliases.length)
+    ? ` · <span class="hint">also detected as ${esc(e.aliases.slice(0, 2).join(", "))}${e.aliases.length > 2 ? ` +${e.aliases.length - 2}` : ""}</span>`
+    : "";
+  return `${esc(e.evidence || "")}${where ? " · " + where : ""}${alias}`;
+}
+
 function viewCover() {
   if (!ENTRYPOINTS.length) {
     return `<div class="panel" style="padding:1.25rem">
@@ -3935,8 +4149,12 @@ function viewCover() {
           ${ENTRYPOINTS.map(e => `
             <button class="rank-row" data-ep="${esc(e.name)}">
               <span class="rank-name">
-                <code data-fit="name">${esc(e.name)}</code>
-                <span class="kind-tag">${esc(e.kind)}</span>
+                <span class="rank-top">
+                  <code data-fit="name">${esc(e.name)}</code>
+                  <span class="kind-tag">${esc(e.kind)}</span>
+                  ${authorityTag(e)}
+                </span>
+                <span class="rank-what">${wayInWhat(e)}</span>
               </span>
               <span class="rank-reach num">${e.reach.toLocaleString()}</span>
               <span class="bar"><i style="width:${Math.max(2, (e.reach / max) * 100)}%"></i></span>
@@ -6498,16 +6716,46 @@ function selectionSnapshot() {
               reader had actually done. Rule 33 with the field simply missing, which is what
               the diagram comment above says about itself. The lesson was recorded and not
               carried across, and Code became a centre mode after it was written. */
-           codeFile: state.codeFile || null };
+           codeFile: state.codeFile || null,
+           /* **And which way in is open**, the fourth field of exactly this kind and added
+              for the reason the three above it were. Opening a way in changes no *selection*
+              -- an application is a command tree, not a node -- so without this every step
+              the way-in pane filed would be deduplicated against the one before it by
+              `sameSelection`, and Back would step past it into whichever way in happened to
+              be in `state`. Rule 33 with the field simply missing, which is what the diagram
+              and code comments above both say about themselves. Three recorded lessons and
+              the fourth view still had to be told. */
+           wayIn: state.wayIn || null,
+           wayInside: state.wayInside || null,
+           /* **A label, and it rides along without being compared** (rule 30). The identity
+              is `wayInside`; this is the word the mount is known by, carried so a restored
+              step can name itself without a second lookup. `sameSelection` deliberately does
+              not read it — `recordSelection` gave up deduplicating on labels for the reason
+              two routines can share a name, and a subject that is partly a label is that
+              mistake creeping back one field at a time. */
+           wayInsideName: state.wayInsideName || null };
 }
 
+/* **Every scalar a subject is made of, named once.**
+ *
+ * `selectionSnapshot()` writes these and `sameSelection()` compares them, and they were two
+ * hand-kept lists of the same thing. Every field added to the snapshot since the first one
+ * had to be remembered in two places, and the fourth — `wayIn` — was added to the snapshot
+ * and not to the comparator. The result is rule 33's exact symptom with the field present:
+ * the step carries its subject perfectly and is then deduplicated against the step before it,
+ * so drilling from a way in into one of its sub-applications filed a step labelled
+ * `mensores ▸ quaestor` that the trail discarded and replaced with `mensores`.
+ *
+ * The comments on `diagramId`, `diagramBox` and `codeFile` each record paying this once, in
+ * the snapshot, where the lesson does not reach the half that forgets. One list now, and the
+ * next field is free (rule 36: a generic loop narrowed to a literal is how a feature
+ * disappears without a trace — here it was two literals that had to agree). */
+const SUBJECT_KEYS = ["selected", "fold", "flow", "diagramId", "diagramBox", "codeFile",
+                      "wayIn", "wayInside"];
+
 function sameSelection(a, b) {
-  return a && b && a.selected === b.selected &&
-         (a.fold || null) === (b.fold || null) &&
-         (a.flow || null) === (b.flow || null) &&
-         (a.diagramId || null) === (b.diagramId || null) &&
-         (a.diagramBox || null) === (b.diagramBox || null) &&
-         (a.codeFile || null) === (b.codeFile || null) &&
+  return !!a && !!b &&
+         SUBJECT_KEYS.every(k => (a[k] || null) === (b[k] || null)) &&
          a.picks.length === b.picks.length &&
          a.picks.every((p, i) => {
            const q = b.picks[i];
@@ -6599,6 +6847,18 @@ function applySelectionStep(step) {
       state.codeFile = step.codeFile || "";
       loadCodeFile(state.codeFile);
     }
+    /* The same shape one view over, and only when it moved: `openWayIn` fetches, renders,
+       persists and files a step of its own, so calling it from inside the restoring of one
+       would file a step while stepping. The state is set here and the fetch asked for
+       directly, exactly as the code browser above does it. */
+    if ((step.wayIn || null) !== (state.wayIn || null)
+        || (step.wayInside || null) !== (state.wayInside || null)) {
+      state.wayIn = step.wayIn || "";
+      state.wayInside = step.wayInside || "";
+      state.wayInsideName = step.wayInsideName || "";
+      if (state.wayIn) loadWayIn(state.wayIn, state.wayInside);
+      else WAYIN = null;
+    }
     persist();
     buildNav();
     revealSelectedRoutine();
@@ -6649,7 +6909,7 @@ const CENTRE_MODES = ["graph", "table", "doc", "code", "diagram"];
 const OFF_MODE_PAGE = {
   cover: "the overview", anomalies: "the worklist", changes: "the comparison",
   glossary: "the glossary", naming: "the derived naming standard",
-  stated: "the stated naming rules",
+  stated: "the stated naming rules", wayin: "this way in",
   curiosities: "the doorway panel", pins: "what you have kept",
   inference: "the inference settings", settings: "Settings",
 };
@@ -9658,6 +9918,12 @@ function crumbsFor() {
     glossary:    [{ label: "vocabulary" }, { label: "glossary", cur: true }],
     naming:      [{ label: "vocabulary" }, { label: "derived naming standard", cur: true }],
     stated:      [{ label: "vocabulary" }, { label: "stated naming rules", cur: true }],
+    /* Three deep when the reader has gone into a sub-application, because two would name
+       the way in while the pane is about something inside it (rule 24 in the breadcrumb). */
+    wayin:       state.wayInside
+      ? [{ label: "ways in" }, { label: state.wayIn || "a way in" },
+         { label: state.wayInsideName || state.wayInside, cur: true }]
+      : [{ label: "ways in" }, { label: state.wayIn || "a way in", cur: true }],
     inference:   [{ label: "inference", cur: true }],
     curiosities: [{ label: "explore" }, { label: "worth a look", cur: true }],
     pins:        [{ label: "explore" }, { label: "kept", cur: true }],
@@ -9868,6 +10134,7 @@ function render() {
   else if (state.view === "glossary")  { ensureVocabulary(); vp.innerHTML = viewGlossary(); }
   else if (state.view === "naming")    { ensureVocabulary(); vp.innerHTML = viewNaming(); }
   else if (state.view === "stated")    { ensureVocabulary(); vp.innerHTML = viewStated(); }
+  else if (state.view === "wayin")     vp.innerHTML = viewWayIn();
   else if (state.view === "inference") vp.innerHTML = viewInference();
   else if (state.view === "curiosities") { ensureCuriosities(); vp.innerHTML = viewCuriosities(); }
   else if (state.view === "pins")       vp.innerHTML = viewPins();
@@ -10049,9 +10316,24 @@ function wire() {
     goToCode(b.dataset.gotocode, Number(b.dataset.gotoline || 0), b);
   }));
 
-  /* cover → graph */
+  /* cover → the way in itself.
+     It used to switch to graph mode and nothing else: the row the reader clicked chose
+     nothing, lit nothing and was not named anywhere afterwards, which is design rule 16's
+     defect wearing the costume of a mode switch. */
   $$("[data-ep]").forEach(b => b.addEventListener("click", () => {
-    state.view = "graph"; state.mode = "graph"; used("graph"); render();
+    openWayIn(b.dataset.ep || "");
+  }));
+
+  /* Into a sub-application, which is the same pane one level down. The id is the mount's
+     `child_id` and the server refuses one that is not genuinely under this way in, so a
+     stale button from a base that has since been switched is answered with a sentence
+     rather than with somebody else's tree. */
+  $$("[data-wigroup]").forEach(b => b.addEventListener("click", () => {
+    openWayIn(state.wayIn, b.dataset.wigroup || "");
+  }));
+
+  $$("[data-wiback]").forEach(b => b.addEventListener("click", () => {
+    openWayIn(state.wayIn, "");
   }));
 
   /* graph nodes: click, and arrow-key traversal */
@@ -10847,6 +11129,10 @@ const WIRED_ATTRS = new Set([
      from a dead one. `anopen` carries the program name on the button that opens what was
      just read, the way `pinid` carries a subject beside `pinopen`. */
   "closeanalyze", "anstart", "anfield", "andismiss", "anopen",
+  /* A way in: `ep` opens one from the cover, `epname` is the identity riding on the
+     navigator row beside the routines it starts. Two attributes because a row that opens
+     a tree and a row that selects a routine are the same row until the server says which. */
+  "epname", "wigroup", "wiback",
   /* The way out of a run, and the way back into one. `anstop` is drawn in two places -- on
      the running panel and inside the dialog's refusal -- and routed once, because they are
      one act. `anagain` carries the program name, like `anopen` beside it. */
@@ -12905,6 +13191,7 @@ const NAV_GROUPS = [
          * only by the label they printed, and every one did the same nothing. */
         ...eps.slice(0, 6).map(e => ({
           nav: "ep", label: e.name, n: e.reach, sel: (e.nodes || []).join(" "),
+          epname: e.name,
         })),
       ];
     } },
@@ -13390,6 +13677,10 @@ function navItemHtml(i) {
                   top, and it is the tiny unreadable thing the card replaced. */
               i.card ? `data-card="1"` : ""}
             ${i.sel ? `data-navid="${esc(i.sel)}"` : ""}
+            ${/* The way in's own name, because `sel` carries its routines and the label is
+                  fitted and may have been shortened. The route needs the identity, not the
+                  text (rule 30). */
+              i.epname ? `data-epname="${esc(i.epname)}"` : ""}
             ${i.sevnav ? `data-sevnav="${esc(i.sevnav)}"` : ""}
             ${i.current ? 'aria-current="true"' : ""}>
       ${i.dot ? `<span class="sevdot" style="background:var(--sev-${esc(i.dot)})"></span>` : ""}

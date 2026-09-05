@@ -179,7 +179,22 @@ program has a most-commented routine and a maximum alone is a claim nobody can w
 
 ## What we are doing now
 
-**The stated naming lane is on screen — built 2026-09-05.** Step 2 of the four Tom ordered for
+**A root package was elected by no vote — fixed 2026-09-05, and Tom found it.** He opened a
+map I had made by pointing `analyze` at `src/dunneflow` instead of `src` and found two real
+defects: `root_package` returned the *modal* first segment and could not fail, so **750 of 752
+routines were drawn as `<external>`** over a map whose cover counts were all correct (rule 49);
+and `COVER_PACKAGES` was a **second** decomposition, so navigator package rows selected plates
+that do not exist — 36 of 48 on that map and **1 of 46 on Mensores**. Both fixes are at serve
+time, so every existing map is fixed without re-analysis. See the record below.
+
+**One thing he found is not fixed and is his call:** clicking a package in the navigator marks
+the row selected, switches the pane, and leaves the crumb at *"nothing selected"* — while the
+inspector's own sentence names *"a package from the navigator"* as one of three ways to select
+something. It reproduces on Mensores, so it is neither my map nor either defect. Fixing it
+means deciding what selecting a package *is* (a plate is not a node, rule 30) — the
+`viewInspectorConstant` precedent is to route on kind.
+
+**Before that, the same day: the stated naming lane is on screen.** Step 2 of the four Tom ordered for
 the standards work, and the first thing the dashboard has ever shown of `doc_rules`: a second
 navigator row, *Stated naming rules*, quoting what somebody wrote beside the derived page that
 counts what the code does. Neither page compares them and both say so. See the section at the
@@ -236,7 +251,36 @@ controls are driven from the keyboard.*
 
 ---
 
-### The latest: the stated naming lane, on screen at last (2026-09-05)
+### The latest: a root elected by no vote, and a package row that selects nothing (2026-09-05)
+
+**Tom opened the throwaway `nodocs` map and found it broken. He was right, and it was two
+things.** Mine: the map was `analyze src/dunneflow`, and the prescribed shape is the *parent*
+(`analyze .../src`, whose child is the package). The tool's: it then failed twice.
+
+**1. `root_package` could not fail.** It elected the modal first dotted segment. Analyse a
+directory that already *is* a package and no segment is the root, so the biggest subpackage
+wins — `web`, 20 of 63 files — and `package_expr` sent everything else down its `ELSE` branch
+as `<external>`. **750 of 752 routines drawn as somebody else's code**, on the largest plate
+in the picture. The tell is not marginal: a real root covers **628/628** and **63/63**, a wrong
+one **20/63** and **19/61**, so no threshold is invented — a root accounts for every file or
+there is none, and `""` is a real answer meaning *the tree itself is the root*.
+
+*And the right test was already in the file.* `COVER_ROOT` asks the same question by grouping,
+counted **16 heads** and answered *no root* — same process, same store — while `root_package`
+elected `web`. `<external>` is `<outside the root>` now: it fired **0 of 4,786** times on
+Mensores and only ever when the root was wrong (rules 26 and 30).
+
+**2. `COVER_PACKAGES` was a second decomposition.** Second dotted segment, no root; its own
+comment claimed it matched the disks and `PACKAGE_SIZES` called the difference a hazard a
+hundred lines below — both standing for two months. The navigator selects **by plate id**, so
+a row with no plate selects nothing and the pane says *"Nothing to show."* **1 dead row of 46
+on Mensores**, 36 of 48 on the broken map. One expression, three callers (rule 51).
+
+Both are serve-time, so every map is fixed with no re-analysis; `output/dunneflow` had the same
+wrong root. 1,007 tests, and the three that matter fail without the fix — verified by stashing
+the *source* and keeping the tests, since stashing both proves nothing.
+
+### Before that: the stated naming lane, on screen at last (2026-09-05)
 
 **`doc_rules` has held naming rules somebody wrote since the document scanner existed, and the
 dashboard had never shown one of them.** `11-naming.md` quoted them from the day the column was
@@ -1434,6 +1478,15 @@ feature was blocked on an answer nobody owed.
   under a freshly measured element kept rendering the pane beside it, so even a zoom on
   correct coordinates showed the wrong thing. Measurement through the DOM still works and is
   what every figure in this session rests on.
+- **A package row does not make a selection.** Found by Tom 2026-09-05 and verified
+  pre-existing on Mensores rather than introduced. Clicking a package marks the row
+  `aria-current="true"` and switches the pane, then leaves the crumb at *"nothing selected"*,
+  the table at all 4,786 rows, and the inspector saying *"Pick a way in from the cover, **a
+  package from the navigator**, or a node in the graph"* — naming the gesture that just failed.
+  Design rule 16's family and the *"Analyse works again as soon as it finishes"* shape. Not
+  fixed because it decides what selecting a package **is**: a plate is not a node (rule 30), so
+  it is a package-shaped inspector pane on the `viewInspectorConstant` precedent — route on
+  kind — or a narrowed table, or both.
 - **`<module>` is answered in a routine-shaped inspector.** It draws *"Nothing in this map
   calls it — that is either a way in, dead code, or a call DunneFlow cannot see"*: three
   plausible sentences and none of them the true one, which the routine list already carries as

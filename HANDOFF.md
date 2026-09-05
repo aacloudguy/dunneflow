@@ -9807,3 +9807,108 @@ design rule 17 rather than a regression — checked against `naming` before beli
 self-check *"every control is wired"*. `analyze` against Society: 628 files, 12 stated rules,
 all four executables in "Where to start" with reach 1,381 / 423 / 292 / 112. `output/` holds
 exactly what it held before.
+
+---
+
+## 2026-09-05 — a root package elected by no vote, and a package row that selects nothing
+
+**Tom opened the `nodocs` map I made while verifying the blank state and found it broken.**
+He was right, and it was two things: **I pointed `analyze` at the wrong directory**, and the
+tool then failed in two ways that had nothing to do with documentation and everything to do
+with what a package is.
+
+My part: the map was `analyze src/dunneflow`, and the prescribed shape is the *parent* —
+`analyze ../society-2026-08-29/src`, whose child is the package. I also left it on a port
+without saying it was a throwaway built to read one sentence.
+
+### 1. `root_package` could not fail
+
+It returned the **modal** first dotted segment of `files.module`. Point `analyze` at a
+directory that already *is* a package and every module is one segment shallower, no segment
+is the root, and the biggest subpackage wins the vote — `web`, holding 20 of 63 files.
+`package_expr` then sent every module not under `web.` down its `ELSE` branch and labelled it
+`<external>`.
+
+**750 of 752 routines drawn as somebody else's code**, on the largest plate in the picture,
+over a map that opens perfectly with every count on the cover correct. Rule 49 exactly, and
+found by Tom reading a map rather than by any test.
+
+The tell is not marginal, measured over four maps:
+
+| Map | root elected | covers |
+|---|---|---|
+| `output/mensores` (society/src) | `mensores` | **628 / 628** |
+| scratchpad `rootcheck` (src) | `dunneflow` | **63 / 63** |
+| scratchpad `nodocs` (src/dunneflow) | `web` | **20 / 63** |
+| `output/dunneflow` | `web` | **19 / 61** |
+
+So no threshold is invented: a segment that leaves one file out is not the root of the tree
+that file is in, and `""` is a real answer. When there is no single root the tree itself is
+the root and a module's package is its **first segment** — which is what analysing the parent
+would have produced, so the two ways of pointing at one program now give identical packages.
+
+**And the right test was already in the file.** `COVER_ROOT` asks the same question by
+*grouping* — its docstring says "one row means every module agrees and the segment is a root;
+more than one means the program has several top-level names" — and on this map it counted
+**16 heads** and answered *no root*, in the same process, off the same store, while
+`root_package` elected `web`. Two answers to one question a hundred lines apart, and only the
+one nothing important depended on was right. They stay separate, because `COVER_ROOT` decides
+what prefix a narrow *field* may drop and that is a display decision; what changed is that
+neither is now the only one that checks.
+
+`<external>` is `<outside the root>` now. Every row that expression sees is the program's own
+— `routines` and `structures` hold what was extracted from its files and nothing else — and it
+fired **0 of 4,786** times on Mensores. It only ever fired when the root was wrong, and what
+it then said was not *"this module is not under the root"* but *"this is somebody else's
+code"* (rules 26 and 30). Unreachable by construction now, kept and said honestly.
+
+### 2. `COVER_PACKAGES` was a second decomposition, and the navigator selects by plate id
+
+It took the **second dotted segment** without knowing the root. Its own comment claimed it was
+*"the same decomposition the graph's disks use, so the navigator and the stack agree about what
+a package is"*; `PACKAGE_SIZES`, a hundred lines below, said the opposite in as many words and
+called it a hazard. **Both had been standing for two months.**
+
+What neither noticed is that the navigator's Packages group selects **by plate id**
+(`sel: pkg:${p.id}`), so a row the disks have no plate for selects nothing at all, and the
+centre pane says *"Nothing to show."* with no reason available to it. Measured:
+
+| Map | navigator rows | plates | rows selecting nothing |
+|---|---|---|---|
+| `output/mensores` | 46 | 46 | **1** — `mensores`, whose plate is `<root>` |
+| `nodocs` (at the package) | 48 | 16 | **36** |
+
+So it was live on the map everybody reads, once, and nobody had clicked that row. One
+expression, three callers now (rule 51). `full_pkg` was selected there and read by nothing in
+any file; it went with the decomposition it belonged to.
+
+**Both fixes are at serve time**, so every existing map is fixed with no re-analysis —
+`output/dunneflow` had the same wrong root and reads correctly now.
+
+### 3. Not fixed, and it is Tom's call: a package row does not make a selection
+
+His last symptom survives both fixes and **reproduces identically on Mensores**, so it is
+neither my map nor either defect above. Clicking a package in the navigator marks the row
+`aria-current="true"`, switches the pane — and leaves the crumb at *"nothing selected"*, the
+table showing all 4,786 rows unchanged, and the inspector saying:
+
+> *"Nothing selected. Pick a way in from the cover, **a package from the navigator**, or a
+> node in the graph."*
+
+The inspector names the gesture as one of three ways to select something, and doing exactly
+that leaves it saying nothing is selected. That is the *"Analyse works again as soon as it
+finishes"* shape from 2026-09-04 — a control stating a behaviour it does not have — and design
+rule 16's family. It is why Tom could not tell what he was looking at: the table shows every
+routine, sorted, so it opens on `anomalies.*` on one map and `mensores._config.*` on the other
+and never moves.
+
+**Not fixed here because it changes what selection *means*.** A package is a plate, not a node
+(rule 30), so the options are a package-shaped inspector pane on the `viewInspectorConstant`
+precedent — route on kind — or narrowing the table, or both. That is a design decision.
+
+### Gates
+
+1,007 tests (5 new in `test_graph_levels.py`; the three that matter fail without the fix,
+verified by stashing the source and keeping the tests — stashing both proves nothing, which
+cost one wasted check). mypy clean, ruff clean. Mensores' package grouping is unchanged: root
+`mensores`, 46 packages, 0 outside.

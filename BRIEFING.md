@@ -179,7 +179,20 @@ program has a most-commented routine and a maximum alone is a claim nobody can w
 
 ## What we are doing now
 
-**Ways in say what they are — built 2026-09-05.** Tom asked what the six things on Mensores'
+**Ways in are nodes on the Diagram — built 2026-09-05.** Option (iii), taken up an hour after
+being deferred. A way in is a box on every compartment it enters, with bold arrows into what it
+starts, and the ordinary arrows carry on inward from there. **Drawn by default unlike a port**,
+on a measurement: ports are max 41 per compartment, ways in max 3 and absent from 46 of 53.
+Arrows **bounded at 8 per way in** because `mensores` enters 39 of `pkg:cli`'s boxes and
+unbounded takes it to 3647×428pt at 8.5:1; the panel states what the bound hid. Clicking a
+way-in box opens the way-in pane, so (ii) and (iii) are one path.
+
+**1,030 tests, mypy clean, ruff clean, working tree clean**, `output/` untouched.
+
+**Next: open.** The nearest things are the four surfaces nobody has *looked* at, standards
+step 3 (compare a checkable rule against the graph), and the package row that selects nothing.
+
+**Before that, the same day: ways in say what they are.** Tom asked what the six things on Mensores'
 cover actually *are*: *"Are these packages, modules, or applications?"* None of the three — a
 way in is how the outside world starts the program, and the fourteen are four **declared**
 executables, one HTTP route and nine **guesses** from a name or a `__main__` guard, drawn
@@ -1533,11 +1546,10 @@ feature was blocked on an answer nobody owed.
   under a freshly measured element kept rendering the pane beside it, so even a zoom on
   correct coordinates showed the wrong thing. Measurement through the DOM still works and is
   what every figure in this session rests on.
-- **Ways in as nodes on the Diagram** — Tom's option (iii), deliberately deferred 2026-09-05
-  after (i) and (ii) landed. A `way-in` box kind on the compartment holding its root, with an
-  arrow inbound, so chasing data *into* the system uses the arrow-opening machinery that
-  already exists (`/api/flow` gives every call site with its arguments as written). It wanted
-  (ii) to settle what a way in is as a subject first, which it now has.
+- ~~**Ways in as nodes on the Diagram**~~ — *built 2026-09-05, an hour after being deferred.
+  Drawn by default on a measurement (ports max 41 per compartment, ways in max 3), arrows
+  bounded at 8 per way in with the bound stated, and clicking one opens the way-in pane. An
+  entry arrow refuses to open as a flow and says why: the caller is the operating system.*
 - **A package row does not make a selection.** Found by Tom 2026-09-05 and verified
   pre-existing on Mensores rather than introduced. Clicking a package marks the row
   `aria-current="true"` and switches the pane, then leaves the crumb at *"nothing selected"*,

@@ -10029,3 +10029,92 @@ file.
 
 1,023 tests (18 new: `tests/test_waysin.py`, plus the subject-keys guard), mypy clean, ruff
 clean, `output/` untouched.
+
+---
+
+## 2026-09-05 — ways in are nodes on the Diagram
+
+Tom's option (iii), taken up an hour after (i) and (ii) landed and it was deferred: *"see the
+various Ways In as nodes on a Diagram and chase them inbound to see how the data flows into
+the system."*
+
+A way in is now a **box on every compartment it enters**, with bold arrows into the boxes it
+starts. `pkg:signator` reads as the feature is meant to: `mensores-signator` → `__main__.py`,
+`WitnessHandler.do_POST` → `WitnessHandler`, `serve` → `_server.py`, and from those the
+ordinary arrows carry on down through `_keygen`, `_custody`, `_signing`, `_consistency`,
+`_chain`. That is the chase.
+
+### Drawn by default, unlike a port, and the difference is measured
+
+Rule 19 turned ports off on evidence: median **13** and max **41** per compartment against a
+median of 10 boxes — they outnumber the subject and connect what `pack` needs disconnected.
+Ways in are **max 3 per compartment and absent from 46 of 53**. Same rule, opposite answer,
+because it is a different population; both numbers are in the docstring so the next reader can
+check that rather than take it. Told apart by a **note silhouette**, never colour — colour on
+that page is already spent on difference and severity (design rule 4).
+
+### The arrow bound is one compartment's number
+
+| `pkg:cli` | size | aspect |
+|---|---|---|
+| before | 734×650pt | 1.1:1 |
+| **all 43 arrows** | **3647×428pt** | **8.5:1** |
+| bounded at 8 | 1017×674pt | 1.5:1 |
+
+`mensores` enters **39 of `pkg:cli`'s boxes** — nearly every file in the package — and
+unbounded it produces the horizontal strip this module's docstring already records Mermaid
+producing, arriving through a different door. **No other compartment reaches the bound**: the
+next largest fan-out in 53 is three, so this is a bound on the one picture that needs it.
+
+Bounded **per way in**, not per compartment: one fan-out would otherwise push another way in's
+single arrow out of the drawing. The panel states it — *"entered from 1 way in, reaching 43
+boxes — 8 arrows drawn"* — and opening the box lists all 106, because that is an answer and
+not a picture (rule 8, design rule 1).
+
+Tom chose this over "no arrows at all" and over "draw them all, however wide".
+
+### What it must not disturb
+
+`entries` and `entered` are their **own list and lane**, never `boxes` and `inside`. *"57
+boxes over 321 routines"* is about the program's own code; a way in is the world outside
+reaching into it, and folding them in would have grown that number by one and quietly changed
+what it meant (rule 32). Two tests hold it: every count a panel prints is unchanged, and a
+compartment with no way in emits a **byte-identical `dot`**.
+
+A box holds what the way in starts **here**, not its reach — `mensores` reaches 1,381 and
+starts 106 in `pkg:cli`, and the hover card says *"starts 106 routines in this compartment"*
+rather than a bare number that would read as the first (rule 24).
+
+### Two joins, and one refusal
+
+Clicking a way-in box opens the **way-in pane** built earlier the same day, so (ii) and (iii)
+are one path rather than two features about one subject.
+
+An **entry arrow is recognised but refuses to open as a flow**. `/api/flow` lists every call
+site with its arguments as written; a way in is started by the operating system, so there is
+no caller in this program to list. It answers with a sentence saying so and naming what it
+starts — an empty panel would read as *"this arrow carries nothing"*, which is a different and
+false claim (design rule 21, and `edge_flow`'s own distinction between no arrow and an empty
+one).
+
+`build(model, ways)` takes the map as an argument rather than looking it up: this module takes
+a model and never a store, and `waysin.listing()` stays the one place the question is asked
+(rule 51).
+
+### Verified
+
+Measured against the plan's own table on the running server — `pkg:cli` 1017×674 at 1.5:1 with
+43 entered and 35 hidden, `pkg:signator` 466×378 at 1.2:1, `pkg:quaestor` (no ways in)
+unchanged — and **looked at** by rendering the served `dot` source through the same Graphviz
+the browser uses. The panel sentence and the click into the way-in pane were driven in the
+page.
+
+*The harness bit again and was worked around rather than fought:* the automation window is
+1,259×523, so the drawing canvas sits below the visible frame and no screenshot of it is
+possible; `zoom` takes **screenshot-frame** coordinates while `scrollIntoView` reports viewport
+ones. Rendering the served DOT to PNG is the better instrument anyway — it is the same source
+the browser draws, at a size a person can read.
+
+### Gates
+
+1,030 tests (7 new in `test_diagram.py`), mypy clean, ruff clean, `output/` untouched.

@@ -9838,6 +9838,22 @@ function gotoCodeBtn(file, line) {
     data-gotoline="${line || 0}" title="Open ${esc(file)} in the code browser">code ▸</button>`;
 }
 
+/* **The one place this side spells DunneFlow's own name for module scope.**
+ *
+ * `extract.py` mints it as `MODULE_SCOPE`, and six modules under `web/` match the literal
+ * server-side, so matching on the name is the established idiom rather than rule 30's
+ * defect: this *is* the identity, written by the extractor and not a label anybody chose.
+ * What was not established is a second copy on this side. `hoverSigHtml` held the only one
+ * and was right for its own reason; the inspector then needed the same question answered
+ * twice, and three literals agreeing is three literals until one of them does not
+ * (rule 51).
+ *
+ * A synthetic scope is not a routine anybody wrote, and the two places that care are the
+ * two places that would otherwise state something about it that is not true. */
+function isModuleScope(name) {
+  return name === "<module>";
+}
+
 function viewInspector() {
   const s = SPECIMEN;
   /* Nothing selected is the ordinary state, not an error. The prototype could not reach
@@ -9894,6 +9910,22 @@ function viewInspector() {
   };
 
   /* ── IN: how this is reached ── */
+  /* **And for module scope, how it is not.**
+   *
+   * The empty-callers hint offers three explanations -- a way in, dead code, or a call
+   * DunneFlow cannot see -- and for `<module>` every one of them is false. Measured on
+   * Mensores: **487 module nodes, 0 with any caller, 0 that are entrypoints**, against
+   * baselines of 6,441 calls over 2,866 callees and 178 entrypoints of which 170 resolve.
+   * So this is not a case the sentence handles badly, it is a case it cannot handle at
+   * all: nothing can call module scope, because module scope is what runs *instead* of
+   * being called. The false sentence fired on all 487, every time.
+   *
+   * The true answer was already on the page and underneath it -- `id.docstring` carries
+   * the extractor's own *"runs at import, before anything is called"*, appended below.
+   * The two are kept because they answer different halves: this says why nothing calls
+   * it, that says when it runs instead. What is removed is the contradiction between
+   * them, which is what a reader had to resolve unaided. */
+  const moduleScope = isModuleScope(id.name || "");
   const callers = inn.callers || [], eps = inn.entrypoints || [];
   const inShown = callers.slice(0, 40);
   const inBody = (eps.length ? eps.map(e => `
@@ -9911,9 +9943,14 @@ function viewInspector() {
               ? `<span class="dim" data-fit="module">${esc(c.module)}</span>` : ""}</button>
         ${callBadge(c)}
       </div>`).join("")
-      : (eps.length ? "" : `<div class="hint">Nothing in this map calls it. That is either a
+      : (eps.length ? "" : (moduleScope
+        ? `<div class="hint">Nothing calls it, and nothing can. <code>&lt;module&gt;</code>
+            is DunneFlow's own name for module scope — the work a file does at import,
+            which owns everything no function does. It is not a way in, and it is not
+            dead code.</div>`
+        : `<div class="hint">Nothing in this map calls it. That is either a
           way in, dead code, or a call DunneFlow cannot see — a dynamic dispatch, or a
-          language it does not read.</div>`))
+          language it does not read.</div>`)))
     + cut(inShown.length, callers.length, "callers")
     + (id.docstring ? `<div class="why">${esc(String(id.docstring).split("\n")[0])}</div>` : "");
 
@@ -9969,8 +10006,24 @@ function viewInspector() {
    * so every parameter here printed as a bare name with no type and no default for as long
    * as this pane has existed. Nothing failed; a missing type is indistinguishable from a
    * routine that has none, which is rule 44 exactly. */
+  /* **No signature for module scope, and the section says so rather than going blank.**
+   *
+   * This drew `def <module>():` for all 487 of them -- a complete, plausible, copyable
+   * declaration of a routine nobody wrote, offering a call that cannot be made. It is the
+   * same defect `hoverSigHtml` refuses to commit one surface over, and its note there
+   * names it exactly: inventing an invocation to fill a row is inventing an id to make one
+   * clickable. Two surfaces, one fact, and only one of them had been told.
+   *
+   * A stated absence rather than an empty section (design rule 21): the pane is a list of
+   * questions with answers beside them, and a question that silently loses its answer
+   * reads as a pane that failed to load. */
   const params = s.params || [];
-  const sigBody = `<pre class="srcblock">${
+  const sigBody = moduleScope
+    ? `<div class="hint">No signature, because there is nothing to call.
+        <code>&lt;module&gt;</code> is not a routine anybody wrote, so
+        <code>&lt;module&gt;()</code> is a call that cannot be made — and writing one here
+        to fill the row would be inventing a fact.</div>`
+    : `<pre class="srcblock">${
     id.is_async ? `<span class="kw">async </span>` : ""}<span class="kw">def</span> ${
     esc(id.name || s.label)}(${params.length
       ? "\n    " + params.map(p => esc(p.text)).join(",\n    ") + "\n"
@@ -15801,7 +15854,7 @@ function navHoverSkeleton(row) {
  * an invocation to fill a row is the same defect as inventing an id to make one clickable.
  */
 function hoverSigHtml(card) {
-  if (card.kind !== "ROUTINE" || !card.name || card.name === "<module>") return "";
+  if (card.kind !== "ROUTINE" || !card.name || isModuleScope(card.name)) return "";
   const params = card.params || [];
 
   const piece = (p) => {

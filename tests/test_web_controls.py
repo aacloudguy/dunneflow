@@ -1871,7 +1871,12 @@ def test_the_invocation_line_is_the_one_in_the_code() -> None:
 
     # `<module>` is DunneFlow's own name for module scope, not something anybody wrote.
     # `<module>()` is a call that cannot be made -- inventing an invocation to fill a row.
-    assert 'card.name === "<module>"' in sig, (
+    #
+    # Through `isModuleScope` rather than the literal this asserted for as long as the card
+    # was the only surface that had been told. The inspector was drawing `def <module>():`
+    # for all 487 of them, and fixing that meant a second copy of the sentinel; the claim
+    # here is unchanged and only its spelling moved (rule 51).
+    assert "isModuleScope(card.name)" in sig, (
         "a module-scope node renders an invocation line, which is a call nobody can make"
     )
 
@@ -11041,4 +11046,91 @@ def test_the_mode_toggle_is_dimmed_off_mode_and_still_acts() -> None:
     assert '.modes[data-offmode="true"]' in css, "nothing styles the off-mode state"
     assert "pointer-events: none" not in css.split('.modes[data-offmode="true"]')[1][:400], (
         "the dimmed toggle is made inert by CSS, which is `disabled` by another name"
+    )
+
+
+# ------------------------------------------------------- module scope, answered --- #
+#
+# `<module>` is DunneFlow's own name for the synthetic scope that owns what no function
+# does (rule 18). It is a real node -- 487 of them on Mensores -- and the inspector was
+# answering about it in a shape built for a routine, which made it state two things that
+# are not true of any of the 487.
+
+def test_the_shell_spells_module_scope_in_exactly_one_place() -> None:
+    """Rule 51, as a count rather than as an intention.
+
+    `hoverSigHtml` held the only literal and was right for its own reason. The inspector
+    then needed the same question answered twice more, and three literals agreeing is
+    three literals until one of them does not -- which is how a fix lands on the hover card
+    and not on the pane, or on the signature and not on the callers.
+
+    Taken over `_code()`, because the prose above and below the predicate says `<module>`
+    a great many times and a containment check is only as good as its span (rule 37).
+    """
+    code = _code(_read("shell.js"))
+    spelled = code.count('"<module>"') + code.count("'<module>'")
+    assert spelled == 1, (
+        f"module scope is spelled {spelled} times in the shell's code; `isModuleScope` "
+        f"exists so that it is spelled once"
+    )
+    assert "function isModuleScope(" in code, (
+        "the predicate is gone, so every caller is matching a server-side sentinel by hand"
+    )
+
+
+def test_module_scope_is_not_told_it_might_be_a_way_in_or_dead_code() -> None:
+    """The three-way hint is false of module scope in all three of its branches.
+
+    Measured on Mensores: 487 `<module>` nodes, **0 with any caller and 0 that are
+    entrypoints**, against baselines of 6,441 calls over 2,866 callees and 178 entrypoints
+    of which 170 resolve. So the sentence did not merely read poorly here -- it fired on
+    every single one of them, offering three explanations for a thing that cannot be called
+    at all.
+
+    The guard is that the hint is *chosen*, not that a particular sentence is present:
+    wording is the designer's, the branch is the claim.
+    """
+    body = _fn_body(_read("shell.js"), "viewInspector")
+    assert "isModuleScope(" in body, (
+        "the inspector no longer asks whether it is answering about module scope"
+    )
+    assert "moduleScope" in body, "nothing carries the answer to the sections that need it"
+    # The false sentence must still exist -- it is right for every other routine with no
+    # callers -- and must no longer be the only thing on offer.
+    assert "way in, dead code, or a call DunneFlow cannot see" in body, (
+        "the empty-callers hint is gone entirely; it is correct for a routine that has "
+        "no callers, which is the case it was written for"
+    )
+    assert "moduleScope\n" in body or "moduleScope ?" in body or "(moduleScope" in body, (
+        "the hint is no longer branched on module scope, so all 487 are told they might "
+        "be a way in"
+    )
+
+
+def test_module_scope_is_not_given_a_signature_it_cannot_have() -> None:
+    """`def <module>():` is an invocation that cannot be made.
+
+    It is the same defect `hoverSigHtml` refuses to commit one surface over, and its note
+    there names it: inventing an invocation to fill a row is inventing an id to make one
+    clickable. Two surfaces, one fact, and only one of them had been told.
+
+    The stated absence matters as much as the removal (design rule 21): a section that
+    silently loses its answer reads as a pane that failed to load, and this pane's whole
+    shape is questions with answers beside them.
+    """
+    js = _read("shell.js")
+    body = _fn_body(js, "viewInspector")
+    sig = body[body.index("const sigBody"):]
+    assert "moduleScope" in sig[:200], (
+        "the signature block does not branch on module scope, so it still renders "
+        "`def <module>():` for every one of them"
+    )
+    assert 'class="hint"' in sig[:900], (
+        "module scope gets no signature and no sentence either, which is a blank section "
+        "rather than a stated absence (design rule 21)"
+    )
+    # And the hover card must still refuse it, through the shared predicate.
+    hover = _fn_body(js, "hoverSigHtml")
+    assert "isModuleScope(card.name)" in hover, (
+        "the hover card no longer refuses module scope, or refuses it by its own literal"
     )

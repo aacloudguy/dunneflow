@@ -301,6 +301,7 @@ const state = {
   wayIn: "",              // which way in the way-in pane has open, by name
   wayInside: "",          // and which of its sub-applications, if the reader went in
   wayInsideName: "",      // that one's mounted name, for the crumb and the trail
+  docWhy: "",             // how the open document was reached, so the pane can say
   /* Whether the code browser draws the difference from the compared version over the
    * lines it shows. On, because setting a compared version is already the reader saying
    * what they came for -- and off is a real want rather than a concession, because four
@@ -2834,6 +2835,11 @@ const DOC_ROUTES = {
     state.docPath = path;
     state.docNote = "";
     lastDocRead = path;
+    /* **Why**, so the banner can tell the reader they chose this rather than that the tool
+       is offering it. Two doors reach a document — a row in the list and a citation — and
+       they are different answers to "how did I get here" (rule 30, one over from identity). */
+    state.docWhy = b.closest(".reldocs") ? "because it is related to the selection"
+                                         : "from the list of all documents";
     used("doc:open");
     persist();
     pushTrail("doc", baseOf(path), "opened a document");
@@ -2954,6 +2960,7 @@ async function openDocumentAt(path, line) {
     state.docPath = path;
     state.docNote = "";
     lastDocRead = path;
+    state.docWhy = "from a citation";
     pendingDocLine = line; pendingDocPath = path;
     pushTrail("doc", baseOf(path), "opened a document from a citation");
   }
@@ -4781,14 +4788,33 @@ let docPaintedFor = "";
  * The **filter is deliberately not in it.** Filtering hides rows rather than rebuilding the
  * list: 2,064 rows rebuilt per keystroke is the cost, and rebuilding also destroys the input
  * the reader is typing into, taking the focus and the caret with it. */
+/* **What the related block is showing**, folded into the key below.
+ *
+ * The doc pane repaints only when `docDomKey()` changes -- a bargain measured at 9.5 s per
+ * `render()` without it. Anything drawn in that chrome and *not* in the key is painted once
+ * and then frozen: the related-documents block rendered "Looking for documents related to
+ * <module>…", the answer arrived 7 ms later, `render()` ran, and the sentence never changed
+ * because the key had not. The same shape as the lane note above it -- a cache key has to
+ * carry everything its subtree is *of*, and every field added to the pane has to be added
+ * here too or it is invisible the moment it settles. */
+function relDomKey() {
+  if (!state.selected) return "-";
+  if (!RELDOCS || RELDOCS.loading || RELDOCS.node !== state.selected) return "…";
+  if (RELDOCS.error) return "!";
+  return `${RELDOCS.node}:${RELDOCS.total}:${(RELDOCS.full || []).length}`;
+}
+
 function docDomKey() {
   if (state.docLane === "program") {
     if (state.docPath) {
       if (!DOCFILE) return "read#…";
-      return `read#${DOCFILE.path}#${DOCFILE.loading ? "…" : (DOCFILE.available === false ? "!" : (DOCFILE.html || "").length)}`;
+      /* The banner over an open document says whether it relates to the selection and how
+         the reader got here, so both are in the key: without them it would go on naming the
+         subject the reader has since moved away from. */
+      return `read#${DOCFILE.path}#${DOCFILE.loading ? "…" : (DOCFILE.available === false ? "!" : (DOCFILE.html || "").length)}#${relDomKey()}#${state.docWhy}`;
     }
-    if (!DOCS || DOCS === "loading") return "list#…";
-    return `list#${DOCS.failed ? "!" : DOCS.total}`;
+    if (!DOCS || DOCS === "loading") return `list#…#${relDomKey()}`;
+    return `list#${DOCS.failed ? "!" : DOCS.total}#${relDomKey()}`;
   }
   if (!DOCPAGE) return "";
   return `map#${DOCPAGE.id}#${DOCPAGE.loading ? "…" : (DOCPAGE.found === false ? "!" : DOCPAGE.rows)}`;
@@ -5053,8 +5079,10 @@ function docReaderBody() {
   }
 
   const heads = DOCFILE.headings || [];
+  /* The wrapper is the **container** the nav's sticky rule is asked about — a container
+     cannot query itself, so `.docread` cannot be both the flex box and the thing measured. */
   return `
-  <div class="docread">
+  <div class="docreadwrap"><div class="docread">
     <nav class="docnav" aria-label="Headings in this document">
       ${heads.length
         ? `<div class="docnav-h">In this document</div>
@@ -5093,7 +5121,7 @@ function docReaderBody() {
       </details>` : ""}
       <div class="prose">${DOCFILE.html}</div>
     </div>
-  </div>`;
+  </div></div>`;
 }
 
 /* The filter, applied to the list that is already drawn.
@@ -5113,6 +5141,13 @@ function docReaderBody() {
  * `state.docPath` — that is "" the moment they come back, which is exactly when this is
  * wanted. Not persisted: it is where they are, not what they arranged. */
 let lastDocRead = "";
+
+/* Which documents relate to the selection, keyed by the node it was asked about. Fetched
+ * per selection (6.8 ms) rather than built at boot: `traceability.measure()` answers the
+ * same question for the whole program in 4.7 s, which is right for a report and wrong for
+ * a click. `null` while nothing has been asked, which is a different state from an answer
+ * of none and is drawn as one. */
+let RELDOCS = null;
 
 function applyDocFilter() {
   const root = $("#docMount");
@@ -5206,6 +5241,11 @@ function docLaneStrip() {
 
 function viewDoc() {
   ensureDocument();
+  /* Asked from the one place that knows the pane is about to be painted, exactly as
+     `ensureVocabulary` does — wiring it to a click would work from the mode toggle and fail
+     from the trail, the breadcrumb and a hop out of the graph. */
+  if (state.docLane === "program" && state.selected
+      && (!RELDOCS || RELDOCS.node !== state.selected)) loadRelDocs(state.selected);
   return `<article class="doc">
     ${docLaneStrip()}
     ${state.docLane === "program" ? viewDocProgram() : viewDocMap()}
@@ -5232,6 +5272,116 @@ function paintDocNote() {
   el.hidden = !state.docNote;
 }
 
+/* What the selection has in common with the corpus, and what that is worth.
+ *
+ * **Ranked, never filtered, and the two numbers are both on the page.** A routine carries a
+ * median of two governance ids, and those two are named by a median of **281** documents —
+ * 14% of Mensores' corpus. Calling those "related" would be a filter that filtered nothing.
+ * What is selective is the intersection: documents naming *every* id come to a median of 4.
+ * So the full band is the answer and the rest is counted and offered (design rule 1). */
+async function loadRelDocs(nodeId) {
+  if (!nodeId) { RELDOCS = null; return; }
+  if (RELDOCS && RELDOCS.node === nodeId && !RELDOCS.loading) return;
+  RELDOCS = { node: nodeId, loading: true };
+  try {
+    const r = await fetch(`/api/reldocs?node=${encodeURIComponent(nodeId)}`);
+    if (!r.ok) throw new Error(`the server answered ${r.status}`);
+    const d = await r.json();
+    if (state.selected !== nodeId) return;              // the reader moved on
+    RELDOCS = { ...d, node: nodeId, loading: false };
+  } catch (err) {
+    if (state.selected === nodeId) RELDOCS = { node: nodeId, loading: false, error: err.message };
+  }
+  render();
+}
+
+function relDocRow(d) {
+  return `<li><button class="linkbtn" data-docopen="${esc(d.path)}"
+      title="${esc(d.path)}">${esc(d.title || baseOf(d.path))}</button>
+    <span class="hint mono">${esc(srcShort(d.path))}</span>
+    ${d.class ? `<span class="kind-tag">${esc(d.class)}</span>` : ""}
+    <span class="hint">names ${d.ids.map(esc).join(", ")}</span></li>`;
+}
+
+/* The block that makes Document mode a view of the selection rather than a place.
+ *
+ * Four states and they are four different facts (design rule 21): nothing is selected;
+ * the selection carries no governance id at all (59% of routines, so the common case);
+ * it carries ids that no document names; and it has documents, which are ranked. */
+function relDocsBlock() {
+  const subject = subjectLabel();
+  if (!state.selected) {
+    return `<div class="note"><b>Nothing is selected.</b> Pick a routine and this says which
+      of the program's own documents have anything in common with it. Everything below is the
+      whole corpus, in the order it was read.</div>`;
+  }
+  if (!RELDOCS || RELDOCS.loading) {
+    return `<div class="note">Looking for documents related to
+      <b>${esc(subject || "the selection")}</b>…</div>`;
+  }
+  if (RELDOCS.error) {
+    return `<div class="note"><b>Related documents could not be read.</b>
+      ${esc(RELDOCS.error)}. Nothing is being shown rather than something being guessed.</div>`;
+  }
+  const ids = RELDOCS.ids || [];
+  if (!ids.length || !RELDOCS.total) {
+    return `<div class="note">
+      <b>No document in this map is about <span class="mono">${esc(subject)}</span>.</b>
+      ${esc(RELDOCS.reason || "")} What follows is the whole corpus — DunneFlow relates code
+      to prose through the plan, ticket and decision ids they both name, and this one shares
+      none.</div>`;
+  }
+  const full = RELDOCS.full || [], partial = RELDOCS.partial || [];
+  return `
+    <div class="note">
+      <b><span class="mono">${esc(subject)}</span> cites ${ids.map(i => `<span class="mono">${esc(i)}</span>`).join(", ")}.</b>
+      ${full.length
+        ? `<b>${full.length}</b> document${full.length === 1 ? "" : "s"} name${full.length === 1 ? "s" : ""}
+           ${ids.length === 1 ? "it" : "all of them"}${partial.length
+             ? `, and <b>${partial.length}</b> more name ${ids.length === 1 ? "it too" : "some of them"}` : ""}.`
+        : `No document names ${ids.length === 1 ? "it" : "all of them"};
+           <b>${partial.length}</b> name some.`}
+      This is the only relation DunneFlow can prove between code and prose — a shared id,
+      written by hand at both ends. It is not a search for the name.
+    </div>
+    ${full.length ? `<ul class="reldocs">${full.map(relDocRow).join("")}</ul>` : ""}
+    ${partial.length ? `<details class="reldocmore"><summary>${partial.length}
+      document${partial.length === 1 ? "" : "s"} naming some of them</summary>
+      <ul class="reldocs">${partial.map(relDocRow).join("")}</ul></details>` : ""}`;
+}
+
+/* **This document is still open, and it may have nothing to do with what you have picked.**
+ *
+ * Tom's report: he selected `signator.__main__`, pressed Document, and got a document about
+ * PAUL style rules — opened twenty minutes earlier from a naming citation and never put
+ * away. Nothing on the page said so, and Document mode is one of five ways of reading *one
+ * selection*.
+ *
+ * The document is **not** closed when the selection moves, on Tom's call: a reader who is
+ * reading should not have the page taken away from them. What changes is that it says which
+ * it is, and how they got here — so an unrelated document is a document they chose, rather
+ * than one the tool appears to be offering. */
+function openDocBanner() {
+  if (!state.docPath) return "";
+  const subject = subjectLabel();
+  if (!state.selected) {
+    return state.docWhy
+      ? `<div class="docbanner hint">You opened this ${esc(state.docWhy)}.</div>` : "";
+  }
+  const related = RELDOCS && !RELDOCS.loading && RELDOCS.node === state.selected
+    && [...(RELDOCS.full || []), ...(RELDOCS.partial || [])]
+         .find(d => d.path === state.docPath);
+  if (related) {
+    return `<div class="docbanner ok">This document names
+      ${related.ids.map(i => `<span class="mono">${esc(i)}</span>`).join(", ")}, which
+      <span class="mono">${esc(subject)}</span> cites too.</div>`;
+  }
+  return `<div class="docbanner">
+    <b>Not related to <span class="mono">${esc(subject)}</span>.</b>
+    ${state.docWhy ? `You opened it ${esc(state.docWhy)}.` : "It was already open."}
+    <button class="linkbtn" data-docclose>See what is related &rsaquo;</button></div>`;
+}
+
 function viewDocProgram() {
   if (state.docPath) {
     const d = DOCFILE && !DOCFILE.loading && DOCFILE.document;
@@ -5248,9 +5398,11 @@ function viewDocProgram() {
                  while reading it</b>` : ""}</p>` : ""}
     </header>
     ${docNoteHtml()}
+    ${openDocBanner()}
     <div id="docMount"></div>`;
   }
   return `
+    ${relDocsBlock()}
     <div class="docfilter">
       <input id="docQ" type="search" placeholder="Filter by path or title…"
              value="${esc(state.docQ)}" aria-label="Filter the documents"

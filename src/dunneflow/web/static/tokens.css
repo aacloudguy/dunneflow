@@ -1995,9 +1995,26 @@ table.grid.docgrid tbody tr.docrow-unlinked td { color: var(--text-faint); }
  * dimension does (design rule 3) — which a `@media` breakpoint cannot do at all (rule 28).
  * `flex: 100` on the prose is what makes the nav take its basis and the prose take the rest
  * rather than the two sharing the slack. */
+/* **A container, so the nav can know whether it is still a column.** `.docread` wraps when
+   its two bases no longer fit — 12rem + 26rem + the gap, which is ~941px at a 24px root and
+   wider than the centre pane on an ordinary window. Wrapped, the nav is a full-width row
+   *above* the prose, and `position: sticky` then pins that row on top of the text the reader
+   is scrolling. Reported by Tom with a screenshot of exactly that.
+
+   A `@media` query cannot fix it: it answers about the *viewport*, not about this pane, and
+   `rem` inside one resolves against the initial font size rather than the page's — rule 28,
+   which this file has already paid for once. `@container` answers about the pane and its
+   `rem` is the page's, so the threshold moves with the scale control like every other
+   dimension here (design rule 3). */
+.docreadwrap { container-type: inline-size; container-name: docread; }
 .docread { display: flex; flex-wrap: wrap; gap: 1.2rem; align-items: flex-start; }
-.docnav { font-size: .74rem; flex: 1 1 12rem; max-width: 18rem;
-          position: sticky; top: 0; max-height: 85vh; overflow-y: auto; }
+.docnav { font-size: .74rem; flex: 1 1 12rem; max-width: 18rem; }
+/* Sticky **only while it is a side column**. The threshold is the wrap point itself — the
+   two flex bases plus the gap — so the nav stops sticking in the same breath it stops being
+   a column, rather than at a number guessed near it. */
+@container docread (min-width: 39.2rem) {
+  .docnav { position: sticky; top: 0; max-height: 85vh; overflow-y: auto; }
+}
 .docnav-h { font-size: .66rem; font-weight: 700; letter-spacing: .09em;
             text-transform: uppercase; color: var(--text-muted); margin-bottom: .4rem; }
 .docnav ol { list-style: none; margin: 0; padding: 0; }
@@ -2009,6 +2026,22 @@ table.grid.docgrid tbody tr.docrow-unlinked td { color: var(--text-faint); }
 .docnav .dn-l3 { padding-left: 1.2rem; }
 .docnav .dn-l4, .docnav .dn-l5, .docnav .dn-l6 { padding-left: 1.8rem; }
 .docmain { flex: 100 1 26rem; min-width: 0; }
+/* The banner over an open document: whether it has anything to do with the selection, and
+   how the reader got here. Neutral by default and `ok` when it *is* related — never the
+   severity palette, because an unrelated document is not a fault (design rule 4). */
+.docbanner { font-size: .74rem; color: var(--text-muted); margin: 0 0 .6rem;
+  padding: .4rem .55rem; border-left: 3px solid var(--border-strong);
+  background: var(--sunken); border-radius: .1875rem; }
+.docbanner.ok { border-left-color: var(--accent); color: var(--text); }
+.docbanner .linkbtn { margin-left: .35rem; }
+/* The ranked list, and the fold over what only partly matches. */
+.reldocs { list-style: none; margin: .1rem 0 .6rem; padding: 0; font-size: .78rem; }
+.reldocs li { padding: .22rem 0; border-bottom: 1px solid var(--border);
+  display: flex; flex-wrap: wrap; gap: .4rem; align-items: baseline; }
+.reldocs li:last-child { border-bottom: 0; }
+.reldocmore { font-size: .74rem; margin: 0 0 .6rem; }
+.reldocmore summary { cursor: pointer; color: var(--text-muted); }
+
 .docfront { margin: 0 0 1rem; font-size: .74rem; color: var(--text-muted); }
 .docfront summary { cursor: pointer; }
 .doctextnote { margin-top: 0; }

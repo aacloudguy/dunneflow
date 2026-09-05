@@ -25,7 +25,7 @@ from typing import Any
 from .detectors.prose import doc_rules_fingerprint
 from .migrate import META_PATHS, PATHS_RELATIVE, paths_are_relative
 from .schema import DOC_SCHEMA_VERSION, DocFacts
-from .store import StaleGraphError
+from .store import StaleGraphError, refuse_missing
 
 DOC_SCHEMA_SQL = """
 PRAGMA journal_mode = WAL;
@@ -137,6 +137,9 @@ CREATE INDEX IF NOT EXISTS ix_documents_dup   ON documents(duplicate_of);
 class DocStore:
     """A connection to one program's documentation corpus."""
 
+    #: What this store *is*, when it refuses to open something that is not there.
+    WHAT = "a document corpus"
+
     def __init__(self, path: Path | str, *, writable: bool = True,
                  shared: bool = False) -> None:
         """See `Store.__init__`: a reader refuses a stale corpus, it never drops one.
@@ -155,6 +158,12 @@ class DocStore:
         self.writable = writable
         if writable:
             self.path.parent.mkdir(parents=True, exist_ok=True)
+        else:
+            # Rule 61: a second way into a store obeys the rule the first one was taught.
+            # `_docs_for` already returns `None` on an absent corpus and catches `OSError`
+            # besides, so this changes nothing it does -- and it means the next caller
+            # cannot leave a `docs.db` behind by reading one. See `refuse_missing`.
+            refuse_missing(self.path, self.WHAT)
         self.conn = sqlite3.connect(self.path, check_same_thread=not shared)
         self.conn.row_factory = sqlite3.Row
         self._refuse_wrong_kind()

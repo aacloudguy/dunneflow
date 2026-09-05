@@ -405,8 +405,53 @@ class StaleGraphError(RuntimeError):
     """
 
 
+def refuse_missing(path: Path, what: str) -> None:
+    """A read of a path that is not there refuses, and never brings one into being.
+
+    **`sqlite3.connect` creates.** So a reader handed a path that does not exist does not
+    fail: it manufactures an empty database, answers out of it, and — the expensive half —
+    **leaves the file behind**. `revisions.program_dirs()` and `revisions.newest()` glob
+    `graph*.db`, so the leftover becomes a phantom revision of a program that never had
+    one: a bare `graph.db` is read as *"a directory written before this layout existed"*
+    (`revisions.py`), and this one holds nothing at all.
+
+    Rule 20 from the side nobody expects. That rule says a read may refuse but may never
+    *repair*; here the read repaired nothing and simply **wrote**, into the one directory
+    this project treats as an artifact. Found by doing it: a one-line probe against
+    `output/mensores/graph.db` — a path that does not exist there, since mensores keeps
+    only `graph@<revision>.db` — put a 0-byte file into the output tree, invisible to
+    `git status` because `output/` is untracked.
+
+    **This is rule 51 exactly, and the count is the argument.** Seven read paths each
+    carried their own `if not path.exists()` — `cli._open_store`, `_Live._docs_for`,
+    `_open_source`, `_open_docsource`, and the version-listing branch in `_r_revisions` —
+    and the guard held for exactly as long as somebody remembered to write it. Every one
+    of them is now redundant and correct rather than load-bearing, which is the state rule
+    51 asks for: the rule lives where they all pass.
+
+    `FileNotFoundError` rather than an exception of ours, for two reasons that already
+    exist in the code. It is an `OSError`, which is precisely what the four sites in
+    `serve.py` catch to mean *"absent is a real state, never an error"* — so a missing
+    sidecar goes on answering `None` and `corpus.serving()`'s four states are untouched.
+    And `serve.why()` states in so many words that a class name earns its place in front
+    of an `OSError`, so the sentence a reader sees is right without wiring.
+
+    Read paths only. A writer creating its own file is the entire point of a writer.
+    """
+    if not path.exists():
+        raise FileNotFoundError(
+            f"{path} does not exist, so there is nothing to read — refusing to open "
+            f"{what} there, because opening it would create an empty one and an empty "
+            f"map answers every question with silence"
+        )
+
+
 class Store:
     """A connection to one analysed program's graph."""
+
+    #: What this store *is*, when it refuses to open something that is not there.
+    #: `SourceStore.WHAT` is the same idea, arrived at first and for rule 16's sake.
+    WHAT = "a code graph"
 
     def __init__(self, path: Path | str, *, writable: bool = True,
                  shared: bool = False) -> None:
@@ -418,11 +463,16 @@ class Store:
         `query` it empties the map and then answers out of the hole, and `(no rows)` is
         indistinguishable from a true empty result. So a reader refuses a stale graph
         and says how to rebuild it, and only `analyze` is allowed to drop anything.
+
+        A reader also refuses a path that is not there at all, and `refuse_missing` says
+        why that is a different failure from a stale one and a worse one.
         """
         self.path = Path(path)
         self.writable = writable
         if writable:
             self.path.parent.mkdir(parents=True, exist_ok=True)
+        else:
+            refuse_missing(self.path, self.WHAT)
         # `shared` hands the connection to more than one thread, and the caller then
         # owes it a lock. Only the server asks for it: `ThreadingHTTPServer` answers each
         # request on its own thread, and sqlite refuses a connection used off the thread

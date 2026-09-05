@@ -51,6 +51,7 @@ from pathlib import Path
 from typing import Any
 
 from .migrate import META_PATHS, PATHS_RELATIVE
+from .store import refuse_missing
 
 SOURCE_SCHEMA_VERSION = 3
 
@@ -187,6 +188,11 @@ class SourceStore:
         self.writable = writable
         if writable:
             self.path.parent.mkdir(parents=True, exist_ok=True)
+        else:
+            # Rule 61 again, and `WHAT` was already here for rule 16's sake -- the same
+            # word that names this store when it refuses to be opened as the other one
+            # names it when there is nothing there to open. `DocSourceStore` inherits both.
+            refuse_missing(self.path, self.WHAT)
         # See `Store.__init__`: shared means many threads, and a lock owed by the caller.
         self.conn = sqlite3.connect(self.path, check_same_thread=not shared)
         self.conn.row_factory = sqlite3.Row

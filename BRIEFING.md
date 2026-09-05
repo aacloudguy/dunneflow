@@ -185,8 +185,8 @@ running, and `output/` holds exactly what it held at the start — `beads`, `dun
 `mensores` and the named orphan. The two throwaway maps made while verifying (`nodocs`,
 `rootcheck`) are in the scratchpad, not in `output/`.
 
-**Five things landed, each whole and committed on its own** — and **three of the five started
-as something Tom found by using the thing:**
+**Five features and three rules landed, each whole and committed on its own** — and **three
+of the five features started as something Tom found by using the thing:**
 
 | Commit | What |
 |---|---|
@@ -195,6 +195,7 @@ as something Tom found by using the thing:**
 | `8dacd24` | **ways in say what they are**, and an application opens as an application |
 | `d7153fb` | **ways in are nodes on the Diagram**, arrows bounded on evidence |
 | `ec0673e` | **Document mode is about the selection**, and the contents stops sitting on the prose |
+| `1303fa2` | **rules 81 and 82 and design rule 28 minted** — no candidate is left standing |
 
 **Four things are open and named below**, none of them blocking: the surfaces nobody has
 *looked* at, standards step 3 (compare a checkable rule against the graph), the package row

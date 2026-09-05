@@ -142,19 +142,57 @@ def root_package(store: Store) -> str:
 
     `mensores.cli` and `dunneflow.cli` are both one dotted segment deep; hard-coding a
     prefix length would work on exactly one program.
+
+    **A root has to account for every file, and `""` is a real answer.** This used to
+    return the *modal* first segment and could not fail. Analyse a directory that already
+    **is** a package -- `src/dunneflow` rather than `src` -- and every module is one segment
+    shallower, no segment is the root, and the biggest subpackage wins the vote: `web`,
+    holding 20 of 63 files. `package_expr` then labels the other 43 files' routines
+    `<external>`, and **750 of 752 routines are drawn as somebody else's code** on the
+    largest plate in the picture, over a map that opens perfectly with every count on the
+    cover correct.
+
+    Rule 49 exactly -- a fallback that yields a plausible value has hidden the failure it
+    was written for -- and it was found by Tom reading a map, not by any test. Measured over
+    four maps, the tell is not marginal: a real root covers **628/628** and **63/63**, a
+    wrong one covers **20/63** and **19/61**. So no threshold is needed and none is invented;
+    a segment that leaves one file out is not the root of the tree that file is in.
+
+    When there is no single root the tree itself is the root, and a module's package is its
+    first segment -- which is what analysing the parent directory would have produced anyway.
+    That is `package_expr`'s rootless branch, and it makes the two ways of pointing at one
+    program agree instead of one of them lying.
+
+    **The right test was already in the file.** `COVER_ROOT` asks the same question by
+    *grouping* -- "one row means every module agrees and the segment is a root; more than one
+    means the program has several top-level names and there is nothing to strip" -- and on the
+    map that started this it counted **16 heads** and correctly answered *no root*, in the
+    same process, off the same store, while this function elected `web`. Two answers to one
+    question a hundred lines apart, and only the one nothing important depended on was right.
+    They stay separate because they are genuinely different questions -- `COVER_ROOT` decides
+    what prefix a narrow *field* may drop, a display decision -- but neither may be the only
+    one that checks.
     """
     rows = store.query(
         "SELECT module, COUNT(*) AS n FROM files"
         " WHERE module <> '' GROUP BY module ORDER BY n DESC"
     )
     roots: dict[str, int] = defaultdict(int)
+    total = 0
     for r in rows:
-        roots[str(r["module"]).split(".", 1)[0]] += int(r["n"])
-    return max(roots.items(), key=lambda kv: kv[1])[0] if roots else ""
+        n = int(r["n"])
+        roots[str(r["module"]).split(".", 1)[0]] += n
+        total += n
+    if not roots:
+        return ""
+    root, held = max(roots.items(), key=lambda kv: kv[1])
+    return root if held == total else ""
 
 
 def pkg_params(root: str) -> dict[str, Any]:
     # `:cut` is 1-based and points just past "<root>." -- SQLite's substr is 1-indexed.
+    # An empty root makes `root_dot` and `cut` meaningless rather than wrong: the rootless
+    # branch in `package_expr` is chosen on `:root` alone and reads neither.
     return {"root": root, "root_dot": f"{root}.%", "cut": len(root) + 2}
 
 

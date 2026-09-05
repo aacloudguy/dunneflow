@@ -538,3 +538,106 @@ def test_the_docs_name_the_source_of_truth() -> None:
     # And the thing named must exist, or this is a signpost to nothing (rule 17's converse).
     engine = root.joinpath("src/dunneflow/web/static/graph.js").read_text(encoding="utf-8")
     assert "function applyLayout(" in engine and "opts.plateSize" in engine
+
+
+# --------------------------------------------------------------------------- #
+# The root package, and the two ways of pointing at one program
+#
+# Found by Tom reading a map, not by any test here. `root_package` used to return the
+# *modal* first segment and could not fail: analyse a directory that already **is** a
+# package and every module is one segment shallower, so the biggest subpackage wins the
+# vote and `package_expr` labels every other module's routines external. On DunneFlow's
+# own tree that was **750 of 752 routines drawn as somebody else's code**, on the largest
+# plate in the picture, over a map whose cover counts were all correct.
+#
+# Rule 49: a fallback that yields a plausible value has hidden the failure it was written
+# for. The two fixtures below are the same program pointed at two ways, and the whole
+# guard is that they answer the same.
+# --------------------------------------------------------------------------- #
+
+
+@pytest.fixture(scope="module")
+def as_package(tmp_path_factory):
+    """The same tree, analysed at the package itself rather than at its parent."""
+    root = tmp_path_factory.mktemp("aspackage")
+    (root / "alpha").mkdir(parents=True)
+    (root / "beta").mkdir(parents=True)
+    (root / "__init__.py").write_text("", encoding="utf-8")
+    (root / "alpha" / "__init__.py").write_text("", encoding="utf-8")
+    (root / "beta" / "__init__.py").write_text("", encoding="utf-8")
+    (root / "alpha" / "front.py").write_text(MOD_A, encoding="utf-8")
+    (root / "beta" / "worker.py").write_text(MOD_B, encoding="utf-8")
+    (root / "beta" / "spare.py").write_text(MOD_C, encoding="utf-8")
+
+    db = tmp_path_factory.mktemp("aspackagegraph") / "graph.db"
+    store = Store(db)
+    analyze_tree(root, store)
+    resolve_calls(store)
+    store.optimize()
+    yield store
+    store.close()
+
+
+def _packages(store: Store) -> set[str]:
+    from dunneflow.web import queries
+    params = G.pkg_params(G.root_package(store))
+    return {str(r["pkg"]) for r in store.query(queries.ROUTINE_NODES, params)}
+
+
+def test_a_tree_with_one_package_names_it_as_the_root(levelled: Store) -> None:
+    assert G.root_package(levelled) == "demo"
+
+
+def test_analysing_the_package_itself_finds_no_root_rather_than_a_wrong_one(
+        as_package: Store) -> None:
+    """`""` is the answer, and the modal segment is the defect.
+
+    `beta` holds two of the three files here, exactly as `web` held twenty of DunneFlow's
+    sixty-three. A vote with no coverage test elects it and calls the rest of the program
+    external.
+    """
+    assert G.root_package(as_package) == ""
+
+
+def test_both_ways_of_pointing_at_one_program_group_it_the_same(
+        levelled: Store, as_package: Store) -> None:
+    """The guard that would have caught it, and the reason the fix is the right one."""
+    from_parent = _packages(levelled) - {"<root>"}
+    from_package = _packages(as_package) - {"<root>"}
+    assert from_parent == from_package == {"alpha", "beta"}
+
+
+def test_no_routine_of_the_program_is_ever_called_external(
+        levelled: Store, as_package: Store) -> None:
+    """`routines` holds what was extracted from this program's own files and nothing else.
+
+    The branch fired **0 of 4,786** times on Mensores and 750 of 752 on a map with a wrong
+    root -- it never described a fact, only a misreading (rules 26 and 30). It is
+    unreachable by construction now, and this is what says so.
+    """
+    for store in (levelled, as_package):
+        assert "<outside the root>" not in _packages(store)
+        assert "<external>" not in _packages(store)
+
+
+def test_every_navigator_package_row_selects_a_plate_that_exists(
+        levelled: Store, as_package: Store) -> None:
+    """The navigator selects **by plate id**, so a row with no plate selects nothing.
+
+    `COVER_PACKAGES` fills that group and used to take the second dotted segment on its own,
+    without knowing the program root -- a second definition of "package" that `PACKAGE_SIZES`
+    named as a hazard in a comment and nobody had clicked. Analysed at the parent the two
+    agree except for the root module itself (Mensores: **1 dead row of 46**); analysed at the
+    package the second segment is a *module* (**36 dead of 48**), which is a navigator whose
+    Packages group answers "Nothing to show." three times in four.
+
+    Both queries go through one expression now, so this holds by construction — which is what
+    makes it worth asserting rather than hoping.
+    """
+    from dunneflow.web import queries
+    for store in (levelled, as_package):
+        params = G.pkg_params(G.root_package(store))
+        rows = {str(r["pkg"]) for r in store.query(queries.COVER_PACKAGES, params)}
+        plates = {str(r["pkg"]) for r in store.query(queries.PACKAGE_SIZES, params)}
+        assert rows, "the navigator's package group is empty"
+        assert rows == plates, f"rows selecting nothing: {sorted(rows - plates)}"

@@ -23,6 +23,7 @@ from ..resolve.flows import ways_in
 from ..sourcedb import SourceStore
 from ..store import Store
 from . import queries
+from .graph import pkg_params, root_package
 
 
 def _root(store: Store) -> str:
@@ -129,7 +130,13 @@ def build(store: Store, source: SourceStore | None, program: str, *,
         for r in store.query(queries.COVER_BOUNDARIES)
     ]
 
-    packages = [{"id": r["pkg"], "n": r["n"]} for r in store.query(queries.COVER_PACKAGES)]
+    # The disks' own decomposition, asked for with the disks' own parameters. This used to
+    # be a bare `store.query(COVER_PACKAGES)` over a query that took the second dotted
+    # segment on its own -- a second definition of "package", which the navigator then
+    # selected plates by. See the note above `COVER_PACKAGES`.
+    pkg_p = pkg_params(root_package(store))
+    packages = [{"id": r["pkg"], "n": r["n"]}
+                for r in store.query(queries.COVER_PACKAGES, pkg_p)]
     tables = [{"name": r["name"], "n": r["n"]} for r in store.query(queries.COVER_TABLES)]
 
     rep = detect(store)

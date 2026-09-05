@@ -32,15 +32,36 @@ def package_expr(col: str = "module") -> str:
     string whose column name was patched in by substitution at the call site -- the kind of
     string surgery this project keeps paying for, correct only for as long as no column
     name happens to contain the word being substituted.
+
+    **The rootless branch, and why it comes first.** `root_package` returns `""` when no
+    single first segment accounts for every file, which is what analysing a directory that
+    already *is* a package produces. Then the tree itself is the root and a module's package
+    is its first segment -- `web.serve` is in `web`, `anomalies` is in `anomalies` -- which
+    is exactly the grouping analysing the parent directory would have given. Two ways of
+    pointing at one program, one answer.
+
+    **`<outside the root>` was `<external>`, and the rename is the finding.** Every row this
+    expression sees is the program's own -- `routines` and `structures` hold what was
+    extracted from its files, and nothing else is in them. On a healthy map the branch never
+    fires at all: **0 of 4,786** on Mensores. It fired only when the root was wrong, and
+    what it then said was not *"this module is not under the root"* but *"this is somebody
+    else's code"* -- 750 routines of 752, on the largest plate in the picture (rules 26
+    and 30). It is now unreachable by construction, because a root either accounts for every
+    file or is empty; it is kept, said honestly, so that a future change to root detection
+    finds a branch that states what it knows rather than one that guesses.
     """
     return f"""
     CASE
+      WHEN :root = '' THEN
+        CASE WHEN instr({col}, '.') > 0
+             THEN substr({col}, 1, instr({col}, '.') - 1)
+             ELSE {col} END
       WHEN {col} = :root THEN '<root>'
       WHEN {col} LIKE :root_dot THEN
         CASE WHEN instr(substr({col}, :cut), '.') > 0
              THEN substr({col}, :cut, instr(substr({col}, :cut), '.') - 1)
              ELSE substr({col}, :cut) END
-      ELSE '<external>'
+      ELSE '<outside the root>'
     END
 """
 
@@ -1261,27 +1282,27 @@ GROUP BY kind
 ORDER BY n DESC
 """
 
-# Top-level package by routine count. The same decomposition the graph's disks
-# use, so the navigator and the stack agree about what a package is.
-COVER_PACKAGES = """
-SELECT CASE
-         WHEN instr(module, '.') = 0 THEN module
-         ELSE substr(module, 1, instr(module, '.') - 1)
-       END || CASE
-         WHEN instr(substr(module, instr(module, '.') + 1), '.') > 0
-           THEN '.' || substr(substr(module, instr(module, '.') + 1), 1,
-                              instr(substr(module, instr(module, '.') + 1), '.') - 1)
-         WHEN instr(module, '.') > 0
-           THEN '.' || substr(module, instr(module, '.') + 1)
-         ELSE ''
-       END AS full_pkg,
-       CASE
-         WHEN instr(module, '.') = 0 THEN module
-         WHEN instr(substr(module, instr(module, '.') + 1), '.') > 0
-           THEN substr(substr(module, instr(module, '.') + 1), 1,
-                       instr(substr(module, instr(module, '.') + 1), '.') - 1)
-         ELSE substr(module, instr(module, '.') + 1)
-       END AS pkg,
+# Top-level package by routine count, **under the same expression the disks use** -- so a
+# navigator row and a plate are the same thing rather than two things with one name.
+#
+# It used to take the second dotted segment on its own, without knowing the program root,
+# and the comment here claimed it was "the same decomposition the graph's disks use". It was
+# not, and `PACKAGE_SIZES` said so a hundred lines below: *two definitions of "package" in
+# one dashboard is how a reader ends up comparing two numbers that were never the same
+# measurement.* What neither noticed is that the navigator selects **by plate id**
+# (`sel: pkg:${p.id}`), so a row the disks have no plate for selects nothing at all and the
+# centre pane says "Nothing to show." with no explanation available to it.
+#
+# Measured, which is how it stopped being a stylistic point: on a map analysed at the parent
+# directory the two agree except for the root module itself -- Mensores had **1 dead row of
+# 46**, `mensores`, whose plate is `<root>` -- and on a map analysed at the package the
+# second segment is a *module*, giving **36 dead rows of 48**. Tom found the second by
+# clicking them.
+#
+# `full_pkg` was selected here and read by nothing, in this file or any other; it goes with
+# the second decomposition it belonged to.
+COVER_PACKAGES = f"""
+SELECT {PACKAGE_EXPR} AS pkg,
        COUNT(*) AS n
 FROM routines
 GROUP BY pkg
@@ -1391,10 +1412,12 @@ GROUP BY head
 
 
 # Package sizes under the *same* expression the disks use, so the overview and the stack
-# agree about what a package is. `COVER_PACKAGES` answers a different question -- it takes
-# the second segment without knowing the program root (`COVER_ROOT` now answers that one) --
-# and two definitions of "package" in one dashboard is how a reader ends up comparing two
-# numbers that were never the same measurement.
+# agree about what a package is. `COVER_PACKAGES` now asks through this expression too --
+# it used to take the second segment without knowing the program root, and this note stood
+# beside that difference calling it a hazard for two months before anybody clicked one of
+# the rows it produced. One expression, three callers (rule 51). `COVER_ROOT` is still its
+# own question and still separate: it asks what prefix a *narrow field* may drop, which is
+# a display decision rather than a decomposition.
 PACKAGE_SIZES = f"""
 SELECT {PACKAGE_EXPR} AS pkg, COUNT(*) AS n
 FROM routines

@@ -179,76 +179,58 @@ program has a most-commented routine and a maximum alone is a claim nobody can w
 
 ## What we are doing now
 
-**Paused 2026-09-06, between features. Nothing was built and nothing is half-written.**
-1,070 tests, mypy clean over 109 source files, ruff clean, working tree clean apart from this
-record, `output/` holding exactly the four directories it held at the start. **No source file
-was changed this session.**
+**Paused 2026-09-06.** Standards steps 3 and 4 are both built, both committed, gates green:
+1,088 tests, mypy clean over 113 source files, ruff clean. Earlier the same day the looking
+debt was discharged — that entry is below and still stands.
 
-**The standing debt is discharged.** The five surfaces that had never been *looked* at — the
-constants surface, the blank-graph fix, chunk B, chunk 5's citation viewer, and the plate
-inspector — have all been seen, with a real pointer, on a live page. The debt had grown in
-four consecutive sessions.
+**`analyze --standards <dir>` imports somebody else's naming standard**, into `standards.db`
+and never into `docs.db`. Its own file rather than a column, because the corpus store is read
+by the glossary, the mirror, traceability and Document mode, and a flag would make each of
+them a place that must remember to filter (rule 51's shape). Rule 57 gains three refusals a
+reader can trigger by naming a root — the output tree, the documentation root, the analysed
+tree — each with its own sentence, all judged **before anything is opened**, so a refusal
+never abandons a half-written map.
 
-**It was never the surfaces, and the diagnosis in the record was wrong.** The automation
-tab has **two coordinate systems**:
+**`resolve/conformance.py` measures a stated rule against the population it governs**, and a
+third page, *Stated rules, checked*, says what happened. **The order was reversed on
+evidence.** Step 3 as recorded — *compare against the graph* — would have made the tool
+confidently wrong: of Mensores' six `checkable` rules **none is a question about `graph.db`**,
+and *"Files: kebab-case"* checked there is **0 of 628** Python files against a rule its own
+document scopes to `src/**/*.md`, three documents.
 
-| | CSS → frame | covers |
+So a **path-shaped scope requires a declared `paths:`** and is refused without one; an
+**entity scope** names its own population and a glob narrows it. **Three verdicts, never
+two** — checked, no population, not checkable — because collapsing any two lets *"we could
+not check"* read as *"it passes"*. Only case styles are tested, through `naming.case_style`;
+a template is quoted back and declared untestable rather than guessed at.
+
+**Measured on Mensores**, which is the deliverable:
+
+| Rule | Population | Result |
 |---|---|---|
-| screenshot | 784 / 629.5 = **1.2454** | CSS 0..629.5 × 0..275.5 — `inner ÷ dpr` |
-| click | 784 / 1259 = **0.6227** | the whole viewport |
+| `files / kebab-case` (its own) | `src/**/*.md` — 3 documents | **0 of 3** |
+| `modules / snake_case` (imported) | modules under `**/*.py` | 628 of 628 |
+| `classes / PascalCase` (imported) | classes | 1,127 of 1,179 |
+| `constants / SCREAMING_SNAKE_CASE` (imported) | constants | 2,509 of 2,638 |
+| `variables / CAPS_UNDERSCORES` | — | **no population**, and it says why |
 
-**The quotient is 2.000 — the device pixel ratio.** The capture path divides the viewport by
-dpr; the input path does not. So the pointer could always reach the inspector at x=985, and
-four sessions of dispatched `MouseEvent`s were unnecessary; only *sight* stopped at the
-halfway line. Both numbers were measured, not reasoned — fixed bars at known CSS x for the
-first, a capturing `pointerdown` listener for the second.
+**Two defects that only measuring found**, both after the module was written and looked
+right. Reusing `POPULATIONS` without `DOTTED` reproduced rule 51's own recorded defect
+exactly — `modules / snake_case` reported **1 of 628**, because a dotted path read as one
+identifier makes every module an exception to its own convention. And the population query
+carried `stated.py`'s `duplicate_of = ''` filter, which is right for *rules* and wrong for
+*paths*: two paths holding identical bytes are still two filenames, and dropping them made
+the population **1 document instead of 3**.
 
-**The instrument, for the next session:**
+**And one the looking found**, with tests all green: the five prose rules that name no scope
+and no pattern rendered under the heading **"— · —"** — five panels with the same non-name,
+in the group whose whole job is saying why each was refused.
 
-* **Click** at `frame = rect × (784 / innerWidth)`, taking `rect` from
-  `getBoundingClientRect`. Verified landing on `BUTTON.nav-item.nav-pkgname` at client
-  (75,127) against a computed centre of (75,126) — a real pointer path, which is what
-  rule 48 asks for.
-* **See** by panning: `transform: translate(-x,-y)` on the app root makes the fixed
-  top-left quarter a movable window over the real page, at full fidelity and magnified
-  1.2454×. A transform is paint, not layout, so overflow and clipping survive it exactly.
-  Fixed overlays escape a transformed ancestor and pan on their own; `.viewer` is centred by
-  its own `translate(-50%,-50%)`, so add to that matrix rather than replacing it.
-* **Never scale.** Root `zoom` fits the whole app into the frame and was tried first. It
-  made the plate inspector report `gr…es`, `f…k` and a bare `…` for a three-letter word —
-  which reads exactly like a chunk B defect and is not one. Chunk B's budgets are measured
-  at render time, and under zoom `getBoundingClientRect` returns zoomed values while the
-  metrics beside them do not. **A scaled look cannot judge whether a field fits its box,
-  because scaling is what decides it.**
-* `resize_window` **does not refuse — it lies.** It returns *"Successfully resized … to
-  2400x1700"* and `innerWidth` stays 1259. Rule 37's family, arriving from the instrument.
+**Two sentences that had become false were rewritten**, not left standing: the stated page's
+*"comparing them is not built"* and the same claim in `11-naming.md`.
 
-**What the looking found in the app: nothing wrong.** The plate inspector reads correctly
-end to end, including **Ways in 0** answered as *"No way in lands here. This is somewhere the
-program arrives at, not somewhere it starts."* The citation viewer's foot fits its 56rem —
-`.viewer` measures 896 × 438.8 — and carries **Read it in the document →**. The graph mounts,
-10,015 nodes and 53 plates, and *snap to fit* frames to the real canvas. A clipped-field
-audit over two views returned **zero**. The legend's `disceptator 959` and the inspector's
-`959 on it` agree without being wired together (rule 13).
-
-**Two things were nearly filed as defects and were not**, both narrow-window artifacts
-checked before being written down: the constants table's WHERE pill breaking a path mid-word
-(the column goes 108 → 163 px when the navigator collapses; it is a `<table>`, so a wide
-window fits it), and the 26rem legend leaving a 233 px canvas inside a 649 px mount.
-
-**One candidate for Tom, not minted:** *an instrument's two coordinate systems can differ,
-and the one you can see is not the one you touch.* Rules 38 and 48 cover an instrument that
-cannot see and a click that proves only the handler; neither covers an instrument that is
-self-inconsistent, so a coordinate read off a correct screenshot lands at twice its intended
-place with no error anywhere. May be an instance of rule 24.
-
-**Still open**, and unchanged by this session: standards step 3 (compare a checkable rule
-against the graph), step 4 (`--standards <dir>`), and the filed small defects — the change
-row filing two trail steps, `holds` missing from `insp`'s defaults, `navIds` splitting on a
-space.
-
-The counts are unchanged: **81 engineering rules numbered to 82** — 21 still does not exist
-— and **28 design rules**.
+The counts are unchanged: **81 engineering rules numbered to 82** and **28 design rules**.
+Nothing new was minted; the candidate from earlier today is still open.
 
 ### Before the pause: a plate is a subject (2026-09-05)
 
@@ -1702,10 +1684,16 @@ feature was blocked on an answer nobody owed.
   ~~**(2)** serve the stated lane to the dashboard~~ — *built 2026-09-05, and it is two pages
   rather than one section: see the top of this file. `scope` and `pattern` reach a screen for
   the first time, and the three ways a program can state nothing each got their own sentence*;
-  **(3)** compare a checkable rule against the graph the way a measured convention already
-  is; **(4)** `--standards <dir>`, scoped by `paths`/`applies_to`, with rule 57 governing the
-  hazard of admitting an outside directory. 4 is larger than 3 and is where the
-  enterprise case actually lives.
+  ~~**(3)** compare a checkable rule against the graph~~ and ~~**(4)** `--standards <dir>`~~ —
+  *both built 2026-09-06, and **in that reversed order, on evidence**. Step 3 as written would
+  have made the tool confidently wrong: none of the six checkable rules is a question about
+  `graph.db`, and checked against it "Files: kebab-case" scores 0 of 628 Python files for a
+  rule its own document scopes to three markdown files. The population is now never inferred
+  from the scope word. See the top of this file.*
+
+  *Also corrected here: this list said **62 documents carry a `paths`, `area` or
+  `applies_to` key**. By key rather than by substring it is `paths` **5**, `applies_to` **4**,
+  `area` **8** — and only `harness/rules/style.md` carries both a scope and any rules.*
 - **`m.<module>` as a language feature, with research owed on prior art** — how other tools
   present a construct the *language* put there rather than an author. Decided 2026-08-30:
   not filtered and not bare, but a curiosity carrying its own explanation, scoped to the

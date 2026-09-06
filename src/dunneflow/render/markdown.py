@@ -69,7 +69,8 @@ def _esc(text: str | None, limit: int | None = None) -> str:
 
 def render_all(store: Store, out_dir: Path, root: Path, program: str,
                when: datetime | None = None, include_tests: bool = False,
-               docs: DocStore | None = None, docs_root: Path | None = None) -> list[Path]:
+               docs: DocStore | None = None, docs_root: Path | None = None,
+               standards: DocStore | None = None) -> list[Path]:
     """Write the whole map. Returns the files written."""
     out_dir.mkdir(parents=True, exist_ok=True)
     stamp = _stamp(when)
@@ -88,7 +89,8 @@ def render_all(store: Store, out_dir: Path, root: Path, program: str,
         # not any documentation was found. A glossary that says "nothing defines these
         # eleven words" is a finding; an absent glossary is a silence.
         render_glossary(store, docs, out_dir, root, program, stamp, docs_root),
-        render_naming(store, docs, out_dir, root, program, stamp, docs_root),
+        render_naming(store, docs, out_dir, root, program, stamp, docs_root,
+                      standards=standards),
         render_traceability(store, docs, out_dir, root, program, stamp, docs_root),
         render_mirror(store, docs, out_dir, root, program, stamp, docs_root),
         render_constants(store, out_dir, root, program, stamp),

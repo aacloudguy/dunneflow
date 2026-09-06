@@ -32,6 +32,12 @@ from typing import Any
 from ..docstore import DocStore
 from ..resolve import glossary as glossary_resolve
 from ..resolve import naming as naming_resolve
+from ..resolve.conformance import (
+    CHECKED,
+    NO_POPULATION,
+    NOT_CHECKABLE,
+    check_stated,
+)
 from ..resolve.stated import checkable_sentence, stated_rules
 from ..store import Store
 
@@ -138,6 +144,69 @@ def stated_naming(docs: DocStore | None) -> dict[str, Any]:
         # it is never silent: byte-identical copies are folded, and the page states it.
         "documents_seen": int(counts.get("documents", 0)),
         "duplicates": int(counts.get("duplicates", 0)),
+    }
+
+
+def checked_naming(store: Store, docs: DocStore | None,
+                   standards: DocStore | None) -> dict[str, Any]:
+    """The **comparison**: every stated rule, measured over the population it governs.
+
+    A third page rather than a column on either of the two above, and that is Tom's
+    separation kept rather than bent. `measure_naming` counts what the code does and quotes
+    nobody; `stated_naming` quotes what somebody wrote and counts nothing; neither may show
+    a number beside a quotation, because a derived convention holding 100% of the time and
+    a rule a person set down are different claims. This page is *explicitly* the comparison
+    and says so, which is the only way to put the two together honestly.
+
+    **Three verdicts travel, never a boolean.** A rule that holds, a rule with no population
+    in this map, and a rule whose spelling this tool cannot test are three facts, and the
+    page must be unable to render any two of them alike -- otherwise *"we could not check"*
+    reads as *"it passes"*, which is the claim this tool exists not to make.
+
+    **`standards` may be `None` and that is the ordinary case** (design rule 11): no
+    `--standards` directory was given. It is a different absence from a directory that was
+    given and states no rule, so `imported` travels beside the rules rather than being
+    inferred from an empty list.
+    """
+    checks = check_stated(store, docs, standards)
+    counted = [c for c in checks if c.verdict == CHECKED]
+    return {
+        # About the *analysis*, never the corpus -- the same distinction `stated_naming`'s
+        # `read` draws, one store over. No count can stand in for either.
+        "read": docs is not None,
+        "imported": standards is not None,
+        "checks": [
+            {
+                "doc": c.rule.doc,
+                "line": c.rule.line,
+                "text": c.rule.text,
+                "heading": c.rule.heading,
+                "scope": c.rule.scope,
+                "pattern": c.rule.pattern,
+                "source": c.source,
+                "verdict": c.verdict,
+                "reason": c.reason,
+                "population": c.population,
+                "scopedBy": c.scoped_by,
+                "total": c.total,
+                "holds": c.holds,
+                "prevalence": round(c.prevalence, 4),
+                "sql": c.sql,
+                # Every exception, never a sample. The exceptions are the product: a rule
+                # holding in 1,127 of 1,179 cases is mildly interesting, and the 52 classes
+                # that break it are the finding (rule 8 bounds a diagram, not a list).
+                "exceptions": [{"name": e.name, "where": e.where} for e in c.exceptions],
+            }
+            for c in checks
+        ],
+        # What the page needs to say what it is looking at before a reader counts rows.
+        "summary": {
+            "rules": len(checks),
+            "checked": len(counted),
+            "noPopulation": sum(1 for c in checks if c.verdict == NO_POPULATION),
+            "notCheckable": sum(1 for c in checks if c.verdict == NOT_CHECKABLE),
+            "exceptions": sum(len(c.exceptions) for c in counted),
+        },
     }
 
 

@@ -49,6 +49,7 @@ uv run dunneflow mirror   <path>                    # words the docs define that
 uv run dunneflow query    <path> --sql "..."        # ask the graph directly
 uv run dunneflow migrate  <dir>                     # stored paths: absolute -> relative
 uv run dunneflow serve    <dir> [--revision <rev>]  # the dashboard, on one version
+uv run dunneflow analyze  <path> --standards <dir>  # measure it against somebody else's rules
 ```
 
 `analyze --progress-json` reports one JSON object per line on stdout instead of the summary,
@@ -314,6 +315,32 @@ docs   ──► extract ──► docs.db  (SQLite) ─────────
   in no cache key, and no fact depends on it — which is why `markdown-it` is vendored in
   `web/vendor/` and why nothing under `extractors/` may import it. State the line rather
   than blur it, or the next reader will correctly call the library a violation.
+- `standards.py` + `standards.db` — **somebody else's rules, admitted without being
+  absorbed.** `--standards <dir>` reads an outside naming standard through the *same* walk
+  as the corpus (so `discover_docs` refuses a nested checkout for it too, rule 57) into a
+  store of its own. Its own **file**, never a column on `documents`: `docs.db` is read by
+  the glossary, the mirror, traceability and Document mode's corpus lane, and a flag would
+  make every one of those a place that must remember to filter — the seven-read-paths shape
+  rule 51 was minted from. `docsource.db`'s argument, one subject over. Rule 57 gains three
+  refusals a reader can trigger by naming a root — inside the output tree, inside the
+  documentation root, inside the analysed tree — **each with its own sentence**, and all of
+  them judged *before* anything is opened, so a refusal never abandons a half-written map.
+- `resolve/conformance.py` — **reality against intent**, and the third naming question.
+  `naming.py` counts and quotes nobody; `stated.py` quotes and counts nothing; this asks
+  whether the program does what a rule says. **The population is never inferred from the
+  scope word**, and that is the whole feature: all six of Mensores' `checkable` rules come
+  from a harness standard and *none* is a question about `graph.db`. Checked against the
+  graph, *"Files: kebab-case"* is **0 of 628** Python files — a catastrophic claim about a
+  rule its own document scopes to `src/**/*.md`, three documents. So a **path-shaped scope
+  requires a declared `paths:`** and is refused without one (rule 49: a plausible population
+  is what hides the failure), while an **entity scope** names its own population and a glob
+  narrows it. **Three verdicts, never two** — checked, no population here, not checkable —
+  because collapsing any two lets *"we could not check"* read as *"it passes"*. Only case
+  styles are tested, through `naming.case_style` so `kebab-case` means one thing (rule 51);
+  a template like `NN-kebab-name` is quoted back and declared untestable rather than guessed
+  at. It reuses `POPULATIONS` **and `DOTTED`**: taking the first without the second
+  reproduced rule 51's own defect exactly, reporting `modules / snake_case` as **1 of 628**
+  because a dotted path was read as one identifier.
 - `docstore.py` — `docs.db`. **Parallel to the graph, never inside it.** A doc rescan
   never touches `graph.db`, code-only analysis stays cheap, and the corpus stays a
   separately handable artifact — many will hand over a charter and never a line of

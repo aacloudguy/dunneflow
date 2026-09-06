@@ -35,6 +35,7 @@ from .. import revisions
 from ..docstore import DocStore
 from ..resolve import version as version_order
 from ..sourcedb import DocSourceStore, SourceStore
+from ..standards import STANDARDS_DB
 from ..store import StaleGraphError, Store, UnfinishedMapError
 from . import analysis, anomalychanges, changes, diagram, filediff, packages, plate, queries
 from .code import build_file, build_files
@@ -59,7 +60,12 @@ from .layout import structural
 from .related import documents_for as related_documents
 from .search import search_files, search_in_file
 from .threads import cohort, for_node
-from .vocabulary import bind_glossary, measure_naming, stated_naming
+from .vocabulary import (
+    bind_glossary,
+    checked_naming,
+    measure_naming,
+    stated_naming,
+)
 from .waysin import describe as describe_way_in
 from .waysin import listing as ways_in_listing
 
@@ -314,6 +320,11 @@ class _Base:
     # somebody wrote down about them -- and the dashboard shows them on two pages for the
     # same reason. Folding them into one dict would make "derived" false of half of it.
     stated: dict[str, Any]
+    # The comparison, and a third field for the same reason there are two above: what the
+    # code does, what somebody wrote, and whether the one meets the other are three claims.
+    # Folding this into `stated` would put a measurement inside the payload whose whole
+    # contract is that it measures nothing.
+    checked: dict[str, Any]
     glossary: dict[str, Any]
     # **This version's document store, held open.** It used to be opened for the glossary
     # and closed in the same breath, because one held across a base switch leaked a 148 MB
@@ -496,6 +507,13 @@ class _Live:
         self.docsource: DocSourceStore | None = None
         self.docsource = self._open_docsource(out_dir / "docsource.db")
 
+        # **The imported standard, per program and not per revision.** `standards.db` sits
+        # beside `docsource.db` for the same reason and with the same lifetime: it belongs
+        # to the program, not to a point in its history. Absent is the ordinary case -- most
+        # maps are made without `--standards` -- and the difference between *absent* and
+        # *present but empty* is carried to the page rather than inferred there.
+        self.standards: DocStore | None = self._open_standards(out_dir / STANDARDS_DB)
+
         # Filled by `open()`, which every caller goes through -- boot included. Typed as
         # the real thing rather than `| None` because a server with no base has never
         # existed: `serve()` opens one before it binds a port, and a failed open raises
@@ -604,6 +622,7 @@ class _Live:
             docs = self._docs_for(graph_db)
             naming = measure_naming(store)
             stated = stated_naming(docs)
+            checked = checked_naming(store, docs, self.standards)
 
             _step(4)
             glossary = bind_glossary(store, docs)
@@ -614,6 +633,11 @@ class _Live:
                                 revision=source_revision, vocabulary={
                                     "conventions": len(naming["conventions"]),
                                     "stated": len(stated["rules"]),
+                                    # How many rules were actually *measured*, not how many
+                                    # exist: the navigator row is a count of answers, and a
+                                    # row reading 16 beside a page that could check 4 would
+                                    # promise twelve findings that are not there (rule 32).
+                                    "checked": checked["summary"]["checked"],
                                     "terms": total,
                                     "defined": defined,
                                 })
@@ -626,7 +650,8 @@ class _Live:
         fresh = _Base(graph_db=graph_db, store=store, revision=revision,
                       source_revision=source_revision,
                       docsource_revision=docsource_revision, payload=payload, root=root,
-                      files=files, naming=naming, stated=stated, glossary=glossary,
+                      files=files, naming=naming, stated=stated, checked=checked,
+                      glossary=glossary,
                       docs=docs,
                       cover=cover,
                       # The default under its own key, and the *same object*: `payload` and
@@ -736,6 +761,21 @@ class _Live:
             return None
 
     @staticmethod
+    def _open_standards(path: Path) -> DocStore | None:
+        """The imported standard, or nothing at all.
+
+        A `DocStore` because a standard *is* documents -- the same scanner read it, and a
+        second store type would be a second answer to what a document is (rule 51). What
+        keeps it from being mistaken for the corpus is the file it lives in, never a flag.
+        """
+        if not path.exists():
+            return None
+        try:
+            return DocStore(path, writable=False, shared=True)
+        except (ValueError, OSError):
+            return None
+
+    @staticmethod
     def _open_docsource(path: Path) -> DocSourceStore | None:
         """The document sidecar. `DocSourceStore`, never `SourceStore` -- see rule 16."""
         if not path.exists():
@@ -791,12 +831,14 @@ class _Live:
         # on a program nobody is serving.
         source = self._open_source(out_dir / "source.db")
         docsource = self._open_docsource(out_dir / "docsource.db")
-        was = (self.out_dir, self.source, self.docsource)
+        standards = self._open_standards(out_dir / STANDARDS_DB)
+        was = (self.out_dir, self.source, self.docsource, self.standards)
         try:
-            self.out_dir, self.source, self.docsource = out_dir, source, docsource
+            (self.out_dir, self.source, self.docsource,
+             self.standards) = out_dir, source, docsource, standards
             self.open(graph_db, step)
         except Exception as exc:                  # noqa: BLE001 -- a report, not a swallow
-            self.out_dir, self.source, self.docsource = was
+            (self.out_dir, self.source, self.docsource, self.standards) = was
             if source is not None:
                 source.close()
             if docsource is not None:
@@ -960,6 +1002,8 @@ class _Live:
             self.source.close()
         if self.docsource is not None:
             self.docsource.close()
+        if self.standards is not None:
+            self.standards.close()
 
 
 class _Handler(BaseHTTPRequestHandler):
@@ -1668,6 +1712,21 @@ class _Handler(BaseHTTPRequestHandler):
             self._json({**base.stated, "corpus": _sidecar_state(
                 self._live.docsource, base.docsource_revision,
                 absent=NO_DOC_SIDECAR)})
+
+    def _r_checked(self, q: dict[str, list[str]]) -> None:
+        """The comparison: every stated rule, against the population it governs.
+
+        Its own route for the reason `_r_stated` is its own route, one step further on. The
+        derived page counts and quotes nobody; the stated page quotes and counts nothing;
+        this one does both and is *labelled* as doing both, which is the only arrangement
+        that keeps a measured number from being read as somebody's rule or the reverse.
+
+        Built at boot with the other two rather than on demand, and for the same reason:
+        it is the same two stores already open, and a lazy first call would put a full
+        population scan in the reading loop the first time anyone opened the page.
+        """
+        with self._live.lock:
+            self._json(self._live.current.checked)
 
     def _r_glossary(self, q: dict[str, list[str]]) -> None:
         """The Vocabulary lane: the program's words and who says what they mean.
@@ -2543,6 +2602,7 @@ class _Handler(BaseHTTPRequestHandler):
         "/api/thread": "_r_thread",
         "/api/naming": "_r_naming",
         "/api/stated": "_r_stated",
+        "/api/checked": "_r_checked",
         "/api/wayin": "_r_wayin",
         "/api/reldocs": "_r_reldocs",
         "/api/glossary": "_r_glossary",

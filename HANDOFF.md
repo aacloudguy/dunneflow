@@ -10531,3 +10531,129 @@ that its picture and its pointer answer in different units, so a coordinate read
 screenshot lands at twice its intended place with no error anywhere. Four sessions read that
 as two separate limitations and worked around both. It may be an instance of rule 24, a
 measurement that does not measure the thing it names; it is not claimed as new.
+
+## 2026-09-06 — standards 4 and 3, and the order they had to be built in
+
+Both built. The recorded order was 3 then 4; it was reversed on evidence, and the evidence
+is the feature.
+
+### The measurement that reordered the work
+
+Step 3 was written down as *"compare a checkable rule against the graph the way a measured
+convention already is."* Measured on Mensores before anything was built, that is not
+possible to do honestly. Of the six `checkable` rules, **not one is a question about
+`graph.db`**:
+
+| Rule | Declared scope | Where its population actually lives |
+|---|---|---|
+| Files: kebab-case | `paths: ['src/**/*.md']` | `docs.db` — 3 documents |
+| Plan files: `NN-NN-PLAN.md` | harness plans | `docs.db` — 392 |
+| Phase directories: `NN-kebab-name` | harness phases | `docs.db` |
+| Commands: `paul:kebab-case` | PAUL harness commands | nothing — 0 in this corpus |
+| Bash variables: CAPS_UNDERSCORES | bash | nothing — no bash extractor |
+| Type attributes: colon separator | harness type syntax | nothing |
+
+Checked against the graph, *"Files: kebab-case"* is **0 of 628** Python files — a confident,
+catastrophic claim about a rule governing three markdown files. `commands` would have seized
+the graph's 30 CLI entrypoints and condemned Mensores' own Python CLI against a rule
+belonging to a different harness entirely. That is `anomalies.py`'s discipline — *six
+confident findings in a row were defects in this tool* — arriving in a new feature.
+
+**A figure in the record was wrong and is corrected.** `BRIEFING.md` said *"62 documents
+carry a `paths`, `area` or `applies_to` key"*. By key rather than by substring: `paths`
+**5**, `applies_to` **4**, `area` **8**. Only `harness/rules/style.md` carries both a scope
+and any rules.
+
+### Step 4 — `--standards <dir>`
+
+`analyze --standards <dir>`, repeatable, reading an outside standard into **`standards.db`**.
+
+**Its own file, never a column.** `docs.db` is read by the glossary, the mirror,
+traceability, Document mode's corpus lane and every count on the About panel. An `origin`
+flag would make each of those a place that must remember to filter — the seven-read-paths
+shape rule 51 was minted from and `refuse_missing` was the answer to. A separate file means
+no existing consumer changed at all, and it is asserted as a *file* rather than as a filter:
+scanning a standard leaves the corpus store byte-for-byte as it was.
+
+The **same walk** reads it, so `discover_docs` refuses a nested checkout inside a standards
+directory exactly as it does inside a project (rule 57). Writing a second scanner would have
+been a second answer to what a document is.
+
+**Rule 57, one directory further out.** Naming a root opens three new ways for a program to
+read itself as its own standard, and each is refused with its own sentence: inside the
+**output root** (*"reading a map back as a standard would mint rules from it"*), inside the
+**documentation root** (*"already read as this program's own prose"*), inside the **analysed
+tree** (tested separately because `--no-docs` leaves no broader containment to catch it).
+Plus a missing root and a file-instead-of-directory, each with its own answer.
+
+**Containment is asked before existence**, and the order was chosen after the tests caught
+it: a path typed into `output/` that does not exist yet is a reader about to make a
+structural mistake, and answering only *"does not exist"* invites them to create it and try
+again.
+
+**Every root is judged before anything is opened.** Refusing beside the scan would mean a
+graph, a source snapshot and a document store already on disk — so a refusal would either
+abandon a half-written map or carry on with the offending root dropped, reporting part of a
+standard as the whole of one. Verified: after all four refusals, `output/` was untouched.
+
+### Step 3 — the comparison, on a third page
+
+`resolve/conformance.py`. **The population is never inferred from the scope word**, which is
+the entire feature:
+
+* **A path-shaped scope requires a declared scope.** *"Files"* does not say *which* files.
+  A rule naming files whose document declares no `paths:` reports **no population** rather
+  than being measured against everything — rule 49, because a plausible population is
+  exactly what hides the failure.
+* **An entity scope names its own population**, and a declared glob narrows it.
+
+**Three verdicts, never two.** `CHECKED`, `NO_POPULATION`, `NOT_CHECKABLE`. Collapsing any
+two lets *"we could not check"* render as *"it passes"*.
+
+**Only case styles are tested**, through `naming.case_style` so `kebab-case` means one thing
+(rule 51). `NN-kebab-name`, `paul:kebab-case` and *"colon separator"* are quoted back and
+declared untestable. Inventing a template language would mean guessing what a placeholder
+meant, and a guess is indistinguishable on screen from a measurement.
+
+**Two defects found by measuring rather than by reasoning**, both after the module was
+written and "working":
+
+* **`modules / snake_case` reported 1 of 628.** Reusing `POPULATIONS` without reusing
+  `DOTTED` reproduced, exactly, the defect `naming.py` records paying for once already:
+  `mensores._config` read as one identifier makes every module an exception to its own
+  convention. 1 of 628 → **628 of 628**.
+* **`files / kebab-case` reported 0 of 1, and the population was wrong.** The query filtered
+  `duplicate_of = ''`, copied from `stated.py` where it is right — a rule quoted twice out
+  of two copies is one rule. This counts **paths**, and two paths holding identical bytes are
+  still two distinct filenames the rule governs. Both ADRs under `src/` are byte-identical to
+  copies under `.groma/adrs/`. 1 document → **3**.
+
+**The result, measured.** *"Files: kebab-case"* over its own declared `src/**/*.md` holds in
+**0 of 3** — `README`, and both ADRs whose stems carry a `.` in `v19.2`. *(The plan predicted
+2 of 3 and was wrong; `case_style` calls a dotted stem `other`, which was measured before the
+number was carried anywhere.)* An imported corporate standard scoped `['**/*.py']` gives the
+code-shaped half: modules **628 of 628**, classes **1,127 of 1,179**, constants **2,509 of
+2,638**. `variables` reports no population and says why — *DunneFlow does not record
+variables*, a design decision rather than a gap.
+
+### The page
+
+*Stated rules, checked* — a third navigator row between the two lanes, wired at eight points.
+Tom's separation is kept rather than bent: the derived page counts and quotes nobody, the
+stated page quotes and counts nothing, and this one is **labelled** as the comparison in its
+first line. Each check shows its rule quoted, its origin as a badge (`ITS OWN` / `IMPORTED`),
+the population and the glob that scoped it, and every exception.
+
+**Looked at, not only tested**, with the instrument recorded earlier the same day — and the
+instrument's rule held on a differently-sized window, which is worth recording: at 1200×789
+the click factor was 682/1200 and the screenshot factor 682/600, **ratio exactly 2 again**.
+Only the frame width varies (682 here, 784 before), so it must be read from a screenshot
+rather than hardcoded.
+
+**One defect the looking found.** The five prose rules that name no scope and no pattern all
+rendered under the heading **"— · —"** — five panels with the same non-name, in the group
+whose whole job is saying why each was refused. `checkedTitle` falls back to the rule's
+heading, then its own first words. Only a look finds that; every test passed.
+
+Two sentences that had become false were rewritten rather than left standing: the stated
+page's *"comparing them is not built"*, and the same claim in `11-naming.md`.

@@ -85,6 +85,8 @@ let TERMS = [];        // words this program uses as names that something define
 let UNDEFINED = [];    // words it uses and nothing defines -- the mirror's finding, served
 let CONVENTIONS = [];  // measured naming conventions, each with the query that counted it -- served
 let STATED = [];       // naming rules the project's own documents state -- quoted, never counted
+let CHECKS = [];       // stated rules measured against the population each governs -- the comparison
+let CHECKED_SUM = null;  // how many were checked, refused, or untestable -- so the page can say
 let VOCAB = {};        // the scalars beside them: coverage, thresholds, gaps, and which lane is loaded
 
 /* Which sidecars this map has, keyed by the provenance whose citations read them, each
@@ -902,6 +904,7 @@ const NAV_ROUTES = {
   glossary:    () => { state.view = "glossary"; },
   naming:      () => { state.view = "naming"; },
   stated:      () => { state.view = "stated"; },
+  checked:     () => { state.view = "checked"; },
   inference:   () => { state.view = "inference"; },
   curiosities: () => { state.view = "curiosities"; },
   pins:        () => { state.view = "pins"; },
@@ -7165,7 +7168,8 @@ const CENTRE_MODES = ["graph", "table", "doc", "code", "diagram"];
 const OFF_MODE_PAGE = {
   cover: "the overview", anomalies: "the worklist", changes: "the comparison",
   glossary: "the glossary", naming: "the derived naming standard",
-  stated: "the stated naming rules", wayin: "this way in",
+  stated: "the stated naming rules", checked: "the rules checked",
+  wayin: "this way in",
   curiosities: "the doorway panel", pins: "what you have kept",
   inference: "the inference settings", settings: "Settings",
 };
@@ -8444,6 +8448,28 @@ async function loadStated() {
   }
 }
 
+/* The comparison. Its own loader for the reason it is its own page: a reader who never
+   opens it never pays for it, and `imported` has to survive the trip because *no standards
+   directory was given* and *one was given and states no rule* are different answers that
+   arrive as the same empty list. */
+async function loadChecked() {
+  if (VOCAB.checked) return;
+  VOCAB.checked = "loading";
+  try {
+    const r = await fetch("/api/checked");
+    if (!r.ok) throw new Error(`the server answered ${r.status}`);
+    const d = await r.json();
+    CHECKS = d.checks || [];
+    CHECKED_SUM = d.summary || null;
+    VOCAB.checkedRead = !!d.read;
+    VOCAB.checkedImported = !!d.imported;
+    VOCAB.checked = "ready";
+  } catch (err) {
+    VOCAB.checked = "failed";
+    VOCAB.checkedError = err.message;
+  }
+}
+
 async function loadGlossary() {
   if (VOCAB.glossary) return;
   VOCAB.glossary = "loading";
@@ -8511,6 +8537,7 @@ function ensureVocabulary() {
   if (state.view === "glossary" && !VOCAB.glossary) loadGlossary().then(render);
   if (state.view === "naming" && !VOCAB.naming) loadNaming().then(render);
   if (state.view === "stated" && !VOCAB.stated) loadStated().then(render);
+  if (state.view === "checked" && !VOCAB.checked) loadChecked().then(render);
 }
 
 /* Which provenance block is open, keyed by **pane and card** rather than by card alone.
@@ -8876,10 +8903,189 @@ function viewStated() {
         <p class="hint">This page is what your documents say. The
           <b>derived naming standard</b> is what the code was found to do — measured, with the
           query behind every number and every exception it found. They are two answers to one
-          question and comparing them is not built.</p>
+          question, and <b>stated rules, checked</b> is where they are put together — each
+          rule above measured over the population its own document says it governs.</p>
         <div class="prov">
           <button class="cite" data-goto="naming">
             <span class="citeicon" aria-hidden="true">◈</span>Derived naming standard<span class="citego">${esc(vocabCount("conventions") || "0")} conventions</span></button>
+        </div>
+      </div>
+    </section>
+  </div>`;
+}
+
+/* ═══ stated rules, checked: reality against intent ═══ */
+
+/* **Three verdicts, and the page must be unable to render two of them alike.** A rule that
+   holds, a rule with nothing in this map to measure, and a rule whose spelling this tool
+   cannot test are three different facts; collapse any two and *"we could not check"* reads
+   as *"it passes"*. Table-driven for design rule 16's reason: a verdict this shell has never
+   heard of is named on the page and in the console rather than folded into whichever group
+   happens to be first. */
+const VERDICTS = [
+  ["CHECKED", "Checked", "Measured over the population the rule governs. Every exception is listed — the exceptions are the product."],
+  ["NO_POPULATION", "Nothing here to check", "The rule is well formed and this map holds nothing it governs. That is a fact about the map, not about the rule."],
+  ["NOT_CHECKABLE", "Not checkable by this tool", "DunneFlow tests case styles. A rule naming a template or a separator is quoted back rather than guessed at — a guess here would look exactly like a measurement."],
+];
+
+/* Where a rule came from, as a badge. A rule the project wrote about itself and one an
+   outside standard imposes are different claims, and a reader who cannot tell them apart
+   cannot weigh either. */
+function sourceBadge(src) {
+  const imported = /standards/.test(String(src || ""));
+  return `<span class="badge ${imported ? "opaque" : "certain"}" title="${esc(src)}">${
+    imported ? "IMPORTED" : "ITS OWN"}</span>`;
+}
+
+/* What to call a check on screen.
+ *
+ * `scope · pattern` for a rule that names both -- which is what makes it checkable, so the
+ * pair is the rule's identity. A prose rule names neither, and the first draft headed all
+ * five of Mensores' with **"— · —"**, a title that distinguishes nothing from nothing: five
+ * panels with the same name, in the group whose whole job is saying why each was refused.
+ * Its heading, then its own first words, then the fallback -- a name is not optional
+ * (rule 30's family: a label a reader cannot act on is not an identity). */
+function checkedTitle(c) {
+  if (c.scope && c.pattern) return `${c.scope} · ${c.pattern}`;
+  if (c.scope || c.pattern) return c.scope || c.pattern;
+  if (c.heading) return c.heading;
+  const words = String(c.text || "").replace(/[*`_]/g, "").trim();
+  return words ? (words.length > 48 ? words.slice(0, 47) + "…" : words) : "a stated rule";
+}
+
+function checkedRow(c, i) {
+  const pct = (c.total ? (c.holds / c.total) : 0) * 100;
+  const missing = c.total - c.holds;
+  const key = provKey("chk", i);
+  return `
+  <section class="panel">
+    <div class="panel-head">
+      <h2 style="text-transform:none;letter-spacing:0;font-size:.9rem;color:var(--text);font-family:var(--f-mono)">${
+        esc(checkedTitle(c))}</h2>
+      ${sourceBadge(c.source)}
+      <span class="hint">${esc(srcShort(c.doc))}:${c.line}</span>
+    </div>
+    <div class="panel-body">
+      <div class="termdef"><span class="quoted">${esc(c.text)}</span></div>
+
+      ${c.verdict === "CHECKED" ? `
+        <div class="convbar">
+          <span class="bar" style="flex:1"><i style="width:${pct.toFixed(2)}%"></i></span>
+          <span class="num" style="font-weight:700">${c.holds.toLocaleString()} of ${c.total.toLocaleString()}</span>
+        </div>
+        <div class="why" style="margin-left:0;margin-top:.4rem">
+          <span class="ln">over</span> ${esc(c.population)}${
+            c.scopedBy ? ` — scoped by <span class="mono">${esc(c.scopedBy)}</span>, which the rule's own document declares` : ""}
+        </div>
+        ${missing ? `
+          <div class="excepthead">${missing.toLocaleString()} exception${missing === 1 ? "" : "s"}</div>
+          <ul class="exceptlist">
+            ${c.exceptions.map(e => `<li><span class="mono">${esc(e.name)}</span>${
+              e.where ? ` <span class="hint" title="${esc(e.where)}">${esc(srcShort(e.where))}</span>` : ""}</li>`).join("")}
+          </ul>`
+          : `<div class="excepthead ok">No exceptions. This rule holds everywhere it applies.</div>`}
+        ${c.sql ? `
+        <div class="prov">
+          <button class="cite" data-sqlshow="${key}">
+            <span class="citeicon" aria-hidden="true">⌗</span>How this number was counted<span class="citego">show the query</span></button>
+          ${state.showSql === key ? `<pre class="srcblock sqlblock">${esc(c.sql)}</pre>
+            <div class="provfoot">The population, before the rule's own scope narrowed it.
+              Run it with <span class="mono">dunneflow query &lt;this map&gt; --sql "…"</span>.</div>` : ""}
+        </div>` : ""}
+      ` : `
+        <div class="why" style="margin-left:0">
+          <span class="ln">why not</span> ${esc(c.reason)}
+        </div>`}
+
+      <div class="prov">
+        <button class="cite" data-goto="stated">
+          <span class="citeicon" aria-hidden="true">◈</span>Read the rule as it was written<span class="citego">go</span></button>
+      </div>
+    </div>
+  </section>`;
+}
+
+/* Four absences, not three (design rule 21). No documentation was read at all; documents
+   were read and state no rule; rules exist and none could be checked; and -- the one this
+   page adds -- no standards directory was ever given, which is different from one that was
+   given and states nothing. */
+function checkedBlank() {
+  if (!VOCAB.checkedRead) {
+    return `<div class="note"><b>No documentation was read.</b> This map was made with
+      <span class="mono">--no-docs</span>, so there are no stated rules to check. That is a
+      fact about the analysis, not about the program.</div>`;
+  }
+  return `<div class="note"><b>Documents were read and none of them states a naming rule.</b>
+    ${VOCAB.checkedImported
+      ? "A standards directory was read too, and it states none either."
+      : "No standards directory was given — <span class=\"mono\">dunneflow analyze … --standards &lt;dir&gt;</span> imports one, and a rule from outside is checked exactly as a rule from inside is."}
+    </div>`;
+}
+
+function viewChecked() {
+  const waiting = laneState(VOCAB, "checked", "checkedError", "the rules checked");
+  if (waiting) return `<div style="max-width:58rem">${waiting}</div>`;
+  if (!CHECKS.length) return `<div style="max-width:58rem">${checkedBlank()}</div>`;
+
+  const sum = CHECKED_SUM || { rules: CHECKS.length, checked: 0, noPopulation: 0, notCheckable: 0, exceptions: 0 };
+  const grouped = [];
+  const seen = new Set();
+  for (const [verdict, title, blurb] of VERDICTS) {
+    const rows = CHECKS.filter(c => c.verdict === verdict);
+    rows.forEach(c => seen.add(c));
+    if (!rows.length) continue;
+    grouped.push({ verdict, title, blurb, rows });
+  }
+  const strays = CHECKS.filter(c => !seen.has(c));
+  if (strays.length) {
+    console.error("[dunneflow] rule checks with a verdict this shell has no heading for:",
+                  [...new Set(strays.map(c => c.verdict))]);
+    grouped.push({
+      verdict: "unknown", title: "Answered, and not described here",
+      blurb: "This shell has no heading for these verdicts — " +
+             [...new Set(strays.map(c => c.verdict))].join(", ") +
+             ". They are shown as read rather than left out.",
+      rows: strays,
+    });
+  }
+
+  let n = 0;
+  return `<div style="max-width:58rem">
+    <div class="note"><b>This page is the comparison, and it is the only one that is.</b>
+      The <b>stated naming rules</b> quote what somebody wrote and count nothing; the
+      <b>derived naming standard</b> counts what the code does and quotes nobody. Here each
+      stated rule is measured over the population its own document says it governs — and a
+      rule this map cannot answer says so rather than passing quietly.
+      ${sum.checked.toLocaleString()} of ${sum.rules.toLocaleString()} rule${
+        sum.rules === 1 ? "" : "s"} could be checked, finding
+      ${sum.exceptions.toLocaleString()} exception${sum.exceptions === 1 ? "" : "s"}.</div>
+
+    ${grouped.map(g => `
+      <div class="convgroup">
+        <div class="convgroup-head">${esc(g.title)}
+          <span class="num" style="font-weight:400;text-transform:none;letter-spacing:0"> · ${g.rows.length}</span></div>
+        <div class="hint" style="margin:-.25rem 0 0">${esc(g.blurb)}</div>
+        ${g.rows.map(c => checkedRow(c, n++)).join("")}
+      </div>`).join("")}
+
+    <section class="panel">
+      <div class="panel-head">
+        <h2>Where these rules came from</h2>
+        <span class="hint">the other two lanes</span>
+      </div>
+      <div class="panel-body">
+        <p class="hint">Every rule above is quoted on the <b>stated naming rules</b> page,
+          with the heading it sat under. What the code does on its own — measured, with no
+          rule involved — is the <b>derived naming standard</b>.</p>
+        <div class="prov">
+          <button class="cite" data-goto="stated">
+            <span class="citeicon" aria-hidden="true">◈</span>Stated naming rules<span class="citego">${
+              esc(vocabCount("stated") || "0")} read</span></button>
+        </div>
+        <div class="prov">
+          <button class="cite" data-goto="naming">
+            <span class="citeicon" aria-hidden="true">◈</span>Derived naming standard<span class="citego">${
+              esc(vocabCount("conventions") || "0")} conventions</span></button>
         </div>
       </div>
     </section>
@@ -10488,6 +10694,7 @@ function crumbsFor() {
     glossary:    [{ label: "vocabulary" }, { label: "glossary", cur: true }],
     naming:      [{ label: "vocabulary" }, { label: "derived naming standard", cur: true }],
     stated:      [{ label: "vocabulary" }, { label: "stated naming rules", cur: true }],
+    checked:     [{ label: "vocabulary" }, { label: "stated rules, checked", cur: true }],
     /* Three deep when the reader has gone into a sub-application, because two would name
        the way in while the pane is about something inside it (rule 24 in the breadcrumb). */
     wayin:       state.wayInside
@@ -10704,6 +10911,7 @@ function render() {
   else if (state.view === "glossary")  { ensureVocabulary(); vp.innerHTML = viewGlossary(); }
   else if (state.view === "naming")    { ensureVocabulary(); vp.innerHTML = viewNaming(); }
   else if (state.view === "stated")    { ensureVocabulary(); vp.innerHTML = viewStated(); }
+  else if (state.view === "checked")   { ensureVocabulary(); vp.innerHTML = viewChecked(); }
   else if (state.view === "wayin")     vp.innerHTML = viewWayIn();
   else if (state.view === "inference") vp.innerHTML = viewInference();
   else if (state.view === "curiosities") { ensureCuriosities(); vp.innerHTML = viewCuriosities(); }
@@ -13882,6 +14090,10 @@ const NAV_GROUPS = [
          the two claims must never be one page a reader could take for a comparison. Above
          it, because what was written comes before what was done. */
       { nav: "stated",   label: "Stated naming rules", n: vocabCount("stated") },
+      /* Between the two, because that is what it is: the rules above, measured against the
+         program. Its own row rather than a section of either neighbour -- the separation
+         those two keep is exactly what makes a *labelled* comparison safe to show. */
+      { nav: "checked",  label: "Stated rules, checked", n: vocabCount("checked") },
       { nav: "naming",   label: "Derived naming standard", n: vocabCount("conventions") },
       { nav: "inference", label: "Inference",      n: "off", id: "navEgress" },
     ] },

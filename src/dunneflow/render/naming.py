@@ -22,6 +22,12 @@ import re
 from pathlib import Path
 
 from ..docstore import DocStore
+from ..resolve.conformance import (
+    CHECKED,
+    NO_POPULATION,
+    NOT_CHECKABLE,
+    check_stated,
+)
 from ..resolve.naming import Convention, NamingMeasurement, measure
 from ..resolve.stated import StatedRule, checkable_sentence, stated_rules
 from ..store import Store
@@ -80,7 +86,8 @@ def _pct(holds: int, total: int) -> str:
 
 
 def render_naming(store: Store, docs: DocStore | None, out_dir: Path, root: Path,
-                  program: str, stamp: str, docs_root: Path | None = None) -> Path:
+                  program: str, stamp: str, docs_root: Path | None = None,
+                  standards: DocStore | None = None) -> Path:
     m = measure(store)
     stated = stated_rules(docs)
     # Documents live above `src/`, so they are relative to the documentation root, not
@@ -144,6 +151,7 @@ def render_naming(store: Store, docs: DocStore | None, out_dir: Path, root: Path
 
     lines.extend(_form_section(m, stated, root))
     lines.extend(_vocabulary_section(stated, doc_root))
+    lines.extend(_checked_section(store, docs, standards))
     lines.extend(_gaps_section(m))
     lines.extend(_scanned_section(m, docs, stated))
 
@@ -183,10 +191,9 @@ def _stated_form(stated: list[StatedRule]) -> list[str]:
         return []
     lines = [f"\n### Stated — {len(form)} rule{'s' if len(form) != 1 else ''} "
              "a document gives\n",
-             "Quoted from the project's own documentation rather than counted. **Nothing "
-             "below has been checked against the code** — that comparison is not built, so "
-             "a stated rule and the measured conventions beneath it may disagree and this "
-             "page will not say so.\n"]
+             "Quoted from the project's own documentation rather than counted. What "
+             "happened when each was measured against the population its own document "
+             "says it governs is in **Checked** below.\n"]
     for r in form:
         src = f"{r.doc}:{r.line}"
         lines.append(f"\n#### {src}\n")
@@ -272,6 +279,70 @@ def _vocabulary_section(stated: list[StatedRule], root: Path) -> list[str]:
         lines.append(f"> {_esc(r.text)}\n")
         heading = _esc(r.heading) or "—"
         lines.append(f"*Stated under “{heading}”.* {checkable_sentence(r)}\n")
+    return lines
+
+
+def _checked_section(store: Store, docs: DocStore | None,
+                     standards: DocStore | None) -> list[str]:
+    """Reality against intent: each stated rule over the population it governs.
+
+    **The one section on this page that is a comparison**, and it says so in its first line.
+    Everything above either counts without quoting or quotes without counting, deliberately;
+    putting a number beside a quotation is safe only where the reader is told that is what
+    is happening.
+
+    Three verdicts get three sub-headings rather than one table with a column, because a
+    table sorts and a reader skimming a sorted column will read *"not checkable"* as a
+    milder *"fails"*. They are not the same kind of thing at all.
+    """
+    checks = check_stated(store, docs, standards)
+    if not checks:
+        return []
+    lines = ["\n## Checked — the stated rules, measured\n",
+             "**The comparison, and the only section here that is one.** Each rule above, "
+             "measured over the population its own document says it governs — never over "
+             "whatever this tool happens to hold. A rule scoped at documentation is not "
+             "checked against the code, and a rule this map cannot answer says so rather "
+             "than passing quietly.\n"]
+
+    for verdict, title, blurb in (
+        (CHECKED, "Checked",
+         "Measured. Every exception is listed, because the exceptions are the product."),
+        (NO_POPULATION, "Nothing here to check",
+         "Well formed, and this map holds nothing it governs. A fact about the map."),
+        (NOT_CHECKABLE, "Not checkable by this tool",
+         "DunneFlow tests case styles. A template or a separator is quoted back rather "
+         "than guessed at — a guess would read exactly like a measurement."),
+    ):
+        rows = [c for c in checks if c.verdict == verdict]
+        if not rows:
+            continue
+        lines.append(f"\n### {title} — {len(rows)}\n")
+        lines.append(f"{blurb}\n")
+        for c in rows:
+            name = (f"{c.rule.scope} · {c.rule.pattern}"
+                    if c.rule.scope and c.rule.pattern
+                    else (c.rule.scope or c.rule.pattern or c.rule.heading or "a stated rule"))
+            lines.append(f"\n#### {_esc(name)}\n")
+            lines.append(f"> {_esc(c.rule.text)}\n")
+            lines.append(f"*From {_esc(c.rule.doc)}:{c.rule.line} — {_esc(c.source)}.*\n")
+            if c.verdict != CHECKED:
+                lines.append(f"{_esc(c.reason)}.\n")
+                continue
+            scoped = (f", scoped by `{_esc(c.scoped_by)}` as its own document declares"
+                      if c.scoped_by else "")
+            lines.append(f"Holds in **{c.holds:,} of {c.total:,}** {_esc(c.population)}"
+                         f"{scoped} ({_pct(c.holds, c.total)}).\n")
+            if not c.exceptions:
+                lines.append("No exceptions.\n")
+                continue
+            plural = "exception" if len(c.exceptions) == 1 else "exceptions"
+            lines.append(f"**The {len(c.exceptions):,} {plural}**, in full:\n")
+            lines.append("| Name | Where |")
+            lines.append("|---|---|")
+            for e in c.exceptions:
+                lines.append(f"| `{_esc(e.name)}` | {_esc(e.where)} |")
+            lines.append("")
     return lines
 
 

@@ -37,6 +37,7 @@ from .resolve.mirror import measure as measure_mirror
 from .resolve.naming import measure
 from .sourcedb import STATE_FOR_COMPARISON, DocSourceStore, SourceStore
 from .sourcedb import capture as capture_source
+from .standards import STANDARDS_DB, standards_refusal
 from .store import StaleGraphError, Store, UnfinishedMapError, unfinished_sentence
 from .walk import analyze_docs_tree, analyze_tree
 
@@ -98,6 +99,7 @@ def _args_said(args: argparse.Namespace) -> str:
 STEP_EXTRACT = "reading the source tree"
 STEP_DOCS = "reading the documents"
 STEP_DOC_BODIES = "capturing the document bodies"
+STEP_STANDARDS = "reading the standards"
 STEP_RESOLVE = "resolving calls and command trees"
 STEP_BODIES = "capturing the source bodies"
 STEP_RENDER = "writing the map"
@@ -106,7 +108,7 @@ STEP_ANOMALIES = "looking for anomalies"
 # Every label that exists, so a step advanced under a name nobody declared is caught here
 # rather than becoming a bar that silently never moves.
 ALL_STEPS = frozenset({
-    STEP_EXTRACT, STEP_DOCS, STEP_DOC_BODIES, STEP_RESOLVE,
+    STEP_EXTRACT, STEP_DOCS, STEP_DOC_BODIES, STEP_STANDARDS, STEP_RESOLVE,
     STEP_BODIES, STEP_RENDER, STEP_ANOMALIES,
 })
 
@@ -125,6 +127,10 @@ def analysis_steps(args: argparse.Namespace) -> tuple[str, ...]:
         steps.append(STEP_DOCS)
         if not args.no_doc_source:
             steps.append(STEP_DOC_BODIES)
+    # A step the reader *adds* rather than one a flag removes, which is the same argument
+    # from the other side: a run given no standard must not show a step it will never take.
+    if getattr(args, "standards", None):
+        steps.append(STEP_STANDARDS)
     steps.append(STEP_RESOLVE)
     if not args.no_source:
         steps.append(STEP_BODIES)
@@ -235,6 +241,31 @@ def cmd_analyze(args: argparse.Namespace) -> int:
     # the real corpus, which is the only place it shows: the toy fixtures have no `src/`
     # and recorded the right answer by having nowhere else to go.
     tree_leaf = pkg_root.name
+
+    # **Every standards root is judged before anything is opened**, and a single refusal
+    # stops the run. Checking them here rather than beside the scan is deliberate: by the
+    # time the corpus is being read there is a graph, a source snapshot and a document
+    # store on disk, and refusing then would either abandon a half-written map or -- worse
+    # -- carry on with the offending root dropped, reporting part of a standard as the
+    # whole of one. Rule 20: a read may refuse, but it may never repair.
+    standards_roots: list[Path] = []
+    if getattr(args, "standards", None):
+        would_read_docs = None if args.no_docs else (
+            Path(args.docs).resolve() if args.docs else pkg_root)
+        out_root = Path(args.output).resolve()
+        refused = False
+        for given in args.standards:
+            root = Path(given).resolve()
+            why = standards_refusal(root, tree=target, out_root=out_root,
+                                    docs_root=would_read_docs)
+            if why:
+                _emit(f"error: --standards {given} refused — {why}")
+                refused = True
+            else:
+                standards_roots.append(root)
+        if refused:
+            return 2
+
     out_dir.mkdir(parents=True, exist_ok=True)
     source: SourceStore | None = None
     if not args.no_source:
@@ -413,6 +444,49 @@ def cmd_analyze(args: argparse.Namespace) -> int:
                 )
             docsource.close()
 
+    # **The standard, read into a store of its own.** Everything above describes what this
+    # program says about itself; this is what somebody else says every program must do, and
+    # the two are never mixed -- see `standards.py` for why that is a file and not a column.
+    #
+    # The same walk, deliberately: `discover_docs` already refuses a nested checkout on the
+    # `.git`-file marker (rule 57), and a standards directory is exactly as likely to have
+    # a worktree under it as a project is. Writing a second scanner would be a second answer
+    # to "what is a document" (rule 51).
+    standards_store: DocStore | None = None
+    if standards_roots:
+        prog.step(STEP_STANDARDS)
+        standards_store = DocStore(out_dir / STANDARDS_DB)
+        standards_store.set_meta("revision", revision)
+        standards_store.set_meta("program", program)
+        # What was read, so the store can say whose standard it holds rather than only
+        # what it says. A reader looking at a rule has to be able to ask where it came from.
+        standards_store.set_meta("roots", "\n".join(str(r) for r in standards_roots))
+        std_found = std_read = 0
+        for root in standards_roots:
+            st = analyze_docs_tree(
+                root, standards_store, jobs=args.jobs, recheck=args.recheck_docs,
+                exclude=frozenset({out_dir}) | revisions.program_dirs(out_dir.parent))
+            std_found += st.found
+            std_read += st.parsed
+            # Design rule 1 again, and it matters more here than for the corpus: a reader
+            # who named this directory is owed the news that part of it was skipped.
+            for d in st.nested:
+                where = Path(d)
+                shown = where.relative_to(root) if where.is_relative_to(root) else where
+                _emit(f"  skipped {shown} — a checkout of its own, not a standard")
+        standards_store.mark_duplicates()
+        sc = standards_store.counts()
+        if not args.quiet:
+            _emit(
+                f"standards {std_found} documents from "
+                f"{len(standards_roots)} director{'y' if len(standards_roots) == 1 else 'ies'} "
+                f"(read {std_read}): {sc['doc_rules']:,} stated rules"
+            )
+        standards_store.optimize()
+        # Left **open** until the map is written: `11-naming.md` reports the comparison, and
+        # a store closed here would make the report the one surface that could not see the
+        # standard it was given. Closed beside `doc_store` below, where the other corpus is.
+
     prog.step(STEP_RESOLVE)
     t1 = time.perf_counter()
     rstats = resolve_calls(store)
@@ -475,7 +549,8 @@ def cmd_analyze(args: argparse.Namespace) -> int:
         store.warm()
         files = render_all(store, out_dir, source_root, program,
                            include_tests=args.include_tests,
-                           docs=doc_store, docs_root=docs_root)
+                           docs=doc_store, docs_root=docs_root,
+                           standards=standards_store)
         if not args.quiet:
             _emit(f"wrote {len(files)} documents to {out_dir} in "
                   f"{time.perf_counter() - t2:.1f}s")
@@ -514,6 +589,8 @@ def cmd_analyze(args: argparse.Namespace) -> int:
             print(f"map:   {out_dir}/README.md")
     if doc_store is not None:
         doc_store.close()
+    if standards_store is not None:
+        standards_store.close()
     # The last act before the store is closed, and committed like its opposite above. Every
     # reader that presents this map as finished asks for this one value.
     store.set_meta_now("complete", "yes")
@@ -951,6 +1028,12 @@ def build_parser() -> argparse.ArgumentParser:
     a.add_argument("--no-docs", action="store_true", help="skip documentation entirely")
     a.add_argument("--recheck-docs", action="store_true",
                    help="hash every document rather than trusting its modification time")
+    # Repeatable, because an organisation files its standards in more than one place and
+    # naming one root the union of several would make the reader build a directory that
+    # exists only to satisfy this tool.
+    a.add_argument("--standards", action="append", metavar="DIR",
+                   help="a directory of naming standards to measure this program against "
+                        "(repeatable); read into standards.db, never into the corpus")
     a.add_argument("--no-source", action="store_true",
                    help="do not keep a copy of the source beside the map")
     # Its own switch rather than a second meaning for `--no-source`, and design rule 14 is

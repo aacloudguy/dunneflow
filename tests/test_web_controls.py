@@ -3035,6 +3035,21 @@ def test_the_vocabulary_views_read_the_fields_the_server_sends() -> None:
         f"the naming view reads fields the server does not send: {sorted(read - conv)}"
     )
 
+    # The comparison page, added the day it was built rather than the day it broke. Its
+    # shape is a third one -- `verdict`, `reason` and `scopedBy` exist nowhere else -- and a
+    # view reading `c.scoped_by` for a server that sends `scopedBy` renders a blank where a
+    # scope should be, with nothing thrown and every other line on the panel correct.
+    chk = _served_keys(py, "checked_naming")
+    assert {"verdict", "reason", "population", "scopedBy", "holds", "total"} <= chk, (
+        "checked_naming changed shape -- this test is blind"
+    )
+    for fn in ("checkedRow", "checkedTitle"):
+        got = set(re.findall(r"\bc\.(\w+)", _fn(js, fn)))
+        assert got, f"{fn} reads nothing off a check -- this test is blind"
+        assert got <= chk, (
+            f"{fn} reads check fields the server does not send: {sorted(got - chk)}"
+        )
+
     sense = _served_keys(py, "bind_glossary")
     assert {"senses", "used_as", "provenance", "definition", "source", "line"} <= sense, (
         "bind_glossary changed shape -- this test is blind"

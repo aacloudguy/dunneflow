@@ -4795,6 +4795,53 @@ def test_the_file_filter_does_not_destroy_the_field_it_types_into() -> None:
     )
 
 
+def test_every_child_of_a_search_hit_has_a_cell_of_its_own() -> None:
+    """A grid whose children outnumber its cells does not fail -- it grows a row.
+
+    `.srch-hit` declared five columns for five children, and the comment above it said so.
+    The arithmetic was already false: `.srch-in` spans `2 / -1`, so it fills the rest of
+    whatever row it lands on, and **anything emitted after it starts a new one**. The keep
+    button -- the fifth child, added to the row after that comment was written -- landed on
+    a third row in the 3.2rem line-number column. Measured in a real window: 51px wide,
+    "Keep this" wrapped onto two lines, 54px tall under a 17px line of code, on every one of
+    126 hits and ~104px of pane each. Now 45-53px, the button 78x22 on the code's own line.
+
+    Nothing reported it and nothing could -- the row rendered, the button worked, and a
+    control on a row of its own looks exactly like a control somebody put on a row of its
+    own. So the assertion is on the rule, not on any symptom: after a child that spans to
+    the last column, every later child is placed by hand.
+    """
+    css = _css_code(_read("tokens.css"))
+    assert "grid-column: 2 / -1" in css, (
+        "`.srch-in` no longer spans to the last column, so the rule below is about "
+        "something else and must be rewritten rather than left passing"
+    )
+
+    # Children in document order, which is the order a grid places them in.
+    js = _code(_read("shell.js"))
+    body = _fn(js, "searchHitsHtml")
+    # The keep button arrives from `pinBtn()` rather than as literal markup, so it is
+    # matched by its call. A child that a source scan cannot see is exactly the child that
+    # gets forgotten when the columns are counted -- which is how this defect happened.
+    order = [m.group(1) or "pinbtn" for m in
+             re.finditer(r'class="(srch-n|srch-code|srch-marks|srch-in)|(pinBtn\()', body)]
+    assert "srch-in" in order, "the hit row no longer names the routine it sits in"
+    # The **last** occurrence: that slot is written as two branches -- a button when a
+    # routine's span covers the line and a `srch-nowhere` span when none does -- and they
+    # are one child, not two.
+    last = len(order) - 1 - order[::-1].index("srch-in")
+    after = order[last + 1:]
+    assert after, (
+        "nothing follows `.srch-in` any more; this test guards a hazard that has gone, so "
+        "delete it rather than leave it asserting nothing"
+    )
+    for cls in after:
+        assert re.search(rf"\.srch-hit \.{cls}[^{{]*\{{[^}}]*grid-row:", css), (
+            f"`.{cls}` is emitted after a child that spans to the last column and is not "
+            f"placed, so it flows onto a row of its own in the narrowest column"
+        )
+
+
 def test_a_search_never_goes_through_render_or_buildnav() -> None:
     """Rule 45, by construction rather than by luck.
 

@@ -3124,14 +3124,32 @@ kbd { font-family: var(--f-mono); font-size: .66rem; background: var(--sunken);
  * horizontal twin and refuses to shrink below its content, which would hand a long line's
  * overflow to the pane instead of to the cell that declares it. */
 .srch-hits { padding: 0 0 .3rem 1.5rem; }
-/* Five columns and five children, always. The marks span is emitted even when a line has
- * none (see `searchHitsHtml`), because a grid places children in document order: an
- * optional child moves every column after it, and the number, the routine and the keep
- * button would each sit in two places depending on whether a line happened to be marked. */
+/* Four columns and five children, and the fifth is **placed** rather than flowed. The marks
+ * span is emitted even when a line has none (see `searchHitsHtml`), because a grid places
+ * children in document order: an optional child moves every column after it, and the
+ * number, the routine and the keep button would each sit in two places depending on whether
+ * a line happened to be marked.
+ *
+ * It read *five columns and five children* and declared five, and that arithmetic was
+ * already false: `.srch-in` below spans `2 / -1`, so it takes four cells and the five
+ * children want six. The keep button -- the fifth, added after this comment was written --
+ * flowed onto a **third** row into the 3.2rem line-number column, where it came out 51px
+ * wide, wrapped "Keep this" onto two lines, and stood 54px tall under a 17px line of code.
+ * Every one of 126 hits, ~104px of pane each, for one line of source.
+ *
+ * Nothing reported it and nothing could: the row rendered, the button worked, and a control
+ * on a row of its own looks exactly like a control somebody put on a row of its own. Found
+ * by measuring the grid after looking at it -- rule 53's neighbour, a layout that is right
+ * until a child is added, and the arithmetic that decides it is in two places. */
 .srch-hit {
-  display: grid; grid-template-columns: 3.2rem minmax(0, 1fr) auto auto auto;
+  display: grid; grid-template-columns: 3.2rem minmax(0, 1fr) auto auto;
   align-items: baseline; gap: .3rem; padding: .05rem .5rem .05rem 0;
 }
+/* Row 1, last column: beside the marks, on the code's own line, which is where every other
+   row-level control in this product sits. Explicit, because auto-flow is what put it on a
+   third row -- and explicit placement of this one child is also what lets `.srch-in` below
+   keep its `2 / -1` and land on row 2 as it was written to. */
+.srch-hit .pinbtn { grid-row: 1; grid-column: 4; }
 .srch-hit:hover { background: var(--raised); }
 /* Kept from a hit, quiet at rest like the thread row's and for the same two reasons -- 782
    lines matched a single word in this corpus, and a keep button shouting on every one of

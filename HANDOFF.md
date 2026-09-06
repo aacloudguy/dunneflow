@@ -10657,3 +10657,52 @@ heading, then its own first words. Only a look finds that; every test passed.
 
 Two sentences that had become false were rewritten rather than left standing: the stated
 page's *"comparing them is not built"*, and the same claim in `11-naming.md`.
+
+## 2026-09-06 — the cover's bars become a Setting, and the name gets the column
+
+Tom, looking at the overview: *"Screen real-estate is a dear commodity, and these percentage
+utilization graphs consume a large portion of it."* Design rule 2's case — two genuinely
+different readings of one ranked list — so both exist and `coverBars` chooses.
+
+**The measurement is the argument, and it is worse than it looked.** On a 315px row the
+columns were `140.8px | 51.2px | 104px`: the bar took **a third of the row**, and inside the
+140.8px that was left, the `CLI` and `DECLARED` tags took most of it — leaving the name
+**29px**. A seventeen-character executable was drawn as four characters plus an ellipsis.
+Eleven of the fourteen rows were elided.
+
+Off, the name column measures **293px** and **eleven of the fourteen show their name whole**.
+The three that remain are genuinely longer than any column: a 22-character
+`Handler.do_POST` and two 42-character `python -m …` command lines, which keep their tail —
+the distinguishing half — and their full text on hover. *That is worth saying plainly rather
+than claiming the ask was met in full: "show the whole name" is met for eleven of fourteen
+here, and the two long ones would not fit at any window size this layout offers.*
+
+**The track is dropped, never just the bar** (rule 45: hidden is not absent, and the
+difference is the whole bill). A bar hidden inside a grid track still 6.5rem wide reclaims
+nothing at all — the hole stays exactly where it was, and the reader turns on a setting that
+visibly does nothing. `.body[data-navtrack]` is written the long way round to avoid precisely
+this, one grid over. Both cover lists get their template redeclared, and the second column
+widened too: `63px → 138px`.
+
+`data-coverbars="off"` with no `="on"`, for the reason `data-palette` has no `="default"`:
+the base rule *is* the default, so the attribute means a departure from it.
+
+**Three things the wiring needed and a test now holds it to** —
+`test_turning_the_cover_bars_off_drops_the_track_and_not_only_the_bar`, verified non-vacuous
+by mutating the stylesheet to hide-without-reclaiming and watching it fail by name:
+
+* the grid template redeclared for **both** rows, not just the bar hidden;
+* `applyCoverBars` at boot, **again after `adoptSettings`** (rule 68 — a restore is a setter,
+  or a reader who turned them off gets them back on reload while the toggle says otherwise),
+  and from the toggle;
+* the stamp written **before** `render()`, never after: the pass that re-fits the names runs
+  inside `render()` and measures the boxes as they are at that moment, so stamping second
+  fits every name to the column it is about to leave.
+
+**Rule 34's guard caught the Settings copy.** The description quoted `mensores-signator` as
+the example, which pins one program's name into rendered prose — the next codebase would be
+shown it, confidently and wrongly. Rewritten to carry the measurement without the name.
+
+Verified end to end with a real pointer: Settings → toggle → `aria-pressed="false"` → root
+stamped → `dunneflow:mensores:v5` holds `coverBars: false` → survives a reload with the
+columns reclaimed and the counts intact.

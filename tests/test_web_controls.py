@@ -1594,6 +1594,48 @@ def test_every_declared_data_array_is_assigned_somewhere() -> None:
         )
 
 
+def test_turning_the_cover_bars_off_drops_the_track_and_not_only_the_bar() -> None:
+    """Rule 45: hidden is not absent, and the difference is the whole bill.
+
+    The setting exists to give a column back to the name. A bar hidden with `display:none`
+    inside a grid track still 6.5rem wide reclaims **nothing** -- the hole stays exactly
+    where it was, and the reader turns on a setting that visibly does not work. Both halves
+    are required, so both are asserted: the grid template has to be redeclared *and* the bar
+    hidden. That is the defect `.body[data-navtrack]` is written the long way round to avoid,
+    one grid over, and this is the same mistake waiting in a different stylesheet.
+
+    Rule 68 is the second half: a restore is a setter. `applyCoverBars` runs at boot **and**
+    again after `adoptSettings`, or a reader who turned them off gets them back on reload
+    while the toggle says otherwise.
+    """
+    css = _read("tokens.css")
+    js = _read("shell.js")
+
+    off = [ln for ln in css.splitlines() if 'data-coverbars="off"' in ln]
+    assert off, "no rule reacts to the stamp -- the setting is wired to nothing (design rule 16)"
+
+    tracks = [ln for ln in off if "grid-template-columns" in ln]
+    assert len(tracks) >= 2, (
+        "the track must be redeclared for both cover lists, or turning the bars off hides "
+        f"them and reclaims no space at all; got {tracks}"
+    )
+    for row in (".rank-row", ".bkrow"):
+        assert any(row in ln for ln in tracks), (
+            f"{row} keeps its bar column when the bars are off -- hidden, not absent"
+        )
+    assert any("display: none" in ln or "display:none" in ln for ln in off), (
+        "the bar itself is never hidden, so it would draw outside its own column"
+    )
+
+    assert "function applyCoverBars(" in js, "no applier for the stamp"
+    assert js.count("applyCoverBars()") >= 3, (
+        "the applier must run at boot, again after `adoptSettings` (rule 68), and from the "
+        "toggle -- a stamp applied in only one of those is a setting that forgets itself"
+    )
+    assert 'id="coverBarsToggle"' in js, "the Settings page offers no control for it"
+
+
+
 def test_no_program_data_is_pinned_into_view_prose() -> None:
     """The third hiding place, after the top-level arrays and `state`.
 

@@ -426,6 +426,7 @@ const state = {
   ambient: false,         // anomaly badges on nodes
   hideInferred: false,
   density: "comfortable",
+  coverBars: true,        // the cover's proportion bars, or the space they take
   bandScroll: false,       // a change band scrolls in place, or runs its full length
   /* The two versions, and which of them the screen is showing.
    *
@@ -779,6 +780,21 @@ function applyTheme() {
  * files and was vacuous until the read landed, then failed by name. It is the reason this
  * line exists rather than being noticed later by someone switching sets with the stack
  * open. */
+/* The cover's bars, stamped on the root so one attribute governs both lists.
+ *
+ * On the root rather than on the cover, because the cover is rebuilt by `render()` on every
+ * selection -- stamping it there would make every rebuild a second place that has to
+ * remember (rule 51), which is the argument the diagram settings above already make.
+ *
+ * **A re-fit has to follow, and it is not automatic.** The names are sized by `fitFields`
+ * against the box they are actually in, so widening the column changes nothing on screen
+ * until something measures again. `render()` runs the pass; the toggle calls it. */
+function applyCoverBars() {
+  const r = document.documentElement;
+  if (state.coverBars) r.removeAttribute("data-coverbars");
+  else r.setAttribute("data-coverbars", "off");
+}
+
 function applyPalette() {
   const r = document.documentElement;
   if (state.palette === "default") r.removeAttribute("data-palette");
@@ -6788,6 +6804,22 @@ function viewSettings() {
         </div>
 
         <div class="setrow">
+          <div><div class="lbl">Proportion bars on the cover</div>
+            <div class="desc">The overview's two ranked lists — <b>Where to start</b> and
+              <b>What it touches</b> — draw a bar beside each count, showing how far ahead the
+              top one is. Turning them off gives that column to the <b>name</b>, and the counts
+              stay.<br><br>
+              <b>On by default</b>, because a rank is a question about proportion and the bar
+              answers it without the reader doing arithmetic. Turn it off when the pane is
+              narrow: measured on a 315px row, the bar took <b>104px</b> of it and the two tags
+              took most of the rest, leaving the name <b>29px</b> — a seventeen-character
+              executable drawn as four. Off, the same name column measured <b>293px</b> and
+              eleven of fourteen rows showed their name whole. Nothing is computed differently
+              either way, and every name keeps its full text on hover.</div></div>
+          <button class="toggle" id="coverBarsToggle" aria-pressed="${state.coverBars}" aria-label="Proportion bars on the cover"></button>
+        </div>
+
+        <div class="setrow">
           <div><div class="lbl">Ambient anomaly badges</div>
             <div class="desc">When on, anything carrying a finding is marked <em>wherever it appears</em> —
               an amber <b>!</b> on the node in the graph, a tag beside the routine in the table, a badge in the
@@ -11368,6 +11400,14 @@ function wire() {
   }));
   const amb = $("#ambientToggle");
   if (amb) amb.addEventListener("click", () => { state.ambient = !state.ambient; render(); });
+  /* `applyCoverBars` before `render`, never after: the pass that re-fits the names runs
+     inside `render()` and measures the boxes as they are at that moment. Stamping second
+     would fit every name to the column it was just about to leave -- correct on the next
+     repaint and wrong on this one, which is the shape of a fit that ratchets. */
+  const cb = $("#coverBarsToggle");
+  if (cb) cb.addEventListener("click", () => {
+    state.coverBars = !state.coverBars; applyCoverBars(); render();
+  });
   const bsc = $("#bandScrollToggle");
   if (bsc) bsc.addEventListener("click", () => {
     state.bandScroll = !state.bandScroll;
@@ -15483,7 +15523,7 @@ const Settings = window.DunneFlowSettings;
  * block is expanded. */
 const PERSISTED = [
   "theme", "palette", "scale", "startup", "mode", "menuOrder", "trailShown", "trailCap",
-  "density", "bandScroll", "baseRev", "comparedRev", "comparedIsNewer",
+  "density", "coverBars", "bandScroll", "baseRev", "comparedRev", "comparedIsNewer",
   "ambient", "hideInferred", "colWidths", "insp", "sortKey", "sortAsc",
   "egress", "aiOps", "triage", "pins", "usage", "graphLayout",
   "diskOrder", "diskColors", "colorBy", "sortMode", "filterMode", "direction",
@@ -18126,6 +18166,7 @@ function wireSearchOnce() {
 async function boot() {
   applyTheme();
   applyPalette();
+  applyCoverBars();
   applyDiagramLook();
   applyScale();
   state.view = state.startup;
@@ -18161,6 +18202,10 @@ async function boot() {
   adoptSettings(STATS.program);
   applyTheme();
   applyPalette();
+  /* Re-stamped after `adoptSettings`, exactly as the theme is: the call at the top of boot
+     ran against the defaults, and a reader who turned these off would get them back on
+     every reload. Rule 68 -- a restore is a setter, and must do what the setter does. */
+  applyCoverBars();
   applyDiagramLook();
   paintNavFlags();          // after `adoptSettings`, or they show the defaults (rule 68)
   applyScale();

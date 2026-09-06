@@ -1476,6 +1476,26 @@ body {
 .bkrow .gl { font-size: .8rem; text-align: center; }
 .bkrow .n { text-align: right; font-variant-numeric: tabular-nums; color: var(--text-muted); }
 
+/* ── the cover's proportion bars, and the column they cost ────────────────────
+ *
+ * `coverBars: false` drops the bar **track**, never just its contents. A bar hidden with
+ * `visibility` or `display:none` inside a column still 6.5rem wide reclaims nothing at all
+ * -- the hole stays exactly where it was, which is the defect `.body[data-navtrack]` is
+ * written the long way round to avoid, one grid over.
+ *
+ * The space goes to the name, which is the whole reason to turn them off. Measured on a
+ * 315px row: columns `140.8px | 51.2px | 104px`, and inside that 140.8 the `CLI` and
+ * `DECLARED` tags left the name **29px** -- `mensores-signator` drawn as `me...r`. The
+ * numbers stay in both lists; it is the picture of the number that goes.
+ *
+ * `data-coverbars="off"` and no `="on"`, for the reason `data-palette` has no `="default"`:
+ * the base rule is the default, so the attribute means *a departure from it* and a stamp
+ * saying "as written" is a second way to spell the same state. */
+:root[data-coverbars="off"] .rank-row { grid-template-columns: 1fr 3.2rem; }
+:root[data-coverbars="off"] .bkrow    { grid-template-columns: 1.2rem 1fr 3rem; }
+:root[data-coverbars="off"] .rank-row > .bar,
+:root[data-coverbars="off"] .bkrow > .bar { display: none; }
+
 .sevline { display: flex; align-items: center; gap: .5rem; padding: .3rem 0; font-size: .8rem; }
 .sevdot { width: .625rem; height: .625rem; border-radius: 50%; flex: none; }
 .sevline .n { margin-left: auto; font-variant-numeric: tabular-nums; font-weight: 600; }

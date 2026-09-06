@@ -179,8 +179,15 @@ program has a most-commented routine and a maximum alone is a claim nobody can w
 
 ## What we are doing now
 
-**Paused 2026-09-06.** Standards steps 3 and 4 are both built, both committed, gates green:
-1,088 tests, mypy clean over 113 source files, ruff clean. Earlier the same day the looking
+**Paused 2026-09-06.** Standards steps 3 and 4 are both built, and the cover's proportion
+bars are a Setting. Gates green: 1,089 tests, mypy clean over 113 source files, ruff clean.
+
+**`coverBars` gives the bar's column back to the name** (design rule 2). Measured: the bar
+took 104px of a 315px row and the name was left 29px — eleven of fourteen rows elided. Off,
+the name column is 293px and eleven of the fourteen show whole; the three that do not are a
+22-character handler and two 42-character `python -m …` command lines, which no column here
+would fit. The **track** is dropped rather than the bar hidden (rule 45), and `applyCoverBars`
+runs after `adoptSettings` as well as at boot (rule 68). Earlier the same day the looking
 debt was discharged — that entry is below and still stands.
 
 **`analyze --standards <dir>` imports somebody else's naming standard**, into `standards.db`

@@ -376,6 +376,14 @@ const DEFAULTS = {
   trailShown: true,
   trailCap: 12,
   density: 'comfortable', // 'compact' | 'comfortable' | 'spacious'
+  /* Whether the cover's two ranked lists draw a proportion bar beside their counts.
+   *
+   * On, because a bar is how a ranked list says *how far ahead* the top one is, which the
+   * numbers alone make a reader compute. Off reclaims the column for the **name**, and on a
+   * narrow centre pane that is not a small difference: measured at a 315px row, the bar took
+   * **104px of it** and the name was left 29px -- `mensores-signator` drawn as `me...r`.
+   * Design rule 2: two genuinely different readings of one list, so both exist. */
+  coverBars: true,
   /* Whether a change-worklist band scrolls inside itself instead of running its full
    * length. Off, because rule 8 says a reference list is never bounded and the cap put a
    * 512px scroller inside the page's own 401px one -- scrolling a box to find a box. On
@@ -594,6 +602,7 @@ function resetSettings(program, current) {
     startup: 'startup screen',
     menuOrder: 'menu order', trailShown: 'the trail', trailCap: 'how many steps the trail shows',
     density: 'row density', bandScroll: 'scrolling change bands',
+    coverBars: 'proportion bars on the cover',
     baseRev: 'which version is being read', comparedRev: 'what it is compared with',
     comparedIsNewer: 'which version is taken to be newer',
     searchCase: 'case-sensitive search', searchWord: 'whole-word search',

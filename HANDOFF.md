@@ -11108,3 +11108,134 @@ engineering rules numbered to 82** and **29 design rules**.
 
 *Still open, and not minted:* *an instrument's two coordinate systems can differ, and the one you
 can see is not the one you touch.*
+
+## 2026-09-07 — a trail step takes the name of the move that files it
+
+Two commits, `3df8730` and `a7ea9ba`. Gates green throughout: 1,103 tests, mypy clean over
+113 source files, ruff clean, `check` 0 broken on `output/mensores`. `output/` unchanged —
+this session wrote no maps.
+
+### The open entry was wrong, and measuring is what said so
+
+`BRIEFING.md` carried *"clicking a change row files two trail steps"*, filed 2026-09-02 and
+re-described 2026-09-06 as *"opening a kept cohort files the subject and one arbitrary member
+of it"*. Both times it was recorded as belonging to the selection path rather than to any one
+lane, and that half was right.
+
+**No path files two steps, and the change row is not among the affected paths at all.** It is
+`selectFromNav({ nodes })`, which sets its subject synchronously before its first `await`, so
+the dispatcher's `pushTrail` lands on the new subject and the row's own label wins — verified
+by clicking one and counting: one step, named `HookEvent`, exactly as it should be.
+
+What is real is quieter and worse. Measured on screen against `output/mensores`, opening the
+kept cohort `AC-4` — one pin, *a plan or decision id · opens 112 routines*:
+
+| | before | after the click |
+|---|---|---|
+| the step you were on | `kept things` | `kept things — a plan or decision id` |
+| the step you landed on | — | `resolve_cli_invocation` |
+
+`AC-4` was **not on the trail at all**. The step holding its 112-routine selection took the
+name of one arbitrary member, and the cohort's note was written onto the step the reader was
+*leaving* — a sentence about one subject printed under another, in the one surface built so a
+detour does not cost you the thread you were on. The untouched `[data-thread]` path does the
+same: following the *quaestor* curiosity left
+
+```
+… → rubrics — 45 modules, 1 constant — defined in __init__.py:1 → __init__
+```
+
+where `rubrics` is a routine with nothing to do with the note now attached to it.
+
+### The cause, and why it hid
+
+`recordSelection` is the one recorder and takes its name from whoever calls it — but **a
+caller that is about to move cannot call it**. Seven called `pushTrail` around an async move
+instead, and both orders lose:
+
+* **Before the move**, the step carries the **old** subject. `sameSelection` deduplicates it
+  against the step before it, and the only thing that survives is the note — donated to
+  whatever the reader had come from, by `if (step.note && !at.note) at.note = step.note`.
+* **After the move**, it lands on the step `selectFromNav` has already filed with no name, is
+  deduplicated the same way, and the label is dropped whole. `subjectLabel()` then names the
+  step after whichever member of the selection sorted first.
+
+Rule 33 with the field present and the *name* missing, and the fourth variant of it this file
+records. It hid because both failures render perfectly: a step that carries the wrong name is
+reversible, highlights correctly, and scrolls to the right place.
+
+### The change: `selectFromNav(want, name)`
+
+**A caller about to move names the step the move will file; it never files one of its own.**
+`name` is `{label, note}`, optional, and reaches the one recorder — so there is one step,
+named when it is made, and nothing left over to adopt. `followThread(subject, name)` carries
+it to both `THREAD_SUBJECTS` entries, so a cohort and a node arriving from the same door leave
+the same mark (rule 51, which is the argument that made those two one table).
+
+Seven callers, and the seventh was found by sweep rather than by the entry: the glossary term
+row, `[data-term]`, which mints the same cohort a thread does. `mensores` opens 628 modules,
+and one of them standing in for the word is rule 74 in the trail.
+
+**The note-adoption branch is deleted, not kept.** It existed to rescue three of the seven and
+did so by writing a note onto a step about a different subject, which is worse than absent. Its
+comment is rewritten as the reversal it is rather than left standing beside code that
+contradicts it — the `layout.py` `DISK_RADIUS` precedent.
+
+**`NAV_NAMES_ITSELF`, declared rather than inferred** (rule 30). The dispatcher names a step
+*after* calling a route, which is right for every route whose subject is settled by then. `t` —
+the navigator's table rows — asks the server which routines touch the table first, so it is the
+one exception, and it is a set with one entry rather than a shape test on what a route returns.
+
+### Seen, on all six paths and the three that were already right
+
+| Gesture | Step now reads |
+|---|---|
+| `AC-4` from the curiosities panel | `AC-4 — 112 routines carry one governance id` |
+| `AC-4` from the shelf | `AC-4 — a plan or decision id`, and `kept things` back to bare |
+| a glossary term | `quaestor — 45 modules, 1 constant` |
+| a navigator table row | `audit_events — what touches this table` |
+| a declared table in Document mode | `audit_chain_witness_deferred_v22 — picked a table in a document` |
+| a document row | keeps `— picked a row in a document` on the right step |
+| routine / package / change row | one step each, named for the row — unchanged |
+
+Back and Forward still move the cursor along it and the `AC-4` step still restores its
+selection.
+
+## 2026-09-07 — a search hit's keep button gets a cell, not a row of its own
+
+The looking debt filed on 2026-09-06 — *"the search hit row's column alignment: its structure
+and subject were read from the DOM, the columns were not looked at"* — paid, and the columns
+were wrong.
+
+`.srch-hit` declared **five columns for five children** and the comment above it said so. The
+arithmetic was already false: `.srch-in` carries `grid-column: 2 / -1`, so it fills the rest of
+whatever row it lands on and **anything emitted after it starts a new one**. The keep button —
+the fifth child, added to this row in the very session that filed the debt — flowed onto a
+**third** row into the 3.2 rem line-number column.
+
+Measured in a real window, `emit` over 2,403 lines in 298 files with one file open at 126 hits:
+
+| | before | after |
+|---|---|---|
+| keep button | 51 × 54, *"Keep this"* wrapped to two lines | 78 × 22, one line |
+| where | row 3, column 1, under the line number | row 1, column 4, beside the marks |
+| row height | 101–108 px for one 17 px line of code | 45–53 px |
+
+Four columns, and `.srch-hit .pinbtn { grid-row: 1; grid-column: 4 }`. Explicit, because
+auto-flow is what put it on a third row — and explicit placement of that one child is also what
+lets `.srch-in` keep its `2 / -1` and land on row 2 as written.
+
+**Nothing reported it and nothing could.** The row rendered, the button worked, and a control on
+a row of its own looks exactly like a control somebody put on a row of its own. So the guard
+asserts the *rule* rather than any symptom: after a child that spans to the last column, every
+later child is placed by hand. It matches the keep button by its **`pinBtn(` call** rather than
+by a class in the markup — a child a source scan cannot see is exactly the child that gets
+forgotten when the columns are counted, and that is how this happened. Proved non-vacuous by
+reverting the placement against a real file backup, not against `git checkout`.
+
+The placement is a design call and Tom's to change; row 1 beside the marks was chosen because
+that is where every other row-level control in this product sits.
+
+*Candidate rule, neither minted nor refused:* **a grid does not overflow, it grows a row** — the
+neighbour of rule 53, and of the same family as design rule 16: a layout that is correct until a
+child is added, where the arithmetic that decides it lives in two files.

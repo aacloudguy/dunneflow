@@ -179,9 +179,55 @@ program has a most-commented routine and a maximum alone is a claim nobody can w
 
 ## What we are doing now
 
-**Paused 2026-09-06 after two commits. Nothing is half-written.** 1,100 tests, mypy clean over
+**Paused 2026-09-07 after two commits. Nothing is half-written.** 1,103 tests, mypy clean over
 113 source files, ruff clean, working tree clean, `check` 0 broken on `output/mensores`, no
 servers running. `output/` is unchanged — this session wrote no maps.
+
+| Commit | What |
+|---|---|
+| `3df8730` | **a trail step takes the name of the move that files it** — seven callers, and the open entry describing it was wrong |
+| `a7ea9ba` | **a search hit's keep button gets a cell** — the looking debt from 2026-09-06, paid, and the columns were wrong |
+
+**The open entry was wrong, and measuring is what said so.** It read *"clicking a change row
+files two trail steps"*. No path files two, and **the change row is not among the affected
+paths at all** — it sets its subject synchronously, so the dispatcher's step lands correctly;
+verified by clicking one. What is real is quieter: opening the kept cohort `AC-4`, which opens
+112 routines, filed a step called **`resolve_cli_invocation`** — one arbitrary member — and
+wrote *"a plan or decision id"* onto the `kept things` step the reader was **leaving**. A
+sentence about one subject printed under another, in the surface built so a detour does not
+cost you your thread.
+
+**A caller about to move now names the step the move will file, and never files one of its
+own.** `selectFromNav(want, name)` and `followThread(subject, name)` carry `{label, note}` to
+the one recorder, so there is one step, named when it is made. Both orders lost before: filed
+*before* the move a step carries the subject being left and donates only its note; filed
+*after* it lands on the step the move already made and is dropped whole. The note-adoption
+branch is **deleted** rather than kept — it put the note on the right step and about the wrong
+thing. `NAV_NAMES_ITSELF` declares the one navigator route that fetches before it selects
+(rule 30), because the dispatcher names a step *after* calling a route.
+
+*A seventh caller was found by sweep rather than by the entry:* the glossary term row mints
+the same cohort a thread does, and `mensores` opens 628 modules — one of them standing in for
+the word is rule 74 in the trail.
+
+**Seen on all six affected paths and the three that were already right.** `AC-4` reads `AC-4`
+from a panel and from the shelf, a glossary term reads `quaestor — 45 modules, 1 constant`, a
+table row is named for the table, and a routine, package and change row each still file
+exactly one step. Back and Forward still walk it.
+
+**The looking debt is paid and the columns were wrong.** `.srch-hit` declared five columns for
+five children — and `.srch-in` spans `2 / -1`, so it fills the rest of its row and anything
+after it starts a new one. The keep button added in the previous session flowed onto a **third**
+row into the 3.2 rem line-number column: **51 × 54, "Keep this" wrapped onto two lines**, under
+a 17 px line of code, on every one of 126 hits — 101–108 px of pane each. Now 78 × 22 on the
+code's own line, rows 45–53 px. Nothing reported it and nothing could, so the new guard asserts
+the *rule* — after a child that spans to the last column, every later child is placed by hand —
+and matches the button by its `pinBtn(` call, because a child a source scan cannot see is the
+one that gets forgotten when columns are counted. **The placement is Tom's to change.**
+
+*Candidate rule, neither minted nor refused:* **a grid does not overflow, it grows a row.**
+
+### Before that: "keep this" on everything (2026-09-06)
 
 | Commit | What |
 |---|---|
@@ -227,7 +273,8 @@ rescue it. And a label centred in the middle of its own row, which then exposed
 
 *Not seen:* the search hit row's **column alignment** — its structure and subject were read from
 the DOM, the columns were not looked at, and the renderer wedged twice before the retry limit.
-Said rather than claimed.
+Said rather than claimed. *Looked at 2026-09-07, and they were wrong: the keep button was on a
+third row in the line-number column. See the top of this file.*
 
 **Before that, paused 2026-09-06 between features.** `output/` holds what it held at the start
 plus `mensores/standards.db`, which is that session's own feature and belongs there.
@@ -1675,9 +1722,14 @@ feature was blocked on an answer nobody owed.
   Out, Touches and Governance are all correct for module scope, and copying them would be
   rule 51's own defect.*
 
-- **Clicking a change row files two trail steps**, for a structure and for a routine alike.
-  Found 2026-09-02 and verified pre-existing rather than introduced. Rule 76's family — an
-  echo arriving as an act — and the fix is to the selection path, not to any one lane.
+- ~~**Clicking a change row files two trail steps**~~ *— closed 2026-09-07, and* **corrected**
+  *rather than merely struck. No path files two, and the change row is not among the affected
+  paths at all: it sets its subject synchronously, so the dispatcher's step lands correctly.
+  What was real is that seven callers named a step* around *an async move and lost what they
+  were saying — the label replaced by one arbitrary member of the selection, the note written
+  onto the step being left. The half the entry got right is that it belonged to the selection
+  path. See the top of this file. Filed from reasoning in 2026-09-02, and both descriptions of
+  it were wrong until it was measured.*
 - **A kept fold and a kept flow have never been opened on screen.** The shelf routes three
   kinds and the node kind is verified; the other two need a compartment drawn. The kind and
   the route are guarded against each other at the source, in both directions, which is why

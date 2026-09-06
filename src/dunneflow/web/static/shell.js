@@ -984,7 +984,14 @@ const NAV_ROUTES = {
      collapsing them would be reading a subject out of a selection (rule 30). */
   pkg: (b) => selectFromNav({ disks: navIds(b), plate: navIds(b)[0] || null }),
   b:   (b) => selectFromNav({ disks: navIds(b), plate: navIds(b)[0] || null }),
-  t:   (b) => selectFromNav({ table: b.dataset.navid || "" }),
+  /* **The one nav route that names its own step**, and it is in `NAV_NAMES_ITSELF` below
+     for it. Every other selecting route sets its subject synchronously, so the dispatcher's
+     `pushTrail` lands on the new subject and its label wins; this one asks the server which
+     routines touch the table *first*, so the dispatcher would file a step naming the table
+     over the subject the reader is leaving, and the real step would arrive named after
+     whichever routine sorted first. */
+  t:   (b) => selectFromNav({ table: b.dataset.navid || "" },
+                            { label: b.dataset.navid || "", note: "what touches this table" }),
   /* A file is not a node: nothing lights in the stack and the inspector has nothing to
      answer about it, so this opens a pane rather than making a selection. What the reader
      picks *inside* it is a node, and that is the click that selects. */
@@ -2612,8 +2619,12 @@ document.addEventListener("click", (ev) => {
   const b = ev.target.closest("[data-term]");
   if (!b) return;
   const term = b.dataset.term;
-  pushTrail(state.view, term, b.dataset.termuse || "");
-  followThread({ type: "cohort", kind: "term", key: term, label: term });
+  /* The word names the step, and it is handed to the move rather than filed ahead of it.
+     Ahead of it, the step landed on the subject being left and the real one arrived named
+     after whichever routine using the word sorted first -- `mensores` opens 628 modules,
+     and one of them standing in for the term is rule 74 in the trail. */
+  followThread({ type: "cohort", kind: "term", key: term, label: term },
+               { label: term, note: b.dataset.termuse || "" });
 });
 
 /* Which band of the change worklist is open. One at a time, and clicking the open one
@@ -2677,13 +2688,14 @@ const CODE_ROUTES = {
   codelink: async (b) => {
     const id = b.dataset.codelink;
     if (!id) { console.error("DunneFlow: a code link with no identity", b); return; }
-    /* **Awaited, then recorded.** A step captures `state.selected` as its subject, so
-     * pushing before the selection settles files a step whose subject is `null` — the trail
-     * renders, highlights and scrolls exactly as it should and can take nobody back. Rule
-     * 33's defect, reintroduced in a new route and caught by reading the step rather than by
-     * any check; `openDetail` had the order right and this did not. */
-    await selectFromNav({ nodes: [id] });
-    pushTrail(state.view, labelFor(id), "followed a name in the source");
+    /* **Named on the move, not after it.** A step captures `state.selected` as its subject,
+     * so pushing before the selection settles files a step whose subject is `null` — the
+     * trail renders, highlights and scrolls exactly as it should and can take nobody back
+     * (rule 33). This route once had that order and was corrected to await first; awaiting
+     * fixed the *subject* and lost the *note*, because the step was already there and
+     * `recordSelection` deduplicated the second call away. Handing the name to the move
+     * settles both at once, and there is only ever one step. */
+    await selectFromNav({ nodes: [id] }, { note: "followed a name in the source" });
   },
   /* **The rail's way back to its list, and it no longer closes the file.**
    *
@@ -2838,24 +2850,28 @@ const DOC_ROUTES = {
   docwhere: (b) => goToCode(b.dataset.docwhere, Number(b.dataset.docwhereline || 0), b),
   /* A row. **An ordinary selection**, exactly as a navigator row makes — which is the
      claim the ratified view actually made for this pane, and the reason `documents.py`
-     carries a node id on every row instead of reusing the rendered Markdown. Awaited then
-     recorded, because a step captures `state.selected` as its subject and pushing first
-     files a step whose subject is null (rule 33). */
+     carries a node id on every row instead of reusing the rendered Markdown. The name goes
+     **with** the move: a step captures `state.selected` as its subject, so a name filed
+     first lands on the subject being left (rule 33), and a name filed after is
+     deduplicated away by the step the move already made. */
   docrow: async (b) => {
     const id = b.dataset.docrow;
     if (!id) { console.error("DunneFlow: a document row with no identity", b); return; }
-    await selectFromNav({ nodes: [id] });
-    pushTrail(state.view, labelFor(id), "picked a row in a document");
+    await selectFromNav({ nodes: [id] }, { note: "picked a row in a document" });
   },
   /* A declared table is not a node, so selecting one means selecting the code that reads
      and writes it — `queries.py` settled that before this pane existed, and the navigator
      has done it since it had a Database group. Without this the whole 43-row section is
-     inert, and an inert row is indistinguishable from one whose id was lost. */
+     inert, and an inert row is indistinguishable from one whose id was lost.
+
+     **The table names the step**, which is the half awaiting could never fix. What the move
+     selects is the routines that read and write it, so the step took the name of whichever
+     of those sorted first -- a row the reader never clicked standing in for the table they
+     did. */
   doctable: async (b) => {
     const name = b.dataset.doctable;
     if (!name) { console.error("DunneFlow: a table row with no name", b); return; }
-    await selectFromNav({ table: name });
-    pushTrail(state.view, name, "picked a table in a document");
+    await selectFromNav({ table: name }, { label: name, note: "picked a table in a document" });
   },
   docgo: () => revealSelectedRow(true, "docrow"),
 
@@ -3123,6 +3139,19 @@ document.addEventListener("click", (ev) => {
  * generic match narrowed to a literal, and a feature disappearing without a trace. */
 const NAV_SELECTOR = "[data-nav]";
 
+/* **Declared, never inferred from the shape of what a route returns** (rule 30). A route in
+ * here hands its own name to `selectFromNav` and the dispatcher stays out of the way.
+ *
+ * The dispatcher names a step *after* calling the route, which is right for every route
+ * whose subject is settled by then -- `routine`, `pkg`, `b`, `chg`, `ep` all set theirs
+ * synchronously inside `selectFromNav`, so the step is filed against the new subject and the
+ * row's own label wins. `t` is the exception: it asks the server which routines touch the
+ * table before setting anything, so the dispatcher's step would carry the subject the reader
+ * is *leaving* under the table's name, and the real step would arrive from `selectFromNav`
+ * named after whichever routine sorted first. One entry today; a second route that fetches
+ * before it selects belongs here rather than in a new mechanism. */
+const NAV_NAMES_ITSELF = new Set(["t"]);
+
 document.addEventListener("click", (ev) => {
   const b = ev.target.closest(NAV_SELECTOR);
   if (!b) return;
@@ -3135,8 +3164,10 @@ document.addEventListener("click", (ev) => {
   $$(NAV_SELECTOR).forEach(x => x.setAttribute("aria-current", "false"));
   b.setAttribute("aria-current", "true");
   route(b);
-  const lbl = b.querySelector(".navlabel");
-  pushTrail(state.view, labelOf(lbl || b));
+  if (!NAV_NAMES_ITSELF.has(kind)) {
+    const lbl = b.querySelector(".navlabel");
+    pushTrail(state.view, labelOf(lbl || b));
+  }
   render();
 });
 
@@ -7187,22 +7218,19 @@ function recordSelection(label, note, view) {
      routines sharing a name would be silently dropped as a repeat. A label is not an
      identity (rule 30), and `sameSelection` is the test the selection history already
      used. The view is in it because the three centre modes are three ways of looking at
-     one selection, and moving between them is a step even when the subject has not moved. */
+     one selection, and moving between them is a step even when the subject has not moved.
+
+     **A duplicate is dropped whole, and it used to donate its note first.** That branch is
+     gone rather than kept, because it was rescuing six callers from a mistake they no
+     longer make. They each named a step *before* an async move; the step landed on the
+     subject being left, was deduplicated here, and its note was written onto whatever the
+     reader had come from -- so following the *quaestor* curiosity left an unrelated routine
+     called `rubrics` labelled *"45 modules, 1 constant"*. The note it wanted was on the
+     right step and about the wrong thing, which is worse than absent. The name rides with
+     the move now (`selectFromNav`'s `name`), so there is one step, it is named when it is
+     made, and nothing is left over to adopt. */
   const at = state.trail[trailAt];
-  if (at && at.view === step.view && sameSelection(at.subject, step.subject)) {
-    /* **The note is adopted rather than dropped, and that is not tidiness.** Three routes
-     * do `await selectFromNav(...)` and then `pushTrail(view, label, "why")` — a name in
-     * the source, a row in a document, a table in a document. `selectFromNav` records the
-     * step itself, with no note, so the note-carrying call arrived second on the same
-     * subject and was thrown away entire. Every one of those routes read as though it
-     * explained the hop and none of them did: design rule 16's defect, three times, and
-     * invisible because the step it wanted was already there and looked right.
-     *
-     * Only when the standing step has none. A step that already says why it happened is
-     * not improved by a later caller's guess at the same question. */
-    if (step.note && !at.note) at.note = step.note;
-    return;
-  }
+  if (at && at.view === step.view && sameSelection(at.subject, step.subject)) return;
   state.trail = state.trail.slice(0, trailAt + 1);   // a new move drops the forward branch
   state.trail.push(step);
   if (state.trail.length > TRAIL_CAP) state.trail.shift();
@@ -8128,9 +8156,9 @@ if (SYNC) {
     adopting = true;
     try {
       /* `selectFromNav` moves the list itself now, for every caller rather than for this
-         one -- see the note there. */
-      await selectFromNav({ nodes: [msg.id] });
-      pushTrail(state.view, labelFor(msg.id), "followed the other window");
+         one -- see the note there. The note rides **with** the move: filed after it, it
+         arrived on a step the recorder had already made and was dropped. */
+      await selectFromNav({ nodes: [msg.id] }, { note: "followed the other window" });
       render();
     } finally {
       adopting = false;
@@ -8177,9 +8205,10 @@ async function openDetail(nodeId) {
   used("detail");
   /* An ordinary selection, exactly as a navigator row or a node click makes. The stack
      lights up underneath while the window is open, the trail records this hop once, and
-     undo already reaches it -- none of which is true of a window holding its own subject. */
-  await selectFromNav({ nodes: [nodeId] });
-  pushTrail(state.view, labelFor(nodeId), "opened in detail");
+     undo already reaches it -- none of which is true of a window holding its own subject.
+     **Once** is what the name riding with the move buys: the note used to be pushed after
+     the selection had already filed its step, and was dropped on the floor. */
+  await selectFromNav({ nodes: [nodeId] }, { note: "opened in detail" });
   render();
 }
 
@@ -11987,12 +12016,16 @@ function wire() {
        reads of a cheap endpoint (the largest cohort in this corpus is 112 routines and
        resolves in well under the round trip) is the right price for one route.
 
-       The trail step is filed here, before the route runs, exactly as the `[data-thread]`
-       click files one -- so a cohort opened from the shelf and one followed from a panel
-       leave the same mark, and the way back is the same (rule 33). */
+       The name is **handed to the move**, exactly as the `[data-thread]` click hands its
+       own -- so a cohort opened from the shelf and one followed from a panel leave the same
+       mark, and the way back is the same (rule 33).
+
+       It was filed here, *before* the route ran, and that is what this replaces. A step
+       filed before the move carries the old subject, is deduplicated away, and donates only
+       its note -- so opening `AC-4` left a step called `resolve_cli_invocation` and wrote
+       "a plan or decision id" onto `kept things`. See `selectFromNav`. */
     if (sub.type) {
-      pushTrail(state.view, pin.label || sub.label || "kept", pin.note || "");
-      followThread(sub);
+      followThread(sub, { label: pin.label || sub.label || "kept", note: pin.note || "" });
       used("pin:open:" + sub.type + ":" + (sub.kind || ""));
       return;
     }
@@ -12019,8 +12052,11 @@ function wire() {
       console.error("[dunneflow] a thread carries no subject:", b.dataset.thread, err);
       return;
     }
-    pushTrail(state.view, b.dataset.threadlabel || "thread", b.dataset.threadwhy);
-    followThread(subject);
+    /* The name goes **with** the move rather than ahead of it. Ahead of it, following the
+       *quaestor* curiosity filed a step called `__init__` and wrote its "45 modules, 1
+       constant" onto the unrelated routine the reader had come from. */
+    followThread(subject, { label: b.dataset.threadlabel || "thread",
+                            note: b.dataset.threadwhy });
   }));
   $$("[data-threadsall]").forEach(b => b.addEventListener("click", () => {
     state.threadsAll = !state.threadsAll; render();
@@ -17318,7 +17354,23 @@ function applyWanted() {
   updateGraphCounts();
 }
 
-async function selectFromNav(want) {
+/* `name` is `{label, note}` from a caller that knows the hop better than the landing does,
+ * and it is the second half of the one-recorder rule.
+ *
+ * **A caller about to move names the step the move will file; it never files one of its
+ * own.** Six callers did the opposite -- `pushTrail(view, label, why)` and *then* an async
+ * move -- and every one of them lost what it was saying. The step filed early carries the
+ * **old** subject, is deduplicated against the step before it by `sameSelection`, and the
+ * real step arrives from here with no name and falls back to `subjectLabel()`. Measured on
+ * screen: opening the kept cohort `AC-4`, which opens 112 routines, filed a step called
+ * `resolve_cli_invocation` -- one arbitrary member -- and wrote *"a plan or decision id"*
+ * onto the `kept things` step the reader was **leaving**. A false sentence about a
+ * different subject, in the surface built so a detour does not cost you your thread.
+ *
+ * Rule 33 with the field present and the *name* missing, which is the fourth variant of it
+ * this file records. Optional, so the fifteen callers that know nothing better are
+ * unchanged and still take the name of what they landed on. */
+async function selectFromNav(want, name) {
   state.view = state.mode;                // these set what you look AT, not where you are
 
   if (want.table !== undefined) {
@@ -17350,7 +17402,7 @@ async function selectFromNav(want) {
   await ensureGraph();
   applyWanted();
   persist();
-  recordSelection();
+  recordSelection(name && name.label, name && name.note);
   /* **The list follows, whoever drove.**
    *
    * `onGraphSelect` did this and `applySelectionStep` did this, and `selectFromNav` did not
@@ -17396,9 +17448,13 @@ function walking() { return state.followMode === "walk"; }
  * that carries or touches it, which is what `queries.py` wrote down before anything needed
  * it: inventing an id to make a row clickable would be a link to nothing.
  */
+/* Both entries take the caller's `name` and hand it to `selectFromNav`, so a cohort and a
+ * node followed from the same door leave the same mark (rule 51 -- the argument that made
+ * these two one table). Without it a cohort's step was named after whichever of its members
+ * sorted first, which for `AC-4` is one routine standing in for 112. */
 const THREAD_SUBJECTS = {
-  node: async (s) => { await selectFromNav({ nodes: [s.id], add: walking() }); },
-  cohort: async (s) => {
+  node: async (s, name) => { await selectFromNav({ nodes: [s.id], add: walking() }, name); },
+  cohort: async (s, name) => {
     let r;
     try {
       r = await fetch(`/api/thread?kind=${encodeURIComponent(s.kind)}` +
@@ -17424,11 +17480,11 @@ const THREAD_SUBJECTS = {
       render();
       return;
     }
-    await selectFromNav({ nodes: r.nodes, add: walking() });
+    await selectFromNav({ nodes: r.nodes, add: walking() }, name);
   },
 };
 
-async function followThread(subject) {
+async function followThread(subject, name) {
   const go = THREAD_SUBJECTS[subject && subject.type];
   if (!go) {
     console.error("[dunneflow] no route for thread subject:", subject);
@@ -17439,7 +17495,7 @@ async function followThread(subject) {
   }
   used("thread");
   used("follow:" + state.followMode);
-  await go(subject);
+  await go(subject, name);
 }
 
 /* ── the furniture: the HUD and the legend ─────────────────────────────────── */

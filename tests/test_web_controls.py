@@ -2544,9 +2544,10 @@ def test_the_detail_window_reads_the_one_selection() -> None:
     # Every way in and every hop is an ordinary selection, so the trail records the journey
     # once and undo already reaches every step of it.
     opener = _fn(shell, "openDetail")
-    assert "selectFromNav({ nodes: [nodeId] })" in opener and "pushTrail(" in opener, (
-        "opening the window does not go through the one selection route, so the stack and "
-        "the trail do not follow the reader into it"
+    assert "await selectFromNav({ nodes: [nodeId] }, { note:" in opener, (
+        "opening the window does not go through the one selection route carrying its own "
+        "note, so the stack and the trail do not follow the reader into it -- or they do "
+        "and the step says nothing about why"
     )
     assert "hopDetail(hop.dataset.detail)" in shell and "function hopDetail" in shell, (
         "a hop inside the window takes a different path from opening it -- two sets of "
@@ -4674,13 +4675,18 @@ def test_every_clickable_name_in_the_source_carries_an_identity() -> None:
     assert "console.error" in route, (
         "a link with no identity fails silently rather than by name"
     )
-    # ...and the selection must settle **before** the step is filed. A trail step captures
-    # `state.selected` as its subject, so pushing first files a step whose subject is null:
-    # it renders, highlights and scrolls correctly and can take nobody back (rule 33).
-    # Found by reading a real step, not by any check, and this is that check.
+    # ...and the step is **named by the move**, not before or after it. Filed before, it
+    # carries the subject being left (rule 33, and this route once did exactly that); filed
+    # after, it arrives on a step `selectFromNav` has already made and is deduplicated away,
+    # so the route reads as though it explains the hop and does not. One call, one step.
     body = route.split("codelink:", 1)[1]
-    assert body.index("await selectFromNav") < body.index("pushTrail"), (
-        "the trail step is filed before the selection settles, so it carries no subject"
+    assert "await selectFromNav" in body, "the selection is not awaited"
+    assert "pushTrail" not in body, (
+        "a name in the source files its own trail step around an async move, so its name "
+        "lands on the wrong subject or is dropped -- hand it to `selectFromNav` instead"
+    )
+    assert re.search(r"await selectFromNav\([^;]*\{\s*note:", body), (
+        "the move is not told why the reader made it, so the step explains nothing"
     )
 
 
@@ -9970,10 +9976,16 @@ def test_the_shelf_asks_which_id_space_before_it_asks_which_route() -> None:
     )
 
     # And the trail. A cohort opened from the shelf must leave the same mark as one followed
-    # from a panel, or the way back differs depending on which door was used (rule 33).
-    assert "pushTrail(" in open_h, (
-        "opening a kept cohort files no trail step, so the detour it was kept to make cannot "
-        "be taken back"
+    # from a panel, or the way back differs depending on which door was used (rule 33). The
+    # name is **handed to the move**, not filed around it: filed first it landed on the
+    # subject being left, and the real step arrived named after one arbitrary member -- `AC-4`
+    # came out as `resolve_cli_invocation`, one of the 112 routines it opens.
+    assert "followThread(sub, {" in open_h, (
+        "opening a kept cohort does not name the step the move files, so the detour is "
+        "named after one of the things it selected rather than after itself"
+    )
+    assert "pin.label" in open_h and "pin.note" in open_h, (
+        "the pin's own label and note are not what names its step"
     )
 
 
@@ -10940,20 +10952,27 @@ def test_a_document_row_is_an_ordinary_selection() -> None:
     js = _code(_read("shell.js"))
     routes = js.split("const DOC_ROUTES = {", 1)[1].split("\n};", 1)[0]
     row = routes.split("docrow:", 1)[1].split("doctable:", 1)[0]
-    assert "selectFromNav({ nodes: [id] })" in row, (
+    assert "selectFromNav({ nodes: [id] }" in row, (
         "a document row does not select — the stack does not light, the inspector does not "
         "fill, and the trail records nothing"
     )
     assert "await selectFromNav" in row, "the selection is not awaited"
-    assert row.index("await selectFromNav") < row.index("pushTrail"), (
-        "the trail step is pushed before the selection settles, so it files a step whose "
-        "subject is null and can take nobody back (rule 33)"
+    assert "pushTrail" not in row, (
+        "a document row files its own trail step around the move, so its note lands on the "
+        "step being left or is deduplicated away -- hand it to `selectFromNav`"
     )
-    tbl = routes.split("doctable:", 1)[1]
-    assert "selectFromNav({ table: name })" in tbl, (
+    tbl = routes.split("doctable:", 1)[1].split("docgo:", 1)[0]
+    assert "selectFromNav({ table: name }" in tbl, (
         "a declared table row selects nothing. A table is not a node, but selecting one "
         "means selecting the code that reads and writes it — `queries.py` settled that "
         "before this pane existed, and without it a 43-row section is inert"
+    )
+    # ...and the **table** names the step, which is the half awaiting could never fix. The
+    # move selects the routines that touch it, so with no name the step took whichever of
+    # those sorted first -- a row the reader never clicked standing in for the one they did.
+    assert "pushTrail" not in tbl and "label: name" in tbl, (
+        "a table row's step is not named for the table, so it is named after an arbitrary "
+        "routine that touches it (rules 30 and 74)"
     )
 
 
@@ -10998,20 +11017,100 @@ def test_the_document_pane_follows_the_selection() -> None:
     )
 
 
-def test_a_deduplicated_trail_step_adopts_the_note_it_was_carrying() -> None:
-    """Three routes read as though they explained the hop, and none of them did.
+def test_a_step_is_named_by_the_move_that_files_it() -> None:
+    """The name rides with the move, and a duplicate is dropped whole.
 
-    `codelink`, `docrow` and `doctable` all `await selectFromNav(...)` and then
-    `pushTrail(view, label, "why")`. `selectFromNav` records the step itself with no note,
-    so the note-carrying call arrived second on the same subject and was dropped whole.
-    Design rule 16's defect three times over, invisible because the step it wanted was
-    already there and looked right. Found by clicking a row and reading `state.trail`.
+    Seven callers named a step *around* an async move -- `pushTrail(view, label, why)` and
+    then `followThread`/`selectFromNav`, or the same two the other way about -- and every
+    one of them lost what it was saying. Filed **before**, the step carries the subject
+    being left, is deduplicated here, and donates only its note; filed **after**, it lands
+    on the step the move already made and is dropped entire.
+
+    Measured on screen against `output/mensores` rather than reasoned: opening the kept
+    cohort `AC-4`, which opens 112 routines, filed a step called `resolve_cli_invocation`
+    -- one arbitrary member -- and wrote *"a plan or decision id"* onto the `kept things`
+    step the reader was leaving. Following the *quaestor* curiosity left an unrelated
+    routine called `rubrics` labelled *"45 modules, 1 constant"*.
+
+    The adoption branch that used to rescue three of the seven is **gone**, not kept: it
+    put the note on the right step and about the wrong thing, which is worse than absent.
     """
     js = _code(_read("shell.js"))
     rec = _fn(js, "recordSelection")
-    assert "if (step.note && !at.note) at.note = step.note;" in rec, (
-        "a deduplicated step throws away the note it carried, so every route that explains "
-        "why the reader moved explains nothing"
+    assert "at.note = step.note" not in rec, (
+        "a deduplicated step still donates its note to the step before it, which is a "
+        "sentence about one subject written onto another"
+    )
+
+    # The parameter exists, and it is read. A parameter that is ignored is a control wired
+    # to nothing (design rule 16), which is the claim this file already makes about
+    # `recordSelection`'s own `view`.
+    sel = _fn(js, "selectFromNav")
+    assert re.search(r"async function selectFromNav\(want, name\)", js), (
+        "`selectFromNav` takes no name, so a caller that knows the hop better than the "
+        "landing does has nowhere to put it"
+    )
+    assert "recordSelection(name && name.label, name && name.note)" in sel, (
+        "`selectFromNav` records a step without reading the name it was handed"
+    )
+
+    # And it reaches a cohort as well as a node, or a thread followed to 112 routines is
+    # still named after whichever one sorted first (rule 51: one door, one answer).
+    thread = js.split("const THREAD_SUBJECTS = {", 1)[1].split("\n};", 1)[0]
+    assert thread.count("name)") >= 2, (
+        "a thread subject drops the caller's name on its way to `selectFromNav`, so a "
+        "cohort and a node followed from the same door leave different marks"
+    )
+    assert "async function followThread(subject, name)" in js, (
+        "`followThread` cannot carry a name, so neither of its two routes can be named"
+    )
+
+
+def test_no_caller_names_a_trail_step_around_an_async_move() -> None:
+    """The whole class, refused by construction rather than found one surface at a time.
+
+    Each of these seven handlers reaches a selection through an `await` it does not hold,
+    so a `pushTrail` of its own is filed against the wrong subject whichever side of the
+    move it sits on. They hand the name to the move instead. A `pushTrail` reappearing in
+    any of them is the defect coming back, and the trail cannot report it -- the step it
+    produces renders, highlights and scrolls exactly as a correct one does.
+    """
+    js = _code(_read("shell.js"))
+
+    # The two `followThread` doors: the shelf and a thread on a panel.
+    wire = _fn(js, "wire")
+    shelf = wire.split("[data-pinopen]", 1)[1].split("[data-thread]", 1)[0]
+    assert "followThread(sub, {" in shelf and "pushTrail" not in shelf, (
+        "opening a kept cohort files its own step, so `AC-4` is named after one of the 112 "
+        "routines it opens and its note lands on `kept things`"
+    )
+    panel = wire.split("[data-thread]", 1)[1].split("[data-threadsall]", 1)[0]
+    assert "followThread(subject, {" in panel and "pushTrail" not in panel, (
+        "a thread on a panel files its own step, so the detour is named after an arbitrary "
+        "member of what it selected"
+    )
+
+    # The glossary term row, which is the same cohort door one surface over.
+    term = js.split('closest("[data-term]")', 1)[1].split("});", 1)[0]
+    assert "followThread(" in term and "pushTrail" not in term, (
+        "a glossary term files its own step; `mensores` opens 628 modules and one of them "
+        "would stand in for the word (rule 74)"
+    )
+
+    # The two windows: a peer's selection, and the detail window.
+    assert "pushTrail" not in _fn(js, "openDetail"), (
+        "opening the detail window files a step the selection has already filed, so its "
+        "note is dropped and the hop reads as unexplained"
+    )
+
+    # And the one navigator route that fetches before it selects, declared rather than
+    # inferred from what a route happens to return (rule 30).
+    assert "const NAV_NAMES_ITSELF = new Set([" in js, (
+        "the dispatcher names every route's step, including the one that has not selected "
+        "anything yet when it does so"
+    )
+    assert "if (!NAV_NAMES_ITSELF.has(kind)) {" in js, (
+        "the set is declared and nothing reads it -- rule 35's empty view with no symptom"
     )
 
 

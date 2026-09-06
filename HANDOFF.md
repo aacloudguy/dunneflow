@@ -11082,8 +11082,29 @@ after that was driven through the DOM: the harness stopped delivering `pointerdo
 — two clicks reported success and delivered no event, in a fresh tab as well — which is the
 same instrument failure the 2026-09-05 record describes.
 
-*Candidate rule, for Tom to mint or refuse:* **a hidden control is not a dimmed one.**
-`visibility: hidden` and `display: none` remove an element from hit-testing *and* from the tab
-order, so a rule that reveals on `:hover` or `:focus-within` can never be reached by the route
-that would rescue it. One step over from *dimmed still acts*, which is about intent; this is
-about the mechanism that quietly enforces the opposite.
+### Design rule 29, minted on Tom's call
+
+***A hidden control is not a dimmed one.*** `visibility: hidden` and `display: none` remove an
+element from hit-testing **and** from the tab order, so a rule that reveals it on `:hover` or
+`:focus-within` can never be reached by the route that would rescue it: every way in is closed
+at once by the one declaration meant to make the control quiet.
+
+One step over from *dimmed still acts*, and the difference is the point. That is a rule about
+**intent** — dimming means *not current*, never *disabled*. This is about the **mechanism** that
+enforces the opposite whatever you intended: you can hold the first rule perfectly in your head,
+write `visibility: hidden` because it looks like the tidier way to hide something, and ship a
+dead control.
+
+**The guard has to be over the stylesheet**, and that is the part worth carrying. No check over
+the markup, the roster or the handler can see this, because every one of them asks whether the
+control *exists* — and it does. A scripted `.click()` on the hidden element works perfectly,
+which is the trap; only a real pointer, which does not hover before it presses, finds it.
+`pointer-events: none` is refused by the same guard: that removes hit-testing on purpose, which
+is this defect deliberately. The affordance may recede; the reach may not.
+
+In `DESIGN-RULES.md` in full, indexed in `CLAUDE.md`, cited from `tokens.css` at both rules it
+governs and from `test_a_quiet_keep_button_is_still_a_keep_button`. Counts are now **81
+engineering rules numbered to 82** and **29 design rules**.
+
+*Still open, and not minted:* *an instrument's two coordinate systems can differ, and the one you
+can see is not the one you touch.*

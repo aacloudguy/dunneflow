@@ -5,7 +5,7 @@ It exists so a fresh context can be useful in a few minutes instead of an hour.
 
 | Read | For |
 |---|---|
-| `CLAUDE.md` | The rules. 81 engineering rules — numbered to 82, since 21 does not exist — and 28 dashboard design rules, each earned from a false result on real code. **Binding.** |
+| `CLAUDE.md` | The rules. 81 engineering rules — numbered to 82, since 21 does not exist — and 29 dashboard design rules, each earned from a false result on real code. **Binding.** |
 | `HANDOFF.md` | The chronological record — what was built when, what it cost, what broke. ~1,700 lines. Read *sections*, not the whole thing. |
 | **this file** | Where things are, what is done, what we are doing now, what not to re-open. |
 | Artifact `f993d319-d2b7-4217-9130-cdbba698d1bc` | The ratified dashboard design — a complete working UI, the source of truth for every view. Read it with the **Artifact tool**, not from a screenshot. |
@@ -269,12 +269,15 @@ sidecar here to ask"* while `/api/about` answered fine — from re-analysing the
 a running server and then driving `state` by hand. On a clean boot it is correct. Verified
 before reporting, and it dissolved.
 
-The counts are unchanged: **81 engineering rules numbered to 82** — 21 still does not exist
-— and **28 design rules**. Nothing was minted; **two candidates are open** for Tom to mint or
-refuse: *an instrument's two coordinate systems can differ, and the one you can see is not the
-one you touch*, and *a hidden control is not a dimmed one* — `visibility: hidden` and
-`display: none` take an element out of hit-testing **and** the tab order, so a rule revealing
-it on `:hover` or `:focus-within` can never be reached by the route that would rescue it.
+**Design rule 29 was minted on Tom's call: *a hidden control is not a dimmed one.*** The counts
+are now **81 engineering rules numbered to 82** — 21 still does not exist — and **29 design
+rules**. `visibility: hidden` and `display: none` take an element out of hit-testing **and** the
+tab order, so a rule revealing it on `:hover` or `:focus-within` can never be reached by the
+route that would rescue it — every way in is closed by the one declaration meant to make the
+control quiet, and nothing reports it. In `DESIGN-RULES.md` in full, indexed in `CLAUDE.md`.
+
+**One candidate is still open** for Tom to mint or refuse: *an instrument's two coordinate
+systems can differ, and the one you can see is not the one you touch.*
 
 ### Before the pause: a plate is a subject (2026-09-05)
 

@@ -9876,7 +9876,9 @@ def test_a_pin_is_keyed_on_what_it_is_not_on_what_it_is_called() -> None:
 
 
 def test_a_quiet_keep_button_is_still_a_keep_button() -> None:
-    """Dimming says *not current*. It must never say *disabled*.
+    """Design rule 29: a hidden control is not a dimmed one.
+
+    Dimming says *not current*. It must never say *disabled*.
 
     **Found by clicking, and no test would have found it.** The keep button on a thread row
     and a search hit is quiet until the row is under the pointer -- 782 lines matched one word
@@ -9890,7 +9892,14 @@ def test_a_quiet_keep_button_is_still_a_keep_button() -> None:
 
     Rule 48 exactly: a scripted click proves the handler, and only a pointer proves the path to
     it. Every JavaScript guard passed, the button rendered, the handler was bound, and pressing
-    it did nothing.
+    it did nothing -- and a scripted `.click()` on the hidden element works perfectly, which is
+    the trap. **This guard has to be over the stylesheet**, because no check over the markup,
+    the roster or the handler can see it: every one of those asks whether the control exists,
+    and it does.
+
+    `pointer-events: none` is not an alternative spelling to allow here -- that removes
+    hit-testing on purpose, which is this defect deliberately. The affordance may recede; the
+    reach may not.
     """
     css = _css_code(_read("tokens.css"))
     for rule in re.findall(r"[^{}]*\.pinbtn[^{}]*\{[^}]*\}", css):
@@ -9898,7 +9907,8 @@ def test_a_quiet_keep_button_is_still_a_keep_button() -> None:
         if ":hover" in head or ":focus" in head or ".on" in head:
             continue
         for dead in ("visibility: hidden", "visibility:hidden",
-                     "display: none", "display:none"):
+                     "display: none", "display:none",
+                     "pointer-events: none", "pointer-events:none"):
             assert dead not in body, (
                 f"a keep button is hidden at rest by `{dead}` in `{head.strip()}` -- it is "
                 "then not hit-tested and not tabbable, so the row it sits on swallows the "

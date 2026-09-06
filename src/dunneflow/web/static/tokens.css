@@ -2393,12 +2393,13 @@ kbd { font-family: var(--f-mono); font-size: .66rem; background: var(--sunken);
  * a control that appears on hover and takes width with it makes the name beside it reflow
  * under the pointer.
  *
- * **`opacity`, and the first draft was `visibility: hidden`.** That was found by clicking:
- * the pointer landed inside the button's own rectangle and the event target was the row,
- * because a hidden element is not hit-tested -- so the control worked only for a pointer
- * that had hovered first, and not at all for the keyboard, since `visibility: hidden` also
- * takes it out of the tab order and `:focus-within` can then never fire to bring it back.
- * Dimming says *not current*; it must never say *disabled*. */
+ * **`opacity`, and the first draft was `visibility: hidden`** -- which is design rule 29, and
+ * this row is where that rule was minted. Found by clicking: the pointer landed inside the
+ * button's own rectangle and the event target was the row, because a hidden element is not
+ * hit-tested -- so the control worked only for a pointer that had hovered first, and not at
+ * all for the keyboard, since `visibility: hidden` also takes it out of the tab order and
+ * `:focus-within` can then never fire to bring it back. Dimming says *not current*; it must
+ * never say *disabled*. */
 .threadrow { display: flex; align-items: center; gap: .25rem; }
 .threadrow .thread { flex: 1; min-width: 0; }
 .threadrow .pinbtn { opacity: .3; flex: none; transition: opacity .1s; }
@@ -3135,7 +3136,7 @@ kbd { font-family: var(--f-mono); font-size: .66rem; background: var(--sunken);
 /* Kept from a hit, quiet at rest like the thread row's and for the same two reasons -- 782
    lines matched a single word in this corpus, and a keep button shouting on every one of
    them is furniture; and `opacity` rather than `visibility`, because a hidden control is not
-   hit-tested and not tabbable, which makes dimming mean disabled. */
+   hit-tested and not tabbable (design rule 29). */
 .srch-hit .pinbtn { opacity: .3; transition: opacity .1s; }
 .srch-hit:hover .pinbtn,
 .srch-hit .pinbtn:focus-visible,

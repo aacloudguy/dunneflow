@@ -444,3 +444,36 @@ bought a rewrite of settled CSS, neither of which serves the thing the tool is f
     `_refuse_if_stale`, so a mismatched graph never becomes the base at all. What is stated
     is the guarantee that produces; the honest *should I read this again?* signal is the date
     beside it and the tree leaf it was read from.
+
+29. **A hidden control is not a dimmed one.** Minted 2026-09-06, on Tom's call, from the keep
+    button on a thread row.
+
+    The button is quiet until its row is under the pointer — 782 lines matched a single word
+    in this corpus, and a control shouting on every one of them is furniture. Spelled
+    `visibility: hidden`, a **real pointer click landed inside the button's own rectangle and
+    the event target was the row.** A hidden element is not hit-tested. So the control worked
+    only for a pointer that happened to hover first, and the automation — which clicks without
+    moving — found it on the first press.
+
+    **The keyboard half is worse, and it is self-sealing.** `visibility: hidden` and
+    `display: none` also take an element out of the tab order. So `:focus-within` can never
+    fire to bring it back: the rule written to rescue the control is unreachable *by
+    construction*, and the element cannot be focused, cannot be tabbed to, and cannot be
+    clicked. Every route in is closed at once by the one declaration meant to make it quiet.
+
+    Nothing reports this. The markup is right, the handler is bound, the roster is complete,
+    the self-check is silent, and every JavaScript guard passes — because every one of them
+    asks whether the control *exists*, and it does. That is rule 48 in its purest form: a
+    scripted click proves the handler, and only a pointer proves the path to it. A scripted
+    `.click()` on the hidden element works perfectly, which is the trap.
+
+    **`opacity` instead, and `pointer-events: none` is not a substitute** — that removes
+    hit-testing on purpose, which is this defect deliberately. The affordance may recede; the
+    *reach* may not.
+
+    **One step over from *dimmed still acts*, and the difference is the point.** That is a rule
+    about intent: dimming means *not current*, never *disabled*. This is about the mechanism
+    that quietly enforces the opposite whatever you intended — you can hold the first rule
+    perfectly in your head, write `visibility: hidden` because it seems the tidier way to hide
+    something, and ship a dead control. A guard over the stylesheet is what closes it, because
+    no guard over the markup or the handler can.

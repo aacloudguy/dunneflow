@@ -179,80 +179,54 @@ program has a most-commented routine and a maximum alone is a claim nobody can w
 
 ## What we are doing now
 
-**Paused 2026-09-06.** Standards steps 3 and 4 are both built, and the cover's proportion
-bars are a Setting. Gates green: 1,093 tests, mypy clean over 113 source files, ruff clean.
+**Paused 2026-09-06, between features. Nothing is half-written.** 1,093 tests, mypy clean
+over 113 source files, ruff clean, working tree clean, `check` reports 0 broken on
+`output/mensores`, no servers running. `output/` holds what it held at the start plus
+`mensores/standards.db`, which is this session's own feature and belongs there.
 
-**The anomaly worklist's jump buttons act**, and the comparison's summary figures open
-the bands they count. Nine tiles carrying counts
-had been inert `div`s since they were written, on a page whose bands were already underneath
-them — design rule 16 in its purest form. A tile is a control only where its band has rows
-(never where its own figure is non-zero: those are two answers to one question, rule 13), the
-band key is passed rather than guessed from the label because `edited only` is drawn by a
-band keyed `edited`, and a tile with nothing to open stays a `div` rather than being dimmed.
+**Six commits, and the thread running through five of them is one idea Tom stated once:**
+*"We're a rabbit-chasing application — it should work. If a panel lists 7 things, clicking
+on that panel should lead to a screen that lists all 7 things in detail, no matter what
+they are."*
 
-**Three cover Settings now** (design rule 2): `coverBars`, `rowTagsWrap` and
-`coverWhatWrap`. With all three, names shown whole go **3 of 14 → 12 of 14** and evidence
-lines truncated go **14 of 14 → 0**. The five rows all named `main`, which read identically
-because the file path that distinguishes them was in the truncated tail, are now
-distinguishable. *Clicking a row already showed the evidence whole — `viewWayIn` prints it
-verbatim — so the gap was only ever on the cover.*
+| Commit | What |
+|---|---|
+| `9000550` | **the looking debt is paid** — five surfaces seen, and the instrument had two coordinate systems differing by exactly the dpr |
+| `22e82ff` | **standards 4 then 3** — import an outside standard, and measure the program against it |
+| `deb97c8` | **the cover's bars become a Setting**, and the name gets the column |
+| `392d1e1` | **two more cover Settings** — tags to their own line, and the evidence line wraps |
+| `e54df9b` | **a figure that counts things opens those things** — the comparison's nine tiles |
+| `3cfce1b` | **the worklist's jump buttons act** — a finding opens what it found |
 
-**`coverBars` gives the bar's column back to the name.** Measured: the bar
-took 104px of a 315px row and the name was left 29px — eleven of fourteen rows elided. Off,
-the name column is 293px and eleven of the fourteen show whole; the three that do not are a
-22-character handler and two 42-character `python -m …` command lines, which no column here
-would fit. The **track** is dropped rather than the bar hidden (rule 45), and `applyCoverBars`
-runs after `adoptSettings` as well as at boot (rule 68). Earlier the same day the looking
-debt was discharged — that entry is below and still stands.
+**Two items came off the open list, and both were recorded as harder than they were.**
+Standards step 3 was *"compare against the graph"*, which measurement showed would make the
+tool confidently wrong. The worklist's jump buttons were *"blocked on precision, not
+effort"*, when every detector already had the ids in hand and was throwing them away. In
+both cases the record was written from reasoning and the correction came from measuring.
 
-**`analyze --standards <dir>` imports somebody else's naming standard**, into `standards.db`
-and never into `docs.db`. Its own file rather than a column, because the corpus store is read
-by the glossary, the mirror, traceability and Document mode, and a flag would make each of
-them a place that must remember to filter (rule 51's shape). Rule 57 gains three refusals a
-reader can trigger by naming a root — the output tree, the documentation root, the analysed
-tree — each with its own sentence, all judged **before anything is opened**, so a refusal
-never abandons a half-written map.
+**What is open**, unchanged by this session: *"keep this" on everything* (a curiosity, a
+thread and a search hit still cannot be kept), the three filed defects (a change row files
+two trail steps, `holds` missing from `insp`'s defaults, `navIds` splitting on a space),
+`m.<module>` as a language feature, and per-plate sphere scaling with stack orientation.
 
-**`resolve/conformance.py` measures a stated rule against the population it governs**, and a
-third page, *Stated rules, checked*, says what happened. **The order was reversed on
-evidence.** Step 3 as recorded — *compare against the graph* — would have made the tool
-confidently wrong: of Mensores' six `checkable` rules **none is a question about `graph.db`**,
-and *"Files: kebab-case"* checked there is **0 of 628** Python files against a rule its own
-document scopes to `src/**/*.md`, three documents.
+**Two mistakes worth carrying forward.**
 
-So a **path-shaped scope requires a declared `paths:`** and is refused without one; an
-**entity scope** names its own population and a glob narrows it. **Three verdicts, never
-two** — checked, no population, not checkable — because collapsing any two lets *"we could
-not check"* read as *"it passes"*. Only case styles are tested, through `naming.case_style`;
-a template is quoted back and declared untestable rather than guessed at.
+*`git checkout <file>` is not an undo.* Proving a guard non-vacuous, a cleanup line read
+`git checkout src/dunneflow/anomalies.py || cp /tmp/a.bak …` — a backup that never existed,
+after a command that cannot fail. It reverted ~200 lines of uncommitted work. The lesson is
+the fallback rather than the checkout: `||` after a command that always succeeds is a
+comment, not a safety net, and the VCS is no undo for work it has never seen. **Take the
+backup first and restore from that.**
 
-**Measured on Mensores**, which is the deliverable:
+*A stale readout that looked like a false claim was self-inflicted.* The topbar read *"no
+sidecar here to ask"* while `/api/about` answered fine — from re-analysing the map underneath
+a running server and then driving `state` by hand. On a clean boot it is correct. Verified
+before reporting, and it dissolved.
 
-| Rule | Population | Result |
-|---|---|---|
-| `files / kebab-case` (its own) | `src/**/*.md` — 3 documents | **0 of 3** |
-| `modules / snake_case` (imported) | modules under `**/*.py` | 628 of 628 |
-| `classes / PascalCase` (imported) | classes | 1,127 of 1,179 |
-| `constants / SCREAMING_SNAKE_CASE` (imported) | constants | 2,509 of 2,638 |
-| `variables / CAPS_UNDERSCORES` | — | **no population**, and it says why |
-
-**Two defects that only measuring found**, both after the module was written and looked
-right. Reusing `POPULATIONS` without `DOTTED` reproduced rule 51's own recorded defect
-exactly — `modules / snake_case` reported **1 of 628**, because a dotted path read as one
-identifier makes every module an exception to its own convention. And the population query
-carried `stated.py`'s `duplicate_of = ''` filter, which is right for *rules* and wrong for
-*paths*: two paths holding identical bytes are still two filenames, and dropping them made
-the population **1 document instead of 3**.
-
-**And one the looking found**, with tests all green: the five prose rules that name no scope
-and no pattern rendered under the heading **"— · —"** — five panels with the same non-name,
-in the group whose whole job is saying why each was refused.
-
-**Two sentences that had become false were rewritten**, not left standing: the stated page's
-*"comparing them is not built"* and the same claim in `11-naming.md`.
-
-The counts are unchanged: **81 engineering rules numbered to 82** and **28 design rules**.
-Nothing new was minted; the candidate from earlier today is still open.
+The counts are unchanged: **81 engineering rules numbered to 82** — 21 still does not exist
+— and **28 design rules**. Nothing was minted; one candidate from this morning is still open,
+*an instrument's two coordinate systems can differ, and the one you can see is not the one
+you touch.*
 
 ### Before the pause: a plate is a subject (2026-09-05)
 

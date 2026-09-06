@@ -10920,3 +10920,28 @@ session's own patches to an identical measurement (107 findings, same per-kind c
 **The lesson is the fallback, not the checkout.** `||` after a command that cannot fail is
 not a fallback, it is a comment — and the safe form is to take the backup *first* and restore
 from it, never to reach for the VCS as an undo on work the VCS has never seen.
+
+## 2026-09-06 — paused
+
+Six commits, clean tree, 1,093 tests, mypy and ruff clean, `check` 0 broken, no servers
+running. Nothing half-written and nothing left open that was opened today.
+
+The session had one shape and Tom gave it in a sentence: *if a panel lists seven things,
+clicking it should lead to those seven.* Five of the six commits are that idea applied to a
+different surface — the cover's names, the comparison's figures, the worklist's findings —
+and the sixth is the instrument that made any of it verifiable by looking.
+
+**What the day is really a record of is the gap between a recorded reason and a measured
+one.** Two items were carried in `BRIEFING.md` as blocked, and both were wrong in the same
+direction:
+
+* standards step 3, *"compare a checkable rule against the graph"* — which measurement showed
+  would report 0 of 628 Python files against a rule governing three markdown ones;
+* the worklist's jump buttons, *"blocked on precision, not effort"* — when every detector
+  already selected the ids and threw them away.
+
+Neither was a bad note. Both were written from reasoning about the code and neither had been
+put to the corpus. The corrections cost one measurement each.
+
+Open, and untouched today: *"keep this" on everything*; the three filed defects; `m.<module>`
+as a language feature; per-plate sphere scaling and stack orientation.

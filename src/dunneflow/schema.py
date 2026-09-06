@@ -25,7 +25,7 @@ from typing import Literal
 # Bump whenever the stored shape or the meaning of an extracted fact changes.
 # A mismatch discards the graph and re-extracts: graph.db is derived data, and a
 # stale map that answers confidently is worse than no map at all.
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 
 
 # --------------------------------------------------------------------------- #
@@ -282,6 +282,68 @@ class CallSite:
     args: list[CallArg] = field(default_factory=list)
 
 
+class ControlKind(StrEnum):
+    """The four shapes a routine's body takes, and nothing else.
+
+    No `IfExp`, no boolean operator, no `assert`: those are expressions, and an
+    expression that chooses between two numbers is the arithmetic this tool exists not
+    to report. `GUARD` is a `DECISION` narrowed by how it *ends* rather than by how it
+    is written, because that is what makes it a different thing to read -- 3,937 of
+    Mensores' 6,293 branches are refusals, and a refusal is a precondition stated in
+    code.
+    """
+
+    LOOP = "LOOP"                    # for / async for / while
+    COMPREHENSION = "COMPREHENSION"  # list, set, dict, generator -- a loop that is an expression
+    DECISION = "DECISION"            # if / elif ladder / match
+    GUARD = "GUARD"                  # a one-armed decision that leaves: return/raise/continue/break
+    HANDLER = "HANDLER"              # try -- a decision about failure
+
+
+@dataclass(slots=True)
+class ControlPoint:
+    """A loop or a decision inside one routine: **a line range, and nothing more.**
+
+    This is the one fact that amends `CLAUDE.md`'s founding exclusion, and the shape of
+    it is what keeps that amendment narrow. Control flow is not reported *as* control
+    flow; a control point is a **span**, and everything about what it does is reached by
+    joining the tables that already exist -- `boundaries`, `net_calls`, `sql_ops` and
+    `calls` each carry `routine_id` and `line`. So a loop holding a network call is not
+    a new relationship, it is `line BETWEEN line_start AND line_end`. Nothing here
+    records a variable, an operator, or a value.
+
+    That is also why there is no control-flow graph and no dominator analysis. Those
+    exist to recover structure that a `goto` destroyed, and Python source never lost it:
+    `ast` hands back the nesting exactly as written. Nassi and Shneiderman made the same
+    observation in 1972 and drew structured code as nested boxes with no arrows at all.
+
+    `depth` is control nesting, which is **not** `Routine.is_nested` -- that one counts
+    enclosing *functions*, and the two disagree on every closure.
+
+    `arms` is the branch count: an `elif` ladder flattened to the number of ways out
+    (2 for a plain if/else, 4 for `if/elif/elif/else`), a `match`'s case count, a `try`'s
+    handler count, and 1 for a loop. Flattened at extraction because an `elif` is an
+    `If` in the `orelse` of an `If`, so the tree shape says "2 arms" seven times where a
+    reader sees one decision with seven ways out.
+    """
+
+    routine_id: str
+    kind: ControlKind
+    line_start: int
+    line_end: int
+    depth: int
+    # As written, sliced from the file's own bytes on **byte** offsets (rule 75) and
+    # never re-rendered by `ast.unparse` -- for `call_args`' reason. `for seal in
+    # spec.seals`, `if not spec.seals`, `except TimeoutError`. Never shortened here;
+    # what a surface does about a long one is the surface's decision (rule 8).
+    header: str = ""
+    arms: int = 1
+    # How a GUARD leaves: return | raise | continue | break. Empty for every other kind.
+    # Recorded rather than inferred from the header, because "if not x: return" and
+    # "if not x: raise" are the same sentence and opposite facts.
+    exits: str = ""
+
+
 @dataclass(slots=True)
 class BoundaryHit:
     """A routine touching the outside world."""
@@ -533,6 +595,7 @@ class FileFacts:
     indexes: list[IndexSchema] = field(default_factory=list)
     artefacts: list[Artefact] = field(default_factory=list)
     constants: list[Constant] = field(default_factory=list)
+    control: list[ControlPoint] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
 
 

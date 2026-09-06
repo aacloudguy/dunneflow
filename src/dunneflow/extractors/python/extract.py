@@ -4,9 +4,18 @@ Reads one source file and reports what moves through it: the routines, their typ
 signatures, what they call, where they touch the outside world, the shapes they pass
 around, and the comments that explain why.
 
-Deliberately *not* reported: local variables, arithmetic, control flow, and anything
-else that stays inside a routine. Those are the parts the reader was explicit about
-not wanting, and leaving them out is most of what makes the output legible.
+Deliberately *not* reported: local variables, arithmetic, and anything else that stays
+inside a routine. Those are the parts the reader was explicit about not wanting, and
+leaving them out is most of what makes the output legible.
+
+**Control flow is the one amendment, and it is narrow.** This line read "local variables,
+arithmetic, control flow" until 2026-09-07, and the rule behind it has not changed: a loop
+that increments a counter is still the internal computation nobody asked for. What is
+recorded is a `ControlPoint` -- **a span, and nothing more**: no variable, no operator, no
+value. What a loop *does* is reached by joining the tables that already exist, so a loop
+holding a network call is `line BETWEEN line_start AND line_end` rather than a new fact.
+A loop is a subject only where something moves inside it, and on Mensores that is 261 of
+1,950. See `schema.ControlPoint`.
 
 Uses the standard library only -- `ast` for structure, `tokenize` for comments. No
 third-party parser, nothing to install, and it cannot fall behind the language.
@@ -33,6 +42,8 @@ from ...schema import (
     Comment,
     Confidence,
     Constant,
+    ControlKind,
+    ControlPoint,
     DataStructure,
     Entrypoint,
     EntrypointKind,
@@ -62,6 +73,14 @@ _STRUCTURE_BASES = {
     "StrEnum": StructureKind.ENUM,
     "Flag": StructureKind.ENUM,
 }
+
+
+# How a guard clause leaves. Four ways out, and the difference between them is the whole
+# reason `ControlPoint.exits` is recorded rather than read back off the header: `if not x:
+# return` and `if not x: raise` are the same sentence and opposite facts. 3,937 of
+# Mensores' 6,293 branches are one of these -- 62.6% of this program's decisions are
+# refusals, which is the largest single shape in it.
+_EXITS = (ast.Return, ast.Raise, ast.Continue, ast.Break)
 
 
 def dotted_name(node: ast.AST) -> str:
@@ -211,6 +230,18 @@ class _Extractor(ast.NodeVisitor):
         # A broken program may define one qualified name twice. Both keep an identity
         # of their own rather than merging, so the collision can be reported.
         self._seen_qualnames: dict[str, int] = {}
+
+        self.control: list[ControlPoint] = []
+        # Control nesting, which is **not** `Routine.is_nested` -- that counts enclosing
+        # *functions*, and the two disagree on every closure. Reset per routine, because a
+        # function defined inside a loop starts its own body at depth 0.
+        self._depth = 0
+        # `elif` is an `If` in the `orelse` of an `If`, so a ladder of seven arms arrives as
+        # six nested nodes. The head records the whole ladder and puts its tails here; each
+        # tail is then walked for its *contents* at the **same** depth, because an `elif` arm
+        # is a sibling of the `if` arm and not a level below it. Keyed by `id()`, which is
+        # safe only because the tree is alive for the whole walk.
+        self._ladder_tails: set[int] = set()
 
         self._scope: list[Routine] = []
         self._class: list[str] = []
@@ -561,9 +592,18 @@ class _Extractor(ast.NodeVisitor):
         self._detect_entrypoint(routine, decorators)
 
         self._scope.append(routine)
-        for child in node.body:
-            self.visit(child)
-        self._scope.pop()
+        # A function defined inside a loop starts its own body at depth 0: control nesting
+        # belongs to a routine, and carrying the enclosing loop's depth into it would say a
+        # closure's first `if` is three levels deep because of where it happens to be
+        # declared. Saved and restored rather than zeroed, because the walk resumes in the
+        # enclosing body afterwards.
+        outer_depth, self._depth = self._depth, 0
+        try:
+            for child in node.body:
+                self.visit(child)
+        finally:
+            self._depth = outer_depth
+            self._scope.pop()
 
     visit_FunctionDef = _visit_function
     visit_AsyncFunctionDef = _visit_function
@@ -686,6 +726,160 @@ class _Extractor(ast.NodeVisitor):
                 module=mod, name=a.name, alias=a.asname or a.name,
                 is_from=True, line=node.lineno,
             ))
+
+    # -- the shape a routine takes ------------------------------------------ #
+    #
+    # A control point is **a span and nothing more**. Nothing here records a variable, an
+    # operator or a value: what a loop *does* is reached later by joining `boundaries`,
+    # `net_calls`, `sql_ops` and `calls`, every one of which already carries `routine_id`
+    # and `line`. That is what keeps `CLAUDE.md`'s founding exclusion narrow -- control
+    # flow is not reported as control flow, it is reported as a range that something moves
+    # inside of.
+    #
+    # No control-flow graph and no dominator analysis, deliberately. Those exist to recover
+    # structure a `goto` destroyed, and Python source never lost it -- `ast` hands the
+    # nesting back exactly as written. Nassi and Shneiderman made the same observation in
+    # 1972 and drew structured code as nested boxes with no arrows at all.
+
+    def _record_control(
+        self, node: ast.AST, kind: ControlKind, *, arms: int = 1, exits: str = "",
+        header: ast.AST | None = None,
+    ) -> None:
+        """One point, then its contents one level deeper.
+
+        The header is the **test or the iterable**, never the body: `for seal in
+        spec.seals`, not the forty lines under it. Sliced by `_segment` on byte offsets
+        (rule 75) and never `ast.unparse`d, for `call_args`' reason -- what is stored is
+        what the reader will go looking for.
+        """
+        start = int(getattr(node, "lineno", 0) or 0)
+        # A node with no `end_lineno` collapses to its own first line rather than to 0: a
+        # span of `start..0` is empty, and every range join over it would answer "nothing
+        # moves in here" -- rule 49's fallback, a plausible value hiding the failure.
+        end = int(getattr(node, "end_lineno", None) or start)
+        self.control.append(ControlPoint(
+            routine_id=self._owner().id,
+            kind=kind,
+            line_start=start,
+            line_end=end,
+            depth=self._depth + 1,
+            header=(self._segment(header) or "") if header is not None else "",
+            arms=arms,
+            exits=exits,
+        ))
+
+    def _descend(self, node: ast.AST, *, deeper: bool = True) -> None:
+        """Walk a control point's children, one level down and back up again."""
+        if deeper:
+            self._depth += 1
+        try:
+            self.generic_visit(node)
+        finally:
+            if deeper:
+                self._depth -= 1
+
+    def _visit_loop(self, node: ast.For | ast.AsyncFor | ast.While) -> None:
+        # A `while` has a test and a `for` has an iterable, and both are the answer to
+        # "what is this looping over" -- the one thing a reader asks of a loop first.
+        head = node.iter if isinstance(node, (ast.For, ast.AsyncFor)) else node.test
+        self._record_control(node, ControlKind.LOOP, header=head)
+        self._descend(node)
+
+    visit_For = _visit_loop
+    visit_AsyncFor = _visit_loop
+    visit_While = _visit_loop
+
+    def _visit_comprehension(self, node: ast.AST) -> None:
+        """A comprehension is a loop that is an expression, and it is where the N+1 hides.
+
+        Counted separately rather than folded into `LOOP` because a reader scanning for
+        loops does not see one here, which is exactly why a boundary inside one is worth
+        saying out loud: 42 of Mensores' comprehensions reach a boundary.
+        """
+        gens = getattr(node, "generators", [])
+        self._record_control(
+            node, ControlKind.COMPREHENSION,
+            header=gens[0].iter if gens else None,
+        )
+        self._descend(node)
+
+    visit_ListComp = _visit_comprehension
+    visit_SetComp = _visit_comprehension
+    visit_DictComp = _visit_comprehension
+    visit_GeneratorExp = _visit_comprehension
+
+    def _ladder(self, node: ast.If) -> tuple[int, list[ast.If]]:
+        """An `if`/`elif`/`else` chain flattened to its ways out.
+
+        `arms` is what a reader counts: 2 for `if`/`else`, 4 for `if`/`elif`/`elif`/`else`,
+        1 for a bare `if`. The tree says "2 arms" once per `elif` instead, because each is
+        an `If` inside the previous one's `orelse` -- so a seven-way decision reads as six
+        two-way ones, which is a picture of the syntax rather than of the decision.
+        """
+        arms, tails, cur = 1, [], node
+        while len(cur.orelse) == 1 and isinstance(cur.orelse[0], ast.If):
+            cur = cur.orelse[0]
+            tails.append(cur)
+            arms += 1
+        if cur.orelse:
+            arms += 1
+        return arms, tails
+
+    def _visit_decision(self, node: ast.If) -> None:
+        if id(node) in self._ladder_tails:
+            # An `elif` its own head already counted. Its contents still matter, and they
+            # are at the head's depth -- an `elif` arm is a sibling of the `if` arm.
+            self._ladder_tails.discard(id(node))
+            self._descend(node, deeper=False)
+            return
+        arms, tails = self._ladder(node)
+        # A **guard**: one arm, no `else`, and it leaves. Narrowed by how it ends rather
+        # than by how it is written, because `if not x: return` and `if not x: raise` are
+        # the same sentence and opposite facts -- so `exits` is recorded, never inferred.
+        if (arms == 1 and len(node.body) <= 2
+                and any(isinstance(s, _EXITS) for s in node.body)):
+            last = node.body[-1]
+            self._record_control(
+                node, ControlKind.GUARD,
+                exits=type(last).__name__.lower() if isinstance(last, _EXITS) else "",
+                header=node.test,
+            )
+            self._descend(node)
+            return
+        self._ladder_tails.update(id(t) for t in tails)
+        self._record_control(node, ControlKind.DECISION, arms=arms, header=node.test)
+        self._descend(node)
+
+    def visit_Match(self, node: ast.Match) -> None:
+        """`match` is a decision that already knows how many ways out it has.
+
+        Mensores has **none** -- the population is zero and stays named rather than
+        dropped (design rule 1), because a lane that silently vanishes cannot be told from
+        one that looked and found nothing.
+        """
+        self._record_control(
+            node, ControlKind.DECISION, arms=len(node.cases), header=node.subject)
+        self._descend(node)
+
+    def visit_Try(self, node: ast.Try) -> None:
+        """`try` is a decision about failure, and its arms are its handlers.
+
+        No header: what a `try` is *about* is the block it guards, and quoting forty lines
+        as a heading would be a header that is the body (rule 8's shape, one subject over).
+        """
+        self._record_control(node, ControlKind.HANDLER, arms=len(node.handlers))
+        self._descend(node)
+
+    def visit_TryStar(self, node: ast.TryStar) -> None:
+        """`except*` groups, which are a `Try` in every way this fact cares about.
+
+        Its own method rather than `visit_TryStar = visit_Try`: `TryStar` is a separate
+        node type and the alias is a signature the checker is right to refuse. Mensores
+        has none, and it is handled anyway because an extractor that silently walks past a
+        language construct reports a smaller program (rule 15's shape).
+        """
+        self._record_control(node, ControlKind.HANDLER, arms=len(node.handlers))
+        self._descend(node)
 
     # -- the things that move ---------------------------------------------- #
 
@@ -1144,7 +1338,13 @@ class _Extractor(ast.NodeVisitor):
                     name = dotted_name(stmt.func)
                     if name and name not in _GUARD_NOISE:
                         self._main_guard_calls.append(name)
-        self.generic_visit(node)
+        # **Both, and this is the one visitor two features share.** The `__main__` test
+        # above and the control point below answer different questions about the same
+        # node, and `_visit_decision` owns the descent -- so `generic_visit` is *not*
+        # called here as well, or every subtree under an `if` would be walked twice and
+        # every call inside one recorded twice (rule 40: two detectors recording one act
+        # is two numbers about one thing).
+        self._visit_decision(node)
 
 
 def _kwarg_str(call: ast.Call, key: str) -> str | None:
@@ -1284,6 +1484,7 @@ def extract_file(path: Path, root: Path, src: str | None = None) -> FileFacts:
     facts.indexes = ex.indexes
     facts.artefacts = ex.artefacts
     facts.constants = ex.constants
+    facts.control = ex.control
 
     # A module that guards __main__ is startable in its own right.
     if ex._has_main_guard:

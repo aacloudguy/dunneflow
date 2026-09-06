@@ -244,3 +244,126 @@ def test_an_unresolvable_placeholder_still_records_the_statement(tmp_path):
     ops = _sql(tmp_path, 'DDL = f"CREATE TABLE {whatever} (id TEXT PRIMARY KEY)"\n')
     assert ops, "the statement itself must survive"
     assert any("CREATE TABLE" in o.sql for o in ops), [o.sql for o in ops]
+
+
+# --------------------------------------------------------------------------- #
+# The shape a routine takes. `ControlPoint` is a **span and nothing more** -- what a
+# loop does is reached by joining the tables that already exist, so these tests are
+# about the span, the nesting and the arms, and never about a value.
+# --------------------------------------------------------------------------- #
+
+
+def _control(tmp_path: Path, src: str):
+    (tmp_path / "m.py").write_text(src)
+    return extract_file(tmp_path / "m.py", tmp_path).control
+
+
+def test_an_elif_ladder_is_one_decision_with_its_ways_out(tmp_path):
+    """A seven-way decision is one thing a reader counts, not six two-way ones.
+
+    `elif` is an `If` in the `orelse` of an `If`, so the tree says "2 arms" once per
+    `elif`. Counting nodes instead of ladders is a picture of the syntax rather than of
+    the decision, and it is not a small error: over Mensores it turned **69** decisions
+    of three or more arms into **97**, and **3,931** guard clauses into 3,937, because an
+    `elif` tail that ends in `return` reads as a guard of its own. Both figures were
+    written into the plan from a script that walked every node, and both were corrected
+    by the store.
+    """
+    pts = _control(tmp_path, """
+def f(x):
+    if x == 1:
+        g()
+    elif x == 2:
+        g()
+    elif x == 3:
+        g()
+    else:
+        g()
+""")
+    decisions = [p for p in pts if p.kind.value == "DECISION"]
+    assert len(decisions) == 1, (
+        f"an elif ladder is {len(decisions)} decisions, so every count over it is wrong"
+    )
+    assert decisions[0].arms == 4, "the ways out are not counted, so a ladder has no size"
+    # ...and the tails' contents are still walked, at the head's depth -- an `elif` arm is
+    # a sibling of the `if` arm, not a level below it.
+    assert decisions[0].header == "x == 1", "the decision does not carry its test as written"
+
+
+def test_a_guard_is_a_decision_narrowed_by_how_it_leaves(tmp_path):
+    """`if not x: return` and `if not x: raise` are the same sentence, opposite facts.
+
+    So `exits` is recorded rather than read back off the header. 62.6% of Mensores'
+    branches are one of these four -- refusals are the largest single shape in it.
+    """
+    pts = _control(tmp_path, """
+def f(x):
+    if not x:
+        return None
+    if x < 0:
+        raise ValueError(x)
+    for i in x:
+        if i is None:
+            continue
+        g(i)
+""")
+    guards = {p.exits for p in pts if p.kind.value == "GUARD"}
+    assert guards == {"return", "raise", "continue"}, (
+        f"guards do not record how they leave: {guards}"
+    )
+    assert not [p for p in pts if p.kind.value == "DECISION"], (
+        "a one-armed branch that leaves is being counted as an ordinary decision too, so "
+        "every decision figure is inflated by the 3,931 refusals"
+    )
+
+
+def test_control_nesting_is_not_function_nesting(tmp_path):
+    """`depth` counts enclosing *control*, and `Routine.is_nested` counts enclosing
+    *functions*. The two disagree on every closure, and a function declared inside a loop
+    must start its own body at depth 0 -- otherwise a closure's first `if` reads as three
+    levels deep because of where it happens to be written.
+    """
+    pts = _control(tmp_path, """
+def outer(rows):
+    for r in rows:
+        if r:
+            for c in r:
+                g(c)
+        def inner(v):
+            if v:
+                g(v)
+""")
+    by_line = {p.line_start: p for p in pts}
+    depths = sorted(p.depth for p in pts if p.kind.value == "LOOP")
+    assert depths == [1, 3], f"loop nesting is {depths}, so the outline indents wrongly"
+    inner_if = [p for p in pts if p.header == "v"]
+    assert inner_if and inner_if[0].depth == 1, (
+        "a closure carries its enclosing loop's depth, so its body reads as buried"
+    )
+    assert by_line, "nothing was recorded at all"
+
+
+def test_a_comprehension_is_a_loop_that_is_an_expression(tmp_path):
+    """Counted apart from `LOOP` because a reader scanning for loops does not see one.
+
+    Which is exactly why a boundary inside one is worth saying out loud: 42 of Mensores'
+    974 comprehensions reach one, against 219 of its 976 loops.
+    """
+    pts = _control(tmp_path, "x = [g(i) for i in rows]\ny = {k: g(k) for k in rows}\n")
+    kinds = [p.kind.value for p in pts]
+    assert kinds == ["COMPREHENSION", "COMPREHENSION"], kinds
+    assert [p.header for p in pts] == ["rows", "rows"], (
+        "a comprehension does not say what it is over"
+    )
+
+
+def test_a_control_point_carries_its_header_as_written(tmp_path):
+    """Sliced on **byte** offsets (rule 75), never `ast.unparse`d.
+
+    `call_args`' argument one subject over: what is stored is what the reader will go
+    looking for in the file, and a re-rendering normalises the spacing they would search.
+    """
+    pts = _control(tmp_path, "def f(rows):\n    for r in rows [ 0 ] :\n        g(r)\n")
+    assert pts[0].header == "rows [ 0 ]", (
+        f"the header was re-rendered rather than sliced: {pts[0].header!r}"
+    )

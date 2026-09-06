@@ -147,6 +147,18 @@ CREATE TABLE IF NOT EXISTS boundaries (
     salience   TEXT NOT NULL DEFAULT 'normal'
 );
 
+CREATE TABLE IF NOT EXISTS control (
+    file       TEXT NOT NULL,
+    routine_id TEXT NOT NULL,
+    kind       TEXT NOT NULL,
+    line_start INTEGER NOT NULL,
+    line_end   INTEGER NOT NULL,
+    depth      INTEGER NOT NULL DEFAULT 1,
+    header     TEXT NOT NULL DEFAULT '',
+    arms       INTEGER NOT NULL DEFAULT 1,
+    exits      TEXT NOT NULL DEFAULT ''
+);
+
 CREATE TABLE IF NOT EXISTS structures (
     id        TEXT PRIMARY KEY,
     name      TEXT NOT NULL,
@@ -321,6 +333,9 @@ CREATE INDEX IF NOT EXISTS ix_bound_routine    ON boundaries(routine_id);
 CREATE INDEX IF NOT EXISTS ix_bound_kind       ON boundaries(kind);
 CREATE INDEX IF NOT EXISTS ix_bound_sal        ON boundaries(salience);
 CREATE INDEX IF NOT EXISTS ix_bound_file       ON boundaries(file);
+CREATE INDEX IF NOT EXISTS ix_control_routine  ON control(routine_id, line_start, line_end);
+CREATE INDEX IF NOT EXISTS ix_control_kind     ON control(kind);
+CREATE INDEX IF NOT EXISTS ix_control_file     ON control(file);
 CREATE INDEX IF NOT EXISTS ix_struct_file      ON structures(file);
 CREATE INDEX IF NOT EXISTS ix_struct_name      ON structures(name);
 CREATE INDEX IF NOT EXISTS ix_annot_owner      ON annotations(owner_id);
@@ -720,7 +735,7 @@ class Store:
         for table in ("routines", "structures", "calls", "boundaries", "imports",
                       "entrypoints", "cli_apps", "cli_mounts", "sql_ops", "db_tables",
                       "db_columns", "db_indexes", "net_calls", "classes",
-                      "artefacts", "constants"):
+                      "artefacts", "constants", "control"):
             c.execute(f"DELETE FROM {table} WHERE file = ?", (path,))
         c.execute("DELETE FROM files WHERE path = ?", (path,))
 
@@ -802,6 +817,12 @@ class Store:
             " VALUES(?,?,?,?,?,?,?,?)",
             [(ff.path, b.routine_id, b.kind.value, b.direction.value, b.target, b.line,
               b.evidence, b.salience) for b in ff.boundaries],
+        )
+        c.executemany(
+            "INSERT INTO control(file,routine_id,kind,line_start,line_end,depth,header,arms,exits)"
+            " VALUES(?,?,?,?,?,?,?,?,?)",
+            [(ff.path, p.routine_id, p.kind.value, p.line_start, p.line_end, p.depth,
+              p.header, p.arms, p.exits) for p in ff.control],
         )
         c.executemany(
             "INSERT INTO imports(file,module,name,alias,is_from,line) VALUES(?,?,?,?,?,?)",
@@ -903,7 +924,7 @@ class Store:
         out: dict[str, int] = {}
         for t in ("files", "routines", "calls", "boundaries", "structures", "entrypoints",
                   "annotations", "cli_apps", "cli_mounts", "sql_ops", "db_tables",
-                  "db_indexes", "net_calls"):
+                  "db_indexes", "net_calls", "control"):
             out[t] = self.conn.execute(f"SELECT COUNT(*) AS n FROM {t}").fetchone()["n"]
         out["resolved_calls"] = self.conn.execute(
             "SELECT COUNT(*) AS n FROM calls WHERE callee_id IS NOT NULL"

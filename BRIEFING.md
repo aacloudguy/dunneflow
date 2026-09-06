@@ -179,44 +179,73 @@ program has a most-commented routine and a maximum alone is a claim nobody can w
 
 ## What we are doing now
 
-**Paused 2026-09-05, between features. Nothing is half-written.** 1,070 tests, mypy clean,
-ruff clean, working tree clean, `check` reports 0 broken on `output/mensores`, no servers
-running, and `output/` holds exactly what it held at the start — `beads`, `dunneflow`,
-`mensores` and the named orphan.
+**Paused 2026-09-06, between features. Nothing was built and nothing is half-written.**
+1,070 tests, mypy clean over 109 source files, ruff clean, working tree clean apart from this
+record, `output/` holding exactly the four directories it held at the start. **No source file
+was changed this session.**
 
-**Three commits, each whole and committed on its own. Two of the three were Tom's, and the
-third was a defect this session caused and then found:**
+**The standing debt is discharged.** The five surfaces that had never been *looked* at — the
+constants surface, the blank-graph fix, chunk B, chunk 5's citation viewer, and the plate
+inspector — have all been seen, with a real pointer, on a live page. The debt had grown in
+four consecutive sessions.
 
-| Commit | What |
-|---|---|
-| `8a76b43` | **a read never brings a database into being** — a read-only open was creating the file it was refusing to read |
-| `c54f2fb` | **`<module>` is answered as what it is**, not as a routine — two false statements, one of them unfiled |
-| `4db9fc5` | **a plate is a subject** — the package row that selected nothing, and three surfaces that said so |
+**It was never the surfaces, and the diagnosis in the record was wrong.** The automation
+tab has **two coordinate systems**:
 
-**Two things are open and named below**, neither blocking: the surfaces nobody has *looked*
-at, and standards step 3 (compare a checkable rule against the graph). Both entries Tom
-found by using the thing are now closed.
+| | CSS → frame | covers |
+|---|---|---|
+| screenshot | 784 / 629.5 = **1.2454** | CSS 0..629.5 × 0..275.5 — `inner ÷ dpr` |
+| click | 784 / 1259 = **0.6227** | the whole viewport |
 
-**One thing is recorded as unproven rather than as done, and it is the standing debt.** The
-plate inspector has **never been seen**. Every figure in `PERFORMANCE.md`'s new rows was read
-back through the DOM of a live page; the automation tab captures 784 px of a 1,259 px
-viewport, so the inspector at x=1012 is outside every screenshot taken of it, and every
-click was a dispatched `MouseEvent` — the handler, not the path to it (rules 38 and 48). It
-is the fifth surface on that list and the debt has now grown in four consecutive sessions.
+**The quotient is 2.000 — the device pixel ratio.** The capture path divides the viewport by
+dpr; the input path does not. So the pointer could always reach the inspector at x=985, and
+four sessions of dispatched `MouseEvent`s were unnecessary; only *sight* stopped at the
+halfway line. Both numbers were measured, not reasoned — fixed bars at known CSS x for the
+first, a capturing `pointerdown` listener for the second.
 
-**A mistake worth carrying forward, and it is not the one from last session.** A one-line
-probe — `Store(Path("output/mensores/graph.db"), writable=False)` — put a **0-byte file into
-`output/`**, because `sqlite3.connect` creates and that path does not exist in that
-directory. `git status` could not see it: `output/` is untracked. `revisions.py` would have
-read it as mensores' one legacy revision, holding nothing. Removed on Tom's say-so, and the
-fix is `8a76b43`. **Use absolute paths when opening a store by hand, and prefer the CLI.**
+**The instrument, for the next session:**
 
-**Two rule candidates, put to Tom and neither minted.**
+* **Click** at `frame = rect × (784 / innerWidth)`, taking `rect` from
+  `getBoundingClientRect`. Verified landing on `BUTTON.nav-item.nav-pkgname` at client
+  (75,127) against a computed centre of (75,126) — a real pointer path, which is what
+  rule 48 asks for.
+* **See** by panning: `transform: translate(-x,-y)` on the app root makes the fixed
+  top-left quarter a movable window over the real page, at full fidelity and magnified
+  1.2454×. A transform is paint, not layout, so overflow and clipping survive it exactly.
+  Fixed overlays escape a transformed ancestor and pan on their own; `.viewer` is centred by
+  its own `translate(-50%,-50%)`, so add to that matrix rather than replacing it.
+* **Never scale.** Root `zoom` fits the whole app into the frame and was tried first. It
+  made the plate inspector report `gr…es`, `f…k` and a bare `…` for a three-letter word —
+  which reads exactly like a chunk B defect and is not one. Chunk B's budgets are measured
+  at render time, and under zoom `getBoundingClientRect` returns zoomed values while the
+  metrics beside them do not. **A scaled look cannot judge whether a field fits its box,
+  because scaling is what decides it.**
+* `resize_window` **does not refuse — it lies.** It returns *"Successfully resized … to
+  2400x1700"* and `innerWidth` stays 1259. Rule 37's family, arriving from the instrument.
 
-| | |
-|---|---|
-| *candidate* | **A guard can only see that a function was called, never what it returned.** `&minDisk=${minDiskNow()}` spelled an unset threshold as the literal `null`, got a 400, and sent every package click to *"Not in this map"*. The guard asserted `minDiskNow()` was consulted — it was. Found on the first click, by looking. May be rule 37's or design rule 16's; not claimed as new. |
-| *candidate* | **A derivation from the picture is only as available as the picture.** A plate's members were read off the drawn payload on a correct rule-13 argument — reading from the picture cannot disagree with it — resting on a premise false in half the modes: Table mode never mounts the graph, so a package click there marked *0 of 4,786 rows* beside a pane correctly reporting 469. |
+**What the looking found in the app: nothing wrong.** The plate inspector reads correctly
+end to end, including **Ways in 0** answered as *"No way in lands here. This is somewhere the
+program arrives at, not somewhere it starts."* The citation viewer's foot fits its 56rem —
+`.viewer` measures 896 × 438.8 — and carries **Read it in the document →**. The graph mounts,
+10,015 nodes and 53 plates, and *snap to fit* frames to the real canvas. A clipped-field
+audit over two views returned **zero**. The legend's `disceptator 959` and the inspector's
+`959 on it` agree without being wired together (rule 13).
+
+**Two things were nearly filed as defects and were not**, both narrow-window artifacts
+checked before being written down: the constants table's WHERE pill breaking a path mid-word
+(the column goes 108 → 163 px when the navigator collapses; it is a `<table>`, so a wide
+window fits it), and the 26rem legend leaving a 233 px canvas inside a 649 px mount.
+
+**One candidate for Tom, not minted:** *an instrument's two coordinate systems can differ,
+and the one you can see is not the one you touch.* Rules 38 and 48 cover an instrument that
+cannot see and a click that proves only the handler; neither covers an instrument that is
+self-inconsistent, so a coordinate read off a correct screenshot lands at twice its intended
+place with no error anywhere. May be an instance of rule 24.
+
+**Still open**, and unchanged by this session: standards step 3 (compare a checkable rule
+against the graph), step 4 (`--standards <dir>`), and the filed small defects — the change
+row filing two trail steps, `holds` missing from `insp`'s defaults, `navIds` splitting on a
+space.
 
 The counts are unchanged: **81 engineering rules numbered to 82** — 21 still does not exist
 — and **28 design rules**.
@@ -1579,17 +1608,16 @@ feature was blocked on an answer nobody owed.
   and a map states whether any was used.** One step over from design rule 14, which scopes
   *egress*; this scopes whether a fact was *guessed*.
 
-- **Five surfaces have never been *looked* at in a real window** — the constants surface,
-  the blank-graph fix (rule 49), chunk B, chunk 5's citation viewer whose foot is 56rem wide
-  against a 784px capture frame, and now **the plate inspector**, which sits at x=1012 in a
-  1,259 px viewport the tab captures only 784 px of. Not five items: one debt, rule 38's, and
-  it has now grown in **four** consecutive sessions rather than shrinking. Chunk 5 also could not prove its *pointer* path — clicks did not land where
-  `getBoundingClientRect` said the element was, so every interaction was driven by `.click()`,
-  which proves the handler and not the path to it (rule 48). The automation tab reports `outerWidth: 0`,
-  refuses `resize_window`, and its **screenshots did not track the live DOM** — the region
-  under a freshly measured element kept rendering the pane beside it, so even a zoom on
-  correct coordinates showed the wrong thing. Measurement through the DOM still works and is
-  what every figure in this session rests on.
+- ~~**Five surfaces have never been *looked* at in a real window.**~~ *Discharged
+  2026-09-06 — all five seen, and the obstacle was never the surfaces. See the top of this
+  file and `HANDOFF.md` under that date. The instrument was misread for four sessions: the
+  automation tab's **screenshot** covers `inner ÷ dpr` — the top-left quarter — while its
+  **click** frame covers the whole viewport, so the two differ by exactly the device pixel
+  ratio. The pointer could always reach the inspector at x=985; only sight stopped halfway.
+  A click computed as `784 / innerWidth` lands on the element (verified against a capturing
+  `pointerdown` listener), and `transform: translate(-x,-y)` on the app root pans the capture
+  window over the real page at full fidelity. `resize_window` does not refuse — it reports
+  success and changes nothing.*
 - ~~**Ways in as nodes on the Diagram**~~ — *built 2026-09-05, an hour after being deferred.
   Drawn by default on a measurement (ports max 41 per compartment, ways in max 3), arrows
   bounded at 8 per way in with the bound stated, and clicking one opens the way-in pane. An
@@ -1630,9 +1658,12 @@ feature was blocked on an answer nobody owed.
   name contains one would resolve to two ids that name nothing. Mensores has 0 and a
   constant's `module.name` cannot hold one, so nothing exercises it; the fix belongs to
   `navIds` rather than to any caller.
-- **The blank-graph fix (rule 49) is reasoned and guarded, never *seen*.** The automation
-  tab never mounts the graph — `canvas MISSING`, `frames 0` — so rule 38 applies and it
-  wants a real window before anyone calls it verified.
+- ~~**The blank-graph fix (rule 49) is reasoned and guarded, never *seen*.**~~ *Seen
+  2026-09-06. The premise was false: the graph **does** mount in the automation tab —
+  `canvas MISSING` was a read taken while the pane still said "reading the stack…". Four
+  seconds later there is a canvas, 10,015 nodes and 53 plates, and WebGL was available all
+  along. `Snap to fit` pressed with the pointer framed the selection to the real 621×333
+  canvas.*
 - **A known-standards directory, to compare reality against intent.** Tom, 2026-09-04:
   *"I am interested in creating a known standards directory as a baseline against which to
   compare what is really found. The goal is to show reality, not the plan."* The wording

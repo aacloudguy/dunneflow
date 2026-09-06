@@ -10418,3 +10418,116 @@ check and failed on the first click. And *a derivation from the picture is only 
 as the picture* — the members defect, where a correct rule-13 argument rested on a premise
 false in half the modes. Both may be instances of rules that exist; neither is claimed as
 new.
+
+## 2026-09-06 — the looking debt, and the instrument that had been misread for four sessions
+
+Nothing was built. What changed is that **five surfaces recorded as "never seen" have now
+been looked at**, and the reason they could not be was found — it was never the surfaces.
+
+### Two coordinate systems, and they differ by exactly the device pixel ratio
+
+The record said the automation tab *"captures 784 px of a 1,259 px viewport, so the
+inspector at x=1012 is outside every screenshot"*, and separately that *"clicks did not land
+where `getBoundingClientRect` said the element was"*. Both observations were real. The
+diagnosis joining them was wrong, and the true one makes the tab usable.
+
+Measured, on a 1259×551 viewport at `devicePixelRatio` 2:
+
+| | CSS → frame factor | what the frame covers |
+|---|---|---|
+| **screenshot** | 784 / 629.5 = **1.2454** | CSS 0..629.5 × 0..275.5 — `inner ÷ dpr` |
+| **click** | 784 / 1259 = **0.6227** | CSS 0..1259 × 0..551 — the whole viewport |
+
+**The ratio between them is 2.000 — the dpr.** The capture path divides the viewport by
+`devicePixelRatio` and the input path does not, so the pixels you can see and the
+coordinates you must click are two different spaces in one tool.
+
+Neither was reasoned. Five fixed bars were planted at CSS x = 0, 400, 780, 1000 and 1245:
+only the first two appear, and the 400 bar lands at image x ≈ 500, giving 1.2454. Then a
+click at frame (400, 200) was caught by a capturing `pointerdown` listener and reported
+`clientX/Y = (642, 321)` — 1.605, which is 1259/784. Two instruments, two numbers, and the
+quotient is the dpr.
+
+**So the pointer was never blocked.** Everything in the viewport has always been clickable,
+including the inspector at x=985; only *sight* stopped at the halfway line. Four sessions of
+`.click()` were unnecessary — a click computed with `784 / innerWidth` lands on the element,
+which was verified against the listener before anything was believed: target
+`BUTTON.nav-item.nav-pkgname`, client (75,127) against a computed centre of (75,126).
+
+**`resize_window` does not refuse — it lies.** `resize_window(2400, 1700)` returns
+*"Successfully resized window containing tab … to 2400x1700 pixels"* and `innerWidth`
+stays 1259. Rule 37's family, from the instrument rather than from a guard: the call
+reported that it was made, not that it did anything.
+
+### The instrument: pan by transform, never scale
+
+`transform: translate(-x, -y)` on the app root turns the fixed top-left quarter into a
+**movable 629×275 window onto the real page**, at full fidelity and in fact magnified
+1.2454×. Layout is untouched because a transform is paint, not layout, so anything a look
+is for — overflow, clipping, a pane that never drew — survives it exactly. Fixed overlays
+escape a transformed ancestor and are panned on their own; `.viewer` is centred by its own
+`translate(-50%,-50%)`, so its pan adds to that matrix rather than replacing it.
+
+**And the scaling version of the same idea is a trap that was walked into and caught.**
+Root `zoom` with a pinned body does fit the whole app into the frame, and it was the first
+thing tried. The plate inspector then reported its neighbours as `gr…es`, `f…k`, and — twice
+— a bare `…` standing in for a three-letter word, which reads exactly like a shortening
+budget defect worth filing. It is not one. At zoom 1 the same rows read `cli`,
+`groma_stages`, `feedback`, `mcp`, `preflight`, `procurator`, `sanitize`, `storage`,
+`worktree` in full, 21–86 px inside a 352 px pane. Chunk B's budgets are *measured at render
+time*, and under root zoom `getBoundingClientRect` returns zoomed values while the metrics
+they are compared against do not — so the pane elided against a budget 0.44× too small.
+
+**A scaled look cannot judge whether a field fits its box, because scaling is what decides
+it.** That is the whole reason the instrument pans.
+
+### What was seen
+
+All five, on `output/mensores` at 1259×551 — a narrow window, and stated as such.
+
+- **The plate inspector**, end to end and never seen before: *disceptator — a plate of the
+  stack, at routine detail*, `ANALYZED · PACKAGE · 959 on it`; **Holds 959** as constant 249,
+  routine 645, structure 65; **In 9** and **Out 13** with full names and right-aligned
+  counts; **Touches 7** — FILE 69, STDIO 38, CRYPTO 22, ENV 5, DATABASE 3, LLM_API 2,
+  QUEUE 1; and **Ways in 0** answered as *"No way in lands here. This is somewhere the
+  program arrives at, not somewhere it starts."* — design rule 21 honoured where a zero
+  would have been easier.
+- **The graph mounts in the automation tab**, and the record that it does not was a
+  premature read. The pane says *"reading the stack…"* first; four seconds later there is a
+  canvas, 10,015 nodes and 53 plates. WebGL was available all along.
+- **The blank-graph fix (rule 49)**, seen. *Snap to fit* was pressed with the pointer at a
+  621×333 canvas and framed the selection to that canvas — the defect it was written for was
+  a stack framed for a 1275 px window inside a 496 px one.
+- **The constants surface**: NAME / VALUE / WHY / WHERE, grouped by module, values wrapped
+  and not elided as recorded, a value box that scrolls.
+- **The citation viewer**, including the foot the record was unsure of. `.viewer` measures
+  **896 × 438.8**, which is 56rem exactly, and the foot fits inside it: *"Read from the
+  content-addressed sidecar — the file as measured on 2026-09-05, not as the tree stands
+  now. The highlighted line is the citation."* beside **Read it in the document →**. The
+  documentation tier opens, which is what last session's `sidecars` block was for.
+- **Chunk B**, by audit rather than by eye alone: every visible leaf element whose
+  `scrollWidth` exceeds its `clientWidth` without an ellipsis, over the glossary view and the
+  anomaly worklist — **zero on both**. `.wl-title` cuts its tail like the prose it is while
+  the detail pane beside it carries the whole sentence, which is the recorded decision.
+
+Two claims agree across surfaces without being wired together: the legend row reads
+`disceptator 959` and the inspector reads `959 on it` (rule 13).
+
+### Not defects, and checked before being written down
+
+- The WHERE pill in the constants table breaks a path mid-word — `mensores/_c` /
+  `onfig.py:38` — under `overflow-wrap: anywhere`. It is width-dependent, not fixed: the
+  column goes 108 → 163 px when the navigator collapses, and the path needs ~152. It is a
+  `<table>`, so a wide window fits it on one line. A narrow-window artifact.
+- The legend at 26rem inside a 649 px mount leaves a 233 px canvas — the picture smaller
+  than its own legend. Same family, same window, and not filed.
+
+### One candidate for Tom, not minted
+
+**An instrument's two coordinate systems can differ, and the one you can see is not the one
+you touch.** Rules 38 and 48 say an instrument that cannot see cannot report, and that only
+a pointer proves the path to a handler. Neither says the instrument may be *self-inconsistent* —
+that its picture and its pointer answer in different units, so a coordinate read off a correct
+screenshot lands at twice its intended place with no error anywhere. Four sessions read that
+as two separate limitations and worked around both. It may be an instance of rule 24, a
+measurement that does not measure the thing it names; it is not claimed as new.

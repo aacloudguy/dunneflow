@@ -182,7 +182,8 @@ program has a most-commented routine and a maximum alone is a claim nobody can w
 **Paused 2026-09-06.** Standards steps 3 and 4 are both built, and the cover's proportion
 bars are a Setting. Gates green: 1,093 tests, mypy clean over 113 source files, ruff clean.
 
-**The comparison's summary figures open the bands they count.** Nine tiles carrying counts
+**The anomaly worklist's jump buttons act**, and the comparison's summary figures open
+the bands they count. Nine tiles carrying counts
 had been inert `div`s since they were written, on a page whose bands were already underneath
 them — design rule 16 in its purest form. A tile is a control only where its band has rows
 (never where its own figure is non-zero: those are two answers to one question, rule 13), the
@@ -1719,10 +1720,13 @@ feature was blocked on an answer nobody owed.
   present a construct the *language* put there rather than an author. Decided 2026-08-30:
   not filtered and not bare, but a curiosity carrying its own explanation, scoped to the
   language that produced it rather than special-cased in the diff.
-- **The worklist's two jump buttons are half done.** The design rule 16 defect is fixed —
-  they no longer look live while doing nothing, and each states why it does not act. Making
-  them *act* is blocked on precision, not effort: a finding carries the **name** it found,
-  not the node, so resolving it would guess between every routine sharing that name (rule 5).
+- ~~**The worklist's two jump buttons are half done.**~~ *Built 2026-09-06. It was less
+  blocked than recorded: every detector already selected rows identifying its occurrences and
+  threw the identity away, keeping the names as prose in `detail` — rule 41. `Anomaly` now
+  carries `occurrences` (each naming a route `NAV_ROUTES` already has, so nothing translates)
+  and `unenumerated` for a finding that can list nothing. All 107 of Mensores' findings
+  enumerate; `LOST_EDGE` opens its **call sites**, because the callee not resolving is the
+  finding and opening a rival would be rule 5's guess dressed as a destination.*
 - **Per-plate sphere scaling, and stack orientation** — carried in `HANDOFF`'s list and
   missing from this one until the 2026-09-02 audit. The second is structural: `OrbitView`
   has no camera roll.

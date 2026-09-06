@@ -44,6 +44,28 @@ _STDLIB = frozenset(sys.stdlib_module_names)
 
 
 @dataclass(slots=True)
+class Occurrence:
+    """One of the things a finding is about, and how to open it.
+
+    **`nav` is the name of a *route*, not the kind of the thing.** `routine`, `t`, `file`,
+    `ep` and `b` are entries in the shell's `NAV_ROUTES` and are what a navigator row
+    already writes -- so an occurrence carries a subject the router acts on rather than a
+    label with no way in (rule 30). Naming the kind instead would need a second table
+    mapping kinds to routes at the far end, which is a second place to forget one (rule 51).
+
+    `file` and `line` travel beside the id rather than instead of it: they are what makes a
+    row worth reading before it is clicked, and for the two occurrence families with no
+    selectable subject -- an index, a lost call site -- they *are* the way in.
+    """
+
+    nav: str
+    id: str
+    label: str
+    file: str = ""
+    line: int = 0
+
+
+@dataclass(slots=True)
 class Anomaly:
     """One finding, and what makes it *this* finding rather than another.
 
@@ -86,6 +108,22 @@ class Anomaly:
     file: str = ""
     line: int = 0
     count: int = 1
+    # **The things this finding is about, as a population rather than as prose.**
+    #
+    # `detail` has always carried them as a semicolon-joined string of names, and that is
+    # rule 41 exactly: a prose claim and a machine-readable population are two things, and
+    # only one of them can be asked a question. The worklist's two jump buttons sat disabled
+    # for want of this, saying so in their tooltips -- honest, and the weakest form of the
+    # fix.
+    #
+    # Never a sample. Rule 8 bounds a diagram, not a reference list, and the whole point is
+    # that the list was unreachable.
+    occurrences: list[Occurrence] = field(default_factory=list)
+    # Why this finding lists nothing, **when it lists nothing**. An empty list and *"this
+    # kind cannot be enumerated"* are different answers (design rule 21), and flattening
+    # them gives a button that silently does nothing on exactly the findings that most need
+    # explaining. `detect` refuses a finding that answers neither.
+    unenumerated: str = ""
 
     @property
     def ident(self) -> str:
@@ -161,6 +199,26 @@ class Report:
 # --------------------------------------------------------------------------- #
 
 
+def _routine_rows(store: Store, where: str,
+                  args: tuple[object, ...] = ()) -> list[Occurrence]:
+    """The routines a finding is about, as occurrences the shell can already open.
+
+    One helper rather than the same three lines in six detectors: what a routine occurrence
+    *is* -- the `routine` route, the node id, the qualname to print -- is one answer, and
+    six copies would drift the day a route is renamed (rule 51).
+
+    `where` is interpolated because every caller passes a literal written in this file; the
+    values that come from data are bound.
+    """
+    return [
+        Occurrence(nav="routine", id=str(x["id"]), label=str(x["qualname"]),
+                   file=str(x["file"] or ""), line=int(x["line_start"] or 0))
+        for x in store.query(
+            f"SELECT id, qualname, file, line_start FROM routines {where}"
+            " ORDER BY file, line_start", args)
+    ]
+
+
 def _parse_failures(store: Store, r: Report) -> None:
     for row in store.query("SELECT path, errors FROM files WHERE errors != '[]'"):
         for err in json.loads(row["errors"]):
@@ -176,6 +234,9 @@ def _parse_failures(store: Store, r: Report) -> None:
                 # what the finding is *about*.
                 ident_parts=(row["path"], err),
                 subject=row["path"], file=row["path"],
+                # A file, and `file` is the code browser's own route.
+                occurrences=[Occurrence(nav="file", id=row["path"], label=row["path"],
+                                        file=row["path"])],
             ))
 
 
@@ -185,6 +246,11 @@ def _name_collisions(store: Store, r: Report) -> None:
         "  FROM routines WHERE name != '<module>'"
         " GROUP BY qualname HAVING n > 1 ORDER BY n DESC"
     ):
+        # **Every definition that collides, not the group.** The finding is that several
+        # things share one name, so a single occurrence would name one arbitrarily -- the
+        # same reason `MIN(file)` is kept out of the key just below.
+        members = _routine_rows(
+            store, "WHERE name != '<module>' AND qualname = ?", (row["qualname"],))
         r.add(Anomaly(
             kind="NAME_COLLISION", severity=BROKEN, confidence=CERTAIN,
             title=f"`{row['qualname']}` is defined {row['n']} times",
@@ -200,6 +266,7 @@ def _name_collisions(store: Store, r: Report) -> None:
             # colliding definitions arbitrarily, and which one it names can move.
             ident_parts=(row["qualname"],),
             subject=row["qualname"], file=row["f"], count=row["n"],
+            occurrences=members,
         ))
 
 
@@ -222,6 +289,11 @@ def _redefinitions(store: Store, r: Report) -> None:
             # which part is which.
             ident_parts=(row["module"], row["name"]),
             subject=f"{row['module']}.{row['name']}", file=row["f"], count=row["n"],
+            occurrences=_routine_rows(
+                store,
+                "WHERE name != '<module>' AND is_nested = 0 AND is_method = 0"
+                "  AND module = ? AND name = ?",
+                (row["module"], row["name"])),
         ))
 
 
@@ -253,12 +325,26 @@ def _lost_edges(store: Store, r: Report) -> None:
             # so keying on either would report most of the program as churn.
             ident_parts=(row["callee_expr"],),
             subject=row["callee_expr"], file=row["f"], count=row["n"],
+            # **The call sites, never the rivals.** The callee not resolving *is* the
+            # finding, so there is no callee node to open -- but every call is written
+            # somewhere, and that is what a reader wants to look at. Opening a rival would
+            # be the guess rule 5 forbids, dressed as a destination.
+            occurrences=[
+                Occurrence(nav="file", id=str(x["file"]),
+                           label=f"{x['caller']} \u2192 {row['callee_expr']}",
+                           file=str(x["file"]), line=int(x["line"] or 0))
+                for x in store.query(
+                    "SELECT c.file, c.line, r.qualname AS caller FROM calls c"
+                    "  LEFT JOIN routines r ON r.id = c.caller_id"
+                    " WHERE c.ambiguous > 1 AND c.callee_expr = ?"
+                    " ORDER BY c.file, c.line", (row["callee_expr"],))
+            ],
         ))
 
 
 def _dead_code(store: Store, r: Report, include_tests: bool) -> None:
     rows = store.query(
-        "SELECT qualname, file, line_start FROM routines"
+        "SELECT id, qualname, file, line_start FROM routines"
         " WHERE name != '<module>' AND is_method = 0 AND is_nested = 0"
         "   AND name NOT LIKE '\\_\\_%' ESCAPE '\\'"
         "   AND id NOT IN (SELECT callee_id FROM calls WHERE callee_id IS NOT NULL)"
@@ -287,6 +373,13 @@ def _dead_code(store: Store, r: Report, include_tests: bool) -> None:
         # part of what this finding is.
         ident_parts=(),
         subject="", file=rows[0]["file"], line=rows[0]["line_start"], count=len(rows),
+        # The rows the title counts and `detail` names in prose, as a population -- the
+        # same query, so the number and the list cannot disagree (rule 13).
+        occurrences=[
+            Occurrence(nav="routine", id=str(x["id"]), label=str(x["qualname"]),
+                       file=str(x["file"] or ""), line=int(x["line_start"] or 0))
+            for x in rows
+        ],
     ))
 
 
@@ -306,6 +399,17 @@ def _unreachable(store: Store, r: Report) -> None:
     stranded = total - len({r_ for r_ in reached})
     if stranded <= 0:
         return
+    # **The stranded routines themselves.** The count was a subtraction and nothing named
+    # the rows it stood for, so the finding said *N of M* and a reader could reach none of
+    # them. The complement of the reached set is the answer this already had in hand.
+    strand_rows = [
+        Occurrence(nav="routine", id=str(x["id"]), label=str(x["qualname"]),
+                   file=str(x["file"] or ""), line=int(x["line_start"] or 0))
+        for x in store.query(
+            "SELECT id, qualname, file, line_start FROM routines"
+            " WHERE name != '<module>' ORDER BY file, line_start")
+        if str(x["id"]) not in {str(v) for v in reached}
+    ]
     r.add(Anomaly(
         kind="UNREACHABLE", severity=INFO, confidence=POSSIBLE,
         title=f"{stranded:,} of {total:,} routines are not reachable from any way in",
@@ -316,6 +420,7 @@ def _unreachable(store: Store, r: Report) -> None:
                    "imported by other programs is also unreachable by design.",
         ident_parts=(),  # one per program
         count=stranded,
+        occurrences=strand_rows,
     ))
 
 
@@ -344,6 +449,16 @@ def _schema_drift(store: Store, r: Report) -> None:
             # what the finding says about it, and both move while it stays one finding.
             ident_parts=(row["name"],),
             subject=row["name"], count=row["defs"],
+            # The table first -- `t` is the route the whole shell uses for one -- then each
+            # statement that creates it, because *which* shapes disagree is the question a
+            # reader opens this to answer.
+            occurrences=[
+                Occurrence(nav="t", id=str(row["name"]), label=str(row["name"])),
+                *[Occurrence(nav="file", id=str(x["file"]),
+                             label=f"{row['name']} \u2014 {x['n']} columns here",
+                             file=str(x["file"]))
+                  for x in shapes],
+            ],
         ))
 
 
@@ -369,6 +484,17 @@ def _one_way_tables(store: Store, r: Report) -> None:
             # the finding is about the table, and it went.
             ident_parts=(row["tbl"],),
             subject=row["tbl"], count=row["rd"] + row["wr"],
+            # The table, then the routines that touch it -- which is what a reader is
+            # really after: *who writes this and never reads it back*.
+            occurrences=[
+                Occurrence(nav="t", id=str(row["tbl"]), label=str(row["tbl"])),
+                *[Occurrence(nav="routine", id=str(x["id"]), label=str(x["qualname"]),
+                             file=str(x["file"] or ""), line=int(x["line_start"] or 0))
+                  for x in store.query(
+                      "SELECT DISTINCT r.id, r.qualname, r.file, r.line_start"
+                      "  FROM sql_ops o JOIN routines r ON r.id = o.routine_id"
+                      " WHERE o.tbl = ? ORDER BY r.file, r.line_start", (row["tbl"],))],
+            ],
         ))
 
 
@@ -390,6 +516,12 @@ def _orphan_indexes(store: Store, r: Report) -> None:
             # name over one table take the ordinal `Report.add` gives a genuine repeat.
             ident_parts=(row["name"], row["tbl"]),
             subject=row["name"], file=row["file"], line=row["line"],
+            # An index is not a subject this shell selects, and inventing a route for one
+            # would be a link to nothing. It has a definition site, and that is a real
+            # place to be taken -- the file, at the line the CREATE INDEX is written.
+            occurrences=[Occurrence(nav="file", id=str(row["file"]),
+                                    label=f"CREATE INDEX {row['name']}",
+                                    file=str(row["file"]), line=int(row["line"] or 0))],
         ))
 
 
@@ -398,7 +530,8 @@ def _remote_call_hazards(store: Store, r: Report) -> None:
     if not total:
         return
     no_timeout = store.query(
-        "SELECT r.qualname, n.expr, n.protocol, r.file, n.line FROM net_calls n"
+        "SELECT r.id AS rid, r.qualname, n.expr, n.protocol, r.file, n.line"
+        "  FROM net_calls n"
         " JOIN routines r ON n.routine_id = r.id WHERE n.timeout = ''"
     )
     if no_timeout:
@@ -412,6 +545,13 @@ def _remote_call_hazards(store: Store, r: Report) -> None:
             ident_parts=(),  # one per program: it counts the calls, it is not one
             count=len(no_timeout),
             file=no_timeout[0]["file"], line=no_timeout[0]["line"],
+            # The routines making the calls, which is what `detail` already names in prose
+            # -- the same rows, so the count and the list cannot disagree.
+            occurrences=[
+                Occurrence(nav="routine", id=str(x["rid"]), label=str(x["qualname"]),
+                           file=str(x["file"] or ""), line=int(x["line"] or 0))
+                for x in no_timeout
+            ],
         ))
 
     no_retry = store.query("SELECT COUNT(*) n FROM net_calls WHERE retries = ''")[0]["n"]
@@ -424,10 +564,20 @@ def _remote_call_hazards(store: Store, r: Report) -> None:
                        "mesh, or the caller rather than at the call site.",
             ident_parts=(),  # one per program
             count=total,
+            # Every remote call, because the finding is that *none* of them retries -- the
+            # population is the whole of `net_calls` and naming one would be arbitrary.
+            occurrences=[
+                Occurrence(nav="routine", id=str(x["rid"]), label=str(x["qualname"]),
+                           file=str(x["file"] or ""), line=int(x["line"] or 0))
+                for x in store.query(
+                    "SELECT r.id AS rid, r.qualname, r.file, n.line FROM net_calls n"
+                    "  JOIN routines r ON n.routine_id = r.id"
+                    " ORDER BY r.file, n.line")
+            ],
         ))
 
     unawaited = store.query(
-        "SELECT r.qualname, n.expr, r.file, n.line FROM net_calls n"
+        "SELECT r.id AS rid, r.qualname, n.expr, r.file, n.line FROM net_calls n"
         " JOIN routines r ON n.routine_id = r.id"
         " WHERE n.is_async = 1 AND n.awaited = 0"
     )
@@ -445,6 +595,10 @@ def _remote_call_hazards(store: Store, r: Report) -> None:
             # the same residue `call_site_id` carries, for the same reason.
             ident_parts=(x["qualname"], x["expr"]),
             subject=x["qualname"], file=x["file"], line=x["line"],
+            # One call, one occurrence -- the routine that makes it.
+            occurrences=[Occurrence(nav="routine", id=str(x["rid"]),
+                                    label=str(x["qualname"]), file=str(x["file"] or ""),
+                                    line=int(x["line"] or 0))],
         ))
 
 
@@ -464,6 +618,16 @@ def _messaging_hazards(store: Store, r: Report) -> None:
                        "which is the normal shape for messaging.",
             ident_parts=(),  # one per program
             count=producers,
+            # The publishing sites. A queue producer's identity is its target and its file,
+            # so the honest way in is the code that publishes.
+            occurrences=[
+                Occurrence(nav="file", id=str(x["file"]),
+                           label=f"publishes to {x['target'] or 'a queue'}",
+                           file=str(x["file"]), line=int(x["line"] or 0))
+                for x in store.query(
+                    "SELECT target, file, line FROM boundaries"
+                    " WHERE kind = 'QUEUE' AND direction = 'OUT' ORDER BY file, line")
+            ],
         ))
 
 
@@ -483,6 +647,10 @@ def _entrypoint_problems(store: Store, r: Report) -> None:
             # modules may each declare a `main` that leads nowhere.
             ident_parts=(row["module"], row["name"]),
             subject=row["name"], file=row["file"],
+            # `ep` is the way-in route the cover's rows already take. The finding is that
+            # this way in leads nowhere, and opening it is how a reader sees that.
+            occurrences=[Occurrence(nav="ep", id=str(row["name"]),
+                                    label=str(row["name"]), file=str(row["file"] or ""))],
         ))
     for row in store.query(
         "SELECT parent_var, child_expr, file, line FROM cli_mounts WHERE child_id IS NULL"
@@ -499,6 +667,11 @@ def _entrypoint_problems(store: Store, r: Report) -> None:
             # mount moved to another module is the same unresolved mount.
             ident_parts=(row["parent_var"], row["child_expr"]),
             subject=row["child_expr"], file=row["file"], line=row["line"],
+            # The mount resolves to nothing -- that is the finding -- so the way in is the
+            # line where it is written, never a guess at what it meant.
+            occurrences=[Occurrence(nav="file", id=str(row["file"]),
+                                    label=f"{row['parent_var']} mounts {row['child_expr']}",
+                                    file=str(row["file"]), line=int(row["line"] or 0))],
         ))
 
 
@@ -509,7 +682,7 @@ def _type_gaps(store: Store, r: Report) -> None:
     if not total:
         return
     missing = store.query(
-        "SELECT qualname, file, line_start FROM routines"
+        "SELECT id, qualname, file, line_start FROM routines"
         " WHERE name != '<module>' AND returns IS NULL ORDER BY qualname"
     )
     untyped = store.query(
@@ -525,6 +698,11 @@ def _type_gaps(store: Store, r: Report) -> None:
                        "project requires annotations.",
             ident_parts=(),  # one per program
             count=len(missing), file=missing[0]["file"], line=missing[0]["line_start"],
+            occurrences=[
+                Occurrence(nav="routine", id=str(x["id"]), label=str(x["qualname"]),
+                           file=str(x["file"] or ""), line=int(x["line_start"] or 0))
+                for x in missing
+            ],
         ))
     if untyped:
         r.add(Anomaly(
@@ -535,6 +713,13 @@ def _type_gaps(store: Store, r: Report) -> None:
             blind_spot="None as a fact.",
             ident_parts=(),  # one per program
             count=untyped,
+            # The routines the count is over. `DISTINCT` there and here, so the number and
+            # the list are one population asked twice rather than two answers.
+            occurrences=_routine_rows(
+                store,
+                "WHERE name != '<module>' AND id IN ("
+                "  SELECT DISTINCT routine_id FROM params"
+                "   WHERE type IS NULL AND name NOT IN ('self', 'cls'))"),
         ))
 
 
@@ -560,4 +745,17 @@ def detect(store: Store, include_tests: bool = False) -> Report:
     for fn in DETECTORS:
         fn(store, report)
     _dead_code(store, report, include_tests)
+    # **Every finding says what it is about, or why it cannot.** Asserted here rather than
+    # in `Report.add`, and the difference is what the rule is *about*: this is a contract on
+    # **detectors**, not on the `Anomaly` type -- `add` is also called by tests building a
+    # finding by hand to check how an identity takes an ordinal, and holding those to a rule
+    # about enumeration would be the guard drifting from its own subject.
+    #
+    # A detector that answers neither produces a control that looks live and does nothing --
+    # design rule 16 arriving from the data rather than from the markup, where no amount of
+    # reading the shell would ever find it.
+    for a in report.items:
+        assert a.occurrences or a.unenumerated, (
+            f"{a.kind}: a finding must list what it is about, or say why it cannot"
+        )
     return report

@@ -4547,26 +4547,57 @@ def test_every_keyboard_badge_names_a_key_something_listens_for() -> None:
     )
 
 
-def test_a_control_that_cannot_act_says_so_rather_than_looking_live() -> None:
-    """The worklist's two jump buttons were live-looking, attribute-less and wired to
-    nothing — the original design rule 16 defect, still on the page.
+def test_the_worklist_jump_buttons_act_and_say_so_when_they_cannot() -> None:
+    """The guard this replaces asked for its own replacement.
 
-    They are not simply wireable, and that is the interesting half: a finding carries the
-    *name* it found (`self._emit`), not a node id, and eleven routines share that name.
-    `queries.py` wrote the answer down before anything needed it — inventing an id to make a
-    row clickable is a link to nothing — so they are disabled with the reason, which is the
-    same choice `undo` makes: a control that vanishes leaves no clue the feature exists.
+    It asserted both jump buttons were `disabled` with a reason — the honest holding
+    position while a finding carried the *name* it found rather than a node id, since
+    resolving a name is rule 5 exactly: eleven routines share `self._emit`. It ended
+    *"if it has been built, this guard should be replaced by one asserting it acts"*.
+
+    The detectors now carry the ids they always had in hand, so what is guarded is the
+    pair of claims that replaced it:
+
+    * where a finding enumerates, both buttons **act** — the first through the same
+      `data-nav` dispatch a navigator row uses, so nothing translates (rule 30);
+    * where it does not, the button stays visible, inert and carrying its own sentence,
+      because a control that vanishes leaves no clue the feature exists.
+
+    And the second button counts **the list it opens**, never the finding's own figure.
+    They are different numbers: `ONE_WAY_TABLE`'s count is read-plus-write operations
+    while its occurrences are the table and the routines touching it, so one Mensores
+    finding reads `1` against a list of three (rule 32).
     """
     js = _read("shell.js")
-    jump = js.split('<div class="wl-jump">', 1)[1].split("</div>", 1)[0]
-    buttons = re.findall(r"<button[^>]*>", jump)
-    assert len(buttons) == 2, "the worklist jump pair changed shape -- this test is blind"
-    for b in buttons:
-        assert "disabled" in b, (
-            "a worklist jump button looks live and is wired to nothing -- if it has been "
-            "built, this guard should be replaced by one asserting it acts"
+    pane = _fn(js, "viewAnomalies") or js
+    parts = pane.split('<div class="wl-jump">')
+    assert len(parts) == 3, (
+        "the jump strip is not the two branches this guards -- one for a finding that "
+        f"enumerates and one for a finding that cannot; found {len(parts) - 1}"
+    )
+    inert, live = parts[1].split("</div>", 1)[0], parts[2].split("</div>", 1)[0]
+    assert 'data-nav="${esc(one.nav)}"' in live and "data-navid" in live, (
+        "the first jump button no longer routes through the shared nav dispatch, so it "
+        "either does nothing or needs a translation table of its own"
+    )
+    assert "data-wlopen" in live, "the second jump button opens no list"
+    assert "occ.length" in live, (
+        "the button counts the finding's own figure rather than the list it opens -- they "
+        "are different numbers and spelling them the same is rule 32's defect"
+    )
+
+    assert "disabled" in inert and "title=" in inert, (
+        "the branch for a finding that cannot enumerate has lost its reason"
+    )
+    assert "unenumerated" in pane, (
+        "nothing reads why a finding lists nothing, so an empty list and a finding that "
+        "cannot be enumerated render alike (design rule 21)"
+    )
+    for attr in ("wlopen",):
+        roster = js.split("const WIRED_ATTRS = new Set([", 1)[1].split("]);", 1)[0]
+        assert f'"{attr}"' in roster, (
+            f"`{attr}` is not in the wired roster, so the self-check would call it dead"
         )
-        assert "title=" in b, "it is disabled and does not say why"
 
 
 # ─────────────────────────────────────────────────────────────── the code browser --- #

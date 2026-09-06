@@ -187,6 +187,22 @@ def anomalies(store: Store) -> list[dict[str, Any]]:
             "file": a.file,
             "line": a.line,
             "count": a.count,
+            # **The things the finding is about, as a population.** `detail` names them in
+            # prose and always did; this is the same set in a form a control can act on
+            # (rule 41). Every one of them, never a sample -- rule 8 bounds a diagram, and
+            # the entire complaint was that the list could not be reached.
+            #
+            # `nav` is a route name the shell already has, so a row here is opened by the
+            # same dispatch a navigator row uses and nothing has to translate (rule 30).
+            "occurrences": [
+                {"nav": o.nav, "id": o.id, "label": o.label, "file": o.file, "line": o.line}
+                for o in a.occurrences
+            ],
+            # Why it lists nothing, when it lists nothing. Empty and *"cannot be
+            # enumerated"* are different answers and the page must be able to tell them
+            # apart (design rule 21) -- otherwise the button that does nothing looks
+            # exactly like the button that had nothing to do.
+            "unenumerated": a.unenumerated,
         }
         for a in detect(store).sorted()
     ]

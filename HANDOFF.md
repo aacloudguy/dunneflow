@@ -10847,3 +10847,76 @@ It is not: on a clean boot it reads correctly. The stale value was self-inflicte
 re-analysing the map underneath a running server and then driving `state` and `render()` by
 hand. The static default in `index.html` is an honest `reading...`, and `paintSrcPath` has
 its four sentences. Nothing to fix.
+
+## 2026-09-06 — the worklist's jump buttons act, and a finding opens what it found
+
+The standing item, and the last surface carrying the defect Tom named earlier the same day:
+*"if a panel lists 7 things, clicking on that panel should lead to a screen that lists all 7."*
+
+`BRIEFING.md` recorded these two buttons as **"blocked on precision, not effort"** — a
+finding carries the *name* it found, and resolving a name is rule 5 exactly: eleven routines
+share `self._emit`. **Surveyed, that was less blocked than it read.** Every detector already
+selects rows that identify its occurrences; what was thrown away was the identity, while
+`detail` kept the names as a semicolon-joined string. Rule 41 exactly — *a prose claim and a
+machine-readable population are two things, and only one of them can be asked a question.*
+
+**And nothing had to be invented client-side.** `NAV_ROUTES` already accepts every subject
+these findings are about — `routine`, `t`, `file`, `ep`, `b` — so an occurrence names a route
+the router already acts on rather than a label with no way in (rule 30). A second table
+mapping kinds to routes would have been a second place to forget one.
+
+### What each detector now answers
+
+All thirteen. Measured on Mensores: **107 findings, every one enumerating, none needing the
+`unenumerated` escape.**
+
+| Finding | Opens |
+|---|---|
+| `DEAD_CODE` | 313 routines |
+| `UNREACHABLE` | 2,474 routines — the complement of the reached set, which the detector already had in hand |
+| `LOST_EDGE` ×93 | 198 **call sites** |
+| `NO_TIMEOUT` / `NO_RETRY` | the 25 and 32 routines making the calls |
+| `ONE_WAY_TABLE` ×8 | the table, then the routines touching it |
+| `PRODUCERS_WITHOUT_CONSUMERS` | the 10 publishing sites |
+
+**`LOST_EDGE` is the interesting one.** The callee not resolving *is* the finding, so there
+is no callee node to open — and opening a rival would be the guess rule 5 forbids, dressed
+as a destination. It enumerates its **call sites** instead: every one is written somewhere,
+and that somewhere is what a reader wants.
+
+### Three decisions worth keeping
+
+* **`unenumerated` beside the list.** An empty list and *"this kind cannot be enumerated"*
+  are different answers (design rule 21), and flattening them gives a button that silently
+  does nothing on exactly the findings that most need explaining. Asserted in `detect()`,
+  **not** in `Report.add`: the contract is on *detectors*, and `add` is also called by tests
+  building a finding by hand to check how an identity takes an ordinal. Holding those to a
+  rule about enumeration would be the guard drifting from its own subject.
+* **The second button counts the list it opens, never the finding's figure** (rule 32).
+  They are different numbers: `ONE_WAY_TABLE`'s count is read-plus-write *operations* while
+  its occurrences are the table and the routines touching it — one Mensores finding reads
+  `1` against a list of three.
+* **The trail crumb carries the subject, not the gesture.** The nav dispatch reads
+  `.navlabel` and falls back to the button's own text, so the first version filed
+  *"Go to the first of 25"* as a trail step — the gesture, where rule 33 says the subject
+  belongs. A hidden `.navlabel` carries the occurrence's name; the crumb now reads
+  `mensores._internal._anthropic_adr_drafter.AnthropicAdrDrafterProvider.__init__`.
+
+### The guard asked for its own replacement, and got it
+
+`test_a_control_that_cannot_act_says_so_rather_than_looking_live` ended *"if it has been
+built, this guard should be replaced by one asserting it acts"*. It now asserts both
+branches — that a finding which enumerates routes through the shared dispatch, and that one
+which cannot keeps a visible button carrying its reason — and that the count is the list's.
+
+### A mistake, and it cost the file
+
+Proving the new guards non-vacuous, a cleanup line read
+`git checkout src/dunneflow/anomalies.py 2>/dev/null || cp /tmp/a.bak …`. The backup never
+existed; the checkout succeeded and **reverted every uncommitted change to that file** —
+about two hundred lines. Nothing else was touched, and the work was replayed from the
+session's own patches to an identical measurement (107 findings, same per-kind counts).
+
+**The lesson is the fallback, not the checkout.** `||` after a command that cannot fail is
+not a fallback, it is a comment — and the safe form is to take the backup *first* and restore
+from it, never to reach for the VCS as an undo on work the VCS has never seen.

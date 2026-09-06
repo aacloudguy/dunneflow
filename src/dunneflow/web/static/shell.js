@@ -426,6 +426,13 @@ const state = {
   ambient: false,         // anomaly badges on nodes
   hideInferred: false,
   density: "comfortable",
+  /* Which finding has its occurrence list unfolded. **Not persisted**: it is where the
+     reader is right now, not an arrangement, and the same distinction `PERSISTED`'s own
+     comment draws about an open SQL block. Keyed on the finding's `ident` rather than its
+     position, because findings are served sorted by count and a position keys a different
+     finding the moment one moves -- which is the defect the settings version bump to 5 was
+     paid for, one surface over. */
+  wlOpen: "",
   coverBars: true,        // the cover's proportion bars, or the space they take
   rowTagsWrap: false,     // a way-in row drops its tags below a name that will not fit
   coverWhatWrap: false,   // the evidence line wraps instead of ending in an ellipsis
@@ -6279,22 +6286,56 @@ function viewAnomalies() {
           fixing, which is a different pile from "the blind spot applies here".
         </div>
 
-        <!-- Disabled, with the reason, rather than removed: a control that vanishes
-             leaves no clue that the feature exists, and this one is wanted. Both were
-             live-looking buttons with no attributes, no handler and a keyboard badge for
-             a key nothing listened for -- invisible to the runtime self-check, which reads
-             data attributes and finds none on a button that has none.
-             They cannot simply be wired. A finding carries the *name* it found, not a node
-             id, and resolving that name is rule 5 exactly: eleven routines share self._emit.
-             queries.py wrote the answer down before anything needed it -- inventing an id
-             to make a row clickable is a link to nothing -- so this waits for the detector
-             to carry the ids it already knows. -->
-        <div class="wl-jump">
-          <button class="actbtn" disabled
-                  title="Not yet: a finding carries the name it found, not the node. Resolving ${esc(cur.a.subject || "a name")} would be a guess between every routine that shares it.">Go to the first occurrence in the graph</button>
-          <button class="actbtn" disabled
-                  title="Not yet, for the same reason: the occurrences are known by name, and a table of guesses is worse than no table.">Show all ${cur.a.n} occurrence${cur.a.n === 1 ? "" : "s"} as a table</button>
-        </div>`}
+        ${/* **The jump strip, and it acts now.** These sat disabled with their reason in a
+              tooltip for as long as they existed -- honest, and the weakest form of the
+              fix. A finding used to carry the *name* it found, and resolving a name is
+              rule 5 exactly: eleven routines share `self._emit`. The detectors now carry
+              the ids they always had in hand, so nothing is resolved and nothing is
+              guessed.
+
+              **The second button counts the list, never the finding's own figure** (rule
+              32). They are not the same number and must not be spelled as if they were:
+              `ONE_WAY_TABLE`'s count is read-plus-write *operations* while its occurrences
+              are the table and the routines that touch it -- one finding on Mensores is
+              `1` against a list of three.
+
+              A finding that enumerates nothing keeps the old shape: visible, inert, and
+              carrying its own sentence. A control that vanishes leaves no clue the
+              feature exists. */""}
+        ${(() => {
+          const occ = cur.a.occurrences || [];
+          if (!occ.length) {
+            const why = cur.a.unenumerated
+              || "this finding names nothing the map can open";
+            return `<div class="wl-jump">
+              <button class="actbtn" disabled title="${esc(why)}">Nothing to open here</button>
+            </div>
+            <p class="hint" style="margin:.4rem 0 0">${esc(why)}.</p>`;
+          }
+          const one = occ[0];
+          const open = state.wlOpen === cur.a.ident;
+          return `<div class="wl-jump">
+            ${/* `.navlabel` carries **what it went to**, not what the button says. The
+                  nav dispatch reads that span for the trail crumb and falls back to the
+                  button's own text, so without it the trail filed *"Go to the first of
+                  25"* — the gesture, where the subject belongs (rule 33). Hidden, because
+                  the button already reads well and two labels on one control is one too
+                  many for a reader. */""}
+            <button class="actbtn" data-nav="${esc(one.nav)}" data-navid="${esc(one.id)}"
+                    title="${esc(one.label)}${one.file ? ` — ${esc(one.file)}` : ""}">
+              <span class="navlabel sr-only">${esc(one.label)}</span>
+              Go to the first of ${occ.length.toLocaleString()}</button>
+            <button class="actbtn" data-wlopen="${esc(cur.a.ident)}">
+              ${open ? "Hide" : "Show"} all ${occ.length.toLocaleString()}
+              occurrence${occ.length === 1 ? "" : "s"}</button>
+          </div>
+          ${open ? `<ol class="chg-list wl-occ">${occ.map(o => `
+            <li><button class="chg-item" data-nav="${esc(o.nav)}" data-navid="${esc(o.id)}">
+              <span class="chg-title navlabel" data-fit="name">${esc(o.label)}</span>
+              <span class="mono chg-mod" data-fit="${o.nav === "file" ? "module" : "name"}"
+                    >${esc(o.file || "")}${o.line ? `:${o.line}` : ""}</span>
+            </button></li>`).join("")}</ol>` : ""}`;
+        })()}`}
       </div>
     </div>
   </div>`;
@@ -11477,6 +11518,17 @@ function wire() {
      write a fragment into a URL this shell does not route on.
      A tile is only ever drawn as a button when its band has rows, so a missing target is a
      defect rather than a state — it says so out loud instead of failing silently (rule 37). */
+  /* Unfold a finding's occurrences in place. A second press folds it, and opening another
+     finding replaces it -- one list at a time, because two open lists on a pane this size
+     is two scrollers competing for the same eye. */
+  $$("[data-wlopen]").forEach((el) => {
+    el.addEventListener("click", () => {
+      const id = el.dataset.wlopen;
+      state.wlOpen = state.wlOpen === id ? "" : id;
+      render();
+    });
+  });
+
   $$("[data-chgband]").forEach((el) => {
     if (el.tagName !== "BUTTON") return;
     el.addEventListener("click", () => {
@@ -11982,7 +12034,7 @@ const WIRED_ATTRS = new Set([
   /* Written on **both** the figure that opens a band and the band it opens -- the roster is
      every attribute the shell writes, because the self-check reads the DOM and cannot tell
      a carried one from a dead one. Only the button half listens. */
-  "chgband",
+  "chgband", "wlopen",
   "fold", "gact", "gosev",
   "goto", "graphtheme", "insp", "jump", "layout", "legend", "manifest", "menuorder",
   "mode", "nav", "nav2", "navcap", "navgroups", "pkgopen", "pointerplace", "pointerreset", "pointershown", "reticule",
@@ -15648,6 +15700,13 @@ async function loadAnomalies() {
        rule 44, a live control reading a field nothing sends. Sent since the identity
        landed; simply never carried across this map. */
     subject: f.subject || "",
+    /* **The population, beside the prose.** `detail` names these and always did; this is
+       the same set in a form the jump buttons can act on (rule 41). Carried explicitly
+       rather than left to ride on `f` -- this mapper is the contract between the payload
+       and the pane, and a field that reaches the page without passing through it is a
+       field nothing checks. */
+    occurrences: f.occurrences || [],
+    unenumerated: f.unenumerated || "",
     sev: sevKey(f.severity),
   }));
 }

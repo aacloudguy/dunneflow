@@ -179,8 +179,14 @@ program has a most-commented routine and a maximum alone is a claim nobody can w
 
 ## What we are doing now
 
-**"Keep this" is on everything — built 2026-09-06.** 1,100 tests, mypy clean over 113 source
-files, ruff clean, `check` 0 broken on `output/mensores`, no servers running.
+**Paused 2026-09-06 after two commits. Nothing is half-written.** 1,100 tests, mypy clean over
+113 source files, ruff clean, working tree clean, `check` 0 broken on `output/mensores`, no
+servers running. `output/` is unchanged — this session wrote no maps.
+
+| Commit | What |
+|---|---|
+| `c53d0a0` | **"keep this" on everything** — a thread, a curiosity, a search hit and a convention, over two id spaces kept apart |
+| `85e000a` | **design rule 29 minted** — a hidden control is not a dimmed one |
 
 A thread, a curiosity, a search hit and a naming convention can each be kept now; before this
 every one of `pinBtn`'s five call sites was an inspector pane, so the four things a reader

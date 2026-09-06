@@ -1594,6 +1594,55 @@ def test_every_declared_data_array_is_assigned_somewhere() -> None:
         )
 
 
+def test_every_comparison_figure_opens_the_band_it_counts() -> None:
+    """Tom's rule for the whole application, as a check.
+
+    *"If a panel lists 7 things, clicking on that panel should lead to a screen that lists
+    all 7 things in detail, no matter what they are."* These tiles rendered as inert `div`s
+    for as long as they existed, on a page whose bands were already underneath them — design
+    rule 16 in its purest form, because a card with a count on it invites the click.
+
+    Two halves, and both are asserted from the source: every figure names the band it opens,
+    and the band writes the key that lets it be found. The **rows** decide whether the tile
+    is a control, never the tile's own number: `counts` comes from the server's summary and
+    a band draws a list, and hanging the control off the figure makes a tile that opens
+    nothing the day the two disagree (rule 13).
+    """
+    js = _read("shell.js")
+    page = _fn(js, "viewChanges")
+    assert page, "viewChanges is gone -- this guard has lost its subject"
+
+    calls = re.findall(r"stat\(([^;]*?)\)\}", page, re.S)
+    assert len(calls) >= 5, f"the comparison figures moved -- this test is blind ({len(calls)})"
+    for call in calls:
+        assert "CHANGES" in call, (
+            "a figure is drawn without the band rows that decide whether it opens: "
+            f"stat({call.strip()[:80]}…) -- it will render as a control that does nothing, "
+            "or as a dead tile beside a non-zero count"
+        )
+
+    stat_fn = page.split("const stat =", 1)[1].split("};", 1)[0]
+    assert "rows.length" in stat_fn, (
+        "the tile's clickability no longer follows the band's rows"
+    )
+    assert "chgstat-none" in stat_fn and "<div" in stat_fn, (
+        "a figure with nothing to open must not render as a button -- design rule 16 from "
+        "the other side, a live-looking control that cannot act"
+    )
+
+    for fn in ("band", "modband"):
+        body = (page.split("const band =", 1)[1].split(";", 1)[0]
+                if fn == "band" else _fn(js, "modband"))
+        assert "data-chgband" in body, (
+            f"{fn} writes no key, so no figure can find the band it counts"
+        )
+
+    assert '"chgband"' in js.split("const WIRED_ATTRS = new Set([", 1)[1].split("]);", 1)[0], (
+        "`chgband` is not in the wired roster, so the self-check would call it dead"
+    )
+
+
+
 def test_the_tag_wrap_is_decided_before_the_fit_and_not_after_it() -> None:
     """The ratchet, guarded at the one place it can be reintroduced.
 
@@ -9045,7 +9094,7 @@ def test_behaving_differently_is_drawn_in_the_channel_on_every_surface() -> None
     )
 
     page = _fn(js, "viewChanges")
-    assert re.search(r'stat\(c\.behaves,[^)]*"moved"\)', page, re.S), (
+    assert re.search(r'stat\(c\.behaves,[^)]*"moved"', page, re.S), (
         "the page's figure is outside the channel while the two beside it are in it"
     )
     assert re.search(r'band\("behaves",[^;]*?"moved"\)', page, re.S), (
@@ -9158,7 +9207,7 @@ def test_the_why_is_a_band_of_its_own_on_every_surface_that_draws_a_band() -> No
         assert needs in _fn(js, fn), (
             f"{what} does not read the fifth band, so it is a silent filter there"
         )
-    assert re.search(r'stat\(c\.explained_only,[^)]*"moved"\)', _fn(js, "viewChanges"), re.S), (
+    assert re.search(r'stat\(c\.explained_only,[^)]*"moved"', _fn(js, "viewChanges"), re.S), (
         "the page has a band and no figure for it, so the four numbers at the top no longer "
         "add up to what the bands below them hold (rule 32)"
     )

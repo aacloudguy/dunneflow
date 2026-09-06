@@ -10784,3 +10784,66 @@ family — a `.toggle` in a `.setrow` — *was* proven by real pointer earlier t
 `#coverBarsToggle`, landing on the element by id. Recorded as unproven rather than glossed
 (rule 48), and it is the instrument rather than the app: nothing on the page changed between
 the click that worked and the clicks that did not.
+
+## 2026-09-06 — a figure that counts things opens those things
+
+Tom, on the comparison summary: *"it invites the user to click on these panels to see the
+results of these summaries, and nothing happens when I do. We're a rabbit-chasing
+application — it should work. If a panel lists 7 things, clicking on that panel should lead
+to a screen that lists all 7 things in detail, no matter what they are."*
+
+**Design rule 16 in its purest form**, and it had been sitting there since the tiles were
+written: nine cards, each with a count on it, each an inert `<div>`, on a page whose bands
+were already rendered underneath them. A control that renders but is wired to nothing looks
+exactly like one that works — and a card carrying a number invites the click by existing.
+
+### What decides whether a tile opens
+
+**The band's rows, never the tile's own figure.** They are two answers to one question: the
+number comes from the server's `counts` summary and the band draws a list. Hanging the
+control off the figure makes a tile that opens nothing the day the two disagree (rule 13).
+So `stat()` takes both the band key and the rows, and is a `<button>` only where there are
+rows to reach.
+
+**The key is passed, never derived from the label**, because two do not match: the
+*edited only* figure is drawn by a band keyed `edited`. A key guessed from a word is rule
+30's defect, and it would have failed on exactly one of nine tiles.
+
+**A tile with nothing to open stays a `<div>`** — not tabbable, not hoverable, not readable
+as a control that failed. It is *not* dimmed: dimming says **not current**, and this says
+**there are none of these**, which the nought already carries.
+
+### Two things the markup needed
+
+* A `<button>` brings its own font, colour, alignment and box from the user agent. Inheriting
+  none of them drew nine centred grey 13px tiles where nine left-aligned cards had been, so
+  `.chgstat-open` inherits rather than restating the card's values.
+* **The arrival is marked.** A page that jumps with nothing changing on it reads as a page
+  that ignored the click, so the band's heading flashes once. Shortened rather than removed
+  under `prefers-reduced-motion`: it is the answer to *did my click do anything*.
+
+### Measured
+
+Every non-zero figure resolves to a band, and every band heading carries the same number as
+the tile that opens it — 53 → *Deleted 53*, 20 → *Behaving differently 20*, 13 → *Edited,
+behaving the same 13*, 7 → *Structures only in the base 7*. Tom's own example, clicked with a
+real pointer, lands on the band and lists all seven by name: `ClaimVerdict`, `ClaimOutcome`,
+`ClaimStatus`, `PublishOutcome`, `PublishStatus`, `CodeFreshness`, `IntentTarget`.
+
+### Three existing guards fired, and all three were right to
+
+`chgband` was missing from `WIRED_ATTRS`, which would have made the runtime self-check report
+a live control as dead — *"four standing false alarms are how a real one goes unread"*. And
+two guards that assert the *behaves* and *explained* figures are drawn in the difference
+channel matched on `stat(c.behaves, … "moved")` with the close-paren anchored: the extra
+arguments moved it. The anchor was relaxed and the claim kept, then checked by dropping the
+tone and watching the guard fail by name.
+
+### A finding that dissolved, recorded because it looked real
+
+The topbar's *source directory* readout showed **"no sidecar here to ask"** while
+`/api/about` reported `tree: society-2026-08-29` — a false claim on the topbar, apparently.
+It is not: on a clean boot it reads correctly. The stale value was self-inflicted, from
+re-analysing the map underneath a running server and then driving `state` and `render()` by
+hand. The static default in `index.html` is an honest `reading...`, and `paintSrcPath` has
+its four sentences. Nothing to fix.

@@ -3506,6 +3506,41 @@ body.detached-code #trailMount { display: none !important; }
   border: 0.0625rem solid var(--border);
   border-radius: 0.35rem;
 }
+/* **A tile that opens something is a `button`, and it has to keep looking like the card.**
+ * A button brings its own font, colour, alignment and border-box from the user agent, and
+ * inheriting none of them is what made the first draft draw nine centred, grey, 13px tiles
+ * where nine left-aligned cards had been. `font: inherit` and `color: inherit` rather than
+ * a second copy of the values -- the card's own rule above stays the one answer.
+ *
+ * The affordance is deliberately quiet: these sit in a grid of nine and a strong hover on
+ * each would make the panel read as nine competing buttons rather than a summary you can
+ * follow (design rule 27 -- a container's affordance drowns out the ones inside it). */
+.chgstat-open {
+  font: inherit; color: inherit; text-align: left; cursor: pointer;
+  width: 100%; appearance: none;
+}
+.chgstat-open:hover { background: var(--raised-hover, var(--raised)); border-color: var(--accent); }
+.chgstat-open:focus-visible { outline: 0.125rem solid var(--accent); outline-offset: 0.125rem; }
+/* Nothing to open, and it must not read as a control that failed. Not dimmed: dimming says
+ * *not current*, and this says *there are none of these* -- a different claim, and the
+ * figure already carries it by being a nought. */
+.chgstat-none { cursor: default; }
+
+/* Where the reader landed. A page that jumps with nothing changing on it reads as a page
+ * that ignored the click, so the arrival is said rather than left to be inferred. It fades
+ * because it answers a question that has already been answered by the time it is gone. */
+.chgsection.landed > h3 { animation: chg-landed 1.6s ease-out 1; border-radius: 0.2rem; }
+@keyframes chg-landed {
+  0%   { background: var(--diff-moved-bg); box-shadow: 0 0 0 0.35rem var(--diff-moved-bg); }
+  100% { background: transparent; box-shadow: 0 0 0 0.35rem transparent; }
+}
+@media (prefers-reduced-motion: reduce) {
+  /* The mark still has to happen -- it is the answer to "did my click do anything" -- so it
+     is shortened rather than removed, which is the distinction that rule leaves to us. */
+  .chgsection.landed > h3 { animation-duration: 0.01s; }
+  .chgstat-open { scroll-behavior: auto; }
+}
+
 .chgstat b { font-size: 1.35rem; line-height: 1.1; }
 .chgstat span { font-size: 0.74rem; color: var(--text-muted); }
 .chgstat .hint { font-size: 0.68rem; color: var(--text-faint); }

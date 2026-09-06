@@ -180,7 +180,14 @@ program has a most-commented routine and a maximum alone is a claim nobody can w
 ## What we are doing now
 
 **Paused 2026-09-06.** Standards steps 3 and 4 are both built, and the cover's proportion
-bars are a Setting. Gates green: 1,092 tests, mypy clean over 113 source files, ruff clean.
+bars are a Setting. Gates green: 1,093 tests, mypy clean over 113 source files, ruff clean.
+
+**The comparison's summary figures open the bands they count.** Nine tiles carrying counts
+had been inert `div`s since they were written, on a page whose bands were already underneath
+them — design rule 16 in its purest form. A tile is a control only where its band has rows
+(never where its own figure is non-zero: those are two answers to one question, rule 13), the
+band key is passed rather than guessed from the label because `edited only` is drawn by a
+band keyed `edited`, and a tile with nothing to open stays a `div` rather than being dimmed.
 
 **Three cover Settings now** (design rule 2): `coverBars`, `rowTagsWrap` and
 `coverWhatWrap`. With all three, names shown whole go **3 of 14 → 12 of 14** and evidence

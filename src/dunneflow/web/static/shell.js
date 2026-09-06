@@ -5720,12 +5720,32 @@ function viewChanges() {
      called arrivals, and the colour has to go with it or the page states one thing in
      English and the opposite in red -- which is worse than no colour at all. Nothing here
      caches a class for that reason. */
-  const stat = (n, label, why, tone) => `
-    <div class="chgstat${tone ? " tone-" + tone : ""}">
-      <b class="num">${n.toLocaleString()}</b>
+  /* **A figure that counts things opens those things.** These tiles rendered as inert
+     `div`s for as long as they have existed, on a page whose bands were already sitting
+     underneath them -- design rule 16 exactly: a control that renders but is wired to
+     nothing looks precisely like one that works, and this one invites the click by being a
+     card with a count on it.
+
+     **The band's rows decide whether it opens, never the tile's own number.** They are two
+     answers to one question -- `counts` comes from the server's summary and the band draws
+     a list -- and hanging the control off the figure would make a tile that opens nothing
+     the day they disagree (rule 13). `key` is passed rather than derived from the label,
+     because two do not match: the `edited only` figure is drawn by a band keyed `edited`,
+     and a key guessed from a word is rule 30's defect.
+
+     A tile with nothing to open stays a `div`, so it cannot be tabbed to, hovered, or read
+     as live. It is not dimmed: dimming says *not current*, and this says *there are none*. */
+  const stat = (n, label, why, tone, key, rows) => {
+    const inside = `<b class="num">${n.toLocaleString()}</b>
       <span>${label}</span>
-      ${why ? `<span class="hint">${why}</span>` : ""}
-    </div>`;
+      ${why ? `<span class="hint">${why}</span>` : ""}`;
+    const cls = `chgstat${tone ? " tone-" + tone : ""}`;
+    if (!key || !rows || !rows.length) {
+      return `<div class="${cls} chgstat-none" title="none in this comparison">${inside}</div>`;
+    }
+    return `<button type="button" class="${cls} chgstat-open" data-chgband="${esc(key)}"
+      title="Show all ${n.toLocaleString()} — ${esc(label)}">${inside}</button>`;
+  };
 
   /* `chg-item`, and not `wl-item`, because they are two different rows.
    *
@@ -5754,7 +5774,7 @@ function viewChanges() {
     </button></li>`).join("");
 
   const band = (key, title, list, why, tone) => !list.length ? "" : `
-    <section class="chgsection">
+    <section class="chgsection" data-chgband="${esc(key)}">
       <h3${tone ? ` class="tone-${tone}"` : ""}>${title}
         <span class="num">${list.length.toLocaleString()}</span></h3>
       ${why ? `<p class="hint">${why}</p>` : ""}
@@ -5878,24 +5898,29 @@ function viewChanges() {
        an answer, and not the same thing as an empty comparison.</p>` : ""}
 
     <div class="chgstats">
-      ${stat(c[first[0]], first[1].word, "", first[1].tone)}
-      ${stat(c[second[0]], second[1].word, "", second[1].tone)}
+      ${stat(c[first[0]], first[1].word, "", first[1].tone, first[0], CHANGES[first[0]])}
+      ${stat(c[second[0]], second[1].word, "", second[1].tone, second[0], CHANGES[second[0]])}
       ${/* In the difference channel with the other two figures, for `routineChip`'s
             reason: the mark on a row and the figure it is counted in are one answer, and
             one of them in violet beside the other in the text colour is the reader's job
             to reconcile (rule 51). `edited_only` stays out -- it is the fourth thing, and
             rule 69 measured this channel as holding three directions and a ground. */""}
-      ${stat(c.behaves, "behave differently", "something they do has moved", "moved")}
+      ${stat(c.behaves, "behave differently", "something they do has moved", "moved",
+             "behaves", CHANGES.behaves)}
       ${stat(c.explained_only, "explained differently", "and nothing else about them did",
-             "moved")}
-      ${stat(c.edited_only, "edited only", "and nothing they do changed")}
+             "moved", "explained_only", CHANGES.explained_only)}
+      ${/* `edited`, not `edited_only`: the figure and the band that draws it are spelled
+            differently, and this is the one place that knows both. */""}
+      ${stat(c.edited_only, "edited only", "and nothing they do changed", "",
+             "edited", CHANGES.edited_only)}
       ${/* Drawn even at zero, unlike the bands below it, because these figures are the
             shape of the comparison rather than a list of what it found — and a figure that
             appears only when it is non-zero cannot be read as a nought. Each states in its
             own label that it counts *files*, because every other number on this line counts
             routines and rule 32 is about exactly that. */""}
       ${Object.entries(CHANGE_FILE_BANDS).map(([k, b]) =>
-          stat(c[k] || 0, (c[k] === 1 ? b.stat1 : b.stat), b.statWhy, "moved")).join("")}
+          stat(c[k] || 0, (c[k] === 1 ? b.stat1 : b.stat), b.statWhy, "moved",
+               k, CHANGES[k])).join("")}
       ${/* The structure tiles, drawn only when non-zero — unlike the file tiles above,
             which are the shape of the comparison. Four zeroes here on a pair that differs
             in no structure would be four lines of nought saying nothing, and the band list
@@ -5903,7 +5928,8 @@ function viewChanges() {
       ${Object.entries(CHANGE_STRUCT_BANDS)
           .filter(([k]) => c[k])
           .map(([k, b]) => stat(c[k], (c[k] === 1 ? b.stat1 : b.stat), b.statWhy,
-                                b.tone === "moved" ? "moved" : b.tone)).join("")}
+                                b.tone === "moved" ? "moved" : b.tone,
+                                k, CHANGES[k])).join("")}
     </div>
 
     <p class="hint" style="margin:.6rem 0 0">
@@ -5939,11 +5965,11 @@ function viewChanges() {
            "The body changed and nothing it does did. Internal computation — what this tool "
            + "exists not to report — listed here so leaving it out is not a silent filter.")}
     ${Object.entries(CHANGE_FILE_BANDS)
-        .map(([k, b]) => modband(b, CHANGES[k] || [])).join("")}
+        .map(([k, b]) => modband(b, CHANGES[k] || [], k)).join("")}
     ${/* The structure bands, rendered by the same function from a table of their own.
           Rows carry a real node id, so the click is the selection every other row makes. */""}
     ${Object.entries(CHANGE_STRUCT_BANDS)
-        .map(([k, b]) => modband(b, CHANGES[k] || [])).join("")}
+        .map(([k, b]) => modband(b, CHANGES[k] || [], k)).join("")}
   </div>`;
 }
 
@@ -5966,7 +5992,7 @@ function viewChanges() {
  * not pretend to. It is separated by being a band of files, which is a stronger separation
  * than a glyph.
  */
-function modband(b, rows) {
+function modband(b, rows, key) {
   if (!rows.length) return "";
   /* `meta`, `badge` and `tone` default to what the file bands have always done, so this
      stayed one renderer when the structure bands arrived rather than becoming two that
@@ -5983,7 +6009,7 @@ function modband(b, rows) {
      every other band's is a dotted module, and its label is a module where every other
      band's is a leaf name. Exactly inverted, and silent if guessed. */
   return `
-    <section class="chgsection">
+    <section class="chgsection" data-chgband="${esc(key || "")}">
       <h3 class="tone-${esc(b.tone || "moved")}">${b.title}
         <span class="num">${rows.length.toLocaleString()}</span></h3>
       <p class="hint">${b.why}</p>
@@ -11443,6 +11469,34 @@ function wire() {
      inside `render()` and measures the boxes as they are at that moment. Stamping second
      would fit every name to the column it was just about to leave -- correct on the next
      repaint and wrong on this one, which is the shape of a fit that ratchets. */
+  /* **A figure opens the things it counts** (design rule 16, and Tom's rule for the whole
+     application: if a panel lists seven things, clicking it leads to those seven).
+     The band is already on this page, so the hop is a scroll — and the arrival is *marked*,
+     because a page that jumps with nothing changing on it reads as a page that ignored the
+     click. `scrollIntoView` on the band's own scroller, never `location.hash`, which would
+     write a fragment into a URL this shell does not route on.
+     A tile is only ever drawn as a button when its band has rows, so a missing target is a
+     defect rather than a state — it says so out loud instead of failing silently (rule 37). */
+  $$("[data-chgband]").forEach((el) => {
+    if (el.tagName !== "BUTTON") return;
+    el.addEventListener("click", () => {
+      const key = el.dataset.chgband;
+      const target = document.querySelector(`section.chgsection[data-chgband="${key}"]`);
+      if (!target) {
+        console.error(`DunneFlow: no band for the figure "${key}" — the tile opens nothing`);
+        return;
+      }
+      target.scrollIntoView({ block: "start", behavior: "smooth" });
+      target.classList.remove("landed");
+      /* Reflow between the two, or the class is removed and re-added inside one frame and
+         the animation never restarts -- the same reason a CSS animation replayed by class
+         alone appears to fire once and then never again. */
+      void target.offsetWidth;
+      target.classList.add("landed");
+      used("chgband:" + key);
+    });
+  });
+
   const cb = $("#coverBarsToggle");
   if (cb) cb.addEventListener("click", () => {
     state.coverBars = !state.coverBars; applyCoverBars(); render();
@@ -11925,6 +11979,10 @@ document.addEventListener("keydown", (e) => {
 const WIRED_ATTRS = new Set([
   "aiop", "airun", "bound", "card", "cite", "citeidx", "closeviewer", "crumb", "curi",
   "cursor", "den", "dgmcursor", "dgmedge", "disk", "drop", "edgesmotion", "egress", "ep",
+  /* Written on **both** the figure that opens a band and the band it opens -- the roster is
+     every attribute the shell writes, because the self-check reads the DOM and cannot tell
+     a carried one from a dead one. Only the button half listens. */
+  "chgband",
   "fold", "gact", "gosev",
   "goto", "graphtheme", "insp", "jump", "layout", "legend", "manifest", "menuorder",
   "mode", "nav", "nav2", "navcap", "navgroups", "pkgopen", "pointerplace", "pointerreset", "pointershown", "reticule",

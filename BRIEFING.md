@@ -180,9 +180,16 @@ program has a most-commented routine and a maximum alone is a claim nobody can w
 ## What we are doing now
 
 **Paused 2026-09-06.** Standards steps 3 and 4 are both built, and the cover's proportion
-bars are a Setting. Gates green: 1,089 tests, mypy clean over 113 source files, ruff clean.
+bars are a Setting. Gates green: 1,092 tests, mypy clean over 113 source files, ruff clean.
 
-**`coverBars` gives the bar's column back to the name** (design rule 2). Measured: the bar
+**Three cover Settings now** (design rule 2): `coverBars`, `rowTagsWrap` and
+`coverWhatWrap`. With all three, names shown whole go **3 of 14 → 12 of 14** and evidence
+lines truncated go **14 of 14 → 0**. The five rows all named `main`, which read identically
+because the file path that distinguishes them was in the truncated tail, are now
+distinguishable. *Clicking a row already showed the evidence whole — `viewWayIn` prints it
+verbatim — so the gap was only ever on the cover.*
+
+**`coverBars` gives the bar's column back to the name.** Measured: the bar
 took 104px of a 315px row and the name was left 29px — eleven of fourteen rows elided. Off,
 the name column is 293px and eleven of the fourteen show whole; the three that do not are a
 22-character handler and two 42-character `python -m …` command lines, which no column here

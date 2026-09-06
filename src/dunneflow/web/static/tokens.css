@@ -1476,6 +1476,31 @@ body {
 .bkrow .gl { font-size: .8rem; text-align: center; }
 .bkrow .n { text-align: right; font-variant-numeric: tabular-nums; color: var(--text-muted); }
 
+/* ── a long name takes the line, and the tags take the next one ───────────────
+ *
+ * `.wrapped` is written by `wrapRowTags()`, never by a media query or a guess: whether a
+ * name fits beside its tags depends on the name, the tags, the pane width, the scale dial
+ * and the reader's own font, and no breakpoint can hold all five.
+ *
+ * `flex: 1 0 100%` and not `flex-wrap` alone. Wrapping is decided on each item's
+ * *hypothetical* size, so a `code` that shrinks -- and this one does, it is the fitted
+ * field -- stays on the first line and squeezes instead of pushing the tags off it. Given
+ * the whole line explicitly, it keeps the width `fitFields` then measures against.
+ *
+ * The class is applied **before** the fit runs. The other order fits the name to the box it
+ * is about to leave, which is the ratchet `fitFields` already describes paying for. */
+.rank-top.wrapped { flex-wrap: wrap; }
+.rank-top.wrapped > code { flex: 1 0 100%; }
+
+/* The evidence line, wrapped rather than cut. Every one of the fourteen rows on the
+ * measured cover is truncated and the longest needs 955px in a 141px box, so what is on
+ * screen is about a sixth of it -- and what is cut is often what tells two rows apart.
+ * `overflow: visible` as well as `white-space: normal`: the clip is what the ellipsis hangs
+ * off, and leaving it would wrap the text and then hide every line after the first. */
+:root[data-whatwrap="on"] .rank-what {
+  white-space: normal; overflow: visible; text-overflow: clip;
+}
+
 /* ── the cover's proportion bars, and the column they cost ────────────────────
  *
  * `coverBars: false` drops the bar **track**, never just its contents. A bar hidden with

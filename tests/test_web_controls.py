@@ -1594,6 +1594,79 @@ def test_every_declared_data_array_is_assigned_somewhere() -> None:
         )
 
 
+def test_the_tag_wrap_is_decided_before_the_fit_and_not_after_it() -> None:
+    """The ratchet, guarded at the one place it can be reintroduced.
+
+    `wrapRowTags` decides how wide the name's box is; `fitFields` shortens the name to the
+    box it has. Run in the other order, every name is fitted to the column it is about to
+    leave -- correct on the next repaint and wrong on this one, which is exactly the loop
+    `fitFields` records paying for once already.
+
+    The decision also has to be made on the **unshortened** name, or it feeds on its own
+    output: a name cut to fit therefore fits, therefore does not wrap, therefore is cut.
+    """
+    js = _read("shell.js")
+    assert "function wrapRowTags(" in js, "the pass that decides which rows wrap is gone"
+
+    order = js.index("wrapRowTags();"), js.index("  fitFields();")
+    assert order[0] < order[1], (
+        "wrapRowTags must run before fitFields, or every name is fitted to the box it is "
+        "about to leave"
+    )
+    pass_body = _fn(js, "wrapRowTags")
+    assert "FIT_FULL" in pass_body, (
+        "the decision reads the rendered text, not the full string -- it will feed on its "
+        "own output and ratchet"
+    )
+    assert "classList.remove" in pass_body, (
+        "the class is never cleared, so turning the setting off leaves a layout nobody "
+        "chose and nothing explains"
+    )
+
+
+def test_a_wrapped_row_gives_the_name_the_whole_line_not_merely_flex_wrap() -> None:
+    """`flex-wrap` alone does nothing here, and it looks like it should.
+
+    Flex decides line breaks on each item's *hypothetical* main size. The name is the fitted
+    field, so it shrinks -- it stays on the first line squeezing itself smaller instead of
+    pushing the tags off it, and the setting appears to be wired to nothing (design rule 16).
+    Only an explicit full-width basis makes the tags move.
+    """
+    css = _read("tokens.css")
+    rule = [ln for ln in css.splitlines() if ".rank-top.wrapped" in ln]
+    assert rule, "nothing reacts to the class the pass writes"
+    assert any("flex-wrap" in ln for ln in rule), "the container never wraps"
+    assert any("100%" in ln for ln in rule), (
+        "the name is not given the whole line, so it will shrink and the tags will stay put"
+    )
+
+
+def test_wrapping_the_evidence_line_also_releases_the_clip() -> None:
+    """`white-space: normal` on its own wraps the text and then hides every line but one.
+
+    The ellipsis hangs off `overflow: hidden`, and leaving the clip in place while allowing
+    wrapping is the worst of both: the row does not grow, so the second line is simply not
+    there. Rule 45's shape -- the space is reclaimed and the content still is not shown.
+    """
+    css = _read("tokens.css")
+    js = _read("shell.js")
+    block = css.split('[data-whatwrap="on"]', 1)
+    assert len(block) > 1, "no rule reacts to the stamp"
+    rule = block[1].split("}", 1)[0]
+    assert "white-space: normal" in rule, "the line still refuses to wrap"
+    assert "overflow: visible" in rule, (
+        "the clip is still in force, so the text wraps and every line after the first is "
+        "hidden -- a setting that appears to do nothing"
+    )
+    assert js.count("applyCoverWhatWrap()") >= 3, (
+        "the stamp must be applied at boot, again after `adoptSettings` (rule 68) and from "
+        "the toggle"
+    )
+    for control in ('id="rowTagsWrapToggle"', 'id="coverWhatWrapToggle"'):
+        assert control in js, f"the Settings page offers no {control}"
+
+
+
 def test_turning_the_cover_bars_off_drops_the_track_and_not_only_the_bar() -> None:
     """Rule 45: hidden is not absent, and the difference is the whole bill.
 

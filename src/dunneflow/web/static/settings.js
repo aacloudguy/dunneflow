@@ -384,6 +384,25 @@ const DEFAULTS = {
    * **104px of it** and the name was left 29px -- `mensores-signator` drawn as `me...r`.
    * Design rule 2: two genuinely different readings of one list, so both exist. */
   coverBars: true,
+  /* Whether a way-in row drops its tags to a second line **when the name will not fit
+   * beside them**. Conditional rather than always: a short name and its two tags sit on
+   * one line comfortably, and giving every row a second line to suit the three that need
+   * one spends fourteen rows' height to fix three.
+   *
+   * Off, because a fixed row height is what makes a ranked list scannable -- the eye runs
+   * down a column of names. On, the long ones stop being four characters and an ellipsis. */
+  rowTagsWrap: false,
+  /* Whether the evidence line under a name wraps instead of ending in an ellipsis.
+   *
+   * Measured on the cover: **all fourteen rows are truncated**, and the line needs up to
+   * 955px in a box 141px wide -- about a sixth of it is on screen. What is cut is often the
+   * part that tells two rows apart: five rows here are all named `main` with identical
+   * evidence text, and only the file path in the tail distinguishes them.
+   *
+   * Off, because a rank is meant to be scanned and a wrapped line makes rows of uneven
+   * height that the eye has to re-find. The full text is on hover either way, and clicking
+   * the row has always shown it whole. */
+  coverWhatWrap: false,
   /* Whether a change-worklist band scrolls inside itself instead of running its full
    * length. Off, because rule 8 says a reference list is never bounded and the cap put a
    * 512px scroller inside the page's own 401px one -- scrolling a box to find a box. On
@@ -603,6 +622,7 @@ function resetSettings(program, current) {
     menuOrder: 'menu order', trailShown: 'the trail', trailCap: 'how many steps the trail shows',
     density: 'row density', bandScroll: 'scrolling change bands',
     coverBars: 'proportion bars on the cover',
+    rowTagsWrap: 'tags on their own line', coverWhatWrap: 'wrapped evidence lines',
     baseRev: 'which version is being read', comparedRev: 'what it is compared with',
     comparedIsNewer: 'which version is taken to be newer',
     searchCase: 'case-sensitive search', searchWord: 'whole-word search',

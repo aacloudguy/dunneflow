@@ -10706,3 +10706,81 @@ shown it, confidently and wrongly. Rewritten to carry the measurement without th
 Verified end to end with a real pointer: Settings → toggle → `aria-pressed="false"` → root
 stamped → `dunneflow:mensores:v5` holds `coverBars: false` → survives a reload with the
 columns reclaimed and the counts intact.
+
+## 2026-09-06 — two more Settings: the tags move down, and the evidence line wraps
+
+Tom, after the bars became a Setting: *"Create yet another Setting that permits moving the
+MAIN/GUESSED or CLI/DECLARED or whatever indicators to a NEW line when the name is long…
+We can also have a Setting to permit the last row to wrap on the screen rather than be
+truncated."*
+
+### What measurement changed about the second one
+
+He offered an alternative — *"Alternatively, we can show the full content when clicked
+instead."* **That is already built**: `/api/wayin` returns `evidence` whole and `viewWayIn`
+prints it verbatim in its `prov` block. Every one of the fourteen cover rows returns
+`found: true`, so no row is empty when clicked. The premise as stated did not hold.
+
+**What measurement found instead is sharper.** All **14 of 14** evidence lines are truncated,
+and the longest needs **955px in a 141px box** — about a sixth of it is on screen. And what
+is cut is the half that distinguishes: **five rows on this cover are all named `main` with
+byte-identical evidence text**, and the only thing telling them apart is the file path in the
+tail. Wrapped, they read
+
+```
+conventional name 'main' at module level · chaos/chaos_clock_skew.py:1080 · also detected as …
+conventional name 'main' at module level · agent/_worker.py:30 · also detected as …
+conventional name 'main' at module level · chaos/__main__.py:263 · also detected as …
+```
+
+Five rows that were indistinguishable on the page a reader is meant to *start* from.
+
+### `rowTagsWrap` — the tags take the next line, and only where they must
+
+**Conditional, and the condition is measured** (`wrapRowTags`, beside `fitFields`): the
+unshortened name's width by `measureText`, the tags' widths as laid out, the gap read off the
+container so the scale dial moves it too. Wrapping every row to suit three spends fourteen
+rows' height to fix three, and an even row height is most of what makes a ranked list
+scannable — so `run` keeps its single line while `mensores-signator` takes the whole first one.
+
+**Two things it would have got wrong, and both are guarded:**
+
+* **`flex-wrap` alone does nothing here**, and it looks like it should. Flex breaks lines on
+  each item's *hypothetical* main size, and the name is the fitted field — so it shrinks,
+  stays on the first line, and squeezes itself smaller instead of pushing the tags off.
+  `flex: 1 0 100%` is what actually moves them.
+* **The decision runs before the fit, and on the unshortened string.** Either order reversed
+  is a ratchet: a name cut to fit therefore fits, therefore does not wrap, therefore is cut —
+  the loop `fitFields` already records paying for, one measurement over.
+
+### `coverWhatWrap` — the evidence line wraps
+
+`white-space: normal` **and** `overflow: visible`. The ellipsis hangs off the clip, and
+leaving it in force wraps the text and then hides every line after the first: the row does
+not grow, so the second line is simply not there. Rule 45's shape — a setting that appears
+to do nothing.
+
+### Measured, with all three settings on
+
+| | Bars on, no wrap | Bars off + both wraps |
+|---|---|---|
+| names shown whole | 3 of 14 | **12 of 14** |
+| evidence lines truncated | **14 of 14** | **0 of 14** |
+| rows needing a second line for tags | — | 3 |
+
+The two that still elide are the 42-character `python -m mensores.chaos.chaos_*_kill`
+command lines, and they now show the distinguishing tail rather than `p…l`.
+
+### The instrument, and what could not be proven
+
+The wiring is proven end to end — handler, applier, stamp, persistence under
+`dunneflow:mensores:v5`, and a reload that restores all three and re-applies them (rule 68).
+
+**The pointer path was not re-proven for these two buttons.** This browser tab stopped
+delivering synthetic pointer events partway through: a bare click at frame (300,200)
+produced *no* `pointerdown` at all, and clicks by element `ref` did not reach their targets
+either, while a scripted `.click()` on the same element flipped the setting. The same control
+family — a `.toggle` in a `.setrow` — *was* proven by real pointer earlier the same day on
+`#coverBarsToggle`, landing on the element by id. Recorded as unproven rather than glossed
+(rule 48), and it is the instrument rather than the app: nothing on the page changed between
+the click that worked and the clicks that did not.

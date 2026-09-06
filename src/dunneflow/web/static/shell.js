@@ -427,6 +427,8 @@ const state = {
   hideInferred: false,
   density: "comfortable",
   coverBars: true,        // the cover's proportion bars, or the space they take
+  rowTagsWrap: false,     // a way-in row drops its tags below a name that will not fit
+  coverWhatWrap: false,   // the evidence line wraps instead of ending in an ellipsis
   bandScroll: false,       // a change band scrolls in place, or runs its full length
   /* The two versions, and which of them the screen is showing.
    *
@@ -789,6 +791,12 @@ function applyTheme() {
  * **A re-fit has to follow, and it is not automatic.** The names are sized by `fitFields`
  * against the box they are actually in, so widening the column changes nothing on screen
  * until something measures again. `render()` runs the pass; the toggle calls it. */
+function applyCoverWhatWrap() {
+  const r = document.documentElement;
+  if (state.coverWhatWrap) r.setAttribute("data-whatwrap", "on");
+  else r.removeAttribute("data-whatwrap");
+}
+
 function applyCoverBars() {
   const r = document.documentElement;
   if (state.coverBars) r.removeAttribute("data-coverbars");
@@ -6820,6 +6828,34 @@ function viewSettings() {
         </div>
 
         <div class="setrow">
+          <div><div class="lbl">Tags on their own line when a name is long</div>
+            <div class="desc">On the overview's <b>Where to start</b> list, each name sits beside
+              its tags — what kind of way in it is, and whether it was declared or recognised.
+              When the name will not fit next to them, this drops the tags to a second line and
+              gives the name the whole first one.<br><br>
+              <b>Only the rows that need it</b>, measured against the name, the tags and the pane
+              as they actually are — so short names keep a single line and the list stays
+              scannable. <b>Off by default</b>, because an even row height is most of what makes
+              a ranked list readable at a glance; turn it on when the names matter more than the
+              rhythm.</div></div>
+          <button class="toggle" id="rowTagsWrapToggle" aria-pressed="${state.rowTagsWrap}" aria-label="Tags on their own line when a name is long"></button>
+        </div>
+
+        <div class="setrow">
+          <div><div class="lbl">Wrap the evidence line</div>
+            <div class="desc">Under each name on the overview is the evidence for it — where it
+              was declared, or the convention it was recognised by, and the file it lives in.
+              That line is one line, and it ends in an ellipsis.<br><br>
+              <b>Every row on the measured cover is truncated</b>, and the longest needs
+              <b>955px</b> in a box <b>141px</b> wide — about a sixth of it is on screen. What is
+              cut is often what tells two rows apart: five rows there share a name and identical
+              evidence, and only the file path in the tail distinguishes them. Turning this on
+              wraps the line instead, at the cost of rows of uneven height. The full text is on
+              hover either way, and clicking the row has always shown it whole.</div></div>
+          <button class="toggle" id="coverWhatWrapToggle" aria-pressed="${state.coverWhatWrap}" aria-label="Wrap the evidence line"></button>
+        </div>
+
+        <div class="setrow">
           <div><div class="lbl">Ambient anomaly badges</div>
             <div class="desc">When on, anything carrying a finding is marked <em>wherever it appears</em> —
               an amber <b>!</b> on the node in the graph, a tag beside the routine in the table, a badge in the
@@ -11046,6 +11082,9 @@ function render() {
    * has a box to be measured against -- and the last point before the browser paints, which
    * is what keeps the untruncated string from being shown for a frame on every keystroke.
    * 4.5 ms over the largest population on the page; see `fitFields`. */
+  /* Before the fit, never after: this decides how wide the name's box is and `fitFields`
+     measures that box. The other order fits every name to the column it is about to leave. */
+  wrapRowTags();
   fitFields();
   wire();
   /* Persisted here rather than in each handler. Forty controls change settings and every
@@ -11407,6 +11446,15 @@ function wire() {
   const cb = $("#coverBarsToggle");
   if (cb) cb.addEventListener("click", () => {
     state.coverBars = !state.coverBars; applyCoverBars(); render();
+  });
+  /* No applier: `wrapRowTags` reads `state` directly and runs inside `render()`, which is
+     where the decision has to be made anyway -- it needs boxes, and boxes exist only after
+     the panes are written. A stamp would be a second place holding the same fact. */
+  const rt = $("#rowTagsWrapToggle");
+  if (rt) rt.addEventListener("click", () => { state.rowTagsWrap = !state.rowTagsWrap; render(); });
+  const ww = $("#coverWhatWrapToggle");
+  if (ww) ww.addEventListener("click", () => {
+    state.coverWhatWrap = !state.coverWhatWrap; applyCoverWhatWrap(); render();
   });
   const bsc = $("#bandScrollToggle");
   if (bsc) bsc.addEventListener("click", () => {
@@ -12649,6 +12697,52 @@ const FIT_FULL = "full";
  * report, so the two cannot disagree about what fits (rule 13) -- a looser check would hide
  * a real overflow and a tighter one would fail every field the fitter had just finished. */
 const FIT_SLACK = 1;
+
+/* Which way-in rows must drop their tags to a second line.
+ *
+ * **Decided on the unshortened name and the row it is in, before anything is fitted.** Both
+ * inputs are independent of the outcome, which is what keeps this from ratcheting: deciding
+ * it from the *rendered* name would mean a name cut to fit, therefore fitting, therefore
+ * not wrapping, therefore cut again -- the loop `fitFields` records paying for once already,
+ * one measurement over.
+ *
+ * The name is measured with `measureText` rather than by reading a box, because the box is
+ * exactly what is being decided; the tags are measured as laid out, because they never
+ * change size. `gap` is read off the container rather than assumed, so the scale dial and a
+ * reader's own font move it too (design rule 3).
+ *
+ * Off by default and cleared when off, never left behind: a class this pass stops
+ * maintaining is a layout nobody chose and nothing explains. */
+function wrapRowTags(root) {
+  const tops = [...(root || document).querySelectorAll(".rank-top")];
+  if (!tops.length) return 0;
+  if (!state.rowTagsWrap) {
+    tops.forEach((t) => t.classList.remove("wrapped"));
+    return 0;
+  }
+  const cx = fitFields.cx
+    || (fitFields.cx = document.createElement("canvas").getContext("2d"));
+  let wrapped = 0;
+  for (const top of tops) {
+    const code = top.querySelector("code[data-fit]");
+    if (!code) continue;
+    /* Measured unwrapped, so the width read is the line the tags would have to share. */
+    top.classList.remove("wrapped");
+    const box = top.getBoundingClientRect().width;
+    if (box <= 0) continue;              // not laid out yet -- rule 49, wait for a real one
+    const cs = getComputedStyle(code);
+    cx.font = `${cs.fontStyle} ${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+    const full = code.dataset[FIT_FULL] != null ? code.dataset[FIT_FULL] : code.textContent;
+    const gap = parseFloat(getComputedStyle(top).columnGap) || 0;
+    let tags = 0;
+    for (const kid of top.children) {
+      if (kid === code) continue;
+      tags += kid.getBoundingClientRect().width + gap;
+    }
+    if (cx.measureText(full).width + tags > box) { top.classList.add("wrapped"); wrapped++; }
+  }
+  return wrapped;
+}
 
 function fitFields(root) {
   const els = [...(root || document).querySelectorAll("[data-fit]")];
@@ -15523,7 +15617,7 @@ const Settings = window.DunneFlowSettings;
  * block is expanded. */
 const PERSISTED = [
   "theme", "palette", "scale", "startup", "mode", "menuOrder", "trailShown", "trailCap",
-  "density", "coverBars", "bandScroll", "baseRev", "comparedRev", "comparedIsNewer",
+  "density", "coverBars", "rowTagsWrap", "coverWhatWrap", "bandScroll", "baseRev", "comparedRev", "comparedIsNewer",
   "ambient", "hideInferred", "colWidths", "insp", "sortKey", "sortAsc",
   "egress", "aiOps", "triage", "pins", "usage", "graphLayout",
   "diskOrder", "diskColors", "colorBy", "sortMode", "filterMode", "direction",
@@ -18167,6 +18261,7 @@ async function boot() {
   applyTheme();
   applyPalette();
   applyCoverBars();
+  applyCoverWhatWrap();
   applyDiagramLook();
   applyScale();
   state.view = state.startup;
@@ -18206,6 +18301,7 @@ async function boot() {
      ran against the defaults, and a reader who turned these off would get them back on
      every reload. Rule 68 -- a restore is a setter, and must do what the setter does. */
   applyCoverBars();
+  applyCoverWhatWrap();
   applyDiagramLook();
   paintNavFlags();          // after `adoptSettings`, or they show the defaults (rule 68)
   applyScale();

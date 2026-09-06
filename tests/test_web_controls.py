@@ -3077,6 +3077,22 @@ def test_every_cohort_kind_minted_has_a_query_to_resolve_it() -> None:
         "one raises rather than answering"
     )
 
+    # And every one of them must be able to say what it *is*.
+    #
+    # A cohort is kept on the shelf by its key -- `AC-4`, `audit_events` -- and a key alone
+    # tells a reader nothing a week later. The obvious thing to put beside it is the thread's
+    # own `why`, and that is the one thing that must not be stored, because it is a count.
+    # `noun` is what replaces it, so a kind without one is a shelf row that names a value and
+    # cannot say what kind of value it is.
+    nouns = threads_py.split("COHORT_NOUN = {", 1)[1].split("\n}", 1)[0]
+    described = set(re.findall(r'^\s+"(\w+)":', nouns, re.M))
+    assert described, "COHORT_NOUN changed shape -- this test is blind"
+    assert minted == described, (
+        f"cohort kinds minted: {sorted(minted)}; kinds with a noun: {sorted(described)} -- "
+        "one side is a shelf row that cannot say what it kept, the other is a word for a "
+        "kind that does not exist"
+    )
+
 
 def test_asking_where_the_selection_is_cannot_throw() -> None:
     """A guard that names the right case and does not catch it.
@@ -9794,6 +9810,15 @@ def test_every_kind_a_pin_can_carry_has_a_route() -> None:
     Derived from the source both ways rather than from a list somebody keeps: a fourth kind
     added at a call site with no entry in `PIN_ROUTES` is the same defect returning, and a
     route for a kind nothing emits is a branch that can never run.
+
+    **This covers the map space only, and saying so is the point.** When a thread, a
+    curiosity and a search hit learned to be kept, a second kind of subject arrived -- a
+    cohort, which has no `id` and whose `kind` is `governance` rather than `node`. Those
+    reach `pinBtn` as a *runtime value* (`threadPinBtn(t.subject, …)`), so the regex below
+    cannot see them and **would go on passing while that whole half was dead**: rule 43, a
+    check that names the right case and cannot catch it. The cohort half is asserted by
+    `test_the_shelf_asks_which_id_space_before_it_asks_which_route`, and the assertion at the
+    foot of this test is what stops the two drifting apart silently.
     """
     js = _code(_read("shell.js"))
 
@@ -9815,6 +9840,13 @@ def test_every_kind_a_pin_can_carry_has_a_route() -> None:
     assert "data-pinopen=" in _read("shell.js"), (
         "the shelf renders no control that opens a kept item"
     )
+    # The second space exists and is asserted elsewhere. If `threadPinBtn` is ever deleted or
+    # renamed, this test silently becomes the *only* pin guard again while three surfaces go
+    # on rendering keep buttons -- which is the state this whole comment exists to describe.
+    assert "function threadPinBtn(" in js, (
+        "threadPinBtn is gone, so either the cohort space was removed or this test is now "
+        "the only pin guard while the surfaces that need the other one still render"
+    )
 
 
 def test_a_pin_is_keyed_on_what_it_is_not_on_what_it_is_called() -> None:
@@ -9828,6 +9860,312 @@ def test_a_pin_is_keyed_on_what_it_is_not_on_what_it_is_called() -> None:
     assert "function pinKey(" in js, "pins are no longer keyed by a stated function"
     assert not re.search(r"state\.pins\.(some|findIndex)\(\s*\w+\s*=>\s*\w+\.label ===", js), (
         "a pin is being matched by its label again"
+    )
+    # A cohort has no `id`, so the original expression fell straight through to the label --
+    # which is the collision this function exists to refuse, arriving from a new direction.
+    # `AC-3` and `AC-4` would key apart because their labels differ; a table and a governance
+    # id that happen to share a name would not.
+    key = _fn(js, "pinKey")
+    assert "cohort:" in key and "subject.key" in key, (
+        "pinKey does not key a cohort on its kind and key, so two cohorts fall back to their "
+        "labels -- the collision this whole function exists to refuse"
+    )
+    assert "line:" in key and "subject.path" in key, (
+        "pinKey does not key a line on its path and line"
+    )
+
+
+def test_a_quiet_keep_button_is_still_a_keep_button() -> None:
+    """Dimming says *not current*. It must never say *disabled*.
+
+    **Found by clicking, and no test would have found it.** The keep button on a thread row
+    and a search hit is quiet until the row is under the pointer -- 782 lines matched one word
+    in this corpus, and a control shouting on every one of them is furniture. The first draft
+    spelled that `visibility: hidden`, and the pointer then landed *inside the button's own
+    rectangle* and the event target was the row: a hidden element is not hit-tested. So the
+    control worked only for a pointer that happened to hover first, and not at all for the
+    keyboard, because `visibility: hidden` also takes an element out of the tab order -- which
+    means `:focus-within` can never fire to bring it back, and the rule is unreachable by the
+    one route that would have rescued it.
+
+    Rule 48 exactly: a scripted click proves the handler, and only a pointer proves the path to
+    it. Every JavaScript guard passed, the button rendered, the handler was bound, and pressing
+    it did nothing.
+    """
+    css = _css_code(_read("tokens.css"))
+    for rule in re.findall(r"[^{}]*\.pinbtn[^{}]*\{[^}]*\}", css):
+        head, body = rule.split("{", 1)
+        if ":hover" in head or ":focus" in head or ".on" in head:
+            continue
+        for dead in ("visibility: hidden", "visibility:hidden",
+                     "display: none", "display:none"):
+            assert dead not in body, (
+                f"a keep button is hidden at rest by `{dead}` in `{head.strip()}` -- it is "
+                "then not hit-tested and not tabbable, so the row it sits on swallows the "
+                "click and the keyboard cannot reach it at all"
+            )
+    # And it must actually be quiet somewhere, or this guard is watching a control that never
+    # dims and the reasoning above has silently stopped applying.
+    assert re.search(r"\.pinbtn\s*\{[^}]*opacity:", css), (
+        "no keep button dims at rest any more -- either the quiet-until-hover decision was "
+        "reversed, in which case this guard should go, or it is being spelled some other way"
+    )
+
+
+def test_the_shelf_asks_which_id_space_before_it_asks_which_route() -> None:
+    """The half `test_every_kind_a_pin_can_carry_has_a_route` is structurally blind to.
+
+    A pin now carries one of two kinds of subject and they are not reconciled onto one table,
+    which is a decision: `kind` means `node` in one and `governance` in the other, so a single
+    table would be one word carrying two meanings -- rule 47's companion, which this codebase
+    already paid for once when `data-nav` was both a grid-track state and a route.
+
+    So the open handler must **ask which space first**, on `type`, and hand a cohort to
+    `followThread` rather than resolving it here. Both halves matter and either alone passes
+    while the feature is dead: a dispatch that never reaches `followThread` opens nothing, and
+    a cohort routed through `PIN_ROUTES[sub.kind]` looks up `governance` in a table of map
+    kinds, finds nothing, and logs "no route for its kind" over a subject that has one.
+
+    Scoped to the handler, the way the thread guard scopes itself and for the reason its own
+    comment records: a search for `followThread(` over the whole file passes against a version
+    where the shelf never calls it, because the definition vouches for its own call site.
+    """
+    shell = _read("shell.js")
+    js = _code(shell)
+    open_h = js.split('$$("[data-pinopen]").forEach', 1)[1].split("}));", 1)[0]
+
+    # **The branch, not the name.** The first draft of this asserted `"sub.type" in open_h`
+    # and passed against `if (false) {` -- because `sub.type` still appears one line down, in
+    # the `used()` call inside the branch that no longer runs. Rule 37 on a guard written for
+    # rule 30: a check that a name appears has not checked that anything happens.
+    space = re.search(r"if\s*\(\s*sub\.type\s*\)", open_h)
+    assert space, (
+        "the shelf's open handler does not branch on which id space a subject is in, so a "
+        "cohort goes to PIN_ROUTES and a map subject may go to followThread"
+    )
+    assert "followThread(" in open_h, (
+        "the shelf never routes a cohort through followThread, so the second id space is a "
+        "subject that can be kept and cannot be opened"
+    )
+    assert "PIN_ROUTES[" in open_h, (
+        "the shelf no longer routes map subjects from the table, so an unhandled kind falls "
+        "through to something that looks deliberate (design rule 16)"
+    )
+    # Order, not merely presence. `PIN_ROUTES[sub.kind]` reached *before* the `type` test
+    # would answer for a cohort with `undefined` and return early, and every assertion above
+    # would still hold. Anchored on the branch this test found, not on the first mention of
+    # the name -- for the reason recorded just above it.
+    assert space.start() < open_h.index("PIN_ROUTES["), (
+        "the map table is consulted before the shelf has asked which id space it is in"
+    )
+
+    # And the trail. A cohort opened from the shelf must leave the same mark as one followed
+    # from a panel, or the way back differs depending on which door was used (rule 33).
+    assert "pushTrail(" in open_h, (
+        "opening a kept cohort files no trail step, so the detour it was kept to make cannot "
+        "be taken back"
+    )
+
+
+def test_a_thread_kept_from_two_doors_is_one_pin() -> None:
+    """A thread subject and a map subject are the same routine in two vocabularies.
+
+    `{type: "node", id}` is what `threads.py` mints; `{kind: "node", id}` is what the shelf
+    keys and routes. Keeping the first *as written* keys it `undefined:<id>` -- a pin that
+    opens nothing, and one that the routine's own inspector would not recognise as kept, so
+    the shelf would hold the same routine twice under two names and `◇ Keep this` would still
+    be offered over a thing already on the shelf.
+
+    Eight of the ten curiosity families and four of the nine thread mint-sites are nodes, so
+    this is the common case rather than an edge of one.
+    """
+    js = _code(_read("shell.js"))
+    fn = _fn(js, "threadPinBtn")
+    assert re.search(r'kind:\s*"node",\s*id:\s*\w+\.id', fn), (
+        "threadPinBtn does not translate a thread's node subject into the map space, so a "
+        "routine kept from a thread keys on `undefined` and is a second row for one thing"
+    )
+    assert 'subject.type === "cohort"' in fn, (
+        "threadPinBtn no longer tells a cohort from a node, so one of the two is being kept "
+        "in the other's id space"
+    )
+    # A kind the server mints and this function has not been taught must say so rather than
+    # drawing a button that keys on nothing (design rule 16).
+    assert "console.error" in fn and "return \"\"" in fn, (
+        "threadPinBtn draws a keep button for a subject kind it cannot key"
+    )
+
+
+def test_a_kept_thing_never_stores_a_count() -> None:
+    """The note beside a kept cohort is what it *is*, never how many it *was*.
+
+    A thread row prints `why` -- "9 other routines carry this plan" -- and handing that to the
+    shelf is free, obvious, and a lie by the following week: `AC-4` is 112 routines in this
+    corpus today. A number on screen is a claim about the query that would return it now
+    (rules 13 and 32), and a shelf is the one surface built to be read long after the moment
+    it was filled.
+
+    Asserted as an **absence** over the whole comment-stripped file rather than as a property
+    of the one call site that exists, because the failure to guard against is a *new* surface
+    passing its own `why` -- the same shape, and the same reason, as the curiosity guard.
+    """
+    js = _code(_read("shell.js"))
+    for bad in (r"pinBtn\([^)]*\.why", r"pinBtn\([^)]*\.head", r"pinBtn\([^)]*\.count"):
+        assert not re.search(bad, js, re.S), (
+            f"a keep button is storing `{bad}` as its note -- that is a count frozen at the "
+            "moment it was kept, printed later as though it were true now"
+        )
+    # And the stored pin itself carries no count, which is the same rule one layer down: a
+    # field written into `state.pins` outlives the page and is persisted.
+    push = re.search(r"state\.pins\.push\(\{([^}]*)\}\)", js)
+    assert push, "pins are no longer pushed as an object literal -- this test is blind"
+    assert "count" not in push.group(1), (
+        "a count is being persisted onto a pin, which is a number that stops being true the "
+        "moment the program changes"
+    )
+    # The live answer must actually be asked for, or the row falls back to saying nothing and
+    # this guard passes over a shelf that simply dropped the information.
+    assert "function ensurePinCounts(" in js or "async function ensurePinCounts(" in js, (
+        "nothing counts a kept cohort, so the row either says nothing or says something stale"
+    )
+    assert "ensurePinCounts()" in _fn(js, "viewPins"), (
+        "the shelf never asks for its counts, so PINCOUNT is a cache nothing fills"
+    )
+
+
+def test_a_kept_line_says_which_version_it_was_kept_in() -> None:
+    """The first kept subject in this product that is not position-independent.
+
+    Identity was taken off file position early and deliberately: an id holding a line number
+    changes whenever anything above it moves, which across Mensores' real commit rate renders
+    a change view as thousands of false deletions. A kept line is exactly the thing that
+    decision refused, and it is worth having anyway -- but only if it says so.
+
+    Stated, never corrected. Nothing in the shell can know where the line went, so moving it
+    would be a guess wearing the uniform of a fact; and said only when the versions differ,
+    because a warning that is always on is furniture.
+    """
+    js = _code(_read("shell.js"))
+    # Written...
+    assert re.search(r'kind:\s*"line",[^}]*rev:\s*servingRevision\(\)', js, re.S), (
+        "a kept line does not record the version it was kept in, so nothing downstream can "
+        "tell a line that moved from a line that did not"
+    )
+    # ...and read. A field written and never read is design rule 16 one level below a control.
+    note = _fn(js, "pinLineNote")
+    assert "subject.rev" in note and "servingRevision()" in note, (
+        "pinLineNote does not compare the kept revision against the one on screen"
+    )
+    assert "return where" in note, (
+        "pinLineNote warns unconditionally -- a caveat printed on every row whether or not "
+        "the versions differ is furniture, and the reader stops reading it"
+    )
+    assert "pinLineNote(" in _fn(js, "viewPins"), (
+        "the shelf does not use pinLineNote, so the revision is recorded and never shown"
+    )
+
+
+def test_every_surface_that_offers_a_thread_offers_a_way_to_keep_it() -> None:
+    """The claim the shelf's own empty state makes, held to the surfaces.
+
+    *"Anywhere you see ◇ Keep this, that thing lands here"* was true and small: every one of
+    the five call sites was an inspector pane, so a curiosity, a thread and a search hit --
+    the three things a reader wanders into -- could each be followed and none could be kept.
+
+    Checked at the surfaces rather than by counting call sites, because the number is not the
+    point: a new panel that offers `data-thread` and no keep button is this defect returning,
+    and it would not change any count this file already asserts.
+    """
+    js = _code(_read("shell.js"))
+    # Either door: `pinBtn` for a subject the shelf already keys, `threadPinBtn` for one that
+    # has to be translated out of the thread vocabulary first. Both end at the same button.
+    for fn_name, what in (("threadsPanel", "a thread"),
+                          ("curiCard", "a curiosity"),
+                          ("searchHitsHtml", "a search hit")):
+        body = _fn(js, fn_name)
+        assert "pinBtn(" in body or "threadPinBtn(" in body, (
+            f"{fn_name} offers no way to keep {what}, so it can be followed and not kept"
+        )
+    # The conventions row mints the same cohort the threads panel does and is the fourth
+    # surface; it lives inside a larger view function, so it is checked by its own markup.
+    assert re.search(r"threadPinBtn\(cv\.subject", js), (
+        "a naming convention can be opened as a cohort and not kept as one"
+    )
+
+
+def test_the_shell_mints_no_subject_of_its_own() -> None:
+    """`threads.py` is the one place that says what a subject is -- including from the client.
+
+    The guard on `THREAD_SUBJECTS` asserts this of `curiosities.py` and cannot see the shell,
+    and the shell had been assembling one since the conventions page was written:
+    `{type: "cohort", kind: "convention", key: cv.glob, label: cv.glob}`, in JavaScript, four
+    fields spelled by hand.
+
+    **It was harmless for exactly as long as the shape was four fields anybody could spell.**
+    Adding `noun` -- what a cohort *is*, so the shelf has something true to print beside a key
+    a week later -- made the hand-built copy silently short of a field, on the one surface
+    where the missing field is the whole row. That is rule 51's shape: a rule kept at a call
+    site rots as callers are added.
+
+    **One client-side mint survives, and it is allowed on measured grounds.** The glossary's
+    1,207 term rows carry only the word and build the cohort inside the route -- writing a
+    JSON subject into a thousand attributes is 581 KB of markup and 1,214 listeners rebuilt on
+    every keystroke of the filter, and the control is required to carry an *identity*, not a
+    payload. So this asserts there is exactly one, that it is that one, and -- the part that
+    makes the exception safe -- that the surface it serves offers no keep button. A
+    client-built cohort is short a `noun`, which costs nothing while nothing keeps it and
+    would be a shelf row that cannot say what it kept the moment something does.
+    """
+    js = _code(_read("shell.js"))
+    mints = re.findall(r'\{\s*type:\s*"cohort",\s*kind:\s*"(\w+)"', js)
+    assert not re.search(r'"type":\s*"cohort"', js), (
+        "the shell constructs a cohort subject in the quoted-key spelling, which the check "
+        "below cannot see"
+    )
+    assert mints == ["term"], (
+        f"the shell constructs cohort subjects of its own: {sorted(mints)}. There is one "
+        "place that decides what a subject looks like, and a second one is invisible to the "
+        "guard that checks every minted kind has a handler, as well as being a second answer "
+        "(rule 51). The glossary's `term` is the one exception and it is on the payload "
+        "argument in its own comment -- anything else takes its subject from the server."
+    )
+    # What makes that exception safe: nothing keeps a glossary term, so nothing ever reads
+    # the `noun` it cannot have. Adding a keep button there must fail here rather than ship a
+    # shelf row that names a word and cannot say it is a word.
+    handler = js.split('closest("[data-term]")', 1)[1].split("});", 1)[0]
+    assert "pinBtn(" not in handler and "PinBtn(" not in handler, (
+        "a glossary term can now be kept, but its subject is built in the client and carries "
+        "no `noun` -- the shelf would name the word and be unable to say what it is. Serve "
+        "the subject from `threads.cohort_subject` instead."
+    )
+
+
+def test_a_pin_subject_travels_whole_and_not_as_fields_somebody_picked() -> None:
+    """One encoding, because there are three shapes now and two of them have extra fields.
+
+    `data-pinkind` + `data-pinid` was a flat pair, and a handler reading only the two fields
+    it knew about would drop a cohort's `key` and a line's `path` -- silently, into a shelf
+    that persists. The choice was a second encoding beside the first or one that carries any
+    shape; `data-thread` had already answered it.
+
+    The roster half of this is `test_every_data_attribute_the_shell_writes_is_in_the_roster`;
+    what that cannot say is that the *old* attributes are gone from both sides. A leftover
+    `pinid` in `WIRED_ATTRS` is a name the self-check would accept for ever.
+    """
+    js = _code(_read("shell.js"))
+    assert "data-pinsubject=" in js, "a keep button carries no subject"
+    assert "pinkind" not in js and "dataset.pinid" not in js, (
+        "the flat pin encoding is still being written or read, so two encodings exist side "
+        "by side and a subject's extra fields are dropped by whichever wins"
+    )
+    roster = _js_set("WIRED_ATTRS")
+    assert "pinsubject" in roster, (
+        "data-pinsubject is not in WIRED_ATTRS, so the self-check reports a dead control on "
+        "every page load -- and a standing false alarm is how a real one goes unread"
+    )
+    assert not {"pinkind", "pinid"} & roster, (
+        "WIRED_ATTRS still lists the flat pin attributes, which nothing writes -- a roster "
+        "entry for a dead name is a check that can never fire"
     )
 
 

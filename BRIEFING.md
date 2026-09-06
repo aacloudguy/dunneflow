@@ -179,10 +179,52 @@ program has a most-commented routine and a maximum alone is a claim nobody can w
 
 ## What we are doing now
 
-**Paused 2026-09-06, between features. Nothing is half-written.** 1,093 tests, mypy clean
-over 113 source files, ruff clean, working tree clean, `check` reports 0 broken on
-`output/mensores`, no servers running. `output/` holds what it held at the start plus
-`mensores/standards.db`, which is this session's own feature and belongs there.
+**"Keep this" is on everything — built 2026-09-06.** 1,100 tests, mypy clean over 113 source
+files, ruff clean, `check` 0 broken on `output/mensores`, no servers running.
+
+A thread, a curiosity, a search hit and a naming convention can each be kept now; before this
+every one of `pinBtn`'s five call sites was an inspector pane, so the four things a reader
+actually wanders into could be *followed* and not *kept*. **Tom chose the shape first: two
+routes, not one reconciled table.**
+
+**What a cohort is** — the question that decided the shape, answered from `threads.py` rather
+than by reasoning: *a set of routines that share a value, named by that value, resolved on
+demand and never shipped.* Its `key` is always a value string — a plan id, a table name, a
+glob, a glossary word — never an id this map minted. That is exactly why the two spaces stay
+apart: a `fold` id belongs to the drawing and is valid only at the altitude it was drawn at, a
+cohort key is something the *program* says and survives re-analysis. And `kind` already means
+different things in the two, so one table would be one word carrying two meanings — rule 47's
+companion, paid for once by `data-nav`.
+
+**A thread whose subject is already a node is kept as a node**, translated into the map space,
+so keeping a routine from a curiosity and from its own pane is one pin rather than two rows
+naming one thing. Verified on screen.
+
+**A kept cohort never prints a remembered count.** `cohort_subject` gained a `noun` that counts
+nothing; the number is asked for when the shelf paints. On screen: *counting…*, then *"a plan
+or decision id · opens 112 routines"* — the same 112 the corpus measurement gives for `AC-4`.
+The count is deliberately **not** reused by the open, because that would be the shelf opening a
+cohort past `THREAD_SUBJECTS`.
+
+**A line is the first kept subject that moves**, so it records the revision it was kept at and
+says the line may have moved — only when the versions differ.
+
+*Found while building it:* the conventions page had been minting a cohort subject in JavaScript
+since it was written, invisible to the guard that refuses exactly that one module over. Harmless
+until `noun` existed; the subject comes from `vocabulary.py` now.
+
+*Two the tests could not have caught.* **`visibility: hidden` is not dimming, it is disabling** —
+a real pointer click landed inside the keep button's own rectangle and hit the row, because a
+hidden element is not hit-tested and is out of the tab order, so `:focus-within` can never
+rescue it. And a label centred in the middle of its own row, which then exposed
+`.pinrow .linkbtn { margin-left: auto }` matching the label as well as *Drop* (rule 71).
+
+*Not seen:* the search hit row's **column alignment** — its structure and subject were read from
+the DOM, the columns were not looked at, and the renderer wedged twice before the retry limit.
+Said rather than claimed.
+
+**Before that, paused 2026-09-06 between features.** `output/` holds what it held at the start
+plus `mensores/standards.db`, which is that session's own feature and belongs there.
 
 **Six commits, and the thread running through five of them is one idea Tom stated once:**
 *"We're a rabbit-chasing application — it should work. If a panel lists 7 things, clicking
@@ -204,10 +246,14 @@ tool confidently wrong. The worklist's jump buttons were *"blocked on precision,
 effort"*, when every detector already had the ids in hand and was throwing them away. In
 both cases the record was written from reasoning and the correction came from measuring.
 
-**What is open**, unchanged by this session: *"keep this" on everything* (a curiosity, a
-thread and a search hit still cannot be kept), the three filed defects (a change row files
-two trail steps, `holds` missing from `insp`'s defaults, `navIds` splitting on a space),
-`m.<module>` as a language feature, and per-plate sphere scaling with stack orientation.
+**What is open** after that session: *"keep this" on everything* — **closed 2026-09-06, see the
+top of this file** — the three filed defects (a change row files two trail steps, `holds`
+missing from `insp`'s defaults, `navIds` splitting on a space), `m.<module>` as a language
+feature, and per-plate sphere scaling with stack orientation.
+
+*The two-trail-steps defect is now measured rather than filed from one surface.* Opening a kept
+cohort files the subject **and** one arbitrary member of it; the untouched `[data-thread]` path
+does the same, so it belongs to the selection path and not to any one lane, exactly as recorded.
 
 **Two mistakes worth carrying forward.**
 
@@ -224,9 +270,11 @@ a running server and then driving `state` by hand. On a clean boot it is correct
 before reporting, and it dissolved.
 
 The counts are unchanged: **81 engineering rules numbered to 82** — 21 still does not exist
-— and **28 design rules**. Nothing was minted; one candidate from this morning is still open,
-*an instrument's two coordinate systems can differ, and the one you can see is not the one
-you touch.*
+— and **28 design rules**. Nothing was minted; **two candidates are open** for Tom to mint or
+refuse: *an instrument's two coordinate systems can differ, and the one you can see is not the
+one you touch*, and *a hidden control is not a dimmed one* — `visibility: hidden` and
+`display: none` take an element out of hit-testing **and** the tab order, so a rule revealing
+it on `:hover` or `:focus-within` can never be reached by the route that would rescue it.
 
 ### Before the pause: a plate is a subject (2026-09-05)
 
@@ -1625,9 +1673,15 @@ feature was blocked on an answer nobody owed.
   kinds and the node kind is verified; the other two need a compartment drawn. The kind and
   the route are guarded against each other at the source, in both directions, which is why
   that guard exists rather than a click — but it is a shape check and not a look.
-- **Every surface that offers "keep this" is an inspector pane.** A curiosity, a thread and
-  a search hit are all things a reader would want on the shelf and none of them can be kept.
-  Not a defect, and the obvious next question now that a pin carries a subject.
+- ~~**Every surface that offers "keep this" is an inspector pane.**~~ *Built 2026-09-06 — see
+  the top of this file. Four surfaces gained it, not three: the naming convention row mints the
+  same cohort a thread does. **Two routes, Tom's call**, because `PIN_ROUTES` is keyed on `kind`
+  ∈ {node, fold, flow, plate, line} and `THREAD_SUBJECTS` on `type` ∈ {node, cohort} — one word
+  meaning two things in one table is rule 47's companion. A thread's node subject is translated
+  into the map space so the two doors mint one pin; a cohort's note is a `noun` that counts
+  nothing and its size is asked for live; a kept **line** records the revision it was kept at.
+  The search hit was in the plan on evidence: `goToCode(path, line)` already existed, which is
+  the third item in two days recorded as blocked and found not to be.*
 - **`holds` is not in `insp`'s defaults**, so the fold pane's section starts closed whatever
   it wanted and "Collapse all" cannot see it until someone has opened it once. Found
   2026-09-02 while adding two sections beside it; not fixed, because its default is a

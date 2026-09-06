@@ -40,6 +40,7 @@ from ..resolve.conformance import (
 )
 from ..resolve.stated import checkable_sentence, stated_rules
 from ..store import Store
+from . import threads
 
 
 def measure_naming(store: Store) -> dict[str, Any]:
@@ -65,6 +66,20 @@ def measure_naming(store: Store) -> dict[str, Any]:
                 # is in it. Empty for a case convention, which is a property of every name
                 # in its population rather than a subset of it -- a real absence.
                 "glob": c.glob,
+                # The same glob as a **subject**, minted here rather than in the page that
+                # draws it. The convention row's *"Show all N in the graph"* button had
+                # assembled `{"type": "cohort", "kind": "convention", ...}` in JavaScript
+                # since it was written -- a second place deciding what a subject is, which
+                # is exactly what the guard on `curiosities.py` refuses one module over and
+                # could not see here. It went unnoticed while a subject was three fields
+                # anybody could spell; it stopped being harmless when `noun` was added and
+                # the hand-built copy silently lacked it.
+                #
+                # `None` for a case convention, which has no glob and therefore no
+                # population to open (design rule 1: the absence is the answer, not a
+                # subject naming everything).
+                "subject": (threads.cohort_subject("convention", c.glob, c.glob)
+                            if c.glob else None),
                 "sql": c.sql,
                 "note": c.note,
                 # **The exceptions are the product.** The three non-exception `*Error`

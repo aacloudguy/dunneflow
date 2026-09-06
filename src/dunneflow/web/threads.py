@@ -78,6 +78,27 @@ def node_subject(node_id: str) -> dict[str, Any]:
     return {"type": "node", "id": node_id}
 
 
+# What a cohort *is*, in words that carry no number.
+#
+# The shelf keeps a cohort by its key -- `AC-4`, `audit_events` -- and a key alone tells a
+# reader nothing a week later. The obvious thing to put beside it is the thread's own `why`,
+# and that is exactly what must not be stored: *"9 other routines carry this plan"* was true
+# when it was kept and is a claim about now (rules 13 and 32). So the subject carries a noun
+# instead, which cannot go stale because it counts nothing.
+#
+# Here rather than in the shell for the reason the subject itself is minted here: there is one
+# place that says what a cohort is, and a second table of words over there would be a second
+# answer to the same question (rule 51). `test_every_cohort_kind_minted_has_a_query_to_resolve_it`
+# holds this to `cohort()`'s query table, both directions.
+COHORT_NOUN = {
+    "governance": "a plan or decision id",
+    "table": "a database table",
+    "net": "a network destination",
+    "convention": "a naming convention",
+    "term": "a word this program defines",
+}
+
+
 def cohort_subject(kind: str, key: str, label: str) -> dict[str, Any]:
     """A set of routines that share something. Resolved on demand, never shipped.
 
@@ -85,8 +106,14 @@ def cohort_subject(kind: str, key: str, label: str) -> dict[str, Any]:
     would put three hundred ids in a payload built for a panel showing four rows, and
     the reader who never clicks it pays for all of them. `/api/thread` answers the one
     they do click, which is the same bargain the hover card makes.
+
+    `noun` says what the cohort is without saying how big it is, so a surface that outlives
+    the moment -- the shelf -- has something true to print beside the key. An unknown kind
+    gets `""` rather than a plausible word: a guess here would read as a fact about the
+    program, and the guard above keeps the table complete anyway.
     """
-    return {"type": "cohort", "kind": kind, "key": key, "label": label}
+    return {"type": "cohort", "kind": kind, "key": key, "label": label,
+            "noun": COHORT_NOUN.get(kind, "")}
 
 
 # --------------------------------------------------------------------------- #

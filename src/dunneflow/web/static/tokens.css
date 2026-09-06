@@ -2359,12 +2359,52 @@ kbd { font-family: var(--f-mono); font-size: .66rem; background: var(--sunken);
 .pinrow { display: flex; align-items: center; gap: .5rem; background: var(--surface);
   border: 1px solid var(--border); border-radius: .375rem; padding: .4rem .6rem; }
 .pin-mark { color: var(--accent); }
-.pin-body { display: flex; flex-direction: column; min-width: 0; }
+/* `align-items: flex-start`, and it was found by looking rather than by measuring.
+ *
+ * A column flex box stretches its children, and `.pin-open` is a `<button>` -- which centres
+ * its own text. While every kept thing was a routine the label filled the row and nothing
+ * showed. A cohort's label is its key, and `AC-4` is four characters: the name floated in the
+ * middle of the row above a note left-aligned under it, reading as two unrelated things.
+ * Nothing was wrong with the markup, the data or the handler, which is why no guard here
+ * could have said so. */
+.pin-body { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; }
 .pin-label { font-size: .78rem; }
 .pin-note { font-size: .7rem; color: var(--text-muted); }
-.pinrow .linkbtn { margin-left: auto; }
+/* **The direct child only, and that `>` is load-bearing.** This rule exists to push *Drop* to
+ * the far end of the row. Written as a descendant selector it also matched the label, which is
+ * `class="linkbtn pin-open"` -- and while `.pin-body` stretched its children the label was full
+ * width, so `margin-left: auto` had nothing to push against and the defect was invisible.
+ * Giving the label its natural width is what revealed it: `AC-4` sat against the right edge of
+ * its own column, above a note starting at the left. Rule 71 in a stylesheet -- a class name is
+ * global, and nothing warns you. */
+.pinrow > .linkbtn { margin-left: auto; }
 
 .threads .threadintro { font-size: .7rem; color: var(--text-faint); margin: 0 0 .3rem; }
+/* The row holds two acts and is therefore not one of them.
+ *
+ * `.thread` was the row until a thread could be kept, and a `<button>` cannot contain a
+ * `<button>`. Design rule 27 wanted this anyway: a whole-row follow target with a keep
+ * control buried inside it is a container whose affordance wins on area and drowns out the
+ * one thing beside it. The follow button keeps the width (`flex: 1`) because it is still
+ * what the row is mostly for; the keep button takes only what it needs.
+ *
+ * The keep button is **quiet until the row is under the pointer**, and full strength once it
+ * is kept, so a row that has been kept says so at rest. It never leaves the layout, because
+ * a control that appears on hover and takes width with it makes the name beside it reflow
+ * under the pointer.
+ *
+ * **`opacity`, and the first draft was `visibility: hidden`.** That was found by clicking:
+ * the pointer landed inside the button's own rectangle and the event target was the row,
+ * because a hidden element is not hit-tested -- so the control worked only for a pointer
+ * that had hovered first, and not at all for the keyboard, since `visibility: hidden` also
+ * takes it out of the tab order and `:focus-within` can then never fire to bring it back.
+ * Dimming says *not current*; it must never say *disabled*. */
+.threadrow { display: flex; align-items: center; gap: .25rem; }
+.threadrow .thread { flex: 1; min-width: 0; }
+.threadrow .pinbtn { opacity: .3; flex: none; transition: opacity .1s; }
+.threadrow:hover .pinbtn,
+.threadrow .pinbtn:focus-visible,
+.threadrow .pinbtn.on { opacity: 1; }
 .thread { display: flex; gap: .45rem; width: 100%; text-align: left; font: inherit;
   background: none; border: 0; border-radius: .25rem; padding: .25rem .3rem; cursor: pointer;
   color: var(--text); align-items: baseline; }
@@ -3083,11 +3123,23 @@ kbd { font-family: var(--f-mono); font-size: .66rem; background: var(--sunken);
  * horizontal twin and refuses to shrink below its content, which would hand a long line's
  * overflow to the pane instead of to the cell that declares it. */
 .srch-hits { padding: 0 0 .3rem 1.5rem; }
+/* Five columns and five children, always. The marks span is emitted even when a line has
+ * none (see `searchHitsHtml`), because a grid places children in document order: an
+ * optional child moves every column after it, and the number, the routine and the keep
+ * button would each sit in two places depending on whether a line happened to be marked. */
 .srch-hit {
-  display: grid; grid-template-columns: 3.2rem minmax(0, 1fr) auto;
+  display: grid; grid-template-columns: 3.2rem minmax(0, 1fr) auto auto auto;
   align-items: baseline; gap: .3rem; padding: .05rem .5rem .05rem 0;
 }
 .srch-hit:hover { background: var(--raised); }
+/* Kept from a hit, quiet at rest like the thread row's and for the same two reasons -- 782
+   lines matched a single word in this corpus, and a keep button shouting on every one of
+   them is furniture; and `opacity` rather than `visibility`, because a hidden control is not
+   hit-tested and not tabbable, which makes dimming mean disabled. */
+.srch-hit .pinbtn { opacity: .3; transition: opacity .1s; }
+.srch-hit:hover .pinbtn,
+.srch-hit .pinbtn:focus-visible,
+.srch-hit .pinbtn.on { opacity: 1; }
 .srch-n {
   font: inherit; font-family: var(--f-mono); font-size: .62rem; text-align: right;
   background: none; border: 0; padding: 0; cursor: pointer; color: var(--text-faint);

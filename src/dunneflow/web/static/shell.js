@@ -7466,9 +7466,47 @@ function trailBar() {
  *
  * **Keyed on the subject where there is one.** `some(p => p.label === label)` collided two
  * different things that print the same name, which on this corpus is 531 routines sharing
- * a module word and every `__init__` in the program. */
+ * a module word and every `__init__` in the program.
+ *
+ * \u2500\u2500 and then there were two id spaces \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+ *
+ * A thread, a curiosity and a search hit can be kept now, and that brought a **second kind
+ * of subject** rather than three more kinds of the first. The two are told apart by `type`,
+ * which a thread subject carries and a map subject does not:
+ *
+ *   **map** \u2014 `{kind, \u2026}` \u2014 `node`, `fold`, `flow`, `plate`, `line`. An id *this analysis
+ *   produced*. A fold id is the drawing's own and is valid only at the altitude it was
+ *   drawn at; that limitation is stated on `PIN_ROUTES.plate` and is the shape of the whole
+ *   space.
+ *
+ *   **cohort** \u2014 `{type: "cohort", kind, key, label, noun}` \u2014 a value the *program states*.
+ *   `AC-4`, `audit_events`, `*_cmd` survive re-analysis and mean the same thing at both ends
+ *   of a revision pair, because nothing in this map minted them.
+ *
+ * **They are not reconciled onto one table, and that is a decision rather than a shortcut.**
+ * `kind` already means different things in the two -- `node` in one, `governance` in the
+ * other -- so one table would be one word carrying two meanings. This codebase has paid for
+ * that once: `data-nav` was both a grid-track state and a route, and it went unnoticed for
+ * as long as the click handler happened to select on a class instead (rule 47's companion).
+ *
+ * **A thread whose subject is already a node is kept as a node**, in the map space. It *is*
+ * one, and routing it through the cohort door would be a second answer to a question the
+ * shelf already had -- keeping `foo` from a thread row would then leave `foo`'s own pane
+ * saying "Keep this" over a thing already kept.
+ *
+ * **One encoding, and it is JSON.** `data-pinkind`/`data-pinid` was a flat pair that cannot
+ * carry a cohort's four fields or a line's three. Rather than a second encoding beside the
+ * first -- the hazard, not the fix -- the subject travels whole in `data-pinsubject`, which
+ * is what `data-thread` has always done for exactly this. The *stored* shape is unchanged,
+ * so no settings version moves and no shelf is emptied. */
 function pinKey(subject, label) {
-  return subject && subject.id ? `${subject.kind}:${subject.id}` : `label:${label}`;
+  if (!subject) return `label:${label}`;
+  /* Three shapes, three keys, and none of them borrows another's. A cohort has no `id` at
+     all, so the old expression fell straight through to the label -- which is the collision
+     this function exists to refuse, arriving from a new direction. */
+  if (subject.type === "cohort") return `cohort:${subject.kind}:${subject.key}`;
+  if (subject.kind === "line") return `line:${subject.path}#${subject.line}`;
+  return subject.id ? `${subject.kind}:${subject.id}` : `label:${label}`;
 }
 
 function pinBtn(subject, label, note) {
@@ -7476,9 +7514,34 @@ function pinBtn(subject, label, note) {
   const on = state.pins.some(p => pinKey(p.subject, p.label) === key);
   return `<button class="pinbtn ${on ? "on" : ""}" data-pin="${esc(label)}"
     data-pinnote="${esc(note || "")}"
-    data-pinkind="${esc((subject && subject.kind) || "")}"
-    data-pinid="${esc((subject && subject.id) || "")}"
+    data-pinsubject="${esc(subject ? JSON.stringify(subject) : "")}"
     title="${on ? "Kept \u2014 click to drop" : "Keep this to come back to"}">${on ? "\u25c6 Kept" : "\u25c7 Keep this"}</button>`;
+}
+
+/* The keep button for a thread's subject. One function, four surfaces, and both of its jobs
+   are decisions rather than plumbing.
+ *
+ * **A thread node becomes a map node**, and this is the half that cannot be skipped. A thread
+ * subject is `{type: "node", id}` and a map subject is `{kind: "node", id}` -- the same thing
+ * in two vocabularies, and keeping the first *as written* keys it `undefined:<id>`: a pin
+ * that opens nothing, and one that the routine's own pane would not recognise as kept. The
+ * two doors have to mint one pin or the shelf holds the same routine twice under two names.
+ *
+ * **The note is the noun, never the `why`.** A thread row prints "9 other routines carry this
+ * plan", which is the obvious thing to hand the shelf and the one thing that must not be
+ * stored: a count, true when it was kept and a claim about now (rules 13 and 32). The noun
+ * `threads.py` sends beside the subject counts nothing, so it cannot go stale. A node needs
+ * no note at all -- its label is its name, and the shelf resolves nothing to show it. */
+function threadPinBtn(subject, label) {
+  if (!subject) return "";
+  if (subject.type === "cohort") return pinBtn(subject, label, subject.noun || "");
+  if (subject.type === "node") return pinBtn({ kind: "node", id: subject.id }, label, "");
+  /* A kind minted server-side that this function has not been taught is a button that would
+     key on nothing and open nothing. Say so rather than drawing it (design rule 16); the
+     guard on `THREAD_SUBJECTS` keeps the two lists in step, and this is what it looks like
+     from the shelf's side if it ever does not. */
+  console.error("DunneFlow: a thread subject the shelf cannot keep", subject);
+  return "";
 }
 
 /* ═══ curiosities: the reason to start wandering ═══ */
@@ -7748,6 +7811,11 @@ function curiCard(c, i) {
           <span class="citeicon" aria-hidden="true">◈</span>Follow this<span class="citego">go</span></button>
         <button class="cite" data-sqlshow="${key}">
           <span class="citeicon" aria-hidden="true">⌗</span>How this was measured<span class="citego">show the query</span></button>
+        ${/* A doorway you can come back to. Eight of the ten families mint a node subject
+              and two mint a cohort, so most of this row keeps an ordinary node -- and keeps
+              it under the *same* key the routine's own pane would, which is what makes the
+              two doors one pin rather than two rows naming one thing. */""}
+        ${threadPinBtn(c.subject, c.what)}
       </span>
       ${state.showSql === key ? `<pre class="srcblock sqlblock">${esc(c.sql)}</pre>
         <span class="provfoot">Run it yourself:
@@ -7762,7 +7830,88 @@ function curiCard(c, i) {
 
 
 /* ═══ kept things ═══ */
+
+/* How many routines a kept cohort stands for **now**, keyed by `pinKey`.
+ *
+ * `undefined` not asked · `"asking"` in flight · `null` asked and could not find out · a
+ * number answered. The same three-state contract `THREADS` keeps, plus the in-flight marker
+ * that a list refreshed on every paint needs and a per-node cache does not.
+ *
+ * **This exists because the obvious thing is a lie.** A cohort row could print the `why` the
+ * thread panel printed -- *"9 other routines carry this plan"* -- and it would be free, and
+ * it would be a count frozen at the moment it was kept. `AC-4` is 112 routines in this corpus
+ * today; a shelf is read a week later, and rules 13 and 32 both say a number on screen is a
+ * claim about the query that would return it now. So the row asks.
+ *
+ * Nothing clears it, and nothing needs to: a program switch and a version switch both reload
+ * the page (see `pollBase`), which is the same reason `THREADS` has no invalidation either. */
+const PINCOUNT = {};
+
+/* Ask for every kept cohort that has not answered. Bounded by the shelf, which is the
+   reader's own list and a handful of rows -- not by anything this function decides, so there
+   is no cut to state (design rule 1 does not arise). */
+async function ensurePinCounts() {
+  const want = state.pins
+    .filter(p => p.subject && p.subject.type === "cohort")
+    .filter(p => PINCOUNT[pinKey(p.subject, p.label)] === undefined);
+  if (!want.length) return;
+  for (const p of want) PINCOUNT[pinKey(p.subject, p.label)] = "asking";
+  await Promise.all(want.map(async (p) => {
+    const key = pinKey(p.subject, p.label);
+    const s = p.subject;
+    try {
+      const r = await fetch(`/api/thread?kind=${encodeURIComponent(s.kind)}` +
+                            `&key=${encodeURIComponent(s.key)}`);
+      if (!r.ok) throw new Error(`the server answered ${r.status}`);
+      const d = await r.json();
+      /* `found: false` is the server refusing a kind it has no query for; an empty list is a
+         real answer -- a governance id can be cited in documentation and carried by no code
+         at all. "We could not find out" and "none" are opposite claims, and the row says
+         something different for each (design rule 21). */
+      PINCOUNT[key] = d.found ? (d.nodes || []).length : null;
+    } catch {
+      PINCOUNT[key] = null;
+    }
+  }));
+  if (state.view === "pins") render();
+}
+
+/* What a kept cohort's row says under its name: what it is, and how big it is now. */
+function pinCohortNote(p) {
+  const n = PINCOUNT[pinKey(p.subject, p.label)];
+  const what = p.note || p.subject.noun || "";
+  let size;
+  if (n === undefined || n === "asking") size = "counting…";
+  else if (n === null) size = "could not count it — pressing this still opens it";
+  else if (n === 0) size = "no code in this map carries it";
+  else size = `opens ${n.toLocaleString()} routine${n === 1 ? "" : "s"}`;
+  return what ? `${what} · ${size}` : size;
+}
+
+/* A line is the one kept subject that moves.
+ *
+ * Every other one is position-independent by construction -- identity was taken off file
+ * position early and deliberately, because a single added import would otherwise retire every
+ * routine below it. A path and a line number is exactly what that decision refused, so a kept
+ * line is only true of the version it was kept in.
+ *
+ * Stated, never corrected: nothing here can know where the line went, and moving it would be
+ * a guess wearing the uniform of a fact. Said **only when the versions differ**, because a
+ * warning that is always on is furniture rather than information.
+ *
+ * Plain text, escaped once by its caller -- like `pinCohortNote` beside it. A helper that
+ * escapes half of what it returns and leaves the rest is how the next line added to it goes
+ * out raw. */
+function pinLineNote(p) {
+  const kept = p.subject.rev || "";
+  const where = p.note || "";
+  if (!kept || kept === servingRevision()) return where;
+  return `${where}${where ? " · " : ""}kept at ${kept}, so this version may have `
+       + `moved line ${p.subject.line}`;
+}
+
 function viewPins() {
+  ensurePinCounts();
   return `
   <div style="max-width:48rem;display:flex;flex-direction:column;gap:.6rem">
     <div class="note">
@@ -7774,20 +7923,33 @@ function viewPins() {
       /* **The label is the way back in**, which is the whole point of the shelf and was
          the one thing it could not do. A pin with no subject -- kept before subjects
          existed -- stays plain text and says so, because a control that looks live and
-         resolves to nothing is worse than one that plainly is not there. */
+         resolves to nothing is worse than one that plainly is not there.
+
+         **`sub` alone, not `sub.id`.** That test was right while every subject was an id and
+         is wrong now: a cohort has no `id` at all, so the two most interesting things a
+         reader can keep would each have rendered as the legacy row telling them it was kept
+         before this could record what it was. The honest question is whether there is a
+         subject, which is how `pinKey` and the open handler both already ask it. */
       const sub = p.subject;
-      const body = sub && sub.id
+      const body = sub
         ? `<button class="linkbtn pin-open" data-pinopen="${i}"
              title="Go back to this">${esc(p.label)}</button>`
         : `<span class="pin-label mono">${esc(p.label)}</span>
            <span class="pin-note">kept before this could record what it was, so there is
              nothing to open — keep it again from its own pane</span>`;
+      /* Three notes, and which one a row gets is decided by what it kept rather than by
+         whatever happens to be in `p.note`. A cohort's is recomputed on every paint because
+         half of it is a live count; a line's is conditional on the version on screen;
+         everything else prints what was stored beside it. */
+      let note = p.note ? esc(p.note) : "";
+      if (sub && sub.type === "cohort") note = esc(pinCohortNote(p));
+      else if (sub && sub.kind === "line") note = esc(pinLineNote(p));
       return `
       <div class="pinrow">
         <span class="pin-mark" aria-hidden="true">\u25c6</span>
         <span class="pin-body">
           ${body}
-          ${p.note ? `<span class="pin-note">${esc(p.note)}</span>` : ""}
+          ${note ? `<span class="pin-note">${note}</span>` : ""}
         </span>
         <button class="linkbtn" data-unpin="${i}">Drop</button>
       </div>`; }).join("")
@@ -7855,14 +8017,26 @@ function threadsPanel(nodeId) {
       <div class="threadgroup ${esc(kind)}">
         <div class="threadgroup-head">${esc(THREAD_KIND_TITLE[kind])}
           <span class="n">${rows.length}</span></div>
+        ${/* **The row was the button, and it cannot stay one.** A keep button is a
+              `<button>`, and a button inside a button is markup no browser has to honour --
+              so the row is a container now with the two acts as siblings.
+
+              That is also what design rule 27 asks for: a container's affordance drowns out
+              the affordances inside it because it wins on area, and a whole-row follow
+              target with a second control buried in it is the shape that rule was minted
+              from. `data-thread` moves with the follow button, so the one handler that
+              routes every thread in the app is untouched. */""}
         ${shown.map(t => `
-          <button class="thread" data-thread="${esc(JSON.stringify(t.subject))}"
-                  data-threadwhy="${esc(t.why)}" data-threadlabel="${esc(t.label)}">
-            <span class="thread-body">
-              <span class="thread-to mono">${esc(t.label)}</span>
-              <span class="thread-why">${esc(t.why)}</span>
-            </span>
-          </button>`).join("")}
+          <div class="threadrow">
+            <button class="thread" data-thread="${esc(JSON.stringify(t.subject))}"
+                    data-threadwhy="${esc(t.why)}" data-threadlabel="${esc(t.label)}">
+              <span class="thread-body">
+                <span class="thread-to mono">${esc(t.label)}</span>
+                <span class="thread-why">${esc(t.why)}</span>
+              </span>
+            </button>
+            ${threadPinBtn(t.subject, t.label)}
+          </div>`).join("")}
         ${rows.length > shown.length
           ? `<div class="hint">Showing ${shown.length} of ${rows.length}, rarest first.</div>`
           : ""}
@@ -8809,11 +8983,18 @@ function conventionPanel(cv, i) {
         <span class="ln">note</span> ${esc(cv.note)}
       </div>` : ""}
 
-      ${cv.glob ? `
+      ${/* **The subject is the server's**, and it used to be built right here. A cohort
+            assembled in the page is a second answer to what a subject is -- the thing the
+            guard on `curiosities.py` refuses one module over and cannot see from there --
+            and it was harmless only for as long as the shape was three fields anybody could
+            spell. `noun` made it stop being harmless: the hand-built copy would have kept a
+            convention on the shelf with nothing to say about what it was. */""}
+      ${cv.subject ? `
       <div class="prov">
-        <button class="cite" data-thread="${esc(JSON.stringify({ type: "cohort", kind: "convention", key: cv.glob, label: cv.glob }))}"
+        <button class="cite" data-thread="${esc(JSON.stringify(cv.subject))}"
                 data-threadlabel="${esc(cv.glob)}" data-threadwhy="${esc(cv.claim)}">
           <span class="citeicon" aria-hidden="true">◈</span>Show all ${cv.total.toLocaleString()} in the graph<span class="citego">go</span></button>
+        ${threadPinBtn(cv.subject, cv.glob)}
       </div>` : ""}
 
       ${cv.sql ? `
@@ -11716,8 +11897,23 @@ function wire() {
     /* The subject is read off the control, never rebuilt from the label. A pin kept before
        subjects existed has none, and that is carried honestly rather than guessed at --
        the shelf says such a row cannot be opened instead of routing it somewhere plausible
-       (rule 30, and design rule 16's better half). */
-    const subject = b.dataset.pinid ? { kind: b.dataset.pinkind, id: b.dataset.pinid } : null;
+       (rule 30, and design rule 16's better half).
+
+       **Parsed, not reassembled.** It arrives whole because there are two id spaces with
+       different fields now, and a handler that picked the fields it knew about would drop a
+       cohort's `key` and a line's `line` -- silently, and into a shelf that persists. A
+       subject that will not parse is refused for the same reason the thread click refuses
+       one: a button that keeps something unopenable is worse than a button that says why. */
+    let subject = null;
+    if (b.dataset.pinsubject) {
+      try {
+        subject = JSON.parse(b.dataset.pinsubject);
+      } catch (err) {
+        console.error("[dunneflow] a keep button carries no subject:",
+                      b.dataset.pinsubject, err);
+        return;
+      }
+    }
     const key = pinKey(subject, label);
     const at = state.pins.findIndex(x => pinKey(x.subject, x.label) === key);
     if (at >= 0) state.pins.splice(at, 1);
@@ -11733,7 +11929,7 @@ function wire() {
      dead, and here the row carried neither, so the shelf could drop a thing and never open
      it.
 
-     Three kinds, three routes, because they are three id spaces. A **node** is what
+     Five kinds, five routes, because they are five id spaces. A **node** is what
      `/api/node` answers about. A **fold** is a box, whose id is the drawing's own. A
      **flow** is an arrow, and it needs the compartment it was drawn in — `selectFlow` reads
      `diagramNow` for the members at each end, so a flow kept in one compartment and opened
@@ -11741,11 +11937,16 @@ function wire() {
      inspector opens on the arrow itself, which is the thing that was kept.
 
      Routed from a table rather than a chain of ifs, so a kind nobody wired logs an error
-     instead of falling through to a default that looks deliberate (design rule 16). */
+     instead of falling through to a default that looks deliberate (design rule 16).
+
+     **Every handler takes the whole subject**, which it did not have to while every subject
+     was one id. `line` carries two fields, and the alternative was an id with the line
+     number packed into it -- a key that has to be parsed to be used, which is the thing
+     rule 60 says a stored path must never become. */
   const PIN_ROUTES = {
-    node: (id) => selectFromNav({ nodes: [id] }),
-    fold: (id) => selectFold(id),
-    flow: (id) => selectFlow(id),
+    node: (s) => selectFromNav({ nodes: [s.id] }),
+    fold: (s) => selectFold(s.id),
+    flow: (s) => selectFlow(s.id),
     /* **plate** goes through the route a package row goes through, so a kept plate opens
        exactly as a clicked one does -- the stack lights it, the list marks what it holds,
        the inspector answers about it. `selectFromNav` fills the members after the graph is
@@ -11755,17 +11956,52 @@ function wire() {
        `flow` note above describes one line up: the id may name a plate that has since been
        merged into `<small>`, and `/api/plate` answers *"no such plate at this level"*
        rather than inventing one (design rule 21). */
-    plate: (id) => selectFromNav({ disks: [id], plate: id }),
+    plate: (s) => selectFromNav({ disks: [s.id], plate: s.id }),
+    /* **line** is the code browser's own address, and `goToCode` is the route the search
+       hit already presses -- it sets the mode, opens or reveals, files a trail step and
+       persists. Reaching for `openCodeFile` here instead would open the pane and leave the
+       centre where it was, which is the defect `chgfile` was minted to fix.
+
+       It is also the **first pin subject that is not position-independent**. Every other one
+       survives an edit above it by construction, because identity was taken off file
+       position early and deliberately. A line does not, so the pin records the revision it
+       was kept at and the row says so when that is not the version on screen -- see
+       `viewPins`. Nothing is corrected, because nothing here can know where the line went. */
+    line: (s) => goToCode(s.path, s.line, "a kept line"),
   };
   $$("[data-pinopen]").forEach(b => b.addEventListener("click", () => {
     const pin = state.pins[parseInt(b.dataset.pinopen, 10)];
     const sub = pin && pin.subject;
-    const route = sub && PIN_ROUTES[sub.kind];
+    if (!sub) {
+      console.error("DunneFlow: a kept item with no subject", pin);
+      return;
+    }
+    /* **Two id spaces, and the shelf asks which before it asks which route.** A thread
+       subject carries `type`; a map subject does not, and that is the whole test.
+
+       The cohort half goes through `followThread` rather than resolving here, and the
+       temptation not to is real: `ensurePinCounts` has *already fetched* this cohort's nodes
+       to print the count on the row, so opening from that answer would save a request. It
+       would also be the shelf opening a cohort past `THREAD_SUBJECTS` -- a second route to a
+       thing that has one, which is the defect this whole feature is built to refuse. Two
+       reads of a cheap endpoint (the largest cohort in this corpus is 112 routines and
+       resolves in well under the round trip) is the right price for one route.
+
+       The trail step is filed here, before the route runs, exactly as the `[data-thread]`
+       click files one -- so a cohort opened from the shelf and one followed from a panel
+       leave the same mark, and the way back is the same (rule 33). */
+    if (sub.type) {
+      pushTrail(state.view, pin.label || sub.label || "kept", pin.note || "");
+      followThread(sub);
+      used("pin:open:" + sub.type + ":" + (sub.kind || ""));
+      return;
+    }
+    const route = PIN_ROUTES[sub.kind];
     if (!route) {
       console.error("DunneFlow: a kept item with no route for its kind", sub, pin);
       return;
     }
-    route(sub.id);
+    route(sub);
     used("pin:open:" + sub.kind);
   }));
 
@@ -12123,7 +12359,7 @@ const WIRED_ATTRS = new Set([
      field an `input` event is about and routes no click -- the roster is every attribute
      the shell writes, because the self-check reads the DOM and cannot tell a carried one
      from a dead one. `anopen` carries the program name on the button that opens what was
-     just read, the way `pinid` carries a subject beside `pinopen`. */
+     just read, the way `pinsubject` carries a subject beside `pinopen`. */
   "closeanalyze", "anstart", "anfield", "andismiss", "anopen",
   /* A way in: `ep` opens one from the cover, `epname` is the identity riding on the
      navigator row beside the routines it starts. Two attributes because a row that opens
@@ -12142,15 +12378,21 @@ const WIRED_ATTRS = new Set([
      attributes the shell writes, not only of the ones that are clicked. */
   "searchopen", "searchgo", "searchline", "searchflag",
   /* `pinopen` is a control -- the shelf's way back to what was kept, which is the thing
-     the shelf existed without for as long as it existed. `pinkind` and `pinid` beside
-     `pinnote` are parameters: the subject, read off the button the click already
-     found. Kept as two fields rather than one packed string because a kind and an id
-     are two questions, and `bnd:` already shows what packing them costs. */
+     the shelf existed without for as long as it existed. `pinsubject` beside `pinnote` is a
+     parameter: the subject, read off the button the click already found.
+
+     **It was `pinkind` + `pinid`, and one flat pair stopped being enough.** A pin can now
+     carry a cohort (`kind`, `key`, `label`, `noun`) or a line (`path`, `line`, `rev`), and a
+     handler reading only the two fields it knew about would drop the rest silently into a
+     shelf that persists. The choice was a second encoding beside the first or one that
+     carries any shape; `data-thread` had already answered it. Not the packing `bnd:` warns
+     against -- that is two questions crushed into one string, this is a whole object in a
+     format with a parser. */
   /* `plate` is the third id space a `.gotonode` button can carry, beside `node` and `box`.
      Its own attribute rather than a packed prefix on `node`, for the reason `bnd:` already
      shows: an identifier that means two things resolves plausibly and silently to the
      wrong thing. */
-  "navid", "navtrack", "node", "open", "pane", "pin", "pinnote", "pinkind", "pinid",
+  "navid", "navtrack", "node", "open", "pane", "pin", "pinnote", "pinsubject",
   "pinopen", "pkgnode", "pkgpick", "plate", "qual",
   "resize", "row",
   /* `palette-set`, beside `theme-set` and for the same reason: `data-palette` and
@@ -13675,9 +13917,15 @@ function searchHitsHtml(row) {
       <button class="srch-n" data-searchgo="${esc(row.path)}" data-searchline="${h.line}"
               data-titled="1" title="Open ${esc(row.path)} at line ${h.line}">${h.line}</button>
       <code class="srch-code">${codeLineHtml(h.text, h.links, h.at)}</code>
-      ${h.marks && h.marks.length ? `<span class="srch-marks">${h.marks.map(m => `
+      ${/* **Always emitted, empty or not**, and that is a grid decision rather than a
+             stylistic one. `.srch-hit` is a grid, so children land in columns in document
+             order; a span that disappears when a line has no marks moves everything after it
+             one column left, and with a fifth child on the row now the line numbers and the
+             keep buttons would each sit in two different columns depending on whether the
+             line happened to be marked. An empty flex span with a gap draws nothing. */""}
+      <span class="srch-marks">${(h.marks || []).map(m => `
         <span class="codemark" data-titled="1"
-              title="${esc(markTitle(m))}">${MARK_GLYPH[m.kind] || "·"}</span>`).join("")}</span>` : ""}
+              title="${esc(markTitle(m))}">${MARK_GLYPH[m.kind] || "·"}</span>`).join("")}</span>
       ${/* The word "in" is a `::before`, not text. `dressNavItems` gathers a row's text
              nodes into its label and the trail then records that label, so spelling it here
              filed every step as "in timestamp_cmd" -- a sentence where the trail wants the
@@ -13686,6 +13934,19 @@ function searchHitsHtml(row) {
                   data-titled="1" data-card="1" data-qual="${esc(h.in.qualname)}"
                   title="${esc(h.in.qualname)}">${esc(h.in.name)}</button>`
              : `<span class="srch-in srch-nowhere" title="No routine's span covers this line — it is between definitions">—</span>`}
+      ${/* A fourth act on the row, and the only kept subject in this product that is not
+             position-independent.
+
+             **The label is `basename:line` and the note is the path** -- and the matched
+             source text is deliberately not stored, for the same reason a cohort's count is
+             not: it was true when it was kept and would read as a claim about now. The
+             **revision** is recorded so `viewPins` can say the line may have moved, which is
+             the honest thing a stored position can do about the fact that positions move.
+
+             Kept per line rather than per file: a file is the row above this one and is
+             `data-searchopen`'s subject, not this one's. */""}
+      ${pinBtn({ kind: "line", path: row.path, line: h.line, rev: servingRevision() },
+               `${baseOf(row.path)}:${h.line}`, row.path)}
     </div>`).join("");
 }
 

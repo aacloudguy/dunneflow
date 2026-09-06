@@ -10945,3 +10945,145 @@ put to the corpus. The corrections cost one measurement each.
 
 Open, and untouched today: *"keep this" on everything*; the three filed defects; `m.<module>`
 as a language feature; per-plate sphere scaling and stack orientation.
+
+## 2026-09-06 — "keep this" on everything, and two id spaces kept apart
+
+The standing item at the head of the open list, and Tom chose its shape before any code was
+written: **two routes, not one reconciled table.**
+
+Every one of `pinBtn`'s five call sites was an inspector pane, so the three things a reader
+actually wanders into — a thread, a curiosity, a search hit — could each be *followed* and
+none could be *kept*. That is design rule 15's own surface failing the rule it exists for.
+
+### What a cohort is, because that is what the shape turned on
+
+Tom's question, and it is answered in `threads.py` rather than by reasoning: a cohort is **a
+set of routines that share a value, named by that value, resolved on demand and never
+shipped**. `cohort_subject(kind, key, label)` is minted in one place, its `key` is always a
+*value string* — a plan id, a table name, a network destination, a glob, a glossary word —
+and `cohort()` resolves it through one query per kind, routed from a table.
+
+Measured on `output/mensores` before anything was designed:
+
+| kind | distinct cohorts | smallest | largest |
+|---|---|---|---|
+| `governance` | 591 | 1 | **112 routines** (`AC-4`) |
+| `table` | 65 | 1 | **125 routines** |
+| `net` | 10 | 1 | 13 |
+
+### Why two routes, and it is evidence rather than taste
+
+`PIN_ROUTES` is keyed on `subject.kind` ∈ {node, fold, flow, plate}; `THREAD_SUBJECTS` on
+`subject.type` ∈ {node, cohort}, and a cohort carries its *own* `kind`. **`kind` already means
+different things in the two**, so one table would be one word carrying two meanings — rule
+47's companion, paid for once already when `data-nav` was both a grid-track state and a route.
+
+They also have different lifetimes, which is the deeper half. A `fold` id is the drawing's own
+and is valid only at the altitude it was drawn at. A cohort key is a value the *program*
+states, so it survives re-analysis and means the same at both ends of a revision pair.
+
+**A thread whose subject is already a node is kept as a node**, in the map space —
+`threadPinBtn` translates `{type:"node", id}` into `{kind:"node", id}`. Keeping it as written
+keys it `undefined:<id>`: a pin that opens nothing, and one the routine's own pane would not
+recognise as kept, so the shelf would hold one routine twice under two names. Eight of the ten
+curiosity families and four of the nine thread mint-sites are nodes, so that is the common
+case. Verified on screen: kept from a curiosity, the routine's own inspector reads **◆ Kept**.
+
+### Three decisions worth keeping
+
+* **A kept cohort never prints a remembered count.** The obvious note is the thread's `why` —
+  *"9 other routines carry this plan"* — and it is free and it is a lie by the following week.
+  `cohort_subject` gained a **`noun`** instead, which counts nothing, and `PINCOUNT` asks
+  `/api/thread` when the shelf is painted. On screen: *counting…* then *"a plan or decision id
+  · opens 112 routines"* — and 112 is exactly what the corpus measurement above says.
+* **The count is *not* reused by the open**, though it is sitting right there. Reusing it would
+  be the shelf opening a cohort past `THREAD_SUBJECTS` — a second route to a thing that has
+  one, which is the defect the whole feature refuses. Two reads of a cheap endpoint is the
+  right price.
+* **A line is the first kept subject that moves.** Identity was taken off file position early
+  and deliberately; a path and a line is exactly what that refused. So a `line` pin records the
+  revision it was kept at and the row says *"kept at …, so this version may have moved line
+  199"* — **only when the versions differ**, because a caveat that is always on is furniture.
+  Stated, never corrected: nothing here can know where the line went.
+
+### And one that was pre-existing, found because `noun` made it matter
+
+The conventions page had been assembling `{type:"cohort", kind:"convention", …}` **in
+JavaScript** since it was written — a second place deciding what a subject is, which the guard
+on `curiosities.py` refuses one module over and cannot see from the shell. It was harmless for
+exactly as long as the shape was fields anybody could spell. Adding `noun` made the hand-built
+copy silently short of a field, on the one surface where that field is the whole row. The
+subject is minted in `vocabulary.py` now.
+
+*One client-side mint survives and is allowed on measured grounds:* the glossary's 1,207 term
+rows carry only the word, because a JSON subject in a thousand attributes is 581 KB of markup
+and 1,214 listeners rebuilt per keystroke. The guard asserts there is exactly one, that it is
+that one, **and that the surface it serves offers no keep button** — which is what makes the
+missing `noun` cost nothing, and what will fail the day somebody adds one.
+
+### Two things only looking caught, and one the pointer caught
+
+***`visibility: hidden` is not dimming — it is disabling.*** The keep button is quiet until its
+row is under the pointer. Spelled `visibility: hidden`, a real pointer click landed **inside
+the button's own rectangle** and the event target was the row: a hidden element is not
+hit-tested. So the control worked only for a pointer that happened to hover first, and not at
+all for the keyboard, since `visibility: hidden` also takes an element out of the tab order —
+which means `:focus-within` can never fire to bring it back. Every JavaScript guard passed, the
+button rendered, the handler was bound, and pressing it did nothing. Rule 48 exactly, and Tom's
+own standing note: dimming says *not current*, never *disabled*. It is `opacity` now, with a
+guard over the stylesheet.
+
+***A label centred in the middle of its own row.*** `.pin-body` is a column flex box, so it
+stretched the label — a `<button>`, which centres its text. Invisible while every kept thing
+was a routine and the label filled the row; a cohort's label is its key, and `AC-4` is four
+characters. Giving it its natural width then exposed a *second*, older defect:
+`.pinrow .linkbtn { margin-left: auto }` was written to push **Drop** to the far end and also
+matched the label, which is `class="linkbtn pin-open"`. It is `.pinrow > .linkbtn` now — rule
+71 in a stylesheet, where a class name is global and nothing warns you.
+
+### The trail files two steps, and it is pre-existing
+
+Opening a kept cohort files `audit_events` (the subject) and then `read_chain_genesis` — one
+arbitrary routine of the 57. **Measured on the untouched `[data-thread]` path and it does the
+same**, so this is the filed defect *"clicking a change row files two trail steps"* on a second
+surface, not something this change introduced. The shelf's own `pushTrail` is kept, because
+without it the single remaining step would be the arbitrary member — rule 74, a cohort is not
+one of the things it holds. The fix belongs to the selection path.
+
+### The guards, and the one that was blind
+
+Seven new, plus a rewrite. `test_every_kind_a_pin_can_carry_has_a_route` finds kinds by a
+literal at the call site and **cannot see** a subject passed as a runtime value, so it would
+have gone on passing while the whole cohort half was dead (rule 43); the docstring now says so
+and points at the guard that covers it.
+
+**One of my own guards was vacuous and the mutation harness caught it.** It asserted
+`"sub.type" in open_h` and passed against `if (false) {`, because `sub.type` still appears one
+line down inside the branch that no longer runs — rule 37 on a guard written for rule 30. It
+asserts the *branch* now, and the ordering check is anchored on that match rather than on the
+first mention of the name.
+
+All 17 mutations caught. **The backup was taken first and restored from**, never
+`git checkout` — the lesson from the session that lost two hundred lines to a `||` after a
+command that cannot fail.
+
+### Not seen
+
+The **search hit row's column alignment**. Its structure was read from the DOM — five children
+in order, `srch-n · srch-code · srch-marks · srch-in · pinbtn`, with the marks span now always
+emitted so the child count is constant against a five-column grid — and the pin's subject,
+label and note were verified. The columns themselves were never looked at: the Code group's
+search mode could not be restaged after the renderer wedged twice, and the retry limit is
+three. Reasoned, not seen, and said rather than claimed.
+
+The **pointer** proved the thread keep button (the click that found the `visibility` defect,
+and the hover-then-click that landed the pin with its cohort subject and noun). Everything
+after that was driven through the DOM: the harness stopped delivering `pointerdown` mid-session
+— two clicks reported success and delivered no event, in a fresh tab as well — which is the
+same instrument failure the 2026-09-05 record describes.
+
+*Candidate rule, for Tom to mint or refuse:* **a hidden control is not a dimmed one.**
+`visibility: hidden` and `display: none` remove an element from hit-testing *and* from the tab
+order, so a rule that reveals on `:hover` or `:focus-within` can never be reached by the route
+that would rescue it. One step over from *dimmed still acts*, which is about intent; this is
+about the mechanism that quietly enforces the opposite.

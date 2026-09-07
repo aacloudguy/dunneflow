@@ -21,6 +21,7 @@ questions and are never blurred.
 from __future__ import annotations
 
 import json
+import sqlite3
 import sys
 from dataclasses import dataclass, field
 
@@ -602,6 +603,148 @@ def _remote_call_hazards(store: Store, r: Report) -> None:
         ))
 
 
+# What "reaches out of the program" means for a loop. Database, queue and network -- the
+# things whose cost is per call rather than per instruction. `FILE`, `STDIO`, `ENV` and
+# `PROCESS` are deliberately out: a loop that writes a line per row is what writing a file
+# *is*, and reporting it would put most of the program on a worklist.
+_REACHES_OUT = ("DATABASE", "QUEUE", "NETWORK")
+
+# Every loop that reaches one of those on **every pass**, with what its bound looks like.
+#
+# **Three tables unioned to places, not one table asked.** `boundaries` alone misses two of
+# Society's 74 -- `for col in _SPEC_COLUMNS: ... ALTER TABLE Spec` is a `sql_ops` row that
+# the boundary detector did not also record -- and a finding whose title counts database
+# work has to count all of it (rule 13). The `UNION` deduplicates the line, which is
+# exactly what `resolve/shape.places` does, so an `INSERT` recorded as a `DATABASE` row
+# *and* a `SQL` row on one line is one act here as it is everywhere else (rule 40).
+#
+# `control.once_start`/`once_end` are the lines the loop evaluates once, so the iterable of
+# `for row in conn.execute(q).fetchall():` is excluded here exactly as it is in
+# `resolve/shape.py` -- 9 of those 74 are that shape, and reporting them would be
+# reporting one query as a query per row.
+#
+# `k.name` is the loop's header matched against a constant **declared in the same module**.
+# Not a bare name match across the program (rule 5): a module-scoped name is exact, and
+# what it buys is the difference between a bound nobody can read and `for stmt in INDEXES:`.
+_LOOPED_OUT = """
+WITH reaches AS (
+    SELECT routine_id, line FROM boundaries
+     WHERE kind IN (?, ?, ?) AND routine_id IS NOT NULL AND line IS NOT NULL
+    UNION
+    SELECT routine_id, line FROM sql_ops
+     WHERE routine_id IS NOT NULL AND line IS NOT NULL
+    UNION
+    SELECT routine_id, line FROM net_calls
+     WHERE routine_id IS NOT NULL AND line IS NOT NULL)
+SELECT c.point_id, c.word, c.header, c.file, c.line_start,
+       r.id AS rid, r.qualname, r.module,
+       COUNT(DISTINCT x.line) AS places,
+       COALESCE(k.value, '') AS bound
+  FROM control c
+  JOIN routines r ON r.id = c.routine_id
+  JOIN reaches x ON x.routine_id = c.routine_id
+                AND x.line BETWEEN c.line_start AND c.line_end
+                AND NOT (c.once_start > 0
+                         AND x.line BETWEEN c.once_start AND c.once_end)
+  LEFT JOIN constants k ON k.module = r.module AND k.name = c.header
+ WHERE c.kind IN ('LOOP', 'COMPREHENSION')
+ GROUP BY c.point_id
+ ORDER BY c.file, c.line_start
+"""
+
+
+def _bounded(row: sqlite3.Row) -> str:
+    """Why this loop's bound is readable, or "" where nothing static can count it.
+
+    Three shapes, and the point of naming them is that they are the ones a reader can
+    already answer for themselves. A `while` is a poll or a retry and is that shape on
+    purpose; a literal written at the loop and a collection the module declares both say
+    how many passes there are, on the line above.
+
+    What is left is the population this finding is about: an argument, a query's rows, a
+    directory listing -- a number that exists only at run time.
+    """
+    if row["word"] == "while":
+        return "a while loop, which is a poll or a retry and is this shape on purpose"
+    header = str(row["header"] or "").lstrip()
+    if header[:1] in ("(", "[", "{"):
+        return "a collection written at the loop, so its size is on the line"
+    if str(row["bound"] or "").lstrip()[:1] in ("(", "[", "{"):
+        return "a collection this program declares, so its size can be read"
+    return ""
+
+
+def _looped_boundaries(store: Store, r: Report) -> None:
+    """A database, queue or network call written inside a loop.
+
+    **The measurement chose the shape of this, and it is worth saying how.** Read as
+    `net_calls` alone it fires twice on Society, and both are `wait_until_serving` --
+    `while True:` poll loops with a deadline, which is the second blind spot below. Two of
+    two findings would have been false alarms, which is what `CLAUDE.md` means by
+    verifying a detector's findings against real source before shipping it.
+
+    Widened to the database it is real: 74 loops, of which 39 have a bound a reader can
+    read off the page. Those 39 are **named and not reported** (design rule 1) -- it is
+    the 39 that make the 35 credible, exactly as the 1,222 still loops make the 261 rates.
+
+    One finding for the program, on `NO_TIMEOUT`'s model: this is one thing to think about
+    and 35 places to look at it, and the count comes off the same list the occurrences do
+    so the two cannot disagree (rule 13).
+    """
+    rows = store.query(_LOOPED_OUT, _REACHES_OUT)
+    if not rows:
+        return
+    reported = [x for x in rows if not _bounded(x)]
+    if not reported:
+        return
+
+    named: dict[str, int] = {}
+    for x in rows:
+        why = _bounded(x)
+        if why:
+            named[why] = named.get(why, 0) + 1
+    aside = "; ".join(f"{n} over {why}" for why, n in sorted(named.items()))
+
+    r.add(Anomaly(
+        kind="LOOPED_BOUNDARY", severity=INFO, confidence=PROBABLE,
+        # **Loops and places are different numbers, and both are said** (rule 32). The
+        # loops answer *how many times could this run in a pass*; the places answer *how
+        # many acts are in there*, and one figure would be whichever the reader assumed.
+        # `places` is the query's own `COUNT(DISTINCT line)`, which is
+        # `resolve/shape.places` in SQL for the reason that function exists.
+        title=f"{len(reported)} loops reach a database, a queue or the network on every"
+              f" pass — {sum(int(x['places']) for x in reported)} places in all",
+        detail=(
+            "; ".join(f"{x['qualname']} ({x['file']}:{x['line_start']})"
+                      for x in reported)
+            + (f". Not counted here: {aside} — the loop says how many passes it makes."
+               if aside else "")
+        ),
+        blind_spot=(
+            "The thing being looped over may hold one item, and nothing static can "
+            "count it — that is why a loop whose bound is written down is named "
+            "above rather than reported. A retry or poll loop is this shape on "
+            "purpose and is excluded on its `while`. And a local database file is "
+            "not a network: DunneFlow reads the call, not what is at the other end "
+            "of it, so a SQLite store and a remote one look identical here."
+        ),
+        # One per program: it counts the loops, it is not one of them. The same
+        # positionless key `NO_TIMEOUT` and `NO_RETRY` declare.
+        ident_parts=(),
+        count=len(reported),
+        file=str(reported[0]["file"]), line=int(reported[0]["line_start"] or 0),
+        # **The routine, not the span.** There is no `NAV_ROUTES` entry for a control
+        # point, and `web/shape.py:_row` answers the same question the same way: a span
+        # is not a node in the graph, and minting an id to make a row clickable would be
+        # a link to nothing. The line is the loop's, so the reader lands on it.
+        occurrences=[
+            Occurrence(nav="routine", id=str(x["rid"]), label=str(x["qualname"]),
+                       file=str(x["file"] or ""), line=int(x["line_start"] or 0))
+            for x in reported
+        ],
+    ))
+
+
 def _messaging_hazards(store: Store, r: Report) -> None:
     producers = store.query(
         "SELECT COUNT(*) n FROM boundaries WHERE kind = 'QUEUE' AND direction = 'OUT'"
@@ -733,6 +876,7 @@ DETECTORS = (
     _one_way_tables,
     _orphan_indexes,
     _remote_call_hazards,
+    _looped_boundaries,
     _messaging_hazards,
     _entrypoint_problems,
     _type_gaps,

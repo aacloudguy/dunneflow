@@ -55,6 +55,100 @@ def _analyze(tmp_path: Path, files: dict[str, str]) -> Store:
     return store
 
 
+
+# A loop reaching a database on every pass, and the three shapes that are not that.
+#
+# The negatives are the point. `LOOPED_BOUNDARY`'s blind spots are only worth the words
+# if the cases they name are actually exercised: read as a plain range join over
+# `net_calls`, this detector fired twice on Society and *both* were poll loops -- two of
+# two findings, false. Each routine below is one of the answers the query has to give.
+LOOPING = '''
+import sqlite3
+
+INDEXES = ("CREATE INDEX one", "CREATE INDEX two")
+
+
+def per_pass(conn, rows):
+    """A query on every pass, over something nothing static can count. The finding."""
+    for row in rows:
+        conn.execute("INSERT INTO widgets (id) VALUES (?)", (row,))
+
+
+def over_a_query(conn):
+    """The query is what the loop is *over*: one query, however many rows come back."""
+    out = []
+    for row in conn.execute("SELECT id FROM widgets").fetchall():
+        out.append(row[0])
+    return out
+
+
+def polling(conn):
+    """A poll loop is this shape on purpose, and says so on its `while`."""
+    while conn.execute("SELECT done FROM widgets").fetchone() is None:
+        pass
+
+
+def over_a_constant(conn):
+    """A bound the program declares, and a reader can read it off the line above."""
+    for stmt in INDEXES:
+        conn.execute(stmt)
+
+
+def over_a_literal(conn):
+    """A bound written at the loop itself."""
+    for name in ("a", "b"):
+        conn.execute("DELETE FROM widgets WHERE name=?", (name,))
+'''
+
+
+def _looped(store):
+    found = [a for a in detect(store).items if a.kind == "LOOPED_BOUNDARY"]
+    assert len(found) == 1, f"expected one grouped finding, got {len(found)}"
+    return found[0]
+
+
+def test_a_loop_that_queries_on_every_pass_is_reported(tmp_path):
+    """One grouped finding on `NO_TIMEOUT`'s model: one thing to think about, and every
+    place to look at it. The count comes off the same list the occurrences do, so the
+    two cannot disagree (rule 13)."""
+    found = _looped(_analyze(tmp_path, {"m.py": LOOPING}))
+    assert found.severity == INFO, "never SUSPECT: a local store is not a network"
+    assert found.count == len(found.occurrences) == 1
+    assert "per_pass" in found.occurrences[0].label
+    assert found.occurrences[0].nav == "routine", "a span is not a node in the graph"
+
+
+def test_a_query_the_loop_is_over_is_not_a_query_per_pass(tmp_path):
+    """`for row in conn.execute(q).fetchall():` runs one query, not one per row.
+
+    9 of Society's 74 are this shape, and reporting them would be reporting the
+    detector's own defect back at the reader.
+    """
+    found = _looped(_analyze(tmp_path, {"m.py": LOOPING}))
+    assert not [o for o in found.occurrences if "over_a_query" in o.label], found.detail
+
+
+def test_the_three_bounded_shapes_are_named_and_not_reported(tmp_path):
+    """No filter is silent (design rule 1), and it is the ones left out that make the
+    ones reported credible -- exactly as the 1,222 still loops make the 261 rates.
+
+    A poll loop, a declared collection and a literal at the loop each say how many
+    passes they make, so each is stated in the detail rather than dropped from it.
+    """
+    found = _looped(_analyze(tmp_path, {"m.py": LOOPING}))
+    for name in ("polling", "over_a_constant", "over_a_literal"):
+        assert not [o for o in found.occurrences if name in o.label], name
+    assert "while loop" in found.detail
+    assert "this program declares" in found.detail
+    assert "written at the loop" in found.detail
+
+
+def test_a_program_with_no_looped_query_reports_nothing(tmp_path):
+    """A detector that fires on a clean program is a detector nobody can trust."""
+    store = _analyze(tmp_path, {"m.py": BROKEN_PROGRAM})
+    assert not [a for a in detect(store).items if a.kind == "LOOPED_BOUNDARY"]
+
+
 def test_a_broken_program_still_produces_a_graph(tmp_path):
     """Ingest must never fail on bad input -- that is the whole point."""
     store = _analyze(tmp_path, {"bad.py": UNPARSEABLE, "good.py": BROKEN_PROGRAM})
@@ -150,7 +244,7 @@ def test_every_detector_declares_what_identifies_its_finding():
         and node.func.id == "Anomaly"
     ]
     # The guard cannot pass by finding nothing (rule 37).
-    assert len(calls) >= 17, f"only {len(calls)} findings constructed -- guard is blind"
+    assert len(calls) >= 18, f"only {len(calls)} findings constructed -- guard is blind"
     for call in calls:
         named = {kw.arg for kw in call.keywords}
         kind = next(

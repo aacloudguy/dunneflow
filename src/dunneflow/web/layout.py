@@ -5,8 +5,25 @@ interchangeable you build both and let real use retire the loser:
 
 * **structural** -- deterministic placement from the program's own structure. Instant,
   stable, and never a hairball. Computed here, and the default.
-* **force** -- Fruchterman--Reingold per plate, solved in the browser. Reveals clusters
-  the module tree does not. Computed in `static/forcelayout.js`, not here.
+* **force** -- Fruchterman--Reingold per plate, **coupled through the shadows**, solved in
+  the browser. Reveals clusters the module tree does not. Computed in
+  `static/forcelayout.js`, not here.
+
+**Coupled, and that is the half this module's own description of a shadow always implied.**
+`graph.py` calls a shadow *"a proxy at its own position on this disk, taking part in this
+disk's forces like any other node"*, and rule 23 says the model stores every crossing twice
+*"which is exactly what lets both plates lay out under the same forces"*. Solved plate by
+plate, nothing ever asked them to: a shadow pulled its borrowing plate and the plate never
+pulled back, so a shadow sat 0.678 plate-radii from the node it stood for against 0.907 for
+two random points in a disc. Now every slot standing for one entity is pulled toward their
+common middle, so a plate's arrangement is answerable to what the other plates want, and a
+connection that leaves a plate more often goes straight up.
+
+**What is left over is the measurement.** A crossing that stays diagonal is one two plates
+each want somewhere different, and no arrangement satisfies both -- the worst-aligned entity
+on Mensores has *two* shadows, not thirty-nine, so it is tension rather than fan-out. The
+count is stated above the picture and the per-node case on the hover card. Numbers, and the
+trade against within-plate crossings, in `PERFORMANCE.md`.
 
 Structural is the one that exists first because it is also the *initial state* force
 needs: from a good starting arrangement it converges far faster than from noise, and a

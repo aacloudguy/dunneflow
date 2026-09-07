@@ -197,6 +197,10 @@ const g = {
   anchorArmed: false,
   anchorRetry: 0,
   hiddenLabels: 0,
+  /* Whether the positions on screen came from a solve that tried to line the plates up.
+   * A lean means something under a coupled layout and nothing under the spiral, so this
+   * decides whether a lean is reported at all rather than how it is worded. */
+  coupled: false,
   /* What the last diagram pass drew, and the placement it drew it from.
    *
    * The cache is keyed on the camera and the settings that move a box on screen; it is
@@ -906,11 +910,35 @@ function buildSelectionGeometry(d) {
   const iDst = new Float32Array(crossing.length * SEG * 3);
   const iCol = new Uint8Array(crossing.length * SEG * 4);
   const iWid = new Float32Array(crossing.length * SEG);
+  /* **How many of these stand upright**, measured here and nowhere else.
+   *
+   * A crossing runs from a real node on one plate to a real node on another. Where both
+   * ends sit over the same place, the line is vertical and says *this routine, and that
+   * one, in the same position in two different parts of the program*. Where it leans, the
+   * two plates want that routine somewhere different and no arrangement satisfies both —
+   * which is a fact about the program, not a blemish on the drawing.
+   *
+   * Measured **in the loop that places the lines**, out of the very coordinates submitted,
+   * because rule 24 is rule 13 in a renderer's clothing: a claim about geometry that was
+   * never drawn is the defect that rule was written from. Recomputing it in the shell from
+   * the payload would be a second answer about the same lines (`plateRangeNote` makes the
+   * same argument about plate widths).
+   *
+   * The lean is in **plate-widths**, so it means the same thing on a plate of 12 nodes and
+   * one of 1,519 — and `PLATE_R` is the width the positions were normalised to, so it is
+   * the unit already in force rather than a constant chosen here. */
+  const UPRIGHT = PLATE_R * 0.25;
+  let upright = 0;
   let k = 0;
   for (const [a, b, e] of crossing) {
     const ca = diskColor(d.raw.nodes.disk[a]);
     const cb = diskColor(d.raw.nodes.disk[b]);
     const w = widthOf(e);
+    /* Off `baseXY`, not `positions`: the spreads scale X and Y independently and the plate
+     * dial scales each plate by its own factor, so a lean measured after them would move
+     * when a reader dragged a slider, and the sentence would be about the sliders. */
+    if (Math.hypot(d.baseXY[a * 2] - d.baseXY[b * 2],
+                   d.baseXY[a * 2 + 1] - d.baseXY[b * 2 + 1]) < UPRIGHT) upright++;
     for (let seg = 0; seg < SEG; seg++) {
       const t0 = seg / SEG, t1 = (seg + 1) / SEG, tm = (t0 + t1) / 2;
       for (let ax = 0; ax < 3; ax++) {
@@ -926,7 +954,7 @@ function buildSelectionGeometry(d) {
   }
 
   g.selGeom = { count: within.length, src, dst, wid,
-                interCount: crossing.length, segs: crossing.length * SEG,
+                interCount: crossing.length, upright, segs: crossing.length * SEG,
                 iSrc, iDst, iCol, iWid, gpu: null };
 }
 
@@ -1239,6 +1267,13 @@ function buildLayers(d) {
     }));
   }
 
+  /* **Zeroed whenever the labels are not drawn**, and that is not tidiness. `pickLabels`
+   * is the only writer, and it runs only past the label zoom with the boxes off — so a
+   * reader who zoomed in far enough to hide 1,269 names and then zoomed back out left the
+   * count standing over a picture with no labels in it at all. The number was announced
+   * and read by nothing for as long as that was true, which is how it survived; the moment
+   * it became a sentence it became a claim that had to go quiet with its subject. */
+  g.hiddenLabels = 0;
   if (still && !boxes && g.viewState.zoom >= NODE_LABEL_ZOOM) {
     const labels = pickLabels(d);
     if (labels.length) {
@@ -1762,6 +1797,29 @@ function boxPolygon(b, unit, spin) {
  * amounts (rule 13, between two layers drawing one object). */
 function boxSpinDeg() { return -(g.viewState.rotationOrbit || 0); }
 
+/* The worst lean among one node's crossings, in plate-widths, or `null` if it has none.
+ *
+ * Computed on demand for one node rather than carried for fifteen thousand — the hover
+ * card's own bargain, stated where `onHover` explains why the pop-up is an event and not a
+ * tooltip. A node's links are a handful, so this is a few dozen operations.
+ *
+ * Off `baseXY`, matching `buildSelectionGeometry`: the same measurement in two places has
+ * to be the same arithmetic, or the card and the count line disagree about one line on the
+ * screen (rule 13). */
+function leanOf(d, i) {
+  if (!opts.coupled) return null;
+  let worst = null;
+  for (const link of d.links) {
+    if (link[3]) continue;                       // stays on one plate: nothing to lean
+    const other = link[0] === i ? link[1] : link[1] === i ? link[0] : -1;
+    if (other < 0) continue;
+    const lean = Math.hypot(d.baseXY[i * 2] - d.baseXY[other * 2],
+                            d.baseXY[i * 2 + 1] - d.baseXY[other * 2 + 1]) / PLATE_R;
+    if (worst === null || lean > worst) worst = lean;
+  }
+  return worst;
+}
+
 function pickLabels(d) {
   const pool = g.members.size
     ? [...g.members].sort((a, b) => d.degree[b] - d.degree[a])
@@ -1814,6 +1872,13 @@ function announceCounts() {
     selected: g.members.size,
     within: g.selGeom?.count ?? 0,
     crossing: g.selGeom?.interCount ?? 0,
+    /* **How many of those crossings stand upright**, and it is a fact about the picture
+     * rather than about the program — the same kind as `boxes` and `collapsed` below, and
+     * it has to be worded as one (rule 32). `within` and `crossing` count connections in
+     * the program; this counts lines on the screen, and two numbers in one sentence that
+     * do not agree about what they are is that rule's own defect. Only meaningful under
+     * the force layout, which is why nothing states it under the spiral. */
+    upright: g.selGeom?.upright ?? 0,
     excluded: s.nodes - g.members.size,
     excludedBy: opts.filterMode === 'hide' ? 'hidden' : 'dimmed',
     // Design rule 1: a plate whose gap has been closed has left the picture, and the
@@ -2210,6 +2275,17 @@ function mount(container, raw, options = {}) {
          * three agree by construction. Rule 32 is what happens when they do not. */
         degIn: (g.prepared.inbound.get(real) ?? []).length,
         degOut: (g.prepared.outbound.get(real) ?? []).length,
+        /* **How far this routine's plates disagree about where it should be.**
+         *
+         * A fact about the drawing, like `shadow` above it, and reported the same way: the
+         * engine says what the picture knows and the application decides whether to draw a
+         * sentence about it. The furthest of this node's crossings, in plate-widths, taken
+         * off `baseXY` so a spread slider cannot move it.
+         *
+         * `null` under the spiral, and that is the honest answer rather than zero: nothing
+         * has tried to line anything up there, so a lean is a coincidence and not a
+         * measurement of tension. */
+        lean: leanOf(g.prepared, real),
         x: info.x, y: info.y,
       });
     },
@@ -2305,6 +2381,10 @@ window.DunneFlowGraph = {
     if (xy && xy.length !== d.n * 2) return false;
     d.baseXY.set(xy || d.serverXY);
     d.diskRatio = new Map(xy && ratio ? ratio : d.serverRatio);
+    /* A solved arrangement is one that tried to line the plates up; the server's is not.
+     * Set here rather than passed in, because this is the one call that knows which of the
+     * two is now on screen. */
+    opts.coupled = !!xy;
     applyLayout(d);
     draw();
     announceCounts();

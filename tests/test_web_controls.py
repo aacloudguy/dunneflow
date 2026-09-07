@@ -12265,11 +12265,16 @@ def test_each_pass_binds_only_what_it_reads() -> None:
     pipeline that runs and computes nothing.
     """
     js = _code(_read("forcelayout.js"))
+    entries = re.findall(r'pipe\("(\w+)"\)', js)
     groups = re.findall(r"bind\(p\w+, \[([\d, ]+)\]\)", js)
-    assert len(groups) == 2, f"expected one bind group per pass, found {groups}"
-    assert groups[0] != groups[1], (
-        "both passes bind the same set, so one of them is binding something it never "
-        "reads — which is the validation error that leaves an inert pipeline"
+    assert len(entries) >= 2, f"expected the compute entry points, found {entries}"
+    assert len(groups) == len(entries), (
+        f"{len(entries)} pipelines and {len(groups)} bind groups — one pass is sharing "
+        f"another's, which is the refusal that leaves an inert pipeline: {entries} vs {groups}"
+    )
+    assert len(set(groups)) == len(groups), (
+        f"two passes bind the same set, so one of them binds something it never reads: "
+        f"{groups}"
     )
 
 
@@ -12380,4 +12385,108 @@ def test_the_plate_layout_is_offered_where_the_reading_happens_too() -> None:
     assert 'aria-pressed="${state.plateLayout === "force"}"' in furniture, (
         "the toggle does not say which arrangement is in force — a two-state button whose "
         "state is invisible reads as an instruction, and you cannot tell which way round"
+    )
+
+
+def test_the_consensus_takes_its_mean_from_positions_nothing_is_writing() -> None:
+    """The determinism claim, and it is a two-pass shape rather than a promise.
+
+    One pass that both read the positions and wrote them would have each slot averaging a
+    mixture of moved and unmoved siblings, decided by whichever invocation the scheduler
+    ran first. That is the same defect an `atomicAdd` reduction has, arriving through a
+    read instead of a write — and it would put nondeterminism into the one property
+    `layout.py` promises.
+    """
+    js = _code(_read("forcelayout.js"))
+    assert "atomic" not in js.lower(), (
+        "the coupling reduces with atomics, whose order is whatever arrived first"
+    )
+    for entry in ("consensusMean", "consensusMove"):
+        assert f'pipe("{entry}")' in js, f"the {entry} pass is gone; the split is the fix"
+    mean = js[js.index("fn consensusMean"):js.index("fn consensusMove")]
+    assert "disp[i*2] =" in mean and "pos[i*2] =" not in mean, (
+        "consensusMean writes positions, so it is averaging siblings some other invocation "
+        "may already have moved"
+    )
+    move = js[js.index("fn consensusMove"):]
+    move = move[:move.index("`")] if "`" in move else move
+    assert "gmem" not in move, (
+        "consensusMove reads a sibling, so the two passes are one pass again"
+    )
+
+
+def test_both_backends_couple_on_one_schedule() -> None:
+    """Two backends on two schedules are two algorithms, and "the same picture, slower"
+    stops being a true sentence. Measured: the interval makes no difference to the result
+    once the pull is scaled for it, so it is chosen for the fallback's benefit and shared.
+    """
+    js = _code(_read("forcelayout.js"))
+    assert re.search(r"const COUPLE_EVERY = \d+", js), "the coupling interval is not named"
+    assert re.search(r"const COUPLE_ALPHA = [\d.]+", js), "the coupling strength is not named"
+    gpu = js[js.index("async function solveOnGpu"):js.index("function identical")]
+    cpu = js[js.index("async function solveOnWorkers"):js.index("function consensus(")]
+    for half, name in ((gpu, "the GPU path"), (cpu, "the worker path")):
+        assert "COUPLE_EVERY" in half and "COUPLE_ALPHA" in half, (
+            f"{name} does not read the shared coupling constants, so the two backends can "
+            "drift onto different schedules with nothing saying so"
+        )
+
+
+def test_the_upright_count_is_measured_where_the_lines_are_placed() -> None:
+    """Rule 24 — rule 13 in a renderer's clothing: a claim about geometry that was never
+    drawn is the defect that rule was written from. So the count comes out of the loop that
+    places the crossings, not from a second walk in the shell.
+
+    And off `baseXY`, not `positions`: the spreads scale X and Y independently and the
+    width dial scales each plate by its own factor, so a lean measured after them would
+    move when a reader dragged a slider and the sentence would be about the sliders.
+    """
+    js = _code(_read("graph.js"))
+    fn = _fn(js, "buildSelectionGeometry")
+    assert "upright" in fn, "the upright count is not measured with the geometry"
+    assert re.search(r"d\.baseXY\[a \* 2\]", fn), (
+        "the lean is measured off drawn positions, so it changes with the spread sliders"
+    )
+    shell = _code(_read("shell.js"))
+    line = _fn(shell, "countLine")
+    assert "c.upright" in line, "the count line does not state it"
+    assert "PLATE_R" not in line and "baseXY" not in line, (
+        "the shell recomputes the lean instead of reading what the engine measured — two "
+        "answers about one line on the screen"
+    )
+
+
+def test_a_drawing_count_is_named_after_the_drawing() -> None:
+    """Rule 32, and it is the live hazard here. `within` and `crossing` count connections
+    in the *program*; this counts lines on the *screen*, and they sit in one run of commas.
+    Two numbers that do not agree about what they are is that rule's own defect.
+    """
+    shell = _code(_read("shell.js"))
+    line = _fn(shell, "countLine")
+    assert "drawn upright" in line, (
+        "the upright count borrows the neighbouring noun instead of naming the drawing"
+    )
+    assert "lean" in line, "the leaning half is not stated, and it is the half worth reading"
+    assert 'state.plateLayout === "force"' in line, (
+        "the count is stated under the spiral too, where nothing tried to line anything up "
+        "and a lean is a coincidence rather than a measurement"
+    )
+
+
+def test_a_name_the_picture_could_not_fit_is_said_and_goes_quiet() -> None:
+    """`hiddenLabels` was measured, announced, and read by nothing at all — a drawing fact
+    that never became a sentence, which is the silence design rule 1 forbids for a filter.
+
+    It also had to be **zeroed when the labels are not drawn**: `pickLabels` is its only
+    writer and runs only past the label zoom, so a reader who zoomed in far enough to hide
+    a thousand names and then zoomed out left the count standing over a picture with no
+    labels in it.
+    """
+    shell = _code(_read("shell.js"))
+    assert "c.hiddenLabels" in _fn(shell, "countLine"), "the hidden names are still unsaid"
+    js = _code(_read("graph.js"))
+    layers = _fn(js, "buildLayers")
+    assert "g.hiddenLabels = 0" in layers, (
+        "the count is not cleared when the labels are not drawn, so it goes stale over a "
+        "picture that has none"
     )

@@ -94,6 +94,56 @@ enough that one last-bit difference is a different arrangement a hundred iterati
 Each backend is bit-identical run to run, which is the half of the guarantee spatial memory
 needs. See `layout.py`.
 
+**Coupling the plates through their shadows** — measured 2026-09-07, same corpus. Every slot
+standing for one entity is pulled toward their common middle, so a plate's arrangement is
+answerable to what the other plates want. `upright` counts drawn crossings leaning less than
+a quarter of a plate-width; the crossing columns are what the force layout removes against
+the spiral, which is what the coupling spends.
+
+| coupling | upright, of 5,101 | median lean | `pkg:cli` | `pkg:quaestor` | `pkg:governance` |
+|---|---:|---:|---:|---:|---:|
+| none | 749 | 0.571 | 91.7% | 90.8% | 91.7% |
+| **0.04 — shipped** | **1,539** | **0.367** | 90.6% | 89.2% | 90.2% |
+| 0.07 | 2,217 | 0.286 | 89.4% | 85.9% | 84.5% |
+| 0.10 | 2,732 | 0.254 | 87.9% | 81.9% | 80.3% |
+| 0.25 | 2,793 | 0.248 | — | — | — |
+| 0.40 | 2,702 | 0.252 | — | — | — |
+
+**Verticality saturates at 0.10 and the cost does not**, which is why nothing above it is
+worth measuring further: 0.25 and 0.40 buy nothing and keep spending. The shipped setting
+doubles how many links stand upright for about a point of the crossing reduction. Tom's
+call, on these numbers.
+
+**The coupling interval is free**, so it is chosen for the fallback rather than the GPU.
+With the pull scaled so the total over 100 iterations is the same, applying it every
+iteration and every twenty-fifth are the same picture:
+
+| every | upright | median | `pkg:cli` |
+|---:|---:|---:|---:|
+| 1 | 1,745 | 0.332 | 31,830 |
+| 5 | 1,765 | 0.331 | 31,782 |
+| **10 — shipped** | 1,776 | 0.330 | 32,564 |
+| 25 | 1,819 | 0.325 | 33,301 |
+
+That matters because **coupling is the one thing a worker cannot do**: a group's members sit
+on different plates and therefore in different workers, so the fallback runs in rounds with
+the consensus on the main thread between them. A larger interval is fewer round trips for
+the same answer. Both backends use the same one, or they are two algorithms.
+
+**A prototype disagreed with all of this and was wrong.** A CPU sketch with grid-bucketed
+repulsion reported coupling at 0.15 *improving* `pkg:cli` by 9%, where the real solver has
+it costing 22%; another run of the same sketch reported the opposite. Neither was measuring
+the shipped all-pairs solver (rule 24), and the numbers above replace them rather than
+sitting beside them. Recorded because the prototype's figures were nearly carried into a
+plan.
+
+| Measure | Budget | Measured 2026-09-07 |
+|---|---|---|
+| Whole stack, WebGPU, coupled, warm | < 1 s | **87 ms** (against 83 uncoupled) |
+| …8 web workers, coupled, in 10 rounds | < 15 s | **8.8 s** (against 9.7 uncoupled) |
+| The two backends' plate radii | — | within **1.6%** |
+| Determinism, run to run, either backend | exact | **bit-identical** |
+
 **Each plate is normalised to `DISK_RADIUS` and its earned size travels as a width ratio**,
 which is why nothing downstream changed. Measured after the solve: every plate centred on
 the axis to an offset of **0**, every plate ending at exactly **1000**, and 0 plates outside

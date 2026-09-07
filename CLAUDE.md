@@ -594,6 +594,24 @@ docs   ──► extract ──► docs.db  (SQLite) ─────────
   holds is equivalence — every plate within 0.07% of the same radius, the same 91.7% cut —
   and each backend is bit-identical run to run. The page says which one drew it.
 
+  **The plates are coupled through their shadows**, which is the half rule 23 always
+  implied and nothing had ever asked for. Solved plate by plate a shadow pulled its
+  borrowing plate and the plate never pulled back — 0.678 plate-radii from the node it
+  stood for, against 0.907 for two random points in a disc. Now every slot standing for one
+  entity is pulled toward their common middle, so **twice as many cross-plate links stand
+  upright** (749 → 1,539 of 5,101) for about a point of the crossing reduction. **The
+  residual is the measurement**: a link that stays diagonal is one two plates each want
+  somewhere different, and the worst case on Mensores has *two* shadows, not thirty-nine.
+  Stated above the picture, and per node on the hover card.
+
+  **The reduction uses a fixed group table and never an atomic**, in two passes — the mean
+  taken from positions nothing is writing, then applied. One pass would average a mixture of
+  moved and unmoved siblings, decided by whichever invocation ran first, which is
+  nondeterminism arriving through a *read*. And **coupling is the one thing a worker cannot
+  do**: a group's members are on different plates and so in different workers, so the
+  fallback runs in rounds with the consensus between them, on an interval both backends
+  share — measured free, so it is chosen for the fallback's benefit.
+
   **Each plate is normalised to `DISK_RADIUS` and its earned size leaves as a width ratio**,
   which is why `PLATE_R`, `rimPoint` and `fitView` are untouched: they all read one radius
   for every plate, and they still can. The natural sizes reach the picture through the

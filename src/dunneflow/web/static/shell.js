@@ -18094,6 +18094,19 @@ function hoverSkeleton(h) {
     ${h.shadow ? `<div class="hc-shadow">A stand-in. This routine lives on
       <b>${esc((Graph.disks().find(x => x.id === h.disk) || {}).name || h.disk)}</b> —
       the copy you are pointing at is a placement device and is never an endpoint.</div>` : ""}
+    ${/* **Where this routine's plates disagree about it**, and only when they do enough to
+          be worth a sentence. A quarter of a plate-width is the same line the count above
+          the picture draws between upright and leaning, read from the same arithmetic
+          (rule 13 — one measurement, not two).
+          Its own row and its own words, on `hc-shadow`'s pattern: a fact about the drawing
+          sitting in a card of facts about the program has to say which it is, or it reads
+          as something the code does. `null` under the spiral, where nothing tried to line
+          anything up and a lean would be a coincidence. */""}
+    ${h.lean != null && h.lean >= 0.25
+      ? `<div class="hc-shadow">Its plates disagree about where it goes — furthest link
+         leans <b>${h.lean.toFixed(1)}</b> plate-widths. Nothing is wrong with it; two
+         parts of the program each want it near different things.</div>`
+      : ""}
     <div class="hc-rest"></div>`;
 }
 
@@ -18738,6 +18751,38 @@ function countLine(c) {
       ? ` · <b class="num">${(c.boxes || 0).toLocaleString()}</b> boxed · ` +
         `<b class="num">${c.boxesDotted.toLocaleString()}</b> still dots ` +
         `<span class="muted">— zoom in for more</span>`
+      : "") +
+    /* **How many crossings stand upright, and it is a sentence about the drawing.**
+     *
+     * Named apart from `crossing` beside it on purpose: that number counts connections in
+     * the *program*, this counts lines on the *screen*, and rule 32 is the defect of two
+     * numbers in one run of commas that do not agree about what they are. So it says
+     * "drawn upright" rather than borrowing the neighbouring noun.
+     *
+     * Only under the force layout, and only when something crosses. Under the spiral a
+     * plate is arranged by degree and nothing has tried to line anything up, so a count of
+     * upright links there is a measurement of a coincidence — true, and not a claim.
+     *
+     * **The leaning ones are the half worth reading.** A crossing that could not be
+     * straightened is one two plates each want somewhere different, and that is a fact
+     * about the program rather than a blemish on the picture. */
+    (state.plateLayout === "force" && c.crossing
+      ? ` · <b class="num">${(c.upright || 0).toLocaleString()}</b> of <b class="num">${
+          c.crossing.toLocaleString()}</b> drawn upright` +
+        (c.crossing > c.upright
+          ? ` <span class="muted">— ${(c.crossing - (c.upright || 0)).toLocaleString()} lean,`
+            + ` two plates wanting them in different places</span>`
+          : "")
+      : "") +
+    /* **Names the picture could not fit.** `hiddenLabels` has been measured in `pickLabels`
+       and announced by `announceCounts` since the labels were written, and read by nothing
+       at all — a drawing fact that never became a sentence, which is the same silence
+       design rule 1 forbids for a filter. Found while adding the one above it, and fixed
+       here rather than left as a third. Silent at zero, like the box counts: "0 more" is
+       furniture. */
+    (c.hiddenLabels
+      ? ` · <b class="num">${c.hiddenLabels.toLocaleString()}</b> unnamed ` +
+        `<span class="muted">— more names than the picture can hold</span>`
       : "") +
     (c.focusLocked ? ` · <span class="muted">focus: only what is lit answers</span>` : "") +
     (c.pointersWanted > c.pointers

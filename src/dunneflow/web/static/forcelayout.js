@@ -70,6 +70,21 @@ const ForceLayout = (() => {
   const ITERATIONS = 100;
   const COOLING = 0.95;
 
+  /* How hard a slot is pulled toward its group's middle, and how often.
+   *
+   * **A position move, not a force**, and that is what lets both backends run the same
+   * arithmetic. Added to the displacement it would be clamped by the plate's temperature
+   * and scaled by whatever else was pushing that slot; done in position space it is one
+   * lerp, identical on a GPU and on the main thread — and the worker path *must* do it on
+   * the main thread, because a group's members live on different plates and therefore in
+   * different workers.
+   *
+   * `COUPLE_EVERY` is shared by both for the same reason. The GPU could afford it every
+   * iteration; it does not, because then the two backends would be solving different
+   * problems and "the same picture, slower" would stop being true. */
+  const COUPLE_ALPHA = 0.08;
+  const COUPLE_EVERY = 10;
+
   /* ── packing ──────────────────────────────────────────────────────────────────────
    *
    * One pass over the payload, producing everything both backends need. Nodes are grouped
@@ -159,7 +174,59 @@ const ForceLayout = (() => {
     }
     for (let q = 0; q < N; q++) { span[q * 4 + 2] = off[q]; span[q * 4 + 3] = off[q + 1]; }
 
-    return { N, order, slot, span, k, t0, pos, adj, plates: runs.size, edges: pairs };
+    /* ── the groups, which are what lets one plate feel another ──────────────────────
+     *
+     * An entity holds a position per plate it appears on: its real one, and one for every
+     * plate that shadows it. Those slots are a **group**, and the consensus pass pulls them
+     * toward their common middle — so a plate's arrangement is answerable to what the other
+     * plates want, and a connection that leaves a plate can end up above or below where it
+     * started rather than at an arbitrary angle.
+     *
+     * Built as a **CSR table, exactly like the edge adjacency above, and for the same
+     * reason twice over.** It lets each slot walk its own group in a fixed order, which is
+     * the only way this stays deterministic: the obvious GPU reduction is an `atomicAdd`,
+     * and the order atomics arrive in is whatever the scheduler did that microsecond. That
+     * would put nondeterminism into the one property `layout.py` promises.
+     *
+     * Every member of a group of 39 computes the same mean, which is redundant and is
+     * cheaper than not being: the cost is the sum of the squares of the group sizes, a few
+     * tens of thousands of operations against 12.8 million for repulsion. Measured on
+     * Mensores: 4,050 entities carry a shadow, 9,905 slots between them, the biggest group
+     * 39, the median 2.
+     */
+    const key = new Int32Array(N);
+    for (let q = 0; q < N; q++) {
+      const i = order[q];
+      key[q] = payload.nodes.shadow[i] === 1 ? payload.nodes.real[i] : i;
+    }
+    const ordinal = new Map();
+    let groups = 0;
+    for (let q = 0; q < N; q++) {
+      if (key[q] < 0) continue;
+      if (!ordinal.has(key[q])) ordinal.set(key[q], groups++);
+    }
+    const gsize = new Int32Array(groups);
+    for (let q = 0; q < N; q++) if (key[q] >= 0) gsize[ordinal.get(key[q])]++;
+    const goff = new Int32Array(groups + 1);
+    for (let g = 0; g < groups; g++) goff[g + 1] = goff[g] + gsize[g];
+    const gmem = new Int32Array(goff[groups]);
+    const gcur = goff.slice(0, groups);
+    for (let q = 0; q < N; q++) if (key[q] >= 0) gmem[gcur[ordinal.get(key[q])]++] = q;
+    /* Per slot, the half-open range of its own group. A slot whose real node is missing
+     * from the payload gets an empty range and is simply never coupled — an absence, not a
+     * special case to remember. */
+    const grp = new Int32Array(N * 2);
+    let coupled = 0;
+    for (let q = 0; q < N; q++) {
+      if (key[q] < 0) continue;
+      const g = ordinal.get(key[q]);
+      grp[q * 2] = goff[g];
+      grp[q * 2 + 1] = goff[g + 1];
+      if (goff[g + 1] - goff[g] > 1) coupled++;
+    }
+
+    return { N, order, slot, span, k, t0, pos, adj, grp, gmem,
+             plates: runs.size, edges: pairs, groups, coupled };
   }
 
   /* ── the maths, once ──────────────────────────────────────────────────────────────
@@ -247,12 +314,14 @@ function step(pos, span, k, adj, t0, cool, n, disp) {
   const WORKER_SRC = `
 ${KERNEL_JS}
 onmessage = (ev) => {
-  const { jobs, iterations, cooling } = ev.data;
+  const { jobs, iterations, cooling, cool: coolFrom } = ev.data;
   const out = [];
   for (const job of jobs) {
     const { pos, span, k, adj, t0, n } = job;
     const disp = new Float32Array(n * 2);   // once per plate, never per iteration
-    let cool = 1;
+    // Where the schedule had got to when this round began: rounds continue one cooling
+    // curve rather than each starting hot.
+    let cool = coolFrom === undefined ? 1 : coolFrom;
     for (let it = 0; it < iterations; it++) {
       step(pos, span, k, adj, t0, cool, n, disp);
       cool *= cooling;
@@ -304,25 +373,80 @@ onmessage = (ev) => {
       load[m] += job.n;
     }
 
+    /* ── outer rounds, because the coupling is the one thing a worker cannot do ────────
+     *
+     * A worker owns whole plates and nothing else; a group's members are on *different*
+     * plates and therefore in different workers, so the consensus cannot happen inside one.
+     * The solve is therefore rounds: every worker advances its plates by `COUPLE_EVERY`
+     * iterations in parallel, the main thread does one consensus over all the positions,
+     * and round follows round.
+     *
+     * **This is the shape the feature was first described in** — solve all the plates,
+     * then let the shadows tell each plate what the others want, then solve again. The GPU
+     * does the same thing on the same schedule rather than coupling every iteration,
+     * because two backends on two schedules are two algorithms and "the same picture,
+     * slower" stops being true. Measured: the interval makes no difference to the result
+     * once the pull is scaled for it — median 0.332 at every iteration against 0.325 at
+     * every twenty-fifth — so the schedule is chosen for the fallback's benefit.
+     *
+     * The workers are made once and kept for the whole solve. Making eight per round, ten
+     * times, would spend more on start-up than on arithmetic.
+     */
+    const iterations = opts.iterations || ITERATIONS;
+    const alpha = opts.alpha === undefined ? COUPLE_ALPHA : opts.alpha;
+    const every = Math.max(1, opts.every === undefined ? COUPLE_EVERY : opts.every);
     const url = URL.createObjectURL(new Blob([WORKER_SRC], { type: "text/javascript" }));
+    const pool = buckets.map(() => new Worker(url));
+    const whole = packed.pos.slice();
     try {
-      const results = await Promise.all(buckets.map((mine) => new Promise((resolve, reject) => {
-        if (!mine.length) { resolve([]); return; }
-        const w = new Worker(url);
-        w.onmessage = (ev) => { resolve(ev.data); w.terminate(); };
-        w.onerror = (err) => { w.terminate(); reject(new Error(err.message || "worker failed")); };
-        w.postMessage({ jobs: mine, iterations: opts.iterations || ITERATIONS, cooling: COOLING },
-                      mine.map(j => j.pos.buffer));
-      })));
-      const out = new Float32Array(packed.N * 2);
-      for (const group of results) {
-        for (const { start, pos } of group) out.set(pos, start * 2);
+      for (let done = 0; done < iterations; done += every) {
+        const chunk = Math.min(every, iterations - done);
+        const results = await Promise.all(pool.map((worker, w) => new Promise((resolve, reject) => {
+          const mine = buckets[w];
+          if (!mine.length) { resolve([]); return; }
+          /* Fresh slices out of the whole each round: the previous round's buffers were
+           * transferred away and are detached. */
+          const jobs = mine.map((j) => ({
+            start: j.start, n: j.n, span: j.span, k: j.k, t0: j.t0, adj: j.adj,
+            pos: whole.slice(j.start * 2, (j.start + j.n) * 2),
+          }));
+          worker.onmessage = (ev) => resolve(ev.data);
+          worker.onerror = (err) => reject(new Error(err.message || "a layout worker failed"));
+          /* The cooling schedule continues across rounds rather than restarting, or a
+           * plate would take its longest strides ten times over. */
+          worker.postMessage({ jobs, iterations: chunk, cooling: COOLING,
+                               cool: Math.pow(COOLING, done) },
+                             jobs.map((j) => j.pos.buffer));
+        })));
+        for (const group of results) for (const { start, pos } of group) whole.set(pos, start * 2);
+        if (alpha > 0) consensus(packed, whole, alpha);
       }
-      return { pos: out, backend: "workers", detail: `${width} workers`,
+      return { pos: whole, backend: "workers", detail: `${width} workers`,
                ms: performance.now() - started };
     } finally {
+      for (const w of pool) w.terminate();
       URL.revokeObjectURL(url);
     }
+  }
+
+  /* The consensus, in the one place both backends' arithmetic is written down for the CPU.
+   *
+   * **Two passes, exactly as the shader has them**, and for the same reason: taking the
+   * mean and moving toward it in one sweep would average a mixture of moved and unmoved
+   * siblings, and which is which would depend on iteration order. Here that order is
+   * defined, so it would be deterministic and still wrong — a different arrangement from
+   * the GPU's, for no reason a reader could see. */
+  function consensus(packed, pos, alpha) {
+    const target = new Float32Array(pos.length);
+    for (let q = 0; q < packed.N; q++) {
+      const g0 = packed.grp[q * 2], g1 = packed.grp[q * 2 + 1];
+      if (g1 - g0 < 2) { target[q * 2] = pos[q * 2]; target[q * 2 + 1] = pos[q * 2 + 1]; continue; }
+      let cx = 0, cy = 0;
+      for (let m = g0; m < g1; m++) { const j = packed.gmem[m]; cx += pos[j * 2]; cy += pos[j * 2 + 1]; }
+      const n = g1 - g0;
+      target[q * 2] = cx / n; target[q * 2 + 1] = cy / n;
+    }
+    for (let i = 0; i < pos.length; i++) pos[i] += (target[i] - pos[i]) * alpha;
   }
 
   /* ── backend: WebGPU compute ──────────────────────────────────────────────────────
@@ -347,7 +471,7 @@ onmessage = (ev) => {
    *      exactly the inert pipeline of (1).
    */
   const WGSL = `
-struct U { cool: f32, pad0: f32, pad1: f32, pad2: f32 };
+struct U { cool: f32, alpha: f32, pad1: f32, pad2: f32 };
 @group(0) @binding(0) var<storage, read_write> pos:  array<f32>;
 @group(0) @binding(1) var<storage, read>       span: array<i32>;
 @group(0) @binding(2) var<storage, read>       kk:   array<f32>;
@@ -355,6 +479,8 @@ struct U { cool: f32, pad0: f32, pad1: f32, pad2: f32 };
 @group(0) @binding(4) var<storage, read_write> disp: array<f32>;
 @group(0) @binding(5) var<uniform>             u:    U;
 @group(0) @binding(6) var<storage, read>       t0:   array<f32>;
+@group(0) @binding(7) var<storage, read>       grp:  array<i32>;
+@group(0) @binding(8) var<storage, read>       gmem: array<i32>;
 
 @compute @workgroup_size(64)
 fn forces(@builtin(global_invocation_id) gid: vec3<u32>) {
@@ -392,6 +518,43 @@ fn integrate(@builtin(global_invocation_id) gid: vec3<u32>) {
     pos[i*2] = pos[i*2] + dx/d*lim;
     pos[i*2+1] = pos[i*2+1] + dy/d*lim;
   }
+}
+
+// Every slot standing for one entity, pulled toward their common middle.
+//
+// **Two passes, and the split is the whole of the determinism.** One pass that both read
+// the positions and wrote them would have each invocation averaging a mixture of moved and
+// unmoved siblings, decided by which invocation the scheduler ran first — the same defect
+// an atomicAdd reduction has, arriving through a read instead of a write. So the mean is
+// taken from positions nothing is writing, parked in the displacement buffer (free between
+// iterations), and applied in a second pass that reads no sibling at all.
+//
+// No backtick anywhere in this shader: it is a template literal, and one would end it.
+//
+// Each invocation still walks its own group in index order and sums it itself. Every member
+// of a group of 39 computes the same mean, which is redundant and costs less than the
+// bookkeeping to avoid it.
+@compute @workgroup_size(64)
+fn consensusMean(@builtin(global_invocation_id) gid: vec3<u32>) {
+  let i = i32(gid.x);
+  if (i >= i32(arrayLength(&kk))) { return; }
+  let g0 = grp[i*2]; let g1 = grp[i*2+1];
+  if (g1 - g0 < 2) { disp[i*2] = pos[i*2]; disp[i*2+1] = pos[i*2+1]; return; }
+  var cx = 0.0; var cy = 0.0;
+  for (var m = g0; m < g1; m = m + 1) {
+    let j = gmem[m];
+    cx = cx + pos[j*2]; cy = cy + pos[j*2+1];
+  }
+  let n = f32(g1 - g0);
+  disp[i*2] = cx / n; disp[i*2+1] = cy / n;
+}
+
+@compute @workgroup_size(64)
+fn consensusMove(@builtin(global_invocation_id) gid: vec3<u32>) {
+  let i = i32(gid.x);
+  if (i >= i32(arrayLength(&kk))) { return; }
+  pos[i*2]   = pos[i*2]   + (disp[i*2]   - pos[i*2])   * u.alpha;
+  pos[i*2+1] = pos[i*2+1] + (disp[i*2+1] - pos[i*2+1]) * u.alpha;
 }`;
 
   function gpuAvailable() {
@@ -420,6 +583,8 @@ fn integrate(@builtin(global_invocation_id) gid: vec3<u32>) {
     /* An empty storage buffer is invalid, and a program with no within-plate edge at all
      * is a real corpus rather than a broken one. One unused element is the honest floor. */
     const bAdj = store(packed.adj.length ? packed.adj : new Int32Array(1));
+    const bGrp = store(packed.grp);
+    const bGmem = store(packed.gmem.length ? packed.gmem : new Int32Array(1));
     const bDisp = device.createBuffer({
       size: packed.N * 2 * 4, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
     });
@@ -437,33 +602,39 @@ fn integrate(@builtin(global_invocation_id) gid: vec3<u32>) {
                       bad.map((m) => `line ${m.lineNum}: ${m.message}`).join("; "));
     }
 
-    const pForces = device.createComputePipeline(
-      { layout: "auto", compute: { module, entryPoint: "forces" } });
-    const pIntegrate = device.createComputePipeline(
-      { layout: "auto", compute: { module, entryPoint: "integrate" } });
+    const pipe = (entryPoint) => device.createComputePipeline(
+      { layout: "auto", compute: { module, entryPoint } });
+    const pForces = pipe("forces");
+    const pIntegrate = pipe("integrate");
+    const pMean = pipe("consensusMean");
+    const pMove = pipe("consensusMove");
 
     const resource = { 0: { buffer: bPos }, 1: { buffer: bSpan }, 2: { buffer: bK },
                        3: { buffer: bAdj }, 4: { buffer: bDisp }, 5: { buffer: bU },
-                       6: { buffer: bT0 } };
+                       6: { buffer: bT0 }, 7: { buffer: bGrp }, 8: { buffer: bGmem } };
     const bind = (pipeline, used) => device.createBindGroup({
       layout: pipeline.getBindGroupLayout(0),
       entries: used.map((b) => ({ binding: b, resource: resource[b] })),
     });
     /* Exactly what each pass reads, and no more. `layout: "auto"` derives a bind-group
-     * layout from the bindings an entry point actually uses, so one group holding all seven
-     * buffers is refused by whichever pipeline touches fewer — asynchronously, into the
+     * layout from the bindings an entry point actually uses, so one group holding every
+     * buffer is refused by whichever pipeline touches fewer — asynchronously, into the
      * error scope, leaving a pipeline that dispatches and computes nothing. */
-    const gForces = bind(pForces, [0, 1, 2, 3, 4]);         // no uniform, no t0
-    const gIntegrate = bind(pIntegrate, [0, 2, 4, 5, 6]);   // no span, no adj
+    const gForces = bind(pForces, [0, 1, 2, 3, 4]);         // no uniform, no t0, no groups
+    const gIntegrate = bind(pIntegrate, [0, 2, 4, 5, 6]);   // no span, no adj, no groups
+    const gMean = bind(pMean, [0, 2, 4, 7, 8]);             // reads pos, writes disp
+    const gMove = bind(pMove, [0, 2, 4, 5]);                // reads disp, writes pos
 
     const scope = await device.popErrorScope();
     if (scope) throw new Error("the layout pipeline was refused: " + scope.message);
 
     const groups = Math.ceil(packed.N / 64);
     const iterations = opts.iterations || ITERATIONS;
+    const alpha = opts.alpha === undefined ? COUPLE_ALPHA : opts.alpha;
+    const every = opts.every === undefined ? COUPLE_EVERY : opts.every;
     let cool = 1;
     for (let it = 0; it < iterations; it++) {
-      device.queue.writeBuffer(bU, 0, new Float32Array([cool, 0, 0, 0]));
+      device.queue.writeBuffer(bU, 0, new Float32Array([cool, alpha, 0, 0]));
       const enc = device.createCommandEncoder();
       let pass = enc.beginComputePass();
       pass.setPipeline(pForces); pass.setBindGroup(0, gForces);
@@ -471,6 +642,16 @@ fn integrate(@builtin(global_invocation_id) gid: vec3<u32>) {
       pass = enc.beginComputePass();
       pass.setPipeline(pIntegrate); pass.setBindGroup(0, gIntegrate);
       pass.dispatchWorkgroups(groups); pass.end();
+      /* The consensus, on the same schedule the workers can keep. Two passes with their
+       * own encoders so the mean is taken from a `pos` nothing is writing. */
+      if (alpha > 0 && it % every === 0) {
+        pass = enc.beginComputePass();
+        pass.setPipeline(pMean); pass.setBindGroup(0, gMean);
+        pass.dispatchWorkgroups(groups); pass.end();
+        pass = enc.beginComputePass();
+        pass.setPipeline(pMove); pass.setBindGroup(0, gMove);
+        pass.dispatchWorkgroups(groups); pass.end();
+      }
       device.queue.submit([enc.finish()]);
       cool *= COOLING;
     }

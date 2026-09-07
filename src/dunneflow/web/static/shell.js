@@ -7957,6 +7957,88 @@ function viewShape() {
 }
 
 /* One level of the outline. Recursive, because the source is. */
+/* **What keeping a loop keeps**, in one place. ALGORITHMS chunk 5.
+ *
+ * Three surfaces offer the button -- the worklist row, the ribbon's own span and the
+ * table's and boundary's pane -- and `pinKey` keys a map subject on `kind:id`, so all
+ * three must build the *same* subject or one loop becomes three rows on the shelf naming
+ * one thing. That is the defect `threadPinBtn` was written to undo for cohorts, and this
+ * is its shape for a span.
+ *
+ * The note carries **no count** (guarded): it is stored and outlives the moment, and
+ * *"6 places move in here"* is a claim about now. Where it is written is not a count. */
+function pointSubject(r) {
+  /* `rev` for the same reason a kept line carries one: the residue in `control_point_id`
+     is about *this* version of the file, so the shelf can only warn about it once it knows
+     the reader has moved to another. */
+  return { kind: "point", id: r.point, node: r.node,
+           line: r.line, label: r.routine, rev: servingRevision() };
+}
+
+function pointNote(r) {
+  return `${r.kind.toLowerCase()} at ${r.where || (r.file + ":" + r.line)}`;
+}
+
+/* **A kept loop, brought under the reader's eye.** ALGORITHMS chunk 5.
+ *
+ * A span is not a node, so opening one is two moves: select the routine it is written in,
+ * then find the span inside the drawing. This holds the second half between the two --
+ * `selectFromNav` is async and the ribbon is painted a `render()` later, so the id has to
+ * survive the gap. Module-level and **not** persisted: it is a hop, not a setting, and a
+ * `wantedPoint` that outlived the session would scroll a reader to a span they did not ask
+ * for on the next boot.
+ *
+ * Cleared by the reveal rather than by the next selection, for `codeFollowedFor`'s reason:
+ * a flag cleared by every selection is a flag cleared before the paint that needed it. */
+let keptPoint = null;      // {id, node} -- which span was come back to
+let scrolledTo = null;     // and whether it has been put under the eye yet
+
+/* **The mark is drawn, never applied afterwards**, and that is the whole of this defect.
+ *
+ * The first version added `.rib-kept` to the row after the paint. It worked, and then the
+ * next `render()` rewrote `#viewMount` and took the class with it -- with `wantedPoint`
+ * already cleared, so nothing put it back. Measured: the hop landed on the right routine
+ * in the right mode with the span unmarked, which is *"the route carries the point id and
+ * forgets what was kept"* arriving through the fix written to prevent it (rule 30).
+ *
+ * So `ribBlock` asks this while it is building the row. A class the renderer writes cannot
+ * be lost to a repaint, which is the same reason `selectedRowIds` is read by the navigator
+ * rather than stamped onto it. */
+function pointMarked(point) {
+  return !!(keptPoint && keptPoint.id === point);
+}
+
+/* Put it under the reader's eye, once.
+ *
+ * `revealLine`'s shape one surface over, and rule 50's warning with it: the scroller and
+ * the row have to belong to each other. `#viewMount` is the box that scrolls -- the ribbon
+ * declares no overflow of its own -- and measuring against the `<ol>` would find every row
+ * "in view" because it extends far below the window.
+ *
+ * Scrolling is *once per hop* and the mark is not: an unconditional scroll on every paint
+ * is an automatic move fighting a deliberate one, which is what `revealSelectedRow` and
+ * the trail scroller are both careful about. */
+function revealPoint() {
+  if (!keptPoint) return;
+  /* The reader has gone somewhere else, so the mark goes with them. Decided from the
+     drawing that is up rather than cleared by `setSubject`, which the pin route calls
+     *through* `selectFromNav` and would therefore undo its own hop. */
+  if (SHAPE.node && SHAPE.node !== keptPoint.node) {
+    keptPoint = null;
+    scrolledTo = null;
+    return;
+  }
+  if (scrolledTo === keptPoint.id) return;
+  const row = document.querySelector(`[data-point="${CSS.escape(keptPoint.id)}"]`);
+  const box = $("#viewMount");
+  if (!row || !box) return;              // the drawing has not arrived yet; try next paint
+  scrolledTo = keptPoint.id;
+  const r = row.getBoundingClientRect(), b = box.getBoundingClientRect();
+  if (r.top < b.top || r.bottom > b.bottom) {
+    box.scrollTop += (r.top - b.top) - box.clientHeight / 3;
+  }
+}
+
 function ribBlocks(blocks) {
   return `<ul class="rib-list">${blocks.map(ribBlock).join("")}</ul>`;
 }
@@ -8011,7 +8093,8 @@ function ribBlock(b) {
       ${a.children.length ? ribBlocks(a.children)
         : '<span class="rib-nothing">nothing that moves</span>'}
     </li>`).join("");
-  return `<li class="rib-point rib-${esc(b.kind.toLowerCase())}"
+  return `<li class="rib-point rib-${esc(b.kind.toLowerCase())}${
+                pointMarked(b.point) ? " rib-kept" : ""}"
               data-point="${esc(b.point)}">
     <span class="rib-line">${b.line_start}</span>
     <span class="rib-head-line"><span class="rib-word">${esc(word)}</span> ${head} ${exits}
@@ -8118,7 +8201,13 @@ function algoRow(r) {
         <span class="algo-l3">${esc(r.why)}</span>
         <span class="algo-l4">${moves}${more}</span>
       </span>
-    </button></li>`;
+    </button>
+    ${/* **Outside the row button**, because a `<button>` inside a `<button>` is invalid
+         markup that browsers un-nest -- the keep button would be lifted out of the row and
+         land wherever the parser put it, which is the shape of the search-hit defect the
+         previous session paid for at 51x54 px. Its own grid cell, not a third row. */""}
+    <span class="algo-keep">${pinBtn(pointSubject(r), r.routine, pointNote(r))}</span>
+    </li>`;
 }
 
 function viewCuriosities() {
@@ -8292,6 +8381,27 @@ function pinLineNote(p) {
        + `moved line ${p.subject.line}`;
 }
 
+/* **A kept loop, and the third durability tier said out loud** (design rule 21).
+ *
+ * A kept *node* survives anything above it moving -- its id is a qualname. A kept *line*
+ * does not, and `pinLineNote` says so with the revision it was kept at. A point sits
+ * between: `control_point_id` is the routine, the kind, the header as written and an
+ * **ordinal among identical writings in the same routine**, so an added import above it
+ * changes nothing and a second identically-written `try` inserted before it renumbers
+ * this one. Filing that quietly under either existing tier would be a claim about how
+ * durable the row is that nothing measured.
+ *
+ * Stated only where the versions differ, like the line's: on the version it was kept in
+ * the residue cannot have happened, and a caveat that prints every time reads as the
+ * answer rather than as a caveat. */
+function pinPointNote(p) {
+  const where = p.note || "";
+  const kept = p.subject.rev || "";
+  if (!kept || kept === servingRevision()) return where;
+  return `${where}${where ? " · " : ""}kept at ${kept} — a span keeps its place when code `
+       + `moves above it, but not when another one written the same way is added first`;
+}
+
 function viewPins() {
   ensurePinCounts();
   return `
@@ -8326,6 +8436,7 @@ function viewPins() {
       let note = p.note ? esc(p.note) : "";
       if (sub && sub.type === "cohort") note = esc(pinCohortNote(p));
       else if (sub && sub.kind === "line") note = esc(pinLineNote(p));
+      else if (sub && sub.kind === "point") note = esc(pinPointNote(p));
       return `
       <div class="pinrow">
         <span class="pin-mark" aria-hidden="true">\u25c6</span>
@@ -8357,6 +8468,11 @@ const THREAD_KIND_TITLE = {
      project defines has a document behind its name. This is the only place the graph
      touches the glossary and naming lanes, which were otherwise reachable only from
      their own pages. */
+  /* ALGORITHMS chunk 5. Not "The other end", which is what the boundary lane is called:
+     that lane answers *what else touches the same thing* and this answers *what else runs
+     the same shape*. Two routines looping over one table never call one another, and no
+     call edge records the coupling. */
+  algorithm: "Runs the same shape",
   vocabulary: "Named like these",
   outlier: "Unusual nearby",
 };
@@ -11271,6 +11387,7 @@ function loopRow(r) {
       ${nest}
       <span class="conf badge">${esc(r.kind)}</span>
       <span class="dim flowline">${r.line}</span>
+      ${pinBtn(pointSubject(r), r.routine, pointNote(r))}
     </div>`;
 }
 
@@ -12025,7 +12142,7 @@ function render() {
   else if (state.view === "inference") vp.innerHTML = viewInference();
   else if (state.view === "curiosities") { ensureCuriosities(); vp.innerHTML = viewCuriosities(); }
   else if (state.view === "algorithms")      { ensureAlgorithms(); vp.innerHTML = viewAlgorithms(); }
-  else if (state.view === "shape")      vp.innerHTML = viewShape();
+  else if (state.view === "shape")      { vp.innerHTML = viewShape(); revealPoint(); }
   else if (state.view === "pins")       vp.innerHTML = viewPins();
   else if (state.view === "settings")  {
     vp.innerHTML = viewSettings();
@@ -12790,6 +12907,28 @@ function wire() {
        it is the cohort. */
     dbtable: (s) => selectFromNav({ table: s.id },
                                   { label: s.id, note: "a database table" }),
+    /* **A kept loop**, and it is the sixth id space rather than a cohort.
+       `control_point_id` is `make_id(...)` -- this map minted it -- so it fails the test a
+       cohort key has to pass: that the *program* says it and it survives re-analysis.
+
+       **A third durability tier, and it says so** (design rule 21, rule 30). A kept node
+       survives anything above it moving; a kept *line* does not, and says so with the
+       revision it was kept at. A point sits between them: its id is a routine, a kind, the
+       header as written and an **ordinal among identical writings in the same routine**,
+       so it survives an edit above it and does **not** survive an identically-written
+       sibling being inserted before it. That residue is `control_point_id`'s own and is
+       stated on the shelf rather than filed quietly under one of the two tiers that exist.
+
+       The whole subject, because the route needs all of it: `node` to select the routine,
+       `id` to find the span in the drawing. Carrying the point id and opening the routine
+       would be a route that looks like it works and forgets what was kept (rule 30). */
+    point: (s) => {
+      keptPoint = { id: s.id, node: s.node };
+      scrolledTo = null;
+      state.mode = "shape";
+      selectFromNav({ nodes: [s.node] },
+                    { label: s.label || "a kept loop", note: s.note || "" });
+    },
     /* **line** is the code browser's own address, and `goToCode` is the route the search
        hit already presses -- it sets the mode, opens or reveals, files a trail step and
        persists. Reaching for `openCodeFile` here instead would open the pane and leave the

@@ -9993,6 +9993,27 @@ def test_every_kind_a_pin_can_carry_has_a_route() -> None:
     js = _code(_read("shell.js"))
 
     emitted = set(re.findall(r'pinBtn\(\{\s*kind:\s*"(\w+)"', js))
+
+    # **And a named builder counts as emitting.** ALGORITHMS chunk 5 keeps a loop from
+    # three surfaces -- the worklist row, the ribbon's span and the table's pane -- and
+    # `pinKey` keys a map subject on `kind:id`, so all three must build the *same* subject
+    # or one loop becomes three rows on the shelf naming one thing. A literal at each call
+    # site is exactly the drift rule 51 is about, so the builder is the right shape and this
+    # guard follows it rather than forbidding it: `pinBtn(fooSubject(r), …)` is resolved to
+    # `function fooSubject` and its own `kind:` literal is read.
+    #
+    # Without this the regex sees nothing, `routed <= emitted` fails, and the only way to
+    # pass is to copy the literal three times -- a guard driving the defect it exists to
+    # prevent.
+    for builder in set(re.findall(r"pinBtn\((\w+)\(", js)):
+        body = _fn(js, builder)
+        assert body, f"pinBtn is handed {builder}(), which is not a function in this file"
+        kinds = re.findall(r'kind:\s*"(\w+)"', body)
+        assert kinds, (
+            f"{builder}() builds a pin subject with no literal `kind`, so no guard can "
+            f"tell which route has to exist for it (rule 30)")
+        emitted.update(kinds)
+
     assert emitted, "no pinBtn call passes a subject; the shelf cannot open anything again"
 
     table = re.search(r"const PIN_ROUTES = \{(.*?)\n  \};", js, re.S)

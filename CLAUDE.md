@@ -390,10 +390,29 @@ docs   ──► extract ──► docs.db  (SQLite) ─────────
   the one tie lines cannot — `[a for a in [b for b in c]]` is two comprehensions on one
   line.
 
+  **`enclosing()` is the reverse and is `outline` per routine, never a query of its own**
+  (rule 51): the judgement, the nesting sweep and `places` are the ones the worklist asks,
+  so a point cannot be banded one way at a pane and another way on a page. `nesting()`
+  follows `in_loop` and never `depth`. The bound is the routines that touch the thing, and
+  the `EXISTS` is a bound on the *work* rather than on the answer (rule 55) — 524 routines
+  touch Society's unnamed `FILE` boundary and 389 hold a point around it.
+
   Measured over Mensores: 219 loops + 42 comprehensions reach a boundary · 467 only call ·
   1,222 move nothing · 78 of 2,213 decisions fork · 69 are ladders of three or more ·
   396 of 1,531 handlers recover by moving something · 3,931 guards · 0 `match`. 96 ms warm
   for all 9,625 points.
+- `web/table.py` — **a table, described as the thing it is.** `selectFromNav` fetched the
+  routines that touch one and then threw the table away, so the crumb named a table and the
+  inspector answered about whichever routine sorted first — `detail.fold`'s defect and
+  `plate.py`'s, a third time, in the surface a reader reaches by clicking the busiest thing
+  on the cover. It has **no id of its own and none is minted**: `id` is the name the program
+  states and `kind: "TABLE"` is what stops a reader taking it for a node id (rule 30).
+  `_r_table` serves the specimen *beside* the nodes, because the three doors into that route
+  ask two questions — the navigator, the document row and the ribbon want the table
+  *selected*, and the inspector wants it *described*. Where it is declared is three answers
+  and not two (design rule 21): declared once, declared in more than one file, and never
+  declared here — 12 of Society's 65 tables are the third, and only the first can hand the
+  source pane a place to open.
 - `web/shape.py` — the same facts served twice, for two questions. **`/api/algorithms`** is
   the whole program in five lanes, held on the base and computed on the first ask; each
   lane states its **denominator** (*261 of 1,950*, never *261 loops*) and the page states
@@ -411,6 +430,22 @@ docs   ──► extract ──► docs.db  (SQLite) ─────────
   **`shape` is the mode and `algorithms` is the page**, and the two words are kept apart on
   purpose: `selectFromNav` sets `state.view = state.mode`, so one word for both would make
   selecting a routine land on the worklist — `data-nav`'s defect, which cost a session.
+
+  **`loops_around` is the other direction**, and it is `resolve/shape.enclosing` worded.
+  A reader standing at a table asks what loops over them, which is the question the
+  Algorithms page puts to a loop, reversed. **The sentence counts loops and states the
+  places separately** (rule 32): *3 loops* and *3 writes* are different numbers, and the
+  nesting clause states a **depth** rather than a count, because `deepest` is a maximum and
+  89 loops with a deepest of 1 may have forty nested ones. The verb is **"reached from
+  inside"** and never "written from" — 8 of `worktree_allocations`' 27 operations are reads.
+
+  **The bag is keyed and the renderers read the key.** `SHAPE` carried its node id from the
+  day it was written and nothing checked it, so once a reader found one routine it was drawn
+  under everything they selected afterwards. Reported by Tom as *"it locks on to whatever was
+  viewed last"*. Two halves, and either alone leaves it broken: a renderer must refuse a bag
+  about something else, and `ensureShape` must **empty** it rather than return early holding
+  the last one. It is invited from `render()` where every route arrives, not from the one
+  branch that used to invite it — `followSelectionIntoCode`'s own defect (rule 78).
 - `docstore.py` — `docs.db`. **Parallel to the graph, never inside it.** A doc rescan
   never touches `graph.db`, code-only analysis stays cheap, and the corpus stays a
   separately handable artifact — many will hand over a charter and never a line of
@@ -571,7 +606,18 @@ docs   ──► extract ──► docs.db  (SQLite) ─────────
   and the population *together*, so the query a card offers is not a query about the number
   but the query that returned it (design rule 13), reproducible verbatim through
   `dunneflow query`. Subjects are minted in `threads.py` and nowhere else.
-- `web/threads.py` — **adjacency by interest, not by edge.** Why a neighbour is worth a
+- `web/threads.py` — **adjacency by interest, not by edge.** Five lanes now: `algorithm`
+  joined them for ALGORITHMS chunk 5, and it is a kind of its own rather than a second sort
+  of boundary thread — the others answer *what else touches the same thing*, this answers
+  *what else runs the same shape*. Two routines looping over one table never call each
+  other, and two branching on the same written test are coupled through a decision. Both
+  new cohort kinds resolve to **exactly the population they counted** (rule 32,
+  commit `3cfce1b`): `looped_table` is not `table`, because the figure counts the routines
+  that *loop* over a table — 15 on Society against 190 that touch one at all. A decision is
+  compared by its header **as written**, which is the whole blind spot and is stated on the
+  thread: `x == 1` and `x==1` are two values here. Measured: the table thread fires on 8
+  routines of 4,823 and the decision thread on 660, and a thread that fires rarely states
+  its own size rather than being dropped (design rule 1). Why a neighbour is worth a
   detour: shares a plan, the other end of a table you write, the most commented routine on
   your plate, named like ninety-eight others. Every thread carries a *subject* the router
   can act on, never a label (rule 30), and states its size so the reader can weigh it.

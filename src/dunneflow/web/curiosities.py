@@ -80,6 +80,12 @@ class Family:
     middle: str
     #: Appended only when something ties. `{others}` excludes the one named.
     tie: str
+    #: The same sentence when exactly one other ties. `head_one`'s reason, one field
+    #: down, and it was missed: `_card` pluralises the *noun* -- "1 other" / "3 others" --
+    #: and every family's verb was written plural, so all ten cards said "1 other carry as
+    #: many". `viewShape` records the same care one pane over ("1 decisions is the kind of
+    #: thing only the reader ever notices, and this pane says five of them in a row").
+    tie_one: str
     #: What the `whence` column means. Empty where the column is a phrase already.
     whence_label: str
     #: Which entry of `SUBJECTS` builds this family's subject.
@@ -113,6 +119,12 @@ SUBJECTS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
     "table": lambda r: threads.cohort_subject("table", str(r["name"]), str(r["name"])),
     "governance": lambda r: threads.cohort_subject(
         "governance", str(r["name"]), str(r["name"])),
+    # **`looped_table` and not `table`.** The card counts the loops over a table and the
+    # cohort must open the routines that *loop* over it -- `table` would open every routine
+    # that touches it at all, which is a figure counting one population and a destination
+    # opening another (rule 32, and the reason the thread kind exists next door).
+    "looped_table": lambda r: threads.cohort_subject(
+        "looped_table", str(r["name"]), str(r["name"])),
 }
 
 
@@ -128,6 +140,7 @@ FAMILIES: tuple[Family, ...] = (
         middle="the middle routine that carries any carries {middle}, "
                "of {population} that do",
         tie="{others} carry as many",
+        tie_one="{others} carries as many",
         whence_label="declared at", subject="node",
     ),
     Family(
@@ -137,6 +150,7 @@ FAMILIES: tuple[Family, ...] = (
         middle="the middle called routine has {middle}, "
                "of {population} that are called at all",
         tie="{others} are called from as many places",
+        tie_one="{others} is called from as many places",
         whence_label="declared at", subject="node",
     ),
     Family(
@@ -145,6 +159,7 @@ FAMILIES: tuple[Family, ...] = (
         head_one="1 line in one routine",
         middle="the middle routine is {middle} lines, of {population}",
         tie="{others} are as long",
+        tie_one="{others} is as long",
         whence_label="declared at", subject="node",
     ),
     Family(
@@ -154,6 +169,7 @@ FAMILIES: tuple[Family, ...] = (
         middle="the middle routine that takes any takes {middle}, "
                "of {population} that do",
         tie="{others} take as many",
+        tie_one="{others} takes as many",
         whence_label="declared at", subject="node",
     ),
     Family(
@@ -162,6 +178,7 @@ FAMILIES: tuple[Family, ...] = (
         head_one="1 level of nesting in one closure",
         middle="the middle closure is {middle} deep, of {population}",
         tie="{others} are nested as deep",
+        tie_one="{others} is nested as deep",
         whence_label="declared at", subject="node",
     ),
     Family(
@@ -171,6 +188,7 @@ FAMILIES: tuple[Family, ...] = (
         middle="the middle routine that reaches any reaches {middle}, "
                "of {population} that do",
         tie="{others} reach as many",
+        tie_one="{others} reaches as many",
         whence_label="declared at", subject="node",
     ),
     Family(
@@ -179,6 +197,7 @@ FAMILIES: tuple[Family, ...] = (
         head_one="1 character in one call argument",
         middle="the middle argument is {middle} characters, of {population}",
         tie="{others} are as long",
+        tie_one="{others} is as long",
         whence_label="written at", subject="node",
     ),
     Family(
@@ -187,6 +206,7 @@ FAMILIES: tuple[Family, ...] = (
         head_one="1 character in one constant's value",
         middle="the middle constant is {middle} characters, of {population}",
         tie="{others} are as long",
+        tie_one="{others} is as long",
         whence_label="declared at", subject="node",
     ),
     Family(
@@ -196,6 +216,7 @@ FAMILIES: tuple[Family, ...] = (
         middle="the middle table is {middle}× out, "
                "of {population} both read and written",
         tie="{others} are as far out",
+        tie_one="{others} is as far out",
         whence_label="", subject="table",
     ),
     Family(
@@ -204,7 +225,33 @@ FAMILIES: tuple[Family, ...] = (
         head_one="1 routine carries one governance id",
         middle="the middle id is carried by {middle}, of {population}",
         tie="{others} are carried by as many",
+        tie_one="{others} is carried by as many",
         whence_label="cited as a", subject="governance", counts_its_cohort=True,
+    ),
+    # ── ALGORITHMS chunk 5 ────────────────────────────────────────────────────────
+    Family(
+        key="looped_table", sql=queries.CURIO_LOOPED_TABLE,
+        head="{value} loops over one table",
+        head_one="1 loop over one table",
+        # The middle is over the tables something loops over, **not** over every table the
+        # program has -- 12 and not 65. Said in the sentence rather than left to be assumed,
+        # because the two answer different questions and only one of them is this card's
+        # (rule 24).
+        middle="the middle table that is looped over at all carries {middle}, "
+               "of {population} that are",
+        tie="{others} carry as many",
+        tie_one="{others} carries as many",
+        whence_label="first looped over at", subject="looped_table",
+    ),
+    Family(
+        key="loop_places", sql=queries.CURIO_LOOP_PLACES,
+        head="{value} places one loop reaches in a single pass",
+        head_one="1 place one loop reaches in a single pass",
+        middle="the middle loop that reaches anything reaches {middle}, "
+               "of {population} that do",
+        tie="{others} reach as many",
+        tie_one="{others} reaches as many",
+        whence_label="written at", subject="node",
     ),
 )
 
@@ -259,7 +306,8 @@ def _card(fam: Family, row: dict[str, Any]) -> dict[str, Any] | None:
 
     head = fam.head_one if value == 1 else fam.head.format(value=_num(value))
     others = ties - 1
-    tie = fam.tie.format(others=f"{others:,} other" + ("" if others == 1 else "s")) \
+    template = fam.tie_one if others == 1 else fam.tie
+    tie = template.format(others=f"{others:,} other" + ("" if others == 1 else "s")) \
         if others > 0 else ""
 
     return {

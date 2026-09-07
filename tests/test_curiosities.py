@@ -376,8 +376,8 @@ def test_a_family_naming_an_unknown_subject_kind_is_a_named_error(tmp_path):
     fam = curiosities.FAMILIES[0]
     broken = curiosities.Family(
         key=fam.key, sql=fam.sql, head=fam.head, head_one=fam.head_one,
-        middle=fam.middle, tie=fam.tie, whence_label=fam.whence_label,
-        subject="a-kind-nothing-builds")
+        middle=fam.middle, tie=fam.tie, tie_one=fam.tie_one,
+        whence_label=fam.whence_label, subject="a-kind-nothing-builds")
     row = dict(store.query(broken.sql, {})[0])
     with pytest.raises(KeyError, match="a-kind-nothing-builds"):
         curiosities._card(broken, row)
@@ -433,4 +433,11 @@ def test_every_family_declares_prose_for_both_numbers(tmp_path):
         assert "{middle}" in fam.middle, fam.key
         assert "{population}" in fam.middle, fam.key
         assert "{others}" in fam.tie, fam.key
+        # And the singular, for `head_one`'s reason. `_card` pluralises the *noun* only, so
+        # a family with one spelling says "1 other carry as many" -- the kind of thing only
+        # the reader ever notices, on a panel that says twelve of them in a row.
+        assert "{others}" in fam.tie_one, fam.key
+        assert fam.tie_one != fam.tie, (
+            f"{fam.key} spells its tie the same way for one and for many; one of the two "
+            f"readings is wrong and it is always the singular")
         assert fam.subject in curiosities.SUBJECTS, fam.key

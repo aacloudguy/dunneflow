@@ -1369,6 +1369,76 @@ ORDER BY file, idx
 # with a null id rather than dropped: a table written at import time is exactly the
 # thing a reader is looking for, and `TABLE_ROUTINES` drops them only because its
 # answer is a list of nodes to select (design rule 1).
+# ── ALGORITHMS chunk 5: the loops and the decisions as neighbours ────────────────── #
+
+# **What is *inside* a span is a range join and never a relationship** (rule 40, and the
+# sentence `resolve/shape.py` opens with): `sql_ops` and `control` each already carry
+# `routine_id` and `line`, so a table touched from inside a loop is
+# `line BETWEEN line_start AND line_end` and no third table records it.
+#
+# `LOOP` and `COMPREHENSION` together, because a comprehension issuing one call per item is
+# a rate exactly as a `for` is -- 42 of Society's 261 rates are comprehensions, and a lane
+# that counted only the word `for` would drop them without saying so (design rule 1).
+#
+# The tables this routine loops over, and how many **other routines** do the same. The
+# count is other routines and the cohort below resolves to other routines: a thread whose
+# figure and whose destination are two different populations is the defect commit 3cfce1b
+# was written from (rule 32).
+THREAD_LOOPED_TABLE = """
+WITH looped AS (
+    SELECT DISTINCT o.tbl AS tbl, o.routine_id AS rid
+    FROM sql_ops o
+    JOIN control c ON c.routine_id = o.routine_id
+                  AND c.kind IN ('LOOP', 'COMPREHENSION')
+                  AND o.line BETWEEN c.line_start AND c.line_end
+    WHERE o.tbl <> '' AND o.routine_id IS NOT NULL)
+SELECT m.tbl AS name,
+       (SELECT COUNT(*) FROM looped x WHERE x.tbl = m.tbl AND x.rid <> :id) AS others
+FROM looped m
+WHERE m.rid = :id
+ORDER BY m.tbl
+"""
+
+# The routines a `looped_table` thread opens: exactly the population counted above.
+LOOPED_TABLE_ROUTINES = """
+SELECT DISTINCT o.routine_id AS node
+FROM sql_ops o
+JOIN control c ON c.routine_id = o.routine_id
+              AND c.kind IN ('LOOP', 'COMPREHENSION')
+              AND o.line BETWEEN c.line_start AND c.line_end
+WHERE o.tbl = :name AND o.routine_id IS NOT NULL
+"""
+
+# The decisions this routine makes that another routine also makes, by the test **as
+# written**.
+#
+# `header` is the source text and is compared exactly, which is the whole blind spot and
+# is stated on the thread rather than hidden: `x == 1` and `x==1` are two values here.
+# Canonicalising would mean an extractor change and a schema bump for a comparison the
+# reader can make by eye, and a `canonical/` pass at query time is not something SQL can
+# do. 887 of Society's 2,213 decisions share a header with another; the largest group is
+# `TYPE_CHECKING` at 321, which sorts **last** because threads are ordered rarity-first.
+#
+# `GUARD` is excluded because a refusal is not a decision about what leaves -- the same
+# line `resolve/shape.py` draws, and 3,931 of them would otherwise drown every real one.
+THREAD_DECIDED = """
+SELECT DISTINCT c.header AS header,
+       (SELECT COUNT(DISTINCT d.routine_id) FROM control d
+         WHERE d.kind = 'DECISION' AND d.header = c.header
+           AND d.routine_id <> :id) AS others
+FROM control c
+WHERE c.routine_id = :id AND c.kind = 'DECISION' AND c.header <> ''
+ORDER BY c.header
+"""
+
+# The routines a `decision` thread opens: exactly the population counted above.
+DECISION_ROUTINES = """
+SELECT DISTINCT routine_id AS node
+FROM control
+WHERE kind = 'DECISION' AND header = :header AND routine_id IS NOT NULL
+"""
+
+
 TABLE_TOUCHERS = """
 SELECT o.tbl, o.direction, o.operation, o.line, o.file,
        r.id, r.name, r.qualname, r.module,
@@ -2017,6 +2087,83 @@ FROM top JOIN constants c ON c.module || '.' || c.name = top.k
 # so `node` is empty and the subject is the code that touches it. Both sides must be
 # non-zero: a table only ever written is not lopsided, it is write-only, and dividing
 # by nothing would rank it above everything real for ever.
+# ── ALGORITHMS chunk 5: two measures about shape ─────────────────────────────────── #
+
+# The table reached from inside the most loops, and the middle table that is looped over
+# at all.
+#
+# **The population is the 12 tables something loops over**, not the 65 the program has.
+# A middle taken over all of them would be 0 and the card could state no ratio -- and,
+# worse, it would answer *"how unusual is it for a table to be looped over"* under a
+# heading asking *"how many loops does the busiest one carry"* (rule 24).
+#
+# `tbl <> ''` excludes the statements with no table of their own -- `BEGIN`, `COMMIT`,
+# `CREATE TABLE`. They are the largest single group here and they are not a table, so the
+# card would have named nothing and offered a cohort that opens nothing.
+#
+# `whence` is the first loop over it, not the first operation on it: the measure is about
+# loops, and pointing the reader at a straight-through write would be a location that has
+# nothing to do with the number beside it (design rule 13).
+CURIO_LOOPED_TABLE = """
+WITH m AS MATERIALIZED (
+    SELECT o.tbl AS k, COUNT(DISTINCT c.point_id) AS n
+    FROM sql_ops o
+    JOIN control c ON c.routine_id = o.routine_id
+                  AND c.kind IN ('LOOP', 'COMPREHENSION')
+                  AND o.line BETWEEN c.line_start AND c.line_end
+    WHERE o.tbl <> '' AND o.routine_id IS NOT NULL
+    GROUP BY o.tbl),
+top AS (SELECT k, n FROM m ORDER BY n DESC, k LIMIT 1)
+SELECT '' AS node, top.k AS name, top.k AS qualname,
+       (SELECT c2.file || ':' || MIN(c2.line_start) FROM sql_ops o2
+          JOIN control c2 ON c2.routine_id = o2.routine_id
+                         AND c2.kind IN ('LOOP', 'COMPREHENSION')
+                         AND o2.line BETWEEN c2.line_start AND c2.line_end
+         WHERE o2.tbl = top.k) AS whence,
+       top.n AS value,
+       (SELECT n FROM m ORDER BY n LIMIT 1 OFFSET (SELECT COUNT(*)/2 FROM m)) AS middle,
+       (SELECT COUNT(*) FROM m WHERE m.n = top.n)                             AS ties,
+       (SELECT COUNT(*) FROM m)                                               AS population
+FROM top
+"""
+
+# The loop that reaches the outside world in the most **places** in one pass.
+#
+# **Places and not rows**, which is `resolve/shape.places` in SQL and has to stay that way
+# (rule 51's shape for a statement that cannot import it): an `INSERT` is a `DATABASE` row
+# *and* a `SQL` row on one line, and 569 of Society's 991 SQL operations are such a pair.
+# The `UNION` deduplicates the line, which is exactly what `places` does -- so the card and
+# the worklist count the same thing, and `test_every_cards_own_query_returns_exactly_what_
+# the_card_prints` re-runs this and would catch it if they ever stopped.
+#
+# The population is the 261 loops that reach a boundary at all, which is the `rates` lane's
+# own numerator -- so the middle is *"of the loops that move something"* and not *"of every
+# loop in the program"*, and the card says which.
+CURIO_LOOP_PLACES = """
+WITH mv AS MATERIALIZED (
+    SELECT routine_id, line FROM boundaries WHERE routine_id IS NOT NULL AND line IS NOT NULL
+    UNION
+    SELECT routine_id, line FROM sql_ops   WHERE routine_id IS NOT NULL AND line IS NOT NULL
+    UNION
+    SELECT routine_id, line FROM net_calls WHERE routine_id IS NOT NULL AND line IS NOT NULL),
+m AS MATERIALIZED (
+    SELECT c.point_id AS k, COUNT(DISTINCT mv.line) AS n
+    FROM control c
+    JOIN mv ON mv.routine_id = c.routine_id
+           AND mv.line BETWEEN c.line_start AND c.line_end
+    WHERE c.kind IN ('LOOP', 'COMPREHENSION')
+    GROUP BY c.point_id),
+top AS (SELECT k, n FROM m ORDER BY n DESC, k LIMIT 1)
+SELECT c.routine_id AS node, r.name AS name, r.qualname AS qualname,
+       c.file || ':' || c.line_start AS whence, top.n AS value,
+       (SELECT n FROM m ORDER BY n LIMIT 1 OFFSET (SELECT COUNT(*)/2 FROM m)) AS middle,
+       (SELECT COUNT(*) FROM m WHERE m.n = top.n)                             AS ties,
+       (SELECT COUNT(*) FROM m)                                               AS population
+FROM top JOIN control c ON c.point_id = top.k
+         LEFT JOIN routines r ON r.id = c.routine_id
+"""
+
+
 CURIO_TABLE = """
 WITH m AS MATERIALIZED (
     SELECT s.tbl AS k,

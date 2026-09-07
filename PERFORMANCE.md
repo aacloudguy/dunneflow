@@ -559,5 +559,27 @@ remembering it would cost more than making it (rule 52).
 A cold first ask is the external volume rather than the work — 534 ms against 105 ms warm,
 which is this machine's disk and not this feature (rule 24), so no cold row is claimed.
 
+**ALGORITHMS chunk 5: the links back** — measured 2026-09-07 on the same map, warm, median
+of five in one process.
+
+| Measure | Budget | Measured 2026-09-07 |
+|---|---|---|
+| `shape.enclosing`, the median of 166 boundary targets | < 200 ms | **0.4 ms** |
+| …the same at the 90th percentile | < 200 ms | **0.9 ms** |
+| …the worst in the program (`bnd:FILE:`, 672 spans) | < 500 ms | **36 ms** |
+| a boundary's whole pane, worst case | < 500 ms | **43 ms** |
+| a table's pane (`audit_events`, 106 operations) | < 200 ms | **9.3 ms** |
+| `/api/curiosities`, now twelve families | < 500 ms | **140 ms** (was 106 ms at ten) |
+
+`enclosing` is `outline` per routine and the bound is the routines that touch the thing,
+so the spread is what the corpus is rather than what the code is: one target of 166 costs
+more than 20 ms. **The `EXISTS` is the bound on the work and not on the answer** (rule 55)
+— 524 routines touch the unnamed `FILE` boundary and 389 hold a point around it, and
+skipping the other 135 took the worst case from 297 ms to 197 ms cold and 36 ms warm.
+
+*A cold row is the external volume and nothing else.* The worst target reads 187 ms on the
+first ask in a process and 36 ms on every one after, and a genuinely cold page cache took
+it to 1.0 s — the disk, not the feature, so no cold row is claimed here either.
+
 The machine's source volume is a slow external disk; cold reads cost far more than
 warm ones. That is expected and is not a regression.

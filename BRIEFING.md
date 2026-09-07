@@ -196,6 +196,42 @@ program has a most-commented routine and a maximum alone is a claim nobody can w
 
 ## What we are doing now
 
+**Paused 2026-09-07 after ALGORITHMS chunk 5. Nothing is half-written.** 1,177 tests, mypy
+clean over 120 source files, ruff clean, working tree clean, no servers running. `output/`
+is unchanged — this session wrote no maps.
+
+**ALGORITHMS is complete but for chunk 6.** Chunk 5 is the *"and vice versa"* half Tom
+named when he asked for the feature, and it is in: a table and a boundary each say what
+loops over them and open the list, a routine's pane carries its Shape, two threads lead to
+code that runs the same shape, a loop can be **kept**, and two curiosities measure it.
+
+**A table is a subject now, and that was a defect rather than a feature.** Selecting one
+fetched the routines that touch it and *threw the table away*, so the crumb named a table
+and the inspector answered about whichever routine sorted first. `web/table.py` on
+`plate.py`'s model, and `state.dbtable` — never `state.table`, because `state.mode ===
+"table"` is the centre pane's routine table.
+
+**Two things Tom found by looking that no test would have.** *Shape locked on to the last
+routine viewed* — the bag was keyed from the day it was written and no renderer read the
+key, and `ensureShape` was invited from one branch, so the new inspector section was wired
+to nothing (design rule 16). Both fixed the way the 2026-09-03 session settled: the
+reconcile runs from `render()`, every early return empties the bag, and both renderers read
+the key.
+
+**What is left: chunk 6**, the detector. `LOOPED_BOUNDARY` in `anomalies.py` — a remote
+call inside a loop, INFO or SUSPECT and never BROKEN, with the two blind spots that make it
+honest: *the iterable may hold one item, and nothing static can count it*, and *a retry loop
+is this shape on purpose*.
+
+**Still waiting on Tom's eye**, and now more than before: the **instrument cannot show the
+inspector at all**. The capture is a fixed 784 px of a 1,200 px viewport, `resize_window`
+does not move the page viewport, and the pane sits at x=848 whatever is collapsed. Every
+layout claim about the table pane this session was **measured in the DOM, not seen**. Also
+open: the worklist's and ribbon's row layouts, and whether *"a grid does not overflow, it
+grows a row"* and *"an instrument's two coordinate systems can differ"* are rules or notes.
+
+### Before that: chunks 2 to 4, and four sealed snapshots the schema bump left behind
+
 **Paused 2026-09-07 after four commits. Nothing is half-written.** 1,145 tests, mypy clean
 over 117 source files, ruff clean, working tree clean, `check` 0 broken on
 `output/mensores`, no servers running. ALGORITHMS chunks 2 to 4 are built; 5 and 6 are not

@@ -39,7 +39,12 @@ from . import queries, vocabulary
 # How the panel groups them. Order is fixed here rather than left to the client so that
 # two readers of the same routine see the same list in the same order -- a panel that
 # reshuffles between visits is one nobody builds a memory of.
-KIND_ORDER = ("governance", "boundary", "vocabulary", "outlier")
+# `algorithm` is ALGORITHMS chunk 5's, and it is a fifth kind rather than a second sort of
+# boundary thread: the others answer *what else touches the same thing*, and this answers
+# *what else runs the same shape*. Two routines that loop over one table are coupled in a
+# way no call edge records, and so are two that make the same decision -- which is the
+# argument the boundary lane opens with, one axis over.
+KIND_ORDER = ("governance", "boundary", "algorithm", "vocabulary", "outlier")
 
 
 def _rows(store: Store, sql: str, args: dict[str, Any]) -> list[dict[str, Any]]:
@@ -96,6 +101,11 @@ COHORT_NOUN = {
     "net": "a network destination",
     "convention": "a naming convention",
     "term": "a word this program defines",
+    # ALGORITHMS chunk 5. Both nouns say what the *set* is, and neither says how big it
+    # is -- a table looped over by two routines today may be looped over by nine next
+    # month, and the shelf prints this beside a key a week later.
+    "looped_table": "a table something loops over",
+    "decision": "a test this program makes more than once",
 }
 
 
@@ -368,6 +378,64 @@ def _vocabulary(name: str, module: str, naming: dict[str, Any] | None,
 
 
 # --------------------------------------------------------------------------- #
+# Shape kin -- ALGORITHMS chunk 5, the "and vice versa" half
+# --------------------------------------------------------------------------- #
+
+def _algorithm(store: Store, node_id: str) -> list[dict[str, Any]]:
+    """Code that runs the same shape, which no call edge can say.
+
+    Two routines that each loop over `audit_events` never call one another and are
+    coupled through the store; two that both branch on `sys.platform == "win32"` are
+    coupled through a decision. Neither is reachable from the call graph, and this is
+    the lane that says so.
+
+    **Rarely, and it says so.** On Society 8 routines of 4,823 get the table thread and
+    660 get the decision one. A thread that fires seldom is a fact about the program
+    rather than a broken lane (design rule 1), and every thread states its own size, so
+    the reader is never left to guess which they are looking at.
+    """
+    out = []
+
+    for r in _rows(store, queries.THREAD_LOOPED_TABLE, {"id": node_id}):
+        others = int(r["others"])
+        # Nothing is dropped at zero: *"you are the only one"* is the answer a reader
+        # most wants at a table they are about to change, and it is exactly the answer a
+        # `HAVING others > 0` would delete (design rule 1).
+        out.append({
+            "kind": "algorithm",
+            "label": r["name"],
+            "why": (f"you loop over it · {_plural(others, 'other routine')} "
+                    f"{'does' if others == 1 else 'do'} too")
+                   if others else "you loop over it · nothing else does",
+            "count": others,
+            "subject": cohort_subject("looped_table", r["name"], r["name"]),
+        })
+
+    for r in _rows(store, queries.THREAD_DECIDED, {"id": node_id}):
+        header, others = r["header"], int(r["others"])
+        if not others:
+            # A test nobody else makes is not a neighbour, and 1,348 of Society's 1,516
+            # distinct headers are that. The table above keeps its zero because a table
+            # is a shared thing whether or not anyone shares it; a decision made once is
+            # simply this routine's own line, and a lane of them would bury the 168 that
+            # mean something.
+            continue
+        out.append({
+            "kind": "algorithm",
+            "label": header,
+            "why": f"{_plural(others, 'other routine')} branch"
+                   f"{'es' if others == 1 else ''} on this same test, as written",
+            "count": others,
+            "subject": cohort_subject("decision", header, header),
+        })
+
+    # Rarity first, as the boundary lane sorts: the test 321 routines make is the least
+    # interesting thing on this list, and the one two others make is the discovery.
+    out.sort(key=lambda t: (t["count"], t["label"]))
+    return out
+
+
+# --------------------------------------------------------------------------- #
 # The one way in
 # --------------------------------------------------------------------------- #
 
@@ -382,7 +450,8 @@ def for_node(store: Store, node_id: str, *, module: str = "", root: str = "",
     opposite claims that must never render the same way. The client says which; this says
     which is true.
     """
-    threads = _governance(store, node_id) + _boundary(store, node_id)
+    threads = (_governance(store, node_id) + _boundary(store, node_id)
+               + _algorithm(store, node_id))
     if module:
         threads += _outliers(store, node_id, module, root)
     if name:
@@ -419,6 +488,14 @@ def cohort(store: Store, kind: str, key: str) -> dict[str, Any]:
         # quietly rather than loudly.
         "table": queries.TABLE_ROUTINES,
         "net": queries.NET_ROUTINES,
+        # **Not `TABLE_ROUTINES`**, and that is the whole point of the kind existing. The
+        # thread beside it counts the routines that touch this table *from inside a loop*
+        # -- 15 on Society against 190 that touch one at all -- and opening the wider set
+        # would be a figure that counts one thing and opens another (rule 32).
+        "looped_table": queries.LOOPED_TABLE_ROUTINES,
+        # A decision is not a node and neither is a test, so following one selects the
+        # code that *makes* that decision -- tables' and terms' reasoning, once more.
+        "decision": queries.DECISION_ROUTINES,
     }.get(kind)
     if sql is None:
         return {"found": False, "kind": kind, "key": key, "nodes": [],
@@ -436,7 +513,8 @@ def cohort(store: Store, kind: str, key: str) -> dict[str, Any]:
         }
     else:
         args = {{"governance": "value", "table": "name", "net": "target",
-                 "convention": "glob"}[kind]: key}
+                 "convention": "glob", "looped_table": "name",
+                 "decision": "header"}[kind]: key}
     nodes = [str(r["node"]) for r in _rows(store, sql, args) if r["node"]]
     # `found: True` with an empty list is a real answer -- a governance id cited only in
     # documentation has no code carrying it -- and is not the same as an unknown kind.

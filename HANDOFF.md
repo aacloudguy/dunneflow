@@ -11399,3 +11399,131 @@ page.
 with the blind spot that decides whether it is honest — *the iterable may hold one item,
 and nothing static can count it* — plus *a retry loop is this shape on purpose*. INFO or
 SUSPECT, never BROKEN, for `DEAD_CODE`'s reason.
+
+
+## ALGORITHMS chunk 5 — the links back, and the Shape lock — 2026-09-07
+
+Tom, planning: *"All of chunk 5 in one go."* Then, mid-build: *"The Shape feature locks on
+to whatever was viewed last... We fixed this before for other viewers with a sync method.
+I'd like the same thing — I don't mind the Shape feature saying it does not apply to most
+items if true."*
+
+### What the measurements changed before a line was written
+
+The recorded spec named six items. Three of its assumptions did not survive measurement.
+
+| Piece | Recorded | Measured |
+|---|---|---|
+| a table's pane, *"written from inside 3 loops"* | assumed a table pane | **there was no table pane** |
+| *"other loops over this table"* | a thread | fires on **8 routines of 4,823** |
+| *"other decisions on this value"* | a thread | fires on **660** |
+
+The boundary side carries 166 target-pairs against the table's 13, and the routine side
+3,018 of 4,823. So the cheapest piece carried the most and the dearest carried the least,
+which is the opposite of what the plan assumed — put to Tom as a question, and he chose all
+six in one go rather than a split.
+
+### A table is a subject, and that was a defect rather than a feature
+
+`selectFromNav` ended its table branch `want = { nodes: r.nodes || [] }` — the name was
+thrown away one line before anything else ran, so `setSubject` received a bare node and the
+inspector answered about whichever routine sorted first, under a crumb naming the table.
+`detail.fold`'s defect and `plate.py`'s, a third time, in the surface a reader reaches by
+clicking the busiest thing on the cover.
+
+`web/table.py` on `plate.py`'s model. **No id is minted**: `id` is the name the program
+states. `_r_table` serves the specimen *beside* the nodes, because the three doors into it
+ask two different questions. `state.dbtable` and **not** `state.table`, because
+`state.mode === "table"` is the centre pane's routine table and one word carrying two
+meanings is `data-nav`'s defect.
+
+### The reverse fact, and where the bound goes
+
+`resolve/shape.enclosing()` is `outline` **per routine** and not a query of its own
+(rule 51) — the judgement, the nesting sweep and `places` are the ones the worklist asks,
+so a point cannot be banded one way at a pane and another way on a page. The `EXISTS` is a
+bound on the *work* and not on the answer (rule 55): 524 routines touch Society's unnamed
+`FILE` boundary and 389 hold a point around it, and skipping the other 135 took the worst
+case from 297 ms to 197 ms cold, 36 ms warm. Median across 166 targets: 0.4 ms.
+
+**Two departures from the recorded wording, both measured.** *"reached from inside"* and
+never *"written from"*, because 8 of `worktree_allocations`' 27 operations are reads. And
+the nesting clause states a **depth**, not a count: `deepest` is a maximum, and 89 loops
+with a deepest of 1 may have forty nested ones (rule 32).
+
+### The Shape lock was two defects, and only one was the one reported
+
+**The bag was keyed from the day it was written and no renderer read the key.** So every
+answer that had ever arrived stayed drawable, and once a reader found one routine it was
+drawn under whatever they selected next. Rule 78 with the field present and unread — the
+fourth variant of that shape this file records.
+
+**And `ensureShape` was invited from the `state.view === "shape"` branch alone**, which is
+`followSelectionIntoCode`'s own defect quoted in `render()`'s own comment: one call site,
+and the wrong one. The Shape section added to the inspector this session was therefore
+**never fed at all** and would have said *"Reading its shape…"* for ever — a control that
+renders and is wired to nothing (design rule 16). Introduced and found in the same session,
+by Tom looking at it.
+
+The fix is the one the 2026-09-03 session settled: the reconcile runs from `render()` where
+every route arrives, every early return **empties** the bag, and both renderers refuse a bag
+about something else. Verified on the page: a routine draws its outline, a table and a
+boundary each say *"That is not a routine, so it has no shape of its own."*, and the routine
+comes back.
+
+### Five more from looking rather than testing
+
+* Reusing `algoRow` in the 26 rem inspector column gave **152–295 px rows and a 2,612 px
+  section for twelve**. The pane has its own row: 21–38 px, 482 px. Found by measuring the
+  DOM, because the instrument cannot show that pane at all.
+* The refusal was a **fragment** written to follow something, and both surfaces render it
+  standing alone: *"No shape to draw. that is not a routine"*.
+* The Shape badge counted **top-level blocks** — "Shape 2" beside chips summing to 10,
+  because eight of that routine's ten spans are nested (rules 13 and 32).
+* `.loopitem .loopcell .gotonode {` **shadowed** `.gotonode {` for a guard that reads the
+  first match in the file. Rule 71 in a stylesheet, where a substring is global too — and
+  the guard caught it rather than a screen.
+* Every curiosity said **"1 other carry as many"**. `_card` pluralises the noun and all ten
+  families wrote the verb plural. `Family` already had `head_one`; `tie_one` was missed.
+  Twelve families now declare both, and a guard asserts they differ.
+
+### A loop can be kept, and the mark is drawn
+
+`PIN_ROUTES.point` — a **map** subject, because `control_point_id` is `make_id(...)` and
+fails the test a cohort key must pass. A **third durability tier and it says so** (design
+rule 21): a kept node survives anything above it moving, a kept line does not, and a point
+survives an edit above it but **not** an identically-written sibling inserted before it —
+`control_point_id`'s own stated residue.
+
+*The first version applied `.rib-kept` after the paint, and the next `render()` took it
+with it.* The hop landed on the right routine in the right mode with the span unmarked —
+which is *"the route carries the point id and forgets what was kept"* arriving through the
+fix written to prevent it (rule 30). `ribBlock` stamps the class while it builds the row;
+a class the renderer writes cannot be lost to a repaint.
+
+Verified: kept from the worklist, opened from the shelf, lands on
+`568 LOOP sorted(download_dir.glob(glob_pattern))`, survives a repaint, keys identically
+from the pane (`point:0adff0b425ee9c5d` both ways), and clears when the reader moves on.
+
+### The guard learned to follow a builder
+
+`test_every_kind_a_pin_can_carry_has_a_route` reads literal `pinBtn({ kind: "…"` calls.
+Three surfaces keep a loop and `pinKey` keys on `kind:id`, so all three must build the
+*same* subject or one loop becomes three shelf rows naming one thing. A literal at each
+site is the drift rule 51 is about — so the guard resolves `pinBtn(fooSubject(r), …)` to
+the builder and reads its `kind:` there. Without that the only way to pass was to copy the
+literal three times: a guard driving the defect it exists to prevent.
+
+### The instrument, again, and it is worse than recorded
+
+The capture is a fixed **784 px of a 1,200 px viewport**; `resize_window` does not move the
+page viewport at all; and a click aimed at the pane-fold control landed on the trail. The
+inspector sits at x=848 and is **permanently out of frame**, whatever is collapsed — the
+centre pane simply takes the space. Everything about the table pane's *layout* in this
+session was measured in the DOM rather than seen, and that is said rather than claimed. It
+did find the 2,612 px section; it would not have found a colour or a rhythm.
+
+### Verified end
+
+1,177 tests, mypy clean over 120 source files, ruff clean. `output/` unchanged — this
+session wrote no maps.

@@ -1758,6 +1758,12 @@ table.grid tbody tr[aria-selected="true"] td:first-child { box-shadow: inset .18
   color: var(--text-faint); white-space: nowrap; overflow: hidden;
   text-overflow: ellipsis; }
 .loopitem .conf { margin-left: .3rem; }
+.loopitem .pinbtn { flex: none; margin-left: .3rem; }
+
+/* The span a reader came back to. A ring rather than a fill, because the ribbon already
+ * spends its background on nesting depth and a filled row would read as another level
+ * (design rule 4: one dimension at a time). */
+.rib-kept { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: .25rem; }
 /* A caller or callee is a doorway, so it looks like one. `code` inside keeps the
  * monospace the rest of the flow list uses; the button exists for the click and the
  * focus ring, not for a different appearance. */
@@ -2290,6 +2296,16 @@ kbd { font-family: var(--f-mono); font-size: .66rem; background: var(--sunken);
   border-bottom: 1px solid var(--border); cursor: pointer; color: var(--text);
   padding: .4rem .5rem; }
 .algo-row:hover { background: var(--raised); }
+/* **The row and its keep button are a grid, and the button gets a cell.** The previous
+ * session paid 51x54 px for the other shape of this: a control added after a child that
+ * spans to the last column starts a new row, in whatever column it lands in. Here the
+ * `<li>` is the grid and the button is its second column, so it can never flow under the
+ * row it belongs to -- the candidate rule *a grid does not overflow, it grows a row*. */
+.algo-list li { display: grid; grid-template-columns: 1fr auto; align-items: start;
+  border-bottom: 1px solid var(--border); }
+.algo-list li:last-child { border-bottom: 0; }
+.algo-list li .algo-row { border-bottom: 0; }
+.algo-keep { padding: .4rem .5rem .4rem 0; }
 .algo-tag { justify-self: start; margin-top: .1rem; }
 .algo-lines { display: flex; flex-direction: column; gap: .15rem; min-width: 0; }
 .algo-l1 { display: flex; align-items: baseline; gap: .45rem; flex-wrap: wrap; }

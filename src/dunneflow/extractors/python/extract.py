@@ -27,6 +27,7 @@ import ast
 import io
 import re
 import tokenize
+from collections.abc import Sequence
 from pathlib import Path
 
 from ... import sql as sqlmod
@@ -749,9 +750,42 @@ class _Extractor(ast.NodeVisitor):
     # nesting back exactly as written. Nassi and Shneiderman made the same observation in
     # 1972 and drew structured code as nested boxes with no arrows at all.
 
+    @staticmethod
+    def _lines_of(nodes: Sequence[ast.AST]) -> set[int]:
+        """Every line these subtrees occupy, decorators and continuations included."""
+        out: set[int] = set()
+        for n in nodes:
+            for sub in ast.walk(n):
+                line = getattr(sub, "lineno", None)
+                if line is None:
+                    continue
+                out.update(range(line, (getattr(sub, "end_lineno", None) or line) + 1))
+        return out
+
+    @classmethod
+    def _once_span(cls, once: ast.AST | None,
+                   repeats: Sequence[ast.AST]) -> tuple[int, int]:
+        """The lines evaluated once before the first pass, and only where a line can say.
+
+        The iterable's lines **minus** every line a repeated part of the same point also
+        occupies, which is `ControlPoint.once_start`'s whole argument: a one-line
+        comprehension writes its element and its iterable on the same line, and the
+        subtraction empties the range there rather than guessing which of them a boundary
+        on that line belongs to.
+
+        Contiguous by construction, so two ints hold it: a `for`'s body is strictly after
+        its iterable and a comprehension's element strictly before it, so what is removed
+        is always an end.
+        """
+        if once is None:
+            return (0, 0)
+        lines = cls._lines_of([once]) - cls._lines_of(repeats)
+        return (min(lines), max(lines)) if lines else (0, 0)
+
     def _record_control(
         self, node: ast.AST, kind: ControlKind, *, arms: int = 1, exits: str = "",
-        header: ast.AST | None = None,
+        header: ast.AST | None = None, word: str = "",
+        once: ast.AST | None = None, repeats: Sequence[ast.AST] = (),
     ) -> ControlPoint:
         """One point, then its contents one level deeper.
 
@@ -760,10 +794,18 @@ class _Extractor(ast.NodeVisitor):
         (rule 75) and never `ast.unparse`d, for `call_args`' reason -- what is stored is
         what the reader will go looking for.
 
+        `once` and `repeats` are the two halves of *what does this evaluate once*, and
+        only a caller knows which node is which: a `for`'s iterable runs once and its test
+        does not exist, a `while`'s test runs every pass and it has no iterable, and a
+        comprehension repeats the element written to the left of its first generator.
+        Passing both and subtracting here keeps that judgement out of four visitors
+        (rule 51).
+
         Returns the point so the caller can hang its arms off it. Only a caller knows
         what its arms *are*: an `elif` chain has been flattened by then, a `try`'s arms
         are its handlers, and a loop has none unless it has an `else`.
         """
+        once_start, once_end = self._once_span(once, repeats)
         start = int(getattr(node, "lineno", 0) or 0)
         # A node with no `end_lineno` collapses to its own first line rather than to 0: a
         # span of `start..0` is empty, and every range join over it would answer "nothing
@@ -784,6 +826,9 @@ class _Extractor(ast.NodeVisitor):
             header=text,
             arms=arms,
             exits=exits,
+            word=word,
+            once_start=once_start,
+            once_end=once_end,
         )
         self.control.append(point)
         return point
@@ -849,7 +894,17 @@ class _Extractor(ast.NodeVisitor):
         # A `while` has a test and a `for` has an iterable, and both are the answer to
         # "what is this looping over" -- the one thing a reader asks of a loop first.
         head = node.iter if isinstance(node, (ast.For, ast.AsyncFor)) else node.test
-        point = self._record_control(node, ControlKind.LOOP, header=head)
+        # **A `while` evaluates nothing once, and that is why the word is recorded.** Its
+        # test runs again on every pass, so `once` stays empty; a `for` runs its iterable
+        # before the first pass and never again. The two are one `ControlKind` and the
+        # header alone cannot tell them apart (rule 30).
+        point = self._record_control(
+            node, ControlKind.LOOP, header=head,
+            word=("while" if isinstance(node, ast.While)
+                  else "async for" if isinstance(node, ast.AsyncFor) else "for"),
+            once=None if isinstance(node, ast.While) else head,
+            repeats=[*node.body, *node.orelse],
+        )
         # `for ... else` runs when the loop was never broken out of, which is a second
         # way through and the one most readers have to look up. 4 of Society's 976 loops
         # have one; a loop without an `else` records no arms at all, because its body is
@@ -874,9 +929,26 @@ class _Extractor(ast.NodeVisitor):
         saying out loud: 42 of Mensores' comprehensions reach a boundary.
         """
         gens = getattr(node, "generators", [])
+        # **Only the first generator's iterable runs once.** `[f(x) for x in a for y in b]`
+        # evaluates `a` before anything and `b` once per item of `a`, so a later
+        # generator's iterable repeats exactly as the element does. The element itself is
+        # written to the *left* of the iterable, which is why the subtraction has to trim
+        # both ends and why a one-line comprehension records nothing.
+        repeats: list[ast.AST] = (
+            [node.key, node.value] if isinstance(node, ast.DictComp)
+            else [node.elt] if isinstance(node, (ast.ListComp, ast.SetComp,
+                                                 ast.GeneratorExp))
+            else []
+        )
+        for i, gen in enumerate(gens):
+            repeats.extend(gen.ifs)
+            if i:
+                repeats.append(gen.iter)
         self._record_control(
             node, ControlKind.COMPREHENSION,
             header=gens[0].iter if gens else None,
+            once=gens[0].iter if gens else None,
+            repeats=repeats,
         )
         self._descend(node)
 
@@ -936,13 +1008,13 @@ class _Extractor(ast.NodeVisitor):
             self._record_control(
                 node, ControlKind.GUARD,
                 exits=type(last).__name__.lower() if isinstance(last, _EXITS) else "",
-                header=node.test,
+                header=node.test, word="if",
             )
             self._descend(node)
             return
         self._ladder_tails.update(id(t) for t in tails)
         point = self._record_control(
-            node, ControlKind.DECISION, arms=arms, header=node.test)
+            node, ControlKind.DECISION, arms=arms, header=node.test, word="if")
         self._record_arms(point, self._ladder_arms(node, tails))
         self._descend(node)
 
@@ -954,7 +1026,8 @@ class _Extractor(ast.NodeVisitor):
         one that looked and found nothing.
         """
         point = self._record_control(
-            node, ControlKind.DECISION, arms=len(node.cases), header=node.subject)
+            node, ControlKind.DECISION, arms=len(node.cases), header=node.subject,
+            word="match")
         self._record_arms(point, [
             (ArmKind.CASE, self._case_header(c), c.body) for c in node.cases])
         self._descend(node)
@@ -978,7 +1051,8 @@ class _Extractor(ast.NodeVisitor):
         No header: what a `try` is *about* is the block it guards, and quoting forty lines
         as a heading would be a header that is the body (rule 8's shape, one subject over).
         """
-        point = self._record_control(node, ControlKind.HANDLER, arms=len(node.handlers))
+        point = self._record_control(node, ControlKind.HANDLER, arms=len(node.handlers),
+                                    word="try")
         self._record_arms(point, self._try_arms(node))
         self._descend(node)
 
@@ -1021,7 +1095,8 @@ class _Extractor(ast.NodeVisitor):
         has none, and it is handled anyway because an extractor that silently walks past a
         language construct reports a smaller program (rule 15's shape).
         """
-        point = self._record_control(node, ControlKind.HANDLER, arms=len(node.handlers))
+        point = self._record_control(node, ControlKind.HANDLER, arms=len(node.handlers),
+                                    word="try")
         self._record_arms(point, self._try_arms(node))
         self._descend(node)
 

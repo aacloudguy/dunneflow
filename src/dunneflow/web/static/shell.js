@@ -8098,7 +8098,14 @@ function ribBlock(b) {
               data-point="${esc(b.point)}">
     <span class="rib-line">${b.line_start}</span>
     <span class="rib-head-line"><span class="rib-word">${esc(word)}</span> ${head} ${exits}
-      ${b.significant ? `<span class="rib-why">${esc(b.why)}</span>` : ""}</span>
+      ${/* Every point carries a `why`, including the ones that pass -- so it is drawn
+            for every one. Gated on `significant` it was drawn for none of the quiet
+            ones, and the 11 loops whose query turns out to run once are exactly the
+            ones a reader most needs the sentence for. What separates them is the words,
+            not a second colour: `--text-faint` is already the faintest token here and a
+            fainter one would buy a contrast problem for a distinction the sentence
+            already makes (design rule 7). */
+        b.why ? `<span class="rib-why">${esc(b.why)}</span>` : ""}</span>
     ${b.children.length ? ribBlocks(b.children) : ""}
     ${arms ? `<ul class="rib-arms">${arms}</ul>` : ""}
   </li>`;

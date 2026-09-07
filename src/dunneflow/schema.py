@@ -25,7 +25,7 @@ from typing import Literal
 # Bump whenever the stored shape or the meaning of an extracted fact changes.
 # A mismatch discards the graph and re-extracts: graph.db is derived data, and a
 # stale map that answers confidently is worse than no map at all.
-SCHEMA_VERSION = 8
+SCHEMA_VERSION = 9
 
 
 # --------------------------------------------------------------------------- #
@@ -369,6 +369,34 @@ class ControlPoint:
     # Recorded rather than inferred from the header, because "if not x: return" and
     # "if not x: raise" are the same sentence and opposite facts.
     exits: str = ""
+    # **The word that opens the point, as the source wrote it**: `for`, `async for`,
+    # `while`, `if`, `try`, `match`, and `""` for a comprehension, which opens with a
+    # bracket. `exits`' own argument one kind over: `for x in y` and `while y` are both
+    # `ControlKind.LOOP` and opposite facts about whether the header runs again, and a
+    # header of `True` is `while True` to a reader and a guess to a matcher (rule 30).
+    word: str = ""
+    # **The lines this point evaluates once, before the first pass.** A `for`'s iterable
+    # and a comprehension's first generator; 0/0 for a `while`, whose test re-runs, and
+    # for every decision, guard and handler, which repeat nothing.
+    #
+    # It is the iterable's span **minus every line a repeated part of this point also
+    # occupies**, and the subtraction is the whole fact. The iterable's span alone
+    # reclassifies 45 of Society's loops and 34 of them wrongly, because
+    # `[fetch(x) for x in ids]` writes its element and its iterable on one line and a line
+    # cannot choose between them. Subtracting leaves the range empty there -- nothing is
+    # excluded, which is the answer that cannot be wrong (rule 49: a plausible fallback is
+    # what hides the failure). Contiguous by construction: a `for`'s body is strictly
+    # after its iterable and a comprehension's element strictly before it, so the
+    # subtraction only ever trims an end.
+    #
+    # Why it is a fact and not something the resolver works out: `line BETWEEN line_start
+    # AND line_end` reads the iterable as part of the body, so `for row in query():`
+    # reported one query as a query per pass -- 11 of Society's 261 rates, in the sentence
+    # that is the feature's headline. Four statements in `web/queries.py` ask the same
+    # range question in SQL and cannot import the resolver, so the answer has to be a
+    # column they can read (rule 51).
+    once_start: int = 0
+    once_end: int = 0
 
 
 @dataclass(slots=True)

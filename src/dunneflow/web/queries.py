@@ -1380,17 +1380,37 @@ ORDER BY file, idx
 # a rate exactly as a `for` is -- 42 of Society's 261 rates are comprehensions, and a lane
 # that counted only the word `for` would drop them without saying so (design rule 1).
 #
+# **What a loop is *over* is not what it does on a pass**, and these statements have to
+# say so the way `resolve/shape.Point.repeated` does.
+#
+# `for row in conn.execute(q).fetchall():` runs one query, before the first pass, but it
+# is written on a line inside the loop's own span -- so a plain `BETWEEN line_start AND
+# line_end` reads it as a query *per* pass. `control.once_start`/`once_end` are the lines
+# the point evaluates once, recorded by the extractor because a span cannot work it out:
+# they are 0/0 for a `while`, whose test re-runs, and for a loop written on one line,
+# where the element and the iterable share a line and nothing can be excluded honestly.
+#
+# It is a fragment rather than five copies because these four statements and the resolver
+# are one answer to one question, and the day they disagree is the day a table's thread,
+# its curiosity and the Algorithms page band the same loop three ways (rule 51). `{line}`
+# is the column each caller is testing and `{c}` the alias it joined `control` under;
+# nothing here is user input.
+ON_A_PASS = ("AND NOT ({c}.once_start > 0"
+             " AND {line} BETWEEN {c}.once_start AND {c}.once_end)")
+
+
 # The tables this routine loops over, and how many **other routines** do the same. The
 # count is other routines and the cohort below resolves to other routines: a thread whose
 # figure and whose destination are two different populations is the defect commit 3cfce1b
 # was written from (rule 32).
-THREAD_LOOPED_TABLE = """
+THREAD_LOOPED_TABLE = f"""
 WITH looped AS (
     SELECT DISTINCT o.tbl AS tbl, o.routine_id AS rid
     FROM sql_ops o
     JOIN control c ON c.routine_id = o.routine_id
                   AND c.kind IN ('LOOP', 'COMPREHENSION')
                   AND o.line BETWEEN c.line_start AND c.line_end
+                  {ON_A_PASS.format(c="c", line="o.line")}
     WHERE o.tbl <> '' AND o.routine_id IS NOT NULL)
 SELECT m.tbl AS name,
        (SELECT COUNT(*) FROM looped x WHERE x.tbl = m.tbl AND x.rid <> :id) AS others
@@ -1400,12 +1420,13 @@ ORDER BY m.tbl
 """
 
 # The routines a `looped_table` thread opens: exactly the population counted above.
-LOOPED_TABLE_ROUTINES = """
+LOOPED_TABLE_ROUTINES = f"""
 SELECT DISTINCT o.routine_id AS node
 FROM sql_ops o
 JOIN control c ON c.routine_id = o.routine_id
               AND c.kind IN ('LOOP', 'COMPREHENSION')
               AND o.line BETWEEN c.line_start AND c.line_end
+              {ON_A_PASS.format(c="c", line="o.line")}
 WHERE o.tbl = :name AND o.routine_id IS NOT NULL
 """
 
@@ -2104,13 +2125,14 @@ FROM top JOIN constants c ON c.module || '.' || c.name = top.k
 # `whence` is the first loop over it, not the first operation on it: the measure is about
 # loops, and pointing the reader at a straight-through write would be a location that has
 # nothing to do with the number beside it (design rule 13).
-CURIO_LOOPED_TABLE = """
+CURIO_LOOPED_TABLE = f"""
 WITH m AS MATERIALIZED (
     SELECT o.tbl AS k, COUNT(DISTINCT c.point_id) AS n
     FROM sql_ops o
     JOIN control c ON c.routine_id = o.routine_id
                   AND c.kind IN ('LOOP', 'COMPREHENSION')
                   AND o.line BETWEEN c.line_start AND c.line_end
+                  {ON_A_PASS.format(c="c", line="o.line")}
     WHERE o.tbl <> '' AND o.routine_id IS NOT NULL
     GROUP BY o.tbl),
 top AS (SELECT k, n FROM m ORDER BY n DESC, k LIMIT 1)
@@ -2119,6 +2141,7 @@ SELECT '' AS node, top.k AS name, top.k AS qualname,
           JOIN control c2 ON c2.routine_id = o2.routine_id
                          AND c2.kind IN ('LOOP', 'COMPREHENSION')
                          AND o2.line BETWEEN c2.line_start AND c2.line_end
+                         {ON_A_PASS.format(c="c2", line="o2.line")}
          WHERE o2.tbl = top.k) AS whence,
        top.n AS value,
        (SELECT n FROM m ORDER BY n LIMIT 1 OFFSET (SELECT COUNT(*)/2 FROM m)) AS middle,
@@ -2139,7 +2162,7 @@ FROM top
 # The population is the 261 loops that reach a boundary at all, which is the `rates` lane's
 # own numerator -- so the middle is *"of the loops that move something"* and not *"of every
 # loop in the program"*, and the card says which.
-CURIO_LOOP_PLACES = """
+CURIO_LOOP_PLACES = f"""
 WITH mv AS MATERIALIZED (
     SELECT routine_id, line FROM boundaries WHERE routine_id IS NOT NULL AND line IS NOT NULL
     UNION
@@ -2151,6 +2174,7 @@ m AS MATERIALIZED (
     FROM control c
     JOIN mv ON mv.routine_id = c.routine_id
            AND mv.line BETWEEN c.line_start AND c.line_end
+           {ON_A_PASS.format(c="c", line="mv.line")}
     WHERE c.kind IN ('LOOP', 'COMPREHENSION')
     GROUP BY c.point_id),
 top AS (SELECT k, n FROM m ORDER BY n DESC, k LIMIT 1)

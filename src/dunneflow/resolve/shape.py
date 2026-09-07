@@ -38,6 +38,15 @@ in `moves`.
 header, which belongs to no arm -- so the arm-difference test sees it in neither and the
 decision is not called a fork on account of it. That is deliberate: attributing it to the
 arm written below it would be a position mistaken for a meaning (rule 1).
+
+**And an iterable is not a body.** `for row in conn.execute(q).fetchall():` runs one
+query, before the first pass -- but it is written on a line inside the loop's own span, so
+the range join above read it as one query *per* pass and said so, about 11 of Society's
+261 rates, in the sentence that is this feature's headline. A span cannot tell what a loop
+is over from what it does, which is why `ControlPoint` now records the lines it evaluates
+once and why `Point.repeated` -- never `Point.moves` -- is what the band and the
+judgement are taken over. A `for ... else` runs once too and comes off the same way,
+through the arm that already records it.
 """
 
 from __future__ import annotations
@@ -153,6 +162,50 @@ class Point:
     # itself once per pass is a quadratic reach into the outside world, which the first
     # number quietly buries under a hundred `if`s.
     in_loop: str = ""
+    # The lines this point evaluates once before the first pass -- a `for`'s iterable, a
+    # comprehension's first generator -- as `ControlPoint` recorded them. 0/0 for a
+    # `while`, for every decision, and for a loop written on one line, where the element
+    # and the iterable share a line and nothing can be excluded honestly.
+    once_start: int = 0
+    once_end: int = 0
+    # The word the source opened with: `for`, `async for`, `while`, `if`, `try`, `match`,
+    # and "" for a comprehension. Read rather than inferred from the header, because a
+    # `while` and a `for` are one `ControlKind` and opposite facts (rule 30).
+    word: str = ""
+
+    @property
+    def once(self) -> list[Move]:
+        """What this point is *over*, evaluated before the first pass.
+
+        Empty for everything but a `for` or a comprehension whose iterable moves
+        something -- 11 of Society's loops. Kept rather than discarded (design rule 1):
+        the query is really written there, the ribbon draws it where it stands, and the
+        loop's own sentence names it. What it must not do is count as a rate.
+        """
+        if not self.once_start:
+            return []
+        return [m for m in self.moves if self.once_start <= m.line <= self.once_end]
+
+    @property
+    def repeated(self) -> list[Move]:
+        """What actually happens every time this point runs.
+
+        `moves` minus the iterable, and minus a `for ... else`, which runs once when the
+        loop was never broken out of. The `else` comes off through the arm that already
+        records its span rather than through a second fact (rule 40); Society has 2 such
+        loops and neither is a rate either way, which is why this is two lines and not a
+        feature.
+
+        **Everything that counts a loop counts this** -- the band, the judgement, the
+        lanes. `moves` stays what is written inside the span, because that is what the
+        ribbon draws and what a reader sees.
+        """
+        skip = {m.line for m in self.once}
+        if self.kind in (ControlKind.LOOP, ControlKind.COMPREHENSION):
+            for arm in self.arms:
+                if arm.kind is ArmKind.ELSE:
+                    skip.update(m.line for m in arm.moves)
+        return [m for m in self.moves if m.line not in skip]
 
     @property
     def forks(self) -> bool:
@@ -303,7 +356,14 @@ def judge(point: Point) -> None:
     precondition that happens to fetch something. Answering both with one number is how
     a worklist ends up listing 3,931 refusals.
     """
-    point.band = MOVES if point.moves else (CALLS if point.calls else STILL)
+    # **Over `repeated`, never `moves`.** For every decision, guard and handler the two
+    # are the same list, so this moves nothing there; for a loop it is the difference
+    # between *a query per pass* and *a query, then a loop*. The band has to carry the
+    # correction as well as the judgement, because `web/shape.py` builds the rates lane
+    # from `band == MOVES` and the page's three loop numbers have to keep summing to
+    # 1,950 -- two answers to one question is rule 13's defect, and it would show up as a
+    # lane that disagrees with its own denominator.
+    point.band = MOVES if point.repeated else (CALLS if point.calls else STILL)
 
     if point.kind in (ControlKind.LOOP, ControlKind.COMPREHENSION):
         _judge_loop(point)
@@ -316,8 +376,27 @@ def judge(point: Point) -> None:
 
 
 def _judge_loop(point: Point) -> None:
-    """A loop is a subject where something moves inside it, because that is a rate."""
-    n = places(point.moves)
+    """A loop is a subject where something moves **on every pass**, because that is a rate.
+
+    Counted over `repeated`: what a loop is *over* runs once, before the first pass, and
+    `for row in conn.execute(q).fetchall():` is one query however many rows come back.
+    Read over the whole span it was 11 of Society's 261 rates, each of them saying *once
+    per pass* about a thing that happens once.
+    """
+    n = places(point.repeated)
+    # **The iterable is named, never dropped** (design rule 1). It is a clause on whichever
+    # band the loop lands in rather than a fourth band, in the shape the nesting clause
+    # below already uses: a loop that fetches once and then calls per pass is a `CALLS`
+    # loop with something worth saying about its first line.
+    once = places(point.once)
+    over = ""
+    if once and n:
+        over = " \u2014 and what it is over moves something too, once, before the first pass"
+    elif once == 1:
+        over = " \u2014 the one thing that moves here is what it is over, evaluated once"
+    elif once:
+        over = (f" \u2014 the {once} things that move here are what it is over, evaluated"
+                " once")
     if n:
         point.significant = True
         per = "once per pass" if n == 1 else f"{n} of them, once per pass"
@@ -326,12 +405,12 @@ def _judge_loop(point: Point) -> None:
         # above 1, and **10** of them are inside another loop. The first number reads as
         # the second and is not it.
         nested = " \u2014 and it is inside another loop" if point.in_loop else ""
-        point.why = f"something moves inside this loop, {per}{nested}"
+        point.why = f"something moves inside this loop, {per}{nested}{over}"
     elif point.calls:
         point.why = (f"calls {point.calls} routine{'s' if point.calls != 1 else ''} of this"
-                     " program, and nothing moves at these lines")
+                     f" program, and nothing moves at these lines{over}")
     else:
-        point.why = "nothing that moves happens inside it"
+        point.why = f"nothing that moves happens inside it{over}"
 
 
 def _judge_decision(point: Point) -> None:
@@ -407,7 +486,7 @@ def _judge_guard(point: Point) -> None:
 
 _POINTS_SQL = """
 SELECT c.point_id, c.routine_id, c.file, c.kind, c.line_start, c.line_end,
-       c.depth, c.header, c.arms, c.exits,
+       c.depth, c.header, c.arms, c.exits, c.word, c.once_start, c.once_end,
        COALESCE(r.qualname, '') AS qualname, COALESCE(r.module, '') AS module
   FROM control c
   LEFT JOIN routines r ON r.id = c.routine_id
@@ -449,6 +528,8 @@ def measure(store: Store) -> ShapeReport:
             module=r["module"], file=r["file"], kind=ControlKind(r["kind"]),
             line_start=lo, line_end=hi, depth=int(r["depth"]), header=r["header"] or "",
             arms_declared=int(r["arms"]), exits=r["exits"] or "",
+            word=r["word"] or "",
+            once_start=int(r["once_start"] or 0), once_end=int(r["once_end"] or 0),
             moves=_within(rmoves, lo, hi), calls=_count_within(rcalls, lo, hi),
             arms=arms_by_point.get(r["point_id"], []),
         )
@@ -535,6 +616,8 @@ def outline(store: Store, routine_id: str) -> list[Point]:
             module=r["module"], file=r["file"], kind=ControlKind(r["kind"]),
             line_start=lo, line_end=hi, depth=int(r["depth"]), header=r["header"] or "",
             arms_declared=int(r["arms"]), exits=r["exits"] or "",
+            word=r["word"] or "",
+            once_start=int(r["once_start"] or 0), once_end=int(r["once_end"] or 0),
             moves=_within(moves, lo, hi), calls=_count_within(calls, lo, hi),
             arms=arms_by_point.get(r["point_id"], []),
         )

@@ -157,7 +157,16 @@ CREATE TABLE IF NOT EXISTS control (
     depth      INTEGER NOT NULL DEFAULT 1,
     header     TEXT NOT NULL DEFAULT '',
     arms       INTEGER NOT NULL DEFAULT 1,
-    exits      TEXT NOT NULL DEFAULT ''
+    exits      TEXT NOT NULL DEFAULT '',
+    -- The word the source opened this point with, and the lines it evaluates once
+    -- before the first pass. `once_start`/`once_end` are 0/0 wherever nothing runs
+    -- once -- a `while`, every decision, and a loop written on a single line, where
+    -- the element and the iterable share a line and a line cannot choose between
+    -- them. Four statements in `web/queries.py` read these because they ask the same
+    -- range question in SQL and cannot import `resolve/shape.py` (rule 51).
+    word       TEXT NOT NULL DEFAULT '',
+    once_start INTEGER NOT NULL DEFAULT 0,
+    once_end   INTEGER NOT NULL DEFAULT 0
 );
 
 -- The ways through one control point, and only where there is more than one. Hangs off
@@ -846,10 +855,12 @@ class Store:
         )
         c.executemany(
             "INSERT INTO control"
-            "(point_id,file,routine_id,kind,line_start,line_end,depth,header,arms,exits)"
-            " VALUES(?,?,?,?,?,?,?,?,?,?)",
+            "(point_id,file,routine_id,kind,line_start,line_end,depth,header,arms,exits,"
+            " word,once_start,once_end)"
+            " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
             [(p.point_id, ff.path, p.routine_id, p.kind.value, p.line_start, p.line_end,
-              p.depth, p.header, p.arms, p.exits) for p in ff.control],
+              p.depth, p.header, p.arms, p.exits, p.word, p.once_start, p.once_end)
+             for p in ff.control],
         )
         c.executemany(
             "INSERT INTO control_arms"

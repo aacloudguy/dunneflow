@@ -120,6 +120,31 @@ def refusing(row):
     if not row:
         return None
     return helper(row)
+
+
+def over_a_query(conn):
+    """The query is what the loop is *over*: one query, however many rows come back."""
+    out = []
+    for row in conn.execute("SELECT id FROM seals").fetchall():
+        out.append(row[0])
+    return out
+
+
+def over_a_query_and_writing(conn):
+    """Both halves on one loop: one query before the first pass, one write per pass."""
+    for row in conn.execute("SELECT id FROM seals").fetchall():
+        conn.execute("INSERT INTO audit (id) VALUES (?)", (row[0],))
+
+
+def on_one_line(conn, ids):
+    """A comprehension whose element and iterable share a line. Nothing can be excluded."""
+    return [conn.execute("SELECT 1 FROM seals WHERE id=?", (i,)) for i in ids]
+
+
+def polling(conn):
+    """A `while` re-runs its test every pass, so its header is not evaluated once."""
+    while conn.execute("SELECT done FROM seals").fetchone() is None:
+        helper(conn)
 '''
 
 
@@ -164,6 +189,78 @@ def test_a_loop_that_only_calls_something_is_kept_and_is_not_promoted(store):
     assert not loop.significant
     assert loop.calls == 1 and not loop.moves
     assert "nothing moves at these lines" in loop.why, loop.why
+
+
+def test_a_query_a_loop_is_over_is_not_a_rate(store):
+    """`for row in conn.execute(q).fetchall():` runs one query, not one per pass.
+
+    It is written on a line inside the loop's own span, so the range join read it as a
+    rate and said *once per pass* about it -- 11 of Society's 261, in the sentence that
+    is this feature's headline. A span cannot tell what a loop is over from what it
+    does, which is why `ControlPoint` records the lines it evaluates once.
+    """
+    loop = [p for p in _by_routine(shape.measure(store))["over_a_query"]
+            if p.kind == ControlKind.LOOP][0]
+    assert loop.once_start and loop.once_start == loop.line_start
+    assert shape.places(loop.once) == 1, "the query is what the loop is over"
+    assert not loop.repeated, "nothing happens on a pass of this loop"
+    assert not loop.significant and loop.band == shape.STILL, loop.why
+    # Named, never dropped (design rule 1): the query is really written there and the
+    # ribbon draws it where it stands.
+    assert loop.moves, "the move is kept on the point that holds it"
+    assert "what it is over" in loop.why and "evaluated once" in loop.why, loop.why
+
+
+def test_a_loop_can_be_over_a_query_and_still_be_a_rate(store):
+    """The two halves are separate facts, and the sentence carries both."""
+    loop = [p for p in _by_routine(shape.measure(store))["over_a_query_and_writing"]
+            if p.kind == ControlKind.LOOP][0]
+    assert loop.significant and loop.band == shape.MOVES, loop.why
+    assert shape.places(loop.once) == 1 and shape.places(loop.repeated) == 1
+    assert "once per pass" in loop.why, loop.why
+    assert "before the first pass" in loop.why, loop.why
+
+
+def test_a_loop_written_on_one_line_excludes_nothing(store):
+    """`[f(x) for x in xs]` puts the element and the iterable on one line.
+
+    A line cannot choose between them, so the range stays empty and the judgement is
+    exactly what it was. Taking the iterable's span *without* subtracting the repeated
+    lines reclassifies 45 of Society's loops and 34 of them wrongly -- comprehensions
+    reaching a boundary would read 42 -> 5 rather than 42 -> 39. Rule 49: a plausible
+    value is what hides the failure.
+    """
+    comp = [p for p in _by_routine(shape.measure(store))["on_one_line"]
+            if p.kind == ControlKind.COMPREHENSION][0]
+    assert (comp.once_start, comp.once_end) == (0, 0)
+    assert not comp.once and comp.repeated == comp.moves
+    assert comp.significant and comp.band == shape.MOVES, comp.why
+
+
+def test_a_while_evaluates_its_header_every_pass(store):
+    """A `while` and a `for` are one `ControlKind` and opposite facts about the header.
+
+    So the word is recorded rather than guessed from it (rule 30): `while` and `for x in
+    y` both arrive with a header, and only one of them runs it again. A poll loop whose
+    test queries is a rate, and reading its test as an iterable would silence it.
+    """
+    loop = [p for p in _by_routine(shape.measure(store))["polling"]
+            if p.kind == ControlKind.LOOP][0]
+    assert loop.word == "while"
+    assert (loop.once_start, loop.once_end) == (0, 0), "a test is not an iterable"
+    assert loop.significant and loop.band == shape.MOVES, loop.why
+
+
+def test_every_loop_records_the_word_it_was_written_with(store):
+    """`exits`' own argument one kind over, and it is asserted over the whole fixture so
+    a kind added later cannot arrive wordless."""
+    for point in shape.measure(store).points:
+        if point.kind is ControlKind.COMPREHENSION:
+            assert point.word == "", "a comprehension opens with a bracket"
+        else:
+            assert point.word in {"for", "async for", "while", "if", "try", "match"}, (
+                f"{point.kind} at {point.file}:{point.line_start} has no word"
+            )
 
 
 def test_a_decision_forks_only_when_its_arms_differ_in_what_moves(store):

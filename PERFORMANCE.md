@@ -537,5 +537,27 @@ viewport and a 16px root font**, on a warm sidecar, with the glossary page alrea
 The `sidecars` block adds a shallow copy of a five-key dict and two `serving()` calls to a
 payload that is otherwise built once at boot — which is why the route stays at its old figure.
 
+**ALGORITHMS: the judgement, the lanes and one ribbon** — measured 2026-09-07 on
+`output/mensores` at 628 files, 9,625 control points and 4,125 arms. Median of five, warm,
+in one process:
+
+| Measure | Budget | Measured 2026-09-07 |
+|---|---|---|
+| `shape.measure` — every point judged | < 500 ms | **105 ms** |
+| `/api/algorithms` — the five lanes built | < 500 ms | **119 ms** |
+| its payload, 804 rows | — | 688 KB |
+| `/api/shape` — one routine's ribbon (10 points) | < 200 ms | **0.2 ms** |
+| the widest ribbon in the program (51 points) | < 200 ms | **0.5 ms** |
+
+The two figures are two bargains, and the difference between them is the whole shape of
+this feature. The lanes are the **whole program** — four statements and arithmetic over
+what they returned — so they are held on the base and paid once, on the first ask, exactly
+as the curiosities are (rule 45). A ribbon is **one routine**, bounded by the reader
+opening it, so it is answered on demand and held on nothing: at half a millisecond,
+remembering it would cost more than making it (rule 52).
+
+A cold first ask is the external volume rather than the work — 534 ms against 105 ms warm,
+which is this machine's disk and not this feature (rule 24), so no cold row is claimed.
+
 The machine's source volume is a slow external disk; cold reads cost far more than
 warm ones. That is expected and is not a regression.

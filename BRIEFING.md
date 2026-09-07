@@ -44,6 +44,7 @@ docs   ──► extract ──► docs.db  ──────ATTACH──┘
 | `detectors/*.yaml` | **The extension point.** Teach a framework here, not in code. |
 | `canonical/` | Whether two writings are the same expression, per language. **Beside** the extractors, never inside one — see the cache-key note in `CLAUDE.md`. |
 | `resolve/` | Call graph, CLI trees, flows, naming, glossary, traceability, mirror. `naming.py` is the **derived** lane, `stated.py` the **quoted** one — read in one place, by three readers. |
+| `resolve/shape.py` | **The amendment, judged once.** What moves inside a loop or a decision, by a range join, and whether that makes it a subject. Nothing is dropped for failing it. |
 | `render/` | Markdown and Mermaid, complete — never abbreviated (rule 8). |
 | `anomalies.py` | What looks wrong. Every finding states what would make it a false alarm. |
 | `sql.py` | Reads schemas out of the `CREATE TABLE` statements the code contains. |
@@ -67,6 +68,7 @@ no build step. deck.gl is vendored into `web/vendor/`.
 | `documents.py` | the map's **own** eight documents — lane 2, every row a selection |
 | `static/prose.js` | the document renderer — markdown to markup, `data-line` on every block |
 | `corpus.py` | the program's **own** documents served — the list, one document, one span. Lane 1; `documents.py` is lane 2 |
+| `shape.py` | ALGORITHMS: the five lanes with their denominators (`/api/algorithms`), and one routine's outline (`/api/shape`) |
 | `search.py` | searching the **text** — files first, then one file's lines with their margin |
 | `static/shell.js` | **the application**: state, routing, every view, the self-check |
 | `static/graph.js` | **the engine**: payload to pixels, and nothing about this page |
@@ -100,6 +102,21 @@ and ⌘Z takes any of it back. **Finding and keeping your place**: an arrow at t
 aimed at what you picked and clickable to go there, a reticule on it, a *focus* lock so only
 the lit set answers a hover or a click, and *you are here* to restore the view you found it
 in.
+
+**ALGORITHMS — built 2026-09-06/07, chunks 1 to 4 of 6.** Tom's, and the one place this
+tool's founding exclusion is amended: *"algorithms are FLOW, that's our namesake"*. A
+`ControlPoint` is **a span and nothing more** — routine, line range, depth, arms, and the
+header as written — and a `ControlArm` is the same one level in, so a decision can be asked
+*which way out writes*. What a loop **does** is a range join over the tables that already
+carry `routine_id` and `line`.
+
+The judgement is one sentence in one module: **a loop or a decision is a subject only where
+something moves inside it.** The navigator's **Algorithms** group lists what passes, in five
+lanes with their denominators — 261 rates of 1,950 loops, 78 forks and 69 ladders of 2,213
+decisions, 396 recoveries of 1,531 handlers, and 0 `match`, which is a named row rather than
+an absent lane. The mode toggle's **Shape** draws one routine's whole outline, guards
+included, nested as it is written — Nassi and Shneiderman's drawing, which is nested boxes
+and no arrows at all.
 
 **Reading one node:** hovering a routine in the picture *or in the navigator* gives a card,
 painted in two stages, leading with the **invocation line** — the name, its arguments with
@@ -178,6 +195,65 @@ program and every card states **the middle it is being read against**, because e
 program has a most-commented routine and a maximum alone is a claim nobody can weigh.
 
 ## What we are doing now
+
+**ALGORITHMS, chunks 2 to 4, built 2026-09-07.** 1,145 tests, mypy clean over 117 source
+files, ruff clean, working tree clean, `check` 0 broken on `output/mensores`. The pair is
+rebuilt and resealed at `SCHEMA_VERSION` 8.
+
+| Commit | What |
+|---|---|
+| `9bf688d` | **chunk 4** — the ribbon, and a place is not two things because it was written down twice |
+| `22667dc` | **chunk 3** — the worklist, and a row that names its own step |
+| `4bdc0e8` | **chunk 2** — the join, the judgement, and the arm that carries them |
+
+**The feature, in one sentence Tom can check:** the navigator's **Algorithms** group lists
+the loops and decisions this program is worth reading — 261 rates, 78 forks, 69 ladders,
+396 recoveries, 0 `match` — and the mode toggle's **Shape** draws any routine's whole
+outline, guards included, nested as it is written.
+
+**The judgement lives in one place** (`resolve/shape.py`, rule 51): *a loop or a decision
+is a subject only where something moves inside it.* Nothing is dropped for failing it —
+three bands, a `why` on every point, and the quiet numbers stated on the page, because it
+is the 1,222 loops that move nothing that make the 261 credible.
+
+**The arms were the missing fact.** A point says a decision has four ways out; only an arm
+says which one writes. `control_arms`, 4,125 of them over 9,625 points, recorded only where
+a point has more than one way through it — and they are the *bodies*, so a boundary reached
+from inside a test belongs to the decision and to neither arm.
+
+**Three figures were corrected, all in the same direction — the plan reasoned, the store
+measured.**
+
+| Was | Is | Why |
+|---|---|---|
+| 80 forks | **78** | the plan's script counted each `elif` tail as a ladder of its own; then places, not rows |
+| 10 nested, from `depth` | **10, from containment** | `depth` counts every enclosing `if` — the two answers are 104 and 10 |
+| 742 handlers touching | **750** | the plan measured two spans; the store measures the `try` |
+
+**A place is one act; a row is one description of it.** An `INSERT` is a `DATABASE` row and
+a `SQL` row on one line — 569 of Mensores' 991 SQL operations are such a pair — so counting
+rows said *two things move here* about one write, in the sentence that gives 33 of the 261
+rates their number. `places()` is the one place a count is taken now.
+
+**Two defects found by looking, not by testing.** One pointer click on a worklist row filed
+**two trail steps** — the dispatcher's step landing on the subject being left, which on a
+page of its own is nothing, so nothing could deduplicate it (rule 33's fourth variant). And
+the ribbon's line numbers stepped right with the indentation, under a comment of mine
+saying that is exactly what they must not do.
+
+**What is next: chunks 5 and 6.** Chunk 5 is the links back — a table's pane saying
+*"written from inside 3 loops"*, threads for *other loops over this table*, a `PIN_ROUTES`
+kind so a loop can be kept, two curiosities. That is the *"and vice versa"* half of what
+Tom asked for. Chunk 6 is `LOOPED_BOUNDARY` in `anomalies.py`, with the blind spot that
+makes it honest.
+
+**Waiting on Tom's eye:** the worklist's row layout and the ribbon's, both of which are
+design calls; and whether *"a grid does not overflow, it grows a row"* and *"an
+instrument's two coordinate systems can differ"* are rules or notes. The second is now
+measured rather than suspected — clicks are in the screenshot's frame, `zoom` regions are
+in the page's, and the pair differs by the device pixel ratio.
+
+### Before that: the trail names its own hops, and a grid that grew a row (2026-09-07)
 
 **Paused 2026-09-07 after two commits. Nothing is half-written.** 1,103 tests, mypy clean over
 113 source files, ruff clean, working tree clean, `check` 0 broken on `output/mensores`, no

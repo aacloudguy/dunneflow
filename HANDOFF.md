@@ -11239,3 +11239,163 @@ that is where every other row-level control in this product sits.
 *Candidate rule, neither minted nor refused:* **a grid does not overflow, it grows a row** — the
 neighbour of rule 53, and of the same family as design rule 16: a layout that is correct until a
 child is added, where the arithmetic that decides it lives in two files.
+
+## ALGORITHMS, chunks 2 to 4 — 2026-09-07
+
+Tom asked for this on 2026-09-07: *"We are lacking one last item on the left side icons —
+ALGORITHMS, meaning a view of significant loops and decision trees… algorithms are FLOW,
+that's our namesake… This is about chasing rabbits, and as long as the things they find
+have links to the other parts of our system and vice versa, it should be fine."* Chunk 1
+recorded the fact; these three make it something a reader can use.
+
+| Commit | What |
+|---|---|
+| `4bdc0e8` | **chunk 2** — the join, the judgement, and the arm that carries them |
+| `22667dc` | **chunk 3** — the worklist, and a row that names its own step |
+| `9bf688d` | **chunk 4** — the ribbon, and a place is not two things because it was written down twice |
+
+### Chunk 2: the fact gained arms, because the question could not be put to a span
+
+`resolve/shape.py` is the whole judgement, in one sentence: **a loop or a decision is a
+subject only where something moves inside it.** Nothing is dropped for failing it (design
+rule 1) — three bands, never two, and a `why` on every point including the ones that pass.
+It is the 1,222 loops that move nothing that make the 261 credible.
+
+**The arms are the part chunk 1 did not have.** A point says a decision has four ways out;
+only an arm says *which one writes*. Both of the plan's decision figures need that — the
+forks and the 396 handlers that recover by moving something — and so does the ribbon. So
+`ControlArm(point_id, routine_id, idx, kind, line_start, line_end, header)`, hanging off a
+new `control.point_id`, deleted *through* `control` as `call_args` is deleted through
+`calls`. Built now rather than later because chunk 1's `SCHEMA_VERSION` dance had just been
+paid and doing it twice is the only thing that would have cost anything.
+
+`ArmKind` is **the word in the source** — if, elif, else, case, try, except, finally, for,
+while — and the point's kind is what disambiguates the three `else`s Python has, exactly as
+it is for the reader standing at the line. Recorded **only where a point has more than one
+way through it**: 4,125 arms over 9,625 points. And the arms are the *bodies*, so an
+`elif`'s own test line belongs to no arm: `if fetch_row():` reaches a boundary from the
+decision's header, and attributing it to the arm written below would be a position mistaken
+for a meaning (rule 1). A fixture asserts exactly that, because it renders as a fork
+perfectly.
+
+**Two figures the plan got wrong, and the store is right both times.** 77 forks rather than
+80: the plan's script walked every `ast.If`, so an `elif` tail was flattened again as a
+ladder of its own — the same double count that turned 69 ladders into 97 in chunk 1. And
+750 handlers hold something that moves rather than 742: the plan measured the body and the
+handler bodies, this measures the `try` span, which also holds its `else` and `finally`.
+
+**And the headline was measured by the wrong number.** *"10 nested"* came from a script
+counting loop nesting; `ControlPoint.depth` counts every enclosing control point, so a loop
+written inside an `if` has depth 2 and is nested in nothing. On Society the two answers are
+**104 and 10** — and the sentence *"and it is inside another loop"* was being written from
+the first. `Point.in_loop` is a stack sweep per routine with `depth` breaking the one tie
+lines cannot (`[a for a in [b for b in c]]` is two comprehensions on one line). The ten
+reproduce, and two were read back against Society's source: `for companion in
+companion_paths(path)` inside `for path in doomed`, unlinking a file per pass.
+
+### Chunk 3: five lanes, a denominator each, and the two steps
+
+`web/shape.py` and a new **Algorithms** navigator group. Four lanes and a fifth that is
+empty on purpose — `match`, which Society has none of, and a lane that silently vanishes
+cannot be told from one that looked and found nothing (design rule 21).
+
+**Every lane states its denominator**, because the point of the judgement is that most of a
+program's loops are not subjects: *261 of 1,950*, never *261 loops*. And the page states
+what it left out, above the list: 1,222 loops that move nothing, 467 that only call
+something, 2,074 decisions whose arms move alike, 354 handlers that recover quietly, 3,931
+refusals.
+
+**Looked at, and it found five things** — a row reading *"inside True"* (Society's
+commonest enclosing loop is `while True:`, and the store records a loop's test and **not**
+the word that opened it, so any prose there invents one); a handler row printing a bare em
+dash where a `try`'s absent header should be; *"Ordered by by how many ways out"*; an empty
+lane printing its own blurb twice; and three `FILE` chips with no target reading as three
+copies of one fact.
+
+**And one real defect: a single pointer click filed two trail steps.** `selectFromNav` sets
+the view and then *awaits* the node, so the step the dispatcher files after the route lands
+on the subject being **left** — which on a page of its own is nothing at all, so
+`sameSelection` cannot collapse it against the step the move makes a moment later. Two
+steps, one name between them, one of them going nowhere. Rule 33's fourth variant, arriving
+through the very surface built to avoid it, and it renders perfectly either way.
+
+The fix is the mechanism the previous session built: a row is `data-nav="shaperow"`, a
+route that hands `{label, note}` to `selectFromNav` and declares itself in
+`NAV_NAMES_ITSELF` — whose second entry states the second way in. The guard asserts the
+rule in **both halves**, because either alone passes while the feature is broken, and it
+was proved non-vacuous against a file backup rather than `git checkout`.
+
+### Chunk 4: the ribbon, and the count that was counting descriptions
+
+A sixth centre mode, **Shape**: the selected routine's whole outline, guards included.
+`/api/shape?node=`, answered on demand and held on nothing (rule 45) — 0.2 ms for a
+43-line routine, 0.5 ms for the widest in the program.
+
+**A nested outline, not a graph.** Nassi and Shneiderman drew structured code in 1972 as
+nested boxes with no arrows, because structured code has no `goto` to draw and Python
+source never lost the structure. No control-flow graph, no dominator analysis, no layout
+pass, no library, nothing that can move under a gesture (rule 73). Read back against
+Society's own source line for line.
+
+**The name collision was closed before it could happen.** `selectFromNav` sets
+`state.view = state.mode`, so a mode called `shape` and a page called `shape` would be one
+word carrying two meanings — `data-nav`'s defect, which cost a session. The page is
+`algorithms`, which is what the navigator and the breadcrumb have called it all along; the
+mode is `shape`, which is what this codebase calls a routine's outline.
+
+**And the count was counting descriptions.** An `INSERT` is a `DATABASE` row *and* a `SQL`
+row on one line — one act at two altitudes, and 569 of Society's 991 SQL operations are
+such a pair. Counting rows said *two things move here* about one write, in the very
+sentence that gives a rate its number: **33 of the 261 rates** were saying it, and the
+fixture that found it was three lines long. `places()` is the one place a count is taken
+now (rule 51); the rows stay as the descriptions; a place is drawn once, led by the row
+that says the most about it, with the other named beside it (design rule 1).
+
+That moves exactly one measured figure, in the honest direction: **78 forks, not 77** — two
+arms can tie on rows and differ on places.
+
+Five more from looking: a guard drawn as `RETURN download_dir_str is None`, which says the
+routine returns that expression when what it does is *test* it; `1 decisions`; arms wearing
+list bullets; arms with no line number; and a column of line numbers that stepped right
+with the indentation, under a comment of mine saying that is exactly what it must not do —
+`position: absolute` resolves against the nearest *positioned* ancestor, and every row was
+one.
+
+### What every figure is now, reproduced from the store
+
+```
+9,625 control points · 4,125 arms
+219 loops + 42 comprehensions reach a boundary · 10 of them inside another loop
+467 loops call something and move nothing themselves · 1,222 move nothing at all
+2,213 decisions: 78 fork · 69 ladders of 3+ · 7 both · 0 match
+1,531 handlers: 750 hold something that moves · 396 recover by moving something
+3,931 guards · 797 significant of 9,625 · 105 ms warm for the whole judgement
+```
+
+### The instrument, again
+
+The browser stopped delivering pointer events part-way through the session — the first
+click after a scripted interval is swallowed by window focus, and later none arrived at
+all. Both trail-step findings came from **real** pointer clicks; the fix that followed was
+exercised through the same dispatcher by a dispatched click, which proves the handler and
+not the path (rule 48). Said rather than claimed.
+
+Two coordinate systems again, and the pair differs by the device pixel ratio: **clicks are
+in the screenshot's frame and `zoom` regions are in the page's**. The candidate rule left
+open on 2026-09-06 — *an instrument's two coordinate systems can differ, and the one you
+can see is not the one you touch* — is now measured rather than suspected.
+
+### Next: chunks 5 and 6
+
+**5 — the links back, and the threads.** A table's pane saying *"written from inside 3
+loops"*, a boundary's saying *"reached from inside 7 loops, deepest nesting 3"*, a
+routine's carrying a Shape section. Two `threads.py` subjects — *other loops over this
+table*, *other decisions on this value* — a `PIN_ROUTES` kind so a loop can be kept, and
+two `curiosities.py` measures each stating its middle. This is the *"and vice versa"* half
+of what Tom asked for, and it is the half that makes the feature a doorway rather than a
+page.
+
+**6 — the detector.** `LOOPED_BOUNDARY` in `anomalies.py`: a remote call inside a loop,
+with the blind spot that decides whether it is honest — *the iterable may hold one item,
+and nothing static can count it* — plus *a retry loop is this shape on purpose*. INFO or
+SUSPECT, never BROKEN, for `DEAD_CODE`'s reason.

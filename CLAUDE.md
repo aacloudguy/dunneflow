@@ -30,9 +30,17 @@ A program is started, fed inputs at its boundary, pulls more from its environmen
 through listeners, moves things through internal routines, and pushes results back out.
 **What moves is the subject. Internal computation is not.**
 
-Deliberately *not* reported: local variables, arithmetic, control flow, and private
-helpers that neither touch a boundary nor sit on a path to one. Leaving those out is
-most of what makes the output readable — do not "improve" the tool by adding them.
+Deliberately *not* reported: local variables, arithmetic, and private helpers that
+neither touch a boundary nor sit on a path to one. Leaving those out is most of what
+makes the output readable — do not "improve" the tool by adding them.
+
+**Control flow was on that list until 2026-09-07, and the amendment is narrow.** A loop
+or a decision is a subject **only where something moves inside it**: a loop that
+increments a counter is still the internal computation nobody asked for, a loop that
+issues one network call per item is a *rate*, and a rate is flow. What is recorded is a
+span — routine, line range, depth, arms, and the header as written — and never a
+variable, an operator or a value. See `resolve/shape.py`, which is the one place that
+judgement is made.
 
 The goal is **comprehension, not documentation**. Judge a change by whether it helps
 someone orient in an unfamiliar codebase, not by how many pages it emits.
@@ -206,6 +214,12 @@ with the others: a compartment is fifty-three drawings from one pass over the mo
 | Opening a box — three grouped queries | < 200 ms | 15 ms (18 routines) · 170 ms (61) |
 | `/api/fold`, a class of 61 methods | < 500 ms | 0.77 s cold, ~40 ms warm |
 
+**ALGORITHMS is a page and a mode, and they are two questions.** The navigator's
+*Algorithms* group opens `/api/algorithms` — five lanes over the whole program, each with
+its denominator, held on the base. The mode toggle's **Shape** opens `/api/shape?node=` —
+the selected routine's own outline, answered on demand. 105 ms and 0.2 ms; see
+`PERFORMANCE.md`.
+
 ## Verification — run before marking anything complete
 
 ```bash
@@ -341,6 +355,62 @@ docs   ──► extract ──► docs.db  (SQLite) ─────────
   at. It reuses `POPULATIONS` **and `DOTTED`**: taking the first without the second
   reproduced rule 51's own defect exactly, reporting `modules / snake_case` as **1 of 628**
   because a dotted path was read as one identifier.
+- `resolve/shape.py` — **the amendment, and the one place it is judged.** `CLAUDE.md`'s
+  founding exclusion read *"local variables, arithmetic, control flow"* until 2026-09-07,
+  and the rule behind it has not changed: **a loop or a decision is a subject only where
+  something *moves* inside it.** A loop that increments a counter is the internal
+  computation nobody asked for; a loop that issues one call per item is a **rate**, and a
+  rate is flow. A branch whose arms compute different numbers is arithmetic; one where an
+  arm writes to a table and another does not is a decision about what leaves the program.
+  That test lives here and nowhere else (rule 51) — the worklist, the ribbon and the panes
+  all ask this module.
+
+  **Nothing is dropped for failing it** (design rule 1). Three bands, never two: something
+  moves · it only calls something of this program · nothing happens here that this map can
+  see — and every point carries a `why`, including the ones that pass. It is the 1,222
+  loops that move nothing that make the 261 credible.
+
+  **The join is a range, never a relationship.** `boundaries`, `net_calls`, `sql_ops` and
+  `calls` each already carry `routine_id` and `line`, so *inside* is
+  `line BETWEEN line_start AND line_end` — the inverse of the lookup `web/search.py` does.
+  A table joining a loop to a boundary would be a second copy of a fact those two already
+  state between them (rule 40).
+
+  **A place is one act; a row is one description of it.** An `INSERT` is a `DATABASE` row
+  *and* a `SQL` row on one line, and 569 of Mensores' 991 SQL operations are such a pair —
+  so counting rows said *two things move here* about one write, in the sentence that gives
+  33 of the 261 rates their number. `places()` is the one place a count is taken; the rows
+  stay as the descriptions, and a surface draws a place once, led by the row that says the
+  most about it.
+
+  **`in_loop`, and not `depth > 1`.** `depth` counts every enclosing control point, so a
+  loop written inside an `if` has depth 2 and is nested in nothing. On Mensores the two
+  answers are **104 and 10**, and the ten are the quadratic reaches into the outside world
+  this feature exists to find. Filled by a stack sweep per routine, with `depth` breaking
+  the one tie lines cannot — `[a for a in [b for b in c]]` is two comprehensions on one
+  line.
+
+  Measured over Mensores: 219 loops + 42 comprehensions reach a boundary · 467 only call ·
+  1,222 move nothing · 78 of 2,213 decisions fork · 69 are ladders of three or more ·
+  396 of 1,531 handlers recover by moving something · 3,931 guards · 0 `match`. 96 ms warm
+  for all 9,625 points.
+- `web/shape.py` — the same facts served twice, for two questions. **`/api/algorithms`** is
+  the whole program in five lanes, held on the base and computed on the first ask; each
+  lane states its **denominator** (*261 of 1,950*, never *261 loops*) and the page states
+  the quiet bands above the list, because four lanes holding 804 of 9,625 points is a claim
+  about the other 8,821. **`/api/shape?node=`** is one routine's outline, answered on demand
+  and held on nothing (rule 45).
+
+  **The ribbon is a nested outline and not a graph.** Nassi and Shneiderman drew structured
+  code in 1972 as nested boxes with **no arrows at all**, because structured code has no
+  `goto` to draw and Python source never lost the structure — so there is no control-flow
+  graph, no dominator analysis, no layout pass and no library. Guards are drawn *here*, and
+  only here: 3,931 refusals are a list of the program on a worklist and the truth about a
+  routine in its own shape.
+
+  **`shape` is the mode and `algorithms` is the page**, and the two words are kept apart on
+  purpose: `selectFromNav` sets `state.view = state.mode`, so one word for both would make
+  selecting a routine land on the worklist — `data-nav`'s defect, which cost a session.
 - `docstore.py` — `docs.db`. **Parallel to the graph, never inside it.** A doc rescan
   never touches `graph.db`, code-only analysis stays cheap, and the corpus stays a
   separately handable artifact — many will hand over a charter and never a line of

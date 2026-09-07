@@ -12191,3 +12191,155 @@ def test_the_plate_request_carries_the_altitude_it_is_asking_about() -> None:
         "the cache key does not carry the level, so changing Detail with a plate selected "
         "returns the previous altitude's answer (rule 81)"
     )
+
+
+# ------------------------------------------------------- the force plate layout --- #
+#
+# `forcelayout.js` arranges a plate by connection rather than by degree, on the GPU where
+# there is one. The guards here are shaped by what actually went wrong while it was built:
+# every failure was silent, fast, and produced a picture that looked like a working one.
+
+
+def test_the_solver_is_loaded_and_is_its_own_thing() -> None:
+    """A module the page never loads is a feature nobody can reach (design rule 16)."""
+    html = _read("index.html")
+    assert "/static/forcelayout.js" in html, "the page does not load the solver"
+    assert html.index("/static/graph.js") < html.index("/static/forcelayout.js"), (
+        "the solver is loaded before the engine it hands positions to"
+    )
+    js = _read("forcelayout.js")
+    for forbidden in ("document.", "state.", "innerHTML"):
+        assert forbidden not in js, (
+            f"the solver touches {forbidden!r} — it turns a payload into numbers and must "
+            "know nothing about this page, for the reason `prose.js` is its own file"
+        )
+
+
+def test_the_solver_reads_the_edge_set_that_carries_a_crossing() -> None:
+    """Rules 23 and 31, from the layout side, and the one line that decides the feature.
+
+    A plate's arrangement can only know about the rest of the program because the model
+    stores every crossing **twice, once per plate, each copy ending in a shadow** — so the
+    payload's own edge list is the only place a cross-plate call is expressed as a force
+    *within* a plate. `links` is the other list: real-to-real, deduped, spanning Z, built
+    for drawing. Solving over it would arrange the whole stack as one graph and dissolve
+    the plates the layout exists to arrange.
+    """
+    js = _code(_read("forcelayout.js"))
+    assert "payload.edges.from" in js and "payload.edges.to" in js, (
+        "the solver no longer reads the payload's per-plate edges"
+    )
+    assert "links" not in js, (
+        "the solver reaches for `links`, which is the drawn edge set — real-to-real and "
+        "deduped, so every cross-plate pull would vanish from the forces"
+    )
+
+
+def test_the_shader_is_checked_for_having_compiled() -> None:
+    """**The failure this exists for was a 6 ms no-op that looked like a solved stack.**
+
+    `meta` is a reserved word in WGSL. The module failed to compile, the pipeline
+    dispatched, nothing was computed, and the whole stack "solved" in 6 ms with the output
+    bit-identical to the input — no exception, no console warning, a plausible number.
+    Only counting edge crossings caught it.
+
+    So the compilation result is read rather than assumed, the validation scope is popped
+    and thrown on rather than swallowed, and the answer is refused if it moved nothing.
+    Three checks because there were three ways to not notice (rule 37: a guard that checks
+    a name appears has not checked that anything happened).
+    """
+    js = _code(_read("forcelayout.js"))
+    assert "getCompilationInfo()" in js, "nothing reads whether the shader compiled"
+    assert 'pushErrorScope("validation")' in js and "popErrorScope()" in js, (
+        "WebGPU reports validation asynchronously; without a scope a refused pipeline "
+        "dispatches and computes nothing"
+    )
+    for guard in ("did not compile", "was refused", "moved nothing"):
+        assert guard in js, f"the {guard!r} case is not refused by name"
+
+
+def test_each_pass_binds_only_what_it_reads() -> None:
+    """The second silent failure: `layout: "auto"` derives a bind-group layout from the
+    bindings an entry point *actually uses*, so one group holding every buffer is refused
+    by whichever pipeline touches fewer — asynchronously, into the error scope, leaving a
+    pipeline that runs and computes nothing.
+    """
+    js = _code(_read("forcelayout.js"))
+    groups = re.findall(r"bind\(p\w+, \[([\d, ]+)\]\)", js)
+    assert len(groups) == 2, f"expected one bind group per pass, found {groups}"
+    assert groups[0] != groups[1], (
+        "both passes bind the same set, so one of them is binding something it never "
+        "reads — which is the validation error that leaves an inert pipeline"
+    )
+
+
+def test_the_solver_needs_no_random_number_generator() -> None:
+    """`layout.py`: the same graph must produce the same map on every run, or spatial
+    memory never forms. Seeding from the spiral is what buys that — no two nodes ever
+    coincide, so the degenerate-overlap branch never fires and there is nothing to seed.
+    """
+    js = _code(_read("forcelayout.js"))
+    assert "Math.random" not in js, (
+        "the layout draws a random number, so the same graph would arrange differently "
+        "on every open"
+    )
+    assert "GOLDEN_ANGLE" in js, "the solver no longer starts from the spiral"
+
+
+def test_the_plate_layout_is_a_setting_that_something_reads() -> None:
+    """The four halves, each of which passes alone while the setting is dead."""
+    st = _read("settings.js")
+    js = _code(_read("shell.js"))
+    assert re.search(r"^\s*plateLayout: 'structural'", st, re.M), (
+        "plateLayout is not a default, or no longer defaults to the layout that costs "
+        "nothing — a reader must not have the picture change before they ask"
+    )
+    assert "plateLayout: 'how a plate arranges what it holds'" in st, (
+        "the reset would clear the plate layout and not mention it"
+    )
+    assert '"plateLayout"' in js, "plateLayout is not persisted"
+    assert "[data-platelayout]" in js, "nothing listens for the plate-layout control"
+    assert '"platelayout"' in js, "the control is not in the wired roster"
+    view = _fn(js, "viewSettings")
+    assert "data-platelayout=" not in view or "PLATE_LAYOUTS.map(" in view, (
+        "the rows are written out by hand rather than from the roster"
+    )
+    assert "PLATE_LAYOUTS.map(" in view, "the Settings page offers no plate-layout control"
+
+
+def test_a_solved_layout_is_written_to_the_base_and_not_to_the_drawing() -> None:
+    """`positions` is rewritten from `baseXY` on every spread change, so a layout written
+    there would be undone by the next slider and compound with the one after — the same
+    argument the unscaled base exists for at all (design rule 22).
+    """
+    js = _code(_read("graph.js"))
+    # An object method rather than a top-level function, so sliced the way `setOptions` is
+    # a few guards below rather than through `_fn`, which reads `function name(`.
+    fn = js[js.index("setPlateXY(xy, ratio)"):]
+    fn = fn[:fn.index("\n  },")]
+    assert "d.baseXY.set(" in fn, "the layout is not written to the unscaled base"
+    assert "d.positions" not in fn, (
+        "the layout writes drawn positions, which the next spread change discards"
+    )
+    assert "applyLayout(d)" in fn, (
+        "nothing re-derives the drawn positions, so the new arrangement never reaches "
+        "the screen — and the box cache is cleared there, by whoever moved a node"
+    )
+    assert "serverXY" in fn, (
+        "turning the setting off has nothing to return to but a refetch"
+    )
+
+
+def test_the_layout_says_which_engine_drew_it() -> None:
+    """Design rule 1: a machine with no WebGPU gets the same picture a hundred times
+    slower, and is entitled to know that is what happened rather than to wonder why the
+    page stopped. The fallback also states *why* the graphics card was not used.
+    """
+    js = _code(_read("shell.js"))
+    fn = _fn(js, "plateLayoutStatus")
+    for said in ("graphics card", "n.ms", "n.fallback"):
+        assert said in fn, f"the readout does not state {said!r}"
+    assert "could not be solved" in fn, (
+        "a layout that failed leaves the reader on the spiral with nothing saying so, "
+        "which is indistinguishable from a control that does nothing"
+    )

@@ -42,7 +42,7 @@
  * here exactly one key is unreadable and the other sixty-five -- the shelf, the plate
  * colours, the panel layout -- are as good as they were. Discarding them would be this
  * file's own rule applied where its reasoning does not reach. */
-const SETTINGS_VERSION = 5;
+const SETTINGS_VERSION = 6;
 
 /* What a bump may carry over from the version below it, and what it must drop.
  *
@@ -64,6 +64,13 @@ const CARRY_FORWARD = {
      * finding'. Rule 40 in prose: two renderings of one fact, side by side. */
     why: 'Triage decisions',
   },
+  /* 5 → 6 adds `plateLayout` and takes nothing away. A key that is merely *new* needs no
+   * entry here — the merge fills it from `DEFAULTS` — but the version had to move all the
+   * same, because a v5 blob has no opinion about how a plate arranges itself and a reader
+   * who had one saved would otherwise inherit silence as a choice. Nothing to drop, so the
+   * list is empty and there is no sentence: `resetSettings` names what a reader *lost*, and
+   * this bump loses nothing. */
+  5: { drop: [], why: '' },
 };
 
 const DEFAULTS = {
@@ -138,6 +145,20 @@ const DEFAULTS = {
    * strength is a far more dramatic silhouette at one altitude than at the other and the
    * judgment does not carry across. The same argument `minDisk` and `diskOrder` make. */
   plateSize: { routine: 1, module: 1 },
+  /* **How a plate arranges what it holds.** Two layouts, both built, and design rule 2 says
+   * real use retires the loser.
+   *
+   * `structural` is the sunflower spiral ordered by degree — even, instant, and blind to
+   * which nodes are connected, so edges cross it at every angle. `force` runs
+   * Fruchterman–Reingold over each plate until connected things sit near each other,
+   * shadows pulling for the plates they stand in for, which is the reason a shadow exists
+   * (rule 23). Measured on Mensores' busiest plate: 328,531 crossings down to 27,291,
+   * **91.7% fewer**.
+   *
+   * `structural` is the default because it is the one that costs nothing and because
+   * nothing already working should change until a reader asks. `force` is 89 ms on a GPU
+   * and 9.7 s without one — paid on demand, and the page says which of the two ran. */
+  plateLayout: 'structural',   // 'structural' | 'force'
   collapseUnused: false,  // close the gap a plate nothing is looking at leaves behind
   /* Draw what the selection has lit as labelled boxes rather than as dots.
    *
@@ -595,6 +616,7 @@ function resetSettings(program, current) {
     nodeSize: 'node size', picks: 'selection', followMode: 'following a neighbour',
     spreadX: 'spread across', spreadY: 'spread deep', spreadZ: 'spread between plates',
     plateSize: 'how much a plate\'s width says about what it holds',
+    plateLayout: 'how a plate arranges what it holds',
     collapseUnused: 'collapsed plates',
     diagram: 'the plate drawn as a diagram',
     diagramId: 'which compartment the diagram has open',

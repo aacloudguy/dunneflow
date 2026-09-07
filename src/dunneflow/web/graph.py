@@ -490,6 +490,14 @@ def _summarise_disks(m: GraphModel) -> None:
         "shadows": len(m.shadows),
         "disks": len(m.disks),
         "largest_disk": max(real.values()) if real else 0,
-        # What the renderer actually instances: a shadow is drawn too.
+        # What the renderer **instances**, which is not what it draws. A shadow gets a
+        # vertex so that picking, selection and search keep one index space with no
+        # translation table between them -- and then a radius of zero and an alpha of
+        # zero, because a shadow is never drawn (rule 23). The name is the buffer length,
+        # not a claim about the picture; this comment said "a shadow is drawn too" and was
+        # left standing when the rule landed.
+        #
+        # It is also the count the force layout moves: a shadow takes part in its plate's
+        # forces like any other node, which is the reason it exists.
         "drawn_nodes": len(m.nodes) + len(m.shadows),
     })

@@ -4,18 +4,36 @@ Two layouts, because design rule 2 says that when two options are genuinely
 interchangeable you build both and let real use retire the loser:
 
 * **structural** -- deterministic placement from the program's own structure. Instant,
-  stable, and never a hairball. Computed here.
-* **force** -- ForceAtlas2, refined in a browser worker and posted back to be stored.
-  Reveals clusters the module tree does not. Not computed here.
+  stable, and never a hairball. Computed here, and the default.
+* **force** -- Fruchterman--Reingold per plate, solved in the browser. Reveals clusters
+  the module tree does not. Computed in `static/forcelayout.js`, not here.
 
 Structural is the one that exists first because it is also the *initial state* force
-needs: ForceAtlas2 from a good starting arrangement converges far faster than from noise,
-and a seeded start is what makes the result reproducible rather than a different picture
-every run.
+needs: from a good starting arrangement it converges far faster than from noise, and a
+seeded start is what makes the result reproducible rather than a different picture every
+run. The spiral is that seed, and it is also why the solver needs no random number
+generator at all -- from a phyllotaxis start no two nodes ever coincide, so the
+degenerate-overlap branch never fires. Measured: changing the seed changes nothing.
 
-Nothing here uses a random number generator. The same graph must produce the same map on
-every machine and every run, or spatial memory -- the whole reason to store layout at all
--- never forms.
+**Force is solved on the reader's machine, and this was written the other way round.** It
+said "refined in a browser worker and posted back to be stored", and neither half survived
+contact. `serve` opens every store `writable=False` (rule 20), so the serving process
+cannot store what a worker posts; and at 89 ms on a GPU there is nothing to amortise, so
+`queries.py`'s drafted `layout` table stays drafted. What ships is a WebGPU compute shader
+with a web-worker fallback for machines without one -- 89 ms against 9.7 s, the same
+algorithm both ways.
+
+Nothing *here* uses a random number generator, and the same graph produces the same map on
+every machine and every run. **Force keeps the second half of that promise and not the
+first**, and the difference is worth stating rather than glossing: each backend is
+bit-identical run to run, but a GPU and a CPU arrive at two different arrangements of
+equal quality. WGSL may fuse a multiply-add where the source says two operations, and a
+force layout is chaotic enough that one last-bit difference is a visibly different picture
+a hundred iterations later -- this was tried, with every JS operation forced through
+`Math.fround`, and 1.15% of coordinates matched. So what is asserted is equivalence, and
+it holds tightly: measured over Mensores, the two backends land every plate within 0.07%
+of the same radius and cut edge crossings by the same 91.7%. The page says which one drew
+it (design rule 1).
 """
 
 from __future__ import annotations

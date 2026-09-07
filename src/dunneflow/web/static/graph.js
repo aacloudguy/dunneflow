@@ -487,8 +487,20 @@ function prepare(raw) {
     haystack[i] = parts.join(' ').toLowerCase();
   }
 
-  return { raw, n, positions, baseXY, colors, radii, degree, byDisk, inbound, outbound,
-           links, ranked, haystack, plates: [], diskZ: new Map(), diskRatio,
+  /* The payload's own placement, kept so a reader can come back to it.
+   *
+   * `baseXY` is the *current* arrangement and the force layout overwrites it; without a
+   * copy of what the server sent, turning the setting off would have nothing to return to
+   * and the only way back would be a refetch. The payload is the one thing here that is a
+   * fact rather than a view, so it is the thing worth keeping. */
+  const serverXY = baseXY.slice();
+
+  return { raw, n, positions, baseXY, serverXY, colors, radii, degree, byDisk, inbound,
+           outbound, links, ranked, haystack, plates: [], diskZ: new Map(), diskRatio,
+           /* What the spiral earns each plate, kept apart from `diskRatio` for the same
+            * reason `serverXY` is kept: `diskRatio` is whatever the layout on screen says,
+            * and this is what to put back. */
+           serverRatio: new Map(diskRatio),
            diskScale: new Map(), collapsed: new Set() };
 }
 
@@ -2269,6 +2281,42 @@ window.DunneFlowGraph = {
     paintNodes(g.prepared);
     draw();
   },
+
+  /* Where a plate's nodes sit, replaced. `null` puts the server's own placement back.
+   *
+   * **Into `baseXY`, never into `positions`.** `positions` is what is drawn and is
+   * rewritten from `baseXY` on every spread change, so writing there would be undone by
+   * the next slider and would compound with the one after (the same argument the base copy
+   * exists for). Writing the base means the whole existing transform — three spreads, the
+   * width dial, collapsed plates, the plate outlines — applies to the new arrangement
+   * untouched, and no payload is refetched.
+   *
+   * The width ratios travel with it. Under the spiral a plate's drawn width is
+   * `sqrt(n / nmax)`, a claim about how much it holds; under a force layout the solver has
+   * already decided how much room a plate needs, so the ratio it hands back is that answer
+   * instead. Same dial, same meaning at both ends — 0 uniform, 1 area proportional to what
+   * the layout earned — and a different source for the number in between.
+   *
+   * `applyLayout` then does everything else, including clearing the box cache, because it
+   * is the code that moves a node and rule 51 says that is where the clearing belongs. */
+  setPlateXY(xy, ratio) {
+    const d = g.prepared;
+    if (!d) return false;
+    if (xy && xy.length !== d.n * 2) return false;
+    d.baseXY.set(xy || d.serverXY);
+    d.diskRatio = new Map(xy && ratio ? ratio : d.serverRatio);
+    applyLayout(d);
+    draw();
+    announceCounts();
+    return true;
+  },
+
+  /* The arrangement a caller would have to solve for, so a layout can be computed without
+   * the engine having to know what a force is. Returns the payload rather than a copy of
+   * the positions: the solver reads `edges.from/to`, which is per plate and shadow-
+   * terminated, and is the one edge set that expresses a crossing as a within-plate pull.
+   * `links` is the other one and would be the wrong answer (rules 23 and 31). */
+  payload: () => (g.data || null),
 
   /* The palette is replaced whole, never merged field by field: a half-applied theme is
    * harder to recognise as wrong than a reset one, which is the same argument

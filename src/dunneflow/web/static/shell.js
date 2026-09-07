@@ -270,6 +270,8 @@ const state = {
   spreadZ: 0.35,
   // How much a plate's width says about how much it holds; per level, see `plateSizeNow`.
   plateSize: { routine: 1, module: 1 },
+  // How a plate arranges what it holds: the spiral, or forces. See `settings.js`.
+  plateLayout: "structural",   // 'structural' | 'force'
   collapseUnused: false,  // close the gap a plate nothing is looking at leaves behind
   diagram: false,         // what is lit, drawn as labelled boxes rather than as dots
   diagramId: null,        // which compartment Diagram mode has open
@@ -6466,6 +6468,58 @@ function viewAnomalies() {
  * something *calls* the key. Three tests guarded this feature and all three passed while
  * nothing on the page could reach it (rule 37). */
 
+/* The two plate layouts, and what each is *for*.
+ *
+ * The roster and the prose only; the arrangement itself is `forcelayout.js`, which knows
+ * nothing about this page. Numbers here are measured rather than claimed — see
+ * `PERFORMANCE.md`, and the crossing counts are on Mensores' busiest plate. */
+const PLATE_LAYOUTS = [
+  { id: "structural", name: "By structure",
+    why: "A sunflower spiral, busiest nearest the middle. Even, instant, and the same "
+       + "arrangement every time you open the map — which is what lets you remember where "
+       + "something was. It knows nothing about which nodes are connected, so edges cross "
+       + "it at every angle." },
+  { id: "force", name: "By connection",
+    why: "Connected things pull together and everything pushes apart, until the plate "
+       + "settles. Edges get shorter and stop crossing: 328,531 crossings down to 27,291 "
+       + "on the busiest plate, 91.7% fewer. Shadows pull for the plates they stand in "
+       + "for, so a plate is arranged by what it reaches as well as by what it holds." },
+];
+
+/* One row. The palette's shape, and deliberately not the `seg` shape: each option needs a
+ * paragraph, and a segmented control has nowhere to put one. */
+function plateLayoutRow(opt) {
+  const on = state.plateLayout === opt.id;
+  const busy = on && plateLayoutBusy;
+  const note = on && !busy ? plateLayoutStatus() : "";
+  return `<div class="pal ${on ? "on" : ""}">
+    <button class="pal-pick" data-platelayout="${esc(opt.id)}" aria-pressed="${on}">
+      <span class="pal-name">${esc(opt.name)}</span>
+    </button>
+    <p class="pal-why">${esc(opt.why)}</p>
+    ${busy ? `<div class="pal-nums">solving…</div>` : ""}
+    ${note ? `<div class="pal-nums">${note}</div>` : ""}
+  </div>`;
+}
+
+/* What actually happened, in the reader's words. Design rule 1: a machine without WebGPU
+ * gets the same picture a hundred times slower, and is entitled to know that is what
+ * happened rather than to wonder why the page stopped for ten seconds. */
+function plateLayoutStatus() {
+  const n = plateLayoutNote;
+  if (!n) return "";
+  if (n.failed) {
+    return `<span class="chg-gone">could not be solved — ${esc(n.failed)}</span>`;
+  }
+  const where = n.backend === "gpu"
+    ? `on the graphics card${n.detail ? ` (${esc(n.detail)})` : ""}`
+    : `on ${esc(n.detail || "this processor")}`;
+  return `${n.plates} plates arranged ${where} in
+          <b class="num">${Number(n.ms).toLocaleString()} ms</b>${
+    n.fallback ? ` — <span class="chg-gone">the graphics card refused: ${
+      esc(n.fallback)}</span>` : ""}`;
+}
+
 /* The colour sets, and what each is *for*.
  *
  * The values are in `tokens.css` and nothing about a colour is written down here. This is
@@ -6733,6 +6787,23 @@ function viewSettings() {
           external mark are single colours with nothing to be confused with, so they are
           not part of a set.</p>
         <div class="palettes">${PALETTES.map(paletteRow).join("")}</div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head"><h2>How a plate arranges what it holds</h2>
+        <span class="hint">both built; use decides which survives</span></div>
+      <div class="panel-body">
+        <p class="hint" style="margin:0 0 .6rem">A plate is an ordinary 2D graph, and this
+          decides where its nodes sit within it. It changes nothing about what the map
+          <i>says</i> — the same nodes, the same connections, the same plates — only where
+          each one is drawn, so a selection, a search and the trail all survive the switch.
+          ${ForceLayout.gpuAvailable()
+            ? `Your browser has WebGPU, so the solve runs on the graphics card.`
+            : `Your browser has no WebGPU, so the solve runs on ${
+                navigator.hardwareConcurrency || 4} processor cores and takes several
+               seconds. The picture is the same one.`}</p>
+        <div class="palettes">${PLATE_LAYOUTS.map(plateLayoutRow).join("")}</div>
       </div>
     </section>
 
@@ -12686,6 +12757,21 @@ function wire() {
     render();
   }));
 
+  /* How a plate arranges what it holds. Beside the colour set and named the same way:
+     `data-platelayout` is a route, and nothing on the page carries it as state — the
+     `data-nav` collision those two are named to avoid.
+     `applyPlateLayout` is deliberately **not awaited**. The GPU path is 89 ms and the
+     fallback is nearly ten seconds, so blocking the handler would freeze the page on the
+     machines that can least afford it; it repaints the control itself when it lands, and
+     the control says "solving…" until then. */
+  $$("[data-platelayout]").forEach(b => b.addEventListener("click", () => {
+    state.plateLayout = b.dataset.platelayout;
+    used("platelayout:" + state.plateLayout);
+    persist();
+    applyPlateLayout();
+    render();
+  }));
+
   /* worklist */
   /* ALGORITHMS' lane tabs. Beside `data-sev` because they are the same control one page
      over: a tab that names which measurement is on screen. No `disabled` on an empty one
@@ -13385,6 +13471,9 @@ const WIRED_ATTRS = new Set([
      `data-theme` are stamps on `:root`, and an attribute that is both a route and a piece
      of state is what `data-nav` cost a session to find. */
   "palette-set",
+  /* The plate layout, beside `palette-set` for the same reason and named on the same
+     pattern: a route, never the value it sets. */
+  "platelayout",
   "scale-set", "sec", "sev", "sevnav", "sort", "sqlshow", "start", "step", "theme",
   "term", "termuse", "theme-set", "thread", "threadlabel", "threadsall", "threadwhy",
   "titled", "toggle",
@@ -17016,7 +17105,7 @@ const PERSISTED = [
   "egress", "aiOps", "triage", "pins", "usage", "graphLayout",
   "diskOrder", "diskColors", "colorBy", "sortMode", "filterMode", "direction",
   "level", "minDisk",
-  "nodeSize", "spreadX", "spreadY", "spreadZ", "plateSize", "collapseUnused",
+  "nodeSize", "spreadX", "spreadY", "spreadZ", "plateSize", "plateLayout", "collapseUnused",
   /* `nodeShapes` was in this list and is not, because nothing can change it: the control
      was withdrawn with the box overlay that drew silhouettes. Persisting a value only ever
      equal to its default writes a key that can only ever be restored to what it already
@@ -17291,6 +17380,83 @@ function setPlateSizeNow(v) {
   state.plateSize = { ...(state.plateSize || {}), [state.level]: v };
 }
 
+/* ── how a plate arranges what it holds ─────────────────────────────────────────────
+ *
+ * What the last solve said, so the control can report it and so a second visit to the same
+ * altitude does not pay for it twice. Keyed by `graphKey`, because a layout is an
+ * arrangement *of a payload*: the module altitude holds different plates, and a different
+ * `minDisk` merges different ones into `<small>`, so an arrangement worked out for one is
+ * not an answer about the other (the argument `diskOrder` already makes about being per
+ * level, one axis further along).
+ */
+const plateLayouts = new Map();
+let plateLayoutBusy = false;
+let plateLayoutNote = null;
+
+/* Whichever surface is showing this, brought up to date.
+ *
+ * **The control lives on the Settings page and the picture lives in graph mode**, and the
+ * solve lands long after the click — 89 ms on a GPU, nearly ten seconds without one. The
+ * first version repainted only the graph furniture, so a reader who switched from Settings
+ * (which is where the control *is*) clicked a button, waited, and was told nothing: the
+ * "solving…" line never cleared and the line naming the backend never arrived. Design rule
+ * 16 with the wiring correct and the repaint aimed one pane over. */
+function repaintPlateLayout() {
+  if (state.view === "settings") { render(); return; }
+  renderGraphFurniture();
+}
+
+/* Solve, or put the server's own placement back. Everything else on this page treats the
+ * layout as a fact about the payload, so the whole of the switch is here.
+ *
+ * Not awaited by its callers, and it repaints itself when it lands — the GPU path is 89 ms
+ * and the fallback is nearly ten seconds, and a control that blocks the page for either is
+ * a control that reads as broken. */
+async function applyPlateLayout({ announce = true } = {}) {
+  if (!Graph.mounted()) return;
+  if (state.plateLayout !== "force") {
+    Graph.setPlateXY(null);
+    plateLayoutNote = null;
+    if (announce) repaintPlateLayout();
+    return;
+  }
+  const key = graphKey(state.level, minDiskNow());
+  const held = plateLayouts.get(key);
+  if (held) {
+    Graph.setPlateXY(held.xy, held.ratio);
+    plateLayoutNote = held.note;
+    if (announce) repaintPlateLayout();
+    return;
+  }
+  const payload = Graph.payload();
+  if (!payload) return;
+  plateLayoutBusy = true;
+  if (announce) repaintPlateLayout();
+  try {
+    const solved = await ForceLayout.solve(payload);
+    /* A reader who switched away, changed altitude or turned it off again while this was
+       running must not have it land on them. The key is the question this answered, and
+       `state` may now be asking a different one. */
+    plateLayouts.set(key, {
+      xy: solved.xy, ratio: solved.ratio,
+      note: { backend: solved.backend, detail: solved.detail, ms: solved.ms,
+              fallback: solved.fallback, plates: solved.plates, nodes: solved.nodes },
+    });
+    if (state.plateLayout === "force" && graphKey(state.level, minDiskNow()) === key) {
+      Graph.setPlateXY(solved.xy, solved.ratio);
+      plateLayoutNote = plateLayouts.get(key).note;
+    }
+  } catch (err) {
+    /* Named, never silent. A layout that could not be solved leaves the reader looking at
+       the spiral, and "the picture did not change" is indistinguishable from "the control
+       does nothing" unless something says which (design rule 16). */
+    plateLayoutNote = { failed: err.message };
+  } finally {
+    plateLayoutBusy = false;
+    if (announce) repaintPlateLayout();
+  }
+}
+
 /* The key **is** the question, so a cache hit and a fetch can never answer different ones. */
 function graphKey(level, min) { return `${level}:${min ?? ""}`; }
 
@@ -17451,6 +17617,10 @@ async function setGraphDetail({ level = state.level, minDisk } = {}) {
      console, which is where it was found. */
   setPlateOrder(Graph.diskOrder());
 
+  /* A new altitude is a new set of plates, so it is a different arrangement question and
+     gets its own solve — held per `graphKey` for exactly that reason. */
+  applyPlateLayout();
+
   /* The comparison's per-node map is a fact about *this* payload -- a module takes the band
      of what it holds -- so it is dropped rather than reused. Rule 51: whoever changes the
      subject does the work of invalidating what was said about the old one. */
@@ -17570,6 +17740,12 @@ async function ensureGraph() {
   state.picks = Graph.selection();
   // A choice made while the stack was not on screen is adopted now rather than lost.
   applyWanted();
+  /* And the layout with it, on the same terms — rule 68: a restore is a setter and must do
+     what the setter does. A reader who left in `force` and comes back to a stack that
+     mounted on the spiral has a control naming one arrangement over a picture drawing the
+     other, which is rule 67 one property along. Not awaited: the first paint must not wait
+     on a solve, and it repaints when it lands. */
+  applyPlateLayout();
   graphLoading = false;
   applyGraphPalette();
   render();

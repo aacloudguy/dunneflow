@@ -26,7 +26,10 @@ no animation frames, so anything needing a rendered frame does not exist there.
 
 The interactive map (`dunneflow serve`), measured on Mensores: 52 disks, largest 959,
 **9,874 nodes drawn**, 13,935 edges in the model, plus 5,727 shadows that are *never*
-drawn — they are placement devices only (rule 23). An earlier version of this table read
+drawn — they are placement devices only (rule 23). *These are the 2026-08-27 corpus, and
+the tree has grown under them: the live payload now reports **10,052 nodes and 5,855
+shadows** across 53 plates. The row is left at what it was measured on rather than having
+today's numbers written into yesterday's reading (rule 24).* An earlier version of this table read
 "14,991 drawn" by counting the shadows; that number was already wrong when shadows stopped
 being drawn, and it overstated the picture by half.
 
@@ -47,6 +50,55 @@ The second **level of detail**, measured 2026-08-31 on the same corpus. A module
 | …a threshold nobody has asked for yet | < 2 s | 0.10 s round trip |
 | …the same again, cached on the base | < 50 ms | 10 ms |
 | First paint at module level | < 2 s | **not measured — see below** |
+
+**Arranging a plate by connection** — the force layout, measured 2026-09-07 on Mensores at
+routine level: 53 plates over **15,907** placed things, 14,254 within-plate edges, the
+largest plate holding 1,519 once its shadows are counted. Fruchterman–Reingold, 100
+iterations, all-pairs repulsion within each plate.
+
+| Measure | Budget | Measured 2026-09-07 |
+|---|---|---|
+| The whole stack, WebGPU compute, warm | < 1 s | **83 ms median** (75–84 over five runs) |
+| …the first solve of a session | < 1 s | **210–270 ms** — the shader compiling |
+| …the same, 8 web workers | < 15 s | **9.7 s** |
+| …pure Python, server-side, for comparison | — | 6.6 s — **not shipped**, see below |
+| Switching the setting, second time at one altitude | < 50 ms | held, no re-solve |
+
+Apple M1, Chrome, adapter `apple metal-3`, `dpr 2`. **The two GPU rows are the same call and
+differ only in whether the shader has been compiled**, which is worth separating because the
+first is the one a reader actually feels — device acquisition is 2 ms of it, so the rest is
+compilation. Both include the readback.
+
+**The gap between the two backends is the price of running one algorithm.** Repulsion is
+all-pairs within a plate on both sides, because that is what makes *"the same layout,
+slower"* a true sentence — a spatial approximation on the CPU only would be a second
+algorithm, and a machine without a GPU would then be looking at a different picture for a
+reason nobody could see. A grid-bucketed approximation was measured at 1.7 s and is what
+the pure-Python row above uses; it is not shipped for the same reason.
+
+**What it buys, and this is the row the feature exists for.** Edge crossings within a
+plate, spiral against solved:
+
+| Plate | Nodes | Within-plate edges | Spiral | Solved | |
+|---|---:|---:|---:|---:|---|
+| `pkg:cli` | 1,519 | 1,675 | 328,531 | 27,291 | **−91.7%** |
+| `pkg:quaestor` | 1,320 | 1,292 | 181,064 | 16,725 | **−90.8%** |
+| `pkg:governance` | 600 | 500 | 25,533 | 2,132 | **−91.7%** |
+
+**The two backends agree on quality and not on coordinates**, which is stated rather than
+smoothed over: every plate lands within **0.07%** of the same radius and the crossing cuts
+match to a tenth of a point (91.7% / 91.7%, 90.8% / 90.9%, 91.7% / 91.6%), while only
+**1.15%** of coordinates are bit-identical even with every JS operation forced through
+`Math.fround`. WGSL is permitted to fuse a multiply-add, and a force layout is chaotic
+enough that one last-bit difference is a different arrangement a hundred iterations later.
+Each backend is bit-identical run to run, which is the half of the guarantee spatial memory
+needs. See `layout.py`.
+
+**Each plate is normalised to `DISK_RADIUS` and its earned size travels as a width ratio**,
+which is why nothing downstream changed. Measured after the solve: every plate centred on
+the axis to an offset of **0**, every plate ending at exactly **1000**, and 0 plates outside
+the disc — so `PLATE_R`, `rimPoint` and `fitView` are untouched, and the natural sizes reach
+the picture through the plate-width dial that already existed (ratios span 1.0 to 0.086).
 
 **One plate, opened** — `/api/plate`, measured 2026-09-05 on Mensores at routine level:
 53 plates over 15,870 drawn things, the largest holding 991.

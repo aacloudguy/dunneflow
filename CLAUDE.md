@@ -564,6 +564,43 @@ docs   ──► extract ──► docs.db  (SQLite) ─────────
   uniform and scaling a plate's coordinates is exactly computing it at a smaller radius.
   Its old note — every disk one size, density carries the information — is rewritten as the
   reversal it is rather than left standing beside code that contradicts it.
+- `web/static/forcelayout.js` — **the second layout, and the one `layout.py` has named in
+  its own docstring since it was written.** A plate arranged by connection rather than by
+  degree: Fruchterman–Reingold per plate, seeded from the spiral, in a WebGPU compute
+  shader with a web-worker fallback. **89 ms against 9.7 s**, and 328,531 edge crossings
+  down to 27,291 on the busiest plate — **91.7% fewer**. Its own file for `prose.js`'s
+  reason: it turns a payload into numbers and touches no DOM.
+
+  **It solves over `payload.edges`, never over the engine's `links`**, and that one line is
+  the feature. The model stores every crossing twice, once per plate, each copy ending in a
+  shadow — so the payload's edge list is the only place a cross-plate call is expressed as
+  a force *within* a plate. `links` is real-to-real and deduped for drawing; solving over
+  it would arrange the whole stack as one graph and dissolve the plates. This is what rule
+  23 means by *"which is exactly what lets both plates lay out under the same forces"*, and
+  the first thing a shadow has ever been asked to do.
+
+  **Every failure here is silent, and three are guarded by name.** `meta` is a reserved
+  word in WGSL: the shader failed to compile, the pipeline dispatched, and the stack
+  "solved" in 6 ms with the output bit-identical to the input — only counting crossings
+  caught it. `layout: "auto"` derives each pipeline's bind-group layout from the bindings
+  that entry point uses, so one bind group for both passes is refused asynchronously into
+  an error scope nobody popped. So `getCompilationInfo()` is read, the scope is popped and
+  thrown on, and a result that moved nothing is refused.
+
+  **The two backends agree on quality, not on coordinates**, and the difference is stated
+  rather than smoothed: WGSL may fuse a multiply-add, and a force layout is chaotic enough
+  that one last bit is a different arrangement a hundred iterations later. Forcing every JS
+  operation through `Math.fround` matched **1.15%** of coordinates and cost tenfold. What
+  holds is equivalence — every plate within 0.07% of the same radius, the same 91.7% cut —
+  and each backend is bit-identical run to run. The page says which one drew it.
+
+  **Each plate is normalised to `DISK_RADIUS` and its earned size leaves as a width ratio**,
+  which is why `PLATE_R`, `rimPoint` and `fitView` are untouched: they all read one radius
+  for every plate, and they still can. The natural sizes reach the picture through the
+  plate-width dial that already existed — `diskRatio`, `sqrt(n/nmax)` under the spiral and
+  the solver's answer under force. Written into `baseXY`, never `positions`, so the three
+  spreads, the width dial and collapsed plates all apply to it untouched and no payload is
+  refetched.
 - `web/graph.py` — the 2.5D model, at **two levels of detail**. `routine` is every thing
   the program declares; `module` folds each file into one node and each boundary kind into
   one, on a single plate below the code. 10,015 nodes and 52 plates become 578 and 38, and

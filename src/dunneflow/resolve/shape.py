@@ -1,0 +1,511 @@
+"""What moves inside a loop or a decision, and whether that makes it worth reading.
+
+`extractors/python/extract.py` records a control point as **a span and nothing more**.
+This is the other half: the range join that says what is *inside* one, and the single
+test that says whether a reader should be shown it.
+
+**The judgement, in one sentence.** A loop or a decision is a subject only where
+something *moves* inside it. A loop that increments a counter is the internal
+computation `CLAUDE.md` excludes; a loop that issues one network call per item is a
+**rate**, and a rate is flow. A branch whose arms compute different numbers is
+arithmetic; a branch where one arm writes to a table and the other does not is a
+**decision about what leaves the program**. That test lives here and nowhere else
+(rule 51) -- the worklist, the ribbon, the panes and the detector all ask this module,
+because a judgement written twice is two judgements waiting to disagree.
+
+**Nothing is dropped for failing it** (design rule 1). A loop over nothing is a fact
+about the program, and it is the 1,222 of them that make the 261 credible: a worklist
+that shows only its hits cannot be told from one that found only those. Every point
+comes back with a `band` and a `why`, and the surface decides what to draw.
+
+**The join is a range and not a relationship.** `boundaries`, `net_calls`, `sql_ops` and
+`calls` each already carry `routine_id` and `line`, so *inside* is
+`routine_id = ? AND line BETWEEN line_start AND line_end` -- the inverse of the lookup
+`web/search.py` does to say which routine a hit sits in. No table joins a control point
+to a boundary, because such a table would be a second copy of a fact the two already
+state between them (rule 40).
+
+**A move is counted once at a line, and the parts are kept.** 569 of Society's 991 SQL
+operations sit on a line that is also a `boundaries` row, and 29 of its 32 network calls
+do -- summing the three tables would report a loop holding one write as holding two.
+What is deduplicated is the *place*; what is kept is what each table had to say about it,
+because "writes `spec_seals`" and "DATABASE" are the same act described at two altitudes
+and the reader wants the first one.
+
+**A test is not an arm.** `if fetch_row():` reaches a boundary from the decision's own
+header, which belongs to no arm -- so the arm-difference test sees it in neither and the
+decision is not called a fork on account of it. That is deliberate: attributing it to the
+arm written below it would be a position mistaken for a meaning (rule 1).
+"""
+
+from __future__ import annotations
+
+from bisect import bisect_left, bisect_right
+from collections import defaultdict
+from dataclasses import dataclass, field
+
+from ..schema import ArmKind, ControlKind
+from ..store import Store
+
+# What a point turned out to be, in the reader's words. Three bands and never two: a
+# point that moves something, a point that only calls something, and a point where
+# nothing this map can see happens at all. Collapsing the middle into either end would
+# be the flattening `Store.finished` refuses -- "it calls a routine, and we did not
+# follow it" is not "nothing happens here".
+MOVES = "MOVES"
+CALLS = "CALLS"
+STILL = "STILL"
+
+# Bands in worklist order, so a surface listing them cannot invent an order of its own.
+BANDS = (MOVES, CALLS, STILL)
+
+# What a `sql_ops` row and a `net_calls` row are called where they are shown beside
+# boundary kinds. Not `BoundaryKind` members: they are the same act said in more detail,
+# and giving them one of those names would claim they came from the boundary detector.
+SQL = "SQL"
+NET = "NET"
+
+# The arms of a `try` that run when the guarded body did not finish. The 396 handlers
+# that recover by moving something are counted over exactly these, which is why the set
+# is named rather than written into the test: a `finally` moves something on *every*
+# path, including the one where nothing failed, and calling that a recovery would be a
+# claim about failure drawn from a line that says nothing about it.
+RECOVERY_ARMS = frozenset({ArmKind.EXCEPT})
+
+
+@dataclass(slots=True, frozen=True)
+class Move:
+    """One thing that moves, at one line.
+
+    `what` is the target as the detector recorded it -- a table, a URL, a path, an
+    environment variable. Never shortened here; what a surface does about a long one is
+    the surface's decision (rule 8).
+    """
+
+    line: int
+    kind: str      # a BoundaryKind, or SQL, or NET
+    what: str
+    detail: str = ""   # the SQL verb, the HTTP verb, the direction -- what the row added
+
+
+@dataclass(slots=True)
+class Arm:
+    """One way through a point, with what moves inside it."""
+
+    idx: int
+    kind: ArmKind
+    line_start: int
+    line_end: int
+    header: str
+    moves: list[Move] = field(default_factory=list)
+    calls: int = 0
+
+
+@dataclass(slots=True)
+class Point:
+    """One control point, joined to what is inside it and judged once.
+
+    `why` is filled on every point, including the ones that pass: a reader who is shown
+    a loop is owed the reason as much as one who is not shown it, and a sentence that
+    exists only for failures is a sentence nobody can check.
+    """
+
+    point_id: str
+    routine_id: str
+    routine: str          # qualname, for a surface that has to name it
+    module: str
+    file: str
+    kind: ControlKind
+    line_start: int
+    line_end: int
+    depth: int
+    header: str
+    arms_declared: int    # what the extractor counted: ways out, flattened
+    exits: str
+    moves: list[Move] = field(default_factory=list)
+    calls: int = 0
+    arms: list[Arm] = field(default_factory=list)
+    band: str = STILL
+    significant: bool = False
+    why: str = ""
+    # The loop this point is written inside, in this routine, or "". **Not `depth > 1`**:
+    # `depth` counts every enclosing control point, so a loop inside an `if` has depth 2
+    # and is not nested at all. On Society the two answers are 104 and 10, and the second
+    # is the one worth reading -- a boundary reached once per pass of a loop that is
+    # itself once per pass is a quadratic reach into the outside world, which the first
+    # number quietly buries under a hundred `if`s.
+    in_loop: str = ""
+
+    @property
+    def forks(self) -> bool:
+        """Do this point's arms differ in what moves?
+
+        The question a `DECISION` exists to be asked, and it is answered over the arms
+        rather than over the span: a span holding one write says nothing about which way
+        out performed it, and that is the whole difference between arithmetic and a
+        decision about what leaves.
+        """
+        if len(self.arms) < 2:
+            return False
+        return len({len(a.moves) for a in self.arms}) > 1
+
+    @property
+    def recovers(self) -> bool:
+        """Does something move on the way out of a failure?"""
+        return any(a.moves for a in self.arms if a.kind in RECOVERY_ARMS)
+
+
+@dataclass(slots=True)
+class ShapeReport:
+    """Every control point in the program, judged, in file and line order."""
+
+    points: list[Point] = field(default_factory=list)
+
+    def by_kind(self, kind: ControlKind) -> list[Point]:
+        return [p for p in self.points if p.kind == kind]
+
+    def counts(self) -> dict[str, int]:
+        """The populations, as a surface has to state them (design rule 1).
+
+        Every number here is a count of rows in `points`, so a lane's headline and its
+        list cannot disagree (rule 13).
+        """
+        out: dict[str, int] = defaultdict(int)
+        for p in self.points:
+            out[p.kind.value] += 1
+            out[f"{p.kind.value}:{p.band}"] += 1
+            if p.significant:
+                out["significant"] += 1
+                out[f"{p.kind.value}:significant"] += 1
+        return dict(out)
+
+
+# --------------------------------------------------------------------------- #
+# The join
+# --------------------------------------------------------------------------- #
+
+# The three tables that record something leaving or entering the program, each already
+# carrying `routine_id` and `line`. Written as one shape -- routine, line, kind, target,
+# detail -- so the join reads them without knowing which is which, and a fourth table
+# added later is a line here rather than a branch in three places (rule 51).
+_MOVE_QUERIES = (
+    "SELECT routine_id, line, kind, target, direction AS detail FROM boundaries",
+    "SELECT routine_id, line, 'SQL' AS kind, tbl AS target, operation AS detail"
+    " FROM sql_ops",
+    "SELECT routine_id, line, 'NET' AS kind, destination AS target,"
+    " CASE WHEN verb = '' THEN protocol ELSE verb END AS detail FROM net_calls",
+)
+
+
+def _moves_by_routine(store: Store) -> dict[str, list[Move]]:
+    """Every moving thing in the program, grouped by the routine it sits in.
+
+    One pass per table rather than one query per point: 9,625 points against three
+    tables is 28,875 statements, and the same rows read three times over. The bound is
+    on the *work* and not only on the answer (rule 55) -- what comes back is every
+    moving thing once, sorted, and every point then costs two bisections.
+    """
+    seen: set[tuple[str, int, str, str]] = set()
+    out: dict[str, list[Move]] = defaultdict(list)
+    for sql in _MOVE_QUERIES:
+        for r in store.query(sql):
+            rid, line = r["routine_id"], r["line"]
+            if not rid or line is None:
+                continue
+            key = (rid, int(line), r["kind"], r["target"] or "")
+            if key in seen:
+                continue
+            seen.add(key)
+            out[rid].append(Move(line=int(line), kind=r["kind"], what=r["target"] or "",
+                                 detail=r["detail"] or ""))
+    for moves in out.values():
+        moves.sort(key=lambda m: m.line)
+    return out
+
+
+def _calls_by_routine(store: Store) -> dict[str, list[int]]:
+    """The lines where a routine calls another routine in this program.
+
+    Resolved calls only. An unresolved one may be a boundary nobody detected or a name
+    that means nothing here, and counting it would put a loop in the middle band on the
+    strength of a guess (rule 6).
+    """
+    out: dict[str, list[int]] = defaultdict(list)
+    for r in store.query(
+        "SELECT caller_id, line FROM calls WHERE callee_id IS NOT NULL AND line IS NOT NULL"
+    ):
+        out[r["caller_id"]].append(int(r["line"]))
+    for lines in out.values():
+        lines.sort()
+    return out
+
+
+def enclosing_loops(points: list[Point]) -> None:
+    """Fill `in_loop` for one routine's points, in place. They must be in source order.
+
+    A stack sweep rather than a containment search: the points arrive sorted by where
+    they start and, where two start together, widest first, so an open loop is on the
+    stack exactly while the lines being read are inside it.
+
+    `depth` breaks the one tie lines cannot. `[a for a in [b for b in c]]` is two
+    comprehensions occupying the same single line, and the only thing separating them is
+    that one is written inside the other -- which is what `depth` records.
+    """
+    stack: list[Point] = []
+    for point in points:
+        while stack and (stack[-1].line_end < point.line_start
+                         or stack[-1].depth >= point.depth):
+            stack.pop()
+        if stack:
+            point.in_loop = stack[-1].point_id
+        if point.kind in (ControlKind.LOOP, ControlKind.COMPREHENSION):
+            stack.append(point)
+
+
+def _within(moves: list[Move], lo: int, hi: int) -> list[Move]:
+    lines = [m.line for m in moves]
+    return moves[bisect_left(lines, lo):bisect_right(lines, hi)]
+
+
+def _count_within(lines: list[int], lo: int, hi: int) -> int:
+    return bisect_right(lines, hi) - bisect_left(lines, lo)
+
+
+# --------------------------------------------------------------------------- #
+# The judgement
+# --------------------------------------------------------------------------- #
+
+def judge(point: Point) -> None:
+    """Band the point, decide whether it is a subject, and say why. In place.
+
+    **The band and the judgement are different questions.** The band says what is inside
+    the span -- one fact, the same for every kind. Whether that makes the point worth a
+    reader's attention depends on what the point *is*: a boundary inside a loop is a
+    rate, the same boundary inside a `try` is a recovery, and inside a guard it is a
+    precondition that happens to fetch something. Answering both with one number is how
+    a worklist ends up listing 3,931 refusals.
+    """
+    point.band = MOVES if point.moves else (CALLS if point.calls else STILL)
+
+    if point.kind in (ControlKind.LOOP, ControlKind.COMPREHENSION):
+        _judge_loop(point)
+    elif point.kind == ControlKind.DECISION:
+        _judge_decision(point)
+    elif point.kind == ControlKind.HANDLER:
+        _judge_handler(point)
+    else:
+        _judge_guard(point)
+
+
+def _judge_loop(point: Point) -> None:
+    """A loop is a subject where something moves inside it, because that is a rate."""
+    n = len(point.moves)
+    if n:
+        point.significant = True
+        per = "once per pass" if n == 1 else f"{n} of them, once per pass"
+        # Named from the enclosing *loop* and never from `depth`, which counts every
+        # enclosing control point: 104 of Society's 261 boundary loops sit at a depth
+        # above 1, and **10** of them are inside another loop. The first number reads as
+        # the second and is not it.
+        nested = " -- and it is inside another loop" if point.in_loop else ""
+        point.why = f"something moves inside this loop, {per}{nested}"
+    elif point.calls:
+        point.why = (f"calls {point.calls} routine{'s' if point.calls != 1 else ''} of this"
+                     " program, and nothing moves at these lines")
+    else:
+        point.why = "nothing that moves happens inside it"
+
+
+def _judge_decision(point: Point) -> None:
+    """A decision is a subject where its arms differ in what moves, or where it is a
+    ladder: three ways out is a shape a reader has to hold in their head, whatever is in
+    them. The two tests find near-disjoint sets -- 7 of Society's 77 forks are also
+    ladders -- which is why both are here and neither is a special case of the other.
+    """
+    if point.forks:
+        point.significant = True
+        moving = sum(1 for a in point.arms if a.moves)
+        point.why = (f"its {len(point.arms)} ways out differ in what moves:"
+                     f" {moving} of them move something and the rest do not")
+    elif point.arms_declared >= 3:
+        point.significant = True
+        point.why = f"{point.arms_declared} ways out of one decision"
+    elif point.moves:
+        point.why = "every way out of it moves the same things"
+    elif point.calls:
+        point.why = "it chooses between calls, and nothing moves at these lines"
+    else:
+        point.why = "nothing that moves happens in any arm"
+
+
+def _judge_handler(point: Point) -> None:
+    """A `try` is a subject where the recovery itself moves something.
+
+    Not where the *body* does: 742 of Society's 1,531 handlers guard something that
+    touches a boundary, which is what a `try` is for and says nothing a reader did not
+    expect. 396 of them do something on the way out -- write a row, post a message,
+    delete a file -- and that is a second act nobody reading the happy path will see.
+    """
+    if point.recovers:
+        point.significant = True
+        n = sum(len(a.moves) for a in point.arms if a.kind in RECOVERY_ARMS)
+        point.why = (f"something moves while recovering from a failure --"
+                     f" {n} of them, on a path the happy case never takes")
+    elif point.moves:
+        point.why = "it guards something that moves, and its handlers move nothing"
+    elif point.calls:
+        point.why = "it guards a call, and nothing moves at these lines"
+    else:
+        point.why = "nothing that moves happens inside it"
+
+
+def _judge_guard(point: Point) -> None:
+    """A guard is never a worklist item, and that is not a measure of its importance.
+
+    3,931 of Society's 6,144 branches are refusals -- 62%, the largest shape in the
+    program -- and a worklist of them would be a list of the whole program. A guard is
+    read where it belongs, in the shape of the routine it stands at the top of, and
+    that is why it is recorded rather than skipped at extraction.
+    """
+    # The word the source used, in the present tense a sentence needs. Read off `exits`
+    # rather than off the header, because "if not x: return" and "if not x: raise" are
+    # the same sentence and opposite facts -- which is why `exits` is recorded at all.
+    leaves = {"return": "returns", "raise": "raises",
+              "continue": "skips the pass", "break": "leaves the loop"}
+    point.why = (f"a precondition: it {leaves.get(point.exits, 'leaves')},"
+                 " and a refusal is read in the routine, not in a worklist")
+
+
+# --------------------------------------------------------------------------- #
+# The whole program
+# --------------------------------------------------------------------------- #
+
+_POINTS_SQL = """
+SELECT c.point_id, c.routine_id, c.file, c.kind, c.line_start, c.line_end,
+       c.depth, c.header, c.arms, c.exits,
+       COALESCE(r.qualname, '') AS qualname, COALESCE(r.module, '') AS module
+  FROM control c
+  LEFT JOIN routines r ON r.id = c.routine_id
+ ORDER BY c.file, c.line_start, c.line_end DESC
+"""
+
+_ARMS_SQL = """
+SELECT point_id, routine_id, idx, kind, line_start, line_end, header
+  FROM control_arms
+ ORDER BY point_id, idx
+"""
+
+
+def measure(store: Store) -> ShapeReport:
+    """Every control point in the program, joined to what moves inside it and judged.
+
+    A whole-corpus pass, like `naming.measure`: four statements, and then arithmetic
+    over what they returned. On Society that is 9,625 points, 2,269 arms and 4,174
+    moving things.
+    """
+    moves = _moves_by_routine(store)
+    calls = _calls_by_routine(store)
+
+    arms_by_point: dict[str, list[Arm]] = defaultdict(list)
+    for r in store.query(_ARMS_SQL):
+        arms_by_point[r["point_id"]].append(Arm(
+            idx=int(r["idx"]), kind=ArmKind(r["kind"]),
+            line_start=int(r["line_start"]), line_end=int(r["line_end"]),
+            header=r["header"] or "",
+        ))
+
+    report = ShapeReport()
+    for r in store.query(_POINTS_SQL):
+        rid = r["routine_id"]
+        rmoves, rcalls = moves.get(rid, []), calls.get(rid, [])
+        lo, hi = int(r["line_start"]), int(r["line_end"])
+        point = Point(
+            point_id=r["point_id"], routine_id=rid, routine=r["qualname"],
+            module=r["module"], file=r["file"], kind=ControlKind(r["kind"]),
+            line_start=lo, line_end=hi, depth=int(r["depth"]), header=r["header"] or "",
+            arms_declared=int(r["arms"]), exits=r["exits"] or "",
+            moves=_within(rmoves, lo, hi), calls=_count_within(rcalls, lo, hi),
+            arms=arms_by_point.get(r["point_id"], []),
+        )
+        for arm in point.arms:
+            arm.moves = _within(rmoves, arm.line_start, arm.line_end)
+            arm.calls = _count_within(rcalls, arm.line_start, arm.line_end)
+        report.points.append(point)
+    # Nesting is a question about a routine and is asked once the routine's points are
+    # all here; judging happens after, because a rate's sentence turns on the answer.
+    # Grouped by routine and **not** by file: a closure defined inside a loop starts its
+    # own body at depth 0, and sweeping a file's points as one run would read the two
+    # routines' spans as one nest.
+    by_routine: dict[str, list[Point]] = defaultdict(list)
+    for point in report.points:
+        by_routine[point.routine_id].append(point)
+    for group in by_routine.values():
+        enclosing_loops(group)
+    for point in report.points:
+        judge(point)
+    return report
+
+
+def outline(store: Store, routine_id: str) -> list[Point]:
+    """One routine's whole shape, guards included, in the order it is written.
+
+    The same function as `measure` one scope down, and deliberately not a filter over
+    it: a reader opening one routine must not pay for the other 9,600 points (rule 45),
+    and the judgement has to be the same one either way (rule 51).
+
+    Ordered by where each point starts, and by the *widest* first where two start on the
+    same line -- a `for x in [y for y in z]` is a loop containing a comprehension, and
+    the containing one has to be drawn first for the nesting to read at all.
+    """
+    moves: list[Move] = []
+    seen: set[tuple[int, str, str]] = set()
+    for sql in _MOVE_QUERIES:
+        for r in store.query(f"{sql} WHERE routine_id = ?", (routine_id,)):
+            if r["line"] is None:
+                continue
+            key = (int(r["line"]), r["kind"], r["target"] or "")
+            if key in seen:
+                continue
+            seen.add(key)
+            moves.append(Move(line=int(r["line"]), kind=r["kind"],
+                              what=r["target"] or "", detail=r["detail"] or ""))
+    moves.sort(key=lambda m: m.line)
+    calls = sorted(int(r["line"]) for r in store.query(
+        "SELECT line FROM calls WHERE caller_id = ? AND callee_id IS NOT NULL"
+        " AND line IS NOT NULL", (routine_id,)))
+
+    arms_by_point: dict[str, list[Arm]] = defaultdict(list)
+    for r in store.query(
+        "SELECT * FROM control_arms WHERE routine_id = ? ORDER BY point_id, idx",
+        (routine_id,),
+    ):
+        arms_by_point[r["point_id"]].append(Arm(
+            idx=int(r["idx"]), kind=ArmKind(r["kind"]),
+            line_start=int(r["line_start"]), line_end=int(r["line_end"]),
+            header=r["header"] or "",
+        ))
+
+    out: list[Point] = []
+    for r in store.query(
+        "SELECT c.*, COALESCE(r.qualname,'') AS qualname, COALESCE(r.module,'') AS module"
+        " FROM control c LEFT JOIN routines r ON r.id = c.routine_id"
+        " WHERE c.routine_id = ? ORDER BY c.line_start, c.line_end DESC",
+        (routine_id,),
+    ):
+        lo, hi = int(r["line_start"]), int(r["line_end"])
+        point = Point(
+            point_id=r["point_id"], routine_id=routine_id, routine=r["qualname"],
+            module=r["module"], file=r["file"], kind=ControlKind(r["kind"]),
+            line_start=lo, line_end=hi, depth=int(r["depth"]), header=r["header"] or "",
+            arms_declared=int(r["arms"]), exits=r["exits"] or "",
+            moves=_within(moves, lo, hi), calls=_count_within(calls, lo, hi),
+            arms=arms_by_point.get(r["point_id"], []),
+        )
+        for arm in point.arms:
+            arm.moves = _within(moves, arm.line_start, arm.line_end)
+            arm.calls = _count_within(calls, arm.line_start, arm.line_end)
+        out.append(point)
+    enclosing_loops(out)
+    for point in out:
+        judge(point)
+    return out

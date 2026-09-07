@@ -25,7 +25,7 @@ from typing import Literal
 # Bump whenever the stored shape or the meaning of an extracted fact changes.
 # A mismatch discards the graph and re-extracts: graph.db is derived data, and a
 # stale map that answers confidently is worse than no map at all.
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 8
 
 
 # --------------------------------------------------------------------------- #
@@ -300,6 +300,27 @@ class ControlKind(StrEnum):
     HANDLER = "HANDLER"              # try -- a decision about failure
 
 
+class ArmKind(StrEnum):
+    """The word in the source, and nothing invented.
+
+    Nine words, because Python has nine ways to open one arm of something. `ELSE`
+    appears once and means three different things -- after a `for`, after a `try`, after
+    an `if` -- and it is the *point's* kind that says which, exactly as it is for the
+    reader looking at the line. Naming them `LOOP_ELSE`, `TRY_ELSE` and `ELSE` would put
+    a distinction in the data that the source does not make (rule 30's neighbour).
+    """
+
+    IF = "if"
+    ELIF = "elif"
+    ELSE = "else"
+    CASE = "case"
+    TRY = "try"
+    EXCEPT = "except"
+    FINALLY = "finally"
+    FOR = "for"      # also `async for` -- the arm is the body, and `async` is not a way out
+    WHILE = "while"
+
+
 @dataclass(slots=True)
 class ControlPoint:
     """A loop or a decision inside one routine: **a line range, and nothing more.**
@@ -327,6 +348,12 @@ class ControlPoint:
     reader sees one decision with seven ways out.
     """
 
+    # Identity of this one point, so an arm can name the point it belongs to and a
+    # reader can keep a loop (rule 30: a label is not an identity). Derived by
+    # `control_point_id` from names and an ordinal, never from a position, for
+    # `call_site_id`'s reason -- a span whose id held its own line number would be a
+    # different loop after every import added above it.
+    point_id: str
     routine_id: str
     kind: ControlKind
     line_start: int
@@ -342,6 +369,58 @@ class ControlPoint:
     # Recorded rather than inferred from the header, because "if not x: return" and
     # "if not x: raise" are the same sentence and opposite facts.
     exits: str = ""
+
+
+@dataclass(slots=True)
+class ControlArm:
+    """One way out of a decision: **another span, belonging to a point.**
+
+    A `ControlPoint` says *there is a decision here and it has four ways out*. It cannot
+    say **which** way out writes to a table, and that is the whole question -- a branch
+    whose arms compute different numbers is the arithmetic this tool excludes, while a
+    branch where one arm writes to a table and the other does not is a decision about
+    what leaves the program. Measured over Society: 77 of its 2,213 decisions differ in
+    what moves between their arms, and 396 of its 1,531 handlers recover by moving
+    something. Neither number can be asked of the point alone.
+
+    So an arm is the same kind of fact as a point, one level in: a routine, a line range,
+    and the words as written. No variable, no value, no control-flow graph.
+
+    **The arms do not cover the point.** They are the *bodies*: an `elif`'s own test line
+    belongs to no arm, and a boundary reached from inside a test -- `if fetch_row():` --
+    is a fact about the decision rather than about either way out of it. Attributing it
+    to the arm above it would be a position mistaken for a meaning (rule 1).
+
+    `kind` is the **word in the source**: `if`, `elif`, `else`, `case`, `try`, `except`,
+    `finally`. The point's own kind is what disambiguates the three `else`s Python has --
+    a `for`'s (no `break`), a `try`'s (no exception), and a decision's -- because that is
+    the distinction the *reader* makes, standing at the line.
+
+    **Recorded only where a point has more than one way through it.** A plain `if` with
+    no `else`, a `for` with no `else`, a `GUARD` -- each has one arm, which is its own
+    span, and a row saying so again would be a second answer to a settled question
+    (rule 41). Society records 2,269 arms over 1,689 points, against 9,625 points in all.
+
+    The `if` arm's header is the point's header, by construction and from the same node,
+    so the two cannot disagree (rule 13). It is written on both because a ladder has to
+    be readable from its arms alone -- `if` / `elif` / `else`, each with its own test --
+    and an arm with no header where every sibling has one reads as a missing fact.
+    """
+
+    point_id: str
+    routine_id: str
+    # Position among this point's arms, in source order: 0 is the `if` body, the `try`
+    # body, the first `case`. An ordinal within one point, which is what `idx` means
+    # everywhere else here (`CallArg`, `Field_`) -- never a line.
+    idx: int
+    kind: ArmKind
+    line_start: int
+    line_end: int
+    # The clause as written, sliced on byte offsets (rule 75): `elif seal.kind ==
+    # "witness"`, `except TimeoutError as exc`, `case "retry"`. Empty for `else`,
+    # `finally` and a `try` body, which have no test to quote -- the word is the header,
+    # and it is already in `kind`.
+    header: str = ""
 
 
 @dataclass(slots=True)
@@ -596,6 +675,7 @@ class FileFacts:
     artefacts: list[Artefact] = field(default_factory=list)
     constants: list[Constant] = field(default_factory=list)
     control: list[ControlPoint] = field(default_factory=list)
+    control_arms: list[ControlArm] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
 
 
@@ -811,6 +891,22 @@ def call_site_id(caller_id: str, callee_expr: str, ordinal: int) -> str:
     below anything, and it is bounded by how often one routine calls one name twice.
     """
     return make_id("site", caller_id, callee_expr, str(ordinal))
+
+
+def control_point_id(routine_id: str, kind: str, header: str, ordinal: int) -> str:
+    """Identity of one control point -- position-free, like every other id here.
+
+    A routine may hold two identical loops: `for line in lines:` twice is two spans, and
+    an arm of one must never hang off the other. The discriminator is `call_site_id`'s,
+    for `call_site_id`'s reason -- an **ordinal among identical writings in the same
+    routine**, because a line number retires every fact below an inserted import.
+
+    A `try` has no header, so a routine's handlers are told apart by the ordinal alone.
+    The residue is the same one and is stated rather than hidden: inserting a third
+    `try` between the first two renumbers the ones after it, and those points read as
+    changed when nothing about them did.
+    """
+    return make_id("control", routine_id, kind, header, str(ordinal))
 
 
 def hash_source(text: str) -> str:

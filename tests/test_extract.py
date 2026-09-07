@@ -367,3 +367,146 @@ def test_a_control_point_carries_its_header_as_written(tmp_path):
     assert pts[0].header == "rows [ 0 ]", (
         f"the header was re-rendered rather than sliced: {pts[0].header!r}"
     )
+
+
+def _arms(tmp_path: Path, src: str):
+    (tmp_path / "m.py").write_text(src)
+    ff = extract_file(tmp_path / "m.py", tmp_path)
+    by_point = {p.point_id: p for p in ff.control}
+    return [(by_point[a.point_id].kind.value, a.idx, a.kind.value, a.header)
+            for a in ff.control_arms]
+
+
+def test_a_ladder_records_every_way_out_as_its_own_span(tmp_path):
+    """A point says a decision has four ways out; only an arm says which one writes.
+
+    77 of Society's 2,213 decisions differ in what moves between their arms, and that
+    question cannot be put to the span -- it holds every answer at once.
+    """
+    got = _arms(tmp_path, """
+def f(x):
+    if x == 1:
+        g()
+    elif x == 2:
+        h()
+    else:
+        k()
+""")
+    assert got == [("DECISION", 0, "if", "x == 1"),
+                   ("DECISION", 1, "elif", "x == 2"),
+                   ("DECISION", 2, "else", "")], got
+
+
+def test_an_arm_stops_at_the_body_and_a_test_belongs_to_no_arm(tmp_path):
+    """`if fetch_row():` reaches a boundary from the decision's own header.
+
+    Attributing it to the arm written under it would be a position mistaken for a
+    meaning (rule 1), so the arms are the *bodies* and they do not cover the point.
+    """
+    (tmp_path / "m.py").write_text("""
+def f(x):
+    if x == 1:
+        g()
+    elif fetch():
+        h()
+""")
+    ff = extract_file(tmp_path / "m.py", tmp_path)
+    point = ff.control[0]
+    arms = sorted(ff.control_arms, key=lambda a: a.idx)
+    assert [(a.line_start, a.line_end) for a in arms] == [(4, 4), (6, 6)], (
+        f"an arm covers its own test line: {[(a.line_start, a.line_end) for a in arms]}"
+    )
+    assert point.line_start == 3 and point.line_end == 6, (
+        "the point no longer covers the whole ladder"
+    )
+
+
+def test_one_way_through_records_no_arms(tmp_path):
+    """A plain `if`, a `for` with no `else`, a guard: the arm is the span.
+
+    A row repeating it would be a second answer to a settled question (rule 41), and
+    9,625 points against 2,269 arms is most of what keeps that table small.
+    """
+    assert _arms(tmp_path, "def f(x):\n    if x:\n        g()\n        h()\n") == []
+    assert _arms(tmp_path, "def f(x):\n    for i in x:\n        g(i)\n") == []
+    assert _arms(tmp_path, "def f(x):\n    if not x:\n        return None\n") == []
+
+
+def test_a_try_records_its_body_its_handlers_and_its_tails(tmp_path):
+    """The body is an arm here where a loop's body is not: a `try` genuinely has more
+    than one way through, and *which* one moves something is the question -- 396 of
+    Society's 1,531 handlers recover by moving something.
+    """
+    got = _arms(tmp_path, """
+def f(x):
+    try:
+        g()
+    except TimeoutError as exc:
+        h(exc)
+    except ValueError:
+        pass
+    else:
+        k()
+    finally:
+        close()
+""")
+    assert got == [("HANDLER", 0, "try", ""),
+                   ("HANDLER", 1, "except", "TimeoutError as exc"),
+                   ("HANDLER", 2, "except", "ValueError"),
+                   ("HANDLER", 3, "else", ""),
+                   ("HANDLER", 4, "finally", "")], got
+
+
+def test_a_loop_with_an_else_records_both_and_the_word_is_the_source_word(tmp_path):
+    """4 of Society's 976 loops have an `else`, and it is the clause most readers have
+    to look up. Kept rather than dropped (design rule 1); the arm's kind is the word
+    standing in the source, so `for` and `while` are told apart by it.
+    """
+    for word, head in (("for", "for i in x:"), ("while", "while x:")):
+        got = _arms(tmp_path, f"def f(x):\n    {head}\n        g(x)\n    else:\n        h()\n")
+        assert got == [("LOOP", 0, word, "x"), ("LOOP", 1, "else", "")], got
+
+
+def test_a_case_is_an_arm_and_its_guard_is_part_of_what_was_written(tmp_path):
+    """Society has no `match` at all, so this is the only place the shape is asserted.
+
+    An extractor that silently walks past a language construct reports a smaller
+    program (rule 15's shape) -- and the pattern and its guard are two nodes with the
+    word `if` between them in the source and nowhere in the tree.
+    """
+    got = _arms(tmp_path, """
+def f(x):
+    match x.status:
+        case "ok" if x.force:
+            g()
+        case _:
+            h()
+""")
+    assert got == [("DECISION", 0, "case", '"ok" if x.force'),
+                   ("DECISION", 1, "case", "_")], got
+
+
+def test_two_identical_loops_in_one_routine_keep_separate_identities(tmp_path):
+    """An arm hangs off a point id, so two identical writings must not share one.
+
+    `call_site_id`'s problem one subject over: the discriminator is an ordinal among
+    identical writings in the same routine, never a position (rule 46).
+    """
+    (tmp_path / "m.py").write_text("""
+def f(rows):
+    for line in rows:
+        if line:
+            g(line)
+        else:
+            h(line)
+    for line in rows:
+        if line:
+            k(line)
+        else:
+            m(line)
+""")
+    ff = extract_file(tmp_path / "m.py", tmp_path)
+    ids = [p.point_id for p in ff.control]
+    assert len(set(ids)) == len(ids), "two points share an id, so their arms merge"
+    owners = {a.point_id for a in ff.control_arms}
+    assert len(owners) == 2, f"four arms landed on {len(owners)} decisions"

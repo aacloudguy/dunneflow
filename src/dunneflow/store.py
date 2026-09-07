@@ -148,6 +148,7 @@ CREATE TABLE IF NOT EXISTS boundaries (
 );
 
 CREATE TABLE IF NOT EXISTS control (
+    point_id   TEXT NOT NULL,
     file       TEXT NOT NULL,
     routine_id TEXT NOT NULL,
     kind       TEXT NOT NULL,
@@ -157,6 +158,20 @@ CREATE TABLE IF NOT EXISTS control (
     header     TEXT NOT NULL DEFAULT '',
     arms       INTEGER NOT NULL DEFAULT 1,
     exits      TEXT NOT NULL DEFAULT ''
+);
+
+-- The ways through one control point, and only where there is more than one. Hangs off
+-- `control.point_id` rather than off a file, for `call_args`' reason: an arm has to stay
+-- attached to its own decision across two versions of the same program, and a rowid is a
+-- position in this file.
+CREATE TABLE IF NOT EXISTS control_arms (
+    point_id   TEXT NOT NULL,
+    routine_id TEXT NOT NULL,
+    idx        INTEGER NOT NULL,
+    kind       TEXT NOT NULL,
+    line_start INTEGER NOT NULL,
+    line_end   INTEGER NOT NULL,
+    header     TEXT NOT NULL DEFAULT ''
 );
 
 CREATE TABLE IF NOT EXISTS structures (
@@ -334,6 +349,9 @@ CREATE INDEX IF NOT EXISTS ix_bound_kind       ON boundaries(kind);
 CREATE INDEX IF NOT EXISTS ix_bound_sal        ON boundaries(salience);
 CREATE INDEX IF NOT EXISTS ix_bound_file       ON boundaries(file);
 CREATE INDEX IF NOT EXISTS ix_control_routine  ON control(routine_id, line_start, line_end);
+CREATE INDEX IF NOT EXISTS ix_control_point    ON control(point_id);
+CREATE INDEX IF NOT EXISTS ix_arms_point       ON control_arms(point_id);
+CREATE INDEX IF NOT EXISTS ix_arms_routine     ON control_arms(routine_id, line_start, line_end);
 CREATE INDEX IF NOT EXISTS ix_control_kind     ON control(kind);
 CREATE INDEX IF NOT EXISTS ix_control_file     ON control(file);
 CREATE INDEX IF NOT EXISTS ix_struct_file      ON structures(file);
@@ -732,6 +750,14 @@ class Store:
             "DELETE FROM call_args WHERE site_id IN (SELECT site_id FROM calls WHERE file = ?)",
             (path,),
         )
+        # An arm hangs off a control point, not off a file -- so it goes before `control`
+        # does, for the reason `call_args` goes before `calls`: once the points of this
+        # file are gone there is nothing left to name its arms by.
+        c.execute(
+            "DELETE FROM control_arms WHERE point_id IN"
+            " (SELECT point_id FROM control WHERE file = ?)",
+            (path,),
+        )
         for table in ("routines", "structures", "calls", "boundaries", "imports",
                       "entrypoints", "cli_apps", "cli_mounts", "sql_ops", "db_tables",
                       "db_columns", "db_indexes", "net_calls", "classes",
@@ -819,10 +845,18 @@ class Store:
               b.evidence, b.salience) for b in ff.boundaries],
         )
         c.executemany(
-            "INSERT INTO control(file,routine_id,kind,line_start,line_end,depth,header,arms,exits)"
-            " VALUES(?,?,?,?,?,?,?,?,?)",
-            [(ff.path, p.routine_id, p.kind.value, p.line_start, p.line_end, p.depth,
-              p.header, p.arms, p.exits) for p in ff.control],
+            "INSERT INTO control"
+            "(point_id,file,routine_id,kind,line_start,line_end,depth,header,arms,exits)"
+            " VALUES(?,?,?,?,?,?,?,?,?,?)",
+            [(p.point_id, ff.path, p.routine_id, p.kind.value, p.line_start, p.line_end,
+              p.depth, p.header, p.arms, p.exits) for p in ff.control],
+        )
+        c.executemany(
+            "INSERT INTO control_arms"
+            "(point_id,routine_id,idx,kind,line_start,line_end,header)"
+            " VALUES(?,?,?,?,?,?,?)",
+            [(a.point_id, a.routine_id, a.idx, a.kind.value, a.line_start, a.line_end,
+              a.header) for a in ff.control_arms],
         )
         c.executemany(
             "INSERT INTO imports(file,module,name,alias,is_from,line) VALUES(?,?,?,?,?,?)",
@@ -924,7 +958,7 @@ class Store:
         out: dict[str, int] = {}
         for t in ("files", "routines", "calls", "boundaries", "structures", "entrypoints",
                   "annotations", "cli_apps", "cli_mounts", "sql_ops", "db_tables",
-                  "db_indexes", "net_calls", "control"):
+                  "db_indexes", "net_calls", "control", "control_arms"):
             out[t] = self.conn.execute(f"SELECT COUNT(*) AS n FROM {t}").fetchone()["n"]
         out["resolved_calls"] = self.conn.execute(
             "SELECT COUNT(*) AS n FROM calls WHERE callee_id IS NOT NULL"

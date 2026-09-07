@@ -32,6 +32,7 @@ from pathlib import Path
 from ... import sql as sqlmod
 from ...detectors import RuleSet, load_rules, mine_annotations
 from ...schema import (
+    ArmKind,
     Artefact,
     BoundaryHit,
     CallArg,
@@ -42,6 +43,7 @@ from ...schema import (
     Comment,
     Confidence,
     Constant,
+    ControlArm,
     ControlKind,
     ControlPoint,
     DataStructure,
@@ -58,6 +60,7 @@ from ...schema import (
     StructureKind,
     TableSchema,
     call_site_id,
+    control_point_id,
     hash_source,
     make_id,
 )
@@ -232,6 +235,11 @@ class _Extractor(ast.NodeVisitor):
         self._seen_qualnames: dict[str, int] = {}
 
         self.control: list[ControlPoint] = []
+        self.control_arms: list[ControlArm] = []
+        # How many points of this exact writing this routine already holds -- the
+        # discriminator in `control_point_id`, and the only one available that is not a
+        # position. Two identical `for line in lines:` loops in one routine are two spans.
+        self._control_ordinal: dict[tuple[str, str, str], int] = {}
         # Control nesting, which is **not** `Routine.is_nested` -- that counts enclosing
         # *functions*, and the two disagree on every closure. Reset per routine, because a
         # function defined inside a loop starts its own body at depth 0.
@@ -744,29 +752,88 @@ class _Extractor(ast.NodeVisitor):
     def _record_control(
         self, node: ast.AST, kind: ControlKind, *, arms: int = 1, exits: str = "",
         header: ast.AST | None = None,
-    ) -> None:
+    ) -> ControlPoint:
         """One point, then its contents one level deeper.
 
         The header is the **test or the iterable**, never the body: `for seal in
         spec.seals`, not the forty lines under it. Sliced by `_segment` on byte offsets
         (rule 75) and never `ast.unparse`d, for `call_args`' reason -- what is stored is
         what the reader will go looking for.
+
+        Returns the point so the caller can hang its arms off it. Only a caller knows
+        what its arms *are*: an `elif` chain has been flattened by then, a `try`'s arms
+        are its handlers, and a loop has none unless it has an `else`.
         """
         start = int(getattr(node, "lineno", 0) or 0)
         # A node with no `end_lineno` collapses to its own first line rather than to 0: a
         # span of `start..0` is empty, and every range join over it would answer "nothing
         # moves in here" -- rule 49's fallback, a plausible value hiding the failure.
         end = int(getattr(node, "end_lineno", None) or start)
-        self.control.append(ControlPoint(
-            routine_id=self._owner().id,
+        routine_id = self._owner().id
+        text = (self._segment(header) or "") if header is not None else ""
+        key = (routine_id, kind.value, text)
+        ordinal = self._control_ordinal.get(key, 0)
+        self._control_ordinal[key] = ordinal + 1
+        point = ControlPoint(
+            point_id=control_point_id(routine_id, kind.value, text, ordinal),
+            routine_id=routine_id,
             kind=kind,
             line_start=start,
             line_end=end,
             depth=self._depth + 1,
-            header=(self._segment(header) or "") if header is not None else "",
+            header=text,
             arms=arms,
             exits=exits,
-        ))
+        )
+        self.control.append(point)
+        return point
+
+    def _body_span(self, body: list[ast.stmt]) -> tuple[int, int] | None:
+        """The lines one arm's statements occupy, decorators and all.
+
+        Taken over `ast.walk` rather than off the first and last statement, because a
+        `def` inside an arm reports the `def` line and its decorators sit above it -- a
+        span starting at the `def` would put a decorated nested function's own decorator
+        outside the arm that holds it.
+        """
+        lines = [n.lineno for s in body for n in ast.walk(s) if hasattr(n, "lineno")]
+        if not lines:
+            return None
+        ends = [getattr(n, "end_lineno", None) or n.lineno
+                for s in body for n in ast.walk(s) if hasattr(n, "lineno")]
+        return min(lines), max(ends)
+
+    def _record_arms(
+        self, point: ControlPoint,
+        arms: list[tuple[ArmKind, ast.AST | str | None, list[ast.stmt]]],
+    ) -> None:
+        """The ways through one point, **only where there is more than one.**
+
+        A plain `if`, a `for` with no `else`, a guard: one way through, which is the
+        point's own span, and a row repeating it would be a second answer to a settled
+        question (rule 41).
+
+        The header is either a node to slice or a string already assembled from slices --
+        an `except` clause and a `case` pattern are written in two pieces (`except E as
+        exc`, `case P if guard`) and there is no single node covering either.
+        """
+        if len(arms) < 2:
+            return
+        for idx, (kind, header, body) in enumerate(arms):
+            span = self._body_span(body)
+            if span is None:
+                continue
+            text = header if isinstance(header, str) else (
+                (self._segment(header) or "") if header is not None else "")
+            self.control_arms.append(ControlArm(
+                point_id=point.point_id,
+                routine_id=point.routine_id,
+                idx=idx,
+                kind=kind,
+                line_start=span[0],
+                line_end=span[1],
+                header=text,
+            ))
 
     def _descend(self, node: ast.AST, *, deeper: bool = True) -> None:
         """Walk a control point's children, one level down and back up again."""
@@ -782,7 +849,17 @@ class _Extractor(ast.NodeVisitor):
         # A `while` has a test and a `for` has an iterable, and both are the answer to
         # "what is this looping over" -- the one thing a reader asks of a loop first.
         head = node.iter if isinstance(node, (ast.For, ast.AsyncFor)) else node.test
-        self._record_control(node, ControlKind.LOOP, header=head)
+        point = self._record_control(node, ControlKind.LOOP, header=head)
+        # `for ... else` runs when the loop was never broken out of, which is a second
+        # way through and the one most readers have to look up. 4 of Society's 976 loops
+        # have one; a loop without an `else` records no arms at all, because its body is
+        # its span. `arms` stays 1 either way -- what a loop is *over* is one thing, and
+        # the ways out of it are the rows.
+        word = ArmKind.WHILE if isinstance(node, ast.While) else ArmKind.FOR
+        self._record_arms(point, [
+            (word, head, node.body),
+            (ArmKind.ELSE, None, node.orelse),
+        ] if node.orelse else [])
         self._descend(node)
 
     visit_For = _visit_loop
@@ -807,6 +884,23 @@ class _Extractor(ast.NodeVisitor):
     visit_SetComp = _visit_comprehension
     visit_DictComp = _visit_comprehension
     visit_GeneratorExp = _visit_comprehension
+
+    def _ladder_arms(
+        self, node: ast.If, tails: list[ast.If],
+    ) -> list[tuple[ArmKind, ast.AST | str | None, list[ast.stmt]]]:
+        """A flattened ladder's ways out, in the order they are written.
+
+        The `if` arm carries the same test the point does -- from the same node, so the
+        two cannot disagree (rule 13) -- because a ladder has to be readable from its
+        arms alone.
+        """
+        arms: list[tuple[ArmKind, ast.AST | str | None, list[ast.stmt]]] = [
+            (ArmKind.IF, node.test, node.body)]
+        arms += [(ArmKind.ELIF, t.test, t.body) for t in tails]
+        last = tails[-1] if tails else node
+        if last.orelse:
+            arms.append((ArmKind.ELSE, None, last.orelse))
+        return arms
 
     def _ladder(self, node: ast.If) -> tuple[int, list[ast.If]]:
         """An `if`/`elif`/`else` chain flattened to its ways out.
@@ -847,7 +941,9 @@ class _Extractor(ast.NodeVisitor):
             self._descend(node)
             return
         self._ladder_tails.update(id(t) for t in tails)
-        self._record_control(node, ControlKind.DECISION, arms=arms, header=node.test)
+        point = self._record_control(
+            node, ControlKind.DECISION, arms=arms, header=node.test)
+        self._record_arms(point, self._ladder_arms(node, tails))
         self._descend(node)
 
     def visit_Match(self, node: ast.Match) -> None:
@@ -857,9 +953,24 @@ class _Extractor(ast.NodeVisitor):
         dropped (design rule 1), because a lane that silently vanishes cannot be told from
         one that looked and found nothing.
         """
-        self._record_control(
+        point = self._record_control(
             node, ControlKind.DECISION, arms=len(node.cases), header=node.subject)
+        self._record_arms(point, [
+            (ArmKind.CASE, self._case_header(c), c.body) for c in node.cases])
         self._descend(node)
+
+    def _case_header(self, case: ast.match_case) -> str:
+        """`case "retry" if seal.kind == "witness"` -- two slices, because it is two nodes.
+
+        `ast.match_case` carries no position of its own, and a guard is a separate node
+        from the pattern with the word `if` between them in the source and nowhere in the
+        tree. Assembled from two as-written slices rather than `ast.unparse`d, which is
+        the same trade `_segment` exists to refuse.
+        """
+        pattern = self._segment(case.pattern) or ""
+        if case.guard is None:
+            return pattern
+        return f"{pattern} if {self._segment(case.guard) or ''}".strip()
 
     def visit_Try(self, node: ast.Try) -> None:
         """`try` is a decision about failure, and its arms are its handlers.
@@ -867,8 +978,40 @@ class _Extractor(ast.NodeVisitor):
         No header: what a `try` is *about* is the block it guards, and quoting forty lines
         as a heading would be a header that is the body (rule 8's shape, one subject over).
         """
-        self._record_control(node, ControlKind.HANDLER, arms=len(node.handlers))
+        point = self._record_control(node, ControlKind.HANDLER, arms=len(node.handlers))
+        self._record_arms(point, self._try_arms(node))
         self._descend(node)
+
+    def _try_arms(
+        self, node: ast.Try | ast.TryStar,
+    ) -> list[tuple[ArmKind, ast.AST | str | None, list[ast.stmt]]]:
+        """A `try`'s ways through: the guarded body, each handler, `else`, `finally`.
+
+        The body is an arm here where a loop's body is not, because a `try` genuinely has
+        more than one way through it and the reader is asking which of them moves
+        something -- 396 of Society's 1,531 handlers recover by moving something, and
+        that question cannot be put to the `try` span, which contains both answers.
+        """
+        arms: list[tuple[ArmKind, ast.AST | str | None, list[ast.stmt]]] = [
+            (ArmKind.TRY, None, node.body)]
+        arms += [(ArmKind.EXCEPT, self._except_header(h), h.body) for h in node.handlers]
+        if node.orelse:
+            arms.append((ArmKind.ELSE, None, node.orelse))
+        if node.finalbody:
+            arms.append((ArmKind.FINALLY, None, node.finalbody))
+        return arms
+
+    def _except_header(self, handler: ast.ExceptHandler) -> str:
+        """`except TimeoutError as exc` -- the caught type and the name it is bound to.
+
+        Assembled from the type's own slice for `_case_header`'s reason: the bound name
+        is an identifier on the `ExceptHandler` and not a node anywhere. A bare `except:`
+        catches everything and has nothing to quote, so it says nothing.
+        """
+        if handler.type is None:
+            return ""
+        caught = self._segment(handler.type) or ""
+        return f"{caught} as {handler.name}" if handler.name else caught
 
     def visit_TryStar(self, node: ast.TryStar) -> None:
         """`except*` groups, which are a `Try` in every way this fact cares about.
@@ -878,7 +1021,8 @@ class _Extractor(ast.NodeVisitor):
         has none, and it is handled anyway because an extractor that silently walks past a
         language construct reports a smaller program (rule 15's shape).
         """
-        self._record_control(node, ControlKind.HANDLER, arms=len(node.handlers))
+        point = self._record_control(node, ControlKind.HANDLER, arms=len(node.handlers))
+        self._record_arms(point, self._try_arms(node))
         self._descend(node)
 
     # -- the things that move ---------------------------------------------- #
@@ -1485,6 +1629,7 @@ def extract_file(path: Path, root: Path, src: str | None = None) -> FileFacts:
     facts.artefacts = ex.artefacts
     facts.constants = ex.constants
     facts.control = ex.control
+    facts.control_arms = ex.control_arms
 
     # A module that guards __main__ is startable in its own right.
     if ex._has_main_guard:

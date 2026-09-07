@@ -253,7 +253,7 @@ def test_hidden_actually_hides() -> None:
 # cannot be evaded that way.
 PER_PROGRAM = ["ENTRYPOINTS", "BOUNDARIES", "PKGS", "TABLES", "ROUTINES",
                "ANOMALIES", "TERMS", "UNDEFINED", "CONVENTIONS", "VOCAB", "MANIFEST",
-               "CURIOSITIES", "THREADS", "SHAPELANES"]
+               "CURIOSITIES", "THREADS", "ALGOLANES"]
 # `PROVENANCE` was here and is gone rather than renamed: it held every source span of every
 # glossary citation, and the viewer fetches one span from `/api/source` when a citation is
 # opened. This list is the record that it left deliberately -- the guard above fails on a
@@ -451,7 +451,7 @@ def test_a_row_on_a_page_of_its_own_names_the_step_it_files() -> None:
     # ...and the row hands it something to name the step with. `data-label` rather than the
     # row's text, which is four lines: the first version filed a step called
     # `HANDLER enque...h = ? +3 more`.
-    row = js.split("function shapeRow(r) {", 1)[1].split("\n}", 1)[0]
+    row = js.split("function algoRow(r) {", 1)[1].split("\n}", 1)[0]
     for attr in ("data-nav=\"shaperow\"", "data-label=", "data-stepnote="):
         assert attr in row, f"an ALGORITHMS row no longer carries {attr}"
 
@@ -5022,6 +5022,48 @@ def test_code_is_a_centre_mode_in_all_three_places() -> None:
     assert 'data-mode="code"' in html, "there is no button that switches to code"
     assert 'state.view === "code"' in js, "nothing paints the code view"
     assert "viewCode()" in js, "the code view is never called"
+
+
+def test_shape_is_a_centre_mode_in_all_three_places() -> None:
+    """The sixth mode, asserted the way the fourth is: a table entry, a button, a branch.
+
+    And one thing the others did not have to worry about: the **page** that lists the
+    program's loops is called `algorithms`, not `shape`. `selectFromNav` sets
+    `state.view = state.mode`, so a mode named after a page would make selecting a routine
+    land on that page — one word carrying two meanings, which is what `data-nav` cost a
+    session to find (rule 71's family).
+    """
+    js, html = _code(_read("shell.js")), _read("index.html")
+    modes = js.split("const CENTRE_MODES = ", 1)[1].split(";", 1)[0]
+    assert '"shape"' in modes, "shape is not a centre mode, so the mode strip hides for it"
+    assert 'data-mode="shape"' in html, "there is no button that switches to the shape"
+    assert 'state.view === "shape"' in js, "nothing paints the shape view"
+    assert "viewShape()" in js, "the shape view is never called"
+    assert '"algorithms"' in js and 'state.view = "algorithms"' in js, (
+        "the loops-and-decisions page no longer has a name of its own, so a mode and a "
+        "page share one word"
+    )
+
+
+def test_the_shape_view_reads_the_one_selection_and_keeps_no_second_copy() -> None:
+    """Rule 51 and rule 78 together: the ribbon is about the thing selected.
+
+    Its answer is keyed on the node it was fetched for, so a slow reply for the routine
+    the reader has left cannot be drawn under the heading of the one they arrived at --
+    and the loader drops its own answer when the key has moved on.
+    """
+    js = _code(_read("shell.js"))
+    load = _fn(js, "loadShape")
+    assert "SHAPE.node = node" in load, "the shape bag is not keyed on the node"
+    assert load.count("SHAPE.node !== node") >= 2, (
+        "a late answer is drawn whatever the selection has since become"
+    )
+    view = _fn(js, "viewShape")
+    assert "SPECIMEN" in view or "state.selected" in view, (
+        "the shape view does not read the one selection"
+    )
+    for name in ("shapeNode", "shapeSelected", "shapeId"):
+        assert name not in js, f"the ribbon keeps its own `{name}` beside the selection"
 
 
 def test_the_code_view_reads_the_one_selection_and_keeps_no_second_copy() -> None:

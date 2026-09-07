@@ -168,7 +168,7 @@ def test_a_loop_that_only_calls_something_is_kept_and_is_not_promoted(store):
 
 def test_a_decision_forks_only_when_its_arms_differ_in_what_moves(store):
     """A branch whose arms both write is arithmetic; one that writes on one side is a
-    decision about what leaves the program. 77 of Society's 2,213 decisions fork."""
+    decision about what leaves the program. 78 of Society's 2,213 decisions fork."""
     pts = _by_routine(shape.measure(store))
     fork = [p for p in pts["forking"] if p.kind == ControlKind.DECISION][0]
     same = [p for p in pts["alike"] if p.kind == ControlKind.DECISION][0]
@@ -193,7 +193,7 @@ def test_a_boundary_in_the_test_does_not_make_a_fork(store):
 
 def test_a_ladder_is_a_subject_on_its_shape_alone(store):
     """Three ways out is a shape a reader has to hold in their head, whatever is in
-    them -- and the two decision tests are near-disjoint: 7 of Society's 77 forks are
+    them -- and the two decision tests are near-disjoint: 7 of Society's 78 forks are
     also ladders, so neither is a special case of the other."""
     point = [p for p in _by_routine(shape.measure(store))["ladder"]
              if p.kind == ControlKind.DECISION][0]
@@ -321,3 +321,17 @@ def test_two_comprehensions_on_one_line_still_nest(store, tmp_path):
     assert not outer.in_loop and inner.in_loop == outer.point_id, (
         "two comprehensions sharing a line do not nest"
     )
+
+
+def test_one_statement_is_one_thing_that_moves(store):
+    """An `INSERT` is a `DATABASE` row **and** a `SQL` row: one act at two altitudes.
+
+    Counting rows says *two things move here* about one write, and it said so about 33 of
+    Society's 261 rates, in the very sentence that gives them their rate. A place is the
+    unit a reader counts; the rows are what is known about it.
+    """
+    rate = [p for p in _by_routine(shape.measure(store))["rate"]
+            if p.kind == ControlKind.LOOP][0]
+    assert len(rate.moves) > 1, "the fixture's write is no longer recorded twice"
+    assert shape.places(rate.moves) == 1, "two descriptions of one write are two places"
+    assert "once per pass" in rate.why and "of them" not in rate.why, rate.why

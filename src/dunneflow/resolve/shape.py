@@ -27,10 +27,12 @@ state between them (rule 40).
 
 **A move is counted once at a line, and the parts are kept.** 569 of Society's 991 SQL
 operations sit on a line that is also a `boundaries` row, and 29 of its 32 network calls
-do -- summing the three tables would report a loop holding one write as holding two.
-What is deduplicated is the *place*; what is kept is what each table had to say about it,
-because "writes `spec_seals`" and "DATABASE" are the same act described at two altitudes
-and the reader wants the first one.
+do -- summing the three tables reports a loop holding one write as holding two, and it
+did, in the sentence that gives 33 of the 261 rates their number. What is deduplicated is
+the *place*; what is kept is what each table had to say about it, because "writes
+`spec_seals`" and "DATABASE" are the same act described at two altitudes and the reader
+wants the first one. Every count goes through `places` (rule 51); every description stays
+in `moves`.
 
 **A test is not an arm.** `if fetch_row():` reaches a boundary from the decision's own
 header, which belongs to no arm -- so the arm-difference test sees it in neither and the
@@ -71,6 +73,22 @@ NET = "NET"
 # path, including the one where nothing failed, and calling that a recovery would be a
 # claim about failure drawn from a line that says nothing about it.
 RECOVERY_ARMS = frozenset({ArmKind.EXCEPT})
+
+
+def places(moves: list[Move]) -> int:
+    """How many *acts* these rows describe, which is not how many rows there are.
+
+    `boundaries`, `sql_ops` and `net_calls` describe one statement at two altitudes: an
+    `INSERT` is a `DATABASE` row and a `SQL` row on the same line, and 569 of Society's
+    991 SQL operations sit on a line that is also a boundary. Counting rows says *two
+    things move here* about one write -- and it said so about **33 of the 261** loops this
+    feature exists to report, in the sentence that gives their rate.
+
+    So a **place is the unit a reader is counting** and the rows are what is known about
+    it. Everything a surface prints as "how many" comes through here (rule 51), because
+    two ways of counting one thing is the defect rule 32 is written against.
+    """
+    return len({m.line for m in moves})
 
 
 @dataclass(slots=True, frozen=True)
@@ -147,7 +165,7 @@ class Point:
         """
         if len(self.arms) < 2:
             return False
-        return len({len(a.moves) for a in self.arms}) > 1
+        return len({places(a.moves) for a in self.arms}) > 1
 
     @property
     def recovers(self) -> bool:
@@ -299,7 +317,7 @@ def judge(point: Point) -> None:
 
 def _judge_loop(point: Point) -> None:
     """A loop is a subject where something moves inside it, because that is a rate."""
-    n = len(point.moves)
+    n = places(point.moves)
     if n:
         point.significant = True
         per = "once per pass" if n == 1 else f"{n} of them, once per pass"
@@ -319,12 +337,12 @@ def _judge_loop(point: Point) -> None:
 def _judge_decision(point: Point) -> None:
     """A decision is a subject where its arms differ in what moves, or where it is a
     ladder: three ways out is a shape a reader has to hold in their head, whatever is in
-    them. The two tests find near-disjoint sets -- 7 of Society's 77 forks are also
+    them. The two tests find near-disjoint sets -- 7 of Society's 78 forks are also
     ladders -- which is why both are here and neither is a special case of the other.
     """
     if point.forks:
         point.significant = True
-        moving = sum(1 for a in point.arms if a.moves)
+        moving = sum(1 for a in point.arms if places(a.moves))
         point.why = (f"its {len(point.arms)} ways out differ in what moves:"
                      f" {moving} of them move something and the rest do not")
     elif point.arms_declared >= 3:
@@ -333,7 +351,7 @@ def _judge_decision(point: Point) -> None:
         # a reader's next question is always which way out does anything -- asked of the
         # arms, and answered in the one place that has them (rule 51), rather than by a
         # second line on the page saying the same thing in other words (rule 41).
-        moving = sum(1 for a in point.arms if a.moves)
+        moving = sum(1 for a in point.arms if places(a.moves))
         acts = (f", and {moving} of them move something" if moving
                 else ", and none of them moves anything")
         point.why = f"{point.arms_declared} ways out of one decision{acts}"
@@ -355,7 +373,7 @@ def _judge_handler(point: Point) -> None:
     """
     if point.recovers:
         point.significant = True
-        n = sum(len(a.moves) for a in point.arms if a.kind in RECOVERY_ARMS)
+        n = places([m for a in point.arms if a.kind in RECOVERY_ARMS for m in a.moves])
         point.why = (f"something moves while recovering from a failure \u2014"
                      f" {n} of them, on a path the happy case never takes")
     elif point.moves:
@@ -453,16 +471,13 @@ def measure(store: Store) -> ShapeReport:
     return report
 
 
-def outline(store: Store, routine_id: str) -> list[Point]:
-    """One routine's whole shape, guards included, in the order it is written.
+def moves_in_routine(store: Store, routine_id: str) -> list[Move]:
+    """Everything that moves inside one routine, deduplicated by place, in line order.
 
-    The same function as `measure` one scope down, and deliberately not a filter over
-    it: a reader opening one routine must not pay for the other 9,600 points (rule 45),
-    and the judgement has to be the same one either way (rule 51).
-
-    Ordered by where each point starts, and by the *widest* first where two start on the
-    same line -- a `for x in [y for y in z]` is a loop containing a comprehension, and
-    the containing one has to be drawn first for the nesting to read at all.
+    Its own function because two callers need the same list and only one of them wants
+    the points: `outline` bands the spans, and the ribbon has to hang each moving thing
+    on the innermost span that holds it. Two copies of this loop would be two answers to
+    "what is a move" the first time either was touched (rule 51).
     """
     moves: list[Move] = []
     seen: set[tuple[int, str, str]] = set()
@@ -477,6 +492,21 @@ def outline(store: Store, routine_id: str) -> list[Point]:
             moves.append(Move(line=int(r["line"]), kind=r["kind"],
                               what=r["target"] or "", detail=r["detail"] or ""))
     moves.sort(key=lambda m: m.line)
+    return moves
+
+
+def outline(store: Store, routine_id: str) -> list[Point]:
+    """One routine's whole shape, guards included, in the order it is written.
+
+    The same function as `measure` one scope down, and deliberately not a filter over
+    it: a reader opening one routine must not pay for the other 9,600 points (rule 45),
+    and the judgement has to be the same one either way (rule 51).
+
+    Ordered by where each point starts, and by the *widest* first where two start on the
+    same line -- a `for x in [y for y in z]` is a loop containing a comprehension, and
+    the containing one has to be drawn first for the nesting to read at all.
+    """
+    moves = moves_in_routine(store, routine_id)
     calls = sorted(int(r["line"]) for r in store.query(
         "SELECT line FROM calls WHERE caller_id = ? AND callee_id IS NOT NULL"
         " AND line IS NOT NULL", (routine_id,)))

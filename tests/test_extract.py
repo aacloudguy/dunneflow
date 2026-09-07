@@ -380,7 +380,7 @@ def _arms(tmp_path: Path, src: str):
 def test_a_ladder_records_every_way_out_as_its_own_span(tmp_path):
     """A point says a decision has four ways out; only an arm says which one writes.
 
-    77 of Society's 2,213 decisions differ in what moves between their arms, and that
+    78 of Society's 2,213 decisions differ in what moves between their arms, and that
     question cannot be put to the span -- it holds every answer at once.
     """
     got = _arms(tmp_path, """

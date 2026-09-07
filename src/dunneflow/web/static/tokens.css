@@ -2232,58 +2232,109 @@ kbd { font-family: var(--f-mono); font-size: .66rem; background: var(--sunken);
  * `.wl-body` is a two-column grid for the findings, a list beside one finding's detail.
  * There is no detail pane here: a row *is* the answer and clicking it opens the routine in
  * the panes that already describe one. So the grid is undone rather than borrowed, and it
- * is undone under `.shp` -- a class this page owns, because a bare `.wl-body` rule would
+ * is undone under `.algo` -- a class this page owns, because a bare `.wl-body` rule would
  * reach the anomaly worklist from a stylesheet that gives no warning (rule 71).
  *
  * **Two columns and nothing spans**, which is the shape the search hit row was rebuilt into
  * on 2026-09-07: a child spanning to the last column makes every later child start a row of
  * its own, and the arithmetic that decides it lives in two files. The tag is a column; the
  * four lines are one child that stacks them itself. */
-.shp .wl-body { display: block; overflow-y: auto; }
-.shp-of { font-size: .78rem; color: var(--text-muted); }
-.shp-blurb, .shp-quiet { margin: .25rem 0 0; flex-basis: 100%; font-size: .74rem;
+.algo .wl-body { display: block; overflow-y: auto; }
+.algo-of { font-size: .78rem; color: var(--text-muted); }
+.algo-blurb, .algo-quiet { margin: .25rem 0 0; flex-basis: 100%; font-size: .74rem;
   color: var(--text-muted); max-width: 62rem; }
-.shp-quiet { color: var(--text-faint); }
+.algo-quiet { color: var(--text-faint); }
 
-.shp-list { list-style: none; margin: 0; padding: 0;
+.algo-list { list-style: none; margin: 0; padding: 0;
   background: var(--surface); border: 1px solid var(--border); border-radius: .5rem;
   box-shadow: var(--shadow); }
-.shp-row { width: 100%; display: grid; grid-template-columns: 6.5rem 1fr; gap: .5rem;
+.algo-row { width: 100%; display: grid; grid-template-columns: 6.5rem 1fr; gap: .5rem;
   align-items: start; font: inherit; text-align: left; background: none; border: 0;
   border-bottom: 1px solid var(--border); cursor: pointer; color: var(--text);
   padding: .4rem .5rem; }
-.shp-row:hover { background: var(--raised); }
-.shp-tag { justify-self: start; margin-top: .1rem; }
-.shp-lines { display: flex; flex-direction: column; gap: .15rem; min-width: 0; }
-.shp-l1 { display: flex; align-items: baseline; gap: .45rem; flex-wrap: wrap; }
-.shp-name { font-size: .78rem; font-weight: 600; }
-.shp-where { font-size: .66rem; color: var(--text-faint); }
+.algo-row:hover { background: var(--raised); }
+.algo-tag { justify-self: start; margin-top: .1rem; }
+.algo-lines { display: flex; flex-direction: column; gap: .15rem; min-width: 0; }
+.algo-l1 { display: flex; align-items: baseline; gap: .45rem; flex-wrap: wrap; }
+.algo-name { font-size: .78rem; font-weight: 600; }
+.algo-where { font-size: .66rem; color: var(--text-faint); }
 /* The enclosing loop, and it is the headline of the first lane: a boundary once per pass
    of a loop that is itself once per pass. Marked rather than merely stated, because ten
    rows out of 261 is a thing to find by eye. */
-.shp-inside { font-size: .66rem; color: var(--text-muted);
+.algo-inside { font-size: .66rem; color: var(--text-muted);
   border-left: .125rem solid var(--accent); padding-left: .35rem; }
 /* The enclosing loop's test **as written**, and it has to look like a quotation: on screen
    `inside the loop at line 566 True` reads as a sentence that ran out of words, where
    `inside the loop at line 566 `True`` reads as the loop being named by what it tests. */
-.shp-inside code { font-family: var(--f-mono); color: var(--text); }
-.shp-l2 { font-size: .72rem; color: var(--text); opacity: .85;
+.algo-inside code { font-family: var(--f-mono); color: var(--text); }
+.algo-l2 { font-size: .72rem; color: var(--text); opacity: .85;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.shp-l3 { font-size: .72rem; color: var(--text-muted); }
+.algo-l3 { font-size: .72rem; color: var(--text-muted); }
 /* The `except` clauses of a handler, and which of them act. The mark is weight rather than
    colour: colour is the scarcest channel and this page already spends it on the difference
    between a lane and its ground (design rule 4). */
-.shp-catch { color: var(--text-faint); }
-.shp-catch + .shp-catch::before { content: " · "; }
-.shp-acts { color: var(--text); font-weight: 600; }
-.shp-l4 { display: flex; align-items: center; gap: .3rem; flex-wrap: wrap;
+.algo-catch { color: var(--text-faint); }
+.algo-catch + .algo-catch::before { content: " · "; }
+.algo-acts { color: var(--text); font-weight: 600; }
+.algo-l4 { display: flex; align-items: center; gap: .3rem; flex-wrap: wrap;
   font-size: .66rem; color: var(--text-faint); }
-.shp-move { display: inline-flex; align-items: center; gap: .2rem;
+.algo-move { display: inline-flex; align-items: center; gap: .2rem;
   font-family: var(--f-mono); }
-.shp-more { color: var(--text-faint); }
+.algo-more { color: var(--text-faint); }
 /* A move whose target the detector never recorded. The line is what separates three
    `FILE` chips that would otherwise read as three copies of one fact. */
-.shp-atline { color: var(--text-faint); }
+.algo-atline { color: var(--text-faint); }
+
+/* ── Shape: one routine's outline, nested as it is written ─────────────────────────────
+ *
+ * Nassi and Shneiderman's drawing, which is nested boxes and **no arrows at all**: the
+ * indentation is the whole picture, so what carries it is a left rule per level rather
+ * than a border per box. Nothing here is positioned, nothing is measured, and nothing can
+ * move under a gesture (rule 73) -- it is a list of lists, and it scrolls.
+ *
+ * The line number is a column of its own down the left, the way the code browser's is:
+ * every row of this drawing answers "where", and a number that wanders with the
+ * indentation cannot be read down. */
+.ribbon { display: flex; flex-direction: column; gap: .6rem; height: 100%; min-height: 0; }
+.rib-head { display: flex; align-items: baseline; gap: .875rem; flex-wrap: wrap; }
+.rib-title { font-size: .92rem; font-weight: 700; }
+.rib-sub { font-size: .72rem; color: var(--text-muted); }
+.rib-body { flex: 1; min-height: 0; overflow: auto;
+  background: var(--surface); border: 1px solid var(--border); border-radius: .5rem;
+  padding: .5rem .6rem .5rem 3.4rem; }
+
+.rib-list, .rib-arms { list-style: none; margin: 0; padding: 0 0 0 1.1rem; }
+.rib-body > .rib-list { padding-left: 0; }
+.rib-list .rib-list, .rib-arms { border-left: .0625rem solid var(--border); }
+.rib-point, .rib-move, .rib-call, .rib-arm { padding: .1rem 0; }
+/* **The line numbers are one column, and the first version made them wander.**
+   `position: absolute` resolves against the nearest *positioned* ancestor, so with every
+   row relative the number sat at the row's own left edge and stepped right with the
+   indentation -- a column of numbers that cannot be read down, under a comment saying
+   that is exactly what it must not be. Only the body is positioned now; the rows are
+   static, so every number in the drawing lands in the one gutter the body reserves. */
+.rib-body { position: relative; }
+.rib-line { position: absolute; left: .3rem; width: 2.6rem; text-align: right;
+  font-family: var(--f-mono); font-size: .66rem; color: var(--text-faint); }
+.rib-head-line { display: block; font-size: .74rem; }
+.rib-word { font-weight: 700; font-size: .68rem; text-transform: uppercase;
+  letter-spacing: .02em; color: var(--text-muted); }
+.rib-head-line code, .rib-armhead code { font-family: var(--f-mono); font-size: .72rem; }
+/* Why this span is a subject, on the spans that are. Every point states a reason and only
+   the ones a worklist would list say it here -- a sentence on all 9,625 would be the
+   founding exclusion undone by decoration. */
+.rib-why { color: var(--text-faint); font-size: .68rem; }
+.rib-exit { font-family: var(--f-mono); font-size: .7rem; color: var(--text-muted); }
+.rib-dir { font-size: .66rem; color: var(--text-faint); }
+.rib-armhead { font-size: .72rem; color: var(--text-muted); }
+.rib-nothing { font-size: .68rem; color: var(--text-faint); }
+.rib-move, .rib-call { font-size: .72rem; }
+.rib-go { font-family: var(--f-mono); font-size: .72rem; }
+.rib-rec { font-size: .66rem; color: var(--text-muted); margin-left: .3rem; }
+/* A loop is the one shape a reader is scanning for, so it is the one that gets the mark.
+   Colour is the scarcest channel (design rule 4) and this page spends it once. */
+.rib-loop > .rib-head-line .rib-word,
+.rib-comprehension > .rib-head-line .rib-word { color: var(--accent); }
 
 .wl-detail { background: var(--surface); border: 1px solid var(--border); border-radius: .5rem;
   box-shadow: var(--shadow); padding: .75rem .875rem 1rem; }

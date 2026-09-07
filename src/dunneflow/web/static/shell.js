@@ -65,7 +65,7 @@ let CURIOSITIES = [];   // what came out furthest from the middle -- served, not
 /* ALGORITHMS: the loops and decisions this program is worth reading for, in five lanes
    with their populations. Served, never pinned -- and empty is the honest resting state,
    because a lane count invented here would be a claim about a program nobody has read. */
-let SHAPELANES = [];
+let ALGOLANES = [];
 
 /* What sits next to the thing you are looking at. Not the call graph \u2014 the reasons
    something else might be worth a detour. */
@@ -441,7 +441,7 @@ const state = {
   /* Which of the five ALGORITHMS lanes is on screen. **Not persisted**, for `wlOpen`'s
      reason: it is where the reader is, not what they arranged, and that is the line
      `PERSISTED` is drawn on. */
-  shapeLane: "rates",
+  algoLane: "rates",
   coverBars: true,        // the cover's proportion bars, or the space they take
   rowTagsWrap: false,     // a way-in row drops its tags below a name that will not fit
   coverWhatWrap: false,   // the evidence line wraps instead of ending in an ellipsis
@@ -949,13 +949,13 @@ const NAV_ROUTES = {
   curiosities: () => { state.view = "curiosities"; },
   /* The lane travels on the row as an identity, exactly as the severity does on an
      anomaly row: five rows that differ only by the label they print would be five
-     controls doing one thing (rule 30). `loadShape()` is not called here -- `render()`
+     controls doing one thing (rule 30). `loadAlgorithms()` is not called here -- `render()`
      asks, once, for whichever view is about to be painted, so the page works from the
      navigator, the breadcrumb and the trail alike. */
-  shape:       (b) => {
-    state.view = "shape";
-    if (b && b.dataset.navid) state.shapeLane = b.dataset.navid;
-    used("shape");
+  algorithms:  (b) => {
+    state.view = "algorithms";
+    if (b && b.dataset.navid) state.algoLane = b.dataset.navid;
+    used("algorithms");
   },
   /* A row of the ALGORITHMS list, and it names the step the move will file.
    *
@@ -7365,7 +7365,7 @@ function redoSelection() {
  * toggle over one shared selection, not three destinations** -- switching never costs the
  * reader their place.
  */
-const CENTRE_MODES = ["graph", "table", "doc", "code", "diagram"];
+const CENTRE_MODES = ["graph", "table", "doc", "code", "diagram", "shape"];
 
 /* What a destination page is called, for the sentence that says why the toggle is dimmed.
  * Named rather than derived from the breadcrumb: `crumbsFor()` returns markup for a trail
@@ -7377,7 +7377,7 @@ const OFF_MODE_PAGE = {
   stated: "the stated naming rules", checked: "the rules checked",
   wayin: "this way in",
   curiosities: "the doorway panel", pins: "what you have kept",
-  shape: "the loops and decisions",
+  algorithms: "the loops and decisions",
   inference: "the inference settings", settings: "Settings",
 };
 
@@ -7822,19 +7822,19 @@ function ghostRows(ov, after, cls) {
  * lane a reader is in and the denominator it is being read against stay on screen at any
  * scroll position. Arriving mid-list is how this reader arrives.
  */
-function viewShape() {
-  const waiting = laneState(SHAPES, "lane", "error", "the loops and decisions");
+function viewAlgorithms() {
+  const waiting = laneState(ALGOS, "lane", "error", "the loops and decisions");
   if (waiting) return `<div style="max-width:64rem">${waiting}</div>`;
 
-  const lane = SHAPELANES.find(l => l.key === state.shapeLane) || SHAPELANES[0];
+  const lane = ALGOLANES.find(l => l.key === state.algoLane) || ALGOLANES[0];
   if (!lane) {
     return `<div class="note"><b>Nothing was measured.</b> This map holds no loops and no
       decisions at all, which is an answer rather than an empty page waiting to fill.</div>`;
   }
-  const q = SHAPES.quiet || {};
+  const q = ALGOS.quiet || {};
 
   const tab = (l) => `
-    <button role="tab" data-shapelane="${esc(l.key)}" aria-selected="${l.key === lane.key}">
+    <button role="tab" data-algolane="${esc(l.key)}" aria-selected="${l.key === lane.key}">
       ${esc(l.title)}<span class="tabn num">${l.n.toLocaleString()}</span>
     </button>`;
 
@@ -7848,21 +7848,21 @@ function viewShape() {
     page.</div>`;
 
   return `
-  <div class="worklist shp">
+  <div class="worklist algo">
     <div class="wl-head">
       <div class="seg tabs" role="tablist" aria-label="What to look at">
-        ${SHAPELANES.map(tab).join("")}
+        ${ALGOLANES.map(tab).join("")}
       </div>
-      <div class="shp-of">
+      <div class="algo-of">
         <b class="num">${lane.n.toLocaleString()}</b> of
         <span class="num">${lane.population.toLocaleString()}</span> ${esc(lane.of)}
       </div>
-      <p class="shp-blurb">${esc(lane.blurb)}
+      <p class="algo-blurb">${esc(lane.blurb)}
         <span class="muted">Ordered by ${esc(lane.order)}.</span></p>
       ${/* What was measured and is not offered. On the page rather than per lane, because
             it is one claim about the whole judgement: these five lanes hold a twelfth of
             what was read, and the rest is stated rather than implied (design rule 1). */""}
-      <p class="shp-quiet">Measured and not listed here:
+      <p class="algo-quiet">Measured and not listed here:
         <b class="num">${(q.still_loops || 0).toLocaleString()}</b> loops that move nothing,
         <b class="num">${(q.calling_loops || 0).toLocaleString()}</b> that call something of
         this program and move nothing themselves,
@@ -7873,12 +7873,134 @@ function viewShape() {
         the routine it stands at the top of, never in a list of its own.</p>
     </div>
 
-    <div class="wl-body shp-body">
-      ${lane.rows.length ? `<ol class="shp-list" aria-label="${esc(lane.title)}">
-        ${lane.rows.map(shapeRow).join("")}
+    <div class="wl-body algo-body">
+      ${lane.rows.length ? `<ol class="algo-list" aria-label="${esc(lane.title)}">
+        ${lane.rows.map(algoRow).join("")}
       </ol>` : empty}
     </div>
   </div>`;
+}
+
+/* ═══ Shape: one routine's own outline, drawn as it is written ═══
+ *
+ * The sixth centre mode, and the only one that draws what a routine *does* rather than
+ * what it is connected to. **A nested outline, not a graph** -- Nassi and Shneiderman
+ * (1972) drew structured code as nested boxes with no arrows, because structured code has
+ * no `goto` to draw and Python source never lost the structure. So there is no layout
+ * pass, no library, nothing that can move under a gesture (rule 73), and it scrolls.
+ *
+ * **Guards are drawn here, and only here.** 3,931 of Society's branches are refusals: a
+ * worklist of them is a list of the program, and a routine's shape without them is a lie
+ * about the routine. The bound is the reader opening one routine (rule 45).
+ */
+function viewShape() {
+  const node = SPECIMEN && SPECIMEN.id ? SPECIMEN.id : (state.selected || "");
+  if (!node) {
+    /* Design rule 21: "nothing chosen" and "this has no shape" are opposite claims. */
+    return `<div class="panel codeempty"><h2>Nothing selected.</h2>
+      <p class="hint">Pick a routine — from the navigator, the stack, the Algorithms page
+      or a search hit — and this draws its loops, its decisions and its refusals, nested
+      as they are written.</p></div>`;
+  }
+  const waiting = laneState(SHAPE, "lane", "error", "this routine's shape");
+  if (waiting) return `<div style="max-width:64rem">${waiting}</div>`;
+  if (SHAPE.found === false) {
+    return `<div class="panel codeempty"><h2>No shape to draw.</h2>
+      <p class="hint">${esc(SHAPE.reason || "")} A fold, a boundary and a table can all be
+      selected, and none of them holds loops of its own.</p></div>`;
+  }
+  const r = SHAPE.routine || {};
+  const c = SHAPE.counts || {};
+  /* One noun each, singular where the count is 1. "1 decisions" is the kind of thing only
+     the reader ever notices, and this pane says five of them in a row. */
+  const parts = [
+    ["loop", "loops", (c.LOOP || 0) + (c.COMPREHENSION || 0)],
+    ["decision", "decisions", c.DECISION || 0],
+    ["refusal", "refusals", c.GUARD || 0],
+    ["handler", "handlers", c.HANDLER || 0],
+    ["thing that moves", "things that move", c.moves || 0],
+  ].filter(([, , n]) => n).map(([one, many, n]) => [n === 1 ? one : many, n]);
+
+  return `<div class="ribbon">
+    <div class="rib-head">
+      <div>
+        <div class="rib-title mono">${esc(r.qualname || "")}</div>
+        <div class="rib-sub">${esc(r.file || "")}:${r.line_start}–${r.line_end} ·
+          ${(r.lines || 0).toLocaleString()} lines${parts.length
+            ? " · " + parts.map(([w, n]) => `${n.toLocaleString()} ${w}`).join(" · ") : ""}</div>
+      </div>
+    </div>
+    ${SHAPE.blocks && SHAPE.blocks.length ? `<div class="rib-body">${
+      ribBlocks(SHAPE.blocks)}</div>`
+      : `<div class="note"><b>Nothing but statements.</b> This routine holds no loop, no
+         decision and no refusal — it runs straight through. That is a fact about it, and
+         one of the shorter answers this map gives.</div>`}
+  </div>`;
+}
+
+/* One level of the outline. Recursive, because the source is. */
+function ribBlocks(blocks) {
+  return `<ul class="rib-list">${blocks.map(ribBlock).join("")}</ul>`;
+}
+
+function ribBlock(b) {
+  if (b.type === "move") {
+    /* A table is a subject this map already opens, and `table` says so rather than the
+       client guessing it from the kind (rule 30). Everything else is a fact with a line,
+       drawn as a fact -- a chip that looks clickable and is not would be worse than one
+       that does not (design rule 16). */
+    /* **Not the line, here**: the ribbon reserves a gutter and every row's number is
+       already in it, so repeating it beside the kind would be the same fact twice on one
+       line. What a detector recorded instead is the direction, which is the thing a
+       reader of an unnamed touch actually wants -- whether it went in or out. */
+    const label = `<span class="kind-tag">${esc(b.kind)}</span>${
+      b.what ? esc(fit(b.what, 60))
+             : `<span class="rib-dir">${esc((b.detail || "").toLowerCase())}</span>`}${
+      /* One act, and the other names it was recorded under -- said rather than drawn as
+         a second thing that moves, which is what counting rows did. */
+      b.also && b.also.length
+        ? `<span class="rib-dir">also ${esc(b.also.join(", "))}</span>` : ""}`;
+    return b.table
+      ? `<li class="rib-move"><button class="linkbtn rib-go" data-nav="t"
+           data-navid="${esc(b.table)}" data-label="${esc(b.table)}"
+           title="What else touches ${esc(b.table)}">${label}</button>
+         <span class="rib-line">${b.line}</span></li>`
+      : `<li class="rib-move"><span title="${esc(b.what)}">${label}</span>
+         <span class="rib-line">${b.line}</span></li>`;
+  }
+  if (b.type === "call") {
+    return `<li class="rib-call"><button class="linkbtn rib-go" data-nav="routine"
+        data-navid="${esc(b.node)}" data-label="${esc(b.expr)}"
+        >→ ${esc(fit(b.expr, 60))}</button>${
+      b.recursive ? '<span class="rib-rec">calls itself</span>' : ""}
+      <span class="rib-line">${b.line}</span></li>`;
+  }
+  /* **The kind, then the test as written, then how it leaves** -- in that order, because
+     any other reads as a sentence the source does not contain. This drew a guard as
+     `RETURN download_dir_str is None`, which says the routine returns that expression;
+     what it does is *test* it and then return. The word for a loop is `LOOP` for the same
+     reason it is on the worklist: the store records a loop's test or its iterable and not
+     the word that opened it, so `for` would be a guess and `while True` a false one. */
+  const word = b.kind;
+  const head = b.header ? `<code>${esc(fit(b.header, 96))}</code>` : "";
+  const exits = b.kind === "GUARD" && b.exits
+    ? `<span class="rib-exit">\u2192 ${esc(b.exits)}</span>` : "";
+  /* A guard is one line and says how it leaves; everything else opens a room. */
+  const arms = (b.arms || []).map(a => `<li class="rib-arm">
+      <span class="rib-line">${a.line_start}</span>
+      <span class="rib-armhead"><b>${esc(a.kind)}</b>${
+        a.header ? ` <code>${esc(fit(a.header, 80))}</code>` : ""}</span>
+      ${a.children.length ? ribBlocks(a.children)
+        : '<span class="rib-nothing">nothing that moves</span>'}
+    </li>`).join("");
+  return `<li class="rib-point rib-${esc(b.kind.toLowerCase())}"
+              data-point="${esc(b.point)}">
+    <span class="rib-line">${b.line_start}</span>
+    <span class="rib-head-line"><span class="rib-word">${esc(word)}</span> ${head} ${exits}
+      ${b.significant ? `<span class="rib-why">${esc(b.why)}</span>` : ""}</span>
+    ${b.children.length ? ribBlocks(b.children) : ""}
+    ${arms ? `<ul class="rib-arms">${arms}</ul>` : ""}
+  </li>`;
 }
 
 /* One row, and it opens the routine it is written in.
@@ -7914,13 +8036,13 @@ function fit(text, budget) {
  * than an empty pair of marks. */
 function headline(r) {
   if (r.header) {
-    return `<span class="shp-l2 mono" title="${esc(r.header)}"
+    return `<span class="algo-l2 mono" title="${esc(r.header)}"
               >${esc(fit(r.header, 90))}</span>`;
   }
   const caught = r.arm_moves.filter(a => a.kind === "except");
   if (!caught.length) return "";
-  return `<span class="shp-l2 mono">${caught.map(a => `<span class="shp-catch${
-    a.n ? " shp-acts" : ""}" title="line ${a.line}${a.n ? " — moves something" : ""}"
+  return `<span class="algo-l2 mono">${caught.map(a => `<span class="algo-catch${
+    a.n ? " algo-acts" : ""}" title="line ${a.line}${a.n ? " — moves something" : ""}"
     >${esc(fit(a.header, 40)) || "except"}</span>`).join(" ")}</span>`;
 }
 
@@ -7932,20 +8054,21 @@ function headline(r) {
  * `HANDLER enque…h = ? +3 more`. Both are declared here rather than scraped from the
  * markup below (rule 30), and both are read by `shaperow`, which is the route that files
  * the step; see `NAV_NAMES_ITSELF`. */
-function shapeRow(r) {
+function algoRow(r) {
   /* A boundary detector records no target for a great many touches -- an unnamed path, a
      `print`, a call whose destination is a variable -- and three chips reading `FILE` with
      nothing after them look like three copies of one fact. The line is what tells them
      apart, and it is a fact rather than a guess at the name. */
-  const moves = r.moves.map(m => `<span class="shp-move" title="line ${m.line}${
-      m.what ? " \u00b7 " + esc(m.what) : ""}">
+  const moves = r.moves.map(m => `<span class="algo-move" title="line ${m.line}${
+      m.what ? " \u00b7 " + esc(m.what) : ""}${
+      m.also && m.also.length ? " \u00b7 also recorded as " + esc(m.also.join(", ")) : ""}">
       <span class="kind-tag">${esc(m.kind)}</span>${m.what ? esc(fit(m.what, 42))
-        : `<span class="shp-atline">:${m.line}</span>`}
+        : `<span class="algo-atline">:${m.line}</span>`}
     </span>`).join("");
   /* Rule 32 and rule 8 in one line: the chips are a line length, the count is the whole
      number, and the row is here whatever it holds. */
   const more = r.n_moves > r.moves.length
-    ? `<span class="shp-more num">+${r.n_moves - r.moves.length} more</span>` : "";
+    ? `<span class="algo-more num">+${r.n_moves - r.moves.length} more</span>` : "";
   /* **The line, then the header as written -- never a sentence built round it.** This read
      `inside ${header}`, and Society's commonest enclosing loop is `while True:`, so ten of
      the rows this lane exists for said *"inside True"*. The store records a loop's test or
@@ -7954,7 +8077,7 @@ function shapeRow(r) {
      sentence at all. The line number says which loop, exactly, and the code marks say the
      rest is a quotation (rule 30 -- a label is not an identity). */
   const inside = r.inside
-    ? `<span class="shp-inside">inside the loop at line ${r.inside.line}
+    ? `<span class="algo-inside">inside the loop at line ${r.inside.line}
         <code>${esc(fit(r.inside.header, 30))}</code></span>` : "";
   /* **The arms are not counted again here**, and they were. `why` already says how many
      ways out there are and how many of them act -- worded on the server, where the
@@ -7963,19 +8086,19 @@ function shapeRow(r) {
      first time either moved (rule 41). The arms travel on the row for the surfaces that
      will draw them one by one; nothing on this list re-states them. */
   return `<li>
-    <button class="shp-row" data-nav="shaperow" data-navid="${esc(r.node)}"
+    <button class="algo-row" data-nav="shaperow" data-navid="${esc(r.node)}"
             data-point="${esc(r.point)}" data-label="${esc(r.routine)}"
             data-stepnote="${esc(r.why)}">
-      <span class="shp-tag kind-tag">${esc(r.kind)}</span>
-      <span class="shp-lines">
-        <span class="shp-l1">
-          <span class="shp-name mono">${esc(r.routine)}</span>
-          <span class="shp-where mono" title="${esc(r.qualname)}">${esc(r.where)}</span>
+      <span class="algo-tag kind-tag">${esc(r.kind)}</span>
+      <span class="algo-lines">
+        <span class="algo-l1">
+          <span class="algo-name mono">${esc(r.routine)}</span>
+          <span class="algo-where mono" title="${esc(r.qualname)}">${esc(r.where)}</span>
           ${inside}
         </span>
         ${headline(r)}
-        <span class="shp-l3">${esc(r.why)}</span>
-        <span class="shp-l4">${moves}${more}</span>
+        <span class="algo-l3">${esc(r.why)}</span>
+        <span class="algo-l4">${moves}${more}</span>
       </span>
     </button></li>`;
 }
@@ -9130,35 +9253,75 @@ async function loadCuriosities() {
 
 /* ALGORITHMS' own bag, on the curiosities' pattern and for the same reason: a shared
  * renderer is one truth, a shared bag is one pane keeping another's flag. */
-const SHAPES = {};
+const ALGOS = {};
 
 /* The loops and decisions worth reading, asked for once. Idempotent the same way the
  * others are -- the lane is set before the first await, so the repaint this triggers on
  * arrival does not start a second request. */
-async function loadShape() {
-  if (SHAPES.lane) return;
-  SHAPES.lane = "loading";
+async function loadAlgorithms() {
+  if (ALGOS.lane) return;
+  ALGOS.lane = "loading";
   try {
-    const r = await fetch("/api/shape");
+    const r = await fetch("/api/algorithms");
     if (!r.ok) throw new Error(`the server answered ${r.status}`);
     const d = await r.json();
-    SHAPELANES = d.lanes || [];
-    SHAPES.quiet = d.quiet || {};
-    SHAPES.points = d.points || 0;
-    SHAPES.lane = "ready";
+    ALGOLANES = d.lanes || [];
+    ALGOS.quiet = d.quiet || {};
+    ALGOS.points = d.points || 0;
+    ALGOS.lane = "ready";
   } catch (err) {
-    SHAPES.lane = "failed";
-    SHAPES.error = err.message;
+    ALGOS.lane = "failed";
+    ALGOS.error = err.message;
   }
 }
 
 /* `buildNav()` as well as `render()`, for `ensureCuriosities`' reason: the counts beside
    the five lane rows come from this answer, and `render()` does not rebuild the navigator
    -- so the page would fill while the rows it was reached from went on saying nothing. */
-function ensureShape() {
-  if (state.view === "shape" && !SHAPES.lane) {
-    loadShape().then(() => { buildNav(); render(); });
+function ensureAlgorithms() {
+  if (state.view === "algorithms" && !ALGOS.lane) {
+    loadAlgorithms().then(() => { buildNav(); render(); });
   }
+}
+
+/* One routine's shape, fetched per selection.
+ *
+ * Its own bag and **keyed on the node**, because the ribbon is about the thing selected
+ * rather than about the program: a bag with no key would draw the routine the reader left
+ * while the pane's heading named the one they arrived at, which is rule 78 exactly. The
+ * answer is thrown away when the selection moves; it costs a query per routine and
+ * remembering it would be keeping something cheaper to make than to hold (rule 52). */
+const SHAPE = {};
+
+async function loadShape(node) {
+  if (!node || SHAPE.node === node) return;
+  SHAPE.node = node;
+  SHAPE.lane = "loading";
+  SHAPE.blocks = null;
+  try {
+    const r = await fetch(`/api/shape?node=${encodeURIComponent(node)}`);
+    if (!r.ok) throw new Error(`the server answered ${r.status}`);
+    const d = await r.json();
+    /* A stale answer is dropped rather than drawn: two selections in flight land in
+       whichever order the server finishes, and the second one is the one on screen. */
+    if (SHAPE.node !== node) return;
+    SHAPE.found = d.found;
+    SHAPE.reason = d.reason || "";
+    SHAPE.routine = d.routine || null;
+    SHAPE.blocks = d.blocks || [];
+    SHAPE.counts = d.counts || {};
+    SHAPE.lane = "ready";
+  } catch (err) {
+    if (SHAPE.node !== node) return;
+    SHAPE.lane = "failed";
+    SHAPE.error = err.message;
+  }
+}
+
+function ensureShape() {
+  const node = SPECIMEN && SPECIMEN.id ? SPECIMEN.id : (state.selected || "");
+  if (state.view !== "shape" || !node || SHAPE.node === node) return;
+  loadShape(node).then(render);
 }
 
 /* Asked from the one place that knows which page is about to be painted, for the reason
@@ -11297,9 +11460,9 @@ function crumbsFor() {
     /* Two deep, and the second names the *lane* rather than the page: five lanes are
        five subjects, and a crumb reading "algorithms" from all of them would name the
        door instead of the room (rule 24 in the breadcrumb). */
-    shape:       [{ label: "algorithms" },
-                  { label: (SHAPELANES.find(l => l.key === state.shapeLane) || {}).title
-                           || state.shapeLane, cur: true }],
+    algorithms:  [{ label: "algorithms" },
+                  { label: (ALGOLANES.find(l => l.key === state.algoLane) || {}).title
+                           || state.algoLane, cur: true }],
     pins:        [{ label: "explore" }, { label: "kept", cur: true }],
     settings:    [{ label: "settings", cur: true }],
   }[state.view] || [];
@@ -11512,6 +11675,7 @@ function render() {
   else if (state.view === "wayin")     vp.innerHTML = viewWayIn();
   else if (state.view === "inference") vp.innerHTML = viewInference();
   else if (state.view === "curiosities") { ensureCuriosities(); vp.innerHTML = viewCuriosities(); }
+  else if (state.view === "algorithms")      { ensureAlgorithms(); vp.innerHTML = viewAlgorithms(); }
   else if (state.view === "shape")      { ensureShape(); vp.innerHTML = viewShape(); }
   else if (state.view === "pins")       vp.innerHTML = viewPins();
   else if (state.view === "settings")  {
@@ -12059,8 +12223,8 @@ function wire() {
      over: a tab that names which measurement is on screen. No `disabled` on an empty one
      -- a lane with nothing in it has a sentence to say, and design rule 29 is exactly
      this: a control that cannot be reached cannot say why it is quiet. */
-  $$("[data-shapelane]").forEach(b => b.addEventListener("click", () => {
-    state.shapeLane = b.dataset.shapelane; render();
+  $$("[data-algolane]").forEach(b => b.addEventListener("click", () => {
+    state.algoLane = b.dataset.algolane; render();
   }));
   $$("[data-sev]").forEach(b => b.addEventListener("click", () => {
     if (b.disabled) return;
@@ -12617,7 +12781,7 @@ const WIRED_ATTRS = new Set([
      yet -- it is the identity of the span itself, ridden along so the surfaces that select
      a loop do not mint a second id for it -- and it is in the roster because the roster is
      every attribute the shell writes (rule 30). */
-  "shapelane", "point", "stepnote",
+  "algolane", "point", "stepnote",
   /* The version strip's one control: which version the reader assumes is newer. It is on
      the strip rather than in Settings because it decides what every red row means, and a
      colour a reader cannot account for is worse than no colour. */
@@ -14913,25 +15077,25 @@ const NAV_GROUPS = [
      A lane whose population really is zero says so *on the page*, where there is room
      for the sentence (design rule 21). */
   { id: "navShape", title: "Algorithms", open: false,
-    count: () => (SHAPES.lane === "ready"
-      ? SHAPELANES.reduce((n, l) => n + l.n, 0) : ""),
-    onOpen: () => { if (!SHAPES.lane) loadShape().then(() => { buildNav(); render(); }); },
+    count: () => (ALGOS.lane === "ready"
+      ? ALGOLANES.reduce((n, l) => n + l.n, 0) : ""),
+    onOpen: () => { if (!ALGOS.lane) loadAlgorithms().then(() => { buildNav(); render(); }); },
     note: () => {
-      if (SHAPES.lane === "failed") return esc(SHAPES.error || "could not be read");
-      if (SHAPES.lane === "loading") return "reading the loops and decisions…";
-      if (SHAPES.lane !== "ready") return "loops and decisions — open one";
-      const q = SHAPES.quiet || {};
+      if (ALGOS.lane === "failed") return esc(ALGOS.error || "could not be read");
+      if (ALGOS.lane === "loading") return "reading the loops and decisions…";
+      if (ALGOS.lane !== "ready") return "loops and decisions — open one";
+      const q = ALGOS.quiet || {};
       /* The denominator, in the one place a reader meets these lanes first. Four lanes
          holding 803 of 9,625 points is a claim about the other 8,822, and the two
          numbers that make it credible are the quiet ones. */
-      return `${(SHAPES.points || 0).toLocaleString()} loops and decisions were measured
+      return `${(ALGOS.points || 0).toLocaleString()} loops and decisions were measured
         — ${(q.still_loops || 0).toLocaleString()} loops move nothing and
         ${(q.guards || 0).toLocaleString()} branches are refusals`;
     },
-    items: () => SHAPELANES.map(l => ({
-      nav: "shape", label: l.title, sel: l.key,
-      n: SHAPES.lane === "ready" ? l.n : "",
-      current: state.view === "shape" && state.shapeLane === l.key,
+    items: () => ALGOLANES.map(l => ({
+      nav: "algorithms", label: l.title, sel: l.key,
+      n: ALGOS.lane === "ready" ? l.n : "",
+      current: state.view === "algorithms" && state.algoLane === l.key,
     })) },
   { id: "navAnom", title: "Anomalies", open: true, items: () => {
       const a = (STATS && STATS.anomalies) || { broken: 0, suspect: 0, info: 0 };

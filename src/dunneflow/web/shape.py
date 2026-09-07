@@ -97,9 +97,33 @@ LANES = (
 )
 
 
+def _grouped(moves: list[Any]) -> list[dict[str, Any]]:
+    """One entry per **place**, described by the row that says the most about it.
+
+    An `INSERT` arrives as a `DATABASE` row and a `SQL` row on one line: the same act at
+    two altitudes, and the reader wants the lower one -- *writes `spec_seals`*, not
+    *DATABASE*. So the specific row leads and the others are named beside it rather than
+    drawn as separate acts, which is what makes the count and the drawing agree (rule 13).
+    """
+    by_line: dict[int, list[Any]] = {}
+    for m in moves:
+        by_line.setdefault(m.line, []).append(m)
+    out: list[dict[str, Any]] = []
+    for line in sorted(by_line):
+        rows = by_line[line]
+        lead = next((m for m in rows if m.kind in (shape.SQL, shape.NET)), rows[0])
+        out.append({
+            "kind": lead.kind, "what": lead.what, "detail": lead.detail, "line": line,
+            # What else was recorded at this place, so nothing is dropped silently
+            # (design rule 1) and nothing is counted twice (rule 32).
+            "also": [m.kind for m in rows if m is not lead],
+            "table": lead.what if lead.kind == shape.SQL and lead.what else "",
+        })
+    return out
+
+
 def _moves(point: Point) -> list[dict[str, Any]]:
-    return [{"kind": m.kind, "what": m.what, "detail": m.detail, "line": m.line}
-            for m in point.moves[:_SHOWN_MOVES]]
+    return _grouped(point.moves)[:_SHOWN_MOVES]
 
 
 def _row(point: Point, *, inside: Point | None = None) -> dict[str, Any]:
@@ -126,14 +150,14 @@ def _row(point: Point, *, inside: Point | None = None) -> dict[str, Any]:
         "depth": point.depth,
         "why": point.why,
         "moves": _moves(point),
-        "n_moves": len(point.moves),
+        "n_moves": shape.places(point.moves),
         "calls": point.calls,
         # The loop this one is written inside, where there is one -- named rather than
         # implied by the depth beside it, which counts every enclosing `if` as well.
         "inside": ({"header": inside.header, "line": inside.line_start,
                     "kind": inside.kind.value} if inside else None),
         "arm_moves": [{"kind": a.kind.value, "header": a.header, "line": a.line_start,
-                       "n": len(a.moves)} for a in point.arms],
+                       "n": shape.places(a.moves)} for a in point.arms],
     }
 
 
@@ -164,14 +188,18 @@ def for_program(store: Store) -> dict[str, Any]:
     guards = report.by_kind(ControlKind.GUARD)
 
     rates = sorted((p for p in loops if p.band == shape.MOVES),
-                   key=lambda p: (not p.in_loop, -len(p.moves), p.file, p.line_start))
+                   key=lambda p: (not p.in_loop, -shape.places(p.moves),
+                                 p.file, p.line_start))
     forks = sorted((p for p in decisions if p.forks and not _is_match(p)),
-                   key=lambda p: (-p.arms_declared, -len(p.moves), p.file, p.line_start))
+                   key=lambda p: (-p.arms_declared, -shape.places(p.moves),
+                                 p.file, p.line_start))
     ladders = sorted((p for p in decisions if p.arms_declared >= 3 and not _is_match(p)),
                      key=lambda p: (-p.arms_declared, p.file, p.line_start))
     recoveries = sorted((p for p in handlers if p.recovers),
-                        key=lambda p: (-sum(len(a.moves) for a in p.arms
-                                            if a.kind in shape.RECOVERY_ARMS),
+                        key=lambda p: (-shape.places(
+                                           [m for a in p.arms
+                                            if a.kind in shape.RECOVERY_ARMS
+                                            for m in a.moves]),
                                        p.file, p.line_start))
     matches = sorted((p for p in decisions if _is_match(p)),
                      key=lambda p: (-p.arms_declared, p.file, p.line_start))
@@ -214,3 +242,149 @@ def for_program(store: Store) -> dict[str, Any]:
             "nested_rates": sum(1 for p in rates if p.in_loop),
         },
     }
+
+
+# --------------------------------------------------------------------------- #
+# The ribbon: one routine's whole shape, nested as it is written
+# --------------------------------------------------------------------------- #
+#
+# **A nested outline, and deliberately not a graph.** The canonical drawing of structured
+# control flow is Nassi and Shneiderman's (1972): nested rectangles, loops wrapping their
+# contents, decisions splitting a block, and **no arrows at all** -- because structured
+# code has no `goto` to draw. Python source never lost that structure, so there is no
+# control-flow graph to recover, no dominator tree, and no layout pass: `ast` handed the
+# nesting back as written and the store kept it as spans.
+#
+# So this reads top to bottom like the source, it cannot move under a gesture (rule 73),
+# it needs no vendored library, and it scrolls -- which is how this reader reads.
+#
+# **Guards are in, and this is where they belong.** 3,931 of Society's branches are
+# refusals; a worklist of them would be a list of the program, and a routine's own shape
+# without them would be a lie about the routine. The bound is the reader opening one
+# routine, which is `/api/flow`'s own argument (rule 45).
+
+def _place(blocks: list[dict[str, Any]], line: int) -> list[dict[str, Any]]:
+    """The innermost list of children whose span holds this line.
+
+    Walked from the outside in, taking the last container that still contains the line --
+    so a write inside a loop inside a decision's second arm lands in that arm, once. A
+    move belongs to exactly one place in the drawing: repeating it at every enclosing
+    level would draw one act four times and make a rate look like a rate of four.
+    """
+    here = blocks
+    while True:
+        for block in here:
+            if block.get("type") != "point":
+                continue
+            if not (block["line_start"] <= line <= block["line_end"]):
+                continue
+            for arm in block.get("arms", ()):
+                if arm["line_start"] <= line <= arm["line_end"]:
+                    here = arm["children"]
+                    break
+            else:
+                here = block["children"]
+            break
+        else:
+            return here
+
+
+def _block(point: Point) -> dict[str, Any]:
+    """One span, ready to draw, with its arms as empty rooms to fill."""
+    return {
+        "type": "point", "point": point.point_id, "kind": point.kind.value,
+        "line_start": point.line_start, "line_end": point.line_end,
+        "header": point.header, "arms_declared": point.arms_declared,
+        "exits": point.exits, "why": point.why, "band": point.band,
+        "significant": point.significant, "depth": point.depth,
+        "children": [],
+        "arms": [{"idx": a.idx, "kind": a.kind.value, "header": a.header,
+                  "line_start": a.line_start, "line_end": a.line_end,
+                  "children": []} for a in point.arms],
+    }
+
+
+def outline_for(store: Store, routine_id: str) -> dict[str, Any]:
+    """One routine's shape: every span it holds, and everything that moves inside them.
+
+    Three passes and no recursion over the store: the points come back in source order
+    with the widest first, which is exactly the order a stack needs; the moving things
+    and the calls are placed afterwards, each into the innermost span that holds it.
+    """
+    row = store.query(
+        "SELECT id, name, qualname, module, file, line_start, line_end, docstring"
+        " FROM routines WHERE id = ?", (routine_id,))
+    if not row:
+        # Not an error and not an empty ribbon: a fold, a boundary and a table are all
+        # selectable and none of them is a routine, so the pane has to say which of the
+        # two silences this is (design rule 21).
+        return {"found": False,
+                "reason": "that is not a routine, so it has no shape of its own"}
+    r = row[0]
+
+    # Outermost first, so every ancestor is already in the tree when a point is placed --
+    # which is what makes `_place` enough on its own. A stack was here as well and was
+    # doing nothing this ordering did not already do; two mechanisms deciding one nesting
+    # is the shape rule 40 is about.
+    blocks: list[dict[str, Any]] = []
+    for point in shape.outline(store, routine_id):
+        _place(blocks, point.line_start).append(_block(point))
+
+    # Grouped by place through the same function the lanes use, so a routine's ribbon and
+    # its row on the worklist cannot count differently (rule 51). `table` is declared
+    # rather than inferred from the kind by the client, because "this row names a table"
+    # and "this row's target happens to look like one" are different facts that look
+    # identical on the wire (rule 30).
+    for move in _grouped(shape.moves_in_routine(store, routine_id)):
+        _place(blocks, move["line"]).append({"type": "move", **move})
+
+    for c in store.query(
+        "SELECT line, callee_id, callee_expr FROM calls"
+        " WHERE caller_id = ? AND callee_id IS NOT NULL AND line IS NOT NULL"
+        " ORDER BY line", (routine_id,),
+    ):
+        _place(blocks, int(c["line"])).append({
+            "type": "call", "line": int(c["line"]), "node": c["callee_id"],
+            "expr": c["callee_expr"] or "",
+            # A routine that calls itself is worth saying out loud: it is the one shape
+            # in this drawing that a nested outline cannot show by nesting.
+            "recursive": c["callee_id"] == routine_id,
+        })
+
+    _sort(blocks)
+    return {
+        "found": True,
+        "routine": {"id": r["id"], "name": r["name"], "qualname": r["qualname"],
+                    "module": r["module"], "file": r["file"],
+                    "line_start": r["line_start"], "line_end": r["line_end"],
+                    "lines": int(r["line_end"]) - int(r["line_start"]) + 1},
+        "blocks": blocks,
+        # What the ribbon holds, so a collapsed one can say what is inside it and an
+        # empty one can say it is empty rather than unbuilt (design rule 21).
+        "counts": _tally(blocks, {}),
+    }
+
+
+def _sort(blocks: list[dict[str, Any]]) -> None:
+    """Everything in the order it is written, at every level."""
+    blocks.sort(key=lambda b: (b.get("line_start", b.get("line", 0)),
+                               0 if b["type"] == "point" else 1))
+    for block in blocks:
+        if block["type"] != "point":
+            continue
+        _sort(block["children"])
+        for arm in block["arms"]:
+            _sort(arm["children"])
+
+
+def _tally(blocks: list[dict[str, Any]], out: dict[str, int]) -> dict[str, int]:
+    for block in blocks:
+        if block["type"] == "point":
+            out[block["kind"]] = out.get(block["kind"], 0) + 1
+            _tally(block["children"], out)
+            for arm in block["arms"]:
+                _tally(arm["children"], out)
+        else:
+            key = "moves" if block["type"] == "move" else "calls"
+            out[key] = out.get(key, 0) + 1
+    return out

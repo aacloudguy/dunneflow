@@ -379,7 +379,7 @@ class ControlArm:
     say **which** way out writes to a table, and that is the whole question -- a branch
     whose arms compute different numbers is the arithmetic this tool excludes, while a
     branch where one arm writes to a table and the other does not is a decision about
-    what leaves the program. Measured over Society: 77 of its 2,213 decisions differ in
+    what leaves the program. Measured over Society: 78 of its 2,213 decisions differ in
     what moves between their arms, and 396 of its 1,531 handlers recover by moving
     something. Neither number can be asked of the point alone.
 

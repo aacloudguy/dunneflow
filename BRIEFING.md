@@ -112,7 +112,7 @@ carry `routine_id` and `line`.
 
 The judgement is one sentence in one module: **a loop or a decision is a subject only where
 something moves inside it.** The navigator's **Algorithms** group lists what passes, in five
-lanes with their denominators — 261 rates of 1,950 loops, 78 forks and 69 ladders of 2,213
+lanes with their denominators — 250 rates of 1,950 loops, 78 forks and 69 ladders of 2,213
 decisions, 396 recoveries of 1,531 handlers, and 0 `match`, which is a named row rather than
 an absent lane. The mode toggle's **Shape** draws one routine's whole outline, guards
 included, nested as it is written — Nassi and Shneiderman's drawing, which is nested boxes
@@ -195,6 +195,54 @@ program and every card states **the middle it is being read against**, because e
 program has a most-commented routine and a maximum alone is a claim nobody can weigh.
 
 ## What we are doing now
+
+**ALGORITHMS is complete. Chunk 6 landed 2026-09-07, and it corrected the feature's own
+headline on the way.** `SCHEMA_VERSION` is **9**; the pair is rebuilt and resealed.
+
+**The detector, as recorded, reported its own blind spot.** `LOOPED_BOUNDARY` read as
+`net_calls` inside a loop fires twice on Society, and both are `wait_until_serving` —
+`while True:` poll loops with a deadline, which is the blind spot the record itself names.
+Two of two findings would have been false. Measuring it before building it is what
+`CLAUDE.md` asks for, and it is what turned this into a different session.
+
+**An iterable is not a body, and 11 of the 261 rates were not rates.** `for row in
+conn.execute(q).fetchall():` runs one query, not one per row — but it is written on a line
+inside the loop's own span, so `line BETWEEN line_start AND line_end` read it as a rate and
+said *once per pass* about it. `ControlPoint` now records the lines a loop evaluates once,
+and it is **the iterable's lines minus every line a repeated part also occupies**: the
+iterable's span alone reclassifies 45 loops and 34 of them wrongly, because a one-line
+comprehension writes its element and its iterable on the same line.
+
+| | Was | Is |
+|---|---|---|
+| loops + comprehensions reaching a boundary | 219 + 42 = 261 | 211 + 39 = **250** |
+| bands over 1,950 loops | 261 · 467 · 1,222 | **250 · 470 · 1,230** |
+| significant of 9,625 points | 797 | **786** |
+| rates at depth > 1, and inside another loop | 104 and 10 | **98 and 9** |
+| the four lanes' rows | 804 *and* 803, in different files | **793** |
+
+**Three surfaces were saying it and one of them was already right.** Checking the four SQL
+statements against the resolver over all 64 tables found two disagreements, and the SQL won
+both: `shape.enclosing` — chunk 5's *"and vice versa"* half — still counted a loop's own
+iterable, so a table's pane said *"reached from inside 1 loop"* about a query the loop is
+written over. Also fixed: the ribbon gated its `why` sentence on `significant`, so the 11
+corrected loops lost the explanation they most needed.
+
+**`LOOPED_BOUNDARY` is in, at 35 of 74.** The other 39 say how many passes they make and
+are named in the detail rather than dropped — 29 over a collection this program declares,
+4 over a literal at the loop, 6 on a `while`. INFO/PROBABLE, never SUSPECT, with four
+measured blind spots including the one it cannot see past: a local SQLite file is not a
+network.
+
+**The stale snapshots are gone, by hand, and the tool still cannot do it.** There were
+five, not four — a rebuild adds one each time. `dunneflow revisions --drop` was built and
+proved, then reverted: `test_source.py:171` asserts against the source text that
+`sourcedb.py` owns no `DROP`, on the grounds that *a store whose whole job is to be the
+thing that survives has no business owning one*. Tom's call was to honour the guard and
+drop by hand this once, so **the next accumulation needs the same manual pass**. Bodies
+were left alone, which is the store's own behaviour rather than a shortcut.
+
+### Before that: chunk 5, the links back
 
 **Paused 2026-09-07 after ALGORITHMS chunk 5. Nothing is half-written.** 1,177 tests, mypy
 clean over 120 source files, ruff clean, working tree clean, no servers running. `output/`

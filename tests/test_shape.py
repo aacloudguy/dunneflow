@@ -180,7 +180,7 @@ def test_a_loop_is_a_subject_only_where_something_moves_inside_it(store):
 def test_a_loop_that_only_calls_something_is_kept_and_is_not_promoted(store):
     """Three bands and never two (design rule 1).
 
-    Dropping it would lose a fact about the program; promoting it would put 467 of
+    Dropping it would lose a fact about the program; promoting it would put 470 of
     Society's 1,950 loops on a worklist on the strength of a call nobody followed.
     """
     loop = [p for p in _by_routine(shape.measure(store))["calling"]
@@ -442,7 +442,7 @@ def test_one_statement_is_one_thing_that_moves(store):
     """An `INSERT` is a `DATABASE` row **and** a `SQL` row: one act at two altitudes.
 
     Counting rows says *two things move here* about one write, and it said so about 33 of
-    Society's 261 rates, in the very sentence that gives them their rate. A place is the
+    Society's 250 rates, in the very sentence that gives them their rate. A place is the
     unit a reader counts; the rows are what is known about it.
     """
     rate = [p for p in _by_routine(shape.measure(store))["rate"]

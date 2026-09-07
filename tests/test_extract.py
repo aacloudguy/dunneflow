@@ -346,7 +346,7 @@ def outer(rows):
 def test_a_comprehension_is_a_loop_that_is_an_expression(tmp_path):
     """Counted apart from `LOOP` because a reader scanning for loops does not see one.
 
-    Which is exactly why a boundary inside one is worth saying out loud: 42 of Mensores'
+    Which is exactly why a boundary inside one is worth saying out loud: 39 of Mensores'
     974 comprehensions reach one, against 219 of its 976 loops.
     """
     pts = _control(tmp_path, "x = [g(i) for i in rows]\ny = {k: g(k) for k in rows}\n")

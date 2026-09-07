@@ -121,7 +121,7 @@ def test_a_lane_count_is_a_count_of_the_rows_beneath_it(body):
 
 
 def test_a_denominator_is_the_whole_population_and_not_the_lane(body):
-    """*261 of 1,950*, never *261 loops*.
+    """*250 of 1,950*, never *250 loops*.
 
     The whole point of the judgement is that most of a program's loops are not subjects.
     A lane that hides its denominator claims its rows are all there is, which is the

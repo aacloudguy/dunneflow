@@ -537,15 +537,24 @@ viewport and a 16px root font**, on a warm sidecar, with the glossary page alrea
 The `sidecars` block adds a shallow copy of a five-key dict and two `serving()` calls to a
 payload that is otherwise built once at boot — which is why the route stays at its old figure.
 
-**ALGORITHMS: the judgement, the lanes and one ribbon** — measured 2026-09-07 on
-`output/mensores` at 628 files, 9,625 control points and 4,125 arms. Median of five, warm,
-in one process:
+**ALGORITHMS: the judgement, the lanes and one ribbon** — **retaken 2026-09-07** after
+chunk 6, on `output/mensores` at 628 files, 9,625 control points and 4,125 arms. Median of
+five, warm, in one process.
+
+`judge` walks a second list per point now — `Point.repeated`, which is `moves` minus what
+the loop is over — and **it costs nothing measurable**: 105 ms, the figure it already had.
+What moved is the payload, because the rates lane lost the 11 loops whose query runs once.
+
+*The first retake read 176 ms and 273 ms and was thrown away.* It was taken in the minute
+after a full analysis, on a machine still writing 31 MB of graph to an external volume;
+three settled rounds of seven then agreed on 105 and 115 to within 2 ms. A measurement must
+measure the thing it names (rule 24), and that one was measuring the disk.
 
 | Measure | Budget | Measured 2026-09-07 |
 |---|---|---|
 | `shape.measure` — every point judged | < 500 ms | **105 ms** |
-| `/api/algorithms` — the five lanes built | < 500 ms | **119 ms** |
-| its payload, 804 rows | — | 688 KB |
+| `/api/algorithms` — the five lanes built | < 500 ms | **115 ms** |
+| its payload, 793 rows | — | 682 KB |
 | `/api/shape` — one routine's ribbon (10 points) | < 200 ms | **0.2 ms** |
 | the widest ribbon in the program (51 points) | < 200 ms | **0.5 ms** |
 
@@ -565,8 +574,8 @@ of five in one process.
 | Measure | Budget | Measured 2026-09-07 |
 |---|---|---|
 | `shape.enclosing`, the median of 166 boundary targets | < 200 ms | **0.4 ms** |
-| …the same at the 90th percentile | < 200 ms | **0.9 ms** |
-| …the worst in the program (`bnd:FILE:`, 672 spans) | < 500 ms | **36 ms** |
+| …the same at the 90th percentile | < 200 ms | **0.5 ms** |
+| …the worst in the program (`bnd:FILE:`, 672 spans) | < 500 ms | **37 ms** |
 | a boundary's whole pane, worst case | < 500 ms | **43 ms** |
 | a table's pane (`audit_events`, 106 operations) | < 200 ms | **9.3 ms** |
 | `/api/curiosities`, now twelve families | < 500 ms | **140 ms** (was 106 ms at ten) |

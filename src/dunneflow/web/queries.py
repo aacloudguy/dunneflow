@@ -1377,7 +1377,7 @@ ORDER BY file, idx
 # `line BETWEEN line_start AND line_end` and no third table records it.
 #
 # `LOOP` and `COMPREHENSION` together, because a comprehension issuing one call per item is
-# a rate exactly as a `for` is -- 42 of Society's 261 rates are comprehensions, and a lane
+# a rate exactly as a `for` is -- 39 of Society's 250 rates are comprehensions, and a lane
 # that counted only the word `for` would drop them without saying so (design rule 1).
 #
 # **What a loop is *over* is not what it does on a pass**, and these statements have to
@@ -2159,7 +2159,7 @@ FROM top
 # the worklist count the same thing, and `test_every_cards_own_query_returns_exactly_what_
 # the_card_prints` re-runs this and would catch it if they ever stopped.
 #
-# The population is the 261 loops that reach a boundary at all, which is the `rates` lane's
+# The population is the 250 loops that reach a boundary at all, which is the `rates` lane's
 # own numerator -- so the middle is *"of the loops that move something"* and not *"of every
 # loop in the program"*, and the card says which.
 CURIO_LOOP_PLACES = f"""

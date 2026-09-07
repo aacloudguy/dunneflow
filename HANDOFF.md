@@ -11527,3 +11527,164 @@ did find the 2,612 px section; it would not have found a colour or a rhythm.
 
 1,177 tests, mypy clean over 120 source files, ruff clean. `output/` unchanged — this
 session wrote no maps.
+
+
+## ALGORITHMS chunk 6 — the iterable is not a body, and the detector that reported itself — 2026-09-07
+
+Tom, resuming: *"Resume project work with Chunk 6."*
+
+Chunk 6 was recorded as `LOOPED_BOUNDARY` in `anomalies.py` — *a remote call inside a
+loop*, INFO or SUSPECT, never BROKEN, with two blind spots. Measuring it before building
+it, which is what `CLAUDE.md` asks for, turned it into a different session.
+
+### The detector, as recorded, reports its own blind spot
+
+Read as `net_calls` inside a loop it fires **twice** on Society. Both are
+`wait_until_serving` — `while True:` poll loops with a deadline, in `chaos/_sandbox.py`.
+That is the second recorded blind spot exactly: *a retry loop is this shape on purpose.*
+**Two of two findings would have been false alarms.**
+
+Put to Tom with the alternatives measured. He chose: fix the fact first, then build the
+detector on it; "remote" means database, queue and network; drop the stale snapshots.
+
+### The measurement found a defect in shipped code, not only in the detector
+
+83 loops hold a database, queue or network move. **Nine hold it in the loop's *iterable***
+— `for row in conn.execute(q).fetchall():` is one query, not one per row. And the same
+range join feeds `_judge_loop`, which said *"something moves inside this loop, once per
+pass"* about **11 of the 261 rates**, in the sentence that is this feature's headline.
+
+`line BETWEEN line_start AND line_end` cannot tell an iterable from a body, because a
+`ControlPoint` is a span and nothing recorded where the repeated part begins.
+
+### The shape of the fact was chosen by a measurement that went wrong first
+
+The obvious fact is the iterable's line span. It reclassifies **45** loops and **34 of them
+wrongly**: `[fetch(x) for x in ids]` writes its element and its iterable on one line, and a
+line cannot choose between them. Comprehensions reaching a boundary would have read 42 → 5.
+
+So `once_start`/`once_end` are the iterable's lines **minus every line a repeated part of
+the same point also occupies**. A one-line loop excludes nothing, which is the answer that
+cannot be wrong (rule 49). Contiguous by construction — a `for`'s body is strictly after
+its iterable and a comprehension's element strictly before it — so two ints hold it.
+
+Three independent definitions were run before a line was written: the AST's repeated
+parts, the subtraction above, and finally the shipped implementation over the rebuilt
+graph. **All three name the same 11 loops.**
+
+`word` beside it, on `exits`' own precedent: `for x in y` and `while y` are both
+`ControlKind.LOOP` and opposite facts about whether the header runs again.
+
+### What moved
+
+| | Was | Is |
+|---|---|---|
+| loops + comprehensions reaching a boundary | 219 + 42 = 261 | 211 + 39 = **250** |
+| bands over 1,950 loops | 261 · 467 · 1,222 | **250 · 470 · 1,230** |
+| significant of 9,625 points | 797 | **786** |
+| rates at depth > 1, and inside another loop | 104 and 10 | **98 and 9** |
+| rates where rows and places disagree | 33 | **28** |
+| the four lanes' rows | 804 / 803 | **793**, and it was two numbers before |
+
+That last row is worth its own sentence: `CLAUDE.md` said *804 of 9,625* and
+`web/shape.py` and `shell.js` said *803*. Both were already wrong, in different
+directions, and nothing could have caught it because no query returned either.
+
+### The band had to move with the judgement
+
+`web/shape.py` builds the rates lane from `band == MOVES`, **not** from `significant`, and
+`test_shape_web.py:129` asserts the three loop numbers sum to 1,950. Changing `significant`
+alone would have left a lane disagreeing with its own denominator (rule 13).
+
+### Four statements ask the same question in SQL, and one of them was right
+
+`THREAD_LOOPED_TABLE`, `LOOPED_TABLE_ROUTINES`, `CURIO_LOOPED_TABLE` and
+`CURIO_LOOP_PLACES` re-ask the range join because they cannot import the resolver. They
+take the new clause as **one named fragment**, `ON_A_PASS`, rather than five copies.
+
+Then checking them against the resolver over **all 64** of Society's tables — rather than
+the one table I looked at first — found two disagreements, and **the SQL was right both
+times**. `shape.enclosing`, which is chunk 5's *"and vice versa"* half, still counted a
+loop's own iterable, so a table's pane said *"reached from inside 1 loop"* about a query
+the loop is written over. Fixed with the same `once` span, and 64 of 64 now agree.
+
+### The ribbon lost the sentence on exactly the points that needed it
+
+`shell.js` gated the `rib-why` line on `significant`, so a loop that stops being a rate
+loses its explanation — contradicting `resolve/shape.py`'s own promise that every point
+carries a `why` **including the ones that pass**. The 11 corrected loops are precisely the
+ones a reader needs the sentence for. The gate is gone; no second colour was added, because
+`--text-faint` is already the faintest token and the words carry the distinction.
+
+### The detector, built on the corrected fact
+
+74 loops reach a database, a queue or the network on every pass. **35** iterate a value
+nothing static can count — the finding, 50 places in 28 routines. The other 39 say how many
+passes they make and are **named in the detail, not dropped** (design rule 1): 29 over a
+collection this program declares, 4 over a literal at the loop, 6 on a `while`. It is the
+39 that make the 35 credible, exactly as the 1,230 still loops make the rates.
+
+Graded from facts the store already holds: the new `word` column, and `control.header`
+matched against a constant declared **in the same module** — exact, rather than a bare-name
+match across the program (rule 5).
+
+**Three tables unioned to places, not one asked.** `boundaries` alone missed two of the 74,
+where `for col in _SPEC_COLUMNS: ... ALTER TABLE Spec` is a `sql_ops` row the boundary
+detector did not also record. A title counting database work has to count all of it.
+
+INFO/PROBABLE — never SUSPECT even for `NET`, because on Society every net-in-loop is a
+poll loop and a SUSPECT row would be the thing this session exists to avoid. Four blind
+spots, all measured, including the one the detector cannot see past: **a local SQLite file
+is not a network**, and all 50 places here are one.
+
+### The snapshots, and a guard that stopped me
+
+Five stale sealed snapshots, not four — the rebuild adds one each time, which is how the
+accumulation happens. I built `dunneflow revisions --drop`, proved it on a throwaway copy
+(625 paths dropped freeing **1** body, because the other 624 are still mapped elsewhere),
+and then found `test_source.py:171` asserting **against the source text** that
+`sourcedb.py` contains no `DROP TABLE` and no `DELETE FROM blobs`:
+
+> a store whose whole job is to be the thing that survives has no business owning a DROP
+
+Put to Tom rather than decided. He chose **drop by hand, this once** — the guard stands,
+the command is reverted, and the next accumulation needs the same manual pass. The bodies
+were left alone, which is the store's own stated behaviour rather than a shortcut.
+
+### The timings, and one that was thrown away
+
+The judgement walks a second list per point now and **it costs nothing measurable**: 105 ms,
+the figure it already had. What moved is the payload — 793 rows and 682 KB against 804 and
+688 KB, because the rates lane lost the 11.
+
+*The first retake read 176 ms and 273 ms, and it was discarded rather than recorded.* It was
+taken in the minute after a full analysis, on a machine still writing 31 MB of graph to an
+external volume; three settled rounds of seven then agreed on 105 and 115 to within 2 ms.
+Rule 24, and it was nearly paid twice — the wrong pair would have gone into `PERFORMANCE.md`
+under the right label.
+
+Retaking them also found the timings were already **three different numbers for one thing**:
+`PERFORMANCE.md` said 105 ms, `CLAUDE.md` and `serve.py` said 96, `web/shape.py` said 91.
+One measurement now, cited in all four.
+
+### Verified end
+
+1,187 tests, mypy clean over 120 source files, ruff clean, `check` 0 broken on
+`output/mensores`, working tree clean, no servers running. `output/mensores` holds exactly
+the pair: `2026-09-07T14:55:40Z` (628 files, Society at 08-29) working, and
+`2026-09-07T14:28:18Z` (625, at 08-26) sealed.
+
+### Still waiting on Tom's eye, and it is the same blocker
+
+The capture is a fixed **784 × 363 of a 1,185 × 549 viewport**, so the centre pane is
+clipped and the inspector is out of frame entirely. What was checked here is the payload
+through the real route (`/api/algorithms` 250 rates, quiet bands summing to 1,950;
+`/api/shape` on a corrected loop returning `significant: false` with its sentence intact)
+and the **served** `shell.js` showing the `rib-why` gate gone. That is measured, not seen —
+said rather than claimed, and it would not have found a colour or a rhythm.
+
+Still open from chunk 5, unchanged: the worklist's and the ribbon's row layouts, and whether
+*"a grid does not overflow, it grows a row"* and *"an instrument's two coordinate systems can
+differ"* are rules or notes. Chunk 6 adds a third candidate — **a span cannot tell what a
+loop is over from what it does** — which is either the next rule number or a note, and is
+Tom's call.

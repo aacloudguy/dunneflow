@@ -14,7 +14,7 @@ that increments a counter is still the internal computation nobody asked for. Wh
 recorded is a `ControlPoint` -- **a span, and nothing more**: no variable, no operator, no
 value. What a loop *does* is reached by joining the tables that already exist, so a loop
 holding a network call is `line BETWEEN line_start AND line_end` rather than a new fact.
-A loop is a subject only where something moves inside it, and on Mensores that is 261 of
+A loop is a subject only where something moves inside it, and on Mensores that is 250 of
 1,950. See `schema.ControlPoint`.
 
 Uses the standard library only -- `ast` for structure, `tokenize` for comments. No
@@ -926,7 +926,7 @@ class _Extractor(ast.NodeVisitor):
 
         Counted separately rather than folded into `LOOP` because a reader scanning for
         loops does not see one here, which is exactly why a boundary inside one is worth
-        saying out loud: 42 of Mensores' comprehensions reach a boundary.
+        saying out loud: 39 of Mensores' comprehensions reach a boundary.
         """
         gens = getattr(node, "generators", [])
         # **Only the first generator's iterable runs once.** `[f(x) for x in a for y in b]`

@@ -11,14 +11,14 @@ called "interesting". `match` is the fifth: Society holds **none**, and a lane t
 silently vanishes cannot be told from one that looked and found nothing (design rule 21).
 
 **Every lane states its population, and the population is the honest denominator.** Not
-"261 loops" but *261 of 1,950* -- the whole point of the judgement is that most of a
+"250 loops" but *250 of 1,950* -- the whole point of the judgement is that most of a
 program's loops are not subjects, and a lane that hides its denominator is claiming its
 rows are all there is. The quiet bands are stated too, on the page rather than per lane:
-1,222 loops move nothing, 3,931 branches are refusals, and those two numbers are what
+1,230 loops move nothing, 3,931 branches are refusals, and those two numbers are what
 make the four lanes credible.
 
 **Unbounded.** A lane is a list and not a diagram, so rule 8's bound never applies --
-803 rows over Society, every one of them. What *is* bounded is the work: the judgement
+793 rows over Society, every one of them. What *is* bounded is the work: the judgement
 is one pass over the graph, held on the base and computed on the first ask, exactly as
 the curiosities are (rule 45).
 
@@ -175,7 +175,7 @@ def _is_match(point: Point) -> bool:
 def for_program(store: Store) -> dict[str, Any]:
     """Every lane, with its rows and its denominator. One pass over the graph.
 
-    91 ms warm on Society for the judgement, and the arranging is arithmetic over what
+    105 ms warm on Society for the judgement, and the arranging is arithmetic over what
     it returned. Held on the base by the route that calls this, so a reader pays it once
     a session and only if they open the page.
     """
@@ -226,8 +226,8 @@ def for_program(store: Store) -> dict[str, Any]:
             "rows": rows[lane.key],
         } for lane in LANES],
         # What was measured and is not offered, which is most of the program. Design
-        # rule 1 at the scale that matters here: four lanes holding 803 of 9,625 points
-        # is a claim about the other 8,822, and it has to be the reader's to check.
+        # rule 1 at the scale that matters here: four lanes holding 793 of 9,625 points
+        # is a claim about the other 8,832, and it has to be the reader's to check.
         "quiet": {
             "still_loops": sum(1 for p in loops if p.band == shape.STILL),
             "calling_loops": sum(1 for p in loops if p.band == shape.CALLS),

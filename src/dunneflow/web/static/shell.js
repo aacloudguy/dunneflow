@@ -15616,7 +15616,7 @@ const NAV_GROUPS = [
       if (ALGOS.lane !== "ready") return "loops and decisions — open one";
       const q = ALGOS.quiet || {};
       /* The denominator, in the one place a reader meets these lanes first. Four lanes
-         holding 803 of 9,625 points is a claim about the other 8,822, and the two
+         holding 793 of 9,625 points is a claim about the other 8,832, and the two
          numbers that make it credible are the quiet ones. */
       return `${(ALGOS.points || 0).toLocaleString()} loops and decisions were measured
         — ${(q.still_loops || 0).toLocaleString()} loops move nothing and

@@ -377,7 +377,7 @@ class _Base:
     curiosities: dict[str, Any] = field(default_factory=dict)
     # The loops and decisions worth reading, on the same bargain as the curiosities
     # above: one pass over this version's graph, paid on the first ask and thrown away
-    # with the base. 96 ms warm on Mensores for the judgement over 9,625 control points,
+    # with the base. 105 ms warm on Mensores for the judgement over 9,625 control points,
     # and a cold first ask is the external volume rather than the work (rule 24).
     algorithms: dict[str, Any] = field(default_factory=dict)
 

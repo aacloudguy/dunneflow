@@ -217,7 +217,7 @@ with the others: a compartment is fifty-three drawings from one pass over the mo
 **ALGORITHMS is a page and a mode, and they are two questions.** The navigator's
 *Algorithms* group opens `/api/algorithms` — five lanes over the whole program, each with
 its denominator, held on the base. The mode toggle's **Shape** opens `/api/shape?node=` —
-the selected routine's own outline, answered on demand. 105 ms and 0.2 ms; see
+the selected routine's own outline, answered on demand. 115 ms and 0.1 ms; see
 `PERFORMANCE.md`.
 
 ## Verification — run before marking anything complete
@@ -367,8 +367,8 @@ docs   ──► extract ──► docs.db  (SQLite) ─────────
 
   **Nothing is dropped for failing it** (design rule 1). Three bands, never two: something
   moves · it only calls something of this program · nothing happens here that this map can
-  see — and every point carries a `why`, including the ones that pass. It is the 1,222
-  loops that move nothing that make the 261 credible.
+  see — and every point carries a `why`, including the ones that pass. It is the 1,230
+  loops that move nothing that make the 250 credible.
 
   **The join is a range, never a relationship.** `boundaries`, `net_calls`, `sql_ops` and
   `calls` each already carry `routine_id` and `line`, so *inside* is
@@ -379,13 +379,13 @@ docs   ──► extract ──► docs.db  (SQLite) ─────────
   **A place is one act; a row is one description of it.** An `INSERT` is a `DATABASE` row
   *and* a `SQL` row on one line, and 569 of Mensores' 991 SQL operations are such a pair —
   so counting rows said *two things move here* about one write, in the sentence that gives
-  33 of the 261 rates their number. `places()` is the one place a count is taken; the rows
+  28 of the 250 rates their number. `places()` is the one place a count is taken; the rows
   stay as the descriptions, and a surface draws a place once, led by the row that says the
   most about it.
 
   **`in_loop`, and not `depth > 1`.** `depth` counts every enclosing control point, so a
   loop written inside an `if` has depth 2 and is nested in nothing. On Mensores the two
-  answers are **104 and 10**, and the ten are the quadratic reaches into the outside world
+  answers are **98 and 9**, and the nine are the quadratic reaches into the outside world
   this feature exists to find. Filled by a stack sweep per routine, with `depth` breaking
   the one tie lines cannot — `[a for a in [b for b in c]]` is two comprehensions on one
   line.
@@ -397,9 +397,9 @@ docs   ──► extract ──► docs.db  (SQLite) ─────────
   the `EXISTS` is a bound on the *work* rather than on the answer (rule 55) — 524 routines
   touch Society's unnamed `FILE` boundary and 389 hold a point around it.
 
-  Measured over Mensores: 219 loops + 42 comprehensions reach a boundary · 467 only call ·
-  1,222 move nothing · 78 of 2,213 decisions fork · 69 are ladders of three or more ·
-  396 of 1,531 handlers recover by moving something · 3,931 guards · 0 `match`. 96 ms warm
+  Measured over Mensores: 211 loops + 39 comprehensions reach a boundary · 470 only call ·
+  1,230 move nothing · 78 of 2,213 decisions fork · 69 are ladders of three or more ·
+  396 of 1,531 handlers recover by moving something · 3,931 guards · 0 `match`. 105 ms warm
   for all 9,625 points.
 - `web/table.py` — **a table, described as the thing it is.** `selectFromNav` fetched the
   routines that touch one and then threw the table away, so the crumb named a table and the
@@ -415,9 +415,9 @@ docs   ──► extract ──► docs.db  (SQLite) ─────────
   source pane a place to open.
 - `web/shape.py` — the same facts served twice, for two questions. **`/api/algorithms`** is
   the whole program in five lanes, held on the base and computed on the first ask; each
-  lane states its **denominator** (*261 of 1,950*, never *261 loops*) and the page states
-  the quiet bands above the list, because four lanes holding 804 of 9,625 points is a claim
-  about the other 8,821. **`/api/shape?node=`** is one routine's outline, answered on demand
+  lane states its **denominator** (*250 of 1,950*, never *250 loops*) and the page states
+  the quiet bands above the list, because four lanes holding 793 of 9,625 points is a claim
+  about the other 8,832. **`/api/shape?node=`** is one routine's outline, answered on demand
   and held on nothing (rule 45).
 
   **The ribbon is a nested outline and not a graph.** Nassi and Shneiderman drew structured

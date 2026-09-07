@@ -14,7 +14,7 @@ arithmetic; a branch where one arm writes to a table and the other does not is a
 because a judgement written twice is two judgements waiting to disagree.
 
 **Nothing is dropped for failing it** (design rule 1). A loop over nothing is a fact
-about the program, and it is the 1,222 of them that make the 261 credible: a worklist
+about the program, and it is the 1,230 of them that make the 250 credible: a worklist
 that shows only its hits cannot be told from one that found only those. Every point
 comes back with a `band` and a `why`, and the surface decides what to draw.
 
@@ -28,7 +28,7 @@ state between them (rule 40).
 **A move is counted once at a line, and the parts are kept.** 569 of Society's 991 SQL
 operations sit on a line that is also a `boundaries` row, and 29 of its 32 network calls
 do -- summing the three tables reports a loop holding one write as holding two, and it
-did, in the sentence that gives 33 of the 261 rates their number. What is deduplicated is
+did, in the sentence that gives 28 of the 250 rates their number. What is deduplicated is
 the *place*; what is kept is what each table had to say about it, because "writes
 `spec_seals`" and "DATABASE" are the same act described at two altitudes and the reader
 wants the first one. Every count goes through `places` (rule 51); every description stays
@@ -90,7 +90,7 @@ def places(moves: list[Move]) -> int:
     `boundaries`, `sql_ops` and `net_calls` describe one statement at two altitudes: an
     `INSERT` is a `DATABASE` row and a `SQL` row on the same line, and 569 of Society's
     991 SQL operations sit on a line that is also a boundary. Counting rows says *two
-    things move here* about one write -- and it said so about **33 of the 261** loops this
+    things move here* about one write -- and it said so about **28 of the 250** loops this
     feature exists to report, in the sentence that gives their rate.
 
     So a **place is the unit a reader is counting** and the rows are what is known about
@@ -157,7 +157,7 @@ class Point:
     why: str = ""
     # The loop this point is written inside, in this routine, or "". **Not `depth > 1`**:
     # `depth` counts every enclosing control point, so a loop inside an `if` has depth 2
-    # and is not nested at all. On Society the two answers are 104 and 10, and the second
+    # and is not nested at all. On Society the two answers are 98 and 9, and the second
     # is the one worth reading -- a boundary reached once per pass of a loop that is
     # itself once per pass is a quadratic reach into the outside world, which the first
     # number quietly buries under a hundred `if`s.
@@ -401,7 +401,7 @@ def _judge_loop(point: Point) -> None:
         point.significant = True
         per = "once per pass" if n == 1 else f"{n} of them, once per pass"
         # Named from the enclosing *loop* and never from `depth`, which counts every
-        # enclosing control point: 104 of Society's 261 boundary loops sit at a depth
+        # enclosing control point: 98 of Society's 250 boundary loops sit at a depth
         # above 1, and **10** of them are inside another loop. The first number reads as
         # the second and is not it.
         nested = " \u2014 and it is inside another loop" if point.in_loop else ""
@@ -731,7 +731,7 @@ def nesting(points: list[Point]) -> dict[str, int]:
     Counted by following `in_loop`, which is a containment answer, and **never from
     `depth`** -- `depth` counts every enclosing control point, so a loop written inside
     an `if` reads as nested when it is nested in nothing. On Society the two answers
-    over the rates are 104 and 10, and only the second is the quadratic reach into the
+    over the rates are 98 and 9, and only the second is the quadratic reach into the
     outside world a reader is being warned about.
 
     A point whose `in_loop` names something outside this list stops the walk rather

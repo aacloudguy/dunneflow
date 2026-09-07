@@ -604,6 +604,18 @@ docs   ──► extract ──► docs.db  (SQLite) ─────────
   somewhere different, and the worst case on Mensores has *two* shadows, not thirty-nine.
   Stated above the picture, and per node on the hover card.
 
+  **The coupling needs one coordinate frame, and that is the whole of why it works.**
+  Normalising each plate onto its own middle at its own radius undoes the pull *after* the
+  solve, and pulling harder cannot reach past it: snapping every slot onto its group's mean
+  every single iteration still left **20 of 5,101** crossings upright. Under one frame the
+  count is **3,878 of 5,101**, and all 4,050 entities co-locate to a spread of exactly zero.
+  It costs the within-plate reduction, ~90% down to 75–83% — the reader's trade, and Tom's
+  call on the numbers. A plate then sits where its contents put it rather than on the axis
+  (0.015 plate-widths off at the median, 0.127 at worst), so **the plate's circle is
+  reported by the layout** and read by the outline and the rim arrow alike; three
+  expressions built on `PLATE_R` had stopped being true (rule 51). The width dial has
+  nothing left to say under this layout and says so.
+
   **The reduction uses a fixed group table and never an atomic**, in two passes — the mean
   taken from positions nothing is writing, then applied. One pass would average a mixture of
   moved and unmoved siblings, decided by whichever invocation ran first, which is

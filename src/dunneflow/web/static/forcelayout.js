@@ -82,8 +82,26 @@ const ForceLayout = (() => {
    * `COUPLE_EVERY` is shared by both for the same reason. The GPU could afford it every
    * iteration; it does not, because then the two backends would be solving different
    * problems and "the same picture, slower" would stop being true. */
-  const COUPLE_ALPHA = 0.08;
-  const COUPLE_EVERY = 10;
+  const COUPLE_ALPHA = 0.5;
+  const COUPLE_EVERY = 5;
+
+  /* **One coordinate frame for the whole stack, and it is what makes the coupling work.**
+   *
+   * The first version normalised each plate onto its own middle at its own radius, so two
+   * slots the solver had left in exactly the same place were pulled apart again by two
+   * different translations and two different scales. Pulling harder could not fix it:
+   * snapping every slot onto its group's mean every single iteration still left only 20 of
+   * 5,101 crossings vertical, because the damage happened after the solve.
+   *
+   * With one frame, whatever the solver co-locates stays co-located — measured, all 4,050
+   * entities land on their own middle to a spread of exactly zero — and cross-plate links
+   * go from 1,558 upright to 3,878 of 5,101.
+   *
+   * What it costs is that a plate is no longer centred on the stack's axis, which the plate
+   * outline and the rim arrow both assumed. In practice barely: plate centres come out
+   * within 0.023 plate-widths of the axis on average and 0.127 at worst. They are handed to
+   * the renderer rather than assumed either way. */
+  const FRAME = "global";
 
   /* ── packing ──────────────────────────────────────────────────────────────────────
    *
@@ -716,7 +734,50 @@ fn consensusMove(@builtin(global_invocation_id) gid: vec3<u32>) {
    * arrive through machinery that already exists, at the dial's default of 1, and turning
    * the dial to 0 still returns every plate to a uniform disc (design rule 22).
    */
-  function centreAndNormalise(packed, pos) {
+  function centreAndNormalise(packed, pos, frame = "plate") {
+    /* **One frame for the whole stack, which is what a skewer needs.**
+     *
+     * Under `plate` each plate is centred on its own middle and scaled to its own radius,
+     * so two slots the solver left in exactly the same place are moved apart by two
+     * different translations and two different scales. Co-location cannot survive it: at a
+     * full snap every iteration, only 20 of 5,101 crossings came out vertical.
+     *
+     * Under `global` every slot is moved by one translation and one scale, so whatever the
+     * solver co-located stays co-located and the line between the plates is vertical by
+     * construction rather than by tendency. What it costs is that a plate is no longer
+     * centred on the stack's axis — which three other things assume.
+     */
+    if (frame === "global") {
+      let cx = 0, cy = 0;
+      for (let i = 0; i < packed.N; i++) { cx += pos[i * 2]; cy += pos[i * 2 + 1]; }
+      cx /= packed.N; cy /= packed.N;
+      let far = 0;
+      for (let i = 0; i < packed.N; i++) {
+        pos[i * 2] -= cx; pos[i * 2 + 1] -= cy;
+        far = Math.max(far, Math.hypot(pos[i * 2], pos[i * 2 + 1]));
+      }
+      const scale = far > 1e-6 ? DISK_RADIUS / far : 1;
+      for (let i = 0; i < packed.N; i++) { pos[i * 2] *= scale; pos[i * 2 + 1] *= scale; }
+      /* Each plate's own middle and extent, measured in the shared frame. The renderer
+       * still has to know where to draw each circle and how wide — it just no longer gets
+       * to assume the answer is "on the axis, at `PLATE_R`". */
+      const solved = new Map();
+      let q = 0;
+      while (q < packed.N) {
+        const start = packed.span[q * 4], end = packed.span[q * 4 + 1];
+        let px = 0, py = 0;
+        for (let i = start; i < end; i++) { px += pos[i * 2]; py += pos[i * 2 + 1]; }
+        px /= (end - start); py /= (end - start);
+        let r = 0;
+        for (let i = start; i < end; i++) {
+          r = Math.max(r, Math.hypot(pos[i * 2] - px, pos[i * 2 + 1] - py));
+        }
+        solved.set(packed.order[start], { x: px, y: py, r });
+        q = end;
+      }
+      return solved;
+    }
+
     const solved = new Map();
     let q = 0;
     while (q < packed.N) {
@@ -766,7 +827,8 @@ fn consensusMove(@builtin(global_invocation_id) gid: vec3<u32>) {
     } else {
       result = await solveOnWorkers(packed, opts);
     }
-    const solved = centreAndNormalise(packed, result.pos);
+    const frame = opts.frame || FRAME;
+    const solved = centreAndNormalise(packed, result.pos, frame);
 
     const out = new Float32Array(packed.N * 2);
     for (let q = 0; q < packed.N; q++) {
@@ -775,21 +837,23 @@ fn consensusMove(@builtin(global_invocation_id) gid: vec3<u32>) {
       out[i * 2 + 1] = result.pos[q * 2 + 1];
     }
 
-    /* The size each plate earned, as a fraction of the biggest — the shape `diskRatio`
-     * already wants. Anchored at the largest for the reason design rule 22 gives: under an
-     * orthographic projection, anchoring at the other end is the same picture at a
-     * different zoom, and this end is the one where nothing grows past the radius the
-     * positions were normalised to. */
-    let widest = 0;
-    for (const r of solved.values()) widest = Math.max(widest, r);
-    const ratio = new Map();
-    for (const [firstIndex, r] of solved) {
-      ratio.set(payload.nodes.disk[firstIndex], widest > 0 ? r / widest : 1);
+    /* **Where each plate came out, and how wide**, in the frame the positions are in.
+     *
+     * The renderer draws three things on a plate's circle — its outline, the nodes, and the
+     * you-are-here arrow standing on its rim — and every one of them used to derive that
+     * circle from a single constant, which was true while every plate was normalised onto
+     * the axis and is a lie the moment one is not (rule 51, and the same argument design
+     * rule 22 makes about the width dial). So the circle is measured here, once, and handed
+     * over; nothing downstream recomputes it. */
+    const plates = new Map();
+    for (const [firstIndex, m] of solved) {
+      plates.set(payload.nodes.disk[firstIndex],
+                 typeof m === "number" ? { x: 0, y: 0, r: m } : m);
     }
 
-    return { xy: out, ratio, backend: result.backend, detail: result.detail,
+    return { xy: out, plates, frame, backend: result.backend, detail: result.detail,
              fallback: result.fallback || "", ms: Math.round(result.ms),
-             plates: packed.plates, edges: packed.edges, nodes: packed.N };
+             plateCount: packed.plates, edges: packed.edges, nodes: packed.N };
   }
 
   return { solve, pack, gpuAvailable, ITERATIONS, WGSL, KERNEL_JS };

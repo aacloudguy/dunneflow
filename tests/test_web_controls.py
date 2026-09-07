@@ -4286,7 +4286,22 @@ def test_the_pointer_at_the_rim_stands_on_the_plate_and_leads_to_its_node() -> N
         "the arrow is not at the height of the plate holding the node, which is the whole "
         "of what it is pointing out"
     )
-    assert engine.count("const PLATE_R") == 1 and "const R = PLATE_R" in engine, (
+    # Two things stand on a plate's circle -- its outline and the arrow on its rim -- and the
+    # claim is that they cannot disagree about where that circle is. They used to share one
+    # constant; they now share one *record*, because a coupled layout puts the whole stack in
+    # one frame and a plate is no longer centred on the axis. The layout reports each plate's
+    # middle and radius, both read it, and `PLATE_R` is the single fallback for the placement
+    # that has no record -- the spiral, where every plate really is the same disc on the axis.
+    plates = _fn(engine, "diskPlates")
+    for fn_name, body in (("diskPlates", plates), ("rimPoint", rim)):
+        assert "circles" in body or "d.circles" in body, (
+            f"{fn_name} no longer asks where the plate is, so the outline and the arrow "
+            "can be drawn around two different middles"
+        )
+        assert "PLATE_R" in body, (
+            f"{fn_name} has no fallback for the placement that has no record"
+        )
+    assert engine.count("const PLATE_R") == 1, (
         "the plate radius is written down twice, so the plate and the pointer can disagree "
         "about where the edge is"
     )
@@ -12320,7 +12335,7 @@ def test_a_solved_layout_is_written_to_the_base_and_not_to_the_drawing() -> None
     js = _code(_read("graph.js"))
     # An object method rather than a top-level function, so sliced the way `setOptions` is
     # a few guards below rather than through `_fn`, which reads `function name(`.
-    fn = js[js.index("setPlateXY(xy, ratio)"):]
+    fn = js[js.index("setPlateXY(xy, circles)"):]
     fn = fn[:fn.index("\n  },")]
     assert "d.baseXY.set(" in fn, "the layout is not written to the unscaled base"
     assert "d.positions" not in fn, (
@@ -12489,4 +12504,50 @@ def test_a_name_the_picture_could_not_fit_is_said_and_goes_quiet() -> None:
     assert "g.hiddenLabels = 0" in layers, (
         "the count is not cleared when the labels are not drawn, so it goes stale over a "
         "picture that has none"
+    )
+
+
+def test_a_coupled_layout_puts_the_whole_stack_in_one_frame() -> None:
+    """The thing the coupling was worth nothing without.
+
+    The first version normalised each plate onto its own middle at its own radius. Two
+    slots the solver had left in exactly the same place were then pulled apart again by two
+    different translations and two different scales, so co-location could not survive the
+    step *after* the solve. Pulling harder did not help: snapping every slot onto its
+    group's mean every single iteration still left only 20 of 5,101 crossings vertical.
+
+    Under one frame all 4,050 entities land on their own middle to a spread of exactly
+    zero, and upright crossings go from 1,558 to 3,878.
+    """
+    js = _code(_read("forcelayout.js"))
+    assert 'const FRAME = "global"' in js, (
+        "the layout normalises per plate again, which undoes the coupling after the solve"
+    )
+    fn = js[js.index("function centreAndNormalise"):]
+    fn = fn[:fn.index("\n  }")]
+    assert 'frame === "global"' in fn, "the shared frame is gone"
+    # One translation and one scale for everything, or co-location does not survive.
+    head = fn[fn.index('frame === "global"'):]
+    assert head.count("packed.N") >= 3, (
+        "the global branch walks something other than the whole stack, so it is not one "
+        "frame"
+    )
+
+
+def test_the_plate_circle_is_reported_rather_than_assumed() -> None:
+    """A plate centred on the axis was true under the spiral and is not under one frame:
+    measured, plate middles land 0.023 plate-widths off the axis on average and 0.127 at
+    worst. Three things are drawn on that circle, and they have to be told where it is.
+    """
+    js = _code(_read("forcelayout.js"))
+    assert re.search(r"solved\.set\(packed\.order\[start\], \{ x: px, y: py, r \}\)", js), (
+        "the layout no longer reports where each plate came out, so the outline is drawn "
+        "around a middle nothing measured"
+    )
+    engine = _code(_read("graph.js"))
+    setter = engine[engine.index("setPlateXY(xy, circles)"):]
+    setter = setter[:setter.index("\n  },")]
+    assert "diskPlates(d.raw, d.circles)" in setter, (
+        "the outlines are not rebuilt when the layout moves the plates, so they are drawn "
+        "where the previous arrangement put them"
     )

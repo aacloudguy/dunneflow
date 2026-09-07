@@ -505,6 +505,10 @@ function prepare(raw) {
             * reason `serverXY` is kept: `diskRatio` is whatever the layout on screen says,
             * and this is what to put back. */
            serverRatio: new Map(diskRatio),
+           /* Where each plate's circle is, once a layout has decided. `null` means the
+            * server's own placement, where every plate is a disc of `PLATE_R` on the axis
+            * and there is nothing to record. */
+           circles: null,
            diskScale: new Map(), collapsed: new Set() };
 }
 
@@ -596,13 +600,28 @@ function defaultOrder(raw) {
   return [...pkgs, ...ext].map((d) => d.id);
 }
 
-function diskPlates(raw) {
-  const R = PLATE_R, SEG = 64;
+/* The outline of each plate, as a ring of points.
+ *
+ * **Where the middle is, and how wide, are asked rather than assumed.** Under the spiral
+ * every plate is a disc of `PLATE_R` centred on the stack's axis, and three expressions
+ * were built on that. Under a coupled force layout the whole stack shares one coordinate
+ * frame — which is what lets a routine and its stand-ins hold the same position on every
+ * plate they appear on — and a plate then sits wherever its own contents put it. Measured:
+ * within 0.023 plate-widths of the axis on average, 0.127 at worst. Small, and not zero,
+ * and an outline drawn on the axis regardless is a circle with its own nodes outside it.
+ *
+ * `circles` is the solver's own record, handed in. Absent for the spiral, where the old
+ * assumption is simply true. */
+function diskPlates(raw, circles) {
+  const SEG = 64;
   return raw.disks.map((disk) => {
+    const c = circles && circles.get(disk.id);
+    const R = c ? c.r : PLATE_R;
+    const cx = c ? c.x : 0, cy = c ? c.y : 0;
     const ring = [];
     for (let k = 0; k <= SEG; k++) {
       const t = (k / SEG) * Math.PI * 2;
-      const pt = [Math.cos(t) * R, Math.sin(t) * R, 0];
+      const pt = [cx + Math.cos(t) * R, cy + Math.sin(t) * R, 0];
       // Its own unscaled copy, for the same reason the nodes keep one: the plate must
       // widen with the spread it outlines, and rescaling in place would compound.
       pt.base = [pt[0], pt[1]];
@@ -1550,7 +1569,15 @@ function pointerData(d) {
  * line through the node -- the alternative is no pointer at all for the one node in the
  * program that is hardest to describe the position of. */
 function rimPoint(d, i, at) {
-  const bx = d.baseXY[i * 2], by = d.baseXY[i * 2 + 1];
+  /* **The bearing is taken from the plate's own middle**, which is the origin under the
+   * spiral and is not under a coupled force layout — there the whole stack shares one
+   * frame and a plate sits where its contents put it. Measured from the origin regardless,
+   * the arrow leaves the bearing that makes it point *through* its node: the invariant is
+   * that the rim point, the plate's centre and the node are collinear, and the centre is
+   * the term that stopped being zero. */
+  const c = d.circles && d.circles.get(d.raw.nodes.disk[i]);
+  const cx = c ? c.x : 0, cy = c ? c.y : 0;
+  const bx = d.baseXY[i * 2] - cx, by = d.baseXY[i * 2 + 1] - cy;
   const t = (bx === 0 && by === 0) ? 0 : Math.atan2(by, bx);
   /* The plate's *own* width, not one radius for all of them. Once a plate's width says
    * what it holds, `PLATE_R` is the width of the largest plate and nothing else -- an
@@ -1558,8 +1585,9 @@ function rimPoint(d, i, at) {
    * outside the plate it is pointing into, still on the right bearing and no longer on
    * the rim of anything. Rule 51: one number described the whole stack until it did not. */
   const f = d.diskScale.get(d.raw.nodes.disk[i]) ?? 1;
-  return [Math.cos(t) * PLATE_R * opts.spreadX * f,
-          Math.sin(t) * PLATE_R * opts.spreadY * f,
+  const R = c ? c.r : PLATE_R;
+  return [(cx + Math.cos(t) * R) * opts.spreadX * f,
+          (cy + Math.sin(t) * R) * opts.spreadY * f,
           at[2]];
 }
 
@@ -2375,12 +2403,24 @@ window.DunneFlowGraph = {
    *
    * `applyLayout` then does everything else, including clearing the box cache, because it
    * is the code that moves a node and rule 51 says that is where the clearing belongs. */
-  setPlateXY(xy, ratio) {
+  setPlateXY(xy, circles) {
     const d = g.prepared;
     if (!d) return false;
     if (xy && xy.length !== d.n * 2) return false;
     d.baseXY.set(xy || d.serverXY);
-    d.diskRatio = new Map(xy && ratio ? ratio : d.serverRatio);
+    /* **Where every plate's circle is, or nothing for the server's own placement.** Under
+     * the spiral each plate is a disc of `PLATE_R` on the axis and the outline needs no
+     * telling; under a coupled layout the stack shares one frame, so the circles are the
+     * solver's to report and the renderer's to draw. Rebuilt here rather than scaled,
+     * because a plate's *position* changed and not only its width. */
+    d.circles = xy ? circles || null : null;
+    d.plates = diskPlates(d.raw, d.circles);
+    /* Nothing further to scale: under the shared frame the positions already carry how
+     * wide each plate came out, so a second factor would apply it twice. The width dial
+     * therefore has nothing to say under this layout, and `plateRangeNote` says so rather
+     * than leaving a control that moves and changes nothing (design rule 16). */
+    d.diskRatio = xy ? new Map([...d.serverRatio.keys()].map((k) => [k, 1]))
+                     : new Map(d.serverRatio);
     /* A solved arrangement is one that tried to line the plates up; the server's is not.
      * Set here rather than passed in, because this is the one call that knows which of the
      * two is now on screen. */

@@ -97,38 +97,44 @@ needs. See `layout.py`.
 **Coupling the plates through their shadows** — measured 2026-09-07, same corpus. Every slot
 standing for one entity is pulled toward their common middle, so a plate's arrangement is
 answerable to what the other plates want. `upright` counts drawn crossings leaning less than
-a quarter of a plate-width; the crossing columns are what the force layout removes against
-the spiral, which is what the coupling spends.
+a quarter of a plate-width; the plate columns are what the force layout removes against the
+spiral, which is what the coupling spends.
 
-| coupling | upright, of 5,101 | median lean | `pkg:cli` | `pkg:quaestor` | `pkg:governance` |
+| | upright, of 5,101 | median lean | `pkg:cli` | `pkg:quaestor` | `pkg:governance` |
 |---|---:|---:|---:|---:|---:|
-| none | 749 | 0.571 | 91.7% | 90.8% | 91.7% |
-| **0.04 — shipped** | **1,539** | **0.367** | 90.6% | 89.2% | 90.2% |
-| 0.07 | 2,217 | 0.286 | 89.4% | 85.9% | 84.5% |
-| 0.10 | 2,732 | 0.254 | 87.9% | 81.9% | 80.3% |
-| 0.25 | 2,793 | 0.248 | — | — | — |
-| 0.40 | 2,702 | 0.252 | — | — | — |
+| no coupling | 749 | 0.571 | 91.7% | 90.8% | 91.7% |
+| coupled, per-plate frame | 1,539 | 0.367 | 90.6% | 89.2% | 90.2% |
+| **coupled, one frame — shipped** | **3,878 (76%)** | **0.177** | 83.4% | 76.5% | 75.0% |
 
-**Verticality saturates at 0.10 and the cost does not**, which is why nothing above it is
-worth measuring further: 0.25 and 0.40 buy nothing and keep spending. The shipped setting
-doubles how many links stand upright for about a point of the crossing reduction. Tom's
-call, on these numbers.
+**The frame is what makes the coupling worth anything, and that took three attempts to
+find.** Normalising each plate onto its own middle at its own radius undoes the coupling
+*after* the solve: two slots left in exactly the same place are moved apart again by two
+different translations and two different scales. Pulling harder cannot reach past it —
+snapping every slot onto its group's mean **every single iteration** still left only **20 of
+5,101** crossings vertical, and was *worse* than a firm pull. Under one frame all **4,050**
+entities land on their own middle to a spread of **exactly zero**.
+
+**Past a firm pull, more force buys nothing.** 0.5 and 1.0 are the same picture (median
+0.177 against 0.182, and the harder one slightly worse), so the strength is where the
+arrangement settles rather than a value chosen to trade against something.
+
+**What it costs is the within-plate reduction**, from about 90% to 75–83%. That is the
+trade, and it is the reader's: links between plates stand up, and a plate's own arrangement
+is looser.
+
+**A plate is no longer centred on the stack axis**, which the plate outline, the rim arrow
+and the framing all assumed. Measured, barely: plate middles land **0.015** plate-widths off
+axis at the median and **0.127** at worst, and plate radii now range 0.25 to 1.01 rather than
+all being 1. The circle is reported by the layout and read by both the outline and the arrow
+rather than derived from a constant — verified, **0 of 15,907** nodes outside their plate's
+circle and a rim bearing error of **0**.
 
 **The coupling interval is free**, so it is chosen for the fallback rather than the GPU.
-With the pull scaled so the total over 100 iterations is the same, applying it every
-iteration and every twenty-fifth are the same picture:
-
-| every | upright | median | `pkg:cli` |
-|---:|---:|---:|---:|
-| 1 | 1,745 | 0.332 | 31,830 |
-| 5 | 1,765 | 0.331 | 31,782 |
-| **10 — shipped** | 1,776 | 0.330 | 32,564 |
-| 25 | 1,819 | 0.325 | 33,301 |
-
-That matters because **coupling is the one thing a worker cannot do**: a group's members sit
-on different plates and therefore in different workers, so the fallback runs in rounds with
-the consensus on the main thread between them. A larger interval is fewer round trips for
-the same answer. Both backends use the same one, or they are two algorithms.
+With the pull scaled so the total is the same, applying it every iteration and every
+twenty-fifth are the same picture (median 0.332 against 0.325). That matters because
+**coupling is the one thing a worker cannot do**: a group's members sit on different plates
+and therefore in different workers, so the fallback runs in rounds with the consensus on the
+main thread between them. Both backends use the same interval, or they are two algorithms.
 
 **A prototype disagreed with all of this and was wrong.** A CPU sketch with grid-bucketed
 repulsion reported coupling at 0.15 *improving* `pkg:cli` by 9%, where the real solver has
@@ -139,9 +145,9 @@ plan.
 
 | Measure | Budget | Measured 2026-09-07 |
 |---|---|---|
-| Whole stack, WebGPU, coupled, warm | < 1 s | **87 ms** (against 83 uncoupled) |
-| …8 web workers, coupled, in 10 rounds | < 15 s | **8.8 s** (against 9.7 uncoupled) |
-| The two backends' plate radii | — | within **1.6%** |
+| Whole stack, WebGPU, coupled, warm | < 1 s | **85 ms** |
+| …8 web workers, coupled, in rounds | < 15 s | **9.6 s** |
+| The two backends' upright counts | — | **3,878 against 3,888** |
 | Determinism, run to run, either backend | exact | **bit-identical** |
 
 **Each plate is normalised to `DISK_RADIUS` and its earned size travels as a width ratio**,

@@ -17437,7 +17437,7 @@ async function applyPlateLayout({ announce = true } = {}) {
   const key = graphKey(state.level, minDiskNow());
   const held = plateLayouts.get(key);
   if (held) {
-    Graph.setPlateXY(held.xy, held.ratio);
+    Graph.setPlateXY(held.xy, held.plates);
     plateLayoutNote = held.note;
     if (announce) repaintPlateLayout();
     return;
@@ -17452,12 +17452,12 @@ async function applyPlateLayout({ announce = true } = {}) {
        running must not have it land on them. The key is the question this answered, and
        `state` may now be asking a different one. */
     plateLayouts.set(key, {
-      xy: solved.xy, ratio: solved.ratio,
+      xy: solved.xy, plates: solved.plates,
       note: { backend: solved.backend, detail: solved.detail, ms: solved.ms,
-              fallback: solved.fallback, plates: solved.plates, nodes: solved.nodes },
+              fallback: solved.fallback, plates: solved.plateCount, nodes: solved.nodes },
     });
     if (state.plateLayout === "force" && graphKey(state.level, minDiskNow()) === key) {
-      Graph.setPlateXY(solved.xy, solved.ratio);
+      Graph.setPlateXY(solved.xy, solved.plates);
       plateLayoutNote = plateLayouts.get(key).note;
     }
   } catch (err) {
@@ -19104,6 +19104,18 @@ function setDiagram(on) {
 function plateRangeNote() {
   const w = Graph.mounted() ? Graph.plateWidths() : null;
   const at = state.level === "module" ? "one node per file" : "every routine";
+  /* **The dial has nothing to say under a coupled layout, and says so.**
+   *
+   * Arranging by connection puts the whole stack in one coordinate frame — which is what
+   * lets a routine hold the same position on every plate it appears on — so each plate is
+   * already at the width its own contents earned, in the positions themselves. A second
+   * factor here would apply that twice. The slider still moves and the number still
+   * changes; what it cannot do is change the picture, and a control that moves and does
+   * nothing with nothing saying why is design rule 16 exactly. */
+  if (state.plateLayout === "force") {
+    return `set by the arrangement, not by this — plates are laid out in one frame` +
+           ` · at ${at}`;
+  }
   if (!w) return `at ${at}`;
   if (w.max - w.min < 0.005) return `every plate one width · at ${at}`;
   return `${w.max.toFixed(2)}× → ${w.min.toFixed(2)}× across ${

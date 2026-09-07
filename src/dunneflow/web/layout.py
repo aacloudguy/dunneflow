@@ -19,11 +19,29 @@ two random points in a disc. Now every slot standing for one entity is pulled to
 common middle, so a plate's arrangement is answerable to what the other plates want, and a
 connection that leaves a plate more often goes straight up.
 
+**Coupling needs one coordinate frame, and that is the whole of why it works.** Normalising
+each plate onto its own middle at its own radius undoes the pull *after* the solve: two slots
+left in exactly the same place are moved apart again by two different translations and two
+different scales. Pulling harder cannot reach past it -- snapping every slot onto its group's
+mean every single iteration still left only 20 of 5,101 crossings upright. So the whole stack
+is normalised once, and a plate then sits where its own contents put it rather than on the
+axis. Measured: 0.015 plate-widths off axis at the median, 0.127 at worst. The plate's circle
+is **reported** by the layout and read by everything drawn on it, because a middle that used
+to be zero for every plate is now three expressions built on a constant that has stopped
+being true (rule 51).
+
 **What is left over is the measurement.** A crossing that stays diagonal is one two plates
 each want somewhere different, and no arrangement satisfies both -- the worst-aligned entity
 on Mensores has *two* shadows, not thirty-nine, so it is tension rather than fan-out. The
 count is stated above the picture and the per-node case on the hover card. Numbers, and the
 trade against within-plate crossings, in `PERFORMANCE.md`.
+
+**A skewer is not drawn, and could be.** With one frame every entity's slots co-locate
+exactly -- all 4,050 of them, to a spread of zero -- so a routine and its stand-ins hold one
+position through every plate they appear on. Nothing shows it: what is drawn is the crossing
+between two *different* entities, and a spring embedder holds those apart at its own natural
+length, so a crossing approaches vertical and never reaches it. The line that would be the
+skewer is the transposition, real node to its own stand-in, and rule 23 removed it.
 
 Structural is the one that exists first because it is also the *initial state* force
 needs: from a good starting arrangement it converges far faster than from noise, and a

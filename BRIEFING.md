@@ -196,9 +196,19 @@ program has a most-commented routine and a maximum alone is a claim nobody can w
 
 ## What we are doing now
 
-**ALGORITHMS, chunks 2 to 4, built 2026-09-07.** 1,145 tests, mypy clean over 117 source
-files, ruff clean, working tree clean, `check` 0 broken on `output/mensores`. The pair is
-rebuilt and resealed at `SCHEMA_VERSION` 8.
+**Paused 2026-09-07 after four commits. Nothing is half-written.** 1,145 tests, mypy clean
+over 117 source files, ruff clean, working tree clean, `check` 0 broken on
+`output/mensores`, no servers running. ALGORITHMS chunks 2 to 4 are built; 5 and 6 are not
+started.
+
+**`output/mensores` changed, and in two ways worth knowing.** The pair is rebuilt and
+resealed at `SCHEMA_VERSION` 8 — `2026-09-06T21:37:35Z` is Society at 08-26 (625 files),
+the working `2026-09-07T00:01:16Z` is 08-29 (628). And the **four older sealed snapshots
+are now stale**: two at schema 6, one at 6, one at 7, all of them 08-26 under the same
+label. They open as a refusal with the store's own sentence, which is correct behaviour
+(rule 20 — a read may refuse, it may never repair) and is also clutter accumulated by four
+rebuild dances. Whether to drop them is Tom's call: a sealed snapshot exists to outlive its
+source tree, so nothing here deletes one on its own.
 
 | Commit | What |
 |---|---|

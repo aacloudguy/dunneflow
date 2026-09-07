@@ -114,10 +114,12 @@ def describe(store: Store, payload: dict[str, Any], plate_id: str,
         # They were read off the drawn payload in the browser for one draft, on the
         # reasoning that the plate's members *are* the nodes on that disk and reading them
         # from the picture is the one answer that cannot disagree with it. The reasoning
-        # was right and the premise was not: **there is not always a picture.** In Table
-        # mode the graph is never mounted, so `graphPayload` is null -- and a package click
-        # there marked *0 of 4,786 rows* while the pane beside it correctly said 469. Found
-        # by clicking one, in the mode a reader spends most of their time in.
+        # was right and the premise was not: **there is not always a picture** (rule 87).
+        # In Table mode the graph is never mounted, so `graphPayload` is null -- and a
+        # package click there marked *0 of 4,786 rows* while the pane beside it correctly
+        # said 469. Found by clicking one, in the mode a reader spends most of their time
+        # in. Satisfying rule 13 by deriving *from* the render makes the claim exactly as
+        # conditional as the render, which is what rule 87 is.
         #
         # Rule 13 is unharmed, because this is computed from that same payload: `serve`
         # hands us `base.payloads[key]`, so the list here and the plate on screen are one

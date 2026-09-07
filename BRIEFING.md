@@ -5,7 +5,7 @@ It exists so a fresh context can be useful in a few minutes instead of an hour.
 
 | Read | For |
 |---|---|
-| `CLAUDE.md` | The rules. 81 engineering rules — numbered to 82, since 21 does not exist — and 29 dashboard design rules, each earned from a false result on real code. **Binding.** |
+| `CLAUDE.md` | The rules. 86 engineering rules — numbered to 87, since 21 does not exist — and 30 dashboard design rules, each earned from a false result on real code. **Binding.** |
 | `HANDOFF.md` | The chronological record — what was built when, what it cost, what broke. ~1,700 lines. Read *sections*, not the whole thing. |
 | **this file** | Where things are, what is done, what we are doing now, what not to re-open. |
 | Artifact `f993d319-d2b7-4217-9130-cdbba698d1bc` | The ratified dashboard design — a complete working UI, the source of truth for every view. Read it with the **Artifact tool**, not from a screenshot. |
@@ -234,6 +234,25 @@ are named in the detail rather than dropped — 29 over a collection this progra
 measured blind spots including the one it cannot see past: a local SQLite file is not a
 network.
 
+**Every outstanding rule candidate is minted.** Tom: *"Accept and mint all outstanding
+rules."* The counts are now **86 engineering rules numbered to 87** — 21 still does not
+exist — and **30 design rules**. There were six, not the three I first reported: sweeping
+the record for *every* unminted candidate rather than the ones I had in hand found three
+more, two of them standing since 2026-09-06.
+
+| | |
+|---|---|
+| **83** | an instrument's two coordinate systems can differ, and the one you can see is not the one you touch — raised 2026-09-06, measured 2026-09-07, and it had cost four sessions |
+| **84** | a grid does not overflow, it grows a row |
+| **85** | a span cannot tell what a loop is over from what it does — this session's, and the one with reach: anything derived by containment inherits it, which `shape.enclosing` proved while the fix was being verified |
+| **86** | a guard can only see that a function was called, never what it returned — the `minDisk=null` defect, which no source check could have caught |
+| **87** | a derivation from the picture is only as available as the picture — rule 13's own cost, and the trap you fall into while obeying it |
+| **design 30** | a dimmed control still acts — Tom's sentence, and design rule 29's companion |
+
+86 and 87 were checked against rules 37, 42, 44 and 13 before a number was taken, on the
+2026-09-05 precedent: a rule that restates an existing one would spend an address on
+nothing.
+
 **The stale snapshots are gone, by hand, and the tool still cannot do it.** There were
 five, not four — a rebuild adds one each time. `dunneflow revisions --drop` was built and
 proved, then reverted: `test_source.py:171` asserts against the source text that
@@ -395,7 +414,7 @@ the *rule* — after a child that spans to the last column, every later child is
 and matches the button by its `pinBtn(` call, because a child a source scan cannot see is the
 one that gets forgotten when columns are counted. **The placement is Tom's to change.**
 
-*Candidate rule, neither minted nor refused:* **a grid does not overflow, it grows a row.**
+*Minted 2026-09-07 on Tom's call:* **rule 84 — a grid does not overflow, it grows a row.**
 
 ### Before that: "keep this" on everything (2026-09-06)
 

@@ -42,9 +42,9 @@ arm written below it would be a position mistaken for a meaning (rule 1).
 **And an iterable is not a body.** `for row in conn.execute(q).fetchall():` runs one
 query, before the first pass -- but it is written on a line inside the loop's own span, so
 the range join above read it as one query *per* pass and said so, about 11 of Society's
-261 rates, in the sentence that is this feature's headline. A span cannot tell what a loop
-is over from what it does, which is why `ControlPoint` now records the lines it evaluates
-once and why `Point.repeated` -- never `Point.moves` -- is what the band and the
+261 rates, in the sentence that is this feature's headline. **A span cannot tell what a
+loop is over from what it does** (rule 85), which is why `ControlPoint` records the lines
+it evaluates once and why `Point.repeated` -- never `Point.moves` -- is what the band and the
 judgement are taken over. A `for ... else` runs once too and comes off the same way,
 through the arm that already records it.
 """

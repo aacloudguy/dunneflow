@@ -389,8 +389,8 @@ class ControlPoint:
     # after its iterable and a comprehension's element strictly before it, so the
     # subtraction only ever trims an end.
     #
-    # Why it is a fact and not something the resolver works out: `line BETWEEN line_start
-    # AND line_end` reads the iterable as part of the body, so `for row in query():`
+    # Why it is a fact and not something the resolver works out (rule 85): `line BETWEEN
+    # line_start AND line_end` reads the iterable as part of the body, so `for row in query():`
     # reported one query as a query per pass -- 11 of Society's 261 rates, in the sentence
     # that is the feature's headline. Four statements in `web/queries.py` ask the same
     # range question in SQL and cannot import the resolver, so the answer has to be a

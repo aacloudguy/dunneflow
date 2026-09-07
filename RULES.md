@@ -9,8 +9,26 @@ agree with a rule and still reimplement the defect it was written from: every on
 was, at the time, the obvious thing to do.
 
 Cited as bare numbers — "rule 45" — from code comments, tests, `HANDOFF.md` and
-`BRIEFING.md`; 768 such citations across `src/` and `tests/`. The numbers are therefore
-**addresses**, never an ordering, and are never reused or closed up.
+`BRIEFING.md`; **2,775** such citations across `src/` and `tests/`, 2,070 of them to these
+rules and 705 to the design ones, over 105 files. The numbers are therefore **addresses**,
+never an ordering, and are never reused or closed up.
+
+*That figure was 768 and is retaken here rather than carried.* It was measured on 2026-09-02
+at the split, when there were 102 rules, and five sessions of code have been written since —
+a five-day-old count restated as a live one is rule 24's defect in a sentence about rules.
+
+**The method, because the first retake was wrong twice.** Counted as occurrences of `rule N`
+or `rules N`, case-insensitive, **excluding `__pycache__`** — the first run through an
+interactive shell returned 105 files and the same command through `bash` returned 204, the
+difference being compiled bytecode that had been silently filtered by the shell rather than
+by the query. A count that changes with the shell it is run in is not a measurement (rule
+24), so the exclusion is stated and the figure was reproduced twice before being written:
+
+```bash
+grep -rhoiE "\brules? [0-9]+"        --exclude-dir=__pycache__ src tests | wc -l   # 2,775
+grep -rhoiE "\bdesign rules? [0-9]+" --exclude-dir=__pycache__ src tests | wc -l   #   705
+grep -rliE "\brules? [0-9]+"         --exclude-dir=__pycache__ src tests | wc -l   #   105
+```
 
 
 These each came from a false result on real code. Keep them.
@@ -1467,3 +1485,157 @@ rule of that number — a blank canvas must say why it is blank — which does e
     `state == "working"`, which a watcher dying without noting leaves true for ever — a reader
     seeing nothing running and still being refused. It asks `poll()` now and clears the stale
     lock rather than leaving it for somebody to notice.
+
+83. **An instrument's two coordinate systems can differ, and the one you can see is not
+    the one you touch.** Rule 38 says an instrument that cannot see cannot report; rule 48
+    says only a pointer proves the path to a handler. Neither says the instrument may be
+    *self-inconsistent* — that its picture and its pointer answer in different units, so a
+    coordinate read off a **correct** screenshot lands at twice its intended place with no
+    error anywhere.
+
+    Measured on a 1259×551 viewport at `devicePixelRatio` 2:
+
+    | | CSS → frame factor | what the frame covers |
+    |---|---|---|
+    | **screenshot** | 784 / 629.5 = **1.2454** | CSS 0..629.5 × 0..275.5 — `inner ÷ dpr` |
+    | **click** | 784 / 1259 = **0.6227** | CSS 0..1259 × 0..551 — the whole viewport |
+
+    **The ratio between them is 2.000 — the dpr.** The capture path divides the viewport by
+    `devicePixelRatio` and the input path does not, so the pixels you can see and the
+    coordinates you must click are two different spaces in one tool.
+
+    Neither factor was reasoned; both were planted and read. Five fixed bars at CSS x = 0,
+    400, 780, 1000 and 1245: only the first two appear, and the 400 bar lands at image
+    x ≈ 500, giving 1.2454. Then a click at frame (400, 200), caught by a capturing
+    `pointerdown` listener, reported `clientX/Y = (642, 321)` — 1.605, which is 1259/784.
+    Two instruments, two numbers, and the quotient is the dpr.
+
+    **The cost of not knowing it was four sessions.** Each read the pair as two unrelated
+    limitations — a capture that stops halfway across, and clicks that miss — and worked
+    around both with `.click()`, which proves the handler and not the path. The pointer was
+    never blocked: everything in the viewport has always been clickable, including the
+    inspector at x=985. Only *sight* stopped at the halfway line.
+
+    So **measure each direction separately before trusting either**, and never derive one
+    from the other. Two mappings that look like one are two. `resize_window` belongs to the
+    same family from the other end (rule 37): `resize_window(2400, 1700)` returns
+    *"Successfully resized window … to 2400x1700 pixels"* and `innerWidth` stays 1259 — the
+    call reported that it was made, not that it did anything.
+
+84. **A grid does not overflow, it grows a row.** `.srch-hit` declared **five columns for
+    five children** and the comment above it said so. The arithmetic was already false:
+    `.srch-in` carries `grid-column: 2 / -1`, so it fills the rest of whatever row it lands
+    on and **anything emitted after it starts a new one**. The keep button — the fifth
+    child, added to this row in the very session that filed the debt to look at it — flowed
+    onto a **third** row, into the 3.2 rem line-number column.
+
+    Measured in a real window, `emit` over 2,403 lines in 298 files with one file open at
+    126 hits:
+
+    | | before | after |
+    |---|---|---|
+    | keep button | 51 × 54, *"Keep this"* wrapped to two lines | 78 × 22, one line |
+    | where | row 3, column 1, under the line number | row 1, column 4, beside the marks |
+    | row height | 101–108 px for one 17 px line of code | 45–53 px |
+
+    **Nothing reported it and nothing could.** The row rendered, the button worked, and a
+    control on a row of its own looks exactly like a control somebody deliberately put on a
+    row of its own — design rule 16's shape, from the layout rather than from the wiring.
+    CSS grid never overflows and never complains; it creates implicit rows in silence, so a
+    column count written in a comment is a claim nothing checks.
+
+    The remedy is a rule and not a number: **after a child that spans to the last column,
+    every later child is placed by hand.** `grid-row: 1; grid-column: 4`, explicit, because
+    auto-flow is what put it on a third row — and explicit placement of that one child is
+    also what lets `.srch-in` keep its `2 / -1` and land on row 2 as written.
+
+    The guard therefore asserts the rule rather than any symptom, and matches the button by
+    its **`pinBtn(` call** rather than by a class in the markup: a child a source scan cannot
+    see is exactly the child that gets forgotten when the columns are counted, and that is
+    how this happened. Proved non-vacuous by reverting the placement against a real file
+    backup, not against `git checkout`.
+
+    Rule 53's neighbour, one property over. That one is a layout right at a single window
+    size; this one is a layout right until a child is added, with the arithmetic that decides
+    it living in two files.
+
+85. **A span cannot tell what a loop is over from what it does.** `for row in
+    conn.execute(q).fetchall():` runs **one** query, before the first pass. It is written on
+    a line inside the loop's own span, so `line BETWEEN line_start AND line_end` reads it as
+    a query *per* pass — and said so, about **11 of Society's 261 rates**, in the sentence
+    that is the feature's headline: *"something moves inside this loop, once per pass"*
+    about something that happens once.
+
+    Not found by a test. `tests/test_shape.py` had no fixture routine with a move in its
+    iterable, so every assertion passed; it was found by measuring chunk 6's detector against
+    real source before building it, which is what the anomaly discipline already demands of
+    a detector and turns out to be worth demanding of the fact underneath one.
+
+    A span is a **range**, and a range says where something is written, never what evaluates
+    it. So the answer has to be a fact the extractor records — `ControlPoint.once_start` and
+    `once_end`, the lines a loop evaluates once — because nothing downstream can work it out
+    from the span it was handed.
+
+    **And the obvious form of that fact is wrong.** The iterable's line span alone
+    reclassifies 45 loops and **34 of them wrongly**, because `[fetch(x) for x in ids]`
+    writes its element and its iterable on the same line and a line cannot choose between
+    them: comprehensions reaching a boundary would have read 42 → 5 rather than 42 → 39. It
+    is the iterable's lines **minus every line a repeated part of the same point also
+    occupies**, which leaves the range empty exactly where a line cannot say — the answer
+    that cannot be wrong (rule 49). Contiguous by construction, so two ints hold it.
+
+    **Anything derived by containment inherits this**, and the proof arrived while the fix
+    was being verified: `shape.enclosing` — a reader standing at a table asking what loops
+    over it — still counted a loop's own iterable, so a table's pane said *"reached from
+    inside 1 loop"* about a query the loop is written over. Two of 64 tables, found by
+    checking all of them against the four SQL statements rather than the one table that had
+    been looked at.
+
+    Beside it, and for rule 30's reason: **`word` is recorded, not inferred from the
+    header.** `for x in y` and `while y` are one `ControlKind` and opposite facts about
+    whether the header runs again, and a header of `True` is `while True` to a reader and a
+    guess to a matcher.
+
+86. **A guard can only see that a function was called, never what it returned.**
+    `graphUrl` built `&minDisk=${minDiskNow()}`, and `minDiskNow()` returns `null` for *let
+    the server choose*. Template interpolation spelled that as the four characters `null`,
+    the server refused an unknown threshold with a 400 rather than defaulting it — correctly,
+    and by design — and **every package click landed on *"Not in this map"***.
+
+    The guard over that line asserted the builder consulted `minDiskNow()`. It did. There is
+    no source check that could have caught this: the call is present, the name is right, the
+    argument is spelled correctly, and the defect is entirely in a value that does not exist
+    until the function runs.
+
+    **Checked against rules 37, 42 and 44 before a number was taken**, because it is close to
+    all three and none of them is it. Rule 37 is a guard that checks a *name appears* — this
+    one went a rung further and confirmed the call. Rule 42 is a guard that names the right
+    case and is defeated by how the callee fails. Rule 44 is a *live control* reading a field
+    the server never sends, which shows up as a rendered nothing; this shows up as a correct
+    request for a value that cannot exist.
+
+    The remedy is not a better guard, because a static one cannot reach. It is to remove the
+    hole: `levelQuery` is now one builder that **omits** the parameter when the threshold is
+    unset, so the unrepresentable value has nowhere to be spelled. Where a source check must
+    stand in, assert the *shape of the call site* — that the optional parameter is built
+    conditionally — never that the function was consulted.
+
+87. **A derivation from the picture is only as available as the picture.** A package's
+    members were read from the drawn graph payload, on an argument that is correct and is
+    rule 13's own: read the members from the thing on screen and they cannot disagree with
+    the thing on screen.
+
+    The argument was right and its premise was false half the time. **Table mode never mounts
+    the graph**, so a package click there marked *0 of 4,786 rows* beside a pane correctly
+    reporting **469** — two numbers about one package, on one screen, and the one derived
+    from the picture was the wrong one.
+
+    So rule 13 has a cost, and this is it: satisfying *"the claim and the picture agree"* by
+    deriving the claim **from** the picture makes the claim exactly as conditional as the
+    render. Every mode that does not draw is a mode where the derivation silently returns
+    nothing, and nothing looks like zero.
+
+    `plate.py` computes members from the same payload on the **server**, which keeps rule 13
+    — one reading, one source — and moves it to the side that always has it. The test is
+    *when is this input absent?* If the answer is "in some mode", the derivation belongs
+    where the input is unconditional, not where it happens to be convenient.

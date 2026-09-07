@@ -78,6 +78,12 @@ click here was a dispatched `MouseEvent`, which proves the handler and not the p
 The automation tab captures 784 px of a 1,259 px viewport, so the inspector at x=1012 is
 outside every screenshot taken of it. This adds to the standing debt rather than paying it.
 
+*Rule 83, minted later, corrects half of that sentence.* Sight stops at 784 px of 1,259; the
+**pointer never did** — the capture path divides by `devicePixelRatio` and the input path
+does not, so the two frames differ by exactly the dpr and a click computed with
+`784 / innerWidth` reaches anything in the viewport. Left standing as written, with the
+correction beside it, because it is what these figures were taken under.
+
 **The build is cheap and it is held per level *and per threshold*, on `_Base`**, so a base
 switch throws all of it away for free. The routine payload is still built at boot, so the
 10.2 s start does not move; a level nobody climbs to costs nothing at all.

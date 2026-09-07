@@ -477,3 +477,31 @@ bought a rewrite of settled CSS, neither of which serves the thing the tool is f
     perfectly in your head, write `visibility: hidden` because it seems the tidier way to hide
     something, and ship a dead control. A guard over the stylesheet is what closes it, because
     no guard over the markup or the handler can.
+
+30. **A dimmed control still acts.** Minted 2026-09-07 on Tom's call, from the mode toggle,
+    and it is his sentence rather than my reasoning:
+
+    > *"a dimmed button should still act — the user is always right, even if they're wrong.
+    > Unless it CANNOT work, in which case it just doesn't work."*
+
+    Dimming says **"not current"**. It does not say "disabled", and it must never be spelled
+    as one. A reader who presses a dimmed control has told you where they want to go, and the
+    product's job is to take them there — not to refuse and leave them to work out which of
+    several plausible reasons applied.
+
+    The mode toggle has three states and now says all three: **in a mode**, full opacity with
+    the current one pressed; **on a destination** — a document, a search result — dimmed with
+    nothing pressed and the reason beside it, and every mode still live, because picking one
+    is exactly how you leave a destination; **where a mode genuinely cannot render what is
+    selected**, inert, because there is nothing behind the press.
+
+    The test is not *is this the current thing*. It is **would pressing it do something
+    useful?** If yes it acts, however faint it looks. Only when the answer is *there is
+    nothing for it to do* does it stop working — and then it says so rather than simply
+    failing quietly.
+
+    Design rule 29's companion, and the two are easy to collapse into one mistake. 29 says a
+    control you have made quiet must still be reachable — `visibility: hidden` closes the
+    pointer, the tab order and `:focus-within` all at once. This one says a control you have
+    made quiet must still **work** when it is reached. Together: quiet is a statement about
+    attention, never about capability.

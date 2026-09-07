@@ -11683,8 +11683,72 @@ through the real route (`/api/algorithms` 250 rates, quiet bands summing to 1,95
 and the **served** `shell.js` showing the `rib-why` gate gone. That is measured, not seen —
 said rather than claimed, and it would not have found a colour or a rhythm.
 
-Still open from chunk 5, unchanged: the worklist's and the ribbon's row layouts, and whether
-*"a grid does not overflow, it grows a row"* and *"an instrument's two coordinate systems can
-differ"* are rules or notes. Chunk 6 adds a third candidate — **a span cannot tell what a
-loop is over from what it does** — which is either the next rule number or a note, and is
-Tom's call.
+Still open from chunk 5: the worklist's and the ribbon's row layouts, which are design calls
+and Tom's.
+
+### Six outstanding candidates, minted on Tom's call
+
+*"Accept and mint all outstanding rules."* I had three in hand and reported three; sweeping
+the record for **every** unminted candidate rather than the ones I remembered found three
+more, two of them standing since 2026-09-06 under a heading I had not read. The counts are
+now **86 engineering rules numbered to 87** — 21 still does not exist — and **30 design
+rules**.
+
+That sweep is the useful part of this entry. A candidate is filed in whichever session
+raised it, in whatever words that session used — *"candidate rule"*, *"not minted"*,
+*"wants his call"*, *"neither minted nor refused"* — so the only way to find them all is to
+grep for the shapes rather than to recall them. Four of the hits turned out to be already
+minted (79, 81, 82, design 28) and are historical; the record said so where it should.
+
+**83 — an instrument's two coordinate systems can differ, and the one you can see is not the
+one you touch.** Raised 2026-09-06, measured 2026-09-07: the capture path divides the
+viewport by `devicePixelRatio` and the input path does not, so the two frames differ by
+exactly 2.000 and a coordinate read off a *correct* screenshot lands at twice its intended
+place. It cost four sessions, each of which read the pair as two unrelated limitations. It
+governs the instrument rather than the product, so it is cited from here and from
+`PERFORMANCE.md`'s conditions rather than from `src/`.
+
+**84 — a grid does not overflow, it grows a row.** Raised 2026-09-07. `.srch-hit` declared
+five columns for five children and the comment said so, but `.srch-in` spans `2 / -1`, so the
+fifth child started a third row. Nothing reported it and nothing could. Cited from
+`tokens.css` at both the declaration and the placement, and from the guard in
+`test_web_controls.py` — which asserts the *rule* rather than a symptom, because there was no
+symptom.
+
+**85 — a span cannot tell what a loop is over from what it does.** This session's, and the
+one with the most reach: a range says where something is written, never what evaluates it, so
+anything derived by containment inherits it — which `shape.enclosing` then proved while the
+fix was being verified. Cited from `schema.py` where `once_start` is defined, from
+`resolve/shape.py` where the judgement is made, and from `extract.py` where the subtraction
+happens.
+
+**86 — a guard can only see that a function was called, never what it returned.** Standing
+since 2026-09-06. `graphUrl` built `&minDisk=${minDiskNow()}` and that function returns
+`null` for *let the server choose*; interpolation spelled it `"null"`, the server refused an
+unknown threshold with a 400, and every package click landed on *"Not in this map"*. The
+guard asserted the builder consulted the function — it did. No source check can reach a
+value that does not exist until the code runs, so the fix is to remove the hole rather than
+sharpen the guard.
+
+**87 — a derivation from the picture is only as available as the picture.** Also 2026-09-06,
+and it is rule 13's own cost. Members were read from the drawn payload on a correct rule-13
+argument: read them from the picture and they cannot disagree with it. Table mode never
+mounts the graph, so a package click there marked *0 of 4,786 rows* beside a pane correctly
+reporting 469. Satisfying rule 13 by deriving *from* the render makes the claim as
+conditional as the render.
+
+**Design rule 30 — a dimmed control still acts.** Tom's own sentence from 2026-09-04, filed
+as a candidate because a design number is a permanent address too: *"a dimmed button should
+still act — the user is always right, even if they're wrong. Unless it CANNOT work, in which
+case it just doesn't work."* Design rule 29's companion — 29 says a quiet control must stay
+reachable, 30 says it must still work when reached.
+
+**86 and 87 were checked against the rules they might restate before a number was taken**,
+on the 2026-09-05 precedent where rule 81 was checked against rule 78. 86 against 37, 42 and
+44; 87 against 13. Neither is one of those, and the bodies say why — an address spent on a
+restatement is worse than a candidate left standing.
+
+Citing 85 from `extract.py` restaled the pair, because `code_extraction_inputs()` hashes
+every file under `extractors/python/` and a comment is a file change. That is rule 12 working
+and it is worth writing down: **a rule citation in an extractor costs a full rebuild**, and
+the rebuild leaves one more stale sealed snapshot to drop by hand.

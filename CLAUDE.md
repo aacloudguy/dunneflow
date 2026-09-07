@@ -14,15 +14,18 @@ by *how often you need it*, not by importance:
 | File | What it holds | When to read it |
 |---|---|---|
 | `CLAUDE.md` | commands, verification gates, architecture, and the **index** of every rule | every session — it is loaded for you |
-| `RULES.md` | the 81 engineering rules **in full**, with the false result each came from — numbered to 82, because 21 does not exist and the numbers are addresses | before working in the area a rule governs |
-| `DESIGN-RULES.md` | the 29 dashboard design rules in full | before building or changing a view |
+| `RULES.md` | the 86 engineering rules **in full**, with the false result each came from — numbered to 87, because 21 does not exist and the numbers are addresses | before working in the area a rule governs |
+| `DESIGN-RULES.md` | the 30 dashboard design rules in full | before building or changing a view |
 | `PERFORMANCE.md` | every measured figure, with its budget and its conditions | before quoting or retaking a number |
 | `BRIEFING.md` | state: what is built, what is next, what is closed | at the start of a session |
 | `HANDOFF.md` | the full chronological record, session by session | when you need why something is the way it is |
 
 A rule is cited as a bare number — "rule 45", "design rule 19" — from code comments, tests
-and both records; 768 such citations across `src/` and `tests/`. **The numbers are addresses.
-Never reuse one, never renumber, never close a gap.**
+and both records; **2,775** such citations across `src/` and `tests/` as of 2026-09-07 —
+2,070 to the engineering rules and 705 to the design ones, over 105 files. `RULES.md` carries
+the command that counts them, because the first retake gave two different answers in two
+shells. **The numbers are
+addresses. Never reuse one, never renumber, never close a gap.**
 
 ## What this tool is for
 
@@ -836,6 +839,12 @@ it was written from.
  81. A key that decides whether to skip work must carry everything the work depends on.
  82. A long job is not a switch — a slot names what is being replaced, not what is
      running.
+ 83. An instrument's two coordinate systems can differ, and the one you can see is not
+     the one you touch.
+ 84. A grid does not overflow, it grows a row.
+ 85. A span cannot tell what a loop is over from what it does.
+ 86. A guard can only see that a function was called, never what it returned.
+ 87. A derivation from the picture is only as available as the picture.
 ```
 
 ## Anomalies: the discipline
@@ -912,6 +921,7 @@ so read the body before building against one.
      area.
  28. Inference is voluntary and secondary, and a map states whether any was used.
  29. A hidden control is not a dimmed one.
+ 30. A dimmed control still acts.
 ```
 
 ## Adding a language

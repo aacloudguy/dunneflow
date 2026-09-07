@@ -7386,7 +7386,8 @@ const OFF_MODE_PAGE = {
   inference: "the inference settings", settings: "Settings",
 };
 
-/* The toggle, off-mode: dimmed and still live, with the reason beside it.
+/* The toggle, off-mode: dimmed and still live, with the reason beside it (design rule 30:
+ * dimming says *not current*, never *disabled*, and a dimmed control still acts).
  *
  * **It used to be `visibility: hidden`**, which kept its 321x31px and left a hole in the
  * toolbar where five buttons had been -- on **nine of fourteen views**, which is more than
@@ -17308,8 +17309,10 @@ function graphKey(level, min) { return `${level}:${min ?? ""}`; }
  * `/api/plate` was written with its own `&minDisk=${minDiskNow()}`, which spells that state
  * as the four characters `null` and gets a 400 back. It was found by clicking a package,
  * not by a test: the guard asserted `minDiskNow()` was *consulted*, which it was, and no
- * check can see from the source what a function returns. Two builders for one question is
- * rule 51, and this is the second caller arriving exactly as that rule predicts. */
+ * check can see from the source what a function returns (rule 86). Two builders for one
+ * question is rule 51, and this is the second caller arriving exactly as that rule
+ * predicts -- so the remedy is one builder that omits the parameter rather than a
+ * sharper guard, because there is no guard that could have reached this. */
 function levelQuery(level, min) {
   const q = new URLSearchParams({ level });
   if (min != null) q.set("minDisk", String(min));

@@ -4859,6 +4859,8 @@ def test_every_child_of_a_search_hit_has_a_cell_of_its_own() -> None:
     # The keep button arrives from `pinBtn()` rather than as literal markup, so it is
     # matched by its call. A child that a source scan cannot see is exactly the child that
     # gets forgotten when the columns are counted -- which is how this defect happened.
+    # This asserts rule 84 rather than any symptom, because there was no symptom: the row
+    # rendered and the button worked.
     order = [m.group(1) or "pinbtn" for m in
              re.finditer(r'class="(srch-n|srch-code|srch-marks|srch-in)|(pinBtn\()', body)]
     assert "srch-in" in order, "the hit row no longer names the routine it sits in"

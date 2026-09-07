@@ -3306,8 +3306,9 @@ kbd { font-family: var(--f-mono); font-size: .66rem; background: var(--sunken);
  *
  * Nothing reported it and nothing could: the row rendered, the button worked, and a control
  * on a row of its own looks exactly like a control somebody put on a row of its own. Found
- * by measuring the grid after looking at it -- rule 53's neighbour, a layout that is right
- * until a child is added, and the arithmetic that decides it is in two places. */
+ * by measuring the grid after looking at it -- rule 84, and rule 53's neighbour: a layout
+ * that is right until a child is added, and the arithmetic that decides it is in two
+ * places. A grid does not overflow, it grows a row, and it does so in silence. */
 .srch-hit {
   display: grid; grid-template-columns: 3.2rem minmax(0, 1fr) auto auto;
   align-items: baseline; gap: .3rem; padding: .05rem .5rem .05rem 0;
@@ -3315,7 +3316,8 @@ kbd { font-family: var(--f-mono); font-size: .66rem; background: var(--sunken);
 /* Row 1, last column: beside the marks, on the code's own line, which is where every other
    row-level control in this product sits. Explicit, because auto-flow is what put it on a
    third row -- and explicit placement of this one child is also what lets `.srch-in` below
-   keep its `2 / -1` and land on row 2 as it was written to. */
+   keep its `2 / -1` and land on row 2 as it was written to. Rule 84: after a child that
+   spans to the last column, every later child is placed by hand. */
 .srch-hit .pinbtn { grid-row: 1; grid-column: 4; }
 .srch-hit:hover { background: var(--raised); }
 /* Kept from a hit, quiet at rest like the thread row's and for the same two reasons -- 782

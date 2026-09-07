@@ -771,7 +771,8 @@ class _Extractor(ast.NodeVisitor):
         occupies, which is `ControlPoint.once_start`'s whole argument: a one-line
         comprehension writes its element and its iterable on the same line, and the
         subtraction empties the range there rather than guessing which of them a boundary
-        on that line belongs to.
+        on that line belongs to (rule 85, and rule 49 for why it empties rather than
+        guesses).
 
         Contiguous by construction, so two ints hold it: a `for`'s body is strictly after
         its iterable and a comprehension's element strictly before it, so what is removed

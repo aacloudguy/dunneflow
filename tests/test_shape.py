@@ -263,6 +263,24 @@ def test_every_loop_records_the_word_it_was_written_with(store):
             )
 
 
+def test_a_table_is_not_reached_from_inside_the_loop_it_is_the_subject_of(store):
+    """`enclosing` is the *"and vice versa"* half, and it inherits the same correction.
+
+    A reader standing at a table asks what loops over it. A loop whose only touch of that
+    table is its own iterable does not: it reaches the table once, before the first pass.
+    Without this the pane says *"reached from inside 1 loop"* about a query the loop is
+    written over -- 2 of Society's 64 tables, and the same `once` span has to decide it
+    here and in `_judge_loop`, or a table's sentence and the Algorithms page describe one
+    loop two ways (rule 51).
+    """
+    loops = [p for p in shape.enclosing(store, table="widgets")
+             if p.kind == ControlKind.LOOP]
+    assert [p.routine.rsplit(".", 1)[-1] for p in loops] == ["rate"], (
+        "`over_a_query` reaches `widgets` once, before the first pass, and is not a loop "
+        "over it"
+    )
+
+
 def test_a_decision_forks_only_when_its_arms_differ_in_what_moves(store):
     """A branch whose arms both write is arithmetic; one that writes on one side is a
     decision about what leaves the program. 78 of Society's 2,213 decisions fork."""

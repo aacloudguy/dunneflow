@@ -706,7 +706,16 @@ def enclosing(store: Store, *, table: str | None = None,
     for routine_id, lines in lines_by_routine.items():
         touched = sorted(set(lines))
         for point in outline(store, routine_id):
-            if _count_within(touched, point.line_start, point.line_end):
+            # **Inside, and not what it is over.** A loop whose only touch of this table
+            # is its own iterable does not reach it once per pass; it reaches it once,
+            # before the first pass. Two of Society's 64 tables have such a loop, and
+            # without this the pane says *"reached from inside 1 loop"* about a query the
+            # loop is written over -- `_judge_loop`'s defect arriving at the sentence
+            # chunk 5 built, which is why the same `once` span decides both (rule 51).
+            inside = [ln for ln in touched
+                      if not (point.once_start
+                              and point.once_start <= ln <= point.once_end)]
+            if _count_within(inside, point.line_start, point.line_end):
                 out.append(point)
     # Innermost first, the way `web/search.py` reads a hit's scope (rule 10): the
     # narrowest span is the one that says the most about the line, and a reader shown

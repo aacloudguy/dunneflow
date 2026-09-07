@@ -229,15 +229,11 @@ BANDS: tuple[Band, ...] = (
     ),
 )
 
-# Adding an "s" gave "23 classs" and "3 way ins", both of which a reader reads as a
-# defect in the tool before they read the number. Named because the surfaces are named.
-_PLURALS = {"class": "classes", "way in": "ways in"}
-
-
-def plural(surface: str, n: int) -> str:
-    if n == 1:
-        return surface
-    return _PLURALS.get(surface, surface + "s")
+# A `plural()` and its `_PLURALS` table lived here, because adding an "s" gave "23 classs"
+# and "3 way ins" -- both of which a reader reads as a defect in the tool before they read
+# the number. It went with `surface_summary()`, its only caller. **Bring both back together
+# if a surface is ever counted in prose again**: the two exceptions are the whole content,
+# and re-deriving them from a defect on screen is the expensive way to learn them twice.
 
 
 BAND_ORDER: dict[str, int] = {b.key: i for i, b in enumerate(BANDS)}
@@ -324,14 +320,13 @@ class MirroredTerm:
             out[s.surface].append(s)
         return dict(out)
 
-    def surface_summary(self) -> str:
-        """Where the word is used, as counts -- never as 52 identical rows."""
-        groups = self.by_surface()
-        order = [*NAMING_SURFACES, *BEARING_SURFACES, *SPEAKING_SURFACES]
-        return ", ".join(
-            f"{len(groups[s]):,} {plural(s, len(groups[s]))}"
-            for s in order if s in groups
-        )
+    # A `surface_summary()` stood here -- *"1,204 constants, 3 ways in"* -- and nothing
+    # called it. `render/mirror.py` asks `by_surface()` the same question and answers it
+    # differently on purpose: it names the surface, shows up to four of the words, and says
+    # how many more. That is a listing with a count in it, not a count; the renderer needs
+    # the names, and this returned only the tally. It went with `plural()`, its one caller,
+    # which is why "23 classes" is no longer spelled anywhere -- there is nothing left that
+    # counts a surface without naming what it found.
 
 
 @dataclass(slots=True)

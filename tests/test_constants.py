@@ -256,11 +256,9 @@ def test_a_word_run_matches_a_compound_but_a_substring_does_not():
     assert "gate" not in name_keys("aggregate")
 
 
-def test_surfaces_are_pluralised_as_english():
-    """"23 classs" reads as a defect in the tool before it reads as a number."""
-    from dunneflow.resolve.mirror import plural
-
-    assert plural("class", 23) == "classes"
-    assert plural("way in", 3) == "ways in"
-    assert plural("constant", 1) == "constant"
-    assert plural("constant", 2) == "constants"
+# `test_surfaces_are_pluralised_as_english` was here, over `mirror.plural`. Both are gone:
+# `plural`'s only caller was `surface_summary`, which nothing ever called, and keeping a
+# function alive in `src/` so a test can assert on it makes the test the reason the code
+# exists. `mirror.py` carries the two exceptions -- "classes", "ways in" -- in a comment
+# where the pair stood, so whoever counts a surface in prose next does not rediscover them
+# from "23 classs" on a screen.

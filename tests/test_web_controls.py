@@ -1042,8 +1042,13 @@ def test_a_shape_set_covers_every_kind_a_box_can_be() -> None:
     the channel saying nothing, which is the whole argument for offering shape as a **set**
     rather than as a picker per kind.
 
-    Both directions. Every kind the payload can carry must have an outline; and every outline
-    must be listed in the Settings key, or the reader meets a shape the page never explained.
+    **One direction now, and the other is gone with its subject.** This also checked that
+    the Settings key listed every outline the engine draws — but the key, its roster and the
+    control that would have chosen a set were all withdrawn with the labelled-box overlay
+    that is the only thing drawing silhouettes (see `shell.js`, where they were). The half
+    kept here is the half about the engine, which is still live: the payload can still emit
+    a kind, `silhouette` still answers for it, and a kind with no outline of its own is
+    still indistinguishable from a routine on the day those boxes come back.
     """
     engine = _read("graph.js")
     block = engine.split("const SILHOUETTE = {", 1)[1].split("\n};", 1)[0]
@@ -1060,42 +1065,29 @@ def test_a_shape_set_covers_every_kind_a_box_can_be() -> None:
         "— each falls back to the rectangle and becomes indistinguishable from a routine"
     )
 
-    shell = _read("shell.js")
-    keyed = set(re.findall(r'^  \["(\w+)",', shell.split("const SHAPE_KINDS = [", 1)[1]
-                           .split("\n];", 1)[0], re.M))
-    assert keyed == shaped, (
-        f"the Settings key and the engine disagree about which kinds have a shape: "
-        f"key-only {sorted(keyed - shaped)}, engine-only {sorted(shaped - keyed)} — "
-        "a reader meets an outline the page never explained, or reads about one that is "
-        "never drawn"
-    )
 
+def test_the_engine_can_still_be_asked_for_the_outlines_it_draws() -> None:
+    """What survives the withdrawal, and the reason it is worth a guard on its own.
 
-def test_the_shape_key_draws_the_engines_own_outlines() -> None:
-    """Rule 13: the picture beside a control must be produced by the thing it describes.
+    There was a Settings key here that drew each kind's outline as SVG, and a test that it
+    asked `Graph.silhouettes()` for its points rather than keeping a second copy (rule 13).
+    Key and control are gone — nothing could reach them, because silhouettes are drawn only
+    by the box overlay and that view is withdrawn.
 
-    A key that keeps its own copy of these shapes is a second answer to what a kind looks
-    like, and the two part company on the day a shape moves — silently, because both halves
-    go on rendering perfectly. So the page asks the engine, and the engine answers with the
-    very points it hands to the layer.
+    The engine's side stays, and this is the claim that keeps it usable: the outlines can be
+    asked for **from outside the canvas**, and the answer routes through the same
+    `silhouette(k, set)` that draws the stack. That is what lets the layered-layout view
+    build a key without inventing a second set of shapes — the exact defect the old test
+    existed to prevent, guarded at the only end that still exists.
     """
-    shell = _read("shell.js")
-    fn = _fn(shell, "shapeKeyHtml")
-    assert "Graph.silhouettes(" in fn, (
-        "the shape key no longer asks the engine for its outlines"
-    )
-    assert "polygon" in fn and "points=" in fn, "the key stopped drawing the outlines at all"
-    for forbidden in ("SILHOUETTE", "Math.cos", "rect", "hexagon"):
-        assert forbidden not in fn, (
-            f"the shape key builds {forbidden!r} of its own — a second answer to what a "
-            "kind looks like, which will disagree with the stack and say nothing when it does"
-        )
-
     engine = _read("graph.js")
     api = engine.split("silhouettes: (set)", 1)
-    assert len(api) == 2, "Graph.silhouettes is gone; the key has nothing to ask"
+    assert len(api) == 2, (
+        "Graph.silhouettes is gone — the outlines can no longer be asked for from outside "
+        "the canvas, so whatever replaces the withdrawn key will have to copy them"
+    )
     assert "silhouette(k, set)" in api[1], (
-        "Graph.silhouettes no longer routes through `silhouette`, so the key can be "
+        "Graph.silhouettes no longer routes through `silhouette`, so a key could be "
         "answered by something other than what draws the stack"
     )
 

@@ -155,19 +155,20 @@ const DEFAULTS = {
      drawn, they connect what was disconnected so nothing packs, and on a small
      compartment they outnumber the subject. The count is stated either way. */
   diagramPorts: false,
-  /* Which shapes the boxes are drawn in, **as a set** rather than a shape per kind.
+  /* **`nodeShapes` was a default here and is not one now.** Which shapes the boxes are
+   * drawn in, as a set -- `kind` spends the channel on five silhouettes and frees colour to
+   * carry what changed (design rule 4); `rect` and `round` are one outline for everything.
+   * The reasoning stands and is worth keeping; what does not stand is calling it a setting.
    *
-   * The same decision the colour sets took, and Tom's: a reader assigning shapes one at a
-   * time can land two kinds on one outline, which is the channel saying nothing, and a
-   * sixth kind then arrives with no shape at all. `kind` spends the channel -- five kinds,
-   * five silhouettes, Mermaid's own vocabulary -- which is what frees colour to go on
-   * saying what changed (design rule 4). `rect` and `round` are one outline for everything
-   * and leave kind on colour, where it is today.
+   * No control was ever mounted for it, so this default was the only value it ever held.
+   * Left in `DEFAULTS` it did one active harm: `resetSettings` walks these keys, so a reset
+   * reported clearing *"which shapes the boxes take"* -- naming a setting the reader had
+   * never been offered and could not have changed. A default is a promise that something
+   * can be different.
    *
-   * Unlike a colour set there is nothing to measure here: a shape has no contrast ratio and
-   * no separation, so every set that can be reached is reachable because it reads, not
-   * because it passed a bar. That is worth saying rather than implying by omission. */
-  nodeShapes: 'kind',     // 'kind' | 'rect' | 'round'
+   * The engine keeps its side (`SILHOUETTE`, `Graph.silhouettes`, the `nodeShapes` branch
+   * of `setOptions`), and `shell.js` still holds `state.nodeShapes` and hands it over at
+   * mount. Restore this entry when the layered-layout view brings the boxes back. */
   /* The cursor over a pickable thing in the diagram, and how thick a flow arrow is drawn.
    * Both design rule 2, and both Tom's, from driving it rather than from reading the CSS.
    *
@@ -595,7 +596,7 @@ function resetSettings(program, current) {
     spreadX: 'spread across', spreadY: 'spread deep', spreadZ: 'spread between plates',
     plateSize: 'how much a plate\'s width says about what it holds',
     collapseUnused: 'collapsed plates',
-    diagram: 'the plate drawn as a diagram', nodeShapes: 'which shapes the boxes take',
+    diagram: 'the plate drawn as a diagram',
     diagramId: 'which compartment the diagram has open',
     diagramPorts: 'whether the diagram draws its crossings',
     navCase: 'the search matching capitals exactly',

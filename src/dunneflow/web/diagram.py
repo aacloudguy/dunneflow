@@ -137,10 +137,6 @@ def add_flow(lane: Flow, src: str, dst: str, kind: str, weight: int) -> None:
     lane.setdefault((src, dst), Counter())[kind] += weight
 
 
-def flow_weight(lane: Flow, pair: tuple[str, str]) -> int:
-    return sum(lane.get(pair, Counter()).values())
-
-
 @dataclass
 class Compartment:
     """A compartment, its boxes, and the flow among them.

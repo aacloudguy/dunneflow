@@ -444,6 +444,81 @@ def test_every_route_reads_the_base_under_the_lock() -> None:
     )
 
 
+# The stores `_Live` holds open across requests, every one of them `shared=True` -- which
+# is `check_same_thread=False` and, in `sourcedb.py`'s own words, "a lock owed by the
+# caller". The base is not in here: it has its own guard above, which watches `current`.
+SHARED_SIDECARS = ("source", "docsource", "standards")
+
+
+def _lock_spans(fn: ast.FunctionDef) -> list[tuple[int, int]]:
+    """The line ranges of every `with self._live.lock` in one handler."""
+    spans = []
+    for node in ast.walk(fn):
+        if not isinstance(node, ast.With):
+            continue
+        for item in node.items:
+            if ast.unparse(item.context_expr).endswith("_live.lock"):
+                last = max((getattr(n, "lineno", node.lineno) for n in ast.walk(node)),
+                           default=node.lineno)
+                spans.append((node.lineno, last))
+    return spans
+
+
+def test_no_route_queries_a_shared_sidecar_outside_the_lock() -> None:
+    """The guard above watches the *attribute*; this one watches the *use*.
+
+    `_r_about` took `sidecar = self._live.source` inside the lock and called
+    `sidecar.revisions()` after the block closed. Both guards were blind to it: the one
+    above only looks at `current`, and it looks at where a store is *read* rather than
+    where it is *used*, so an alias carried past the `with` is invisible to it.
+
+    What that cost was a false sentence rather than a crash, which is why nothing noticed.
+    `ThreadingHTTPServer` ran `/api/about` and `/api/revisions` -- which the shell fires
+    back to back at boot -- over one connection at once; `revisions()` came back wrong, no
+    row matched the served revision, and the topbar printed *"no sidecar here to ask"* over
+    a map whose sidecar holds the tree name. A plausible answer that consumed its own
+    evidence (rule 49), and the one sentence on that control that must never be guessed.
+
+    Passing a store *into* something is not a use: `_r_source` and `_r_docsource` hand
+    `self._live.source` to `_span`, which takes the lock itself. Only a call **on** the
+    store is counted, which is the line between the defect and its two innocent neighbours.
+    """
+    cls = _handler_source()
+    outside = []
+    for fn in cls.body:
+        if not isinstance(fn, ast.FunctionDef):
+            continue
+
+        guarded = _lock_spans(fn)
+
+        # Locals bound from one of those stores, so an alias is followed rather than
+        # trusted -- the whole hiding place the defect used.
+        aliases: dict[str, str] = {}
+        for node in ast.walk(fn):
+            if isinstance(node, ast.Assign) and len(node.targets) == 1:
+                target, value = node.targets[0], ast.unparse(node.value)
+                if isinstance(target, ast.Name) and any(
+                        value.endswith(f"_live.{s}") for s in SHARED_SIDECARS):
+                    aliases[target.id] = value
+
+        for node in ast.walk(fn):
+            if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)):
+                continue
+            owner = node.func.value
+            named = (aliases.get(owner.id) if isinstance(owner, ast.Name)
+                     else ast.unparse(owner) if any(
+                         ast.unparse(owner).endswith(f"_live.{s}")
+                         for s in SHARED_SIDECARS) else None)
+            if named and not any(lo <= node.lineno <= hi for lo, hi in guarded):
+                outside.append(f"{fn.name}:{node.lineno} {named}.{node.func.attr}()")
+
+    assert not outside, (
+        f"a shared sidecar is queried outside the lock at {outside}. Every one of these "
+        "stores is opened `shared=True`, so two requests can reach one sqlite connection "
+        "at once -- and the answer comes back wrong rather than raising."
+    )
+
+
 def test_the_progress_never_waits_on_the_lock_the_rebuild_commits_under() -> None:
     """A poll that queued behind the rebuild would report nothing until there was nothing
     left to report -- which is the whole reason there are two locks."""

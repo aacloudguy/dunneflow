@@ -458,9 +458,11 @@ class DocStore:
             )
         ]
 
-    def attach_graph(self, graph_path: Path | str, alias: str = "code") -> None:
-        """Join the two corpora. The whole cost of keeping them apart, paid here."""
-        self.conn.execute(f"ATTACH DATABASE ? AS {alias}", (str(graph_path),))
+    # There was an `attach_graph()` here, and nothing ever called it. Every real join
+    # writes its own `ATTACH DATABASE` at the point of use -- `cli.py`, `web/changes.py`
+    # three times -- because each one wants a different alias and, in `changes.py`'s case,
+    # `mode=ro` in the URI. The module docstring's claim is unchanged and was never about
+    # this method: keeping the two corpora apart costs one `ATTACH`, wherever it is written.
 
     def optimize(self) -> None:
         self.conn.commit()

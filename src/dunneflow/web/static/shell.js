@@ -5976,7 +5976,17 @@ function viewChanges() {
       base <code>${rev(CHANGES.base)}</code> &middot;
       compared with <code>${rev(CHANGES.compared)}</code>
       &middot; ${esc(words.assumption)}
-      ${CHANGES.ms != null ? ` · compared in ${Number(CHANGES.ms).toLocaleString()} ms` : ""}
+      ${/* **How the number beside it was taken**, which rule 13 says a measurement has to
+            say to be checkable at all. The two paths differ by 36× (rule 58): a comparison
+            whose base *is* the served graph rides the connection this process already has
+            open, and any other pair opens a second read-only handle. Without this the
+            reader sees 448 ms one time and 8,855 ms the next with nothing on screen
+            accounting for it. Three states, not two — a map that predates the flag says
+            nothing rather than guessing which path it took. */""}
+      ${CHANGES.ms != null ? ` · compared in ${Number(CHANGES.ms).toLocaleString()} ms${
+        CHANGES.rode_serving_connection == null ? ""
+          : CHANGES.rode_serving_connection ? " on the connection already open here"
+                                            : " on a second handle to the store"}` : ""}
     </p>
 
     ${CHANGES.identical ? `<p class="chgsame">No differences found. Every routine, call,
@@ -6023,6 +6033,19 @@ function viewChanges() {
       ${c.routines_compared.toLocaleString()} in the compared.
       A rename reads as one of each — nothing in the source says the two are the same
       thing.</p>
+
+    ${/* The structure bands' own denominator, and its own sentence rather than a clause on
+          the one above (rule 32: a count says what it counts). Four of the tiles up there
+          count structures and every other tile counts routines — each carries
+          `statWhy: "structures, not routines"` to say so, and until this line the number
+          those four are a fraction *of* was computed on every comparison and thrown away.
+          It has to live here rather than on a tile, because a tile is drawn only when it
+          is non-zero and "0 of 671 structures" is exactly the case a denominator is for. */""}
+    <p class="hint" style="margin:.35rem 0 0">
+      ${c.structures_base.toLocaleString()} structures in the base,
+      ${c.structures_compared.toLocaleString()} in the compared — classes, dataclasses,
+      enums and type aliases, counted apart from routines because the four bands above
+      that name them are fractions of this number and not of that one.</p>
 
     ${Object.keys(pres).length ? `<ul class="chgpresence">
       ${presLine("db_tables", "Tables")}
@@ -6420,66 +6443,28 @@ function viewAnomalies() {
   </div>`;
 }
 
-/* The shape sets, and what each is *for*.
+/* **The shape sets were here, and they are withdrawn with the view that drew them.**
  *
- * The roster and the prose only. **The outlines themselves come from the engine** —
- * `Graph.silhouettes(set)` returns the very points the stack draws — because a key that
- * keeps its own copy of these shapes is a second answer to what a kind looks like, and the
- * two part company the day a shape moves (rule 13). The colour sets are built the same way,
- * reading their values back off the stylesheet.
+ * `SHAPE_SETS`, `SHAPE_KINDS` and a `shapeKeyHtml()` that drew each kind's outline as SVG
+ * all stood here, complete, with `.shapekey` CSS and a `data-shapeset` route in the wired
+ * roster — and no control was ever mounted, so `state.nodeShapes` could not be changed by
+ * anybody. That was not an oversight. Silhouettes are drawn by exactly one thing, the
+ * labelled-box overlay gated on `opts.diagram` in the engine, and `setDiagram` has had no
+ * caller since the overlay was withdrawn ("boxes at sunflower positions are not a
+ * diagram", below). A control mounted today would have changed nothing but its own key.
  *
- * `kind` is first and is the default: it is the set that spends the channel, and spending
- * it is what frees colour to go on saying what changed (design rule 4). */
-const SHAPE_SETS = [
-  { id: "kind",  name: "By kind",
-    why: "Five kinds, five outlines, and they are Mermaid's own vocabulary — a process box "
-       + "for a routine, a hexagon for a constant, a stadium for a boundary. Shape then "
-       + "carries what a thing is, and colour is free to carry what changed about it." },
-  { id: "rect",  name: "All rectangles",
-    why: "One outline for everything. The eye reads position and connection rather than "
-       + "sorting five silhouettes, and kind stays where it is now, on colour." },
-  { id: "round", name: "All rounded",
-    why: "The same, with soft corners. Quieter against a dense plate, and the corners are "
-       + "cut rather than curved so a box costs eight points instead of an arc." },
-];
-
-/* The kinds a box can be, in the order the key lists them, with what each one *is*.
+ * **What was kept, and where.** The engine still holds `SILHOUETTE`, `silhouette(k, set)`
+ * and `Graph.silhouettes(set)`, and `Graph.setOptions` still knows `nodeShapes` by name —
+ * the withdrawal note says the outlines are a correct component of the layered-layout view
+ * that has to replace the old one, so they wait there rather than being deleted twice.
+ * `state.nodeShapes` is still handed over at mount and still reads `'kind'`.
  *
- * `MODULE` is here because the module altitude folds a whole file into one node and that
- * node gets a box like any other — a key that listed five kinds and drew six would be the
- * silent omission design rule 1 exists to prevent, one altitude away. */
-const SHAPE_KINDS = [
-  ["ROUTINE",   "a thing that runs"],
-  ["STRUCTURE", "a shape data takes"],
-  ["CONSTANT",  "a name pinned to a value"],
-  ["BOUNDARY",  "where something leaves or arrives"],
-  ["ARTEFACT",  "a file the program names"],
-  ["MODULE",    "a whole file, at the module altitude"],
-];
-
-/* The key: every kind, in the outline the chosen set actually draws it in.
- *
- * SVG rather than a canvas, because these are six static shapes on a settings page and the
- * engine is not mounted when this renders — asking a WebGL view for a picture of itself in
- * order to illustrate a control would make the control depend on the view being open.
- * The *points* are still the engine's; only the drawing is local. */
-function shapeKeyHtml() {
-  const shapes = Graph.silhouettes(state.nodeShapes);
-  const W = 68, H = 26;
-  return SHAPE_KINDS.map(([kind, what]) => {
-    const pts = (shapes[kind] || []).map(([x, y]) =>
-      `${(W / 2 + x * (W / 2 - 1.5)).toFixed(1)},${(H / 2 + y * (H / 2 - 1.5)).toFixed(1)}`
-    ).join(" ");
-    return `<div class="shapekey">
-      <svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" aria-hidden="true">
-        <polygon points="${esc(pts)}" fill="none" stroke="var(--graph-${kind.toLowerCase()})"
-                 stroke-width="1.4"></polygon>
-      </svg>
-      <span class="shapekey-name">${esc(kind.toLowerCase())}</span>
-      <span class="shapekey-what muted">${esc(what)}</span>
-    </div>`;
-  }).join("");
-}
+ * **What to put back when that view lands**: this roster, the six kinds with what each one
+ * *is*, and a key that asks `Graph.silhouettes()` for its points rather than keeping a
+ * second copy of them (rule 13). Mount it on `paletteRow`'s pattern — a card column, since
+ * each set needs a sentence — and add the assertion the old tests never made: that
+ * something *calls* the key. Three tests guarded this feature and all three passed while
+ * nothing on the page could reach it (rule 37). */
 
 /* The colour sets, and what each is *for*.
  *
@@ -7864,7 +7849,22 @@ function viewAlgorithms() {
         <span class="num">${lane.population.toLocaleString()}</span> ${esc(lane.of)}
       </div>
       <p class="algo-blurb">${esc(lane.blurb)}
-        <span class="muted">Ordered by ${esc(lane.order)}.</span></p>
+        <span class="muted">Ordered by ${esc(lane.order)}.</span>
+        ${/* **Only on the lane it is a fact about.** `nested_rates` counts the rates that
+              sit inside another loop — one call per item, per item — and it is the figure
+              this lane exists to surface: 250 rates on Society, and 9 of them quadratic.
+              Deliberately *not* in the "measured and not listed here" paragraph below,
+              which is about points that are absent from every lane; these are listed, each
+              row saying "inside the loop at line N". A count of rows already on screen and
+              a count of rows withheld are different claims (rule 32), so they do not share
+              a sentence. `in_loop`, never `depth > 1`: depth counts every enclosing control
+              point, so a loop written inside an `if` has depth 2 and is nested in nothing —
+              the two answers on Society are 98 and 9. */""}
+        ${lane.key === "rates" && ALGOS.quiet && ALGOS.quiet.nested_rates
+          ? `<span class="muted"><b class="num">${
+               ALGOS.quiet.nested_rates.toLocaleString()}</b> of these run inside another
+             loop — a rate paid once per item, per item.</span>`
+          : ""}</p>
       ${/* What was measured and is not offered. On the page rather than per lane, because
             it is one claim about the whole judgement: these five lanes hold a twelfth of
             what was read, and the rest is stated rather than implied (design rule 1). */""}
@@ -12686,12 +12686,6 @@ function wire() {
     render();
   }));
 
-  /* The shape set, beside the colour set and named the same way: `data-shapeset` is a
-     route and nothing on the page is stamped with it, so the `data-nav` collision cannot
-     happen again here. The engine is told even when it is not mounted -- `setOptions`
-     returns early without a prepared payload and the value is handed over again at mount,
-     so a choice made from Settings before the graph has ever been opened is not lost
-     (rule 68: a restore is a setter and must do what the setter does). */
   /* worklist */
   /* ALGORITHMS' lane tabs. Beside `data-sev` because they are the same control one page
      over: a tab that names which measurement is on screen. No `disabled` on an empty one
@@ -13321,10 +13315,6 @@ const WIRED_ATTRS = new Set([
      complete list showing rather than its first six. `presgroup` carries the band and the
      side it names, never a position among the three groups on a line (rule 30). */
   "changeband", "presgroup",
-  /* The shape set, beside `palette-set` and `theme-set`. A route only: nothing on the page
-     is stamped `data-shapeset`, which is what keeps it clear of the `data-nav` collision
-     those two are named to avoid. */
-  "shapeset",
   /* The compartment diagram's own controls. `dgm` is the fit button; the compartment picker
      is an id and the boxes are routed by Graphviz's own `g.node` class and the `id=` the
      server put on each one, which is the box id -- so a click resolves to a thing this
@@ -17027,7 +17017,12 @@ const PERSISTED = [
   "diskOrder", "diskColors", "colorBy", "sortMode", "filterMode", "direction",
   "level", "minDisk",
   "nodeSize", "spreadX", "spreadY", "spreadZ", "plateSize", "collapseUnused",
-  "diagram", "nodeShapes", "diagramId", "diagramPorts", "diagramCursor", "diagramEdgeWidth",
+  /* `nodeShapes` was in this list and is not, because nothing can change it: the control
+     was withdrawn with the box overlay that drew silhouettes. Persisting a value only ever
+     equal to its default writes a key that can only ever be restored to what it already
+     was — and, worse, the reset dialog then names a setting the reader was never offered.
+     `state.nodeShapes` stays where it is and is still handed to the engine at mount. */
+  "diagram", "diagramId", "diagramPorts", "diagramCursor", "diagramEdgeWidth",
   "navCase", "navWord", "navRegex",
   "searchCase", "searchWord", "searchRegex",
   "panels", "inspectorAuto", "navWidth", "codeWidth", "codeFile", "codeOverlay", "codeProv", "codeMarks", "codeRailList",

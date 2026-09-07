@@ -3163,17 +3163,12 @@ kbd { font-family: var(--f-mono); font-size: .66rem; background: var(--sunken);
   stroke-width: calc(var(--dgm-edge-width, 1) + 1.5); }
 .dgm-pan g.edge:hover polygon { fill: var(--accent); stroke: var(--accent); }
 
-/* The shape key: every kind in the outline the chosen set actually draws it in.
-   A grid rather than a flow, so the six names line up and the eye compares outlines down
-   a column instead of hunting them along a line. Every dimension in rem (design rule 3) --
-   the SVG's own width and height are the one exception, because an SVG viewBox is a
-   coordinate space and not a page dimension, and the box scales with the column. */
-.shapekeys { display: grid; grid-template-columns: auto auto 1fr; gap: .3rem .6rem;
-             align-items: center; margin-top: .7rem; }
-.shapekey { display: contents; }
-.shapekey svg { display: block; width: 4.25rem; height: 1.625rem; }
-.shapekey-name { font-family: var(--f-mono); font-size: .72rem; }
-.shapekey-what { font-size: .72rem; }
+/* The shape key's five rules stood here and are withdrawn with the key, which was withdrawn
+   with the box overlay that drew silhouettes at all -- see `shell.js`, where the roster and
+   the renderer were. A grid rather than a flow, so the six names lined up and the eye
+   compared outlines down a column; every dimension in rem except the SVG's own width and
+   height, because a viewBox is a coordinate space and not a page dimension. Worth putting
+   back exactly that way when the layered-layout view brings the boxes back. */
 .pal-detail summary { font-size: .72rem; color: var(--text-muted); cursor: pointer; }
 .pal-table { width: 100%; border-collapse: collapse; margin: .4rem 0; font-size: .7rem; }
 .pal-table th { text-align: left; font-weight: 600; color: var(--text-faint);

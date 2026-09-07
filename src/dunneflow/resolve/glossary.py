@@ -123,10 +123,6 @@ def _candidate_terms(store: Store) -> dict[str, Term]:
     return terms
 
 
-def _split_camel(name: str) -> str:
-    return re.sub(r"(?<=[a-z0-9])(?=[A-Z])", " ", name)
-
-
 def bind(store: Store, docs: DocStore | None) -> GlossaryReport:
     """Every candidate term, with whatever the program itself says it means."""
     terms = _candidate_terms(store)

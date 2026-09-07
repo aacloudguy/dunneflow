@@ -2012,17 +2012,29 @@ class _Handler(BaseHTTPRequestHandler):
             docs = base.docs.counts() if base.docs is not None else None
             source_revision = base.source_revision
             out_name = self._live.out_dir.name
-            sidecar = self._live.source
 
-        # The leaf of the tree this snapshot was read from -- a name, never a path (rule
-        # 60). Only the sidecar knows it, and a map handed over without one simply cannot
-        # say, which is a different answer from a map read from a tree with no name.
-        tree = None
-        if sidecar is not None and source_revision is not None:
-            for row in sidecar.revisions():
-                if row.get("revision") == source_revision:
-                    tree = str(row.get("tree") or "")
-                    break
+            # The leaf of the tree this snapshot was read from -- a name, never a path
+            # (rule 60). Only the sidecar knows it, and a map handed over without one
+            # simply cannot say, which is a different answer from a map read from a tree
+            # with no name.
+            #
+            # **Read under the lock, and that placement is the fix rather than tidiness.**
+            # The sidecar is opened `shared=True`, which is `check_same_thread=False` and
+            # a lock owed by the caller (`sourcedb.py`). This held the store *outside* the
+            # block and called `revisions()` there, so `/api/about` and `/api/revisions` --
+            # which the shell fires back to back at boot -- read one connection at once.
+            # The rows came back wrong, no row matched, and the topbar stated *"no sidecar
+            # here to ask"* over a map whose sidecar holds the name: rule 49 exactly, a
+            # plausible answer that consumed the evidence on its way past. Measured before
+            # the move: 0 of 30 serial reads wrong, 2 of 60 concurrent ones, and one
+            # connection dropped. `_r_revisions` asks the same question the right way.
+            sidecar = self._live.source
+            tree = None
+            if sidecar is not None and source_revision is not None:
+                for row in sidecar.revisions():
+                    if row.get("revision") == source_revision:
+                        tree = str(row.get("tree") or "")
+                        break
 
         # What a value meaning *nothing* looks like in the store. Two spellings because two
         # fields chose differently and both are right where they are: `inference` says

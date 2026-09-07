@@ -119,22 +119,14 @@ class GraphModel:
     # rule 32's defect one layer down -- a number beside it that measures nothing.
     level: str = "routine"
 
-    def to_json(self) -> dict[str, Any]:
-        return {
-            "level": self.level,
-            "nodes": [
-                {"id": n.id, "label": n.label, "kind": n.kind, "disk": n.disk, **n.detail}
-                for n in self.nodes
-            ],
-            "edges": [
-                {"src": e.src, "dst": e.dst, "disk": e.disk, "kind": e.kind,
-                 "weight": e.weight, "confidence": e.confidence}
-                for e in self.edges
-            ],
-            "shadows": [{"node": s.node_id, "disk": s.disk} for s in self.shadows],
-            "disks": self.disks,
-            "stats": self.stats,
-        }
+    # **This model has one serialiser and it lives in `serve.py`.** A `to_json()` here
+    # went with it for a while and nothing ever called it: `/api/graph` serves
+    # `columnar(build(...))`, which is a different payload -- columnar rather than row,
+    # edges as *indices* into the node arrays rather than ids, and carrying the positions,
+    # the `real`/`shadow` flags and `edges_unplaced` that a page needs to draw anything.
+    # Two serialisers of one model is rule 51 waiting to be paid: the unused one is what
+    # the next caller reaches for, and it hands back a payload the page cannot draw with
+    # no error anywhere, because both are valid JSON.
 
 
 def root_package(store: Store) -> str:

@@ -1046,18 +1046,6 @@ class Store:
             ))
         return out
 
-    def boundaries_of(self, routine_id: str) -> list[BoundaryHit]:
-        return [
-            BoundaryHit(
-                routine_id=r["routine_id"], kind=BoundaryKind(r["kind"]),
-                direction=Direction(r["direction"]), target=r["target"], line=r["line"],
-                evidence=r["evidence"], salience=r["salience"],
-            )
-            for r in self.conn.execute(
-                "SELECT * FROM boundaries WHERE routine_id = ? ORDER BY line", (routine_id,)
-            )
-        ]
-
     # -- orientation queries ----------------------------------------------- #
     #
     # Recursive SQL over indexed edges. These are the three questions the tool

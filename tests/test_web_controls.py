@@ -253,7 +253,7 @@ def test_hidden_actually_hides() -> None:
 # cannot be evaded that way.
 PER_PROGRAM = ["ENTRYPOINTS", "BOUNDARIES", "PKGS", "TABLES", "ROUTINES",
                "ANOMALIES", "TERMS", "UNDEFINED", "CONVENTIONS", "VOCAB", "MANIFEST",
-               "CURIOSITIES", "THREADS"]
+               "CURIOSITIES", "THREADS", "SHAPELANES"]
 # `PROVENANCE` was here and is gone rather than renamed: it held every source span of every
 # glossary citation, and the viewer fetches one span from `/api/source` when a citation is
 # opened. This list is the record that it left deliberately -- the guard above fails on a
@@ -419,6 +419,42 @@ def test_the_narrow_layout_actually_hides_what_it_hides() -> None:
 
 
 # -------------------------------------------------------------- a real subject --- #
+
+def test_a_row_on_a_page_of_its_own_names_the_step_it_files() -> None:
+    """One pointer click on an ALGORITHMS row filed **two** trail steps.
+
+    `selectFromNav` sets the view and then awaits the node, so a step filed by the
+    dispatcher *after* the route lands on the subject being **left** -- which on a page
+    of its own is nothing at all, so `sameSelection` cannot collapse it against the step
+    the move files a moment later. Both carried the routine's name and only one of them
+    went anywhere: rule 33's fourth variant, arriving through the surface built to avoid
+    it, and it renders perfectly either way.
+
+    The rule, asserted rather than the symptom: a route that cannot have its subject when
+    the dispatcher would name a step **declares itself** in `NAV_NAMES_ITSELF` and passes
+    its own name to `selectFromNav`. Both halves, because either alone passes while the
+    feature is broken -- a declared route that passes no name files a step called nothing,
+    and a name passed by a route the dispatcher also names files two.
+    """
+    js = _read("shell.js")
+    named = js.split("const NAV_NAMES_ITSELF = new Set(", 1)[1].split(")", 1)[0]
+    assert '"shaperow"' in named, (
+        "the ALGORITHMS row does not declare that it names its own step, so the "
+        "dispatcher names a second one against the subject being left"
+    )
+    routes = js.split("const NAV_ROUTES = {", 1)[1].split("\n};", 1)[0]
+    m = re.search(r"shaperow:\s*\(b\)\s*=>\s*\{(.*?)\n  \},", routes, re.S)
+    assert m, "the shaperow route is gone -- if it was renamed, rename it here too"
+    assert "selectFromNav" in m.group(1) and "label:" in m.group(1), (
+        "the shaperow route files a move without naming it, so its step is nameless"
+    )
+    # ...and the row hands it something to name the step with. `data-label` rather than the
+    # row's text, which is four lines: the first version filed a step called
+    # `HANDLER enque...h = ? +3 more`.
+    row = js.split("function shapeRow(r) {", 1)[1].split("\n}", 1)[0]
+    for attr in ("data-nav=\"shaperow\"", "data-label=", "data-stepnote="):
+        assert attr in row, f"an ALGORITHMS row no longer carries {attr}"
+
 
 def test_every_subject_setting_nav_item_carries_a_subject() -> None:
     """A label is not an identity.

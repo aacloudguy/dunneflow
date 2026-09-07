@@ -307,7 +307,7 @@ def _judge_loop(point: Point) -> None:
         # enclosing control point: 104 of Society's 261 boundary loops sit at a depth
         # above 1, and **10** of them are inside another loop. The first number reads as
         # the second and is not it.
-        nested = " -- and it is inside another loop" if point.in_loop else ""
+        nested = " \u2014 and it is inside another loop" if point.in_loop else ""
         point.why = f"something moves inside this loop, {per}{nested}"
     elif point.calls:
         point.why = (f"calls {point.calls} routine{'s' if point.calls != 1 else ''} of this"
@@ -329,7 +329,14 @@ def _judge_decision(point: Point) -> None:
                      f" {moving} of them move something and the rest do not")
     elif point.arms_declared >= 3:
         point.significant = True
-        point.why = f"{point.arms_declared} ways out of one decision"
+        # How many of them act, in the same sentence. A ladder is here on its shape, and
+        # a reader's next question is always which way out does anything -- asked of the
+        # arms, and answered in the one place that has them (rule 51), rather than by a
+        # second line on the page saying the same thing in other words (rule 41).
+        moving = sum(1 for a in point.arms if a.moves)
+        acts = (f", and {moving} of them move something" if moving
+                else ", and none of them moves anything")
+        point.why = f"{point.arms_declared} ways out of one decision{acts}"
     elif point.moves:
         point.why = "every way out of it moves the same things"
     elif point.calls:
@@ -349,7 +356,7 @@ def _judge_handler(point: Point) -> None:
     if point.recovers:
         point.significant = True
         n = sum(len(a.moves) for a in point.arms if a.kind in RECOVERY_ARMS)
-        point.why = (f"something moves while recovering from a failure --"
+        point.why = (f"something moves while recovering from a failure \u2014"
                      f" {n} of them, on a path the happy case never takes")
     elif point.moves:
         point.why = "it guards something that moves, and its handlers move nothing"

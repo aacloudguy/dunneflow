@@ -59,6 +59,7 @@ from .graph import (
 from .layout import structural
 from .related import documents_for as related_documents
 from .search import search_files, search_in_file
+from .shape import for_program as shape_for_program
 from .threads import cohort, for_node
 from .vocabulary import (
     bind_glossary,
@@ -373,6 +374,11 @@ class _Base:
     # reading loop; this is a page a session either opens or never does, and 108 ms warm
     # behind the click that asked for it is the right way round (rule 45).
     curiosities: dict[str, Any] = field(default_factory=dict)
+    # The loops and decisions worth reading, on the same bargain as the curiosities
+    # above: one pass over this version's graph, paid on the first ask and thrown away
+    # with the base. 96 ms warm on Mensores for the judgement over 9,625 control points,
+    # and a cold first ask is the external volume rather than the work (rule 24).
+    shape: dict[str, Any] = field(default_factory=dict)
 
 
 # What building a base costs, in the order it is paid, so a reader watching a switch is
@@ -663,7 +669,7 @@ class _Live:
                       # the index is derived from the compartments, so a base carrying one
                       # without the other would place this version's crossings in the last
                       # version's boxes.
-                      compartments={}, box_of={}, box_label={}, curiosities={})
+                      compartments={}, box_of={}, box_label={}, curiosities={}, shape={})
         with self.lock:
             outgoing = self.current
             self.current = fresh
@@ -1640,6 +1646,23 @@ class _Handler(BaseHTTPRequestHandler):
             body = base.curiosities
         self._json(body)
 
+    def _r_shape(self, q: dict[str, list[str]]) -> None:
+        """ALGORITHMS: the loops and decisions this program is worth reading for.
+
+        Held on the base and computed on the first ask, for `_r_curiosities`' reason and
+        with the same arithmetic behind it: a session either opens this page or never
+        does, and 96 ms behind the click that asked for it is the right way round
+        (rule 45).
+        """
+        with self._live.lock:
+            base = self._live.current
+            if not base.shape:
+                # Filled in place rather than reassigned: `_Base` is frozen so a switch
+                # replaces every field together, and this has to go with it.
+                base.shape.update(shape_for_program(base.store))
+            body = base.shape
+        self._json(body)
+
     def _r_naming(self, q: dict[str, list[str]]) -> None:
         """The Form lane: what this program does about names, counted."""
         with self._live.lock:
@@ -2598,6 +2621,7 @@ class _Handler(BaseHTTPRequestHandler):
         "/api/node": "_r_node",
         "/api/hover": "_r_hover",
         "/api/curiosities": "_r_curiosities",
+        "/api/shape": "_r_shape",
         "/api/threads": "_r_threads",
         "/api/thread": "_r_thread",
         "/api/naming": "_r_naming",

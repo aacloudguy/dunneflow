@@ -62,6 +62,11 @@ let SPECIMEN = null;
    graph.db, and every one is a doorway rather than a statistic. */
 let CURIOSITIES = [];   // what came out furthest from the middle -- served, not pinned
 
+/* ALGORITHMS: the loops and decisions this program is worth reading for, in five lanes
+   with their populations. Served, never pinned -- and empty is the honest resting state,
+   because a lane count invented here would be a claim about a program nobody has read. */
+let SHAPELANES = [];
+
 /* What sits next to the thing you are looking at. Not the call graph \u2014 the reasons
    something else might be worth a detour. */
 /* Threads to pull, per node, served -- not pinned.
@@ -433,6 +438,10 @@ const state = {
      finding the moment one moves -- which is the defect the settings version bump to 5 was
      paid for, one surface over. */
   wlOpen: "",
+  /* Which of the five ALGORITHMS lanes is on screen. **Not persisted**, for `wlOpen`'s
+     reason: it is where the reader is, not what they arranged, and that is the line
+     `PERSISTED` is drawn on. */
+  shapeLane: "rates",
   coverBars: true,        // the cover's proportion bars, or the space they take
   rowTagsWrap: false,     // a way-in row drops its tags below a name that will not fit
   coverWhatWrap: false,   // the evidence line wraps instead of ending in an ellipsis
@@ -938,6 +947,33 @@ const NAV_ROUTES = {
   checked:     () => { state.view = "checked"; },
   inference:   () => { state.view = "inference"; },
   curiosities: () => { state.view = "curiosities"; },
+  /* The lane travels on the row as an identity, exactly as the severity does on an
+     anomaly row: five rows that differ only by the label they print would be five
+     controls doing one thing (rule 30). `loadShape()` is not called here -- `render()`
+     asks, once, for whichever view is about to be painted, so the page works from the
+     navigator, the breadcrumb and the trail alike. */
+  shape:       (b) => {
+    state.view = "shape";
+    if (b && b.dataset.navid) state.shapeLane = b.dataset.navid;
+    used("shape");
+  },
+  /* A row of the ALGORITHMS list, and it names the step the move will file.
+   *
+   * It was `routine`, which files nothing of its own and leaves the dispatcher to name a
+   * step after the move -- and that filed **two**, measured on screen with the trail
+   * cleared and one pointer click. `selectFromNav` sets the view and then *awaits* the
+   * node before the subject is really there, so the dispatcher's step lands on the subject
+   * being **left** -- which on this page is nothing at all, so `sameSelection` cannot
+   * collapse it against the step the move makes a moment later. Both carried the routine's
+   * name and only one of them went anywhere: rule 33's fourth variant, arriving through
+   * the surface built to avoid it.
+   *
+   * The note is the row's own sentence, so a reader who wandered off can read *why* they
+   * came this way rather than only where they went. */
+  shaperow:    (b) => {
+    selectFromNav({ nodes: navIds(b) },
+                  { label: b.dataset.label || "", note: b.dataset.stepnote || "" });
+  },
   pins:        () => { state.view = "pins"; },
   a:           (b) => {
     state.view = "anomalies";
@@ -3149,8 +3185,15 @@ const NAV_SELECTOR = "[data-nav]";
  * table before setting anything, so the dispatcher's step would carry the subject the reader
  * is *leaving* under the table's name, and the real step would arrive from `selectFromNav`
  * named after whichever routine sorted first. One entry today; a second route that fetches
- * before it selects belongs here rather than in a new mechanism. */
-const NAV_NAMES_ITSELF = new Set(["t"]);
+ * before it selects belongs here rather than in a new mechanism.
+ *
+ * `shaperow` is the second, and it is here for the same failure reached from the other
+ * side: it is clicked **from a page of its own**, so the subject being left is usually
+ * nothing at all, and a step filed against that cannot be deduplicated against the step
+ * the move files a moment later. One pointer click, trail cleared, filed two steps with
+ * one name between them. The rule that covers both: a route that fetches before its
+ * subject exists names its own step. */
+const NAV_NAMES_ITSELF = new Set(["t", "shaperow"]);
 
 document.addEventListener("click", (ev) => {
   const b = ev.target.closest(NAV_SELECTOR);
@@ -7334,6 +7377,7 @@ const OFF_MODE_PAGE = {
   stated: "the stated naming rules", checked: "the rules checked",
   wayin: "this way in",
   curiosities: "the doorway panel", pins: "what you have kept",
+  shape: "the loops and decisions",
   inference: "the inference settings", settings: "Settings",
 };
 
@@ -7765,6 +7809,175 @@ function ghostRows(ov, after, cls) {
     });
   }
   return out;
+}
+
+/* ═══ ALGORITHMS: the loops and decisions worth reading ═══
+ *
+ * The fifth doorway, and the amendment `CLAUDE.md` makes in exactly one place: **a loop
+ * or a decision is a subject only where something moves inside it.** The judgement is
+ * `resolve/shape.py`'s and is made once, on the server (rule 51); this page arranges it
+ * and says what it left out.
+ *
+ * The worklist's shape, and for its reason: a fixed head over a scrolling body, so the
+ * lane a reader is in and the denominator it is being read against stay on screen at any
+ * scroll position. Arriving mid-list is how this reader arrives.
+ */
+function viewShape() {
+  const waiting = laneState(SHAPES, "lane", "error", "the loops and decisions");
+  if (waiting) return `<div style="max-width:64rem">${waiting}</div>`;
+
+  const lane = SHAPELANES.find(l => l.key === state.shapeLane) || SHAPELANES[0];
+  if (!lane) {
+    return `<div class="note"><b>Nothing was measured.</b> This map holds no loops and no
+      decisions at all, which is an answer rather than an empty page waiting to fill.</div>`;
+  }
+  const q = SHAPES.quiet || {};
+
+  const tab = (l) => `
+    <button role="tab" data-shapelane="${esc(l.key)}" aria-selected="${l.key === lane.key}">
+      ${esc(l.title)}<span class="tabn num">${l.n.toLocaleString()}</span>
+    </button>`;
+
+  /* Design rule 21, and it says the **measurement** rather than repeating the lane's own
+     sentence -- which it did, so an empty lane printed its blurb twice, once as a heading
+     and once as an explanation of why there was nothing under it. What a reader needs
+     here is the denominator: this was looked for, over this many things, and not found. */
+  const empty = `<div class="note"><b>None in this program.</b>
+    ${lane.population.toLocaleString()} ${esc(lane.of)} were measured and not one of them
+    is ${esc(lane.title.toLowerCase())} — a fact about the program, not a gap in the
+    page.</div>`;
+
+  return `
+  <div class="worklist shp">
+    <div class="wl-head">
+      <div class="seg tabs" role="tablist" aria-label="What to look at">
+        ${SHAPELANES.map(tab).join("")}
+      </div>
+      <div class="shp-of">
+        <b class="num">${lane.n.toLocaleString()}</b> of
+        <span class="num">${lane.population.toLocaleString()}</span> ${esc(lane.of)}
+      </div>
+      <p class="shp-blurb">${esc(lane.blurb)}
+        <span class="muted">Ordered by ${esc(lane.order)}.</span></p>
+      ${/* What was measured and is not offered. On the page rather than per lane, because
+            it is one claim about the whole judgement: these five lanes hold a twelfth of
+            what was read, and the rest is stated rather than implied (design rule 1). */""}
+      <p class="shp-quiet">Measured and not listed here:
+        <b class="num">${(q.still_loops || 0).toLocaleString()}</b> loops that move nothing,
+        <b class="num">${(q.calling_loops || 0).toLocaleString()}</b> that call something of
+        this program and move nothing themselves,
+        <b class="num">${(q.alike_decisions || 0).toLocaleString()}</b> decisions whose arms
+        move alike, <b class="num">${(q.guarded_handlers || 0).toLocaleString()}</b> handlers
+        that guard something and recover quietly, and
+        <b class="num">${(q.guards || 0).toLocaleString()}</b> refusals — a guard is read in
+        the routine it stands at the top of, never in a list of its own.</p>
+    </div>
+
+    <div class="wl-body shp-body">
+      ${lane.rows.length ? `<ol class="shp-list" aria-label="${esc(lane.title)}">
+        ${lane.rows.map(shapeRow).join("")}
+      </ol>` : empty}
+    </div>
+  </div>`;
+}
+
+/* One row, and it opens the routine it is written in.
+ *
+ * `data-nav="routine"` with the routine's own node id: a span is not a node in the graph,
+ * and minting one so the row could be clicked would be a link to nothing (`DOC_DB_TABLES`'
+ * argument, one subject over). The point's id rides along in `data-point` for the surfaces
+ * that will select the span itself, so there is never a second id space for one fact.
+ */
+/* A header **as written** is written across lines as often as not: a `for` whose iterable
+ * is a wrapped `conn.execute(...)` arrives with its newlines and its indentation intact,
+ * because that is what rule 75 stores. One line of a row cannot hold that, so the
+ * whitespace is collapsed for the *display* and the whole of it is on the hover -- the
+ * string in the store is untouched, which is what the reader will go looking for.
+ *
+ * `shorten()` returns `{text, cut}`, so this is also the one place that unwraps it. */
+function fit(text, budget) {
+  return shorten(String(text || "").replace(/\s+/g, " ").trim(), budget).text;
+}
+
+/* The row's quoted line: what this point is *about*, as written.
+ *
+ * A loop and a decision have a header -- the iterable, the test -- and a `try` has none,
+ * deliberately: what a `try` is about is the block it guards, and quoting forty lines as a
+ * heading would be a header that is the body. So the handler rows printed a bare em dash,
+ * which reads as a fact that went missing rather than as one that does not exist.
+ *
+ * What a handler *does* have is its `except` clauses, and in this lane they are the whole
+ * question: which failure is being recovered from, and which recovery acts. They come off
+ * the arms -- the fact recorded for exactly this -- and the ones that move something are
+ * marked, so the row says *`except OSError` writes* without a second sentence to say it.
+ * A bare `except:` catches everything and has nothing to quote, so it says nothing rather
+ * than an empty pair of marks. */
+function headline(r) {
+  if (r.header) {
+    return `<span class="shp-l2 mono" title="${esc(r.header)}"
+              >${esc(fit(r.header, 90))}</span>`;
+  }
+  const caught = r.arm_moves.filter(a => a.kind === "except");
+  if (!caught.length) return "";
+  return `<span class="shp-l2 mono">${caught.map(a => `<span class="shp-catch${
+    a.n ? " shp-acts" : ""}" title="line ${a.line}${a.n ? " — moves something" : ""}"
+    >${esc(fit(a.header, 40)) || "except"}</span>`).join(" ")}</span>`;
+}
+
+/* **`data-label` is why the trail step reads `enqueue` and not the whole row**, and
+ * `data-stepnote` is why it also says what was interesting about it.
+ *
+ * A step is named from the control that was clicked, and a navigator row's text *is* its
+ * name -- one of these rows is four lines, so the first version filed a step called
+ * `HANDLER enque…h = ? +3 more`. Both are declared here rather than scraped from the
+ * markup below (rule 30), and both are read by `shaperow`, which is the route that files
+ * the step; see `NAV_NAMES_ITSELF`. */
+function shapeRow(r) {
+  /* A boundary detector records no target for a great many touches -- an unnamed path, a
+     `print`, a call whose destination is a variable -- and three chips reading `FILE` with
+     nothing after them look like three copies of one fact. The line is what tells them
+     apart, and it is a fact rather than a guess at the name. */
+  const moves = r.moves.map(m => `<span class="shp-move" title="line ${m.line}${
+      m.what ? " \u00b7 " + esc(m.what) : ""}">
+      <span class="kind-tag">${esc(m.kind)}</span>${m.what ? esc(fit(m.what, 42))
+        : `<span class="shp-atline">:${m.line}</span>`}
+    </span>`).join("");
+  /* Rule 32 and rule 8 in one line: the chips are a line length, the count is the whole
+     number, and the row is here whatever it holds. */
+  const more = r.n_moves > r.moves.length
+    ? `<span class="shp-more num">+${r.n_moves - r.moves.length} more</span>` : "";
+  /* **The line, then the header as written -- never a sentence built round it.** This read
+     `inside ${header}`, and Society's commonest enclosing loop is `while True:`, so ten of
+     the rows this lane exists for said *"inside True"*. The store records a loop's test or
+     its iterable and **not the word that opened it**, so any prose here would be inventing
+     one: "inside the loop over True" is false for a `while`, and "inside True" is not a
+     sentence at all. The line number says which loop, exactly, and the code marks say the
+     rest is a quotation (rule 30 -- a label is not an identity). */
+  const inside = r.inside
+    ? `<span class="shp-inside">inside the loop at line ${r.inside.line}
+        <code>${esc(fit(r.inside.header, 30))}</code></span>` : "";
+  /* **The arms are not counted again here**, and they were. `why` already says how many
+     ways out there are and how many of them act -- worded on the server, where the
+     numbers' meaning is known -- so a second line reading `2 of 3 ways out move
+     something` was one question answered twice, in two wordings that would drift the
+     first time either moved (rule 41). The arms travel on the row for the surfaces that
+     will draw them one by one; nothing on this list re-states them. */
+  return `<li>
+    <button class="shp-row" data-nav="shaperow" data-navid="${esc(r.node)}"
+            data-point="${esc(r.point)}" data-label="${esc(r.routine)}"
+            data-stepnote="${esc(r.why)}">
+      <span class="shp-tag kind-tag">${esc(r.kind)}</span>
+      <span class="shp-lines">
+        <span class="shp-l1">
+          <span class="shp-name mono">${esc(r.routine)}</span>
+          <span class="shp-where mono" title="${esc(r.qualname)}">${esc(r.where)}</span>
+          ${inside}
+        </span>
+        ${headline(r)}
+        <span class="shp-l3">${esc(r.why)}</span>
+        <span class="shp-l4">${moves}${more}</span>
+      </span>
+    </button></li>`;
 }
 
 function viewCuriosities() {
@@ -8912,6 +9125,39 @@ async function loadCuriosities() {
   } catch (err) {
     CURIOS.lane = "failed";
     CURIOS.error = err.message;
+  }
+}
+
+/* ALGORITHMS' own bag, on the curiosities' pattern and for the same reason: a shared
+ * renderer is one truth, a shared bag is one pane keeping another's flag. */
+const SHAPES = {};
+
+/* The loops and decisions worth reading, asked for once. Idempotent the same way the
+ * others are -- the lane is set before the first await, so the repaint this triggers on
+ * arrival does not start a second request. */
+async function loadShape() {
+  if (SHAPES.lane) return;
+  SHAPES.lane = "loading";
+  try {
+    const r = await fetch("/api/shape");
+    if (!r.ok) throw new Error(`the server answered ${r.status}`);
+    const d = await r.json();
+    SHAPELANES = d.lanes || [];
+    SHAPES.quiet = d.quiet || {};
+    SHAPES.points = d.points || 0;
+    SHAPES.lane = "ready";
+  } catch (err) {
+    SHAPES.lane = "failed";
+    SHAPES.error = err.message;
+  }
+}
+
+/* `buildNav()` as well as `render()`, for `ensureCuriosities`' reason: the counts beside
+   the five lane rows come from this answer, and `render()` does not rebuild the navigator
+   -- so the page would fill while the rows it was reached from went on saying nothing. */
+function ensureShape() {
+  if (state.view === "shape" && !SHAPES.lane) {
+    loadShape().then(() => { buildNav(); render(); });
   }
 }
 
@@ -11048,6 +11294,12 @@ function crumbsFor() {
       : [{ label: "ways in" }, { label: state.wayIn || "a way in", cur: true }],
     inference:   [{ label: "inference", cur: true }],
     curiosities: [{ label: "explore" }, { label: "worth a look", cur: true }],
+    /* Two deep, and the second names the *lane* rather than the page: five lanes are
+       five subjects, and a crumb reading "algorithms" from all of them would name the
+       door instead of the room (rule 24 in the breadcrumb). */
+    shape:       [{ label: "algorithms" },
+                  { label: (SHAPELANES.find(l => l.key === state.shapeLane) || {}).title
+                           || state.shapeLane, cur: true }],
     pins:        [{ label: "explore" }, { label: "kept", cur: true }],
     settings:    [{ label: "settings", cur: true }],
   }[state.view] || [];
@@ -11260,6 +11512,7 @@ function render() {
   else if (state.view === "wayin")     vp.innerHTML = viewWayIn();
   else if (state.view === "inference") vp.innerHTML = viewInference();
   else if (state.view === "curiosities") { ensureCuriosities(); vp.innerHTML = viewCuriosities(); }
+  else if (state.view === "shape")      { ensureShape(); vp.innerHTML = viewShape(); }
   else if (state.view === "pins")       vp.innerHTML = viewPins();
   else if (state.view === "settings")  {
     vp.innerHTML = viewSettings();
@@ -11802,6 +12055,13 @@ function wire() {
      so a choice made from Settings before the graph has ever been opened is not lost
      (rule 68: a restore is a setter and must do what the setter does). */
   /* worklist */
+  /* ALGORITHMS' lane tabs. Beside `data-sev` because they are the same control one page
+     over: a tab that names which measurement is on screen. No `disabled` on an empty one
+     -- a lane with nothing in it has a sentence to say, and design rule 29 is exactly
+     this: a control that cannot be reached cannot say why it is quiet. */
+  $$("[data-shapelane]").forEach(b => b.addEventListener("click", () => {
+    state.shapeLane = b.dataset.shapelane; render();
+  }));
   $$("[data-sev]").forEach(b => b.addEventListener("click", () => {
     if (b.disabled) return;
     state.sev = b.dataset.sev; state.cursor = 0; render();
@@ -12353,6 +12613,11 @@ const WIRED_ATTRS = new Set([
      `anoonlythere` unfolds the findings only the compared version has, which are counted
      but never listed among this version's own (design rule 1, rule 32). */
   "anomalyoverlay", "anoonlythere",
+  /* ALGORITHMS: the lane tabs, and the point id every row carries. `point` routes nothing
+     yet -- it is the identity of the span itself, ridden along so the surfaces that select
+     a loop do not mint a second id for it -- and it is in the roster because the roster is
+     every attribute the shell writes (rule 30). */
+  "shapelane", "point", "stepnote",
   /* The version strip's one control: which version the reader assumes is newer. It is on
      the strip rather than in Settings because it decides what every red row means, and a
      colour a reader cannot account for is worse than no colour. */
@@ -14638,6 +14903,36 @@ const NAV_GROUPS = [
       { nav: "naming",   label: "Derived naming standard", n: vocabCount("conventions") },
       { nav: "inference", label: "Inference",      n: "off", id: "navEgress" },
     ] },
+  /* ALGORITHMS: the fifth doorway, and the one Tom asked for by name -- *"a view of
+     significant loops and decision trees… algorithms are FLOW, that's our namesake"*.
+     Five rows, one per lane, each carrying the lane as its identity.
+
+     The counts are blank until the page has been opened, for the reason *Worth a look*
+     states beside its own: "" and 0 are different claims, and a 0 here would say this
+     program has no loop that reaches a boundary -- a measurement nobody has taken yet.
+     A lane whose population really is zero says so *on the page*, where there is room
+     for the sentence (design rule 21). */
+  { id: "navShape", title: "Algorithms", open: false,
+    count: () => (SHAPES.lane === "ready"
+      ? SHAPELANES.reduce((n, l) => n + l.n, 0) : ""),
+    onOpen: () => { if (!SHAPES.lane) loadShape().then(() => { buildNav(); render(); }); },
+    note: () => {
+      if (SHAPES.lane === "failed") return esc(SHAPES.error || "could not be read");
+      if (SHAPES.lane === "loading") return "reading the loops and decisions…";
+      if (SHAPES.lane !== "ready") return "loops and decisions — open one";
+      const q = SHAPES.quiet || {};
+      /* The denominator, in the one place a reader meets these lanes first. Four lanes
+         holding 803 of 9,625 points is a claim about the other 8,822, and the two
+         numbers that make it credible are the quiet ones. */
+      return `${(SHAPES.points || 0).toLocaleString()} loops and decisions were measured
+        — ${(q.still_loops || 0).toLocaleString()} loops move nothing and
+        ${(q.guards || 0).toLocaleString()} branches are refusals`;
+    },
+    items: () => SHAPELANES.map(l => ({
+      nav: "shape", label: l.title, sel: l.key,
+      n: SHAPES.lane === "ready" ? l.n : "",
+      current: state.view === "shape" && state.shapeLane === l.key,
+    })) },
   { id: "navAnom", title: "Anomalies", open: true, items: () => {
       const a = (STATS && STATS.anomalies) || { broken: 0, suspect: 0, info: 0 };
       return [

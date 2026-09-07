@@ -2222,6 +2222,69 @@ kbd { font-family: var(--f-mono); font-size: .66rem; background: var(--sunken);
 .wl-meta { display: flex; align-items: center; gap: .3rem; font-size: .66rem; color: var(--text-faint); }
 .wl-done { font-size: .6rem; }
 
+/* ── ALGORITHMS: the loops and decisions worth reading ─────────────────────────────────
+ *
+ * The worklist's chrome with a different body. `.worklist` is a flex column of fixed head
+ * and growing body, which is exactly what this page needs -- the lane, its denominator and
+ * what was left out stay on screen at any scroll position, and this reader arrives in the
+ * middle of a list rather than at the top of one.
+ *
+ * `.wl-body` is a two-column grid for the findings, a list beside one finding's detail.
+ * There is no detail pane here: a row *is* the answer and clicking it opens the routine in
+ * the panes that already describe one. So the grid is undone rather than borrowed, and it
+ * is undone under `.shp` -- a class this page owns, because a bare `.wl-body` rule would
+ * reach the anomaly worklist from a stylesheet that gives no warning (rule 71).
+ *
+ * **Two columns and nothing spans**, which is the shape the search hit row was rebuilt into
+ * on 2026-09-07: a child spanning to the last column makes every later child start a row of
+ * its own, and the arithmetic that decides it lives in two files. The tag is a column; the
+ * four lines are one child that stacks them itself. */
+.shp .wl-body { display: block; overflow-y: auto; }
+.shp-of { font-size: .78rem; color: var(--text-muted); }
+.shp-blurb, .shp-quiet { margin: .25rem 0 0; flex-basis: 100%; font-size: .74rem;
+  color: var(--text-muted); max-width: 62rem; }
+.shp-quiet { color: var(--text-faint); }
+
+.shp-list { list-style: none; margin: 0; padding: 0;
+  background: var(--surface); border: 1px solid var(--border); border-radius: .5rem;
+  box-shadow: var(--shadow); }
+.shp-row { width: 100%; display: grid; grid-template-columns: 6.5rem 1fr; gap: .5rem;
+  align-items: start; font: inherit; text-align: left; background: none; border: 0;
+  border-bottom: 1px solid var(--border); cursor: pointer; color: var(--text);
+  padding: .4rem .5rem; }
+.shp-row:hover { background: var(--raised); }
+.shp-tag { justify-self: start; margin-top: .1rem; }
+.shp-lines { display: flex; flex-direction: column; gap: .15rem; min-width: 0; }
+.shp-l1 { display: flex; align-items: baseline; gap: .45rem; flex-wrap: wrap; }
+.shp-name { font-size: .78rem; font-weight: 600; }
+.shp-where { font-size: .66rem; color: var(--text-faint); }
+/* The enclosing loop, and it is the headline of the first lane: a boundary once per pass
+   of a loop that is itself once per pass. Marked rather than merely stated, because ten
+   rows out of 261 is a thing to find by eye. */
+.shp-inside { font-size: .66rem; color: var(--text-muted);
+  border-left: .125rem solid var(--accent); padding-left: .35rem; }
+/* The enclosing loop's test **as written**, and it has to look like a quotation: on screen
+   `inside the loop at line 566 True` reads as a sentence that ran out of words, where
+   `inside the loop at line 566 `True`` reads as the loop being named by what it tests. */
+.shp-inside code { font-family: var(--f-mono); color: var(--text); }
+.shp-l2 { font-size: .72rem; color: var(--text); opacity: .85;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.shp-l3 { font-size: .72rem; color: var(--text-muted); }
+/* The `except` clauses of a handler, and which of them act. The mark is weight rather than
+   colour: colour is the scarcest channel and this page already spends it on the difference
+   between a lane and its ground (design rule 4). */
+.shp-catch { color: var(--text-faint); }
+.shp-catch + .shp-catch::before { content: " · "; }
+.shp-acts { color: var(--text); font-weight: 600; }
+.shp-l4 { display: flex; align-items: center; gap: .3rem; flex-wrap: wrap;
+  font-size: .66rem; color: var(--text-faint); }
+.shp-move { display: inline-flex; align-items: center; gap: .2rem;
+  font-family: var(--f-mono); }
+.shp-more { color: var(--text-faint); }
+/* A move whose target the detector never recorded. The line is what separates three
+   `FILE` chips that would otherwise read as three copies of one fact. */
+.shp-atline { color: var(--text-faint); }
+
 .wl-detail { background: var(--surface); border: 1px solid var(--border); border-radius: .5rem;
   box-shadow: var(--shadow); padding: .75rem .875rem 1rem; }
 .wl-detail h2 { margin: 0 0 .45rem; font-size: 1rem; letter-spacing: -.01em; text-wrap: balance; }

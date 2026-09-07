@@ -11752,3 +11752,67 @@ Citing 85 from `extract.py` restaled the pair, because `code_extraction_inputs()
 every file under `extractors/python/` and a comment is a file change. That is rule 12 working
 and it is worth writing down: **a rule citation in an extractor costs a full rebuild**, and
 the rebuild leaves one more stale sealed snapshot to drop by hand.
+
+
+## 2026-09-07 — paused
+
+Five commits, clean tree, 1,187 tests, mypy clean over 120 source files, ruff clean,
+`check` 0 broken on `output/mensores`, no servers running. Nothing half-written, and
+nothing left open that was opened today.
+
+**ALGORITHMS is complete.** Chunk 6 was the last piece, and it is not the piece that was
+recorded: measuring the detector before building it — which is what the anomaly discipline
+already demanded and turns out to be worth demanding of the *fact underneath* one — found
+that `LOOPED_BOUNDARY` as specced reports its own blind spot, and then found a live defect
+in the feature's headline on the way past.
+
+| Commit | What |
+|---|---|
+| `2e1da43` | **six rules minted** — 83, 84, 85, 86, 87 and design rule 30, and the citation count retaken with its method |
+| `a011cae` | **the record** — every figure chunk 6 moved, and three claims about one thing reconciled to one measurement |
+| `1b827fc` | **chunk 6, part 3** — a table is not reached from inside the loop it is the subject of |
+| `8faaba0` | **chunk 6, part 2** — `LOOPED_BOUNDARY`, and the 39 that make the 35 credible |
+| `44ee4cd` | **chunk 6, part 1** — an iterable is not a body, and 11 rates were not rates |
+
+### The shape of the day, in one sentence
+
+**Three numbers that nothing could check turned out to be wrong, and each was found by
+asking a query rather than by reading a claim.** *804 of 9,625* in `CLAUDE.md` against
+*803 of 9,625* in two other files, for a figure no query returned. The judgement's timing
+written four times at three different values. And 768 citations, a five-day-old count
+restated as live, which then gave two different answers in two shells because one of them
+was silently filtering bytecode. None of these was a defect anybody introduced; each is
+what a number becomes when it is carried instead of retaken (rule 24, and rule 13 for why
+they were uncheckable in the first place).
+
+### What `output/mensores` holds
+
+Exactly the pair, at `SCHEMA_VERSION` 9: `2026-09-07T15:32:31Z` (628 files, Society at
+08-29) working, and `2026-09-07T14:55:40Z` (625, at 08-26) sealed. **Six stale sealed
+snapshots went by hand** — the five that had accumulated, plus one per rebuild, because a
+rebuild seals a new snapshot and leaves the previous one behind at the old fingerprint.
+That is now three rebuilds' worth of evidence for the same shape, and it is why the
+`--drop` question came up at all.
+
+### The two things carried forward
+
+**The tool still cannot drop a snapshot**, on Tom's call: `test_source.py:171` asserts
+against the source text that `sourcedb.py` owns no `DROP`, because *a store whose whole job
+is to be the thing that survives has no business owning one*. `revisions --drop` was built
+and proved on a throwaway copy — 625 paths dropped freeing **1** body, the other 624 still
+mapped elsewhere — and then reverted. **The next accumulation needs the same manual pass**,
+and that is deliberate rather than forgotten.
+
+**A rule citation in an extractor costs a full rebuild.** `code_extraction_inputs()` hashes
+every file under `extractors/python/`, so citing rule 85 from `extract.py` — a comment —
+discarded both graphs. Rule 12 working exactly as written, and worth knowing before the next
+session decides where to put an address.
+
+### Still waiting on Tom's eye
+
+The worklist's and the ribbon's row layouts, which are design calls. And the instrument's
+own limit, which rule 83 now names rather than leaves as folklore: the capture is 784 px of
+a 1,185 px viewport, so the panes are clipped and the inspector is out of frame — but the
+**pointer reaches everything**, which is the half of that sentence four sessions had wrong.
+Everything about layout this session was measured through the route and the served source,
+not seen, and that is said rather than claimed.

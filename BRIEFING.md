@@ -196,8 +196,13 @@ program has a most-commented routine and a maximum alone is a claim nobody can w
 
 ## What we are doing now
 
-**ALGORITHMS is complete. Chunk 6 landed 2026-09-07, and it corrected the feature's own
-headline on the way.** `SCHEMA_VERSION` is **9**; the pair is rebuilt and resealed.
+**Paused 2026-09-07 after ALGORITHMS chunk 6. Nothing is half-written.** Five commits,
+1,187 tests, mypy clean over 120 source files, ruff clean, `check` 0 broken, working tree
+clean, no servers running. `output/mensores` holds exactly the pair at `SCHEMA_VERSION` 9:
+`2026-09-07T15:32:31Z` (628 files, Society at 08-29) working, `2026-09-07T14:55:40Z` (625,
+at 08-26) sealed.
+
+**ALGORITHMS is complete, and chunk 6 corrected the feature's own headline on the way.**
 
 **The detector, as recorded, reported its own blind spot.** `LOOPED_BOUNDARY` read as
 `net_calls` inside a loop fires twice on Society, and both are `wait_until_serving` —

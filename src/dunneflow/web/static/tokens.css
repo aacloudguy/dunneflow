@@ -1721,6 +1721,43 @@ table.grid tbody tr[aria-selected="true"] td:first-child { box-shadow: inset .18
 .flowitem .arrow { color: var(--text-faint); font-family: var(--f-mono); flex: none; }
 .flowitem code { font-family: var(--f-mono); font-size: .74rem; word-break: break-word; }
 .flowitem .conf { margin-left: auto; flex: none; }
+/* The line an operation sits on, after the badge that pushed itself right. `flex: none`
+ * so a four-digit line number is not squeezed onto two rows by a long routine name. */
+.flowitem .flowline { flex: none; font-family: var(--f-mono); font-size: .7rem;
+  color: var(--text-faint); }
+
+/* **A table's columns, quoted rather than laid out.** Three columns because a column
+ * declaration is three things -- its name, its type and what constrains it -- and folding
+ * the last two together would present the schema as something nobody wrote.
+ * `table-layout: fixed` so a long CHECK constraint wraps inside its cell instead of
+ * widening the pane; the pane is 26 rem and a horizontal scrollbar inside it is a pane
+ * that has given up. */
+.tblcols { width: 100%; border-collapse: collapse; table-layout: fixed;
+  font-size: .74rem; }
+.tblcols td { padding: .12rem .3rem .12rem 0; vertical-align: top;
+  border-bottom: 1px solid var(--border); word-break: break-word; }
+.tblcols td:first-child { width: 40%; }
+.tblcols code { font-family: var(--f-mono); font-size: .72rem; }
+
+/* **What loops over the thing this pane is about.** The name over its header, which is the
+ * shape the navigator and the flow list already use for a pair like this -- the second line
+ * is a quotation and never prose, because the store records a loop's test and not the word
+ * that opened it. `min-width: 0` on the cell so a long qualname shortens instead of pushing
+ * the badge and the line number off the row. */
+.looprows { display: flex; flex-direction: column; }
+.loopitem { align-items: center; }
+.loopitem .loopcell { display: flex; flex-direction: column; min-width: 0; flex: 1 1 auto;
+  gap: .05rem; }
+/* **Nothing here overrides `.gotonode`.** The first draft added
+ * `.loopitem .loopcell .gotonode { … }` above the canonical rule, and
+ * `test_a_caller_row_stacks_its_module_under_its_name` reads the *first* `.gotonode {` in
+ * the file -- so a descendant selector shadowed the rule the guard exists to protect and
+ * the guard said so. Rule 71 one file over: a name is global, and in a stylesheet so is a
+ * substring. The button already stacks its name over its module; this row wants that. */
+.loopitem .loophdr { font-family: var(--f-mono); font-size: .68rem;
+  color: var(--text-faint); white-space: nowrap; overflow: hidden;
+  text-overflow: ellipsis; }
+.loopitem .conf { margin-left: .3rem; }
 /* A caller or callee is a doorway, so it looks like one. `code` inside keeps the
  * monospace the rest of the flow list uses; the button exists for the click and the
  * focus ring, not for a different appearance. */

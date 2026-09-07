@@ -472,9 +472,15 @@ const DEFAULTS = {
      closed whatever it wanted -- and "Collapse all" cannot see it until someone has opened
      it once. `holds`, the fold pane's section, is in exactly that position and has been
      since it was written; noted here rather than changed, because its default is a decision
-     about that pane and not about this one. */
+     about that pane and not about this one.
+
+     `loops` and `shape` are ALGORITHMS chunk 5's, and both open: they are the answer the
+     pane gained rather than a caveat on one it already had, and a section that has to be
+     found before it says anything is a feature nobody meets. Named here for the reason
+     above -- `sec()` renders `data-open="undefined"` for an unlisted key, which the
+     stylesheet does not collapse and the toggle cannot change on its first click. */
   insp: { in: true, out: true, touches: true, gov: true, sig: false,
-          value: true, reads: false },
+          value: true, reads: false, loops: true, shape: true, cols: true },
   sortKey: 'fan',
   sortAsc: false,
 

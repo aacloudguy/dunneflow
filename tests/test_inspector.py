@@ -147,3 +147,19 @@ def test_an_external_says_nothing_was_read_rather_than_no_source(analyzed: Store
     assert d["identity"]["source_status"] == "OPAQUE"
     assert d["source"]["available"] is False
     assert "outside the program" in d["source"]["reason"]
+
+
+def test_a_boundary_carries_the_loops_that_reach_it(analyzed):
+    """The links back (ALGORITHMS chunk 5), and the same block a table carries.
+
+    The question at a boundary was always *"which of my code talks to it"*; this adds
+    *"and how often could that run in one pass"*, which is the half that makes a rate
+    reachable from the thing it reaches rather than only from the Algorithms page.
+    """
+    kinds = analyzed.query(
+        "SELECT kind, COALESCE(target,'') AS target FROM boundaries LIMIT 1")
+    row = list(kinds)[0]
+    d = describe(analyzed, f"bnd:{row['kind']}:{row['target']}")
+    assert d["kind"] == "BOUNDARY"
+    assert set(d["loops"]) == {"loops", "points", "deepest", "places", "sentence", "rows"}
+    assert d["loops"]["sentence"], "a boundary states no answer about loops at all"

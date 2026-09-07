@@ -546,3 +546,121 @@ def outline(store: Store, routine_id: str) -> list[Point]:
     for point in out:
         judge(point)
     return out
+
+
+# --------------------------------------------------------------------------- #
+# The other direction
+# --------------------------------------------------------------------------- #
+
+# Where a named thing is touched, as `(routine_id, line)`. Two statements because a
+# table and a boundary are asked for differently and neither is the other's default: a
+# caller that means "the table `spec_seals`" and a caller that means "the DATABASE
+# boundary named `spec_seals`" are asking about the same writes through different
+# doors, and guessing which from the shape of a string is rule 30's defect.
+#
+# `sql_ops.tbl` rides `ix_sqlops_table`. `boundaries(kind, target)` has no index and is
+# a scan of 4,070 rows, measured at under 20 ms on Society -- an index kept up to date
+# for that is a fact to maintain for nothing (rule 24 in the mirror: measure before
+# spending).
+#
+# The `EXISTS` is the bound on the work and not on the answer (rule 55). `enclosing`
+# pays one `outline` per routine, so the routines that touch the thing at no enclosing
+# line at all are the ones worth never loading: 524 routines touch Society's unnamed
+# `FILE` boundary and 389 of them hold a point around it.
+_TOUCH_TABLE = """
+SELECT o.routine_id, o.line FROM sql_ops o
+ WHERE o.tbl = :name AND o.routine_id IS NOT NULL AND o.line IS NOT NULL
+   AND EXISTS (SELECT 1 FROM control c WHERE c.routine_id = o.routine_id
+                AND o.line BETWEEN c.line_start AND c.line_end)
+"""
+
+_TOUCH_BOUNDARY = """
+SELECT b.routine_id, b.line FROM boundaries b
+ WHERE b.kind = :kind AND COALESCE(b.target, '') = COALESCE(:target, '')
+   AND b.routine_id IS NOT NULL AND b.line IS NOT NULL
+   AND EXISTS (SELECT 1 FROM control c WHERE c.routine_id = b.routine_id
+                AND b.line BETWEEN c.line_start AND c.line_end)
+"""
+
+
+def enclosing(store: Store, *, table: str | None = None,
+              boundary: tuple[str, str] | None = None) -> list[Point]:
+    """The control points a named thing is touched from inside, innermost first.
+
+    The reverse of `outline`, and the half that makes ALGORITHMS a doorway rather than
+    a page: `outline` asks *what does this loop touch*, and a reader standing at a table
+    asks *what loops over me*.
+
+    **It is `outline` per routine and not a query of its own** (rule 51). The judgement,
+    the nesting sweep and `places` are the ones the worklist and the ribbon already ask,
+    so a point cannot be banded one way here and another way there -- which is exactly
+    what a second range join written for this question would have produced. The bound is
+    the routines that touch the thing, which is a handful for a table and never the
+    program (rule 55).
+
+    Every enclosing point comes back, of every kind, judged and with its `why` -- not
+    only the loops and not only the ones that pass, because a table written from inside
+    a decision is a fact about that table and design rule 1 says a surface may choose
+    not to draw it but this may not choose not to say it. The chain is whole: a loop
+    that contains an inner loop contains the inner loop's lines too, so following
+    `in_loop` from any point reaches every point above it without leaving this list.
+    """
+    if (table is None) == (boundary is None):
+        raise ValueError(
+            "enclosing() names exactly one thing: table= or boundary=(kind, target)")
+
+    if table is not None:
+        rows = store.query(_TOUCH_TABLE, {"name": table})
+    else:
+        kind, target = boundary  # type: ignore[misc]
+        rows = store.query(_TOUCH_BOUNDARY, {"kind": kind, "target": target})
+
+    lines_by_routine: dict[str, list[int]] = defaultdict(list)
+    for r in rows:
+        lines_by_routine[r["routine_id"]].append(int(r["line"]))
+
+    out: list[Point] = []
+    for routine_id, lines in lines_by_routine.items():
+        touched = sorted(set(lines))
+        for point in outline(store, routine_id):
+            if _count_within(touched, point.line_start, point.line_end):
+                out.append(point)
+    # Innermost first, the way `web/search.py` reads a hit's scope (rule 10): the
+    # narrowest span is the one that says the most about the line, and a reader shown
+    # the routine-wide `try` before the loop inside it has been told the least useful
+    # true thing first.
+    out.sort(key=lambda p: (p.file, p.line_start, p.line_end - p.line_start))
+    return out
+
+
+def nesting(points: list[Point]) -> dict[str, int]:
+    """How many loops each point is written inside, over the points given.
+
+    Counted by following `in_loop`, which is a containment answer, and **never from
+    `depth`** -- `depth` counts every enclosing control point, so a loop written inside
+    an `if` reads as nested when it is nested in nothing. On Society the two answers
+    over the rates are 104 and 10, and only the second is the quadratic reach into the
+    outside world a reader is being warned about.
+
+    A point whose `in_loop` names something outside this list stops the walk rather
+    than raising: `enclosing` returns whole chains, but a caller narrowing the list
+    first is asking about what it kept, and answering a shorter number is right where
+    inventing the rest would not be.
+    """
+    by_id = {p.point_id: p for p in points}
+    out: dict[str, int] = {}
+
+    def walk(point: Point, seen: frozenset[str]) -> int:
+        if point.point_id in out:
+            return out[point.point_id]
+        above = by_id.get(point.in_loop) if point.in_loop else None
+        # `seen` guards a cycle that cannot happen from a stack sweep but would hang
+        # rather than fail if a future filler ever wrote one (rule 43).
+        depth = 0 if above is None or above.point_id in seen else 1 + walk(
+            above, seen | {point.point_id})
+        out[point.point_id] = depth
+        return depth
+
+    for p in points:
+        walk(p, frozenset())
+    return out

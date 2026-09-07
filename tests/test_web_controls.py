@@ -5059,11 +5059,50 @@ def test_the_shape_view_reads_the_one_selection_and_keeps_no_second_copy() -> No
         "a late answer is drawn whatever the selection has since become"
     )
     view = _fn(js, "viewShape")
-    assert "SPECIMEN" in view or "state.selected" in view, (
-        "the shape view does not read the one selection"
+    assert "shapeSubject()" in view, (
+        "the shape view does not read the one selection through the one accessor"
     )
     for name in ("shapeNode", "shapeSelected", "shapeId"):
         assert name not in js, f"the ribbon keeps its own `{name}` beside the selection"
+
+
+def test_the_shape_view_never_draws_an_answer_about_something_else() -> None:
+    """Reported by Tom: *"it locks on to whatever was viewed last ... then confidently
+    shows me that routine every time no matter what is selected."*
+
+    The bag was keyed from the day it was written and **no renderer read the key**, so
+    every answer that had ever arrived stayed drawable. Two halves, and either alone leaves
+    it broken: the renderer must refuse a bag that is about something else, and the
+    reconcile must empty it rather than return early holding the last one.
+
+    Rule 78, and the reason the fix is here rather than at the controls that move the
+    selection: there is no list of those to keep up to date.
+    """
+    js = _code(_read("shell.js"))
+
+    view = _fn(js, "viewShape")
+    assert "SHAPE.node !== node" in view, (
+        "the ribbon draws whatever is in the bag; a stale answer renders perfectly and is "
+        "about the routine the reader left"
+    )
+
+    ensure = _fn(js, "ensureShape")
+    assert "resetShape()" in ensure, (
+        "a path through the reconcile keeps the previous answer, which is how it locked"
+    )
+    # Every early return empties the bag. A `return` with no reset above it in the same
+    # branch is the defect coming back, and it renders perfectly (rule 44's shape).
+    branches = [b for b in ensure.split("\n") if "return;" in b]
+    assert branches, "ensureShape no longer returns early; this guard is blind"
+    for line in branches:
+        assert ("resetShape()" in line or "SHAPE.node === node" in line), (
+            f"this early return leaves the bag holding another subject's answer: {line.strip()}"
+        )
+
+    reset = _fn(js, "resetShape")
+    assert "SHAPE.node = null" in reset and "SHAPE.blocks = null" in reset, (
+        "resetShape leaves the key or the drawing behind, so half a stale answer survives"
+    )
 
 
 def test_the_code_view_reads_the_one_selection_and_keeps_no_second_copy() -> None:

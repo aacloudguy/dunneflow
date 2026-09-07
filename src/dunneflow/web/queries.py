@@ -1337,6 +1337,51 @@ WHERE o.tbl = :name AND o.routine_id IS NOT NULL
 """
 
 
+# ── one table, as the thing it is ────────────────────────────────────────────────── #
+
+# Where a table is *declared*, which is a different question from where it is used and
+# is often unanswered: a program reads tables somebody else created. Rows here come from
+# `sql.py` reading `CREATE TABLE` statements the code contains, so a table with no row
+# is one this program only ever talks to -- a fact about it, and not a miss (design
+# rule 21). More than one row is a table created in more than one file, which is also a
+# fact and is why this is not a lookup returning at most one.
+TABLE_DECLARED = """
+SELECT name, file, line, temporary
+FROM db_tables
+WHERE name = :name
+ORDER BY file, line
+"""
+
+# The columns as declared, in the order they were written. `idx` is the position in the
+# `CREATE TABLE`, so ordering by it is quoting the statement rather than sorting it.
+TABLE_COLUMNS = """
+SELECT file, idx, name, type, constraints
+FROM db_columns
+WHERE tbl = :name
+ORDER BY file, idx
+"""
+
+# Who touches this table, with what each routine does to it. `BOUNDARY_TOUCHERS` one
+# subject over, and the same shape on purpose: the inspector's question at a table is
+# the boundary's question -- not "what is this" but "which of my code talks to it".
+#
+# `routine_id` is null for an operation at module scope, and those rows are **kept**
+# with a null id rather than dropped: a table written at import time is exactly the
+# thing a reader is looking for, and `TABLE_ROUTINES` drops them only because its
+# answer is a list of nodes to select (design rule 1).
+TABLE_TOUCHERS = """
+SELECT o.tbl, o.direction, o.operation, o.line, o.file,
+       r.id, r.name, r.qualname, r.module,
+       (SELECT COUNT(*) FROM sql_ops o2
+         WHERE o2.tbl = o.tbl AND COALESCE(o2.routine_id,'') = COALESCE(o.routine_id,'')
+       ) AS ops
+FROM sql_ops o
+LEFT JOIN routines r ON r.id = o.routine_id
+WHERE o.tbl = :name
+ORDER BY r.qualname, o.line
+"""
+
+
 # ── the package overview ─────────────────────────────────────────────────────────── #
 
 # The orientation altitude: every package as one box, and what passes between them.

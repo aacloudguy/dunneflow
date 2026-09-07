@@ -335,3 +335,105 @@ def test_one_statement_is_one_thing_that_moves(store):
     assert len(rate.moves) > 1, "the fixture's write is no longer recorded twice"
     assert shape.places(rate.moves) == 1, "two descriptions of one write are two places"
     assert "once per pass" in rate.why and "of them" not in rate.why, rate.why
+
+
+# --------------------------------------------------------------------------- #
+# The other direction
+# --------------------------------------------------------------------------- #
+
+def test_a_table_is_asked_which_loops_write_it(store):
+    """The reverse of `outline`, and the half that makes this a doorway.
+
+    `seals` is written from four routines in the fixture, and the answer has to hold
+    every span that encloses one of those writes -- not only the loops, because a table
+    written from inside one arm of a decision is a fact about that table (design rule 1).
+    """
+    pts = shape.enclosing(store, table="seals")
+    routines = {p.routine.rsplit(".", 1)[-1] for p in pts}
+    assert {"forking", "alike", "nested", "under_a_branch"} <= routines, routines
+    assert "rate" not in routines, "a loop writing `widgets` is answering about `seals`"
+
+    kinds = {p.kind for p in pts}
+    assert ControlKind.DECISION in kinds, (
+        "only the loops came back; a decision that writes is being dropped for failing "
+        "a test it was never asked (design rule 1)")
+
+
+def test_the_deepest_nesting_is_containment_and_not_depth(store):
+    """`under_a_branch` is depth 2 and nested in nothing; `nested` is the real one.
+
+    This is the number that impersonates the headline. A pane saying *"deepest nesting
+    2"* about a loop written inside an `if` has reported a quadratic reach into the
+    outside world that is not there.
+    """
+    pts = shape.enclosing(store, table="seals")
+    deep = shape.nesting(pts)
+    loops = {p.routine.rsplit(".", 1)[-1]: p
+             for p in pts if p.kind == ControlKind.LOOP}
+
+    inner = [p for p in pts
+             if p.kind == ControlKind.LOOP and p.routine.endswith("nested")
+             and p.depth == 2][0]
+    assert deep[inner.point_id] == 1, "the loop inside a loop is not counted as nested"
+    assert loops["under_a_branch"].depth == 2, "the fixture stopped testing the trap"
+    assert deep[loops["under_a_branch"].point_id] == 0, (
+        "a loop under an `if` is being called nested; this is `depth`, not containment")
+    assert max(deep[p.point_id] for p in loops.values()) == 1
+
+
+def test_the_chain_above_a_point_is_whole(store):
+    """A loop containing an inner loop contains the inner loop's lines too.
+
+    So following `in_loop` from anything in the answer reaches everything above it
+    without leaving the answer -- which is what lets a caller state a nesting depth at
+    all. If `enclosing` ever filtered to the innermost span this silently becomes 0.
+    """
+    pts = shape.enclosing(store, table="seals")
+    have = {p.point_id for p in pts}
+    for p in pts:
+        if p.in_loop:
+            assert p.in_loop in have, (
+                f"{p.routine}:{p.line_start} is inside a loop the answer does not hold")
+
+
+def test_the_reverse_answer_is_the_same_judgement_as_the_forward_one(store):
+    """The third entry point, held to the invariant the other two already keep.
+
+    `measure` and `outline` agree by `test_one_routine_is_asked_for_by_itself...`; this
+    is the same claim one door over. A second range join written for this question is
+    exactly how the band a worklist shows and the band a pane shows come to differ
+    (rule 51).
+    """
+    pts = shape.enclosing(store, table="seals")
+    rid = [p for p in pts if p.routine.endswith("nested")][0].routine_id
+    mine = sorted((p.point_id, p.band, p.significant, p.why)
+                  for p in pts if p.routine_id == rid)
+    alone = sorted((p.point_id, p.band, p.significant, p.why)
+                   for p in shape.outline(store, rid))
+    assert mine and mine == alone, "the reverse door judges a point differently"
+
+
+def test_a_boundary_is_asked_the_same_question_as_a_table(store):
+    """The other door in, and it is a second statement rather than a guessed shape.
+
+    A caller holding `("NETWORK", url)` must not have to spell it as a table name and
+    hope the string sorts into the right query (rule 30).
+    """
+    net = [p for p in shape.enclosing(store, boundary=("NETWORK", ""))
+           if p.kind == ControlKind.HANDLER]
+    assert not net or all(p.moves for p in net), (
+        "a handler came back around a network call with nothing in it")
+
+    with pytest.raises(ValueError, match="exactly one"):
+        shape.enclosing(store, table="seals", boundary=("NETWORK", ""))
+    with pytest.raises(ValueError, match="exactly one"):
+        shape.enclosing(store)
+
+
+def test_a_table_nothing_loops_over_answers_with_a_list_and_not_an_error(store):
+    """Blank is an answer here, and the surface says why it is blank (design rule 21).
+
+    A raise would make *"nothing loops over this"* indistinguishable from *"this table
+    does not exist"*, which are different facts a pane has to word differently.
+    """
+    assert shape.enclosing(store, table="no_such_table_anywhere") == []

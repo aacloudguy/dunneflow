@@ -530,6 +530,11 @@ const state = {
    * node id, because a plate is not a node (rule 30) and not one of the things it holds
    * (rule 74). Found by Tom, 2026-09-05. */
   plate: null,             // the plate id under inspection, or null
+  /* The **database table** under inspection, or null. `dbtable` and not `table`, because
+     `state.mode === "table"` is the centre pane's routine table and one word carrying two
+     meanings is `data-nav`'s defect, which cost a session (rule 71). The mode is a place
+     to stand; this is a thing to look at. */
+  dbtable: null,
   /* What the reader asked for, in id space, before it is resolved to drawn indices.
    * Held here rather than only in the engine so a choice made from the navigator while
    * the centre pane is showing a table or a document is still a real choice. */
@@ -7894,13 +7899,26 @@ function viewAlgorithms() {
  * about the routine. The bound is the reader opening one routine (rule 45).
  */
 function viewShape() {
-  const node = SPECIMEN && SPECIMEN.id ? SPECIMEN.id : (state.selected || "");
+  const node = shapeSubject();
   if (!node) {
     /* Design rule 21: "nothing chosen" and "this has no shape" are opposite claims. */
     return `<div class="panel codeempty"><h2>Nothing selected.</h2>
       <p class="hint">Pick a routine — from the navigator, the stack, the Algorithms page
       or a search hit — and this draws its loops, its decisions and its refusals, nested
       as they are written.</p></div>`;
+  }
+  /* **The bag is keyed and this is where the key gets read.** It always had one and no
+     renderer ever checked it, so every answer that arrived was drawn under whatever was
+     selected at the time -- and once one routine had been found, it was drawn for the rest
+     of the session. Reported as *"it locks on to whatever was viewed last"*, which is
+     exactly what it did.
+     A mismatch is *reading*, never the previous answer: `ensureShape` runs from `render()`
+     and the fetch lands a paint later, so this is the ordinary state between a selection
+     and its answer rather than an error (rule 78, and design rule 21 for the wording). */
+  if (SHAPE.node !== node) {
+    return `<div class="panel codeempty"><h2>Reading its shape…</h2>
+      <p class="hint">For whatever is selected now — this pane never shows the last thing
+      it drew.</p></div>`;
   }
   const waiting = laneState(SHAPE, "lane", "error", "this routine's shape");
   if (waiting) return `<div style="max-width:64rem">${waiting}</div>`;
@@ -9293,6 +9311,35 @@ function ensureAlgorithms() {
  * remembering it would be keeping something cheaper to make than to hold (rule 52). */
 const SHAPE = {};
 
+/* **What Shape is about, in one place** (rule 51).
+ *
+ * This expression was written three times -- in `ensureShape`, in `viewShape` and, as
+ * `s.id`, in the inspector's section -- and three copies of a subject question is how the
+ * fetch and the drawing came to disagree about which routine was on screen. Everything
+ * that asks what the ribbon should be showing asks here.
+ *
+ * `SPECIMEN.id` before `state.selected`, because a fold, a plate, a flow and a table each
+ * set a subject and clear `state.selected`: falling back first would answer with the node
+ * the reader left. */
+function shapeSubject() {
+  return (SPECIMEN && SPECIMEN.id) ? SPECIMEN.id : (state.selected || "");
+}
+
+/* Emptied rather than left, and this is the whole defect. `SHAPE` is keyed on the node --
+ * which is right, and it was the *renderers* that never looked at the key, so a reader who
+ * found one routine was shown that routine for the rest of the session no matter what they
+ * selected. Rule 78: a pane brought up to date by the control that moved it is only as
+ * correct as the last person to add a control. */
+function resetShape() {
+  SHAPE.node = null;
+  SHAPE.lane = null;
+  SHAPE.blocks = null;
+  SHAPE.found = undefined;
+  SHAPE.reason = "";
+  SHAPE.routine = null;
+  SHAPE.counts = {};
+}
+
 async function loadShape(node) {
   if (!node || SHAPE.node === node) return;
   SHAPE.node = node;
@@ -9318,9 +9365,35 @@ async function loadShape(node) {
   }
 }
 
+/* **Two surfaces ask for this now**, and the condition says so rather than naming one.
+ *
+ * The ribbon is the `shape` mode; the inspector's *Shape* section is a summary of the same
+ * answer on a routine's own pane (ALGORITHMS chunk 5). Wiring the fetch to the mode alone
+ * left the section reading a bag nobody had filled -- a control that renders and is wired
+ * to nothing looks exactly like one that works (design rule 16), and this one would have
+ * said "no shape recorded" about routines with fifty spans.
+ *
+ * Bounded by the section being open (rule 45), which is a real bound: a reader who closes
+ * it stops paying. `/api/shape` is 0.2 ms for ten points and 0.5 ms for the widest in the
+ * program, so the cost of being wrong here is small and the cost of a dead control is a
+ * session. */
 function ensureShape() {
-  const node = SPECIMEN && SPECIMEN.id ? SPECIMEN.id : (state.selected || "");
-  if (state.view !== "shape" || !node || SHAPE.node === node) return;
+  const node = shapeSubject();
+  if (SHAPE.node === node) return;             // already about the right thing
+  /* **Every other path empties the bag before returning.** Returning early and keeping
+     what was there is what made this pane lock: nothing selected and a subject nobody has
+     asked about both left the previous routine drawn, under a heading naming it, with no
+     way to tell it from an answer. */
+  if (!node) { resetShape(); return; }
+  const wanted = state.view === "shape"
+    || (SPECIMEN && SPECIMEN.kind === "ROUTINE" && state.insp.shape);
+  if (!wanted) { resetShape(); return; }
+  /* **A non-routine is asked about too, and the server says so.** `outline_for` refuses
+     one with its own sentence, so a fold, a plate, a table or a boundary gets *"no shape
+     to draw"* naming what it is -- rather than this side deciding which kinds can have a
+     shape, which would be a second copy of a judgement the server already makes (rule 30).
+     The reader would rather be told it does not apply than be shown the last thing that
+     did. */
   loadShape(node).then(render);
 }
 
@@ -10134,7 +10207,8 @@ let inspectorFor = null;
  *
  * Exclusive by construction, which is what lets `inspectorSubject()` be an accessor rather
  * than a rule every caller has to remember. */
-function setSubject({ node = null, fold = null, flow = null, plate = null } = {}) {
+function setSubject({ node = null, fold = null, flow = null, plate = null,
+                     dbtable = null } = {}) {
   state.flow = flow;
   state.fold = flow ? null : fold;
   /* **A plate is the fourth kind, and it is exclusive like the other three.** Picking a
@@ -10147,10 +10221,20 @@ function setSubject({ node = null, fold = null, flow = null, plate = null } = {}
      exists to undo, and a plate holding 926 of them would make that mistake twenty times
      over (rules 30 and 74). */
   state.plate = (flow || fold) ? null : plate;
-  state.selected = (flow || fold || plate) ? null : node;
+  /* **A table is the fifth kind, and it is the same mistake a third time.** Selecting one
+     fetched the routines that touch it and then replaced the whole request with them, so
+     `state.selected` held whichever routine sorted first and the inspector answered
+     truthfully about something nobody clicked -- `detail.fold`'s defect and `plate.py`'s,
+     arriving in the surface a reader reaches by clicking the busiest thing on the cover.
+
+     A table is not a node and never one of the routines that touch it (rules 30 and 74).
+     Its id is its own name, because that is what the program says. */
+  state.dbtable = (flow || fold || plate) ? null : dbtable;
+  state.selected = (flow || fold || plate || dbtable) ? null : node;
   if (flow) loadFlow(flow);
   else if (fold) loadFold(fold);
   else if (plate) loadPlate(plate);
+  else if (dbtable) loadTable(dbtable);
   else if (node) loadNode(node);
   else { inspectorFor = null; SPECIMEN = null; }
 }
@@ -10180,6 +10264,9 @@ function subjectLabel() {
      disk -- never by the id, which carries a band prefix and is not a name (rule 30). The
      id is the fallback rather than the answer, exactly as a box's is above. */
   if (state.plate) return plateName(state.plate);
+  /* A table is named by itself -- the one subject here whose id *is* the word for it,
+     because the program minted the name and this map did not (rule 30). */
+  if (state.dbtable) return state.dbtable;
   return state.selected ? labelFor(state.selected) : "nothing selected";
 }
 
@@ -10244,7 +10331,8 @@ async function selectFold(boxId) {
  * what every caller has to remember and rule 51 is a list of the times one of them did not.
  * Everything that asks "what is being inspected" asks here. */
 function inspectorSubject() {
-  return state.flow || state.fold || state.plate || state.selected || null;
+  return state.flow || state.fold || state.plate || state.dbtable
+      || state.selected || null;
 }
 
 /* **What the legend calls a plate.** The model gives every disk a `name` and the id carries
@@ -10301,7 +10389,7 @@ function plateMembers(id) {
  * ask and in whether threads apply -- a thread is adjacency for one node, and a class has
  * no threads of its own -- and in nothing else. Written once so the two cannot drift in the
  * cache guard, the in-flight check or the order of the two renders. */
-async function loadSpecimen(key, url) {
+async function loadSpecimen(key, url, pick = null) {
   if (key === inspectorFor) return false;
   inspectorFor = key;
   SPECIMEN = null;
@@ -10309,9 +10397,15 @@ async function loadSpecimen(key, url) {
   try {
     const r = await fetch(url);
     if (!r.ok) throw new Error(`the server answered ${r.status}`);
-    const d = await r.json();
+    const body = await r.json();
+    /* **`pick` is for a route that answers more than one question.** `/api/table` serves
+       the routines a table selects *and* the table described, because the three doors into
+       it want different halves; every other route here is the specimen itself. A default
+       of `null` rather than an optional key on the body, so a route that forgets to send
+       one fails as "not found" rather than rendering an empty pane (rule 44). */
+    const d = (pick ? pick(body) : body) || {};
     if (inspectorFor !== key) return false;   // the reader moved on while this was in flight
-    SPECIMEN = d.found ? d : { notFound: true, id: key, reason: d.reason };
+    SPECIMEN = d.found ? d : { notFound: true, id: key, reason: d.reason || body.reason };
   } catch (err) {
     if (inspectorFor === key) SPECIMEN = { notFound: true, id: key, reason: err.message };
   }
@@ -10354,6 +10448,22 @@ async function loadPlate(plateId) {
   const q = levelQuery(state.level, minDiskNow());
   q.set("id", plateId);
   await loadSpecimen(`plate:${q}`, `/api/plate?${q}`);
+}
+
+/* A table, asked about as the thing it is.
+ *
+ * `/api/table` answers two questions at once and this takes the second: `nodes` is what
+ * *selecting* a table means -- the routines it lights in the stack, which `selectFromNav`
+ * still asks for -- and `specimen` is what *describing* one means. Serving one and making
+ * the caller derive the other is how the table came to be thrown away in the first place.
+ *
+ * No `loadThreads`: `threads.py` answers adjacency by interest for one **node**, and a
+ * table is not one. Asking with a table name would 404 on every click, which is the same
+ * reason `loadFold` and `loadPlate` ask for none. The table's own neighbours arrive as a
+ * thread on the routines that touch it. */
+async function loadTable(name) {
+  await loadSpecimen(`table:${name}`, `/api/table?name=${encodeURIComponent(name)}`,
+                     (body) => body && body.specimen);
 }
 
 /* The separator between the two ends of an edge id, and the **only** place it is spelled on
@@ -11111,6 +11221,219 @@ function viewInspectorPlate(s) {
     ${sec("gov", "Ways in", outside ? null : ways.length, waysBody)}`;
 }
 
+/* **What loops over the thing this pane is about** — ALGORITHMS chunk 5, the links back.
+ *
+ * One renderer for a table's pane and a boundary's, because it is one question asked of
+ * two subjects and two copies would be two wordings the first time either moved (rule 51).
+ *
+ * **The sentence is the server's and the layout is this side's.** `_loop_sentence` knows
+ * that *3 loops* and *3 writes* are different numbers and that `deepest` is a maximum
+ * rather than a count; a sentence assembled here from the figures would have to know both
+ * again, and `algoRow`'s "inside True" is what that costs when it does not (rule 30).
+ *
+ * **The section counts the loops and opens every enclosing span.** Those are different
+ * numbers on purpose: 89 loops reach Society's unnamed FILE boundary and 672 spans of all
+ * kinds enclose it, because a decision that writes is a fact about the thing written even
+ * though it is not a rate (design rule 1). The badge says which it is counting and the
+ * body says what else it holds, so the figure and the list it opens cannot disagree
+ * (rules 13 and 32).
+ *
+ * Rows are `algoRow`'s, so a row here and a row on the Algorithms page are one row. */
+/* **One enclosing span, in a 26 rem column** — and deliberately not `algoRow`.
+ *
+ * The pane and the worklist share the *row the server sends* and must not share the row
+ * the browser draws. `algoRow` is built for a full-width page: a kind chip in a 6.5 rem
+ * column, the qualname, the header quoted, the `inside` clause, the reason, and up to four
+ * moving things, each on its own line. Measured in the inspector at 318 px wide, that is
+ * **152 to 295 px per row and 2,612 px for twelve of them** -- a section a reader arrives
+ * in the middle of and cannot see the top or the bottom of, which is the one thing this
+ * pane must not be.
+ *
+ * So: the name, the span's kind, its line, and the loop's own header quoted under it. The
+ * `why` is the row's `title`, because it is a sentence and a sentence does not fit here --
+ * it is on the Algorithms page in full, which the section says how to reach.
+ *
+ * `.flowitem` rather than a shape of its own, so a row here sits at the same rhythm as the
+ * operations above it in the same pane. */
+function loopRow(r) {
+  const nest = r.nested > 0
+    ? `<span class="conf badge" title="written inside ${r.nested} other ${
+        r.nested === 1 ? "loop" : "loops"}">↳${r.nested}</span>` : "";
+  return `<div class="flowitem loopitem" title="${esc(r.why)}">
+      <span class="arrow">${r.kind === "LOOP" || r.kind === "COMPREHENSION" ? "↻" : "◇"}</span>
+      <span class="loopcell">
+        <button class="gotonode" data-nav="shaperow" data-navid="${esc(r.node)}"
+                data-point="${esc(r.point)}" data-label="${esc(r.routine)}"
+                data-stepnote="${esc(r.why)}"
+          ><code data-fit="name">${esc(r.routine)}</code></button>
+        ${r.header ? `<code class="loophdr">${esc(fit(r.header, 30))}</code>` : ""}
+      </span>
+      ${nest}
+      <span class="conf badge">${esc(r.kind)}</span>
+      <span class="dim flowline">${r.line}</span>
+    </div>`;
+}
+
+function loopsSection(b) {
+  if (!b) return "";
+  const rows = b.rows || [];
+  const others = rows.length - b.loops;
+  const body = rows.length
+    ? `<div class="hint">${esc(b.sentence)}${others > 0
+        ? ` Listed below with ${others.toLocaleString()} other enclosing
+            ${others === 1 ? "span" : "spans"} — a decision that writes is a fact about
+            this, even though it is not a rate.` : ""}</div>
+       <div class="looprows">${rows.map(loopRow).join("")}</div>`
+    : `<div class="hint">${esc(b.sentence)} Nothing in this program reads or writes it from
+        inside a loop, a decision or a handler — every touch is written straight through.
+        That is a fact about the program and not a gap in the map.</div>`;
+  return sec("loops", "Reached from inside", b.loops || null, body);
+}
+
+/* One database table, described as the thing it is.
+ *
+ * Routed above the routine path for the same reason as the four panes before it: a table
+ * has no qualname, no params and no source of its own, so every line below would read a
+ * routine's shape off a thing that has not got one — and the sections would *answer*,
+ * which is what makes this class of defect expensive rather than merely ugly.
+ *
+ * **Its callers are operations and not routines**, which is why the badge says so. One
+ * routine that writes a table eleven times is eleven rows here and one name in the stack,
+ * and a count that did not say which it was would be two populations under one word
+ * (rule 32). */
+function viewInspectorTable(s) {
+  const id = s.identity || {};
+  const ops = s.in && s.in.callers ? s.in.callers : [];
+
+  const opRow = (o) => `<div class="flowitem">
+      <span class="arrow">${o.direction === "WRITE" ? "→" : o.direction === "READ" ? "←" : "·"}</span>
+      ${o.id
+        ? `<button class="gotonode" data-node="${esc(o.id)}" title="${esc(o.qualname || "")}"
+            ><code data-fit="name">${esc(o.name || o.qualname)}</code>${o.module
+              ? `<span class="dim" data-fit="module">${esc(o.module)}</span>` : ""}</button>`
+        /* An operation at module scope belongs to no routine, and it is **kept** with no
+           button rather than dropped: a table written at import time is exactly what a
+           reader is looking for, and `TABLE_ROUTINES` omits it only because its answer is
+           a list of nodes to select (design rule 1). */
+        : `<code class="dim">${esc(o.file || "at module scope")}</code>`}
+      ${/* One `margin-left:auto` on this row and not two. `.flowitem .conf` already
+            pushes right, so a second auto margin here would split the free space between
+            them and the badge would drift with the length of the name beside it. */""}
+      <span class="conf badge">${esc(o.operation || "")}</span>
+      <span class="dim flowline">${o.line}</span>
+    </div>`;
+
+  const opsBody = ops.length
+    ? ops.map(opRow).join("")
+    : `<div class="hint">Nothing in this program reads or writes it. It is declared here
+        and used somewhere this map cannot see.</div>`;
+
+  /* The columns as the `CREATE TABLE` wrote them — quoted, never sorted, because `idx` is
+     the position in the statement and re-ordering them would be presenting the schema as
+     something nobody wrote. */
+  const colsBody = (id.columns || []).length
+    ? `<table class="tblcols"><tbody>${(id.columns || []).map(c => `<tr>
+        <td><code>${esc(c.name)}</code></td>
+        <td class="dim"><code>${esc(c.type || "")}</code></td>
+        <td class="dim">${esc(c.constraints || "")}</td></tr>`).join("")}</tbody></table>`
+    : `<div class="hint">${esc(id.origin)} — so this map has no column list for it. What it
+        holds is known only to whoever created it.</div>`;
+
+  /* **Three figures that add up**, because a pane printing "27 operations, 12 writes, 8
+     reads" has silently filtered seven of them — `CREATE TABLE`, `BEGIN` and `COMMIT` are
+     neither reads nor writes (design rule 1). */
+  const counts = `<div class="govchips">
+      <span class="govchip">writes <b>${(id.writes || 0).toLocaleString()}</b></span>
+      <span class="govchip">reads <b>${(id.reads || 0).toLocaleString()}</b></span>
+      ${id.other ? `<span class="govchip">neither <b>${id.other.toLocaleString()}</b></span>`
+        : ""}
+    </div>`;
+
+  return `
+    <div class="insp-head">
+      <h2>${breakable(s.label || s.id)}</h2>
+      <div class="loc">a database table — ${esc(id.origin || "")}</div>
+      <div class="tags">
+        <span class="badge certain">ANALYZED</span>
+        <span class="kind-tag">TABLE</span>
+        ${id.temporary ? `<span class="kind-tag">TEMPORARY</span>` : ""}
+        <span class="kind-tag">${(id.ops || 0).toLocaleString()} operations</span>
+        <span style="margin-left:auto;display:flex;gap:.3rem">
+          ${pinBtn({ kind: "dbtable", id: s.id }, s.label || s.id, id.origin || "")}
+          <button class="linkbtn" id="collapseAll">Collapse all</button>
+        </span>
+      </div>
+    </div>
+    ${/* **`cols` and not `value`.** `state.insp` is shared across panes on purpose --
+         `in`, `out` and `touches` mean the same thing wherever they appear -- but `value`
+         is the *constant* pane's section and means the constant's value. One switch over
+         two different things would collapse a table's columns because somebody folded a
+         constant an hour ago, which is a control that works and cannot be accounted for. */""}
+    ${sec("cols", "Columns", (id.columns || []).length || null, colsBody)}
+    ${sec("in", "Touched by", ops.length, counts + opsBody)}
+    ${loopsSection(s.loops)}`;
+}
+
+/* **A routine's own shape, summarised on its pane** — ALGORITHMS chunk 5.
+ *
+ * A summary and deliberately not the ribbon: the ribbon is a centre mode with room to nest
+ * fifty-two blocks, and redrawing it in a 26 rem column would be the same picture at a
+ * width that cannot hold it. What belongs here is the count of each kind of span and a way
+ * through to the drawing, which is what a reader standing on a pane actually wants to know
+ * -- *is there anything in here worth reading*.
+ *
+ * **Guards are counted and never hidden.** 3,931 of Society's 9,625 points are refusals and
+ * they are the largest shape in a real program; a summary that showed only the significant
+ * ones would say a routine holding nine guards holds nothing (design rule 1).
+ *
+ * The three states are the bag's own (design rule 21): not asked for yet, asked and this
+ * routine holds no span at all, and here it is. */
+function shapeSection(s) {
+  if (!s || s.kind !== "ROUTINE") return "";
+  /* **The badge counts the spans the chips add up to**, and it counted `blocks.length` --
+     the *top-level* blocks only. Routine A drew `guard 5 · loop 2 · decision 1 · handler 1
+     · comprehension 1` under a badge reading **2**, because eight of its ten spans are
+     nested inside another. A count that does not say what it counts is rule 32, and a
+     headline that disagrees with the list beneath it is rule 13. One number, from the one
+     tally the chips are drawn from. */
+  let spanTotal = null;
+  /* The same key test the ribbon makes, through the same accessor. This side had it from
+     the start -- `mine` -- and the ribbon did not, which is how one surface stayed honest
+     while the other locked (rule 51: one question, one answer). */
+  const mine = SHAPE.node === shapeSubject() && shapeSubject() === s.id;
+  let body;
+  if (!mine || SHAPE.lane === "loading") {
+    body = `<div class="hint">Reading its shape…</div>`;
+  } else if (SHAPE.lane === "failed") {
+    body = `<div class="hint">Could not read its shape — ${esc(SHAPE.error || "")}</div>`;
+  } else if (!SHAPE.found) {
+    body = `<div class="hint">${esc(SHAPE.reason || "no shape recorded for it")}</div>`;
+  } else {
+    const counts = SHAPE.counts || {};
+    /* Spans only. `moves` and `calls` are in the same tally and they are what is *inside*
+       a span rather than a kind of one -- chipping them beside LOOP and DECISION would put
+       two populations in one row (rule 32). They are the sentence below instead. */
+    const spans = Object.entries(counts)
+      .filter(([k]) => k !== "moves" && k !== "calls")
+      .sort((a, b) => b[1] - a[1]);
+    const total = spans.reduce((a, [, n]) => a + n, 0);
+    spanTotal = total;
+    body = total
+      ? `<div class="govchips">${spans.map(([k, n]) =>
+          `<span class="govchip">${esc(k.toLowerCase())} <b>${n.toLocaleString()}</b></span>`
+          ).join("")}</div>
+         <div class="hint">${(counts.moves || 0).toLocaleString()} ${
+           counts.moves === 1 ? "thing moves" : "things move"} inside them, and ${
+           (counts.calls || 0).toLocaleString()} ${counts.calls === 1 ? "call" : "calls"}
+           ${counts.calls === 1 ? "goes" : "go"} to this program's own code.</div>
+         <div class="insp-actions"><button class="actbtn" data-tomode="shape"
+           >Draw its shape <span class="k">as written</span></button></div>`
+      : `<div class="hint">It holds no loop, decision, handler or guard at all — it runs
+          top to bottom. That is a fact about the routine, and the commonest one.</div>`;
+  }
+  return sec("shape", "Shape", spanTotal, body);
+}
+
 /* **The one place this side spells DunneFlow's own name for module scope.**
  *
  * `extract.py` mints it as `MODULE_SCOPE`, and six modules under `web/` match the literal
@@ -11167,6 +11490,11 @@ function viewInspector() {
      routine's shape off a thing that has not got one -- and the sections would *answer*,
      which is what makes this class of defect expensive rather than merely ugly. */
   if (s.kind === "PLATE") return viewInspectorPlate(s);
+  /* And a table, above the same line and for the fifth time. It has no qualname, no params
+     and no callers in the sense the rows below mean — its `in.callers` are *operations*,
+     each one a row rather than a routine, so the caller renderer would draw eleven copies
+     of one name and badge them as calls. */
+  if (s.kind === "TABLE") return viewInspectorTable(s);
 
   const id = s.identity || {};
   const inn = s.in || { callers: [], entrypoints: [] };
@@ -11333,6 +11661,14 @@ function viewInspector() {
     ${sec("in", "In", callers.length + eps.length, inBody)}
     ${sec("out", "Out", calls.length, outBody)}
     ${sec("touches", "Touches", touches.length, touchBody)}
+    ${/* **A boundary's links back, and only a boundary's** — this is the shared routine
+         path, and `loops` is on a BOUNDARY specimen and no other. Drawn from the presence
+         of the block rather than from `s.kind === "BOUNDARY"`, because the server decides
+         which subjects can answer this and a second list of them here would be a second
+         answer (rule 30). A routine's own shape is a different question and has its own
+         section below. */""}
+    ${loopsSection(s.loops)}
+    ${shapeSection(s)}
     ${sec("gov", "Governance", anns.length + comments.length, govBody)}
     ${threadsPanel(s.id)}
     ${sec("sig", "Signature", params.length || null, sigBody)}
@@ -11505,6 +11841,19 @@ function render() {
    * file for a frame and correct it on the next. The two that mount into a *painted*
    * container are at the foot of this function instead, and say so there. */
   followSelectionIntoCode();
+  /* **Two surfaces draw a routine's shape, so the reconcile speaks for both.**
+   *
+   * It was invited from one place -- the `state.view === "shape"` branch below -- which is
+   * `followSelectionIntoCode`'s own defect, quoted three paragraphs up: one call site, and
+   * the wrong one. The ribbon was served and the inspector's *Shape* section, painted from
+   * `viewInspector` and not from that branch, was never fed at all: a section that renders,
+   * says *"Reading its shape…"* for ever, and looks exactly like one that works (design
+   * rule 16).
+   *
+   * Silent when there is nothing to do: it returns on the first line when the bag is
+   * already about the right thing, which is every repaint but the one after a selection
+   * moves. */
+  ensureShape();
   applyCodeMarks();
   $("#crumbs").innerHTML = crumbsFor();
   paintModes();
@@ -11676,7 +12025,7 @@ function render() {
   else if (state.view === "inference") vp.innerHTML = viewInference();
   else if (state.view === "curiosities") { ensureCuriosities(); vp.innerHTML = viewCuriosities(); }
   else if (state.view === "algorithms")      { ensureAlgorithms(); vp.innerHTML = viewAlgorithms(); }
-  else if (state.view === "shape")      { ensureShape(); vp.innerHTML = viewShape(); }
+  else if (state.view === "shape")      vp.innerHTML = viewShape();
   else if (state.view === "pins")       vp.innerHTML = viewPins();
   else if (state.view === "settings")  {
     vp.innerHTML = viewSettings();
@@ -12284,6 +12633,26 @@ function wire() {
     state.view = b.dataset.goto; render();
   }));
 
+  /* **Switching the centre mode from somewhere that is not the mode toggle.**
+   *
+   * `data-goto` sets `state.view` and nothing else, which is right for a *page* -- the
+   * naming pages, Inference -- and wrong for a **mode**. `selectFromNav` opens with
+   * `state.view = state.mode`, so a button that moved the view alone would show the ribbon
+   * once and then be undone by the reader's next selection: a control that works until you
+   * use the page, which is the worst of the three ways a control can be broken.
+   *
+   * So this does what the mode toggle does, and it is a second call site rather than a
+   * second implementation of what a mode switch means. `persist()` because the mode is
+   * settings and the toggle's own route saves it. */
+  $$("[data-tomode]").forEach(b => b.addEventListener("click", () => {
+    state.mode = b.dataset.tomode;
+    state.view = state.mode;
+    pushTrail(state.mode, labelOf(b));
+    used("tomode:" + state.mode);
+    persist();
+    render();
+  }));
+
   /* One open provenance block at a time, across every pane that has one -- and the key is
      **namespaced**, never a bare index. Two panes numbering their own cards from zero share
      one number, so opening the naming page's third query and switching to the curiosities
@@ -12410,6 +12779,17 @@ function wire() {
        merged into `<small>`, and `/api/plate` answers *"no such plate at this level"*
        rather than inventing one (design rule 21). */
     plate: (s) => selectFromNav({ disks: [s.id], plate: s.id }),
+    /* A table, kept by the name the *program* gave it. `dbtable` and not `table`, matching
+       `state.dbtable`: the centre pane's mode is called `table` and one word carrying two
+       meanings is `data-nav`'s defect (rule 71).
+
+       It is in the **map** space rather than the cohort space even though its key is a
+       value the program states, because keeping a table means coming back to the table --
+       its pane, its columns, its loops -- and a cohort resolves to the *routines* that
+       carry a value. Both are useful and they are different subjects; the thread beside
+       it is the cohort. */
+    dbtable: (s) => selectFromNav({ table: s.id },
+                                  { label: s.id, note: "a database table" }),
     /* **line** is the code browser's own address, and `goToCode` is the route the search
        hit already presses -- it sets the mode, opens or reveals, files a trail step and
        persists. Reaching for `openCodeFile` here instead would open the pane and leave the
@@ -12782,6 +13162,10 @@ const WIRED_ATTRS = new Set([
      a loop do not mint a second id for it -- and it is in the roster because the roster is
      every attribute the shell writes (rule 30). */
   "algolane", "point", "stepnote",
+  /* Switching the centre mode from a pane rather than from the mode toggle. Its own
+     attribute and not `data-goto`, because a mode is not a page: `data-goto` moves the
+     view alone and the reader's next selection puts it back (see the handler). */
+  "tomode",
   /* The version strip's one control: which version the reader assumes is newer. It is on
      the strip rather than in Settings because it decides what every red row means, and a
      colour a reader cannot account for is worse than no colour. */
@@ -17832,9 +18216,18 @@ function applyWanted() {
 async function selectFromNav(want, name) {
   state.view = state.mode;                // these set what you look AT, not where you are
 
+  let dbtable = null;
   if (want.table !== undefined) {
-    /* A table is not a node and not a plate: selecting one means selecting the code that
-     * reads and writes it. Asked on demand -- most sessions never click a table. */
+    /* A table is not a node and not a plate: selecting one lights the code that reads and
+     * writes it, and *describes the table*. Asked on demand -- most sessions never click
+     * a table.
+     *
+     * **The name is kept, and that is the whole fix.** This branch used to end
+     * `want = { nodes: r.nodes || [] }`, which threw the table away before anything else
+     * ran: `setSubject` then received a bare node and the inspector answered about
+     * whichever routine sorted first, under a crumb naming the table. One line, and it
+     * made a table the only thing on this page a reader could select and not be told
+     * about (rules 30 and 74). */
     let r;
     try {
       r = await fetch(`/api/table?name=${encodeURIComponent(want.table)}`).then(x => x.json());
@@ -17843,6 +18236,7 @@ async function selectFromNav(want, name) {
       render();
       return;
     }
+    dbtable = want.table;
     want = { nodes: r.nodes || [] };
   }
 
@@ -17856,7 +18250,7 @@ async function selectFromNav(want, name) {
    * an accessor rather than a rule everyone has to remember. */
   // The inspector can answer from an id alone, so it does not wait for the stack.
   setSubject({ node: (want.nodes || [])[0] || null, fold: want.fold || null,
-               flow: want.flow || null, plate: want.plate || null });
+               flow: want.flow || null, plate: want.plate || null, dbtable });
 
   await ensureGraph();
   applyWanted();

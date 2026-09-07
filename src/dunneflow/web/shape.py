@@ -318,8 +318,12 @@ def outline_for(store: Store, routine_id: str) -> dict[str, Any]:
         # Not an error and not an empty ribbon: a fold, a boundary and a table are all
         # selectable and none of them is a routine, so the pane has to say which of the
         # two silences this is (design rule 21).
+        # A whole sentence, capital and stop. It was a fragment written to follow
+        # something, and both surfaces render it standing on its own -- so the pane read
+        # *"No shape to draw. that is not a routine"*, which is what a glance catches and
+        # no test was ever going to.
         return {"found": False,
-                "reason": "that is not a routine, so it has no shape of its own"}
+                "reason": "That is not a routine, so it has no shape of its own."}
     r = row[0]
 
     # Outermost first, so every ancestor is already in the tree when a point is placed --
@@ -388,3 +392,74 @@ def _tally(blocks: list[dict[str, Any]], out: dict[str, int]) -> dict[str, int]:
             key = "moves" if block["type"] == "move" else "calls"
             out[key] = out.get(key, 0) + 1
     return out
+
+
+# --------------------------------------------------------------------------- #
+# The other direction: what loops over a named thing
+# --------------------------------------------------------------------------- #
+
+def _loop_sentence(loops: int, deepest: int, places: int) -> str:
+    """The pane's own words. Worded here for `Lane`'s reason: the client lays out, it
+    does not word.
+
+    **What is counted is loops, and the places are said separately** (rule 32). *3 loops*
+    and *3 writes* are different numbers and a single figure would be whichever one the
+    reader assumed -- the loop count answers *how many times could this run in a pass*,
+    the places answer *how many acts are in there*. `places` is `resolve.shape.places`, so
+    an `INSERT` recorded as a `DATABASE` row and a `SQL` row is one act here as it is
+    everywhere else (rule 51).
+    """
+    # **"reached", and deliberately not "written".** The record's phrasing for a table
+    # was *"written from inside 3 loops"*, which is false the moment one of them only
+    # reads -- and 8 of `worktree_allocations`' 27 operations are reads. One verb for a
+    # table and a boundary also means one sentence rather than two that drift (rule 51).
+    if not loops:
+        return "not reached from inside any loop"
+    head = "reached from inside 1 loop" if loops == 1 else \
+        f"reached from inside {loops:,} loops"
+    # **The nesting clause states the deepest chain, never how many are in one.**
+    # "one of those is inside another" is a count, and `deepest` is a maximum: 89 loops
+    # with a deepest of 1 may have forty nested ones, and the sentence would have said
+    # there was one (rule 32).
+    if deepest:
+        head += (", the deepest of them inside another loop" if deepest == 1
+                 else f", the deepest of them {deepest} loops down")
+    tail = "1 place" if places == 1 else f"{places:,} places"
+    return f"{head} — {tail} in all"
+
+
+def loops_around(store: Store, *, table: str | None = None,
+                 boundary: tuple[str, str] | None = None) -> dict[str, Any]:
+    """What loops over a table or a boundary, for the pane that stands at one.
+
+    The *"and vice versa"* half: ALGORITHMS asks what a loop touches, and this is a
+    reader standing at a table asking what loops over them. `resolve.shape.enclosing`
+    does the fact and this does the wording, which is the split every other surface here
+    already keeps.
+
+    **Only the loops are counted, and everything enclosing is returned.** A table written
+    from inside one arm of a decision is a fact about that table, so the rows hold every
+    enclosing span (design rule 1); the sentence is about loops because that is the
+    question a rate answers and the one the figure is being asked. Both numbers come off
+    the same list, so the headline and the rows it opens cannot disagree (rule 13).
+    """
+    points = shape.enclosing(store, table=table, boundary=boundary)
+    deep = shape.nesting(points)
+    loops = [p for p in points
+             if p.kind in (ControlKind.LOOP, ControlKind.COMPREHENSION)]
+    moves: list[Any] = []
+    for p in loops:
+        moves.extend(p.moves)
+
+    return {
+        "loops": len(loops),
+        "points": len(points),
+        "deepest": max((deep[p.point_id] for p in loops), default=0),
+        "places": shape.places(moves),
+        "sentence": _loop_sentence(len(loops), max((deep[p.point_id] for p in loops),
+                                                   default=0), shape.places(moves)),
+        # Every enclosing span, innermost first, in the worklist's own row shape -- so a
+        # figure that counts things opens exactly those things (rule 32), and a row here
+        # and a row on the Algorithms page are the same row.
+        "rows": [dict(_row(p), nested=deep[p.point_id]) for p in points],
+    }

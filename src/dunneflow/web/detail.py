@@ -28,6 +28,7 @@ from ..schema import signature_parts
 from ..sourcedb import SourceStore
 from ..store import Store
 from . import queries
+from .shape import loops_around
 
 # How many lines either side of a definition the source view offers by default. A
 # definition plus its immediate surroundings is the unit a reader actually wants; the
@@ -185,6 +186,10 @@ def _boundary(store: Store, node_id: str, params: dict[str, Any]) -> dict[str, A
         "identity": {"bkind": params["kind"], "target": params["target"],
                      "source_status": "OPAQUE"},
         "in": {"callers": touchers, "entrypoints": []},
+        # **The links back** (ALGORITHMS chunk 5), and the same block a table carries:
+        # *how often could this be reached in one pass*. The kind and target are the
+        # boundary's own identity, handed on rather than re-parsed out of `node_id`.
+        "loops": loops_around(store, boundary=(params["kind"], params["target"])),
         "where": None,
     }
 

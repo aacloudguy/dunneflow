@@ -37,7 +37,7 @@ from ..resolve import version as version_order
 from ..sourcedb import DocSourceStore, SourceStore
 from ..standards import STANDARDS_DB
 from ..store import StaleGraphError, Store, UnfinishedMapError
-from . import analysis, anomalychanges, changes, diagram, filediff, packages, plate, queries
+from . import analysis, anomalychanges, changes, diagram, filediff, packages, plate, queries, table
 from .code import build_file, build_files
 from .corpus import build_corpus, build_document, serving
 from .cover import anomalies as build_anomalies
@@ -1812,11 +1812,20 @@ class _Handler(BaseHTTPRequestHandler):
             self._json({"found": False, "reason": "no table asked for", "nodes": []})
             return
         with self._live.lock:
-            rows = self._live.current.store.query(queries.TABLE_ROUTINES, {"name": name})
+            store = self._live.current.store
+            rows = store.query(queries.TABLE_ROUTINES, {"name": name})
+            specimen = table.describe(store, name)
         nodes = [r["node"] for r in rows]
         # `found: False` for a real table nothing touches would read as "no such table".
         # They are different answers and the client shows different things for each.
-        self._json({"found": True, "table": name, "nodes": nodes})
+        #
+        # **The specimen rides beside the nodes rather than replacing them**, because the
+        # three doors into this route ask two questions: the navigator row, the document
+        # row and the ribbon all want the table *selected*, which lights its routines in
+        # the stack, and the inspector wants the table *described*. Serving one and making
+        # the caller derive the other is how the table came to be thrown away.
+        self._json({"found": True, "table": name, "nodes": nodes,
+                    "specimen": specimen})
 
     def _r_files(self, q: dict[str, list[str]]) -> None:
         """Every analysed file, complete. Rule 8: a reference list is never bounded."""

@@ -281,6 +281,10 @@ def test_a_node_that_is_not_a_routine_is_refused_with_a_sentence(store):
     body = webshape.outline_for(store, "no-such-node")
     assert body["found"] is False
     assert body["reason"], "a refusal with no sentence is a blank pane"
+    # A *sentence*, and both surfaces render it standing alone under their own heading.
+    # It was a fragment, and the pane read "No shape to draw. that is not a routine".
+    assert body["reason"][0].isupper() and body["reason"].endswith("."), (
+        f"the refusal is a fragment, not a sentence: {body['reason']!r}")
 
 
 def test_a_routine_that_runs_straight_through_is_an_answer(store):
@@ -289,3 +293,76 @@ def test_a_routine_that_runs_straight_through_is_an_answer(store):
     assert body["found"] is True
     assert body["blocks"] == [] and body["counts"] == {}
     assert body["routine"]["qualname"].endswith("helper")
+
+
+# --------------------------------------------------------------------------- #
+# The other direction: what loops over a named thing
+# --------------------------------------------------------------------------- #
+
+def test_a_table_is_told_how_many_loops_reach_it_and_how_deep(store):
+    """`widgets` is written from `rate`'s loop and from both of `nested`'s.
+
+    Three loops, and the deepest is one inside another -- which is the whole point of
+    the clause: a boundary reached once per pass of a loop that is itself once per pass
+    is a quadratic reach into the outside world.
+    """
+    b = webshape.loops_around(store, table="widgets")
+    assert b["loops"] == 3, b["sentence"]
+    assert b["deepest"] == 1, "the nested loop is not being seen as nested"
+    assert "3 loops" in b["sentence"] and "inside another loop" in b["sentence"]
+
+
+def test_the_sentence_counts_loops_and_says_the_places_separately(store):
+    """*3 loops* and *3 writes* are different numbers (rule 32).
+
+    A single figure would be read as whichever one the reader assumed, and the two are
+    not the same: `nested`'s two loops hold one write between them.
+    """
+    b = webshape.loops_around(store, table="widgets")
+    assert b["places"] < b["loops"] + b["places"], "the two figures collapsed into one"
+    assert f"{b['loops']} loops" in b["sentence"]
+    assert f"{b['places']} places" in b["sentence"]
+    assert b["places"] == 2, (
+        f"two writes to `widgets` sit inside loops, not {b['places']} -- `nested`'s "
+        "two loops hold one write between them and counting spans would say three")
+
+
+def test_the_nesting_clause_states_a_depth_and_never_a_count(store):
+    """`deepest` is a maximum, so wording it as *"one of those is inside another"* is a
+    claim about how many that nothing measured -- 89 loops with a deepest of 1 may have
+    forty nested ones."""
+    b = webshape.loops_around(store, table="widgets")
+    assert "one of those" not in b["sentence"], b["sentence"]
+    assert "the deepest of them" in b["sentence"], b["sentence"]
+
+
+def test_a_table_reached_from_a_decision_and_no_loop_says_so_and_still_has_rows(store):
+    """`seals` is written from one arm of `forking` and from no loop at all.
+
+    The sentence is about loops and the rows are about every enclosing span, because a
+    table written from inside a decision is a fact about that table (design rule 1). A
+    pane that returned nothing here would have dropped the point for failing a test it
+    was never asked.
+    """
+    b = webshape.loops_around(store, table="seals")
+    assert b["loops"] == 0 and b["sentence"] == "not reached from inside any loop"
+    assert b["rows"], "the decision that writes `seals` came back as nothing"
+    assert {r["kind"] for r in b["rows"]} == {"DECISION"}
+
+
+def test_a_row_here_is_the_same_row_the_worklist_draws(store):
+    """One row shape, so a fix to the worklist's row is a fix to the pane's (rule 51)."""
+    b = webshape.loops_around(store, table="widgets")
+    lane_row = _lane(webshape.for_program(store), "rates")["rows"][0]
+    for row in b["rows"]:
+        assert set(lane_row) <= set(row), (
+            f"the pane's row is missing {sorted(set(lane_row) - set(row))}")
+        assert row["node"] and row["point"] and row["why"] and ":" in row["where"]
+        assert "nested" in row, "a pane row cannot say how deep it sits"
+
+
+def test_nothing_is_reached_from_inside_a_loop_in_a_program_with_none(store):
+    """The blank answer is a sentence, not an empty block (design rule 21)."""
+    b = webshape.loops_around(store, boundary=("ENV", "NOTHING_READS_THIS"))
+    assert b == {"loops": 0, "points": 0, "deepest": 0, "places": 0,
+                 "sentence": "not reached from inside any loop", "rows": []}

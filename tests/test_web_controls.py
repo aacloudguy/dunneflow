@@ -12343,3 +12343,41 @@ def test_the_layout_says_which_engine_drew_it() -> None:
         "a layout that failed leaves the reader on the spiral with nothing saying so, "
         "which is indistinguishable from a control that does nothing"
     )
+
+
+def test_the_plate_layout_is_offered_where_the_reading_happens_too() -> None:
+    """Two controls, one state — and the second one is the reason the handler is delegated.
+
+    The Settings cards are a *choice* and live where a reader is deciding; the graph's own
+    toggle is a *mode*, flipped while reading, and lives on the panel that already carries
+    the plate width dial it feeds. Focus draws the same line.
+
+    **They are rebuilt by different functions.** `render()` rebuilds the page and
+    `renderGraphFurniture()` rebuilds only the HUD, and `wire()` runs from the first — so a
+    per-element binding, which is what this was, survives on the Settings card and is
+    dropped from the graph button every time the counts change. That is design rule 16's
+    dead control arriving through a repaint rather than through the wiring, and it is
+    exactly what `graphLayout` already delegates to avoid.
+    """
+    js = _read("shell.js")
+    assert 'ev.target.closest("[data-platelayout]")' in js, (
+        "the plate-layout control is not delegated, so the copy on the graph panel loses "
+        "its handler every time the HUD is rebuilt"
+    )
+    assert '$$("[data-platelayout]")' not in js, (
+        "a per-element binding is back beside the delegated one — two handlers for one "
+        "control, and the one that drifts is the one nobody clicks while testing"
+    )
+
+    furniture = _fn(_code(js), "renderGraphFurniture")
+    assert "data-platelayout=" in furniture, (
+        "the graph's controls panel offers no plate-layout toggle"
+    )
+    assert "gwidthrange" in furniture, "this guard is blind — the width dial has moved"
+    assert furniture.index("gwidthrange") < furniture.index("data-platelayout="), (
+        "the layout toggle no longer sits with the plate controls it belongs to"
+    )
+    assert 'aria-pressed="${state.plateLayout === "force"}"' in furniture, (
+        "the toggle does not say which arrangement is in force — a two-state button whose "
+        "state is invisible reads as an instruction, and you cannot tell which way round"
+    )

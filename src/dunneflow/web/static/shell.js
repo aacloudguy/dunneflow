@@ -3986,6 +3986,35 @@ const DGM_DRAG_SLOP = 3;
   }, { passive: false });
 })();
 
+/* ═══ how a plate arranges what it holds ═══ */
+/* **Delegated, for the reason the one below it is** — and here that reason is load-bearing
+ * rather than tidy. The same control is drawn in two places: two cards on the Settings page
+ * where a reader is choosing, and a toggle on the graph's own controls panel where they are
+ * reading. Those two panels are rebuilt by *different* functions — `render()` rebuilds the
+ * page and `renderGraphFurniture()` rebuilds only the HUD — and `wire()` runs from the
+ * first. A per-element binding, which is what this was, therefore survived on the Settings
+ * card and was silently dropped from the graph button every time the counts changed. One
+ * listener on the document outlives both.
+ *
+ * The attribute carries **the layout to switch to**, so the graph's toggle simply names the
+ * other one and `aria-pressed` says which is in force. A `"toggle"` value would be a label
+ * standing where an identity belongs (rule 30), and it would make the two Settings cards —
+ * which are a choice, not a switch — mean something different from the same attribute.
+ *
+ * `applyPlateLayout` is deliberately **not awaited**: 83 ms on a GPU and nearly ten seconds
+ * without one, so blocking here would freeze the page on the machines that can least afford
+ * it. It says "solving…" while it runs and repaints whichever surface is showing when it
+ * lands. */
+document.addEventListener("click", (ev) => {
+  const b = ev.target.closest("[data-platelayout]");
+  if (!b) return;
+  state.plateLayout = b.dataset.platelayout;
+  used("platelayout:" + state.plateLayout);
+  persist();
+  applyPlateLayout();
+  render();
+});
+
 /* ═══ graph layout: two drawings of one selection ═══ */
 /* Delegated, because the same control is drawn in two places -- the crumb bar while you
  * are in graph mode, and Settings while you are deciding what to open on. Two handlers for
@@ -12757,21 +12786,6 @@ function wire() {
     render();
   }));
 
-  /* How a plate arranges what it holds. Beside the colour set and named the same way:
-     `data-platelayout` is a route, and nothing on the page carries it as state — the
-     `data-nav` collision those two are named to avoid.
-     `applyPlateLayout` is deliberately **not awaited**. The GPU path is 89 ms and the
-     fallback is nearly ten seconds, so blocking the handler would freeze the page on the
-     machines that can least afford it; it repaints the control itself when it lands, and
-     the control says "solving…" until then. */
-  $$("[data-platelayout]").forEach(b => b.addEventListener("click", () => {
-    state.plateLayout = b.dataset.platelayout;
-    used("platelayout:" + state.plateLayout);
-    persist();
-    applyPlateLayout();
-    render();
-  }));
-
   /* worklist */
   /* ALGORITHMS' lane tabs. Beside `data-sev` because they are the same control one page
      over: a tab that names which measurement is on screen. No `disabled` on an empty one
@@ -18915,6 +18929,37 @@ function renderGraphFurniture() {
       </label>
       <div class="hint" id="gwidthrange" style="margin:-.1rem 0 .1rem 3.55rem">${
         plateRangeNote()}</div>
+      ${/* **How a plate arranges what it holds, on the panel that arranges plates.** The
+            same setting as the two cards in Settings and the same delegated route; this one
+            is a toggle because here it is being *flipped while reading* rather than chosen
+            between, which is the line the focus button draws — a mode lives where the
+            reading happens.
+            Pressed state is the whole statement: the button names the arrangement in force,
+            not the one a click would bring, because a control that reads as an instruction
+            leaves you unable to tell which way round it is. The attribute carries the other
+            layout, so what it *says* and what it *does* are separate fields.
+            It sits under the width dial because the two answer neighbouring questions —
+            that one is how wide a plate is drawn, this is how what is inside it is laid
+            out — and because the solver's own answer is what feeds that dial under
+            `force`. */""}
+      <div style="display:flex;align-items:center;gap:.35rem;margin-top:.3rem">
+        <span class="muted" style="width:3.2rem">layout</span>
+        <button class="gbtn" data-platelayout="${
+                  state.plateLayout === "force" ? "structural" : "force"}"
+                aria-pressed="${state.plateLayout === "force"}"
+                title="${state.plateLayout === "force"
+                  ? "Plates are arranged by connection — 92% fewer crossings. Click for the spiral."
+                  : "Plates are arranged on a spiral, busiest in the middle. Click to arrange by connection instead."}"
+                >${state.plateLayout === "force" ? "◉ by connection"
+                                                 : "◌ by structure"}</button>
+        <span class="muted" id="glayoutnote">${
+          plateLayoutBusy ? "solving…"
+            : (plateLayoutNote && plateLayoutNote.failed) ? "could not be solved"
+            : (plateLayoutNote && state.plateLayout === "force")
+              ? `${Number(plateLayoutNote.ms).toLocaleString()} ms on the ${
+                  plateLayoutNote.backend === "gpu" ? "graphics card" : "processor"}`
+              : ""}</span>
+      </div>
       <div style="display:flex;align-items:center;gap:.35rem;margin-top:.2rem">
         <span class="muted" style="width:3.2rem">follow</span>
         <select class="gsel" id="gdirection"

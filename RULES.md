@@ -9,8 +9,9 @@ agree with a rule and still reimplement the defect it was written from: every on
 was, at the time, the obvious thing to do.
 
 Cited as bare numbers — "rule 45" — from code comments, tests, `HANDOFF.md` and
-`BRIEFING.md`; **2,775** such citations across `src/` and `tests/`, 2,070 of them to these
-rules and 705 to the design ones, over 105 files. The numbers are therefore **addresses**,
+`BRIEFING.md`; **2,832** such citations across `src/` and `tests/`, 2,109 of them to these
+rules and 723 to the design ones, over 107 files — retaken 2026-09-08 with the command
+below, which is why the command is written down. The numbers are therefore **addresses**,
 never an ordering, and are never reused or closed up.
 
 *That figure was 768 and is retaken here rather than carried.* It was measured on 2026-09-02
@@ -25,9 +26,9 @@ by the query. A count that changes with the shell it is run in is not a measurem
 24), so the exclusion is stated and the figure was reproduced twice before being written:
 
 ```bash
-grep -rhoiE "\brules? [0-9]+"        --exclude-dir=__pycache__ src tests | wc -l   # 2,775
-grep -rhoiE "\bdesign rules? [0-9]+" --exclude-dir=__pycache__ src tests | wc -l   #   705
-grep -rliE "\brules? [0-9]+"         --exclude-dir=__pycache__ src tests | wc -l   #   105
+grep -rhoiE "\brules? [0-9]+"        --exclude-dir=__pycache__ src tests | wc -l   # 2,832
+grep -rhoiE "\bdesign rules? [0-9]+" --exclude-dir=__pycache__ src tests | wc -l   #   723
+grep -rliE "\brules? [0-9]+"         --exclude-dir=__pycache__ src tests | wc -l   #   107
 ```
 
 

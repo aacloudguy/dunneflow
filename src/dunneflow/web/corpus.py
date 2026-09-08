@@ -3,7 +3,7 @@
 **Lane 1 of Document mode, and `documents.py` is lane 2 -- a close name for a different
 subject, so it is worth being blunt about which is which.** This reads the documents
 *somebody wrote* and the scan found beside the source: 2,064 Markdown and text files on
-Mensores, mined into `docs.db` for 29,980 headings and 235 definitions and, until this
+Mensores, mined into `docs.db` for 29,980 headings and 230 definitions and, until this
 module, readable nowhere in the tool. `documents.py` builds **the map's** eight documents
 out of the graph -- prose this tool generates about the program. Neither is the other's
 renderer, and neither can be built from the other's rows.

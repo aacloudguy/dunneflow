@@ -1,7 +1,7 @@
 /* ══ prose.js — a document's text, turned into a page ═══════════════════════════════
  *
  * The renderer for Document mode's **lane 1**: the 2,064 documents the analysed program
- * carries, which until now were mined for 29,980 headings and 235 definitions and readable
+ * carries, which until now were mined for 29,980 headings and 230 definitions and readable
  * nowhere in the tool. Lane 2 — the map's own eight documents — is tables and needs none of
  * this.
  *

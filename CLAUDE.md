@@ -21,8 +21,8 @@ by *how often you need it*, not by importance:
 | `HANDOFF.md` | the full chronological record, session by session | when you need why something is the way it is |
 
 A rule is cited as a bare number — "rule 45", "design rule 19" — from code comments, tests
-and both records; **2,775** such citations across `src/` and `tests/` as of 2026-09-07 —
-2,070 to the engineering rules and 705 to the design ones, over 105 files. `RULES.md` carries
+and both records; **2,832** such citations across `src/` and `tests/` as of 2026-09-08 —
+2,109 to the engineering rules and 723 to the design ones, over 107 files. `RULES.md` carries
 the command that counts them, because the first retake gave two different answers in two
 shells. **The numbers are
 addresses. Never reuse one, never renumber, never close a gap.**
@@ -255,8 +255,21 @@ sealed snapshot is never re-analysed in place, by design (rules 25 and 62):
 ```bash
 uv run dunneflow analyze ../society-2026-08-26/src --name mensores
 uv run dunneflow revisions output/mensores --seal --label "Society at e2e658b4 - 2026-08-26"
-uv run dunneflow analyze ../society-2026-08-29/src --name mensores
+uv run dunneflow analyze ../society-2026-08-29/src --name mensores --standards <dir>
 ```
+
+**The third command carries `--standards` and the recipe said nothing about it for two days.**
+`standards.db` is a document store like the corpus: a change to `detectors/docs/` or
+`extractors/docs/` moves `doc_rules_fingerprint()` and stales it with everything else — and
+`serve` **refuses to boot** on a stale one, before a page is served. Rebuilding the pair
+without it leaves a map that analyses perfectly and cannot be opened. The directory is an
+outside standard the reader names; if the one a map was built with is gone, the store can be
+dropped and the conformance lane says so in its own words. Found 2026-09-08, the hard way.
+
+**A superseded sealed snapshot is still dropped by hand**, and that is deliberate:
+`sourcedb.py` owns no `DROP` and `test_source.py:171` asserts it against the source text. Each
+rebuild leaves one behind — delete its `graph@…db` and `docs@…db`, then its rows in `paths`
+and `revisions` in **both** sidecars. Blobs are shared by content and are left alone.
 
 Ground truth for documentation: the pantheon table in
 `.groma/milestones/v1.1-harness-ownership/NAMING.md` yields `groma`, `disceptator`,
@@ -312,6 +325,24 @@ docs   ──► extract ──► docs.db  (SQLite) ─────────
 - `extractors/docs/` — Markdown, reStructuredText and plain text, scanned by hand for
   the same reason: no markdown library. Emits `DocFacts`.
 
+  **A constraint is not a definition, and the judgement is on the opening.**
+  `- `definition`: 1 ≤ len ≤ 5000 chars` is a validation rule for a field, written in the
+  shape a gloss is written in, inside a section whose heading reads *"AC-19: Performance
+  budget for glossary tools"* — and it reached Society's glossary as one of sixty defined
+  terms, saying this program defines the word *definition* and meaning a bound on a string's
+  length. A gloss that **begins** with a bound, a bare type, a regex or a placeholder value
+  states a shape; a sentence that reaches a number partway through is prose about a budget.
+  Measured over all 240 definitions the corpus yields: **5 refused**, every one a field
+  constraint, and the three that quote a bound mid-sentence kept. The pattern is
+  `constraint_glosses` in `detectors/docs/prose.yaml` — the stated extension point — and it is
+  applied in `_add_def`, the one place every definition of every form passes (rule 51): a
+  table row can carry a constraint exactly as a dash gloss can.
+
+  *What is deliberately not changed is the section rule.* A heading that merely **mentions**
+  the glossary still admits definitions, and 29 of these came from that one heading. Requiring
+  the word to head its phrase drops 77 of 240 corpus-wide and takes 60 defined terms to 58;
+  measured, offered, and Tom's call was to refuse the constraint alone.
+
   **A naming standard is usually a table, and `_table()` reads one.** The FORM lane was
   empty across all 2,064 of Mensores' documents — 5 rules, all VOCABULARY, none
   `checkable` — because `_table()` consumes a table whole and the loop `continue`s, so the
@@ -342,6 +373,28 @@ docs   ──► extract ──► docs.db  (SQLite) ─────────
   refusals a reader can trigger by naming a root — inside the output tree, inside the
   documentation root, inside the analysed tree — **each with its own sentence**, and all of
   them judged *before* anything is opened, so a refusal never abandons a half-written map.
+- `resolve/glossary.py` — **which words are vocabulary at all**, and it is the denominator
+  under every coverage figure the tool prints. Words are mined from the names a person chose
+  for a *thing* — a package, a way in, a table, a constant — and a constant is split on
+  underscores, which is where the recall goes wrong: `_GLOSSARY_DEFINITION_MAX_LEN` is one
+  name, and three of its four words are its type and its unit. **889 of Society's 1,154
+  undefined words were fragments like that**, so the worklist opened with `DDL`, `EXTRAS`,
+  `REASON`, `KEYS`, `BYTES`, `CHARS` and buried `witness`, `posture`, `claim` and `probe`
+  beneath them (rule 1, in the mirror).
+
+  `Term.only_inside_a_name` is the test, on three conditions and the third is what keeps it
+  honest: never the whole name of anything, only ever inside a **constant's** name, and
+  **nothing defines it** — a word somebody troubled to define is vocabulary whatever the code
+  does with it, which is why this loses no defined term on any corpus. A table's or a way in's
+  own fragments are left alone: they were not measured, and a rule that reaches past its
+  evidence is a guess. Measured: **59 of 324 defined** against 60 of 1,214, 265 undefined,
+  **890 held back**.
+
+  **Held back, never dropped** (design rule 1), and the reason is that the split cannot tell
+  `MENSORES_MAX_LEN`'s subject from its unit. The report lists all 890 with the reason, the
+  command says how many and where to read them, and the dashboard draws them in a band where
+  each says *a word* — one click, persisted per program beside `triage`, with *hold back* on
+  the way out. The judgement is offered, not taken.
 - `resolve/conformance.py` — **reality against intent**, and the third naming question.
   `naming.py` counts and quotes nobody; `stated.py` quotes and counts nothing; this asks
   whether the program does what a rule says. **The population is never inferred from the

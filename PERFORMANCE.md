@@ -646,6 +646,12 @@ page repainting its 1,214 terms on the `render()` that follows the fetch. Pre-ex
 identical for both tiers, and not chunk 5's; naming it here stops the next person retaking
 this row and reporting it as a cost of the corpus (rule 24).
 
+*As of 2026-09-08 those 1,214 terms are drawn in three lists rather than two — 59 defined,
+265 undefined, 890 held back — and the population is exactly unchanged, which is why this row
+stands as written. It has **not** been retaken: the composition moved and the count did not,
+and saying which is which is the difference between a row that survives a change and one that
+quietly stops meaning what it says.*
+
 Conditions, because they are load-bearing: taken in the automation tab at a **1,264×523
 viewport and a 16px root font**, on a warm sidecar, with the glossary page already painted.
 The `sidecars` block adds a shallow copy of a five-key dict and two `serving()` calls to a

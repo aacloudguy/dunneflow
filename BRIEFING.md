@@ -177,7 +177,10 @@ Design rule 13 is met for both tiers.
 every definition the scan mined — and only **32 of them bind to a term the code uses as an
 identifier** and become citations; the other 203 define words this program never names and
 belong to the *mirror*. So chunk 5 fixed **32 citations across 22 terms in 10 documents**:
-60 citation buttons on the glossary page before, **92 after** (60 code, 32 docs).
+60 citation buttons on the glossary page before, **92 after** (60 code, 32 docs). *Retaken
+2026-09-08: **91** (60 code, 31 docs). The one that went was the constraint gloss on the word*
+definition*, refused by the rule at the top of this file — a citation lost by a definition
+ceasing to be one, which is the fix working rather than the feature regressing.*
 
 **The revision spine is in, and both ends of a pair are readable.** `WORKING` is a *state*
 rather than an id, and a revision is identified by when it was captured; `seal()` keeps the
@@ -196,6 +199,130 @@ program and every card states **the middle it is being read against**, because e
 program has a most-commented routine and a maximum alone is a claim nobody can weigh.
 
 ## What we are doing now
+
+**A bug-fix pass, 2026-09-08. Five commits, nothing half-written.** 1,213 tests, mypy clean
+over 120 source files, ruff clean, `check` 0 broken, working tree clean, no servers running.
+`output/mensores` holds the pair rebuilt under the new documentation rule:
+`2026-09-08T13:39:50Z` (628 files, Society at 08-29) working, `2026-09-07T15:32:31Z` (625,
+at 08-26) sealed.
+
+**Four defects were outstanding, and the record had two of them by half.**
+
+| | |
+|---|---|
+| `navIds` split every row's ids on a space | filed as latent, and it was — but the fix is a row that *says* it carries several, not a separator no name can contain |
+| `holds` had no default, so the fold pane's section started closed | **three** keys were in that position, not one: `holds`, `stands` and `calls`, each the answer its pane exists to give |
+| a constraint was being read as a definition | `1 ≤ len ≤ 5000 chars`, glossing the word *definition* on the glossary page |
+| the undefined list's head was fragments of constant names | 889 of 1,154, with `witness` and `posture` and `claim` buried under `DDL`, `EXTRAS`, `BYTES` |
+
+**The two shell defects came with the guard that found the other two.**
+`test_every_inspector_section_declares_its_default` reads the `sec("…")` keys out of the
+shell and requires each to be named in the settings — written because a note about one
+section had stood for six days while two more joined it silently.
+
+**A constraint is not a definition, and the judgement is on the opening.** A gloss that
+*begins* with a bound, a bare type, a regex or a placeholder value states a shape; a
+sentence that reaches a number partway through is prose. Measured over all 240 definitions
+Society yields: **5 refused**, every one a field constraint, and the three definitions that
+quote a bound mid-sentence kept. The rule is in `detectors/docs/prose.yaml` and refused in
+`_add_def`, the one place every definition of every form passes.
+
+*The section rule was measured and deliberately left standing.* A heading that merely
+mentions the glossary still admits definitions — 29 of these came from
+`"AC-19: Performance budget for glossary tools"`. Requiring the word to head its phrase
+drops **77 of 240** and takes 60 defined terms to 58. Tom's call, on the numbers: refuse the
+constraint alone.
+
+**A word is not a fragment of somebody else's constant name.** Three conditions: never the
+whole name of anything, only ever inside a constant's name, and **nothing defines it** —
+which is why 889 words leave the worklist and no defined term goes with them. Measured after
+the constraint fix: **59 of 324 defined (18%)** against 60 of 1,214 (5%), **265 undefined**
+headed by `DDL`, `witness`, `posture`, `claim`, `probe`, and **890 held back**.
+
+**Held back, listed, and every one offered back** — Tom: *"offer a chance to promote them
+back to the list manually… a term might appear such as MENSORES_MAX_LEN, where the MAX and
+LEN are modifiers but MENSORES has real meaning."* The report lists all 890 with the reason,
+the command says how many and where, and the dashboard draws a **Held back** band where each
+word says *a word*; persisted per program beside `triage`, with *hold back* on the way out.
+The worklist and the band are one split read from its two ends.
+
+**Looked at, and the looking found the fifth commit.** In three CSS columns a button
+labelled *"it is a word"* wrapped onto three lines and made every row a different height —
+890 of them. No test could have said so. Verified at the **pointer**, which is the half a
+scripted click cannot reach: promoting `EXTRAS` moved it from 890 held to 266 undefined and
+wrote `{extras: true}` into `dunneflow:mensores:v6`; *hold back* undid both. Eight views
+walked, no console error, self-check reporting every control wired.
+
+### What the rebuild cost, and it is worth knowing before the next one
+
+The documentation rule moved `doc_rules_fingerprint()`, so the pair had to be rebuilt — two
+analyses and a seal, exactly as this file says. **What this file does not say is that
+`standards.db` is a document store too.** It went stale with the rest, and `serve` refuses to
+boot on it: *"written by a different version of DunneFlow"*, before a single page is served.
+The recipe is now three commands and the third is `--standards`, which is written into the
+Commands section above.
+
+*Candidate rule, for Tom to mint or refuse:* **a rebuild recipe must name every store the
+change invalidates, including the ones nothing else mentions.** Rule 12 says a cached fact is
+only as good as the tool that read it; this is the other end of it — the recipe that repairs
+the staleness has to be as complete as the fingerprint that detects it.
+
+**One thing is left undone and it needs a hand.** Dropping the superseded sealed snapshot is
+a manual pass by design (`sourcedb.py` owns no `DROP`, and `test_source.py:171` asserts it).
+The two `.db` files are gone; the **sidecar rows are not**, because the sandbox refused the
+write. `/api/revisions` handles that state honestly — the sidecar says what a revision is,
+the directory says whether a graph exists to read it with — so nothing is broken, but
+`revisions` lists a third snapshot that cannot be opened. The one command that finishes it:
+
+```bash
+uv run python -c "
+import sqlite3
+for db in ('source.db', 'docsource.db'):
+    c = sqlite3.connect(f'output/mensores/{db}')
+    c.execute(\"DELETE FROM paths WHERE revision = '2026-09-07T14:55:40Z'\")
+    c.execute(\"DELETE FROM revisions WHERE revision = '2026-09-07T14:55:40Z'\")
+    c.commit(); c.close()"
+```
+
+### Before that: the plates, coupled and framed (2026-09-07/08)
+
+Four commits that were built and never recorded here; `CLAUDE.md` and `PERFORMANCE.md`
+carry them in full and the commit messages carry the reasoning.
+
+**A second layout, and `layout.py` had named it in its own docstring since the day it was
+written.** Fruchterman–Reingold per plate, seeded from the spiral, in a WebGPU compute
+shader with a web-worker fallback: **89 ms against 9.7 s**, and 328,531 edge crossings down
+to 27,291 on the busiest plate. A toggle on the panel that arranges plates, so design rule 2
+holds: both layouts are built and the reader chooses.
+
+**Then Tom asked why the links between plates are not vertical**, and the answer was that a
+shadow took part in its plate's forces and nothing pulled back. Coupling every slot that
+stands for one entity toward their common middle doubled the upright crossings; **one
+coordinate frame for the whole stack** took them to 3,878 of 5,101 and co-located every one
+of the 4,050 entities to a spread of exactly zero. It costs the within-plate reduction —
+about 90% down to 75–83% — and Tom took that trade on the numbers.
+
+**A plate is no longer centred on the stack axis**, which three things assumed, so the
+plate's circle is now reported by the layout and read by the outline, the rim arrow and the
+framing alike (rule 51).
+
+### Before that: the review worklist, closed (2026-09-07)
+
+Six findings, and F1 is the one a reader was being lied to by: `_r_about` took the sidecar
+inside the lock and queried it after the block closed, so `/api/about` and `/api/revisions`
+— fired back to back at boot — shared one SQLite connection. 2 of 60 concurrent reads came
+back wrong and the topbar printed *"no sidecar here to ask"* over a map whose sidecar holds
+the name. Rule 49 exactly. The guard that watches for it looks at where a store is *used*
+rather than where it is read, because an alias carried past the `with` was invisible to the
+one that already existed.
+
+The other five: the node-shape orphans withdrawn with the view that drew them, a second
+serialiser of a model with one serialiser, the structure bands given the denominator they
+were already computing, two measurements that now explain themselves, and four unreferenced
+functions. `detectors/__init__.py` was left alone deliberately — deleting one dead predicate
+there changes `rules_fingerprint()` and discards every graph on the machine.
+
+### Before that: ALGORITHMS chunk 6, and the pause it ended on
 
 **Paused 2026-09-07 after ALGORITHMS chunk 6. Nothing is half-written.** Five commits,
 1,187 tests, mypy clean over 120 source files, ruff clean, `check` 0 broken, working tree
@@ -1805,6 +1932,30 @@ and the singular. The stat tile's violet is visible in the one capture that fits
 the legend and the findings drew the same idea in `--diff-moved`. Put to Tom on 2026-09-01
 and unified on `--diff-moved`; see the top of this file.*
 
+### The next pass, as scheduled
+
+Tom, 2026-09-08, on the four defects: *"add the other items for the next pass after this
+one."* This is that list, and it is drawn from the entries below rather than kept beside
+them — the entries are still where an item is closed, and this is only the order.
+
+1. **Three things have never been *looked* at**, and each is a look rather than a fix: a
+   **kept fold** and a **kept flow** opened from the shelf (the node kind is verified, the
+   other two need a compartment drawn); the **hover card's shadow sentence** under a real
+   pointer, which `e60c050` names as the one thing it could not verify; and the
+   **worklist's and the ribbon's row layouts**, which are design calls waiting on Tom's eye.
+   The instrument reaches all of them — the pointer covers the whole viewport, the capture
+   covers the top-left quarter, and `transform: translate(-x,-y)` on the body pans one over
+   the other (rule 83). It was used that way this session and it works.
+2. **Two maps in `output/` cannot be opened**, both refusing exactly as designed and both one
+   command away: `output/beads` wants `dunneflow migrate` (rule 60) and `output/dunneflow`
+   wants a re-`analyze`. They are two of the four entries the program selector lists.
+3. **The superseded snapshot's sidecar rows** — see *What the rebuild cost* at the top of
+   this file. One command, and it needs a hand.
+4. **The rebuild-recipe rule**, to mint or refuse: *a rebuild recipe must name every store
+   the change invalidates.* `standards.db` is a document store, went stale with the corpus,
+   and stopped `serve` from booting at all.
+5. Then the standing backlog below, none of it scheduled.
+
 ### What is next, and it is open
 
 Nothing in the anomaly worklist's chunk 5 is outstanding, the argument gap is closed, and
@@ -1938,14 +2089,20 @@ feature was blocked on an answer nobody owed.
   nothing and its size is asked for live; a kept **line** records the revision it was kept at.
   The search hit was in the plan on evidence: `goToCode(path, line)` already existed, which is
   the third item in two days recorded as blocked and found not to be.*
-- **`holds` is not in `insp`'s defaults**, so the fold pane's section starts closed whatever
-  it wanted and "Collapse all" cannot see it until someone has opened it once. Found
-  2026-09-02 while adding two sections beside it; not fixed, because its default is a
-  decision about that pane. One line in `settings.js` either way.
-- **`navIds` splits `data-navid` on a space**, so a presence row for a *named file* whose
-  name contains one would resolve to two ids that name nothing. Mensores has 0 and a
-  constant's `module.name` cannot hold one, so nothing exercises it; the fix belongs to
-  `navIds` rather than to any caller.
+- ~~**`holds` is not in `insp`'s defaults.**~~ *Fixed 2026-09-08, and it was **three** keys
+  rather than one — `holds` (a fold's contents and a plate's), `stands` (what a merged plate
+  stands for) and `calls` (the call sites behind an arrow). Each is the answer its pane
+  exists to give rather than a caveat on one it already had, which is the test `loops` and
+  `shape` were named under, so all three open. The entry stood for six days as a note about
+  one section while two more joined it in silence, which is what a guard is for:
+  `test_every_inspector_section_declares_its_default` reads the `sec("…")` keys out of the
+  shell and requires each to be named in the settings.*
+- ~~**`navIds` splits `data-navid` on a space.**~~ *Fixed 2026-09-08, and the fix is not the
+  one the entry implied. A separator no name can contain — a control character — gives up the
+  one thing the space was chosen for, an attribute a person can read when something goes
+  wrong. Instead the **row declares** whether it holds several: `data-navmulti`, written by
+  the single producer that joins any (the ways-in rows, whose ids are digests), and a single
+  id comes back whole whatever characters it holds.*
 - ~~**The blank-graph fix (rule 49) is reasoned and guarded, never *seen*.**~~ *Seen
   2026-09-06. The premise was false: the graph **does** mount in the automation tab —
   `canvas MISSING` was a read taken while the pane still said "reading the stack…". Four
@@ -2014,10 +2171,14 @@ feature was blocked on an answer nobody owed.
 - **Per-plate sphere scaling, and stack orientation** — carried in `HANDOFF`'s list and
   missing from this one until the 2026-09-02 audit. The second is structural: `OrbitView`
   has no camera roll.
+- ~~**The two vocabulary-lane precision defects.**~~ *Both fixed 2026-09-08 — see the top of
+  this file. A DASH_GLOSS mined out of a constraint table is no longer counted as a
+  definition (5 refused of 240, all constraints), and the undefined list's head is words
+  again rather than the tails of SCREAMING_SNAKE constant names (1,154 → 265, with 890 held
+  back, listed, and each one offered back to the worklist by hand).*
 - The filed small things: the rendered markdown is not revision-named, `--revision` on
   `analyze` (it exists on `serve` only), the navigator's search box pinned-when-open
-  (decided 2026-08-30, never built), the two vocabulary-lane precision defects, packaging as
-  a binary.
+  (decided 2026-08-30, never built), packaging as a binary.
 
 ### Before this, in order — the full record is `HANDOFF.md`
 

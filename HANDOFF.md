@@ -11754,6 +11754,7 @@ and it is worth writing down: **a rule citation in an extractor costs a full reb
 the rebuild leaves one more stale sealed snapshot to drop by hand.
 
 
+
 ## 2026-09-07 — paused
 
 Five commits, clean tree, 1,187 tests, mypy clean over 120 source files, ruff clean,
@@ -11816,3 +11817,224 @@ a 1,185 px viewport, so the panes are clipped and the inspector is out of frame 
 **pointer reaches everything**, which is the half of that sentence four sessions had wrong.
 Everything about layout this session was measured through the route and the served source,
 not seen, and that is said rather than claimed.
+
+## The plates, coupled and framed — 2026-09-07/08
+
+*Recorded 2026-09-08, four commits after the fact. `CLAUDE.md` and `PERFORMANCE.md` were
+kept current by each commit; this file and `BRIEFING.md` were not, and a record written
+later is worth less than one written at the time — which is the whole reason this note says
+when it was written.*
+
+| Commit | What |
+|---|---|
+| `3861a76` | a force-directed plate layout, solved on the GPU |
+| `36b5379` | the layout as a toggle on the panel that arranges plates |
+| `e60c050` | the plates coupled through their shadows, and the residual stated |
+| `e845e4a` | one coordinate frame for the stack, and the coupling starts working |
+
+**89 ms against 9.7 s, and 328,531 crossings down to 27,291** on the busiest plate —
+Fruchterman–Reingold per plate, seeded from the spiral, in a WebGPU compute shader with a
+web-worker fallback. It solves over `payload.edges` and never over the engine's `links`,
+which is the one line that makes it a *plate* layout: the model stores every crossing twice,
+once per plate, each copy ending in a shadow, so the payload's edge list is the only place a
+cross-plate call is expressed as a force *within* a plate. Rule 23's *"which is exactly what
+lets both plates lay out under the same forces"*, asked of a shadow for the first time.
+
+**Three silent failures, each guarded by name.** `meta` is a reserved word in WGSL: the
+shader failed to compile, the pipeline dispatched, and the stack "solved" in 6 ms with the
+output bit-identical to the input — only counting crossings caught it. `layout: "auto"`
+derives a pipeline's bind-group layout from the bindings its entry point uses, so one bind
+group for both passes was refused asynchronously into an error scope nobody popped. So
+`getCompilationInfo()` is read, the scope is popped and thrown on, and a result that moved
+nothing is refused.
+
+**Then Tom asked the question the feature had not answered.** *"Why are links between plates
+not mostly vertical? I assume the reason is that we only ever solve a single plate by
+connection and then stop."* Correct: a shadow took part in its borrowing plate's forces and
+nothing tied it to the node it stood for — 0.678 plate-radii from its real self against 0.907
+for two random points in a disc. Coupling every slot that stands for one entity toward their
+common middle doubled the upright crossings (749 → 1,539 of 5,101) for about a point of the
+within-plate reduction.
+
+**And that was still being undone after the solve.** Each plate was normalised onto its own
+middle at its own radius, so two slots the solver had left in the same place were pulled apart
+again by two different translations and two different scales. Pulling harder could not reach
+past it: snapping every slot onto its group's mean *every iteration* still left 20 of 5,101
+upright. Under **one frame** it is 3,878 of 5,101, the median lean halves, and all 4,050
+entities co-locate to a spread of exactly zero. It costs the within-plate reduction — ~90%
+down to 75–83% — and Tom took that trade on the numbers.
+
+**A plate is then no longer centred on the stack axis**, which the outline, the rim arrow and
+the framing all assumed — 0.015 plate-widths off at the median, 0.127 at worst, and "barely"
+is not "never". The plate's circle is reported by the layout and read by all three (rule 51).
+Verified after: 0 of 15,907 nodes outside their own plate's circle, and a rim bearing error of
+exactly 0.
+
+**No skewer is drawn, and the reason is written into `layout.py`** so the next reader does not
+spend an afternoon on it: with one frame an entity's slots are exactly co-located, so there
+*is* a vertical string through the plates — but what is drawn is the crossing between two
+*different* entities, and a spring embedder holds those apart at its own natural length. The
+line that would be the skewer is the transposition, and rule 23 removed it.
+
+**A prototype disagreed with all of this and was wrong.** A CPU sketch with grid-bucketed
+repulsion had coupling *improving* the busiest plate by 9% where the real solver has it
+costing 22%, and a second run of the same sketch said the opposite. Neither measured the
+shipped all-pairs solver (rule 24). The real numbers are in `PERFORMANCE.md`, which says so
+rather than quietly replacing them.
+
+## The review worklist, closed — 2026-09-07
+
+*Also recorded late; `2323c14` carries it in full.*
+
+**F1 is the one a reader was being lied to by.** `_r_about` took `sidecar = self._live.source`
+inside the lock and called `revisions()` after the block closed. Every store `_Live` holds is
+opened `shared=True`, so `/api/about` and `/api/revisions` — which the shell fires back to
+back at boot — read one SQLite connection at once. Measured before: 0 of 30 serial reads
+wrong, **2 of 60 concurrent**, one dropped connection. The rows came back wrong, no row
+matched the served revision, and the topbar printed *"no sidecar here to ask"* over a map
+whose sidecar holds the name. Rule 49: a plausible answer that consumed its own evidence.
+After: 60 of 60 right, none dropped.
+
+`test_no_route_queries_a_shared_sidecar_outside_the_lock` is the guard, and the one that
+already existed was blind twice over — it looks at `current` and not the sidecars, and at
+where a store is *read* rather than where it is *used*, so an alias carried past the `with`
+was invisible.
+
+F2 the node-shape orphans, withdrawn with the view that drew them — three tests guarded a
+feature nothing could reach and all three passed (rule 37). F3 `GraphModel.to_json()`, a
+second serialiser of a model with one serialiser, disagreeing with `columnar()` on
+orientation, edge ends and every position. F4 the structure bands, given the denominator they
+were already computing. F5 two measurements that now explain themselves. F6 four unreferenced
+functions. `detectors/__init__.py` was left alone deliberately: deleting one dead predicate
+there changes `rules_fingerprint()` and discards every graph on the machine, sealed snapshots
+included.
+
+## A bug-fix pass, and the record had two of four by half — 2026-09-08
+
+Tom: *"We are performing bug fix passes of the project. What else is left to resolve?"* — and
+then, on the answer: *"Make the commits, plan for the four defects now, add the other items
+for the next pass after this one, and then a pass to update stale text in the program and
+documentation."*
+
+| Commit | What |
+|---|---|
+| `322be28` | two defects on the shell, and a guard that found two more |
+| `ef556da` | a constraint is not a definition |
+| `9cc98f2` | a word is not a fragment of somebody else's constant name |
+| `02d32c8` | looked at: the held-back band's button wrapped onto three lines |
+
+### The two the record had by half
+
+**`navIds`** was filed as *"splits `data-navid` on a space… the fix belongs to `navIds`"*, and
+the obvious fix is a separator no name can contain. That gives up the one thing the space was
+chosen for — an attribute a person can read when something goes wrong. What went in instead:
+the **row declares** whether it holds several (`data-navmulti`), written by the single
+producer that joins any, and every other row's id comes back whole whatever characters it
+holds. Exactly one producer joins several, and its ids are node digests.
+
+**`holds`** was filed as one section with no default. It was **three** — `holds`, `stands`,
+`calls` — and the other two had joined it in silence while the note about the first sat in the
+open list for six days. That is the difference between a note and a guard, so the guard went
+in: `test_every_inspector_section_declares_its_default` reads the `sec("…")` keys out of the
+shell and requires each to be named in the settings, in the direction that catches the *next*
+section rather than a removed one.
+
+### A constraint is not a definition
+
+`- `definition`: 1 ≤ len ≤ 5000 chars` — a validation rule for a field, in a bullet list,
+under *"AC-19: Performance budget for glossary tools"*. It was one of Society's sixty defined
+terms, so the glossary said this program defines the word *definition* and meant a bound on a
+string's length.
+
+**Measured before it was built, which decided its shape.** The obvious fix is the *section*:
+require the definitions word to head its phrase, so *"glossary tools"* stops admitting
+definitions. That drops **77 of 240** corpus-wide and takes 60 defined terms to 58 — both of
+the two lost being false. Put to Tom with the numbers; his call was to refuse the constraint
+alone and leave the cause standing, and it is recorded here rather than quietly taken.
+
+So the judgement is on the **opening** of the gloss: a bound, a bare type, a regex or a
+placeholder value states a shape, while a sentence that reaches a number partway through is
+prose about a budget. **5 refused of 240**, every one a field constraint or a reserved-future
+`null`; the three definitions that quote a bound mid-sentence are kept. In
+`detectors/docs/prose.yaml` because that is the stated extension point, applied in `_add_def`
+because that is the one place every definition of every form passes (rule 51).
+
+*Both halves of the anchoring had to be mutated together for the guard to bite* — the `^` in
+the pattern and the `.match()` in the predicate say the same thing, so removing either alone
+changes nothing. Worth knowing before trusting a single mutation.
+
+### A word is not a fragment of somebody else's constant name
+
+`_GLOSSARY_DEFINITION_MAX_LEN` is one name a person chose. Split on underscores it yields a
+subject, a type and a unit, and all of them became terms — so the worklist of 1,154 opened
+with `DDL`, `EXTRAS`, `REASON`, `KEYS`, `BYTES`, `CHARS`, and `witness`, `posture`, `claim`
+and `probe` were at rank 7 and below. **889 of the 1,154** are fragments like that.
+
+Three conditions, and the third is what keeps it honest: never the whole name of anything,
+only ever inside a **constant's** name, and **nothing defines it**. That third one is why the
+rule costs no defined term on any corpus, and it is also why the split happens *after* the
+senses are bound rather than while the candidates are mined. A table's or a way in's own
+fragments are left alone: they were not measured.
+
+| | Before | After |
+|---|---|---|
+| defined | 60 of 1,214 (5%) | **59 of 324 (18%)** |
+| undefined | 1,154 | **265** |
+| held back | — | **890** |
+| definitions read | 235 | **230** |
+| mirror: carried forward | 119 | **114** (Named 54, Borne 5, Spoken 23, Absent 32) |
+| glossary citation buttons | 92 (60 code, 32 docs) | **91** (60 code, 31 docs) |
+
+The extra held-back word is `DEFINITION`, which lost its false gloss in the commit before and
+is a fragment like the rest — the two fixes interlocking exactly as measured.
+
+**Tom's call on what to do with the 889**, and it changed the design: *"Can we drop them, say
+so, and offer a chance to promote them back to the list manually? I can think that a term
+might appear such as MENSORES_MAX_LEN, where the MAX and LEN are modifiers but MENSORES has
+real meaning. It is possible that word may not appear elsewhere."* Exactly so — nothing in the
+name can tell the three apart. So the report lists all 890 with the reason, the command says
+how many and where, and the dashboard draws a **Held back** band where every word says *a
+word*: one click, persisted per program beside `triage`, with *hold back* on the way out. The
+worklist and the band are one split read from its two ends, so a word is in exactly one.
+
+### Looked at, and the looking was the fifth commit
+
+In three CSS columns a bordered button labelled *"it is a word"* wrapped onto two and three
+lines, and every row in a band of 890 was a different height. Nothing else could have found
+it: the rows were correct and the panel was unreadable. `nowrap`, a short label, and the
+button at the end of its row — 24 px across the board where they were 24, 41 and 58.
+
+**Verified at the pointer**, which is the half a scripted click cannot reach (rule 48).
+Promoting `EXTRAS` moved it from 890 held to 266 undefined and wrote `{extras: true}` into
+`dunneflow:mensores:v6`; *hold back* undid both. The pointer landed at client (516, 441)
+against a target of (515, 442) — rule 83's mapping, `x * 784 / innerWidth`, confirmed against
+a capturing `pointerdown` listener. Eight views walked with no console error and the
+self-check reporting every control wired.
+
+### What the rebuild cost, and the candidate rule it earned
+
+The documentation rule moved `doc_rules_fingerprint()`, so the pair was rebuilt — two analyses
+and a seal, exactly as `CLAUDE.md` said. Then `serve` **refused to boot**: `standards.db` is a
+document store too, it went stale with the corpus, and the refusal comes before a page is
+served. The recipe is three commands now and the third carries `--standards`.
+
+*Candidate rule, for Tom to mint or refuse:* **a rebuild recipe must name every store the
+change invalidates, including the ones nothing else mentions.** Rule 12 says a cached fact is
+only as good as the tool that read it; this is the other end — the recipe that repairs the
+staleness has to be as complete as the fingerprint that detects it.
+
+The standards store had been built from a directory in a session's scratchpad, which is gone,
+so it was rebuilt from a document identical to the fixture in `test_standards.py` — stated
+here rather than left for someone to find a store whose provenance nothing records.
+
+**And one thing is left undone.** Dropping the superseded sealed snapshot is a manual pass by
+design; the two `.db` files are gone and the **sidecar rows are not**, because the sandbox
+refused the write. `/api/revisions` handles that state honestly — the sidecar says what a
+revision is, the directory says whether a graph exists to read it with — so nothing is broken
+and `revisions` lists a third snapshot that cannot be opened. `BRIEFING.md` carries the one
+command that finishes it.
+
+*One practical note, paid for mid-session.* Reverting a mutation with `git checkout <file>`
+discards the uncommitted fix under test. Both shell fixes went that way and had to be
+reapplied. Mutation-check by **reversing the same swap**, never by reaching for git on a dirty
+tree.

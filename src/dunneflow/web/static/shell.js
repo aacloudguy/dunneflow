@@ -10391,6 +10391,9 @@ function viewGlossary() {
         — which is the normal case, not a degraded one.`}
       The ${(tot - cov).toLocaleString()} the program does not define are listed below rather
       than left out: a word carried by fifty constants and explained nowhere is a finding.
+      ${SET_ASIDE.length ? `A further <b>${SET_ASIDE.length.toLocaleString()}</b> are held
+        back at the foot of this page — they occur only <i>inside</i> a compound constant
+        name — and any of them can be put in the worklist.` : ""}
       <b>Documents are scanned but not stored</b>, so a definition quoted from one names its
       line and cannot be opened here; a docstring can.
     </div>

@@ -253,6 +253,28 @@ scripted click cannot reach: promoting `EXTRAS` moved it from 890 held to 266 un
 wrote `{extras: true}` into `dunneflow:mensores:v6`; *hold back* undid both. Eight views
 walked, no console error, self-check reporting every control wired.
 
+### The stale-text pass, and it found two sentences arguing with their own pages
+
+Tom scheduled it as the third pass, and the figures were the smaller half. Retaken rather
+than carried (rule 24): rule citations **2,775 → 2,832** over 107 files, definitions mined
+**235 → 230**, glossary citation buttons **92 → 91** — the lost one being the constraint gloss
+on the word *definition*, which is the fix working rather than the feature regressing.
+`PERFORMANCE.md`'s 999 ms row is deliberately **not** retaken and says why: its 1,214 terms
+are now drawn in three lists rather than two and the population is exactly unchanged.
+
+**The larger half was two claims about a capability, written as fixed prose.** The glossary
+page said *"Documents are scanned but not stored… cannot be opened here"* — true until
+2026-09-04, false since, and still printed above 31 documentation citations that open. The
+stated-rules lane said *"DunneFlow does not yet run one"* — careful when it was written, false
+since `conformance.py` began running exactly those on 2026-09-06. Both now read the thing they
+describe: the first from the same `SIDECARS` block the buttons are drawn from, the second by
+naming the lane that answers instead of claiming the answer. Neither was catchable by a test
+that did not know the sentence existed, which is why both are now guarded by name.
+
+*The shape worth keeping:* a sentence stating what the tool **can** do is a claim, and rule 13
+applies to it exactly as to a number — it has to be readable off the thing that decides it.
+Both of these were prose beside a control that already disagreed with them.
+
 ### What the rebuild cost, and it is worth knowing before the next one
 
 The documentation rule moved `doc_rules_fingerprint()`, so the pair had to be rebuilt — two

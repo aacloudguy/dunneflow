@@ -12038,3 +12038,35 @@ command that finishes it.
 discards the uncommitted fix under test. Both shell fixes went that way and had to be
 reapplied. Mutation-check by **reversing the same swap**, never by reaching for git on a dirty
 tree.
+
+### The stale-text pass
+
+Figures first, and they are the smaller half: rule citations **2,775 → 2,832** over 107 files
+(retaken with `RULES.md`'s own command, which is why it is written down), definitions
+**235 → 230**, glossary citation buttons **92 → 91**. `PERFORMANCE.md`'s 999 ms row is **not**
+retaken and says so: the glossary's 1,214 terms are drawn in three lists rather than two now
+and the population is exactly unchanged, so the row stands as written.
+
+**Then two sentences that had gone stale where nobody would look.** Both are claims about a
+capability, written as fixed prose, still being printed after the capability arrived:
+
+* *"Documents are scanned but not stored, so a definition quoted from one names its line and
+  cannot be opened here."* True while `source.db` was the only sidecar; false from 2026-09-04,
+  when `docsource.db` landed and `senseOpens` became a capability test. It was on the glossary
+  page four days later, above 31 documentation citations that open. It now reads the same
+  `SIDECARS` block the buttons are drawn from, and is silent before the payload lands.
+* *"DunneFlow does not yet run one."* The checkable sentence, wrong now in **both**
+  directions: it once said "Mechanically checkable." beside a rule with no population, was
+  corrected to deny any check is run, and then `conformance.py` began running exactly these on
+  2026-09-06. It defers now — a check *can* be written, and the checked lane answers whether
+  one ran.
+
+`CLAUDE.md`'s conformance measurement is dated and retaken beside it: *all six checkable rules
+come from a harness standard, none a question about `graph.db`* is from before `--standards`
+existed. With a standards directory admitted it is **4 checked, 1 no population, 10 not
+checkable**, and three of the four are questions about `graph.db` — which is what admitting an
+outside standard was for.
+
+*The shape worth keeping:* a sentence stating what the tool **can** do is a claim, and rule 13
+applies to it exactly as to a number. Neither of these was catchable by a test that did not
+know the sentence existed, so both are now guarded by name.

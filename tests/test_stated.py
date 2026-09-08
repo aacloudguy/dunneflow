@@ -137,12 +137,17 @@ def test_every_rule_carries_the_document_and_the_line_it_came_from(tmp_path: Pat
 
 
 def test_the_checkable_sentence_never_claims_a_check_is_run(tmp_path: Path) -> None:
-    """The field is right and the sentence was wrong once, on its first outing.
+    """The field is right and the sentence was wrong twice, in opposite directions.
 
     `checkable` means the rule names both a class of identifier and a spelling, so a check
-    could be written for it. It has never meant that one is run, and the first time the true
+    can be written for it. It has never meant that one *is* run, and the first time the true
     branch was ever printed it said "Mechanically checkable." beside a rule DunneFlow has no
     population for.
+
+    Then it was wrong the other way. It said "DunneFlow does not yet run one" for two days
+    after `conformance.py` began running exactly these -- 4 of Society's 12 -- and the
+    surface went on printing it. So what the sentence must do is **defer**: name the lane
+    that answers, and claim nothing about the answer.
     """
     with _scan(tmp_path, {"style.md": STANDARD}) as docs:
         rules = stated_rules(docs)
@@ -151,7 +156,11 @@ def test_the_checkable_sentence_never_claims_a_check_is_run(tmp_path: Path) -> N
         note = checkable_sentence(r)
         assert note
         if r.checkable:
-            assert "does not yet run one" in note
+            assert "can be written" in note, "the sentence no longer says what checkable means"
+            assert "checked lane" in note, "it claims an outcome instead of naming who answers"
+            assert "does not yet run" not in note, (
+                "the sentence denies a check that has been running since 2026-09-06"
+            )
         else:
             assert "No query can decide" in note
 

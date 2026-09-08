@@ -398,10 +398,14 @@ docs   ──► extract ──► docs.db  (SQLite) ─────────
 - `resolve/conformance.py` — **reality against intent**, and the third naming question.
   `naming.py` counts and quotes nobody; `stated.py` quotes and counts nothing; this asks
   whether the program does what a rule says. **The population is never inferred from the
-  scope word**, and that is the whole feature: all six of Mensores' `checkable` rules come
-  from a harness standard and *none* is a question about `graph.db`. Checked against the
-  graph, *"Files: kebab-case"* is **0 of 628** Python files — a catastrophic claim about a
-  rule its own document scopes to `src/**/*.md`, three documents. So a **path-shaped scope
+  scope word**, and that is the whole feature. *Measured 2026-09-06, before `--standards`
+  existed:* all six of Mensores' `checkable` rules came from a harness standard and **none**
+  was a question about `graph.db`. Checked against the graph, *"Files: kebab-case"* is
+  **0 of 628** Python files — a catastrophic claim about a rule its own document scopes to
+  `src/**/*.md`, three documents. *Retaken 2026-09-08, with a standards directory admitted:*
+  **4 checked, 1 no population, 10 not checkable** — `files / kebab-case` from the harness
+  standard, and `modules`, `classes` and `constants` from `naming.md` in the standards
+  directory, which is what an outside standard was admitted to make possible. So a **path-shaped scope
   requires a declared `paths:`** and is refused without one (rule 49: a plausible population
   is what hides the failure), while an **entity scope** names its own population and a glob
   narrows it. **Three verdicts, never two** — checked, no population here, not checkable —

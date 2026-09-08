@@ -12664,3 +12664,28 @@ def test_the_worklist_and_the_held_back_band_are_one_split() -> None:
     counts = js[js.index("function glossCount(defined, undef) {"):]
     counts = counts[:counts.index("\n}")]
     assert "undefWords()" in counts, "the filter's count reads the payload, not the lists"
+
+
+def test_the_glossary_states_a_capability_by_reading_it() -> None:
+    """A sentence about what opens must read what opens, or it goes stale in place.
+
+    The glossary page carried *"Documents are scanned but not stored, so a definition quoted
+    from one names its line and cannot be opened here"* — true while `source.db` was the only
+    sidecar, false from the day `docsource.db` landed, and still on the page four days later
+    above 31 documentation citations that do open. The citation buttons had already been
+    moved onto the capability block; the paragraph above them had not, so the page argued
+    with itself.
+
+    Rule 13's shape in prose: a claim must be able to answer with the query that made it.
+    """
+    js = _code(_read("shell.js"))
+    assert "scanned but not stored" not in js, (
+        "the fixed claim is back, and it is only true until a sidecar exists"
+    )
+    fn = js[js.index("function glossOpensNote() {"):]
+    fn = fn[:fn.index("\n}")]
+    assert "SIDECARS" in fn, "the sentence no longer reads the block the buttons read"
+    assert "v.opens" in fn or "opens" in fn, "it is not testing the capability"
+    assert "glossOpensNote()" in js[js.index("function viewGlossary() {"):], (
+        "the note is computed and never drawn"
+    )

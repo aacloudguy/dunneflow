@@ -94,11 +94,20 @@ def checkable_sentence(rule: StatedRule) -> str:
     a class of identifier and a spelling*, which is what makes a check writable; it has
     never meant that one is run.
 
+    **And then one was**, on 2026-09-06: `resolve/conformance.py` measures a checkable rule
+    against the population its own document declares -- 4 of Society's 12 are checked, and
+    the rest report no population rather than passing quietly. So the sentence changed again
+    on 2026-09-08, because *"DunneFlow does not yet run one"* had gone from careful to false
+    while the surface that prints it went on printing it. A sentence about a capability has
+    to be read against the capability, which is the same lesson the glossary page's citation
+    note paid for on the same day.
+
     It lives here rather than beside either surface because there are now three of them --
     the Markdown report, the dashboard's stated page, and the tests that hold them to each
     other. A claim spelled two ways is two claims (rule 51).
     """
     if rule.checkable:
-        return ("Names a class of identifier and a spelling, so a check could be written "
-                "for it. DunneFlow does not yet run one.")
+        return ("Names a class of identifier and a spelling, so a check can be written "
+                "for it. Whether one was run is the checked lane's answer: it measures "
+                "the rules whose population this map holds, and says why not for the rest.")
     return "No query can decide this one."

@@ -9821,7 +9821,7 @@ function conventionPanel(cv, i) {
  * the console rather than folded into whichever group comes first (design rule 16). */
 const STATED_LANES = [
   ["FORM", "How a name must be spelled",
-   "Case, separators, prefixes, suffixes — the mechanical half. Where a rule names both a class of identifier and a spelling, a check could be written for it; DunneFlow does not yet run one, and each rule says which it is."],
+   "Case, separators, prefixes, suffixes — the mechanical half. Where a rule names both a class of identifier and a spelling, a check can be written for it, and each rule says which it is; whether one was run is the Checked page's answer, over the population each rule's own document declares."],
   ["VOCABULARY", "What a name must mean",
    "What a name may be drawn from, or must stand for. Quoted whole rather than summarised, because compressing a rule of this kind into a table cell loses it — and most of these cannot be decided by any query."],
 ];
@@ -10394,8 +10394,7 @@ function viewGlossary() {
       ${SET_ASIDE.length ? `A further <b>${SET_ASIDE.length.toLocaleString()}</b> are held
         back at the foot of this page — they occur only <i>inside</i> a compound constant
         name — and any of them can be put in the worklist.` : ""}
-      <b>Documents are scanned but not stored</b>, so a definition quoted from one names its
-      line and cannot be opened here; a docstring can.
+      ${glossOpensNote()}
     </div>
 
     <div style="display:flex;align-items:center;gap:.6rem;flex-wrap:wrap">
@@ -10487,6 +10486,30 @@ function glossCount(defined, undef) {
 
 function undefHead(undef) {
   return `${undef.length.toLocaleString()} word${undef.length === 1 ? "" : "s"}, most used first`;
+}
+
+/* Whether a citation can be opened, read from the same block the buttons are drawn from.
+ *
+ * **This sentence was a fixed claim and it went stale.** It said *"documents are scanned but
+ * not stored, so a definition quoted from one names its line and cannot be opened here"* --
+ * true while `source.db` was the only sidecar, false from 2026-09-04 when `docsource.db`
+ * landed, and still on the page four days later above 31 documentation citations that open.
+ * A sentence stating a capability has to *read* the capability, or it is prose beside a
+ * button that disagrees with it (rule 13, and rule 51 for why it reads `SIDECARS` rather
+ * than deciding again).
+ *
+ * Silent while `SIDECARS` is empty, which is the state before the payload lands: a page that
+ * has not been told cannot say. */
+function glossOpensNote() {
+  const tiers = Object.entries(SIDECARS || {}).filter(([p]) => seenTiers().has(p));
+  if (!tiers.length) return "";
+  const shut = tiers.filter(([, v]) => !(v && v.opens));
+  if (!shut.length) {
+    return `<b>Every citation here opens</b> — in the bytes this map measured, not the tree
+      as it stands now.`;
+  }
+  return shut.map(([p, v]) => `<b>A ${esc((TIER[p] || [, p])[1])} citation names its line and
+    cannot be opened here</b> — ${esc((v && v.reason) || "no sidecar to ask")}.`).join(" ");
 }
 
 function glossTerms(defined) {

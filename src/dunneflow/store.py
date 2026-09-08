@@ -23,7 +23,12 @@ from pathlib import Path
 from typing import Any
 
 from .detectors import rules_fingerprint
-from .migrate import META_PATHS, PATHS_RELATIVE, paths_are_relative
+from .migrate import (
+    META_PATHS,
+    PATHS_RELATIVE,
+    PREVIOUS_CODE_EXTRACTOR,
+    migration_speaks_for,
+)
 from .schema import (
     SCHEMA_VERSION,
     Annotation,
@@ -589,10 +594,17 @@ class Store:
         keeps a sealed snapshot whose source tree may be long gone; telling that reader to
         re-analyse would ask them to rebuild from a tree they do not have. Anything else
         is stale for reasons no migration can speak for, and does need re-analysis.
+
+        **Which is asked of `migration_speaks_for`, not of the paths.** This branched on
+        absolute paths alone until 2026-09-08, so *"written before paths went relative"*
+        and *"a version this migration can speak for"* were one test standing for two
+        facts -- and every older store was handed a command that refuses it. See that
+        function; the same sentence is built one file over in `docstore.py`, on the
+        document store's own fingerprint (rule 51).
         """
         if not self._is_stale():
             return
-        if not paths_are_relative(self.conn):
+        if migration_speaks_for(self.conn, PREVIOUS_CODE_EXTRACTOR):
             raise StaleGraphError(
                 f"{self.path} stores absolute paths, from before DunneFlow made them "
                 f"relative to the tree they were read from -- run "

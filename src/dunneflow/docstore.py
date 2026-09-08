@@ -23,7 +23,12 @@ from pathlib import Path
 from typing import Any
 
 from .detectors.prose import doc_rules_fingerprint
-from .migrate import META_PATHS, PATHS_RELATIVE, paths_are_relative
+from .migrate import (
+    META_PATHS,
+    PATHS_RELATIVE,
+    PREVIOUS_DOC_EXTRACTOR,
+    migration_speaks_for,
+)
 from .schema import DOC_SCHEMA_VERSION, DocFacts
 from .store import StaleGraphError, refuse_missing
 
@@ -214,10 +219,15 @@ class DocStore:
         return str(row[0]) != self._want()
 
     def _refuse_if_stale(self) -> None:
-        """A reader never drops, and it names **which** fix. See `Store._refuse_if_stale`."""
+        """A reader never drops, and it names **which** fix. See `Store._refuse_if_stale`.
+
+        On `PREVIOUS_DOC_EXTRACTOR`, because the document store carries its own
+        fingerprint and its own gate inside the migration -- the one thing that must not
+        be shared between these two sentences is the value they compare against.
+        """
         if not self._is_stale():
             return
-        if not paths_are_relative(self.conn):
+        if migration_speaks_for(self.conn, PREVIOUS_DOC_EXTRACTOR):
             raise StaleGraphError(
                 f"{self.path} stores absolute paths, from before DunneFlow made them "
                 f"relative to the tree they were read from -- run "

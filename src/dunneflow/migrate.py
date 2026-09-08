@@ -141,6 +141,32 @@ def _meta(conn: sqlite3.Connection, key: str) -> str:
     return "" if row is None else str(row[0])
 
 
+def migration_speaks_for(conn: sqlite3.Connection, previous: str) -> bool:
+    """Would this migration actually rewrite this store, or refuse it?
+
+    **The question a refusal has to ask before naming this command.** `_refuse_if_stale`
+    branched on `paths_are_relative` alone and told every unmigrated store to run
+    `dunneflow migrate`, which is only true for a store carrying the *one* fingerprint
+    `_require_previous` can honestly re-stamp. Everything older gets a sentence naming a
+    command that refuses it in turn -- rule 49's shape in prose, a plausible remedy
+    standing where the real one should be, and it cost nothing until somebody kept an old
+    map. Three of the four program directories in this project's own `output/` were in
+    exactly that state on 2026-09-08: `beads` (extractor unrecorded, schema 1),
+    `dunneflow` and `mensores@2026-08-29T19-43-39Z` (both `5:...`, neither the gated
+    value). Every one of them was told to migrate; every one of them, run, was refused.
+
+    **The fingerprint and not the root.** `_migrate_one` has a second refusal -- a store
+    that records no tree has nothing to be made relative *to* -- and this deliberately
+    does not test for it. That root is read per revision in `recorded_roots`, from a graph
+    that may not be the store being refused, so answering it here would mean rebuilding
+    the migration's own bookkeeping inside a read path to word a sentence. It is also
+    reachable only *past* this gate, so a store this returns `True` for and migration then
+    refuses is told the truth twice, one refusal after the other, which is the honest
+    failure rather than the plausible one.
+    """
+    return not paths_are_relative(conn) and _meta(conn, "extractor") == previous
+
+
 def path_columns(conn: sqlite3.Connection, exempt: dict[str, str]) -> list[tuple[str, str]]:
     """Every (table, column) in this store that holds a filesystem path.
 
@@ -417,6 +443,7 @@ __all__ = [
     "Report",
     "StoreReport",
     "migrate_program",
+    "migration_speaks_for",
     "path_columns",
     "paths_are_relative",
     "recorded_roots",

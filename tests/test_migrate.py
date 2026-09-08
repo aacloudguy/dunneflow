@@ -449,3 +449,46 @@ def test_the_cover_counts_lines_in_the_revision_it_is_reading(tmp_path: Path) ->
     assert _lines(src, None) == held
     store.close()
     src.close()
+
+
+def test_a_store_the_migration_cannot_speak_for_is_told_to_analyse(
+        tmp_path: Path) -> None:
+    """The refusal must name the command that works, not the one that matches the symptom.
+
+    Absolute paths say *when* a store was written; the fingerprint says *whether this
+    migration can honestly re-stamp it*. Those were one test standing for two facts until
+    2026-09-08, so every store older than the one gated version was sent to
+    `dunneflow migrate` and refused by it in turn -- rule 49 in prose. Three of the four
+    program directories in this project's own `output/` were in that state, and none of
+    them was one this migration could touch.
+    """
+    out, db, _, _rev = _make_legacy(tmp_path)
+    conn = sqlite3.connect(db)
+    conn.execute("INSERT OR REPLACE INTO meta(key,value) VALUES('extractor','4:older')")
+    conn.commit()
+    conn.close()
+
+    with pytest.raises(StaleGraphError) as exc:
+        Store(db, writable=False)
+    said = str(exc.value)
+    assert "analyze" in said, "re-analysis is the only fix that can reach this one"
+    assert "migrate" not in said, (
+        "naming `migrate` here sends the reader to a command that refuses them")
+
+    # And the command it was sent to would indeed have refused it, which is the whole
+    # reason the sentence had to change (rule 13: the claim's own test must return it).
+    with pytest.raises(migrate.MigrationRefused):
+        migrate.migrate_program(out)
+
+
+def test_the_docs_store_answers_the_same_question_on_its_own_fingerprint() -> None:
+    """Rule 51: one predicate, two callers, and the value compared is what differs."""
+    src = Path("src/dunneflow")
+    for mod, want in (("store.py", "PREVIOUS_CODE_EXTRACTOR"),
+                      ("docstore.py", "PREVIOUS_DOC_EXTRACTOR")):
+        text = (src / mod).read_text()
+        assert f"migration_speaks_for(self.conn, {want})" in text, (
+            f"{mod} must ask the migration whether it can speak for this store, "
+            f"and ask it about {want}")
+        assert "paths_are_relative(self.conn)" not in text, (
+            f"{mod} still decides which fix to name from the paths alone")

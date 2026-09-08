@@ -707,6 +707,43 @@ body {
   flex-wrap: nowrap; overflow-x: auto; white-space: nowrap; scrollbar-width: thin;
 }
 :root[data-verstrip="clip"] .verstrip > * { flex: none; }
+
+/* **The panes keep inside the window** -- `paneFit`, default off, so this is reached only
+ * when a reader asks for it.
+ *
+ * `.app` is a grid with one implicit column, and an implicit column is `auto`: it is sized
+ * to the widest of the three rows. The toolbar does not wrap, so its max-content width is
+ * the column's width and therefore `.body`'s -- and every rail on the right-hand edge is
+ * carried out of the window with it. Measured at `innerWidth 1220` with both panes folded,
+ * the legend rail sits at 1281-1309 and the inspector rail at 1309-1337; `elementFromPoint`
+ * returns null over either. **A rail is the only way back to a folded pane** (design rule
+ * 24), which is what makes this different in kind from the overhang `topFit` is about.
+ *
+ * Three declarations and each is load-bearing:
+ *
+ * `grid-template-columns: minmax(0, 1fr)` makes the column explicit and bounded, so it is
+ * the container's width rather than the widest row's. On its own it is the whole fix for
+ * `.body` -- and it changes what the *toolbar* does, which is the next two lines.
+ *
+ * `overflow-x: auto` gives the toolbar back the behaviour the column used to give it. Pinned
+ * and left alone the row does not run off any more, it gets *taller* -- measured 63px to
+ * 67px as items wrap inside themselves -- and that is a third behaviour nobody chose and one
+ * `topFit` exists to offer instead. This is the version strip's own mechanism above, and
+ * design rule 29's distinction holds here for the same reason: what scrolls past the edge is
+ * still hit-tested, still tabbable, and scrolled back by being focused.
+ *
+ * `flex-shrink: 0` on the children, because `nowrap` alone squeezes rather than overflows --
+ * the strip's lesson one row up. **`flex-shrink` and not `flex: none`**: `.tb-searchwrap` is
+ * `flex: 1 1 auto` and has to keep *growing* into a wide window, and `flex: none` would take
+ * that away along with the shrink.
+ *
+ * Every `[data-topfit="on"]` rule that hands a child permission to yield is a class selector
+ * and so outranks `.topbar > *` here. That is not an accident of authoring: it is what makes
+ * the two settings compose, so with both on the toolbar shrinks to fit exactly as it does
+ * today and only what the 0.85 floor could not absorb ever scrolls. */
+:root[data-panefit="on"] .app { grid-template-columns: minmax(0, 1fr); }
+:root[data-panefit="on"] .topbar { overflow-x: auto; scrollbar-width: thin; }
+:root[data-panefit="on"] .topbar > * { flex-shrink: 0; }
 .brand b { font-size: .95rem; font-weight: 700; letter-spacing: -.01em; }
 .brand span { font-size: .54rem; color: var(--chrome-muted); letter-spacing: .06em;
   text-transform: uppercase; margin-top: .1rem; }

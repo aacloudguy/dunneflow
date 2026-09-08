@@ -492,6 +492,43 @@ const DEFAULTS = {
    * comes off `.body`'s height. On, the strip is one line that clips and scrolls sideways.
    * A genuine trade between two scarce axes, which is design rule 2 exactly. */
   verStrip: false,
+
+  /* Whether the panes stay inside the window when the toolbar does not.
+   *
+   * Off, which is today. The toolbar running off the window is a behaviour that was chosen
+   * -- `topFit` above is the switch for it, and its default is *off*. What was never chosen
+   * is that the **panes go with it**: `.app` is a grid whose single column is sized to its
+   * widest row, so the toolbar's max-content width is `.body`'s width too, and every rail on
+   * the right-hand side is carried out of the window along with it.
+   *
+   * **A rail is the only way back to a collapsed pane** (design rule 24), so that is not a
+   * cosmetic overhang. Measured this session at `innerWidth 1220`, with the legend and the
+   * inspector both folded:
+   *
+   * | | legend rail | inspector rail |
+   * |---|---|---|
+   * | off, which ships | 1281-1309 | 1309-1337 |
+   * | on | 1164-1192 | 1192-1220 |
+   *
+   * Both are entirely outside the window at the default, and `document.elementFromPoint`
+   * returns `null` over either. They are still reachable by scrolling the whole page
+   * sideways, which is what makes this a preference and not a repair -- and is why it ships
+   * off, beside the three settings it belongs with.
+   *
+   * **The toolbar keeps running off; it just does it in its own row.** Pinning the column
+   * alone would make the toolbar *wrap* instead -- measured 63px to 67px, a third behaviour
+   * nobody asked for and one `topFit` exists to rule out. So the row is given the version
+   * strip's own clip mechanism: `overflow-x: auto`, with `flex-shrink: 0` on the children so
+   * they overflow rather than squeeze (which is `test_the_version_strip_clips_its_children_
+   * as_well_as_its_box` one row up). `flex-shrink` and not `flex: none`: `.tb-searchwrap`
+   * still has to *grow* into a wide window, and `flex: none` would take that with it.
+   *
+   * **It composes with `topFit` rather than competing with it**, and the specificity is what
+   * makes that true: every `[data-topfit="on"]` rule that hands a child permission to yield
+   * is a class selector and outranks `.topbar > *` here, so with both on the toolbar shrinks
+   * to fit exactly as it does today and this reaches only what the 0.85 floor could not
+   * absorb -- scrolled in the toolbar's own row instead of dragging the page. */
+  paneFit: false,
   /* The two versions. `baseRev` is the one being read — the whole map shows it — and
    * `comparedRev` is the version it is held against.
    *
@@ -737,6 +774,7 @@ function resetSettings(program, current) {
     navName: 'what a long navigator name does',
     topFit: 'the toolbar fitting the window',
     verStrip: 'the version strip on one line',
+    paneFit: 'the panes keeping inside the window',
     baseRev: 'which version is being read', comparedRev: 'what it is compared with',
     comparedIsNewer: 'which version is taken to be newer',
     searchCase: 'case-sensitive search', searchWord: 'whole-word search',

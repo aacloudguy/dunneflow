@@ -12849,3 +12849,93 @@ and `test_the_source_path_readout_clips` split the stylesheet on the bare `.srcp
 `.srcpath-v` selector, which now finds the **stamped branch** first — so both silently moved
 to a rule that was never the one they meant. Anchored at column 0, on the declaration every
 reader gets.
+
+## 2026-09-08 — the rail that could not be reached, and the fourth fit setting
+
+Item 6 of the scheduled pass, filed as *"the legend rail does not restore the pane"*. It
+does. The diagnosis was wrong and the symptom was real, which is **rule 39** exactly.
+
+### What the rail actually does
+
+Pressed with a real pointer at viewport (970, 471), `#graphMount`'s `data-legend` goes
+`off` → `on` and the rail re-hides. A scripted `.click()` agrees and is idempotent on a
+second press; the navigator rail restores the same way. The handler in the `[data-fold],
+[data-pane]` listener was never at fault — `opening = Boolean(btn.dataset.pane)` is right,
+and `applyPanels()` does both halves.
+
+### What could not be done was reach it
+
+`.app` is a grid with **one implicit column**, and an implicit column is `auto`: sized to
+the widest of its three rows. The toolbar does not wrap, so its max-content width is the
+column's width and therefore `.body`'s — and every rail on the right-hand edge is carried
+out of the window with it. Measured at `innerWidth 1220`, both panes folded:
+
+| | legend rail | inspector rail |
+|---|---|---|
+| as it ships | **1281–1309** | **1309–1337** |
+| with the new setting on | 1164–1192 | 1192–1220 |
+
+Both are *wholly* outside the window at the default, and `document.elementFromPoint`
+returns `null` over either. They are still reachable by scrolling the whole page sideways,
+which is what keeps this a preference and not a repair.
+
+**A rail is the only way back to a folded pane** (design rule 24), which is what makes it
+different in kind from the overhang `topFit` is about: the toolbar running off is a
+nuisance, a pane you cannot get back is a trap.
+
+### Tom's call, and it is design rule 2
+
+Put to him with the measurement and three alternatives. His answer: *build both and make it
+a Setting*, with today's behaviour as the default — the same shape as the three that landed
+earlier the same day. So `paneFit` joins them, off by default, and the family header, the
+shared design-rule-29 guard and the Settings copy all now say **four**.
+
+### The mechanism, and the half that would have failed silently
+
+Three declarations, each load-bearing:
+
+* `grid-template-columns: minmax(0, 1fr)` makes the column explicit and bounded, so it is
+  the container's width rather than the widest row's. On its own that is the whole fix for
+  `.body` — 1336 → **1220**, and both rails inside.
+* `overflow-x: auto` on `.topbar` gives the toolbar back the behaviour the column used to
+  give it. **Pinned and left alone the row does not run off, it gets taller** — measured
+  63 px → 67 px as its items squeeze and wrap inside themselves, a third behaviour neither
+  this setting nor `topFit` offers.
+* `flex-shrink: 0` on the children, because `nowrap` alone squeezes rather than overflows.
+  That is `test_the_version_strip_clips_its_children_as_well_as_its_box` one row up, and
+  this is the same mechanism deliberately. **`flex-shrink` and not `flex: none`**:
+  `.tb-searchwrap` is `flex: 1 1 auto` and still has to *grow* into a wide window, and
+  `flex: none` would take that away with the shrink.
+
+**The two settings compose rather than compete, and the specificity is why.** Every
+`[data-topfit="on"]` rule that hands a child permission to yield is a class selector and
+outranks `.topbar > *` here, so with both on the toolbar shrinks to fit exactly as it does
+today and only what the 0.85 floor could not absorb ever scrolls.
+
+### Verified at the pointer, and one thing that could not be
+
+Pressed the real control at viewport (1056, 455): `aria-pressed` true, `data-panefit="on"`
+stamped, document 1336 → 1220, `.body` 1337 → 1220, the toolbar's box 1220 with a
+`scrollWidth` of **1377** — running off inside its own row. Written to storage, and the
+stamp survives a reload, which is rule 68's half.
+
+**The claim in the Settings copy was measured rather than asserted**: scrolling the
+toolbar's own row to `scrollLeft 157` brings ⚙ Settings from 1285–1363 to **1127–1206**,
+inside the window, while `scrollX` stays 0, the document stays 1220, and the inspector rail
+does not move. The toolbar still runs off; it does it in its own row now.
+
+*What could not be done is press the four settings controls' **Settings button** with a
+pointer, and that is the instrument.* The pointer stopped arriving above a floor that
+drifted during the session — a click at pointer y=45 landed (viewport 77) and one at y=40
+did not, and after a reload y=88 stopped landing too, on a page where y=109 and y=144 had
+worked twenty minutes earlier. The toolbar occupies viewport y 8–54, entirely below the
+best floor measured, so ⚙ Settings cannot be pressed at the pointer here at all. Settings
+was opened by focusing the button and pressing **Return** — a real key event through the
+real handler — and the new toggle, which sits far enough down the page, was then pressed
+with the pointer. This is rule 83's family and it is why item 0 of the scheduled pass is
+still unpaid.
+
+*The pointer/viewport mapping this session was `viewport = pointer × 1.7111`, measured from
+a `pointerdown` probe rather than assumed: pointer (400, 300) arrives at (684, 514). It is
+not the ratio the last session recorded, so it is worth measuring every time rather than
+carrying.*

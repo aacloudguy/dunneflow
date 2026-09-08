@@ -457,6 +457,7 @@ const state = {
   navName: "over",        // 'over' | 'clip' | 'wrap' -- a name wider than its room
   topFit: false,          // the toolbar yields and shrinks, or runs off the window
   verStrip: false,        // the version strip holds one line and scrolls, or wraps
+  paneFit: false,         // the panes keep inside the window, or run off with the toolbar
   /* The two versions, and which of them the screen is showing.
    *
    * `baseRev` is the version being read — the cover, the routine list, the code browser,
@@ -879,6 +880,21 @@ function applyVerStrip() {
   const r = document.documentElement;
   if (state.verStrip) r.setAttribute("data-verstrip", "clip");
   else r.removeAttribute("data-verstrip");
+}
+
+/* The fourth of the four, and the only one whose subject is a control the reader can lose.
+ *
+ * `.app` is a grid with one column, sized to its widest row -- so the toolbar's max-content
+ * width is `.body`'s width too, and a right-hand rail is carried out of the window with it.
+ * A rail is the only way back to a collapsed pane (design rule 24), which is what separates
+ * this from the overhang the other three are about.
+ *
+ * On the root and not on `.app`, for `applyNavName`'s reason: `render()` rebuilds the rows
+ * beneath, and a stamp on a rebuilt element is a second place that has to remember. */
+function applyPaneFit() {
+  const r = document.documentElement;
+  if (state.paneFit) r.setAttribute("data-panefit", "on");
+  else r.removeAttribute("data-panefit");
 }
 
 /* The half CSS cannot do, and the reason it cannot.
@@ -7321,10 +7337,14 @@ function viewSettings() {
           <button class="toggle" id="bandScrollToggle" aria-pressed="${state.bandScroll}" aria-label="Scroll change bands in place"></button>
         </div>
 
-        ${/* ── three surfaces that cannot fit what they hold ──
-              One subject, three settings, and each ships today's behaviour as its default —
+        ${/* ── four surfaces that cannot fit what they hold ──
+              One subject, four settings, and each ships today's behaviour as its default —
               because each alternative is a preference and not a repair, and design rule 2
-              says the usage counter retires the loser rather than an argument. */""}
+              says the usage counter retires the loser rather than an argument.
+
+              The fourth joined them 2026-09-08 and is the odd one: the other three are about
+              a *thing* that will not fit its box, and this is about the **window** the boxes
+              are in. Its subject is a rail, which is the only way back to a folded pane. */""}
         <div class="setrow">
           <div><div class="lbl">A navigator name too long for its row</div>
             <div class="desc">The navigator is the primary way in, and on a routine list
@@ -7376,6 +7396,28 @@ function viewSettings() {
               Nothing is unreachable: the assumption button is still clickable, still tabbable,
               and scrolls itself back into view when focused.</div></div>
           <button class="toggle" id="verStripToggle" aria-pressed="${state.verStrip}" aria-label="Version strip on one line"></button>
+        </div>
+
+        <div class="setrow">
+          <div><div class="lbl">Keep the panes inside the window</div>
+            <div class="desc">The toolbar running off the window is a choice — the setting
+              above is that choice, and it ships off. What was never chosen is that the
+              <b>panes go with it</b>. <code>.app</code> is a grid of one column sized to its
+              widest row, so the toolbar's width is the body's width, and every rail on the
+              right-hand edge is carried out of the window too.<br><br>
+              A rail is the only way back to a folded pane, so this is not an overhang like
+              the other three. Measured at <b>innerWidth 1220</b> with the legend and the
+              inspector both folded: the legend rail sits at <b>1281–1309</b> and the
+              inspector rail at <b>1309–1337</b> — both entirely outside the window, and
+              <code>elementFromPoint</code> returns nothing over either. On, they are at
+              <b>1164–1192</b> and <b>1192–1220</b>.<br><br>
+              <b>Off by default</b>, because they can still be reached by scrolling the whole
+              page sideways — which makes this a preference rather than a repair. On, the
+              toolbar still runs off; it does it in its own row and scrolls there, the way the
+              version strip does above. With <em>Fit the toolbar</em> also on, the toolbar
+              shrinks first exactly as it does today and only what the ${Math.round(TOPFIT_FLOOR * 100)}%
+              floor could not absorb ever scrolls.</div></div>
+          <button class="toggle" id="paneFitToggle" aria-pressed="${state.paneFit}" aria-label="Keep the panes inside the window"></button>
         </div>
 
         <div class="setrow">
@@ -13209,6 +13251,17 @@ function wire() {
     applyVerStrip();
     render();
   });
+  const pfc = $("#paneFitToggle");
+  if (pfc) pfc.addEventListener("click", () => {
+    state.paneFit = !state.paneFit;
+    used("panefit:" + state.paneFit);
+    applyPaneFit();
+    render();
+    /* And the engine is told, because releasing the column changes the width the stack has
+       to draw in: deck.gl had sized itself to a canvas 117px wider than the window. The
+       fold handler above ends on the same line for the same reason. */
+    if (Graph.mounted()) requestAnimationFrame(() => Graph.resize());
+  });
   const inf = $("#inferredToggle");
   if (inf) inf.addEventListener("click", () => { state.hideInferred = !state.hideInferred; render(); });
   /* The colour set. A `data-palette-set` route, never `data-palette` -- that name is the
@@ -17592,7 +17645,7 @@ const Settings = window.DunneFlowSettings;
 const PERSISTED = [
   "theme", "palette", "scale", "startup", "mode", "menuOrder", "trailShown", "trailCap",
   "density", "coverBars", "rowTagsWrap", "coverWhatWrap", "bandScroll", "baseRev", "comparedRev", "comparedIsNewer",
-  "navName", "topFit", "verStrip",
+  "navName", "topFit", "verStrip", "paneFit",
   "ambient", "hideInferred", "colWidths", "insp", "sortKey", "sortAsc",
   "egress", "aiOps", "triage", "promoted", "pins", "usage", "graphLayout",
   "diskOrder", "diskColors", "colorBy", "sortMode", "filterMode", "direction",
@@ -20636,6 +20689,7 @@ async function boot() {
   applyNavName();
   applyTopFit();
   applyVerStrip();
+  applyPaneFit();
   applyDiagramLook();
   applyScale();
   state.view = state.startup;
@@ -20679,6 +20733,7 @@ async function boot() {
   applyNavName();
   applyTopFit();
   applyVerStrip();
+  applyPaneFit();
   applyDiagramLook();
   paintNavFlags();          // after `adoptSettings`, or they show the defaults (rule 68)
   applyScale();

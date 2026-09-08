@@ -200,10 +200,10 @@ program has a most-commented routine and a maximum alone is a claim nobody can w
 
 ## What we are doing now
 
-**Paused 2026-09-08. A bug-fix pass, two features, the counts that could be one, three
-settings for what the window cannot fit, and the regression the third of them caused —
-eighteen commits, nothing half-written.**
-**1,240** tests, mypy clean over **121** source files, ruff clean, `check` 0 broken, working
+**2026-09-08. A bug-fix pass, two features, the counts that could be one, and now **four**
+settings for what the window cannot fit — the fourth being the rail a folded pane is reached
+by, which was carried out of the window with the toolbar.**
+**1,241** tests, mypy clean over **121** source files, ruff clean, `check` 0 broken, working
 tree clean. **Two servers are up and both are deliberate:** 8899 is Tom's, and **8787 is this
 session's, left running on purpose** — it was stopped as cleanup while he was reading it, which
 is what produced the *"the server could not be asked: Failed to fetch"* he reported, and it is
@@ -213,6 +213,68 @@ adding to it would have carried the drift forward.*
 `output/mensores` holds the pair rebuilt under the new documentation rule:
 `2026-09-08T13:39:50Z` (628 files, Society at 08-29) working, `2026-09-07T15:32:31Z` (625,
 at 08-26) sealed.
+
+### The rail that could not be reached, and a fourth fit setting (2026-09-08)
+
+Item 6 of the scheduled pass, filed as *"the legend rail does not restore the pane"*. **It
+does.** Pressed with a real pointer, `data-legend` goes `off` → `on` and the rail re-hides;
+a scripted click agrees and is idempotent on a second press; the navigator rail is the same.
+The diagnosis was wrong and the symptom was real, which is **rule 39** in one line.
+
+**What could not be done was reach it.** `.app` is a grid with one *implicit* column, and an
+implicit column is `auto` — sized to the widest of its three rows. The toolbar does not wrap,
+so its max-content width is the column's and therefore `.body`'s, and every rail on the
+right-hand edge is carried out of the window with it. At `innerWidth 1220`, both panes
+folded:
+
+| | legend rail | inspector rail |
+|---|---|---|
+| as it ships | **1281–1309** | **1309–1337** |
+| `paneFit` on | 1164–1192 | 1192–1220 |
+
+Both are wholly outside the window at the default and `elementFromPoint` returns **null**
+over either. They are still reachable by scrolling the whole page sideways, which is what
+keeps this a preference rather than a repair — and **a rail is the only way back to a folded
+pane** (design rule 24), which is what makes it different in kind from the overhang `topFit`
+is about.
+
+**Tom's call was design rule 2**: build both and make it a Setting, today's behaviour as the
+default. So `paneFit` joins the three from earlier the same day and the family is now
+**four** — in its own comment, in the Settings copy, and in the shared design-rule-29 guard.
+
+Three declarations, and the middle one is the half that would have failed silently.
+`grid-template-columns: minmax(0, 1fr)` bounds the column, which is the whole fix for
+`.body` — 1336 → **1220**. `overflow-x: auto` on `.topbar` gives the toolbar back what the
+column used to give it: **pinned and left alone the row does not run off, it gets taller**,
+63 → 67 px as its items squeeze and wrap inside themselves, a third behaviour neither setting
+offers. `flex-shrink: 0` on the children, because `nowrap` alone squeezes rather than
+overflows — the version strip's own lesson one row up — and **`flex-shrink` rather than
+`flex: none`**, because `.tb-searchwrap` still has to grow into a wide window.
+
+**The two settings compose, and the specificity is why.** Every `[data-topfit="on"]` rule
+that hands a child permission to yield is a class selector and outranks `.topbar > *`, so
+with both on the toolbar shrinks to fit exactly as today and only what the 0.85 floor could
+not absorb ever scrolls.
+
+Verified at the pointer on the real control: `aria-pressed` true, the stamp on, document
+1336 → 1220, `.body` 1337 → 1220, the toolbar's box 1220 with a `scrollWidth` of **1377** —
+running off in its own row. Persisted, and the stamp survives a reload (rule 68). And the
+sentence in the Settings copy was measured rather than asserted: scrolling the toolbar's own
+row brings ⚙ Settings from 1285–1363 to **1127–1206**, inside the window, while `scrollX`
+stays 0 and the inspector rail does not move.
+
+*Item 0 of the scheduled pass is still unpaid, and this session says why more precisely than
+the last one could.* The pointer stopped arriving above a floor that **drifted**: y=45
+landed and y=40 did not, and after a reload y=88 stopped landing on a page where y=109 had
+worked twenty minutes earlier. The toolbar is viewport y 8–54, below the best floor measured,
+so ⚙ Settings cannot be pressed at the pointer at all here. Settings was opened by focusing
+the button and pressing **Return**, and the new toggle — far enough down the page — was then
+pressed with the pointer. The mapping this session was `viewport = pointer × 1.7111`,
+measured from a `pointerdown` probe and **not** the ratio the last session recorded, so it is
+worth measuring every time rather than carrying (rule 83).
+
+*And rule 88 was already minted the day before, so item 4 of that pass was closed before this
+session opened. The entry outlived its own closure by a day.*
 
 ### The toolbar fit, reported from a real window and fixed (2026-09-08)
 
@@ -2309,9 +2371,9 @@ them — the entries are still where an item is closed, and this is only the ord
    defect.*
 3. ~~**The superseded snapshot's sidecar rows.**~~ *Closed 2026-09-08 — Tom ran the command,
    and it is verified at the top of this file.*
-4. **The rebuild-recipe rule**, to mint or refuse: *a rebuild recipe must name every store
-   the change invalidates.* `standards.db` is a document store, went stale with the corpus,
-   and stopped `serve` from booting at all.
+4. ~~**The rebuild-recipe rule**, to mint or refuse.~~ *Minted as **rule 88** in the session
+   that filed this — `RULES.md:1644`, and `CLAUDE.md`'s index carries it. The entry outlived
+   its own closure by a day.*
 5. **Three found while looking. Tom answered two the same day.** The **dead shadow branch**
    is *withdrawn*, with a guard that asserts the two facts closing it before it asserts the
    consequence. The **navigator rows** got Tom's mechanism — the module path yields its width
@@ -2329,12 +2391,16 @@ them — the entries are still where an item is closed, and this is only the ord
    the right edge and the whole page scrolls sideways.~~ *Closed 2026-09-08 by `topFit`,
    which releases `.app`'s column while it is on — 1336 → 1280 at `innerWidth 1280`, with
    ⚙ Settings 14 px inside the window instead of 43 px past it.*
-6. **The legend rail does not restore the pane.** Clicking `#legendRail` left
-   `data-legend="off"` twice, and the panel had to be reopened by writing `panels.legend`
-   into settings. Design rule 24 says a pane collapses to a rail and the rail says which pane
-   it is — which implies the rail brings it back. *Filed 2026-09-08 in `HANDOFF.md` and
-   nowhere else, and moved here 2026-09-08 because **this file owns the open list**: a second
-   copy is the drift the 2026-09-02 audit was called for.*
+6. ~~**The legend rail does not restore the pane.**~~ *Closed 2026-09-08, and the diagnosis
+   was wrong while the symptom was real — rule 39 exactly. **It restores the pane**: pressed
+   with a real pointer at (970, 471) `data-legend` goes `off` → `on`, and a scripted click
+   agrees and is idempotent. What could not be done was **reach** it. `.app` is a grid with
+   one implicit column, sized to its widest row, so the toolbar's width is `.body`'s width
+   and every right-hand rail is carried out of the window with it — at `innerWidth 1220` the
+   legend rail sits at **1281–1309** and the inspector rail at **1309–1337**, both wholly
+   outside, with `elementFromPoint` returning null over either. Tom's call on the fix was
+   design rule 2, so `paneFit` is a fourth setting beside the three from the same day, off by
+   default; see the top of this file.*
 7. Then the standing backlog below, none of it scheduled.
 
 ### What is next, and it is open

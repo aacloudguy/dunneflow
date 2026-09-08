@@ -12840,10 +12840,14 @@ def test_the_two_derived_orders_are_not_called_what_the_layout_toggle_is_called(
 # --------------------------------------------------------------------------- #
 # Three surfaces that cannot fit what they hold
 #
-# `navName`, `topFit` and `verStrip` are one subject in three places: a row narrower than
-# the thing in it. Each ships today's behaviour as its default, so the guard that matters
-# most for all three is that the default reaches **none** of the new rules -- a setting
-# that changes the picture before anybody asks for it is not a setting.
+# `navName`, `topFit`, `verStrip` and `paneFit` are one subject in four places: a box
+# narrower than the thing in it. Each ships today's behaviour as its default, so the guard
+# that matters most for all four is that the default reaches **none** of the new rules -- a
+# setting that changes the picture before anybody asks for it is not a setting.
+#
+# The fourth is the odd one and joined 2026-09-08. The other three are about a *thing* that
+# will not fit its box; that one is about the **window** the boxes are in, and its subject is
+# a rail -- which is the only way back to a folded pane (design rule 24).
 #
 # Each is guarded on the established "four halves, each of which passes alone while the
 # setting is dead" pattern, and then on the one mechanism that, left out, would let it
@@ -13081,22 +13085,92 @@ def test_the_version_strip_clips_its_children_as_well_as_its_box() -> None:
     )
 
 
-def test_none_of_the_three_fit_settings_is_hidden_rather_than_narrowed() -> None:
+def test_a_folded_pane_keeps_its_rail_inside_the_window() -> None:
+    """The four halves, and the one that would let it render perfectly and do nothing.
+
+    `.app` is a grid with one *implicit* column, and an implicit column is `auto`: sized to
+    the widest of its three rows. The toolbar does not wrap, so its max-content width is the
+    column's, and therefore `.body`'s -- and a rail on the right-hand edge is carried out of
+    the window along with it. Measured at `innerWidth 1220` with both panes folded, the
+    legend rail sits at 1281-1309 and the inspector rail at 1309-1337, both wholly outside,
+    with `document.elementFromPoint` returning null over either.
+
+    That is what was filed as *"the legend rail does not restore the pane"*. The handler was
+    always right -- pressed at the pointer it restores the pane, and pressed twice it is
+    idempotent. What could not be done was **reaching** it, and rule 39 is the lesson: a
+    plausible diagnosis of a real symptom is still a guess.
+
+    The mechanism half that would fail silently is `flex-shrink: 0`. Pinning the column and
+    stopping there does not make the toolbar run off; it makes it grow *taller* as its items
+    squeeze and wrap inside themselves -- 63px to 67px, measured -- which is the version
+    strip's own defect one row up, and a third behaviour neither this setting nor `topFit`
+    offers. And `flex-shrink` rather than `flex: none`, because `.tb-searchwrap` still has to
+    grow into a window that is wide enough.
+    """
+    st = _read("settings.js")
+    js = _code(_read("shell.js"))
+    css = _read("tokens.css")
+    assert re.search(r"^\s*paneFit: false,", st, re.M), (
+        "paneFit is not a default, or no longer defaults to the panes running off with the "
+        "toolbar, which is what ships"
+    )
+    assert "paneFit: 'the panes keeping inside the window'" in st, (
+        "the reset would clear the pane fit setting and not mention it"
+    )
+    assert '"paneFit"' in js, "paneFit is not persisted"
+    assert 'id="paneFitToggle"' in js, "the Settings page offers no pane fit control"
+    assert js.count("applyPaneFit()") >= 3, (
+        "the stamp must be applied at boot, again after `adoptSettings` (rule 68) and from "
+        "the control"
+    )
+    assert '[data-panefit="off"]' not in css, (
+        "the default has a rule of its own, so a reader who never opened Settings is "
+        "already being given somebody's opinion"
+    )
+    app = css.split(':root[data-panefit="on"] .app {', 1)
+    assert len(app) > 1, "no rule reacts to the stamp"
+    assert "grid-template-columns: minmax(0, 1fr)" in app[1].split("}", 1)[0], (
+        "the grid's column is still sized to its widest row, so the body is still as wide "
+        "as the toolbar and the rails are still outside the window"
+    )
+    bar = css.split(':root[data-panefit="on"] .topbar {', 1)
+    assert len(bar) > 1 and "overflow-x: auto" in bar[1].split("}", 1)[0], (
+        "the toolbar can no longer widen the page and cannot scroll either, so its tail is "
+        "unreachable — design rule 29's outcome reached by a layout"
+    )
+    kids = css.split(':root[data-panefit="on"] .topbar > *', 1)
+    assert len(kids) > 1, "the toolbar's children are not spoken to"
+    kid = kids[1].split("}", 1)[0]
+    assert "flex-shrink: 0" in kid, (
+        "the toolbar's children may still shrink, so the row squeezes onto the width it is "
+        "given and wraps inside itself instead of running off — the setting looks exactly "
+        "as though it had worked while doing something else"
+    )
+    assert "flex: none" not in kid, (
+        "`flex: none` takes the *grow* as well as the shrink, and `.tb-searchwrap` is "
+        "`flex: 1 1 auto` — the search box would stop filling a window that is wide enough, "
+        "which is a change to a window this setting has nothing to say about"
+    )
+
+
+def test_none_of_the_four_fit_settings_is_hidden_rather_than_narrowed() -> None:
     """Design rule 29: a hidden control is not a dimmed one, and neither is a narrow one.
 
-    All three of these settings are about making room, and the cheapest way to make room is
+    All four of these settings are about making room, and the cheapest way to make room is
     to stop drawing something. `display: none` and `visibility: hidden` also take an element
     out of the tab order and out of hit-testing, so a control removed that way cannot be
     clicked, cannot be tabbed to, and cannot be brought back by `:focus-within` — every route
     in closed at once by the one declaration that looked like tidying up.
 
-    The strip's own control may be scrolled past the edge under `verStrip`, and that is the
-    distinction rather than a breach: overflow keeps it hit-tested, keeps it in the tab
-    order, and scrolls it back into view when it is focused.
+    The strip's own control may be scrolled past the edge under `verStrip`, and the toolbar's
+    right-hand group under `paneFit`, and that is the distinction rather than a breach:
+    overflow keeps them hit-tested, keeps them in the tab order, and scrolls them back into
+    view when they are focused.
     """
     css = _read("tokens.css")
     for stamp in ('[data-navname="clip"]', '[data-navname="wrap"]',
-                  '[data-topfit="on"]', '[data-verstrip="clip"]'):
+                  '[data-topfit="on"]', '[data-verstrip="clip"]',
+                  '[data-panefit="on"]'):
         for rule in css.split(stamp)[1:]:
             body = rule.split("}", 1)[0]
             for banned in ("display: none", "visibility: hidden"):

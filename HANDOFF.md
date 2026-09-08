@@ -12150,3 +12150,115 @@ it listed and refusing.
 before the revision layout, superseded by the `graph@…` pair and never chosen by
 `revisions.newest`. Inert, and not swept: `sourcedb.py` owns no `DROP` by design, and this is
 the same manual pass a superseded sealed snapshot gets.
+
+## 2026-09-08 — the looking pass: two answers, one dead sentence, and 335 rows
+
+Item 1 of the scheduled pass was three things that had never been *looked* at. Two are now
+answered and the third is still Tom's eye — but the looking found something nobody had
+scheduled.
+
+### The instrument, first, because it decided what could be verified
+
+Rule 83 measured rather than assumed: **pointer space and capture space are both 784 px wide
+and differ by exactly 2×.** The pointer spans the whole 1222×553 viewport (a hover at
+(400,200) arrives at `clientX/Y` (623,312), a factor of 1.5581); the capture spans only the
+top-left 611×277 CSS px of it. So `pointer = viewport / 1.5581` and
+`viewport = screenshot × 0.779`, and `transform: translate(-336px,-219px)` on the body pans
+one over the other. The window would not resize — `resize_window` reported success and
+`innerWidth` never moved — so this is the frame the whole session ran in.
+
+**And the pan breaks what it lets you see.** Hovers dispatched while the body carried a
+transform reached nothing at all; the same coordinates un-panned reached the canvas. Pan to
+find a target, un-pan to touch it.
+
+### A kept fold and a kept flow both open
+
+Verified at the pointer, in `pkg:standards` (20 boxes, 9 arrows). Keeping the `EarsValidator`
+box and the `FrameworkRegistry → _framework_plugin.py` arrow wrote two subjects to
+`dunneflow:mensores:v6` carrying `kind: "fold"` and `kind: "flow"`, and the shelf said
+*"◆ 2 kept"*.
+
+Opening the **fold** from the shelf returned to Diagram mode and the `standards` compartment,
+outlined the box, lit its two routines in the navigator and filed a trail step. Opening the
+**flow** filled the inspector with the arrow itself — `class → file`, `FLOW CALL`, *1 along
+it*, `◆ Kept`, the one call site with its argument bound (`criteria_raw → criteria: object`)
+and *Touches 0* with its own sentence — and lit both ends (`node dgm-on`). No console error
+on either.
+
+**The stated cross-compartment limitation is honest.** `PIN_ROUTES.flow` says a flow kept in
+one compartment and opened from another "is routed anyway and says nothing false". Switched
+to `pkg:adr` and opened it: the compartment stayed `adr`, nothing lit, and the inspector
+opened on the arrow itself with every field intact. Exactly as written.
+
+*Two pluralisations noticed in passing and not fixed:* "**1 boxes**" in the compartment
+selector and "**1 call sites**" on the keep button's note.
+
+### The hover card's shadow sentence is dead code, and rules 23 and 31 killed it
+
+`e60c050` named this as the one thing it could not verify. It cannot be verified because it
+cannot happen.
+
+`hoverSkeleton` draws *"A stand-in. This routine lives on X — the copy you are pointing at is
+a placement device and is never an endpoint"* when `h.shadow` is true. `h.shadow` is
+`raw2.shadow[i] === 1` at the **picked** index, and there are exactly two ways that index is
+set:
+
+* **The node layer.** A shadow is given `radii[i] = 0` and `colors[i*4+3] = 0` — never drawn,
+  so never picked. Measured: a sweep of the whole drawn stack returned **1,989 picks over 562
+  distinct nodes and not one shadow**, against 5,855 shadows in the payload.
+* **The rim-arrow layer.** `pointerData` builds each mark as
+  `{ index: realIndex(d, p.index) }` — with the comment *"a shadow is never an endpoint (rules
+  23, 31)"* — so `info.object.index` is always real too.
+
+There is no third path: the reticule layer over the top is `pickable: false`.
+
+So the branch renders for nobody, and it renders for nobody *because the rule it describes was
+applied correctly everywhere else*. The engine's own comment above `emit('hover', …)` still
+says "`shadow` still travels, because the reader is entitled to know they are pointing at a
+stand-in" — written when a shadow could still be pointed at. **Design rule 16 from the far
+side:** a control wired to a condition that can no longer arise looks exactly like one that
+works, and no test that did not already know the branch existed could say otherwise.
+
+*Left for Tom rather than deleted:* the honest fix is to withdraw the branch, the `shadow`
+field and that paragraph together, recording that rules 23 and 31 closed it. That is a
+deletion of reasoning somebody wrote on purpose, so it is his call.
+
+*Also worth knowing:* deck.gl's own `pickObject` answers correctly at every one of those
+points, so the picture is not at fault — what fails is the **extension's** synthetic
+`mousemove`, which never becomes the `pointermove` mjolnir listens for. Rule 72 exactly: an
+instrument that cannot reproduce a gesture reports its absence just as confidently. The
+hover card cannot be verified at the pointer with this instrument at all, which is what
+`e60c050` was really recording.
+
+### And the thing nobody scheduled: 335 navigator rows print their name over their counts
+
+Found by looking at a screenshot of an ordinary routine list.
+`standards._framework_registry._schema_validator` runs straight through its own `1← 1→`, and
+`_maybe_apply_source_o…` through `1← 5→`. Measured across the whole navigator at scale 1:
+**335 of 1,395 rows overlap, 24%**, worst case **101 px** of overprint where a 62 px box holds
+170 px of text.
+
+**Rule 53, exactly.** The remedy already in the stylesheet is two shrink classes chosen in
+`dressNavItems` from the **character count alone** — `>25` is `xlong`, `>17` is `long` — and
+the budget is not a property of the name. `.navsub` takes up to 11rem of the row, so the room
+left for the label swings from about 200 px down to 68 px depending on how long the *module
+path* is. The classes are being applied and are not enough: **65 of 84 `xlong` rows still
+overlap, and 103 rows carrying no class at all overlap too** — one of them ten characters
+long.
+
+`selfCheck` cannot see it: it inspects `[data-fit]` elements, and a nav item's `.navlabel`
+carries no `data-fit`, which is why it reports every control wired while a quarter of the
+primary way in is unreadable.
+
+The stylesheet holds **two comments arguing for two different mechanisms** over the same
+declaration — *"A long name wraps rather than being cut… the count stays put"* and *"A long
+name shrinks to fit rather than breaking mid-token"* — and neither is what happens. What
+happens is that `overflow-wrap: normal` forbids a break inside a single token, so the flex
+item cannot shrink below its min-content width and simply paints outside its box.
+
+**The fix is a design call and is Tom's**, because every obvious mechanism is one the existing
+comments reject: truncation hides a name with nothing beside it, `overflow-wrap: anywhere`
+gives `do_PO / ST`, and shrinking further is more small type. The fourth option is rule 84's
+shape — let the row grow and put the counts on their own line when the name will not fit
+beside them. `navWidth: 21` was widened from 14.5 with the note *"a qualified name is the
+thing it has to be able to show"*, and 335 rows say it still cannot.

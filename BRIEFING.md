@@ -298,6 +298,48 @@ Dropping the superseded sealed snapshot is a manual pass by design (`sourcedb.py
 exactly the two live snapshots, `2026-09-08T13:39:50Z` (628 paths) and `2026-09-07T15:32:31Z`
 (625), and `2026-09-07T14:55:40Z` is gone from `paths` and `revisions` in each.
 
+### The looking pass, which answered two questions and asked three
+
+**A kept fold and a kept flow both open from the shelf**, verified at the pointer in
+`pkg:standards`. The fold returns to Diagram mode and its compartment, outlines the box, lits
+its routines and files a trail step; the flow fills the inspector with the arrow itself —
+`class → file`, *1 along it*, the call site with its argument bound — and lights both ends.
+Opened from a *different* compartment, `PIN_ROUTES.flow`'s stated limitation holds exactly as
+written: nothing lights, the inspector opens on the arrow, and nothing false is said.
+
+**The hover card's shadow sentence is dead code, and rules 23 and 31 are what killed it.**
+*"A stand-in. This routine lives on X — the copy you are pointing at is a placement device"*
+is drawn when `h.shadow` is true, which is `raw2.shadow[i]` at the **picked** index. A shadow
+is given radius 0 and alpha 0, so it is never drawn and never picked — **1,989 picks over 562
+distinct nodes returned not one**, against 5,855 shadows in the payload — and the only other
+path in, the rim arrow, builds every mark as `realIndex(...)` under a comment citing those
+same two rules. The reticule over the top is `pickable: false`, so there is no third path.
+Design rule 16 from the far side: the branch renders for nobody *because the rule it describes
+was applied correctly everywhere else*. **Withdraw it, or leave it?** Tom's — it is a deletion
+of reasoning somebody wrote on purpose.
+
+*The instrument could not have shown this either way, and that is worth knowing.* deck.gl's
+own `pickObject` answers correctly at every one of those points; what fails is the extension's
+synthetic `mousemove`, which never becomes the `pointermove` mjolnir listens for. **The hover
+card cannot be verified at the pointer with this instrument at all** — which is what
+`e60c050` was really recording. Rule 72.
+
+**And the thing nobody scheduled: 335 of 1,395 navigator rows print their name over their
+counts** — 24%, worst case 101 px of overprint where a 62 px box holds 170 px of text.
+`_schema_validator` runs straight through its own `1← 1→`. **Rule 53**: the remedy in the
+stylesheet is two shrink classes chosen from the **character count alone**, and the budget is
+not a property of the name — `.navsub` takes up to 11rem, so the room left swings from ~200 px
+to ~68 px on how long the *module path* is. 65 of 84 `xlong` rows still overlap and so do 103
+rows carrying no class at all. `selfCheck` only inspects `[data-fit]` elements and a
+`.navlabel` has none, so it reports every control wired.
+
+**The fix is a design call and is open**, because every obvious mechanism is one the two
+comments over that declaration already reject — truncation hides a name, `overflow-wrap:
+anywhere` gives `do_PO / ST`, shrinking further is more small type. The fourth is rule 84's
+shape: let the row grow and put the counts on their own line. `navWidth` was widened from 14.5
+to 21 with the note *"a qualified name is the thing it has to be able to show"*, and 335 rows
+say it still cannot.
+
 ### And the maps in `output/`, three of which refused and were sent to the wrong command
 
 The scheduled item read *"two maps cannot be opened, both refusing exactly as designed and
@@ -1987,14 +2029,18 @@ Tom, 2026-09-08, on the four defects: *"add the other items for the next pass af
 one."* This is that list, and it is drawn from the entries below rather than kept beside
 them — the entries are still where an item is closed, and this is only the order.
 
-1. **Three things have never been *looked* at**, and each is a look rather than a fix: a
-   **kept fold** and a **kept flow** opened from the shelf (the node kind is verified, the
-   other two need a compartment drawn); the **hover card's shadow sentence** under a real
-   pointer, which `e60c050` names as the one thing it could not verify; and the
-   **worklist's and the ribbon's row layouts**, which are design calls waiting on Tom's eye.
-   The instrument reaches all of them — the pointer covers the whole viewport, the capture
-   covers the top-left quarter, and `transform: translate(-x,-y)` on the body pans one over
-   the other (rule 83). It was used that way this session and it works.
+1. **Three things have never been *looked* at.** *Two are answered 2026-09-08 — see the top
+   of this file.* The **kept fold** and **kept flow** both open from the shelf, verified at
+   the pointer, and the stated cross-compartment limitation is honest. The **hover card's
+   shadow sentence** turns out to be **dead code**: a shadow is drawn at radius 0 and alpha 0
+   and both paths into `onHover` resolve through `realIndex`, so `h.shadow` can never be
+   true — 1,989 picks over 562 distinct nodes returned not one shadow. *Withdrawing it is
+   Tom's call, below.* Still open: the **worklist's and the ribbon's row layouts**, which are
+   design calls waiting on Tom's eye — and the navigator's rows have joined them with a
+   number (below). The instrument reaches all of them, and rule 83 is now measured rather than
+   described: pointer space and capture space are both 784 px wide and differ by **exactly
+   2×**, so `pointer = viewport / 1.5581` and `viewport = screenshot × 0.779`. **A body pan
+   breaks hovering while it lasts** — pan to find a target, un-pan to touch it.
 2. ~~**Two maps in `output/` cannot be opened**, both refusing exactly as designed and both
    one command away.~~ *Closed 2026-09-08, and it was wrong on both counts — see the top of
    this file. There were **three**, not two, and the command each was sent to would have
@@ -2006,7 +2052,12 @@ them — the entries are still where an item is closed, and this is only the ord
 4. **The rebuild-recipe rule**, to mint or refuse: *a rebuild recipe must name every store
    the change invalidates.* `standards.db` is a document store, went stale with the corpus,
    and stopped `serve` from booting at all.
-5. Then the standing backlog below, none of it scheduled.
+5. **Three found while looking, and two of them need Tom before anything is written:**
+   *withdraw the dead shadow branch?*; *how should a navigator row that cannot fit its name
+   behave?* (**335 of 1,395 overprint their counts, 24%, worst case 101 px** — rule 53, and
+   every obvious mechanism is one the stylesheet's own comments reject); and two
+   pluralisations, *"1 boxes"* and *"1 call sites"*, which need nobody.
+6. Then the standing backlog below, none of it scheduled.
 
 ### What is next, and it is open
 

@@ -521,6 +521,16 @@ const DEFAULTS = {
   egress: 'off',          // design rule 14: scoped, never a switch, off until turned on
   aiOps: { harvest: true },
   triage: {},             // finding id -> 'ack' | 'notbug' | 'tooldefect'
+  /* Words the reader put back into the glossary's worklist by hand, lowercased.
+     889 of Society's words occur only inside a compound constant name -- `CHARS` is the
+     unit on somebody else's constant -- and holding them back is what makes the worklist
+     readable. But the split cannot tell `MENSORES_MAX_LEN`'s subject from its unit, and
+     that word may occur nowhere else in the program: only a person can say which is
+     which, so the judgement is offered back rather than kept. Tom, 2026-09-08.
+
+     A decision about the *program*, like `triage` beside it, so it is stored per program
+     and outlives the visit. */
+  promoted: {},           // word (lowercased) -> true
   pins: [],               // the shelf: what was found while looking for something else
 
   /* Counted locally, and only so a Setting can be retired on evidence rather than on
@@ -672,6 +682,7 @@ function resetSettings(program, current) {
     sortKey: 'table sort', sortAsc: 'table sort direction',
     egress: 'egress posture', aiOps: 'model operations',
     triage: 'triage decisions', pins: 'the shelf', usage: 'usage counts',
+    promoted: 'words put back into the glossary worklist',
   };
   /* Walk the *defaults*, not the label table. Walking the labels meant a setting added
    * without a label was cleared and never mentioned -- a reset that under-reports itself,

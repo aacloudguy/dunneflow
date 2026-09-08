@@ -51,6 +51,7 @@ class Term:
     where: list[str] = field(default_factory=list)   # module / class / command
     kinds: Counter[str] = field(default_factory=Counter)
     senses: list[Sense] = field(default_factory=list)
+    named: bool = False   # was the word ever the *whole* name of something?
 
     def used_as(self) -> str:
         """Where the word is used, as counts rather than as 638 module names."""
@@ -63,11 +64,38 @@ class Term:
     def defined(self) -> bool:
         return bool(self.senses)
 
+    @property
+    def only_inside_a_name(self) -> bool:
+        """Is this word evidenced *only* as a fragment of a compound constant name?
+
+        `_GLOSSARY_DEFINITION_MAX_LEN` is one name a person chose, and splitting it on
+        underscores yields four words of which two are its type and its unit. Over Society
+        that is **889 of the 1,154** words nothing defines -- `DDL`, `EXTRAS`, `REASON`,
+        `KEYS`, `BYTES`, `CHARS` at the head of the worklist -- and the words actually
+        worth explaining, `witness` and `posture` and `claim` and `probe`, are buried
+        beneath them. Rule 1: this is recall turned up past the point where anybody can
+        read the answer.
+
+        Three conditions, and the third is what keeps it honest. The word is never the
+        whole name of anything; the only place it occurs is inside a constant's name; and
+        **nothing defines it** -- a word somebody troubled to write a definition for is
+        vocabulary whatever the code does with it, which is why this loses no defined term
+        on any corpus. A table's or a way in's own fragments are left alone, because they
+        were not measured and a rule that reaches past its evidence is a guess.
+        """
+        return (not self.named and not self.senses
+                and set(self.kinds) == {"constant"})
+
 
 @dataclass(slots=True)
 class GlossaryReport:
     terms: list[Term] = field(default_factory=list)
     undefined: list[Term] = field(default_factory=list)
+    # Words held back as fragments of compound names, kept whole and stated rather than
+    # dropped in silence (design rule 1). A reader can promote one back: `MENSORES` in
+    # `MENSORES_MAX_LEN` is the program's own word beside a modifier and a unit, and it
+    # may occur nowhere else in the program at all. Tom, 2026-09-08.
+    set_aside: list[Term] = field(default_factory=list)
     definitions_seen: int = 0
     documents_seen: int = 0
 
@@ -85,13 +113,20 @@ def _candidate_terms(store: Store) -> dict[str, Term]:
     """
     terms: dict[str, Term] = {}
 
-    def note(word: str, kind: str, where: str) -> None:
+    def note(word: str, kind: str, where: str, whole: str = "") -> None:
         word = word.strip().strip("_")
         if len(word) < MIN_TERM_LENGTH or not word.isalpha() or is_ordinary(word):
             return
         t = terms.setdefault(word.lower(), Term(term=word))
         t.uses += 1
         t.kinds[kind] += 1
+        # Whether this use is the *whole* name or a fragment of one. `witness` is a table
+        # called `witness` and also the first word of eleven constants; `CHARS` is only
+        # ever the last word of somebody else's. The distinction is the whole of
+        # `only_inside_a_name`, and it has to be taken here because this is the only place
+        # that still knows what the name was before it was split.
+        if not whole or word.strip("_").lower() == whole.strip("_").lower():
+            t.named = True
         if where not in t.where:
             t.where.append(where)
 
@@ -107,18 +142,18 @@ def _candidate_terms(store: Store) -> dict[str, Term]:
     # has to name a thing rather than describe one.
     for r in store.query("SELECT DISTINCT name FROM entrypoints WHERE name <> ''"):
         for word in re.split(r"[^A-Za-z0-9]+", str(r["name"])):
-            note(word, "way in", f"way in `{r['name']}`")
+            note(word, "way in", f"way in `{r['name']}`", str(r["name"]))
 
     for r in store.query("SELECT DISTINCT tbl FROM sql_ops WHERE tbl <> ''"):
         for word in re.split(r"[^A-Za-z0-9]+", str(r["tbl"])):
-            note(word, "table", f"table {r['tbl']}")
+            note(word, "table", f"table {r['tbl']}", str(r["tbl"]))
 
     # A constant is the third place a person must name a thing rather than describe
     # one. `EMBEDDING_MODEL` and `MENSORES_DIRNAME` carry the program's configuration
     # vocabulary, and until constants were recorded none of it was here.
     for r in store.query("SELECT DISTINCT name FROM constants WHERE name <> ''"):
         for word in re.split(r"[^A-Za-z0-9]+", str(r["name"])):
-            note(word, "constant", f"constant `{r['name']}`")
+            note(word, "constant", f"constant `{r['name']}`", str(r["name"]))
 
     return terms
 
@@ -166,6 +201,10 @@ def bind(store: Store, docs: DocStore | None) -> GlossaryReport:
         )[0]["n"]
 
     ordered = sorted(terms.values(), key=lambda t: (-t.uses, t.term.lower()))
-    report.terms = ordered
-    report.undefined = [t for t in ordered if not t.defined]
+    # The split, and it happens *after* the senses are bound rather than while the
+    # candidates are being mined: a word is held back for being only a fragment **and**
+    # undefined, and until the documents have been read the second half is not known.
+    report.set_aside = [t for t in ordered if t.only_inside_a_name]
+    report.terms = [t for t in ordered if not t.only_inside_a_name]
+    report.undefined = [t for t in report.terms if not t.defined]
     return report

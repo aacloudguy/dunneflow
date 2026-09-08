@@ -753,6 +753,11 @@ def cmd_glossary(args: argparse.Namespace) -> int:
         print("  " + ", ".join(t.term for t in report.undefined[: args.limit * 3]))
         if len(report.undefined) > args.limit * 3:
             print(f"  ... see 10-glossary.md for all {len(report.undefined):,}")
+    # Never a silent filter (design rule 1). The count travels with the list it was taken
+    # out of, and it names the one place a reader can read the words themselves.
+    if report.set_aside:
+        print(f"\n{len(report.set_aside):,} more were held back as fragments of compound "
+              f"constant names — see 10-glossary.md, 'Words held back'")
     if docs is not None:
         docs.close()
     store.close()

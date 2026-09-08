@@ -100,3 +100,83 @@ def test_docstring_does_not_change_identity(tmp_path: Path) -> None:
     ra, rb = next(iter(a.values())), next(iter(b.values()))
     assert ra.id == rb.id, "adding a module docstring retired the routine"
     assert ra.body_hash == rb.body_hash, "prose changed the body hash"
+
+
+# -- what a word has to be to count as one ----------------------------------- #
+#
+# 889 of the 1,154 words Society's glossary said nothing defines were fragments of
+# compound constant names: `_GLOSSARY_DEFINITION_MAX_LEN` is one name a person chose, and
+# splitting it on underscores yields its subject, its type and its unit. `DDL`, `EXTRAS`,
+# `REASON`, `KEYS`, `BYTES`, `CHARS` were the head of the worklist and `witness`,
+# `posture`, `claim` and `probe` were buried under them. Rule 1, in the mirror.
+
+VOCAB_SOURCE = '''"""A witness records what happened."""
+
+MENSORES_MAX_LEN = 100
+WITNESS_BYTES = 8
+witness = None
+'''
+
+
+def _bind(tmp_path: Path):
+    from dunneflow.resolve.glossary import bind
+    facts = _extract(tmp_path, VOCAB_SOURCE, "witness.py")
+    st = Store(tmp_path / "graph.db")
+    st.write_file_facts(facts)
+    report = bind(st, None)
+    st.close()
+    return report
+
+
+def test_a_fragment_of_a_compound_name_is_held_back(tmp_path: Path) -> None:
+    """`BYTES` is the unit on somebody else's constant, not a word this program leans on."""
+    report = _bind(tmp_path)
+    held = {t.term.lower() for t in report.set_aside}
+    assert "bytes" in held, "a unit is still being reported as a word nothing defines"
+    assert "bytes" not in {t.term.lower() for t in report.undefined}
+    assert "bytes" not in {t.term.lower() for t in report.terms}, (
+        "a held-back word is still counted in the coverage denominator"
+    )
+
+
+def test_a_word_that_names_something_is_never_held_back(tmp_path: Path) -> None:
+    """`witness` is a module here as well as the first word of two constants."""
+    report = _bind(tmp_path)
+    assert "witness" not in {t.term.lower() for t in report.set_aside}
+    assert "witness" in {t.term.lower() for t in report.terms}
+
+
+def test_the_program_s_own_word_is_held_back_and_that_is_why_it_is_offered(
+        tmp_path: Path) -> None:
+    """The case the reader has to settle, and the reason nothing decides it here.
+
+    `MENSORES_MAX_LEN` is the program's own word in front of a modifier and a unit, and
+    the split cannot tell the three apart. `MENSORES` may occur nowhere else at all --
+    which is exactly when holding it back loses something, so it is *held*, listed, and
+    offered back rather than dropped.
+    """
+    report = _bind(tmp_path)
+    held = {t.term.lower() for t in report.set_aside}
+    assert "mensores" in held, (
+        "the program's own word, standing in front of a modifier, was dropped rather than "
+        "held -- and dropped is the one state a reader cannot overturn"
+    )
+    # `MAX` and `LEN` never reach the split at all: `is_ordinary` refuses them upstream,
+    # which is the older half of the same judgement and is left where it is.
+    assert "max" not in {t.term.lower() for t in report.terms}
+
+
+def test_a_defined_word_is_never_held_back(tmp_path: Path) -> None:
+    """The third condition, and the one that keeps this from costing a definition.
+
+    A word somebody troubled to define is vocabulary whatever the code does with it. It is
+    why this rule takes 889 words off Society's worklist and no defined term with them.
+    """
+    from dunneflow.resolve.glossary import Sense, Term
+    from dunneflow.schema import Provenance
+    t = Term(term="BYTES")
+    t.kinds["constant"] = 3
+    assert t.only_inside_a_name
+    t.senses.append(Sense(definition="the size of a thing",
+                          provenance=Provenance.DECLARED_DOCS, source="d.md", line=1))
+    assert not t.only_inside_a_name, "a defined word was held back"

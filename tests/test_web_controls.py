@@ -12610,3 +12610,57 @@ def test_only_a_row_that_says_so_carries_several_ids() -> None:
     assert 'i.multi ? `data-navmulti="1"`' in js, (
         "navItemHtml no longer writes the attribute navIds asks for"
     )
+
+
+def test_a_held_back_word_can_be_put_back_and_the_decision_survives() -> None:
+    """The one judgement in the vocabulary lane that is a reader's, not a measurement's.
+
+    889 of Society's undefined words occur only inside a compound constant name, and
+    holding them back is what makes the worklist readable. The split cannot tell
+    `MENSORES_MAX_LEN`'s subject from its unit, and that word may occur nowhere else in
+    the program -- so the band is drawn, every word in it is offered back, and the
+    decision is persisted per program beside `triage`. Tom, 2026-09-08: *"offer a chance
+    to promote them back to the list manually"*.
+
+    A control that renders and persists nothing is design rule 16 with a memory: the
+    reader makes the same judgement again on every reload and has no way to know why.
+    """
+    js = _code(_read("shell.js"))
+    assert '[data-promote]' in js and '[data-demote]' in js, (
+        "the two halves of the decision are no longer routed"
+    )
+    handler = js[js.index('const up = ev.target.closest("[data-promote]");'):]
+    handler = handler[:handler.index("\n});")]
+    assert "persist()" in handler, "a promotion does not survive a reload"
+    assert "refreshGlossaryLists()" in handler, (
+        "the lists are not rebuilt, so the word stays where it was until something else "
+        "repaints the page"
+    )
+    assert '"promoted"' in js, "`promoted` is not persisted"
+    settings = _code(_read("settings.js"))
+    assert re.search(r"\n  promoted:\s*\{\}", settings), (
+        "`promoted` has no default, so the first click writes onto `undefined`"
+    )
+
+
+def test_the_worklist_and_the_held_back_band_are_one_split() -> None:
+    """A word is in exactly one of the two lists, whatever the reader has decided.
+
+    Both are computed from `SET_ASIDE` and `state.promoted` at the point of drawing, from
+    the two ends of the same test, so there is no third place holding a copy that can
+    disagree -- which is how a promoted word ends up in both lists and counted twice.
+    """
+    js = _code(_read("shell.js"))
+    up = js[js.index("function undefWords() {"):]
+    up = up[:up.index("\n}")]
+    down = js[js.index("function heldWords() {"):]
+    down = down[:down.index("\n}")]
+    assert "kept[t.term.toLowerCase()]" in up and "!kept[t.term.toLowerCase()]" in down, (
+        "the two lists no longer read the same test in opposite directions"
+    )
+    assert "SET_ASIDE" in up and "SET_ASIDE" in down
+    # And the counts on the page are taken from the lists as the reader has them, not from
+    # the payload: a promoted word must move between the two numbers, not appear in both.
+    counts = js[js.index("function glossCount(defined, undef) {"):]
+    counts = counts[:counts.index("\n}")]
+    assert "undefWords()" in counts, "the filter's count reads the payload, not the lists"

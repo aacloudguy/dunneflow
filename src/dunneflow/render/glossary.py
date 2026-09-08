@@ -58,7 +58,10 @@ def render_glossary(store: Store, docs: DocStore | None, out_dir: Path, root: Pa
         "definition is quoted from a docstring or a document, and opens onto the line it "
         "was taken from.\n",
         f"**{defined:,} of {total:,} terms are defined somewhere.** The "
-        f"{len(report.undefined):,} that are not are listed in full at the end.\n",
+        f"{len(report.undefined):,} that are not are listed in full at the end"
+        + (f", and {len(report.set_aside):,} more words were held back as fragments of "
+           "compound names — those are listed too, because the judgement is a reader's "
+           "to overturn.\n" if report.set_aside else ".\n"),
         "| Provenance | What it means | Cost |",
         "|---|---|---|",
         "| `DECLARED · code` | a module docstring, parsed | free |",
@@ -90,6 +93,26 @@ def render_glossary(store: Store, docs: DocStore | None, out_dir: Path, root: Pa
         lines.append("| Term | Uses | First seen as |")
         lines.append("|---|---:|---|")
         for term in report.undefined:
+            where = term.where[0] if term.where else ""
+            lines.append(f"| `{_esc(term.term)}` | {term.uses:,} | {_esc(where)} |")
+        lines.append("")
+
+    lines.append("\n## Words held back\n")
+    if not report.set_aside:
+        lines.append("Every word this program uses as a name is above.\n")
+    else:
+        lines.append(
+            f"{len(report.set_aside):,} words occur only *inside* a compound constant "
+            "name — never as the whole name of anything, and nothing defines them. "
+            "`_GLOSSARY_DEFINITION_MAX_LEN` is one name somebody chose, and splitting it "
+            "yields its subject, its type and its unit; the units are what these are. "
+            "They are held back rather than dropped, because the split cannot tell "
+            "`MENSORES_MAX_LEN`'s first word from its last: if one of these is the "
+            "program's own word, it is on this list and nowhere else.\n"
+        )
+        lines.append("| Word | Uses | First seen as |")
+        lines.append("|---|---:|---|")
+        for term in report.set_aside:
             where = term.where[0] if term.where else ""
             lines.append(f"| `{_esc(term.term)}` | {term.uses:,} | {_esc(where)} |")
         lines.append("")

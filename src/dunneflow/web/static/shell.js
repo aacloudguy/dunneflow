@@ -88,6 +88,12 @@ let MANIFEST = [];   // the files a model pass would send, shown before anything
    carries the file and the line rather than the file. */
 let TERMS = [];        // words this program uses as names that something defines -- served, not pinned
 let UNDEFINED = [];    // words it uses and nothing defines -- the mirror's finding, served
+/* Words held back from that finding: they occur only *inside* a compound constant name,
+   never as the whole name of anything, and nothing defines them. Served rather than
+   filtered away at the server (design rule 1), because the reader can put one back --
+   `MENSORES_MAX_LEN` carries the program's own word beside a modifier and a unit, and only
+   a person can say which is which. */
+let SET_ASIDE = [];
 let CONVENTIONS = [];  // measured naming conventions, each with the query that counted it -- served
 let STATED = [];       // naming rules the project's own documents state -- quoted, never counted
 let CHECKS = [];       // stated rules measured against the population each governs -- the comparison
@@ -2682,6 +2688,32 @@ document.addEventListener("click", (ev) => {
      and one of them standing in for the term is rule 74 in the trail. */
   followThread({ type: "cohort", kind: "term", key: term, label: term },
                { label: term, note: b.dataset.termuse || "" });
+});
+
+/* A word promoted into the glossary's worklist, or put back. The one judgement in the
+ * vocabulary lane that is a reader's rather than a measurement's: a word occurring only
+ * inside a compound constant name is a unit or a type nine times in ten, and the tenth is
+ * the program's own word standing in front of one (`MENSORES_MAX_LEN`). Nothing can tell
+ * them apart from the name alone, so the split is stated and the decision is offered.
+ *
+ * Persisted per program beside `triage`, because it is a decision about *this* program and
+ * a reader who makes it once should not make it again after a reload. Delegated for
+ * `changeband`'s reason below: the list is rewritten under the click that changes it.
+ *
+ * `refreshGlossaryLists` rather than `render()`, because the filter box is on this page
+ * and rebuilding the page takes the focus out of it mid-word. */
+document.addEventListener("click", (ev) => {
+  const up = ev.target.closest("[data-promote]");
+  const down = ev.target.closest("[data-demote]");
+  if (!up && !down) return;
+  const word = String((up || down).dataset[up ? "promote" : "demote"] || "").toLowerCase();
+  if (!word) return;
+  const next = { ...(state.promoted || {}) };
+  if (up) next[word] = true; else delete next[word];
+  state.promoted = next;
+  used("glossary:" + (up ? "promote" : "demote"));
+  persist();
+  refreshGlossaryLists();
 });
 
 /* Which band of the change worklist is open. One at a time, and clicking the open one
@@ -9412,6 +9444,7 @@ async function loadGlossary() {
      * mirror's finding -- a word this program leans on and never explains. */
     TERMS = (d.terms || []).filter(t => t.defined);
     UNDEFINED = d.undefined || [];
+    SET_ASIDE = d.set_aside || [];
     VOCAB.coverage = d.coverage || [0, 0];
     VOCAB.definitionsSeen = d.definitions_seen || 0;
     VOCAB.documentsSeen = d.documents_seen || 0;
@@ -9433,12 +9466,15 @@ function refreshGlossaryLists() {
   const q = state.termFilter.trim().toLowerCase();
   const defined = TERMS.filter(t => !q || t.term.toLowerCase().includes(q)
     || (t.senses || []).some(s => s.definition.toLowerCase().includes(q)));
-  const undef = UNDEFINED.filter(t => !q || t.term.toLowerCase().includes(q));
+  const undef = undefWords().filter(t => !q || t.term.toLowerCase().includes(q));
+  const held = heldWords().filter(t => !q || t.term.toLowerCase().includes(q));
   const set = (id, html) => { const el = $(id); if (el) el.innerHTML = html; };
   set("#glossCount", glossCount(defined, undef));
   set("#glossDefined", glossTerms(defined));
   set("#glossUndefHead", undefHead(undef));
   set("#glossUndef", glossUndefined(undef));
+  set("#glossHeldHead", heldHead(held));
+  set("#glossHeld", glossHeld(held));
   /* The citation buttons in the rebuilt list need their listener back. Terms are delegated
      at the document and need nothing; a citation is not, because it carries an index into
      one term's senses. Same function as the page-wide bind, never a second copy of it. */
@@ -10333,7 +10369,8 @@ function viewGlossary() {
   const hit = t => !q || t.term.toLowerCase().includes(q)
     || (t.senses || []).some(s => s.definition.toLowerCase().includes(q));
   const defined = TERMS.filter(hit);
-  const undef = UNDEFINED.filter(t => !q || t.term.toLowerCase().includes(q));
+  const undef = undefWords().filter(t => !q || t.term.toLowerCase().includes(q));
+  const held = heldWords().filter(t => !q || t.term.toLowerCase().includes(q));
   const [cov, tot] = VOCAB.coverage || [0, 0];
 
   return `
@@ -10373,13 +10410,72 @@ function viewGlossary() {
       </div>
       <div class="panel-body" id="glossUndef">${glossUndefined(undef)}</div>
     </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <h2>Held back</h2>
+        <span class="hint" id="glossHeldHead">${heldHead(held)}</span>
+      </div>
+      <div class="panel-body" id="glossHeld">${glossHeld(held)}</div>
+    </section>
   </div>`;
+}
+
+function heldHead(held) {
+  return `${held.length.toLocaleString()} word${held.length === 1 ? "" : "s"} that occur
+    only inside a compound name`;
+}
+
+/* The band that makes the filter honest. `_GLOSSARY_DEFINITION_MAX_LEN` is one name
+   somebody chose, and splitting it on underscores yields its subject, its type and its
+   unit; 889 of Society's 1,154 undefined words are units and types like that, and they
+   were the whole head of the worklist. Held back rather than dropped, and every one of
+   them offered back, because the split cannot tell a subject from a unit and the reader
+   can. */
+function glossHeld(held) {
+  if (!held.length) {
+    return `<p class="hint">Every word this program uses as a name is in the lists
+      above.</p>`;
+  }
+  return `<p class="hint">These occur only <b>inside</b> a compound constant name — never
+      as the whole name of anything — and nothing defines them. That is what
+      <code>CHARS</code> is: the unit on somebody else's constant. It is also what the
+      program's own word looks like in <code>MENSORES_MAX_LEN</code>, so if one of these
+      is a word rather than a unit, put it in the worklist.</p>
+    <ul class="undeflist">
+      ${held.map(t => `<li>
+        <button class="cite" data-term="${esc(t.term)}" data-termuse="${esc(t.used_as)}">
+          <span class="mono">${esc(t.term)}</span><span class="citego">go</span></button>
+        <span class="hint">${esc(t.used_as)}</span>
+        <button class="linkbtn" data-promote="${esc(t.term)}"
+          title="Put it in the worklist — it is a word this program uses"
+          >it is a word</button>
+      </li>`).join("")}
+    </ul>`;
+}
+
+/* **The worklist as the reader has it**: the words nothing defines, plus the ones they
+   put back. Sorted together by use, because a promoted word is not a lesser finding --
+   it is the same finding, and the reader is the evidence that it belongs here. */
+function undefWords() {
+  const kept = state.promoted || {};
+  const back = SET_ASIDE.filter(t => kept[t.term.toLowerCase()])
+                        .map(t => ({ ...t, promoted: true }));
+  return UNDEFINED.concat(back)
+    .sort((a, b) => (b.uses - a.uses) || a.term.localeCompare(b.term));
+}
+
+/* And what is still held back. The two functions are the one split, read from the two
+   ends, so a word can never be in both lists or in neither. */
+function heldWords() {
+  const kept = state.promoted || {};
+  return SET_ASIDE.filter(t => !kept[t.term.toLowerCase()]);
 }
 
 /* Design rule 1: a filtered view states what it removed, in counts. */
 function glossCount(defined, undef) {
   const q = state.termFilter.trim();
-  const hidden = TERMS.length + UNDEFINED.length - defined.length - undef.length;
+  const hidden = TERMS.length + undefWords().length - defined.length - undef.length;
   return `<b class="num">${defined.length.toLocaleString()}</b> defined and
     <b class="num">${undef.length.toLocaleString()}</b> undefined
     ${q ? `match “${esc(q)}” — <b class="num">${hidden.toLocaleString()}</b> hidden by the filter`
@@ -10411,6 +10507,11 @@ function glossUndefined(undef) {
             <button class="cite" data-term="${esc(t.term)}" data-termuse="${esc(t.used_as)}">
               <span class="mono">${esc(t.term)}</span><span class="citego">go</span></button>
             <span class="hint">${esc(t.used_as)}</span>
+            ${/* A promoted word says so and offers the way back, because a decision a
+                 reader cannot undo is one they will not make. */
+              t.promoted ? `<button class="linkbtn" data-demote="${esc(t.term)}"
+                title="Hold it back again — it is only ever inside a compound name"
+                >put back</button>` : ""}
           </li>`).join("")}
         </ul>`
         : `<p class="hint">Every word this program uses as a name is defined somewhere it can
@@ -13493,6 +13594,11 @@ const WIRED_ATTRS = new Set([
      shows: an identifier that means two things resolves plausibly and silently to the
      wrong thing. */
   "navid", "navmulti", "navtrack", "node", "open", "pane", "pin", "pinnote", "pinsubject",
+  /* The two halves of one decision, and they are two attributes rather than one carrying a
+     direction: a button that says `data-promote` on the way in and on the way out is a
+     control whose meaning depends on where it is drawn, which is the thing `data-nav` cost
+     a session to find. */
+  "promote", "demote",
   "pinopen", "pkgnode", "pkgpick", "plate", "qual",
   "resize", "row",
   /* `palette-set`, beside `theme-set` and for the same reason: `data-palette` and
@@ -17136,7 +17242,7 @@ const PERSISTED = [
   "theme", "palette", "scale", "startup", "mode", "menuOrder", "trailShown", "trailCap",
   "density", "coverBars", "rowTagsWrap", "coverWhatWrap", "bandScroll", "baseRev", "comparedRev", "comparedIsNewer",
   "ambient", "hideInferred", "colWidths", "insp", "sortKey", "sortAsc",
-  "egress", "aiOps", "triage", "pins", "usage", "graphLayout",
+  "egress", "aiOps", "triage", "promoted", "pins", "usage", "graphLayout",
   "diskOrder", "diskColors", "colorBy", "sortMode", "filterMode", "direction",
   "level", "minDisk",
   "nodeSize", "spreadX", "spreadY", "spreadZ", "plateSize", "plateLayout", "collapseUnused",

@@ -261,6 +261,13 @@ def bind_glossary(store: Store, docs: DocStore | None) -> dict[str, Any]:
         ],
         "undefined": [{"term": t.term, "uses": t.uses, "used_as": t.used_as()}
                       for t in report.undefined],
+        # Sent, never withheld. The page draws them in their own band with the reason, and
+        # a reader can promote one back into the worklist -- `MENSORES_MAX_LEN` holds the
+        # program's own word beside a modifier and a unit, and only a person can say which
+        # is which. Promotion is the reader's, so it lives in their settings and not here
+        # (design rule 17); this end sends the same list to everybody.
+        "set_aside": [{"term": t.term, "uses": t.uses, "used_as": t.used_as()}
+                      for t in report.set_aside],
         "definitions_seen": report.definitions_seen,
         "documents_seen": report.documents_seen,
         "coverage": [defined, total],

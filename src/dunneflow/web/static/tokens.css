@@ -552,12 +552,43 @@ body {
  * `.brand`'s byline is text and not a control, so it may be cut; every control in this row
  * stays hit-testable and in the tab order in both branches (design rule 29). */
 :root[data-topfit="on"] .app > * { min-width: 0; }
-:root[data-topfit="on"] .topbar,
-:root[data-topfit="on"] .tb-right,
-:root[data-topfit="on"] .scale-group { min-width: 0; }
+:root[data-topfit="on"] .topbar { min-width: 0; }
 :root[data-topfit="on"] .brand { flex: 0 1 auto; min-width: 0; overflow: hidden; }
 :root[data-topfit="on"] .brand > * { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 :root[data-topfit="on"] .tb-select { flex: 0 1 auto; min-width: 4rem; }
+/* **`min-width: 0` is a licence to overflow, and it must only be given to something that can
+ * absorb it.** `.tb-right` and `.scale-group` had it here for one commit, and the result was
+ * reported from a real window: the scale slider and `100%` drawn straight through *System*
+ * and *Settings*. That is `.navlabel`'s own defect -- a flex item permitted to shrink below
+ * its min-content paints outside its box -- reproduced in the toolbar **by the fix for the
+ * toolbar**, one file away from the comment explaining it.
+ *
+ * The rule the two cases share: yielding is for things that have somewhere to put what they
+ * give up. `.brand` ellipsizes, a `<select>` ellipsizes, the search field is empty space. A
+ * slider at a fixed width and a right-aligned group of three buttons have nowhere, so they
+ * are `flex: none` and the *slider* -- the one part of them with a spare dimension -- gives
+ * the width instead, down to a floor and no further. Design rule 30 is why the floor exists
+ * rather than the control being dropped: a thumb 2.5em wide is still a thumb you can drag. */
+:root[data-topfit="on"] .tb-right,
+:root[data-topfit="on"] .scale-group { flex: none; min-width: auto; }
+:root[data-topfit="on"] .scaleslider { flex: 0 1 auto; min-width: 2.5em; }
+/* And the label that started the report. `SOURCE DIRECTORY` is two words in a box narrow
+   enough to break them, and a wrapped label makes this button taller than every other thing
+   in the row -- so the row grows and the value hangs out of the bottom of its own rounded
+   rect. It is a caption, not prose: it stays on one line and gives its width up like the
+   value beneath it, which already elides and has always opened the whole thing on click. */
+:root[data-topfit="on"] .srcpath { flex: 0 1 auto; min-width: 0; overflow: hidden; }
+/* **`max-width: 100%` is the half `overflow: hidden` cannot do**, and it is the reason a
+   clip alone left the caption 95px wider than the button it sits in. `.srcpath` is a
+   *column* flex with `align-items: flex-start`, so its two children are sized to their own
+   content and do not shrink with the parent -- `overflow` then clips each child's text to a
+   box that is itself too wide, which clips nothing. Capped, `text-overflow` has a box to
+   work against and the ellipsis appears where the button actually ends. */
+:root[data-topfit="on"] .srcpath-k,
+:root[data-topfit="on"] .srcpath-v {
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  min-width: 0; max-width: 100%;
+}
 
 /* ── and then smaller, for what yielding could not reach ──
  *
@@ -582,13 +613,32 @@ body {
 :root[data-topfit="on"] .tb-select   { font-size: .8em; padding: .25em .5em; max-width: 14em; }
 :root[data-topfit="on"] .tb-search   { font-size: .8em; padding: .3em .6em; }
 :root[data-topfit="on"] .tb-searchwrap .tb-search { padding-right: 7em; }
+/* **An absolutely-positioned child does not shrink with its parent, it escapes it.** The
+   three search flags sit inside the field at `right: .35rem` and are ~6em wide; once the
+   wrapper is narrower than they are they hang out of its *left* edge and are drawn over the
+   revision menu -- 4px of it at an 900px toolbar, 50px at 700. Nothing in the flex layout
+   can see that, because out-of-flow children contribute nothing to a min-content width.
+   So the wrapper carries the floor its own overlay implies: the flags, plus enough field to
+   be a field. `em`, so it falls with `--topbar-fit` exactly as the flags do. */
+:root[data-topfit="on"] .tb-searchwrap { min-width: 8.5em; }
 :root[data-topfit="on"] .srcpath     { padding: .16em .5em; }
 :root[data-topfit="on"] .srcpath-k   { font-size: .52em; }
-:root[data-topfit="on"] .srcpath-v   { font-size: .72em; max-width: 11em; }
+/* **`min(11em, 100%)`, and the plain `11em` here was a live defect for one commit.** The
+   yielding rules above already say `max-width: 100%` on this element; two `max-width`
+   declarations from selectors of equal specificity are settled by *source order*, and this
+   one is lower in the file -- so the cap that keeps the value inside its shrinking button
+   was silently discarded and the text ran 121px out of the box at a 560px toolbar. Rule 29's
+   own mechanism, one stylesheet over from where it was minted. Stated as a `min()` rather
+   than by moving the rule, because "whichever is smaller" is the thing actually meant and a
+   line's position in a file is not an argument. */
+:root[data-topfit="on"] .srcpath-v   { font-size: .72em; max-width: min(11em, 100%); }
 :root[data-topfit="on"] .tb-btn      { font-size: .74em; padding: .28em .55em; gap: .3em; }
 :root[data-topfit="on"] .tb-right    { gap: .35em; }
 :root[data-topfit="on"] .scale-group { gap: .2em; padding: .1em .2em; }
 :root[data-topfit="on"] .scale-val   { font-size: .68em; min-width: 2.6em; }
+/* `width` is the *starting* width here and `flex: 0 1 auto` above lets it fall from there;
+   without the shorthand a fixed `width` is a base size a flex item will still shrink from,
+   which is what is wanted -- the pair is stated together so neither reads as redundant. */
 :root[data-topfit="on"] .scaleslider { width: 5.5em; margin: 0 .15em; }
 
 /* ── The version strip ──────────────────────────────────────────────────────────

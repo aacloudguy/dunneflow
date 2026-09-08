@@ -5732,7 +5732,12 @@ def test_the_source_directory_presents_as_a_button_and_is_routed() -> None:
     # Read over the *rules*, never the whole file -- see the note this guard carried when
     # it asserted the reverse. It must now *offer* the affordances it once had to refuse.
     styles = _css_code(css)
-    rule = styles.split(".srcpath {", 1)[1].split("}", 1)[0]
+    # **The base rule, anchored at column 0.** `.srcpath` also appears under
+    # `:root[data-topfit="on"]`, which is a *branch* of it, and splitting on the bare
+    # selector took whichever came first in the file -- so this guard silently moved to a
+    # rule that never carries the cursor. What it has always meant is the declaration every
+    # reader gets.
+    rule = styles.split("\n.srcpath {", 1)[1].split("}", 1)[0]
     assert "cursor: pointer" in rule, "it opens a dialog and does not say so to the pointer"
     assert ".srcpath:hover" in styles, "nothing answers a hover; it reads as a readout"
     # Styles for states this element does not have are how a dead control keeps looking
@@ -10705,7 +10710,7 @@ def test_the_source_path_readout_clips_because_it_is_written_again() -> None:
         "dead CSS and both halves of this guard have to go back the other way"
     )
     css = _css_code(_read("tokens.css"))
-    m = re.search(r"\.srcpath-v \{([^}]*)\}", css, re.S)
+    m = re.search(r"\n\.srcpath-v \{([^}]*)\}", css, re.S)   # the base rule, not a stamped branch
     assert m, ".srcpath-v is gone; this guard is blind"
     rule = m.group(1)
     assert "text-overflow" in rule and "overflow: hidden" in rule, (
@@ -13132,4 +13137,87 @@ def test_a_settings_stamp_is_never_also_the_route_that_sets_it() -> None:
         "is bound by, so the root element is one of that setting's own controls: every "
         "click in the application runs its handler, and it reads `undefined` the moment the "
         "stamp is removed"
+    )
+
+
+def test_the_toolbar_only_yields_width_where_something_can_absorb_it() -> None:
+    """Reported from a real window: the scale slider drawn through *System* and *Settings*.
+
+    `min-width: 0` is not "be narrower" -- it is **a licence to overflow**. It permits a flex
+    item to shrink below its own min-content, and whatever will not fit is then painted
+    outside the box, on top of whatever is next to it. That is `.navlabel`'s defect exactly --
+    the one the navigator setting in this same commit exists to give the reader a way out of
+    -- reproduced in the toolbar by the fix for the toolbar, a few lines from the comment
+    explaining it.
+
+    So the licence goes only to things that have somewhere to put what they give up:
+    `.brand`, `.srcpath`'s caption and value and a `<select>` all ellipsize, and the search
+    field is empty space. `.tb-right` is three buttons held to the right and `.scale-group`
+    is a slider at a fixed width; neither can absorb anything, so both are `flex: none` and
+    the **slider** -- the one part with a spare dimension -- yields instead, down to a stated
+    floor. Design rule 30 is why there is a floor rather than a dropped control: a 2.5em thumb
+    is still a thumb you can drag.
+
+    The rules are parsed rather than scanned, because the declaration that matters is on a
+    different line from the selector that names it -- and a scan of the whole branch passes on
+    `white-space: nowrap` belonging to `.brand > *` while the caption is still free to wrap
+    (rule 37).
+    """
+    # Comments first, or the prose above these rules -- which quotes the selectors it is
+    # explaining -- is parsed as a selector list. The explanation naming the defect would
+    # then be reported as the defect.
+    css = re.sub(r"/\*.*?\*/", "", _read("tokens.css"), flags=re.S)
+    rules = [(sel.strip(), body) for sel, body in
+             re.findall(r"([^{}]+)\{([^{}]*)\}", css)
+             if '[data-topfit="on"]' in sel]
+    assert rules, "the toolbar fit has no rules; this guard is blind"
+    decls: dict[str, str] = {}
+    for sel, body in rules:
+        for one in sel.split(","):
+            leaf = one.strip().split()[-1]
+            decls.setdefault(leaf, "")
+            decls[leaf] += body
+
+    # Everything given the licence must, in the same branch, be told how to absorb it.
+    absorbing = {".brand", ".tb-select", ".tb-search", ".topbar", "*",
+                 ".srcpath", ".srcpath-k", ".srcpath-v", ".tb-searchwrap"}
+    stranded = {k for k, v in decls.items() if "min-width: 0" in v and k not in absorbing}
+    assert not stranded, (
+        f"{sorted(stranded)} may shrink below its own content and has nothing to absorb the "
+        "overflow, so it paints over its neighbour -- which is how the scale slider ended up "
+        "drawn through 'System' and 'Settings'"
+    )
+    for pinned in (".tb-right", ".scale-group"):
+        assert "flex: none" in decls.get(pinned, ""), (
+            f"{pinned} may shrink, so the controls it holds can be overlapped rather than "
+            "narrowed -- and they are the controls this setting exists to keep on screen"
+        )
+    slider = decls.get(".scaleslider", "")
+    assert "flex: 0 1 auto" in slider and re.search(r"min-width: [\d.]+em", slider), (
+        "the slider does not yield, or yields without a floor -- design rule 30 says a "
+        "control that is still there still acts, and a thumb needs a width to be dragged by"
+    )
+    # **An out-of-flow child does not shrink with its parent, it escapes it.** The three
+    # search flags are `position: absolute` inside the field, so they contribute nothing to
+    # any min-content width and simply hang out of the wrapper's left edge once it is
+    # narrower than they are — over the revision menu, 4px of it at a 900px toolbar and 50px
+    # at 700. The wrapper therefore carries the floor its own overlay implies, in `em` so it
+    # falls with the multiplier exactly as the flags do.
+    wrap = decls.get(".tb-searchwrap", "")
+    assert re.search(r"min-width: [\d.]+em", wrap), (
+        "the search wrapper has no floor, so the flags it positions inside itself slide out "
+        "of its left edge and are drawn over the control next door"
+    )
+    # A cap that a later rule of equal specificity silently discards is no cap (rule 29's
+    # mechanism, one stylesheet over): the value's two `max-width` declarations must agree,
+    # which `min()` is how you say.
+    assert "min(" in decls.get(".srcpath-v", ""), (
+        "the source-directory value is capped twice at equal specificity, so source order "
+        "decides which cap survives and the one keeping it inside its shrinking button loses"
+    )
+    # The caption that started the report: two words in a narrow box wrap, and a wrapped
+    # caption makes this button taller than the row it sits in.
+    assert "white-space: nowrap" in decls.get(".srcpath-k", ""), (
+        "SOURCE DIRECTORY may wrap onto two lines, which grows the button past the height of "
+        "the toolbar and pushes its own value out of the bottom of its box"
     )

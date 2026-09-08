@@ -211,6 +211,45 @@ adding to it would have carried the drift forward.*
 `2026-09-08T13:39:50Z` (628 files, Society at 08-29) working, `2026-09-07T15:32:31Z` (625,
 at 08-26) sealed.
 
+### The toolbar fit, reported from a real window and fixed (2026-09-08)
+
+Tom, an hour after it shipped, with a picture: *"Toolbar icon text overlaps the icon on the
+right when total window width is too small for them all. In this shot, the SOURCE DIRECTORY
+and the Font Size are the worst two."*
+
+**He was right, and it is `.navlabel`'s own defect wearing a toolbar.** `min-width: 0` is not
+*be narrower*, it is **a licence to overflow** — and `topFit` handed it to `.tb-right` and
+`.scale-group`, neither of which can absorb anything. The slider and `100%` were drawn through
+*System* and *Settings*. The same mechanism the navigator setting in the same commit exists to
+give a reader a way out of, reproduced by the fix for the toolbar. The rule is now written
+where the licence is granted: **yielding is for things that have somewhere to put what they
+give up.** `.tb-right` and `.scale-group` are `flex: none`; the slider yields instead, to a
+`2.5em` floor (design rule 30 — a 2.5em thumb is still a thumb you can drag).
+
+`SOURCE DIRECTORY` is a caption, not prose: two words in a narrow box wrapped, which made the
+button taller than the row and pushed its value out of the bottom of its own rounded rect.
+One line, eliding, opening the whole thing on click — which is what Tom proposed and what the
+button already did.
+
+**Three more, each found by measuring the fix rather than looking at it.** A clip cannot
+shrink a box sized to its own content (`.srcpath` is a column flex, so `max-width: 100%` was
+the missing half). A cap a later rule of equal specificity discards is not a cap — the value
+carried `100%` and `11em` and source order threw away the one that mattered, **rule 29's
+mechanism one stylesheet over**, now `min(11em, 100%)`. And an out-of-flow child does not
+shrink with its parent, it **escapes** it: the search flags are `position: absolute`, so they
+contribute nothing to a min-content width and hung out of the wrapper's *left* edge over the
+revision menu — 4 px at 900, **50 px at 700**.
+
+Measured after, at 1220 · 1000 · 900 · 800 · 700 · 620: **every pair that can touch is a gap,
+worst −5 px**, the caption and value are inside their button at every width, and the button is
+one line at 37 px of a 54 px row. Yielding alone still reaches a 700 px toolbar. Five
+mutations, five catches.
+
+*And the second screenshot — "the server could not be asked: Failed to fetch" — was **not** a
+defect: I stopped the 8787 server as cleanup while Tom was reading it. Restarted immediately.
+Recorded because the dialog is indistinguishable from a real fault, and because stopping a
+server you started is the wrong move when somebody else is on it.*
+
 ### Three settings for what the window cannot fit (2026-09-08)
 
 Tom's request, and his two calls on the mechanism: a Setting each for the navigator's names,

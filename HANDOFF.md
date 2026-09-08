@@ -12763,3 +12763,89 @@ each therefore has a guard naming its id.
 
 **Still to do at the pointer, next session:** press each of the five controls with a real
 pointer at a window that has not been resized by the tool.
+
+## 2026-09-08 — the toolbar fit, reported from a real window an hour after it shipped
+
+Tom, with a screenshot: *"Toolbar icon text overlaps the icon on the right when total window
+width is too small for them all. In this shot, the SOURCE DIRECTORY and the Font Size are the
+worst two."* And a second screenshot of *"the server could not be asked: Failed to fetch"* on
+clicking SOURCE DIRECTORY.
+
+**The second one was mine and was not a defect at all: I stopped the 8787 server as session
+cleanup while he was reading it.** Restarted before anything else. Worth recording because the
+dialog is indistinguishable from a real fault and the next reader should not go looking for
+one — and because "clean up the server you started" is wrong when somebody else is on it.
+
+### The first one is a defect, and it is `.navlabel`'s defect wearing a toolbar
+
+`min-width: 0` is not *"be narrower"* — it is **a licence to overflow**. It permits a flex item
+to shrink below its own min-content, and whatever will not fit is painted outside the box, on
+top of the neighbour. `topFit` handed that licence to `.tb-right` and `.scale-group`, neither
+of which can absorb anything: the slider is a fixed width and the group is three buttons held
+to the right. So the slider and `100%` were drawn straight through *System* and *Settings*.
+
+That is precisely the mechanism the navigator setting in the **same commit** exists to give a
+reader a way out of, reproduced in the toolbar by the fix for the toolbar, a dozen lines from
+the comment explaining it. The rule the two cases share, now written where the licence is
+granted: **yielding is for things that have somewhere to put what they give up.**
+
+* `.tb-right` and `.scale-group` are `flex: none`. The **slider** — the one part of that group
+  with a spare dimension — yields instead, `flex: 0 1 auto` down to a `2.5em` floor. Design
+  rule 30 is why there is a floor and not a dropped control: a 2.5em thumb is still a thumb
+  you can drag. *Tom's suggestion — drop the slider and keep the two `A`s as steppers below
+  some width — is a better answer if 2.5em turns out to be too small to aim at, and is filed
+  rather than taken, because it is a new control and this was a regression.*
+* **`SOURCE DIRECTORY` is a caption, not prose.** Two words in a narrow box wrap; a wrapped
+  caption makes the button taller than everything else in the row, so the row grows and the
+  value hangs out of the bottom of its own rounded rect — which is exactly what the screenshot
+  shows. One line now, eliding, and the whole thing has always opened on click, which is what
+  Tom proposed and what the button already did.
+
+### Three more found by measuring the fix rather than by looking at it
+
+* **A clip cannot shrink a box that is sized to its content.** `.srcpath` is a *column* flex
+  with `align-items: flex-start`, so its caption and value size to themselves and do not
+  shrink with the parent. `overflow: hidden` then clipped each child's text to a box that was
+  itself 95px too wide — a clip that clips nothing. `max-width: 100%` is the half that was
+  missing.
+* **A cap a later rule of equal specificity discards is not a cap.** `.srcpath-v` carried
+  `max-width: 100%` from the yielding rules and `max-width: 11em` from the sizing rules
+  further down the file; equal specificity is settled by source order, so the one holding the
+  value inside its shrinking button lost and the text ran 121px out at a 560px toolbar.
+  **Rule 29's own mechanism, one stylesheet over from where it was minted.** Written as
+  `min(11em, 100%)` rather than by moving the rule, because *whichever is smaller* is the
+  thing meant and a line's position in a file is not an argument.
+* **An out-of-flow child does not shrink with its parent, it escapes it.** The three search
+  flags are `position: absolute` inside the field, so they contribute nothing to any
+  min-content width — and once the wrapper was narrower than they are, they hung out of its
+  **left** edge and were drawn over the revision menu: 4px at a 900px toolbar, **50px at
+  700**. Nothing in the flex layout can see that. The wrapper now carries the floor its own
+  overlay implies, in `em` so it falls with the multiplier as the flags do.
+
+### Measured after, over the whole range
+
+Every pair that can touch, at 1220 · 1000 · 900 · 800 · 700 · 620 px:
+
+| | worst gap |
+|---|---|
+| scale group → theme | **−5 px** (a gap, at every width) |
+| theme → settings | **−5 px** |
+| search flags → revision menu | **−23 px** |
+| caption / value out of their button | **−1 px** |
+| button height vs toolbar height | 37 of 54 — one line, always |
+
+Yielding alone still carries it to a **700px toolbar** at 99%, and the 85% clamp is reached at
+620 where ⚙ Settings is 22px out and the note says so. The whole range is overlap-free, which
+it was not at any width before.
+
+*Five mutations, five catches.* The guard parses the rules rather than scanning the branch —
+because the declaration that matters is on a different line from the selector that names it,
+and a scan of the block passes on `white-space: nowrap` belonging to `.brand > *` while the
+caption is still free to wrap (rule 37). It strips comments first, or the prose explaining
+these selectors is parsed as a selector list and the explanation is reported as the defect.
+
+*And two existing guards had to be anchored.* `test_the_source_directory_presents_as_a_button`
+and `test_the_source_path_readout_clips` split the stylesheet on the bare `.srcpath` /
+`.srcpath-v` selector, which now finds the **stamped branch** first — so both silently moved
+to a rule that was never the one they meant. Anchored at column 0, on the declaration every
+reader gets.

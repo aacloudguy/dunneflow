@@ -200,11 +200,15 @@ program has a most-commented routine and a maximum alone is a claim nobody can w
 
 ## What we are doing now
 
-**2026-09-08. A bug-fix pass, two features, the counts that could be one, and now **four**
-settings for what the window cannot fit — the fourth being the rail a folded pane is reached
-by, which was carried out of the window with the toolbar.**
-**1,241** tests, mypy clean over **121** source files, ruff clean, `check` 0 broken, working
-tree clean. **Two servers are up and both are deliberate:** 8899 is Tom's, and **8787 is this
+**Paused 2026-09-08.** A bug-fix pass, two features, the counts that could be one, **four**
+settings for what the window cannot fit, item 0 of the scheduled pass paid at the pointer,
+and three defects that each turned out to be something other than what was filed: a rail that
+worked and could not be *reached*, a promise about seams that was false for names with none,
+and a "collapse" that was a deletion. **Four** commits this session, on top of the
+eighteen the day before — counted, not carried.
+**1,243** tests, mypy clean over **121** source files, ruff clean, `check` 0 broken, working
+tree clean.
+**Two servers are up and both are deliberate:** 8899 is Tom's, and **8787 is this
 session's, left running on purpose** — it was stopped as cleanup while he was reading it, which
 is what produced the *"the server could not be asked: Failed to fetch"* he reported, and it is
 not to be stopped again without asking. **All four program directories in `output/` now open.** *Every figure on this line is retaken rather than incremented (rule 24) —
@@ -2524,7 +2528,17 @@ them — the entries are still where an item is closed, and this is only the ord
    Tom's call was a fourth option nobody had listed: divide it at **smart intervals**, reusing
    what was written. `jointed()` now does, at the corpus' own median run of five characters.
    See the top of this file.*
-8. Then the standing backlog below, none of it scheduled.
+8. **An automatic collapse at narrow widths — offered 2026-09-08, unanswered.** The
+   narrow-window fix removed the breakpoints that *deleted* a pane and gave `.body` a floor
+   and a scrollbar instead, so nothing vanishes and both rails work at every width. What was
+   deliberately **not** built is a window that collapses a pane *by itself* when it will not
+   fit. With the row scrolling there is no longer a need for one, and it is a different call
+   — a window rearranging what the reader arranged. `inspectorAuto` is the shape it would
+   have to take, and its own comment records the trap: an auto-close makes the rail
+   unclickable, because pressing it reopens the pane and the rule immediately re-collapses
+   it, *"which reads as broken"*. So it needs a per-pane "the reader asked for this" flag
+   that a widening window resets. Tom's call, and no work until he makes it.
+9. Then the standing backlog below, none of it scheduled.
 
 ### What is next, and it is open
 

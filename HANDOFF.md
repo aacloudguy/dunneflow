@@ -13144,3 +13144,130 @@ strips comments before scanning, and learned that the way
 `test_every_dimension_is_in_rem` did: the block explaining why these breakpoints were
 deleted **quotes them**, so a raw scan finds `.navigator { display: none }` inside the prose
 recording its removal and reports the explanation as the defect.
+
+## 2026-09-08 — a pane that folds itself, and the trap it was deferred on
+
+Tom, asked for the call filed as item 8 the day before: *"Item 8 should auto-collapse."*
+
+### What it replaces, and why the floor was not the answer
+
+The narrow-window fix earlier the same day deleted two breakpoints that set `display: none`
+on a pane whose grid track and whose `state.panels` entry both stayed — open, undrawn, and
+with no rail to press, which is design rule 24 broken in the one place it matters most. What
+replaced them is a centre floor and a horizontal scrollbar on `.body`, so nothing vanishes at
+any width.
+
+**That is a floor rather than an answer**, and the entry that offered this said so: at 380px
+the reader reaches the centre by dragging a bar. A pane that folds *properly* — the fold that
+leaves a rail — is the answer, and it needed Tom's call because a window that rearranges the
+reader's panes by itself is a different thing from one that stops deleting them.
+
+### The rule
+
+**One question, asked in one place.** `panelIsOpen` already decided whether a pane is open,
+and it now weighs three rules in order: the window, then the inspector's own *nothing to say*
+rule, then the reader's fold. The window is first because it outranks both — an inspector
+with a subject is still a pane that does not fit — and a test asserts that order, because
+weighing it last reports a pane open while the grid has given its track away.
+
+**Asked at the panes' narrowest, never at the width the reader dragged.** `applyNavWidth`
+already clamps the navigator down to `NAV_MIN_REM` to make room, so the fold is decided
+against `NAV_MIN_REM + CENTRE_FLOOR_REM +` the inspector's track — narrower first, and folded
+only for what is left, which is `topFit`'s mechanism one surface over. It is also what keeps
+this out of a loop: `navMaxRem()` asks `panelIsOpen("inspector")`, so a rule that asked back
+for the clamped width would be asking itself. A test asserts `navWidth(` never appears in
+`narrowFolds`, and counts **both** comparisons rather than containing one — the first
+mutation ran passed against a broken first branch because the second branch still held both
+names (rule 37).
+
+**Never a media query**, which is the other half of why the breakpoints were wrong. A `rem`
+inside `@media` resolves against the browser's font size and ignores `:root` (rule 28), so
+the CSS version of this rule folds at 800px for one reader and at 1,200px for one whose
+Chrome default is 24px. Measured off `innerWidth` and the root font size, as the drag is.
+
+**The inspector's track is a token now.** `--insp-w: 22rem`, read by the two `.body` track
+lists that carried the literal and by `paneCostRem()`. `--centre-floor` earned its own test
+for exactly this; a number in two languages is a pane that vanishes a little before or after
+the point where it would not have fit, with nothing on screen to explain either. `--rail` was
+already a token and is read the same way. A token that cannot be read is **announced** and
+not quietly replaced — rule 49 is the whole reason `remToken` says anything at all.
+
+### The trap, which is what the feature sat behind
+
+Recorded beside `inspectorAuto` a day before this existed: an automatic collapse makes the
+rail unclickable, because pressing it opens the pane and the rule folds it again in the same
+frame — *"which reads as broken"*.
+
+`paneHeld` is the answer, and it is only an answer if all three halves are there: the fold
+handler writes it, `autoFoldsHere` reads it, and a resize gives it back. Two of those three
+are rule 35's shape exactly — a flag nothing assigns, or that nothing reads, is a feature
+with no symptom — so the guard checks all three.
+
+**Not in `state`, and not persisted, which is the difference from `inspectorAuto`.** It is an
+answer about *this* window: a reader who held the inspector open on a narrow screen must not
+find it held open tomorrow on a wide one, where the rule that made holding it mean anything
+is not running. The same *re-clamped rather than remembered narrower* decision the
+navigator's width makes two functions down.
+
+### Rule 78, arriving through the divisor
+
+**Two controls move this fold and only one of them is the window.** The rule is `innerWidth /
+rootPx`, and `--scale` is that divisor — design rule 3 puts every dimension in `rem` precisely
+so one multiplier drives them together, which means the scale slider narrows the page in
+exactly the units this rule counts. A reader at 1,215px who takes the scale to 160% has a
+**47.5rem** window and no room for three panes, and nothing would have told the panes so
+until the next time they moved the window.
+
+So `refitPanes()` is invited from `applyScale`, which all four scale routes already pass
+through, rather than from the slider that happened to be the second one found. *Found while
+verifying, not while writing.*
+
+*Noted and not fixed:* the same argument reaches `fitTopbar`, whose fit is a ratio of the
+row's contents to the window and is therefore also wrong the instant the scale moves. It is
+pre-existing, the live drag deliberately avoids `render()`, and refitting the toolbar on every
+frame of a drag is a measurement nobody asked for. Filed rather than done.
+
+### Measured, in the page, at `innerWidth 1215`
+
+Driven through the product's own scale rather than by resizing the window — `resize_window`
+reports success and changes nothing (recorded 2026-09-06), and the scale is the same divisor
+the rule reads, so raising it *is* narrowing the window in the units this counts.
+
+| # | | window | rule wants | held | drawn | inspector rail |
+|---|---|---|---|---|---|---|
+| 1 | narrow | 27.1rem | inspector + navigator | — | `nav=off insp=off` | drawn |
+| 2 | press the rail | 27.1rem | inspector + navigator | inspector | `nav=off insp=on` | hidden |
+| 3 | refit, same width | 27.1rem | inspector + navigator | inspector | `nav=off insp=on` | hidden |
+| 4 | ease to 31.6rem | 31.6rem | inspector | inspector | `nav=on insp=on` | hidden |
+| 5 | widen | 75.9rem | — | — | `nav=on insp=on` | hidden |
+| 6 | narrow again | 27.1rem | inspector + navigator | — | `nav=off insp=off` | drawn |
+
+Row 3 is the trap, closed: the pane the reader asked for survives the rule being asked again
+at the same width. Row 5 is the release, and row 6 is the proof it was a release rather than
+a forget. **`state.panels` reads `nav=true insp=true` in every one of the six** — the fold is
+laid over the reader's arrangement and never written into it, which is what makes widening
+give them back what they had rather than what the rule left.
+
+*What was not verified is the pointer.* `document.visibilityState` said `hidden` throughout,
+so a click would have landed on whatever window was in front (rule 90), and the capture
+window would not line up with the rail at the right-hand edge (rule 83). The rail-press path
+itself was pressed with a real pointer on 2026-09-08 for the legend and navigator rails; what
+is new here is `paneHeld`, and it is scripted evidence. **Worth one pointer press with the
+window in front**, which is a minute of Tom's screen.
+
+*And one thing put back:* pressing a rail calls `persist()`, so the scale I had driven to
+2.8 went into `localStorage` under the reader's settings. Restored to 1 and confirmed
+saved — a measurement that leaves the instrument changed is not free.
+
+### Where it ships
+
+A fifth setting beside the four from earlier the same day, and **the only one of the five
+that ships on** — Tom's call. Off is what the dashboard did before, which is design rule 2's
+other half.
+
+Nine mutations, nine catches, two of which the harness found and review had not: a guard
+whose span reached the wrong `resize` listener entirely — there are two, and the first is a
+three-line one that hides a hover card — and the counted-versus-contained one above.
+
+**Gates:** 1,247 tests, mypy clean over 121 source files, ruff clean.
+

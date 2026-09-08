@@ -458,6 +458,10 @@ const state = {
   topFit: false,          // the toolbar yields and shrinks, or runs off the window
   verStrip: false,        // the version strip holds one line and scrolls, or wraps
   paneFit: false,         // the panes keep inside the window, or run off with the toolbar
+  /* Whether a pane folds itself when the window has no room for it. On, which is Tom's
+   * call: the fold is the pane the reader can get back from a rail, and the alternative
+   * at a narrow width is a row that scrolls sideways to reach the centre. */
+  paneAuto: true,
   /* The two versions, and which of them the screen is showing.
    *
    * `baseRev` is the version being read — the cover, the routine list, the code browser,
@@ -736,6 +740,11 @@ const PANELS = {
 };
 
 function panelIsOpen(name) {
+  /* First, because it outranks both the reader's fold and the inspector's own auto rule:
+   * a pane the window has no room for is folded whatever either of them says, and the rail
+   * it leaves is how it comes back. `autoFoldsHere` is where the reader's "no, keep this
+   * one" is weighed -- see `paneHeld`. */
+  if (autoFoldsHere(name)) return false;
   if (name === "inspector" && state.inspectorAuto && state.panels.inspector) {
     /* Auto only ever *closes*, and only when the inspector genuinely has nothing to say.
      * An explicit fold is recorded in `panels.inspector` and outranks this, so the reader
@@ -1056,6 +1065,10 @@ function applyScale() {
    * The graph had its own independent size slider and never saw this one, so the promise
    * was true of every dimension on the page except the one it named last. */
   if (Graph && Graph.mounted()) Graph.setScale(state.scale);
+  /* And the panes, because this multiplier is the other half of the fold rule's divisor --
+     see `refitPanes`. Here rather than on the slider: three other routes set the scale, and
+     the one that drags is deliberately the one that does not re-render. */
+  refitPanes();
 }
 $("#themeBtn").addEventListener("click", () => {
   state.theme = { system: "light", light: "dark", dark: "system" }[state.theme];
@@ -3469,6 +3482,11 @@ document.addEventListener("click", (ev) => {
    * be unclickable: it would reopen and immediately re-collapse, which reads as broken. */
   if (name === "inspector" && opening && !inspectorSubject()) state.inspectorAuto = false;
   if (name === "inspector" && !opening) state.inspectorAuto = true;
+  /* And the same bargain with the width rule, for both panes rather than one. Pressing a
+   * rail is the reader saying they want this pane at this width; without recording it the
+   * press opens the pane and `panelIsOpen` folds it again before the frame is drawn, which
+   * is the trap this feature sat behind. Folding by hand gives the rule its pane back. */
+  if (name in paneHeld) paneHeld[name] = opening && narrowFolds().has(name);
   persist();
   applyPanels();
   if (Graph.mounted()) requestAnimationFrame(() => Graph.resize());
@@ -7425,6 +7443,24 @@ function viewSettings() {
               shrinks first exactly as it does today and only what the ${Math.round(TOPFIT_FLOOR * 100)}%
               floor could not absorb ever scrolls.</div></div>
           <button class="toggle" id="paneFitToggle" aria-pressed="${state.paneFit}" aria-label="Keep the panes inside the window"></button>
+        </div>
+
+        <div class="setrow">
+          <div><div class="lbl">Fold a pane the window cannot fit</div>
+            <div class="desc">Three panes need about <b>${NAV_MIN_REM + CENTRE_FLOOR_REM + 22}rem</b>
+              side by side — the navigator at its narrowest, a readable centre, and the
+              inspector. Below that the row scrolls sideways, which is a floor rather than an
+              answer: you reach the centre by dragging a bar.<br><br>
+              On, which is the default, a pane folds itself instead — <b>the inspector first,
+              then the navigator</b>, because the way in is a pane and the inspector already
+              rails itself when it has nothing to say. Each leaves its rail, so nothing is
+              unreachable, and <b>widening the window brings it straight back</b>: the fold is
+              never written into your arrangement, only laid over it.<br><br>
+              Press a rail and that pane stays open at this width for as long as the window
+              stays narrow — otherwise the rail would open it and this rule would fold it
+              again in the same frame, which reads as a broken button rather than as a rule.
+              Off, nothing folds by itself and the row scrolls, which is what it did before.</div></div>
+          <button class="toggle" id="paneAutoToggle" aria-pressed="${state.paneAuto}" aria-label="Fold a pane the window cannot fit"></button>
         </div>
 
         <div class="setrow">
@@ -13313,6 +13349,19 @@ function wire() {
        fold handler above ends on the same line for the same reason. */
     if (Graph.mounted()) requestAnimationFrame(() => Graph.resize());
   });
+  const pac = $("#paneAutoToggle");
+  if (pac) pac.addEventListener("click", () => {
+    state.paneAuto = !state.paneAuto;
+    used("paneauto:" + state.paneAuto);
+    /* Turning it **off** releases every hold as well, or a pane the reader asked for at a
+       narrow width stays exempt from a rule they have since switched back on. `persist`
+       before `applyPanels`, because the fold is read off `state` and the pane redraws. */
+    if (!state.paneAuto) for (const k of Object.keys(paneHeld)) paneHeld[k] = false;
+    persist();
+    applyPanels();
+    render();
+    if (Graph.mounted()) requestAnimationFrame(() => Graph.resize());
+  });
   const inf = $("#inferredToggle");
   if (inf) inf.addEventListener("click", () => { state.hideInferred = !state.hideInferred; render(); });
   /* The colour set. A `data-palette-set` route, never `data-palette` -- that name is the
@@ -17696,7 +17745,7 @@ const Settings = window.DunneFlowSettings;
 const PERSISTED = [
   "theme", "palette", "scale", "startup", "mode", "menuOrder", "trailShown", "trailCap",
   "density", "coverBars", "rowTagsWrap", "coverWhatWrap", "bandScroll", "baseRev", "comparedRev", "comparedIsNewer",
-  "navName", "topFit", "verStrip", "paneFit",
+  "navName", "topFit", "verStrip", "paneFit", "paneAuto",
   "ambient", "hideInferred", "colWidths", "insp", "sortKey", "sortAsc",
   "egress", "aiOps", "triage", "promoted", "pins", "usage", "graphLayout",
   "diskOrder", "diskColors", "colorBy", "sortMode", "filterMode", "direction",
@@ -20510,6 +20559,119 @@ const NAV_MIN_REM = 12;
  * resolves against the *browser's* font size, not the page's (rule 28).
  */
 const CENTRE_FLOOR_REM = 16;   // the centre never shrinks below a readable column
+
+/* ── the window with no room for three panes ─────────────────────────────────────
+ *
+ * `.body` scrolls sideways rather than deleting a pane, which is what the breakpoints
+ * that used to live in `tokens.css` did wrong (design rule 24: a rail is the only way
+ * back, and a pane hidden with `display:none` has none). Scrolling is a floor and not an
+ * answer: the reader arrived at a 380px window to reach the centre by dragging a bar.
+ * Tom's call, 2026-09-08, was that a pane should fold itself instead.
+ *
+ * **The question is asked at the panes' narrowest, never at the width the reader
+ * dragged.** `applyNavWidth` already clamps the navigator down to `NAV_MIN_REM` to make
+ * room, so a fold decided against `navWidth()` would fold a pane the window could still
+ * hold -- narrower first and folded only for what is left, which is `topFit`'s mechanism
+ * one surface over. It is also what keeps this out of a loop: `navMaxRem()` below asks
+ * `panelIsOpen("inspector")`, so a rule that asked back for the navigator's clamped width
+ * would be asking itself.
+ *
+ * **Never a media query** (rule 28): a `rem` inside `@media` resolves against the
+ * browser's font size and ignores `:root`, which the scale slider drives -- so the same
+ * rule written in CSS would fold at 800px for one reader and at 1200px for the next
+ * without either of them changing anything. Measured off `innerWidth` and the root font
+ * size, which is what the drag and `navMaxRem` already do.
+ *
+ * The order is the inspector, then the navigator: the primary way in is a pane (design
+ * rule 25), and the inspector is the one that already rails itself when it has nothing to
+ * say. */
+function rootPx() {
+  return parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+}
+
+/* A track's width in `rem`, read from the token that draws it rather than restated here.
+ *
+ * `--centre-floor` earned its own test for exactly this: a number written in CSS and again
+ * in JS is a pane that vanishes at one width and not the other. A token that cannot be
+ * read is **announced** and not quietly replaced -- rule 49 is the whole reason this says
+ * anything at all, since the fallback is a plausible number and a silent one would leave a
+ * fold happening at a width nothing on the page explains. */
+function remToken(name, fallback) {
+  const v = parseFloat(getComputedStyle(document.documentElement).getPropertyValue(name));
+  if (Number.isFinite(v)) return v;
+  console.error("DunneFlow: the token", name, "could not be read, so the auto-fold rule is",
+                "using", fallback + "rem -- the fold will happen at the wrong width");
+  return fallback;
+}
+
+function paneCostRem() {
+  return { rail: remToken("--rail", 1.75), inspector: remToken("--insp-w", 22) };
+}
+
+/* Which panes this window has no room for, in the order they are given up. A set rather
+ * than a name, because at the narrowest width both go. */
+function narrowFolds() {
+  const folds = new Set();
+  if (!state.paneAuto) return folds;
+  const cost = paneCostRem();
+  const have = window.innerWidth / rootPx();
+  if (have >= NAV_MIN_REM + CENTRE_FLOOR_REM + cost.inspector) return folds;
+  folds.add("inspector");
+  if (have >= NAV_MIN_REM + CENTRE_FLOOR_REM + cost.rail) return folds;
+  folds.add("navigator");
+  return folds;
+}
+
+/* Which panes the reader has asked for at a width the rule would fold them at.
+ *
+ * **This is the whole of the trap the feature was deferred on**, recorded beside
+ * `inspectorAuto` before either existed: without it the rail is unclickable, because
+ * pressing it opens the pane and the rule folds it again in the same frame, which reads as
+ * a broken control rather than as a rule.
+ *
+ * Not in `state` and not persisted, and that is the difference from `inspectorAuto`. This
+ * is an answer about *this* window: a reader who held the inspector open on a narrow
+ * screen must not find it held open tomorrow on a wide one, where the rule that made
+ * holding it mean anything is not running. Cleared the moment the window is wide enough
+ * that the rule no longer wants the fold, so widening puts the reader back where they were
+ * and narrowing again folds again -- the same "re-clamped rather than remembered narrower"
+ * decision the navigator's width makes two functions down. */
+const paneHeld = { navigator: false, inspector: false };
+
+function autoFoldsHere(name) {
+  return !paneHeld[name] && narrowFolds().has(name);
+}
+
+/* Read on every resize, so a widening window gives back what a narrowing one took. Returns
+ * whether anything changed, because a resize fires continuously and repainting the panes
+ * on every pixel of a drag is work nobody asked for. */
+function releaseHeldPanes() {
+  const folds = narrowFolds();
+  let changed = false;
+  for (const name of Object.keys(paneHeld)) {
+    if (paneHeld[name] && !folds.has(name)) { paneHeld[name] = false; changed = true; }
+  }
+  return changed;
+}
+
+/* Ask the question again, because something changed the answer.
+ *
+ * **Two controls move this fold and only one of them is the window.** The rule is
+ * `innerWidth / rootPx`, and `--scale` is the divisor -- design rule 3 puts every dimension
+ * in `rem` precisely so one multiplier drives them together, which means the scale slider
+ * narrows the page in exactly the units this rule counts. A reader at 1215px who takes the
+ * scale to 160% has a 47.5rem window and no room for three panes, and until this existed
+ * nothing would have told the panes so until the next time they moved the window.
+ *
+ * That is rule 78 in one line -- *a pane brought up to date by the control that moved it is
+ * only as correct as the last person to add a control* -- so this is invited from
+ * `applyScale`, which every one of the four scale routes already passes through, rather
+ * than from the slider that happened to be the second one found. */
+function refitPanes() {
+  releaseHeldPanes();
+  applyPanels();
+}
+
 function navMaxRem() {
   const rootPx = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
   const insp = panelIsOpen("inspector") ? 22 : 3;
@@ -20582,7 +20744,14 @@ function wireNavGripOnce() {
  * window it is in. Re-clamped rather than remembered narrower: widening the window again
  * puts the reader back where they were. */
 addEventListener("resize", () => {
-  applyNavWidth();
+  /* `applyPanels` rather than `applyNavWidth`, and it is the auto-fold rule that made the
+     difference: the fold is a function of the window, so the window moving is the only
+     thing that can bring a folded pane back or take an open one away. It calls
+     `applyNavWidth` first, so the clamp one line up is still paid.
+     Held panes are released *before* the panes are drawn, or a reader who widens the window
+     back keeps the pane they had to ask for at the narrow one exempt from a rule that is
+     no longer running -- and the next narrowing would then leave it open. */
+  refitPanes();
   if (Graph.mounted()) Graph.resize();
   /* **A budget measured in one window is not a budget in the next one**, which is the whole
    * reason these fields are fitted rather than given a constant -- so a resize has to ask

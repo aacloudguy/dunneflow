@@ -20,6 +20,12 @@
      numbers equal, because a floor that disagrees with itself is a pane that vanishes
      at one width and not the other. */
   --centre-floor:  16rem;
+  /* The inspector's track. A token because the auto-fold rule in `shell.js` has to know
+     what a pane costs before it can say the window has no room for one, and a number
+     written in two languages drifts -- which is the lesson `--centre-floor` above was
+     given its own test for. Read by two of the four track lists below and by
+     `paneCostRem()`. */
+  --insp-w:        22rem;
   --text-faint:    #8894a5;
   --accent:        #0d7f75;
   --accent-soft:   #d7efec;
@@ -838,7 +844,7 @@ body {
  * property of the grid. A pane hidden with `display:none` while its column stayed 22rem
  * would leave a 22rem hole -- which is the shape of the defect this shell already had once,
  * from the other direction. */
-.body[data-navtrack="off"]  { grid-template-columns: var(--rail) minmax(var(--centre-floor), 1fr) 22rem; }
+.body[data-navtrack="off"]  { grid-template-columns: var(--rail) minmax(var(--centre-floor), 1fr) var(--insp-w); }
 .body[data-insp="off"] { grid-template-columns: var(--nav-w, 21rem) minmax(var(--centre-floor), 1fr) var(--rail); }
 .body[data-navtrack="off"][data-insp="off"] { grid-template-columns: var(--rail) minmax(var(--centre-floor), 1fr) var(--rail); }
 .body[data-navtrack="off"]  > .navigator,
@@ -851,7 +857,7 @@ body {
   position: relative;
   /* `--nav-w` is set by `applyNavWidth()` and dragged by the divider; the fallback is what
    * a reader sees before settings are adopted, never a second source of truth. */
-  grid-template-columns: var(--nav-w, 21rem) minmax(var(--centre-floor), 1fr) 22rem;
+  grid-template-columns: var(--nav-w, 21rem) minmax(var(--centre-floor), 1fr) var(--insp-w);
   /* One row, and it may not grow past the space it was given. Without this the row is
    * sized `auto` and takes the height of the tallest pane -- the navigator, whose content
    * runs to 1,151px -- so the panes stood 700px tall inside a 446px box and the document

@@ -200,14 +200,14 @@ program has a most-commented routine and a maximum alone is a claim nobody can w
 
 ## What we are doing now
 
-**Paused 2026-09-08.** A bug-fix pass, two features, the counts that could be one, **four**
-settings for what the window cannot fit, item 0 of the scheduled pass paid at the pointer,
-and three defects that each turned out to be something other than what was filed: a rail that
-worked and could not be *reached*, a promise about seams that was false for names with none,
-and a "collapse" that was a deletion. **Four** commits this session, on top of the
-eighteen the day before — counted, not carried.
-**1,243** tests, mypy clean over **121** source files, ruff clean, `check` 0 broken, working
-tree clean.
+**Working 2026-09-08.** Item 8 answered and built: a pane now folds itself when the window
+has no room for it, which makes **five** settings for what the window cannot fit and is the
+only one of the five that ships **on**. Before it, a bug-fix pass, two features, the counts
+that could be one, item 0 of the scheduled pass paid at the pointer, and three defects that
+each turned out to be something other than what was filed: a rail that worked and could not
+be *reached*, a promise about seams that was false for names with none, and a "collapse" that
+was a deletion.
+**1,247** tests, mypy clean over **121** source files, ruff clean, `check` 0 broken.
 **Two servers are up and both are deliberate:** 8899 is Tom's, and **8787 is this
 session's, left running on purpose** — it was stopped as cleanup while he was reading it, which
 is what produced the *"the server could not be asked: Failed to fetch"* he reported, and it is
@@ -217,6 +217,58 @@ adding to it would have carried the drift forward.*
 `output/mensores` holds the pair rebuilt under the new documentation rule:
 `2026-09-08T13:39:50Z` (628 files, Society at 08-29) working, `2026-09-07T15:32:31Z` (625,
 at 08-26) sealed.
+
+### A pane that folds itself, and the trap it was deferred on (2026-09-08)
+
+Item 8, answered and closed the day after it was offered. Tom: *"Item 8 should
+auto-collapse."*
+
+The narrow-window fix above stopped panes being *deleted* and gave `.body` a centre floor and
+a scrollbar instead. **That is a floor rather than an answer** — at 380px the reader reaches
+the centre by dragging a bar — so a pane now folds *properly*, the fold that leaves a rail.
+
+**One question in one place.** `panelIsOpen` weighs three rules in order: the window, then
+the inspector's own *nothing to say* rule, then the reader's fold. The window is first
+because it outranks both — an inspector with a subject is still a pane that does not fit.
+
+**Asked at the panes' narrowest**, never at the width the reader dragged: `applyNavWidth`
+already clamps the navigator down to make room, so the fold is decided against `NAV_MIN_REM +
+CENTRE_FLOOR_REM +` the inspector's track — narrower first, folded for what is left, which is
+`topFit`'s mechanism one surface over. It is also what keeps it out of a loop, since
+`navMaxRem()` asks `panelIsOpen("inspector")`. **Never a media query** (rule 28), which is the
+other half of why the breakpoints it replaces were wrong. The inspector's track is a token
+now, `--insp-w`, for `--centre-floor`'s reason.
+
+**The trap is closed and it is what the feature sat behind.** `paneHeld` records that the
+reader pressed a rail at a width the rule would fold at, so the press is not undone in the
+same frame — *"which reads as broken"*. Not persisted, unlike `inspectorAuto`: it is an answer
+about *this* window, and a widening one releases it.
+
+**Rule 78 arrived through the divisor.** The rule is `innerWidth / rootPx` and `--scale` *is*
+that divisor, so the scale slider narrows the page in exactly the units this counts: at
+1,215px, 160% is a **47.5rem** window with no room for three panes. `refitPanes()` is invited
+from `applyScale`, which all four scale routes pass through. Found while verifying.
+
+Measured in the page at `innerWidth 1215`, driven through the scale because `resize_window`
+changes nothing:
+
+| | window | rule wants | held | drawn |
+|---|---|---|---|---|
+| narrow | 27.1rem | inspector + navigator | — | `nav=off insp=off`, both rails drawn |
+| press the rail | 27.1rem | inspector + navigator | inspector | `nav=off insp=on` |
+| refit, same width | 27.1rem | inspector + navigator | inspector | `nav=off insp=on` |
+| widen | 75.9rem | — | — | `nav=on insp=on` |
+| narrow again | 27.1rem | inspector + navigator | — | `nav=off insp=off` |
+
+`state.panels` reads `nav=true insp=true` throughout: the fold is laid over the reader's
+arrangement, never written into it. Nine mutations, nine catches — two of them found by the
+harness and not by review, one a guard whose span reached the wrong `resize` listener
+entirely. *The pointer was not used: the window was `hidden` the whole time (rule 90), so
+this is scripted evidence and one press with the window in front would finish it.*
+
+*Noted and not fixed:* `fitTopbar` has the same dependency on the scale and does not hear
+about it either. Pre-existing, and refitting on every frame of a drag is a measurement nobody
+asked for.
 
 ### A narrow window deleted a pane instead of collapsing it (2026-09-08)
 
@@ -2528,7 +2580,10 @@ them — the entries are still where an item is closed, and this is only the ord
    Tom's call was a fourth option nobody had listed: divide it at **smart intervals**, reusing
    what was written. `jointed()` now does, at the corpus' own median run of five characters.
    See the top of this file.*
-8. **An automatic collapse at narrow widths — offered 2026-09-08, unanswered.** The
+8. ~~**An automatic collapse at narrow widths — offered 2026-09-08, unanswered.**~~ *Answered
+   and built 2026-09-08 — see the top of this file. Tom: "Item 8 should auto-collapse." The
+   trap the entry below records is closed by `paneHeld`, and a fifth setting joins the
+   family as the only one that ships on. The entry as it was filed:* The
    narrow-window fix removed the breakpoints that *deleted* a pane and gave `.body` a floor
    and a scrollbar instead, so nothing vanishes and both rails work at every width. What was
    deliberately **not** built is a window that collapses a pane *by itself* when it will not

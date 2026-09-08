@@ -462,6 +462,165 @@ def test_a_narrow_window_never_deletes_a_pane_it_cannot_fit() -> None:
     )
 
 
+# ------------------------------------------------------- the pane that folds itself --- #
+
+
+def test_the_inspectors_track_is_a_token_both_languages_read() -> None:
+    """One number, one place -- `--centre-floor`'s own lesson, one track over.
+
+    The auto-fold rule has to know what a pane costs before it can say the window has no
+    room for one, so `22rem` is now asked of the same declaration that draws it. Restating
+    it in JavaScript would give the fold a width the grid does not use, which is a pane
+    that vanishes a little before or a little after the point where it would not have fit
+    -- and nothing on screen to explain either.
+    """
+    css = _css_code(_read("tokens.css"))
+    js = _code(_read("shell.js"))
+
+    assert re.search(r"--insp-w:\s*\d", css), (
+        "the inspector's track is no longer a token, so the fold rule and the grid can "
+        "hold different numbers"
+    )
+    tracks = [
+        m.group(1)
+        for sel, decls in re.findall(r"([^{}]+)\{([^{}]*)\}", css)
+        if sel.strip().startswith(".body")
+        for m in [re.search(r"grid-template-columns:\s*([^;]+);", decls)]
+        if m
+    ]
+    assert len(tracks) == 4, f"expected the four `.body` track declarations, found {tracks}"
+    for track in tracks:
+        assert "22rem" not in track, (
+            f"a `.body` track list restates the inspector's width: {track!r} -- it is "
+            "`var(--insp-w)`, which is what `paneCostRem()` reads"
+        )
+    assert 'remToken("--insp-w"' in js and 'remToken("--rail"' in js, (
+        "the fold rule has stopped reading the tokens and is holding its own numbers"
+    )
+
+
+def test_the_fold_rule_is_javascript_because_a_media_rem_is_not_the_pages_rem() -> None:
+    """The rule this replaces was CSS, and that was half of why it was wrong.
+
+    A `rem` inside `@media` resolves against the *browser's* font size and ignores
+    `:root`, which the scale slider drives (rule 28) -- so the same fold happens at 800px
+    for one reader and 1200px for a reader whose Chrome default is 24px, with nothing
+    either of them touched to explain it. The sibling test one section down asserts no
+    breakpoint is written in `rem`; this asserts the fold is not written as a breakpoint at
+    all, and is asked of `innerWidth` and the root font size the way the drag already is.
+    """
+    js = _code(_read("shell.js"))
+    rule = js.split("function narrowFolds()", 1)
+    assert len(rule) > 1, "`narrowFolds` is gone -- the fold has moved somewhere unguarded"
+    body = rule[1].split("\n}", 1)[0]
+    assert "window.innerWidth" in body and "rootPx()" in body, (
+        "the fold no longer measures the window against the page's own font size"
+    )
+    assert body.count("NAV_MIN_REM + CENTRE_FLOOR_REM") == 2, (
+        "one of the two comparisons is decided against something other than the panes at "
+        "their narrowest -- which folds a pane the window could still hold, because "
+        "`applyNavWidth` clamps the navigator down to make room before anything gives up. "
+        "Counted rather than contained: the second branch held both names while the first "
+        "was wrong, and the check passed (rule 37)"
+    )
+    assert "navWidth(" not in body, (
+        "the fold reads the width the reader dragged. That folds a pane the window could "
+        "still hold, and it is also a loop: `navMaxRem()` asks `panelIsOpen(\"inspector\")`, "
+        "so a fold that asked back for the clamped width would be asking itself"
+    )
+
+
+def test_a_rail_the_reader_presses_outranks_the_fold_rule() -> None:
+    """The trap the feature was deferred on, asserted rather than remembered.
+
+    Recorded beside `inspectorAuto` a day before this existed: an automatic collapse makes
+    the rail unclickable, because pressing it opens the pane and the rule folds it again in
+    the same frame -- *"which reads as broken"*. `paneHeld` is the answer, and it is only
+    an answer if all three halves are there: the fold handler writes it, `autoFoldsHere`
+    reads it, and a resize gives it back.
+
+    Written as a check on all three because two of them are `rule 35`'s shape exactly -- a
+    flag that nothing assigns, or that nothing reads, is a feature with no symptom.
+    """
+    js = _code(_read("shell.js"))
+
+    assert "const paneHeld = {" in js, "`paneHeld` is gone, and with it the reader's say"
+    held = js.split("function autoFoldsHere", 1)
+    assert len(held) > 1, "`autoFoldsHere` is gone"
+    assert "paneHeld[name]" in held[1].split("\n}", 1)[0], (
+        "the fold rule no longer reads `paneHeld`, so pressing a rail opens a pane that is "
+        "folded again before it is drawn"
+    )
+
+    fold = js.split('const btn = ev.target.closest("[data-fold], [data-pane]")', 1)
+    assert len(fold) > 1, "the fold handler has moved -- this test is blind"
+    handler = fold[1].split("\n});", 1)[0]
+    assert "paneHeld[name]" in handler and "narrowFolds()" in handler, (
+        "pressing a rail no longer records that the reader asked for this pane at this "
+        "width, so the rule folds it again in the same frame"
+    )
+
+    # **Both controls that move the fold, not the one that was obvious.** The rule divides
+    # `innerWidth` by the root font size, and `--scale` is that divisor -- so the scale
+    # slider narrows the page in the units this rule counts, and a reader who takes the
+    # scale up has a window with no room for three panes and nothing to tell the panes so.
+    # Rule 78, and the answer is that `applyScale` invites the refit rather than the four
+    # routes that reach it.
+    scale = js.split("function applyScale() {", 1)[1].split("\n}", 1)[0]
+    assert "refitPanes()" in scale, (
+        "changing the scale no longer refits the panes, so the fold is decided in `rem` "
+        "against a multiplier it stopped being told about (rule 78)"
+    )
+
+    assert "function releaseHeldPanes" in js, (
+        "nothing releases a held pane, so a pane asked for at 380px stays exempt from the "
+        "rule for the rest of the session -- including at widths where it fits"
+    )
+    # **The handler that fits the toolbar, not the first `resize` listener in the file.**
+    # There are two, and taking the first spans from a three-line one that hides a hover
+    # card all the way through unrelated code holding its own `applyPanels()` -- so the
+    # order read was between two calls in different functions, and the swap this asserts
+    # against went unreported. A span is what a containment check is worth (rule 37).
+    resizes = [
+        blk for blk in js.split('addEventListener("resize", () => {')[1:]
+        if "fitTopbar()" in blk.split("\n});", 1)[0]
+    ]
+    assert len(resizes) == 1, (
+        f"expected one resize handler that refits the toolbar, found {len(resizes)}"
+    )
+    resize = resizes[0].split("\n});", 1)[0]
+    assert "refitPanes()" in resize, (
+        "a resize no longer redraws the panes, so the fold happens at the width the page "
+        "opened at and never again"
+    )
+    refit = js.split("function refitPanes() {", 1)[1].split("\n}", 1)[0]
+    assert refit.index("releaseHeldPanes()") < refit.index("applyPanels()"), (
+        "the panes are drawn before the holds are released, so a widened window paints one "
+        "frame of the arrangement it is about to abandon"
+    )
+
+
+def test_the_fold_outranks_every_other_answer_about_a_pane() -> None:
+    """`panelIsOpen` is the one place that decides, and the width is decided first.
+
+    Three rules now meet in that function: the reader's own fold, the inspector's
+    "nothing to say" rule, and this. A window with no room for a pane has to win over both
+    -- an inspector with a subject is still a pane that does not fit -- and it has to be
+    read *before* them, or a pane the reader opened is reported open while the grid has
+    given its track away.
+    """
+    js = _code(_read("shell.js"))
+    body = js.split("function panelIsOpen(name) {", 1)[1].split("\n}", 1)[0]
+    assert "autoFoldsHere(name)" in body, (
+        "`panelIsOpen` no longer asks whether the window has room, so the fold happens "
+        "nowhere or in a second place that has to remember (rule 51)"
+    )
+    assert body.index("autoFoldsHere(name)") < body.index("inspectorAuto"), (
+        "the width is weighed after the inspector's own rule, so a selected inspector "
+        "reports itself open in a window that cannot hold it"
+    )
+
+
 # ------------------------------------------------------------- the breakpoints --- #
 
 def test_breakpoints_are_px_because_a_media_rem_is_not_the_pages_rem() -> None:

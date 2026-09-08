@@ -541,6 +541,38 @@ const DEFAULTS = {
    * to fit exactly as it does today and this reaches only what the 0.85 floor could not
    * absorb -- scrolled in the toolbar's own row instead of dragging the page. */
   paneFit: false,
+
+  /* Whether a pane folds itself when the window has no room for it.
+   *
+   * **On, and it is the only one of the five that ships on** -- Tom's call, 2026-09-08:
+   * *"Item 8 should auto-collapse."* Off is what the dashboard did before, which is design
+   * rule 2's other half.
+   *
+   * The four settings above are about a window that is *narrow*; this is about one that is
+   * too narrow to hold three panes at all. Until 2026-09-08 two breakpoints in `tokens.css`
+   * answered that by setting `display: none` on a pane whose track and whose
+   * `state.panels` entry both stayed -- open, undrawn, and with no rail to press, which is
+   * design rule 24 broken in the one place it matters most. They were deleted and `.body`
+   * was given a centre floor and a horizontal scrollbar instead, so nothing vanishes at any
+   * width. That is a floor rather than an answer: at 380px the reader reaches the centre by
+   * dragging a bar.
+   *
+   * So a pane folds *properly* -- the fold that leaves a rail -- when the window is under
+   * `NAV_MIN_REM + CENTRE_FLOOR_REM` plus the inspector's track, the inspector first and
+   * the navigator second (design rule 25: the primary way in is a pane). Three things make
+   * it a rule rather than a rearrangement:
+   *
+   * - **It is laid over the arrangement, never written into it.** `state.panels` is
+   *   untouched, exactly as `inspectorAuto` leaves it, so widening the window gives the
+   *   reader back what they had rather than what the rule left.
+   * - **A rail the reader presses wins**, for as long as the window stays narrow. Without
+   *   that the press opens the pane and the rule folds it in the same frame -- *"which
+   *   reads as broken"*, and it is the trap this feature was deferred on for a day.
+   * - **Measured off `innerWidth` and the root font size, never in a media query.** A `rem`
+   *   inside `@media` resolves against the browser's font size and ignores `:root` (rule
+   *   28), so the CSS version of this rule folds at 800px for one reader and 1200px for the
+   *   next. That is the same mistake as the breakpoints it replaces, one layer down. */
+  paneAuto: true,
   /* The two versions. `baseRev` is the one being read — the whole map shows it — and
    * `comparedRev` is the version it is held against.
    *
@@ -787,6 +819,7 @@ function resetSettings(program, current) {
     topFit: 'the toolbar fitting the window',
     verStrip: 'the version strip on one line',
     paneFit: 'the panes keeping inside the window',
+    paneAuto: 'a pane folding when the window cannot fit it',
     baseRev: 'which version is being read', comparedRev: 'what it is compared with',
     comparedIsNewer: 'which version is taken to be newer',
     searchCase: 'case-sensitive search', searchWord: 'whole-word search',

@@ -12435,3 +12435,64 @@ This is the part worth carrying forward.
 
 The habit that caught all three: when a result looks like the code is broken, check the
 instrument first. Twice out of three it was.
+
+## 2026-09-08 — paused
+
+**Eight commits, nothing half-written.** 1,229 tests, mypy clean over 121 source files, ruff
+clean, `check` 0 broken, working tree clean. One server is up on **port 8899** and it is
+Tom's, not this session's — mine ran on 8787 and is stopped.
+
+`output/` now holds **four program directories and all four open**: `mensores` (the pair,
+628/625 files), `dunneflow` (71 files, re-analysed), `beads` (14, re-analysed — a Go program
+with a handful of Python scripts, so always a probe rather than a subject), and
+`mensores@2026-08-29T19-43-39Z` (626, re-analysed on Tom's call against the recommendation;
+its `source_root` is `mensores-overhaul`, the third tree).
+
+### What this session closed
+
+* **The scheduled pass, items 2 and 3.** The sidecar rows were Tom's to run and are verified
+  gone. The maps were *three*, not two, and each was being sent to a command that would
+  refuse it — `_refuse_if_stale` branched on when a store was written where the migration
+  branches on a fingerprint it can honestly re-stamp.
+* **Item 1's first two looks.** A kept fold and a kept flow both open from the shelf; the
+  hover card's shadow sentence was dead code and is withdrawn.
+* **Rules 88 and 89**, minted with their evidence.
+* **Plate order by what they link to** — the feature, both variants, opt-in.
+* **Two control defects found by looking**: 335 navigator rows overprinting their counts
+  (improved to 266, not closed), and a plate-order control that ordered a legend and not the
+  plates (fixed, and it repaired *by name* and *by kind* with it).
+
+### What the next session should pick up
+
+`BRIEFING.md` owns the open list and is current. In the order it states them:
+
+1. **The worklist's and the ribbon's row layouts** — the third of item 1's three looks, never
+   done, and a design call waiting on Tom's eye.
+2. **The navigator row remainder** — 266 of 1,346 rows still overprint at the declared 21rem,
+   and 1,289 of 1,346 in the `@media (max-width: 1088px)` band where the navigator drops to
+   12rem. The next step is a decision about the **name** — wrap, truncate, or let the row grow
+   (rule 84) — and each is rejected by one of the two comments over `.navlabel`.
+3. **Two pluralisations** nobody needs to decide: *"1 boxes"* in the compartment selector and
+   *"1 call sites"* on a keep button's note.
+4. **The legend rail does not restore the pane.** Clicking `#legendRail` left
+   `data-legend="off"` twice, and the panel had to be reopened by writing `panels.legend`
+   into settings. Found while doing something else and not chased — design rule 24 says a
+   pane collapses to a rail and the rail says which pane it is, which implies the rail brings
+   it back.
+5. Then the standing backlog, none of it scheduled.
+
+### The habit this session paid for twice
+
+**When a result looks like the code is broken, check the instrument first.** Three failures,
+two of which looked exactly like a real defect:
+
+* a `change` event dispatched at a handler listening on `input` — the handler never ran, and
+  the nothing that happened was read as confirmation of a defect;
+* a cached `<select>` reference that `renderLegend()` had already replaced, so five of six
+  modes reported identical output that read as the fix not working;
+* rule 83's pointer factor, **1.0 in this window against 1.5581 in the previous one** — it is
+  a property of the window and must be re-measured every session, not carried.
+
+And the same failure in the measuring rather than the driving: *"0 of 1,395 rows overlapping"*
+taken with the group collapsed, where a hidden row has a zero-size rect and every test passes
+by measuring nothing.

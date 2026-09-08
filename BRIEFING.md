@@ -200,9 +200,10 @@ program has a most-commented routine and a maximum alone is a claim nobody can w
 
 ## What we are doing now
 
-**A bug-fix pass and one feature, 2026-09-08. Eight commits, nothing half-written.** 1,229
-tests, mypy clean over **121** source files, ruff clean, `check` 0 broken, working tree clean,
-no servers running. *Every figure on this line is retaken rather than incremented (rule 24) —
+**Paused 2026-09-08. A bug-fix pass and one feature, eight commits, nothing half-written.**
+1,229 tests, mypy clean over **121** source files, ruff clean, `check` 0 broken, working tree
+clean. One server is up on port 8899 and it is Tom's; this session's ran on 8787 and is
+stopped. **All four program directories in `output/` now open.** *Every figure on this line is retaken rather than incremented (rule 24) —
 the count this file carried was 1,213 against a real 1,216 before a line of today's work, so
 adding to it would have carried the drift forward.*
 `output/mensores` holds the pair rebuilt under the new documentation rule:

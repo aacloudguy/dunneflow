@@ -200,11 +200,14 @@ program has a most-commented routine and a maximum alone is a claim nobody can w
 
 ## What we are doing now
 
-**Paused 2026-09-08. A bug-fix pass, two features, the counts that could be one, and three
-settings for what the window cannot fit — ten commits, nothing half-written.**
-**1,239** tests, mypy clean over **121** source files, ruff clean, `check` 0 broken, working
-tree clean. One server is up on port 8899 and it is Tom's; this session's ran on 8787 and is
-stopped. **All four program directories in `output/` now open.** *Every figure on this line is retaken rather than incremented (rule 24) —
+**Paused 2026-09-08. A bug-fix pass, two features, the counts that could be one, three
+settings for what the window cannot fit, and the regression the third of them caused —
+eighteen commits, nothing half-written.**
+**1,240** tests, mypy clean over **121** source files, ruff clean, `check` 0 broken, working
+tree clean. **Two servers are up and both are deliberate:** 8899 is Tom's, and **8787 is this
+session's, left running on purpose** — it was stopped as cleanup while he was reading it, which
+is what produced the *"the server could not be asked: Failed to fetch"* he reported, and it is
+not to be stopped again without asking. **All four program directories in `output/` now open.** *Every figure on this line is retaken rather than incremented (rule 24) —
 the count this file carried was 1,213 against a real 1,216 before a line of today's work, so
 adding to it would have carried the drift forward.*
 `output/mensores` holds the pair rebuilt under the new documentation rule:

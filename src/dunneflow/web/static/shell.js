@@ -10447,9 +10447,9 @@ function glossHeld(held) {
         <button class="cite" data-term="${esc(t.term)}" data-termuse="${esc(t.used_as)}">
           <span class="mono">${esc(t.term)}</span><span class="citego">go</span></button>
         <span class="hint">${esc(t.used_as)}</span>
-        <button class="linkbtn" data-promote="${esc(t.term)}"
-          title="Put it in the worklist — it is a word this program uses"
-          >it is a word</button>
+        <button class="linkbtn wordbtn" data-promote="${esc(t.term)}"
+          title="Put ${esc(t.term)} in the worklist — it is a word this program uses, not a unit"
+          >a word</button>
       </li>`).join("")}
     </ul>`;
 }
@@ -10509,9 +10509,9 @@ function glossUndefined(undef) {
             <span class="hint">${esc(t.used_as)}</span>
             ${/* A promoted word says so and offers the way back, because a decision a
                  reader cannot undo is one they will not make. */
-              t.promoted ? `<button class="linkbtn" data-demote="${esc(t.term)}"
-                title="Hold it back again — it is only ever inside a compound name"
-                >put back</button>` : ""}
+              t.promoted ? `<button class="linkbtn wordbtn" data-demote="${esc(t.term)}"
+                title="Hold it back again — ${esc(t.term)} occurs only inside a compound name"
+                >hold back</button>` : ""}
           </li>`).join("")}
         </ul>`
         : `<p class="hint">Every word this program uses as a name is defined somewhere it can

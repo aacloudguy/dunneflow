@@ -2974,6 +2974,13 @@ kbd { font-family: var(--f-mono); font-size: .66rem; background: var(--sunken);
 .undeflist li { break-inside: avoid; display: flex; gap: .35rem; align-items: baseline;
   padding: .1rem 0; }
 .undeflist .hint { font-size: .66rem; }
+/* The decision a held-back word carries, and it sits at the end of its row rather than in
+   the middle of it. Looked at rather than reasoned about: in a three-column list a bordered
+   button labelled "it is a word" wrapped onto three lines and made every row a different
+   height. `nowrap` is the fix and the short label is what makes `nowrap` fit -- the panel's
+   own paragraph says what the button means, so the button does not have to. */
+.undeflist .wordbtn { margin-left: auto; white-space: nowrap; font-size: .68rem;
+  padding: .05rem .35rem; }
 @media (max-width: 1088px) { .undeflist { columns: 2; } }
 
 .viewer-absent { padding: .9rem .75rem; font-size: .76rem; color: var(--text-muted);

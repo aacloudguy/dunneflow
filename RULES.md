@@ -1692,3 +1692,38 @@ rule of that number — a blank canvas must say why it is blank — which does e
     `PREVIOUS_CODE_EXTRACTOR`, the document store on `PREVIOUS_DOC_EXTRACTOR`, the compared
     value being the only thing that differs. The two sentences were already copies of each
     other, which is where this kind of thing goes unnoticed twice.
+
+90. **An instrument's pointer lands on the window in front, not on the tab you addressed —
+    and every other instruction still reaches the right one.** Rule 83's family, one layer
+    out: that rule is about two coordinate systems, this is about two *windows*.
+
+    The whole of an automated browser session can be correct — the right tab id, the right
+    URL, JavaScript evaluating in the right document, screenshots returning the right page —
+    while the pointer goes somewhere else entirely. A screenshot is captured *from the tab*;
+    a click is delivered *to the screen*. So the one instrument that proves what a reader
+    can reach is the one instrument that silently stops addressing the page, and it does it
+    without a single error: the tool reports `Clicked at (300, 250)` either way (rule 76 — an
+    echo is not an act).
+
+    **What it looks like from inside is a moving floor.** This session recorded, in
+    `HANDOFF.md` and in `BRIEFING.md`, that clicks below a vertical threshold were not
+    arriving: pointer y=45 landed and y=40 did not, and after a reload y=88 stopped landing
+    on a page where y=109 had worked twenty minutes before. That is a coherent, plausible,
+    entirely fictional diagnosis — a pointer floor that happened to sit just above the
+    toolbar, explaining exactly the control that could not be pressed. It was written down
+    as fact and it was wrong. There is no floor. The window had gone behind another one, and
+    `document.visibilityState` said `hidden` the moment anybody asked.
+
+    So: **`document.visibilityState` before the first click, and again after anything that
+    could raise another window** — a reload, a new tab, a dialog, a wait long enough for the
+    reader to touch their own machine. It is one call and it is the difference between
+    measuring the product and measuring the furniture.
+
+    Two consequences worth carrying. A click delivered to the screen while the tab is hidden
+    lands *somewhere* — possibly on the reader's own window, on their own session — so a
+    blind retry is not free. And the mapping between pointer space and viewport space is not
+    a constant to carry between sessions: measure it from a `pointerdown` probe each time
+    (this session `viewport = pointer x 1.5667`, the one before it 1.7111), and re-measure a
+    control's box after **every** press, because a setting that changes the layout moves the
+    next control — pressing the version strip to two lines moved its own toggle 8px and the
+    next click landed on the row behind it.

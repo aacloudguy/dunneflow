@@ -14,7 +14,7 @@ by *how often you need it*, not by importance:
 | File | What it holds | When to read it |
 |---|---|---|
 | `CLAUDE.md` | commands, verification gates, architecture, and the **index** of every rule | every session — it is loaded for you |
-| `RULES.md` | the 88 engineering rules **in full**, with the false result each came from — numbered to 89, because 21 does not exist and the numbers are addresses | before working in the area a rule governs |
+| `RULES.md` | the 89 engineering rules **in full**, with the false result each came from — numbered to 90, because 21 does not exist and the numbers are addresses | before working in the area a rule governs |
 | `DESIGN-RULES.md` | the 30 dashboard design rules in full | before building or changing a view |
 | `PERFORMANCE.md` | every measured figure, with its budget and its conditions | before quoting or retaking a number |
 | `BRIEFING.md` | state: what is built, what is next, what is closed | at the start of a session |
@@ -1017,6 +1017,8 @@ it was written from.
      nothing else mentions.
  89. A refusal must name a command that can act on the thing it is refusing, and the
      sentence has to be readable off whatever decides that.
+ 90. An instrument's pointer lands on the window in front, not on the tab you addressed —
+     and every other instruction still reaches the right one.
 ```
 
 ## Anomalies: the discipline

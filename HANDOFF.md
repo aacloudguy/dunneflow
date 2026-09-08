@@ -12924,18 +12924,74 @@ toolbar's own row to `scrollLeft 157` brings ⚙ Settings from 1285–1363 to **
 inside the window, while `scrollX` stays 0, the document stays 1220, and the inspector rail
 does not move. The toolbar still runs off; it does it in its own row now.
 
-*What could not be done is press the four settings controls' **Settings button** with a
-pointer, and that is the instrument.* The pointer stopped arriving above a floor that
-drifted during the session — a click at pointer y=45 landed (viewport 77) and one at y=40
-did not, and after a reload y=88 stopped landing too, on a page where y=109 and y=144 had
-worked twenty minutes earlier. The toolbar occupies viewport y 8–54, entirely below the
-best floor measured, so ⚙ Settings cannot be pressed at the pointer here at all. Settings
-was opened by focusing the button and pressing **Return** — a real key event through the
-real handler — and the new toggle, which sits far enough down the page, was then pressed
-with the pointer. This is rule 83's family and it is why item 0 of the scheduled pass is
-still unpaid.
+*~~What could not be done is press the four settings controls' **Settings button** with a
+pointer, and that is the instrument.~~ **This paragraph was wrong and is kept because it was
+acted on.** It read: the pointer stopped arriving above a floor that drifted during the
+session — y=45 landed, y=40 did not, and after a reload y=88 stopped landing on a page where
+y=109 and y=144 had worked twenty minutes earlier; the toolbar occupies viewport y 8–54,
+below the best floor measured, so ⚙ Settings cannot be pressed at the pointer at all.*
+
+*There is no floor.* The automation's window had gone behind another, and
+`document.visibilityState` said `hidden` the moment anybody asked. A screenshot is captured
+from the tab and a click is delivered to the screen, so JavaScript, screenshots and tab ids
+all went on addressing the right page while the pointer did not — and the tool reported
+`Clicked at (…)` either way (rule 76). With the window in front, ⚙ Settings was pressed at
+the pointer at the first attempt. **Rule 90** is minted from it, and item 0 was paid the same
+day — see the entry below. Settings was opened for the `paneFit` press by focusing the button
+and pressing Return, which was a real key event through the real handler and was recorded as
+not-the-pointer; that part stands.
 
 *The pointer/viewport mapping this session was `viewport = pointer × 1.7111`, measured from
 a `pointerdown` probe rather than assumed: pointer (400, 300) arrives at (684, 514). It is
 not the ratio the last session recorded, so it is worth measuring every time rather than
 carrying.*
+
+## 2026-09-08 — item 0 paid: the five controls, pressed
+
+Tom, having read that the pointer could not reach them: *"it's in front now, go."* It was
+in front, and every one of them was reachable. The obstacle recorded three hours earlier
+was **rule 90** and not a product fact.
+
+Tom's own arrangement was in force and is what they were pressed against — `navName: wrap`,
+`topFit: on`, `verStrip: on`, **`paneFit: on`** (he had turned the new one on himself), at a
+1227×522 window he sized, which the automation never touched (rule 72). The mapping was
+measured from a `pointerdown` probe rather than carried: `viewport = pointer × 1.5667`,
+against 1.7111 the session before. Every press was preceded by an `elementFromPoint`
+pre-check that the control was actually the thing under the target pixel — which is the
+hit-test the pointer exists to prove — and followed by its **consequence**, never by
+`aria-pressed` alone.
+
+| # | Control | What the press was shown to have done |
+|---|---|---|
+| 1 | **As it is** | `:root` carries no `data-navname` — the default stamps nothing — and **2,309 → 0** `<wbr>` across the same 1,454 labels |
+| 2 | **Cut it** | `data-navname="clip"`; **1,039 of 1,604** visible labels overflowing, worst `_assert_no_forbidden_phrase_in_probes` at **196px in a 104px box**, computed `text-overflow: ellipsis`, one line |
+| 3 | **Wrap it** | `data-navname="wrap"`; **0 → 2,674** `<wbr>` inserted into rows *already on screen*; overflowing **1,039 → 0**; the witness reads `_<wbr>assert_<wbr>no_<wbr>forbidden_<wbr>phrase_<wbr>in_<wbr>probes`, 15px → 45px |
+| 4 | **Fit the toolbar** | off: stamp gone, `--topbar-fit` **cleared**, note emptied, toolbar 1377 vs 1228 (149px over), ⚙ Settings' right edge 1363. on: stamp back, note *"Fitted at 95%"* against a multiplier of **0.9538** — they agree (rule 13) — 1px over, ⚙ Settings at 1216 inside a 1227 window |
+| 5 | **Version strip on one line** | off: stamp gone, 39px → **55px**, `flex-wrap: wrap`, children back to `shrink: 1`, nothing clipped — and `.body` **426px → 409px**, so the second line's cost comes off the pane being read, exactly as the copy says. on: stamp back, one line, `scrollWidth` 1245 vs `clientWidth` 1228 |
+
+Number 3 is the one that mattered. The `<wbr>` seams are inserted by `dressNavItems()` into
+rows the navigator had already drawn — nothing rebuilt the navigator — which is **rule 78**
+observed rather than argued, and it is the half a scripted call to the handler would also
+have shown while proving nothing about whether the button could be hit.
+
+Tom's four settings were left exactly as found; the last two presses restored them.
+
+### And the screenshot found something no measurement had
+
+Looking at it rather than only measuring it, in the navigator: **`disabled` is drawn as
+`disable / d`.** Under `[data-navname="wrap"]` the label computes `overflow-wrap: break-word`,
+so a name `jointed()` can find **no seam in** is broken at an arbitrary character. **160 of
+1,604** visible rows are in that state — `disabled`, `review` (six letters, in a 36px box),
+and every `<module>`.
+
+That is the exact picture the setting exists to avoid, and both its comment and its Settings
+copy promise the opposite: *"broken on the name's own seams (`do_ / POST`, not `do_PO / ST`)"*.
+For a name with seams that promise is kept — number 3 above proves it. For a name without
+any, `break-word` takes over and the promise is false.
+
+*Not fixed, because it is a trade and the trade is Tom's.* A seamless name that will not fit
+can be broken anywhere (today), left to overflow its box (which is `over`'s behaviour arriving
+inside `wrap`), or cut with an ellipsis (which is `clip`'s, inside `wrap`). Filed in
+`BRIEFING.md`, which owns the open list. *The first count taken was **375** and it was wrong —
+it thresholded a one-line row at 18px when one line is 17–19px here. 375 is how many labels
+have no seam at all; 160 of them are actually broken across lines.*

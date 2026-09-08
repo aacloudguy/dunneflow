@@ -5,7 +5,7 @@ It exists so a fresh context can be useful in a few minutes instead of an hour.
 
 | Read | For |
 |---|---|
-| `CLAUDE.md` | The rules. 88 engineering rules — numbered to 89, since 21 does not exist — and 30 dashboard design rules, each earned from a false result on real code. **Binding.** |
+| `CLAUDE.md` | The rules. 89 engineering rules — numbered to 90, since 21 does not exist — and 30 dashboard design rules, each earned from a false result on real code. **Binding.** |
 | `HANDOFF.md` | The chronological record — what was built when, what it cost, what broke. ~1,700 lines. Read *sections*, not the whole thing. |
 | **this file** | Where things are, what is done, what we are doing now, what not to re-open. |
 | Artifact `f993d319-d2b7-4217-9130-cdbba698d1bc` | The ratified dashboard design — a complete working UI, the source of truth for every view. Read it with the **Artifact tool**, not from a screenshot. |
@@ -214,6 +214,39 @@ adding to it would have carried the drift forward.*
 `2026-09-08T13:39:50Z` (628 files, Society at 08-29) working, `2026-09-07T15:32:31Z` (625,
 at 08-26) sealed.
 
+### Item 0 paid: the five controls, pressed — and one thing only looking found (2026-09-08)
+
+Tom: *"it's in front now, go."* It was, and every control was reachable at the first attempt.
+Against **his** arrangement — `navName: wrap`, `topFit: on`, `verStrip: on`, `paneFit: on`,
+which he had turned on himself — at a 1227×522 window he sized and the automation never
+touched (rule 72). Mapping measured from a `pointerdown` probe, `viewport = pointer × 1.5667`
+against 1.7111 the session before. Every press preceded by an `elementFromPoint` pre-check
+that the control really was under the target pixel, and judged by its **consequence**.
+
+| # | Control | Shown to have done |
+|---|---|---|
+| 1 | As it is | no `data-navname` at all — the default stamps nothing — and **2,309 → 0** `<wbr>` |
+| 2 | Cut it | `clip`; **1,039 of 1,604** labels overflowing, worst 196px in a 104px box, ellipsis, one line |
+| 3 | Wrap it | `wrap`; **0 → 2,674** `<wbr>` into rows *already drawn*; overflowing **1,039 → 0**; 15px → 45px |
+| 4 | Fit the toolbar | note *"Fitted at 95%"* against a multiplier of **0.9538** — they agree (rule 13); ⚙ Settings 1363 → **1216**, inside a 1227 window |
+| 5 | Version strip | 39 → **55px** off, and `.body` **426 → 409** — the second line's cost comes off the pane being read |
+
+Number 3 is the one that mattered: the seams go into rows the navigator had already drawn,
+nothing rebuilt it — **rule 78 observed rather than argued**, and the half a scripted handler
+call would also have shown while proving nothing about whether the button could be hit.
+
+**Then the screenshot found what none of the five measurements had.** In the navigator,
+`disabled` is drawn as **`disable / d`**. Under `wrap` the label computes `overflow-wrap:
+break-word`, so a name `jointed()` finds **no seam in** breaks at an arbitrary character —
+**160 of 1,604** visible rows, `review` at six letters among them. The comment and the
+Settings copy both promise *"the name's own seams (`do_ / POST`, not `do_PO / ST`)"*, which is
+kept for a name that has seams and false for one that has none. Not fixed: it is a trade
+between breaking anywhere, overflowing, and an ellipsis, and that is Tom's. Item 7 of the
+scheduled pass.
+
+*The first count was 375 and it was wrong — a one-line row is 17–19px here and the threshold
+was 18. 375 have no seam; **160** are actually broken across lines.*
+
 ### The rail that could not be reached, and a fourth fit setting (2026-09-08)
 
 Item 6 of the scheduled pass, filed as *"the legend rail does not restore the pane"*. **It
@@ -263,15 +296,16 @@ sentence in the Settings copy was measured rather than asserted: scrolling the t
 row brings ⚙ Settings from 1285–1363 to **1127–1206**, inside the window, while `scrollX`
 stays 0 and the inspector rail does not move.
 
-*Item 0 of the scheduled pass is still unpaid, and this session says why more precisely than
-the last one could.* The pointer stopped arriving above a floor that **drifted**: y=45
-landed and y=40 did not, and after a reload y=88 stopped landing on a page where y=109 had
-worked twenty minutes earlier. The toolbar is viewport y 8–54, below the best floor measured,
-so ⚙ Settings cannot be pressed at the pointer at all here. Settings was opened by focusing
-the button and pressing **Return**, and the new toggle — far enough down the page — was then
-pressed with the pointer. The mapping this session was `viewport = pointer × 1.7111`,
-measured from a `pointerdown` probe and **not** the ratio the last session recorded, so it is
-worth measuring every time rather than carrying (rule 83).
+*Item 0 was paid later the same day, and the reason recorded here first was wrong.* This
+file said the pointer stopped arriving above a **floor that drifted** — y=45 landing and
+y=40 not, y=88 failing after a reload on a page where y=109 had worked. That is a coherent
+diagnosis and there is no floor: the automation's window had gone behind another one, and
+`document.visibilityState` said `hidden` the moment anybody asked. A screenshot is captured
+from the tab and a click is delivered to the screen, so every other instrument kept
+addressing the right page while the pointer did not — and the tool reported success either
+way (rule 76). **Rule 90** is minted from it. Struck rather than deleted, because the wrong
+reason was acted on: the sentence *"⚙ Settings cannot be pressed at the pointer here"* is
+false, and with the window in front it was pressed at the first attempt.
 
 *And rule 88 was already minted the day before, so item 4 of that pass was closed before this
 session opened. The entry outlived its own closure by a day.*
@@ -2346,11 +2380,14 @@ Tom, 2026-09-08, on the four defects: *"add the other items for the next pass af
 one."* This is that list, and it is drawn from the entries below rather than kept beside
 them — the entries are still where an item is closed, and this is only the order.
 
-0. **Press the five new settings controls with a real pointer**, at a window the automation
-   has not resized. `resize_window` reports success and then breaks the pointer for the rest
-   of the session (rule 72), so 2026-09-08's three settings were driven through their own
-   handlers, measured off the live page and screenshotted — but never *touched*. Numbered 0
-   because it is an unpaid half of work already done, not a new item.
+0. ~~**Press the five new settings controls with a real pointer.**~~ *Paid 2026-09-08. All
+   five pressed at the pointer against Tom's own arrangement, at a window he sized and the
+   automation never touched, each with an `elementFromPoint` pre-check before and its
+   **consequence** after — never `aria-pressed` alone. The strongest is **Wrap it**: 0 →
+   **2,674** `<wbr>` seams inserted into rows the navigator had already drawn, which is rule
+   78 observed rather than argued. See the top of this file and `HANDOFF.md`. The obstacle
+   recorded earlier the same day — a "pointer floor" just above the toolbar — did not exist;
+   it was **rule 90**, and the window had gone behind another one.*
 1. **Three things have never been *looked* at.** *Two are answered 2026-09-08 — see the top
    of this file.* The **kept fold** and **kept flow** both open from the shelf, verified at
    the pointer, and the stated cross-compartment limitation is honest. The **hover card's
@@ -2401,7 +2438,18 @@ them — the entries are still where an item is closed, and this is only the ord
    outside, with `elementFromPoint` returning null over either. Tom's call on the fix was
    design rule 2, so `paneFit` is a fourth setting beside the three from the same day, off by
    default; see the top of this file.*
-7. Then the standing backlog below, none of it scheduled.
+7. **`wrap` breaks a seamless name at an arbitrary character, and the page promises it does
+   not.** Found by *looking* at a screenshot on 2026-09-08, after five controls had been
+   measured and none of it showed: the navigator draws `disabled` as **`disable / d`**. Under
+   `[data-navname="wrap"]` the label computes `overflow-wrap: break-word`, so a name
+   `jointed()` finds no seam in is broken wherever the box ends — **160 of 1,604** visible
+   rows, including `review` at six letters in a 36px box, and every `<module>`. Both the
+   `settings.js` comment and the Settings copy promise *"broken on the name's own seams
+   (`do_ / POST`, not `do_PO / ST`)"*, and for a name **with** seams that is kept and proven.
+   For one without, it is false. **A trade, so it is Tom's call and not a fix to make:** break
+   anywhere (today), overflow the box (`over`'s behaviour arriving inside `wrap`), or ellipsis
+   it (`clip`'s, inside `wrap`).
+8. Then the standing backlog below, none of it scheduled.
 
 ### What is next, and it is open
 

@@ -754,3 +754,53 @@ def test_program_dirs_recognises_a_map_and_not_a_name(tmp_path: Path) -> None:
     assert revisions.program_dirs(tmp_path / "nope") == frozenset(), (
         "a missing directory raised instead of answering nothing"
     )
+
+
+CONSTRAINT_PLAN = '''# Plan 22-03 — the interview shell
+
+## AC-19: Performance budget for glossary tools + N=1000 fixture
+
+Each write tool runs validation BEFORE store or lock calls:
+
+- `term_name`: anchored regex `^[A-Za-z0-9][A-Za-z0-9 _\\-\\.]{0,99}$` (max 100 chars)
+- `definition`: 1 ≤ len ≤ 5000 chars
+- `cross_references`: list, ≤50 entries, each entry ≤100 chars
+- `neo4j_node_id`: null reserved-future (Phase 15 populates)
+- `escalate`: the tool hands the turn back to a person, and says why
+
+**Tier-1 budget** — lock wall-time to ≤30s p95 and ≤200 words of output at Plan 17-01.
+'''
+
+
+def test_a_constraint_is_not_a_definition(tmp_path: Path) -> None:
+    """A validation list, written in the shape a gloss is written in.
+
+    `definition: 1 ≤ len ≤ 5000 chars` reached Society's glossary as one of sixty
+    defined terms, so the page said the program defines the word *definition* and meant
+    a bound on a string's length. The section admits definitions because its heading
+    mentions the glossary, which is left standing deliberately; what is refused is the
+    gloss that states a shape rather than a meaning.
+    """
+    facts = _extract(tmp_path, "22-03-PLAN.md", CONSTRAINT_PLAN)
+    terms = {d.term for d in facts.definitions}
+    for refused in ("definition", "cross_references", "term_name", "neo4j_node_id"):
+        assert refused not in terms, f"{refused} was read as a defined word"
+
+
+def test_the_test_is_on_the_opening_not_on_the_numbers(tmp_path: Path) -> None:
+    """A sentence that reaches a bound partway through is prose about a budget.
+
+    Three of Society's definitions quote a number in that way and all three are kept; the
+    refusal fires only where the gloss *begins* by stating a shape. Without that the rule
+    takes real definitions with it, which is how a precision fix becomes a recall defect.
+    """
+    facts = _extract(tmp_path, "22-03-PLAN.md", CONSTRAINT_PLAN)
+    kept = {d.term: d.definition for d in facts.definitions}
+    assert "escalate" in kept, "a definition beside four constraints was refused with them"
+    assert "hands the turn back" in kept["escalate"]
+    # The half a mutation reaches first: `match` rather than `search`. This gloss holds two
+    # bounds and states a meaning, and searching anywhere in it refuses the meaning too.
+    assert "Tier-1 budget" in kept, (
+        "the refusal is looking past the opening, so a sentence that quotes a bound is "
+        "being read as a constraint"
+    )

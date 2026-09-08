@@ -53,6 +53,7 @@ class ProseRules:
     identifier_classes: re.Pattern[str]
     pattern_tokens: tuple[re.Pattern[str], ...]
     naming_domain_words: re.Pattern[str]
+    constraint_glosses: re.Pattern[str]
 
 
 def _classes(raw: dict[str, str] | None) -> dict[str, DocClass]:
@@ -107,6 +108,7 @@ def load_prose_rules() -> ProseRules:
         identifier_classes=_alternation(list(data["identifier_classes"])),
         pattern_tokens=tuple(re.compile(p) for p in data["pattern_tokens"]),
         naming_domain_words=re.compile(str(data["naming_domain_words"])),
+        constraint_glosses=re.compile(str(data["constraint_glosses"])),
     )
 
 
@@ -338,6 +340,27 @@ def reports_rather_than_rules(heading: str) -> bool:
     standard that has three rules.
     """
     return bool(load_prose_rules().excluded_headings.search(heading))
+
+
+def states_a_constraint(text: str) -> bool:
+    """Is this gloss a bound on a value rather than a meaning?
+
+    `1 <= len <= 5000 chars` is what Society's plan says about the *field* called
+    `definition`, mined out of a validation list by the same shape a gloss is written in
+    and admitted because the section's heading mentions the glossary. It arrived on the
+    glossary page as one of sixty defined terms.
+
+    The judgement is on the **opening**, because that is what separates the two: a gloss
+    that begins with a bound, a bare type, a regex or a placeholder value is stating a
+    shape, while a sentence that reaches a number partway through is prose that mentions
+    one. Over all 240 definitions this corpus yields it refuses 5, every one a field
+    constraint or a reserved-future `null`, and keeps the three sentences that quote a
+    budget.
+
+    Called from `_add_def`, which is the one place every definition of every form passes
+    (rule 51) -- a table row can hold a constraint as easily as a dash gloss can.
+    """
+    return bool(load_prose_rules().constraint_glosses.match(text))
 
 
 def about_naming(text: str) -> bool:

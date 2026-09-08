@@ -35,6 +35,7 @@ from ...detectors.prose import (
     reports_rather_than_rules,
     rule_lane,
     rule_scope,
+    states_a_constraint,
     table_rule_columns,
 )
 from ...schema import (
@@ -253,6 +254,12 @@ class _Scanner:
         term = _clean_term(term)
         definition = _text(definition)
         if not _is_term_shaped(term) or len(definition) < 3:
+            return
+        # A constraint is not a definition, and it is the *gloss* that says so rather than
+        # the term or the section it sits in. Refused here because this is the one place
+        # every definition of every form passes (rule 51): a table row can carry
+        # `1 <= len <= 5000 chars` exactly as a dash gloss can.
+        if states_a_constraint(definition):
             return
         self.subsection_defs += 1
         self.facts.definitions.append(

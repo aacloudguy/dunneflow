@@ -12472,13 +12472,15 @@ its `source_root` is `mensores-overhaul`, the third tree).
    and 1,289 of 1,346 in the `@media (max-width: 1088px)` band where the navigator drops to
    12rem. The next step is a decision about the **name** — wrap, truncate, or let the row grow
    (rule 84) — and each is rejected by one of the two comments over `.navlabel`.
-3. **Two pluralisations** nobody needs to decide: *"1 boxes"* in the compartment selector and
-   *"1 call sites"* on a keep button's note.
+3. ~~**Two pluralisations** nobody needs to decide: *"1 boxes"* in the compartment selector
+   and *"1 call sites"* on a keep button's note.~~ *Closed the same day, and there were
+   **eight** of them — see the section below.*
 4. **The legend rail does not restore the pane.** Clicking `#legendRail` left
    `data-legend="off"` twice, and the panel had to be reopened by writing `panels.legend`
    into settings. Found while doing something else and not chased — design rule 24 says a
    pane collapses to a rail and the rail says which pane it is, which implies the rail brings
-   it back.
+   it back. *Moved into `BRIEFING.md` the same day: this list should never have held an item
+   that one did not.*
 5. Then the standing backlog, none of it scheduled.
 
 ### The habit this session paid for twice
@@ -12496,3 +12498,92 @@ two of which looked exactly like a real defect:
 And the same failure in the measuring rather than the driving: *"0 of 1,395 rows overlapping"*
 taken with the group collapsed, where a hidden row has a zero-size rect and every test passes
 by measuring nothing.
+
+## 2026-09-08 — the counts that can be one, and there were eight
+
+The scheduled item read *"two pluralisations, `1 boxes` and `1 call sites`, need nobody and
+are not done."* Both halves were true and the number was not: there are **eight** counts that
+can be one, seven of them in a single sentence, and the entry named the two that had been
+*seen* rather than the ones that are *there*. Measuring first was most of the work (rule 24).
+
+### What is one, and how often
+
+Taken against `output/mensores` at `2026-09-08T13:39:50Z`, over `/api/diagram`,
+`/api/inside` and `/api/flow`:
+
+| the count | how often it is exactly one |
+|---|---|
+| `N boxes` — every option of the compartment picker | **8 of 53** compartments |
+| `N routines` — the second level, inside an opened box | **97 of 250** boxes opened |
+| `N other boxes` — what an opened box crosses to | **43 of 250** |
+| `N flows within` | **24 of 250** boxes, and 3 of 53 compartments |
+| `N other compartments` | 2 of 53 |
+| `reaching N boxes` · `N arrows drawn` | 2 of 53 compartments enter one box |
+| `N call sites` — a kept arrow's note | **116 of 476** arrows |
+| `N touches` — the same note | 17 of 476 |
+
+The second level is where it matters most: **97 of 250** opened boxes hold one routine, so
+*"1 routines"* is not an edge case there — it is close to what the surface mostly says.
+
+### The one judgement, and it is a refusal
+
+**`crossing` is left alone.** `<b>5</b> crossing to <b>2</b> other boxes` is a reduced
+relative — *five [flows] crossing to two other boxes* — and reads correctly at one. So does
+`${id.weight} along it` beside the kept-arrow note, which carries no noun at all. Both are
+named in `_UNCOUNTED_NOUNS` in the guard rather than left as an absence for the next reader
+to read as an oversight; the next noun added to that sentence must fail the guard.
+
+### Two guards, and the first version of one was wrong in the way it was written to catch
+
+Built on `test_a_file_band_states_a_count_of_one_in_english`, which had already earned this
+lesson one surface over — *"1 modules explained differently"*.
+
+* `test_the_diagram_head_states_a_count_of_one_in_english` is over the **shape**, not over a
+  list of nouns: every `<b class="num">…</b> word` in `renderDiagram` must be followed by its
+  own `=== 1 ?` choice. **The noun is the last word of the phrase, not the first** — the first
+  version captured `([a-z]+)` and so read `other` as the noun of `other box${…}`, which passes
+  a sentence saying *"1 other boxes"*. It failed on its own first run, on the real source.
+* `test_a_kept_arrow_states_a_count_of_one_in_english` reads the `pinBtn` call in
+  `viewInspectorFlow` and requires each of `call site` and `touch` to choose against the count
+  that produced it — the count is named, so a choice made against the wrong variable does not
+  pass.
+
+Both were mutation-tested: reverting each fix in the source fails its own guard and nothing
+else. And one existing guard broke, correctly —
+`test_the_diagram_head_says_which_altitude_it_is_at` asserted the literal `"routines ·"`,
+which an interpolated plural dissolves. Its marker is now `</b> routine`, the noun beside its
+own count, which is what that assertion always meant.
+
+### Seen, not only tested
+
+Server on 8787, Chrome, real pointer:
+
+* the picker lists `CRYPTO — 1 box` … `_config — 1 box`, eight of them;
+* `_config` reads **"1 box over 3 routines · 0 flows within · 1 crossing to 1 other
+  compartment"**;
+* `conventions ▸ _schemas.py`, opened by a real **double-click** on the box, reads
+  **"1 routine · 1 flow within · 1 crossing to 1 other box"** — three singulars and the
+  reduced relative, in one line;
+* the arrow `frontmatter.py → _schemas.py` was kept with the pointer and stands on the shelf
+  as **"1 call site, 0 touches"**, then dropped — `dunneflow:mensores:v6` back to zero pins.
+
+**Rule 83, re-measured this session as the last one insists it must be:** a click at tool
+coordinate (400, 300) lands at CSS (624, 468), so `pointer = css × 0.641` and
+`css = pointer × 1.560`. Close to the 1.5581 of two sessions ago and nothing like the 1.0 of
+the session between. It is a property of the window.
+
+### Found while looking, and not acted on
+
+At `innerWidth 1224` the document's `scrollWidth` is **1336**: the inspector's own controls —
+the keep button among them — sit off the right edge and the whole page scrolls sideways. That
+is below Tom's window and above the `@media (max-width: 1088px)` band, so it is a third
+window band nobody has looked at. Filed in `BRIEFING.md`; it is a layout call rather than a
+defect with an obvious remedy (rule 53).
+
+### And a second copy of the open list, closed
+
+The previous entry's *"what the next session should pick up"* carried a fourth item —
+**the legend rail does not restore the pane** — that `BRIEFING.md` did not have, and
+`BRIEFING.md` is the file that says it owns the open list and that there is no second copy.
+That is the drift the 2026-09-02 audit was called for, arriving again by the same route: a
+handover list written where the work was done rather than where the list lives. Moved.

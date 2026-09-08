@@ -3452,13 +3452,20 @@ function renderDiagram() {
   const onPlate = state.diagramBox ? String(state.diagramBox).split("|")[0] : c.id;
   const opts = (DIAGRAM || []).map(x =>
     `<option value="${esc(x.id)}" ${x.id === onPlate ? "selected" : ""}>${
-      esc(x.name)} — ${x.boxes} boxes</option>`).join("");
+      esc(x.name)} — ${x.boxes} box${x.boxes === 1 ? "" : "es"}</option>`).join("");
   const inside = !!state.diagramBox;
   /* Design rule 1: what is drawn and what it stands for, always. A diagram of 83 boxes over
      487 routines is a fold, and a fold that does not say what it folded is a filter.
      At the second level the same sentence describes routines rather than boxes, and it
      says which box they are inside -- otherwise the drawing is a compartment nobody
-     recognises, with no way to tell it is one level down. */
+     recognises, with no way to tell it is one level down.
+
+     **Every count in it can be one, and most of them are.** Measured on Mensores
+     2026-09-08: 8 of 53 compartments hold one box, and of 250 opened boxes 97 hold one
+     routine, 43 cross to one other box and 24 hold one flow within. The reader of this
+     sentence does not write code and reads "1 boxes over 8 routines" as a defect in the
+     count rather than in the wording. `crossing` is deliberately left alone -- it is a
+     reduced relative, "5 [flows] crossing to 2 other boxes", and reads correctly at one. */
   host.innerHTML = `
     <div class="dgm-head">
       <select id="dgmPick" aria-label="Which compartment to draw">${opts}</select>
@@ -3466,15 +3473,16 @@ function renderDiagram() {
             title="Back out to the whole compartment">‹ out</button>
           <b class="num">${esc(c.name)}</b>` : ""}
       <span class="hint">${inside
-        ? `<b class="num">${c.routines}</b> routines ·
-           <b class="num">${c.inside}</b> flows within ·
+        ? `<b class="num">${c.routines}</b> routine${c.routines === 1 ? "" : "s"} ·
+           <b class="num">${c.inside}</b> flow${c.inside === 1 ? "" : "s"} within ·
            <b class="num">${c.crossing}</b> crossing to
-           <b class="num">${c.ports}</b> other boxes`
-        : `<b class="num">${c.boxes}</b> boxes over
-           <b class="num">${(c.routines || 0).toLocaleString()}</b> routines ·
-           <b class="num">${c.inside}</b> flows within ·
+           <b class="num">${c.ports}</b> other box${c.ports === 1 ? "" : "es"}`
+        : `<b class="num">${c.boxes}</b> box${c.boxes === 1 ? "" : "es"} over
+           <b class="num">${(c.routines || 0).toLocaleString()}</b> routine${
+             c.routines === 1 ? "" : "s"} ·
+           <b class="num">${c.inside}</b> flow${c.inside === 1 ? "" : "s"} within ·
            <b class="num">${c.crossing}</b> crossing to
-           <b class="num">${c.ports}</b> other compartments`}${
+           <b class="num">${c.ports}</b> other compartment${c.ports === 1 ? "" : "s"}`}${
         c.portsDrawn ? "" : ` <span class="muted">(not drawn)</span>`}${
         c.unlinked ? ` · <b class="num">${c.unlinked}</b> with no flow either way` : ""}${
         /* **The ways in, and what the arrow bound hid** (rule 8, and design rule 1: a
@@ -3483,8 +3491,10 @@ function renderDiagram() {
            compartment that fans out further says so rather than looking complete. */
         !inside && c.entries
           ? ` · entered from <b class="num">${c.entries}</b> way${c.entries === 1 ? "" : "s"} in${
-              c.entry_hidden ? `, reaching <b class="num">${c.entered}</b> boxes — <b class="num">${
-                c.entered - c.entry_hidden}</b> arrows drawn` : ""}`
+              c.entry_hidden ? `, reaching <b class="num">${c.entered}</b> box${
+                c.entered === 1 ? "" : "es"} — <b class="num">${
+                c.entered - c.entry_hidden}</b> arrow${
+                c.entered - c.entry_hidden === 1 ? "" : "s"} drawn` : ""}`
           : ""}
         <span class="muted">· drawn in ${c.drawMs} ms${
         inside ? "" : " · double-click a box to open it"}</span></span>
@@ -11261,8 +11271,13 @@ function viewInspectorFlow(s) {
         <span class="kind-tag">${esc(kinds)}</span>
         <span class="badge certain">${id.weight} along it</span>
         <span style="margin-left:auto;display:flex;gap:.3rem">
+          ${/* A kept arrow's note is what the reader sees on the shelf weeks later, and
+                both halves of it can be one: measured over 476 arrows on Mensores
+                2026-09-08, **116 carry exactly one call site** and 17 exactly one touch.
+                `${id.weight} along it` above needs nothing -- there is no noun in it. */""}
           ${pinBtn({ kind: "flow", id: s.id }, s.label || s.id,
-                   `${id.sites} call sites, ${touches.length} touches`)}
+                   `${id.sites} call site${id.sites === 1 ? "" : "s"}, ${
+                     touches.length} touch${touches.length === 1 ? "" : "es"}`)}
         </span>
       </div>
     </div>

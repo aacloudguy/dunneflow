@@ -8528,7 +8528,9 @@ def test_the_diagram_head_says_which_altitude_it_is_at() -> None:
     js = _code(_read("shell.js"))
     head = _fn(js, "renderDiagram")
     assert "data-dgmup" in head, "there is no way back out of an opened box"
-    assert "routines ·" in head, "the second level does not say what it is showing"
+    # Was the literal `"routines ·"` until the counts learned to be one. The marker is now
+    # the noun beside its own count, which is what the assertion always meant.
+    assert "</b> routine" in head, "the second level does not say what it is showing"
     assert "double-click a box to open it" in head, (
         "nothing on screen says the gesture exists, so the feature is reachable only by "
         "someone who already knows it is there"
@@ -9682,6 +9684,63 @@ def test_a_file_band_states_a_count_of_one_in_english() -> None:
     assert everywhere <= printers, (
         f"{sorted(everywhere - printers)} also prints a file band's label and is unchecked"
     )
+
+
+# The two words in the diagram head that are counted but are not plurals of anything.
+# `crossing` is a reduced relative -- "5 [flows] crossing to 2 other boxes" -- and reads
+# correctly at one; `with` heads "with no flow either way", which carries no noun at all.
+# Stated rather than derived, because the next noun added here must fail this guard.
+_UNCOUNTED_NOUNS = {"crossing", "with"}
+
+
+def test_the_diagram_head_states_a_count_of_one_in_english() -> None:
+    """"1 boxes over 8 routines" is `test_a_file_band_states_a_count_of_one_in_english`
+    one surface over, and it was true of every noun in the sentence.
+
+    Measured on Mensores 2026-09-08 before the fix: **8 of 53 compartments hold one box**,
+    and of 250 opened boxes **97 hold one routine**, 43 cross to one other box, 24 hold one
+    flow within. This is not a rare edge -- it is what the second level mostly says.
+
+    The guard is over the shape rather than over a list of nouns, so a count added to this
+    sentence later is caught by it: every `<b class="num">…</b> word` must choose its own
+    ending, except the two words that are not plurals and are named above.
+    """
+    js = _code(_read("shell.js"))
+    head = _fn(js, "renderDiagram")
+    # The noun is the **last** word of the phrase, not the first: `other box${…}` is a
+    # count of boxes and reading `other` as the noun passes a sentence that says "1 other
+    # boxes". The exemption is decided on the first word, which is what names the phrase.
+    found = list(re.finditer(r'<b class="num">.*?</b>\s*([a-z]+(?: [a-z]+)*)', head, re.S))
+    assert found, "the diagram head no longer states any counts; this guard is blind"
+    for m in found:
+        words = m.group(1).split()
+        noun = words[-1]
+        if words[0] in _UNCOUNTED_NOUNS:
+            continue
+        tail = head[m.end():m.end() + 80]
+        assert re.match(r'\$\{[^}]*===\s*1\s*\?', tail, re.S), (
+            f'the diagram head prints "1 {noun}" -- the count is not chosen in English'
+        )
+
+
+def test_a_kept_arrow_states_a_count_of_one_in_english() -> None:
+    """The note on a kept flow is what the reader sees on the shelf weeks later.
+
+    Both halves of it are one often: over 476 arrows on Mensores 2026-09-08, **116 carry
+    exactly one call site** and 17 exactly one touch. `${id.weight} along it` beside it
+    needs nothing -- there is no noun in it -- which is why this reads the note and not
+    the whole head.
+    """
+    js = _code(_read("shell.js"))
+    body = _fn(js, "viewInspectorFlow")
+    note = re.search(r'pinBtn\(\{ kind: "flow".*?\)\}', body, re.S)
+    assert note, "the flow pane no longer offers a pin; this guard is blind"
+    for noun, count in (("call site", "id.sites"), ("touch", "touches.length")):
+        m = re.search(rf"{noun}\$\{{([^}}]*)\}}", note.group(0), re.S)
+        assert m, f'the kept arrow\'s note no longer counts "{noun}"'
+        assert "=== 1 ?" in m.group(1) and count in m.group(1), (
+            f'a kept arrow reads "1 {noun}s" -- the count is not chosen in English'
+        )
 
 
 # --------------------------------------------------------------------------- #

@@ -200,15 +200,65 @@ program has a most-commented routine and a maximum alone is a claim nobody can w
 
 ## What we are doing now
 
-**Paused 2026-09-08. A bug-fix pass and one feature, eight commits, nothing half-written.**
-1,229 tests, mypy clean over **121** source files, ruff clean, `check` 0 broken, working tree
-clean. One server is up on port 8899 and it is Tom's; this session's ran on 8787 and is
+**Paused 2026-09-08. A bug-fix pass, one feature, and the counts that could be one — nine
+commits, nothing half-written.**
+**1,231** tests, mypy clean over **121** source files, ruff clean, `check` 0 broken, working
+tree clean. One server is up on port 8899 and it is Tom's; this session's ran on 8787 and is
 stopped. **All four program directories in `output/` now open.** *Every figure on this line is retaken rather than incremented (rule 24) —
 the count this file carried was 1,213 against a real 1,216 before a line of today's work, so
 adding to it would have carried the drift forward.*
 `output/mensores` holds the pair rebuilt under the new documentation rule:
 `2026-09-08T13:39:50Z` (628 files, Society at 08-29) working, `2026-09-07T15:32:31Z` (625,
 at 08-26) sealed.
+
+### The counts that can be one, and there were eight of them
+
+The scheduled item read *"two pluralisations, `1 boxes` and `1 call sites`, need nobody"*.
+There were **eight**, seven of them in one sentence, and the entry named the two that had
+been seen rather than the ones that are there — so measuring first was the whole of the work
+(rule 24).
+
+| the sentence | how often it is one, on Mensores 2026-09-08 |
+|---|---|
+| `N boxes` — the compartment picker's every option | **8 of 53** compartments hold one box |
+| `N routines` — the second level, of an opened box | **97 of 250** boxes hold one routine |
+| `N other boxes` — what it crosses to | **43 of 250** |
+| `N flows within` | **24 of 250**, and 3 of 53 compartments |
+| `N other compartments` | 2 of 53 |
+| `reaching N boxes` · `N arrows drawn` | 2 of 53 carry one entered box |
+| `N call sites` — a kept arrow's note on the shelf | **116 of 476** arrows carry one call site |
+| `N touches` — the same note | 17 of 476 |
+
+`crossing` is deliberately **left alone**, and that is the one judgement here rather than a
+transcription: it is a reduced relative — *"5 [flows] crossing to 2 other boxes"* — and reads
+correctly at one. `${id.weight} along it` beside the note needs nothing either; there is no
+noun in it. Both are stated in the guard rather than left for the next reader to rediscover.
+
+**Two guards, each mutation-tested against the defect it was written for**, on the precedent
+of `test_a_file_band_states_a_count_of_one_in_english` — which had already earned this lesson
+one surface over. The diagram-head guard is over the **shape** and not over a list of nouns:
+every `<b class="num">…</b> word` must choose its own ending, so a count added to that
+sentence later fails it. The noun is the **last** word of the phrase and not the first, since
+`other box${…}` counts boxes and reading `other` as the noun passes *"1 other boxes"* — the
+first version of the guard did exactly that and was caught by its own run.
+
+*And one guard broke, correctly.* `test_the_diagram_head_says_which_altitude_it_is_at`
+asserted the literal `"routines ·"`, which the interpolated plural dissolves. Its marker is
+now `</b> routine` — the noun beside its own count, which is what the assertion always meant.
+
+**Seen at the pointer, not only tested.** `conventions ▸ _schemas.py`, opened by a real
+double-click, reads ***"1 routine · 1 flow within · 1 crossing to 1 other box"***; `_config`
+reads ***"1 box over 3 routines"***; and the picker lists ***`CRYPTO — 1 box`*** through
+***`_config — 1 box`***. The arrow `frontmatter.py → _schemas.py` was kept and sits on the
+shelf as ***"1 call site, 0 touches"***, then dropped — `dunneflow:mensores:v6` back to zero
+pins. **Rule 83's pointer factor re-measured this session: `pointer = css × 0.641`**, so
+`css = pointer × 1.560` — near the 1.5581 of two sessions ago and nothing like the 1.0 of the
+one between. Measure it every session; it is a property of the window.
+
+*One thing noticed and not acted on:* at `innerWidth 1224` the page's `scrollWidth` is
+**1336**, so the inspector's own controls sit off the right edge and the document scrolls
+sideways. That is below Tom's real window and above the 1088 breakpoint the navigator band
+uses, so it is a third band nobody has looked at. Filed below, not fixed.
 
 **Four defects were outstanding, and the record had two of them by half.**
 
@@ -2116,9 +2166,20 @@ them — the entries are still where an item is closed, and this is only the ord
    first — which is **335 → 266 rows and 101 px → 49 px at the declared 21rem**, a fifth
    better and *not closed*: the remainder needs a decision about the **name** (wrap, truncate,
    or let the row grow, rule 84), and each is rejected by one of the two comments over
-   `.navlabel`. **Still open.** Two pluralisations, *"1 boxes"* and *"1 call sites"*, need
-   nobody and are not done.
-6. Then the standing backlog below, none of it scheduled.
+   `.navlabel`. **Still open.** ~~Two pluralisations, *"1 boxes"* and *"1 call sites"*, need
+   nobody and are not done.~~ *Closed 2026-09-08 — and it was **eight** counts rather than
+   two; see the top of this file.* **One more found the same way and untouched:** at
+   `innerWidth 1224` the document is **1336** wide, so the inspector's own controls sit off
+   the right edge and the whole page scrolls sideways. Between Tom's window and the 1088
+   breakpoint, so it is a band nobody has looked at — a **layout** call, not a defect with an
+   obvious remedy (rule 53: a layout bounded by arithmetic is right at one window size).
+6. **The legend rail does not restore the pane.** Clicking `#legendRail` left
+   `data-legend="off"` twice, and the panel had to be reopened by writing `panels.legend`
+   into settings. Design rule 24 says a pane collapses to a rail and the rail says which pane
+   it is — which implies the rail brings it back. *Filed 2026-09-08 in `HANDOFF.md` and
+   nowhere else, and moved here 2026-09-08 because **this file owns the open list**: a second
+   copy is the drift the 2026-09-02 audit was called for.*
+7. Then the standing backlog below, none of it scheduled.
 
 ### What is next, and it is open
 

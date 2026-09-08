@@ -200,18 +200,29 @@ program has a most-commented routine and a maximum alone is a claim nobody can w
 
 ## What we are doing now
 
-**Working 2026-09-08.** Item 8 answered and built — a pane now folds itself when the window
-has no room for it, which makes **five** settings for what the window cannot fit and is the
-only one of the five that ships **on** — and one item pulled from the standing backlog: **a
-map belongs to a revision**, so a second analysis no longer writes over the first one's and
-the program directory opens on a listing of what it holds. Before them, a bug-fix pass, two
-features, the counts that could be one, item 0 of the scheduled pass paid at the pointer, and
-three defects that each turned out to be something other than what was filed: a rail that
-worked and could not be *reached*, a promise about seams that was false for names with none,
-and a "collapse" that was a deletion.
-**1,253** tests, mypy clean over **123** source files, ruff clean, `check` 0 broken.
-**`output/mensores` is untouched by today's map work** — 8787 is serving it, and its next
-analysis is what gives it the new layout; that run needs `--standards` (rule 88).
+**Paused 2026-09-08.** Two commits: **item 8 answered and built** — a pane now folds itself
+when the window has no room for it, which makes **five** settings for what the window cannot
+fit and is the only one of the five that ships **on** — and one item pulled from the standing
+backlog, **a map belongs to a revision**, so a second analysis no longer writes over the
+first one's and the program directory opens on a listing of what it holds. Before them, on
+the same day: a bug-fix pass, two features, the counts that could be one, item 0 of the
+scheduled pass paid at the pointer, and three defects that each turned out to be something
+other than what was filed.
+**1,253** tests, mypy clean over **123** source files, ruff clean, `check` 0 broken, working
+tree clean.
+**8787 is up and it is this session's, left running on purpose** — it was stopped as cleanup
+while Tom was reading it once, which is what produced the *"the server could not be asked:
+Failed to fetch"* he reported, and it is not to be stopped again without asking. 8899 was
+his and is **not** listening.
+**`output/mensores` is untouched by today's map work.** 8787 is serving it, and an analysis
+aimed at a served directory can empty the map under a live reader; its next analysis is what
+gives it the new layout, and that run needs `--standards` (rule 88). It holds
+`2026-09-08T13:39:50Z` (628 files, Society at 08-29) working and `2026-09-07T15:32:31Z` (625,
+at 08-26) sealed — the sealed one has **no map of its own**, which is the item filed below.
+
+**Owed, and it is one minute of Tom's screen:** the auto-fold was verified scripted, with
+`document.visibilityState` reading `hidden` throughout. One pointer press on a rail at a
+narrow width, with the window in front, finishes it (rule 90).
 **Two servers are up and both are deliberate:** 8899 is Tom's, and **8787 is this
 session's, left running on purpose** — it was stopped as cleanup while he was reading it, which
 is what produced the *"the server could not be asked: Failed to fetch"* he reported, and it is

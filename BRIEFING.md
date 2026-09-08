@@ -2242,6 +2242,11 @@ Tom, 2026-09-08, on the four defects: *"add the other items for the next pass af
 one."* This is that list, and it is drawn from the entries below rather than kept beside
 them — the entries are still where an item is closed, and this is only the order.
 
+0. **Press the five new settings controls with a real pointer**, at a window the automation
+   has not resized. `resize_window` reports success and then breaks the pointer for the rest
+   of the session (rule 72), so 2026-09-08's three settings were driven through their own
+   handlers, measured off the live page and screenshotted — but never *touched*. Numbered 0
+   because it is an unpaid half of work already done, not a new item.
 1. **Three things have never been *looked* at.** *Two are answered 2026-09-08 — see the top
    of this file.* The **kept fold** and **kept flow** both open from the shelf, verified at
    the pointer, and the stated cross-compartment limitation is honest. The **hover card's

@@ -12262,3 +12262,77 @@ gives `do_PO / ST`, and shrinking further is more small type. The fourth option 
 shape — let the row grow and put the counts on their own line when the name will not fit
 beside them. `navWidth: 21` was widened from 14.5 with the note *"a qualified name is the
 thing it has to be able to show"*, and 335 rows say it still cannot.
+
+## 2026-09-08 — Tom's three calls, and two measurements I had to take twice
+
+### The dead shadow branch, withdrawn
+
+Tom's call. The `hc-shadow` "A stand-in…" row is gone from `hoverSkeleton`, the `shadow`
+field is gone from the hover payload, and the paragraph in `graph.js` that explained why it
+travelled is rewritten to say why it no longer does. The **resolution** stays — `raw2.shadow[i]
+? raw2.real[i] : i` is what makes rules 23 and 31 true from that handler — only the flag went,
+because a field that is always `false` is a claim the card cannot use.
+
+`.hc-shadow` the CSS class survives: the *lean* sentence beside it still uses it. The comment
+that said the lean row was written "on `hc-shadow`'s pattern" now says the class was named for
+a row that is gone, so nobody reads it as being about shadows.
+
+`test_no_hover_can_carry_a_shadow_and_no_card_claims_one` asserts the two facts the argument
+rests on (`d.radii[i] = 0` for a shadow, `pointerData` carrying a resolved index, the reticule
+`pickable: false`) *before* asserting that nothing emits or reads the flag — so if a level ever
+draws a shadow, the guard fails at the fact rather than at the consequence.
+
+**The guard caught my own comment first**, which is the lesson worth keeping: the note left
+where the row used to be names `h.shadow`, and an assertion on the bare name cannot tell a
+mention from a use (rule 37). It matches `${h.shadow` — the interpolation, which is code.
+
+### The navigator rows: it helps by a fifth and does not close it
+
+Tom chose *let the module path yield first*. `.navsub` was `flex: none` at up to 11rem, so it
+was a fixed cost the name had to fit around; it is now `flex: 0 1 auto` with a `min-width: 4rem`
+floor, and it keeps the `overflow: hidden` + ellipsis it already had. Nothing that was not
+already designed to be shortened gets shortened.
+
+**Measured as a controlled pair** — one page, one set of rows, this one declaration toggled:
+
+| navigator width | before | after |
+|---|---|---|
+| 21rem (336px, declared) | 335 rows / 101px | **266 / 49px** |
+| 16rem (260px) | 1,037 / 163px | 951 / 108px |
+| 12rem (192px) | 1,293 / 188px | 1,289 / 176px |
+
+`_schema_validator`, the row that started this, goes from a full overprint to 9.4px as its
+module column yields 154px → 132px. Short names leave the column at full length and sit clear
+by 20–33px.
+
+**It is an improvement, not a fix, and the remainder needs a decision about the name** — wrap
+it, truncate it, or let the row grow (rule 84) — each of which one of the two comments over
+`.navlabel` rejects. Filed rather than guessed at.
+
+### Two measurements I got wrong first, and both are the same mistake
+
+**I reported "0 of 1,395 overlapping" and it meant nothing.** The ROUTINES group was collapsed,
+and a hidden row has a zero-size rect, so every overlap test passed by measuring nothing. Rule
+45 from the measuring side: hidden is not absent, and a check that cannot see cannot report
+(rule 38).
+
+**Then I compared 335 against 1,289 across two different window widths.** The first number was
+taken at a 1222px viewport and the second at 864px — and `@media (max-width: 1088px)` drops the
+navigator from 21rem to **12rem** below that breakpoint, which is most of the difference. The
+comparison said my change made things four times worse; the controlled pair above says it makes
+them a fifth better. Rule 24: a measurement must measure the thing it names, and a before and
+an after taken under different conditions are two measurements with one label.
+
+*Worth knowing for the next session:* this browser would not resize — `resize_window` reports
+success and `innerWidth` never moves — so the window it happens to open at decides which
+responsive band everything is measured in. **Check `innerWidth` against 1088 before trusting
+any navigator figure.** Setting `body.style.gridTemplateColumns` directly is how the three rows
+of that table were taken without a window that would cooperate.
+
+### And the fourth map, re-analysed
+
+Tom's call, against the recommendation. `../mensores-overhaul/src` — 626 files, the third clone
+— into `output/mensores@2026-08-29T19-43-39Z`: 4,771 routines, 6,380 internal calls, 175 ways
+in, 2,046 documents, `complete = yes`. The sidecar recognised all 626 bodies as already held
+(content-addressed, shared with the pair) and wrote a second revision beside the old one.
+**All four program directories now open.**

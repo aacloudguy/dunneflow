@@ -641,3 +641,54 @@ def test_every_navigator_package_row_selects_a_plate_that_exists(
         plates = {str(r["pkg"]) for r in store.query(queries.PACKAGE_SIZES, params)}
         assert rows, "the navigator's package group is empty"
         assert rows == plates, f"rows selecting nothing: {sorted(rows - plates)}"
+
+
+# --------------------------------------------------------------------------- #
+# A shadow never reaches a hover, so no card may claim it did
+# --------------------------------------------------------------------------- #
+
+
+def test_no_hover_can_carry_a_shadow_and_no_card_claims_one() -> None:
+    """Rules 23 and 31 close both paths into `onHover`, so the flag they fed is gone.
+
+    The card drew *"A stand-in. This routine lives on X"* when `h.shadow` was true, and
+    nothing could ever set it. `prepare` gives a shadow `radii[i] = 0` and alpha 0, so
+    picking never returns one -- measured 2026-09-08 at 1,989 picks over 562 distinct nodes
+    across the whole drawn stack, none a shadow, against 5,855 shadows in the payload. The
+    only other way an index reaches that handler is the rim arrow, and `pointerData` builds
+    every mark through `realIndex` under a comment citing these same two rules. The
+    reticule drawn over the top is `pickable: false`, so there was no third path.
+
+    Design rule 16 from the far side: a control wired to a condition that can no longer
+    arise looks exactly like one that works, and only looking found it. This guard is what
+    stops the flag coming back without the drawing that would justify it -- if a level or
+    layout ever draws a shadow, this test is the place that says so.
+    """
+    root = Path(__file__).resolve().parents[1]
+    engine = root.joinpath("src/dunneflow/web/static/graph.js").read_text(encoding="utf-8")
+    shell = root.joinpath("src/dunneflow/web/static/shell.js").read_text(encoding="utf-8")
+
+    # The two facts the argument rests on, asserted against the source rather than recalled.
+    assert "d.radii[i] = 0;" in engine, (
+        "a shadow is no longer drawn at radius zero, so it may now be pickable -- the "
+        "hover payload's shadow flag was withdrawn on the claim that it cannot be"
+    )
+    assert "index: i, at, pos:" in engine, (
+        "pointerData no longer carries a resolved index, so the rim arrow may now hand "
+        "onHover a shadow"
+    )
+    assert "pickable: false," in engine, "the reticule is pickable again, which is a third path"
+
+    # And so nothing may emit or read the flag those two facts made unreachable.
+    assert "shadow: raw2.shadow[i]" not in engine, (
+        "the hover payload carries a shadow flag again; nothing can set it true, so a card "
+        "reading it is a control wired to a condition that cannot arise"
+    )
+    # `${h.shadow` and not `h.shadow`: the note left where the row was names the field it
+    # is about, and a guard that cannot tell a mention from a use is rule 37's own defect.
+    assert "${h.shadow" not in shell, (
+        "the hover card reads h.shadow again, and the engine does not send it"
+    )
+    assert "A stand-in." not in shell.split("*/")[0] + "".join(
+        seg.split("/*")[0] for seg in shell.split("*/")[1:]
+    ), "the stand-in row is back in the rendered card rather than in the note about it"

@@ -953,8 +953,42 @@ body {
  * punctuation in it -- `mensores._internal._cwd_guard` rendered as
  * "...ores_internal_cwd_guard", which is not a string that exists in the program. The
  * shortening is chosen in JS now (`moduleTail`), so this only has to not overflow. */
+/* **It yields its width to the name, and it is the only thing in the row that may.**
+ * `flex: none` at up to 11rem until 2026-09-08, which made this a fixed cost the name had
+ * to fit around -- and 11rem of a 21rem row is most of it. The name is a flex item that
+ * cannot shrink below one unbreakable token (`overflow-wrap: normal`, deliberately: see
+ * `.navlabel`), so what it did instead was paint straight over `.n`: **335 of 1,395 rows,
+ * 24%, worst case 101px of overprint where a 62px box held 170px of text.**
+ *
+ * Rule 53 -- the two shrink classes above are chosen from the name's *character count*,
+ * and the room left is not a property of the name. It is a property of the module path
+ * sitting beside it, which is why 103 rows carrying no shrink class at all overlapped and
+ * 65 of the 84 `xlong` ones still did.
+ *
+ * This is the one field in the row already built to lose its head: it truncates from the
+ * left with an ellipsis because the distinguishing end of a dotted path is the last
+ * segment. So it gives up space first, and nothing that was not already designed to be
+ * shortened gets shortened. `min-width` is a floor rather than nothing, because a module
+ * column narrowed to two characters answers the question it exists to answer -- *which*
+ * `run` is this -- no better than no column at all.
+ *
+ * **It helps and it does not close it, and the numbers say so.** Measured as a controlled
+ * pair -- one page, one set of rows, this declaration toggled between `none` and the rule
+ * above -- at three navigator widths:
+ *
+ *     nav 21rem (336px, the declared width)   335 rows / 101px  ->  266 / 49px
+ *     nav 16rem (260px)                     1,037 rows / 163px  ->  951 / 108px
+ *     nav 12rem (192px)                     1,293 rows / 188px  ->  1,289 / 176px
+ *
+ * A fifth of the rows and half the worst case at full width, and **almost nothing at
+ * 12rem** -- because there the name alone is wider than the row and there is no space to
+ * redistribute. That 12rem is not hypothetical: `@media (max-width: 1088px)` above puts
+ * every window narrower than that into it. What is left needs a decision about the *name*
+ * -- wrap it, truncate it, or let the row grow (rule 84) -- and all three are refused by
+ * one or other of the two comments over `.navlabel`. Filed rather than guessed at. */
 .nav-item .navsub {
-  flex: none; max-width: 11rem; color: var(--text-faint); font-size: .64rem;
+  flex: 0 1 auto; min-width: 4rem; max-width: 11rem;
+  color: var(--text-faint); font-size: .64rem;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   margin-right: .3rem;
 }

@@ -200,7 +200,7 @@ program has a most-commented routine and a maximum alone is a claim nobody can w
 
 ## What we are doing now
 
-**A bug-fix pass, 2026-09-08. Six commits, nothing half-written.** 1,216 tests — counted
+**A bug-fix pass, 2026-09-08. Seven commits, nothing half-written.** 1,217 tests — counted
 rather than carried, since this file said 1,213 and two were added, which does not reach it
 (rule 24) — mypy clean over 120 source files, ruff clean, `check` 0 broken, working tree
 clean, no servers running.
@@ -308,15 +308,18 @@ Opened from a *different* compartment, `PIN_ROUTES.flow`'s stated limitation hol
 written: nothing lights, the inspector opens on the arrow, and nothing false is said.
 
 **The hover card's shadow sentence is dead code, and rules 23 and 31 are what killed it.**
+*Withdrawn 2026-09-08 on Tom's call — this is the finding as it stood.*
 *"A stand-in. This routine lives on X — the copy you are pointing at is a placement device"*
-is drawn when `h.shadow` is true, which is `raw2.shadow[i]` at the **picked** index. A shadow
+was drawn when `h.shadow` was true, which is `raw2.shadow[i]` at the **picked** index. A shadow
 is given radius 0 and alpha 0, so it is never drawn and never picked — **1,989 picks over 562
 distinct nodes returned not one**, against 5,855 shadows in the payload — and the only other
 path in, the rim arrow, builds every mark as `realIndex(...)` under a comment citing those
 same two rules. The reticule over the top is `pickable: false`, so there is no third path.
-Design rule 16 from the far side: the branch renders for nobody *because the rule it describes
-was applied correctly everywhere else*. **Withdraw it, or leave it?** Tom's — it is a deletion
-of reasoning somebody wrote on purpose.
+Design rule 16 from the far side: the branch rendered for nobody *because the rule it describes
+was applied correctly everywhere else*. **Withdrawn**, along with the payload field — the
+*resolution* stays, since that is what makes rules 23 and 31 true from that handler. A guard
+asserts the two facts that closed it **before** the consequence, so a level that ever draws a
+shadow fails at the fact rather than at the deletion.
 
 *The instrument could not have shown this either way, and that is worth knowing.* deck.gl's
 own `pickObject` answers correctly at every one of those points; what fails is the extension's
@@ -333,12 +336,24 @@ to ~68 px on how long the *module path* is. 65 of 84 `xlong` rows still overlap 
 rows carrying no class at all. `selfCheck` only inspects `[data-fit]` elements and a
 `.navlabel` has none, so it reports every control wired.
 
-**The fix is a design call and is open**, because every obvious mechanism is one the two
-comments over that declaration already reject — truncation hides a name, `overflow-wrap:
-anywhere` gives `do_PO / ST`, shrinking further is more small type. The fourth is rule 84's
-shape: let the row grow and put the counts on their own line. `navWidth` was widened from 14.5
-to 21 with the note *"a qualified name is the thing it has to be able to show"*, and 335 rows
-say it still cannot.
+**Tom's call, taken the same day: let the module path yield its width first.** `.navsub` was
+`flex: none` at up to 11rem — a fixed cost the name had to fit around — and is now `flex: 0 1
+auto` with a 4rem floor, keeping the ellipsis it already had. It is the one field in the row
+already built to lose its head, so nothing that was not already designed to be shortened gets
+shortened. Measured as a controlled pair, one declaration toggled on one page:
+**335 rows / 101 px → 266 / 49 px** at the declared 21rem; 1,037 → 951 at 16rem; and
+**almost nothing at 12rem**, where the name alone is wider than the row.
+
+**A fifth better, and still open.** The remainder needs a decision about the *name* — wrap,
+truncate, or let the row grow (rule 84) — and each is rejected by one of the two comments over
+`.navlabel`. `navWidth` was widened from 14.5 to 21 with the note *"a qualified name is the
+thing it has to be able to show"*, and 266 rows still say it cannot.
+
+*And a band nobody had looked at:* `@media (max-width: 1088px)` drops the navigator to
+**12rem**, where 1,289 of 1,346 rows overprint and this fix buys four of them. **Check
+`innerWidth` against 1088 before trusting any navigator figure** — two of this session's own
+numbers were taken either side of it and read as a fourfold regression that was not there
+(rule 24).
 
 ### And the maps in `output/`, three of which refused and were sent to the wrong command
 
@@ -2052,11 +2067,14 @@ them — the entries are still where an item is closed, and this is only the ord
 4. **The rebuild-recipe rule**, to mint or refuse: *a rebuild recipe must name every store
    the change invalidates.* `standards.db` is a document store, went stale with the corpus,
    and stopped `serve` from booting at all.
-5. **Three found while looking, and two of them need Tom before anything is written:**
-   *withdraw the dead shadow branch?*; *how should a navigator row that cannot fit its name
-   behave?* (**335 of 1,395 overprint their counts, 24%, worst case 101 px** — rule 53, and
-   every obvious mechanism is one the stylesheet's own comments reject); and two
-   pluralisations, *"1 boxes"* and *"1 call sites"*, which need nobody.
+5. **Three found while looking. Tom answered two the same day.** The **dead shadow branch**
+   is *withdrawn*, with a guard that asserts the two facts closing it before it asserts the
+   consequence. The **navigator rows** got Tom's mechanism — the module path yields its width
+   first — which is **335 → 266 rows and 101 px → 49 px at the declared 21rem**, a fifth
+   better and *not closed*: the remainder needs a decision about the **name** (wrap, truncate,
+   or let the row grow, rule 84), and each is rejected by one of the two comments over
+   `.navlabel`. **Still open.** Two pluralisations, *"1 boxes"* and *"1 call sites"*, need
+   nobody and are not done.
 6. Then the standing backlog below, none of it scheduled.
 
 ### What is next, and it is open

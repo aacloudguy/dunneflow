@@ -18243,16 +18243,25 @@ function hoverSkeleton(h) {
       ${d.class_name ? `<span class="kind-tag">${esc(d.class_name)}</span>` : ""}
       ${d.is_async ? `<span class="kind-tag">async</span>` : ""}
     </div>
-    ${h.shadow ? `<div class="hc-shadow">A stand-in. This routine lives on
-      <b>${esc((Graph.disks().find(x => x.id === h.disk) || {}).name || h.disk)}</b> —
-      the copy you are pointing at is a placement device and is never an endpoint.</div>` : ""}
+    ${/* **There was a "A stand-in…" row here, and it rendered for nobody.** It drew when
+          `h.shadow` was true, which is `nodes.shadow[i]` at the *picked* index — and rules
+          23 and 31, applied everywhere else, had closed both ways of getting one. A shadow
+          is drawn at radius 0 and alpha 0, so it is never picked (measured 2026-09-08: 1,989
+          picks over 562 distinct nodes across the whole stack, not one a shadow, against
+          5,855 shadows in the payload); and `pointerData` builds every rim-arrow mark
+          through `realIndex`. The reticule over the top is `pickable: false`, so there was
+          no third path. Design rule 16 from the far side — a control wired to a condition
+          that can no longer arise looks exactly like one that works. If a level or layout
+          ever draws a shadow, this is the row to put back. */""}
     ${/* **Where this routine's plates disagree about it**, and only when they do enough to
           be worth a sentence. A quarter of a plate-width is the same line the count above
           the picture draws between upright and leaning, read from the same arithmetic
           (rule 13 — one measurement, not two).
-          Its own row and its own words, on `hc-shadow`'s pattern: a fact about the drawing
+          Its own row and its own words, in the `hc-shadow` style: a fact about the drawing
           sitting in a card of facts about the program has to say which it is, or it reads
-          as something the code does. `null` under the spiral, where nothing tried to line
+          as something the code does. That class was named for the row above, which is now
+          gone — it is kept because this is the surviving sentence of that kind, not because
+          anything here is about a shadow. `null` under the spiral, where nothing tried to line
           anything up and a lean would be a coincidence. */""}
     ${h.lean != null && h.lean >= 0.25
       ? `<div class="hc-shadow">Its plates disagree about where it goes — furthest link

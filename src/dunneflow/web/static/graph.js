@@ -2273,8 +2273,15 @@ function mount(container, raw, options = {}) {
      * device and never an endpoint, and rule 31 says that applies to *reading* as much as
      * to drawing -- hovering one and being told about "a routine on this plate" would put
      * a routine somewhere it does not live, in the one surface whose whole job is to say
-     * what a thing is. `shadow` still travels, because the reader is entitled to know they
-     * are pointing at a stand-in. */
+     * what a thing is.
+     *
+     * **A `shadow` flag travelled with it until 2026-09-08, and nothing could ever set it.**
+     * It was here so the card could say "you are pointing at a stand-in", written when a
+     * shadow could still be pointed at. It cannot: `prepare` gives one radius 0 and alpha 0,
+     * so picking never returns one -- 1,989 picks over 562 distinct nodes returned none --
+     * and the rim arrow below resolves through `realIndex` for these same two rules. The
+     * resolution stays because it is what makes both of those true from here; the flag went
+     * because a field that is always `false` is a claim the card cannot use. */
     onHover: (info) => {
       let i = info.index;
       if (i < 0 || !g.prepared) { emit('hover', null); return; }
@@ -2297,7 +2304,6 @@ function mount(container, raw, options = {}) {
         index: real, id: raw2.id[real], label: raw2.label[real],
         kind: raw2.kind[real], disk: raw2.disk[real],
         detail: raw2.detail[real] || {},
-        shadow: raw2.shadow[i] === 1,
         /* The fan counts come from here and only from here. The navigator prints the same
          * `3<- 5->` off the same maps, and the selection is drawn from them too, so all
          * three agree by construction. Rule 32 is what happens when they do not. */

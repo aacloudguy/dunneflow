@@ -454,6 +454,9 @@ const state = {
   rowTagsWrap: false,     // a way-in row drops its tags below a name that will not fit
   coverWhatWrap: false,   // the evidence line wraps instead of ending in an ellipsis
   bandScroll: false,       // a change band scrolls in place, or runs its full length
+  navName: "over",        // 'over' | 'clip' | 'wrap' -- a name wider than its room
+  topFit: false,          // the toolbar yields and shrinks, or runs off the window
+  verStrip: false,        // the version strip holds one line and scrolls, or wraps
   /* The two versions, and which of them the screen is showing.
    *
    * `baseRev` is the version being read — the cover, the routine list, the code browser,
@@ -644,6 +647,24 @@ const state = {
  * that is a thing someone may want. The default stays 200. */
 const NAV_CAPS = [50, 100, 200, 500, 0];
 
+/* What a navigator name does when it is wider than the room left for it, and the words the
+ * reader is offered for it.
+ *
+ * A roster rather than three buttons written out, for `NAV_CAPS`' reason and one more: the
+ * guards require a control whose options come from a table to be generated from that table,
+ * so a value added here cannot arrive without a button, and a button cannot name a value the
+ * stylesheet has no rule for.
+ *
+ * **`over` is first and is the default**, and its name is `As it is` rather than anything
+ * describing the mechanism -- a reader who has not read `settings.js` should not have to
+ * know that the thing they see every day is called overprinting. The other two are verbs,
+ * because they are things to do rather than states to be in. */
+const NAV_NAMES = [
+  { id: "over", name: "As it is" },
+  { id: "clip", name: "Cut it" },
+  { id: "wrap", name: "Wrap it" },
+];
+
 /* How many matches a search may open packages for by itself. Not the reader's cap: that
  * says how much of *one* package to list, and this says whether a search has narrowed
  * anything down yet. A search matching four thousand routines has not. */
@@ -824,6 +845,140 @@ function applyCoverWhatWrap() {
   const r = document.documentElement;
   if (state.coverWhatWrap) r.setAttribute("data-whatwrap", "on");
   else r.removeAttribute("data-whatwrap");
+}
+
+/* ── the three "the window is narrower than this" stamps ─────────────────────────
+ *
+ * All three follow `applyCoverWhatWrap` exactly, including the polarity: **the default
+ * stamps nothing.** A reader who has never opened Settings carries an attribute-free root
+ * and reaches not one of the rules below, which is what makes "today's behaviour is the
+ * default" a fact about the stylesheet rather than a promise in a comment.
+ *
+ * On the root and not on the surface, for that function's reason: the navigator, the
+ * toolbar's own children and the version strip are all rebuilt by `render()`, and stamping
+ * a rebuilt element makes every rebuild a second place that has to remember (rule 51). */
+function applyNavName() {
+  const r = document.documentElement;
+  if (state.navName === "over") r.removeAttribute("data-navname");
+  else r.setAttribute("data-navname", state.navName);
+}
+
+function applyTopFit() {
+  const r = document.documentElement;
+  if (state.topFit) r.setAttribute("data-topfit", "on");
+  else {
+    r.removeAttribute("data-topfit");
+    /* Cleared with the stamp, or a reader who turns this off keeps whatever multiplier the
+       last narrow window left behind -- on a rule that no longer applies, so nothing on
+       screen would explain the small type. */
+    r.style.removeProperty("--topbar-fit");
+  }
+}
+
+function applyVerStrip() {
+  const r = document.documentElement;
+  if (state.verStrip) r.setAttribute("data-verstrip", "clip");
+  else r.removeAttribute("data-verstrip");
+}
+
+/* The half CSS cannot do, and the reason it cannot.
+ *
+ * Yielding gets the toolbar most of the way and then meets a floor it cannot get under:
+ * `.tb-searchwrap .tb-search` carries `padding-right: 7rem` for the three flags that sit
+ * inside the field, and `min-width: 0` cannot take a border-box below its own padding. So
+ * what is left is taken by a multiplier, and a multiplier needs a measurement.
+ *
+ * **Two forced layouts, never a search.** `fitFields` binary-searches because it is fitting
+ * text to a box and the answer is not arithmetic; this is one ratio. Measure, clamp, write,
+ * verify. Running per `render()` is affordable at that cost and necessary at any cost: the
+ * window can be resized without a render, but every render can change what the toolbar
+ * holds -- a program name, a revision pair, a search term.
+ *
+ * **Clamped at 0.85, and it says so when the floor is reached** (design rules 6 and 1).
+ * Below that the chrome type stops being readable at arm's length, and a setting that
+ * silently kept shrinking would trade the thing it exists to protect. `TOPFIT_FLOOR` is
+ * read by the Settings row as well as by this, so the number on the page and the number in
+ * force cannot disagree (rule 13). */
+const TOPFIT_FLOOR = 0.85;
+
+const TOPFIT_PASSES = 3;
+
+function fitTopbar() {
+  const bar = document.querySelector(".topbar");
+  const r = document.documentElement;
+  if (!bar) return;
+  if (!state.topFit) { paintTopFitNote(null); return; }
+  r.style.setProperty("--topbar-fit", "1");
+  if (!bar.clientWidth) { paintTopFitNote(null); return; }
+
+  /* **Three passes, and it is not a search.** One ratio does not converge, and the reason is
+   * worth knowing rather than iterating past: shrinking the type shrinks the *contents* too,
+   * so `scrollWidth` moves with the multiplier -- but not proportionally, because several
+   * things in this row have floors of their own (`.tb-search`'s padding, `.tb-select`'s
+   * `max-width`, a `<select>`'s own text). Measured at a 700px toolbar, one pass landed on
+   * 0.947 with 32px still over. Each pass is one measure and one write; three is a bound on
+   * the work rather than on the answer (rule 55), and it stops the moment it fits.
+   *
+   * Floored every pass, so the multiplier can never step below the clamp on its way to a
+   * width it was never going to reach. */
+  let f = 1;
+  for (let i = 0; i < TOPFIT_PASSES; i++) {
+    const over = bar.scrollWidth - bar.clientWidth;
+    if (over <= FIT_SLACK) break;
+    const next = Math.max(TOPFIT_FLOOR, f * (bar.clientWidth / bar.scrollWidth));
+    if (next >= f) break;                 // at the floor, or no longer moving
+    f = next;
+    r.style.setProperty("--topbar-fit", String(f));
+  }
+  /* The verifying measure, and it is what makes the note honest rather than arithmetic:
+     the arithmetic says what was asked for, `scrollWidth` says what happened. */
+  const left = bar.scrollWidth - bar.clientWidth;
+  paintTopFitNote({
+    fit: f,
+    short: left > FIT_SLACK ? left : 0,
+    /* **Whether the floor is what stopped it**, and it is a separate fact from there being
+       something left over. Saying "as small as this may go" at 95% is a claim about the
+       clamp that the clamp did not make (rule 13) -- and it is the difference between
+       *widen the window* and *there is a control in here that will not shrink*. */
+    floored: f <= TOPFIT_FLOOR + 1e-9,
+  });
+}
+
+/* What the fit actually did, written where the setting is.
+ *
+ * **Painted rather than rendered, and the order is why.** `viewSettings()` is built at the
+ * top of `render()` and `fitTopbar()` measures at the bottom of it, so a note composed into
+ * that template would always be one render behind -- it would report the *previous* window
+ * on the very render that turned the setting on. `applyScale` writes `#scaleVal` for the
+ * same reason and this follows it.
+ *
+ * **Four outcomes, four sentences, and the last two are the ones that matter** (design rule
+ * 1, and design rule 6: a clamp states its reason). Nothing had to shrink · it shrank and
+ * fits · it shrank to the clamp and something is still over · it stopped short of the clamp
+ * and something is still over.
+ *
+ * The last two look identical on screen and mean different things, which is why `floored`
+ * travels separately from `short`. *"As small as this may go"* printed at 95% is a claim
+ * about the clamp the clamp never made (rule 13); and the two send the reader different
+ * ways -- one to the window, the other to a control in this row that has a floor of its own
+ * and will not shrink however small the rest gets. */
+function paintTopFitNote(note) {
+  const el = $("#topFitNote");
+  if (!el) return;
+  if (!note) { el.textContent = ""; return; }
+  const pct = Math.round(note.fit * 100);
+  const px = Math.round(note.short);
+  if (note.short && note.floored) {
+    el.innerHTML = `<b>${pct}%</b> — as small as this may go, and <b>${px}px</b> still `
+      + `will not fit. Widen the window, or fold a pane.`;
+  } else if (note.short) {
+    el.innerHTML = `Fitted at <b>${pct}%</b> and <b>${px}px</b> still will not fit — `
+      + `something in this row has a width it will not give up.`;
+  } else if (pct >= 100) {
+    el.textContent = "This window is wide enough — nothing has had to shrink.";
+  } else {
+    el.innerHTML = `Fitted at <b>${pct}%</b>; everything is on screen.`;
+  }
 }
 
 function applyCoverBars() {
@@ -7166,6 +7321,63 @@ function viewSettings() {
           <button class="toggle" id="bandScrollToggle" aria-pressed="${state.bandScroll}" aria-label="Scroll change bands in place"></button>
         </div>
 
+        ${/* ── three surfaces that cannot fit what they hold ──
+              One subject, three settings, and each ships today's behaviour as its default —
+              because each alternative is a preference and not a repair, and design rule 2
+              says the usage counter retires the loser rather than an argument. */""}
+        <div class="setrow">
+          <div><div class="lbl">A navigator name too long for its row</div>
+            <div class="desc">The navigator is the primary way in, and on a routine list
+              <b>335 of 1,395 rows print their name straight over their counts</b> — 24%, worst
+              case <b>101px</b> of overprint where a 62px box holds 170px of text.
+              <code>_schema_validator</code> runs through its own <code>1← 1→</code>.<br><br>
+              It is neither wrapping nor cutting: a name is one unbreakable token, so it cannot
+              shrink to its box and simply paints outside it, and the count is pinned to the
+              right at a fixed size, so it is painted <i>over</i> rather than pushed. Nothing
+              reported it, because nothing looked.<br><br>
+              <b>As it is</b> is the default and is that behaviour. <b>Cut it</b> ends a long
+              name in an ellipsis — the whole name is still on the hover card, with the module
+              it lives in, and clicking has always shown it whole. <b>Wrap it</b> lets it take a
+              second line, broken on the name's own seams (<code>do_ / POST</code>, not
+              <code>do_PO / ST</code>), with the count staying on the first line.</div></div>
+          <div class="seg" role="group" aria-label="A navigator name too long for its row">
+            ${NAV_NAMES.map(o => `<button data-navname-set="${esc(o.id)}"
+              aria-pressed="${state.navName === o.id}">${esc(o.name)}</button>`).join("")}
+          </div>
+        </div>
+
+        <div class="setrow">
+          <div><div class="lbl">Fit the toolbar to the window</div>
+            <div class="desc">The toolbar is one row that does not wrap, so on a narrow window
+              it simply runs off the end — measured at <b>innerWidth 1224</b>, the page is
+              <b>1336</b> wide and <b>⚙ Settings is off the right edge</b>, reachable only by
+              scrolling the whole page sideways.<br><br>
+              On, everything stays in sight. <b>Narrower first:</b> the search box, the two
+              menus and the right-hand group give up width they are not allowed to give up
+              today, which costs no legibility at all. Only what is left over is taken by
+              making the row smaller, and never below <b>${Math.round(TOPFIT_FLOOR * 100)}%</b>
+              — past that the chrome stops being readable, and it says so rather than shrinking
+              on quietly.<br><br>
+              <b>Off by default</b>, because on a window wide enough it changes nothing and a
+              setting that has already done its work is one more thing on this page. It also
+              stops the whole page scrolling sideways while it is on, which is the same problem
+              seen from the inspector's end.
+              <div class="hint" id="topFitNote"></div></div></div>
+          <button class="toggle" id="topFitToggle" aria-pressed="${state.topFit}" aria-label="Fit the toolbar to the window"></button>
+        </div>
+
+        <div class="setrow">
+          <div><div class="lbl">Version strip on one line</div>
+            <div class="desc">The strip under the toolbar — <b>BASE</b> and what it is compared
+              with — wraps onto a second line rather than cut the thing it exists to say. That
+              is the default and the argument for it has not changed.<br><br>
+              What it costs is height, and height comes off the pane you are reading. On, the
+              strip holds to one line, clips at the window edge and scrolls sideways instead.
+              Nothing is unreachable: the assumption button is still clickable, still tabbable,
+              and scrolls itself back into view when focused.</div></div>
+          <button class="toggle" id="verStripToggle" aria-pressed="${state.verStrip}" aria-label="Version strip on one line"></button>
+        </div>
+
         <div class="setrow">
           <div><div class="lbl">Hide inferred edges</div>
             <div class="desc">Show only what is pinned by import, module or class — the defensible skeleton.</div></div>
@@ -11009,6 +11221,31 @@ function breakable(qual) {
   return esc(qual).split(".").join(".<wbr>");
 }
 
+/* The same argument one joint further in, for a name that has no dots.
+ *
+ * `breakable` above is about a **qualified** name and marks the only seam such a name has.
+ * A navigator row shows the *leaf* -- `do_POST`, `_schema_validator`, `resolveSessionId` --
+ * which has no dot at all, and whose seams are the underscore and the camel hump. Without
+ * them `overflow-wrap: break-word` breaks wherever the box happens to end, which is exactly
+ * the `resolve_session_ / id` that comment is written from, and exactly the `do_PO / ST` the
+ * stylesheet cites as its reason for refusing to wrap at all. Marked, the break lands on
+ * `do_ / POST` -- a seam the reader already reads.
+ *
+ * **A sibling rather than a change to `breakable`.** Folding the two would put underscore
+ * and hump breaks into every surface that renders a qualified name, which is arguable and
+ * is a different call from this one. If it is ever taken, this is the function to delete.
+ *
+ * Escaped first and marked second, for `breakable`'s reason: the other order escapes the
+ * markup just added. `<wbr>` is an empty element, so `textContent` over the result is the
+ * name unchanged -- which is what lets the length thresholds and the row's `title` go on
+ * reading the plain text. */
+function jointed(name) {
+  return esc(name)
+    .split(".").join(".<wbr>")
+    .split("_").join("_<wbr>")
+    .replace(/([a-z0-9])([A-Z])/g, "$1<wbr>$2");
+}
+
 function callBadge(c) {
   if (c.external) return `<span class="conf badge external">EXTERNAL</span>`;
   if (c.ambiguous) return `<span class="conf badge suspect">AMBIGUOUS</span>`;
@@ -12510,6 +12747,12 @@ function render() {
      measures that box. The other order fits every name to the column it is about to leave. */
   wrapRowTags();
   fitFields();
+  /* And the toolbar's own fit, which `render()` has to run for the same reason it runs the
+     two above: the row's width is a fact about the window, but what is *in* it changes with
+     the program, the revision pair and the search term, and every one of those arrives
+     through here. It costs nothing while the setting is off -- `fitTopbar` returns before it
+     measures anything. */
+  fitTopbar();
   wire();
   /* Persisted here rather than in each handler. Forty controls change settings and every
    * one of them ends in `render()`, so this is the one place that cannot be forgotten --
@@ -12923,6 +13166,47 @@ function wire() {
   if (bsc) bsc.addEventListener("click", () => {
     state.bandScroll = !state.bandScroll;
     used("bandscroll:" + state.bandScroll);   // design rule 2: the loser is retired on evidence
+    render();
+  });
+  /* ── the three "the window is narrower than this" controls ──
+   *
+   * Each stamps before it renders, never after, for the reason every stamp in this shell
+   * has: `render()` ends in `wrapRowTags()` and `fitFields()`, which measure the boxes as
+   * they are at that moment. Stamping afterwards fits text to the column it has just left.
+   *
+   * All three count their use (design rule 2). The navigator's counts the *value* it moved
+   * to, since three options cannot be retired by a tally of two. */
+  /* **`data-navname-set`, never `data-navname`** -- beside `palette-set` and `theme-set`,
+     and for a reason this one paid for in the looking pass rather than in a test. The stamp
+     goes on `:root`, and `$$("[data-navname]")` walks the *whole document*: it matched
+     `<html>` the moment a value other than the default was chosen, bound a listener to it,
+     and then -- once the reader went back to `over` and the attribute was removed -- every
+     click anywhere in the page arrived here with `dataset.navname` undefined and stamped
+     `data-navname="undefined"` on the root. Rule 47's companion exactly, one family over
+     from the `data-nav` collision the pane guard was minted from. */
+  $$("[data-navname-set]").forEach(b => b.addEventListener("click", () => {
+    state.navName = b.dataset.navnameSet;
+    used("navname:" + state.navName);
+    applyNavName();
+    /* The stylesheet is only half of `wrap`: the seams are marked in the markup, and the
+       navigator is not rebuilt by a centre-pane render. Without this the rows already on
+       screen wrap wherever the box ends -- `do_PO / ST`, which is the thing the setting was
+       built to avoid (rule 78). */
+    dressNavItems();
+    render();
+  }));
+  const tf = $("#topFitToggle");
+  if (tf) tf.addEventListener("click", () => {
+    state.topFit = !state.topFit;
+    used("topfit:" + state.topFit);
+    applyTopFit();
+    render();
+  });
+  const vsc = $("#verStripToggle");
+  if (vsc) vsc.addEventListener("click", () => {
+    state.verStrip = !state.verStrip;
+    used("verstrip:" + state.verStrip);
+    applyVerStrip();
     render();
   });
   const inf = $("#inferredToggle");
@@ -13510,7 +13794,7 @@ const WIRED_ATTRS = new Set([
   "chgband", "wlopen",
   "fold", "gact", "gosev",
   "goto", "graphtheme", "insp", "jump", "layout", "legend", "manifest", "menuorder",
-  "mode", "nav", "nav2", "navcap", "navgroups", "pkgopen", "pointerplace", "pointerreset", "pointershown", "reticule",
+  "mode", "nav", "nav2", "navcap", "navgroups", "navname-set", "pkgopen", "pointerplace", "pointerreset", "pointershown", "reticule",
   "closedetail", "detachdetail", "detail", "detailall", "tablego",
   /* The code browser's three. `codelink` is on every clickable name in the source and
      `CODE_ROUTES` is what listens for all of them -- one table, checked by the guard that
@@ -13729,20 +14013,46 @@ function selfCheck() {
   return unique;
 }
 
-/* Wrap each nav item's own text in a span so it can wrap independently of the count. */
+/* Wrap each nav item's own text in a span so it can wrap independently of the count.
+ *
+ * **The seams are marked here and only under `navName: 'wrap'`**, which keeps the other two
+ * settings byte-identical to what shipped before this function learned about any of them.
+ * `text` is taken first and everything downstream reads it: the two shrink thresholds are a
+ * character count of the *name*, and the row's title is the name, neither of which may see
+ * a `<wbr>`. It would not matter if they did -- `<wbr>` is empty, so `textContent` returns
+ * the name either way -- and taking the plain text first says that rather than relying on
+ * it, because the day somebody marks a seam with a visible character is the day the
+ * thresholds silently move. */
 function dressNavItems() {
+  const marked = state.navName === "wrap";
   $$(".nav-item").forEach(el => {
+  /* **A row already dressed is re-dressed, not skipped**, and that is what makes the
+   * setting reach the rows already on screen. This function runs from `buildNav()` and at
+   * boot; nothing rebuilds the navigator when a *centre-pane* setting changes, so a label
+   * built before `wrap` was chosen kept its unmarked text and broke wherever the box ended
+   * -- the picture the setting exists to avoid, arriving from the setting itself. Rule 78:
+   * a pane brought up to date by the control that moved it is only as correct as the last
+   * person to add a control, so the control calls this and this can be called twice. */
+  const had = el.querySelector(":scope > .navlabel");
+  if (had) {
+    const t = had.textContent;
+    if (marked) had.innerHTML = jointed(t);
+    else had.textContent = t;
+    return;
+  }
   const texts = [...el.childNodes].filter(n => n.nodeType === 3 && n.textContent.trim());
   if (!texts.length) return;
   const span = document.createElement("span");
   span.className = "navlabel";
-  span.textContent = texts.map(n => n.textContent).join("").trim();
-  if (span.textContent.length > 25)      span.classList.add("xlong");
-  else if (span.textContent.length > 17) span.classList.add("long");
+  const text = texts.map(n => n.textContent).join("").trim();
+  if (marked) span.innerHTML = jointed(text);
+  else span.textContent = text;
+  if (text.length > 25)      span.classList.add("xlong");
+  else if (text.length > 17) span.classList.add("long");
   // An item that brought its own title knows more than the leaf text does -- a routine row
   // carries the qualified name, and overwriting it with the leaf loses the only thing the
   // hover was worth doing for.
-  if (!el.dataset.titled && !el.dataset.card) el.title = span.textContent;
+  if (!el.dataset.titled && !el.dataset.card) el.title = text;
   texts.forEach(n => n.remove());
   const count = el.querySelector(".n");
   el.insertBefore(span, count || null);
@@ -17282,6 +17592,7 @@ const Settings = window.DunneFlowSettings;
 const PERSISTED = [
   "theme", "palette", "scale", "startup", "mode", "menuOrder", "trailShown", "trailCap",
   "density", "coverBars", "rowTagsWrap", "coverWhatWrap", "bandScroll", "baseRev", "comparedRev", "comparedIsNewer",
+  "navName", "topFit", "verStrip",
   "ambient", "hideInferred", "colWidths", "insp", "sortKey", "sortAsc",
   "egress", "aiOps", "triage", "promoted", "pins", "usage", "graphLayout",
   "diskOrder", "diskColors", "colorBy", "sortMode", "filterMode", "direction",
@@ -20178,6 +20489,13 @@ addEventListener("resize", () => {
    * that is also firing during it coalesce into **one** pass for the frame instead of
    * racing to write the same fields twice (rule 51 -- one place decides when). */
   scheduleFit();
+  /* And the toolbar, for the same reason one line up and one that bites harder: its fit is
+     a ratio of the row's contents to *the window*, so it is the one measurement here that
+     is wrong the instant the window moves. Without this a reader who widened their window
+     kept the small type from the narrow one, on a row that had room to spare -- which is
+     exactly the "brought up to date by the control that moved it" failure of rule 78, with
+     the window as the control. */
+  fitTopbar();
 });
 
 /* Typing in the file filter rewrites the rows and **not the pane**.
@@ -20315,6 +20633,9 @@ async function boot() {
   applyPalette();
   applyCoverBars();
   applyCoverWhatWrap();
+  applyNavName();
+  applyTopFit();
+  applyVerStrip();
   applyDiagramLook();
   applyScale();
   state.view = state.startup;
@@ -20355,6 +20676,9 @@ async function boot() {
      every reload. Rule 68 -- a restore is a setter, and must do what the setter does. */
   applyCoverBars();
   applyCoverWhatWrap();
+  applyNavName();
+  applyTopFit();
+  applyVerStrip();
   applyDiagramLook();
   paintNavFlags();          // after `adoptSettings`, or they show the defaults (rule 68)
   applyScale();

@@ -12830,3 +12830,306 @@ def test_the_two_derived_orders_are_not_called_what_the_layout_toggle_is_called(
             f"the plate-order control offers {label!r}, which is what the plate-layout "
             "button already says about something else"
         )
+
+
+# --------------------------------------------------------------------------- #
+# Three surfaces that cannot fit what they hold
+#
+# `navName`, `topFit` and `verStrip` are one subject in three places: a row narrower than
+# the thing in it. Each ships today's behaviour as its default, so the guard that matters
+# most for all three is that the default reaches **none** of the new rules -- a setting
+# that changes the picture before anybody asks for it is not a setting.
+#
+# Each is guarded on the established "four halves, each of which passes alone while the
+# setting is dead" pattern, and then on the one mechanism that, left out, would let it
+# render perfectly and do nothing.
+# --------------------------------------------------------------------------- #
+
+
+def test_the_navigator_name_setting_is_read_by_something() -> None:
+    """The four halves, and the default that must stamp nothing.
+
+    `over` is the behaviour that overprints 335 of 1,395 rows, and it is the default on
+    purpose: both alternatives are mechanisms the stylesheet argued against in writing, and
+    imposing either on a reader who has used this navigator for a fortnight is not what
+    design rule 2 says to do with a tie.
+    """
+    st = _read("settings.js")
+    js = _code(_read("shell.js"))
+    css = _read("tokens.css")
+    assert re.search(r"^\s*navName: 'over',", st, re.M), (
+        "navName is not a default, or no longer defaults to what ships — the reader's "
+        "navigator must not change before they ask"
+    )
+    assert "navName: 'what a long navigator name does'" in st, (
+        "the reset would clear the navigator name setting and not mention it"
+    )
+    assert '"navName"' in js, "navName is not persisted"
+    assert "[data-navname-set]" in js, "nothing listens for the navigator name control"
+    assert '"navname-set"' in js, "the control is not in the wired roster"
+    view = _fn(js, "viewSettings")
+    assert "NAV_NAMES.map(" in view, (
+        "the Settings page offers no navigator name control, or writes its buttons out by "
+        "hand rather than from the roster"
+    )
+    # The default must reach no rule at all. Every value in the roster except `over` needs
+    # one, or a button selects a state the stylesheet has never heard of.
+    assert '[data-navname="over"]' not in css, (
+        "the default has a rule of its own, so a reader who never opened Settings is "
+        "already being given somebody's opinion"
+    )
+    for value in ("clip", "wrap"):
+        assert f':root[data-navname="{value}"]' in css, f"nothing reacts to navname {value!r}"
+    assert js.count("applyNavName()") >= 3, (
+        "the stamp must be applied at boot, again after `adoptSettings` (rule 68) and from "
+        "the control"
+    )
+
+
+def test_a_cut_navigator_name_is_cut_and_also_marked() -> None:
+    """`overflow: hidden` on its own cuts the name and says nothing about it.
+
+    The ellipsis is the whole difference between a shortened name and a **wrong** one: a
+    silently cut string reads as the whole one, which is the claim design rule 1 exists to
+    stop a field from making, and which `shorten()`'s own `squeeze` refuses for the same
+    reason. This is `test_wrapping_the_evidence_line_also_releases_the_clip` in the mirror
+    -- that one was minted from a wrap without its clip released, this from a clip without
+    its mark.
+    """
+    css = _read("tokens.css")
+    parts = css.split(':root[data-navname="clip"]', 1)
+    assert len(parts) > 1, "no rule reacts to the stamp"
+    rule = parts[1].split("}", 1)[0]
+    for said in ("overflow: hidden", "text-overflow: ellipsis", "white-space: nowrap"):
+        assert said in rule, f"the cut name has no {said!r}"
+
+
+def test_a_wrapped_navigator_name_breaks_on_its_own_seams() -> None:
+    """`overflow-wrap: break-word` alone is the thing the old comment refused.
+
+    A browser breaks where the box ends, which gives `do_PO / ST` -- and that sentence is
+    already in this codebase, above `breakable()`, written from `resolve_session_ / id` one
+    surface over. Both halves are needed and either alone is worse than nothing: the CSS
+    without the marks breaks mid-token, and the marks without the CSS are `<wbr>`s in a
+    span that `overflow-wrap: normal` will never break at.
+
+    The clip is released in the same rule, for the reason the evidence-line guard states:
+    a wrap inside a clip shows the first line and hides every one after it, which looks
+    exactly like a setting that does nothing.
+    """
+    css = _read("tokens.css")
+    js = _code(_read("shell.js"))
+    parts = css.split(':root[data-navname="wrap"]', 1)
+    assert len(parts) > 1, "no rule reacts to the stamp"
+    rule = parts[1].split("}", 1)[0]
+    assert "overflow-wrap: break-word" in rule, "the name still refuses to break"
+    assert "overflow: visible" in rule, (
+        "the clip from the sibling rule is not released, so the name wraps and every line "
+        "after the first is hidden"
+    )
+    fn = _fn(js, "jointed")
+    for seam in ('split(".")', 'split("_")', "[A-Z]"):
+        assert seam in fn, f"jointed() does not mark the {seam!r} seam"
+    dress = _fn(js, "dressNavItems")
+    assert 'state.navName === "wrap"' in dress, (
+        "the seams are marked unconditionally, so `clip` and `over` no longer render what "
+        "they rendered before this setting existed"
+    )
+    assert "jointed(" in dress, "nothing marks the seams, so the break lands mid-token"
+    # **Idempotent, and the control calls it.** `dressNavItems` runs from `buildNav()` and at
+    # boot, and nothing rebuilds the navigator when a centre-pane setting changes -- so a row
+    # already on screen kept its unmarked text and wrapped wherever its box ended, which is
+    # the picture this setting exists to avoid, produced by the setting itself (rule 78).
+    assert ".navlabel" in dress and "had" in dress, (
+        "dressNavItems skips a row it has already dressed, so choosing `wrap` marks no seam "
+        "on any row that is already on screen"
+    )
+    handler = js[js.index('$$("[data-navname-set]")'):]
+    handler = handler[:handler.index("}));")]
+    assert "dressNavItems()" in handler, (
+        "the control stamps the stylesheet and never re-marks the markup, so half of `wrap` "
+        "reaches the screen and the visible half is the wrong half"
+    )
+    # The thresholds and the title read the plain name. `<wbr>` is empty so `textContent`
+    # would answer correctly today -- but a seam marked with a visible character tomorrow
+    # would move both silently, which is why the plain text is taken first.
+    assert "span.textContent.length" not in dress, (
+        "a shrink class is chosen from the marked-up string rather than from the name"
+    )
+
+
+def test_fitting_the_toolbar_releases_the_page_column_as_well() -> None:
+    """The half without which the whole setting is a control that does nothing.
+
+    `.app` is a grid with one implicit `auto` column and **no `min-width: 0` on its
+    children** -- unlike `.body > *`, which has it. So the widest of the three rows sets the
+    width of all three: at `innerWidth 1224` the document is 1336 wide, and `#settingsBtn`
+    is off the right edge because the *page* is too wide, not because the toolbar is.
+
+    A toolbar that only shrank itself would sit inside a page still 1336 wide with Settings
+    still off the edge -- and it would look, on the Settings page and in every source scan,
+    exactly like a setting that works. Design rule 16 arriving from the layout rather than
+    from the wiring, which is the kind that ships.
+    """
+    css = _read("tokens.css")
+    rule = css.split(':root[data-topfit="on"] .app > *', 1)
+    assert len(rule) > 1, (
+        "the toolbar fit does not release `.app`'s column, so the page stays too wide and "
+        "the control it exists to keep on screen is still off it"
+    )
+    assert "min-width: 0" in rule[1].split("}", 1)[0], (
+        "`.app`'s children are named and not released"
+    )
+    assert '[data-topfit="on"] .topbar' in css, "the toolbar itself is never fitted"
+
+
+def test_the_toolbar_fit_is_clamped_and_the_page_says_the_floor() -> None:
+    """Design rule 6: customisation is clamped, and says why.
+
+    Two things, and the second is rule 13. The measurement must be floored, or the row
+    shrinks until it fits whatever the window is and trades away the legibility the setting
+    exists to protect. And the number printed beside the setting must be **the constant
+    that enforces it**, not a number typed into the prose that agrees with it today.
+    """
+    js = _code(_read("shell.js"))
+    assert re.search(r"const TOPFIT_FLOOR = 0?\.\d+;", js), "there is no floor"
+    fn = _fn(js, "fitTopbar")
+    assert "Math.max(TOPFIT_FLOOR" in fn, "the measured ratio is not floored"
+    view = _fn(js, "viewSettings")
+    assert "TOPFIT_FLOOR" in view, (
+        "the Settings page states a floor of its own rather than reading the one in force, "
+        "so the two can disagree and only the page is read"
+    )
+    # Bounded, not a search (rule 55: a bound on the work, not only on the answer). One
+    # ratio does not converge, because shrinking the type shrinks the contents too — but an
+    # unbounded loop forces a layout per step on every render.
+    assert "TOPFIT_PASSES" in fn and re.search(r"const TOPFIT_PASSES = [1-5];", js), (
+        "fitTopbar's refinement is unbounded, or its bound is not a stated constant"
+    )
+    note = _fn(js, "paintTopFitNote")
+    assert "still will not fit" in note, (
+        "reaching the floor and something still being off the edge is reported as a "
+        "successful fit — which is the one outcome the reader has to be told about"
+    )
+    # **Two ways to end up short, and they send the reader different ways.** At the clamp it
+    # is the window's fault; above the clamp something in the row has a floor of its own.
+    # Printing "as small as this may go" at 95% is a claim about a clamp that never fired.
+    assert "note.floored" in note and '"floored"' not in note, (
+        "the note cannot tell the clamp stopping it from something else stopping it, so it "
+        "claims the floor at whatever multiplier it happens to have reached (rule 13)"
+    )
+    assert "floored:" in fn, "fitTopbar does not report whether the clamp is what stopped it"
+    # And the window is a control like any other (rule 78): the fit is a ratio against the
+    # window, so it is stale the instant the window moves.
+    resize = js[js.index('addEventListener("resize"'):]
+    resize = resize[:resize.index("\n});")]
+    assert "fitTopbar()" in resize, (
+        "a resize does not re-fit the toolbar, so widening the window keeps the small type "
+        "the narrow one earned"
+    )
+    assert js.count("applyTopFit()") >= 3, (
+        "the stamp must be applied at boot, again after `adoptSettings` (rule 68) and from "
+        "the control"
+    )
+    assert '"topFit"' in js, "topFit is not persisted"
+    assert 'id="topFitToggle"' in js, "the Settings page offers no toolbar fit control"
+    assert "topFit: 'the toolbar fitting the window'" in _read("settings.js"), (
+        "the reset would clear the toolbar fit and not mention it"
+    )
+
+
+def test_the_version_strip_clips_its_children_as_well_as_its_box() -> None:
+    """`flex-wrap: nowrap` alone shrinks the items instead of overflowing them.
+
+    A flex item's default is `1 1 auto`, so a strip told not to wrap squeezes its own
+    contents onto one line: nothing clips, nothing scrolls, and the setting looks exactly
+    as though it had worked while doing something else entirely. `flex: none` on the
+    children is what makes the overflow real.
+    """
+    st = _read("settings.js")
+    js = _code(_read("shell.js"))
+    css = _read("tokens.css")
+    assert re.search(r"^\s*verStrip: false,", st, re.M), (
+        "verStrip is not a default, or no longer defaults to the wrapping that ships"
+    )
+    assert "verStrip: 'the version strip on one line'" in st, (
+        "the reset would clear the version strip setting and not mention it"
+    )
+    assert '"verStrip"' in js, "verStrip is not persisted"
+    assert 'id="verStripToggle"' in js, "the Settings page offers no version strip control"
+    assert js.count("applyVerStrip()") >= 3, (
+        "the stamp must be applied at boot, again after `adoptSettings` (rule 68) and from "
+        "the control"
+    )
+    parts = css.split(':root[data-verstrip="clip"] .verstrip {', 1)
+    assert len(parts) > 1, "no rule reacts to the stamp"
+    box = parts[1].split("}", 1)[0]
+    assert "flex-wrap: nowrap" in box, "the strip still wraps"
+    assert "overflow-x: auto" in box, (
+        "the strip does not wrap and does not scroll, so its tail is unreachable — which is "
+        "design rule 29's outcome reached by a layout"
+    )
+    kids = css.split(':root[data-verstrip="clip"] .verstrip > *', 1)
+    assert len(kids) > 1 and "flex: none" in kids[1].split("}", 1)[0], (
+        "the children may still shrink, so the strip squeezes onto one line and clips "
+        "nothing while looking exactly as though it had worked"
+    )
+
+
+def test_none_of_the_three_fit_settings_is_hidden_rather_than_narrowed() -> None:
+    """Design rule 29: a hidden control is not a dimmed one, and neither is a narrow one.
+
+    All three of these settings are about making room, and the cheapest way to make room is
+    to stop drawing something. `display: none` and `visibility: hidden` also take an element
+    out of the tab order and out of hit-testing, so a control removed that way cannot be
+    clicked, cannot be tabbed to, and cannot be brought back by `:focus-within` — every route
+    in closed at once by the one declaration that looked like tidying up.
+
+    The strip's own control may be scrolled past the edge under `verStrip`, and that is the
+    distinction rather than a breach: overflow keeps it hit-tested, keeps it in the tab
+    order, and scrolls it back into view when it is focused.
+    """
+    css = _read("tokens.css")
+    for stamp in ('[data-navname="clip"]', '[data-navname="wrap"]',
+                  '[data-topfit="on"]', '[data-verstrip="clip"]'):
+        for rule in css.split(stamp)[1:]:
+            body = rule.split("}", 1)[0]
+            for banned in ("display: none", "visibility: hidden"):
+                assert banned not in body, (
+                    f"{stamp} makes room with {banned!r}, which takes whatever it hides out "
+                    "of the tab order and out of hit-testing (design rule 29)"
+                )
+
+
+def test_a_settings_stamp_is_never_also_the_route_that_sets_it() -> None:
+    """`test_a_pane_track_attribute_is_never_also_a_route_attribute`, one family over.
+
+    That guard covers `PANELS`' fold attributes against `NAV_SELECTOR`. It says nothing
+    about the other family that writes `data-*` to `:root` -- the settings stamps -- and the
+    navigator name setting shipped, briefly, with the stamp and the route spelled the same.
+
+    **What that costs is worth writing down, because it is not what you would guess.** The
+    stamp goes on `:root`, and `$$("[data-navname]")` walks the whole document: it matched
+    `<html>` as soon as any value but the default was chosen, and bound the setting's click
+    handler to the root element. Every click anywhere in the application then ran it. While
+    a value was stamped that was merely redundant; the moment the reader chose the default
+    again the attribute was *removed*, `dataset.navname` became `undefined`, and the next
+    click anywhere stamped `data-navname="undefined"` on the root -- a value no rule matches
+    and no control shows, from a setting the reader had just set correctly.
+
+    `data-palette` / `data-palette-set` is the shape, and its comment says exactly this. So
+    the rule is asserted rather than the one instance: no attribute written to
+    `document.documentElement` may also be a selector this shell binds a listener to.
+    """
+    js = _code(_read("shell.js"))
+    stamps = set(re.findall(r'setAttribute\("data-([a-z-]+)"', js))
+    assert stamps, "nothing stamps the root any more; this guard is blind"
+    bound = set(re.findall(r'\$\$\("\[data-([a-z-]+)\]"\)', js))
+    assert bound, "no control is bound by attribute selector; this guard is blind"
+    clash = stamps & bound
+    assert not clash, (
+        f"data-{sorted(clash)[0]} is both a stamp on the root and the selector a listener "
+        "is bound by, so the root element is one of that setting's own controls: every "
+        "click in the application runs its handler, and it reads `undefined` the moment the "
+        "stamp is removed"
+    )

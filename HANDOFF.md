@@ -12587,3 +12587,179 @@ The previous entry's *"what the next session should pick up"* carried a fourth i
 `BRIEFING.md` is the file that says it owns the open list and that there is no second copy.
 That is the drift the 2026-09-02 audit was called for, arriving again by the same route: a
 handover list written where the work was done rather than where the list lives. Moved.
+
+## 2026-09-08 — three settings for what the window cannot fit
+
+Tom: *"Create a Setting that permits navigator name wrap or truncate. Another Setting to keep
+the top Toolbar items always visible, but smaller… Same for the row below the Toolbar that
+starts with BASE… (current behavior will be default for all of these)."* His two calls on the
+mechanism, taken before any code: the toolbar goes **narrower first and smaller only for what
+is left**, and the BASE row's alternative is **one line, clipped, scrolling**.
+
+Three surfaces, one subject: a row narrower than the thing in it. `navName`, `topFit`,
+`verStrip`, each shipping today's behaviour as its default — because each alternative is a
+preference rather than a repair, and design rule 2 says the usage counter retires the loser.
+
+### What the default reaching no rule at all buys, and why it is asserted
+
+Every one of these stamps **nothing** on `:root` in its default state, matching
+`data-coverbars` and `data-theme`. A reader who never opens Settings carries an
+attribute-free root and reaches not one of the new rules, which makes *"today's behaviour is
+the default"* a fact about the stylesheet rather than a promise in a comment. A guard asserts
+there is no `[data-navname="over"]` rule anywhere.
+
+### The navigator, measured
+
+1,404 rows with their counts drawn, at the declared 21 rem:
+
+| `navName` | paints outside its box | of those, onto the count | worst | on two lines |
+|---|---|---|---|---|
+| `over` **(default)** | **374 — 26.6%** | **268** | **56 px** | 0 |
+| `clip` | 0 | 0 | — | 0 |
+| `wrap` | 0 | 0 | — | 414 |
+
+**The condition is load-bearing and is stated beside the figure** (rule 24). `routineFan`
+returns `""` until the graph is mounted *and* the navigator is rebuilt, and with the counts
+undrawn the same measurement gives **11.4%** — the names still leave their boxes, they simply
+have no digits to land on. The record's 24% was a different window; this is this one's.
+
+**The instrument was wrong first and was checked before it was believed.**
+`getBoundingClientRect()` on a flex item returns its *box*, so the first pass reported 0
+overprint in all three states — identical numbers, which is what gave it away. The honest
+measure is `scrollWidth − clientWidth` for *whether the name fits*, and
+`getComputedStyle(lab).overflow` for *whether the residue is painted*: the first is the same
+in all three states, because it names the population rather than the outcome.
+
+**Both objections in the stylesheet turned out to be answerable**, which is why these are
+worth building rather than imposing:
+
+* *"Truncating would hide a name with nothing beside it."* A routine row is `data-card`, so
+  `navHoverSkeleton` already shows the leaf **and** the qualified name, and clicking has
+  always shown it whole.
+* *"`do_PO / ST` is worse than small type."* True of a break chosen by where the box ends —
+  which is the argument written above `breakable()` one surface over, from
+  `resolve_session_ / id`. `jointed()` marks the seams (`.`, `_`, a camel hump) with `<wbr>`,
+  a **sibling** to `breakable` rather than a change to it, because folding the two would put
+  underscore breaks into every qualified name on every surface and that is a different call.
+  On screen: `open_graph_composition_` / `read_backend`, with its `1←` still on line one.
+
+The two comments arguing for two different mechanisms over that one declaration are rewritten
+as the reversal they are, rather than left standing beside code that contradicts them.
+
+### The toolbar, and the half that is not about the toolbar
+
+`.app` is a grid with one implicit `auto` column and **no `min-width: 0` on its children** —
+unlike `.body > *`, which has it. The widest of the three rows therefore sets the width of all
+three, which is why `#settingsBtn` at x≈1336 and the inspector's right edge at x≈1336 are one
+symptom and not two. **A toolbar that only shrank itself would change nothing a reader could
+see**: design rule 16 arriving from the layout rather than from the wiring, which is the kind
+that ships. So `topFit` releases that column too, and only while it is on.
+
+At `innerWidth 1280`:
+
+| | off (default) | on |
+|---|---|---|
+| document width | **1336** | **1280** |
+| toolbar `scrollWidth` | **1337** | 1280 |
+| ⚙ Settings' right edge | 1323 — **43 px past the window** | 1266 — **14 px inside** |
+| `--topbar-fit` | — | **1 — nothing shrank** |
+
+**Yielding alone carries an 820 px toolbar** with no type change at all; that was not the
+expected result and it is the reason Tom's *narrower first* was the right call rather than a
+compromise. The multiplier is a backstop: 87% at 700 px, and the 85% clamp from 600 down,
+where ⚙ Settings is still 6 px inside the window and only leaves it at 520.
+
+**One ratio does not converge, and the sentence it produced was false.** Shrinking the type
+shrinks the contents, so `scrollWidth` moves with the multiplier — but not proportionally,
+because `.tb-search`'s padding and `.tb-select`'s `max-width` have floors of their own. A
+single pass landed on 0.947 with 32 px still over, and the note said *"as small as this may
+go"* — a claim about a clamp that had not fired (rule 13). Now it is three passes, bounded and
+stated (rule 55), and `floored` travels separately from `short` so the two outcomes read
+differently: *"85% — as small as this may go… widen the window"* against *"Fitted at 87% and
+20 px still will not fit — something in this row has a width it will not give up."* They send
+the reader different ways.
+
+### The BASE row
+
+`.verstrip` was already `flex-wrap: wrap` and its comment says why — it is prose, and the
+alternative to wrapping is truncating the thing it exists to say. That argument stands and is
+still the default. What it never weighed is the **cost**: `.app`'s middle row is `auto`, so a
+second line comes off `.body`.
+
+| body width | wraps (default) | clips (on) | returned to `.body` |
+|---|---|---|---|
+| 1280 | 34 px, one line | 34 px | — |
+| 900 | **55 px, two lines** | 39 px, 345 px scrolled | **+24 px** |
+| 700 | **77 px, three lines** | 39 px, 545 px scrolled | **+46 px** |
+
+`flex: none` on the children as well as `nowrap` on the box, and the guard says why: a flex
+item's default is `1 1 auto`, so a strip merely told not to wrap **squeezes its contents onto
+one line** — nothing clips, nothing scrolls, and the setting looks exactly as though it had
+worked while doing something else.
+
+**Design rule 29's distinction was checked rather than asserted.** Under `clip` the assumption
+button sits at x=831 in a 700 px strip. Focusing it scrolls the strip **545 px**, brings it to
+x=286, and `elementFromPoint` returns the button itself; `display`, `visibility` and
+`pointer-events` are untouched. That is the difference between scrolled away and hidden, and a
+guard now refuses `display: none` and `visibility: hidden` inside any of the four new stamps.
+
+### The defect the looking found, and it is the one rule 47 exists for
+
+**`data-navname` was both the stamp on `:root` and the route on the control.**
+`$$("[data-navname]")` walks the whole document, so the moment a value other than the default
+was chosen the setting's handler was bound to `<html>` and **every click in the application
+ran it**. Redundant while a value was stamped — and the moment the reader chose the default
+again the attribute was *removed*, `dataset.navname` became `undefined`, and the next click
+anywhere stamped `data-navname="undefined"` on the root. A value no rule matches and no
+control shows, from a setting that had just been set correctly.
+
+`data-palette` / `data-palette-set` is the shape, and its comment says exactly this. The route
+is `data-navname-set` now. **The existing guard could not see it**:
+`test_a_pane_track_attribute_is_never_also_a_route_attribute` covers `PANELS`' fold attributes
+against `NAV_SELECTOR`, and a settings stamp is a different family. The new guard asserts the
+rule over both families at once — no attribute written to `documentElement` may also be a
+selector this shell binds a listener to — and it is derived from the source rather than from a
+list, so the next stamp is covered without anybody remembering.
+
+*Found by reading the DOM, not by a test, and its wreckage is worth recording:* the usage
+counter held `navname:undefined: 120` and `navname:clip: 239` against 11 real choices. Those
+counts were cleared from `dunneflow:mensores:v6` before the session ended, because design rule
+2 retires a setting on exactly that evidence and poisoned evidence is worse than none.
+
+### Two more, both rule 78
+
+* **`dressNavItems()` runs from `buildNav()` and at boot**, and nothing rebuilds the navigator
+  when a centre-pane setting changes — so choosing `wrap` stamped the stylesheet and left
+  every row already on screen unmarked, breaking wherever its box ended. The picture the
+  setting exists to avoid, produced by the setting itself. It re-dresses an existing label now
+  instead of skipping it, and the control calls it.
+* **The fit is a ratio against the window**, so it was stale the instant the window moved.
+  `fitTopbar()` joined the resize handler beside `scheduleFit()` — rule 78 again, with the
+  window as the control nobody had added.
+
+### Nine guards, every one mutation-tested
+
+Three per-setting on the *"four halves, each of which passes alone while the setting is dead"*
+pattern, and six from a way each could ship looking correct: the cut without its ellipsis; the
+wrap without its seams, or with the seams and no CSS; `topFit` without `.app`'s column; the
+clamp unstated or misstated; the strip's children left shrinkable; a stamp that is also a
+route; and `display: none` used to make room. Reverting each fix fails its own guard and
+nothing else.
+
+### What could not be done, and it is the instrument
+
+**The pointer.** `resize_window` reports success and, after it, **no synthetic click reaches
+the page at all** — not in that tab, and not in a tab created afterwards. The window itself
+did resize; the pointer frame stopped mapping onto it. Rule 72, and the same tool the record
+already warns about. Three recoveries were tried and none worked, so it was stopped rather
+than looped on.
+
+Everything here was driven through the page's own handlers and every number is a measurement
+off the live page, and the screenshots are real — but **a scripted click proves the handler
+and only a pointer proves the path to it** (rule 48). The pluralisation work earlier in this
+same session *was* verified at the pointer, before any resize, so the tell is clean. The three
+toggles are `id`-bound like their six siblings, which `selfCheck` provably cannot see either;
+each therefore has a guard naming its id.
+
+**Still to do at the pointer, next session:** press each of the five controls with a real
+pointer at a window that has not been resized by the tool.

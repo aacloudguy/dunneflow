@@ -431,6 +431,67 @@ const DEFAULTS = {
    * keeps all four band headings in reach at once, which is a real preference and not an
    * obviously worse one, so both exist and usage retires the loser (design rule 2). */
   bandScroll: false,
+
+  /* ── what to do when the window is narrower than the thing in it ──────────────
+   *
+   * Three settings, one subject: a surface that cannot fit what it holds. Each ships
+   * **today's behaviour as its default**, because each of the three alternatives is a real
+   * preference rather than a repair, and design rule 2 says the usage counter retires the
+   * loser rather than an argument. */
+
+  /* What a navigator name does when it is wider than the room left for it.
+   *
+   * `'over' | 'clip' | 'wrap'`, and `over` is what ships. Measured 2026-09-08: **335 of
+   * 1,395 rows print their name straight over their counts, 24%**, worst case **101px of
+   * overprint where a 62px box holds 170px of text**. It is neither wrapping nor truncating,
+   * whatever the two comments over `.navlabel` used to say: `overflow-wrap: normal` forbids
+   * a break inside `_schema_validator`, so the flex item cannot shrink below its min-content
+   * width, and `.n` is `flex: none; margin-left: auto`, so it is painted *over* rather than
+   * pushed aside. That is why nothing reported it.
+   *
+   * The default is the defect, deliberately. Both alternatives are mechanisms the stylesheet
+   * argued against in writing, so neither is imposed on a reader who has been reading this
+   * navigator for a fortnight — and both objections turn out to be answerable:
+   *
+   * **`clip`** — *"truncating would hide a name with nothing beside it."* It does not: a
+   * routine row is `data-card`, so its hover card already carries the leaf name **and** the
+   * qualified one, and clicking has always shown it whole.
+   *
+   * **`wrap`** — *"`do_PO / ST` is worse than small type."* True of a break chosen by where
+   * the box ends, which is exactly the argument `breakable()` was written from one surface
+   * over. `jointed()` marks the name's own seams with `<wbr>` — after a dot, after an
+   * underscore, before a camel hump — so the break lands on `do_ / POST`. The count stays on
+   * the first line, which is what the other comment asks for. */
+  navName: 'over',
+
+  /* Whether the toolbar shrinks to fit the window instead of running off it.
+   *
+   * Off, which is today. Measured this session: at `innerWidth 1224` the **document is 1336
+   * wide**, so `#settingsBtn` sits off the right edge and is reachable only by scrolling the
+   * whole page sideways. Tom: *"keep the top Toolbar items always visible, but smaller."*
+   *
+   * **Narrower first, and smaller only for what is left** — his call on the mechanism. The
+   * search box, the two selects and the right-hand group are given permission to yield width
+   * they do not have today, which costs no legibility at all; a local multiplier then takes
+   * up whatever the yielding could not, floored at 0.85 and stated when the floor is reached.
+   *
+   * **It also releases `.app`'s column, and that half is not optional.** `.app` is a grid
+   * with one implicit `auto` column and no `min-width: 0` on its children, so the widest of
+   * the three rows sets the width of all three. A toolbar that only shrank itself would sit
+   * inside a page still 1336 wide with Settings still off the edge — design rule 16 from the
+   * layout rather than from the wiring. */
+  topFit: false,
+
+  /* Whether the version strip holds to one line and scrolls, instead of wrapping.
+   *
+   * Off, which is today: `.verstrip` is `flex-wrap: wrap` and its own comment says why —
+   * it is prose rather than a row of controls, and the alternative to wrapping is truncating
+   * the thing it exists to say. That argument still stands and is still the default.
+   *
+   * What it does not weigh is the **cost**: `.app`'s middle row is `auto`, so a second line
+   * comes off `.body`'s height. On, the strip is one line that clips and scrolls sideways.
+   * A genuine trade between two scarce axes, which is design rule 2 exactly. */
+  verStrip: false,
   /* The two versions. `baseRev` is the one being read — the whole map shows it — and
    * `comparedRev` is the version it is held against.
    *
@@ -673,6 +734,9 @@ function resetSettings(program, current) {
     density: 'row density', bandScroll: 'scrolling change bands',
     coverBars: 'proportion bars on the cover',
     rowTagsWrap: 'tags on their own line', coverWhatWrap: 'wrapped evidence lines',
+    navName: 'what a long navigator name does',
+    topFit: 'the toolbar fitting the window',
+    verStrip: 'the version strip on one line',
     baseRev: 'which version is being read', comparedRev: 'what it is compared with',
     comparedIsNewer: 'which version is taken to be newer',
     searchCase: 'case-sensitive search', searchWord: 'whole-word search',

@@ -531,6 +531,66 @@ body {
 }
 .brand { display: flex; flex-direction: column; line-height: 1.12; flex: none; }
 
+/* ── The toolbar, fitted to the window ──────────────────────────────────────────
+ *
+ * `topFit`, default **off**, so nothing below is reached until a reader asks for it.
+ *
+ * **The first rule is the one the whole setting rests on, and it is not about the toolbar.**
+ * `.app` above is a grid with one implicit `auto` column and no `min-width: 0` on its
+ * children -- unlike `.body > *`, which has it. So the widest of the three rows sets the
+ * width of all three, and at `innerWidth 1224` the document is **1336** wide: `#settingsBtn`
+ * off the right edge, and the inspector's right edge at the same x for the same reason. A
+ * toolbar that shrank itself inside a page still 1336 wide would move nothing a reader can
+ * see -- design rule 16 arriving from the layout rather than from the wiring, which is
+ * exactly the kind that ships.
+ *
+ * Then the toolbar yields. Nothing here changes a size: these are permissions to be
+ * narrower, which is Tom's call on the mechanism -- *narrower first, and smaller only for
+ * what is left*. Each of the four floors at its own min-content today because none of them
+ * carries `min-width: 0`.
+ *
+ * `.brand`'s byline is text and not a control, so it may be cut; every control in this row
+ * stays hit-testable and in the tab order in both branches (design rule 29). */
+:root[data-topfit="on"] .app > * { min-width: 0; }
+:root[data-topfit="on"] .topbar,
+:root[data-topfit="on"] .tb-right,
+:root[data-topfit="on"] .scale-group { min-width: 0; }
+:root[data-topfit="on"] .brand { flex: 0 1 auto; min-width: 0; overflow: hidden; }
+:root[data-topfit="on"] .brand > * { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+:root[data-topfit="on"] .tb-select { flex: 0 1 auto; min-width: 4rem; }
+
+/* ── and then smaller, for what yielding could not reach ──
+ *
+ * `--topbar-fit` is written by `fitTopbar()` from a measurement, clamped at 0.85 (design
+ * rule 6: customisation is clamped and says why -- below that the chrome type stops being
+ * readable, and the Settings row states the floor from the same constant that enforces it).
+ *
+ * **A second multiplier beside design rule 3's one, and it earns the exception.** Every
+ * dimension in this shell is `rem` so that one slider reaches all of them; the toolbar is
+ * the one row whose width is decided by the *window* rather than chosen by anybody, so it
+ * is the one place a local multiplier has something to say. It multiplies rem, so the two
+ * compose: `1em` here is `1rem x --topbar-fit x --scale`.
+ *
+ * The overrides live inside this branch only, which is what keeps the default path byte
+ * for byte what shipped. `.scaleslider`'s width is `em` here for the same reason its
+ * neighbours are -- a fixed `5.5rem` inside a shrinking row is a control that stops
+ * shrinking while everything around it keeps going. */
+:root[data-topfit="on"] .topbar {
+  font-size: calc(1rem * var(--topbar-fit, 1));
+  gap: .75em; padding: .5em .875em;
+}
+:root[data-topfit="on"] .tb-select   { font-size: .8em; padding: .25em .5em; max-width: 14em; }
+:root[data-topfit="on"] .tb-search   { font-size: .8em; padding: .3em .6em; }
+:root[data-topfit="on"] .tb-searchwrap .tb-search { padding-right: 7em; }
+:root[data-topfit="on"] .srcpath     { padding: .16em .5em; }
+:root[data-topfit="on"] .srcpath-k   { font-size: .52em; }
+:root[data-topfit="on"] .srcpath-v   { font-size: .72em; max-width: 11em; }
+:root[data-topfit="on"] .tb-btn      { font-size: .74em; padding: .28em .55em; gap: .3em; }
+:root[data-topfit="on"] .tb-right    { gap: .35em; }
+:root[data-topfit="on"] .scale-group { gap: .2em; padding: .1em .2em; }
+:root[data-topfit="on"] .scale-val   { font-size: .68em; min-width: 2.6em; }
+:root[data-topfit="on"] .scaleslider { width: 5.5em; margin: 0 .15em; }
+
 /* ── The version strip ──────────────────────────────────────────────────────────
    Which version is on screen and what it is held against. Always present: a reader
    must never have to infer from an absence whether they are in a comparison.
@@ -576,6 +636,27 @@ body {
 /* A choice that could not be honoured. Never quiet: the strip is the one surface that
    is always on screen, so it is where a dropped version has to be said. */
 .verstrip-lost { color: var(--sev-suspect); }
+/* **One line, clipped, scrolling** -- `verStrip`, default off, so this is reached only when
+ * a reader asks for it.
+ *
+ * The wrapping argument above still stands and is still the default. What it does not weigh
+ * is the *cost*: `.app`'s middle row is `auto`, so a second line comes off `.body`'s height,
+ * and on a short window that is the pane the reader is actually reading. Two scarce axes,
+ * a genuine trade, so both are built and usage retires the loser (design rule 2).
+ *
+ * **A scrolled-away control is not a hidden one** (design rule 29). `.verstrip-assume` can
+ * end up past the right edge here, and it stays hit-tested, stays in the tab order, and is
+ * scrolled back into view by being focused -- none of which is true of the `visibility:
+ * hidden` that rule was minted from. That is the whole distinction, so it is written where
+ * somebody reading this rule will meet it.
+ *
+ * `flex: none` on the children as well as `nowrap` on the box: a flex item's default is
+ * `1 1 auto`, so without it the items shrink to fit the line rather than overflowing it,
+ * and the strip clips nothing while looking exactly as though the setting had worked. */
+:root[data-verstrip="clip"] .verstrip {
+  flex-wrap: nowrap; overflow-x: auto; white-space: nowrap; scrollbar-width: thin;
+}
+:root[data-verstrip="clip"] .verstrip > * { flex: none; }
 .brand b { font-size: .95rem; font-weight: 700; letter-spacing: -.01em; }
 .brand span { font-size: .54rem; color: var(--chrome-muted); letter-spacing: .06em;
   text-transform: uppercase; margin-top: .1rem; }
@@ -935,14 +1016,46 @@ body {
   padding: .26rem .75rem .26rem 1.5rem;
   display: flex; align-items: baseline; gap: .4rem;
 }
-/* A long name wraps rather than being cut. Nothing is hidden -- truncation would need
-   the full value beside it -- and the count stays put instead of being shoved off the
-   edge by `WitnessHandler.do_POST`. */
-/* A long name shrinks to fit rather than breaking mid-token: "do_PO / ST" is worse
-   than small type, and truncating would hide a name with nothing beside it. */
+/* **What a long name does, and it is the reader's to choose** -- `navName`, default `over`.
+ *
+ * Two comments stood here until 2026-09-08, each arguing for a different mechanism over this
+ * one declaration -- *"a long name wraps rather than being cut… the count stays put"* and
+ * *"a long name shrinks to fit rather than breaking mid-token"* -- and **neither described
+ * what happens**. `overflow-wrap: normal` forbids a break inside `_schema_validator`, so the
+ * flex item cannot shrink below its min-content width and paints straight out of its box;
+ * `.n` below is `flex: none; margin-left: auto`, so it is painted *over* rather than pushed.
+ * Measured: **335 of 1,395 rows, 24%, worst case 101px of overprint in a 62px box.** They
+ * are rewritten as the reversal they are rather than left standing beside code that
+ * contradicts them.
+ *
+ * Both of the mechanisms they rejected are built, and both objections turned out to be
+ * answerable -- see `navName` in `settings.js`. `over` is still the default and reaches
+ * neither rule below: the root carries no `data-navname` at all until somebody chooses one.
+ *
+ * The shrink classes are shared by all three, because they are a rule about the *name* and
+ * these are rules about the *box*. Rule 53 stands over them either way: `>25` and `>17` are
+ * character counts, and the room left is a property of the module path beside them. */
 .nav-item .navlabel { min-width: 0; overflow-wrap: normal; }
 .nav-item .navlabel.long  { font-size: .70rem; }
 .nav-item .navlabel.xlong { font-size: .63rem; letter-spacing: -.01em; }
+/* Cut, with the tail marked. The full name is not lost: a routine row is `data-card` and its
+   hover card carries the leaf *and* the qualified name, and clicking has always shown it
+   whole -- which is the answer to *"truncating would hide a name with nothing beside it"*.
+   `min-width: 0` above is what lets the flex item get small enough for this to fire. */
+:root[data-navname="clip"] .nav-item .navlabel {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+/* Wrapped on the name's own seams. `break-word` alone breaks wherever the box ends, which
+   is the `do_PO / ST` the old comment refused -- so `dressNavItems` marks the joints with
+   `<wbr>` (see `jointed()`) and this only has to allow the break. It stays `overflow:
+   visible`, which is the default and is stated here because the sibling rule above sets a
+   clip: a wrap inside a clip shows the first line and hides the rest, which is a setting
+   that appears to do nothing.
+   `.nav-item` keeps `align-items: baseline`, so the count sits on the first line and stays
+   put -- the thing the other withdrawn comment asked for. */
+:root[data-navname="wrap"] .nav-item .navlabel {
+  overflow-wrap: break-word; white-space: normal; overflow: visible;
+}
 .nav-item .n { flex: none; margin-left: auto; padding-left: .3rem; }
 
 /* The module a routine lives in. Many routines share a name -- `run`, `emit`, `_close` --

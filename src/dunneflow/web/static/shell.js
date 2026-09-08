@@ -2643,11 +2643,25 @@ function buildRevControls() {
  * block whose continuation lines are plain indented prose is one they cannot see. This
  * paragraph names the very thing it is asserting the absence of. */
 
-/* The identities a navigator row carries, as written into `data-navid`. Space separated
- * because ids here are hex digests, plate ids and table names -- none of which contain a
- * space -- and a JSON blob in an attribute is harder to read when something goes wrong. */
+/* The identities a navigator row carries, as written into `data-navid`.
+ *
+ * **A row declares whether it carries more than one, and exactly one kind does.** Space
+ * separated was right about the ids it was written for -- the ways-in rows join node
+ * digests, and a digest cannot contain a space -- and wrong about every other route
+ * through here. `chg` carries `art:<the name the program gave a file>`, and a file called
+ * `release notes.md` came back as two ids that name nothing: not an error, a selection of
+ * nothing, which looks exactly like a row nobody clicked (design rule 16). Mensores has 0
+ * such names and a constant's `module.name` cannot hold a space at all, so this corpus
+ * never exercised it; the next artefact-bearing one can.
+ *
+ * So the split happens only where the writer said there are several, and a single id comes
+ * back whole whatever characters it holds. The alternative was a separator no name can
+ * contain -- a control character -- which fixes the same defect and gives up the one thing
+ * the space was chosen for: an attribute a person can read when something goes wrong. */
 function navIds(b) {
-  return (b.dataset.navid || "").split(" ").filter(Boolean);
+  const raw = b.dataset.navid || "";
+  if (!raw) return [];
+  return b.dataset.navmulti ? raw.split(" ").filter(Boolean) : [raw];
 }
 
 /* Every word in the glossary is a way into the graph, and there are 1,207 of them.
@@ -13478,7 +13492,7 @@ const WIRED_ATTRS = new Set([
      Its own attribute rather than a packed prefix on `node`, for the reason `bnd:` already
      shows: an identifier that means two things resolves plausibly and silently to the
      wrong thing. */
-  "navid", "navtrack", "node", "open", "pane", "pin", "pinnote", "pinsubject",
+  "navid", "navmulti", "navtrack", "node", "open", "pane", "pin", "pinnote", "pinsubject",
   "pinopen", "pkgnode", "pkgpick", "plate", "qual",
   "resize", "row",
   /* `palette-set`, beside `theme-set` and for the same reason: `data-palette` and
@@ -15598,9 +15612,12 @@ const NAV_GROUPS = [
                         current: state.view === "cover" }]),
         /* `sel` is the identity, and it is the whole point: without it these rows differed
          * only by the label they printed, and every one did the same nothing. */
+        /* The one row in the shell that names several nodes, and the only one that may
+           be split on a space: these are node digests. `multi` is what says so -- see
+           `navIds`, which hands every other row its id whole. */
         ...eps.slice(0, 6).map(e => ({
           nav: "ep", label: e.name, n: e.reach, sel: (e.nodes || []).join(" "),
-          epname: e.name,
+          multi: true, epname: e.name,
         })),
       ];
     } },
@@ -16120,6 +16137,9 @@ function navItemHtml(i) {
                   top, and it is the tiny unreadable thing the card replaced. */
               i.card ? `data-card="1"` : ""}
             ${i.sel ? `data-navid="${esc(i.sel)}"` : ""}
+            ${/* Says the row's `data-navid` holds several ids rather than one. Only the
+                  ways-in rows set it, and only they may be split (`navIds`). */
+              i.multi ? `data-navmulti="1"` : ""}
             ${/* The way in's own name, because `sel` carries its routines and the label is
                   fitted and may have been shortened. The route needs the identity, not the
                   text (rule 30). */

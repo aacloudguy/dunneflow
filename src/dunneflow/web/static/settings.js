@@ -492,9 +492,19 @@ const DEFAULTS = {
      reads as the answer. Both are named here rather than left to `state.insp[key]` being
      `undefined`: an unlisted key toggles from nothing on its first click -- so it starts
      closed whatever it wanted -- and "Collapse all" cannot see it until someone has opened
-     it once. `holds`, the fold pane's section, is in exactly that position and has been
-     since it was written; noted here rather than changed, because its default is a decision
-     about that pane and not about this one.
+     it once, because it flips `Object.values(state.insp)` and an absent key is not among
+     them.
+
+     **Three keys were in exactly that position, and the record named one.** `holds` is the
+     fold pane's contents and a plate's; `stands` is what a *merged* plate stands for;
+     `calls` is the call sites behind an arrow. Each is the answer its pane exists to give
+     rather than a caveat on one it already had -- `loops` and `shape`'s test, one pane
+     over -- so all three open. A section a reader has to find before it says anything is a
+     feature nobody meets.
+
+     `test_every_inspector_section_declares_its_default` is what stops the fourth: it reads
+     the `sec("…")` keys out of the shell and requires each to be named here, in the
+     direction that catches an addition rather than a removal.
 
      `loops` and `shape` are ALGORITHMS chunk 5's, and both open: they are the answer the
      pane gained rather than a caveat on one it already had, and a section that has to be
@@ -502,7 +512,8 @@ const DEFAULTS = {
      above -- `sec()` renders `data-open="undefined"` for an unlisted key, which the
      stylesheet does not collapse and the toggle cannot change on its first click. */
   insp: { in: true, out: true, touches: true, gov: true, sig: false,
-          value: true, reads: false, loops: true, shape: true, cols: true },
+          value: true, reads: false, loops: true, shape: true, cols: true,
+          holds: true, stands: true, calls: true },
   sortKey: 'fan',
   sortAsc: false,
 

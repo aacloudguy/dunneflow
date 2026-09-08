@@ -12551,3 +12551,62 @@ def test_the_plate_circle_is_reported_rather_than_assumed() -> None:
         "the outlines are not rebuilt when the layout moves the plates, so they are drawn "
         "where the previous arrangement put them"
     )
+
+
+def test_every_inspector_section_declares_its_default() -> None:
+    """An inspector section the settings do not name starts closed whatever it wanted.
+
+    `sec()` renders `data-open="${state.insp[key]}"`, and for an unlisted key that is the
+    string `undefined` -- which the stylesheet does not collapse and the first click cannot
+    change, because the toggle flips `!state.insp[key]` from nothing. "Collapse all" cannot
+    see it either: it walks `Object.values(state.insp)`, and an absent key is not among
+    them.
+
+    The record named one section in that position, `holds`. There were **three** -- `holds`
+    (a fold's contents, and a plate's), `stands` (what a merged plate stands for) and
+    `calls` (the call sites behind an arrow) -- which is the difference between a note and a
+    guard. This is the guard, and it is deliberately in the direction that catches the
+    *next* section rather than a removed one.
+    """
+    shell = _code(_read("shell.js"))
+    used = set(re.findall(r'\bsec\(\s*"([^"]+)"', shell))
+    assert len(used) >= 10, "sec() changed shape -- this test is blind"
+    settings = _code(_read("settings.js"))
+    m = re.search(r"\n  insp:\s*\{(.*?)\}", settings, re.S)
+    assert m, "the `insp` defaults are no longer an object literal here"
+    declared = set(re.findall(r"([A-Za-z_]\w*)\s*:", m.group(1)))
+    missing = sorted(used - declared)
+    assert not missing, (
+        f"these inspector sections have no default and so start closed whatever they "
+        f"wanted, and 'Collapse all' cannot see them: {missing}"
+    )
+
+
+def test_only_a_row_that_says_so_carries_several_ids() -> None:
+    """`data-navid` is split on a space only where the writer declared several.
+
+    Splitting every row's ids on a space was right about the ways-in rows, whose ids are
+    node digests, and wrong about `chg`: it carries `art:<the name the program gave a
+    file>`, and a name with a space in it resolved to two ids that name nothing -- a
+    selection of nothing, which looks exactly like a row nobody clicked.
+
+    Both halves are checked. `navIds` must ask the row, and a producer that joins several
+    ids must say so, or the ways-in rows come back as one id that names nothing -- the same
+    defect pointed the other way.
+    """
+    js = _code(_read("shell.js"))
+    fn = js[js.index("function navIds(b) {"):]
+    fn = fn[:fn.index("\n}")]
+    assert "dataset.navmulti" in fn, (
+        "navIds splits every row's ids again, so an id containing a space resolves to two "
+        "that name nothing"
+    )
+    assert '[raw]' in fn, "a single id is no longer handed back whole"
+    for line in js.splitlines():
+        if re.search(r"\bsel:\s*\(.*\.join\(", line):
+            assert "multi: true" in line or "multi: true" in js[js.index(line):][:400], (
+                f"a row joins several ids without declaring it: {line.strip()}"
+            )
+    assert 'i.multi ? `data-navmulti="1"`' in js, (
+        "navItemHtml no longer writes the attribute navIds asks for"
+    )

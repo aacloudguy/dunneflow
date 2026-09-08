@@ -14,6 +14,12 @@
   --text:          #0f172a;
   --text-muted:    #5a6675;
   --rail:          1.75rem;   /* width of a collapsed pane's rail */
+  /* The narrowest the centre may be squeezed to before `.body` scrolls instead.
+     Read by the four `grid-template-columns` below and stated in JS as
+     `CENTRE_FLOOR_REM`, which sizes the navigator against it; a test keeps the two
+     numbers equal, because a floor that disagrees with itself is a pane that vanishes
+     at one width and not the other. */
+  --centre-floor:  16rem;
   --text-faint:    #8894a5;
   --accent:        #0d7f75;
   --accent-soft:   #d7efec;
@@ -832,9 +838,9 @@ body {
  * property of the grid. A pane hidden with `display:none` while its column stayed 22rem
  * would leave a 22rem hole -- which is the shape of the defect this shell already had once,
  * from the other direction. */
-.body[data-navtrack="off"]  { grid-template-columns: var(--rail) 1fr 22rem; }
-.body[data-insp="off"] { grid-template-columns: var(--nav-w, 21rem) 1fr var(--rail); }
-.body[data-navtrack="off"][data-insp="off"] { grid-template-columns: var(--rail) 1fr var(--rail); }
+.body[data-navtrack="off"]  { grid-template-columns: var(--rail) minmax(var(--centre-floor), 1fr) 22rem; }
+.body[data-insp="off"] { grid-template-columns: var(--nav-w, 21rem) minmax(var(--centre-floor), 1fr) var(--rail); }
+.body[data-navtrack="off"][data-insp="off"] { grid-template-columns: var(--rail) minmax(var(--centre-floor), 1fr) var(--rail); }
 .body[data-navtrack="off"]  > .navigator,
 .body[data-insp="off"] > .inspector { display: none; }
 
@@ -845,13 +851,32 @@ body {
   position: relative;
   /* `--nav-w` is set by `applyNavWidth()` and dragged by the divider; the fallback is what
    * a reader sees before settings are adopted, never a second source of truth. */
-  grid-template-columns: var(--nav-w, 21rem) 1fr 22rem;
+  grid-template-columns: var(--nav-w, 21rem) minmax(var(--centre-floor), 1fr) 22rem;
   /* One row, and it may not grow past the space it was given. Without this the row is
    * sized `auto` and takes the height of the tallest pane -- the navigator, whose content
    * runs to 1,151px -- so the panes stood 700px tall inside a 446px box and the document
    * scrolled. `minmax(0, 1fr)` is the row half of the same fix as `min-height: 0` below. */
   grid-template-rows: minmax(0, 1fr);
   min-height: 0;
+  /* **The panes keep their width and the row scrolls**, which is the version strip's
+   * mechanism a third time and Tom's call: *"It would be better to collapse it and permit
+   * horizontal scrolling, with a visible bar at the bottom of the screen. The BASE works
+   * like this, and that is fine."*
+   *
+   * What was here instead were two breakpoints that **deleted a pane** -- see the block
+   * that used to follow. With the centre floored rather than free, three tracks on a narrow
+   * window come to more than the window holds, and this is where that goes: a bar at the
+   * foot of the screen, the panes intact, and every fold button and every rail working at
+   * every width.
+   *
+   * `overflow-y: hidden` is not tidiness. `overflow-x: auto` alone computes the other axis
+   * to `auto` by spec, and the horizontal bar itself costs ~15px of height -- enough to
+   * overflow a row that is exactly `1fr` and raise a second, vertical bar on a pane that
+   * already scrolls its own contents. Each pane owns its vertical scrolling; this row owns
+   * none. */
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
 }
 
 /* A grid item defaults to `min-height: auto`, which refuses to shrink below its content.
@@ -876,21 +901,44 @@ body {
  *
  * So they are px, at exactly the widths the rem values were meant to express, and the
  * surface inside them stays rem. */
-@media (max-width: 1088px) {                 /* was 68rem, intended as 68 × 16px */
-  .body { grid-template-columns: 12rem 1fr; }
-  /* Out-specified on purpose: `.inspector { display: flex }` is declared later in this
-   * file, a media query contributes no specificity, and equal specificity is settled by
-   * source order -- so the plain `.inspector` here lost and the pane rendered anyway,
-   * wrapping onto a second grid row because only two columns are declared. That put
-   * "Nothing selected" at the bottom left and an empty strip beside it, and forced the
-   * whole app taller than the window. `.body >` makes this win wherever it sits.
-   * Same family as the `[hidden]` defect: the wiring was right and the paint was wrong. */
-  .body > .inspector { display: none; }
-}
-@media (max-width: 768px) {                  /* was 48rem, intended as 48 × 16px */
-  .body { grid-template-columns: 1fr; }
-  .body > .navigator { display: none; }
-}
+/* ── the two breakpoints that used to be here, and why they are gone ──────────────
+ *
+ * They read:
+ *
+ *     @media (max-width: 1088px) { .body { grid-template-columns: 12rem 1fr; }
+ *                                  .body > .inspector { display: none; } }
+ *     @media (max-width: 768px)  { .body { grid-template-columns: 1fr; }
+ *                                  .body > .navigator { display: none; } }
+ *
+ * Reported by Tom with a picture: *"With a narrow window, the left Navigator pane collapses
+ * and cannot be brought back without making the window wide again."*
+ *
+ * **A pane was deleted, not collapsed, and the difference is the whole report.** Collapsing
+ * is `data-navtrack="off"`: the track becomes a rail, the rail is drawn, and pressing it
+ * brings the pane back (design rule 24). These rules did something else -- `display: none`
+ * on the pane while `state.panels.navigator` stayed **true**. So `applyPanels` hid the rail,
+ * because a rail is only drawn for a pane that is *closed*, and the pane was open. Open,
+ * undrawn, no rail: measured at `innerWidth 380`, `data-navtrack="on"`, the column really
+ * `192px`, and `.navigator` at `display: none` inside it. The inspector had it too at
+ * 1088 and was found the same way.
+ *
+ * That is precisely the hole the comment above `.body[data-navtrack]` warns about -- *"a
+ * pane hidden with `display:none` while its column stayed 22rem"* -- arriving four rules
+ * later in the same file.
+ *
+ * **And neither `grid-template-columns` here ever applied when it mattered**, which is rule
+ * 29 in the block whose own comment cites rule 29. A media query contributes no
+ * specificity, so the bare `.body` inside it was outranked by `.body[data-insp="off"]`
+ * above: at `innerWidth 380` the columns were still `192px 152.5px 28px`, three tracks for
+ * two visible panes, and the remaining children auto-placed one track to the left. The
+ * `display: none` half won only because it was written `.body >`.
+ *
+ * Replaced by the floor and the scrollbar on `.body` above. A narrow window now keeps every
+ * pane, scrolls, and leaves both fold buttons and both rails working -- which is what makes
+ * *collapse* a thing the reader does rather than a thing the window does to them.
+ *
+ * `.navgrip`'s own `max-width: 768px` rule went with them: it hid the grip because below
+ * that width there was no navigator to resize, and now there is. */
 
 /* The drag grip between the navigator and the centre.
  *
@@ -912,7 +960,6 @@ body {
 .navgrip:hover::after, .navgrip.active::after { background: var(--accent); }
 .navgrip:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .body[data-navtrack="off"] > .navgrip { display: none; }
-@media (max-width: 768px) { .navgrip { display: none; } }
 
 /* The rail: what a collapsed pane leaves behind.
  *
@@ -1193,8 +1240,9 @@ body {
  *
  * A fifth of the rows and half the worst case at full width, and **almost nothing at
  * 12rem** -- because there the name alone is wider than the row and there is no space to
- * redistribute. That 12rem is not hypothetical: `@media (max-width: 1088px)` above puts
- * every window narrower than that into it. What is left needs a decision about the *name*
+ * redistribute. That 12rem is not hypothetical: it is `NAV_MIN_REM`, the floor `navMaxRem()`
+ * clamps to, and every window too narrow to give the navigator more lands on it. (It used to
+ * be reached by a breakpoint as well; that breakpoint deleted the pane and is gone.) What is left needs a decision about the *name*
  * -- wrap it, truncate it, or let the row grow (rule 84) -- and all three are refused by
  * one or other of the two comments over `.navlabel`. Filed rather than guessed at. */
 .nav-item .navsub {

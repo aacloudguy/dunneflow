@@ -368,6 +368,100 @@ def test_layout_dimensions_are_stored_in_rem() -> None:
     assert not offenders, f"layout dimensions the scale multiplier cannot reach: {offenders}"
 
 
+def test_a_narrow_window_never_deletes_a_pane_it_cannot_fit() -> None:
+    """Reported by Tom with a picture, and the wording is the whole diagnosis: *"the left
+    Navigator pane collapses and cannot be brought back without making the window wide
+    again."*
+
+    **It was not collapsed, it was deleted.** Collapsing is `data-navtrack="off"`: the track
+    becomes a rail, the rail is drawn, and pressing it brings the pane back (design rule 24).
+    Two breakpoints did something else -- `display: none` on the pane while
+    `state.panels.navigator` stayed **true** -- so `applyPanels` hid the rail, because a rail
+    is only drawn for a pane that is *closed*. Open, undrawn, and no way back. Measured at
+    `innerWidth 380`: `data-navtrack="on"`, the column really `192px`, `.navigator` at
+    `display: none` inside it. The inspector had the same thing at 1088 and was found the
+    same way, by opening it and looking.
+
+    That is exactly the hole the comment over `.body[data-navtrack]` warns about -- *"a pane
+    hidden with `display:none` while its column stayed 22rem"* -- four rules later in the
+    same file.
+
+    **And the `grid-template-columns` beside each `display: none` never applied**, which is
+    rule 29 inside the block whose own comment cites rule 29. A media query contributes no
+    specificity, so the bare `.body` in it lost to `.body[data-insp="off"]` above: at 380 the
+    columns were still `192px 152.5px 28px` -- three tracks for two visible panes, with the
+    survivors auto-placed one track to the left. Only the `display: none` won, because it
+    alone was written `.body >`.
+
+    The replacement is Tom's: floor the centre and let the row scroll, which is the version
+    strip's mechanism a third time. *"The BASE works like this, and that is fine."*
+    """
+    css = _read("tokens.css")
+    js = _code(_read("shell.js"))
+    # Comments stripped first, and this test learned that the same way
+    # `test_every_dimension_is_in_rem` did: the block explaining why these breakpoints were
+    # deleted *quotes them*, so a scan of the raw file finds `.navigator { display: none }`
+    # inside the prose that records its removal and reports the explanation as the defect.
+    bare = re.sub(r"/\*.*?\*/", "", css, flags=re.S)
+
+    # 1. No breakpoint may delete either pane. Written as a scan of every `@media` block
+    #    rather than of the two that existed, because the next one is the one that hurts.
+    for block in re.findall(r"@media[^{]*\{(.*?)\n\}", bare, re.S):
+        for pane in (".navigator", ".inspector"):
+            assert not re.search(re.escape(pane) + r"[^{;]*\{[^}]*display:\s*none", block), (
+                f"a breakpoint hides {pane} while its grid track stays, which is a pane that "
+                "is open, undrawn, and has no rail to bring it back (design rule 24)"
+            )
+
+    # 2. The row scrolls instead, and owns no vertical scrolling of its own.
+    body = bare.split("\n.body {", 1)
+    assert len(body) > 1, "`.body` no longer has a rule of its own"
+    decl = body[1].split("\n}", 1)[0]
+    assert "overflow-x: auto" in decl, (
+        "`.body` does not scroll, so three tracks wider than the window are simply "
+        "unreachable — which is what the deleted breakpoints were papering over"
+    )
+    assert "overflow-y: hidden" in decl, (
+        "`overflow-x: auto` computes the other axis to `auto` by spec, and the horizontal "
+        "bar's own height then raises a second, vertical bar over panes that already scroll "
+        "their own contents"
+    )
+
+    # 3. The centre is floored -- in every one of the four declarations, not just the base.
+    #    Four copies of a track list is four places to forget one (rule 51's shape).
+    # Selected by *selector*, never by the shape of the value: filtering on `--rail`
+    # swept in `.graphmount[data-legend="off"]`, which is the legend's own grid one pane
+    # over and has nothing to do with the centre floor.
+    body_tracks = [
+        m.group(1)
+        for sel, decls in re.findall(r"([^{}]+)\{([^{}]*)\}", bare)
+        if sel.strip().startswith(".body")
+        for m in [re.search(r"grid-template-columns:\s*([^;]+);", decls)]
+        if m
+    ]
+    assert len(body_tracks) == 4, (
+        f"expected the four `.body` track declarations, found {len(body_tracks)}: "
+        f"{body_tracks}"
+    )
+    for t in body_tracks:
+        assert "minmax(var(--centre-floor), 1fr)" in t, (
+            f"a `.body` track list has an unfloored centre: {t!r} — `1fr` collapses to zero "
+            "on a narrow window, so the row never overflows and never scrolls, and the "
+            "centre is squeezed out instead"
+        )
+
+    # 4. And the floor is the same number in both languages.
+    m = re.search(r"--centre-floor:\s*(\d+)rem", bare)
+    assert m, "the centre floor is no longer a token, so the two languages can drift"
+    n = re.search(r"const CENTRE_FLOOR_REM = (\d+);", js)
+    assert n, "CENTRE_FLOOR_REM is gone, and it is what sizes the navigator against the floor"
+    assert m.group(1) == n.group(1), (
+        f"the centre floor is {m.group(1)}rem in CSS and {n.group(1)}rem in JS — the "
+        "navigator is sized against one and the grid holds the other, so a pane vanishes at "
+        "one width and not the other"
+    )
+
+
 # ------------------------------------------------------------- the breakpoints --- #
 
 def test_breakpoints_are_px_because_a_media_rem_is_not_the_pages_rem() -> None:

@@ -214,6 +214,45 @@ adding to it would have carried the drift forward.*
 `2026-09-08T13:39:50Z` (628 files, Society at 08-29) working, `2026-09-07T15:32:31Z` (625,
 at 08-26) sealed.
 
+### A narrow window deleted a pane instead of collapsing it (2026-09-08)
+
+Tom, with a picture: *"the left Navigator pane collapses and cannot be brought back without
+making the window wide again. It would be better to collapse it and permit horizontal
+scrolling, with a visible bar at the bottom of the screen. The BASE works like this, and
+that is fine."*
+
+**It was not collapsed, it was deleted.** Two breakpoints did `display: none` on the pane
+while `state.panels.navigator` stayed **true**, so `applyPanels` hid the rail — a rail is
+only drawn for a pane that is *closed*. Open, undrawn, nothing to press. Reproduced at
+`innerWidth 380`: `data-navtrack="on"`, the column really **192px**, `.navigator` at
+`display: none` inside it. **The hole the comment four rules above it warns about**, in the
+same file.
+
+**The inspector had it too**, at 1088 instead of 768, and it was not in the report only
+because Tom's inspector was already folded. Same cause, found by opening it.
+
+**And neither `grid-template-columns` in those blocks ever applied** — rule 29, in the block
+whose own comment cites rule 29 for its sibling. A media query has no specificity, so the
+bare `.body` lost to `.body[data-insp="off"]`: at 380 the columns were still
+`192px 152.5px 28px`, three tracks for two visible panes, survivors auto-placed one track
+left. Only the `display: none` won, because it alone was written `.body >`.
+
+Replaced by Tom's mechanism, which is the version strip's a third time: `--centre-floor:
+16rem` (a token, because `CENTRE_FLOOR_REM` in JS is the same number and a test keeps them
+equal), `minmax(var(--centre-floor), 1fr)` in **all four** `.body` track declarations, and
+`overflow-x: auto; overflow-y: hidden; scrollbar-width: thin` on `.body`.
+
+| `innerWidth` | columns | `.body` | page |
+|---|---|---|---|
+| 380 | `192px 256px 352px`, all three drawn | 380 of **800**, scrolls, 5px bar | does not scroll |
+| 950 | `288px 310px 352px`, all three drawn | fits | does not scroll |
+
+The cycle that was impossible, at 380: fold → rail drawn at 28@0 → press it → pane back.
+
+*No **automatic** collapse was built.* With the row scrolling there is no need for one, and a
+window that rearranges the reader's panes by itself is a separate call — `inspectorAuto`
+shows the shape it would take, trap included. Offered rather than assumed.
+
 ### A name with no seam, divided rather than cut anywhere (2026-09-08)
 
 Item 7, closed the day it was filed. Tom: *"proceed with a reasonable fix that breaks words

@@ -13060,3 +13060,87 @@ settles it.
 
 Nine mutations, nine catches. `jointed()` is called from `dressNavItems` and nowhere else, so
 the change is contained to the navigator under `wrap`.
+
+## 2026-09-08 — a narrow window deleted a pane instead of collapsing it
+
+Tom, with a picture: *"With a narrow window, the left Navigator pane collapses and cannot be
+brought back without making the window wide again. It would be better to collapse it and
+permit horizontal scrolling, with a visible bar at the bottom of the screen. The BASE works
+like this, and that is fine."*
+
+**It was not collapsed. It was deleted**, and the difference is the whole report.
+
+### What was there
+
+```css
+@media (max-width: 1088px) { .body { grid-template-columns: 12rem 1fr; }
+                             .body > .inspector { display: none; } }
+@media (max-width: 768px)  { .body { grid-template-columns: 1fr; }
+                             .body > .navigator { display: none; } }
+```
+
+Collapsing is `data-navtrack="off"`: the track becomes a rail, the rail is drawn, and
+pressing it brings the pane back (design rule 24). These did something else — `display:
+none` on the pane while `state.panels.navigator` stayed **true**. So `applyPanels` hid the
+rail, because a rail is only drawn for a pane that is *closed*, and this one was open. Open,
+undrawn, and nothing to press.
+
+Reproduced at `innerWidth 380`: `data-navtrack="on"`, the column really **192px**, and
+`.navigator` at `display: none` inside it. **That is exactly the hole the comment four rules
+above it warns about** — *"a pane hidden with `display:none` while its column stayed 22rem
+would leave a 22rem hole"* — arriving in the same file, under a comment of its own.
+
+**The inspector had it too**, at 1088 rather than 768, and it was not in the report because
+Tom's inspector was already folded. Opened at `innerWidth 950`: `data-insp="on"`,
+`.inspector` `display: none`, `#inspectorRail` `hidden`. Same defect, same cause, found by
+opening it and looking.
+
+**And neither `grid-template-columns` ever applied when it mattered** — rule 29, inside the
+block whose own comment cites rule 29 for its sibling. A media query contributes no
+specificity, so the bare `.body` in it was outranked by `.body[data-insp="off"]` above: at
+380 the columns were still `192px 152.5px 28px`, three tracks for two visible panes, with
+the survivors auto-placed one track to the left (that is why `#inspectorRail` measured 153px
+wide, in the centre's track). Only the `display: none` won, because it alone was written
+`.body >`.
+
+### What replaced them, and it is Tom's mechanism
+
+The centre gets a floor and the row scrolls — the version strip's mechanism a third time,
+which is what *"the BASE works like this"* points at.
+
+* `--centre-floor: 16rem`, a token because `CENTRE_FLOOR_REM = 16` in JS sizes the navigator
+  against the same number; a test keeps them equal, since a floor that disagrees with itself
+  is a pane that vanishes at one width and not the other.
+* All **four** `.body` track declarations take `minmax(var(--centre-floor), 1fr)`. Four
+  copies of a track list is four places to forget one, so the guard checks all four rather
+  than the base.
+* `.body` gets `overflow-x: auto; overflow-y: hidden; scrollbar-width: thin` — the strip's
+  own declarations. `overflow-y: hidden` is not tidiness: `overflow-x: auto` computes the
+  other axis to `auto` by spec, and the horizontal bar's ~15px would then raise a vertical
+  bar over panes that already scroll their own contents.
+
+### Measured after
+
+| `innerWidth` | columns | panes | `.body` | page |
+|---|---|---|---|---|
+| 380 | `192px 256px 352px` | all three drawn | 380 of **800**, scrolls, 5px bar | does not scroll (`docSW` 380) |
+| 950 | `288px 310px 352px` | all three drawn | fits, no bar | does not scroll |
+
+And the cycle that was impossible, at 380: fold → `28px 256px 352px`, `.navigator` gone,
+**rail drawn at 28@0**; press the rail → back to `192px 256px 352px`. Design rule 24 honoured
+at a width where it could not be before.
+
+*What was deliberately not built is an **automatic** collapse.* With the row scrolling there
+is no longer a need for one, and a window that changes the reader's arrangement by itself is
+a different call — the existing `inspectorAuto` shows the shape it would have to take,
+including the trap its own comment records: *"the rail would be unclickable: it would reopen
+and immediately re-collapse, which reads as broken."* Offered rather than assumed.
+
+`.navgrip`'s own `@media (max-width: 768px)` went with them: it hid the grip because below
+that width there was no navigator to resize, and now there is.
+
+Seven mutations, seven catches — run before the sentence was written this time. The guard
+strips comments before scanning, and learned that the way
+`test_every_dimension_is_in_rem` did: the block explaining why these breakpoints were
+deleted **quotes them**, so a raw scan finds `.navigator { display: none }` inside the prose
+recording its removal and reports the explanation as the defect.

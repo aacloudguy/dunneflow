@@ -12070,3 +12070,83 @@ outside standard was for.
 *The shape worth keeping:* a sentence stating what the tool **can** do is a claim, and rule 13
 applies to it exactly as to a number. Neither of these was catchable by a test that did not
 know the sentence existed, so both are now guarded by name.
+
+## 2026-09-08 — the maps that could not be opened, and the command they were sent to
+
+The second item of the scheduled pass read: *"Two maps in `output/` cannot be opened, both
+refusing exactly as designed and both one command away."* Two of those three claims were
+wrong.
+
+**There were three, not two.** `revisions.program_dirs(output/)` lists four — `beads`,
+`dunneflow`, `mensores` and `mensores@2026-08-29T19-43-39Z` — and only `mensores` opened.
+The fourth had never been counted because nothing had opened it since the layout that named
+it went away.
+
+**And the command each was sent to would have refused it.** `Store._refuse_if_stale` is
+written to name *which* of two fixes applies, and its docstring is careful about why:
+`migrate` rewrites in place and keeps a sealed snapshot whose source tree may be long gone,
+so telling that reader to re-analyse asks them to rebuild from a tree they do not have. But
+the test it used was `paths_are_relative` alone — *when* the store was written — while the
+thing that decides is `_require_previous`, which admits exactly one fingerprint, on the claim
+that making paths relative is the only thing that changed. Two facts, one test, and the
+sentence was reading the wrong one.
+
+Every store older than that single gated version was therefore told to run
+`dunneflow migrate`, and the migration refused it in turn. Rule 49's shape in prose: a
+plausible remedy standing where the real one should be, and it costs nothing at all until
+somebody keeps an old map.
+
+Run, all three said so:
+
+```
+refused: graph.db was written by extractor (unrecorded), and this migration can only
+speak for 5:ec365db458b9d64e …
+refused: source.db holds bodies for 2026-08-29T19:43:39Z and there is no graph beside it
+recording which tree they were read from …
+```
+
+`beads` carries no `extractor` key at all and `schema_version 1`; `dunneflow` and
+`mensores@2026-08-29T19-43-39Z` carry `5:20ecd553bee5e82b` and `5:c9bf8451cc07caa7`, neither
+of them the gated value. Nothing was damaged by trying: `_migrate_one` refuses before
+`BEGIN`, and `migrate_program` reads the sidecar first, so the second directory's graph meta
+was byte-identical afterwards.
+
+**The fix is one predicate, in the module that owns the gate.** `migration_speaks_for` lives
+in `migrate.py` beside `_require_previous`, and both refusals ask it — `store.py` on
+`PREVIOUS_CODE_EXTRACTOR`, `docstore.py` on `PREVIOUS_DOC_EXTRACTOR`, the compared value
+being the only thing that differs (rule 51; the two sentences were already copies of each
+other, and a copy is where this kind of thing goes unnoticed twice).
+
+It tests the fingerprint and **deliberately not the recorded root**. `_migrate_one` has a
+second refusal — a store recording no tree has nothing to be made relative *to* — and
+answering that here would mean rebuilding `recorded_roots`' per-revision bookkeeping inside a
+read path in order to word a sentence. It is also reachable only *past* this gate, so a store
+this admits and the migration then refuses is told the truth twice, one refusal after the
+other, which is the honest failure rather than the plausible one.
+
+**The guard that was missing is the one for the case nobody had.**
+`test_a_reader_refuses_an_unmigrated_store_names_the_fix_and_repairs_nothing` builds its
+legacy store *with* the gated fingerprint, so it passed before and passes now. The new one
+stamps an older fingerprint, asserts the refusal names `analyze` and not `migrate`, and then
+asserts `migrate_program` would indeed have refused it — so the sentence is readable off the
+thing that decides it (rule 13). A second guard asserts both modules ask the predicate and
+neither still branches on `paths_are_relative`.
+
+**Then the maps themselves.** `dunneflow` re-analysed into its own working revision (71
+files, 849 routines, 9 documents — `program_dirs` keeping `output/` out of its own corpus,
+which is what that function was written for). `beads` re-analysed too: it is a **Go** program
+with 30 Python files, of which 14 are in the map, so it was always a probe rather than a
+subject — but a probe that lists in the selector and refuses is worth one command. Three of
+the four now open.
+
+**The fourth is a decision rather than a defect.** `output/mensores@2026-08-29T19-43-39Z` is
+an old-style directory whose name is a revision stamp from before the revision layout existed,
+and its `source_root` is `mensores-overhaul` — the third tree `CLAUDE.md` warns is neither end
+of the pair, and which cost a wasted analysis once already. Re-analysing it would re-read
+exactly that tree into a directory whose name is a leftover. Left for Tom: drop it, or leave
+it listed and refusing.
+
+*Two dead files sit beside each of the rebuilt maps* — a bare `graph.db` and `docs.db` from
+before the revision layout, superseded by the `graph@…` pair and never chosen by
+`revisions.newest`. Inert, and not swept: `sourcedb.py` owns no `DROP` by design, and this is
+the same manual pass a superseded sealed snapshot gets.

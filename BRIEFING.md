@@ -200,8 +200,10 @@ program has a most-commented routine and a maximum alone is a claim nobody can w
 
 ## What we are doing now
 
-**A bug-fix pass, 2026-09-08. Five commits, nothing half-written.** 1,213 tests, mypy clean
-over 120 source files, ruff clean, `check` 0 broken, working tree clean, no servers running.
+**A bug-fix pass, 2026-09-08. Six commits, nothing half-written.** 1,216 tests — counted
+rather than carried, since this file said 1,213 and two were added, which does not reach it
+(rule 24) — mypy clean over 120 source files, ruff clean, `check` 0 broken, working tree
+clean, no servers running.
 `output/mensores` holds the pair rebuilt under the new documentation rule:
 `2026-09-08T13:39:50Z` (628 files, Society at 08-29) working, `2026-09-07T15:32:31Z` (625,
 at 08-26) sealed.
@@ -289,22 +291,47 @@ change invalidates, including the ones nothing else mentions.** Rule 12 says a c
 only as good as the tool that read it; this is the other end of it — the recipe that repairs
 the staleness has to be as complete as the fingerprint that detects it.
 
-**One thing is left undone and it needs a hand.** Dropping the superseded sealed snapshot is
-a manual pass by design (`sourcedb.py` owns no `DROP`, and `test_source.py:171` asserts it).
-The two `.db` files are gone; the **sidecar rows are not**, because the sandbox refused the
-write. `/api/revisions` handles that state honestly — the sidecar says what a revision is,
-the directory says whether a graph exists to read it with — so nothing is broken, but
-`revisions` lists a third snapshot that cannot be opened. The one command that finishes it:
+~~**One thing is left undone and it needs a hand.**~~ *Closed 2026-09-08 — Tom ran it.*
+Dropping the superseded sealed snapshot is a manual pass by design (`sourcedb.py` owns no
+`DROP`, and `test_source.py:171` asserts it): the two `.db` files went first, and the
+**sidecar rows** needed the one command this entry carried. Verified — both sidecars now hold
+exactly the two live snapshots, `2026-09-08T13:39:50Z` (628 paths) and `2026-09-07T15:32:31Z`
+(625), and `2026-09-07T14:55:40Z` is gone from `paths` and `revisions` in each.
 
-```bash
-uv run python -c "
-import sqlite3
-for db in ('source.db', 'docsource.db'):
-    c = sqlite3.connect(f'output/mensores/{db}')
-    c.execute(\"DELETE FROM paths WHERE revision = '2026-09-07T14:55:40Z'\")
-    c.execute(\"DELETE FROM revisions WHERE revision = '2026-09-07T14:55:40Z'\")
-    c.commit(); c.close()"
-```
+### And the maps in `output/`, three of which refused and were sent to the wrong command
+
+The scheduled item read *"two maps cannot be opened, both refusing exactly as designed and
+both one command away."* **Three refused, and the command was not one away.**
+
+`Store._refuse_if_stale` exists to name *which* of two fixes applies, and its reasoning is
+right: a graph written before paths went relative needs `migrate`, which rewrites in place
+and keeps a sealed snapshot whose source tree may be long gone. But it tested
+`paths_are_relative` — *when* the store was written — where the migration tests
+`_require_previous`, which admits **one** fingerprint on the claim that making paths relative
+is the only thing that changed. Two facts, one test. Every store older than that single
+version was told to migrate, and the migration refused it in turn: rule 49's shape in prose.
+
+`migration_speaks_for` is now in `migrate.py` beside the gate, and both refusals ask it —
+the graph on `PREVIOUS_CODE_EXTRACTOR`, the document store on `PREVIOUS_DOC_EXTRACTOR`, the
+compared value the only difference (rule 51). It tests the fingerprint and **not** the
+recorded root: that root is read per revision from a graph which may not be the store being
+refused, and it is reachable only past this gate — so a store admitted here and refused there
+is told the truth twice rather than plausibly once. The old guard built its legacy store
+*with* the gated fingerprint and still passes; the new one stamps an older fingerprint and
+asserts `migrate_program` would in fact have refused it (rule 13).
+
+**`dunneflow` and `beads` were then re-analysed and both open** — 71 files and 849 routines,
+14 files and 239. `beads` is a **Go** program with 30 Python files, so it was always a probe
+rather than a subject; a probe that lists in the selector and refuses is still worth one
+command.
+
+**The fourth is a decision, and it is open.** `output/mensores@2026-08-29T19-43-39Z` is an
+old-style directory whose *name* is a revision stamp from before the revision layout, and its
+`source_root` is `mensores-overhaul` — the third tree `CLAUDE.md` warns is neither end of the
+pair, and which cost a wasted analysis once already. Re-analysing it would re-read exactly
+that tree into a directory named after a layout that is gone. **Drop it, or leave it listed
+and refusing?** Tom's call; nothing is broken either way, and the refusal now names a command
+that would work.
 
 ### Before that: the plates, coupled and framed (2026-09-07/08)
 
@@ -1968,11 +1995,14 @@ them — the entries are still where an item is closed, and this is only the ord
    The instrument reaches all of them — the pointer covers the whole viewport, the capture
    covers the top-left quarter, and `transform: translate(-x,-y)` on the body pans one over
    the other (rule 83). It was used that way this session and it works.
-2. **Two maps in `output/` cannot be opened**, both refusing exactly as designed and both one
-   command away: `output/beads` wants `dunneflow migrate` (rule 60) and `output/dunneflow`
-   wants a re-`analyze`. They are two of the four entries the program selector lists.
-3. **The superseded snapshot's sidecar rows** — see *What the rebuild cost* at the top of
-   this file. One command, and it needs a hand.
+2. ~~**Two maps in `output/` cannot be opened**, both refusing exactly as designed and both
+   one command away.~~ *Closed 2026-09-08, and it was wrong on both counts — see the top of
+   this file. There were **three**, not two, and the command each was sent to would have
+   refused it: `_refuse_if_stale` branched on absolute paths where the migration branches on
+   a fingerprint. Three of the four now open; the fourth is a decision below rather than a
+   defect.*
+3. ~~**The superseded snapshot's sidecar rows.**~~ *Closed 2026-09-08 — Tom ran the command,
+   and it is verified at the top of this file.*
 4. **The rebuild-recipe rule**, to mint or refuse: *a rebuild recipe must name every store
    the change invalidates.* `standards.db` is a document store, went stale with the corpus,
    and stopped `serve` from booting at all.

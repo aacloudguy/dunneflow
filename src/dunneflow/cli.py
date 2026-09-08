@@ -25,6 +25,7 @@ from . import revisions
 from .anomalies import BROKEN, INFO, SUSPECT, detect
 from .docstore import DocStore
 from .migrate import MigrationRefused, migrate_program
+from .render.index import legacy_map_files, render_index
 from .render.markdown import render_all
 from .resolve import version as program_version
 from .resolve.calls import resolve_calls
@@ -519,6 +520,11 @@ def cmd_analyze(args: argparse.Namespace) -> int:
     # re-analysis with nothing changed reads no source at all. Content-addressed, so this
     # is also the store the temporal layers will be built on.
     src_stats = None
+    # What the index will say about every snapshot here, taken from the handle already
+    # open. A second read-only handle to a database this process is holding is 36x slower
+    # (rule 58), and it would also have to be opened after the close below to be correct --
+    # two reasons to ask now and one answer.
+    rev_rows: tuple[dict[str, object], ...] = ()
     if source is not None:
         prog.step(STEP_BODIES)
         src_stats = capture_source(store.known_hashes(), source, root=source_root,
@@ -541,19 +547,40 @@ def cmd_analyze(args: argparse.Namespace) -> int:
                 + (f", {sc['mapped']:,} path-revision rows in all"
                    if sc["revisions"] > 1 else "")
             )
+        rev_rows = tuple(source.revisions())
         source.close()
 
     if not args.no_render:
         prog.step(STEP_RENDER)
         t2 = time.perf_counter()
         store.warm()
-        files = render_all(store, out_dir, source_root, program,
+        # **Into a directory named for this revision**, so a second analysis writes a
+        # second map rather than over the first one's. The databases have been
+        # revision-named since the spine went in; the written map was not, and a sealed
+        # snapshot -- which exists to be readable after its source tree is gone -- kept its
+        # graph and lost the documents a reader actually reads.
+        #
+        # Decided here rather than inside `render_all`, which writes the map into the
+        # directory it is handed and should go on knowing nothing about revisions: *which*
+        # directory is a question about time, and this is the caller that knows the answer.
+        map_out = revisions.map_dir(out_dir, revision)
+        files = render_all(store, map_out, source_root, program,
                            include_tests=args.include_tests,
                            docs=doc_store, docs_root=docs_root,
                            standards=standards_store)
+        # And the listing that says which map is which. Written every time, because a
+        # revision's *state* changes underneath it -- sealing one makes every earlier
+        # listing wrong about which snapshot is the working one.
+        index = render_index(out_dir, program, rows=rev_rows)
         if not args.quiet:
-            _emit(f"wrote {len(files)} documents to {out_dir} in "
+            _emit(f"wrote {len(files)} documents to {map_out} in "
                   f"{time.perf_counter() - t2:.1f}s")
+            stale = legacy_map_files(out_dir)
+            if stale:
+                # Named rather than removed, and named rather than left silent: these are
+                # a real map of a revision nothing records, and the reader decides.
+                _emit(f"        {index.name} lists this directory's maps; {len(stale)} "
+                      f"documents from before maps were named are still beside it")
 
     prog.step(STEP_ANOMALIES)
     store.warm()
@@ -586,7 +613,13 @@ def cmd_analyze(args: argparse.Namespace) -> int:
         if doc_stats is not None:
             print(f"docs:  {revisions.db_path(out_dir, revisions.DOCS, revision)}")
         if not args.no_render:
-            print(f"map:   {out_dir}/README.md")
+            # The map this run wrote, not the directory's index. Both are `README.md` and
+            # they answer different questions -- one is the overview of *this* revision, the
+            # other the list of every revision here -- so the line that says "start reading
+            # here" has to name the one inside the map (rule 30, and the reason the index
+            # says what it is in its own first heading).
+            print(f"map:   {revisions.map_dir(out_dir, revision)}/README.md")
+            print(f"index: {out_dir}/README.md")
     if doc_store is not None:
         doc_store.close()
     if standards_store is not None:

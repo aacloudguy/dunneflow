@@ -34,6 +34,7 @@ from pathlib import Path
 
 GRAPH = "graph"
 DOCS = "docs"
+MAP = "map"
 SEP = "@"
 
 
@@ -53,6 +54,42 @@ def as_filename(revision: str) -> str:
 
 def db_path(out_dir: Path, stem: str, revision: str) -> Path:
     return out_dir / f"{stem}{SEP}{as_filename(revision)}.db"
+
+
+def map_dir(out_dir: Path, revision: str) -> Path:
+    """Where the written map for one revision goes.
+
+    A **directory** rather than fifteen `01-entrypoints@<revision>.md`, and the reason is
+    the links: the map's own README points at its fourteen siblings by bare name, and every
+    one of those would have to be rewritten per revision to say the same thing. Inside a
+    directory of its own they are already right, and the program directory stays something
+    a person can look at.
+
+    The same `@` idiom as the databases beside it, so a listing of the program directory
+    reads as one layout rather than two, and the same order-preserving replacement of the
+    colons -- see `as_filename`.
+    """
+    return out_dir / f"{MAP}{SEP}{as_filename(revision)}"
+
+
+def known_maps(out_dir: Path) -> dict[str, Path]:
+    """Every written map in a program directory, by the revision its name claims.
+
+    A *claim*, like `revision_of`'s: the authority for what a map describes is the
+    `analysed_at` and the counts inside it, and nothing renames one on the reader's behalf.
+    Directories only -- a file called `map@…` is not a map and is left where it is rather
+    than reported as one.
+    """
+    found: dict[str, Path] = {}
+    if not out_dir.is_dir():
+        return found
+    for child in sorted(out_dir.glob(f"{MAP}{SEP}*")):
+        if not child.is_dir():
+            continue
+        rev = revision_of(child)
+        if rev:
+            found[rev] = child
+    return found
 
 
 def known(out_dir: Path, stem: str) -> list[Path]:
@@ -119,6 +156,8 @@ def revision_of(path: Path) -> str | None:
     A *claim*, and only that: the authority is `meta.revision` inside the file. This
     exists so a listing can be built without opening several hundred megabytes.
     """
+    # `Path.stem` on a directory is its whole name, which is what `known_maps` wants: a
+    # map directory has no suffix to strip and a database has one that must go.
     stem = path.stem
     if SEP not in stem:
         return None

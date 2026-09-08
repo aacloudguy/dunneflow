@@ -200,14 +200,18 @@ program has a most-commented routine and a maximum alone is a claim nobody can w
 
 ## What we are doing now
 
-**Working 2026-09-08.** Item 8 answered and built: a pane now folds itself when the window
+**Working 2026-09-08.** Item 8 answered and built — a pane now folds itself when the window
 has no room for it, which makes **five** settings for what the window cannot fit and is the
-only one of the five that ships **on**. Before it, a bug-fix pass, two features, the counts
-that could be one, item 0 of the scheduled pass paid at the pointer, and three defects that
-each turned out to be something other than what was filed: a rail that worked and could not
-be *reached*, a promise about seams that was false for names with none, and a "collapse" that
-was a deletion.
-**1,247** tests, mypy clean over **121** source files, ruff clean, `check` 0 broken.
+only one of the five that ships **on** — and one item pulled from the standing backlog: **a
+map belongs to a revision**, so a second analysis no longer writes over the first one's and
+the program directory opens on a listing of what it holds. Before them, a bug-fix pass, two
+features, the counts that could be one, item 0 of the scheduled pass paid at the pointer, and
+three defects that each turned out to be something other than what was filed: a rail that
+worked and could not be *reached*, a promise about seams that was false for names with none,
+and a "collapse" that was a deletion.
+**1,253** tests, mypy clean over **123** source files, ruff clean, `check` 0 broken.
+**`output/mensores` is untouched by today's map work** — 8787 is serving it, and its next
+analysis is what gives it the new layout; that run needs `--standards` (rule 88).
 **Two servers are up and both are deliberate:** 8899 is Tom's, and **8787 is this
 session's, left running on purpose** — it was stopped as cleanup while he was reading it, which
 is what produced the *"the server could not be asked: Failed to fetch"* he reported, and it is
@@ -217,6 +221,42 @@ adding to it would have carried the drift forward.*
 `output/mensores` holds the pair rebuilt under the new documentation rule:
 `2026-09-08T13:39:50Z` (628 files, Society at 08-29) working, `2026-09-07T15:32:31Z` (625,
 at 08-26) sealed.
+
+### A map belongs to a revision (2026-09-08)
+
+Pulled from the standing backlog, where it had sat since 2026-08-31 as one line. It is the
+only entry on that list where **a sealed snapshot loses something it was sealed to keep**:
+its graph and its documents are revision-named and survive, and the fifteen documents of its
+*written map* went flat into the program directory and were overwritten by the next analysis
+— the half a reader who does not write code actually reads. Nothing on screen ever showed
+it, because the dashboard reads the databases, which is why it stood for eight days.
+
+**`map@<revision>/`**, the same `@` idiom as the databases beside it. A **directory** rather
+than `01-entrypoints@<rev>.md`, and the links decided it: the map's README points at its
+fourteen siblings by bare name, and inside a directory those are already right. Decided at
+the call site, so `render_all` goes on knowing nothing about revisions — *which* directory is
+a question about time.
+
+**The program directory's `README.md` is now a listing**: every revision, its state, capture
+instant, file count and label, with a link into its map. Built from what is on disk, so three
+absences each get their own sentence (design rule 21) — a revision with no map, a map with no
+graph, and the older flat map, which is **named in full and left alone** because which
+revision those files describe is recorded nowhere. The rows come from the sidecar handle
+`analyze` already holds open, never a second one (rule 58).
+
+**The sharp edge is rule 57, not the layout.** A map is Markdown inside the output tree, and
+that is where rule 57 was minted. `discover_docs` prunes an excluded directory out of
+`dirnames`, so excluding the program directory covers everything under it — a reading the
+call site does not make obvious, and whose opposite would read every map back in as prose. It
+is asserted directly and end-to-end. Measured analysing DunneFlow itself twice: **9
+documents, then 9**, with 15 map files and an index on disk for the second run.
+
+Verified at scale into fresh directories, never the served one: Society at 08-29, 628 files
+and 4,823 routines in 36 s, and the four executables at reach 1,381 · 423 · 292 · 112.
+
+*Filed rather than built:* **rendering a named revision's map from the graph it already
+has** — it would give the sealed `2026-09-07T15:32:31Z` the map it lost, and it is not
+analysis, so rules 25 and 62 are untouched. Going forward the promise holds without it.
 
 ### A pane that folds itself, and the trap it was deferred on (2026-09-08)
 
@@ -2815,9 +2855,19 @@ feature was blocked on an answer nobody owed.
   definition (5 refused of 240, all constraints), and the undefined list's head is words
   again rather than the tails of SCREAMING_SNAKE constant names (1,154 → 265, with 890 held
   back, listed, and each one offered back to the worklist by hand).*
-- The filed small things: the rendered markdown is not revision-named, `--revision` on
-  `analyze` (it exists on `serve` only), the navigator's search box pinned-when-open
-  (decided 2026-08-30, never built), packaging as a binary.
+- ~~**The rendered markdown is not revision-named.**~~ *Built 2026-09-08 — see the top of
+  this file. Maps are `map@<revision>/` and the program directory opens on a listing of what
+  it holds.*
+- **Rendering a named revision's map from the graph it already has.** Filed 2026-09-08 by the
+  work above, which makes the promise true going forward and cannot reach backwards: the
+  sealed `2026-09-07T15:32:31Z` in `output/mensores` has a graph, a document store and **no
+  map**, because its own was overwritten before maps were named. It is **not** analysis — it
+  opens a sealed graph read-only and writes documents into a new directory — so rules 25 and
+  62 are untouched and rule 20 is satisfied by never writing to the store it reads. Unbuilt
+  and unscheduled.
+- The filed small things: `--revision` on `analyze` (it exists on `serve` only), the
+  navigator's search box pinned-when-open (decided 2026-08-30, never built), packaging as a
+  binary.
 
 ### Before this, in order — the full record is `HANDOFF.md`
 

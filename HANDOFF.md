@@ -13271,3 +13271,107 @@ three-line one that hides a hover card — and the counted-versus-contained one 
 
 **Gates:** 1,247 tests, mypy clean over 121 source files, ruff clean.
 
+## 2026-09-08 — a map belongs to a revision
+
+Pulled from the standing backlog, where it had sat since 2026-08-31 as one line: *"the
+rendered markdown is not revision-named, so a second analysis overwrites the first's map."*
+
+### Why this one, of the six on that list
+
+Everything else on it is a convenience. This is the only entry where a **sealed snapshot
+loses something it was sealed to keep.** `CLAUDE.md` says a sealed snapshot exists *"so it
+can be read after its source tree is gone"*, and rules 25 and 62 forbid re-analysing one in
+place. Its graph and its document store are revision-named and survive; the fifteen
+documents of its **written map** went flat into the program directory and were overwritten
+by the next analysis. So the half a reader who does not write code actually reads was the
+half that did not survive — and `output/mensores` is in that state now: the sealed
+`2026-09-07T15:32:31Z` has a graph and no map of its own.
+
+The entry's own note said *"the dashboard reads the databases, so nothing is broken"*, which
+is true and is exactly why it stood for eight days: nothing on screen ever showed it.
+
+### The layout
+
+`map@<revision>/`, the same `@` idiom as `graph@…db` and `docs@…db` beside it, through the
+same order-preserving `as_filename`.
+
+**A directory rather than `01-entrypoints@<revision>.md`, and the links decided it.** The
+map's own README points at its fourteen siblings by bare name, and every one of those would
+have to be rewritten per revision to go on saying the same thing. Inside a directory they
+are already right, and the program directory stays something a person can look at.
+
+**Decided at the call site, not inside `render_all`.** That function writes the map into the
+directory it is handed and goes on knowing nothing about revisions; *which* directory is a
+question about time, and `cmd_analyze` is the caller that knows the answer. It also left
+`test_completeness.py` — the only other caller — untouched.
+
+### The index, and the three absences it states
+
+`README.md` in the program directory is now a listing: every revision, its state, its
+capture instant, its file count, its label, and a link into its map. A handed-over directory
+opens on a sentence instead of on a heap of `map@…` names.
+
+Built from **what is on disk**, never from what the run just wrote, so three things that are
+not the happy case each get their own answer rather than an empty cell (design rule 21):
+
+* a revision with a graph and no map — `--no-render`, or an analysis older than this layout;
+* a map with no graph — a snapshot whose stores were dropped by hand, which the rebuild
+  recipe in `CLAUDE.md` tells the reader to do;
+* the older flat map, if one is lying there. **Named in full and left alone.** Which revision
+  those fifteen files describe is recorded nowhere — not in the text, not in the names, so
+  not even rule 30's *"a name is not an identity"* applies, because there is no name. Filing
+  them under a guess would be worse than saying so, and deleting a reader's documents to
+  tidy up a listing is not this tool's decision.
+
+The rows come from `SourceStore.revisions()`, **taken from the handle `analyze` already has
+open** rather than from a second read-only one: rule 58 puts that at 36x, and a second open
+would also have to happen after the close to be correct. One ask, one answer.
+
+`analyze` now prints two lines where it printed one — `map:` naming the map it just wrote and
+`index:` naming the listing. Both files are called `README.md` and they answer different
+questions, so the line that says *start reading here* has to name the one inside the map.
+
+### The sharp edge, and it is not the layout
+
+**A map is fifteen Markdown documents written inside the output tree**, which is where rule
+57 was minted: pointing DunneFlow at itself once read 46 of 54 documents out of `output/` —
+its own reports, about a different program — and every one of the 942 naming rules it then
+claimed came from them.
+
+`discover_docs` prunes an excluded directory out of `dirnames`, so excluding the program
+directory excludes everything beneath it and a map is safe without the exclusion list
+learning a new name. **That is the reading the call site does not make obvious**, and the
+opposite reading — that `exclude` matches the directory itself — is equally plausible and
+would let every map be read back in as prose. So it is asserted twice: once directly on
+`discover_docs`, and once end to end through a second analysis, which is the only run where
+a map is already on disk while the corpus is being scanned.
+
+Measured at scale, analysing DunneFlow itself twice: **9 documents, then 9 documents** — 15
+map files and an index on disk for the second run, and not one of them read.
+
+### Verified against real code
+
+Into **fresh** program directories, never `output/mensores`: 8787 is serving it, and
+`Store._discard_if_stale` drops every table of a graph written by another build, so an
+analysis aimed at a served directory can empty the map under a live reader. The dashboard
+refuses that for its own analyses; the CLI does not, and this is the case it exists for.
+
+| | |
+|---|---|
+| Society at 08-29 into `output/mapcheck` | 628 files, 4,823 routines, 30,544 calls, 36 s |
+| the map | `map@2026-09-08T23-43-37Z/`, 15 documents, index beside it |
+| ground truth: the four executables | `mensores` 1,381 · `mensores-mcp` 423 · `mensores-scriba` 292 · `mensores-signator` 112 |
+| DunneFlow itself, twice | 9 documents both times |
+
+Both scratch directories were removed afterwards. **`output/mensores` was not touched** —
+its next analysis is what will give it this layout, and the recipe in `CLAUDE.md` requires
+`--standards` on that run (rule 88).
+
+*Not built, and filed rather than assumed:* **a way to render a named revision's map from
+the graph it already has.** It would give the sealed `2026-09-07T15:32:31Z` the map it lost,
+and it is not analysis — it opens a sealed graph read-only and writes documents into a new
+directory, so rules 25 and 62 are untouched. Going forward the promise now holds without it,
+which is why it is an item and not part of this one.
+
+**Gates:** 1,253 tests, mypy clean over 123 source files, ruff clean.
+

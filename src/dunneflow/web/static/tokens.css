@@ -1138,6 +1138,17 @@ body {
    visible`, which is the default and is stated here because the sibling rule above sets a
    clip: a wrap inside a clip shows the first line and hides the rest, which is a setting
    that appears to do nothing.
+
+   **`break-word` is the floor now, not the mechanism, and it is deliberately still here.**
+   It shipped as the mechanism for a name `jointed()` finds no seam in, and it drew
+   `disabled` as `disable / d` -- 160 of 1,604 rows on screen, exactly the picture this
+   setting exists to avoid, promised against in two places and true in neither. Those names
+   now carry marks of their own at the corpus' own median run of five characters, so the
+   browser has a chosen place to break and takes it. What is left under this declaration is
+   a name **shorter than six**, which cannot be divided without orphaning a letter or two:
+   for those the choice is breaking badly or overprinting the count, and overprinting is the
+   defect the whole setting was built to end. So the floor stays, and it is reached by 224 of
+   1,013 seamless names rather than by all of them.
    `.nav-item` keeps `align-items: baseline`, so the count sits on the first line and stays
    put -- the thing the other withdrawn comment asked for. */
 :root[data-navname="wrap"] .nav-item .navlabel {

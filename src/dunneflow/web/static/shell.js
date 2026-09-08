@@ -7359,7 +7359,14 @@ function viewSettings() {
               name in an ellipsis — the whole name is still on the hover card, with the module
               it lives in, and clicking has always shown it whole. <b>Wrap it</b> lets it take a
               second line, broken on the name's own seams (<code>do_ / POST</code>, not
-              <code>do_PO / ST</code>), with the count staying on the first line.</div></div>
+              <code>do_PO / ST</code>), with the count staying on the first line.<br><br>
+              A name with <em>no</em> seam — <code>disabled</code>, <code>review</code>,
+              <code>&lt;module&gt;</code> — has nothing to break on, and used to be cut wherever
+              the box ended: <code>disable / d</code>. It is now divided evenly at about
+              <b>five characters</b>, which is the median length of the pieces this program's
+              own underscores and humps already make, and never leaves fewer than three. A name
+              shorter than six cannot be divided without orphaning a letter, and those still
+              break where the box ends — the alternative is painting over the count.</div></div>
           <div class="seg" role="group" aria-label="A navigator name too long for its row">
             ${NAV_NAMES.map(o => `<button data-navname-set="${esc(o.id)}"
               aria-pressed="${state.navName === o.id}">${esc(o.name)}</button>`).join("")}
@@ -11281,11 +11288,55 @@ function breakable(qual) {
  * markup just added. `<wbr>` is an empty element, so `textContent` over the result is the
  * name unchanged -- which is what lets the length thresholds and the row's `title` go on
  * reading the plain text. */
+/* How long a manufactured segment should be, and it is measured rather than chosen.
+ *
+ * Across Mensores' 4,823 routine names, `jointed()`'s three seams cut 13,175 runs whose
+ * **median length is 5** and whose longest is 15. So a break this function invents is aimed
+ * at segments of about five characters -- the length the language's own seams already
+ * produce -- and a name broken by it looks like a name broken by an underscore rather than
+ * like a name broken by the edge of a box.
+ *
+ * `SEAMLESS_MIN` is the floor no segment may go under, and 1 is the whole reason this exists:
+ * `disabled` was drawn as `disable / d`. Three, so a tail is still a readable piece of the
+ * word. Together they mean a name shorter than 6 gets no mark at all and falls through to
+ * the stylesheet's `break-word` (224 of 1,013 seamless names on this corpus). */
+const SEAMLESS_TARGET = 5;
+const SEAMLESS_MIN = 3;
+
+/* Split a name with **no seam of its own** into roughly equal pieces, or `null` if it is too
+ * short to be worth breaking. Returns the raw pieces, never markup: the caller escapes each
+ * one and joins with `<wbr>`, because slicing an already-escaped string can cut `&lt;` in
+ * half -- and 524 of this corpus' seamless names are `<module>`. */
+function seamlessParts(name) {
+  const L = name.length;
+  if (L < SEAMLESS_MIN * 2) return null;
+  let k = Math.max(2, Math.round(L / SEAMLESS_TARGET));
+  while (k > 1 && Math.floor(L / k) < SEAMLESS_MIN) k--;
+  if (k < 2) return null;
+  const out = [];
+  for (let i = 0; i < k; i++) {
+    out.push(name.slice(Math.round((i * L) / k), Math.round(((i + 1) * L) / k)));
+  }
+  return out;
+}
+
 function jointed(name) {
-  return esc(name)
+  const plain = esc(name);
+  const marked = plain
     .split(".").join(".<wbr>")
     .split("_").join("_<wbr>")
     .replace(/([a-z0-9])([A-Z])/g, "$1<wbr>$2");
+  /* **A name that has seams of its own is left exactly as it was**, and that is rule 1
+   * rather than laziness. Marking the long *runs* inside a seamed name would hand the
+   * browser a mid-run opportunity, and a browser prefers the last opportunity that fits with
+   * no notion that an underscore is a better place than the middle of a word: it would break
+   * `_assert_no_forbi / dden_phrase` where it breaks `_assert_no_ / forbidden_phrase` today.
+   * The population that is actually drawn wrong is names with **no** seam at all -- 160 of
+   * 1,604 rows on screen, `disabled` as `disable / d` -- so that is the only population
+   * touched. */
+  if (marked !== plain) return marked;
+  const parts = seamlessParts(name);
+  return parts ? parts.map(esc).join("<wbr>") : plain;
 }
 
 function callBadge(c) {

@@ -214,6 +214,49 @@ adding to it would have carried the drift forward.*
 `2026-09-08T13:39:50Z` (628 files, Society at 08-29) working, `2026-09-07T15:32:31Z` (625,
 at 08-26) sealed.
 
+### A name with no seam, divided rather than cut anywhere (2026-09-08)
+
+Item 7, closed the day it was filed. Tom: *"proceed with a reasonable fix that breaks words
+at smart intervals, not just arbitrary characters. Re-use what's been written where
+possible."* — a fourth option none of the three I had listed.
+
+**The interval is measured, not chosen.** `jointed()`'s three seams cut Mensores' 4,823
+routine names into **13,175 runs whose median length is 5** and whose longest is 15. So a
+break this program invents aims at five characters — the length the language's own
+underscores and humps already produce — and a divided name looks like a name an underscore
+broke rather than one the edge of a box did. No piece may be shorter than **three**, because
+orphaning one letter is the entire defect: `disable / d`.
+
+| | |
+|---|---|
+| seamless names divided | **789 of 1,013** (524 of them `<module>`) |
+| left to the `break-word` floor | **224** — `run`, `name`, `get`, `id`, `up`, `ok` |
+| shortest piece anywhere in the corpus | **3** |
+| names with seams, untouched | **3,810 of 4,823** |
+
+**Only names with no seam at all are touched, and that is rule 1 rather than laziness.** All
+`<wbr>` are equal to a browser, which takes the last opportunity that fits with no notion
+that an underscore is a better place than the middle of a word. Marking the long runs inside
+an already-seamed name would hand it a mid-run opportunity it would prefer, turning today's
+`_assert_no_ / forbidden_phrase` into `_assert_no_forbi / dden`. The fix would have made the
+good case worse to improve the bad one.
+
+**`break-word` stays, as a floor rather than as the mechanism**, and it says so where it
+lives. A name shorter than six cannot be divided without orphaning a letter, and for those
+the choice is breaking badly or painting over the count — which is the defect the whole
+setting exists to end. It is now reached by 224 of 1,013 rather than by all of them.
+
+`seamlessParts` slices the **raw** name and leaves escaping to its caller, which is not
+tidiness: slicing an already-escaped string cuts `&lt;` in half, and 524 of this corpus'
+seamless names are `<module>`. Confirmed in the live DOM — `&lt;mod<wbr>ule&gt;`.
+
+Measured in the page: `disa<wbr>bled`, `rev<wbr>iew`, `adjud<wbr>icate`, `rele<wbr>ase`,
+`&lt;mod<wbr>ule&gt;`; 2,674 → **3,018** marks, and 72 of 1,654 labels left with none, every
+one of them a short word. *The rendering itself was **not** seen: the automation's tab was
+hidden, and a hidden tab has no layout at all — every box is zero — so the geometry half of
+rule 90 is as blind as the pointer half. What is verified is the markup and the corpus, not
+the picture.*
+
 ### Item 0 paid: the five controls, pressed — and one thing only looking found (2026-09-08)
 
 Tom: *"it's in front now, go."* It was, and every control was reachable at the first attempt.
@@ -2438,17 +2481,10 @@ them — the entries are still where an item is closed, and this is only the ord
    outside, with `elementFromPoint` returning null over either. Tom's call on the fix was
    design rule 2, so `paneFit` is a fourth setting beside the three from the same day, off by
    default; see the top of this file.*
-7. **`wrap` breaks a seamless name at an arbitrary character, and the page promises it does
-   not.** Found by *looking* at a screenshot on 2026-09-08, after five controls had been
-   measured and none of it showed: the navigator draws `disabled` as **`disable / d`**. Under
-   `[data-navname="wrap"]` the label computes `overflow-wrap: break-word`, so a name
-   `jointed()` finds no seam in is broken wherever the box ends — **160 of 1,604** visible
-   rows, including `review` at six letters in a 36px box, and every `<module>`. Both the
-   `settings.js` comment and the Settings copy promise *"broken on the name's own seams
-   (`do_ / POST`, not `do_PO / ST`)"*, and for a name **with** seams that is kept and proven.
-   For one without, it is false. **A trade, so it is Tom's call and not a fix to make:** break
-   anywhere (today), overflow the box (`over`'s behaviour arriving inside `wrap`), or ellipsis
-   it (`clip`'s, inside `wrap`).
+7. ~~**`wrap` breaks a seamless name at an arbitrary character.**~~ *Closed 2026-09-08 —
+   Tom's call was a fourth option nobody had listed: divide it at **smart intervals**, reusing
+   what was written. `jointed()` now does, at the corpus' own median run of five characters.
+   See the top of this file.*
 8. Then the standing backlog below, none of it scheduled.
 
 ### What is next, and it is open

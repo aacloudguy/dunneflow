@@ -12995,3 +12995,68 @@ inside `wrap`), or cut with an ellipsis (which is `clip`'s, inside `wrap`). File
 `BRIEFING.md`, which owns the open list. *The first count taken was **375** and it was wrong —
 it thresholded a one-line row at 18px when one line is 17–19px here. 375 is how many labels
 have no seam at all; 160 of them are actually broken across lines.*
+
+## 2026-09-08 — a name with no seam, divided rather than cut anywhere
+
+Item 7, filed and closed the same day. Tom: *"proceed with a reasonable fix that breaks
+words at smart intervals, not just arbitrary characters. Re-use what's been written where
+possible."* A fourth option, and none of the three I had put to him.
+
+### The interval is measured
+
+`jointed()` marks three seams — after a dot, after an underscore, before a camel hump — and
+across Mensores' 4,823 routine names those cut **13,175 runs whose median length is 5**, the
+longest 15. So `SEAMLESS_TARGET = 5`: an invented break aims at the length the language's own
+seams already produce, and a divided name looks like a name an underscore broke rather than
+one the edge of a box did. `SEAMLESS_MIN = 3` is the floor no piece may go under, because
+orphaning one letter is the whole defect.
+
+| | |
+|---|---|
+| seamless names divided | **789 of 1,013** (524 of them `<module>`) |
+| left to the `break-word` floor | **224** — every one a short word: `run`, `name`, `get`, `id`, `up`, `ok` |
+| shortest piece anywhere | **3** |
+| names with seams, untouched | **3,810 of 4,823** |
+
+`disabled → disa / bled` · `review → rev / iew` · `adjudicate → adjud / icate` ·
+`canonicalize → canoni / calize` · `<module> → <mod / ule>`.
+
+### Two decisions that are the whole of it
+
+**Only a name with no seam at all is touched, and that is rule 1.** All `<wbr>` are equal to
+a browser: it takes the last opportunity that fits, with no notion that an underscore is a
+better place than the middle of a word. Marking the long *runs* inside an already-seamed name
+would hand it a mid-run opportunity it would prefer, turning today's `_assert_no_ /
+forbidden_phrase` into `_assert_no_forbi / dden`. Improving the bad case would have spoiled
+the good one, and the population actually drawn wrong was the seamless names.
+
+**`break-word` stays, as the floor rather than the mechanism**, and the stylesheet now says
+which it is. A name shorter than six cannot be divided without orphaning a letter; for those
+the choice is breaking badly or painting over the count, and the second is what the whole
+setting exists to end. Reached by 224 of 1,013 now, rather than by all of them.
+
+`seamlessParts` slices the **raw** name and leaves escaping to its caller. Not tidiness:
+slicing an already-escaped string cuts `&lt;` in half, and 524 of this corpus' seamless names
+are `<module>`. Confirmed in the live DOM as `&lt;mod<wbr>ule&gt;`.
+
+Both promises were rewritten rather than left standing — `settings.js`'s comment and the
+Settings copy the reader sees both said *"broken on the name's own seams"* and were false for
+a name that has none. The copy now states the five and the three, because a break at five is
+a claim (design rule 1).
+
+### What was verified, and what was not
+
+In the page: `disa<wbr>bled`, `rev<wbr>iew`, `adjud<wbr>icate`, `rele<wbr>ase`,
+`&lt;mod<wbr>ule&gt;`; marks 2,674 → **3,018**; 72 of 1,654 labels left with none, every one
+of them short. Over the corpus: the four figures above, taken from `graph@2026-09-08` rather
+than from the page.
+
+**The rendering itself was not seen.** The automation's tab was hidden, and this is the
+extension to rule 90 that cost nothing only because I checked first: a hidden tab has no
+layout at all — every `getBoundingClientRect` is zero — so the *geometry* half is exactly as
+blind as the pointer half, while the DOM goes on answering perfectly. What stands is the
+markup and the corpus; the picture is unconfirmed, and one look with the window in front
+settles it.
+
+Nine mutations, nine catches. `jointed()` is called from `dressNavItems` and nowhere else, so
+the change is contained to the navigator under `wrap`.

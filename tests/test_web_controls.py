@@ -13153,6 +13153,75 @@ def test_a_folded_pane_keeps_its_rail_inside_the_window() -> None:
     )
 
 
+def test_a_name_with_no_seam_is_divided_rather_than_cut_anywhere() -> None:
+    """`jointed()` marked the seams and said nothing about a name that has none.
+
+    Found by *looking* at a screenshot on 2026-09-08, after the five settings controls had
+    each been pressed at the pointer and measured clean: the navigator drew `disabled` as
+    **`disable / d`**. `overflow-wrap: break-word` was doing the work for any name
+    `jointed()` found no seam in — 160 of 1,604 rows on screen — which is precisely the
+    arbitrary break both the stylesheet comment and the Settings copy promise against, in
+    the one place neither had a seam to point at.
+
+    Two halves, and the second is the one that would go unnoticed.
+
+    **A seamless name is divided evenly**, at the corpus' own median run: `jointed()`'s three
+    seams cut Mensores' 4,823 routine names into 13,175 runs whose median length is 5 and
+    whose longest is 15, so an invented break aims at five and looks like a break an
+    underscore would have made. No piece may be shorter than three, because orphaning one
+    letter is the whole defect.
+
+    **A name that has seams is left exactly alone**, and that is rule 1 rather than an
+    oversight. All `<wbr>` are equal to a browser, which takes the last opportunity that
+    fits: a mid-run mark inside `_assert_no_forbidden_phrase` would be preferred over the
+    underscore beside it, turning today's `_assert_no_ / forbidden` into
+    `_assert_no_forbi / dden`. The fix would have made the good case worse to improve the
+    bad one.
+    """
+    js = _code(_read("shell.js"))
+    css = _read("tokens.css")
+    fn = _fn(js, "jointed")
+    assert "seamlessParts(" in fn, (
+        "jointed no longer divides a name with no seam of its own, so `disabled` is back to "
+        "being cut wherever the box ends"
+    )
+    assert "if (marked !== plain) return marked" in fn, (
+        "a name that already has seams is no longer returned untouched — a mid-run mark is "
+        "preferred by the browser over the underscore beside it, so this makes the names "
+        "that break well today break badly"
+    )
+    parts = _fn(js, "seamlessParts")
+    assert "SEAMLESS_MIN * 2" in parts, (
+        "nothing stops a name too short to divide from being divided, which orphans the "
+        "letter this was written for"
+    )
+    assert re.search(r"Math\.floor\(L / k\) < SEAMLESS_MIN", parts), (
+        "the minimum piece is not enforced, so an uneven division can still orphan a letter"
+    )
+    assert "name.slice(" in parts and "esc" not in parts, (
+        "seamlessParts must slice the raw name and leave escaping to its caller — slicing an "
+        "escaped string cuts `&lt;` in half, and 524 of this corpus' seamless names are "
+        "`<module>`"
+    )
+    assert re.search(r"^const SEAMLESS_TARGET = 5;", js, re.M), (
+        "the target segment is no longer 5, which is the measured median run — if it moved, "
+        "the sentence on the Settings page and in `settings.js` moved with it or is now false"
+    )
+    assert re.search(r"^const SEAMLESS_MIN = 3;", js, re.M), "the minimum piece is no longer 3"
+    # The floor stays, and stays deliberate: a name shorter than six cannot be divided.
+    rule = css.split(':root[data-navname="wrap"] .nav-item .navlabel {', 1)
+    assert len(rule) > 1 and "overflow-wrap: break-word" in rule[1].split("}", 1)[0], (
+        "the floor is gone, so a name too short to divide overflows its box and paints over "
+        "the count — which is the defect the whole setting was built to end"
+    )
+    # And the reader is told, because a break at five is a claim (design rule 1).
+    view = _fn(js, "viewSettings")
+    assert "five characters" in view and "fewer than three" in view, (
+        "the Settings page still promises only the name's own seams, which is false for a "
+        "name that has none — the copy has to say what happens to those"
+    )
+
+
 def test_none_of_the_four_fit_settings_is_hidden_rather_than_narrowed() -> None:
     """Design rule 29: a hidden control is not a dimmed one, and neither is a narrow one.
 

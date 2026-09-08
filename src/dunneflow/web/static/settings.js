@@ -461,7 +461,19 @@ const DEFAULTS = {
    * the box ends, which is exactly the argument `breakable()` was written from one surface
    * over. `jointed()` marks the name's own seams with `<wbr>` — after a dot, after an
    * underscore, before a camel hump — so the break lands on `do_ / POST`. The count stays on
-   * the first line, which is what the other comment asks for. */
+   * the first line, which is what the other comment asks for.
+   *
+   * **And a name with no seam at all was the half that promise did not cover**, found by
+   * looking at a screenshot on 2026-09-08 after five controls had been measured clean:
+   * `disabled` drawn as `disable / d`, 160 of 1,604 rows on screen. `overflow-wrap:
+   * break-word` was doing the work for those, which is the arbitrary break this whole
+   * paragraph refuses, in the one place nobody had a seam to point at. Such a name is now
+   * divided evenly at the corpus' **own median run of five characters** — 13,175 runs over
+   * 4,823 names, longest 15 — with no piece shorter than three, so `adjudicate` breaks
+   * `adjud / icate` and `review` breaks `rev / iew`. Names shorter than six cannot be
+   * divided without orphaning a letter and keep `break-word` as a floor: 224 of 1,013.
+   * A name that *has* seams is untouched, because a mid-run mark would be preferred by the
+   * browser over the underscore beside it (rule 1). */
   navName: 'over',
 
   /* Whether the toolbar shrinks to fit the window instead of running off it.

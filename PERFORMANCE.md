@@ -712,3 +712,40 @@ it to 1.0 s — the disk, not the feature, so no cold row is claimed here either
 
 The machine's source volume is a slow external disk; cold reads cost far more than
 warm ones. That is expected and is not a regression.
+
+## The plate order, and the second it costs once
+
+`/api/plateorder` chooses the order the plates are stacked in so a cross-plate crossing does
+not have to travel far. Measured 2026-09-08 on Mensores at 2026-09-08T13:39:50Z, 53 plates
+and 403 connected pairs at routine level, 38 and 223 at module.
+
+| Measure | Budget | Measured |
+|---|---|---|
+| `plateorder.weights` — 5,101 crossings deduped | < 100 ms | **5 ms** |
+| the solve, routine level, interleaved | < 3 s | **1.0–1.2 s** (7 passes) |
+| the solve, routine level, grouped | < 3 s | **0.37 s** |
+| the solve, module level, interleaved | < 3 s | **0.46 s** (11 passes) |
+| `/api/plateorder` end to end, cold | < 3 s | **1.50 s** |
+| the same, warm off the base | < 50 ms | **10 ms** |
+
+**A second is the price of the answer and it is paid once**, which is the whole reason this
+is on demand and held on the base rather than either built at boot or answered fresh each
+time (rule 45 from both ends). At boot it would add a second to a start that is already 6 s,
+for a reader who may never leave *by size*; answered fresh it would charge that second again
+every time somebody toggled between two orders to compare them, which is exactly what a
+reader does with this control.
+
+**The grouped variant is faster and that is not an optimisation** — it solves two bands of
+41 and 12 rather than one of 53, and reinsertion is O(n²) per pass. The relationship is
+worth knowing before anyone reads the two rows as a puzzle.
+
+**No cold row for the model build.** `build()` at a level is ~120 ms and is already measured
+above; the 1.50 s end-to-end includes it, and separating them would be reporting this
+machine's disk under this feature's name (rule 24).
+
+*What the second buys*, on the same corpus: total vertical travel 157,028 → 27,067
+slot-links, mean crossing height **30.78 → 5.31 plates**, and the share of crossings
+spanning 21 plates or more **73.3% → 2.4%**. Module level: 30,859 → 8,004, mean 20.56 → 5.33.
+The grouped variant holds packages above externals and keeps 31.5% of the saving at routine
+level, 34.7% at module — the cost of that arrangement, stated so the choice is on the
+numbers.

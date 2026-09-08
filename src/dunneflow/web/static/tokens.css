@@ -1402,6 +1402,14 @@ body {
 .leg .ct { font-family: var(--f-mono); color: var(--text-faint); flex: none; }
 .legfoot { font-size: .66rem; color: var(--text-muted); padding: .3rem .1rem 0;
            border-top: 1px solid var(--border); margin-top: .35rem; }
+/* What the chosen plate order bought, above the list it describes rather than under it.
+   Above, because Tom arrives at a list by scroll wheel and lands in the middle of it: a
+   sentence at the foot of fifty-three plates is a sentence about a list nobody has reached
+   the bottom of. Full width across the three columns `.legrows` sets up, so it is not read
+   as the first entry of the first column. */
+.legnote { font-size: .66rem; color: var(--text-muted); line-height: 1.4;
+           padding: .25rem .1rem .35rem; border-bottom: 1px solid var(--border);
+           margin-bottom: .35rem; }
 
 /* The key for `colour by: what changed`. There is no key for the other two colourings and
    that is a gap rather than a precedent -- under "what it is" the reader gets five colours

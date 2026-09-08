@@ -12689,3 +12689,85 @@ def test_the_glossary_states_a_capability_by_reading_it() -> None:
     assert "glossOpensNote()" in js[js.index("function viewGlossary() {"):], (
         "the note is computed and never drawn"
     )
+
+
+# --------------------------------------------------------------------------- #
+# The plate order control orders plates
+# --------------------------------------------------------------------------- #
+
+
+def test_choosing_a_plate_order_moves_the_plates() -> None:
+    """The defect this feature was built on top of, guarded so it cannot come back.
+
+    `state.sortMode` was read in exactly one place -- `sortedDisks()`, called only from
+    `renderLegend()` -- and the `gsort` handler ran `renderLegend(); persist()` and never
+    handed the engine an order. So *by name* renumbered a legend and left every plate where
+    it was. Design rule 16 with the control genuinely wired: the handler fired, the state
+    changed, the list redrew, and the one thing the control is named for did not happen.
+
+    It hid because the default very nearly agrees -- `defaultOrder` in `graph.js` is *by
+    size* with one clause added -- so the only mode anyone checked looked right. Confirmed
+    at the keyboard before it was fixed: `gsort` set to `name`, `Graph.diskOrder()`
+    byte-identical afterwards.
+
+    Asserted on the **handler**, because that is where the step was missing, and on the
+    single place it delegates to rather than on each branch (rule 78): a seventh order added
+    later cannot forget to move the plates if moving them is not the branch's job.
+    """
+    js = _read("shell.js")
+    m = re.search(r'if \(t\.id === "gsort"\) \{(.*?)\n    \}', js, re.S)
+    assert m, "the gsort handler is no longer shaped so this guard can see it"
+    body = m.group(1)
+    assert "applyOrder()" in body, (
+        "the plate-order control does not hand the order to the engine, so choosing one "
+        "renumbers the legend and leaves every plate where it was"
+    )
+    # And the thing it calls must do the handing, or the call above is a name that acts on
+    # nothing (rule 37 -- a guard that checks a name appears has not checked anything
+    # happens).
+    fn = re.search(r'function applyOrder\(\) \{(.*?)\n\}', js, re.S)
+    assert fn, "applyOrder is gone; the handler calls something that does not exist"
+    assert "Graph.setOptions" in fn.group(1) and "diskOrder" in fn.group(1), (
+        "applyOrder does not set diskOrder, so nothing moves the plates"
+    )
+
+
+def test_every_plate_order_the_control_offers_is_one_sortedDisks_can_build() -> None:
+    """Rule 36: a mode in the markup that the builder does not know falls through silently.
+
+    The fallthrough is `by size`, which is a plausible order and therefore the expensive
+    kind of wrong -- the reader picks a mode, the plates move, and they move to the wrong
+    arrangement with nothing saying so (rule 49).
+    """
+    js = _read("shell.js")
+    m = re.search(r'\$\{\[\["nodes", "by size"\](.*?)\]\.map', js, re.S)
+    assert m, "the plate-order options are no longer a literal this guard can read"
+    offered = set(re.findall(r'\["(\w+)",', '[["nodes",' + m.group(1))) | {"nodes"}
+    built = re.search(r'function sortedDisks\(\) \{(.*?)\n\}', js, re.S)
+    assert built, "sortedDisks is gone"
+    body = built.group(1)
+    for mode in offered - {"nodes"}:            # `nodes` is the final else, by design
+        assert f'"{mode}"' in body, (
+            f'the control offers {mode!r} and sortedDisks does not build it, so choosing '
+            f'it falls through to size order with nothing saying so'
+        )
+
+
+def test_the_two_derived_orders_are_not_called_what_the_layout_toggle_is_called() -> None:
+    """Rule 71 in the reader's language rather than in the code's.
+
+    `data-platelayout` is already labelled *by connection*, and it means the arrangement of
+    nodes **within** a plate. A plate *order* sharing that phrase would be one wording for
+    two different controls, and the way that shows up is somebody choosing the wrong one and
+    concluding the tool is wrong.
+    """
+    js = _read("shell.js")
+    m = re.search(r'\$\{\[\["nodes", "by size"\](.*?)\]\.map', js, re.S)
+    assert m, "the plate-order options are no longer a literal this guard can read"
+    labels = re.findall(r'"\w+", "([^"]+)"', '[["nodes", "by size"' + m.group(1))
+    assert labels, "no option labels found"
+    for label in labels:
+        assert label.strip() != "by connection", (
+            f"the plate-order control offers {label!r}, which is what the plate-layout "
+            "button already says about something else"
+        )

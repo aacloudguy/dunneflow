@@ -200,10 +200,11 @@ program has a most-commented routine and a maximum alone is a claim nobody can w
 
 ## What we are doing now
 
-**A bug-fix pass, 2026-09-08. Seven commits, nothing half-written.** 1,217 tests — counted
-rather than carried, since this file said 1,213 and two were added, which does not reach it
-(rule 24) — mypy clean over 120 source files, ruff clean, `check` 0 broken, working tree
-clean, no servers running.
+**A bug-fix pass and one feature, 2026-09-08. Eight commits, nothing half-written.** 1,229
+tests, mypy clean over **121** source files, ruff clean, `check` 0 broken, working tree clean,
+no servers running. *Every figure on this line is retaken rather than incremented (rule 24) —
+the count this file carried was 1,213 against a real 1,216 before a line of today's work, so
+adding to it would have carried the drift forward.*
 `output/mensores` holds the pair rebuilt under the new documentation rule:
 `2026-09-08T13:39:50Z` (628 files, Society at 08-29) working, `2026-09-07T15:32:31Z` (625,
 at 08-26) sealed.
@@ -297,6 +298,46 @@ Dropping the superseded sealed snapshot is a manual pass by design (`sourcedb.py
 **sidecar rows** needed the one command this entry carried. Verified — both sidecars now hold
 exactly the two live snapshots, `2026-09-08T13:39:50Z` (628 paths) and `2026-09-07T15:32:31Z`
 (625), and `2026-09-07T14:55:40Z` is gone from `paths` and `revisions` in each.
+
+### The plates, ordered by what they link to (2026-09-08)
+
+Tom's request: the force layout improves *verticality* using the shadow nodes — can the same
+mechanism minimise vertical **distance** and choose the plate order? **Not that mechanism,
+but yes the idea.** Plates as springs on a line, relaxed and ranked, is `forcelayout.js` one
+dimension over and gives **-11.3%**; searching the *permutation* directly — weighted minimum
+linear arrangement — gives **-82.8%**. Same evidence, different solver, and `plateorder.py`
+says so rather than letting the next reader assume one mechanism does both.
+
+| how far a crossing travels | by size | by what they link to |
+|---|---|---|
+| the plate next door | 190 (3.7%) | **1,724 (33.8%)** |
+| **21 or more plates** | **3,738 (73.3%)** | **121 (2.4%)** |
+
+Mean crossing height **30.78 → 5.31** plates over 5,101 crossings; module level -74.1%. **And
+the picture says it without the numbers**: the stack stops being a funnel and becomes a
+*spindle*, the hubs pulled to the middle where everything can reach them and the leaves sent
+to both ends.
+
+**Both variants are built and `by size` is still the default** — Tom's two calls. Interleaved
+puts `ext:DATABASE` beside `storage`; grouped holds packages above externals and keeps 31.5%.
+The control says **"by what they link to"** and never *"by connection"*, which the
+plate-layout button already means about something else (rule 71). `/api/plateorder`, on demand
+and held on the base: 1.50 s cold, 10 ms warm, keyed on level, threshold and grouping (rule
+81).
+
+**The control it joined did not order plates**, and that had to be fixed first. `sortMode` was
+read only in `sortedDisks()`, called only from `renderLegend()`, and the handler never handed
+the engine an order — so *by name* and *by kind* renumbered a legend and left every plate
+where it was. Invisible because the default very nearly agrees with `defaultOrder`; the two
+disagreed even at boot. `applyOrder()` is the missing half, called from the one handler rather
+than each branch (rule 78), and fixing it repaired the other two modes as a side effect.
+
+*Three instrument failures on the way, and the lesson is one line:* **when a result looks like
+the code is broken, check the instrument first — twice out of three times it was.** A
+mis-dispatched `change` where the handler listens on `input`; a cached `<select>` reference
+that `renderLegend` had already replaced; and rule 83's pointer factor, **1.0 in this window
+against 1.5581 in the last**, so it is a property of the window and must be re-measured every
+session.
 
 ### The looking pass, which answered two questions and asked three
 

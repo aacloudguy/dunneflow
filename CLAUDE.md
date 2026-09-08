@@ -688,6 +688,50 @@ docs   ──► extract ──► docs.db  (SQLite) ─────────
   the solver's answer under force. Written into `baseXY`, never `positions`, so the three
   spreads, the width dial and collapsed plates all apply to it untouched and no payload is
   refetched.
+- `web/plateorder.py` — **which order to stack the plates in**, so a crossing does not have
+  to travel far. The stack ordered by size until 2026-09-08 and **73.3% of Society's 5,101
+  cross-plate crossings spanned more than twenty plates** — a line no reader can follow to
+  its other end. The force layout made those crossings *upright*; this makes them **short**,
+  and the two are orthogonal because uprightness is a fact about X/Y and this moves only Z.
+
+  **It is not the force solver, and that is worth stating because it is the first thing
+  anyone asks.** The literal reading was built and measured first — plates as particles on a
+  line, springs weighted by shared links, relaxed and ranked, which is `forcelayout.js` one
+  dimension over: **-11.3%**. A spring relaxation minimises `sum(w·dz²)` and the question is
+  `sum(w·|dz|)`, and the continuous optimum ranks plates in nearly the order it started
+  from. Searching the *permutation* directly — weighted minimum linear arrangement, NP-hard
+  in general and trivial at 53 plates — gives **-82.8%**: mean crossing height 30.78 → 5.31
+  plates, and a third of all crossings landing on the plate next door against 4% before.
+  Same evidence as the force solver, different solver.
+
+  **A crossing is counted once**, not once per plate: the model holds every one twice, each
+  copy ending in a shadow (rule 23), and the doubling is uniform — so it changes no ordering
+  and makes every number printed beside it wrong (rule 32). **Deterministic and seeded**
+  from the order the stack uses today, taking the first strict improvement in a fixed
+  traversal, because an order the tool cannot defend is not an order (rule 66) — and it is
+  never claimed to be optimal, only better by a stated amount than the order it started from.
+
+  **Both variants are built** (design rule 2). Interleaved is the best order and it puts
+  `ext:DATABASE` beside `storage` and `ext:STDIO` between `scriba` and `cli`, which reads
+  well and overturns what the current default *means*; holding packages above externals
+  keeps 31.5% of the saving. Neither is the default: `by size` still is, so this is opt-in
+  exactly as the force layout is. The control calls them **"by what they link to"** and
+  never *"by connection"* — the plate-layout button already says that about the arrangement
+  of nodes *within* a plate, and one phrase for two controls is rule 71 in the reader's
+  language.
+
+  Served by `/api/plateorder?level=&minDisk=&grouped=`, on demand and held on the base: a
+  second of work that must not be at boot for a reader who never asks, and must not be paid
+  again each time somebody toggles between two orders to compare them. Keyed on level,
+  threshold *and* grouping, because `minDisk` decides which plates exist and an order names
+  plates (rule 81).
+
+  **The control it joins did not order plates.** `state.sortMode` was read only in
+  `sortedDisks()`, called only from `renderLegend()`, and the handler never handed the
+  engine an order — so *by name* and *by kind* renumbered a legend and left every plate
+  where it was, invisibly, because the default very nearly agrees with `defaultOrder`.
+  `applyOrder()` is the missing half and is called from the one handler rather than from
+  each branch (rule 78).
 - `web/graph.py` — the 2.5D model, at **two levels of detail**. `routine` is every thing
   the program declares; `module` folds each file into one node and each boundary kind into
   one, on a single plate below the code. 10,015 nodes and 52 plates become 578 and 38, and

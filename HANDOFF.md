@@ -12336,3 +12336,102 @@ Tom's call, against the recommendation. `../mensores-overhaul/src` — 626 files
 in, 2,046 documents, `complete = yes`. The sidecar recognised all 626 bodies as already held
 (content-addressed, shared with the pair) and wrote a second revision beside the old one.
 **All four program directories now open.**
+
+## 2026-09-08 — the plates, ordered by what they link to
+
+Tom's feature request: the force layout has cycles that improve verticality using the shadow
+nodes — could the same mechanism minimise vertical *distance* and so choose the plate order?
+
+**Measured answer: not that mechanism, but yes the idea, and by a lot.**
+
+### What was tried first, because it is what was asked
+
+Plates as particles on a line, springs weighted by how many links two plates share, relaxed
+and then ranked — `forcelayout.js` one dimension over, built and measured before anything
+else. **-11.3%.**
+
+A spring relaxation minimises `sum(w·dz²)`; the question is `sum(w·|dz|)`. Worse, the
+continuous optimum is a poor guide to the *permutation*: a plate linked in both directions
+settles near its own middle whatever its neighbours do, so the ranking comes back nearly the
+order it started from. Searching the permutation directly — weighted **minimum linear
+arrangement**, NP-hard in general and trivial at 53 plates — gives **-82.8%**.
+
+Same evidence either way: the cross-plate edge list, which is the shadow list rule 23 already
+maintains and the force solver already reads. Different solver, and `plateorder.py`'s
+docstring says so rather than letting the next reader assume one mechanism does both.
+
+### What it buys
+
+Mensores at 2026-09-08T13:39:50Z, 53 plates, 5,101 crossings, 403 connected pairs:
+
+| how far a crossing travels | by size | by what they link to |
+|---|---|---|
+| the plate next door | 190 (3.7%) | **1,724 (33.8%)** |
+| 2-3 plates | 388 (7.6%) | 940 (18.4%) |
+| 4-8 | 326 (6.4%) | 1,341 (26.3%) |
+| 9-20 | 459 (9.0%) | 975 (19.1%) |
+| **21 or more** | **3,738 (73.3%)** | **121 (2.4%)** |
+
+Total 157,028 → 27,067 slot-links, mean **30.78 → 5.31** plates. Module level: 30,859 →
+8,004, **-74.1%**, mean 20.56 → 5.33.
+
+**And the picture says it without the numbers.** The stack stops being a funnel — big plates
+at the top tapering to nothing — and becomes a **spindle**: the densely-connected hubs move
+to the middle where everything can reach them, and the leaves go to both ends. That shape
+*is* the result, and it is the first thing a reader sees.
+
+### The two variants, and Tom's call on both
+
+The best order **interleaves boundary plates among the packages** — `ext:DATABASE` just above
+`storage`, `ext:STDIO` between `scriba` and `cli`. That reads well, and it overturns what the
+current default means: your code on top, the world below. Holding that grouping keeps 31.5%
+of the saving at routine level and 34.7% at module.
+
+Tom's calls: **build both** (design rule 2 — they are interchangeable on what the reader
+wants, not on the numbers), and **keep `by size` the default**, so this is opt-in exactly as
+the force layout is.
+
+**They are called "by what they link to" and never "by connection."** The plate-layout button
+already says *by connection* and means the arrangement of nodes *within* a plate. One phrase
+for two controls is rule 71 in the reader's language rather than in the code's, and the way it
+shows up is somebody choosing the wrong control and concluding the tool is wrong. A guard
+asserts no plate-order label is exactly that phrase.
+
+### The defect underneath it, which had to be fixed first
+
+**The plate-order control did not order plates.** `state.sortMode` was read in exactly one
+place — `sortedDisks()`, called only from `renderLegend()` — and the `gsort` handler ran
+`renderLegend(); persist()` and never `Graph.setOptions({ diskOrder })`. So *by name* and *by
+kind* renumbered a legend and left every plate exactly where it was.
+
+Design rule 16 with the control genuinely wired: the handler fired, the state changed, the
+list redrew, and the one thing the control is named for did not happen. It hid because the
+default very nearly agrees — `defaultOrder` in `graph.js` is *by size* with one clause added
+— so the only mode anybody checked looked right. The two disagreed even at boot, the legend
+opening on `ext:STDIO` (991 nodes, biggest of all) over a stack opening on `pkg:disceptator`
+(961, biggest *package*).
+
+`applyOrder()` is the missing half, and it is called from the one handler rather than from
+each branch (rule 78): a seventh order added later cannot forget to move the plates, because
+moving them is not the branch's job. Fixing it repaired *by name* and *by kind* as a side
+effect — verified afterwards, all six modes moving the stack and the legend matching it.
+
+### Three instrument failures, and the third nearly went into a commit message
+
+This is the part worth carrying forward.
+
+1. **The first "confirmation" of the defect dispatched the wrong event.** The `gsort` branch
+   lives inside `mount.addEventListener("input", …)` and I dispatched `change`. The stack did
+   not move, which is what I expected to see, and it proved nothing — the handler had not run
+   at all. The claim was sound on the exhaustive grep, but the observation I called
+   confirmation was worthless, and I nearly wrote it into a commit message as evidence.
+2. **The second sweep held a stale element reference.** `renderLegend()` rebuilds the
+   `<select>`, so a cached `sel` is detached after the first change and every later dispatch
+   fires on a node outside the document. All four modes reported identical output — which
+   read exactly like the fix not working.
+3. **And rule 83 again, differently.** This window's pointer factor was **1.0** where the
+   previous session's was 1.5581. It is a property of the window, not of the instrument, so
+   it must be re-measured every session. Measure it before trusting a coordinate.
+
+The habit that caught all three: when a result looks like the code is broken, check the
+instrument first. Twice out of three it was.

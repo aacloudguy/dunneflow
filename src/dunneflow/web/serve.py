@@ -57,6 +57,7 @@ from .graph import (
     root_package,
 )
 from .layout import structural
+from .plateorder import answer as plate_answer
 from .related import documents_for as related_documents
 from .search import search_files, search_in_file
 from .shape import for_program as lanes_for_program
@@ -355,6 +356,20 @@ class _Base:
     # version*: a base switch must throw all of it away, and a frozen record swapped whole
     # does that for free.
     payloads: dict[tuple[str, int], dict[str, Any]] = field(default_factory=dict)
+    # The plate orders, keyed on the same `(level, min_disk)` the payloads are and for the
+    # same reason one line up -- an order names plates, `min_disk` decides which plates
+    # exist, and an order fetched at one threshold names plates the other has merged into
+    # `<small>` (rule 81: a key that decides whether to skip work must carry everything the
+    # work depends on). The `grouped` flag joins the key because it is a different
+    # question, not a different rendering of one answer: the two are solved separately and
+    # neither can be derived from the other.
+    #
+    # A field rather than a cache on `_Live`, on `payloads`' argument exactly: it is a fact
+    # about *this version*, and a frozen record swapped whole throws it away for free. That
+    # is also why it is in neither `COMPARISON_CACHES` nor `PROGRAM_CACHES` -- being a field
+    # is what clears it, and naming it there as well would be a second answer to "when does
+    # this go stale" that can drift from the first.
+    plate_orders: dict[tuple[str, int, bool], dict[str, Any]] = field(default_factory=dict)
     # The compartment diagrams, built once per base for the same reason the payloads are:
     # they are a fact about *this version* of the program, and a switch throws them away
     # with everything else. One pass over the model builds all fifty-three, so this is
@@ -664,6 +679,10 @@ class _Live:
                       # The default under its own key, and the *same object*: `payload` and
                       # `payloads[default_level()]` are one truth with an index over it.
                       payloads={default_level(): payload},
+                      # Empty, for the diagrams' reason on the next line: the solve is about
+                      # a second and a reader who never leaves *by size* must never pay it
+                      # (rule 45). The route fills one key on first ask.
+                      plate_orders={},
                       # Empty rather than built: fifty-three diagrams cost a model build,
                       # and a session that never opens Diagram mode must not pay for it at
                       # every switch. The route fills all three on first ask, together --
@@ -1685,6 +1704,45 @@ class _Handler(BaseHTTPRequestHandler):
         with self._live.lock:
             self._json(outline_for(self._live.current.store, node))
 
+    def _r_plateorder(self, q: dict[str, list[str]]) -> None:
+        """Which order to stack the plates in, so a crossing does not have to travel far.
+
+        **On demand, and held on the base** -- `/api/graph`'s bargain rather than
+        `/api/shape`'s. The two halves of rule 45 pull opposite ways here: the solve is a
+        second of work, so it must not be at boot for a reader who never asks; and the
+        answer is a fact about *this version at this altitude*, identical for everyone who
+        asks it, so throwing it away would charge the second again on every toggle between
+        two orders the reader is comparing.
+
+        **The model is rebuilt rather than read off the payload**, which looks like waste
+        and is not. `build()` at a level costs ~120 ms against the ~1,000 ms solve, and the
+        payload is columnar with edges as *indices* -- so deriving the plate pairs from it
+        means a second reading of what an edge is, in a second place, for a number printed
+        beside the first (rule 51). `plateorder.weights()` reads `GraphModel` and nothing
+        else, and is the one place a crossing is counted.
+
+        `read_level` is `/api/graph`'s own, so an unknown level is refused with a 400 here
+        exactly as it is there and `minDisk` is clamped the same way -- one reading of the
+        question, not two that can drift (rule 51). `grouped` defaults to false because the
+        interleaved order is the one that answers the question asked; a reader who wants the
+        bands held says so.
+        """
+        try:
+            level, min_disk = read_level(q)
+        except ValueError as exc:
+            self.send_error(400, str(exc))
+            return
+        grouped = (q.get("grouped") or [""])[0] in ("1", "true", "yes")
+        key = (level, min_disk, grouped)
+        with self._live.lock:
+            base = self._live.current
+            answer = base.plate_orders.get(key)
+            if answer is None:
+                model = build(base.store, level=level, min_disk=min_disk)
+                answer = plate_answer(model, grouped=grouped)
+                base.plate_orders[key] = answer
+        self._json(answer)
+
     def _r_naming(self, q: dict[str, list[str]]) -> None:
         """The Form lane: what this program does about names, counted."""
         with self._live.lock:
@@ -2666,6 +2724,7 @@ class _Handler(BaseHTTPRequestHandler):
         "/api/curiosities": "_r_curiosities",
         "/api/algorithms": "_r_algorithms",
         "/api/shape": "_r_shape",
+        "/api/plateorder": "_r_plateorder",
         "/api/threads": "_r_threads",
         "/api/thread": "_r_thread",
         "/api/naming": "_r_naming",

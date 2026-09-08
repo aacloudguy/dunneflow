@@ -12,6 +12,7 @@ cross one, a call recorded twice at two confidences, and boundaries of two kinds
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pytest
@@ -20,6 +21,7 @@ from dunneflow.resolve.calls import resolve_calls
 from dunneflow.store import Store
 from dunneflow.walk import analyze_tree
 from dunneflow.web import graph as G
+from dunneflow.web import plateorder
 from dunneflow.web.detail import classify, describe
 from dunneflow.web.serve import build_payload, default_level, read_level
 
@@ -692,3 +694,166 @@ def test_no_hover_can_carry_a_shadow_and_no_card_claims_one() -> None:
     assert "A stand-in." not in shell.split("*/")[0] + "".join(
         seg.split("/*")[0] for seg in shell.split("*/")[1:]
     ), "the stand-in row is back in the rendered card rather than in the note about it"
+
+
+# --------------------------------------------------------------------------- #
+# The plate order that keeps crossings short
+# --------------------------------------------------------------------------- #
+
+
+def test_a_crossing_is_counted_once_not_once_per_plate(levelled: Store) -> None:
+    """Rule 23's doubling, in the one place a crossing is counted.
+
+    The model holds every cross-plate connection **twice** -- once on each plate, each copy
+    ending in a shadow -- because that is what lets both plates lay out under the same
+    forces. Counting rows would say every pair is twice as coupled as it is. The doubling
+    is uniform, so it changes no ordering and every number printed beside the order (rule
+    32); a defect that moves nothing and makes everything wrong is exactly the kind this
+    codebase keeps paying for.
+    """
+    m = _routine_level(levelled)
+    w = plateorder.weights(m)
+    disk_of = {n.id: n.disk for n in m.nodes}
+    rows = sum(1 for e in m.edges
+               if disk_of.get(e.src) and disk_of.get(e.dst)
+               and disk_of[e.src] != disk_of[e.dst])
+    assert sum(w.values()) > 0, "this fixture draws no cross-plate edges; the guard is blind"
+    assert sum(w.values()) * 2 == rows, (
+        f"{sum(w.values())} counted against {rows} rows -- a crossing is either being "
+        "counted once per plate or the model has stopped doubling them"
+    )
+    # And never a plate against itself: an inner edge costs no vertical distance under any
+    # order, so including it would add a constant to every candidate and say nothing.
+    assert all(a != b for a, b in w), "a plate is paired with itself"
+
+
+def test_the_order_is_the_same_on_every_run(levelled: Store) -> None:
+    """Rule 66: an order the tool cannot defend is not an order.
+
+    Minimum linear arrangement is NP-hard and this is a local search, so the answer is not
+    claimed to be optimal -- it is claimed to be *the same one every time*, seeded from a
+    stated order and taking the first strict improvement in a fixed traversal. Without that
+    two runs of one build draw two stacks and neither can be compared with the other.
+    """
+    m = _routine_level(levelled)
+    runs = {tuple(plateorder.solve(m)) for _ in range(3)}
+    assert len(runs) == 1, "the solve is not deterministic"
+    grouped = {tuple(plateorder.solve(m, grouped=True)) for _ in range(3)}
+    assert len(grouped) == 1, "the grouped solve is not deterministic"
+
+
+def test_the_order_holds_every_plate_and_invents_none(levelled: Store) -> None:
+    """A plate dropped here is a plate `sortedDisks` silently filters out of the legend."""
+    m = _routine_level(levelled)
+    seed = plateorder.seed_order(m)
+    for grouped in (False, True):
+        got = plateorder.solve(m, grouped=grouped)
+        assert sorted(got) == sorted(seed), (
+            f"grouped={grouped}: the order is not a permutation of the plates")
+        assert len(set(got)) == len(got), f"grouped={grouped}: a plate appears twice"
+
+
+def test_grouped_never_puts_an_external_above_a_package(levelled: Store) -> None:
+    """The whole of what `grouped` promises, and the only thing it may cost is travel."""
+    m = _routine_level(levelled)
+    kind = {str(d["id"]): d.get("kind") for d in m.disks}
+    got = [kind.get(d) for d in plateorder.solve(m, grouped=True)]
+    assert "package" in got and "external" in got, (
+        "this fixture has only one kind of plate; the guard cannot see what it checks")
+    first_ext = got.index("external")
+    assert "package" not in got[first_ext:], (
+        "grouped put a package below an external, which is the one thing it exists to hold")
+
+
+def test_the_solve_never_makes_the_crossings_longer(levelled: Store) -> None:
+    """It is a search that keeps only improvements, so this is a floor rather than a hope.
+
+    Stated as *not worse* rather than as a percentage: the reduction on a three-module
+    fixture is not the reduction on a program, and a test asserting Society's 82.8% here
+    would be measuring the fixture and naming the feature (rule 24).
+    """
+    m = _routine_level(levelled)
+    w = plateorder.weights(m)
+    seed = plateorder.seed_order(m)
+    for grouped in (False, True):
+        got = plateorder.solve(m, grouped=grouped)
+        assert plateorder.travel(got, w) <= plateorder.travel(seed, w), (
+            f"grouped={grouped}: the search returned an order worse than its seed")
+
+
+def test_the_spread_bands_add_up_to_the_crossings_they_are_drawn_from(
+        levelled: Store) -> None:
+    """Rule 32: the bands on screen are shares of a denominator, so they must be all of it.
+
+    The bands are a partition by construction -- 1, 2-3, 4-8, 9-20, 21+ covers every
+    distance a crossing can have -- and this is what catches a band edited into a gap.
+    """
+    m = _routine_level(levelled)
+    w = plateorder.weights(m)
+    got = plateorder.spread(plateorder.solve(m), w)
+    assert sum(n for _, n in got.bands) == got.crossings, (
+        f"the bands hold {sum(n for _, n in got.bands)} of {got.crossings} crossings")
+    assert got.crossings == sum(w.values()), "the denominator is not the crossings counted"
+
+
+def test_the_answer_states_both_ends_and_the_saving_between_them(levelled: Store) -> None:
+    """A figure with no middle is a claim nobody can weigh -- `curiosities.py`'s rule."""
+    m = _routine_level(levelled)
+    got = plateorder.answer(m)
+    for key in ("order", "grouped", "plates", "pairs", "before", "after", "saved"):
+        assert key in got, f"the answer does not carry {key!r}"
+    assert got["before"]["crossings"] == got["after"]["crossings"], (
+        "the two ends are being measured over different sets of crossings")
+    assert got["after"]["total"] <= got["before"]["total"]
+
+
+def test_the_plate_order_route_reads_the_level_the_same_way_the_stack_does() -> None:
+    """One reading of *which altitude*, not two that can drift (rule 51).
+
+    An order names plates and `minDisk` decides which plates exist, so an order fetched at
+    one threshold names plates the other has merged into `<small>` -- and `sortedDisks`
+    filters those out silently, drawing a short list that reads as a small program (rule
+    81). The route therefore keys its cache on exactly what `read_level` returns, plus
+    `grouped`, which is a different question rather than a different rendering of one
+    answer.
+
+    Read off the source because the alternative is standing a server up to assert a
+    dictionary key. What is asserted is the *shape of the key*, which is where rule 81 is
+    paid or not.
+    """
+    src = Path(__file__).resolve().parents[1] / "src/dunneflow/web/serve.py"
+    text = src.read_text(encoding="utf-8")
+    route = re.search(r"def _r_plateorder\(self.*?\n    def ", text, re.S)
+    assert route, "the plate-order route is gone or no longer shaped for this guard"
+    body = route.group(0)
+    assert "read_level(q)" in body, (
+        "the route reads the level its own way; `/api/graph` and this must agree or an "
+        "order arrives for an altitude nobody is looking at"
+    )
+    assert "self.send_error(400" in body, (
+        "an unknown level is defaulted rather than refused -- a silent fallback answers a "
+        "question nobody asked with a picture that looks exactly right"
+    )
+    assert re.search(r"key = \(level, min_disk, grouped\)", body), (
+        "the cache key does not carry the level, the threshold and the grouping, so one "
+        "answer is served for questions with different plate sets (rule 81)"
+    )
+
+
+def test_a_base_holds_its_plate_orders_and_a_switch_cannot_carry_them() -> None:
+    """A fact about *this version*, so a frozen record swapped whole throws it away.
+
+    Stated here as well as in `test_base_switch`, because that guard derives its field list
+    from the dataclass and would pass just as happily on a field cached in the wrong place.
+    This one says *which* place is right and why: `payloads` is the precedent, an order is
+    the same kind of thing, and naming it in `PROGRAM_CACHES` as well would be a second
+    answer to "when does this go stale" that can drift from the first.
+    """
+    from dunneflow.web import serve as serve_mod
+    fields = serve_mod._Base.__dataclass_fields__
+    assert "plate_orders" in fields, "the base no longer holds the plate orders"
+    assert "plate_orders" not in serve_mod._Live.PROGRAM_CACHES, (
+        "the plate orders are named as a cache to clear as well as being a base field; "
+        "one of the two answers will be forgotten when the other moves"
+    )
+    assert "plate_orders" not in serve_mod._Live.COMPARISON_CACHES

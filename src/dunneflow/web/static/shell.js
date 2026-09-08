@@ -17747,6 +17747,12 @@ async function setGraphDetail({ level = state.level, minDisk } = {}) {
 
   if (changingLevel) { state.level = level; used("level:" + level); }
   if (minDisk !== undefined) setMinDiskNow(minDisk);
+  /* **The derived orders belong to one altitude and one threshold.** Both are moving here,
+     and a kept order names plates the new level has folded away or merged into `<small>` --
+     `sortedDisks` would `filter(Boolean)` them out and draw a short list that looks like a
+     small program (rule 81). Emptied rather than re-fetched: the reader may not be in one
+     of those modes, and `ensureConnOrder` asks when they are. */
+  forgetConnOrder();
   persist();
 
   // Not on screen yet: the choice is real, and `ensureGraph` will honour it on mount.
@@ -17786,6 +17792,21 @@ async function setGraphDetail({ level = state.level, minDisk } = {}) {
   /* A new altitude is a new set of plates, so it is a different arrangement question and
      gets its own solve — held per `graphKey` for exactly that reason. */
   applyPlateLayout();
+
+  /* **And a new set of plates is a new order**, for the same reason one line up. The old
+     answer was dropped in `forgetConnOrder` above; this is where the new one is asked for,
+     because until now there was no payload to hand it to. Without it a reader who chose
+     *by what they link to* and then climbed a level would be handed the size order with the
+     control still saying otherwise (rule 78 — the pane brought up to date by the control
+     that moved it is only as correct as the last person to add a control). */
+  if (state.sortMode === "conn" || state.sortMode === "conngrp") {
+    const mode = state.sortMode;
+    connNote = "working out which order keeps the crossings short…";
+    ensureConnOrder(mode)
+      .then(() => { connNote = ""; applyOrder(); renderLegend(); })
+      .catch(err => { connNote = `the order could not be worked out — ${err.message}`;
+                      renderLegend(); });
+  }
 
   /* The comparison's per-node map is a fact about *this* payload -- a module takes the band
      of what it holds -- so it is dropped rather than reused. Rule 51: whoever changes the
@@ -19376,6 +19397,38 @@ function detailControlHtml() {
   </div>`;
 }
 
+/* What the chosen order bought, in the reader's terms and with its denominator.
+ *
+ * **Every number here comes off `/api/plateorder`'s own answer** -- the same computation
+ * that produced the order on screen -- rather than being recounted in the page from the
+ * payload. Rule 13: the claim's query must return exactly what is printed beside it, and a
+ * second count over `payload.edges` here would be a second reading of what a crossing *is*,
+ * one plate-doubling away from disagreeing with the first (rule 23).
+ *
+ * It states **both ends**, because "1,724 crossings reach the plate next door" is a number
+ * nobody can weigh without the 190 it replaced -- `curiosities.py`'s argument for printing a
+ * middle beside every extremum, one surface over. And it states the denominator, so a band
+ * is a share of something rather than a bare count (rule 32).
+ *
+ * Silent under the four orders that are not derived: there is nothing to compare *by size*
+ * against but itself. */
+function connSentence() {
+  if (connNote) return `<div class="legnote">${esc(connNote)}</div>`;
+  const got = connSpread[state.sortMode];
+  if (!got) return "";
+  const near = (b) => (b.bands.find(x => x.label === "the plate next door") || {}).count || 0;
+  const far = (b) => (b.bands.find(x => x.label === "21 or more plates away") || {}).count || 0;
+  const n = (v) => `<b class="num">${v.toLocaleString()}</b>`;
+  return `<div class="legnote">
+    ${n(near(got.after))} of ${n(got.after.crossings)} crossings reach the plate next door,
+    against ${n(near(got.before))} by size${
+      far(got.after) < far(got.before)
+        ? ` · ${n(far(got.before))} used to span 21 plates or more, now ${n(far(got.after))}`
+        : ""} · <b class="num">${got.saved}%</b> less vertical travel${
+      got.grouped ? " · packages held above the rest" : ""}
+  </div>`;
+}
+
 function renderLegend() {
   const host = $("#graphLegend");
   if (!host) return;
@@ -19393,11 +19446,20 @@ function renderLegend() {
         click to select, drag to reorder</span>
       <select class="gsel" id="gsort" style="margin-left:auto"
               aria-label="Sort plates">
+        ${/* **"by what they link to" and not "by connection".** The plate-layout button a
+              few lines down already says *by connection*, and it means the arrangement of
+              nodes *within* a plate. Two controls sharing one phrase for two different
+              things is `data-nav`'s defect in the reader's language rather than in the
+              code's (rule 71): one word, two meanings, and the one place it shows up is
+              somebody choosing the wrong control and concluding the tool is wrong. */""}
         ${[["nodes", "by size"], ["name", "by name"], ["kind", "by kind"],
+           ["conn", "by what they link to"],
+           ["conngrp", "by what they link to, grouped"],
            ["manual", "as arranged"]].map(([v, l]) =>
           `<option value="${v}" ${state.sortMode === v ? "selected" : ""}>${l}</option>`).join("")}
       </select>
     </div>
+    ${connSentence()}
     <div class="legrows">
       ${disks.map(d => `
         <div class="leg ${d.kind} ${on.has(d.id) ? "on" : ""}${
@@ -19564,12 +19626,40 @@ function changeKeyHtml() {
   </div>`;
 }
 
+/* The order the plates are in, and **it is the stack's order as well as the list's**.
+ *
+ * It was the list's alone until 2026-09-08. `state.sortMode` was read here and nowhere
+ * else, `renderLegend()` was this function's only caller, and the `gsort` handler called
+ * `renderLegend(); persist()` and never `Graph.setOptions({ diskOrder })` -- so choosing
+ * *by name* renumbered a legend and left every plate exactly where it was. Design rule 16
+ * with the control genuinely wired: the handler ran, the state changed, the list redrew,
+ * and the one thing the control is named for did not happen.
+ *
+ * It was invisible because the *default* very nearly agrees: `defaultOrder` in `graph.js`
+ * is packages above externals, biggest first, which is `by size` with one clause added.
+ * Confirmed at the keyboard before it was fixed -- `gsort` set to `name`, and
+ * `Graph.diskOrder()` byte-identical afterwards. The two disagreed even at boot, the
+ * legend opening on `ext:STDIO` (991 nodes, biggest of all) over a stack opening on
+ * `pkg:disceptator` (961, biggest *package*).
+ *
+ * `applyOrder` below is the half that was missing, and it is called from the one handler
+ * rather than from each branch here (rule 78): a mode added later cannot forget to move
+ * the plates, because moving them is not this function's job. */
 function sortedDisks() {
   const disks = Graph.disks();
   const byId = new Map(disks.map(d => [d.id, d]));
   const arranged = plateOrder();
   if (state.sortMode === "manual" && Array.isArray(arranged)) {
     return arranged.map(id => byId.get(id)).filter(Boolean);
+  }
+  /* The derived-by-connection orders are the server's answer, held in `connOrder` for the
+     level and threshold on screen. Until it lands the list keeps the order it had, which
+     is the honest thing to draw: an empty legend for a second would say this plate set is
+     empty (design rule 21), and re-sorting to *size* first would move every plate twice. */
+  if (state.sortMode === "conn" || state.sortMode === "conngrp") {
+    const got = connOrder[state.sortMode];
+    if (Array.isArray(got)) return got.map(id => byId.get(id)).filter(Boolean);
+    return (Graph.diskOrder() || []).map(id => byId.get(id)).filter(Boolean);
   }
   const list = disks.slice();
   if (state.sortMode === "name") list.sort((a, b) => a.name.localeCompare(b.name));
@@ -19578,6 +19668,59 @@ function sortedDisks() {
                                           : a.kind === "package" ? -1 : 1));
   } else list.sort((a, b) => b.nodes - a.nodes);
   return list;
+}
+
+/* What the two derived orders answer with, for the level and threshold on screen.
+ *
+ * Keyed by mode and **emptied whenever the altitude or the threshold moves**, because an
+ * order names plates and `minDisk` decides which plates exist -- an order fetched at one
+ * threshold names plates the other has merged into `<small>`, and `filter(Boolean)` above
+ * would quietly drop them rather than say so (rule 81). `connSpread` is what the order
+ * bought, kept beside it so the sentence in the legend and the order on screen cannot be
+ * about two different computations (rule 13). */
+let connOrder = {};
+let connSpread = {};
+let connAsked = "";
+/* What to say above the list while the solve runs, or when it could not be done. Its own
+   variable rather than `navNote`: that one is rendered in the graph HUD, which nobody
+   choosing a plate order is looking at -- the same division `docNote` keeps one pane over. */
+let connNote = "";
+
+function forgetConnOrder() { connOrder = {}; connSpread = {}; connAsked = ""; connNote = ""; }
+
+/* Ask for one of the derived orders, once per (mode, level, threshold).
+ *
+ * Not cached across levels on purpose -- see `forgetConnOrder` -- and not asked at all
+ * until a reader picks one of the two modes, which is rule 45 where it belongs: the solve
+ * is about a second, and a reader who never leaves *by size* must never pay it. */
+async function ensureConnOrder(mode) {
+  const level = state.level;
+  const min = minDiskNow();
+  const want = `${mode}|${level}|${min == null ? "" : min}`;
+  if (connAsked === want && Array.isArray(connOrder[mode])) return;
+  const q = new URLSearchParams({ level });
+  if (min != null) q.set("minDisk", String(min));
+  if (mode === "conngrp") q.set("grouped", "1");
+  const r = await fetch(`/api/plateorder?${q}`);
+  if (!r.ok) throw new Error(`the server answered ${r.status}`);
+  const got = await r.json();
+  /* The reader may have moved on while this was in flight. Writing a stale answer would
+     put an order for one altitude under a legend drawn for another. */
+  if (state.level !== level || minDiskNow() !== min) return;
+  connAsked = want;
+  connOrder[mode] = got.order;
+  connSpread[mode] = got;
+}
+
+/* Hand the current order to the engine, which is the step that was missing.
+ *
+ * One place, called from the one handler, so `diskOrder` and the legend are two views of
+ * a single answer rather than two answers (rule 51). `manual` is left alone: the drag
+ * handler has already set `diskOrder` to exactly what it arranged, and pushing
+ * `sortedDisks()` back would be the same array taking a second trip. */
+function applyOrder() {
+  if (state.sortMode === "manual") return;
+  Graph.setOptions({ diskOrder: sortedDisks().map(d => d.id) });
 }
 
 /* ── the graph's controls ─────────────────────────────────────────────────────
@@ -19806,7 +19949,32 @@ function wireGraphOnce() {
       if (out) out.textContent = t.value;
       return;
     }
-    if (t.id === "gsort") { state.sortMode = t.value; renderLegend(); persist(); }
+    if (t.id === "gsort") {
+      state.sortMode = t.value;
+      persist();
+      /* The two derived orders are the server's, so this is the one branch that has to
+         wait. The legend is drawn first either way, with the note saying the solve is
+         running -- a control that shows nothing until it is finished reads as a control
+         that is not working, which is the same argument the `minDisk` slider makes two
+         handlers up. */
+      if (t.value === "conn" || t.value === "conngrp") {
+        connNote = "working out which order keeps the crossings short…";
+        renderLegend();
+        ensureConnOrder(t.value)
+          .then(() => { connNote = ""; applyOrder(); renderLegend(); })
+          .catch(err => {
+            /* Said, not swallowed. The order on screen is still whatever it was, which is
+               true and is not what was asked for -- so the legend says so and the reader
+               picks again (design rule 21). */
+            connNote = `the order could not be worked out — ${err.message}`;
+            renderLegend();
+          });
+        return;
+      }
+      connNote = "";
+      applyOrder();
+      renderLegend();
+    }
     if (t.id === "gcolorby") {
       state.colorBy = t.value;
       persist();

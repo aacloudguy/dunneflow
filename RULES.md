@@ -9,8 +9,8 @@ agree with a rule and still reimplement the defect it was written from: every on
 was, at the time, the obvious thing to do.
 
 Cited as bare numbers — "rule 45" — from code comments, tests, `HANDOFF.md` and
-`BRIEFING.md`; **2,832** such citations across `src/` and `tests/`, 2,109 of them to these
-rules and 723 to the design ones, over 107 files — retaken 2026-09-08 with the command
+`BRIEFING.md`; **2,846** such citations across `src/` and `tests/`, 2,121 of them to these
+rules and 725 to the design ones, over 107 files — retaken 2026-09-08 with the command
 below, which is why the command is written down. The numbers are therefore **addresses**,
 never an ordering, and are never reused or closed up.
 
@@ -26,8 +26,8 @@ by the query. A count that changes with the shell it is run in is not a measurem
 24), so the exclusion is stated and the figure was reproduced twice before being written:
 
 ```bash
-grep -rhoiE "\brules? [0-9]+"        --exclude-dir=__pycache__ src tests | wc -l   # 2,832
-grep -rhoiE "\bdesign rules? [0-9]+" --exclude-dir=__pycache__ src tests | wc -l   #   723
+grep -rhoiE "\brules? [0-9]+"        --exclude-dir=__pycache__ src tests | wc -l   # 2,846
+grep -rhoiE "\bdesign rules? [0-9]+" --exclude-dir=__pycache__ src tests | wc -l   #   725
 grep -rliE "\brules? [0-9]+"         --exclude-dir=__pycache__ src tests | wc -l   #   107
 ```
 
@@ -1640,3 +1640,55 @@ rule of that number — a blank canvas must say why it is blank — which does e
     — one reading, one source — and moves it to the side that always has it. The test is
     *when is this input absent?* If the answer is "in some mode", the derivation belongs
     where the input is unconditional, not where it happens to be convenient.
+
+88. **A rebuild recipe must name every store the change invalidates, including the ones
+    nothing else mentions.** Rule 12 says a cached fact is only as good as the tool that
+    read it. This is the other end of it: the recipe that *repairs* the staleness has to be
+    as complete as the fingerprint that detects it.
+
+    A documentation rule moved `doc_rules_fingerprint()`, so the pair had to be rebuilt —
+    two analyses and a seal, exactly as `CLAUDE.md` said. What `CLAUDE.md` did not say is
+    that **`standards.db` is a document store too**. It went stale with the corpus, and
+    `serve` refuses to boot on a stale one: *"written by a different version of DunneFlow"*,
+    before a single page is served. The rebuild ran clean, the map analysed perfectly, and
+    the dashboard could not be opened.
+
+    The trap is that the invalidated store was the one the recipe had no reason to mention.
+    `--standards <dir>` is an *optional* flag naming an *outside* standard, so it reads as
+    something the rebuild does not concern — and it is hashed into exactly the fingerprint
+    the change moved. A store admitted through a different door is invalidated through the
+    same one.
+
+    So the test when a fingerprint moves is not *"which stores does this recipe usually
+    rebuild"* but **"which stores carry this fingerprint"** — and every one of them belongs
+    in the recipe, whether or not it is part of the normal flow. `CLAUDE.md`'s rebuild is
+    three commands now, and the third carries `--standards`.
+
+89. **A refusal must name a command that can act on the thing it is refusing, and the
+    sentence has to be readable off whatever decides that.** Rule 13 for a remedy rather
+    than for a number.
+
+    `Store._refuse_if_stale` exists to name *which* of two fixes applies, and its reasoning
+    was right: a graph written before paths went relative needs `migrate`, which rewrites in
+    place and keeps a sealed snapshot whose source tree may be long gone, so telling that
+    reader to re-analyse asks them to rebuild from a tree they do not have. But it decided
+    from `paths_are_relative` — *when* the store was written — while the migration decides
+    from `_require_previous`, which admits exactly **one** fingerprint on the claim that
+    making paths relative is the only thing that changed.
+
+    Two facts, one test. Every store older than that single version was told to run
+    `dunneflow migrate`, and the migration refused it in turn. **Three of the four program
+    directories in this project's own `output/` were in that state**, and it cost nothing
+    at all until somebody kept an old map — at which point the reader is handed a command,
+    runs it, is refused by it, and has no third thing to try.
+
+    This is rule 49 one step on. Rule 49 is a *fallback* yielding a plausible value; this is
+    a *refusal* yielding a plausible remedy, and it is worse in one way: a refusal is the
+    surface a reader trusts most, because it is the one that just admitted something was
+    wrong.
+
+    The remedy is rule 51's: ask the module that owns the gate. `migration_speaks_for` lives
+    beside `_require_previous`, and both refusals call it — the graph on
+    `PREVIOUS_CODE_EXTRACTOR`, the document store on `PREVIOUS_DOC_EXTRACTOR`, the compared
+    value being the only thing that differs. The two sentences were already copies of each
+    other, which is where this kind of thing goes unnoticed twice.

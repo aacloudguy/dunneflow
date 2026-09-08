@@ -14,15 +14,15 @@ by *how often you need it*, not by importance:
 | File | What it holds | When to read it |
 |---|---|---|
 | `CLAUDE.md` | commands, verification gates, architecture, and the **index** of every rule | every session — it is loaded for you |
-| `RULES.md` | the 86 engineering rules **in full**, with the false result each came from — numbered to 87, because 21 does not exist and the numbers are addresses | before working in the area a rule governs |
+| `RULES.md` | the 88 engineering rules **in full**, with the false result each came from — numbered to 89, because 21 does not exist and the numbers are addresses | before working in the area a rule governs |
 | `DESIGN-RULES.md` | the 30 dashboard design rules in full | before building or changing a view |
 | `PERFORMANCE.md` | every measured figure, with its budget and its conditions | before quoting or retaking a number |
 | `BRIEFING.md` | state: what is built, what is next, what is closed | at the start of a session |
 | `HANDOFF.md` | the full chronological record, session by session | when you need why something is the way it is |
 
 A rule is cited as a bare number — "rule 45", "design rule 19" — from code comments, tests
-and both records; **2,832** such citations across `src/` and `tests/` as of 2026-09-08 —
-2,109 to the engineering rules and 723 to the design ones, over 107 files. `RULES.md` carries
+and both records; **2,846** such citations across `src/` and `tests/` as of 2026-09-08 —
+2,121 to the engineering rules and 725 to the design ones, over 107 files. `RULES.md` carries
 the command that counts them, because the first retake gave two different answers in two
 shells. **The numbers are
 addresses. Never reuse one, never renumber, never close a gap.**
@@ -969,6 +969,10 @@ it was written from.
  85. A span cannot tell what a loop is over from what it does.
  86. A guard can only see that a function was called, never what it returned.
  87. A derivation from the picture is only as available as the picture.
+ 88. A rebuild recipe must name every store the change invalidates, including the ones
+     nothing else mentions.
+ 89. A refusal must name a command that can act on the thing it is refusing, and the
+     sentence has to be readable off whatever decides that.
 ```
 
 ## Anomalies: the discipline

@@ -5,7 +5,7 @@ It exists so a fresh context can be useful in a few minutes instead of an hour.
 
 | Read | For |
 |---|---|
-| `CLAUDE.md` | The rules. 86 engineering rules — numbered to 87, since 21 does not exist — and 30 dashboard design rules, each earned from a false result on real code. **Binding.** |
+| `CLAUDE.md` | The rules. 88 engineering rules — numbered to 89, since 21 does not exist — and 30 dashboard design rules, each earned from a false result on real code. **Binding.** |
 | `HANDOFF.md` | The chronological record — what was built when, what it cost, what broke. ~1,700 lines. Read *sections*, not the whole thing. |
 | **this file** | Where things are, what is done, what we are doing now, what not to re-open. |
 | Artifact `f993d319-d2b7-4217-9130-cdbba698d1bc` | The ratified dashboard design — a complete working UI, the source of truth for every view. Read it with the **Artifact tool**, not from a screenshot. |
@@ -474,8 +474,9 @@ measured blind spots including the one it cannot see past: a local SQLite file i
 network.
 
 **Every outstanding rule candidate is minted.** Tom: *"Accept and mint all outstanding
-rules."* The counts are now **86 engineering rules numbered to 87** — 21 still does not
-exist — and **30 design rules**. There were six, not the three I first reported: sweeping
+rules."* That session left **86 engineering rules numbered to 87** — 21 still does not
+exist — and **30 design rules**. *(88 and 89 joined them on 2026-09-08; the live count is
+in the table at the top of this file.)* There were six, not the three I first reported: sweeping
 the record for *every* unminted candidate rather than the ones I had in hand found three
 more, two of them standing since 2026-09-06.
 

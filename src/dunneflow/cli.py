@@ -1421,6 +1421,18 @@ def cmd_serve(args: argparse.Namespace) -> int:
     # a root -- by whether it holds a map, never by what it is called.
     given = Path(args.out_dir) if args.out_dir else default_output_root()
     if not args.out_dir:
+        # **Made when nobody named it, and only then.** With no argument this is the
+        # application's own data directory, and on a machine that has never run DunneFlow
+        # it does not exist yet -- so the start page would state a root the reader cannot
+        # open and *Show me* would refuse a directory that is simply not there. Creating a
+        # directory is not repairing a store: rule 20 forbids a read bringing a *database*
+        # into being, and nothing here opens one.
+        #
+        # A directory the reader **named** is never created, and that difference is the
+        # whole guard: a mistyped path would otherwise become a new empty root, and the
+        # reader would be told there are no programs in a place they have never used
+        # (rule 49 -- a plausible answer hiding the failure).
+        given.mkdir(parents=True, exist_ok=True)
         _emit(f"no directory given; reading {given}")
     try:
         serve(given, port=args.port,

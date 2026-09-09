@@ -297,3 +297,75 @@ def test_a_chosen_output_root_is_taken_in_silence(capsys):
     args = build_parser().parse_args(["analyze", "src", "--output", "/tmp/somewhere"])
     assert _out_root(args) == Path("/tmp/somewhere")
     assert capsys.readouterr().err == ""
+
+
+# --------------------------------------------------------------------------- #
+# The bundle, read out of the spec rather than out of a build
+
+
+SPEC = SRC.parent.parent / "packaging" / "dunneflow.spec"
+ENTRY = SRC.parent.parent / "packaging" / "dunneflow_app.py"
+
+
+def test_the_spec_bundles_every_extraction_input():
+    """A file the fingerprint hashes must travel as **data**, not only in the archive.
+
+    This is the whole of blocker 1's other half: `code_extraction_inputs()` names the
+    detectors' loader and both extractor trees, and a module that exists only inside a
+    PyInstaller archive has no file to read. The spec is parsed rather than run, so this
+    costs nothing and still fails the moment a reader is added to a key and not to the
+    bundle.
+    """
+    spec = SPEC.read_text(encoding="utf-8")
+    wanted = {p.relative_to(SRC).parts[0] for p in
+              (*code_extraction_inputs(), *doc_extraction_inputs())}
+    for top in sorted(wanted):
+        assert top in spec, f"{top}/ is hashed into a cache key and is not in the spec"
+    # The page and the engine, which are not hashed but are 404s without this.
+    assert 'web" / "static"' in spec and 'web" / "vendor"' in spec
+    # Which DunneFlow read the map. Without it a shipped binary records no version at all.
+    assert "copy_metadata" in spec
+
+
+def test_the_bundle_layout_matches_what_resource_root_expects():
+    """`<_MEIPASS>/dunneflow/…`, and it is what makes the two builds agree.
+
+    `fingerprint_files` labels every input relative to `resource_root()`. Same last
+    segment, same labels, same fingerprint — so a map made by the binary opens in the
+    checkout and back. Laid out any other way the two would refuse each other's maps under
+    rule 12, which is the opposite of what that rule is for.
+    """
+    spec = SPEC.read_text(encoding="utf-8")
+    assert '"dunneflow/detectors"' in spec
+    assert '"dunneflow/web/static"' in spec
+    assert "dunneflow/extractors/python" in spec
+
+
+def test_the_entry_point_calls_freeze_support_before_anything_else():
+    """Not `main()`'s copy — *this* file's, and it has to be first.
+
+    macOS spawns, so a frozen worker re-executes the application. Anything imported ahead
+    of this line runs in every one of them.
+    """
+    tree = ast.parse(ENTRY.read_text(encoding="utf-8"))
+    body = [n for n in tree.body
+            if not (isinstance(n, ast.Expr) and isinstance(n.value, ast.Constant))]
+    assert isinstance(body[0], ast.Import)
+    assert body[0].names[0].name == "multiprocessing"
+    call = body[1]
+    assert isinstance(call, ast.Expr) and isinstance(call.value, ast.Call)
+    assert ast.unparse(call.value.func) == "multiprocessing.freeze_support"
+
+
+def test_no_arguments_means_serve_and_only_in_the_application():
+    """The double-click's decision belongs to the application, not to the CLI.
+
+    A command-line tool run with no arguments should say what it takes. An application
+    that has just been double-clicked has no way to say anything back, and printing usage
+    into a window nobody opened is the same as doing nothing.
+    """
+    entry = ENTRY.read_text(encoding="utf-8")
+    assert 'sys.argv.append("serve")' in entry
+    # And the CLI still refuses, so `dunneflow` from a checkout keeps its usage message.
+    with pytest.raises(SystemExit):
+        build_parser().parse_args([])

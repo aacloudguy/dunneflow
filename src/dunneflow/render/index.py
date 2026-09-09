@@ -15,8 +15,10 @@ surface over). Three of them, and they are different answers with different thin
 about each:
 
 * a revision whose map was never written -- `--no-render`, or an analysis that predates
-  this layout. The graph is there and the map is not; re-rendering it is not something
-  this tool offers yet, and saying so beats an empty cell.
+  this layout. The graph is there and the map is not, and since the graph is all a map
+  needs the cell **names the command that writes one** rather than merely stating the
+  absence (rule 89). It said "not something this tool offers yet" until `dunneflow render`
+  existed, which is the sentence a feature has to come back and correct.
 * a map on disk for a revision no graph in this directory claims. A snapshot whose stores
   were dropped by hand -- the recipe in `CLAUDE.md` says to do exactly that -- and its map
   is a real document about a version nothing here can answer questions about.
@@ -107,7 +109,8 @@ def render_index(out_dir: Path, program: str, stamp: str | None = None,
             if where is not None:
                 cell = f"[`{where.name}/`]({where.name}/README.md)"
             elif rev in graphs:
-                cell = "*not written — `--no-render`, or analysed before maps were named*"
+                cell = ("*not written* — `dunneflow render <dir>` writes it "
+                        "from the graph that is already here")
             else:
                 cell = "*no graph here — its stores were removed*"
             label = str(said_row["label"]) if said_row and said_row["label"] else ""

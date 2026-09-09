@@ -27,6 +27,7 @@ from .docstore import DocStore
 from .migrate import MigrationRefused, migrate_program
 from .render.index import legacy_map_files, render_index
 from .render.markdown import render_all
+from .render.snapshot import mapless, render_maps
 from .resolve import version as program_version
 from .resolve.calls import resolve_calls
 from .resolve.cli import resolve_cli
@@ -1145,6 +1146,17 @@ def build_parser() -> argparse.ArgumentParser:
     rv.add_argument("--at", help="when its bodies were measured, if the graph cannot say")
     rv.set_defaults(func=cmd_revisions)
 
+    rn = sub.add_parser(
+        "render", help="write the map of a revision whose graph is already here")
+    rn.add_argument("out_dir", help="an analysed program's output directory")
+    rn.add_argument("--revision", default=None,
+                    help="which snapshot to write the map of (default: every revision "
+                         "here that has a graph and no map). Naming one that already has "
+                         "a map rewrites it.")
+    rn.add_argument("--include-tests", action="store_true",
+                    help="report anomalies in test code too, as `analyze` does")
+    rn.set_defaults(func=cmd_render)
+
     mg = sub.add_parser(
         "migrate", help="rewrite a program directory's stored paths as relative, in place")
     mg.add_argument("out_dir", help="an analysed program's output directory")
@@ -1160,6 +1172,59 @@ def build_parser() -> argparse.ArgumentParser:
                          "base survives a restart of the server.")
     sv.set_defaults(func=cmd_serve)
     return p
+
+
+def cmd_render(args: argparse.Namespace) -> int:
+    """Write the map of a revision this directory already holds a graph for.
+
+    **Not analysis.** No source is read, no fingerprint is re-stamped and every store this
+    opens is opened read-only, so rules 25 and 62 -- which forbid re-analysing a sealed
+    snapshot in place -- are untouched and rule 20 is satisfied by construction.
+
+    With no `--revision` it renders **every revision that has a graph and no map**, which is
+    the job it was built for: a program directory whose maps were overwritten before they
+    had names, given back what it lost. Naming one renders that one and rewrites its map if
+    it has one, so a re-render is always something the reader asked for by name.
+
+    The listing is rebuilt from the sidecar, whose rows carry the state and label a
+    filename cannot (`revisions.revision_of` returns a *claim*, and the authority is inside
+    the file).
+    """
+    out_dir = Path(args.out_dir)
+    if not out_dir.is_dir():
+        _emit(f"error: {out_dir} is not a directory")
+        return 2
+
+    wanted: list[str] | None = None
+    if args.revision:
+        wanted = [args.revision]
+        if not revisions.db_path(out_dir, revisions.GRAPH, args.revision).exists():
+            # Named and absent is worth listing what *is* here: a mistyped instant and a
+            # snapshot whose stores were dropped look identical from the command line, and
+            # rule 89 says a refusal has to name something that can act on it.
+            here = mapless(out_dir) or [
+                r for p in revisions.known(out_dir, revisions.GRAPH)
+                if (r := revisions.revision_of(p))
+            ]
+            _emit(f"error: no graph for {args.revision} in {out_dir}")
+            if here:
+                _emit("this directory holds: " + ", ".join(here))
+            return 2
+
+    rows: list[dict] = []
+    db = out_dir / "source.db"
+    if db.exists():
+        source = SourceStore(db, writable=False)
+        try:
+            rows = [dict(r) for r in source.revisions()]
+        finally:
+            source.close()
+
+    done = render_maps(out_dir, wanted, include_tests=args.include_tests,
+                       rows=rows, emit=_emit)
+    # Non-zero on a refusal, so this can be scripted: a run that wrote nothing it was asked
+    # for must not report success (rule 13's shape at the exit code).
+    return 1 if any(r.refusal for r in done) else 0
 
 
 def cmd_migrate(args: argparse.Namespace) -> int:

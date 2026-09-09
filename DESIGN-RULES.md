@@ -69,6 +69,16 @@ bought a rewrite of settled CSS, neither of which serves the thing the tool is f
    separation (rule 69), because a set that clears the first bar and fails the second is
    the shipped palette's own history.
 
+   **A clamp is felt through whichever control moves it, so that control has to name it.**
+   Found by looking, 2026-09-09: switching node sizing to *one size* took the stack from
+   zoom −4.88 to −3.30 at `plateSize 0`, `spreadZ 0.9`, and nothing on the control said a
+   word about zoom. The cap is doing exactly its job — one size makes the smallest node
+   smaller, and the view will not let a node fall below what can be drawn, so the floor
+   rises and the framing follows it. Tom signed the behaviour off as correct; what was
+   wrong was the silence. The clamp is not always where the reader's hand is, and *stating
+   why* means stating it at the control that moved it rather than only at the one that owns
+   it.
+
 7. **Accessibility limits are documented in the product, not apologised for.** A node
    graph stops being meaningfully screen-reader navigable past roughly fifty nodes; the
    complete table beside it is the accessible path, not a fallback. Mermaid's generated
@@ -141,6 +151,16 @@ bought a rewrite of settled CSS, neither of which serves the thing the tool is f
     Everything / Local endpoint, each operation declares which it needs, and one it does
     not have stays disabled with the reason shown. Before any run, show the exact file
     manifest that would leave the machine.
+
+    **The page is withdrawn as of 2026-09-09, and the rule is not.** Tom: *"The infer parts
+    can be disabled as features and the links can be removed."* It was a control that
+    renders and is wired to nothing (rule 16) — the manifest was never served, so the
+    surface said *"not served yet"* for ever, and its run button reported **"Pass
+    complete"** having done nothing. Nothing egresses now because there is nothing that
+    can, which is this rule satisfied by there being no question to ask. The page, the
+    postures and the operations are kept whole behind `INFERENCE_SHIPPED` in `shell.js`,
+    which is the one place that decides; the paragraph above is what the next version has
+    to satisfy before that constant becomes true.
 
 15. **Build for the explorer, not only the navigator.** Orientation \u2014 "where do I
     start, what is the shape" \u2014 is the first need, not the lasting one. The way this
@@ -415,7 +435,11 @@ bought a rewrite of settled CSS, neither of which serves the thing the tool is f
     declared and unbuilt.
 
     Tom, on being told: *"Perfect, keep it that way as much as possible! Inference should
-    always be voluntary and secondary."* So *About this map* reads **none — every fact here
+    always be voluntary and secondary."* **Taken one step further on 2026-09-09**: the
+    Inference page is withdrawn (rule 14), so *voluntary* now means there is nothing to
+    volunteer for. The two rows below are unchanged and more true than they were — they
+    were always a standing guarantee rather than a placeholder, which is why withdrawing
+    the feature touched neither. So *About this map* reads **none — every fact here
     was read, not guessed** and **none — this analysis is deterministic and local**, and a
     test asserts that nothing under `extractors/`, `resolve/` or `canonical/` imports an HTTP
     client or an LLM SDK. A claim on screen that no query can return is prose (rule 13).

@@ -225,6 +225,33 @@ let ANOMALYCHANGES = null; // { available, counts, only_in_base, only_in_compare
  * total (rule 32). */
 let REBUILD = null;
 
+/* ═══ Inference — built, withdrawn, and kept whole ═══════════════════════════
+ *
+ * **Withdrawn 2026-09-09, Tom's call:** *"The infer parts can be disabled as features and
+ * the links can be removed (but the code left in place and marked for use in the next
+ * version)."*
+ *
+ * It was never wired to anything. `MANIFEST` is a `let` nothing assigns, so the page said
+ * *"the document manifest is not served yet"* for ever, and `data-airun="go"` set
+ * `state.aiDone = true` and reported **"Pass complete"** having done nothing at all — a
+ * control that renders and is wired to nothing looks exactly like one that works (design
+ * rule 16), and this one made a false claim on top. The costs and volumes below are the
+ * ratified artifact's pinned figures for one program (rule 34). There is no
+ * `dunneflow infer` command and nothing on the analysis path touches a network.
+ *
+ * **One constant decides**, so nothing can drift (rule 51). While it is false: no
+ * navigator row, no Settings link, no route, no breadcrumb, no dispatch — and `selfCheck`
+ * asserts that no control on screen carries `data-goto="inference"`, `data-airun`,
+ * `data-aiop` or `data-egress`. Everything below stays exactly as it was built; turning it
+ * back on is this one line.
+ *
+ * What is **not** withdrawn, and each for its own reason: *edge confidence* `INFERRED` and
+ * the *hide inferred edges* toggle (design rule 5, built and working, nothing to do with a
+ * model); the *version tier* `INFERRED` (a version read from a directory name, honest and
+ * stated); and *About this map*'s two rows, which say no fact here was inferred and no
+ * model read it — a guarantee this withdrawal makes more true, not less. */
+const INFERENCE_SHIPPED = false;
+
 const AI_OPS = [
   { id: "harvest", label: "Harvest definitions from documentation", needs: "docs",
     desc: "Reads only documents whose shape suggests a definition \u2014 a bold term, a heading, a table row, a term-dash-gloss. Returns quotations with a file and line you can check.",
@@ -1142,7 +1169,14 @@ const NAV_ROUTES = {
   naming:      () => { state.view = "naming"; },
   stated:      () => { state.view = "stated"; },
   checked:     () => { state.view = "checked"; },
-  inference:   () => { state.view = "inference"; },
+  /* Spread rather than deleted, and the key kept on its own line: the guard in
+     `test_web_controls.py` reads these two tables out of the *source*, so a route written
+     any other way would go unseen and the withdrawn row would report as unrouted — a
+     guard failing on the sentence describing the thing it checks (rule 43). Both sides
+     move together, behind the one constant. */
+  ...(INFERENCE_SHIPPED ? {
+    inference: () => { state.view = "inference"; },
+  } : {}),
   curiosities: () => { state.view = "curiosities"; },
   /* The lane travels on the row as an identity, exactly as the severity does on an
      anomaly row: five rows that differ only by the label they print would be five
@@ -7484,6 +7518,7 @@ function viewSettings() {
       </div>
     </section>
 
+    ${INFERENCE_SHIPPED ? `
     <section class="panel">
       <div class="panel-head"><h2>Inference</h2><span class="hint">off by default</span></div>
       <div class="panel-body">
@@ -7494,7 +7529,7 @@ function viewSettings() {
         <button class="actbtn" data-goto="inference">Open Inference \u2014 currently
           <b>${esc(posture().label.toLowerCase())}</b> <span class="k">\u203a</span></button>
       </div>
-    </section>
+    </section>` : ""}
 
     <section class="panel">
       <div class="panel-head"><h2>Usage</h2><span class="hint">local only · never leaves this machine</span></div>
@@ -7834,7 +7869,10 @@ const OFF_MODE_PAGE = {
   wayin: "this way in",
   curiosities: "the doorway panel", pins: "what you have kept",
   algorithms: "the loops and decisions",
-  inference: "the inference settings", settings: "Settings",
+  ...(INFERENCE_SHIPPED ? {
+    inference: "the inference settings",
+  } : {}),
+  settings: "Settings",
 };
 
 /* The toggle, off-mode: dimmed and still live, with the reason beside it (design rule 30:
@@ -12551,7 +12589,9 @@ function crumbsFor() {
       ? [{ label: "ways in" }, { label: state.wayIn || "a way in" },
          { label: state.wayInsideName || state.wayInside, cur: true }]
       : [{ label: "ways in" }, { label: state.wayIn || "a way in", cur: true }],
-    inference:   [{ label: "inference", cur: true }],
+    ...(INFERENCE_SHIPPED ? {
+      inference: [{ label: "inference", cur: true }],
+    } : {}),
     curiosities: [{ label: "explore" }, { label: "worth a look", cur: true }],
     /* Two deep, and the second names the *lane* rather than the page: five lanes are
        five subjects, and a crumb reading "algorithms" from all of them would name the
@@ -12782,7 +12822,7 @@ function render() {
   else if (state.view === "stated")    { ensureVocabulary(); vp.innerHTML = viewStated(); }
   else if (state.view === "checked")   { ensureVocabulary(); vp.innerHTML = viewChecked(); }
   else if (state.view === "wayin")     vp.innerHTML = viewWayIn();
-  else if (state.view === "inference") vp.innerHTML = viewInference();
+  else if (INFERENCE_SHIPPED && state.view === "inference") vp.innerHTML = viewInference();
   else if (state.view === "curiosities") { ensureCuriosities(); vp.innerHTML = viewCuriosities(); }
   else if (state.view === "algorithms")      { ensureAlgorithms(); vp.innerHTML = viewAlgorithms(); }
   else if (state.view === "shape")      { vp.innerHTML = viewShape(); revealPoint(); }
@@ -14169,6 +14209,19 @@ function selfCheck() {
         + `so the stylesheet is cutting its tail: "${el.textContent}"`);
     }
   });
+
+  /* A withdrawn feature that renders anyway is design rule 16 in reverse: the control is
+     wired — `data-airun` and the rest still have their listeners, deliberately — so the
+     scan above passes it happily and the reader is offered a page the product does not
+     have. This is the only check that can see it, because it is the only one that knows
+     the feature is off. */
+  if (!INFERENCE_SHIPPED) {
+    const offered = document.querySelectorAll(
+      '[data-goto="inference"], [data-airun], [data-aiop], [data-egress]');
+    offered.forEach(el => problems.push(
+      `inference is withdrawn but [data-${[...el.attributes]
+        .find(a => a.name.startsWith("data-")).name.slice(5)}] is on screen`));
+  }
 
   const unique = [...new Set(problems)];
   if (unique.length) {
@@ -16329,7 +16382,8 @@ const NAV_GROUPS = [
          those two keep is exactly what makes a *labelled* comparison safe to show. */
       { nav: "checked",  label: "Stated rules, checked", n: vocabCount("checked") },
       { nav: "naming",   label: "Derived naming standard", n: vocabCount("conventions") },
-      { nav: "inference", label: "Inference",      n: "off", id: "navEgress" },
+      ...(INFERENCE_SHIPPED
+        ? [{ nav: "inference", label: "Inference", n: "off", id: "navEgress" }] : []),
     ] },
   /* ALGORITHMS: the fifth doorway, and the one Tom asked for by name -- *"a view of
      significant loops and decision trees… algorithms are FLOW, that's our namesake"*.
@@ -17760,7 +17814,12 @@ const PERSISTED = [
   "density", "coverBars", "rowTagsWrap", "coverWhatWrap", "bandScroll", "baseRev", "comparedRev", "comparedIsNewer",
   "navName", "topFit", "verStrip", "paneFit", "paneAuto",
   "ambient", "hideInferred", "colWidths", "insp", "sortKey", "sortAsc",
-  "egress", "aiOps", "triage", "promoted", "pins", "usage", "graphLayout",
+  /* `egress` and `aiOps` were here and are not, on `nodeShapes`' precedent three lines
+     down: nothing can change either while `INFERENCE_SHIPPED` is false, so persisting one
+     writes a key that can only ever be restored to what it already was — and, worse, the
+     reset dialog then names a setting the reader was never offered. Both stay in `state`
+     where they are, so turning the feature back on restores their persistence with them. */
+  "triage", "promoted", "pins", "usage", "graphLayout",
   "diskOrder", "diskColors", "colorBy", "sortMode", "filterMode", "direction",
   "level", "minDisk",
   "nodeSpacing", "nodeScaling", "spreadX", "spreadY", "spreadZ", "plateSize",
@@ -19722,8 +19781,8 @@ function renderGraphFurniture() {
                   state.nodeScaling === "uniform" ? "plate" : "uniform"}"
                 aria-pressed="${state.nodeScaling !== "uniform"}"
                 title="${state.nodeScaling === "uniform"
-                  ? "Every node is drawn one size, the densest plate's. Click to size them by the room each plate has."
-                  : "Each plate's nodes take the room that plate has, so a sparse plate draws larger. Click to draw them all one size."}"
+                  ? "Every node is drawn one size, the densest plate's — which raises the view's floor, so the picture sits closer in. Click to size them by the room each plate has."
+                  : "Each plate's nodes take the room that plate has, so a sparse plate draws larger. Click to draw them all one size — which zooms the picture in, because the smallest node gets smaller."}"
                 >${state.nodeScaling === "uniform" ? "◌ one size"
                                                    : "◉ by plate"}</button>
         <span class="muted">${state.nodeScaling === "uniform"
@@ -19873,9 +19932,19 @@ function plateRangeNote() {
 function nodeCeilingNote() {
   const c = Graph.mounted() ? Graph.nodeCeiling() : null;
   /* Under one size the ceiling is not what binds -- the densest plate is -- so saying
-     "0 plates are at the ceiling" would be true and about the wrong constraint (rule 32). */
+     "0 plates are at the ceiling" would be true and about the wrong constraint (rule 32).
+   *
+   * **And it says what it costs, because a reader will otherwise blame the wrong control.**
+   * Found by looking, 2026-09-09, and it would not have been predicted from the
+   * arithmetic: at `plateSize 0` with `spreadZ 0.9` the stack sat at zoom -4.88, and
+   * flipping to one size took it to **-3.30**. One size makes the smallest node smaller,
+   * the view cap will not let a node fall below what can be drawn, so the floor rises and
+   * the zoom follows it. The cap is doing exactly its job -- Tom signed it off as correct
+   * on 2026-09-09 -- but a control that says nothing about zoom must not move the picture
+   * in silence (design rule 6: customisation is clamped, and says why). */
   if (c && c.mode === "uniform") {
-    return "every node one size, the densest plate's — so it separates on every plate";
+    return "every node one size, the densest plate's — so it separates on every plate; "
+         + "a smaller smallest node raises the view's floor, which pulls the zoom in";
   }
   if (!c || !c.held) return "every plate draws its nodes at the size its own spacing allows";
   return `${c.held.toLocaleString()} of ${c.plates.toLocaleString()} plates are at the ` +

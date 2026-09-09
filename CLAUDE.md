@@ -152,6 +152,23 @@ declared and unbuilt. Tom, 2026-09-04: *"Inference should always be voluntary an
 A test asserts nothing under `extractors/`, `resolve/` or `canonical/` imports an HTTP client
 or an LLM SDK, because a claim on screen that no query can return is prose (rule 13).
 
+**The Inference page is withdrawn as of 2026-09-09**, and these two rows are untouched by
+that — they were a guarantee rather than a placeholder, so removing the feature makes them
+more true and not less. Tom: *"The infer parts can be disabled as features and the links can
+be removed (but the code left in place and marked for use in the next version)."* It had
+never been wired: `MANIFEST` was a `let` nothing assigned, so the page said *"not served
+yet"* for ever, and `data-airun="go"` set `state.aiDone` and reported **"Pass complete"**
+having done nothing at all — design rule 16 with a false claim on top. **One constant
+decides**, `INFERENCE_SHIPPED` in `shell.js` (rule 51): while it is false there is no
+navigator row, no Settings link, no route, no breadcrumb and no dispatch, `selfCheck`
+asserts no control on screen carries `data-goto="inference"`, `data-airun`, `data-aiop` or
+`data-egress`, and `tests/test_inference_withdrawn.py` asserts both halves over the source —
+every door guarded, **and** every part of the feature still there. `egress` and `aiOps` left
+`DEFAULTS` and `PERSISTED` on `nodeShapes`' precedent, because a reset naming a setting the
+reader was never offered is what a default promises and cannot deliver. Untouched, and none
+of it is the feature: *edge confidence* `INFERRED` and the *hide inferred edges* toggle
+(design rule 5), the *version tier* `INFERRED`, and `Provenance`'s four tiers.
+
 **Missing and blank are different answers**, and flattening them would turn a silence into a
 promise. Every field arrives as `{recorded, value, none}`: a map written before `analyze`
 recorded any of this reports `recorded: false` and says *"not recorded — written before this

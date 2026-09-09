@@ -2402,7 +2402,14 @@ function mount(container, raw, options = {}) {
      *
      * 5,000 rather than something larger: it clears `maxZoom` with the furthest node at
      * clip-space -0.43, and a far plane pushed to 50,000 puts the whole stack past -0.94,
-     * which spends depth precision on nothing. */
+     * which spends depth precision on nothing.
+     *
+     * **`OrbitView` has no camera roll, and that is settled rather than owed.** Laying the
+     * column on its side stood as an open item from 2026-08-28 -- structural, because the
+     * roll would have to be built rather than configured. Tom's call, 2026-09-09: not
+     * required. *"I can already move the camera quite a lot."* The limitation is recorded
+     * here, beside the view that has it, so the next reader finds the decision where the
+     * constraint is rather than in a backlog. */
     views: [new OrbitView({ orbitAxis: 'Z', orthographic: true, far: FAR_PLANE })],
     viewState: g.viewState,
     controller: { inertia: 250 },

@@ -665,9 +665,18 @@ const DEFAULTS = {
   sortKey: 'fan',
   sortAsc: false,
 
-  /* ── egress, and what has been looked at ─────────────────────────────────── */
-  egress: 'off',          // design rule 14: scoped, never a switch, off until turned on
-  aiOps: { harvest: true },
+  /* ── what has been looked at ──────────────────────────────────────────────── */
+  /* **`egress` and `aiOps` were defaults here and are not now**, on `nodeShapes`'
+   * precedent above and for its second reason as well as its first. Inference is
+   * withdrawn (`INFERENCE_SHIPPED` in `shell.js` — the one place that decides), so no
+   * control can change either: left here, `resetSettings` walks these keys and reports
+   * clearing *"egress posture"* and *"model operations"*, naming two settings the reader
+   * was never offered. A default is a promise that something can be different.
+   *
+   * `shell.js` keeps `state.egress` and `state.aiOps` where they are, and the page and
+   * its handlers are kept whole. Restore both entries — and their two lines in `PERSISTED`
+   * and in the reset dialog's labels — when the feature ships. Design rule 14 is
+   * unaffected: it scopes egress, and there is now none to scope. */
   triage: {},             // finding id -> 'ack' | 'notbug' | 'tooldefect'
   /* Words the reader put back into the glossary's worklist by hand, lowercased.
      889 of Society's words occur only inside a compound constant name -- `CHARS` is the
@@ -834,7 +843,6 @@ function resetSettings(program, current) {
     ambient: 'ambient badges', hideInferred: 'inferred edges',
     colWidths: 'column widths', insp: 'inspector sections',
     sortKey: 'table sort', sortAsc: 'table sort direction',
-    egress: 'egress posture', aiOps: 'model operations',
     triage: 'triage decisions', pins: 'the shelf', usage: 'usage counts',
     promoted: 'words put back into the glossary worklist',
   };

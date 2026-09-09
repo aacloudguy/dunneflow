@@ -13730,3 +13730,91 @@ def test_the_size_slider_became_a_spacing_slider_and_says_so() -> None:
     assert found and float(found.group(1)) > 1.0, (
         "the spacing range reaches 1.0 or below, where nodes are exactly touching or worse"
     )
+
+
+def test_the_hud_is_bounded_by_the_canvas_and_its_body_scrolls() -> None:
+    """A control panel taller than the picture was clipped with no way to reach the rest.
+
+    `.graphcanvas` is `overflow: hidden`, so opening the controls in a short window put the
+    bottom of the spacing row past the edge and the only remedy was a taller window. Reported
+    by Tom. Bounded against a real percentage rather than measured in a script, because the
+    positioned ancestor has a definite height -- `100vh` would be the wrong box.
+    """
+    css = _read("tokens.css")
+    hud = css.split(".graphhud {", 1)[1].split("}", 1)[0]
+    assert "max-height: calc(100% - 1rem)" in hud, (
+        "the HUD is unbounded, so a panel taller than the canvas is clipped by "
+        "`.graphcanvas`'s own `overflow: hidden` and cannot be scrolled to"
+    )
+    assert "100vh" not in hud, "the viewport is not the pane the HUD floats over"
+    body = css.split(".graphhud .hudbody {", 1)[1].split("}", 1)[0]
+    # Rule 50: the scroller is the element that scrolls. `.graphhud` is `pointer-events:
+    # none`, so a scrollbar there could be seen and never dragged -- and scrolling the whole
+    # HUD would carry the headers off the top.
+    assert "overflow-y: auto" in body and "min-height: 0" in body, (
+        "the body does not scroll, or cannot shrink below its content so the overflow never "
+        "has anything to do"
+    )
+    assert "overscroll-behavior: contain" in body, (
+        "past the last row the wheel chains into the canvas, so reaching the bottom of the "
+        "controls zooms the stack"
+    )
+    head = css.split(".graphhud .hudhead {", 1)[1].split("}", 1)[0]
+    assert "flex: none" in head, (
+        "the strip that says which box this is can be squeezed, which happens exactly when "
+        "the panel is too tall to fit"
+    )
+
+
+def test_a_hud_rebuild_keeps_where_each_body_was_scrolled_to() -> None:
+    """Otherwise bounding the HUD only half works.
+
+    Pressing a control you had to scroll down to fires a `render()`, the box is rewritten at
+    `scrollTop` 0, and the control you were using leaves the screen -- which reads as broken
+    in the way `paneHeld` was written for. Keyed on the body's own id, because the boxes are
+    conditional and an index restores one box's offset onto another.
+    """
+    js = _read("shell.js")
+    assert "function hudScrolls" in js and "function restoreHudScrolls" in js, (
+        "nothing preserves the HUD's scroll position across the rebuild that replaces it"
+    )
+    fn = js.split("function renderGraphFurniture()", 1)[1].split("\n  renderLegend();", 1)[0]
+    assert "const scrolledTo = hudScrolls(hud);" in fn, "the offsets are never recorded"
+    assert "restoreHudScrolls(hud, scrolledTo);" in fn, "the offsets are never put back"
+    keep = js.split("function hudScrolls", 1)[1].split("\n}", 1)[0]
+    assert ".hudbody[id]" in keep, (
+        "the offsets are keyed on something other than the body's own id, so a conditional "
+        "box restores one panel's position onto another"
+    )
+
+
+def test_one_size_for_every_node_is_offered_and_is_not_the_default() -> None:
+    """Design rule 2: two good readings of node size, so both are built.
+
+    `plate` says how sparse a plate is as well as a node's degree; `uniform` says degree
+    alone and is the picture before per-plate sizing existed. Tom's call was that the new
+    one is the default.
+    """
+    engine = _read("graph.js")
+    assert "nodeScaling: 'plate'" in engine, (
+        "per-plate sizing is not the default, or the option is gone"
+    )
+    fn = engine.split("function nodeRadii(", 1)[1].split("\n}", 1)[0]
+    assert "opts.nodeScaling === 'uniform'" in fn, "uniform is offered but never applied"
+    # Taken from the tightest plate, so every other plate can afford it and the separation
+    # guarantee survives the mode change. An average would overlap on the plates below it.
+    assert re.search(r"for \(const k of d\.raw\.disks\) out\.set\(k\.id, smallest\);", fn), (
+        "uniform is not the tightest plate's size, so switching mode gives up the one "
+        "property the other mode is built on"
+    )
+
+    shell = _read("shell.js")
+    assert 'data-nodescaling="' in shell, "the mode has no control"
+    assert "nodescaling" in _js_set("WIRED_ATTRS"), (
+        "the control is not in WIRED_ATTRS, so the runtime self-check reports it dead"
+    )
+    note = shell.split("function nodeCeilingNote", 1)[1].split("\n}", 1)[0]
+    assert '=== "uniform"' in note, (
+        "the ceiling note says how many plates are at the ceiling under a mode where the "
+        "ceiling is not what binds -- true, and about the wrong constraint (rule 32)"
+    )

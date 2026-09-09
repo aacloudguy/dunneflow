@@ -1435,11 +1435,33 @@ body {
 /* The HUD floats over the canvas rather than beside it: the stack wants every pixel, and
  * it is furniture for the graph rather than part of the shell. The legend is not
  * furniture -- see below. */
+/* **It is bounded by the canvas and scrolls inside it**, which it did not.
+ *
+ * `.graphcanvas` is `overflow: hidden`, so a HUD box taller than the picture was *clipped*
+ * with nothing to say so and no way to reach the rest of it: opening the controls in a short
+ * window put the bottom of the spacing row past the edge, and the only remedy was to make the
+ * window taller. Reported by Tom, and it is the overlay's own version of the narrow-window
+ * fix -- nothing is deleted, a bar appears instead.
+ *
+ * Bounded here rather than measured in a script, because there is a real percentage to bound
+ * against: `.graphcanvas` is the positioned ancestor and its height is definite. `100vh` would
+ * be the wrong box (rule 28's cousin -- the viewport is not the pane), and a media query would
+ * be wrong twice over.
+ *
+ * **The scroller is `.hudbody`, not this** (rule 50). Scrolling the whole HUD would carry the
+ * headers off the top, so the strip that says which box you are in leaves exactly when it is
+ * needed; and this element is `pointer-events: none`, so its own scrollbar could be seen and
+ * never dragged. The column and the two `min-height: 0` declarations are what let a flex child
+ * shrink below its content at all -- without them a body's height is its content's and the
+ * `overflow` never has anything to do. */
 .graphhud { position: absolute; top: .5rem; left: .5rem; z-index: 2; max-width: 22rem;
+            max-height: calc(100% - 1rem);
+            display: flex; flex-direction: column; min-height: 0;
             font-size: .72rem; line-height: 1.45; pointer-events: none; }
 .graphhud > * { pointer-events: auto; }
 .graphhud .hudbox { background: var(--surface); border: 1px solid var(--border);
                     border-radius: .375rem; box-shadow: var(--shadow);
+                    display: flex; flex-direction: column; min-height: 0;
                     margin-bottom: .35rem; }
 
 /* The ribbon: what a collapsed HUD box leaves behind.
@@ -1452,14 +1474,23 @@ body {
  * The strip states its own summary, open or closed, so a collapsed box still says
  * something. A ribbon reading only "controls" is the icon rail rule 24 rejects, in a
  * horizontal costume: it makes the reader open it to find out what it was. */
-.graphhud .hudhead { display: flex; align-items: center; gap: .35rem; width: 100%;
+/* `flex: none` because the box is a column now: the strip a box folds into is the only
+   thing saying which box this is, and a squeezed header is unreadable exactly when the panel
+   is too tall to fit -- which is the case it was bounded for. */
+.graphhud .hudhead { display: flex; align-items: center; gap: .35rem; width: 100%; flex: none;
                      background: none; border: 0; cursor: pointer; color: var(--text);
                      font: inherit; font-size: .72rem; text-align: left;
                      padding: .3rem .55rem; border-radius: .375rem; }
 .graphhud .hudhead:hover { background: var(--raised); }
 .graphhud .hudhead:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .graphhud .chev { color: var(--text-faint); flex: none; font-size: .7rem; }
-.graphhud .hudbody { padding: 0 .55rem .4rem; }
+/* The scroller. `overscroll-behavior: contain` is not a nicety here: past the last row the
+ * wheel would chain out of the panel and into the canvas underneath, so reaching the bottom of
+ * the controls would zoom the stack -- a gesture that ends by changing something else is worse
+ * than one that does nothing. */
+.graphhud .hudbody { padding: 0 .55rem .4rem; overflow-y: auto; min-height: 0;
+                     overscroll-behavior: contain; }
+
 .hudbox.closed > .hudbody { display: none; }
 .graphhud .num { font-family: var(--f-mono); font-weight: 600; }
 .graphhud .muted { color: var(--text-muted); }

@@ -4250,6 +4250,19 @@ const DGM_DRAG_SLOP = 3;
  * without one, so blocking here would freeze the page on the machines that can least afford
  * it. It says "solving…" while it runs and repaints whichever surface is showing when it
  * lands. */
+/* Whether a node's size says how sparse its plate is. A repaint and nothing else -- no
+ * layout is solved and no plate moves -- so unlike `data-platelayout` there is nothing to
+ * await and nothing to say while it runs. */
+document.addEventListener("click", (ev) => {
+  const b = ev.target.closest("[data-nodescaling]");
+  if (!b) return;
+  state.nodeScaling = b.dataset.nodescaling;
+  used("nodescaling:" + state.nodeScaling);
+  persist();
+  Graph.setOptions({ nodeScaling: state.nodeScaling });
+  render();
+});
+
 document.addEventListener("click", (ev) => {
   const b = ev.target.closest("[data-platelayout]");
   if (!b) return;
@@ -14085,7 +14098,7 @@ const WIRED_ATTRS = new Set([
   "palette-set",
   /* The plate layout, beside `palette-set` for the same reason and named on the same
      pattern: a route, never the value it sets. */
-  "platelayout",
+  "platelayout", "nodescaling",
   "scale-set", "sec", "sev", "sevnav", "sort", "sqlshow", "start", "step", "theme",
   "term", "termuse", "theme-set", "thread", "threadlabel", "threadsall", "threadwhy",
   "titled", "toggle",
@@ -17750,7 +17763,8 @@ const PERSISTED = [
   "egress", "aiOps", "triage", "promoted", "pins", "usage", "graphLayout",
   "diskOrder", "diskColors", "colorBy", "sortMode", "filterMode", "direction",
   "level", "minDisk",
-  "nodeSpacing", "spreadX", "spreadY", "spreadZ", "plateSize", "plateLayout", "collapseUnused",
+  "nodeSpacing", "nodeScaling", "spreadX", "spreadY", "spreadZ", "plateSize",
+  "plateLayout", "collapseUnused",
   /* `nodeShapes` was in this list and is not, because nothing can change it: the control
      was withdrawn with the box overlay that drew silhouettes. Persisting a value only ever
      equal to its default writes a key that can only ever be restored to what it already
@@ -18380,7 +18394,7 @@ async function ensureGraph() {
       nodeChange: graphChangeOn() ? changeByNodeId() : null, changeTone: changeTones(),
       changeStamp: Date.now(),
       filterMode: state.filterMode, direction: state.direction,
-      nodeSpacing: state.nodeSpacing,
+      nodeSpacing: state.nodeSpacing, nodeScaling: state.nodeScaling,
       spreadX: state.spreadX, spreadY: state.spreadY, spreadZ: state.spreadZ,
       plateSize: plateSizeNow(),
       collapseUnused: state.collapseUnused, showPlates: state.showPlates, scale: state.scale,
@@ -19503,9 +19517,42 @@ function updateGraphCounts() {
   });
 }
 
+/* Where each HUD body was scrolled to, kept across the rebuild below.
+ *
+ * **A rebuild throws a scroll position away, and that undoes half the reason the panel
+ * scrolls at all.** Bounding the HUD to the canvas made the bottom of a tall control box
+ * reachable; without this, pressing the control you just scrolled to fires a `render()`,
+ * the box is rewritten from scratch at `scrollTop` 0, and the thing you were using leaves
+ * the screen. That reads as broken in exactly the way `paneHeld` was written for.
+ *
+ * Keyed on the body's own id rather than on position, because the boxes are conditional and
+ * an index would restore one box's offset onto another. Recorded and restored **here**, in
+ * the one function that replaces the markup, rather than at each of the callers that cause a
+ * render (rule 51 -- there are more of those every session, and the one that forgets is the
+ * one nobody presses while testing). */
+function hudScrolls(hud) {
+  const at = new Map();
+  hud.querySelectorAll(".hudbody[id]").forEach((b) => {
+    if (b.scrollTop > 0) at.set(b.id, b.scrollTop);
+  });
+  return at;
+}
+
+function restoreHudScrolls(hud, at) {
+  if (!at.size) return;
+  at.forEach((top, id) => {
+    const b = hud.querySelector(`#${CSS.escape(id)}`);
+    /* Clamped by the browser to the new content height, which is the honest outcome: a box
+     * that grew keeps the reader where they were, one that shrank lands at its new bottom
+     * rather than scrolled past the end. */
+    if (b) b.scrollTop = top;
+  });
+}
+
 function renderGraphFurniture() {
   const hud = $("#graphHud");
   if (!hud) return;
+  const scrolledTo = hudScrolls(hud);
 
   if (graphError) {
     /* Design rule 21: a blank canvas must say why it is blank. Hardware acceleration off
@@ -19661,6 +19708,27 @@ function renderGraphFurniture() {
             that one is how wide a plate is drawn, this is how what is inside it is laid
             out — and because the solver's own answer is what feeds that dial under
             `force`. */""}
+      ${/* **Whether a node's size says how sparse its plate is** (design rule 2: two good
+            readings, so both are built and the reader picks). It sits on this panel and
+            under the width dial because it is the same question one step down — that dial
+            says how much a *plate's* area tells you, this says how much a *node's* does —
+            and because turning it off is how a reader goes back to the picture they had.
+            The button names the mode in force rather than the one a click would bring, for
+            `data-platelayout`'s reason: a control that reads as an instruction leaves you
+            unable to tell which way round it is. */""}
+      <div style="display:flex;align-items:center;gap:.35rem;margin-top:.3rem">
+        <span class="muted" style="width:3.2rem">nodes</span>
+        <button class="gbtn" data-nodescaling="${
+                  state.nodeScaling === "uniform" ? "plate" : "uniform"}"
+                aria-pressed="${state.nodeScaling !== "uniform"}"
+                title="${state.nodeScaling === "uniform"
+                  ? "Every node is drawn one size, the densest plate's. Click to size them by the room each plate has."
+                  : "Each plate's nodes take the room that plate has, so a sparse plate draws larger. Click to draw them all one size."}"
+                >${state.nodeScaling === "uniform" ? "◌ one size"
+                                                   : "◉ by plate"}</button>
+        <span class="muted">${state.nodeScaling === "uniform"
+          ? "size says degree only" : "size says degree and how sparse the plate is"}</span>
+      </div>
       <div style="display:flex;align-items:center;gap:.35rem;margin-top:.3rem">
         <span class="muted" style="width:3.2rem">layout</span>
         <button class="gbtn" data-platelayout="${
@@ -19705,6 +19773,7 @@ function renderGraphFurniture() {
       </div>
     </div>`;
 
+  restoreHudScrolls(hud, scrolledTo);
   renderLegend();
 }
 
@@ -19803,6 +19872,11 @@ function plateRangeNote() {
  * the spacing that the reader will otherwise blame. */
 function nodeCeilingNote() {
   const c = Graph.mounted() ? Graph.nodeCeiling() : null;
+  /* Under one size the ceiling is not what binds -- the densest plate is -- so saying
+     "0 plates are at the ceiling" would be true and about the wrong constraint (rule 32). */
+  if (c && c.mode === "uniform") {
+    return "every node one size, the densest plate's — so it separates on every plate";
+  }
   if (!c || !c.held) return "every plate draws its nodes at the size its own spacing allows";
   return `${c.held.toLocaleString()} of ${c.plates.toLocaleString()} plates are at the ` +
          `node-size ceiling — half the gap to the plate above; widen <b>stack</b> to lift it`;

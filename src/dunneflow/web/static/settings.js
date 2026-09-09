@@ -123,6 +123,9 @@ const DEFAULTS = {
      `nodeSize`: a node's radius is derived from the room its plate gives it, so the reader
      sets the room and not the radius. Smaller means bigger dots. */
   nodeSpacing: 1.5,
+  /* Whether a node's size says how sparse its plate is, or only its degree. Design rule 2:
+     both readings are good, so both are built. `plate` is the default. */
+  nodeScaling: "plate",
   /* Three independent axes. X and Y widen a plate, which is what separates nodes that
    * fuse into a mass at large sizes; Z is the gap between plates. All three moving
    * together is what zoom already does, so there is no linked control. Version 3: the
@@ -779,7 +782,8 @@ function resetSettings(program, current) {
     diskOrder: 'plate order', diskColors: 'plate colours', colorBy: 'colour source',
     level: 'how much detail the stack draws', minDisk: 'the smallest plate drawn',
     sortMode: 'sort', filterMode: 'filter mode', direction: 'direction',
-    nodeSpacing: 'node spacing', picks: 'selection', followMode: 'following a neighbour',
+    nodeSpacing: 'node spacing', nodeScaling: 'node sizing',
+    picks: 'selection', followMode: 'following a neighbour',
     spreadX: 'spread across', spreadY: 'spread deep', spreadZ: 'spread between plates',
     plateSize: 'how much a plate\'s width says about what it holds',
     plateLayout: 'how a plate arranges what it holds',

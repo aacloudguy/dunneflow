@@ -659,6 +659,12 @@ docs   ──► extract ──► docs.db  (SQLite) ─────────
   `Graph.separation()`: **0 touching pairs of 2,681,114** under the spiral at every setting;
   0.08% under force, which is the clusters and is left alone deliberately.
 
+  **Both readings are built** (design rule 2): `by plate` is the default and says how sparse
+  a plate is as well as a node's degree; `one size` draws the whole stack at **the tightest
+  plate's** size — never an average, so every other plate can afford it and the guarantee
+  survives the mode change. The ceiling note says something else under one size, because
+  there the ceiling is not what binds (rule 32).
+
   **Drawn nodes and shadows get separate spirals**, and that is what makes the law true. They
   shared one ordered by degree and the two kinds segregate, so the drawn nodes came out in
   contiguous runs at the density of *all* the placed points — `ext:<small outside>` drew six

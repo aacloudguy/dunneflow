@@ -13705,3 +13705,98 @@ the boot view, and a forced `resize()`. Rule 90's neighbour, and it is one minut
 screen.
 
 **Gates:** 1,273 tests, mypy clean over 126 source files, ruff clean.
+
+## 2026-09-09 — one size is a Setting, and a tall HUD panel scrolls
+
+Two from Tom on seeing the sizing work. *"Default to this new value, it looks very good"* —
+so per-plate stays the default and the old picture becomes a Setting beside it.
+
+### `nodes: by plate / one size`
+
+On the controls panel, under the width dial, because it is the same question one step down:
+that dial says how much a **plate's** area tells you, this says how much a **node's** does.
+Design rule 2 — both readings are good, and turning it off is how a reader goes back to the
+picture they had. The button names the mode in force rather than the one a click would bring,
+for `data-platelayout`'s reason.
+
+**One size is the tightest plate's, and that choice is the whole of whether the mode is
+safe.** Every other plate can afford that size by construction, so the separation guarantee
+survives the mode change unaltered. An average would be a size that overlaps on the plates
+below it — a mode that quietly gives up the one property the other mode is built on is worse
+than no mode at all.
+
+Verified in the engine, `Graph.separation()` over the real payload:
+
+| | touching | tightest clearance |
+|---|---:|---:|
+| by plate · width 1 | 0 of 2,681,114 | 16.37 world |
+| by plate · width 0 | 0 of 2,681,114 | 19.39 world |
+| one size · width 1 | 0 of 2,681,114 | 16.37 world |
+| one size · width 0 | 0 of 2,681,114 | 20.42 world |
+
+At width 1 the two modes are identical by construction, because area per node is already
+constant there — which is the same fact that made per-plate sizing appear only as the dial
+moves toward one width.
+
+`nodeCeilingNote()` says something different under one size: there the densest plate binds
+and not the z-ceiling, so *"0 plates are at the node-size ceiling"* would be true and about
+the wrong constraint (rule 32).
+
+### A HUD box taller than the picture was clipped
+
+Tom: *"when I open a control such as the spacing control for Graph and the window is too
+short, there is no method to scroll down and see the bottom of the spacing control. I have to
+make the window taller."*
+
+`.graphcanvas` is `overflow: hidden` and `.graphhud` had no height bound, so the bottom of the
+box was simply past the edge with nothing to say so. The HUD is bounded to
+`calc(100% - 1rem)` — a real percentage against a positioned ancestor with a definite height,
+so no script and no media query, and `100vh` would have been the wrong box.
+
+**The scroller is `.hudbody`, not the HUD** (rule 50). Scrolling the whole thing would carry
+the headers off the top, so the strip that says which box you are in leaves exactly when it is
+needed; and `.graphhud` is `pointer-events: none`, so its own scrollbar could be seen and
+never dragged. `.hudhead` is `flex: none` for the same reason — a squeezed header is
+unreadable precisely in the case this was bounded for. Two `min-height: 0` declarations are
+what let a flex child shrink below its content at all; without them the body's height is its
+content's and the `overflow` never has anything to do.
+
+`overscroll-behavior: contain` is not a nicety: past the last row the wheel chains out of the
+panel and into the canvas underneath, so reaching the bottom of the controls would zoom the
+stack. A gesture that ends by changing something else is worse than one that does nothing.
+
+Measured in the page at a 557×353 canvas: the controls body is **195 px tall holding 292 px of
+content**, and the bottom control — `elementFromPoint`-confirmed off screen before — is
+reachable after 97 px of scroll.
+
+### And the fix undid half of itself
+
+A `render()` rewrites the HUD from scratch, so pressing the control you had just scrolled down
+to put the box back at `scrollTop` 0 and took that control off the screen. **That reads as
+broken in the same way `paneHeld` was written for**, and it was the measurement that caught it
+rather than review — the first check after the CSS landed reported `afterRepaint: 0`.
+
+`hudScrolls` / `restoreHudScrolls` keep each body's offset across the rebuild, keyed on the
+body's **id** rather than on position, because the boxes are conditional and an index would
+restore one box's offset onto another. Recorded and restored in the one function that replaces
+the markup, never at the callers that cause a render (rule 51 — there are more of those every
+session, and the one that forgets is the one nobody presses while testing).
+
+After: 97 → **84**, with the control still on screen. Eighty-four rather than ninety-seven
+because that particular click shortens the note beneath, so the content is shorter and the
+browser clamps the restore to the new bottom — a box that shrank lands at its new end rather
+than scrolled past it, which is the honest outcome.
+
+### The pointer, and this time the instrument said why
+
+A press aimed at the new toggle did not fire it. A capturing `pointerdown` listener recorded
+**0 hits** against a button `elementFromPoint` confirms is at those coordinates, with
+`document.visibilityState` reading **`hidden`** — the window is behind another one. That is
+**rule 90**, and it accounts for both missed presses this session; the coordinate mapping was
+right all along.
+
+The route is verified scripted, end to end and in both directions: the label, `aria-pressed`,
+the offered value, the persisted setting and the engine's own mode all flip together, with 0
+touching pairs in each state. *One press with the window in front finishes it.*
+
+**Gates:** 1,276 tests, mypy clean over 126 source files, ruff clean.

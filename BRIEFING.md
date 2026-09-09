@@ -205,8 +205,10 @@ property of the plate a node sits on. Commits: the checkpoint itself
 (`../society-2026-08-30`, 7baa17bf, analysed into `output/mensores` as
 `2026-09-09T15:32:15Z`), **a map needs neither tree and the cover says which snapshot it
 is**, **`dunneflow render`** — which gave the two sealed snapshots the maps they lost — and
-**node size follows the plate it sits on**, which took 4,990 overlapping nodes to 0.
-**1,273** tests, mypy clean over **126** source files, ruff clean, `check` 0 broken.
+**node size follows the plate it sits on**, which took 4,990 overlapping nodes to 0 — with
+**one size** kept as a Setting beside it, and the graph's HUD bounded so a tall control box
+scrolls instead of being clipped.
+**1,276** tests, mypy clean over **126** source files, ruff clean, `check` 0 broken.
 
 **8787 is up and it is a previous session's, left running on purpose** — it was stopped as
 cleanup while Tom was reading it once, which is what produced the *"the server could not be
@@ -225,6 +227,53 @@ working. 8899 was his and is **not** listening.
 
 The fourteen flat documents from before maps were named are still beside them, listed by
 `README.md` and left alone: which revision they describe is recorded nowhere.
+
+### One size is a Setting, and a tall panel scrolls (2026-09-09)
+
+Two from Tom on seeing the sizing work — *"it looks very good"*, so per-plate stays the
+default.
+
+**`nodes: by plate / one size`**, on the controls panel under the width dial, which is the
+same question one step down: that dial says how much a *plate's* area tells you, this says
+how much a *node's* does. Design rule 2, and turning it off is how a reader goes back to
+the picture they had. **One size is the tightest plate's**, never an average — every other
+plate can afford it by construction, so the separation guarantee survives the mode change
+rather than being quietly given up by the mode that is meant to be the safe one. Verified
+in the engine: 0 touching pairs of 2,681,114 in both modes, at both ends of the width dial.
+The ceiling note says something different under one size, because there the ceiling is not
+what binds and *"0 plates are at the ceiling"* would be true about the wrong constraint
+(rule 32).
+
+**A HUD box taller than the picture was clipped with no way to reach the rest.** Tom:
+*"when I open a control such as the spacing control… there is no method to scroll down…
+I have to make the window taller."* `.graphcanvas` is `overflow: hidden`, so the bottom of
+the spacing row was simply past the edge. The HUD is bounded to `calc(100% - 1rem)` of the
+canvas — a real percentage against a positioned ancestor with a definite height, so no
+script and no media query — and **`.hudbody` is the scroller, not the HUD** (rule 50):
+scrolling the whole thing would carry the headers off the top, and `.graphhud` is
+`pointer-events: none`, so its own scrollbar could be seen and never dragged.
+`overscroll-behavior: contain` is not a nicety — past the last row the wheel would chain
+into the canvas and zoom the stack.
+
+Measured in the page at a 557×353 canvas: the controls body is **195 px tall holding 292**,
+and the bottom control — invisible before — is reachable after 97 px of scroll.
+
+**And the fix undid half of itself, which the measurement caught.** A `render()` rewrites
+the HUD, so pressing the control you had just scrolled to put it back at the top and off
+the screen — *"which reads as broken"*, the same shape as `paneHeld`. `hudScrolls` /
+`restoreHudScrolls` keep each body's offset across the rebuild, keyed on the body's **id**
+because the boxes are conditional and an index restores one panel's position onto another.
+Recorded and restored in the one function that replaces the markup, not at each caller that
+causes a render (rule 51). After: 97 → 84, the control still on screen — 84 rather than 97
+because that click shortens the note, so the browser clamps to the new bottom, which is the
+honest outcome rather than a scroll past the end.
+
+***The pointer still could not be used, and this time the instrument said why.*** A capturing
+`pointerdown` listener recorded **0 hits** from a press aimed at a button `elementFromPoint`
+confirms is there, with `document.visibilityState` reading `hidden` — the window is behind
+another one, which is **rule 90** exactly. The route is verified scripted end to end: label,
+`aria-pressed`, the offered value, the persisted setting and the engine mode all flip
+together, both ways. *One press with the window in front finishes it.*
 
 ### Node size follows the plate it sits on (2026-09-09)
 
@@ -319,8 +368,9 @@ settings; below that the reader pans.
 ***Not looked at.*** *Every figure here is measured inside the running engine on the real
 payload — `Graph.separation()`, `nodeCeiling()`, `nodePixels()` — and not one of them is a
 screenshot. deck.gl reports `frames 0` in the automation tab: the graph pane is hidden at
-boot, the canvas mounts at 300×150 and never resizes, and four ways round it failed. **One
-look at a sparse plate is owed** (rule 90).*
+boot, the canvas mounts at 300×150 and never resizes, and four ways round it failed.
+**Tom has since seen it — "it looks very good" — so the picture is confirmed;** what is still
+owed is a look at a **sparse** plate specifically.*
 
 ### The checkpoint, and what "a lot of changes" turned out to be (2026-09-09)
 

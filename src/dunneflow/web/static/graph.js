@@ -279,6 +279,16 @@ const opts = {
    *
    * 1.0 would be dots exactly touching, so the range starts above it. */
   nodeSpacing: 1.5,
+  /* **Whether a node's size says how sparse its plate is.** Design rule 2: the two are
+   * genuinely different readings and both are good, so both are built and the reader picks.
+   *
+   * `plate` is the default and is what makes a six-node plate legible: each plate's nodes
+   * take the room that plate has. `uniform` draws every node in the stack at one size --
+   * the size the *densest* plate can afford, so separation still holds everywhere -- which
+   * is what the picture looked like before this existed, and is the right reading when the
+   * question is "what is this node" rather than "what kind of plate is this". Size then
+   * carries degree alone, which is design rule 4's argument one channel over. */
+  nodeScaling: 'plate',   // 'plate' | 'uniform'
   /* Three axes, independent, because they answer different questions. X and Y widen a
    * plate and pull apart nodes that fuse into a solid mass once they are big enough to
    * look at; Z is the gap between plates. There is deliberately no fourth "linked"
@@ -749,7 +759,20 @@ function nodeRadii(d) {
     if (k.nodes > 0 && r < smallest) smallest = r;
     out.set(k.id, r);
   }
-  return { radius: out, held, ceiling, smallest: Number.isFinite(smallest) ? smallest : 1 };
+  if (!Number.isFinite(smallest)) smallest = ceiling;
+  /* **One size for the whole stack, and it is the tightest plate's.**
+   *
+   * Taken from the plate with the least room rather than averaged or chosen: every other
+   * plate can afford it by construction, so the separation guarantee survives the mode
+   * change unaltered. An average would be a size that overlaps on the plates below it, and
+   * a mode that quietly gives up the one property the other mode is built on is worse than
+   * no mode at all. */
+  if (opts.nodeScaling === 'uniform') {
+    for (const k of d.raw.disks) out.set(k.id, smallest);
+    held = 0;
+  }
+  return { radius: out, held, ceiling, smallest,
+           mode: opts.nodeScaling === 'uniform' ? 'uniform' : 'plate' };
 }
 
 /* Degree still modulates size, over `DEGREE_FLOOR`..1 of the plate's own allowance.
@@ -2864,7 +2887,7 @@ window.DunneFlowGraph = {
     const d = g.prepared;
     if (!d || !d.nodeCeiling) return null;
     return { held: d.nodeCeiling.held, plates: d.raw.disks.length,
-             ceiling: d.nodeCeiling.ceiling };
+             ceiling: d.nodeCeiling.ceiling, mode: d.nodeCeiling.mode };
   },
 };
 

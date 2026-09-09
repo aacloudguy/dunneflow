@@ -4180,3 +4180,73 @@ body.detached-code #trailMount { display: none !important; }
                  min-width: 0; }
 .tb-searchwrap .tb-search { flex: 1 1 auto; min-width: 0; padding-right: 7rem; }
 .tb-searchwrap .srch-flags { position: absolute; right: .35rem; display: flex; gap: .15rem; }
+
+/* ── The start page ─────────────────────────────────────────────────────────────
+ *
+ * What a server with nothing open serves. Its own block rather than reuse of `.app`'s,
+ * because the two are different shapes for different moments: the shell is three panes
+ * over one selection, and this is one column that has to be readable before the reader
+ * knows what any of the words mean.
+ *
+ * It shares the tokens, the `.linkbtn` and every `.analyze*` and `.analysispanel*` rule
+ * above — the dialog on this page **is** the shell's dialog, out of the same file. Only
+ * the frame around it is here.
+ *
+ * Every dimension in `rem` (design rule 3), and no colour outside this file: `--ground`
+ * and `--surface` are the same two the shell paints with, so a start page and the map it
+ * leads to are one instrument in either theme.
+ */
+.start { max-width: 44rem; margin: 0 auto; padding: 4rem 1.5rem 3rem;
+         display: flex; flex-direction: column; gap: 1.75rem; }
+.start-head .brand { flex-direction: row; align-items: baseline; gap: .45rem;
+                     font-size: 1.35rem; font-weight: 700; letter-spacing: -.01em; }
+.start-head .brand-mark { color: var(--accent); }
+.start-lead { margin: .6rem 0 0; font-size: 1rem; color: var(--text-muted); }
+
+/* The root, said as a path and openable. It is the one thing a reader on this page cannot
+   find out any other way — `~/Library/Application Support` is the right place for an
+   application's data and is not somewhere anybody browses to. */
+/* Top-aligned, not centred. The real root is short — `~/Library/Application Support/
+   DunneFlow` — and centring reads well for one line; a long one wraps to four and leaves
+   the label and the button floating in the middle of a block they label. Aligned to the
+   first line, both cases read the same way. */
+.start-root { display: flex; align-items: flex-start; flex-wrap: wrap; gap: .5rem;
+              padding: .7rem .85rem; border: 1px solid var(--border);
+              border-radius: .35rem; background: var(--surface); }
+.start-rootlabel { font-size: .72rem; font-weight: 600; letter-spacing: .04em;
+                   text-transform: uppercase; color: var(--text-faint);
+                   /* Nudged onto the path's first baseline: the two font sizes differ, so
+                      `flex-start` alone leaves the smaller one riding high. */
+                   padding-top: .15rem; }
+.start-rootpath { font-size: .82rem; user-select: all; word-break: break-all;
+                  flex: 1 1 14rem; min-width: 0; }
+
+.start-main { min-height: 6rem; }
+.start-programs { display: flex; flex-direction: column; gap: .5rem; }
+
+/* A row is a button and looks like one. A list of names that turn out to be clickable is
+   the affordance defect design rule 27 was written from, one surface over. */
+.start-prog { display: flex; align-items: baseline; gap: .75rem; width: 100%;
+              text-align: left; padding: .75rem .9rem; border: 1px solid var(--border);
+              border-radius: .35rem; background: var(--surface); color: var(--text);
+              font: inherit; cursor: pointer; }
+.start-prog:hover:not(:disabled) { background: var(--raised);
+                                   border-color: var(--border-strong); }
+/* Dimmed and inert together, and only here. A row whose analysis never finished genuinely
+   cannot be opened — which is the one case design rule 30 exempts: dimming normally says
+   *not current*, never *disabled*. */
+.start-prog:disabled { opacity: .55; cursor: default; }
+.start-progname { font-size: .95rem; font-weight: 600; }
+.start-progwhat { font-size: .78rem; color: var(--text-muted); margin-left: auto;
+                  text-align: right; }
+
+.start-empty { margin: 0; font-size: .92rem; color: var(--text-muted); }
+.start-foot { border-top: 1px solid var(--border); padding-top: 1.25rem;
+              display: flex; flex-direction: column; gap: .6rem; align-items: flex-start; }
+.start-analyze { font-size: .92rem; padding: .55rem .9rem; }
+.start-foot .hint { margin: 0; font-size: .75rem; color: var(--text-faint); }
+
+/* The folder picker, beside the path field rather than instead of it (design rule 2). */
+.analyze-pick { display: flex; gap: .4rem; align-items: stretch; }
+.analyze-pick input[type=text] { flex: 1 1 auto; min-width: 0; }
+.analyze-pick .linkbtn { flex: none; }

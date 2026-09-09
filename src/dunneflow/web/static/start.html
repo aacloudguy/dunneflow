@@ -1,0 +1,60 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>DunneFlow</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="stylesheet" href="/static/tokens.css">
+
+<!--
+  The page a server with nothing open serves.
+
+  **Not the shell with everything emptied.** The shell is an application about one version
+  of one program — a navigator counting its routines, a cover, a stack, an inspector — and
+  there is no honest way to draw it over nothing. Drawing it empty would be forty panes each
+  having to say why it is blank, which is design rule 21 applied in the place it helps least:
+  the answer is the same for all of them, and the reader has not asked any of the questions
+  yet.
+
+  So this page's whole job is to say there is nothing yet and offer the two things that can
+  be done about it — open one of the programs that are here, or read a new tree. Once a base
+  exists, `/` is the shell, and the shell never has to boot without one.
+
+  It shares `tokens.css` and `analyze.js` with the shell rather than copying either. The
+  dialog on this page is the same dialog, from the same file, asking the same server for the
+  same verdicts — which is the point of taking it out of `shell.js` at all.
+-->
+
+<div class="start">
+
+  <header class="start-head">
+    <div class="brand"><span class="brand-mark">◈</span> DunneFlow</div>
+    <p class="start-lead" id="lead">reading…</p>
+  </header>
+
+  <!-- Where the maps are, stated as a path and openable.
+
+       `~/Library/Application Support/DunneFlow` is the right place for an application's
+       own data and is never swept into iCloud Drive — which matters, because `source.db`
+       holds the private source of whatever was read. What it is not is findable: a reader
+       who wants to hand a colleague a map, or delete one, cannot get there from the Finder
+       without knowing the path. So the path is here, selectable, and it opens. -->
+  <section class="start-root">
+    <span class="start-rootlabel">maps are kept in</span>
+    <code class="mono start-rootpath" id="rootpath"></code>
+    <button class="linkbtn" data-reveal hidden id="revealBtn">Show me</button>
+    <span class="hint" id="revealNote"></span>
+  </section>
+
+  <main id="main" class="start-main">
+    <div id="programs" class="start-programs"></div>
+  </main>
+
+  <footer class="start-foot">
+    <button class="linkbtn start-analyze" data-startanalyze>+ Analyse a directory…</button>
+    <p class="hint">Nothing leaves this machine. The analysis is stdlib parsing, and no part
+      of it calls a model or opens a network connection.</p>
+  </footer>
+
+</div>
+
+<script src="/static/analyze.js"></script>
+<script src="/static/start.js"></script>

@@ -5585,6 +5585,13 @@ def test_every_control_the_shell_writes_is_read_somewhere() -> None:
     js = _read("shell.js")
     written = set(re.findall(r'data-([a-z][\w-]*)="', js))
     assert len(written) > 40, f"only {len(written)} found -- this test has gone blind"
+    # **The reader may be a sibling module, and that is a boundary rather than a leak.**
+    # `analyze.js` owns the analyse dialog and its panel because the start page needs both,
+    # and the shell still *writes* one of its controls -- a failed switch offers "Analyse it
+    # again". Widened rather than exempted: `anagain` on a list of allowed misses would be a
+    # control nothing checks for ever (rule 35), where this still requires a reader to exist
+    # and only stops insisting it lives in one file.
+    js += _read("analyze.js")
     # The roster is removed before looking, because `WIRED_ATTRS` is a list of these very
     # names as strings: leaving it in makes every attribute vouch for itself, and the
     # guard passes for a control whose listener has been deleted. That is rule 43's shape

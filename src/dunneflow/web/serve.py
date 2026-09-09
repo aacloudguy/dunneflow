@@ -20,6 +20,8 @@ from __future__ import annotations
 
 import json
 import socket
+import subprocess
+import sys
 import threading
 import time
 import webbrowser
@@ -407,6 +409,15 @@ class _Base:
 # inside `_Live.open` because the count has to be knowable before the work starts -- "step
 # 4 of 6" needs the 6 up front, and a hand-counted 6 beside a six-branch function is two
 # numbers about one thing (rule 32).
+class NothingOpen(RuntimeError):
+    """A route that needs a version on screen was reached with none.
+
+    Never a reader's doing: the start page is what a server with no base serves, and the
+    shell is never loaded without one. So this is a route missing from `_Handler.NEEDS_BASE`
+    -- a defect with a sentence, rather than a blank page with none.
+    """
+
+
 def why(exc: BaseException) -> str:
     """A failed build, in words a reader can act on.
 
@@ -549,11 +560,18 @@ class _Live:
         # *present but empty* is carried to the page rather than inferred there.
         self.standards: DocStore | None = self._open_standards(out_dir / STANDARDS_DB)
 
-        # Filled by `open()`, which every caller goes through -- boot included. Typed as
-        # the real thing rather than `| None` because a server with no base has never
-        # existed: `serve()` opens one before it binds a port, and a failed open raises
-        # rather than leaving a half-built server answering.
-        self.current: _Base = None                     # type: ignore[assignment]
+        # Filled by `open()`, which every caller goes through -- boot included. **`None`
+        # is now a real state**, and it is the state a packaged application starts in: a
+        # double-clicked DunneFlow has no argument and, on a fresh machine, no map, so the
+        # server binds a port and serves the start page instead of refusing to exist.
+        #
+        # Reached through `current` rather than directly, and that is the whole of how
+        # sixty use sites stayed as they were. The property **raises** with nothing open,
+        # because with the start page in front of a reader the shell never boots without a
+        # base -- so a route asking is a defect and gets a sentence, where a `None` handed
+        # back would arrive as an `AttributeError` several frames later, or worse, as an
+        # empty payload that looks exactly like a version with nothing in it (rule 49).
+        self._base: _Base | None = None
 
         # What a switch is doing, for the reader watching it. Behind its own lock, never
         # `self.lock`: the whole point of a progress report is answering *while* the big
@@ -704,8 +722,8 @@ class _Live:
                       # version's boxes.
                       compartments={}, box_of={}, box_label={}, curiosities={}, algorithms={})
         with self.lock:
-            outgoing = self.current
-            self.current = fresh
+            outgoing = self._base
+            self._base = fresh
             # Every cached diff is keyed on a pair one end of which has just moved. Not a
             # stale copy of this answer -- an answer to a different question (rule 51).
             for cache in self.COMPARISON_CACHES:
@@ -1028,15 +1046,43 @@ class _Live:
         with self.build_lock:
             self.build = dict(fields)
 
+    @property
+    def opened(self) -> bool:
+        """Is there a version on screen at all?
+
+        The one question a server with nothing open can answer about itself, and the one
+        the route gate asks. Separate from `current` on purpose: *is there a base* and
+        *give me the base* are different questions, and a single accessor answering both
+        with `None` is how the second one gets asked by accident.
+        """
+        return self._base is not None
+
+    @property
+    def current(self) -> _Base:
+        """The version everything on screen is about. **Raises with nothing open.**
+
+        Sixty-odd routes read this, every one of them behind the gate in `_Handler` that
+        refuses before they are reached -- so arriving here with no base is a defect in
+        that list rather than a state a reader can produce. Refusing loudly is what makes
+        the gate's list checkable: an empty `_Base` handed back instead would let a route
+        drop off the list and answer with a confident, empty, entirely wrong page.
+        """
+        base = self._base
+        if base is None:
+            raise NothingOpen(
+                "nothing is open — this server was started on an output root rather than "
+                "on a program, and no program has been opened yet")
+        return base
+
     def progress(self) -> dict[str, Any]:
         with self.build_lock:
             return dict(self.build)
 
     def close(self) -> None:
-        if self.current is not None:
-            self.current.store.close()
-            if self.current.docs is not None:
-                self.current.docs.close()
+        if self._base is not None:
+            self._base.store.close()
+            if self._base.docs is not None:
+                self._base.docs.close()
         if self.source is not None:
             self.source.close()
         if self.docsource is not None:
@@ -1070,7 +1116,20 @@ class _Handler(BaseHTTPRequestHandler):
     # -- the table --------------------------------------------------------- #
 
     def _r_index(self, q: dict[str, list[str]]) -> None:
-        self._file(STATIC / "index.html")
+        """The page, and **which page depends on whether there is anything to show.**
+
+        The shell is an application about one version of one program: a navigator counting
+        its routines, a cover, a stack, an inspector. There is no honest way to draw it
+        over nothing, and drawing it empty would be forty panes each having to say why they
+        are blank -- design rule 21 in the place it applies least well, because the answer
+        is the same for all of them and the reader has not asked any of the questions yet.
+
+        So a server with nothing open serves a page whose *whole job* is to say there is
+        nothing yet, and to offer the two things that can be done about it: open one of the
+        programs that are here, or read a new tree. Once a base exists the shell is what
+        `/` means, and it never has to boot without one.
+        """
+        self._file(STATIC / ("index.html" if self._live.opened else "start.html"))
 
     def _r_graph(self, q: dict[str, list[str]]) -> None:
         """The stack, at the altitude asked for.
@@ -2453,10 +2512,19 @@ class _Handler(BaseHTTPRequestHandler):
         one. A poll that queued behind the rebuild would report nothing until there was
         nothing left to report.
         """
-        with self._live.lock:
-            graph = self._live.current.graph_db
+        # **It answers with nothing open**, because that is when it is asked hardest: the
+        # start page polls this while the first program is being built, and until that build
+        # lands there is no base to name. `""` here is the honest answer -- *no version is
+        # on screen* -- and it is the same word this route already uses for an unrevisioned
+        # graph, which is the one place the two could be confused and are not: the state
+        # beside it says which (design rule 21).
+        base = ""
+        if self._live.opened:
+            with self._live.lock:
+                base = revisions.revision_of(self._live.current.graph_db) or ""
         self._json({
-            "base": revisions.revision_of(graph) or "",
+            "base": base,
+            "open": self._live.opened,
             "steps": list(BUILD_STEPS),
             **self._live.progress(),
         })
@@ -2478,18 +2546,31 @@ class _Handler(BaseHTTPRequestHandler):
         worse.
 
         `files` is `None` for every program but the served one, for the same reason -- see
-        `PERFORMANCE.md`. The served one is free: the base already knows.
+        `PERFORMANCE.md`. The served one is free: the base already knows. `revisions` is a
+        count for every row, because that one is a directory listing rather than an open --
+        the bargain above is about *reading* a store, not about naming its files.
+
+        **It answers with nothing open, and that is what the start page is built on.** A
+        second route listing programs would be a second answer to one question (rule 51),
+        so this is the only one: `serving` is `""` from cold, `files` is `None` for every
+        row including the root's own, and `root` rides along because a reader looking at an
+        empty list needs to know *where* it was empty.
         """
+        opened = self._live.opened
         with self._live.lock:
             here = self._live.out_dir.resolve()
-            served_files = int(self._live.current.cover.get("stats", {}).get("files", 0))
+            served_files = (int(self._live.current.cover.get("stats", {}).get("files", 0))
+                            if opened else None)
         found = revisions.program_dirs(self._live.out_root)
         # The served program is in the list whatever the walk found -- it is being read
         # right now, so a list without it would be a control that cannot name the thing it
-        # is showing. Sorted by name so the order is total and does not move between polls.
+        # is showing. From cold there is nothing being read and `here` is the root itself,
+        # which is not a program; adding it would invent a row for a directory that holds
+        # no map (rule 30). Sorted by name so the order is total and does not move between
+        # polls.
         rows = []
-        for d in sorted(found | {here}, key=lambda p: p.name.lower()):
-            is_here = d == here
+        for d in sorted(found | ({here} if opened else set()), key=lambda p: p.name.lower()):
+            is_here = opened and d == here
             rows.append({
                 "name": d.name,
                 "serving": is_here,
@@ -2504,8 +2585,13 @@ class _Handler(BaseHTTPRequestHandler):
                 # refuses it with the store's own sentence.
                 "finished": self._finished(d, is_here),
                 "files": served_files if is_here else None,
+                # A glob, not an open -- see the note above. It is what tells a reader on
+                # the start page that a program has more than one point in time in it.
+                "revisions": len(revisions.known(d, revisions.GRAPH)),
             })
-        self._json({"programs": rows, "serving": here.name})
+        self._json({"programs": rows,
+                    "serving": here.name if opened else "",
+                    "root": str(self._live.out_root)})
 
     def _finished(self, d: Path, is_here: bool) -> bool:
         """Did the analysis that wrote this program's newest map finish?
@@ -2538,24 +2624,35 @@ class _Handler(BaseHTTPRequestHandler):
         Refuses by name in the same four shapes: nothing named, no such directory beside
         this one, already being read, and a switch already running. A reader must never
         have to guess which of those they got.
+
+        **The first open and a switch are one route**, and that is deliberate. From the
+        start page there is nothing to switch *from*, but `switch_program` already builds
+        the new base before it closes anything and restores what it had on failure -- with
+        nothing to restore, that is exactly a cold open. A second route would be a second
+        copy of the widest blast radius in this file (rule 51). What changes with nothing
+        open is only what can be refused: *that is already what you are reading* has no
+        subject, and the root itself is not one of the choices.
         """
         asked = (q.get("name") or [""])[0]
         if not asked:
             self._started(False, "no program was named")
             return
+        opened = self._live.opened
         with self._live.lock:
             here = self._live.out_dir.resolve()
         # Resolved against the siblings rather than joined onto the parent, so a name
         # carrying `..` or a separator cannot address a directory outside the output root.
         # The list is the authority on what may be switched to (rule 30: a label is not an
         # identity, and this turns one into the other by lookup).
-        candidates = {d.name: d
-                      for d in revisions.program_dirs(self._live.out_root) | {here}}
+        candidates = {d.name: d for d in revisions.program_dirs(self._live.out_root)}
+        if opened:
+            candidates[here.name] = here
         target = candidates.get(asked)
         if target is None:
-            self._started(False, f"there is no program called {asked} beside this one")
+            where_ = "beside this one" if opened else f"under {self._live.out_root}"
+            self._started(False, f"there is no program called {asked} {where_}")
             return
-        if target == here:
+        if opened and target == here:
             self._started(False, f"{asked} is already the program being read")
             return
         if not self._live.claim(asked):
@@ -2588,6 +2685,89 @@ class _Handler(BaseHTTPRequestHandler):
                                self._live.out_root, here)
             body["check"] = {"ok": v.ok, "refusal": v.refusal, "note": v.note}
         self._json(body)
+
+    def _p_pickdir(self, q: dict[str, list[str]]) -> None:
+        """Ask the operating system for a directory, and hand back an absolute path.
+
+        **`analysis.check` refuses a relative path**, deliberately: the server's working
+        directory is not the reader's, so half a path is a different directory to each of
+        them. That leaves *type the whole path* as the way in, which is a poor first
+        instruction for somebody who has just double-clicked an application -- and a
+        browser cannot hand a server what a folder picker chose, by design.
+
+        So the picker is the operating system's, run by this process: `osascript`, which is
+        on every Mac and is not a dependency. `activate` comes first because the dialog
+        belongs to a process with no window, and without it the panel opens **behind the
+        browser** -- rule 90's shape, one process over.
+
+        **The typed field stays**, and that is the whole posture: this is a convenience over
+        a control that still works, never a replacement for one (design rule 2). Cancelling
+        is not an error, and says so.
+
+        A POST for `_p_analyze`'s reason and a sharper one: it puts a modal window on the
+        reader's screen, which is not a thing a prefetch may do.
+        """
+        if sys.platform != "darwin":
+            self._json({"picked": "", "reason": "the folder picker is macOS only — "
+                                                "type the whole path instead"})
+            return
+        script = ('activate\n'
+                  'POSIX path of (choose folder with prompt '
+                  '"Choose a directory for DunneFlow to read")')
+        try:
+            # Bounded, because this blocks on a person: a dialog left open must not hold a
+            # server thread for ever. Three minutes is long enough to go and find a folder
+            # and short enough to recover from a dialog nobody ever saw.
+            done = subprocess.run(["osascript", "-e", script], capture_output=True,
+                                  text=True, timeout=180)
+        except (OSError, subprocess.TimeoutExpired):
+            self._json({"picked": "", "reason": "the picker did not answer — "
+                                                "type the whole path instead"})
+            return
+        if done.returncode != 0:
+            # Cancelling is the ordinary way out of a dialog, and is not a failure. Told
+            # apart from a real one by AppleScript's own words rather than by assuming
+            # every non-zero exit is a cancel (rule 30).
+            said = (done.stderr or "").strip()
+            cancelled = "-128" in said or "canceled" in said.lower()
+            self._json({"picked": "",
+                        "reason": "" if cancelled else (said or "the picker failed")})
+            return
+        # A trailing separator is how `POSIX path of` spells a directory; `analysis.check`
+        # takes either, and the field shows what a person would write.
+        self._json({"picked": done.stdout.strip().rstrip("/") or ""})
+
+    def _p_reveal(self, q: dict[str, list[str]]) -> None:
+        """Show a directory in the Finder. **Only ever one inside the output root.**
+
+        The root is `~/Library/Application Support/DunneFlow` in a packaged build, which is
+        Apple's answer for an application's own data and is never swept into iCloud Drive --
+        and is invisible to a reader who wants to hand a colleague a map or delete one. A
+        page that names a place the reader cannot reach is rule 89's shape, so it opens.
+
+        **Bounded to the root and its programs**, because this hands a path to `open` and a
+        localhost POST is a thing a page in another tab can send. A path outside is refused
+        by name rather than sanitised into one that is inside (rule 30).
+        """
+        if sys.platform != "darwin":
+            self._json({"revealed": False, "reason": "revealing is macOS only"})
+            return
+        root = self._live.out_root.resolve()
+        asked = (q.get("path") or [""])[0].strip()
+        target = Path(asked).resolve() if asked else root
+        if target != root and not target.is_relative_to(root):
+            self._json({"revealed": False,
+                        "reason": f"{target} is not inside {root}"})
+            return
+        if not target.is_dir():
+            self._json({"revealed": False, "reason": f"{target} is not there"})
+            return
+        try:
+            subprocess.run(["open", str(target)], capture_output=True, timeout=10)
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            self._json({"revealed": False, "reason": str(exc)})
+            return
+        self._json({"revealed": True, "reason": ""})
 
     def _p_stop_analysis(self, q: dict[str, list[str]]) -> None:
         """Stop the running analysis. A POST, for `_p_analyze`'s reason and its own.
@@ -2782,16 +2962,76 @@ class _Handler(BaseHTTPRequestHandler):
         # The way out of the one above. A POST for the same reason and a sharper one: it
         # ends a process, which is not a thing a prefetch may do.
         "/api/analyze/stop": "_p_stop_analysis",
+        # Two gestures that reach outside the browser, and both are POSTs for the reason
+        # above and a sharper one: one puts a modal window on the reader's screen and the
+        # other brings the Finder forward. Neither is a thing a prefetch may do.
+        "/api/pickdir": "_p_pickdir",
+        "/api/reveal": "_p_reveal",
     }
 
     # Served directories, checked in order. Kept beside the route table rather than
     # inside the dispatch so both are readable as one list of what this server answers.
     TREES: tuple[tuple[str, Path], ...] = (("/static/", STATIC), ("/vendor/", VENDOR))
 
+    # **What a server with nothing open can still answer.** Everything else needs a
+    # version on screen and is refused before it is reached.
+    #
+    # Two lists for the two tables, on `POST_ROUTES`' own argument: `/api/base` is a
+    # readout from cold and a base *switch* when it is posted to, and one list covering
+    # both would exempt the second by accident. Kept apart so "may this be asked with
+    # nothing open" is a question about a list rather than about a shared name.
+    #
+    # Each list is of the *exceptions*, and that direction is the whole guard: a route added
+    # tomorrow needs a base by default, so from cold it refuses visibly rather than
+    # answering out of nothing. Named the other way round -- every route that needs one --
+    # a new route would default to *works without a base* and would fail the way rule 49
+    # describes, with a plausible empty answer nobody can tell from a real one.
+    GET_WITHOUT_BASE: frozenset[str] = frozenset({
+        "/", "/index.html", "/favicon.ico",
+        "/api/programs",        # the list, and the root it was empty in
+        "/api/base",            # what is being built, asked hardest while there is no base
+        "/api/analysis",        # a run outlives the page, and starts before any base
+    })
+
+    POST_WITHOUT_BASE: frozenset[str] = frozenset({
+        "/api/program",         # opening the first one is the same route as a switch
+        "/api/analyze",
+        "/api/analyze/stop",
+        "/api/pickdir",         # choosing a directory precedes having any map
+        "/api/reveal",          # the root is exactly what a cold reader asks about
+    })
+
+    def _refuse_without_base(self, raw: str) -> None:
+        """Say what is not open, rather than answering as though something were.
+
+        A reader cannot reach this: the start page is what a bare server serves and the
+        shell is never loaded without a base. So it is a defect -- a route that ought to be
+        in `WITHOUT_BASE`, or a page asking too early -- and it gets a status and a
+        sentence, which is a thing that can be found. An empty payload would be
+        indistinguishable from a version with nothing in it (rule 49), and that is the
+        failure this whole gate exists to make impossible.
+        """
+        # **The reason goes in `explain`, never in the message.** `send_error`'s second
+        # argument is the HTTP *status line*, which `http.server` encodes as latin-1 -- so a
+        # sentence written for a reader, with the em dash this project writes everywhere,
+        # raises `UnicodeEncodeError` from inside the error handler and the socket closes
+        # with nothing on it at all. A refusal that cannot be delivered is worse than the
+        # confident empty answer this gate exists to prevent, and it was found by pressing
+        # the route rather than by any test. `explain` is encoded UTF-8 and is where the
+        # sentence belongs.
+        self.send_error(
+            409, "nothing is open",
+            f"This server was started on an output root rather than on a program, and no "
+            f"program has been opened yet — so {raw} has nothing to answer about. Open a "
+            f"program first.")
+
     def do_GET(self) -> None:                     # noqa: N802  (stdlib's spelling)
         raw, _, query = self.path.partition("?")
         handler = self.ROUTES.get(raw)
         if handler is not None:
+            if not self._live.opened and raw not in self.GET_WITHOUT_BASE:
+                self._refuse_without_base(raw)
+                return
             getattr(self, handler)(parse_qs(query))
             return
         for prefix, root in self.TREES:
@@ -2810,6 +3050,9 @@ class _Handler(BaseHTTPRequestHandler):
         handler = self.POST_ROUTES.get(raw)
         if handler is None:
             self.send_error(404, f"nothing here takes a POST: {raw}")
+            return
+        if not self._live.opened and raw not in self.POST_WITHOUT_BASE:
+            self._refuse_without_base(raw)
             return
         getattr(self, handler)(parse_qs(query))
 
@@ -2852,6 +3095,48 @@ def _free_port(preferred: int) -> int:
     with socket.socket() as s:
         s.bind(("127.0.0.1", 0))
         return int(s.getsockname()[1])
+
+
+def _run(live: _Live, port: int, open_browser: bool, emit: Any) -> None:
+    """Bind, open a browser, and answer until interrupted.
+
+    Its own function because there are two ways to arrive here -- with a version built, and
+    with nothing open at all -- and the second one exists so a packaged application can
+    start on a fresh machine. Two copies of a bind, a timer and a `finally` that closes the
+    stores is two places to forget one of them (rule 51).
+    """
+    port = _free_port(port)
+    handler = partial(_Handler, live=live)
+    httpd = ThreadingHTTPServer(("127.0.0.1", port), handler)
+    url = f"http://127.0.0.1:{port}/"
+    emit(f"serving {url}  (ctrl-c to stop)")
+    if open_browser:
+        threading.Timer(0.4, lambda: webbrowser.open(url)).start()
+    try:
+        httpd.serve_forever()
+    except KeyboardInterrupt:
+        emit("stopped")
+    finally:
+        httpd.server_close()
+        live.close()
+
+
+def _serve_cold(live: _Live, out_root: Path, port: int,
+                open_browser: bool, emit: Any) -> None:
+    """Serve the start page: no base, and the terminal told what is here.
+
+    The same sentence the page will show, said where somebody running this from a shell can
+    read it. A server that binds a port and says nothing about *why* it has nothing to show
+    is design rule 21's failure one surface over from where that rule was written.
+    """
+    found = sorted(d.name for d in revisions.program_dirs(out_root) if d != out_root)
+    emit(f"no program is open; reading {out_root}")
+    if found:
+        emit(f"{len(found)} here: {', '.join(found)} — pick one on the page, "
+             "or analyse a new tree")
+    else:
+        emit("nothing here yet — the page offers to analyse a directory")
+    _run(live, port, open_browser, emit)
 
 
 def where(given: Path) -> tuple[Path, Path]:
@@ -2913,7 +3198,16 @@ def serve(out_dir: Path, *, port: int = 8787, open_browser: bool = True,
     """
     out_dir, out_root = where(out_dir)
     graph_db = revisions.resolve(out_dir, revisions.GRAPH, revision)
-    if graph_db is None or not graph_db.exists():
+    # **A root with nothing in it is served, not refused.** A directory that is a program
+    # and has no map is still a mistake worth a sentence -- the reader named that one --
+    # but a root is what a packaged application opens on, and on a fresh machine it holds
+    # nothing at all. That is the state the start page exists for.
+    #
+    # A named `--revision` is always a refusal, whichever kind of directory it is: the
+    # reader asked for a version by name, and quietly opening a chooser instead would be
+    # answering a question nobody asked.
+    cold = out_dir == out_root and not revision
+    if (graph_db is None or not graph_db.exists()) and not cold:
         raise FileNotFoundError(no_map_here(out_dir, out_root, revision))
 
     live = _Live(out_dir / "source.db", out_dir, out_root)
@@ -2925,6 +3219,9 @@ def serve(out_dir: Path, *, port: int = 8787, open_browser: bool = True,
     # who runs this on a large program and waits ten seconds at a prompt is entitled to
     # the same answer as someone watching the overlay.
     t0 = time.perf_counter()
+    if graph_db is None or not graph_db.exists():
+        _serve_cold(live, out_root, port, open_browser, emit)
+        return
     live.open(graph_db, lambda name, i, n: emit(f"  [{i + 1}/{n}] {name}…"))
 
     files = live.current.files
@@ -2945,17 +3242,4 @@ def serve(out_dir: Path, *, port: int = 8787, open_browser: bool = True,
     emit(f"{revisions.revision_of(graph_db) or 'this version'} is the base, "
          f"built in {time.perf_counter() - t0:.1f} s")
 
-    port = _free_port(port)
-    handler = partial(_Handler, live=live)
-    httpd = ThreadingHTTPServer(("127.0.0.1", port), handler)
-    url = f"http://127.0.0.1:{port}/"
-    emit(f"serving {url}  (ctrl-c to stop)")
-    if open_browser:
-        threading.Timer(0.4, lambda: webbrowser.open(url)).start()
-    try:
-        httpd.serve_forever()
-    except KeyboardInterrupt:
-        emit("stopped")
-    finally:
-        httpd.server_close()
-        live.close()
+    _run(live, port, open_browser, emit)

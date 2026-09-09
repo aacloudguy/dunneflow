@@ -43,11 +43,10 @@ def _esc(text: str | None) -> str:
     return " ".join(str(text).split()).replace("|", "\\|")
 
 
-def render_glossary(store: Store, docs: DocStore | None, out_dir: Path, root: Path,
-                    program: str, stamp: str, docs_root: Path | None = None) -> Path:
+def render_glossary(store: Store, docs: DocStore | None, out_dir: Path,
+                    program: str, stamp: str) -> Path:
     report = bind(store, docs)
     defined, total = report.coverage()
-    doc_root = docs_root or root
 
     lines = [
         f"# {program} — Glossary\n",
@@ -77,7 +76,7 @@ def render_glossary(store: Store, docs: DocStore | None, out_dir: Path, root: Pa
     if not written:
         lines.append("*Nothing in this program defines any of its own vocabulary.*\n")
     for term in written:
-        lines.extend(_term_entry(term, doc_root))
+        lines.extend(_term_entry(term))
 
     lines.append("\n## Terms nothing defines\n")
     if not report.undefined:
@@ -123,7 +122,7 @@ def render_glossary(store: Store, docs: DocStore | None, out_dir: Path, root: Pa
     return path
 
 
-def _term_entry(term: Term, root: Path) -> list[str]:
+def _term_entry(term: Term) -> list[str]:
     lines = [f"\n### {term.term}\n"]
     # Counts, not 638 module names. The examples are for orientation; the complete
     # list of what uses a word is a query away and is not what this page is for.

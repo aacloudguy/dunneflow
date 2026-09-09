@@ -35,7 +35,7 @@ def _esc(text: str | None) -> str:
 # intervening directories to every path on the page.
 
 
-def render_database(store: Store, out: Path, root: Path, program: str, stamp: str) -> Path | None:
+def render_database(store: Store, out: Path, program: str, stamp: str) -> Path | None:
     counts = store.query(
         "SELECT (SELECT COUNT(DISTINCT name) FROM db_tables) t,"
         "       (SELECT COUNT(*) FROM db_indexes) i,"

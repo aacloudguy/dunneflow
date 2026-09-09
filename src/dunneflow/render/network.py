@@ -97,7 +97,7 @@ def _san(text: str, limit: int = 30) -> str:
     return out if len(out) <= limit else out[: limit - 1] + "…"
 
 
-def render_network(store: Store, out: Path, root: Path, program: str, stamp: str) -> Path | None:
+def render_network(store: Store, out: Path, program: str, stamp: str) -> Path | None:
     outbound = store.query(
         "SELECT b.target, b.evidence, b.direction, b.line, r.qualname, r.module, r.file,"
         "       b.routine_id"

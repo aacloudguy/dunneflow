@@ -36,7 +36,7 @@ def _render(tmp_path: Path) -> Path:
     analyze_tree(root, store)
     resolve_calls(store)
     out = tmp_path / "out"
-    render_all(store, out, root, "wide")
+    render_all(store, out, "wide")
     store.close()
     return out
 

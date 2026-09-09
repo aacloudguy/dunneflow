@@ -56,8 +56,8 @@ def _slug(key: str) -> str:
     return key.lower().replace("_", "-")
 
 
-def render_mirror(store: Store, docs: DocStore | None, out: Path, root: Path,
-                  program: str, stamp: str, docs_root: Path | None = None) -> Path:
+def render_mirror(store: Store, docs: DocStore | None, out: Path,
+                  program: str, stamp: str) -> Path:
     """Write `13-mirror.md`, whether or not any documentation was read."""
     m = measure(store, docs)
     lines = [
@@ -73,7 +73,7 @@ def render_mirror(store: Store, docs: DocStore | None, out: Path, root: Path,
     lines += _what_it_could_not_see(m)
     lines += _what_was_joined(m)
     lines += _spectrum(m)
-    lines += _bands(m, docs_root)
+    lines += _bands(m)
     lines += _set_aside(m)
     lines += _reproducing(m)
     return _write(out, lines)
@@ -172,7 +172,7 @@ def _spectrum(m: Mirror) -> list[str]:
     return lines
 
 
-def _definition_cell(t: MirroredTerm, docs_root: Path | None) -> str:
+def _definition_cell(t: MirroredTerm) -> str:
     """Every definition of a term, with the file and line it was read from.
 
     Rule 13: a definition is a claim, and the route back to where it came from is the
@@ -209,7 +209,7 @@ def _evidence_cell(t: MirroredTerm) -> str:
     return "<br>".join(parts) or "—"
 
 
-def _bands(m: Mirror, docs_root: Path | None) -> list[str]:
+def _bands(m: Mirror) -> list[str]:
     groups = m.by_band()
     lines: list[str] = ["## Every term, by standing\n"]
     for band in BANDS:
@@ -231,7 +231,7 @@ def _bands(m: Mirror, docs_root: Path | None) -> list[str]:
         for t in terms:
             lines.append(
                 f"| **{_esc(t.term)}** | {_evidence_cell(t)} "
-                f"| {_definition_cell(t, docs_root)} |"
+                f"| {_definition_cell(t)} |"
             )
         lines.append("")
     return lines

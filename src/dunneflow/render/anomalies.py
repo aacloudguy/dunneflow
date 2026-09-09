@@ -40,7 +40,7 @@ def _esc(text: str | None) -> str:
 # intervening directories to every path on the page.
 
 
-def render_anomalies(report: Report, out: Path, root: Path, program: str,
+def render_anomalies(report: Report, out: Path, program: str,
                      stamp: str) -> Path:
     counts = report.counts()
     lines = [f"# {program} — Anomalies\n\n*Generated {stamp} by DunneFlow.*\n"]

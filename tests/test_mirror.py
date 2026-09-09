@@ -347,7 +347,7 @@ def test_no_documentation_is_not_a_finding(mirrored, tmp_path):
     # The code half is still measured, so the page can say what it is waiting for.
     assert result.artefact_names > 0
 
-    page = render_mirror(store, None, tmp_path, tmp_path, "sample", "now")
+    page = render_mirror(store, None, tmp_path, "sample", "now")
     body = page.read_text(encoding="utf-8")
     assert "No documentation was read" in body
     assert "there is no finding here" in body
@@ -356,7 +356,7 @@ def test_no_documentation_is_not_a_finding(mirrored, tmp_path):
 def test_the_page_lists_every_term_and_every_exclusion(mirrored, tmp_path, report):
     """Nothing on this page is bounded -- rule 8."""
     store, docs, root = mirrored
-    page = render_mirror(store, docs, tmp_path, root, "sample", "now")
+    page = render_mirror(store, docs, tmp_path, "sample", "now")
     body = page.read_text(encoding="utf-8")
     assert page.name == "13-mirror.md"
     for term in report.terms:

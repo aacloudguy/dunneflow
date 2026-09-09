@@ -52,7 +52,7 @@ def _slug(key: str) -> str:
     return key.lower().replace("_", "-")
 
 
-def _docs_cell(t: TracedId, root: Path | None) -> str:
+def _docs_cell(t: TracedId) -> str:
     """The documents that are *about* an id, in full.
 
     Subject documents are few by construction -- something has to name the id in a
@@ -72,10 +72,8 @@ def render_traceability(
     store: Store,
     docs: DocStore | None,
     out: Path,
-    root: Path,
     program: str,
     stamp: str,
-    docs_root: Path | None = None,
 ) -> Path:
     """Write `12-traceability.md`. Returns the path."""
     t = measure(store, docs)
@@ -98,7 +96,7 @@ def render_traceability(
     lines += _spectrum(t)
     lines += _headlines(t)
     lines += _method(t)
-    lines += _bands(t, root, docs_root)
+    lines += _bands(t)
     lines += _reproducing(t)
     return _write(out, lines)
 
@@ -331,7 +329,7 @@ def _method(t: Traceability) -> list[str]:
     ]
 
 
-def _bands(t: Traceability, root: Path, docs_root: Path | None) -> list[str]:
+def _bands(t: Traceability) -> list[str]:
     """Every id, in its band, with its evidence. Nothing is elided."""
     grouped = t.by_state()
     lines: list[str] = ["## Every id\n"]
@@ -350,12 +348,12 @@ def _bands(t: Traceability, root: Path, docs_root: Path | None) -> list[str]:
         if not band:
             lines.append("*None.*\n")
             continue
-        lines += _band_table(s.key, band, root, docs_root)
+        lines += _band_table(s.key, band)
     return lines
 
 
 def _band_table(
-    key: str, band: list[TracedId], root: Path, docs_root: Path | None
+    key: str, band: list[TracedId]
 ) -> list[str]:
     landed_band = key in ("LIKELY_LANDED", "POSSIBLY_LANDED", "NO_TRACE_IN_CODE")
     lines: list[str] = []
@@ -393,7 +391,7 @@ def _band_table(
         for x in band:
             ev = " · ".join(f"`{_esc(n)}`" for n in x.landed) or "—"
             lines.append(
-                f"| `{_esc(x.id)}` | {_docs_cell(x, docs_root)} | {x.named:,} | {ev} |"
+                f"| `{_esc(x.id)}` | {_docs_cell(x)} | {x.named:,} | {ev} |"
             )
     else:
         lines.append("| Id | Kinds | Code sites | Documents about it | Also named in |")
@@ -402,7 +400,7 @@ def _band_table(
             mentions = f"{len(x.mentions):,} more" if x.mentions else "—"
             lines.append(
                 f"| `{_esc(x.id)}` | {_esc(', '.join(x.kinds))} | {len(x.code):,} "
-                f"| {_docs_cell(x, docs_root)} | {mentions} |"
+                f"| {_docs_cell(x)} | {mentions} |"
             )
     lines.append("")
     return lines

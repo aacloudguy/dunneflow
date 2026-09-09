@@ -564,10 +564,9 @@ def cmd_analyze(args: argparse.Namespace) -> int:
         # directory it is handed and should go on knowing nothing about revisions: *which*
         # directory is a question about time, and this is the caller that knows the answer.
         map_out = revisions.map_dir(out_dir, revision)
-        files = render_all(store, map_out, source_root, program,
+        files = render_all(store, map_out, program,
                            include_tests=args.include_tests,
-                           docs=doc_store, docs_root=docs_root,
-                           standards=standards_store)
+                           docs=doc_store, standards=standards_store)
         # And the listing that says which map is which. Written every time, because a
         # revision's *state* changes underneath it -- sealing one makes every earlier
         # listing wrong about which snapshot is the working one.

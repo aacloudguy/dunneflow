@@ -62,38 +62,47 @@ def _esc(text: str | None, limit: int | None = None) -> str:
 # `Path("mensores/cli.py").resolve()` resolves against the *working directory*, so run from
 # anywhere inside the analysed tree the strip would succeed and silently prepend the
 # intervening directories to every path on the page.
+#
+# **The parameters outlived the code by a month**, threaded through twenty-eight functions
+# and read by none of them, and a signature that asks for a source root is a claim that one
+# is needed. It is not: a map is written from the graph and the document store and nothing
+# else, which is exactly what lets `dunneflow render` write the map of a sealed snapshot
+# whose source tree is gone. Stating that in the signatures is the point of removing them --
+# the alternative was a caller with no tree to name inventing a plausible path, which is
+# rule 49 in the shape a type checker cannot see.
 
 
 # --------------------------------------------------------------------------- #
 
 
-def render_all(store: Store, out_dir: Path, root: Path, program: str,
+def render_all(store: Store, out_dir: Path, program: str,
                when: datetime | None = None, include_tests: bool = False,
-               docs: DocStore | None = None, docs_root: Path | None = None,
-               standards: DocStore | None = None) -> list[Path]:
+               docs: DocStore | None = None,
+               standards: DocStore | None = None,
+               standards_note: str = "") -> list[Path]:
     """Write the whole map. Returns the files written."""
     out_dir.mkdir(parents=True, exist_ok=True)
     stamp = _stamp(when)
     written = [
-        _overview(store, out_dir, root, program, stamp),
-        _entrypoints(store, out_dir, root, program, stamp),
-        _flows(store, out_dir, root, program, stamp),
-        _routines(store, out_dir, root, program, stamp),
-        _data(store, out_dir, root, program, stamp),
-        _boundaries(store, out_dir, root, program, stamp),
-        _governance(store, out_dir, root, program, stamp),
-        render_database(store, out_dir, root, program, stamp),
-        render_network(store, out_dir, root, program, stamp),
-        render_anomalies(detect(store, include_tests), out_dir, root, program, stamp),
+        _overview(store, out_dir, program, stamp),
+        _entrypoints(store, out_dir, program, stamp),
+        _flows(store, out_dir, program, stamp),
+        _routines(store, out_dir, program, stamp),
+        _data(store, out_dir, program, stamp),
+        _boundaries(store, out_dir, program, stamp),
+        _governance(store, out_dir, program, stamp),
+        render_database(store, out_dir, program, stamp),
+        render_network(store, out_dir, program, stamp),
+        render_anomalies(detect(store, include_tests), out_dir, program, stamp),
         # Documentation is a parallel input, so its two documents are written whether or
         # not any documentation was found. A glossary that says "nothing defines these
         # eleven words" is a finding; an absent glossary is a silence.
-        render_glossary(store, docs, out_dir, root, program, stamp, docs_root),
-        render_naming(store, docs, out_dir, root, program, stamp, docs_root,
-                      standards=standards),
-        render_traceability(store, docs, out_dir, root, program, stamp, docs_root),
-        render_mirror(store, docs, out_dir, root, program, stamp, docs_root),
-        render_constants(store, out_dir, root, program, stamp),
+        render_glossary(store, docs, out_dir, program, stamp),
+        render_naming(store, docs, out_dir, program, stamp,
+                      standards=standards, standards_note=standards_note),
+        render_traceability(store, docs, out_dir, program, stamp),
+        render_mirror(store, docs, out_dir, program, stamp),
+        render_constants(store, out_dir, program, stamp),
     ]
     return [w for w in written if w]
 
@@ -105,7 +114,7 @@ def _header(program: str, title: str, stamp: str) -> str:
 # --------------------------------------------------------------------------- #
 
 
-def _overview(store: Store, out: Path, root: Path, program: str, stamp: str) -> Path:
+def _overview(store: Store, out: Path, program: str, stamp: str) -> Path:
     c = store.counts()
     bi = boundary_index(store)
 
@@ -117,6 +126,7 @@ def _overview(store: Store, out: Path, root: Path, program: str, stamp: str) -> 
         "what it runs, and where it touches anything outside itself. Internal "
         "computation and local variables are deliberately not described.\n"
     )
+    lines.append(_what_this_describes(store, stamp))
 
     lines.append("## Size\n")
     lines.append("| Measure | Count |\n|---|---:|")
@@ -187,7 +197,40 @@ def _overview(store: Store, out: Path, root: Path, program: str, stamp: str) -> 
     return path
 
 
-def _entrypoints(store: Store, out: Path, root: Path, program: str, stamp: str) -> Path:
+def _what_this_describes(store: Store, stamp: str) -> str:
+    """Which snapshot this map is of, and when that source was read.
+
+    **`Generated` is not `analysed`, and until `dunneflow render` existed nothing had ever
+    made the difference visible.** A map written by `analyze` carries one instant for both,
+    so a single "Generated 2026-09-09" line was true twice over by accident. Re-rendering a
+    sealed snapshot pulls them apart -- documents written today about source captured two
+    weeks ago -- and that same line then reads as a claim about the wrong fortnight.
+
+    Both facts are in the graph's own `meta`, so this asks the store rather than making
+    every caller carry them down (rule 51). A map written before either key existed says
+    so: *missing* and *blank* are different answers and neither is "now".
+    """
+    revision = store.get_meta("revision") or ""
+    analysed = store.get_meta("analysed_at") or ""
+    if not revision and not analysed:
+        # Nothing to say beyond the line above, which is honest: this graph predates both
+        # keys, and inventing a revision for it would be minting an identity (rule 30).
+        return ""
+    rev_cell = f"`{revision}`" if revision else "*not recorded — written before maps were named*"
+    an_cell = analysed or "*not recorded*"
+    return (
+        # A heading rather than a floating table: this reader arrives mid-document as often
+        # as at the top, and an unheaded block of three dates is unreachable from a scroll
+        # wheel. Three lines rather than a row, because the two instants are the point and
+        # a table puts them side by side where they read as one fact.
+        "## What this map describes\n\n"
+        f"- **Snapshot:** {rev_cell}\n"
+        f"- **When that source was read:** {an_cell}\n"
+        f"- **When these documents were written:** {stamp}\n"
+    )
+
+
+def _entrypoints(store: Store, out: Path, program: str, stamp: str) -> Path:
     eps = store.entrypoints()
     lines = [_header(program, "Ways in", stamp)]
     lines.append(
@@ -258,7 +301,7 @@ def _tree_list(tree: dict, depth: int = 0) -> str:
     return "\n".join(out)
 
 
-def _flows(store: Store, out: Path, root: Path, program: str, stamp: str) -> Path:
+def _flows(store: Store, out: Path, program: str, stamp: str) -> Path:
     ranked = ways_in(store)
 
     lines = [_header(program, "Flows", stamp)]
@@ -294,7 +337,7 @@ def _flows(store: Store, out: Path, root: Path, program: str, stamp: str) -> Pat
         lines.append("```mermaid")
         lines.append(flow_diagram(flow))
         lines.append("```\n")
-        lines.append(_flow_inventory(store, d, root))
+        lines.append(_flow_inventory(store, d))
 
 
     path = out / "02-flows.md"
@@ -302,7 +345,7 @@ def _flows(store: Store, out: Path, root: Path, program: str, stamp: str) -> Pat
     return path
 
 
-def _flow_inventory(store: Store, way_in: dict, root: Path) -> str:
+def _flow_inventory(store: Store, way_in: dict) -> str:
     """Every routine one way in reaches, and every boundary it ends up touching.
 
     The diagram above is bounded; this is not. A reader who wants the complete answer
@@ -341,7 +384,7 @@ def _flow_inventory(store: Store, way_in: dict, root: Path) -> str:
     return "\n".join(out)
 
 
-def _routines(store: Store, out: Path, root: Path, program: str, stamp: str) -> Path:
+def _routines(store: Store, out: Path, program: str, stamp: str) -> Path:
     rows = store.query(
         "SELECT module, COUNT(*) n FROM routines WHERE name != '<module>'"
         " GROUP BY module ORDER BY n DESC"
@@ -382,7 +425,7 @@ def _routines(store: Store, out: Path, root: Path, program: str, stamp: str) -> 
     return path
 
 
-def _data(store: Store, out: Path, root: Path, program: str, stamp: str) -> Path:
+def _data(store: Store, out: Path, program: str, stamp: str) -> Path:
     structs = store.structures()
     lines = [_header(program, "Data structures", stamp)]
     lines.append(
@@ -427,7 +470,7 @@ def _data(store: Store, out: Path, root: Path, program: str, stamp: str) -> Path
     return path
 
 
-def _boundaries(store: Store, out: Path, root: Path, program: str, stamp: str) -> Path:
+def _boundaries(store: Store, out: Path, program: str, stamp: str) -> Path:
     bi = boundary_index(store, min_salience="low")
     lines = [_header(program, "Boundaries", stamp)]
     lines.append(
@@ -458,7 +501,7 @@ def _boundaries(store: Store, out: Path, root: Path, program: str, stamp: str) -
     return path
 
 
-def _governance(store: Store, out: Path, root: Path, program: str, stamp: str) -> Path:
+def _governance(store: Store, out: Path, program: str, stamp: str) -> Path:
     rows = store.query(
         """SELECT a.kind, a.value, a.text, a.line, a.owner_kind,
                   COALESCE(r.qualname, s.name) AS owner, COALESCE(r.file, s.file) AS file

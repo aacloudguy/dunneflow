@@ -85,15 +85,12 @@ def _pct(holds: int, total: int) -> str:
     return f"{value:.2f}%" if value > 99.9 else f"{value:.1f}%"
 
 
-def render_naming(store: Store, docs: DocStore | None, out_dir: Path, root: Path,
-                  program: str, stamp: str, docs_root: Path | None = None,
-                  standards: DocStore | None = None) -> Path:
+def render_naming(store: Store, docs: DocStore | None, out_dir: Path,
+                  program: str, stamp: str,
+                  standards: DocStore | None = None,
+                  standards_note: str = "") -> Path:
     m = measure(store)
     stated = stated_rules(docs)
-    # Documents live above `src/`, so they are relative to the documentation root, not
-    # the source root. Measuring one against the other printed every citation as an
-    # absolute path halfway across the disk.
-    doc_root = docs_root or root
     lines: list[str] = [
         # **"as found", not "derived"**, and the difference is the Vocabulary lane. This
         # document carries two lanes and only one of them is derived: Form is counted off
@@ -149,9 +146,9 @@ def render_naming(store: Store, docs: DocStore | None, out_dir: Path, root: Path
             f"listed in full under **Form**; none is omitted.\n"
         )
 
-    lines.extend(_form_section(m, stated, root))
-    lines.extend(_vocabulary_section(stated, doc_root))
-    lines.extend(_checked_section(store, docs, standards))
+    lines.extend(_form_section(m, stated))
+    lines.extend(_vocabulary_section(stated))
+    lines.extend(_checked_section(store, docs, standards, standards_note))
     lines.extend(_gaps_section(m))
     lines.extend(_scanned_section(m, docs, stated))
 
@@ -205,7 +202,7 @@ def _stated_form(stated: list[StatedRule]) -> list[str]:
 
 
 def _form_section(m: NamingMeasurement, stated: list[StatedRule],
-                  root: Path) -> list[str]:
+) -> list[str]:
     lines = ["\n## Form — derived from the code\n",
              "**Not a standard anyone wrote: a standard the code was found to keep.** "
              "How names are spelled, counted over the code itself. Each convention "
@@ -231,11 +228,11 @@ def _form_section(m: NamingMeasurement, stated: list[StatedRule],
     lines.append("")
 
     for c in m.conventions:
-        lines.extend(_convention_detail(c, root))
+        lines.extend(_convention_detail(c))
     return lines
 
 
-def _convention_detail(c: Convention, root: Path) -> list[str]:
+def _convention_detail(c: Convention) -> list[str]:
     lines = [f"\n### {c.claim}\n",
              f"Holds in **{c.holds:,} of {c.total:,}** {c.population} "
              f"({_pct(c.holds, c.total)}).\n"]
@@ -256,7 +253,7 @@ def _convention_detail(c: Convention, root: Path) -> list[str]:
     return lines
 
 
-def _vocabulary_section(stated: list[StatedRule], root: Path) -> list[str]:
+def _vocabulary_section(stated: list[StatedRule]) -> list[str]:
     vocab = [r for r in stated if r.lane == "VOCABULARY"]
     lines = ["\n## Vocabulary — quoted, not derived\n",
              "**The one lane on this page somebody actually wrote.** "
@@ -283,7 +280,8 @@ def _vocabulary_section(stated: list[StatedRule], root: Path) -> list[str]:
 
 
 def _checked_section(store: Store, docs: DocStore | None,
-                     standards: DocStore | None) -> list[str]:
+                     standards: DocStore | None,
+                     standards_note: str = "") -> list[str]:
     """Reality against intent: each stated rule over the population it governs.
 
     **The one section on this page that is a comparison**, and it says so in its first line.
@@ -297,8 +295,10 @@ def _checked_section(store: Store, docs: DocStore | None,
     """
     checks = check_stated(store, docs, standards)
     if not checks:
-        return []
+        return [f"\n## Checked — the stated rules, measured\n\n{standards_note}\n"] \
+            if standards_note else []
     lines = ["\n## Checked — the stated rules, measured\n",
+             *([standards_note + "\n"] if standards_note else []),
              "**The comparison, and the only section here that is one.** Each rule above, "
              "measured over the population its own document says it governs — never over "
              "whatever this tool happens to hold. A rule scoped at documentation is not "

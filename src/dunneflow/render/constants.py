@@ -60,7 +60,7 @@ SELECT module, name, bases, line, file
 """.strip()
 
 
-def render_constants(store: Store, out: Path, root: Path, program: str,
+def render_constants(store: Store, out: Path, program: str,
                      stamp: str) -> Path:
     """Write `14-constants.md`. Nothing here is bounded."""
     rows = store.query(CONSTANTS_SQL)
@@ -88,8 +88,8 @@ def render_constants(store: Store, out: Path, root: Path, program: str,
         return _write(out, lines)
 
     lines += _summary(rows, aliases)
-    lines += _aliases(aliases, root)
-    lines += _constants(rows, root)
+    lines += _aliases(aliases)
+    lines += _constants(rows)
     lines += _reproducing()
     return _write(out, lines)
 
@@ -119,7 +119,7 @@ def _summary(rows: list, aliases: list) -> list[str]:
     ]
 
 
-def _aliases(aliases: list, root: Path | None) -> list[str]:
+def _aliases(aliases: list) -> list[str]:
     """Type aliases lead, because a `Literal` alias is an enumerated vocabulary.
 
     `QueueState = Literal["pending", "adjudicating", "emitted", "rejected", "skipped"]`
@@ -149,7 +149,7 @@ def _aliases(aliases: list, root: Path | None) -> list[str]:
     return lines
 
 
-def _constants(rows: list, root: Path | None) -> list[str]:
+def _constants(rows: list) -> list[str]:
     """Every named value, grouped by the module that declares it.
 
     Grouped rather than ranked because a constant has no reach to rank by, and the

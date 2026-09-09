@@ -32,15 +32,59 @@ opens no terminal window; run as `DunneFlow.app/Contents/MacOS/dunneflow analyze
 shell it inherits that shell's streams and prints exactly as the checkout does. That is what
 lets the ground truth be run *through the binary* rather than beside it.
 
-Unsigned. Signing and notarisation are the last step and need the Developer account.
+**`DUNNEFLOW_ARCH` chooses which machines the result runs on**, and there are two answers
+rather than one. Unset builds for the machine doing the building, which is what the
+verification gate in `CLAUDE.md` runs and what keeps that gate at seven seconds. `universal2`
+builds for Apple Silicon *and* Intel, and is what a release is, and needs an interpreter that
+is itself universal2 -- uv's managed Pythons and Homebrew's are single-arch by construction,
+so it has to come from python.org. **Asked for universal2 under an interpreter that cannot
+produce it, this file raises** rather than quietly building for one architecture: a
+"universal" build that is arm64 inside would be found by a colleague on an Intel Mac and not
+here, which is rule 49 exactly.
+
+Signing, notarisation and the disk image are `packaging/release.sh`.
 """
 
+import os
+import sys
 from pathlib import Path
 
 from PyInstaller.utils.hooks import copy_metadata
+from PyInstaller.utils.osx import get_binary_architectures
 
 ROOT = Path(SPECPATH).parent           # noqa: F821 -- SPECPATH is PyInstaller's
 PKG = ROOT / "src" / "dunneflow"
+
+
+def _target_arch() -> str | None:
+    """Which architectures to build for, and a refusal rather than a plausible answer.
+
+    `None` is PyInstaller's own word for *the machine I am running on*. The check is on
+    `sys._base_executable` rather than `sys.executable`, because a virtual environment's
+    `python` is a stub that says nothing about the interpreter behind it.
+    """
+    asked = os.environ.get("DUNNEFLOW_ARCH", "").strip()
+    if not asked:
+        return None
+    if asked != "universal2":
+        raise SystemExit(
+            f"DUNNEFLOW_ARCH={asked!r} is not a target this file knows. "
+            "Leave it unset to build for this machine, or set it to 'universal2'."
+        )
+    real = getattr(sys, "_base_executable", None) or sys.executable
+    fat, archs = get_binary_architectures(real)
+    if not fat or "x86_64" not in archs or "arm64" not in archs:
+        raise SystemExit(
+            "DUNNEFLOW_ARCH=universal2 was asked for, and this interpreter cannot produce "
+            f"it: {real} is {'+'.join(archs)}.\n"
+            "A universal2 build needs a universal2 interpreter, which uv's managed Pythons "
+            "and Homebrew's are not. Install python.org's "
+            "https://www.python.org/ftp/python/3.12.10/python-3.12.10-macos11.pkg, then "
+            "build from a virtual environment made with "
+            "/Library/Frameworks/Python.framework/Versions/3.12/bin/python3. "
+            "packaging/release.sh does that for you."
+        )
+    return "universal2"
 
 
 def _tree(src: Path, dest: str) -> list[tuple[str, str]]:
@@ -75,6 +119,20 @@ datas = [
     *copy_metadata("dunneflow"),
 ]
 
+# PyYAML's C extension is **never used and is not shippable universal2**. Every call site in
+# this program is `yaml.safe_load`, which is the pure-Python `SafeLoader` whether or not
+# `yaml._yaml` can be imported -- `yaml/__init__.py` takes `yaml.cyaml` inside a `try` and records
+# its absence in `__with_libyaml__`, which nothing here reads. PyPI has no universal2 PyYAML
+# wheel for any version, so the extension is the one thing in the bundle that cannot be built
+# for both architectures. Excluding it costs nothing measurable: the three detector files are
+# a few kilobytes each, read once. `tests/test_frozen.py` holds the "never used" half.
+#
+# **Both names, and `cyaml` is the one that does the work.** Excluding the extension alone
+# leaves `yaml.cyaml` importing it, which is an ImportError where there used to be a
+# fallback; excluding the wrapper is what makes `__init__.py` take the branch it already
+# has for a PyYAML built without libyaml.
+excludes = ["yaml.cyaml", "yaml._yaml"]
+
 a = Analysis(                                   # noqa: F821
     [str(ROOT / "packaging" / "dunneflow_app.py")],
     pathex=[str(ROOT / "src")],
@@ -83,7 +141,7 @@ a = Analysis(                                   # noqa: F821
     hiddenimports=[],
     hookspath=[],
     runtime_hooks=[],
-    excludes=[],
+    excludes=excludes,
     noarchive=False,
 )
 pyz = PYZ(a.pure)                               # noqa: F821
@@ -98,6 +156,7 @@ exe = EXE(                                      # noqa: F821
     strip=False,
     upx=False,
     console=False,
+    target_arch=_target_arch(),
 )
 
 coll = COLLECT(                                 # noqa: F821

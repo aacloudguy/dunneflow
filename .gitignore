@@ -5,6 +5,11 @@ output/
 # Virtualenv (uv rebuilds it from uv.lock)
 .venv/
 
+# The universal2 build environment, made from python.org's framework interpreter by
+# `packaging/release.sh venv`. Not uv's, and not a second project environment: it exists
+# only because a universal build needs an interpreter that is itself universal.
+.venv-universal/
+
 # Python
 __pycache__/
 *.py[cod]

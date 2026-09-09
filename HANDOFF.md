@@ -14328,3 +14328,155 @@ are written and marked untested, and a `.spec` and a picker are not.
 `__file__` is a name, not a place.* It is the shape behind four of this session's defects,
 and it may be rule 60's family — *a stored path is a key before it is a location* — rather
 than a rule of its own. The guard exists either way.
+
+---
+
+## 2026-09-09 — milestone 3: signed with a Developer ID, and a universal build that refuses to lie
+
+Tom: *"Resume project work with a project build, sign, and install commands for me."* Three
+decisions were his, taken before any of this was written: a signed `.app` inside a signed
+`.dmg`, an **App Store Connect API key** for notarisation, and **universal** rather than
+arm64-only.
+
+**What was found before anything was decided**, because the shape of the work turned on it:
+
+| | |
+|---|---|
+| `Developer ID Application: Thomas Williams (G3RLJWV327)` | present and valid |
+| `Developer ID Installer` for the same team | present, and not needed — no `.pkg` |
+| stored notarytool credentials | **none**, and that is one of the two things left |
+| PyInstaller's Darwin bootloaders | already universal2 (`x86_64 arm64`) |
+| every Python on this machine | **arm64 only** — uv's and Homebrew's alike |
+| Mach-O files in the bundle | three: the bootloader, `libpython3.12.dylib`, `yaml/_yaml…so` |
+| a universal2 PyYAML wheel on PyPI | **none, for any version** |
+
+Those last two are the same fact from two sides, and they decided the whole universal question.
+
+### The extension that cannot be universal is the one nothing uses
+
+PyYAML's C extension is the single file in the bundle that cannot be built for both
+architectures, and it is never called: every one of the eight call sites in this program is
+`yaml.safe_load`, which is the pure-Python `SafeLoader` whether or not `yaml._yaml` imports.
+`yaml/__init__.py` already takes the extension inside a `try` and records its absence in
+`__with_libyaml__`, which nothing here reads. So it is **dropped from the bundle** rather than
+worked around, and the arm64 build is one Mach-O file lighter for it.
+
+**Both names, and the first spelling did nothing.** `excludes = ["_yaml"]` built and shipped the
+extension exactly as before: the module is `yaml._yaml`, and `yaml.cyaml` is the wrapper that
+imports it. Excluding the extension alone would be worse than not excluding it — an
+`ImportError` where `__init__.py` has a fallback — so it is
+`excludes = ["yaml.cyaml", "yaml._yaml"]`, and the note in the spec says why both.
+
+**The guard is a pair, and it reads syntax rather than text.** One half asserts nothing under
+`src/` asks for `CSafeLoader`, `CLoader`, `CDumper` or `__with_libyaml__`; the other asserts the
+spec still drops both names. Either alone is worth nothing: a guard saying *nothing uses it* is
+empty if the spec has quietly started shipping it, and a spec that drops it is a defect the
+moment somebody reaches for the C loader. The first spelling of the first half was a scan, and
+it reported **its own docstring** as the violation — rule 34, in a file that has already paid
+for it three times, so it walks the AST.
+
+### `DUNNEFLOW_ARCH`, and rule 49 in the place it matters most
+
+`target_arch` on the `EXE` comes from `DUNNEFLOW_ARCH`: unset is the machine doing the building
+— today's seven-second gate, untouched — and `universal2` is a release. Asked for `universal2`
+under an interpreter that cannot produce one, **the spec raises**, naming the interpreter it
+found and the installer that fixes it.
+
+This is the one place a fallback would have been unrecoverable. A "universal" build that quietly
+came out arm64 would build, sign, notarise, staple, image and install without a word, and be
+found by a colleague on an Intel Mac with nothing on this machine to look at. The check is on
+`sys._base_executable` rather than `sys.executable`, because a virtual environment's `python` is
+a stub that says nothing about what is behind it.
+
+**And it cannot be uv's interpreter.** uv's managed Pythons and Homebrew's are single-arch by
+construction — python-build-standalone ships no universal2 build at all. `python-3.12.10-macos11.pkg`
+is the last universal2 3.12 (3.12.11 is source-only; checked, not assumed) and
+`release.sh venv` builds `.venv-universal` from it. A build-only interpreter, disturbing neither
+uv nor the project environment.
+
+### `packaging/release.sh`, and what it refuses to do
+
+One verb per step — `venv build sign notarize dmg verify install all` — so any of them can be
+run alone while something is being worked out. Four things about it are decisions rather than
+mechanics:
+
+* **No `codesign --deep`.** Apple deprecates it, and it applies the *outer* bundle's
+  entitlements to everything nested, which is the exact opposite of what an empty entitlements
+  file is trying to guarantee. Every Mach-O file is **found**, never listed — a dependency added
+  tomorrow brings its own dylibs, and a hand-written list would leave them ad-hoc signed inside
+  a Developer ID bundle — and signed on its own, deepest first, the bundle last. The bundle's
+  own main executable is left out of that loop because signing the bundle signs it.
+* **The `.app` is notarised and stapled before the `.dmg` exists**, and the image is notarised
+  and stapled in its own right. Two submissions rather than one: a stapled image alone leaves
+  the dragged-out app needing a network round trip on first launch, and a reader opening an
+  unfamiliar tool offline is the case this has to survive.
+* **`ditto`, never `zip(1)`.** A `.app` is a directory of symlinks and extended attributes and
+  `zip` flattens both; what Apple receives has to be what was signed.
+* **The version is read off the bundle**, never spelled a second time in the script: the spec's
+  `CFBundleShortVersionString` is the one answer (rule 51), and `test_frozen.py` holds the
+  script and the spec to one spelling of `DunneFlow.app` (rule 41).
+
+### The entitlements file asks for nothing, and that was measured
+
+Every PyInstaller guide carries the same four entitlements, copied from each other. None is
+indicated here and each was checked: the picker spawns `/usr/bin/osascript`, whose `activate`
+and `choose folder` are Standard Additions running **inside osascript itself**, so no Apple
+Event leaves this process; CPython 3.12 has no JIT and nothing builds a ctypes closure; and
+every Mach-O file in the bundle is signed by the identity that signs the bundle, so library
+validation has nothing to refuse.
+
+**Pressed rather than argued.** `POST /api/pickdir` against the signed app running out of
+`/Applications` spawned `osascript` as PID 1488 with the app as its parent, and it held the
+`choose folder` dialog open until it was killed — an AMFI refusal exits immediately — with
+nothing denied in `log show` for the whole window. That is the evidence for an empty file, and
+the file says a key added later needs the failure that earned it recorded beside it.
+
+**It cost a defect of its own.** The first version put the explanatory comment between the XML
+declaration and the `DOCTYPE`, and used `--` inside it. AMFI's parser is stricter than most:
+`Failed to parse entitlements: AMFIUnserializeXML: syntax error near line 9`, with codesign
+refusing to sign at all. Both constraints are now written into the file, where the next person
+to explain something in it will read them.
+
+### The gate found something the gate could not previously find
+
+`uv run mypy .` — the command `CLAUDE.md` prescribes — **fails whenever a build exists**, and
+had never been run with one because every previous build lived in a session scratchpad. `.`
+overrides `files = ["src", "tests"]`, and `dist/` holds a *copy* of this package: the spec
+bundles both extractor trees and the detectors' loader as data so `rules_fingerprint()` has
+files to hash (rule 12). mypy finds two modules with one name and stops **before checking
+anything at all** — `Found 1 error in 1 file (errors prevented further checking)`, over a clean
+source tree. `exclude = '^(dist|build|\.venv-universal)/'` in `pyproject.toml`, because the
+artifact is not source.
+
+### What was proved, and what was not
+
+**Proved.** The signed bundle reports `flags=0x10000(runtime)`, the full
+`Developer ID Application` → `Developer ID Certification Authority` → `Apple Root CA` chain,
+`TeamIdentifier=G3RLJWV327` and a secure timestamp; it satisfies its Designated Requirement;
+`ditto` into `/Applications` leaves the signature intact; launched through LaunchServices it
+serves the start page. **The ground truth was retaken through the signed binary** and every
+figure held — 628 files, the four executables at **1,381 · 423 · 292 · 112**, `naming.md`
+byte-identical to the `CORP` fixture at 278 bytes, the research paper yielding **zero** naming
+rules, conformance at **4 checked · 1 no population · 10 not checkable**, and
+`extractor = 9:e8c9ac8a851c41b7`, which is the checkout's, so the two builds still read each
+other's maps.
+
+**Not proved, and said rather than glossed.** The build in `/Applications` is **arm64 and
+unnotarised**: the universal build waits on the python.org interpreter and notarisation waits on
+Tom's App Store Connect key. Gatekeeper's answer today is *"rejected — source=Unnotarized
+Developer ID"*, which is what a correctly signed, un-notarised app is supposed to say. And the
+analysis through the binary took **56 s wall / 22.9 s user** against a recorded 37.7 s — a
+different measurement under the same label, since it ran off the external volume into
+`/private/tmp` rather than reproducing the recorded conditions, so it is **not** entered in
+`PERFORMANCE.md` and nothing is claimed from it either way (rule 24).
+
+**A double-click would collide with 8787**, which a previous session's server holds and which
+was not stopped. `serve` defaults to that port and the application defaults a bare argv to
+`serve`, so the Finder launch was checked at `--port 8890`.
+
+### Where it picks up
+
+Two once-only commands, both Tom's, both written into `release.sh`'s header and `CLAUDE.md`:
+install python.org's universal2 3.12.10, and store an App Store Connect API key with
+`xcrun notarytool store-credentials dunneflow`. Everything downstream of them is written.
+Then the icon, then Windows.

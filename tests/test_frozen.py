@@ -305,6 +305,8 @@ def test_a_chosen_output_root_is_taken_in_silence(capsys):
 
 SPEC = SRC.parent.parent / "packaging" / "dunneflow.spec"
 ENTRY = SRC.parent.parent / "packaging" / "dunneflow_app.py"
+RELEASE = SRC.parent.parent / "packaging" / "release.sh"
+ENTITLEMENTS = SRC.parent.parent / "packaging" / "entitlements.plist"
 
 
 def test_the_spec_bundles_every_extraction_input():
@@ -369,3 +371,124 @@ def test_no_arguments_means_serve_and_only_in_the_application():
     # And the CLI still refuses, so `dunneflow` from a checkout keeps its usage message.
     with pytest.raises(SystemExit):
         build_parser().parse_args([])
+
+
+# --------------------------------------------------------------------------- #
+# The universal build, and the one thing in the bundle that cannot be both
+
+
+def test_nothing_asks_pyyaml_for_its_c_loader():
+    """Which is what makes `excludes=["_yaml"]` in the spec safe rather than lucky.
+
+    PyPI has no universal2 PyYAML wheel for any version, so the C extension is the single
+    file in the bundle that cannot be built for arm64 *and* x86_64. Excluding it costs
+    nothing **only while every call site is `yaml.safe_load`**, which uses the pure-Python
+    `SafeLoader` whatever `_yaml` does; ask for `CSafeLoader` and the exclusion becomes an
+    `ImportError` in a frozen build and nowhere else.
+
+    Read out of the syntax rather than out of the text, because this file's own explanation
+    of the rule contains every word a scan would look for -- rule 34, which `test_frozen.py`
+    has already paid for three times.
+    """
+    banned = {"CLoader", "CSafeLoader", "CBaseLoader", "CFullLoader",
+              "CDumper", "CSafeDumper", "__with_libyaml__"}
+    offenders = []
+    for path in sorted(SRC.rglob("*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Attribute) and node.attr in banned:
+                offenders.append(f"{path.name}:{node.lineno} {ast.unparse(node)}")
+            elif isinstance(node, ast.ImportFrom) and (node.module or "").startswith("yaml"):
+                for alias in node.names:
+                    if alias.name in banned:
+                        offenders.append(f"{path.name}:{node.lineno} {alias.name}")
+            elif isinstance(node, ast.Name) and node.id in banned:
+                offenders.append(f"{path.name}:{node.lineno} {node.id}")
+    assert not offenders, (
+        "the spec drops PyYAML's C extension from the bundle, and these use it: "
+        + ", ".join(offenders))
+
+
+def test_the_spec_drops_the_extension_that_cannot_be_universal():
+    """The other half of the pair above, and it is the half that is easy to lose.
+
+    A guard saying *nothing uses `_yaml`* is worth nothing if the spec has quietly started
+    shipping it again: the build would succeed on this machine and refuse to go universal
+    with a message about an architecture, which names the symptom and not the cause.
+    """
+    tree = ast.parse(SPEC.read_text(encoding="utf-8"))
+    excludes = [n for n in tree.body
+                if isinstance(n, ast.Assign)
+                and any(getattr(t, "id", "") == "excludes" for t in n.targets)]
+    assert excludes, "the spec no longer names an `excludes` list"
+    dropped = ast.literal_eval(excludes[0].value)
+    # Both, and the wrapper is the one that matters: excluding the extension alone leaves
+    # `yaml.cyaml` importing something that is not there, which is an ImportError where
+    # `yaml/__init__.py` used to have a fallback.
+    assert "yaml._yaml" in dropped and "yaml.cyaml" in dropped
+
+
+def test_a_universal_build_refuses_rather_than_coming_out_single_arch(monkeypatch):
+    """Rule 49, in the one place where the plausible value would be found by somebody else.
+
+    `DUNNEFLOW_ARCH=universal2` under an arm64-only interpreter has to raise. If it fell
+    back to the host architecture the build would report success, sign, notarise and ship,
+    and the failure would arrive as *"the application cannot be opened"* on a colleague's
+    Intel Mac with nothing on this machine to look at.
+    """
+    source = SPEC.read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    func = next(n for n in tree.body
+                if isinstance(n, ast.FunctionDef) and n.name == "_target_arch")
+    # Every way out of the function: the two refusals, and the two answers.
+    raises = [n for n in ast.walk(func) if isinstance(n, ast.Raise)]
+    assert len(raises) == 2, "a universal build must refuse an unknown target and a thin one"
+    for node in raises:
+        assert ast.unparse(node.exc.func) == "SystemExit"
+    # And the answer is asked of the real interpreter, never of the virtual environment's
+    # stub, which says nothing about what is behind it.
+    assert "_base_executable" in ast.unparse(func)
+    assert "target_arch=_target_arch()" in source
+
+
+def test_the_release_script_and_the_spec_name_the_same_bundle():
+    """Two spellings of one name is rule 41's shape: a claim and a population that can drift.
+
+    `release.sh` signs, notarises, staples, images and installs a bundle by name; the spec
+    decides what that name is. Disagree and every step after `build` reports that there is
+    nothing to sign.
+    """
+    tree = ast.parse(SPEC.read_text(encoding="utf-8"))
+    bundle = next(n for n in ast.walk(tree)
+                  if isinstance(n, ast.Call) and getattr(n.func, "id", "") == "BUNDLE")
+    spec_name = next(ast.literal_eval(k.value) for k in bundle.keywords if k.arg == "name")
+
+    script = RELEASE.read_text(encoding="utf-8")
+    assert f'APP_NAME="{spec_name}"' in script, f"release.sh does not name {spec_name}"
+    # The commands, without the prose. The script explains at its head that it never uses
+    # `codesign --deep`, so a scan of the whole file reports that sentence as the violation
+    # it describes -- rule 34, arriving in the guard written for a different rule.
+    commands = "\n".join(line for line in script.splitlines()
+                          if not line.lstrip().startswith("#"))
+    # And it signs with what the entitlements file claims, rather than with --deep, which
+    # would apply the outer bundle's entitlements to everything nested inside it.
+    assert "packaging/entitlements.plist" in commands
+    assert "--options runtime" in commands
+    assert "--deep --strict" in commands and "--sign" in commands
+    assert "codesign --deep" not in commands
+
+
+def test_the_entitlements_file_asks_for_nothing():
+    """An empty list of claims, and it is a claim in its own right.
+
+    Nothing in DunneFlow has been shown to need the hardened runtime relaxed, and the four
+    entitlements every PyInstaller guide carries are copied from each other rather than
+    measured. A key added here without a reproduced failure recorded beside it is a guess
+    wearing a uniform, so the guard is that the dictionary stays empty until somebody
+    changes this test on purpose.
+    """
+    text = ENTITLEMENTS.read_text(encoding="utf-8")
+    body = text.split("<dict>", 1)[1].split("</dict>", 1)[0]
+    assert body.strip() == "", f"an entitlement was added: {body.strip()!r}"
+    assert "com.apple.security.cs.disable-library-validation" in text, (
+        "the file has to keep saying which entitlements were considered and why not")

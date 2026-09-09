@@ -113,6 +113,61 @@ into iCloud Drive, and invisible to a reader who wants to hand a colleague a map
 uv run pyinstaller packaging/dunneflow.spec --noconfirm    # → dist/DunneFlow.app (31 MB)
 ```
 
+That is the **development** build: this machine's architecture, ad-hoc signed, seven seconds.
+A **release** is `packaging/release.sh`, one verb per step so any of them can be run alone:
+
+```bash
+./packaging/release.sh venv      # the universal2 build environment
+./packaging/release.sh build     # DUNNEFLOW_ARCH=universal2 — arm64 and x86_64
+./packaging/release.sh sign      # Developer ID, hardened runtime, secure timestamp
+./packaging/release.sh notarize   # submit the .app, wait, staple it
+./packaging/release.sh dmg       # build, sign, notarise and staple DunneFlow-<version>.dmg
+./packaging/release.sh verify    # architectures, signature, Gatekeeper, staple
+./packaging/release.sh install   # ditto the stapled .app into /Applications
+./packaging/release.sh all
+```
+
+**`DUNNEFLOW_ARCH` has two answers and no third**, and the spec **refuses rather than falling
+back** (rule 49): asked for `universal2` under an interpreter that cannot produce one it raises
+and names both. A universal build that quietly came out arm64 would sign, notarise and ship,
+and be found by a colleague on an Intel Mac rather than here.
+
+**A universal build needs a universal interpreter, and it cannot be uv's.** uv's managed
+Pythons and Homebrew's are single-arch by construction; python-build-standalone ships no
+universal2 build at all. `python-3.12.10-macos11.pkg` from python.org is the last universal2
+3.12 — 3.12.11 is source-only — and `release.sh venv` builds `.venv-universal` from it. It is a
+build-only interpreter and disturbs neither uv nor the project environment.
+
+**PyYAML's C extension is dropped from the bundle**, `excludes = ["yaml.cyaml", "yaml._yaml"]`,
+and both names are needed: excluding the extension alone leaves `yaml.cyaml` importing something
+that is not there, which is an `ImportError` where `yaml/__init__.py` has a fallback. It is the
+one file in the bundle that cannot be built for both architectures — **PyPI has no universal2
+PyYAML wheel for any version** — and it is never used: every call site here is `yaml.safe_load`,
+which is the pure-Python `SafeLoader` whatever `_yaml` does. `test_frozen.py` holds both halves,
+reading the *syntax* rather than the text, because this file's own explanation of the rule
+contains every word a scan would look for (rule 34).
+
+**`packaging/entitlements.plist` asks for nothing, and that is the measurement.** Every
+PyInstaller guide carries the same four entitlements copied from each other, and none is
+indicated: the picker spawns `/usr/bin/osascript`, whose `activate` and `choose folder` run
+inside osascript itself so no Apple Event leaves this process; CPython 3.12 has no JIT and
+nothing builds a ctypes closure; and every Mach-O file in the bundle is signed by the identity
+that signs the bundle, so library validation has nothing to refuse. **Pressed rather than
+assumed**: `POST /api/pickdir` against the signed app in `/Applications` spawned osascript as a
+child and held the dialog open, with nothing denied in the AMFI log. A key added there needs the
+failure that earned it recorded beside it. The file's own XML is stricter than most — a comment
+before the `DOCTYPE`, or a double hyphen inside one, is `AMFIUnserializeXML: syntax error`, and
+both were paid for.
+
+**Nothing uses `codesign --deep`.** Apple deprecates it and it applies the *outer* bundle's
+entitlements to everything nested, which is the opposite of what an empty entitlements file is
+for. Every Mach-O file is found — never listed, so a dependency's dylib cannot arrive ad-hoc
+signed inside a Developer ID bundle — and signed on its own, deepest first, the bundle last.
+The `.app` is notarised and stapled **before** the `.dmg` is built, and the image is notarised
+and stapled in its own right: a stapled image alone leaves the dragged-out app needing a network
+round trip on first launch, and a reader opening an unfamiliar tool offline is the case this has
+to survive.
+
 **Four questions have two answers, and `runtime.py` is the only place either is given**
 (rule 51): am I frozen, where do my files live, where do maps go, and how do I run myself.
 Every one of them was `Path(__file__)` or a spelled-out `sys.executable` somewhere, and
@@ -158,8 +213,25 @@ imported — rule 12 puts the reader in the key), `web/static`, `web/vendor`, an
 rules in the checked lane, the research paper yielding **zero** naming rules, and the
 conformance verdicts at **4 checked · 1 no population · 10 not checkable**.
 
-Still to do: signing and notarisation (the Apple Developer account exists), an icon, and
-Windows.
+**Signing is done and notarisation waits on two things only Tom can do.** The identity is
+`Developer ID Application: Thomas Williams (G3RLJWV327)`, and a signed build reports
+`flags=0x10000(runtime)`, the full Apple authority chain and a secure timestamp. Gatekeeper's
+answer is then *"rejected — source=Unnotarized Developer ID"*, which is honest rather than
+broken: notarisation is a round trip to Apple and needs credentials. The two once-only steps,
+both recorded in `packaging/release.sh`'s own header:
+
+```bash
+curl -LO https://www.python.org/ftp/python/3.12.10/python-3.12.10-macos11.pkg
+sudo installer -pkg python-3.12.10-macos11.pkg -target /       # the universal2 interpreter
+
+xcrun notarytool store-credentials dunneflow \
+    --key ~/.appstoreconnect/AuthKey_XXXXXXXXXX.p8 \
+    --key-id XXXXXXXXXX --issuer <issuer-uuid>                 # from App Store Connect
+```
+
+After that the key, its id and the issuer id are the keychain's business; `release.sh` knows
+only the profile name. Still to do: **notarisation** (the credentials), the **universal build**
+(the interpreter), an **icon** — `icon=None` in the spec — and **Windows**.
 
 **`serve` also *makes* a program.** The `<select>`'s last option, `+ Analyze a directory…`,
 reads a source tree into a new directory under the output root and puts it in the list —

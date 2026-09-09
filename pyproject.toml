@@ -35,6 +35,12 @@ select = ["E", "F", "I", "UP", "B", "SIM"]
 [tool.mypy]
 python_version = "3.12"
 files = ["src", "tests"]
+# `uv run mypy .` is the gate CLAUDE.md prescribes, and `.` overrides `files` above. Once a
+# build exists, `dist/` holds a *copy* of this package — the spec bundles both extractor trees
+# and the detectors' loader as data, so `rules_fingerprint()` has files to hash — and mypy
+# finds two modules with one name and stops before checking anything at all. The artifact is
+# not source.
+exclude = '^(dist|build|\.venv-universal)/'
 strict = false
 warn_unused_ignores = true
 disallow_untyped_defs = true

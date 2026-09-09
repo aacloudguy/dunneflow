@@ -1,0 +1,248 @@
+#!/usr/bin/env bash
+#
+# How a DunneFlow release is made: built for both architectures, signed with a Developer ID,
+# notarised by Apple, stapled, wrapped in a disk image, and installed.
+#
+#     ./packaging/release.sh all
+#
+# One verb per step, so any of them can be run alone while something is being worked out:
+#
+#     venv      make (or refresh) the universal2 build environment
+#     build     freeze DunneFlow.app for arm64 *and* x86_64
+#     sign      Developer ID, hardened runtime, secure timestamp
+#     notarize  submit the .app to Apple, wait for the answer, staple it
+#     dmg       build, sign, notarise and staple the disk image
+#     verify    say whether the result is a thing another Mac will open
+#     install   put the stapled .app in /Applications
+#     all       every one of the above, in that order
+#
+# **Two things have to exist before this works, and neither is a command this script can run
+# on your behalf.** Both are once-only:
+#
+#   1. A universal2 interpreter, which uv's Pythons and Homebrew's are not:
+#
+#        curl -LO https://www.python.org/ftp/python/3.12.10/python-3.12.10-macos11.pkg
+#        sudo installer -pkg python-3.12.10-macos11.pkg -target /
+#
+#   2. Notarisation credentials in your keychain, from an App Store Connect API key:
+#
+#        xcrun notarytool store-credentials dunneflow \
+#            --key ~/.appstoreconnect/AuthKey_XXXXXXXXXX.p8 \
+#            --key-id XXXXXXXXXX --issuer <issuer-uuid>
+#
+# After that the key, its id and the issuer id are the keychain's business. The only thing
+# this file knows is the profile name.
+#
+# **Nothing here uses `codesign --deep`.** Apple deprecates it, and it signs everything nested
+# with the *outer* bundle's entitlements, which is the opposite of what an entitlements file
+# that says "nothing is asked for" is trying to guarantee. Every Mach-O file is found and
+# signed on its own, innermost first, and the bundle last.
+
+set -euo pipefail
+
+# --- what this makes, and who signs it -------------------------------------------------------
+# APP_NAME is `BUNDLE(name=…)` in packaging/dunneflow.spec, and tests/test_frozen.py asserts
+# the two spellings agree -- two places that can drift is one place too many.
+APP_NAME="DunneFlow.app"
+VOLUME_NAME="DunneFlow"
+IDENTITY="${DUNNEFLOW_IDENTITY:-Developer ID Application: Thomas Williams (G3RLJWV327)}"
+PROFILE="${DUNNEFLOW_NOTARY_PROFILE:-dunneflow}"
+FRAMEWORK_PYTHON="${DUNNEFLOW_UNIVERSAL_PYTHON:-/Library/Frameworks/Python.framework/Versions/3.12/bin/python3}"
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+DIST="$ROOT/dist"
+APP="$DIST/$APP_NAME"
+BUILD_VENV="$ROOT/.venv-universal"
+
+cd "$ROOT"
+
+say()  { printf '\n\033[1m== %s\033[0m\n' "$*"; }
+die()  { printf '\n\033[1;31m!! %s\033[0m\n' "$*" >&2; exit 1; }
+
+# The version is read off the bundle Apple will actually be shown, never spelled a second time
+# here: the spec's CFBundleShortVersionString is the one answer (rule 51).
+app_version() {
+    [ -d "$APP" ] || die "there is no $APP_NAME yet — run '$0 build' first"
+    /usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Contents/Info.plist"
+}
+
+dmg_path() { echo "$DIST/DunneFlow-$(app_version).dmg"; }
+
+# Every Mach-O file inside the bundle *except its main executable*, deepest first. Found rather
+# than listed: a dependency added tomorrow brings its own dylibs, and a hand-written list would
+# leave them ad-hoc signed inside a bundle whose outer signature says otherwise. The main
+# executable is left out because signing the bundle signs it -- doing it twice is not wrong,
+# only a second answer to a question that already has one.
+mach_o_files() {
+    find "$APP/Contents" \
+            -type f -perm +111 -o -type f -name '*.so' -o -type f -name '*.dylib' \
+        | grep -v "^$APP/Contents/MacOS/" \
+        | sort -u | while read -r f; do
+            if file -b "$f" | grep -q 'Mach-O'; then echo "$f"; fi
+        done | awk '{ print length($0), $0 }' | sort -rn | cut -d' ' -f2-
+}
+
+# --- venv ------------------------------------------------------------------------------------
+step_venv() {
+    say "universal2 build environment"
+    [ -x "$FRAMEWORK_PYTHON" ] || die \
+"no universal2 interpreter at $FRAMEWORK_PYTHON.
+
+A universal build needs one, and uv's managed Pythons and Homebrew's are single-arch by
+construction. Install python.org's:
+
+    curl -LO https://www.python.org/ftp/python/3.12.10/python-3.12.10-macos11.pkg
+    sudo installer -pkg python-3.12.10-macos11.pkg -target /
+
+It installs beside everything else and disturbs nothing: this script is the only thing that
+ever calls it."
+
+    local archs
+    archs="$("$FRAMEWORK_PYTHON" -c 'import sys; print(sys._base_executable or sys.executable)')"
+    lipo -archs "$archs" | grep -q x86_64 && lipo -archs "$archs" | grep -q arm64 || die \
+        "$FRAMEWORK_PYTHON is $(lipo -archs "$archs"), not universal2"
+
+    if [ ! -d "$BUILD_VENV" ]; then
+        "$FRAMEWORK_PYTHON" -m venv "$BUILD_VENV"
+    fi
+    # `-e .` rather than a copy, so the build always freezes the working tree; the dist-info it
+    # leaves behind is what `copy_metadata('dunneflow')` in the spec picks up, which is how the
+    # binary can still say which DunneFlow read a map.
+    "$BUILD_VENV/bin/pip" install --quiet --upgrade pip
+    "$BUILD_VENV/bin/pip" install --quiet -e . "pyinstaller>=6.22.2"
+    echo "ready: $("$BUILD_VENV/bin/python" -V) at $BUILD_VENV"
+}
+
+# --- build -----------------------------------------------------------------------------------
+step_build() {
+    say "freezing for arm64 and x86_64"
+    [ -x "$BUILD_VENV/bin/pyinstaller" ] || die "no build environment — run '$0 venv' first"
+    DUNNEFLOW_ARCH=universal2 "$BUILD_VENV/bin/pyinstaller" \
+        "$ROOT/packaging/dunneflow.spec" --noconfirm --distpath "$DIST" \
+        --workpath "$ROOT/build"
+    echo
+    echo "$(du -sh "$APP" | cut -f1)  $APP"
+    lipo -archs "$APP/Contents/MacOS/dunneflow"
+}
+
+# --- sign ------------------------------------------------------------------------------------
+step_sign() {
+    say "signing as ${IDENTITY}"
+    [ -d "$APP" ] || die "there is no $APP_NAME to sign — run '$0 build' first"
+    security find-identity -v -p codesigning | grep -qF "$IDENTITY" || die \
+        "no codesigning identity matching '$IDENTITY' in the keychain"
+
+    # PyInstaller ad-hoc signs what it builds; --force is what replaces that.
+    local f
+    while read -r f; do
+        [ -n "$f" ] || continue
+        codesign --force --timestamp --options runtime \
+                 --entitlements "$ROOT/packaging/entitlements.plist" \
+                 --sign "$IDENTITY" "$f"
+        echo "  signed  ${f#"$APP/"}"
+    done < <(mach_o_files)
+
+    codesign --force --timestamp --options runtime \
+             --entitlements "$ROOT/packaging/entitlements.plist" \
+             --sign "$IDENTITY" "$APP"
+    echo "  signed  $APP_NAME"
+    codesign --verify --deep --strict --verbose=2 "$APP"
+}
+
+# --- notarize --------------------------------------------------------------------------------
+step_notarize() {
+    say "notarising $APP_NAME"
+    [ -d "$APP" ] || die "there is no $APP_NAME to notarise"
+    local zip="$DIST/${APP_NAME%.app}-notarize.zip"
+    # ditto, not zip(1): a .app is a directory of symlinks and extended attributes, and zip(1)
+    # flattens both. What Apple receives has to be what was signed.
+    ditto -c -k --keepParent "$APP" "$zip"
+    xcrun notarytool submit "$zip" --keychain-profile "$PROFILE" --wait
+    rm -f "$zip"
+    xcrun stapler staple "$APP"
+    xcrun stapler validate "$APP"
+}
+
+# --- dmg -------------------------------------------------------------------------------------
+step_dmg() {
+    local dmg stage
+    dmg="$(dmg_path)"
+    say "disk image $(basename "$dmg")"
+    xcrun stapler validate "$APP" >/dev/null 2>&1 || die \
+        "the .app is not stapled — run '$0 notarize' before building the image.
+A disk image built around an un-notarised app is a notarised wrapper on a refused program."
+
+    stage="$(mktemp -d)"
+    ditto "$APP" "$stage/$APP_NAME"
+    ln -s /Applications "$stage/Applications"      # so the window is a drag-and-drop
+    rm -f "$dmg"
+    hdiutil create -volname "$VOLUME_NAME" -srcfolder "$stage" -ov -format UDZO -quiet "$dmg"
+    rm -rf "$stage"
+
+    # The image is signed and notarised in its own right. The .app inside is already stapled,
+    # so a reader who drags it out has a program that opens with no network at all; stapling
+    # the image as well is what makes the *download* open without one.
+    codesign --force --timestamp --sign "$IDENTITY" "$dmg"
+    xcrun notarytool submit "$dmg" --keychain-profile "$PROFILE" --wait
+    xcrun stapler staple "$dmg"
+    xcrun stapler validate "$dmg"
+    echo
+    echo "$(du -sh "$dmg" | cut -f1)  $dmg"
+}
+
+# --- verify ----------------------------------------------------------------------------------
+step_verify() {
+    say "what another Mac will make of this"
+    [ -d "$APP" ] || die "there is no $APP_NAME to verify"
+
+    echo "-- architectures"
+    lipo -archs "$APP/Contents/MacOS/dunneflow" | sed 's/^/   dunneflow: /'
+    local f
+    while read -r f; do
+        [ -n "$f" ] || continue
+        echo "   ${f#"$APP/Contents/"}: $(lipo -archs "$f")"
+    done < <(mach_o_files)
+
+    echo "-- signature"
+    codesign --verify --deep --strict --verbose=2 "$APP"
+    codesign -dv --verbose=4 "$APP" 2>&1 | grep -E 'Authority|TeamIdentifier|flags=|Timestamp' \
+        | sed 's/^/   /'
+
+    echo "-- gatekeeper"
+    # This is the one that answers the question. Until the app is notarised *and* stapled it
+    # says "rejected", and that is the honest answer rather than a failure of this script.
+    spctl -a -vvv -t exec "$APP" || true
+
+    echo "-- staple"
+    xcrun stapler validate "$APP" || true
+    local dmg; dmg="$(dmg_path)"
+    [ -f "$dmg" ] && xcrun stapler validate "$dmg" || true
+}
+
+# --- install ---------------------------------------------------------------------------------
+step_install() {
+    say "installing into /Applications"
+    [ -d "$APP" ] || die "there is no $APP_NAME to install"
+    local target="/Applications/$APP_NAME"
+    if [ -e "$target" ]; then
+        rm -rf "$target" 2>/dev/null || die \
+            "could not replace $target — it is open, or it needs 'sudo rm -rf \"$target\"'"
+    fi
+    # ditto rather than cp -R: it keeps the extended attributes the signature is partly held in.
+    ditto "$APP" "$target" || die "could not write $target — try again with sudo"
+    echo "   $target"
+    codesign --verify --strict "$target" && echo "   signature intact after the copy"
+}
+
+case "${1:-all}" in
+    venv)     step_venv ;;
+    build)    step_build ;;
+    sign)     step_sign ;;
+    notarize|notarise) step_notarize ;;
+    dmg)      step_dmg ;;
+    verify)   step_verify ;;
+    install)  step_install ;;
+    all)      step_venv; step_build; step_sign; step_notarize; step_dmg; step_verify
+              step_install ;;
+    *)        die "unknown step '${1}'. One of: venv build sign notarize dmg verify install all" ;;
+esac

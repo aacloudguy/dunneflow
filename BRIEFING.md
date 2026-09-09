@@ -204,20 +204,43 @@ program has a most-commented routine and a maximum alone is a claim nobody can w
 
 ## What we are doing now
 
-**Paused 2026-09-09, with milestone 2 built and nothing owed.** Five commits, working tree
-clean, no half-done work anywhere. **1,363** tests, mypy clean over **134** source files,
-ruff clean.
+**Milestone 3 — signing — is built and installed, 2026-09-09.** `DunneFlow.app` is signed with
+`Developer ID Application: Thomas Williams (G3RLJWV327)` under the hardened runtime with a
+secure timestamp, and it is in `/Applications`. **1,368** tests, mypy clean over **134** source
+files, ruff clean.
 
-**Where to pick up:** signing and notarisation, which are the only thing between this and a
-build that runs on a machine other than the one that made it — an unsigned `.app` is refused
-by Gatekeeper everywhere else. Those are Tom's commands to run against the existing Apple
-Developer account; the entitlements and the commands can be prepared for him first. Then an
-icon (`icon=None` in the spec today), and Windows last.
+**The ground truth was retaken through the signed binary** and every figure held: 628 files,
+the four executables at **1,381 · 423 · 292 · 112**, `naming.md` byte-identical to the `CORP`
+fixture, the research paper yielding **zero** naming rules, conformance at **4 checked · 1 no
+population · 10 not checkable**, and `extractor = 9:e8c9ac8a851c41b7` — the checkout's, so the
+two builds still read each other's maps (rule 12).
 
-**The built `.app` was not kept**, deliberately: it lived in a session scratchpad and `dist/`
-is gitignored. Rebuilding is one command and takes 7 s warm —
-`uv run pyinstaller packaging/dunneflow.spec --noconfirm`. Nothing about the artifact is
-recorded anywhere but `packaging/`, which is the point.
+**Where to pick up: two once-only commands that are Tom's**, and everything downstream of them
+is written and waiting in `packaging/release.sh`.
+
+1. **The universal2 interpreter.** `sudo installer -pkg python-3.12.10-macos11.pkg -target /`
+   after downloading it from python.org. uv's Pythons and Homebrew's are single-arch by
+   construction, so a universal build cannot be made without it, and the spec **refuses** to
+   pretend otherwise (rule 49).
+2. **Notarisation credentials.** An App Store Connect API key, then
+   `xcrun notarytool store-credentials dunneflow --key … --key-id … --issuer …`. Until that
+   runs, Gatekeeper says *"rejected — source=Unnotarized Developer ID"*, which is the honest
+   state of a correctly signed app rather than a defect.
+
+Then `./packaging/release.sh all` does the rest. After that: an icon (`icon=None` in the spec
+today), and Windows last.
+
+**The installed `.app` is arm64 and unnotarised**, and that is what it says it is. It is proof
+of the signing path rather than the release: the universal build needs command 1 and the
+notarisation needs command 2. `dist/` is gitignored, so nothing about the artifact is recorded
+anywhere but `packaging/`, which is the point.
+
+**A double-click right now would collide with port 8787**, which a previous session's server
+holds. `serve` defaults to 8787 and the application defaults a bare argv to `serve`, so the
+Finder launch was checked at `--port 8890` instead: it served the start page, and
+`POST /api/pickdir` spawned the folder dialog as a child of the hardened-runtime process with
+nothing denied in the AMFI log — which is the whole evidence for an entitlements file that asks
+for nothing.
 
 **8787 is still up and is a previous session's, left running on purpose.** It holds
 `output/mensores` open and has never seen a changed byte; it is not to be stopped without
@@ -274,11 +297,14 @@ guard exists either way: `test_frozen.py` refuses any `__file__` under `src/` ou
 
 **What is left before this ships**, and none of it is code that does not exist yet:
 
-1. **Signing and notarisation.** The Developer account exists; these are Tom's commands to
-   run, and I can prepare them and the entitlements. This is what decides the non-technical
-   experience — an unsigned `.app` is refused by Gatekeeper on any machine but this one.
-2. **An icon.** `icon=None` in the spec today.
-3. **Windows**, last, as agreed. Two branches in `default_output_root()` are written and
+1. ~~**Signing and notarisation.**~~ **Signing is done, 2026-09-09** — see *Milestone 3* at the
+   head of this file. Notarisation is written and waits on Tom storing an App Store Connect API
+   key with `xcrun notarytool store-credentials dunneflow`.
+2. **A universal build**, which was not on this list and should have been: the build was
+   arm64-only and would not have started on an Intel Mac at all. Written, and waiting on
+   python.org's universal2 3.12.10 being installed.
+3. **An icon.** `icon=None` in the spec today.
+4. **Windows**, last, as agreed. Two branches in `default_output_root()` are written and
    marked **untested**; a `.spec` and a picker are not.
 
 *Deliberately not done, and offered rather than assumed:* `pywebview`. The browser start is
@@ -3479,6 +3505,7 @@ for; chunk labels (`5v`, `6a`) and dated headings are stable, line numbers are n
 
 | When | What was built | Search `HANDOFF.md` for |
 |---|---|---|
+| 2026-09-09 | Milestone 3: signed with a Developer ID, and a universal build that refuses to lie | `milestone 3: signed` |
 | 2026-09-09 | Milestone 2: packaging, and a `DunneFlow.app` that opens on a fresh machine | `milestone 2: packaging` |
 | 2026-09-09 | Clearing the deck: four decisions and a withdrawal | `clearing the deck before the binary` |
 | 2026-09-01 | Curiosities: the doorway panel, each extremum stating its middle | `Curiosities: the doorway panel` |

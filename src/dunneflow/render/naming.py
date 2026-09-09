@@ -31,6 +31,7 @@ from ..resolve.conformance import (
 from ..resolve.naming import Convention, NamingMeasurement, measure
 from ..resolve.stated import StatedRule, checkable_sentence, stated_rules
 from ..store import Store
+from .page import Stamp, header
 
 HANDBOOK_LINES = 12
 
@@ -86,7 +87,7 @@ def _pct(holds: int, total: int) -> str:
 
 
 def render_naming(store: Store, docs: DocStore | None, out_dir: Path,
-                  program: str, stamp: str,
+                  program: str, stamp: Stamp,
                   standards: DocStore | None = None,
                   standards_note: str = "") -> Path:
     m = measure(store)
@@ -100,8 +101,7 @@ def render_naming(store: Store, docs: DocStore | None, out_dir: Path,
         # found in the code, found in the documents -- and claims of neither that anybody
         # required it. The dashboard's page *is* measured-only, and is titled "Derived
         # naming standard" for that reason.
-        f"# {program} — Naming standard, as found\n",
-        f"*Generated {stamp} by DunneFlow.*\n",
+        header(program, "Naming standard, as found", stamp),
         "**Nothing here was required of this program.** This is the standard the code and "
         "its documents were found to keep, not one anybody imposed and not one DunneFlow "
         "checked them against — a standard of your own cannot yet be imported, so nothing "

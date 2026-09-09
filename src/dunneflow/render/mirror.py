@@ -32,6 +32,7 @@ from ..resolve.mirror import (
     term_evidence_sql,
 )
 from ..store import Store
+from .page import Stamp, header
 
 
 def _esc(text: str | None) -> str:
@@ -57,12 +58,11 @@ def _slug(key: str) -> str:
 
 
 def render_mirror(store: Store, docs: DocStore | None, out: Path,
-                  program: str, stamp: str) -> Path:
+                  program: str, stamp: Stamp) -> Path:
     """Write `13-mirror.md`, whether or not any documentation was read."""
     m = measure(store, docs)
     lines = [
-        f"# {program} — words the documentation defines\n",
-        f"*Generated {stamp} by DunneFlow.*\n",
+        header(program, "words the documentation defines", stamp),
         "`12-traceability.md` asks what was built without a plan. This asks the same "
         "question of the project's vocabulary: **something took the trouble to define "
         "this word — does anything in the program answer to it?**\n",

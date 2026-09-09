@@ -10,6 +10,7 @@ from collections import defaultdict
 from pathlib import Path
 
 from ..anomalies import BROKEN, INFO, SUSPECT, Report
+from .page import Stamp, header
 
 _BADGE = {BROKEN: "🔴 BROKEN", SUSPECT: "🟠 SUSPECT", INFO: "🔵 INFO"}
 
@@ -41,9 +42,9 @@ def _esc(text: str | None) -> str:
 
 
 def render_anomalies(report: Report, out: Path, program: str,
-                     stamp: str) -> Path:
+                     stamp: Stamp) -> Path:
     counts = report.counts()
-    lines = [f"# {program} — Anomalies\n\n*Generated {stamp} by DunneFlow.*\n"]
+    lines = [header(program, "Anomalies", stamp)]
     lines.append(
         "What looks wrong, and how confident the tool is about each one.\n\n"
         "**Severity** says what it would mean for the program. **Confidence** says how "

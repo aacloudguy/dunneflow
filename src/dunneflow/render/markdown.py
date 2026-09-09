@@ -11,7 +11,7 @@ name and a type and never assumes a convention is obvious.
 from __future__ import annotations
 
 from collections import Counter, defaultdict
-from datetime import UTC, datetime
+from datetime import datetime
 from pathlib import Path
 
 from ..anomalies import detect
@@ -28,16 +28,13 @@ from .mermaid import command_tree_diagram, flow_diagram
 from .mirror import render_mirror
 from .naming import render_naming
 from .network import render_network
+from .page import Stamp, header
 from .traceability import render_traceability
 
 # Diagrams are bounded because a picture of 4,500 nodes conveys nothing; every
 # routine a diagram omits is listed in full beneath it. Reference lists are never
 # bounded -- completeness is the point of a reference.
 MAX_FLOW_DIAGRAM_NODES = 45
-
-
-def _stamp(when: datetime | None = None) -> str:
-    return (when or datetime.now(UTC)).strftime("%Y-%m-%d %H:%M UTC")
 
 
 def _esc(text: str | None, limit: int | None = None) -> str:
@@ -82,7 +79,7 @@ def render_all(store: Store, out_dir: Path, program: str,
                standards_note: str = "") -> list[Path]:
     """Write the whole map. Returns the files written."""
     out_dir.mkdir(parents=True, exist_ok=True)
-    stamp = _stamp(when)
+    stamp = Stamp.of(store, when)
     written = [
         _overview(store, out_dir, program, stamp),
         _entrypoints(store, out_dir, program, stamp),
@@ -107,27 +104,21 @@ def render_all(store: Store, out_dir: Path, program: str,
     return [w for w in written if w]
 
 
-def _header(program: str, title: str, stamp: str) -> str:
-    return f"# {program} — {title}\n\n*Generated {stamp} by DunneFlow.*\n\n"
-
-
 # --------------------------------------------------------------------------- #
 
 
-def _overview(store: Store, out: Path, program: str, stamp: str) -> Path:
+def _overview(store: Store, out: Path, program: str, stamp: Stamp) -> Path:
     c = store.counts()
     bi = boundary_index(store)
 
     ranked = ways_in(store)
 
-    lines = [_header(program, "Overview", stamp)]
+    lines = [header(program, "Overview", stamp)]
     lines.append(
         "This is a structural map of what moves through the program: where it starts, "
         "what it runs, and where it touches anything outside itself. Internal "
         "computation and local variables are deliberately not described.\n"
     )
-    lines.append(_what_this_describes(store, stamp))
-
     lines.append("## Size\n")
     lines.append("| Measure | Count |\n|---|---:|")
     for label, key in [
@@ -197,42 +188,17 @@ def _overview(store: Store, out: Path, program: str, stamp: str) -> Path:
     return path
 
 
-def _what_this_describes(store: Store, stamp: str) -> str:
-    """Which snapshot this map is of, and when that source was read.
-
-    **`Generated` is not `analysed`, and until `dunneflow render` existed nothing had ever
-    made the difference visible.** A map written by `analyze` carries one instant for both,
-    so a single "Generated 2026-09-09" line was true twice over by accident. Re-rendering a
-    sealed snapshot pulls them apart -- documents written today about source captured two
-    weeks ago -- and that same line then reads as a claim about the wrong fortnight.
-
-    Both facts are in the graph's own `meta`, so this asks the store rather than making
-    every caller carry them down (rule 51). A map written before either key existed says
-    so: *missing* and *blank* are different answers and neither is "now".
-    """
-    revision = store.get_meta("revision") or ""
-    analysed = store.get_meta("analysed_at") or ""
-    if not revision and not analysed:
-        # Nothing to say beyond the line above, which is honest: this graph predates both
-        # keys, and inventing a revision for it would be minting an identity (rule 30).
-        return ""
-    rev_cell = f"`{revision}`" if revision else "*not recorded — written before maps were named*"
-    an_cell = analysed or "*not recorded*"
-    return (
-        # A heading rather than a floating table: this reader arrives mid-document as often
-        # as at the top, and an unheaded block of three dates is unreachable from a scroll
-        # wheel. Three lines rather than a row, because the two instants are the point and
-        # a table puts them side by side where they read as one fact.
-        "## What this map describes\n\n"
-        f"- **Snapshot:** {rev_cell}\n"
-        f"- **When that source was read:** {an_cell}\n"
-        f"- **When these documents were written:** {stamp}\n"
-    )
+# `_what_this_describes` stood here: a `## What this map describes` section, on the cover
+# only, stating the snapshot, when its source was read, and when the documents were
+# written. All three facts survive -- they are in `page.header` now, and so on every page
+# of the map rather than on one of fifteen. Keeping the section as well would have made
+# the cover state the same three instants twice, which is the shape rule 51 warns about
+# arriving through its own fix. Tom's call, 2026-09-09.
 
 
-def _entrypoints(store: Store, out: Path, program: str, stamp: str) -> Path:
+def _entrypoints(store: Store, out: Path, program: str, stamp: Stamp) -> Path:
     eps = store.entrypoints()
-    lines = [_header(program, "Ways in", stamp)]
+    lines = [header(program, "Ways in", stamp)]
     lines.append(
         "How this program gets started or woken up. Entries declared in packaging "
         "metadata are contractual; the rest are detected from decorators and "
@@ -301,10 +267,10 @@ def _tree_list(tree: dict, depth: int = 0) -> str:
     return "\n".join(out)
 
 
-def _flows(store: Store, out: Path, program: str, stamp: str) -> Path:
+def _flows(store: Store, out: Path, program: str, stamp: Stamp) -> Path:
     ranked = ways_in(store)
 
-    lines = [_header(program, "Flows", stamp)]
+    lines = [header(program, "Flows", stamp)]
     lines.append(
         "What each way in sets in motion. Solid arrows are calls; dotted arrows are "
         "the program reading from or writing to the world outside itself. Diagrams are "
@@ -384,12 +350,12 @@ def _flow_inventory(store: Store, way_in: dict) -> str:
     return "\n".join(out)
 
 
-def _routines(store: Store, out: Path, program: str, stamp: str) -> Path:
+def _routines(store: Store, out: Path, program: str, stamp: Stamp) -> Path:
     rows = store.query(
         "SELECT module, COUNT(*) n FROM routines WHERE name != '<module>'"
         " GROUP BY module ORDER BY n DESC"
     )
-    lines = [_header(program, "Routines", stamp)]
+    lines = [header(program, "Routines", stamp)]
     lines.append(
         "Every routine, with what goes in and what comes out. `WHY` is the comment or "
         "docstring attached to it — the part the code itself cannot tell you.\n"
@@ -425,9 +391,9 @@ def _routines(store: Store, out: Path, program: str, stamp: str) -> Path:
     return path
 
 
-def _data(store: Store, out: Path, program: str, stamp: str) -> Path:
+def _data(store: Store, out: Path, program: str, stamp: Stamp) -> Path:
     structs = store.structures()
-    lines = [_header(program, "Data structures", stamp)]
+    lines = [header(program, "Data structures", stamp)]
     lines.append(
         "The named shapes that move between routines. Fields carry their declared "
         "types where the code declares them.\n"
@@ -470,9 +436,9 @@ def _data(store: Store, out: Path, program: str, stamp: str) -> Path:
     return path
 
 
-def _boundaries(store: Store, out: Path, program: str, stamp: str) -> Path:
+def _boundaries(store: Store, out: Path, program: str, stamp: Stamp) -> Path:
     bi = boundary_index(store, min_salience="low")
-    lines = [_header(program, "Boundaries", stamp)]
+    lines = [header(program, "Boundaries", stamp)]
     lines.append(
         "Every point where the program touches something outside itself. This is the "
         "complete inventory of what moves in and what moves out.\n"
@@ -501,7 +467,7 @@ def _boundaries(store: Store, out: Path, program: str, stamp: str) -> Path:
     return path
 
 
-def _governance(store: Store, out: Path, program: str, stamp: str) -> Path:
+def _governance(store: Store, out: Path, program: str, stamp: Stamp) -> Path:
     rows = store.query(
         """SELECT a.kind, a.value, a.text, a.line, a.owner_kind,
                   COALESCE(r.qualname, s.name) AS owner, COALESCE(r.file, s.file) AS file
@@ -510,7 +476,7 @@ def _governance(store: Store, out: Path, program: str, stamp: str) -> Path:
              LEFT JOIN structures s ON a.owner_id = s.id
             ORDER BY a.kind, a.value"""
     )
-    lines = [_header(program, "Governance and caveats", stamp)]
+    lines = [header(program, "Governance and caveats", stamp)]
     lines.append(
         "Structured markers mined out of comments and docstrings. These are the things "
         "the code cannot say about itself: which decision governs a routine, what is "

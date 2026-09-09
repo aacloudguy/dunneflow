@@ -91,18 +91,61 @@ def test_a_snapshot_gets_its_map_and_the_graph_is_untouched(tmp_path: Path) -> N
         "rendering a map read the graph and must not have changed one byte of it"
 
 
-def test_the_cover_states_the_snapshot_and_both_instants(tmp_path: Path) -> None:
-    """`Generated` is not `analysed`, and a re-rendered map is where they come apart."""
+def test_every_page_states_the_snapshot_and_both_instants(tmp_path: Path) -> None:
+    """`Generated` is not `analysed`, and a re-rendered map is where they come apart.
+
+    **Every page, and that is the assertion.** The cover said this and the other fourteen
+    pages said only `Generated <now>`, so a reader arriving at `07-database.md` from a link
+    had the whole problem the cover had just solved. It was not fixed in passing because
+    eight renderers each built that line inline -- rule 51 -- so this is asserted over the
+    *files written*, never over one renderer, because eight copies is exactly how it drifted.
+    """
     out_dir = tmp_path / "prog"
     _graph(out_dir, REV_A, tmp_path)
-    render_snapshot(out_dir, REV_A)
+    r = render_snapshot(out_dir, REV_A)
 
-    cover = (revisions.map_dir(out_dir, REV_A) / "README.md").read_text(encoding="utf-8")
-    assert "## What this map describes" in cover
-    assert f"**Snapshot:** `{REV_A}`" in cover, \
-        "the cover must name the snapshot, or its date reads as today's"
-    assert "**When that source was read:** 2026-01-01 00:00 UTC" in cover, \
-        "the analysis instant is the graph's own and must not be replaced by now"
+    assert not r.refusal, r.refusal
+    for page in r.files:
+        text = page.read_text(encoding="utf-8")
+        assert f"Snapshot `{REV_A}`" in text, \
+            f"{page.name} does not name the snapshot, so its date reads as today's"
+        assert "source read 2026-01-01 00:00 UTC" in text, \
+            f"{page.name} must carry the graph's own analysis instant, never now"
+        assert "these documents written" in text, \
+            f"{page.name} must keep the two instants apart -- that is the whole point"
+
+
+def test_a_map_written_before_a_revision_was_recorded_keeps_its_old_line(
+        tmp_path: Path) -> None:
+    """Missing and blank are different answers, and neither is a guess (rule 30).
+
+    A graph that predates both keys is a real state. Handing it `Snapshot: unknown` would
+    be a claim about a map that never had one; the line it always carried is the fact.
+    """
+    from dunneflow.render.page import Stamp, header
+
+    undated = Stamp(generated="2026-01-01 00:00 UTC", revision="", analysed="")
+    said = header("fixture", "Database", undated)
+
+    assert "*Generated 2026-01-01 00:00 UTC by DunneFlow.*" in said
+    assert "Snapshot" not in said, "a map with no revision must not be given one"
+
+
+def test_a_half_recorded_map_says_which_half_is_missing(tmp_path: Path) -> None:
+    """Three states per instant, and the pair does not collapse to two.
+
+    A graph recording a revision but no analysis instant is not the same as one recording
+    neither, and answering both with the pre-revision line would lose the revision it does
+    have.
+    """
+    from dunneflow.render.page import Stamp, header
+
+    said = header("fixture", "Database",
+                  Stamp(generated="now", revision=REV_A, analysed=""))
+
+    assert f"Snapshot `{REV_A}`" in said
+    assert "when that source was read is not recorded" in said
+    assert "these documents written now" in said
 
 
 def test_an_unfinished_graph_is_refused_and_writes_nothing(tmp_path: Path) -> None:

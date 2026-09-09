@@ -21,6 +21,7 @@ from urllib.parse import urlparse
 
 from ..resolve.flows import ways_in
 from ..store import Store
+from .page import Stamp, header
 
 INBOUND_KINDS = ("HTTP_ROUTE", "QUEUE_CONSUMER")
 _URL = re.compile(r"https?://[^\s'\"<>)]+", re.IGNORECASE)
@@ -97,7 +98,7 @@ def _san(text: str, limit: int = 30) -> str:
     return out if len(out) <= limit else out[: limit - 1] + "…"
 
 
-def render_network(store: Store, out: Path, program: str, stamp: str) -> Path | None:
+def render_network(store: Store, out: Path, program: str, stamp: Stamp) -> Path | None:
     outbound = store.query(
         "SELECT b.target, b.evidence, b.direction, b.line, r.qualname, r.module, r.file,"
         "       b.routine_id"
@@ -148,7 +149,7 @@ def render_network(store: Store, out: Path, program: str, stamp: str) -> Path | 
                 return min(by_module, key=lambda n: len(zones[n]))
         return "(not started by this program)"
 
-    lines = [f"# {program} — Network and process boundaries\n\n*Generated {stamp} by DunneFlow.*\n"]
+    lines = [header(program, "Network and process boundaries", stamp)]
     lines.append(
         "Where this program stops being one program. Everything above a network hop "
         "runs in one process; everything below it runs somewhere else and can fail "

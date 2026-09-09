@@ -26,6 +26,7 @@ from collections import defaultdict
 from pathlib import Path
 
 from ..store import Store
+from .page import Stamp, header
 
 
 def _esc(text: str | None) -> str:
@@ -61,14 +62,13 @@ SELECT module, name, bases, line, file
 
 
 def render_constants(store: Store, out: Path, program: str,
-                     stamp: str) -> Path:
+                     stamp: Stamp) -> Path:
     """Write `14-constants.md`. Nothing here is bounded."""
     rows = store.query(CONSTANTS_SQL)
     aliases = store.query(ALIASES_SQL)
 
     lines = [
-        f"# {program} — named values\n",
-        f"*Generated {stamp} by DunneFlow.*\n",
+        header(program, "named values", stamp),
         "What the program configures, as it wrote it down: the values it names at "
         "module level, and the comments saying why they are those values. Values run "
         "at import, so a constant declared inside a module-level `try` or "

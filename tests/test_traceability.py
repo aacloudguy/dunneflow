@@ -19,6 +19,7 @@ from __future__ import annotations
 import pytest
 
 from dunneflow.docstore import DocStore
+from dunneflow.render.page import Stamp
 from dunneflow.render.traceability import render_traceability
 from dunneflow.resolve.traceability import (
     CODE_IDS_SQL,
@@ -29,6 +30,10 @@ from dunneflow.resolve.traceability import (
 )
 from dunneflow.store import Store
 from dunneflow.walk import analyze_docs_tree, analyze_tree
+
+# A renderer is handed the map's three instants, never a bare string. The values do
+# not matter here -- these tests are about what the page says of the program.
+STAMP = Stamp(generated="2026-01-01 00:00 UTC", revision="", analysed="")
 
 # Distinctive names, so the landed signal has something unambiguous to find. Each is
 # defined exactly once, which is what makes it usable as evidence.
@@ -266,7 +271,7 @@ def test_no_documentation_is_not_reported_as_drift(joined, tmp_path):
     fabricated finding of exactly the kind this tool exists not to produce.
     """
     store, _, root = joined
-    path = render_traceability(store, None, tmp_path, "sample", "stamp")
+    path = render_traceability(store, None, tmp_path, "sample", STAMP)
     text = path.read_text(encoding="utf-8")
     assert "No documentation was read" in text
     assert "Nothing here is a finding about drift" in text
@@ -280,7 +285,7 @@ def test_no_documentation_is_not_reported_as_drift(joined, tmp_path):
 def test_every_band_states_its_blind_spot(joined, tmp_path):
     """A finding without its blind spot is a guess wearing a uniform."""
     store, docs, root = joined
-    path = render_traceability(store, docs, tmp_path, "sample", "stamp")
+    path = render_traceability(store, docs, tmp_path, "sample", STAMP)
     text = path.read_text(encoding="utf-8")
     for s in STATES:
         assert s.label in text
@@ -291,7 +296,7 @@ def test_every_id_appears_in_the_report(joined, tmp_path):
     """Rule 8. A reference list is never bounded."""
     store, docs, root = joined
     result = measure(store, docs)
-    path = render_traceability(store, docs, tmp_path, "sample", "stamp")
+    path = render_traceability(store, docs, tmp_path, "sample", STAMP)
     text = path.read_text(encoding="utf-8")
     for t in result.ids:
         assert f"`{t.id}`" in text, f"{t.id} is missing from the report"
@@ -364,7 +369,7 @@ def test_a_written_id_is_never_marked_inferred(composed):
 
 def test_the_report_separates_the_two_tiers(composed, tmp_path):
     store, docs, root = composed
-    path = render_traceability(store, docs, tmp_path, "sample", "stamp")
+    path = render_traceability(store, docs, tmp_path, "sample", STAMP)
     text = path.read_text(encoding="utf-8")
     assert "What was read, and what was inferred" in text
     assert "*(inferred)*" in text
@@ -376,7 +381,7 @@ def test_a_corpus_with_no_composed_ids_says_so(joined, tmp_path):
     store, docs, root = joined
     result = measure(store, docs)
     assert result.inferred_annotations == 0
-    path = render_traceability(store, docs, tmp_path, "sample", "stamp")
+    path = render_traceability(store, docs, tmp_path, "sample", STAMP)
     assert "Nothing here was inferred" in path.read_text(encoding="utf-8")
 
 
@@ -448,7 +453,7 @@ def test_a_program_that_cites_no_id_in_code_is_reported_rather_than_a_crash(tmp_
         assert measure(store, doc_store).in_code() == 0, (
             "this fixture cites an id after all, so it does not test the empty case"
         )
-        text = render_traceability(store, doc_store, tmp_path, "quiet", "stamp"
+        text = render_traceability(store, doc_store, tmp_path, "quiet", STAMP
                                    ).read_text(encoding="utf-8")
     finally:
         store.close()

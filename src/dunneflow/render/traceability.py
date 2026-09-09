@@ -28,6 +28,7 @@ from ..resolve.traceability import (
     measure,
 )
 from ..store import Store
+from .page import Stamp, header
 
 
 def _esc(text: str | None) -> str:
@@ -73,12 +74,12 @@ def render_traceability(
     docs: DocStore | None,
     out: Path,
     program: str,
-    stamp: str,
+    stamp: Stamp,
 ) -> Path:
     """Write `12-traceability.md`. Returns the path."""
     t = measure(store, docs)
     lines = [
-        f"# {program} — Traceability\n\n*Generated {stamp} by DunneFlow.*\n",
+        header(program, "Traceability", stamp),
         "Governance ids appear in two places: in comments and docstrings beside the "
         "code that implements them, and in the prose that planned them. Joining the "
         "two answers the question neither answers alone — **what was built without a "

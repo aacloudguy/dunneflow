@@ -35,7 +35,7 @@ from pathlib import Path
 from typing import Any
 
 from .. import revisions
-from .markdown import _stamp
+from .page import stamp_text
 
 # The map's own first document. Its presence directly in the program directory is what
 # says an older, un-named map is lying there -- `README.md` is not, because this file
@@ -66,7 +66,7 @@ def render_index(out_dir: Path, program: str, stamp: str | None = None,
     Built from what is **on disk** rather than from what this run wrote, so a map written
     by an earlier build, and a revision whose stores someone removed by hand, both appear.
     """
-    stamp = stamp or _stamp()
+    stamp = stamp or stamp_text()
     graphs = {}
     for p in revisions.known(out_dir, revisions.GRAPH):
         graphs[revisions.revision_of(p)] = p

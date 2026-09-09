@@ -24,6 +24,7 @@ import pytest
 from dunneflow.docstore import DocStore
 from dunneflow.extractors.python.extract import extract_file
 from dunneflow.render.mirror import render_mirror
+from dunneflow.render.page import Stamp
 from dunneflow.resolve.mirror import (
     ARTEFACT_NAMES_SQL,
     BANDS,
@@ -33,6 +34,10 @@ from dunneflow.resolve.mirror import (
 )
 from dunneflow.store import Store
 from dunneflow.walk import analyze_docs_tree, analyze_tree
+
+# A renderer is handed the map's three instants, never a bare string. The values do
+# not matter here -- these tests are about what the page says of the program.
+STAMP = Stamp(generated="2026-01-01 00:00 UTC", revision="", analysed="")
 
 # --------------------------------------------------------------------------- #
 # The program. Every artefact case that mattered on real code, and every near
@@ -347,7 +352,7 @@ def test_no_documentation_is_not_a_finding(mirrored, tmp_path):
     # The code half is still measured, so the page can say what it is waiting for.
     assert result.artefact_names > 0
 
-    page = render_mirror(store, None, tmp_path, "sample", "now")
+    page = render_mirror(store, None, tmp_path, "sample", STAMP)
     body = page.read_text(encoding="utf-8")
     assert "No documentation was read" in body
     assert "there is no finding here" in body
@@ -356,7 +361,7 @@ def test_no_documentation_is_not_a_finding(mirrored, tmp_path):
 def test_the_page_lists_every_term_and_every_exclusion(mirrored, tmp_path, report):
     """Nothing on this page is bounded -- rule 8."""
     store, docs, root = mirrored
-    page = render_mirror(store, docs, tmp_path, "sample", "now")
+    page = render_mirror(store, docs, tmp_path, "sample", STAMP)
     body = page.read_text(encoding="utf-8")
     assert page.name == "13-mirror.md"
     for term in report.terms:

@@ -17,6 +17,7 @@ from ..docstore import DocStore
 from ..resolve.glossary import GlossaryReport, Term, bind
 from ..schema import Provenance
 from ..store import Store
+from .page import Stamp, header
 
 BADGE = {
     Provenance.DECLARED_CODE: "DECLARED · code",
@@ -44,13 +45,12 @@ def _esc(text: str | None) -> str:
 
 
 def render_glossary(store: Store, docs: DocStore | None, out_dir: Path,
-                    program: str, stamp: str) -> Path:
+                    program: str, stamp: Stamp) -> Path:
     report = bind(store, docs)
     defined, total = report.coverage()
 
     lines = [
-        f"# {program} — Glossary\n",
-        f"*Generated {stamp} by DunneFlow.*\n",
+        header(program, "Glossary", stamp),
         "Every word this program uses as the name of a thing — a package, a command, a "
         "table — that is not ordinary programming vocabulary, together with whatever the "
         "program itself says it means. Nothing here is written by DunneFlow: each "

@@ -993,7 +993,7 @@ def test_the_slider_reset_covers_every_slider_and_invents_no_defaults() -> None:
     controls = js.split('id="panel-controls"', 1)[1].split("</div>`", 1)[0]
     ids = set(re.findall(r'<input id="(g\w+)" type="range"', controls))
     assert ids, "no range inputs found in the controls box -- this test is blind"
-    ID_TO_KEY = {"gsize": "nodeSize", "gspreadx": "spreadX", "gspready": "spreadY",
+    ID_TO_KEY = {"gspacing": "nodeSpacing", "gspreadx": "spreadX", "gspready": "spreadY",
                  "gspreadz": "spreadZ", "gwidth": "plateSize"}
     unknown = ids - set(ID_TO_KEY)
     assert not unknown, (
@@ -13616,4 +13616,117 @@ def test_the_toolbar_only_yields_width_where_something_can_absorb_it() -> None:
     assert "white-space: nowrap" in decls.get(".srcpath-k", ""), (
         "SOURCE DIRECTORY may wrap onto two lines, which grows the button past the height of "
         "the toolbar and pushes its own value out of the bottom of its box"
+    )
+
+
+# --------------------------------------------------------------------------- #
+# Node size: a fraction of the room its own plate gives it
+#
+# The dot used to be a pixel constant on a plate whose width was a world quantity, so a
+# node knew nothing about the space it had. Measured on Society at the default framing,
+# 4,990 of 10,052 drawn nodes touched or overlapped a neighbour. These hold the parts of
+# the fix that live in the renderer rather than in `layout.py`.
+# --------------------------------------------------------------------------- #
+
+
+def test_a_node_is_sized_in_world_units_and_never_floored_in_pixels() -> None:
+    """The unit change is the whole fix, and the pixel floor is the trap beside it.
+
+    A radius in pixels is constant while its plate shrinks, which is how the dots ended up
+    on top of each other. `radiusMinPixels` is the same mistake wearing a different hat: it
+    would hold every dot at a pixel as the plate went on shrinking. The floor belongs on the
+    *view*, and `applyViewCap` is where it is.
+    """
+    js = _read("graph.js")
+    layer = js.split("id: `nodes${shadingId}`", 1)[1].split("}));", 1)[0]
+    assert "radiusUnits: 'common'" in layer, (
+        "the node layer is not drawing in world units, so a dot no longer scales with the "
+        "plate it sits on and the separation chosen for it holds at one zoom only"
+    )
+    assert "radiusMinPixels: 0" in layer, (
+        "a pixel floor on the radius puts the dots back on top of each other at low zoom, "
+        "which is what the view cap exists to avoid"
+    )
+    assert "function applyViewCap" in js and "NODE_MIN_PX" in js, (
+        "nothing keeps a node above what can be drawn; the floor has to be somewhere"
+    )
+
+
+def test_the_spacing_constant_agrees_with_the_module_that_owns_it() -> None:
+    """One number, two languages, and only one place it is measured.
+
+    `layout.py` owns `PHYLLOTAXIS_TIGHTEST` and re-measures it in `test_layout_spacing.py`.
+    The renderer restates it, as `forcelayout.js` restates the golden angle. Two copies that
+    can disagree is the defect; a copy a test pins to its source is not.
+    """
+    from dunneflow.web.layout import PHYLLOTAXIS_TIGHTEST
+
+    js = _read("graph.js")
+    found = re.search(r"const PHYLLOTAXIS_TIGHTEST = ([\d.]+);", js)
+    assert found, "the renderer no longer states the constant it sizes every node from"
+    assert abs(float(found.group(1)) - PHYLLOTAXIS_TIGHTEST) < 1e-9, (
+        f"the renderer uses {found.group(1)} and layout.py measured "
+        f"{PHYLLOTAXIS_TIGHTEST}; a node radius chosen from the wrong one overlaps"
+    )
+
+
+def test_a_node_may_not_grow_into_the_plate_above() -> None:
+    """Tom's constraint, and it is the one that binds on a sparse plate.
+
+    Half the *drawn* gap, so `spreadZ` is in the expression -- a ceiling taken on the
+    unspread gap would let a node collide with a z-neighbour at every setting but one.
+    """
+    js = _read("graph.js")
+    fn = js.split("function nodeRadii(", 1)[1].split("\n}", 1)[0]
+    assert re.search(r"DISK_GAP \* opts\.spreadZ / 2", fn), (
+        "the node-size ceiling is not half the gap between plates as drawn, so a node can "
+        "collide with one on the plate above"
+    )
+    assert "Math.min(ceiling, room)" in fn, (
+        "a plate takes the larger of its two constraints rather than the binding one"
+    )
+
+
+def test_the_ceiling_is_stated_on_the_page() -> None:
+    """Design rule 1: no filter is ever silent.
+
+    A dot held below its earned size is a filter on the one channel this feature exists to
+    use, and at the default `spreadZ` it is forty-three of Society's fifty-three plates. A
+    reader who cannot see that has forty-three plates drawing one size for no stated reason.
+    """
+    shell = _read("shell.js")
+    assert "function nodeCeilingNote" in shell, "nothing says how many plates are held"
+    note = shell.split("function nodeCeilingNote", 1)[1].split("\n}", 1)[0]
+    assert "stack" in note, (
+        "the note does not name the control that lifts the ceiling; a refusal that names no "
+        "way out teaches people to work around it (rule 89)"
+    )
+    assert 'id="gceiling"' in shell, "the note has nowhere to render"
+    # Rule 78: the ceiling moves with three sliders, so the refresh must not sit in one
+    # branch. It goes where they all pass.
+    summary = shell.split("function updateControlsSummary", 1)[1].split("\n}", 1)[0]
+    assert "#gceiling" in summary, (
+        "the ceiling note is refreshed from one slider's handler rather than from the place "
+        "every slider passes through -- rule 78, and it was written that way once already"
+    )
+
+
+def test_the_size_slider_became_a_spacing_slider_and_says_so() -> None:
+    """The reader sets the room, not the radius, and the label has to carry the inversion.
+
+    A control named "size" that sets spacing is design rule 16's problem stated backwards:
+    it renders, it moves, it changes the picture -- and it means the opposite of its name.
+    """
+    shell = _read("shell.js")
+    assert "nodeSize" not in shell, (
+        "`nodeSize` survives in the shell; a node's radius is derived now, so a slider that "
+        "sets it directly sets a number the next layout change overwrites"
+    )
+    controls = shell.split('id="panel-controls"', 1)[1].split("</div>`", 1)[0]
+    assert 'id="gspacing"' in controls and ">spacing<" in controls, (
+        "the controls box does not offer a spacing slider under that name"
+    )
+    found = re.search(r'id="gspacing" type="range" min="([\d.]+)"', controls)
+    assert found and float(found.group(1)) > 1.0, (
+        "the spacing range reaches 1.0 or below, where nodes are exactly touching or worse"
     )

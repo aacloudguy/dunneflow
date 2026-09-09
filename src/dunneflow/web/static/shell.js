@@ -17750,7 +17750,7 @@ const PERSISTED = [
   "egress", "aiOps", "triage", "promoted", "pins", "usage", "graphLayout",
   "diskOrder", "diskColors", "colorBy", "sortMode", "filterMode", "direction",
   "level", "minDisk",
-  "nodeSize", "spreadX", "spreadY", "spreadZ", "plateSize", "plateLayout", "collapseUnused",
+  "nodeSpacing", "spreadX", "spreadY", "spreadZ", "plateSize", "plateLayout", "collapseUnused",
   /* `nodeShapes` was in this list and is not, because nothing can change it: the control
      was withdrawn with the box overlay that drew silhouettes. Persisting a value only ever
      equal to its default writes a key that can only ever be restored to what it already
@@ -18379,7 +18379,8 @@ async function ensureGraph() {
       diskOrder: plateOrder(), diskColors: state.diskColors, colorBy: state.colorBy,
       nodeChange: graphChangeOn() ? changeByNodeId() : null, changeTone: changeTones(),
       changeStamp: Date.now(),
-      filterMode: state.filterMode, direction: state.direction, nodeSize: state.nodeSize,
+      filterMode: state.filterMode, direction: state.direction,
+      nodeSpacing: state.nodeSpacing,
       spreadX: state.spreadX, spreadY: state.spreadY, spreadZ: state.spreadZ,
       plateSize: plateSizeNow(),
       collapseUnused: state.collapseUnused, showPlates: state.showPlates, scale: state.scale,
@@ -19597,11 +19598,15 @@ function renderGraphFurniture() {
         <span class="muted" id="gctlsum">${controlsSummary()}</span>
       </button>
       <div class="hudbody" id="panel-controls-body">
+      <!-- **Spacing, not size**, and the label has to carry the inversion or the control
+           lies: a node's radius is derived from the room its plate gives it, so what the
+           reader sets is how much of that room stays clear. Smaller leaves less and draws
+           bigger dots. The range starts above 1.0 because 1.0 is dots exactly touching. -->
       <label style="display:flex;align-items:center;gap:.35rem">
-        <span class="muted" style="width:3.2rem">size</span>
-        <input id="gsize" type="range" min="0.4" max="14" step="0.2"
-               value="${state.nodeSize}" aria-label="Node size">
-        <span class="muted num" id="gsizeval">${(+state.nodeSize).toFixed(1)}×</span>
+        <span class="muted" style="width:3.2rem">spacing</span>
+        <input id="gspacing" type="range" min="1.05" max="4" step="0.05"
+               value="${state.nodeSpacing}" aria-label="Space kept between nodes, in diameters">
+        <span class="muted num" id="gsizeval">${(+state.nodeSpacing).toFixed(2)}×</span>
       </label>
       ${[["gspreadx", "across", "spreadX", "How far apart nodes sit left to right"],
           ["gspready", "deep",   "spreadY", "How far apart nodes sit front to back"],
@@ -19635,6 +19640,14 @@ function renderGraphFurniture() {
       </label>
       <div class="hint" id="gwidthrange" style="margin:-.1rem 0 .1rem 3.55rem">${
         plateRangeNote()}</div>
+      ${/* **A dot held below its earned size is a filter, and no filter is silent**
+            (design rule 1). A node may not grow past half the gap to the plate above or it
+            collides with a neighbour it has no relationship with -- and at the default
+            stack spacing that ceiling, not the plate's own room, is what most plates are
+            drawing at. Without this line a reader sees forty-three plates draw the same
+            size and has no way to learn why, or that one slider away is the answer. */""}
+      <div class="hint" id="gceiling" style="margin:-.1rem 0 .3rem 3.55rem">${
+        nodeCeilingNote()}</div>
       ${/* **How a plate arranges what it holds, on the panel that arranges plates.** The
             same setting as the two cards in Settings and the same delegated route; this one
             is a toggle because here it is being *flipped while reading* rather than chosen
@@ -19783,11 +19796,23 @@ function plateRangeNote() {
     w.plates.toLocaleString()} plates, by what they hold · at ${at}`;
 }
 
+/* How many plates cannot draw their nodes as large as their own spacing allows.
+ *
+ * The ceiling is half the gap to the plate above, so it moves with the *stack* slider and
+ * not with this one -- which is exactly why it has to be said here, beside the width and
+ * the spacing that the reader will otherwise blame. */
+function nodeCeilingNote() {
+  const c = Graph.mounted() ? Graph.nodeCeiling() : null;
+  if (!c || !c.held) return "every plate draws its nodes at the size its own spacing allows";
+  return `${c.held.toLocaleString()} of ${c.plates.toLocaleString()} plates are at the ` +
+         `node-size ceiling — half the gap to the plate above; widen <b>stack</b> to lift it`;
+}
+
 /* What the controls ribbon says when it is shut. A strip reading only "controls" would be
  * the icon rail design rule 24 rejects, turned on its side: it makes the reader open it to
  * find out what it was. These are the things the box actually sets. */
 function controlsSummary() {
-  return `size <b class="num">${(+state.nodeSize).toFixed(1)}×</b> · spread ` +
+  return `spacing <b class="num">${(+state.nodeSpacing).toFixed(2)}×</b> · spread ` +
     `<b class="num">${(+state.spreadX).toFixed(2)}</b> / ` +
     `<b class="num">${(+state.spreadY).toFixed(2)}</b> / ` +
     `<b class="num">${(+state.spreadZ).toFixed(2)}</b> · plate width ` +
@@ -19824,6 +19849,13 @@ function offScreenNote() {
 function updateControlsSummary() {
   const el = $("#gctlsum");
   if (el) el.innerHTML = controlsSummary();
+  /* **The node-size ceiling is refreshed here, where every slider already passes.**
+     It moves with three of them -- spacing, stack and width -- and the first version put
+     the refresh in the width branch alone, which is rule 78 written and then committed in
+     the same edit. Every handler in the controls box calls this, so this is the place they
+     all pass through (rule 51). */
+  const ceil = $("#gceiling");
+  if (ceil) ceil.innerHTML = nodeCeilingNote();
 }
 
 /* Design rule 19: with edges hidden by default this is the way *into* the graph, not an
@@ -20226,7 +20258,7 @@ function applyOrder() {
  * anything is one row here rather than a special case in three functions (rule 36); the
  * four flat ones are unchanged except in where they are written down. */
 const SLIDERS = {
-  nodeSize: {},
+  nodeSpacing: {},
   spreadX:  {},
   spreadY:  {},
   spreadZ:  {},
@@ -20358,12 +20390,16 @@ function wireGraphOnce() {
       if (wasChange) renderLegend();
       return;                        // the graph repaints; the swatch is left alone
     }
-    if (t.id === "gsize") {
-      state.nodeSize = parseFloat(t.value);
-      $("#gsizeval").textContent = state.nodeSize.toFixed(1) + "×" +
-        (state.nodeSize * state.scale >= Graph.SPHERE_FROM ? " spheres" : "");
+    if (t.id === "gspacing") {
+      state.nodeSpacing = parseFloat(t.value);
+      Graph.setOptions({ nodeSpacing: state.nodeSpacing });
+      /* Read back off the picture rather than predicted from the slider. The dot size is
+         derived now, so "will this show spheres" is a question about what was drawn -- and
+         the old line computed it from the slider, which is how a threshold can be right
+         about a number and wrong about the screen. */
+      $("#gsizeval").textContent = state.nodeSpacing.toFixed(2) + "×" +
+        (Graph.nodePixels() >= Graph.SPHERE_FROM ? " spheres" : "");
       updateControlsSummary();
-      Graph.setOptions({ nodeSize: state.nodeSize });
       return;
     }
     /* One branch, three axes. Written as a table for the same reason the routes are:

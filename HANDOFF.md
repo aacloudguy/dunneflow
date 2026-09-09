@@ -13561,3 +13561,147 @@ copies of one line — so fixing it is rule 51's job and not a passing edit. A r
 at `07-database.md` from a link has the problem the cover just solved.
 
 **Gates:** 1,263 tests, mypy clean over 125 source files, ruff clean, `check` 0 broken.
+
+## 2026-09-09 — node size follows the plate it sits on
+
+Tom: *"Work on the per-plate node sizing. The goal of this is only to make them more visible
+and easy to understand for the more sparsely populated plates. When nodes overlap one
+another, they are too large to be useful. They should either spread out, or stop growing."*
+
+### It was a units bug, and the measurement is what found it
+
+A dot was `min(3.6, 1.4 + sqrt(degree) * 0.28)` **pixels** — the same on every plate, at every
+zoom. A plate was `1000 * (1 + (sqrt(n/nmax) - 1) * plateSize)` **world units**, shrinking
+with zoom and with how little it held. So a node's size was unrelated to the room its own
+plate had, at any setting.
+
+Measured on Society at the default framing, using the engine's own zoom (`diagnostics()`
+reported −3.82, which a replication of `applyLayout` matched to 1.5%):
+
+| | |
+|---|---|
+| drawn nodes touching or overlapping a neighbour | **4,990 of 10,052 — 49.6%** |
+| smallest plate | **5.5 px radius**, six nodes |
+| worst plate | `pkg:cli`, tightest gap 2.06 px against a 3.65 px dot |
+
+A sparse plate was a disc about eleven pixels across holding six dots 3.6 px wide. There is no
+arrangement of six dots that size inside that circle that reads as six things.
+
+### The law
+
+The tightest pair on a phyllotaxis disk of `n` points is `1.546 * R / sqrt(n)`, and **1.546
+does not move with `n`**: 1.5460 at 6, 9, 12, 26, 58, 151, 475, 991 and 4,000. It is the
+minimum rather than the median (1.69), because a guarantee taken on the typical pair is not a
+guarantee. `layout.py` owns it as `PHYLLOTAXIS_TIGHTEST`, `test_layout_spacing.py`
+re-measures it, and a test pins the renderer's copy to it.
+
+    r = min( DISK_GAP * spreadZ / 2 ,  1.546 * R / (2 * spacing * sqrt(n)) )
+
+In **world units**, so it means the same thing at every zoom. The ceiling is Tom's: a node
+may not grow past half the gap to the plate above or it collides with a neighbour it has no
+relationship with — and it is half the *drawn* gap, so `spreadZ` is the lever.
+
+### Tom's two regimes fall out rather than being imposed
+
+At `plateSize 1` the node radius is **16.4 world on every one of the 53 plates**, because area
+per node is already constant there and the plate widths do the work. Per-plate sizing appears
+only as the dial moves toward one width — which is *"the only time we should consider resizing
+nodes is when we have fixed the plate size"*, reached from the other end. At `plateSize 0` a
+six-node plate draws at 2.0× the radius of the 991-node plate on a disc of the same width.
+
+### Verified through the renderer's own buffers
+
+`Graph.separation()` reads the positions and radii the engine is about to hand the GPU — the
+picture, not the formula that produced it — and reports the closest two surfaces on the stack.
+
+| | pairs | touching | tightest clearance |
+|---|---:|---:|---:|
+| spiral · width 1 | 2,681,114 | **0** | 16.37 world |
+| spiral · width 0 | 2,681,114 | **0** | 19.39 world |
+| spiral · spreadZ 1.0 | 2,681,114 | **0** | 16.37 world |
+| spiral · uneven spread | 2,681,114 | **0** | — |
+| force · GPU, 84 ms | 2,681,114 | 2,164 (0.08%) | −37.77 world |
+
+### Force is left as it is, and the withdrawal is the interesting part
+
+Tom: *"Force layout should be the same as it is now."* Under force a plate's node size is
+derived from the circle the solver gave it as if its `n` nodes were spread evenly, so nodes
+inside a cluster can still touch — the arrangement saying they are tightly related, which is
+what the reader turned it on to see.
+
+**Measuring the real tightest pair was built first, and withdrawn on evidence.** It works: 0
+touching pairs of 2.68 million under force. But a solver can leave two nodes almost
+coincident, that one pair then sets the whole plate's node size, and the view cap — taken on
+the smallest node in the stack — zoomed the entire picture in until that node was a pixel.
+**A 101-pixel dot everywhere else, from one outlier on one plate.** Rule 49's shape: a
+plausible answer that hides what produced it. The grid-based nearest-neighbour search built
+for it went with it.
+
+### Two defects, and neither was found by review
+
+**A placement change did not resize what it moved.** `applyLayout` moves every node and
+clears the box cache, with a comment saying "the code that causes the staleness is the code
+that clears it" — and left the radii alone, because under a pixel constant no placement could
+stale them. Switching to force therefore drew spiral-sized dots over clustered positions:
+**1,494 overlapping pairs on an arrangement whose own rule says none can.** `applyLayout` now
+repaints, in the same function and for the same stated reason.
+
+**A lone node and a lone shadow both went to the centre.** `phyllotaxis` returns the origin
+for a single point, and at the origin a rotation separates nothing. Caught by
+`test_a_shadow_never_lands_on_a_drawn_node` on its first run. The centre belongs to the drawn
+nodes; a lone shadow takes the ordinary formula's answer instead.
+
+### The placement change the law rests on
+
+Drawn nodes and shadows shared one spiral ordered by degree, and the two kinds **segregate**
+by degree — so the drawn nodes came out in contiguous runs and inherited the spacing of *all*
+the placed points rather than their own. `ext:<small outside>` drew its six nodes from spiral
+slots **0–2 and 32–34 of 42** — two blobs, not six dots — and `ext:FILE` drew 151 in one
+unbroken block of 788. A plate sized for what it draws and packed with five times that many
+points cannot separate its dots at any node size.
+
+A shadow is a device for the third dimension and its slot is empty screen space (rule 23), so
+it has **no claim on the plate's area budget**. It still needs a position — it takes part in
+its plate's forces and a crossing has to meet the plate somewhere — so it gets a spiral of its
+own, half a turn out of phase.
+
+*Tested and rejected before it was proposed:* sizing the plate by placed points rather than
+drawn nodes, which looked like the clean one-line fix for the shadow-heavy plates. Measured:
+49.6% → **53.0%** touching, because it renormalises against a different largest plate.
+
+### The ceiling binds, and the page says so
+
+At the default `spreadZ` of 0.35 the ceiling is **33.2 world**, so at `plateSize 0` **43 of
+Society's 53 plates** draw at it rather than at what their own spacing allows — plates from 6
+to 217 nodes all at one size. Design rule 1 says no filter is silent, and a dot held below its
+earned size is a filter on the one channel this feature exists to use. `nodeCeilingNote()`
+states the count beside the width slider and names **stack** as the lever, because the ceiling
+moves with that slider and not with the two the reader will otherwise blame.
+
+It is refreshed from `updateControlsSummary`, where every slider in the box passes. The first
+version put it in the width branch alone — rule 78 written and committed in the same edit.
+
+### The control, and the floor
+
+`nodeSize` is retired; **spacing** replaces it, 1.05–4.0 with 1.5 the default. Tom's call, and
+the argument is that a radius is derived now: a slider setting it directly sets a number the
+next layout change overwrites, and one that could be pushed past the spacing would exist to
+break the guarantee beside it. Smaller means bigger dots, which the label has to carry.
+
+Never smaller than can be drawn, and **the floor is on the view rather than on the radius**.
+`radiusMinPixels` would hold every dot at a pixel while its plate went on shrinking, which is
+exactly how they ended up on top of each other; `applyViewCap` raises `minZoom` so the
+smallest node is always at least 1 px. The whole stack still frames in a graph pane about
+**465 px tall** at the default settings; below that the reader pans, which is what capping the
+view means.
+
+### Owed
+
+**One look at a sparse plate.** Every figure above was taken inside the running engine on the
+real payload and not one is a screenshot. deck.gl reports `frames 0` in the automation tab:
+the graph pane is hidden at boot, the canvas mounts at 300×150 and never resizes, and four
+ways round it failed — a scripted mode switch, a pointer click, a selection to make the graph
+the boot view, and a forced `resize()`. Rule 90's neighbour, and it is one minute of Tom's
+screen.
+
+**Gates:** 1,273 tests, mypy clean over 126 source files, ruff clean.

@@ -123,8 +123,41 @@ function hslToRgb(h, sl, l) {
   return [f(0), f(8), f(4)];
 }
 
-const DOT_MIN = 1.4;
-const DOT_MAX = 3.6;
+/* ── how big a node is drawn ──────────────────────────────────────────────────────
+ *
+ * **A node's size is a fraction of the room its own plate gives it**, and it is in world
+ * units so that it means the same thing at every zoom. It used to be a pixel constant,
+ * identical on every plate, while a plate's width was a world quantity that shrank with
+ * both zoom and how little it held -- so a dot knew nothing about the space it had.
+ * Measured on Society at the default framing, **4,990 of 10,052 drawn nodes touched or
+ * overlapped a neighbour**, and the smallest plate was 5.5 px across holding six of them.
+ *
+ * The tightest pair on a phyllotaxis disk of `n` points is exactly `1.546 * R / sqrt(n)`,
+ * and 1.546 does not vary with `n` -- measured from 6 to 4,000 in `layout.py`, which owns
+ * the constant, and re-measured by `test_layout_spacing.py`. So a radius can be *chosen*
+ * that never overlaps rather than one that usually does not:
+ *
+ *     r = tightest_pair / (2 * spacing)
+ *
+ * with `spacing` the reader's multiple of a diameter. Two neighbours then always leave
+ * `2r(spacing - 1)` of clear space between them, whatever the zoom, the plate or the size
+ * of the program.
+ *
+ * **And a ceiling in the third dimension**, because a plate is not alone: a node may not
+ * grow past half the gap to the plate above, or it collides with a neighbour it has no
+ * relationship with. That gap is `DISK_GAP * spreadZ`, so the reader who spreads the stack
+ * raises the ceiling -- which is the only lever there is once a plate is at it. */
+const PHYLLOTAXIS_TIGHTEST = 1.546;   // layout.py owns this; see its comment for the measurement
+const NODE_PLACED_R = 1000;           // the radius `structural` places into (`DISK_RADIUS`)
+/* A node with no edges, against the busiest on its plate. Degree still modulates size and
+ * this is the range it modulates over -- narrowed from the old 0.39 because the absolute
+ * size now carries how sparse the plate is, which is the louder signal, and because a node
+ * at 0.39 of a plate already at the small end is below what a screen can draw. */
+const DEGREE_FLOOR = 0.6;
+/* Never smaller than can be rendered. Enforced by capping the *view* rather than by
+ * flooring the radius in pixels: a pixel floor would put the dots back on top of each
+ * other at low zoom, which is the thing this whole scheme exists to stop. */
+const NODE_MIN_PX = 1.0;
 /* Above this multiplier the dots are big enough that flatness would show, so the sphere
  * shading is switched on. Below it the extra fragment work buys nothing a reader can see.
  * It is a look, not a mode: the same layer, the same draw call, the same buffers. */
@@ -237,7 +270,15 @@ const opts = {
   changeStamp: 0,
   filterMode: 'dim',
   direction: 'both',
-  nodeSize: 1,
+  /* **How much clear space a node keeps, as a multiple of its own diameter.** This
+   * replaced `nodeSize`, and the two could not both stay: a node's radius is *derived*
+   * from its plate now, so a slider that set it directly would be setting a number the
+   * next layout change overwrites -- and one that could be pushed past the spacing would
+   * be a control whose whole job is to break the guarantee beside it. Smaller means bigger
+   * dots, which is the one thing about it that has to be said on the label.
+   *
+   * 1.0 would be dots exactly touching, so the range starts above it. */
+  nodeSpacing: 1.5,
   /* Three axes, independent, because they answer different questions. X and Y widen a
    * plate and pull apart nodes that fuse into a solid mass once they are big enough to
    * look at; Z is the gap between plates. There is deliberately no fourth "linked"
@@ -590,6 +631,16 @@ function applyLayout(d) {
   // Every box was placed by projecting a position that has just moved. Rule 51: the code
   // that causes the staleness is the code that clears it.
   g.boxCache = null;
+  /* **And so is every radius**, which is new and was found by the instrument rather than by
+   * review. A node's size is a fraction of the room its own plate gives it, so the code that
+   * changes that room has to resize what is in it -- and this is that code. It did not, and
+   * the symptom was only visible one layout over: switching to the force arrangement moved
+   * every node into clusters while the radii stayed the ones chosen for the spiral, so
+   * **1,494 pairs overlapped** on an arrangement whose own rule says none can. Under the
+   * old scheme a radius was a pixel constant and no placement could stale it, which is why
+   * nothing here had ever had to say this. Rule 51, in the same function that already
+   * clears the box cache for the same reason. */
+  paintNodes(d);
   if (g.picks.length) buildSelectionGeometry(d);
 }
 
@@ -642,6 +693,108 @@ function diskColor(diskId) {
                   : hslToRgb(hue, PALETTE.diskS, PALETTE.diskL);
 }
 
+/* The spacing a plate's drawn nodes are laid out at, in the layout's own units and before
+ * any spread is applied.
+ *
+ * **Derived, both times, and under the force layout that is a decision rather than a
+ * shortcut.** For the spiral it is exact: `phyllotaxis` puts `n` points on a disk of radius
+ * `R` with a tightest pair of `PHYLLOTAXIS_TIGHTEST * R / sqrt(n)`, and no measurement can
+ * improve on knowing it.
+ *
+ * A force layout makes clusters, which is the whole point of it, so this is the size that
+ * would separate `n` points spread *evenly* over the circle the solver ended up with. Nodes
+ * inside a cluster can therefore still touch -- and that is the arrangement saying they are
+ * tightly related, which is what a reader turned it on to see. It is also what force does
+ * today, and Tom's instruction was that force stay as it is.
+ *
+ * **Measuring the real tightest pair was built first and withdrawn on evidence.** It does
+ * guarantee separation under force -- 0 touching pairs of 2.68 million -- but a solver can
+ * leave two nodes almost coincident, and one such pair then sets the whole plate's node
+ * size. Worse, the view cap is taken on the smallest node in the stack, so a single freak
+ * pair on one plate zoomed the entire picture in until that node was a pixel: a 101-pixel
+ * dot everywhere else. A rule that lets one outlier decide the whole view is rule 49's
+ * shape -- a plausible answer that hides what produced it. */
+function plateGaps(d) {
+  const out = new Map();
+  for (const k of d.raw.disks) {
+    if (!(k.nodes > 1)) { out.set(k.id, Infinity); continue; }
+    const c = d.circles && d.circles.get(k.id);
+    const R = c ? c.r : NODE_PLACED_R;
+    out.set(k.id, PHYLLOTAXIS_TIGHTEST * R / Math.sqrt(k.nodes));
+  }
+  return out;
+}
+
+/* The largest radius a node on each plate may take, in world units, and how many plates are
+ * held below what their own spacing would allow.
+ *
+ * Two constraints, and a plate takes whichever binds. Its own spacing says how big a dot
+ * can be before it meets its neighbour; the gap to the plate above says how big before it
+ * meets a node it has nothing to do with. The second is the one that binds on a sparse
+ * plate, and it binds hard at the default `spreadZ` of 0.35 -- see `plateCeilingNote`,
+ * which says so on the page rather than leaving the reader to wonder why forty-three
+ * plates draw the same size (design rule 1). */
+function nodeRadii(d) {
+  const m = Math.max(1.01, opts.nodeSpacing || 1.5);
+  const spread = Math.min(opts.spreadX, opts.spreadY);
+  const ceiling = DISK_GAP * opts.spreadZ / 2;
+  const gaps = plateGaps(d);
+  const out = new Map();
+  let held = 0, smallest = Infinity;
+  for (const k of d.raw.disks) {
+    const f = d.diskScale.get(k.id) ?? 1;
+    const room = (gaps.get(k.id) ?? Infinity) * f * spread / (2 * m);
+    const r = Math.min(ceiling, room);
+    if (room > ceiling) held++;
+    if (k.nodes > 0 && r < smallest) smallest = r;
+    out.set(k.id, r);
+  }
+  return { radius: out, held, ceiling, smallest: Number.isFinite(smallest) ? smallest : 1 };
+}
+
+/* Degree still modulates size, over `DEGREE_FLOOR`..1 of the plate's own allowance.
+ *
+ * The knee is the old pixel formula's: `sqrt(degree) * 0.28` against a span of 2.2, so a
+ * node reaches full size at about sixty edges exactly as it did before. What changed is
+ * what full size *means* -- it was 3.6 px everywhere and is now this plate's allowance. */
+function degreeFactor(degree) {
+  const t = Math.min(1, (Math.sqrt(degree) * 0.28) / 2.2);
+  return DEGREE_FLOOR + (1 - DEGREE_FLOOR) * t;
+}
+
+/* The biggest dot on screen, in pixels, at the zoom in force.
+ *
+ * One caller wants it because sphere shading is worth switching on only once a dot is big
+ * enough for flatness to show, and that has always been a pixel question. It used to be
+ * `opts.nodeSize * opts.scale` -- a slider reading, not a measurement -- which is why it
+ * could be right about a threshold and wrong about the picture. */
+function maxNodePixels(d) {
+  if (!d || !d.nodeCeiling) return 0;
+  let big = 0;
+  for (const r of d.nodeCeiling.radius.values()) if (Number.isFinite(r) && r > big) big = r;
+  return big * Math.pow(2, g.viewState.zoom);
+}
+
+/* **Cap the view so a node is never smaller than can be drawn.**
+ *
+ * Tom's rule, and it is the right place for the floor: putting it on the radius instead --
+ * deck's own `radiusMinPixels` -- would hold every dot at a pixel while its plate went on
+ * shrinking, which is precisely how they ended up on top of each other. Capping the zoom
+ * keeps the geometry honest and costs the reader a pan at the extreme instead of a lie.
+ *
+ * Taken on the *smallest* node the picture will draw -- the least busy node on the tightest
+ * plate -- because a floor that only the biggest clears is not a floor. */
+function applyViewCap(d) {
+  const per = d && d.nodeCeiling;
+  if (!per) return;
+  const smallest = Math.max(1e-6, per.smallest * DEGREE_FLOOR);
+  const floor = Math.log2(NODE_MIN_PX / smallest);
+  const zoom = Math.max(floor, g.viewState.zoom);
+  if (floor !== g.viewState.minZoom || zoom !== g.viewState.zoom) {
+    g.viewState = { ...g.viewState, minZoom: floor, zoom };
+  }
+}
+
 function paintNodes(d) {
   /* Colour carries one dimension at a time (design rule 4): what a thing *is*, or which
    * disk it sits on, or what a comparison says about it -- never two at once. Selection
@@ -657,7 +810,12 @@ function paintNodes(d) {
   const byChange = opts.colorBy === 'change' && !!opts.nodeChange;
   const hide = opts.filterMode === 'hide';
   const sel = g.members.size ? g.members : null;
-  const size = opts.nodeSize * opts.scale;
+  /* Recomputed here rather than cached, because every one of its inputs -- the spreads, the
+   * plate-width dial, the layout, the spacing -- already forces a repaint. A cache keyed on
+   * four things that all change together is a fifth thing to keep in step (rule 81). */
+  const per = nodeRadii(d);
+  d.nodeCeiling = per;
+  applyViewCap(d);
 
   for (let i = 0; i < d.n; i++) {
     /* A shadow is never drawn. It exists so a plate's layout can feel the pull of
@@ -692,8 +850,8 @@ function paintNodes(d) {
     }
     d.colors[i * 4] = c[0]; d.colors[i * 4 + 1] = c[1];
     d.colors[i * 4 + 2] = c[2]; d.colors[i * 4 + 3] = a;
-    const base = Math.min(DOT_MAX, DOT_MIN + Math.sqrt(d.degree[i]) * 0.28);
-    d.radii[i] = (out && hide) ? 0 : base * size;
+    const allowed = per.radius.get(d.raw.nodes.disk[i]) ?? 0;
+    d.radii[i] = (out && hide) ? 0 : allowed * degreeFactor(d.degree[i]);
   }
   d.gpu = null;
 }
@@ -1018,7 +1176,10 @@ function selectedDisks() {
 function buildLayers(d) {
   const still = !g.moving;
   const layers = [];
-  const size = opts.nodeSize * opts.scale;
+  /* The biggest dot on screen, in pixels: the plate with the most room, at the zoom in
+   * force. Radii are world units now, so anything that wants a pixel has to convert -- and
+   * two things do, the sphere-shading threshold and the layer's own upper clamp. */
+  const size = maxNodePixels(d);
 
   /* The plates the selection actually reaches, drawn faintly even when plates are off.
    *
@@ -1060,6 +1221,9 @@ function buildLayers(d) {
    * extension turns each disc into a ball -- same buffers, same call, a few extra
    * arithmetic operations per fragment. Real geometry would have cost fifteen thousand
    * mesh instances and a lighting pass for a difference nobody can see. */
+  /* The threshold is in pixels and always was; what changed is that the number reaching it
+   * is measured off the picture rather than read off a slider. `opts.nodeSize` used to be
+   * that slider and no longer exists. */
   const spheres = size >= SPHERE_FROM;
   /* The id carries the shading, and that is load-bearing rather than tidy.
    *
@@ -1084,7 +1248,12 @@ function buildLayers(d) {
     : '';
   layers.push(new ScatterplotLayer({
     id: `nodes${shadingId}`, coordinateSystem: CARTESIAN, data: gpuData(d).nodes,
-    radiusUnits: 'pixels', radiusMinPixels: 0, radiusMaxPixels: DOT_MAX * 2 * size,
+    /* **World units, not pixels**, which is the whole change: a dot now scales with the
+     * plate it sits on, so the separation chosen for it holds at every zoom instead of only
+     * at the one it was chosen at. `radiusMinPixels` stays at zero deliberately -- a pixel
+     * floor is exactly what would put the dots back on top of each other when the reader
+     * zooms out, and the view cap in `applyLayout` is what keeps them renderable instead. */
+    radiusUnits: 'common', radiusMinPixels: 0,
     pickable: true, autoHighlight: true, highlightColor: [255, 255, 255, 255],
     /* Billboarded: the disc always faces the camera.
      *
@@ -1993,7 +2162,7 @@ function benchmark(seconds = 6) {
         resolve({
           median: med, worst, capped: med >= 59 && worst >= 59,
           nodes: g.data.stats.nodes,
-          spheres: opts.nodeSize * opts.scale >= SPHERE_FROM,
+          spheres: maxNodePixels(g.prepared) >= SPHERE_FROM,
           /* Both kinds, because both were drawn. Reporting `count` alone under-stated a
            * run by its crossings -- 2,199 against 4,253 submitted -- which is rule 24
            * surviving in the half of the line the first fix did not touch. They are named
@@ -2638,6 +2807,65 @@ window.DunneFlowGraph = {
   benchmark,
   diagnostics,
   SPHERE_FROM,
+  /* The biggest dot on screen, in pixels. The shell asks because the sphere threshold is a
+   * pixel question and the size is no longer a slider it can read. */
+  nodePixels() { return maxNodePixels(g.prepared); },
+
+  /* How many plates are drawing their nodes smaller than their own spacing would allow,
+   * because the gap to the plate above is the tighter of the two constraints.
+   *
+   * Asked so the page can say it. A dot held below its earned size is a filter on the one
+   * channel this feature exists to use, and design rule 1 says no filter is ever silent --
+   * at the default `spreadZ` of 0.35 this is forty-three of Society's fifty-three plates,
+   * which is not a footnote. `spreadZ` is the lever: the ceiling is half the drawn gap, so
+   * spreading the stack lifts it. */
+  /* **The closest two drawn nodes come to touching, anywhere on the stack.**
+   *
+   * The instrument for the one claim this scheme makes. It is measured off the buffers the
+   * renderer is about to hand the GPU -- the positions after every spread and width, and
+   * the radii after the ceiling and the degree factor -- so it answers about the picture
+   * rather than about the formula that produced it. A formula can be right and a picture
+   * wrong; that is what rule 13 is about, and it is why this reads the arrays instead of
+   * recomputing the rule.
+   *
+   * `clear` is the gap between two surfaces: positive is space, zero is touching, negative
+   * is overlap. Reported with the plate and the pair, because "something overlaps" is not
+   * an answer anybody can act on. */
+  separation() {
+    const d = g.prepared;
+    if (!d || !d.radii) return null;
+    const members = new Map();
+    for (let i = 0; i < d.n; i++) {
+      if (d.raw.nodes.shadow[i] === 1 || !(d.radii[i] > 0)) continue;
+      const id = d.raw.nodes.disk[i];
+      let list = members.get(id);
+      if (!list) members.set(id, list = []);
+      list.push(i);
+    }
+    let worst = Infinity, where = '', pair = null, counted = 0, touching = 0;
+    for (const [disk, idx] of members) {
+      for (let a = 0; a < idx.length; a++) {
+        for (let b = a + 1; b < idx.length; b++) {
+          const i = idx[a], j = idx[b];
+          const dx = d.positions[i * 3] - d.positions[j * 3];
+          const dy = d.positions[i * 3 + 1] - d.positions[j * 3 + 1];
+          const clear = Math.hypot(dx, dy) - d.radii[i] - d.radii[j];
+          counted++;
+          if (clear <= 0) touching++;
+          if (clear < worst) { worst = clear; where = disk; pair = [i, j]; }
+        }
+      }
+    }
+    return { clear: worst, plate: where, pair, pairs: counted, touching,
+             nodes: [...members.values()].reduce((n, l) => n + l.length, 0) };
+  },
+
+  nodeCeiling() {
+    const d = g.prepared;
+    if (!d || !d.nodeCeiling) return null;
+    return { held: d.nodeCeiling.held, plates: d.raw.disks.length,
+             ceiling: d.nodeCeiling.ceiling };
+  },
 };
 
 })();

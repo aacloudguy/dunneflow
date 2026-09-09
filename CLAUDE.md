@@ -646,7 +646,26 @@ docs   ──► extract ──► docs.db  (SQLite) ─────────
   states **three** instants — the snapshot, when its source was read, and when these
   documents were written — because `analyze` writes a map where the last two are one moment
   and a re-render is where they come apart by a fortnight.
-- `web/layout.py` — where things sit. `DISK_RADIUS` is now the width of the **widest**
+- `web/layout.py` — where things sit, and **how big a thing is drawn on it**. A node's
+  radius was a pixel constant and a plate's width a world quantity, so a dot knew nothing
+  about the room it had: **4,990 of Society's 10,052 drawn nodes touched a neighbour** at
+  the default framing, and the smallest plate was 5.5 px across holding six. The fix is one
+  measured fact — the tightest pair on a phyllotaxis disk of `n` points is
+  `PHYLLOTAXIS_TIGHTEST * R / sqrt(n)` and that constant is **1.546 at every `n` from 6 to
+  4,000** — so a radius can be *chosen* that never overlaps rather than one that usually
+  does not. It is in world units now, capped at half the drawn gap to the plate above so a
+  node cannot collide with a z-neighbour, and the reader sets the **spacing** (`nodeSize`
+  is retired: a derived radius has no slider). Measured through the renderer's own buffers,
+  `Graph.separation()`: **0 touching pairs of 2,681,114** under the spiral at every setting;
+  0.08% under force, which is the clusters and is left alone deliberately.
+
+  **Drawn nodes and shadows get separate spirals**, and that is what makes the law true. They
+  shared one ordered by degree and the two kinds segregate, so the drawn nodes came out in
+  contiguous runs at the density of *all* the placed points — `ext:<small outside>` drew six
+  nodes from slots 0–2 and 32–34 of 42. A shadow is a device for the third dimension and its
+  slot is empty screen space (rule 23); it has no claim on the plate's area budget.
+
+  `DISK_RADIUS` is the width of the **widest**
   plate rather than of every plate; how wide each one is actually drawn is a *view*
   property owned by the renderer, like Z and the spreads, because `phyllotaxis` is radially
   uniform and scaling a plate's coordinates is exactly computing it at a smaller radius.

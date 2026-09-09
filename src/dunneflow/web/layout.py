@@ -109,15 +109,42 @@ DISK_RADIUS = 1000.0
 DISK_GAP = 190.0
 
 
-def phyllotaxis(index: int, total: int, radius: float = DISK_RADIUS) -> tuple[float, float]:
+# The tightest pair on a phyllotaxis disk of `n` points, as a multiple of `radius / sqrt(n)`.
+#
+# **Measured, not derived, and it is a constant to four figures**: 1.5460 at n = 6, 9, 12,
+# 26, 58, 151, 475, 991 and 4,000. That is what makes node separation a *law* here rather
+# than a tuning -- a plate of any size knows exactly how close its two closest dots are, so
+# a radius can be chosen that never overlaps instead of one that usually does not.
+#
+# It is the **minimum** rather than the median (1.69), because a guarantee taken on the
+# typical pair is not a guarantee. `test_layout.py` re-measures it, so a change to the
+# placement that moved it could not pass silently.
+PHYLLOTAXIS_TIGHTEST = 1.546
+
+
+def phyllotaxis(index: int, total: int, radius: float = DISK_RADIUS,
+                turn: float = 0.0, alone_at_centre: bool = True) -> tuple[float, float]:
     """Even placement of `total` points on a disk, deterministic in `index`.
 
     `sqrt` spacing keeps area per point constant, so the centre does not clot.
+
+    `turn` rotates the whole spiral. It exists so two sets of points can share a disk
+    without sharing a spiral -- see `structural`, where the drawn nodes and the shadows are
+    placed separately and must not land on each other.
+
+    **`alone_at_centre` is the one case a rotation cannot separate**, and a test found it
+    rather than a review: at the origin every angle is the same point, so a plate holding
+    one drawn node and one shadow put both of them there. The centre belongs to the drawn
+    nodes -- it is where the eye lands and a shadow is never drawn -- so the shadow spiral
+    declines it and a lone shadow takes the ordinary formula's answer instead. Every other
+    count already avoids the origin, because the radial term is `index + 0.5`.
     """
-    if total <= 1:
+    if total <= 1 and alone_at_centre:
+        return (0.0, 0.0)
+    if total <= 0:
         return (0.0, 0.0)
     r = radius * math.sqrt((index + 0.5) / total)
-    theta = index * GOLDEN_ANGLE
+    theta = index * GOLDEN_ANGLE + turn
     return (r * math.cos(theta), r * math.sin(theta))
 
 
@@ -127,9 +154,28 @@ def structural(model: GraphModel) -> dict[tuple[str, str], tuple[float, float, f
     Keyed `(node_id, disk)` because one entity holds a position per disk it appears on --
     its real one, and one for every disk that shadows it.
 
+    **Two spirals per disk, not one, and the drawn nodes get their own.** This placed real
+    nodes and shadows in a single spiral ordered by degree, which sounds even and is not:
+    the two kinds segregate by degree, so the drawn nodes come out in contiguous runs and
+    inherit the spacing of *all* the placed points rather than their own. Measured on
+    Society, `ext:<small outside>` drew its six nodes from slots 0-2 and 32-34 of 42 -- two
+    blobs, not six dots -- and `ext:FILE` drew 151 in one unbroken block of 788. A plate
+    sized for what it draws and packed with five times that many points cannot separate its
+    dots at any node size, which is the whole of why they overlapped.
+
+    **A shadow has no claim on the plate's area budget**, because it is a device for the
+    third dimension rather than something drawn here (rule 23) -- its slot is empty screen
+    space. It still needs *a* position: it takes part in its plate's forces, and a crossing
+    has to meet the plate somewhere. So it gets a spiral of its own, rotated half a turn out
+    of phase, and the drawn nodes get a spiral of exactly their own number. `n` drawn nodes
+    on a disk of radius `R` then sit exactly `PHYLLOTAXIS_TIGHTEST * R / sqrt(n)` apart at
+    their closest, which is what lets the renderer choose a radius that never overlaps.
+
     Within a disk, nodes are ordered by degree so that the busiest sit nearest the middle.
     That ordering is the only structure this layout imposes, and it is enough to make a
     plate readable **as dots**: what a package mostly does ends up where the eye lands first.
+    Shadows are ordered by id instead -- their order is not a claim about anything, and
+    sorting them by degree is what used to interleave them into the drawn nodes' spacing.
 
     **It is not enough to make a plate readable as a diagram, and that is now known rather
     than suspected.** A first attempt at the plate diagram drew a labelled box at each of
@@ -149,20 +195,29 @@ def structural(model: GraphModel) -> dict[tuple[str, str], tuple[float, float, f
             key = (end, e.disk)
             degree[key] = degree.get(key, 0) + 1
 
-    members: dict[str, list[tuple[str, bool]]] = {}
+    drawn: dict[str, list[str]] = {}
+    shades: dict[str, list[str]] = {}
     for n in model.nodes:
-        members.setdefault(n.disk, []).append((n.id, False))
+        drawn.setdefault(n.disk, []).append(n.id)
     for s in model.shadows:
-        members.setdefault(s.disk, []).append((s.node_id, True))
+        shades.setdefault(s.disk, []).append(s.node_id)
 
     z_of = disk_heights(model)
     out: dict[tuple[str, str], tuple[float, float, float]] = {}
-    for disk, entries in members.items():
-        # Busiest first, then by id so the arrangement never depends on row order.
-        entries.sort(key=lambda e: (-degree.get((e[0], disk), 0), e[0]))
+    # Sorted, and not merely for tidiness: a set of strings iterates in an order that
+    # depends on the interpreter's hash seed, so building the map from one would vary run to
+    # run. This module's promise is that the same graph gives the same map on every machine.
+    for disk in sorted(set(drawn) | set(shades)):
         z = z_of.get(disk, 0.0)
-        for i, (node_id, _is_shadow) in enumerate(entries):
-            x, y = phyllotaxis(i, len(entries))
+        here = drawn.get(disk, [])
+        # Busiest first, then by id so the arrangement never depends on row order.
+        here.sort(key=lambda i: (-degree.get((i, disk), 0), i))
+        for i, node_id in enumerate(here):
+            x, y = phyllotaxis(i, len(here))
+            out[(node_id, disk)] = (x, y, z)
+        ghosts = sorted(shades.get(disk, []))
+        for j, node_id in enumerate(ghosts):
+            x, y = phyllotaxis(j, len(ghosts), turn=math.pi, alone_at_centre=False)
             out[(node_id, disk)] = (x, y, z)
     return out
 

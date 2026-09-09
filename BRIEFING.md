@@ -5,7 +5,7 @@ It exists so a fresh context can be useful in a few minutes instead of an hour.
 
 | Read | For |
 |---|---|
-| `CLAUDE.md` | The rules. 89 engineering rules — numbered to 90, since 21 does not exist — and 30 dashboard design rules, each earned from a false result on real code. **Binding.** |
+| `CLAUDE.md` | The rules. 90 engineering rules — numbered to 91, since 21 does not exist — and 30 dashboard design rules, each earned from a false result on real code. **Binding.** |
 | `HANDOFF.md` | The chronological record — what was built when, what it cost, what broke. ~1,700 lines. Read *sections*, not the whole thing. |
 | **this file** | Where things are, what is done, what we are doing now, what not to re-open. |
 | Artifact `f993d319-d2b7-4217-9130-cdbba698d1bc` | The ratified dashboard design — a complete working UI, the source of truth for every view. Read it with the **Artifact tool**, not from a screenshot. |
@@ -165,7 +165,9 @@ were layered 2026-08-30; the **anomaly worklist joined them 2026-09-01**, once a
 carried an identity to be paired on.
 
 **Not built:** `dunneflow infer` (the model pass) · attestation · the project profile ·
-packaging as a binary · any language but Python. **The Inference page is withdrawn as of
+any language but Python. **Packaging is built as of 2026-09-09** — a 31 MB unsigned
+`DunneFlow.app` that opens on a machine which has never run it, with the ground truth
+retaken *through the binary*; what remains is signing, an icon, and Windows. **The Inference page is withdrawn as of
 2026-09-09** — built as a mockup, never wired, and now delinked from every control and
 document with the code kept whole behind `INFERENCE_SHIPPED`. **Document mode is complete** — chunks 1, 2,
 3, both lanes of 4, and **chunk 5 as of 2026-09-04**. The pane reads the map's eight documents
@@ -202,7 +204,66 @@ program has a most-commented routine and a maximum alone is a claim nobody can w
 
 ## What we are doing now
 
-**Paused 2026-09-09, after clearing the deck before the binary.** Tom's decisions on the
+**Milestone 2 — packaging — is built, 2026-09-09.** All five blockers are closed and there
+is a `DunneFlow.app`: 31 MB, unsigned, and it opens on a machine that has never run it.
+Four commits, working tree clean. **1,363** tests, mypy clean over **134** source files,
+ruff clean.
+
+The ground truth was retaken **through the binary**, which is the only way it means
+anything about an artifact: 628 files in 37.7 s, the four executables at
+**1,381 · 423 · 292 · 112**, `naming.md` byte-identical to the `CORP` fixture with its
+three rules in the checked lane, the research paper yielding **zero** naming rules, and the
+conformance verdicts at **4 checked · 1 no population · 10 not checkable**.
+
+* **`runtime.py` is the one place four two-answer questions are answered** — frozen or not,
+  where my files are, where maps go, how to run myself again. Every one was a
+  `Path(__file__)` or a hand-written `sys.executable` in whichever module wanted it, and
+  frozen each is wrong differently. Two AST guards hold the line, and both had to be
+  rewritten to *parse* rather than scan: the first spelling of each reported its own
+  explanation of the rule as a violation (rule 34, three times in one session).
+* **The fingerprint refuses rather than returning the hash of nothing.** Blocker 1 was two
+  failures: an empty glob hashing to `e3b0c44298fc1c14`, which looks exactly like a
+  fingerprint, *and* `doc_extraction_inputs()`' `Path(__file__)`, which frozen is a name
+  with no file — a list that is never empty, so an emptiness check alone passes it through
+  to a `FileNotFoundError` raised from inside a hash.
+* **The binary and the checkout agree on a fingerprint**, and that was the whole reason for
+  the bundle layout: `extractor = 9:e8c9ac8a851c41b7` from the binary is the checkout's, and
+  the checkout opens the binary's maps. A build-time constant was considered and rejected
+  for exactly that — it would make the two builds refuse each other under rule 12.
+* **Nothing open is a state, and it is what a double-click begins in.** `serve` takes a
+  program, a root, or nothing; with nothing to show it serves a **start page** rather than
+  refusing to exist. Tom's call, over drawing the shell empty.
+* **The analyse dialog is out of `shell.js`** into `analyze.js`, because the start page needs
+  every part of it and a second copy in a reader's first minute is rule 51 at its worst.
+* **A native folder picker and a reveal**, `osascript` and `open`, no dependency. The picker
+  sits *beside* the typed field, never instead of it.
+* **Rule 91 was minted and it cost the thing it is about.** The 409's sentence was written
+  into the HTTP status line, which is latin-1; the em dash raised inside the error handler
+  and the socket closed empty. Found by pressing the route, not by any test — and the test
+  that holds it now binds a real port and asserts the em dash comes back.
+
+**One candidate rule is filed rather than minted, for Tom.** *A module's `__file__` is a
+name, not a place.* It is the shape behind four of this session's defects — the two rule
+directories, both extractor trees, and `web/`'s `static` and `vendor`, which frozen is a
+server that starts perfectly and serves 404s. It may be rule 60's family (*a stored path is
+a key before it is a location*) rather than a rule of its own, and that is Tom's call. The
+guard exists either way: `test_frozen.py` refuses any `__file__` under `src/` outside
+`runtime.py`.
+
+**What is left before this ships**, and none of it is code that does not exist yet:
+
+1. **Signing and notarisation.** The Developer account exists; these are Tom's commands to
+   run, and I can prepare them and the entitlements. This is what decides the non-technical
+   experience — an unsigned `.app` is refused by Gatekeeper on any machine but this one.
+2. **An icon.** `icon=None` in the spec today.
+3. **Windows**, last, as agreed. Two branches in `default_output_root()` are written and
+   marked **untested**; a `.spec` and a picker are not.
+
+*Deliberately not done, and offered rather than assumed:* `pywebview`. The browser start is
+what is built and measured, and the `osascript` picker closed the one gap that was the
+argument for a native window.
+
+**Before that, the same day: the deck was cleared.** Tom's decisions on the
 open list, taken in one pass, so that what is left before packaging is the packaging.
 Four commits, working tree clean, nothing half-done and nothing owed. **1,304** tests,
 mypy clean over **129** source files, ruff clean; ground truth retaken, not assumed — the
@@ -3304,12 +3365,16 @@ feature was blocked on an answer nobody owed.
 - The filed small things: `--revision` on `analyze` (it exists on `serve` only), the
   navigator's search box pinned-when-open (decided 2026-08-30, never built).
 
-### Packaging — next, and the blockers are found rather than predicted
+### Packaging — **built 2026-09-09**; the five blockers, and what each turned out to be
 
 Tom, 2026-09-09: *"Once these are done, work on the packaging issues and then we can build
 it. May take a couple of milestones."* A single double-clickable binary is the product and
 not for convenience: DunneFlow reads private source and `source.db` contains it, so a hosted
 model would send an unfamiliar codebase to a server (design rule 14).
+
+**All five are closed**, in the order written below, which was the record's own. What each
+*turned out* to be is marked under it, and the entries are left as they were filed because
+two of them were incomplete — which is worth being able to see.
 
 **Five blockers, read out of the code on 2026-09-09.** The first three are defects in code
 that already exists and can be fixed and tested *before* anything is frozen; the last two are
@@ -3323,37 +3388,66 @@ a feature — the app's cold start — rather than packaging.
    what dies is precisely the half added so a forgotten manual bump would stop being
    load-bearing (rule 12). Bundle the readers as data, **and** make `fingerprint_files` refuse
    an empty input.
+   *Closed, and it was **two** failures rather than one. `doc_extraction_inputs()` returns
+   `Path(__file__)` unconditionally, so frozen that list is never **empty** — it holds a name
+   with no file, and an emptiness check alone passes it straight through to a
+   `FileNotFoundError` raised from inside a hash. `RulesMissing` refuses both, and a directory
+   where a file was meant.*
 2. **`multiprocessing.freeze_support()` is nowhere.** `walk.py` opens a
    `ProcessPoolExecutor` in two places and macOS spawns, so a frozen app re-executes itself
    per worker. It has to be the first statement in the entry point.
+   *Closed, in both entry points. Worth adding, because it reads like a safety net and is
+   not: **`walk.py`'s serial fallback cannot catch this.** The `try` wraps the whole `with
+   ProcessPoolExecutor(…)` block, and nothing in the parent raises — the parent is fine and
+   the children are the program. Observed working: 628 files through the binary, sixteen
+   workers, one application.*
 3. **`analysis.argv()` is dead in a frozen app.** It builds
    `[sys.executable, "-m", "dunneflow.cli", …]`, and `-m` means nothing to a frozen binary —
    so **+ Analyze a directory…**, the only way a first-time reader gets a map at all, would
    never run. Small fix, and `argv` was already split out so a test can read it.
+   *Closed — `runtime.self_argv`, with a guard refusing any `sys.executable` under `src/`
+   outside that module.*
 4. **`serve` cannot boot with nothing to serve.** It raises *"no graph in … — run
    `dunneflow analyze` first"*, and a double-clicked app has neither an argument nor, on a
    fresh machine, a map. It needs a cold start: open on the output root, list what is there,
    offer the analyze dialog. Everything needed exists and opens no graph —
    `revisions.program_dirs()`, `/api/programs`, `analysis.check`; what does not exist is a
    `_Live` that is legitimately **empty**. Design rule 21 in the largest place it has applied.
+   *Closed, and **not** by drawing the shell empty: Tom's call was a start page whose whole job
+   is to say there is nothing yet. `_Live.current` raises rather than returning `None`, which
+   is how sixty use sites were left alone; the gate is two exemption lists, one per route
+   table, each naming the exceptions so a route added tomorrow needs a base by default.*
 5. **`DEFAULT_OUTPUT = Path("output")` is relative to a working directory** a double-clicked
    app does not have. `serve`'s `out_dir` positional has to become optional, which is the
    shape `CLAUDE.md` already records: *serve takes a program directory today and would take
    the root while still accepting either.*
+   *Closed. The root is a **field** on `_Live` now — four routes derived it as
+   `out_dir.parent`, which is right only while there is an `out_dir` to take the parent of.
+   `where()` tells a program from a root by whether it holds a map, never by its name. And
+   the root is **created only when nobody named one**, which a fresh machine found: it did
+   not exist, so the page named a place the reader could not open and* Show me *refused a
+   directory that was simply not there.*
 
-Then, and each smaller: bundling `detectors/*.yaml`, `web/static` (1.7 MB) and `web/vendor`
-(5.9 MB of deck.gl), all found through `Path(__file__).parent`; `_tool_version()`, which
-returns `""` with no dist-info so a shipped binary would record no tool version in the one
-panel that exists to say which DunneFlow read the map; **how a directory is chosen**, since
-`analysis.check` refuses a relative path and a browser cannot hand over a folder picker's
-path — this is where `pywebview` earns the place the handoff already gave it; the spec file;
-and signing, which is what decides the non-technical experience and for which the Apple
-Developer account already exists. Windows last.
+Then, and each smaller — **all done except the last two**: bundling `detectors/*.yaml`,
+`web/static` (1.7 MB) and `web/vendor` (5.9 MB of deck.gl), all found through
+`Path(__file__).parent` — *and `web/`'s two were **not** on this list when it was written,
+which is the whole argument for the guard that now refuses a `__file__` under `src/`:
+frozen they are a server that starts perfectly and serves 404s*; `_tool_version()`, which
+returns `""` with no dist-info — *answered by `copy_metadata('dunneflow')` in the spec
+rather than by a frozen branch, so there is still one answer to which DunneFlow read a map,
+and the binary records `0.1.0`*; **how a directory is chosen** — *`osascript`, no dependency
+and no `pywebview`, beside the typed field rather than instead of it*; the spec file —
+*`packaging/dunneflow.spec`*; and **signing**, which is what decides the non-technical
+experience and for which the Apple Developer account already exists. Windows last. **Those
+two are what is left.**
 
-**The 1,304 tests prove the source tree, not the artifact.** A packaged build needs the
-ground truth run *through the binary*: the four executables at 1,381 · 423 · 292 · 112,
-`naming.md` matching the `CORP` fixture, and the research paper still yielding zero naming
-rules.
+**The 1,363 tests prove the source tree, not the artifact.** So the ground truth was run
+*through the binary*, and every figure held: the four executables at
+**1,381 · 423 · 292 · 112**, `naming.md` byte-identical to the `CORP` fixture, the research
+paper yielding **zero** naming rules, and — added because a packaged build can fail this way
+where a source tree cannot — the conformance verdicts at **4 checked · 1 no population · 10
+not checkable**, and the binary's stamped `extractor` equal to the checkout's
+`rules_fingerprint()`. `PERFORMANCE.md` carries the timings with their conditions.
 
 ### Before this, in order — the full record is `HANDOFF.md`
 
@@ -3363,6 +3457,7 @@ for; chunk labels (`5v`, `6a`) and dated headings are stable, line numbers are n
 
 | When | What was built | Search `HANDOFF.md` for |
 |---|---|---|
+| 2026-09-09 | Milestone 2: packaging, and a `DunneFlow.app` that opens on a fresh machine | `milestone 2: packaging` |
 | 2026-09-09 | Clearing the deck: four decisions and a withdrawal | `clearing the deck before the binary` |
 | 2026-09-01 | Curiosities: the doorway panel, each extremum stating its middle | `Curiosities: the doorway panel` |
 | 2026-09-01 | The change worklist sees a rewritten comment | `sees a rewritten comment` |

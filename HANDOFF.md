@@ -14054,3 +14054,277 @@ to see below the fold of a 784×368 frame.
 
 Ground truth retaken rather than assumed, against `../society-2026-08-30/src`: all four
 declared executables resolved, at **1,381 · 423 · 292 · 112**.
+
+## 2026-09-09 — milestone 2: packaging, and a `DunneFlow.app` that opens on a fresh machine
+
+All five packaging blockers closed, and the artifact built. Four commits, working tree
+clean. `uv run pytest` **1,363 passed** · `uv run mypy .` clean over **134** source files ·
+`uv run ruff check .` clean. `output/mensores` was not written to at any point: every
+analysis this session went to a temporary directory, and 8787 — a previous session's
+server, left running on purpose — is still serving.
+
+The plan's order was the record's own and it was the right one: blockers 1 to 3 are defects
+in code that already existed, so they were fixed and tested *before* anything was frozen.
+A frozen build that fails is a much harder thing to read than a failing test.
+
+### 1. `runtime.py`, and the four questions with two answers
+
+`src/dunneflow/runtime.py` is the only place any of these is answered (rule 51): am I
+frozen, where do my files live, where do maps go, and how do I run myself again. Every one
+was previously a `Path(__file__)` or a hand-written `sys.executable` in whichever module
+happened to need it, and frozen each is wrong in a different way — a module imported out of
+a PyInstaller archive has a `__file__` that names a path with no file behind it.
+
+Named `runtime` rather than `paths` deliberately: a *path* in this codebase is a stored key
+relative to the tree a store was read from (rule 60), and nothing in here is one of those.
+
+**`resource_root()` keeps `dunneflow` as its last segment in both worlds**, and that single
+decision is what makes the artifact interoperable. `fingerprint_files` labels every input by
+its path relative to that root, so the bundle laid out as `<_MEIPASS>/dunneflow/…` yields
+`detectors/python.yaml` exactly as the checkout does. Measured afterwards rather than
+assumed: the binary stamps `extractor = 9:e8c9ac8a851c41b7` into the maps it writes, which
+is the checkout's `rules_fingerprint()` at the same commit, and the checkout then opens
+those maps without refusing them.
+
+The alternative — baking a fingerprint into the build — was considered and rejected on
+exactly that. It would have made a map written by the binary refuse to open in the checkout
+and the reverse, under the rule (12) that exists to prevent confident wrong answers.
+
+### 2. The fingerprint of nothing was two failures, not one
+
+The blocker as filed said `fingerprint_files([])` returns `e3b0c44298fc1c14` — the sha256
+of nothing, which looks exactly like a fingerprint and compares equal to itself for ever, so
+rule 12's whole guarantee would be enforced by a constant.
+
+Reading the code found the other half. `doc_extraction_inputs()` returns `Path(__file__)`
+**unconditionally**, so frozen that list is *never empty*: it holds a name with no file. An
+emptiness check alone passes it straight through to a `FileNotFoundError` raised from inside
+a hash, several frames from anything that can say what went wrong. `RulesMissing` refuses
+both, and a directory where a file was meant — each with its own sentence naming the
+directory this build looked in, because the answer to it is a change to a spec file and
+nothing else (rule 89).
+
+### 3. `freeze_support()`, and why the serial fallback is not a safety net
+
+`multiprocessing.freeze_support()` is now the first statement of `cli.main()` and of
+`packaging/dunneflow_app.py`. Both, and that is right rather than redundant: whichever is
+the real entry point of a given build, the first statement executed has made the call, and
+it is a no-op every other time.
+
+Worth writing down because it reads like cover and is not: **`walk.py`'s serial fallback
+cannot catch this.** The `try` wraps the whole `with ProcessPoolExecutor(…)` block, so an
+exception in the parent falls back to serial — but a frozen macOS spawn without
+`freeze_support()` does not raise in the parent. The parent is fine; the children are the
+program, and for `serve` that is sixteen more servers each opening a browser.
+
+Asserted structurally rather than by running sixteen servers: a guard parses `cli.py` and
+requires the call to be `main()`'s first statement. A guard can only see that a call is
+*written*, never that it ran (rule 86) — what it can see is that nothing is written in
+front of it, which is the whole requirement. Observed working later, through the binary:
+628 files, sixteen workers, one application.
+
+### 4. Found while writing the guard: `web/`'s two data paths
+
+The blocker list named `detectors/*.yaml` and both extractor trees. It did not name
+`web/serve.py`'s `STATIC` and `VENDOR`, which are the same shape — and frozen they are a
+server that starts perfectly and serves 404s for every asset on the page.
+
+That is the argument for the guard rather than for a list. `test_frozen.py` refuses any
+`__file__` under `src/` outside `runtime.py`, because the next one will be added by somebody
+who has not read any of this.
+
+**Both source guards had to be rewritten to parse rather than scan**, and the reason is
+rule 34: the first spelling of each read the file line by line and reported *its own
+explanation of the rule* as a violation. An AST holds code and nothing else. It happened
+three times this session, counting the cold-start test that matched `shell.js` inside
+`start.html`'s comment about why the dialog left `shell.js`.
+
+### 5. The output root became a thing rather than a derivation
+
+Four routes worked the root out for themselves as `out_dir.parent` — the program list, the
+program switch, the analysis, and the dialog's live pre-flight. Each correct, each added
+separately, which is exactly how a fifth arrives (rule 51). It is a field on `_Live` now,
+and a guard over the AST holds the line with one exemption: the constructor's own default,
+which is the single place still allowed to derive it.
+
+`where()` decides whether what `serve` was handed is a program or a root by the question
+`analyze` already asks to keep a program's own output out of its own corpus — **does this
+directory hold a map** — and never by its name, because `output/` is a fine name for a
+directory of hand-written prose (rule 30). `no_map_here()` gives three answers where there
+was one (design rule 21): a version that is not here, a root whose programs are *named* so
+the reader can pick one (rule 89), and a directory with nothing in it, which is the only one
+where `dunneflow analyze` is the fix.
+
+`analysis.check` takes `serving: Path | None`. Exactly one refusal depends on it — *that is
+the program being read* — and with nothing being read it is a fact with no subject. `None`
+rather than a stand-in, because a stand-in has to be a directory *name*, and one that
+happened to match would refuse the first analysis a reader ever asks for.
+
+*Corrected by its own test:* an empty `--name` is the ordinary case, not a missing one.
+`check` reads `name or source.name`, so it borrows the directory's leaf; the refusal is for
+a directory with no leaf to lend. The first spelling of that test asserted the opposite and
+was wrong about the code rather than the code being wrong about anything.
+
+### 6. Nothing open is a state — and Tom's call was a start page
+
+Put to Tom as two options: a start page whose whole job is to say there is nothing yet, or
+the full shell with every pane stating why it is blank. He chose the start page, and it is
+the better reading of design rule 21 rather than the cheaper one — the shell is an
+application about one version of one program, and drawing it over nothing would be forty
+panes each answering the same question the reader has not asked.
+
+`_Live.current` is a **property that raises** with nothing open, which is how sixty-odd use
+sites were left exactly as they were. `NothingOpen` is never a reader's doing: the start page
+is what a bare server serves and the shell is never loaded without a base, so reaching it is
+a route missing from the gate.
+
+The gate is `GET_WITHOUT_BASE` and `POST_WITHOUT_BASE` — **two lists for the two route
+tables**, on `POST_ROUTES`' own argument, because `/api/base` is a readout from cold and a
+base *switch* when posted to, and one list would have exempted the second by accident. Each
+names the *exceptions*, and that direction is the guard: a route added tomorrow needs a base
+by default and refuses visibly from cold, where the other direction would default a new
+route to *works without one* and fail the way rule 49 describes.
+
+**One route lists programs, and it is the shell's.** `/api/programs` gained the root and a
+revision count and answers with nothing open. A second endpoint for *what is here at boot*
+would have been a second answer to one question. Likewise **opening the first program and
+switching between two are one route**: `switch_program` already builds the new base before
+closing anything and restores what it had on failure, so a cold open is a switch with
+nothing to restore.
+
+### 7. The analyse dialog left `shell.js`
+
+`web/static/analyze.js`, about 500 lines: the dialog, the pre-flight, the progress panel,
+the stop button and the polling. Out of a 21,250-line file because the **start page needs
+every part of it**, and a second copy in the surface that is somebody's first minute with
+this tool is rule 51's defect in the worst place to put it.
+
+`prose.js`' boundary: it owns a gesture and knows nothing about the page. Five host
+functions carry what it cannot know — `used`, `changed`, `clearOverlays`, `openProgram` and
+`whileRunning`. The last was found by *reading the page*: the dialog's closing line says
+"the map you are reading stays open and stays true", which is the whole reason an analysis
+is a dismissible panel rather than the switch scrim — and on the start page there is no map
+to say it about (rule 13). `clearOverlays` is not symmetry either: the switch scrim is drawn
+at 96/97 and the dialog at 92/93, so a dialog opened from underneath a switch renders
+perfectly, greyed, and swallows every click.
+
+`test_web_controls.py`'s "everything the shell writes, something reads" guard failed on
+`data-anagain`, correctly: the shell still *writes* that control (a failed switch offers
+*Analyse it again*) and its reader had moved. Widened to look at the sibling module rather
+than exempted — a name on a list of allowed misses is a control nothing checks for ever
+(rule 35).
+
+### 8. `osascript`, and no `pywebview`
+
+Tom's call. `POST /api/pickdir` runs `osascript -e 'activate' -e 'POSIX path of (choose
+folder …)'`, because `analysis.check` refuses a relative path — deliberately, since the
+server's working directory is not the reader's — and a browser cannot hand a server what a
+folder picker chose. No dependency, and it closed the one gap that was the argument for a
+native window.
+
+`activate` comes first and is not decoration: the dialog belongs to a process with no
+window, and without it the panel opens **behind the browser**. Rule 90, one process over.
+
+**The typed field stays**, always. The picker is a convenience over a control that still
+works (design rule 2), what it returns goes *into the field* rather than straight into a
+run, and it goes through the same pre-flight — so the picker cannot produce a path the
+typed field would have refused (rule 41).
+
+`POST /api/reveal` opens the root in the Finder, bounded to the root and its programs. It
+is the answer to the one cost of Tom's choice of `~/Library/Application Support/DunneFlow`:
+that is the correct place for an application's data and is never swept into iCloud Drive —
+which matters, because `source.db` holds the private source of whatever was read, and
+`~/Documents` on a signed-in Mac would upload it. What it is not is findable, and a page
+that names a place the reader cannot reach is rule 89's shape.
+
+### 9. Rule 91, and it cost the thing it is about
+
+**The refusal never arrived.** `_refuse_without_base` was written as `send_error(409, "…
+nothing is open, so /api/cover has nothing to answer about — open a program first")`. That
+second argument is the HTTP *reason phrase*, and `http.server` encodes that line as
+**latin-1**; the em dash raised `UnicodeEncodeError` from inside the error handler, where
+there is no error path out, and the connection closed with nothing on it. `curl` reports
+exit 52, *empty reply from server* — naming neither the route, the code, nor the sentence.
+
+Worse than the failure the gate was written to prevent: a route answering an empty payload
+at least answers. This looks like a server that crashed.
+
+The fix is one argument along — `explain` is the body, encoded UTF-8. The rule is the
+general shape, because every one of these looks like an ordinary string until it is not: an
+HTTP reason phrase, a filename, a SQL identifier, a shell argument, a header value, an
+environment variable — each a channel narrower than the prose being put through it, and
+none of them validating on the way in.
+
+**No test that calls a handler directly could see it**, which is the other half. So
+`tests/test_cold_start.py` binds a real port, and one of its assertions is simply
+`assert "—" in body`.
+
+### 10. Frozen, and the ground truth run through it
+
+`packaging/dunneflow.spec` and `packaging/dunneflow_app.py`. `uv run pyinstaller
+packaging/dunneflow.spec --noconfirm` → **`DunneFlow.app`, 31 MB, unsigned**, in 23 s cold
+and 7 s warm.
+
+`datas` carries everything something reads *as a file*: the rules loaded as YAML, and the
+detectors' loader plus both extractor trees **hashed** rather than imported, because rule 12
+puts the reader in the key and a reader that exists only inside the archive hashes to
+nothing. Plus `web/static`, `web/vendor`, and `copy_metadata('dunneflow')` — which is how
+`tool_version()` keeps working with no frozen branch at all; the binary's maps record
+`0.1.0`.
+
+**No arguments means `serve`, and that decision belongs to the application rather than to
+the CLI.** A command-line tool run bare should say what it takes; an application that has
+just been double-clicked has no way to say anything back, and printing usage into a window
+nobody opened is the same as doing nothing.
+
+Found while testing exactly that: on a machine that has never run DunneFlow the default root
+does not exist, so the start page named a directory the reader could not open and *Show me*
+refused something that was simply not there. `serve` now creates it **only when nobody named
+a directory** — one the reader typed is never created, because a mistyped path would
+otherwise become a new empty root reporting no programs in a place they have never used
+(rule 49). Creating a directory is not repairing a store: rule 20 forbids a read bringing a
+*database* into being, and nothing on this path opens one.
+
+**Ground truth through the binary** — `../society-2026-08-29/src` with
+`--standards ../dunnecorp-standards`, 628 files and 2,064 documents in **37.7 s**:
+
+| Check | Result |
+|---|---|
+| The four declared executables | **1,381 · 423 · 292 · 112**, all resolved |
+| `naming.md` against the `CORP` fixture | byte-identical; its three rules in the checked lane |
+| The research paper's naming rules | **zero** |
+| Conformance verdicts | **4 checked · 1 no population · 10 not checkable** |
+| Stated rules | 12, including all seven rows of the `style.md` table |
+| The binary's `extractor` vs the checkout's | **equal** — `9:e8c9ac8a851c41b7` |
+
+### 11. Looked at, not only tested
+
+Screenshots and a real pointer, per the standing habit. The start page on an empty root and
+on a root of two; the shared dialog opened at the pointer from the start page; a program row
+pressed at the pointer landing in the shell with `renderer — 14 files` in the select;
+`selfCheck()` returning `[]`; no console errors anywhere. The frozen app run with no
+arguments served its start page out of the bundle — `start.js`, `analyze.js`, `tokens.css`
+and 1.6 MB of deck.gl all 200 — refused `/api/cover` with a 409, and opened a Finder window
+on the root when *Show me* was pressed.
+
+**The first pointer attempt missed, and it was rule 90.** `osascript -e 'tell application
+"System Events" to name of first application process whose frontmost is true'` answered
+**Terminal**. That is also the whole story about the capture: with Chrome in front the
+screenshot went from 784×368 — the top-left quarter at dpr 2 — to the full 1184×528.
+
+One layout nit fixed from the screenshot rather than from a test: the root row centred its
+label against a path that wraps to four lines, leaving the label and the button floating in
+the middle of the block they label. Top-aligned now, which reads the same either way.
+
+### What is left, and it is two things
+
+**Signing and notarisation**, which decide the non-technical experience — an unsigned `.app`
+is refused by Gatekeeper on any machine but the one that built it. The Developer account
+exists; those are Tom's commands to run and I can prepare them and the entitlements. Then
+an icon (`icon=None` today), and **Windows** last: two branches of `default_output_root()`
+are written and marked untested, and a `.spec` and a picker are not.
+
+**One candidate rule is filed rather than minted, for Tom to take or refuse:** *a module's
+`__file__` is a name, not a place.* It is the shape behind four of this session's defects,
+and it may be rule 60's family — *a stored path is a key before it is a location* — rather
+than a rule of its own. The guard exists either way.

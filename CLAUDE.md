@@ -14,15 +14,15 @@ by *how often you need it*, not by importance:
 | File | What it holds | When to read it |
 |---|---|---|
 | `CLAUDE.md` | commands, verification gates, architecture, and the **index** of every rule | every session — it is loaded for you |
-| `RULES.md` | the 89 engineering rules **in full**, with the false result each came from — numbered to 90, because 21 does not exist and the numbers are addresses | before working in the area a rule governs |
+| `RULES.md` | the 90 engineering rules **in full**, with the false result each came from — numbered to 91, because 21 does not exist and the numbers are addresses | before working in the area a rule governs |
 | `DESIGN-RULES.md` | the 30 dashboard design rules in full | before building or changing a view |
 | `PERFORMANCE.md` | every measured figure, with its budget and its conditions | before quoting or retaking a number |
 | `BRIEFING.md` | state: what is built, what is next, what is closed | at the start of a session |
 | `HANDOFF.md` | the full chronological record, session by session | when you need why something is the way it is |
 
 A rule is cited as a bare number — "rule 45", "design rule 19" — from code comments, tests
-and both records; **2,846** such citations across `src/` and `tests/` as of 2026-09-08 —
-2,121 to the engineering rules and 725 to the design ones, over 107 files. `RULES.md` carries
+and both records; **3,132** such citations across `src/` and `tests/` as of 2026-09-09 —
+2,326 to the engineering rules and 806 to the design ones, over 124 files. `RULES.md` carries
 the command that counts them, because the first retake gave two different answers in two
 shells. **The numbers are
 addresses. Never reuse one, never renumber, never close a gap.**
@@ -60,12 +60,106 @@ uv run dunneflow mirror   <path>                    # words the docs define that
 uv run dunneflow query    <path> --sql "..."        # ask the graph directly
 uv run dunneflow migrate  <dir>                     # stored paths: absolute -> relative
 uv run dunneflow render   <dir> [--revision <rev>]  # a snapshot's map, from the graph it has
-uv run dunneflow serve    <dir> [--revision <rev>]  # the dashboard, on one version
+uv run dunneflow serve    [dir] [--revision <rev>]  # the dashboard; a program, a root, or neither
 uv run dunneflow analyze  <path> --standards <dir>  # measure it against somebody else's rules
 ```
 
 `analyze --progress-json` reports one JSON object per line on stdout instead of the summary,
 which is how `serve` runs it. See the `serve` section below.
+
+**`serve` takes a program, an output root, or nothing at all**, and tells the two apart by
+the same question `analyze` asks to keep a program's own output out of its own corpus:
+*does this directory hold a map*. Never by name — `output/` is a fine name for a directory
+of hand-written prose (rule 30). Handed a root with nothing open it **serves the start
+page** rather than refusing: `web/static/start.html`, whose whole job is to say there is
+nothing yet and offer the two things that can be done about it. That is the state a
+double-clicked application begins in.
+
+The shell is *not* drawn empty, and that was a decision rather than an economy. It is an
+application about one version of one program; drawing it over nothing would be forty panes
+each having to say why it is blank, which is design rule 21 applied where it helps least —
+the answer is the same for all of them and the reader has asked none of the questions yet.
+Once a base exists, `/` is the shell, and the shell never boots without one.
+
+`_Live.current` **raises** with nothing open (`NothingOpen`), which is how sixty use sites
+were left alone. The gate is `_Handler.GET_WITHOUT_BASE` and `POST_WITHOUT_BASE` — **two
+lists for the two route tables**, because `/api/base` is a readout from cold and a base
+*switch* when posted to, and one list would exempt the second by accident. Each names the
+*exceptions*, so a route added tomorrow needs a base by default and refuses visibly from
+cold rather than answering out of nothing (rule 49). The refusal is a 409 whose sentence
+rides in `send_error`'s `explain`, never its message — **rule 91**, and it cost the whole
+refusal until it was pressed rather than tested.
+
+`web/static/analyze.js` is the analyse dialog, the pre-flight, the progress panel and the
+stop button, out of `shell.js` because the **start page needs all of it**. `prose.js`'
+boundary: it owns a gesture and knows nothing about the page, and what it needs from a host
+arrives as five functions — `used`, `changed`, `clearOverlays`, `openProgram`, and
+`whileRunning`, which is a *claim about the host's page* and so is the host's to make. The
+shell says the map you are reading stays open and stays true; the start page has no map to
+say that about.
+
+`POST /api/pickdir` runs `osascript` for a folder, because `analysis.check` refuses a
+relative path and a browser cannot hand a server what a picker chose. `activate` comes first
+— the dialog belongs to a process with no window, and without it the panel opens *behind*
+the browser (rule 90, one process over). The typed field stays, always: the picker is a
+convenience over a control that still works (design rule 2). `POST /api/reveal` opens the
+root in the Finder and is bounded to it, which is the answer to the one cost of
+`~/Library/Application Support` — the correct place for an application's data, never swept
+into iCloud Drive, and invisible to a reader who wants to hand a colleague a map (rule 89).
+
+## Packaging — the frozen application
+
+```bash
+uv run pyinstaller packaging/dunneflow.spec --noconfirm    # → dist/DunneFlow.app (31 MB)
+```
+
+**Four questions have two answers, and `runtime.py` is the only place either is given**
+(rule 51): am I frozen, where do my files live, where do maps go, and how do I run myself.
+Every one of them was `Path(__file__)` or a spelled-out `sys.executable` somewhere, and
+frozen each is wrong in a different way.
+
+* **`resource_root()` keeps `dunneflow` as its last segment in both worlds**, and that is
+  load-bearing rather than tidy. `fingerprint_files` labels every input relative to it, so
+  the binary and the checkout agree on a fingerprint at the same commit — measured: the
+  binary stamps `extractor = 9:e8c9ac8a851c41b7`, which is the checkout's, and the checkout
+  opens the binary's maps. Laid out any other way the two builds refuse each other's maps
+  under rule 12, which is the opposite of what that rule is for. A build-time constant was
+  considered and rejected for exactly that.
+* **`fingerprint_files` refuses an empty input and a named-but-absent one**, each with its
+  own sentence. A hash of nothing is `e3b0c44298fc1c14` and looks exactly like a
+  fingerprint; a `Path(__file__)` that is not a file raises `FileNotFoundError` from inside
+  a hash. `RulesMissing` is the class, and it is always a build defect.
+* **`multiprocessing.freeze_support()` is the first statement of both entry points.** macOS
+  spawns, so a frozen pool worker re-executes *the application* — sixteen more servers, or
+  sixteen more analyses. `walk.py`'s serial fallback cannot catch it: nothing in the parent
+  raises, because the parent is fine and the children are the program.
+* **`self_argv()`** is how the analysis subprocess runs this same build. `-m dunneflow.cli`
+  means nothing to a binary, and that would have broken **+ Analyze a directory…** on the
+  one build where it is the only way in.
+* **`default_output_root()`** is `./output` from a checkout and
+  `~/Library/Application Support/DunneFlow` frozen. Never `~/Documents`: `source.db` holds
+  the private source of whatever was read, and Documents is swept into iCloud Drive on a
+  signed-in Mac — egress by accident, out of a tool whose posture is deterministic and local
+  (design rule 14). `serve` **creates it only when nobody named a directory**; one the
+  reader typed is never created, because a mistyped path would otherwise become a new empty
+  root reporting no programs in a place they have never used (rule 49).
+
+`packaging/dunneflow.spec` bundles as **data** everything something reads as a *file*: the
+rules (loaded as YAML) and the detectors' loader plus both extractor trees (**hashed**, not
+imported — rule 12 puts the reader in the key), `web/static`, `web/vendor`, and
+`copy_metadata('dunneflow')` so `tool_version()` needs no frozen branch. Destination
+`dunneflow/…`, per `resource_root()`. `packaging/dunneflow_app.py` defaults a bare argv to
+`serve` — the **application's** decision, not the CLI's, which keeps its usage message.
+
+**The 1,363 tests prove the source tree, not the artifact**, so the ground truth is run
+*through the binary*. Taken 2026-09-09 on `../society-2026-08-29/src` with
+`--standards ../dunnecorp-standards`, 628 files in **37.7 s**: the four executables at
+**1,381 · 423 · 292 · 112**, `naming.md` byte-identical to the `CORP` fixture with its three
+rules in the checked lane, the research paper yielding **zero** naming rules, and the
+conformance verdicts at **4 checked · 1 no population · 10 not checkable**.
+
+Still to do: signing and notarisation (the Apple Developer account exists), an icon, and
+Windows.
 
 **`serve` also *makes* a program.** The `<select>`'s last option, `+ Analyze a directory…`,
 reads a source tree into a new directory under the output root and puts it in the list —
@@ -249,6 +343,19 @@ uv run mypy .        # src must be clean
 uv run ruff check .  # must pass
 ```
 
+And when anything under `runtime.py`, `packaging/`, `detectors/` or `extractors/` has
+moved, **through the binary as well as beside it** — the tests prove the source tree and
+not the artifact:
+
+```bash
+uv run pyinstaller packaging/dunneflow.spec --noconfirm
+dist/DunneFlow.app/Contents/MacOS/dunneflow analyze <tree> --name x --output <tmp>
+```
+
+The one check that is not a ground-truth number: the `extractor` the binary stamps must
+equal the checkout's `rules_fingerprint()`, or the two builds have stopped being able to
+read each other's maps (rule 12, and see **Packaging**).
+
 Then verify against real code, because unit tests on a toy program cannot catch a
 resolution defect that only appears at scale:
 
@@ -347,6 +454,12 @@ docs   ──► extract ──► docs.db  (SQLite) ─────────
            stat-gated
 ```
 
+- `runtime.py` — **what this build is and where it lives**, and the only place any of it
+  is answered (rule 51). Four questions with two answers each — frozen or not, where my
+  files are, where maps go, how to run myself again — and every one of them used to be a
+  `Path(__file__)` or a hand-written `sys.executable` in whichever module needed it. See
+  **Packaging** above; the layout of `resource_root()` is what makes a binary's map and a
+  checkout's map the same map.
 - `schema.py` — the fact contract. Every extractor, in any language, emits these types.
   A **call site has an identity** (`call_site_id`) and carries the arguments the caller
   wrote (`CallArg`), because two identical expressions in one routine are two calls and
@@ -1092,6 +1205,8 @@ it was written from.
      sentence has to be readable off whatever decides that.
  90. An instrument's pointer lands on the window in front, not on the tab you addressed —
      and every other instruction still reaches the right one.
+ 91. A sentence written for a reader has to fit the channel it is put in, and a channel
+     that is narrower than prose will not say so.
 ```
 
 ## Anomalies: the discipline

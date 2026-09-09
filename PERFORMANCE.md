@@ -749,3 +749,43 @@ spanning 21 plates or more **73.3% → 2.4%**. Module level: 30,859 → 8,004, m
 The grouped variant holds packages above externals and keeps 31.5% of the saving at routine
 level, 34.7% at module — the cost of that arrangement, stated so the choice is on the
 numbers.
+
+## The frozen application (measured 2026-09-09, Apple M1, macOS 26.2)
+
+The first figures taken **through the binary rather than beside it**, because the 1,363
+tests prove the source tree and not the artifact. `DunneFlow.app` built with
+`uv run pyinstaller packaging/dunneflow.spec --noconfirm`, unsigned, run as
+`DunneFlow.app/Contents/MacOS/dunneflow`.
+
+| Measure | Budget | Measured |
+|---|---|---|
+| Build, cold (no PyInstaller cache) | — | 23 s |
+| Build, warm | — | 7 s |
+| Bundle on disk | — | **31 MB** |
+| Full analysis of Society, through the binary | < 90 s | **37.7 s** |
+| Cold start to a served page, no map anywhere | < 3 s | ~1 s |
+
+**Conditions, and two of them are load-bearing** (rule 24). The analysis is
+`../society-2026-08-29/src` — 628 files, 2,064 documents — with
+`--standards ../dunnecorp-standards`, into a **temporary output directory on the internal
+disk**, with every store written from cold: `parsed 628, cached 0` and
+`documents read 2064, cached 0`. It is *not* comparable to the checkout's warm re-analysis
+rows above, and it is not the 90 s cold budget's own conditions either — that budget was set
+against the external volume, and this ran on the internal one. What it establishes is that
+freezing costs nothing measurable, not that the tree got faster.
+
+The `ProcessPoolExecutor` ran to completion with sixteen workers and did not re-execute the
+application, which is the observation `multiprocessing.freeze_support()` exists for and the
+only way to take it — nothing in the parent raises when that call is missing.
+
+**The bundle is 31 MB and 24 of it is not DunneFlow**: `web/vendor` is 5.9 MB of deck.gl,
+`web/static` 1.7 MB, and the rest is CPython and its standard library. No row here is a
+budget yet, because there is nothing to compare a first build against.
+
+### The one figure that is not a time
+
+The binary stamps `extractor = 9:e8c9ac8a851c41b7` into the maps it writes, which is the
+checkout's `rules_fingerprint()` at the same commit — and the checkout opens those maps
+without refusing them. That is the whole point of the `datas` layout in
+`packaging/dunneflow.spec`, and it is a *measurement* rather than a design claim: laid out
+any other way the two builds would refuse each other's maps under rule 12.

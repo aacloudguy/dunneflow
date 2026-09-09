@@ -9,8 +9,8 @@ agree with a rule and still reimplement the defect it was written from: every on
 was, at the time, the obvious thing to do.
 
 Cited as bare numbers — "rule 45" — from code comments, tests, `HANDOFF.md` and
-`BRIEFING.md`; **2,846** such citations across `src/` and `tests/`, 2,121 of them to these
-rules and 725 to the design ones, over 107 files — retaken 2026-09-08 with the command
+`BRIEFING.md`; **3,132** such citations across `src/` and `tests/`, 2,326 of them to these
+rules and 806 to the design ones, over 124 files — retaken 2026-09-09 with the command
 below, which is why the command is written down. The numbers are therefore **addresses**,
 never an ordering, and are never reused or closed up.
 
@@ -26,9 +26,9 @@ by the query. A count that changes with the shell it is run in is not a measurem
 24), so the exclusion is stated and the figure was reproduced twice before being written:
 
 ```bash
-grep -rhoiE "\brules? [0-9]+"        --exclude-dir=__pycache__ src tests | wc -l   # 2,846
-grep -rhoiE "\bdesign rules? [0-9]+" --exclude-dir=__pycache__ src tests | wc -l   #   725
-grep -rliE "\brules? [0-9]+"         --exclude-dir=__pycache__ src tests | wc -l   #   107
+grep -rhoiE "\brules? [0-9]+"        --exclude-dir=__pycache__ src tests | wc -l   # 3,132
+grep -rhoiE "\bdesign rules? [0-9]+" --exclude-dir=__pycache__ src tests | wc -l   #   806
+grep -rliE "\brules? [0-9]+"         --exclude-dir=__pycache__ src tests | wc -l   #   124
 ```
 
 
@@ -1727,3 +1727,40 @@ rule of that number — a blank canvas must say why it is blank — which does e
     control's box after **every** press, because a setting that changes the layout moves the
     next control — pressing the version strip to two lines moved its own toggle 8px and the
     next click landed on the row behind it.
+
+91. **A sentence written for a reader has to fit the channel it is put in, and a channel
+    that is narrower than prose will not say so.** The refusal was correct, complete, and
+    aimed at exactly the right person; it never arrived, because it was written into an HTTP
+    status line.
+
+    `send_error(409, "…")`'s second argument is the *reason phrase* — `HTTP/1.0 409 <here>` —
+    and `http.server` encodes that line as **latin-1**. Every other string in this codebase
+    is UTF-8 and this project writes em dashes everywhere, so the first em dash raised
+    `UnicodeEncodeError` from **inside the error handler**. There is no error path out of an
+    error path: the exception went to the socket-server's own logger and the connection
+    closed with nothing on it at all. `curl` reports exit 52, *empty reply from server* — a
+    symptom that names neither the route, the code, nor the sentence.
+
+    That is worse than the failure the refusal was written to prevent. A route answering an
+    empty payload at least answers; this looks like a server that crashed, on a page that had
+    just been asked a perfectly ordinary question.
+
+    **The remedy is one argument along**, not shorter prose: `send_error(code, message,
+    explain)` puts `explain` in the *body*, which is encoded UTF-8 and is where a sentence
+    belongs. The status line takes `nothing is open` and nothing more.
+
+    The general shape is worth more than the instance, because every one of these looks like
+    an ordinary string until it is not. A channel narrower than the text you are putting
+    through it: an HTTP reason phrase (latin-1), a filename (no `/`, and no `:` on some
+    volumes), a SQL identifier, a shell argument, an HTTP **header** value, a `data-`
+    attribute a splitter will divide, an environment variable. Each is a place where a
+    sentence composed for a human meets a protocol that predates it, and **none of them
+    validates on the way in** — the failure is at the far end, in a frame that cannot explain
+    itself.
+
+    **No test that calls a handler directly can see any of it**, which is the other half of
+    why this stood. The gate had honest unit coverage; the defect lives in the encoding of a
+    line that only exists when there is a socket. So `tests/test_cold_start.py` binds a real
+    port, and one of its assertions is simply that the em dash comes back —
+    `assert "—" in body`. A sentence that cannot be delivered is not a sentence, and the only
+    instrument that knows the difference is the wire.

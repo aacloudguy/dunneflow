@@ -59,6 +59,7 @@ uv run dunneflow naming   <path>                    # the naming standard as fou
 uv run dunneflow mirror   <path>                    # words the docs define that the code never uses
 uv run dunneflow query    <path> --sql "..."        # ask the graph directly
 uv run dunneflow migrate  <dir>                     # stored paths: absolute -> relative
+uv run dunneflow render   <dir> [--revision <rev>]  # a snapshot's map, from the graph it has
 uv run dunneflow serve    <dir> [--revision <rev>]  # the dashboard, on one version
 uv run dunneflow analyze  <path> --standards <dir>  # measure it against somebody else's rules
 ```
@@ -238,15 +239,22 @@ resolution defect that only appears at scale:
 uv run dunneflow analyze ../society-2026-08-29/src --name mensores
 ```
 
-**Three trees, and only two of them are the pair.** `../society-2026-08-26` (e2e658b4,
+**Four trees, and only two of them are the pair.** `../society-2026-08-26` (e2e658b4,
 625 files) and `../society-2026-08-29` (03ebbd93, 628 files) are the sister clones every
 recorded temporal figure belongs to; `../mensores-overhaul` is a third copy of 626 files
-and is neither end of it. This file named it here for a year and it cost a wasted analysis
-in the session that bumped `SCHEMA_VERSION` — the result looked perfectly healthy, and the
-tell was the sidecar reporting *"1 read, 625 already held"* where the record says twelve
-files differ.
+and is neither end of it. This file named `mensores-overhaul` here for a year and it cost a
+wasted analysis in the session that bumped `SCHEMA_VERSION` — the result looked perfectly
+healthy, and the tell was the sidecar reporting *"1 read, 625 already held"* where the record
+says twelve files differ.
 
-**All three are read-only.** They are copies kept for documentation. Never write to any of
+`../society-2026-08-30` (7baa17bf, 628 files) is the checkpoint taken 2026-09-09, and it is
+the newest Society there is: 6 commits past 03ebbd93, 43 files changed, and **3 source files**
+of them. **`main` is not where Society lives** — it sits at 09b9ef11 from 2026-06-10 with 384
+files under `src/`, and the work is on `feat/spec-lifecycle-and-evidence`. Cloning the default
+branch gets a tree three months stale that analyses perfectly, which is why the branch is
+named here.
+
+**All four are read-only.** They are copies kept for documentation. Never write to any of
 them. All output belongs in `output/`.
 
 Rebuilding the pair after a schema bump is two analyses and a seal, in this order — a
@@ -255,7 +263,8 @@ sealed snapshot is never re-analysed in place, by design (rules 25 and 62):
 ```bash
 uv run dunneflow analyze ../society-2026-08-26/src --name mensores
 uv run dunneflow revisions output/mensores --seal --label "Society at e2e658b4 - 2026-08-26"
-uv run dunneflow analyze ../society-2026-08-29/src --name mensores --standards <dir>
+uv run dunneflow analyze ../society-2026-08-29/src --name mensores \
+    --standards ../dunnecorp-standards
 ```
 
 **The third command carries `--standards` and the recipe said nothing about it for two days.**
@@ -265,6 +274,21 @@ uv run dunneflow analyze ../society-2026-08-29/src --name mensores --standards <
 without it leaves a map that analyses perfectly and cannot be opened. The directory is an
 outside standard the reader names; if the one a map was built with is gone, the store can be
 dropped and the conformance lane says so in its own words. Found 2026-09-08, the hard way.
+
+**It lives at `../dunnecorp-standards/` now, and that is not a detail.** The store records
+the root it was built from, and the first two were built from a session's scratchpad — so
+`standards.db` recorded a path that no longer existed and the standard's provenance was
+unreproducible twice. Not inside this repository, deliberately: DunneFlow's documentation
+root is its package root, so a standards directory there would be read back as DunneFlow's
+own prose and mint three naming rules this program never stated — rule 57's argument, one
+directory over. `naming.md` is identical to the `CORP` fixture in `tests/test_standards.py`.
+
+**A snapshot whose map was lost gets it back without an analysis.** `dunneflow render
+<dir>` writes the map of every revision here that has a graph and no map, read-only, from
+the stores already on disk — so it is not analysis and rules 25 and 62 never arise. It also
+takes `--revision` to rewrite one. What it will not do is invent inputs: a `docs@` store is
+resolved by name and never by newest, and a `standards.db` captured against another snapshot
+is held out of the comparison with the naming page saying so.
 
 **A superseded sealed snapshot is still dropped by hand**, and that is deliberate:
 `sourcedb.py` owns no `DROP` and `test_source.py:171` asserts it against the source text. Each
@@ -614,7 +638,14 @@ docs   ──► extract ──► docs.db  (SQLite) ─────────
 - `detectors/*.yaml` — **the extension point.** Teaching the tool a new framework is a
   config edit here, not a code change. Prefer adding a rule over adding a branch.
 - `resolve/` — call graph, CLI command trees, flows, naming conventions, glossary.
-- `render/` — Markdown and Mermaid.
+- `render/` — Markdown and Mermaid. **A map needs neither the source tree nor the
+  documentation tree**, and saying so cost twenty-eight signatures: `root` and `docs_root`
+  were threaded through every renderer and read by none of them, left behind when the nine
+  path-stripping copies went with relative paths. That fact is the whole of why
+  `render/snapshot.py` can write the map of a sealed snapshot whose tree is gone. The cover
+  states **three** instants — the snapshot, when its source was read, and when these
+  documents were written — because `analyze` writes a map where the last two are one moment
+  and a re-render is where they come apart by a fortnight.
 - `web/layout.py` — where things sit. `DISK_RADIUS` is now the width of the **widest**
   plate rather than of every plate; how wide each one is actually drawn is a *view*
   property owned by the renderer, like Z and the spreads, because `phyllotaxis` is radially

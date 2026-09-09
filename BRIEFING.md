@@ -200,6 +200,117 @@ program has a most-commented routine and a maximum alone is a claim nobody can w
 
 ## What we are doing now
 
+**2026-09-09.** A new Society checkpoint, and the filed item built. Three commits: the
+checkpoint itself (`../society-2026-08-30`, 7baa17bf, analysed into `output/mensores` as
+`2026-09-09T15:32:15Z`), **a map needs neither tree and the cover says which snapshot it
+is**, and **`dunneflow render`** — which gave the two sealed snapshots the maps they lost.
+**1,263** tests, mypy clean over **125** source files, ruff clean, `check` 0 broken.
+
+**8787 is up and it is a previous session's, left running on purpose** — it was stopped as
+cleanup while Tom was reading it once, which is what produced the *"the server could not be
+asked: Failed to fetch"* he reported, and it is not to be stopped again without asking. It
+held `output/mensores` open through a seal, an analysis and two renders and never saw a
+changed byte; it is still serving `2026-09-08T13:39:50Z`, which is now sealed rather than
+working. 8899 was his and is **not** listening.
+
+**`output/mensores` now holds three revisions and three maps.**
+
+| Revision | State | Files | Tree |
+|---|---|---:|---|
+| `2026-09-09T15:32:15Z` | WORKING | 628 | Society at 7baa17bf — 2026-08-30 |
+| `2026-09-08T13:39:50Z` | FOR_COMPARISON | 628 | “Society at 03ebbd93 - 2026-08-29” |
+| `2026-09-07T15:32:31Z` | FOR_COMPARISON | 625 | “Society at e2e658b4 - 2026-08-26” |
+
+The fourteen flat documents from before maps were named are still beside them, listed by
+`README.md` and left alone: which revision they describe is recorded nowhere.
+
+### The checkpoint, and what "a lot of changes" turned out to be (2026-09-09)
+
+Tom: *"pull a new version of society… There have been a lot of changes lately."* **The
+remote says otherwise, and the reason is worth keeping.** `main` is at 09b9ef11 from
+**2026-06-10** with 384 Python files — three months stale, and it clones without complaint
+into a tree that analyses perfectly. Society lives on `feat/spec-lifecycle-and-evidence`,
+whose head `7baa17bf` is dated **2026-08-30**: 6 commits past what was already analysed,
+43 files changed, 6,044 insertions — and **3 source `.py` files** among them, the rest
+tests and ADRs.
+
+The analysis confirmed the diff independently and that is the useful part: the sidecar read
+**3 files and already held 625**, which is the git delta arriving through a completely
+different measurement. 628 files · 4,823 routines · 6,441 internal calls · 4,070 boundary
+touches · 178 ways in, in 2m 27s.
+
+**Every ground truth in `CLAUDE.md` was retaken, not assumed.** The four executables at
+reach **1,381 · 423 · 292 · 112** — identical to the recorded figures. 12 stated rules: 5
+VOCABULARY from `NAMING.md`, 7 FORM from the `harness/rules/style.md` table. The research
+paper `conventions-naming-and-documentation.md` yields **0**.
+
+*One thing found and not chased:* `dunneflow touches --routine mensores.cli.app` matches
+**`mensores.cli.apply.apply`** and reports a reach of 1. `app` is a Typer object rather than
+a routine, so the command falls back to a prefix search — rule 5's shape in a place nobody
+had looked. Filed below.
+
+**The standards directory has a durable home at last.** `standards.db` records the root it
+was built from, and the previous two were built from session scratchpads that no longer
+exist — the provenance was unreproducible twice, and `HANDOFF` admits it once. It is
+`../dunnecorp-standards/` now, outside this repository on purpose: DunneFlow's documentation
+root is its package root, so a standards directory inside it would be read back as
+DunneFlow's own prose and mint three naming rules this program never stated.
+
+### Rendering a named revision's map from the graph it already has (2026-09-09)
+
+The item filed 2026-09-08 by the work that made maps revision-named — which kept the
+promise going forward and could not reach backwards. Two sealed graphs, no map of either.
+
+`dunneflow render <dir> [--revision <rev>]`. With no revision it writes the map of **every
+revision here that has a graph and no map**; naming one rewrites that one, so a re-render is
+always something the reader asked for by name. Both mapless snapshots in 33 s.
+
+**Not analysis, and that is why it is allowed.** Nothing is extracted, no fingerprint is
+re-stamped, every store is opened read-only. Rules 25 and 62 forbid re-analysing a sealed
+snapshot *in place* and are untouched; rule 20 holds by construction. A test digests the
+graph before and after and requires it byte-identical — which is the assertion those rules
+are actually about, rather than a promise in a docstring.
+
+**It was only possible because a map needs neither tree, and nothing said so.** `root` and
+`docs_root` were threaded through **twenty-eight** render functions and read by **none** of
+them: the nine path-stripping copies they existed for went when paths became relative, and
+the parameters stayed for a month. A signature asking for a source root is a claim one is
+needed. Removing them is what let the new command avoid inventing a plausible path, which is
+rule 49 in a shape mypy cannot see.
+
+**`Generated` is not `analysed`.** A map written by `analyze` carries one instant for both,
+so a lone *"Generated 2026-09-09"* line was true twice over by accident; re-rendering pulls
+them apart and that line becomes a claim about the wrong fortnight. The cover now states
+three facts — snapshot, when that source was read, when these documents were written — read
+from the graph's own `meta` rather than carried down by every caller (rule 51). On the
+sealed `2026-09-07T15:32:31Z` all three differ: the id is 09-07 15:32, the source was read
+09-08 13:38, the documents were written 09-09. **A revision id is when the working revision
+was opened, not when its source was read**, and nothing had ever put the two on a page
+together.
+
+**Three refusals, three sentences** (design rule 21): a revision whose stores were dropped
+by hand — and it lists what *is* here, because a mistyped instant and a deleted snapshot are
+indistinguishable from a command line (rule 89); an unfinished graph, which opens perfectly
+and lies (rule 80); and a stale graph, whose refusal is passed on rather than caught.
+
+**And one thing stated rather than refused.** `standards.db` holds one revision, so an older
+snapshot finds a standard that is not about it — rule 70 one store over. Its rules are held
+out of the comparison and the naming page says which snapshot they *do* describe. The
+sentence says what is **held out** and never that nothing is checked: the program's own
+stated rules travel in `docs@<rev>` and are still checked directly beneath it, so the other
+wording contradicted the verdicts under it. **The first draft did exactly that** — *"nothing
+here is checked against it"* printed above `### Checked — 1` — and a test now asserts that
+phrase's absence (rule 13).
+
+The document store is resolved **by name, never by newest**: the fallback is rule 70 exactly.
+
+`index.py`'s cell read *"not written — `--no-render`, or analysed before maps were named"*
+and now names the command that writes one; its docstring said re-rendering *"is not
+something this tool offers yet"*, which is the sentence a feature has to come back and
+correct.
+
+### Before that: paused 2026-09-08
+
 **Paused 2026-09-08.** Two commits: **item 8 answered and built** — a pane now folds itself
 when the window has no room for it, which makes **five** settings for what the window cannot
 fit and is the only one of the five that ships **on** — and one item pulled from the standing
@@ -220,9 +331,9 @@ gives it the new layout, and that run needs `--standards` (rule 88). It holds
 `2026-09-08T13:39:50Z` (628 files, Society at 08-29) working and `2026-09-07T15:32:31Z` (625,
 at 08-26) sealed — the sealed one has **no map of its own**, which is the item filed below.
 
-**Owed, and it is one minute of Tom's screen:** the auto-fold was verified scripted, with
-`document.visibilityState` reading `hidden` throughout. One pointer press on a rail at a
-narrow width, with the window in front, finishes it (rule 90).
+~~**Owed, and it is one minute of Tom's screen:** the auto-fold was verified scripted.~~
+*Discharged 2026-09-09 — Tom: "Auto-fold confirmed." The scripted evidence stands and the
+look behind it is now his rather than the harness's (rule 90).*
 **Two servers are up and both are deliberate:** 8899 is Tom's, and **8787 is this
 session's, left running on purpose** — it was stopped as cleanup while he was reading it, which
 is what produced the *"the server could not be asked: Failed to fetch"* he reported, and it is
@@ -2766,10 +2877,10 @@ feature was blocked on an answer nobody owed.
   onto the step being left. The half the entry got right is that it belonged to the selection
   path. See the top of this file. Filed from reasoning in 2026-09-02, and both descriptions of
   it were wrong until it was measured.*
-- **A kept fold and a kept flow have never been opened on screen.** The shelf routes three
-  kinds and the node kind is verified; the other two need a compartment drawn. The kind and
-  the route are guarded against each other at the source, in both directions, which is why
-  that guard exists rather than a click — but it is a shape check and not a look.
+- ~~**A kept fold and a kept flow have never been opened on screen.**~~ *Closed
+  2026-09-08 — both open from the shelf, verified at the pointer, and the stated
+  cross-compartment limitation is honest. It is recorded under item 1 of the scheduled pass
+  and was never struck here; this file owns the open list and the two disagreed for a day.*
 - ~~**Every surface that offers "keep this" is an inspector pane.**~~ *Built 2026-09-06 — see
   the top of this file. Four surfaces gained it, not three: the naming convention row mints the
   same cohort a thread does. **Two routes, Tom's call**, because `PIN_ROUTES` is keyed on `kind`
@@ -2869,13 +2980,26 @@ feature was blocked on an answer nobody owed.
 - ~~**The rendered markdown is not revision-named.**~~ *Built 2026-09-08 — see the top of
   this file. Maps are `map@<revision>/` and the program directory opens on a listing of what
   it holds.*
-- **Rendering a named revision's map from the graph it already has.** Filed 2026-09-08 by the
-  work above, which makes the promise true going forward and cannot reach backwards: the
-  sealed `2026-09-07T15:32:31Z` in `output/mensores` has a graph, a document store and **no
-  map**, because its own was overwritten before maps were named. It is **not** analysis — it
-  opens a sealed graph read-only and writes documents into a new directory — so rules 25 and
-  62 are untouched and rule 20 is satisfied by never writing to the store it reads. Unbuilt
-  and unscheduled.
+- ~~**Rendering a named revision's map from the graph it already has.**~~ *Built
+  2026-09-09 — `dunneflow render`, see the top of this file. Both mapless snapshots in
+  `output/mensores` have their maps, in 33 s, with 8787 holding the directory open
+  throughout. It cost twenty-eight signatures first: `root` and `docs_root` were read by no
+  renderer and a map needs neither tree, which is the fact that makes the feature possible
+  and which nothing had ever stated.*
+- **`touches --routine` prefix-matches a name that is not a routine.** Found 2026-09-09
+  while retaking the ground truth: `dunneflow touches output/mensores --routine
+  mensores.cli.app` answers about **`mensores.cli.apply.apply`** and reports a reach of 1.
+  `app` is a Typer object rather than a routine, so `_find_routine` falls back to a prefix
+  search and returns something plausible — rule 49's shape, and rule 5's, in the one command
+  a reader would use to check an executable's reach. The map itself is right: the four
+  executables list 1,381 · 423 · 292 · 112 routines in `02-flows.md`, which is where those
+  figures have always come from. Unscheduled.
+- **A map's fourteen inner pages still say only `Generated <now>`.** The cover states which
+  snapshot it describes and when that source was read; the other pages do not, because each
+  builds its own header string in its own module rather than through `markdown._header` —
+  eight copies of one line, which is rule 51 and the reason this was not fixed in passing.
+  A reader arriving at `07-database.md` from a link has the same problem the cover just
+  solved. Unscheduled.
 - The filed small things: `--revision` on `analyze` (it exists on `serve` only), the
   navigator's search box pinned-when-open (decided 2026-08-30, never built), packaging as a
   binary.

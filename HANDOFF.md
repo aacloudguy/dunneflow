@@ -13375,3 +13375,189 @@ which is why it is an item and not part of this one.
 
 **Gates:** 1,253 tests, mypy clean over 123 source files, ruff clean.
 
+
+## 2026-09-09 — a new checkpoint, and the map a sealed snapshot lost
+
+Two jobs, in Tom's order: *"pull a new version of society, name it whatever you like and use
+that as a new checkpoint… After that, start work on the build of the filed item."*
+
+### The checkpoint, and "a lot of changes" measured rather than believed
+
+Tom: *"There have been a lot of changes lately."* The remote does not agree, and the reason
+is a trap worth keeping.
+
+**`main` is not where Society lives.** It sits at `09b9ef11`, dated **2026-06-10**, with 384
+Python files under `src/` — three months behind the tree already analysed. A plain
+`git clone` gets it, it analyses perfectly, and nothing anywhere says it is stale. The work
+is on `feat/spec-lifecycle-and-evidence`, whose head `7baa17bf` is dated **2026-08-30**. That
+is now named in `CLAUDE.md` beside the trees.
+
+Against `03ebbd93` — the 2026-08-29 clone — it is **6 commits, 43 files, 6,044 insertions,
+112 deletions**, and **3 source `.py` files** among them: `governance/_tracker_census.py`,
+`governance/_write_roles.py`, `mcp/_server.py`. The rest is tests and ADRs. So *a lot of
+changes* is true of the repository and not of the code this tool reads — which is exactly
+the distinction a map exists to make, and it is a sharp little pair for the change worklist
+rather than a disappointment.
+
+**The analysis confirmed the git diff through a different instrument**, which is the part
+worth recording: the source sidecar reported **3 read, 625 already held**. Two independent
+measurements of the same delta, and they agree.
+
+Named `../society-2026-08-30` for its commit date, following `society-2026-08-26` and
+`society-2026-08-29`, and checked out detached at `7baa17bf` as those are. Read-only, like
+the other three.
+
+Sequence, and the order is the recipe in `CLAUDE.md`:
+
+```bash
+uv run dunneflow revisions output/mensores --seal --label "Society at 03ebbd93 - 2026-08-29"
+uv run dunneflow analyze ../society-2026-08-30/src --name mensores \
+    --standards ../dunnecorp-standards
+```
+
+**Sealing first is what made it safe to analyse into the directory 8787 is serving.**
+`open_working` reuses the open working revision, so analysing without sealing would have
+rewritten `graph@2026-09-08T13-39-50Z.db` — the very file the live server holds. Sealed, the
+analysis opens a fresh revision and writes new files beside it; 8787 answered `200` on
+`/api/cover` before and after and is still serving `2026-09-08T13:39:50Z`.
+
+| | |
+|---|---|
+| revision | `2026-09-09T15:32:15Z`, WORKING |
+| size | 628 files · 4,823 routines · 6,441 internal calls · 4,070 boundary touches · 671 structures · 178 ways in |
+| documents | 2,078 paths, 2,080 bodies, 19 read · 230 definitions · 12 stated rules |
+| standards | 2 documents from 1 directory, 3 stated rules |
+| time | 2m 27s |
+| anomalies | 0 broken, 94 suspect, 14 informational |
+
+**Every ground truth in `CLAUDE.md` was retaken rather than assumed.** The four executables
+at reach **1,381 · 423 · 292 · 112** — identical to the recorded figures, counted out of
+`02-flows.md`'s own inventory tables. 12 stated rules: 5 VOCABULARY from
+`.groma/milestones/v1.1-harness-ownership/NAMING.md`, 7 FORM from the `harness/rules/style.md`
+table. `.groma/research/v0.2/conventions-naming-and-documentation.md` yields **0**, which is
+the precision half.
+
+*Found on the way and filed rather than chased:* `dunneflow touches --routine
+mensores.cli.app` answers about **`mensores.cli.apply.apply`** and reports a reach of 1.
+`app` is a Typer object, not a routine, so `_find_routine` falls back to a prefix search and
+returns something plausible — rule 49's shape in the one command a reader would reach for to
+check an executable. The map is right; the command is not.
+
+### The standards directory, given a home that outlives a session
+
+`standards.db` records `roots`, and the one in `output/mensores` recorded
+`/private/tmp/…/dd9d10d8-…/scratchpad/standards` — a previous session's scratchpad, gone.
+`HANDOFF` already admits this happened once and it had happened twice by today. Rule 88 says
+the rebuild recipe must name every store the change invalidates; a store whose provenance
+evaporates makes that recipe unrunnable.
+
+It is `../dunnecorp-standards/` now — beside the analysed trees, outside the repository.
+**Not inside it, deliberately:** DunneFlow's documentation root is its package root, so a
+standards directory there would be read back as DunneFlow's own prose and mint three naming
+rules this program never stated. That is rule 57's argument one directory over. `naming.md`
+is byte-identical to the `CORP` fixture in `tests/test_standards.py`; a `README.md` beside it
+says why the directory exists, and is read as a second document that mints no rules —
+verified: *2 documents from 1 directory, 3 stated rules*, and the 3 are the table's rows.
+
+### Rendering a named revision's map from the graph it already has
+
+The item filed at the foot of yesterday's entry. Two commits.
+
+#### First: a map needs neither tree, and nothing said so
+
+`root` and `docs_root` were parameters of **twenty-eight** functions across nine renderer
+modules and were read by **none** of them. The nine copies of the path-stripping they
+existed for were deleted when paths became relative — the comment recording that deletion is
+still at the top of `markdown.py` — and the parameters stayed for a month.
+
+That is not cosmetic. A signature asking for a source root is a claim that one is needed, and
+the new command has no source tree to name: it would have had to invent a plausible path,
+which is rule 49 in a shape mypy cannot catch. So they went, and the comment that explains
+the deletion was extended rather than replaced.
+
+**And `Generated` is not `analysed`.** A map written by `analyze` carries one instant for
+both, so a single *"Generated 2026-09-09 15:34 UTC"* line was true twice over by accident. A
+re-rendered map pulls them apart — documents written today about source read a fortnight ago
+— and that line then reads as a claim about the wrong fortnight. The cover now carries
+**What this map describes**: the snapshot, when that source was read, when these documents
+were written. Both facts come from the graph's own `meta`, asked by `_overview` rather than
+carried down by every caller (rule 51), and a graph written before either key existed says so
+rather than being handed an instant it never recorded (rule 30).
+
+On the sealed `2026-09-07T15:32:31Z` all three are different, and the middle one is a fact
+nothing had ever put on a page: the revision id is **09-07 15:32**, the source was read
+**09-08 13:38**, the documents were written **09-09 15:49**. *A revision id is when the
+working revision was **opened**, not when its source was read* — `open_working` mints it and
+a later `analyze` against the same open revision fills the graph. Both sealed snapshots here
+show the gap.
+
+A heading rather than a floating table, because this reader arrives mid-document as often as
+at the top.
+
+#### Then: `dunneflow render <dir> [--revision <rev>]`
+
+`render/snapshot.py`. With no revision it writes the map of **every revision here that has a
+graph and no map** — Tom's call, and it is the job the item was filed for. Naming one renders
+that one and rewrites its map, so a re-render is always something the reader asked for by
+name; a second run with no flag writes nothing and says *which* empty it is (design rule 21).
+
+**Not analysis, and that is the whole of why it is allowed.** Nothing is extracted, no
+fingerprint is re-stamped, and every store it opens is opened read-only. Rules 25 and 62
+forbid re-analysing a sealed snapshot *in place*; this writes fifteen Markdown documents into
+a directory beside the stores and touches neither. Rule 20 holds by construction. **A test
+digests the graph before and after and requires it byte-identical**, which is the assertion
+those rules are actually about rather than a promise in a docstring.
+
+**Three refusals, three sentences:**
+
+* a revision whose stores were dropped by hand — the recipe in `CLAUDE.md` says to do exactly
+  that. It **lists what is here**, because a mistyped instant and a deleted snapshot are
+  indistinguishable from a command line (rule 89).
+* a graph whose analysis never finished. It opens perfectly and lies (rule 80), and a map
+  written out of one would be a lie with fifteen documents behind it. The sentence is
+  `unfinished_sentence`'s, read before anything closes for `_open_store`'s reason.
+* a graph this build reads differently. `Store` refuses on open and the refusal is passed on
+  rather than caught to carry on regardless.
+
+**And one thing stated rather than refused.** `standards.db` is one file per program holding
+one revision's standard, so an older snapshot finds a standard that is not about it — rule 70
+one store over, the same shape as `revision=None` meeting the sidecar's `None`. Its rules are
+held out of the comparison, and the naming page says which snapshot they *do* describe.
+
+**The first wording of that sentence was wrong and the page caught it.** It read *"nothing
+here is checked against it"* — printed directly above `### Checked — 1`, because the rules
+this program's *own* documents state travel in `docs@<rev>` and are this snapshot's, so they
+are still checked. Two claims in view of each other, one false (rule 13). It now says what is
+**held out**, and a test asserts the old phrase's absence.
+
+The document store is resolved **by name, never by newest** — the fallback is rule 70 exactly,
+one version's prose under another version's headings, and a test proves the absence is stated
+rather than filled from the neighbouring revision.
+
+`index.py` needed two corrections it had written about itself: the cell read *"not written —
+`--no-render`, or analysed before maps were named"* and now names the command that writes
+one; its docstring said re-rendering *"is not something this tool offers yet"*, which is the
+sentence a feature has to come back and correct.
+
+**Verified on `output/mensores`, which 8787 held open the entire time:**
+
+| | |
+|---|---|
+| both mapless snapshots | 15 documents each, 33 s for the pair |
+| the listing | three maps where it showed one |
+| a second run | writes nothing, says every revision already has a map |
+| a named revision with no graph | refused, exit 2, and it lists the three that are here |
+| 8787 | `/api/cover` 200 before and after, still on `2026-09-08T13:39:50Z` |
+
+Ten new tests, and they are about the four ways this could quietly lie rather than about
+fifteen files appearing: the graph unchanged, the cover's three instants, the unfinished
+refusal writing nothing, the stale refusal, the document store not borrowed, the standard
+held out **and** the sentence not overstating it, the matching standard admitted without a
+caveat, the default population idempotent, and the listing naming the command.
+
+*Filed while building:* the map's other fourteen pages still say only `Generated <now>`. Each
+builds its own header string in its own module rather than through `markdown._header` — eight
+copies of one line — so fixing it is rule 51's job and not a passing edit. A reader arriving
+at `07-database.md` from a link has the problem the cover just solved.
+
+**Gates:** 1,263 tests, mypy clean over 125 source files, ruff clean, `check` 0 broken.

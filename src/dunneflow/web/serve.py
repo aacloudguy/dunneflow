@@ -34,6 +34,7 @@ from urllib.parse import parse_qs
 from .. import revisions
 from ..docstore import DocStore
 from ..resolve import version as version_order
+from ..runtime import resource_root
 from ..sourcedb import DocSourceStore, SourceStore
 from ..standards import STANDARDS_DB
 from ..store import StaleGraphError, Store, UnfinishedMapError
@@ -72,8 +73,12 @@ from .vocabulary import (
 from .waysin import describe as describe_way_in
 from .waysin import listing as ways_in_listing
 
-STATIC = Path(__file__).parent / "static"
-VENDOR = Path(__file__).parent / "vendor"
+# The page's own files, and the vendored engine. Through `resource_root()` rather than
+# `Path(__file__)` for the reason the detectors state: frozen, `__file__` names a location
+# that is not on disk, and every one of these would 404 -- a server that starts perfectly
+# and serves a blank page.
+STATIC = resource_root() / "web" / "static"
+VENDOR = resource_root() / "web" / "vendor"
 
 # Why a sidecar cannot answer, one sentence per corpus and one for the case that is
 # neither. Constants because three readers say them -- `/api/source`, `/api/docsource`, and

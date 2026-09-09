@@ -27,7 +27,6 @@ import json
 import os
 import signal
 import subprocess
-import sys
 import threading
 from collections import deque
 from collections.abc import Callable
@@ -36,6 +35,7 @@ from pathlib import Path
 from typing import Any
 
 from .. import revisions
+from ..runtime import self_argv
 
 # The tail of the child's stderr kept for a failure's reason. A traceback is a few dozen
 # lines and a runaway is not, and the reason is rendered in a dialog -- so it is bounded,
@@ -136,13 +136,17 @@ def check(path: str, name: str, out_root: Path, serving: Path) -> Verdict:
 def argv(source: Path, name: str, out_root: Path, docs: bool) -> list[str]:
     """What the subprocess is told. Named apart from `run` so a test can read it.
 
-    `-m dunneflow.cli` rather than `-m dunneflow`: the package has no `__main__`, and the
-    module named here is the one that actually holds `main()`.
+    **How to run this same DunneFlow again is `runtime.self_argv`'s question, not this
+    one.** It used to be spelled out here as `[sys.executable, "-m", "dunneflow.cli", ...]`,
+    which is right in a checkout and meaningless in a packaged application: `-m` names a
+    module to an interpreter, and there is no interpreter to name it to. That would have
+    left **+ Analyze a directory...** -- the only way a first-time reader gets a map at all
+    -- failing on the one build where it is the only way in.
 
     `--quiet` **with** `--progress-json`, deliberately: it empties the prose channel so
     stderr holds a failure and nothing else, which is the whole of why there are two.
     """
-    out = [sys.executable, "-m", "dunneflow.cli", "analyze", str(source),
+    out = [*self_argv("analyze", str(source)),
            "--name", name, "--output", str(out_root), "--progress-json", "--quiet"]
     if not docs:
         out.append("--no-docs")

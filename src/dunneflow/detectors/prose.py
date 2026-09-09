@@ -20,11 +20,19 @@ from typing import Any
 
 import yaml
 
+from ..runtime import resource_root
 from ..schema import DocClass, RuleLane
 from . import fingerprint_files
 
-DOC_RULES_DIR = Path(__file__).parent / "docs"
-_PKG_ROOT = Path(__file__).parent.parent
+# `resource_root()` rather than `Path(__file__)`, for the reason stated beside the code
+# side's copy: frozen, `__file__` names a path that is not on disk, so the glob below
+# yields nothing and the fingerprint hashes nothing.
+_PKG_ROOT = resource_root()
+DOC_RULES_DIR = _PKG_ROOT / "detectors" / "docs"
+# This module as a *file*, which is what the fingerprint wants -- and `__file__` cannot
+# give it frozen. The extraction inputs are bundled as data under the package root, so
+# the loader is asked for by name from there, exactly as the rules and the reader are.
+_THIS_FILE = _PKG_ROOT / "detectors" / "prose.py"
 
 
 def _alternation(words: list[str]) -> re.Pattern[str]:
@@ -117,7 +125,7 @@ def doc_extraction_inputs() -> list[Path]:
     return [
         *DOC_RULES_DIR.glob("*.yaml"),              # the prose rules
         DOC_RULES_DIR.parent / "annotations.yaml",  # governs both corpora
-        Path(__file__),                             # the loader and classifier
+        _THIS_FILE,                                 # the loader and classifier
         *(_PKG_ROOT / "extractors" / "docs").rglob("*.py"),  # the reader itself
     ]
 

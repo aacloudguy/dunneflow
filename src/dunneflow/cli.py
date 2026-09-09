@@ -13,13 +13,13 @@ from __future__ import annotations
 
 import argparse
 import json
+import multiprocessing
 import sqlite3
 import sys
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from importlib import metadata
 from pathlib import Path
 
 from . import revisions
@@ -38,13 +38,12 @@ from .resolve.glossary import bind
 from .resolve.mirror import BANDS as MIRROR_BANDS
 from .resolve.mirror import measure as measure_mirror
 from .resolve.naming import measure
+from .runtime import default_output_root, tool_version
 from .sourcedb import STATE_FOR_COMPARISON, DocSourceStore, SourceStore
 from .sourcedb import capture as capture_source
 from .standards import STANDARDS_DB, standards_refusal
 from .store import StaleGraphError, Store, UnfinishedMapError, unfinished_sentence
 from .walk import analyze_docs_tree, analyze_tree
-
-DEFAULT_OUTPUT = Path("output")
 
 
 def _default_paths(target: Path, name: str | None, out_root: Path) -> tuple[str, Path]:
@@ -56,17 +55,25 @@ def _emit(msg: str) -> None:
     print(msg, file=sys.stderr)
 
 
-def _tool_version() -> str:
-    """Which DunneFlow read this map. From the package, never a literal beside it.
+def _out_root(args: argparse.Namespace) -> Path:
+    """Where this run's maps go, and **said out loud when nobody chose it.**
 
-    A literal is a second answer to a question `pyproject.toml` already answers, and it is
-    the copy that goes stale (rule 51). An editable install with no metadata is a real
-    state and says so rather than claiming a version it cannot know.
+    `--output` used to default to the literal `output`, relative to whatever working
+    directory the command was run from. That is right for a checkout and meaningless for a
+    double-clicked application, which has no working directory worth the name -- so the
+    default now comes from `runtime.default_output_root()`, which answers differently in
+    the two worlds.
+
+    Two answers to one question is a thing this project distrusts on sight, so the fallback
+    **names the directory it chose**. A default that quietly moves between a terminal run
+    and an application is exactly the sort of silence that costs a session hunting for a map
+    that was written somewhere else.
     """
-    try:
-        return metadata.version("dunneflow")
-    except metadata.PackageNotFoundError:
-        return ""
+    if args.output:
+        return Path(args.output)
+    root = default_output_root()
+    _emit(f"no --output given; maps go to {root}")
+    return root
 
 
 def _args_said(args: argparse.Namespace) -> str:
@@ -211,7 +218,8 @@ def cmd_analyze(args: argparse.Namespace) -> int:
         return 2
 
     source_root = target
-    program, out_dir = _default_paths(target, args.name, Path(args.output))
+    out_root = _out_root(args)
+    program, out_dir = _default_paths(target, args.name, out_root)
     # What this run will do, decided before it starts doing it: the dashboard draws a bar
     # against this list and it has to be right from the first line.
     prog = _Progress(analysis_steps(args), on=args.progress_json)
@@ -255,11 +263,12 @@ def cmd_analyze(args: argparse.Namespace) -> int:
     if getattr(args, "standards", None):
         would_read_docs = None if args.no_docs else (
             Path(args.docs).resolve() if args.docs else pkg_root)
-        out_root = Path(args.output).resolve()
+        standards_out_root = out_root.resolve()
         refused = False
         for given in args.standards:
             root = Path(given).resolve()
-            why = standards_refusal(root, tree=target, out_root=out_root,
+            why = standards_refusal(root, tree=target,
+                                    out_root=standards_out_root,
                                     docs_root=would_read_docs)
             if why:
                 _emit(f"error: --standards {given} refused — {why}")
@@ -321,7 +330,7 @@ def cmd_analyze(args: argparse.Namespace) -> int:
     # key that is blank means *nothing read it but the code* -- two different facts that a
     # reader would otherwise have to tell apart by the absence of a row (rule 30). When a
     # reader ever turns inference on, voluntarily, this is where the answer goes.
-    store.set_meta("tool_version", _tool_version())
+    store.set_meta("tool_version", tool_version())
     store.set_meta("inference", "none")
     store.set_meta("model", "")
     # What the run was told, so a thin map can say it was asked to be thin rather than
@@ -772,7 +781,7 @@ def _open_store(args: argparse.Namespace, *,
     reading in silence: its whole contract is that you get the rows that are there.
     """
     target = Path(args.path).resolve()
-    program, out_dir = _default_paths(target, args.name, Path(args.output))
+    program, out_dir = _default_paths(target, args.name, _out_root(args))
     db_path = (Path(args.db) if args.db
                else revisions.newest(out_dir, revisions.GRAPH))
     if db_path is None:
@@ -880,7 +889,7 @@ def cmd_impact(args: argparse.Namespace) -> int:
 
 def _open_docs(args: argparse.Namespace) -> DocStore | None:
     target = Path(args.path).resolve()
-    _program, out_dir = _default_paths(target, args.name, Path(args.output))
+    _program, out_dir = _default_paths(target, args.name, _out_root(args))
     path = revisions.newest(out_dir, revisions.DOCS)
     if path is None or not path.exists():
         return None
@@ -1180,7 +1189,10 @@ def build_parser() -> argparse.ArgumentParser:
     def common(sp: argparse.ArgumentParser) -> None:
         sp.add_argument("path", help="the source tree to analyse")
         sp.add_argument("--name", help="program name (defaults to the directory name)")
-        sp.add_argument("--output", default=str(DEFAULT_OUTPUT), help="output root")
+        sp.add_argument("--output", default=None,
+                        help="output root (default: ./output, or "
+                             "~/Library/Application Support/DunneFlow "
+                             "in a packaged application)")
         sp.add_argument("--db", help="graph database path")
 
     a = sub.add_parser("analyze", help="extract, resolve, and write the map")
@@ -1411,6 +1423,22 @@ def cmd_serve(args: argparse.Namespace) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """The entry point, and `freeze_support()` is its first statement for a reason.
+
+    `walk.py` runs a `ProcessPoolExecutor` and macOS **spawns** rather than forks, so every
+    worker starts by re-executing this program. In a checkout that re-executes the
+    interpreter and `multiprocessing` sorts itself out; in a frozen application it
+    re-executes *the application* -- which, for `serve`, means up to sixteen more servers
+    each opening a browser, and for `analyze` sixteen more analyses. Not an exception the
+    serial fallback in `walk.py` can catch, because nothing in the parent raises: the
+    parent is fine, and the children are the program.
+
+    `freeze_support()` is what makes a spawned child recognise itself as a worker and hand
+    over. It is a no-op in every other case, which is why calling it here **and** in the
+    packaged entry script is right rather than redundant -- whichever one is the real entry
+    point of a given build, the first statement executed has made the call.
+    """
+    multiprocessing.freeze_support()
     args = build_parser().parse_args(argv)
     return int(args.func(args))
 

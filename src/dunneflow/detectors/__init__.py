@@ -16,10 +16,26 @@ from typing import Any
 
 import yaml
 
+from ..runtime import resource_root
 from ..schema import Annotation, BoundaryKind, Confidence, Direction, EntrypointKind
 
-RULES_DIR = Path(__file__).parent
-_PKG_ROOT = RULES_DIR.parent
+# Through `resource_root()` rather than `Path(__file__)`, and the difference only shows
+# frozen: `__file__` for a module imported out of a PyInstaller archive names a path that
+# does not exist on disk, so `RULES_DIR.glob("*.yaml")` comes back empty and the
+# fingerprint below hashes nothing at all. Settled once at import, because an application
+# does not become a source checkout halfway through a run.
+_PKG_ROOT = resource_root()
+RULES_DIR = _PKG_ROOT / "detectors"
+
+
+class RulesMissing(RuntimeError):
+    """The files that decide what extraction *means* are not where this build looks.
+
+    Never a reader's mistake and never recoverable in place: it says this copy of
+    DunneFlow was assembled without the rules and the extractors it hashes, which is a
+    build defect. Raised rather than defaulted, because the default is a hash of nothing
+    and that is indistinguishable from a real answer (rule 49).
+    """
 
 
 @dataclass(slots=True)
@@ -385,9 +401,35 @@ def fingerprint_files(paths: Iterable[Path]) -> str:
     The label is the path relative to the package, not the bare filename: the code key
     holds two files called `__init__.py` -- the rule loader and the extractor package
     -- and a bare name cannot tell them apart.
+
+    **Two refusals, and each is a way this returns a confident answer about nothing.**
+    A hash of no files is `e3b0c44298fc1c14`, the sha256 of the empty string, which looks
+    exactly like a fingerprint and compares equal to itself for ever -- so rule 12's whole
+    guarantee, that a cached fact is valid only if the tool that read it is unchanged,
+    would be enforced by a constant. The other is a file that is *named* and absent, which
+    is what a frozen application does to `Path(__file__)`: the list is not empty, so an
+    emptiness check alone passes it straight through to a `FileNotFoundError` raised from
+    inside a hash, several frames from anything that can say what went wrong.
+
+    Both are packaging failures rather than anything a reader can do, so they are loud
+    rather than handled. `RulesMissing` exists so a test can name the case (rule 30 -- a
+    class the guard can ask about, not a sentence it has to match).
     """
+    wanted = sorted(set(paths))
+    if not wanted:
+        raise RulesMissing(
+            "no extraction rules were found at all, so there is nothing to fingerprint. "
+            f"This build is looking in {_PKG_ROOT} — in a packaged application that means "
+            "the rule files and the extractors were not bundled as data.")
+    missing = [p for p in wanted if not p.is_file()]
+    if missing:
+        named = ", ".join(str(p) for p in missing[:4])
+        raise RulesMissing(
+            f"{len(missing)} of {len(wanted)} extraction rule files are named and not "
+            f"there: {named}{' …' if len(missing) > 4 else ''}. In a packaged application "
+            "that means they were not bundled as data.")
     h = hashlib.sha256()
-    for path in sorted(set(paths)):
+    for path in wanted:
         try:
             label = str(path.relative_to(_PKG_ROOT))
         except ValueError:      # a path from outside the package, as in tests

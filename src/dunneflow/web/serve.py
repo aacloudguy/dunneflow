@@ -474,11 +474,19 @@ class _Live:
     # switch reusing the first switch's literal keeps a stale cache just as silently.
     PROGRAM_CACHES: tuple[str, ...] = ("changes", "anomalypairs", "filepairs", "findings")
 
-    def __init__(self, source_db: Path, out_dir: Path) -> None:
+    def __init__(self, source_db: Path, out_dir: Path,
+                 out_root: Path | None = None) -> None:
         self.lock = threading.Lock()
         # The program directory, so a second point in time can be found. The graph being
         # served is one revision of it; every other revision is a file beside this one.
         self.out_dir = out_dir
+        # **The output root, as a thing rather than as a derivation.** Three routes worked
+        # it out for themselves as `out_dir.parent` -- the program list, the program
+        # switch and the analysis -- which is right for as long as there is an `out_dir`
+        # to take the parent of. A server opened on the root itself, with nothing yet to
+        # serve, has none; and three copies of one derivation is where rule 51 says the
+        # drift starts. Derived once here when nobody says, read everywhere.
+        self.out_root = out_root or out_dir.parent
         # One computed diff per pair, keyed by (before, after). Lazily, unlike the two
         # vocabulary lanes: a thread is asked on every selection and a change list is
         # opened deliberately, so paying for it at boot would add seconds to a start that
@@ -2475,7 +2483,7 @@ class _Handler(BaseHTTPRequestHandler):
         with self._live.lock:
             here = self._live.out_dir.resolve()
             served_files = int(self._live.current.cover.get("stats", {}).get("files", 0))
-        found = revisions.program_dirs(here.parent)
+        found = revisions.program_dirs(self._live.out_root)
         # The served program is in the list whatever the walk found -- it is being read
         # right now, so a list without it would be a control that cannot name the thing it
         # is showing. Sorted by name so the order is total and does not move between polls.
@@ -2541,7 +2549,8 @@ class _Handler(BaseHTTPRequestHandler):
         # carrying `..` or a separator cannot address a directory outside the output root.
         # The list is the authority on what may be switched to (rule 30: a label is not an
         # identity, and this turns one into the other by lookup).
-        candidates = {d.name: d for d in revisions.program_dirs(here.parent) | {here}}
+        candidates = {d.name: d
+                      for d in revisions.program_dirs(self._live.out_root) | {here}}
         target = candidates.get(asked)
         if target is None:
             self._started(False, f"there is no program called {asked} beside this one")
@@ -2575,7 +2584,8 @@ class _Handler(BaseHTTPRequestHandler):
         if asked:
             with self._live.lock:
                 here = self._live.out_dir.resolve()
-            v = analysis.check(asked, (q.get("name") or [""])[0], here.parent, here)
+            v = analysis.check(asked, (q.get("name") or [""])[0],
+                               self._live.out_root, here)
             body["check"] = {"ok": v.ok, "refusal": v.refusal, "note": v.note}
         self._json(body)
 
@@ -2610,7 +2620,7 @@ class _Handler(BaseHTTPRequestHandler):
         """
         with self._live.lock:
             here = self._live.out_dir.resolve()
-        out_root = here.parent
+        out_root = self._live.out_root
         verdict = analysis.check((q.get("path") or [""])[0],
                                  (q.get("name") or [""])[0], out_root, here)
         if not verdict.ok:
@@ -2844,6 +2854,49 @@ def _free_port(preferred: int) -> int:
         return int(s.getsockname()[1])
 
 
+def where(given: Path) -> tuple[Path, Path]:
+    """Which program this is, and which root it sits under. **Either is accepted.**
+
+    `serve` has always taken a program directory and worked the root out as its parent.
+    A packaged application has no working directory to resolve a relative default against
+    and, on a fresh machine, no program either -- so the root has to be something it can
+    be handed directly.
+
+    The two are told apart by the same question `analyze` asks to keep a program's own
+    output out of its own corpus: **does this directory hold a map**. A directory holding
+    a `graph@….db` is a program; one holding directories that do is a root. Never by name,
+    for `program_dirs`' own reason -- `output/` is a fine name for a directory of
+    hand-written prose, and nothing here may claim a directory because of what it is
+    called (rule 30).
+
+    A root is returned as `(root, root)`, its own program directory, which is what makes
+    the refusal below able to say what *is* there. The caller decides what that means.
+    """
+    given = given.resolve()
+    if any(given.glob(f"{revisions.GRAPH}*.db")):
+        return given, given.parent
+    return given, given
+
+
+def no_map_here(out_dir: Path, out_root: Path, revision: str | None) -> str:
+    """Why there is nothing to serve, and what to do about it.
+
+    Three sentences rather than one, because *you named a version that is not here*,
+    *this directory holds nothing*, and *this root holds programs and you named none of
+    them* are different facts and the thing to do about each is different (design rule 21).
+    The third lists what it found: a refusal has to name something that can act on it, and
+    the reader's next move is a program name they cannot guess (rule 89).
+    """
+    if revision:
+        return f"no graph for {revision} in {out_dir}"
+    found = sorted(d.name for d in revisions.program_dirs(out_root) if d != out_root)
+    if found:
+        return (f"{out_dir} holds no map of its own. Under this root: "
+                f"{', '.join(found)} — name one of those, or run `dunneflow analyze` "
+                f"to read a new tree into it.")
+    return f"no graph in {out_dir} -- run `dunneflow analyze` first"
+
+
 def serve(out_dir: Path, *, port: int = 8787, open_browser: bool = True,
           revision: str | None = None, emit: Any = print) -> None:
     """Open one version of a program and serve it until interrupted.
@@ -2858,13 +2911,12 @@ def serve(out_dir: Path, *, port: int = 8787, open_browser: bool = True,
     could not survive a restart of `serve`, and the alternative -- a server reading the
     browser's stored settings -- does not exist.
     """
+    out_dir, out_root = where(out_dir)
     graph_db = revisions.resolve(out_dir, revisions.GRAPH, revision)
     if graph_db is None or not graph_db.exists():
-        raise FileNotFoundError(
-            f"no graph for {revision} in {out_dir}" if revision else
-            f"no graph in {out_dir} -- run `dunneflow analyze` first")
+        raise FileNotFoundError(no_map_here(out_dir, out_root, revision))
 
-    live = _Live(out_dir / "source.db", out_dir)
+    live = _Live(out_dir / "source.db", out_dir, out_root)
     # The same door a base switch goes through, and the whole reason it takes a `step`
     # callback: the terminal gets the boot, a watching page gets a switch, and neither is
     # a second way of building a version (rule 51).

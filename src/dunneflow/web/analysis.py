@@ -66,12 +66,19 @@ class Verdict:
         return not self.refusal
 
 
-def check(path: str, name: str, out_root: Path, serving: Path) -> Verdict:
+def check(path: str, name: str, out_root: Path, serving: Path | None) -> Verdict:
     """May this analysis run, and is there anything the reader should know first?
 
     The refusals are in the order somebody hits them, and **each has its own sentence**:
     "nothing happened" and "that would overwrite what you are reading" are different
     answers and a reader must never have to guess which one they got.
+
+    `serving` is `None` when nothing is open, which is the state a packaged application
+    starts in. Exactly one refusal depends on it -- *that is the program being read* -- and
+    with nothing being read it is not a refusal, it is a fact that has no subject. Passed as
+    `None` rather than as some stand-in path, because a stand-in would have to be a
+    directory name, and a name that accidentally matched would refuse the first analysis a
+    reader ever asks for (rule 30).
     """
     if not path.strip():
         return Verdict(refusal="no directory was named")
@@ -108,7 +115,7 @@ def check(path: str, name: str, out_root: Path, serving: Path) -> Verdict:
         return Verdict(refusal=f"{wanted} is not a name a directory can have — one plain "
                                "name, no separators and no leading dot")
 
-    if wanted == serving.resolve().name:
+    if serving is not None and wanted == serving.resolve().name:
         # **Not caution.** `Store._discard_if_stale` drops every table of a graph written
         # by another build of DunneFlow, and this server is holding that graph open. An
         # analysis aimed here can empty the map under a live reader.

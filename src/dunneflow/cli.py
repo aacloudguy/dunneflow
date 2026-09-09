@@ -1301,7 +1301,9 @@ def build_parser() -> argparse.ArgumentParser:
     mg.set_defaults(func=cmd_migrate)
 
     sv = sub.add_parser("serve", help="open the interactive map in a browser")
-    sv.add_argument("out_dir", help="an analysed program's output directory")
+    sv.add_argument("out_dir", nargs="?", default=None,
+                    help="an analysed program's directory, or the output root holding "
+                         "several (default: the output root)")
     sv.add_argument("--port", type=int, default=8787)
     sv.add_argument("--no-open", action="store_true", help="do not open a browser")
     sv.add_argument("--revision", default=None,
@@ -1413,8 +1415,15 @@ def cmd_migrate(args: argparse.Namespace) -> int:
 def cmd_serve(args: argparse.Namespace) -> int:
     """Open the map. Read-only throughout -- serving can never damage what it shows."""
     from .web.serve import serve
+    # The root when nobody said, on `_out_root`'s argument one command over: a
+    # double-clicked application has no working directory for a relative default to mean
+    # anything against. `serve` itself decides whether what it is handed is a program or
+    # a root -- by whether it holds a map, never by what it is called.
+    given = Path(args.out_dir) if args.out_dir else default_output_root()
+    if not args.out_dir:
+        _emit(f"no directory given; reading {given}")
     try:
-        serve(Path(args.out_dir), port=args.port,
+        serve(given, port=args.port,
               open_browser=not args.no_open, revision=args.revision, emit=_emit)
     except (FileNotFoundError, StaleGraphError, UnfinishedMapError) as exc:
         _emit(f"error: {exc}")

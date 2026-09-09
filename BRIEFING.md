@@ -204,6 +204,28 @@ program has a most-commented routine and a maximum alone is a claim nobody can w
 
 ## What we are doing now
 
+**Paused 2026-09-09, with milestone 2 built and nothing owed.** Five commits, working tree
+clean, no half-done work anywhere. **1,363** tests, mypy clean over **134** source files,
+ruff clean.
+
+**Where to pick up:** signing and notarisation, which are the only thing between this and a
+build that runs on a machine other than the one that made it — an unsigned `.app` is refused
+by Gatekeeper everywhere else. Those are Tom's commands to run against the existing Apple
+Developer account; the entitlements and the commands can be prepared for him first. Then an
+icon (`icon=None` in the spec today), and Windows last.
+
+**The built `.app` was not kept**, deliberately: it lived in a session scratchpad and `dist/`
+is gitignored. Rebuilding is one command and takes 7 s warm —
+`uv run pyinstaller packaging/dunneflow.spec --noconfirm`. Nothing about the artifact is
+recorded anywhere but `packaging/`, which is the point.
+
+**8787 is still up and is a previous session's, left running on purpose.** It holds
+`output/mensores` open and has never seen a changed byte; it is not to be stopped without
+asking. Nothing this session wrote to `output/` — every analysis went to a temporary
+directory and was removed.
+
+---
+
 **Milestone 2 — packaging — is built, 2026-09-09.** All five blockers are closed and there
 is a `DunneFlow.app`: 31 MB, unsigned, and it opens on a machine that has never run it.
 Four commits, working tree clean. **1,363** tests, mypy clean over **134** source files,

@@ -13800,3 +13800,44 @@ the offered value, the persisted setting and the engine's own mode all flip toge
 touching pairs in each state. *One press with the window in front finishes it.*
 
 **Gates:** 1,276 tests, mypy clean over 126 source files, ruff clean.
+
+## 2026-09-09 — the graph, looked at, and why it could not be before
+
+Tom brought the tab to the front for about a minute, which was the whole of what was needed.
+
+**The diagnosis, measured rather than asserted.** A page whose only job was to count frames:
+
+| | |
+|---|---|
+| frames in 2 seconds | **0** |
+| total frames since load | 1 — the initial call, before the tab backgrounded |
+| a fresh one-shot `requestAnimationFrame` | **never fired** |
+| `setTimeout` | normal |
+| `document.visibilityState` | `hidden` |
+
+So rAF is **stopped, not throttled**, and that is one cause for all three symptoms reported
+across four sessions as separate things: deck.gl's animation loop never ticks (`frames 0`), it
+never resizes its drawing buffer — which happens *inside* the render loop, hence 300×150 for
+ever — and `Graph.resize()` queues work for a frame that never comes. The moment the tab was
+foreground the canvas resized to 1113×649 and drew at 60 fps.
+
+Chrome's `--disable-backgrounding-occluded-windows` and `--disable-renderer-backgrounding`
+were offered and are only a partial substitute: they cover an occluded *window*, not a
+background *tab*, which the Page Visibility API reports as hidden regardless. Tom's call was
+the tab in front.
+
+**Seen:** the stack at `plateSize 1`, the hourglass whose waist is the sparse plates; the
+magnified plates at `plateSize 0` under `by plate` — countable, separated, sphere-shaded — and
+the same region under `one size`, small flat dots and also separated. `Graph.separation()`
+read 0 touching pairs throughout, which is the first time that claim has been checked against
+pixels rather than against the buffers behind them.
+
+**And one thing only looking could have found.** Switching `nodeScaling` to `uniform` **zooms
+the picture in**: at `plateSize 0` with `spreadZ 0.9` the stack sat at zoom −4.88 and the flip
+took it to −3.30. The view cap is doing exactly what it was built to do — one size makes the
+smallest node smaller, the renderable floor rises, the zoom follows — but the reader flips a
+control that says nothing about zoom and the picture jumps closer. Not predicted by the
+arithmetic, not changed, and filed in `BRIEFING`'s open list as a decision rather than a
+defect.
+
+**Gates:** 1,276 tests, mypy clean over 126 source files, ruff clean, `check` 0 broken.

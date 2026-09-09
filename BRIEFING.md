@@ -200,8 +200,8 @@ program has a most-commented routine and a maximum alone is a claim nobody can w
 
 ## What we are doing now
 
-**2026-09-09.** A new Society checkpoint, the filed item built, and node sizing made a
-property of the plate a node sits on. Commits: the checkpoint itself
+**Paused 2026-09-09.** A new Society checkpoint, the filed item built, and node sizing made
+a property of the plate a node sits on. Commits: the checkpoint itself
 (`../society-2026-08-30`, 7baa17bf, analysed into `output/mensores` as
 `2026-09-09T15:32:15Z`), **a map needs neither tree and the cover says which snapshot it
 is**, **`dunneflow render`** — which gave the two sealed snapshots the maps they lost — and
@@ -209,6 +209,16 @@ is**, **`dunneflow render`** — which gave the two sealed snapshots the maps th
 **one size** kept as a Setting beside it, and the graph's HUD bounded so a tall control box
 scrolls instead of being clipped.
 **1,276** tests, mypy clean over **126** source files, ruff clean, `check` 0 broken.
+
+**The graph has been looked at, and the instrument's limitation is now diagnosed rather
+than described.** A page whose only job was to count animation frames reported **0 frames in
+2 seconds**, a total of 1, and a fresh one-shot `requestAnimationFrame` that never fired,
+while `setTimeout` ran normally: rAF is **stopped, not throttled**, whenever the tab is not
+the visible one. That is one cause for all three symptoms — no frame means deck.gl never
+ticks, never resizes its drawing buffer (hence 300×150 for ever), and `Graph.resize()` queues
+work for a frame that never comes. **The fix is the tab in front**, which Tom did: the canvas
+resized to 1113×649 and drew at 60 fps. Chrome's backgrounding flags are only a partial
+substitute — they cover an occluded *window*, not a background *tab*.
 
 **8787 is up and it is a previous session's, left running on purpose** — it was stopped as
 cleanup while Tom was reading it once, which is what produced the *"the server could not be
@@ -3140,6 +3150,16 @@ feature was blocked on an answer nobody owed.
   throughout. It cost twenty-eight signatures first: `root` and `docs_root` were read by no
   renderer and a map needs neither tree, which is the fact that makes the feature possible
   and which nothing had ever stated.*
+- **Switching to `one size` zooms the picture in, and nothing on the control says so.**
+  Found 2026-09-09 by looking, and it would not have been predicted from the arithmetic: at
+  `plateSize 0` with `spreadZ 0.9` the stack sat at zoom −4.88, and flipping `nodeScaling` to
+  `uniform` took it to **−3.30**. The view cap is doing exactly its job — one size makes the
+  smallest node smaller, so the renderable floor rises and the zoom follows it — but the
+  reader flips a control that says nothing about zoom and the picture jumps closer. Two ways
+  out, and neither is obviously right: leave it, since the cap is enforcing the thing it was
+  built for; or let the floor rise without pulling the current zoom with it, so the framing is
+  kept and the reader merely cannot zoom out as far. Tom's call, and no work until he makes
+  it. Unscheduled.
 - **`touches --routine` prefix-matches a name that is not a routine.** Found 2026-09-09
   while retaking the ground truth: `dunneflow touches output/mensores --routine
   mensores.cli.app` answers about **`mensores.cli.apply.apply`** and reports a reach of 1.

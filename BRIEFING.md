@@ -202,8 +202,9 @@ program has a most-commented routine and a maximum alone is a claim nobody can w
 
 ## What we are doing now
 
-**Clearing the deck before the binary — 2026-09-09.** Tom's decisions on the open list,
-taken in one pass, so that what is left before packaging is the packaging. **1,304** tests,
+**Paused 2026-09-09, after clearing the deck before the binary.** Tom's decisions on the
+open list, taken in one pass, so that what is left before packaging is the packaging.
+Four commits, working tree clean, nothing half-done and nothing owed. **1,304** tests,
 mypy clean over **129** source files, ruff clean; ground truth retaken, not assumed — the
 four executables at **1,381 · 423 · 292 · 112**, all four resolved.
 
@@ -225,9 +226,17 @@ is**, **`dunneflow render`** — which gave the two sealed snapshots the maps th
 **one size** kept as a Setting beside it, and the graph's HUD bounded so a tall control box
 scrolls instead of being clipped.
 
-**Next is packaging, and the five blockers are found rather than predicted** — see the foot
-of this file. Tom, 2026-09-09: *"Once these are done, work on the packaging issues and then
-we can build it. May take a couple of milestones."*
+**Next is packaging — milestone 2 — and it has not been planned yet.** The five blockers are
+found rather than predicted and are filed at *Packaging* near the foot of this file, with the
+reasoning and the measurements beside each. Tom, 2026-09-09: *"Once these are done, work on
+the packaging issues and then we can build it. May take a couple of milestones."*
+
+**Where to start when this resumes:** blockers 1 to 3 first. They are defects in code that
+already exists, so they can be fixed and tested *before* anything is frozen — a frozen build
+that fails is a much harder thing to read than a failing test. Then the cold start (4 and 5),
+which is a feature rather than packaging: it decides what double-clicking the thing actually
+does. Then the spec file, and signing last. `output/mensores` is unchanged by this session —
+the verification analysis went to a temporary directory and was removed.
 
 **The graph has been looked at, and the instrument's limitation is now diagnosed rather
 than described.** A page whose only job was to count animation frames reported **0 frames in

@@ -165,7 +165,9 @@ were layered 2026-08-30; the **anomaly worklist joined them 2026-09-01**, once a
 carried an identity to be paired on.
 
 **Not built:** `dunneflow infer` (the model pass) · attestation · the project profile ·
-packaging as a binary · any language but Python. **Document mode is complete** — chunks 1, 2,
+packaging as a binary · any language but Python. **The Inference page is withdrawn as of
+2026-09-09** — built as a mockup, never wired, and now delinked from every control and
+document with the code kept whole behind `INFERENCE_SHIPPED`. **Document mode is complete** — chunks 1, 2,
 3, both lanes of 4, and **chunk 5 as of 2026-09-04**. The pane reads the map's eight documents
 and the program's own 2,064, and a glossary citation into the corpus **opens**: `senseOpens()`
 is a capability test rather than a provenance test, the viewer serves the span out of
@@ -200,15 +202,32 @@ program has a most-commented routine and a maximum alone is a claim nobody can w
 
 ## What we are doing now
 
-**Paused 2026-09-09.** A new Society checkpoint, the filed item built, and node sizing made
-a property of the plate a node sits on. Commits: the checkpoint itself
+**Clearing the deck before the binary — 2026-09-09.** Tom's decisions on the open list,
+taken in one pass, so that what is left before packaging is the packaging. **1,304** tests,
+mypy clean over **129** source files, ruff clean; ground truth retaken, not assumed — the
+four executables at **1,381 · 423 · 292 · 112**, all four resolved.
+
+* **`one size` zooming the picture in is signed off**, and now says so. The cap is doing its
+  job; the silence was the defect (design rule 6).
+* **`touches --routine` no longer answers about something else.** Three answers, never two.
+* **Every page of a map states its snapshot**, not just the cover. One header, one place.
+* **Stack orientation is closed by decision** — camera roll is not required, and the reason
+  is recorded beside `OrbitView` rather than in a backlog.
+* **Inference is withdrawn**, delinked from every control and document, code kept whole
+  behind one constant.
+
+*Before that, the same day:* a new Society checkpoint, the filed item built, and node sizing
+made a property of the plate a node sits on. Commits: the checkpoint itself
 (`../society-2026-08-30`, 7baa17bf, analysed into `output/mensores` as
 `2026-09-09T15:32:15Z`), **a map needs neither tree and the cover says which snapshot it
 is**, **`dunneflow render`** — which gave the two sealed snapshots the maps they lost — and
 **node size follows the plate it sits on**, which took 4,990 overlapping nodes to 0 — with
 **one size** kept as a Setting beside it, and the graph's HUD bounded so a tall control box
 scrolls instead of being clipped.
-**1,276** tests, mypy clean over **126** source files, ruff clean, `check` 0 broken.
+
+**Next is packaging, and the five blockers are found rather than predicted** — see the foot
+of this file. Tom, 2026-09-09: *"Once these are done, work on the packaging issues and then
+we can build it. May take a couple of milestones."*
 
 **The graph has been looked at, and the instrument's limitation is now diagnosed rather
 than described.** A page whose only job was to count animation frames reported **0 frames in
@@ -237,6 +256,108 @@ working. 8899 was his and is **not** listening.
 
 The fourteen flat documents from before maps were named are still beside them, listed by
 `README.md` and left alone: which revision they describe is recorded nowhere.
+
+### Clearing the deck: four decisions and a withdrawal (2026-09-09)
+
+Tom's call on five open items in one message, and none of them needed a design conversation
+because he had made the design decisions already.
+
+**`one size` zooms the picture in, and that is correct.** *"One size is fine, I sign off on
+that. We can mention the behavior in the documentation."* So nothing changed in the layout
+and two sentences changed: `nodeCeilingNote()`'s uniform branch and the button's own title
+now say that a smaller smallest node raises the view's floor and the framing follows it
+(−4.88 → −3.30 at `plateSize 0`, `spreadZ 0.9`). Design rule 6 gains the general form: **a
+clamp is felt through whichever control moves it, so that control has to name it** — the
+clamp is not always where the reader's hand is.
+
+**`touches --routine` refuses to answer about something else.** `_find_routine` matched a
+qualname or a name exactly and then fell back to `qualname LIKE '%needle%'` *silently*, so
+`--routine mensores.cli.app` answered about `mensores.cli.apply.apply` with a reach of 1.
+Rule 49 wrapped around rule 5, in the one command a reader would use to check an
+executable's reach. The fallback is kept — a half-remembered name is a real way to arrive —
+and may no longer wear an exact match's clothes: `Found` carries `exact`, and one helper
+both `touches` and `impact` call says which it is holding (rule 51 — the defect was in
+both). Three answers, never two.
+
+*And the case that bit gets its true answer*, which is worth more than any number of
+near-misses:
+
+```
+no routine is named 'mensores.cli.app'.
+  mensores.cli is a module here — mensores/cli/__init__.py — and declares no routines at
+  all; nothing in it is named 'app'.
+  1 routine name contains it — a name search, not the routine you asked for:
+```
+
+**The module test asks `files`, not `routines`, and that is the whole of why it fires.** A
+package `__init__` declares nothing of its own, so `routines.module` reports `mensores.cli`
+as unknown — *"not a module here"* about a file the analysis had read. `<module>` is
+excluded from the count for the reason it is excluded everywhere else: nobody declared it,
+and *"declares 1 routine"* about a package holding a docstring and two assignments is the
+opposite of the sentence's job. Two silences went with it: `LIMIT 25` then `--limit` could
+show one of forty and say nothing, in the exact branch as well as the fallback, so both
+count and both state it (rule 32).
+
+**One header, on every page of a map.** The cover stated which snapshot it described and the
+other fourteen pages said only `Generated <now>`, so a reader arriving at `07-database.md`
+from a link had the whole problem the cover had just solved. It was not fixed in passing
+because it could not be: eight renderers each built that line inline and `markdown._header`
+was a ninth copy. `render/page.py` is the one place now — `Stamp` (generated · revision ·
+analysed), `Stamp.of(store, when)` reading the graph once for fifteen pages, and `header()`.
+Its own module because `markdown.py` imports all eight renderers, so a header living there
+and imported back is a cycle.
+
+*`_what_this_describes` is retired*, on Tom's call: all three instants survive in the
+header, on fifteen pages instead of one, and keeping the section as well would have made the
+cover state the same three facts twice. A map written before either key existed keeps the
+line it always had — missing and blank are different answers, and inventing a snapshot for
+it would be rule 30. Verified where it matters: re-rendering pulled the two instants apart
+on an inner page, *source read 19:02 · these documents written 19:03*.
+
+**Stack orientation, closed by decision.** *"I think stack orientation is acceptable as-is,
+adding camera roll is not required. I can already move the camera quite a lot."* Recorded
+beside the `OrbitView` construction in `graph.js`, so the next reader finds the decision
+where the constraint is.
+
+**Inference withdrawn, and withdrawn is not deleted.** *"The infer parts can be disabled as
+features and the links can be removed (but the code left in place and marked for use in the
+next version). Be sure to remove all mentions of the feature from any other controls or
+documentation, but don't destroy any code that may already exist for it."*
+
+It had never been wired. `MANIFEST` was a `let` nothing assigns, so the page said *"the
+document manifest is not served yet"* for ever; `data-airun="go"` set `state.aiDone = true`
+and reported **"✓ Pass complete."** having done nothing at all — design rule 16 with a false
+claim on top — and its costs and volumes were the ratified artifact's pinned figures for one
+program (rule 34).
+
+**One constant decides**, `INFERENCE_SHIPPED` in `shell.js` (rule 51). Guarded off: the
+navigator row, the Settings panel and its link, the route, the breadcrumb, the off-mode
+label and the dispatch — each kept in a shape the source guard can still read, because a
+route written any other way would report the withdrawn row as *unrouted* and the guard would
+fail on the sentence describing what it checks (rule 43). Kept whole: `viewInference()`,
+`AI_OPS`, `POSTURES`, `MANIFEST`, `posture()`, `permits()`, `chosenOps()`, every handler,
+every state field, the CSS.
+
+`egress` and `aiOps` left `DEFAULTS` and `PERSISTED` on **`nodeShapes`' precedent**, which is
+about the reset dialog rather than about storage: `resetSettings` walks the defaults, so a
+key left there makes a reset report clearing *"egress posture"* — naming a setting the reader
+was never offered. A default is a promise that something can be different.
+
+*Untouched, and none of it is the feature:* **edge confidence** `INFERRED` and the *hide
+inferred edges* toggle (design rule 5, built and working), the **version tier** `INFERRED`,
+`Provenance`'s four tiers, and **About this map**'s two rows — which say no fact here was
+inferred and no model read it, a guarantee this makes more true rather than less. Design
+rules 14 and 28 stay and say what changed; rule 14 keeps its paragraph as *what the next
+version has to satisfy before the constant becomes true*.
+
+**Guarded from both sides**, because either half fails silently alone:
+`tests/test_inference_withdrawn.py` asserts every door is behind the constant **and** that
+every part of the feature is still there. `selfCheck()` gained the runtime half.
+
+**Seen, not only tested.** Served on 8901 against a fresh analysis of the 08-30 checkpoint:
+no navigator row (VOCABULARY reads 4 and lists four), no Settings panel, `selfCheck()`
+returns `[]` on the cover and on Settings, no door in the DOM anywhere, and a fresh settings
+blob carries neither key. 8787 was left alone throughout.
 
 ### One size is a Setting, and a tall panel scrolls (2026-09-09)
 
@@ -3135,7 +3256,10 @@ feature was blocked on an answer nobody owed.
 - ~~**Per-plate sphere scaling**~~ *— built 2026-09-09, and it turned out to be a units
   bug rather than a feature: a node's radius was a pixel constant and a plate's width a
   world quantity, so a dot knew nothing about the room it had. See the top of this file.*
-  **Stack orientation** is still open and is structural: `OrbitView` has no camera roll.
+  ~~**Stack orientation** is still open and is structural: `OrbitView` has no camera roll.~~
+  *Closed 2026-09-09 by decision. Tom: "I think stack orientation is acceptable as-is,
+  adding camera roll is not required. I can already move the camera quite a lot." Recorded
+  beside the `OrbitView` construction in `graph.js`, where the constraint is.*
 - ~~**The two vocabulary-lane precision defects.**~~ *Both fixed 2026-09-08 — see the top of
   this file. A DASH_GLOSS mined out of a constraint table is no longer counted as a
   definition (5 refused of 240, all constraints), and the undefined list's head is words
@@ -3150,33 +3274,77 @@ feature was blocked on an answer nobody owed.
   throughout. It cost twenty-eight signatures first: `root` and `docs_root` were read by no
   renderer and a map needs neither tree, which is the fact that makes the feature possible
   and which nothing had ever stated.*
-- **Switching to `one size` zooms the picture in, and nothing on the control says so.**
-  Found 2026-09-09 by looking, and it would not have been predicted from the arithmetic: at
-  `plateSize 0` with `spreadZ 0.9` the stack sat at zoom −4.88, and flipping `nodeScaling` to
-  `uniform` took it to **−3.30**. The view cap is doing exactly its job — one size makes the
-  smallest node smaller, so the renderable floor rises and the zoom follows it — but the
-  reader flips a control that says nothing about zoom and the picture jumps closer. Two ways
-  out, and neither is obviously right: leave it, since the cap is enforcing the thing it was
-  built for; or let the floor rise without pulling the current zoom with it, so the framing is
-  kept and the reader merely cannot zoom out as far. Tom's call, and no work until he makes
-  it. Unscheduled.
-- **`touches --routine` prefix-matches a name that is not a routine.** Found 2026-09-09
-  while retaking the ground truth: `dunneflow touches output/mensores --routine
-  mensores.cli.app` answers about **`mensores.cli.apply.apply`** and reports a reach of 1.
-  `app` is a Typer object rather than a routine, so `_find_routine` falls back to a prefix
-  search and returns something plausible — rule 49's shape, and rule 5's, in the one command
-  a reader would use to check an executable's reach. The map itself is right: the four
-  executables list 1,381 · 423 · 292 · 112 routines in `02-flows.md`, which is where those
-  figures have always come from. Unscheduled.
-- **A map's fourteen inner pages still say only `Generated <now>`.** The cover states which
-  snapshot it describes and when that source was read; the other pages do not, because each
-  builds its own header string in its own module rather than through `markdown._header` —
-  eight copies of one line, which is rule 51 and the reason this was not fixed in passing.
-  A reader arriving at `07-database.md` from a link has the same problem the cover just
-  solved. Unscheduled.
+- ~~**Switching to `one size` zooms the picture in, and nothing on the control says so.**~~
+  *Closed 2026-09-09 **by decision**, which is the third way out and neither of the two that
+  were offered. Tom: "One size is fine, I sign off on that. We can mention the behavior in
+  the documentation." The behaviour stands; the silence does not. See the top of this file,
+  and design rule 6, which gained the general form: a clamp is felt through whichever control
+  moves it, so that control has to name it.*
+- ~~**`touches --routine` prefix-matches a name that is not a routine.**~~ *Fixed
+  2026-09-09 — see the top of this file. Three answers, never two, and the substring
+  fallback is kept and labelled rather than removed. The true answer for the case that bit
+  turned out to come from `files` rather than `routines`: a package `__init__` declares no
+  routines of its own, so the obvious query says "not a module here" about a file the
+  analysis had read. Two bounded-answer silences went with it, in the exact branch as well
+  as the fallback (rule 32).*
+- ~~**A map's fourteen inner pages still say only `Generated <now>`.**~~ *Fixed 2026-09-09
+  — see the top of this file. `render/page.py` is the one header, and the cover's own
+  three-line section is retired into it on Tom's call: all three instants survive on fifteen
+  pages instead of one. Verified where it matters, by re-rendering: `source read 19:02 ·
+  these documents written 19:03` on an inner page.*
 - The filed small things: `--revision` on `analyze` (it exists on `serve` only), the
-  navigator's search box pinned-when-open (decided 2026-08-30, never built), packaging as a
-  binary.
+  navigator's search box pinned-when-open (decided 2026-08-30, never built).
+
+### Packaging — next, and the blockers are found rather than predicted
+
+Tom, 2026-09-09: *"Once these are done, work on the packaging issues and then we can build
+it. May take a couple of milestones."* A single double-clickable binary is the product and
+not for convenience: DunneFlow reads private source and `source.db` contains it, so a hosted
+model would send an unfamiliar codebase to a server (design rule 14).
+
+**Five blockers, read out of the code on 2026-09-09.** The first three are defects in code
+that already exists and can be fixed and tested *before* anything is frozen; the last two are
+a feature — the app's cold start — rather than packaging.
+
+1. **`rules_fingerprint()` would silently return the hash of nothing.**
+   `code_extraction_inputs()` globs `detectors/*.yaml` and `extractors/python/**/*.py`, and
+   `doc_extraction_inputs()` includes `Path(__file__)`. Frozen, those globs come back empty
+   and `fingerprint_files([])` returns `e3b0c44298fc1c14` — the sha256 of nothing, which looks
+   exactly like a fingerprint. `SCHEMA_VERSION` still carries the other half of the key, so
+   what dies is precisely the half added so a forgotten manual bump would stop being
+   load-bearing (rule 12). Bundle the readers as data, **and** make `fingerprint_files` refuse
+   an empty input.
+2. **`multiprocessing.freeze_support()` is nowhere.** `walk.py` opens a
+   `ProcessPoolExecutor` in two places and macOS spawns, so a frozen app re-executes itself
+   per worker. It has to be the first statement in the entry point.
+3. **`analysis.argv()` is dead in a frozen app.** It builds
+   `[sys.executable, "-m", "dunneflow.cli", …]`, and `-m` means nothing to a frozen binary —
+   so **+ Analyze a directory…**, the only way a first-time reader gets a map at all, would
+   never run. Small fix, and `argv` was already split out so a test can read it.
+4. **`serve` cannot boot with nothing to serve.** It raises *"no graph in … — run
+   `dunneflow analyze` first"*, and a double-clicked app has neither an argument nor, on a
+   fresh machine, a map. It needs a cold start: open on the output root, list what is there,
+   offer the analyze dialog. Everything needed exists and opens no graph —
+   `revisions.program_dirs()`, `/api/programs`, `analysis.check`; what does not exist is a
+   `_Live` that is legitimately **empty**. Design rule 21 in the largest place it has applied.
+5. **`DEFAULT_OUTPUT = Path("output")` is relative to a working directory** a double-clicked
+   app does not have. `serve`'s `out_dir` positional has to become optional, which is the
+   shape `CLAUDE.md` already records: *serve takes a program directory today and would take
+   the root while still accepting either.*
+
+Then, and each smaller: bundling `detectors/*.yaml`, `web/static` (1.7 MB) and `web/vendor`
+(5.9 MB of deck.gl), all found through `Path(__file__).parent`; `_tool_version()`, which
+returns `""` with no dist-info so a shipped binary would record no tool version in the one
+panel that exists to say which DunneFlow read the map; **how a directory is chosen**, since
+`analysis.check` refuses a relative path and a browser cannot hand over a folder picker's
+path — this is where `pywebview` earns the place the handoff already gave it; the spec file;
+and signing, which is what decides the non-technical experience and for which the Apple
+Developer account already exists. Windows last.
+
+**The 1,304 tests prove the source tree, not the artifact.** A packaged build needs the
+ground truth run *through the binary*: the four executables at 1,381 · 423 · 292 · 112,
+`naming.md` matching the `CORP` fixture, and the research paper still yielding zero naming
+rules.
 
 ### Before this, in order — the full record is `HANDOFF.md`
 
@@ -3186,6 +3354,7 @@ for; chunk labels (`5v`, `6a`) and dated headings are stable, line numbers are n
 
 | When | What was built | Search `HANDOFF.md` for |
 |---|---|---|
+| 2026-09-09 | Clearing the deck: four decisions and a withdrawal | `clearing the deck before the binary` |
 | 2026-09-01 | Curiosities: the doorway panel, each extremum stating its middle | `Curiosities: the doorway panel` |
 | 2026-09-01 | The change worklist sees a rewritten comment | `sees a rewritten comment` |
 | 2026-09-01 | A presence line says what it left out; one idea stops having two colours | `A presence line says what it left out` |

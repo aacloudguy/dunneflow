@@ -13841,3 +13841,216 @@ arithmetic, not changed, and filed in `BRIEFING`'s open list as a decision rathe
 defect.
 
 **Gates:** 1,276 tests, mypy clean over 126 source files, ruff clean, `check` 0 broken.
+
+## 2026-09-09 — clearing the deck before the binary
+
+Tom's decisions on the open list, taken in one message so that what is left before packaging
+is the packaging. *"Once these are done, work on the packaging issues and then we can build
+it. May take a couple of milestones."*
+
+### `one size` is signed off, and the silence was the defect
+
+*"One size is fine, I sign off on that. We can mention the behavior in the documentation."*
+
+The behaviour was reported the same day and filed as a decision rather than a defect: at
+`plateSize 0` with `spreadZ 0.9` the stack sat at zoom −4.88, and flipping `nodeScaling` to
+`uniform` took it to −3.30. So nothing changed in the layout. What changed is two sentences —
+`nodeCeilingNote()`'s `uniform` branch and the button's own `title` — because the ceiling note
+lives in the ribbon and the title is what a reader reaching for the control sees first.
+
+**Design rule 6 gained the general form**, which is the part worth keeping: *a clamp is felt
+through whichever control moves it, so that control has to name it.* The rule already said
+customisation is clamped and says why; what it did not say is that the clamp is not always
+where the reader's hand is. Three controls bound node size here — spacing, stack, and this
+one — and only one of them owns the cap.
+
+### `touches --routine` refuses to answer about something else
+
+`_find_routine` matched `qualname` or `name` exactly and, on no hit, fell back to
+`qualname LIKE '%needle%'` — silently. So
+
+```
+dunneflow touches output/mensores --routine mensores.cli.app
+```
+
+answered about **`mensores.cli.apply.apply`** and reported a reach of 1. `app` is a Typer
+object rather than a routine, so nothing could match it and the fallback returned the first
+plausible thing it found: rule 49's shape (a fallback that yields a plausible value has hidden
+the failure it was written for) wrapped around rule 5's (never match on a bare common name),
+in the one command a reader would use to check an executable's reach.
+
+**The fallback is kept**, because a half-remembered name is a real way to arrive. What it may
+not do is wear an exact match's clothes. `Found` carries `exact`, `total`, and the module
+question; `_search_said` builds the sentence once for both `touches` and `impact`, which
+shared the defect (rule 51). Printed to **stdout** with the answer, not to stderr: a reader
+piping the answer to a file must not lose the sentence saying it is a name search.
+
+Three answers, never two — and the case that bit gets a fourth thing to say, which is worth
+more than any number of near-misses:
+
+```
+no routine is named 'mensores.cli.app'.
+  mensores.cli is a module here — mensores/cli/__init__.py — and declares no routines at all;
+  nothing in it is named 'app'.
+  1 routine name contains it — a name search, not the routine you asked for:
+```
+
+**The module test asks `files`, not `routines`, and that is the whole of why it fires.** The
+obvious query is `SELECT COUNT(*) FROM routines WHERE module = ?`, and it returns 0 for
+`mensores.cli` — a package `__init__` that builds a Typer app declares no routines of its own.
+That answer says *"not a module here"* about a file the analysis had read. `files` is where a
+module is recorded as having been read at all; how many routines it holds is the next question
+and is usually the answer.
+
+**`<module>` is excluded from that count**, for the reason it is excluded everywhere else: it
+is the module's own top-level code wearing a routine's shape, nobody declared it, and
+*"declares 1 routine"* about a package holding a docstring and two assignments is the opposite
+of the sentence's job. The test fixture found this rather than review — `pkg/__init__.py` with
+one assignment reported 1 where the real case reports 0.
+
+**Two silences went with it, and one was in the branch that was working.** `LIMIT 25` followed
+by `[:args.limit]` can show one of forty and say nothing, in the **exact** branch as much as
+in the fallback: `touches --routine resolve --limit 2` showed two of eight and was silent.
+Both branches count rather than reading `len(rows)` — the LIMIT has already decided that
+number — and both state it (rule 32).
+
+Eight tests, in `tests/test_find_routine.py`. The sample program is the defect's own shape by
+luck: `app = typer.Typer(name="sample")` sits at module scope in `sample.py`.
+
+### One header, on every page of a map
+
+The cover stated which snapshot it described and when that source was read; the other fourteen
+pages said only `Generated <now>`. A reader arriving at `07-database.md` from a link — which is
+how most links arrive — had the whole problem the cover had just solved.
+
+It was not fixed in passing because it could not be. Eight renderers each built
+`f"# {program} — {title}\n\n*Generated {stamp} by DunneFlow.*"` inline and `markdown._header`
+was a ninth copy used only inside that file, so correcting it meant correcting it nine times
+and hoping the tenth renderer written afterwards remembered. Rule 51.
+
+**`render/page.py`** is the one place now: `Stamp` (generated · revision · analysed),
+`Stamp.of(store, when)` reading the graph once for all fifteen pages, and `header()`. **Its own
+module, and that placement is load-bearing** — `markdown.py` imports every one of the eight
+renderers, so a header living there and imported back by them is a cycle.
+
+What made the change clean is that `stamp` was used for **nothing else** in any of the eight:
+each took it, wrote one line with it, and never referred to it again.
+
+*`_what_this_describes` is retired*, Tom's call. All three instants survive in the header, on
+fifteen pages instead of one; keeping the section as well would have made the cover state the
+same three facts twice — rule 51's shape arriving through its own fix.
+
+**Missing and blank stay different answers.** A graph that records neither key keeps the exact
+line it always had, `*Generated <when> by DunneFlow.*`; one that records a revision and no
+analysis instant says which half is missing rather than collapsing to the pre-revision line.
+Handing either an invented snapshot would be rule 30.
+
+The guard is over the **files written**, never over one renderer, because eight copies is
+exactly how this drifted: `test_every_page_states_the_snapshot_and_both_instants` reads every
+page `render_snapshot` produced.
+
+**Verified where it matters.** `dunneflow render` is where the two instants come apart, and on
+an inner page they now do: *source read 2026-09-09 19:02 UTC — these documents written
+2026-09-09 19:03 UTC.*
+
+### Stack orientation, closed by decision
+
+*"I think stack orientation is acceptable as-is, adding camera roll is not required. I can
+already move the camera quite a lot."*
+
+Open since 2026-08-28 and structural — `OrbitView` has no camera roll, so laying the column on
+its side would have to be built rather than configured. Recorded beside the `OrbitView`
+construction in `graph.js`, so the next reader finds the decision where the constraint is
+rather than in a backlog they may not read.
+
+### Inference withdrawn, and withdrawn is not deleted
+
+*"The infer parts can be disabled as features and the links can be removed (but the code left
+in place and marked for use in the next version). Be sure to remove all mentions of the feature
+from any other controls or documentation, but don't destroy any code that may already exist for
+it."*
+
+**It had never been wired, and looking at it is what said so.** `MANIFEST` is `let MANIFEST =
+[]` and nothing anywhere assigns it, so the page said *"the document manifest is not served
+yet"* for ever — and `data-airun="go"` set `state.aiDone = true` and rendered **"✓ Pass
+complete."** having done nothing at all. Design rule 16's own failure with a false claim on top:
+a control that renders and is wired to nothing looks exactly like one that works, and this one
+reported success. Its costs and volumes were the ratified artifact's pinned figures for one
+program (rule 34).
+
+**One constant decides**, `INFERENCE_SHIPPED` in `shell.js` (rule 51). Guarded off: the
+navigator row, the Settings panel and its `data-goto`, the route, the breadcrumb, the off-mode
+label, and the dispatch.
+
+**Each guarded entry is kept in a shape the source guard can still read**, and that was not the
+first attempt. `test_every_generated_nav_item_has_a_route` reads `NAV_ROUTES` out of the source
+with `^\s+key\s*:`, so a spread written as `? { inference: … }` on one line hid the route while
+leaving `nav: "inference"` visible — and the guard reported the withdrawn row as *unrouted*.
+Both sides move together, behind the one constant, on their own lines.
+
+**Kept whole**: `viewInference()`, `AI_OPS`, `POSTURES`, `MANIFEST`, `posture()`, `permits()`,
+`chosenOps()`, `NEED_LABEL`, every `data-egress` / `data-aiop` / `data-airun` handler, every
+state field, and the CSS. Turning it back on is one line, and it stops being one line the
+moment somebody tidies away a handler nothing appears to call — which is why the guard asserts
+that half too.
+
+**`egress` and `aiOps` left `DEFAULTS` and `PERSISTED`**, on `nodeShapes`' precedent, and that
+precedent is about the **reset dialog** rather than about storage: `resetSettings` walks the
+defaults, so a key left there makes a reset report clearing *"egress posture"* and *"model
+operations"* — naming two settings the reader was never offered and could not have changed. A
+default is a promise that something can be different. `state.egress` and `state.aiOps` stay
+where they are, so restoring the feature restores its persistence with it.
+
+**Untouched, and none of it is the feature.** Four things share the word and are separate
+subjects: *edge confidence* `INFERRED` and the *hide inferred edges* toggle (design rule 5,
+built and working, nothing to do with a model); the *version tier* `INFERRED` (a version read
+from a directory name, honest and stated); `Provenance`'s four tiers, whose two paid ones were
+already declared and unbuilt; and **About this map**'s two rows, which say no fact here was
+inferred and no model read it — a standing guarantee this withdrawal makes *more* true. Design
+rules 14 and 28 stay, each with a paragraph saying what changed; rule 14's description of the
+postures and the manifest is now **what the next version has to satisfy before the constant
+becomes true**.
+
+**Guarded from both sides**, because either half fails silently alone.
+`tests/test_inference_withdrawn.py` asserts every door is behind the constant *and* that every
+part of the feature is still there; `selfCheck()` gained the runtime half, which is the only
+check that can see it — the handlers are still wired, deliberately, so the dead-control scan
+passes them happily.
+
+*And the guard failed on its own prose first*, which is the sixth time in this project: the
+block comment explaining the withdrawal names `data-goto="inference"`, so the scan read its own
+explanation as a live door. Rule 43, and the reason `_code` exists — imported from
+`test_web_controls.py` rather than written again, because a second comment-stripper is a second
+answer and this one would have been the naive version that ate the template literals.
+
+### Seen, not only tested
+
+Served on **8901** against a fresh analysis of the 08-30 checkpoint, in a tab of its own; 8787
+was left alone throughout, as it is not to be stopped without asking.
+
+* No navigator row — VOCABULARY reads **4** and lists four: Glossary, Stated naming rules,
+  Stated rules checked, Derived naming standard. The count agrees with the rows, so nothing is
+  silently omitted.
+* No Settings panel: Appearance · Colour · How a plate arranges what it holds · What opens, and
+  what shows · Usage · Accessibility. `selfCheck()` returns `[]` on the cover **and** on
+  Settings, which is where the withdrawn link used to be.
+* `document.querySelectorAll` finds zero of `[data-goto="inference"]`, `[data-airun]`,
+  `[data-aiop]`, `[data-egress]`, `[data-nav="inference"]`, `#navEgress`.
+* A fresh settings blob carries neither `egress` nor `aiOps`.
+* The new ceiling sentence reads as intended: *"every node one size, the densest plate's — so
+  it separates on every plate; a smaller smallest node raises the view's floor, which pulls the
+  zoom in"*. Taken with `Graph.nodeCeiling` stubbed, because the graph does not mount in a
+  background tab (rAF is stopped, not throttled) and the branch it selects was not what
+  changed.
+
+The rows were read with `transform: translate(0, -170px)` on the app root, which pans the
+capture window over the real page — the technique recorded 2026-09-06, and still the only way
+to see below the fold of a 784×368 frame.
+
+### Verified
+
+`uv run pytest` **1,304 passed** · `uv run mypy .` clean over **129** source files ·
+`uv run ruff check .` clean.
+
+Ground truth retaken rather than assumed, against `../society-2026-08-30/src`: all four
+declared executables resolved, at **1,381 · 423 · 292 · 112**.

@@ -268,12 +268,14 @@ causes a render (rule 51). After: 97 → 84, the control still on screen — 84 
 because that click shortens the note, so the browser clamps to the new bottom, which is the
 honest outcome rather than a scroll past the end.
 
-***The pointer still could not be used, and this time the instrument said why.*** A capturing
+~~***The pointer still could not be used.***~~ *Discharged 2026-09-09 — Tom: "Confirmed
+good. Much improved." Both the toggle and the scrolling panel were used at his own screen,
+which is the half a scripted click cannot reach (rule 48). The instrument's own account
+stands and is worth keeping:* a capturing
 `pointerdown` listener recorded **0 hits** from a press aimed at a button `elementFromPoint`
-confirms is there, with `document.visibilityState` reading `hidden` — the window is behind
-another one, which is **rule 90** exactly. The route is verified scripted end to end: label,
-`aria-pressed`, the offered value, the persisted setting and the engine mode all flip
-together, both ways. *One press with the window in front finishes it.*
+confirms is there, with `document.visibilityState` reading `hidden` — the window was behind
+another one, which is **rule 90** exactly, and it accounts for both missed presses this
+session. The coordinate mapping was right all along.
 
 ### Node size follows the plate it sits on (2026-09-09)
 
@@ -365,12 +367,15 @@ top of each other; `applyViewCap` raises `minZoom` instead so the smallest node 
 least 1 px. The whole stack still frames in a graph pane about **465 px tall** at the default
 settings; below that the reader pans.
 
-***Not looked at.*** *Every figure here is measured inside the running engine on the real
-payload — `Graph.separation()`, `nodeCeiling()`, `nodePixels()` — and not one of them is a
-screenshot. deck.gl reports `frames 0` in the automation tab: the graph pane is hidden at
-boot, the canvas mounts at 300×150 and never resizes, and four ways round it failed.
-**Tom has since seen it — "it looks very good" — so the picture is confirmed;** what is still
-owed is a look at a **sparse** plate specifically.*
+~~***Not looked at.***~~ *Seen and confirmed by Tom, 2026-09-09: "it looks very good", and
+after the Setting and the scrolling panel, "Confirmed good. Much improved."*
+
+*Every figure here was measured inside the running engine on the real payload —
+`Graph.separation()`, `nodeCeiling()`, `nodePixels()` — and not one is a screenshot, because
+deck.gl reports `frames 0` in the automation tab: the graph pane is hidden at boot, the canvas
+mounts at 300×150 and never resizes, and four ways round it failed. **That limitation stands
+and is worth knowing before the next graph change** — the engine's numbers can be taken there,
+the picture cannot.*
 
 ### The checkpoint, and what "a lot of changes" turned out to be (2026-09-09)
 

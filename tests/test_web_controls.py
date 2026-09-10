@@ -6173,6 +6173,46 @@ def test_the_pair_control_shows_the_pair_that_is_actually_in_force() -> None:
     )
 
 
+def test_the_pair_control_takes_its_compared_end_from_the_one_function() -> None:
+    """The third answer to *what is this held against*, and the only clickable one.
+
+    `comparedRev` has three states and the menu has options for two of them: *nothing
+    chosen yet* (`""`), *chosen: on its own* (`ALONE`), and a revision. The control derived
+    the compared end from `chosenPair()`, which is empty for the first two alike — so a
+    first visit selected the row reading **on its own** while `comparedRevInForce()` filled
+    the comparison back in from its fallback. The strip said *compared with*, the routine
+    list marked itself, the code overlay drew, and the one control that names the pair said
+    there was not one.
+
+    `versionStrip()` had already been given this fix, and its comment is the whole argument:
+    *"Two answers to 'what is this held against', and fixing one fixed nothing a reader
+    could see."* This was the third answer.
+
+    The guard that stood here could only see that *a* key was read off `chosenPair()`, never
+    which question the control had asked — so it watched this happen and had nothing to say
+    (rule 37).
+    """
+    js = _code(_read("shell.js"))
+    fn = _fn(js, "buildRevControls")
+
+    compared = re.search(r"^\s*const compared\s*=\s*([^;]+);", fn, re.M)
+    assert compared, "buildRevControls no longer decides a compared end at all"
+    assert "comparedRevInForce()" in compared.group(1), (
+        "buildRevControls derives its compared end from "
+        f"`{compared.group(1).strip()}` rather than from comparedRevInForce(). That is a "
+        "second answer to the question the strip, the routine marks and the code overlay "
+        "all ask through one function, and the states it cannot tell apart are *nothing "
+        "chosen yet* and *chosen: on its own* -- so a first visit names a pair it is not "
+        "showing, or shows a pair it does not name."
+    )
+    # And the state it *must* keep distinguishable: `ALONE` is what makes the empty
+    # compared end mean the reader answered, and it is read in `comparedRevInForce`.
+    assert "ALONE" in _fn(js, "comparedRevInForce"), (
+        "comparedRevInForce no longer tests for ALONE, so `on its own` is a choice the "
+        "fallback invents a comparison back out of"
+    )
+
+
 def test_moving_the_reading_end_asks_the_server_and_moving_the_other_does_not() -> None:
     """Two acts, two costs, and only one of them is a rebuild.
 

@@ -7,16 +7,23 @@ A program is started, fed inputs at its boundary, pulls more from its environmen
 through listeners, moves things through internal routines, and pushes results back
 out. **What moves is the subject. Internal computation is not.**
 
-DunneFlow reads a source tree and a documentation corpus and writes a Markdown map —
-entrypoints, flows, routines, boundaries, database use, network and messaging,
-governance, a glossary, a naming standard, and a list of anomalies. It is built for
-someone orienting in a codebase they did not write.
+DunneFlow reads a source tree and the documentation beside it and gives you a map you can
+walk around in — entrypoints, flows, routines, boundaries, database use, network and
+messaging, governance, a glossary, a naming standard, and a list of anomalies. It is built
+for someone orienting in a codebase they did not write.
 
-Deliberately *not* reported: local variables, arithmetic, control flow, and private
-helpers that neither touch a boundary nor sit on a path to one. Leaving those out is
-most of what makes the output readable.
+Deliberately *not* reported: local variables, arithmetic, and private helpers that neither
+touch a boundary nor sit on a path to one. Leaving those out is most of what makes the
+output readable.
+
+Control flow is reported only where something **moves** inside it: a loop that increments a
+counter is the internal computation nobody asked for, a loop that issues one network call
+per item is a *rate*, and a rate is flow.
 
 The goal is **comprehension, not documentation**.
+
+**New here? [Read the guide.](docs/README.md)** It starts at installing and ends at holding
+two versions of a program against each other.
 
 ## Install
 
@@ -24,33 +31,65 @@ Requires Python 3.12+ and [uv](https://docs.astral.sh/uv/).
 
 ```bash
 uv sync
+uv run dunneflow serve
 ```
 
-## Use
+That opens the start page in a browser, which is where you make your first map. There is
+also a signed macOS application — built for Apple silicon and Intel, asking the system for
+no permissions at all — which does the same thing when double-clicked. See
+[docs/01-installing.md](docs/01-installing.md).
+
+## The dashboard
+
+`dunneflow serve` is the main way in. Three panes — navigator, centre, inspector — and the
+centre is **one selection read six ways**, not six destinations:
+
+| | |
+|---|---|
+| [Graph](docs/06-graph.md) | the whole program as a stack of plates |
+| [Table](docs/07-table.md) | every routine as a sortable row |
+| [Document](docs/08-document.md) | the eight documents DunneFlow writes, and every document your program carries |
+| [Code](docs/09-code.md) | the source as measured, with every resolved call clickable |
+| [Diagram](docs/10-diagram.md) | one compartment, drawn |
+| [Shape](docs/11-shape.md) | what one routine *does* — its loops, decisions and refusals |
+
+Around them: a [trail with Back, Forward and a shelf](docs/12-chasing-rabbits.md) so a
+detour costs you nothing, and a [comparison](docs/14-comparing-two-versions.md) between two
+points in time that says what a text diff cannot — which routines *behave* differently, not
+which of their lines moved.
+
+Vanilla JavaScript and deck.gl over `http.server`. No framework, no Node at runtime or
+build.
+
+## Command line
 
 ```bash
-uv run dunneflow analyze  <path> --name <program>   # extract, resolve, write the map
-uv run dunneflow touches  <path> --routine <name>   # what does this reach?
-uv run dunneflow impact   <path> --routine <name>   # what breaks if I change it?
-uv run dunneflow check    <path>                    # anomalies; non-zero exit on BROKEN
-uv run dunneflow glossary <path>                    # what its words mean, and who says so
-uv run dunneflow naming   <path>                    # the naming standard, stated and measured
-uv run dunneflow query    <path> --sql "..."        # ask the graph directly
+uv run dunneflow analyze   <path> --name <program>   # extract, resolve, write the map
+uv run dunneflow serve     [dir]                     # the dashboard
+uv run dunneflow touches   <path> --routine <name>   # what does this reach?
+uv run dunneflow impact    <path> --routine <name>   # what breaks if I change it?
+uv run dunneflow check     <path>                    # anomalies; non-zero exit on BROKEN
+uv run dunneflow glossary  <path>                    # what its words mean, and who says so
+uv run dunneflow naming    <path>                    # the naming standard: derived, and quoted
+uv run dunneflow mirror    <path>                    # words the docs define that the code never uses
+uv run dunneflow query     <path> --sql "..."        # ask the graph directly
+uv run dunneflow revisions <dir> [--seal]            # what snapshots this holds; keep the current one
+uv run dunneflow render    <dir>                     # a snapshot's Markdown, from the graph it has
+uv run dunneflow migrate   <dir>                     # stored paths: absolute -> relative
 ```
 
-`query` takes `--docs` to attach the document store as `docs`, which is what makes the
-cross-store claims in the traceability report reproducible.
-
 `analyze` reads documentation as well as source, from the package root by default
-(`--docs <path>`, `--no-docs`, `--recheck-docs`). It is incremental: unchanged files
-are not re-parsed. Output lands in `output/<program>/` and is not checked in —
-regenerate it rather than committing it.
+(`--docs <path>`, `--no-docs`, `--recheck-docs`), and `--standards <dir>` admits somebody
+else's naming standard without absorbing it. It is incremental: unchanged files are not
+re-parsed.
 
 Point it at itself for a worked example:
 
 ```bash
 uv run dunneflow analyze src --name dunneflow
 ```
+
+Full reference: [docs/16-the-command-line.md](docs/16-the-command-line.md).
 
 ## What a program directory contains about your machine
 
@@ -103,6 +142,10 @@ spot. They are different questions and are never blurred.
 with a file and line; a measured claim ships the SQL that counted it; an inferred one
 cannot prove itself and must say so.
 
+Nothing on the analysis path calls a model or opens a network connection, and a test fails
+if anything under `extractors/`, `resolve/` or `canonical/` starts importing an HTTP client
+or a model SDK. That is a standing guarantee rather than a current state of affairs.
+
 ## Development
 
 ```bash
@@ -115,11 +158,14 @@ Unit tests on a toy program cannot catch a resolution defect that only appears a
 scale, so changes are also verified against a real codebase before being called done.
 
 Engineering rules — the ones learned the hard way, each from a false result on real
-code — are in [`CLAUDE.md`](CLAUDE.md). Current state and open questions are in
-[`HANDOFF.md`](HANDOFF.md).
+code — are indexed in [`CLAUDE.md`](CLAUDE.md) and written out in [`RULES.md`](RULES.md);
+the dashboard's are in [`DESIGN-RULES.md`](DESIGN-RULES.md). Current state is in
+[`BRIEFING.md`](BRIEFING.md), the full record in [`HANDOFF.md`](HANDOFF.md), and every
+measured figure with the budget it was taken against is in
+[`PERFORMANCE.md`](PERFORMANCE.md).
 
 ## Status
 
-Working and verified at scale. The interactive dashboard is designed but not yet
-built; temporal layers, TypeScript extraction, and cross-process stitching come after
-it. See `HANDOFF.md`.
+Working and verified at scale, with the dashboard and comparison built. A signed macOS
+application exists and is awaiting notarisation. TypeScript extraction, cross-process
+stitching and Windows come after that. See `BRIEFING.md`.

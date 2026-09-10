@@ -1,0 +1,185 @@
+# 14. Comparing two versions
+
+Read this once you are comfortable with a single version. Everything below sits on top of
+the six views you already know.
+
+## What this gives you that a text diff does not
+
+`git diff` tells you which lines moved, and tells you better than anything else. It cannot
+tell you **what moves changed**:
+
+- a routine that is in one version and not the other
+- a routine that writes to a table it does not write to over there
+- a signature whose types differ
+- a call that resolves in one version and not in the other
+- an argument a caller passes that it did not pass before
+
+That is the half a text diff cannot state, and it is the whole reason this exists. It also
+works where a diff cannot: **two directories with no shared history at all** — a vendor
+drop against last quarter's vendor drop, a tree on a memory stick against the one you have.
+
+## Getting a second version
+
+A program directory holds one **working** snapshot, which each analysis replaces. To keep
+two, you seal the first.
+
+```bash
+# 1. analyse the older tree
+uv run dunneflow analyze ~/code/some-project-2026-09-08/src --name some-project
+
+# 2. seal it, with a name you will recognise
+uv run dunneflow revisions output/some-project \
+    --seal --label "some-project at f795bc3 - 2026-09-08"
+
+# 3. analyse the newer tree into the same program
+uv run dunneflow analyze ~/code/some-project/src --name some-project
+```
+
+```
+sealed 2026-09-10T18:48:30Z as FOR_COMPARISON — "some-project at f795bc3 - 2026-09-08"
+the next `analyze` opens a fresh working revision beside it
+```
+
+Check what a program holds at any time:
+
+```bash
+uv run dunneflow revisions output/some-project
+```
+
+```
+revision               state            captured               files  label
+2026-09-10T18:48:42Z   WORKING          2026-09-10T18:48:42Z      78
+2026-09-10T18:48:30Z   FOR_COMPARISON   2026-09-10T18:48:30Z      73  some-project at f795bc3 - 2026-09-08
+```
+
+**Sealing is a command, not a button**, and the dashboard says so where you would look for
+it. If you analyse into a program that already has a working snapshot, the dialog warns
+you plainly: *"Analysing into it rewrites its working snapshot rather than adding a second
+point in time — seal it first if you want to keep both."*
+
+## Choosing the pair
+
+With two or more comparable versions, the **version menu** appears in the top bar. One
+control, and its options are the **pairs**:
+
+```
+reading DunneFlow
+    DunneFlow · on its own
+    DunneFlow ← dunneflow-2026-09-08 · DunneFlow at f795bc3 - 2026-09-08
+reading dunneflow-2026-09-08 · DunneFlow at f795bc3 - 2026-09-08
+    dunneflow-2026-09-08 · … · on its own
+    dunneflow-2026-09-08 · … ← DunneFlow
+```
+
+Both ends are real. The **reading** end decides what the whole screen shows — the cover,
+the routine list, the code browser, the glossary. The other end is what it is held
+against. Your choice survives a page reload and a restart of the server, because it is the
+server's state and not the browser's.
+
+**A program with two versions opens comparing them**, rather than waiting to be asked —
+so the routine list marks itself and the code overlay draws on your first visit. The menu
+names that pair, and **on its own** is the option that turns it off. Whichever you pick is
+remembered.
+
+## Which is newer?
+
+**DunneFlow does not know, and does not pretend to.** The only instant it records is when
+*it* read the bytes. A tree handed to you on a memory stick has no history at all — and
+that is precisely the case this view exists to serve.
+
+So the bands are named by **where a thing is**, never by what happened to it, and the
+interpretation is yours. The strip carries it as a button you can flip:
+
+> base **DunneFlow** `0.1.0` compared with **dunneflow-2026-09-08** · DunneFlow at f795bc3
+> - 2026-09-08 `0.1.0` — [ assuming the compared version is newer — no versions to compare
+> ] · captured: compared first
+
+Three things in that line:
+
+- **The assumption**, as a button. Click it to flip. Where the two versions state version
+  numbers that can be ordered, it says so — *"the compared version is newer — from their
+  versions"*. Where they cannot, as here (both are `0.1.0`), it says *"assuming … — no
+  versions to compare"*, meaning there were no version *numbers* to derive an order from.
+- **captured: compared first** — which of the two DunneFlow read first. A fact about the
+  capture, not about the code, which is why it sits beside the assumption rather than
+  deciding it.
+- Changing the assumption costs no re-query. It only relabels; the facts underneath do not
+  move.
+
+## What differs
+
+The **Changes** group in the navigator, or **The whole comparison** inside it.
+
+![The "What differs" page: base and compared instants, then eight cards — 3 added, 49 deleted, 63 behave differently, 1 explained differently, 14 edited only, 1 module explained differently, 3 structures only in the base, 1 structure declaring differently — followed by the routine and structure totals and the lists of ways in, named files and constants that moved](images/14-what-differs.jpg)
+
+### The four bands
+
+These are a partition — every routine that differs is in exactly one.
+
+| | |
+|---|---|
+| **only in base** / **only in compared** | Presence, by identity. A routine is identified by its qualified name, never by its position, so it keeps its identity when anything above it moves. **A rename reads as one of each**, which is honest: nothing in the source says the two are the same thing. |
+| **behave differently** | The same routine in both, and something it *does* differs — what it calls, what it touches, what it takes or returns. This is the band worth your time. |
+| **edited only** | The body differs and nothing it does does. **The largest band in ordinary work and the least interesting**, and saying so is the point: a routine whose internal computation changed is exactly what DunneFlow exists not to report. |
+
+### The explanations
+
+Beside the bands, never deciding one:
+
+- **explained differently** — a rewritten comment or docstring, tagged on the row it
+  belongs to. A leading comment sits *above* the `def` and so outside the routine's body,
+  which means a rewritten comment would otherwise vanish from the comparison entirely.
+- **modules explained differently** — a rewritten module docstring. That belongs to a
+  *file*, not to a routine, so it is its own lane and its rows carry a path.
+
+Prose is compared **joined and collapsed**, not as written. On a real codebase 86% of
+comment lines live in a run of two or more, so a re-wrap that changes no word reports 1,561
+false differences as written — and none once joined.
+
+Docstrings are canonicalised slightly differently: paragraphs are **kept**. Merging them
+would destroy the separation between a summary line and the rest, which is exactly the
+change you would want reported.
+
+### Below the bands
+
+Ways in that appeared or vanished, named files, and constants — each listed by name, and
+each clickable.
+
+## Reading the difference in the views
+
+With a pair set, the marks appear where you are already reading.
+
+**The routine list and the table** mark each row with what the comparison found about it.
+Free, drawn from an answer already held.
+
+**The code browser** draws it over the source:
+
+![The code browser with the overlay: "Against 2026-09-10 18:48:30: 324 lines deleted and 41 lines added. The added lines are shown where they belong, with their own numbers — they are not in the file you are reading." then "15 routines here the comparison has something to say about", and a list naming each routine and which facts about it moved](images/14-code-overlay.jpg)
+
+The lines are the cheap half. The list under them is the half nothing else gives you:
+*`cmd_serve` behaves differently — boundaries, call_args, calls, comments*. That is four
+different claims about one routine, and each is a fact you can go and look at.
+
+Note what it says about added lines: they are *shown where they belong, with their own
+numbers — they are not in the file you are reading*. You are reading one version, with the
+other drawn over it, not a merged view of both.
+
+**The stack** can colour by what changed, rather than by what things are — the **Colour by**
+control in the graph legend, which offers `what changed` only when there is a comparison
+to draw.
+
+**The anomaly worklist** can say which findings the other version also has, and whose
+count, severity or confidence moved. That one is the expensive overlay: 1.3 to 4.1 seconds
+the first time, because it means running thirteen detectors against a graph this process
+has never opened.
+
+## What is never done to your snapshots
+
+The two graphs are joined read-only for the length of a query. **Neither snapshot is
+copied, moved or rewritten to be compared**, and a sealed snapshot is never re-analysed in
+place. That is what makes a sealed snapshot worth having: it is still readable after its
+source tree is gone.
+
+---
+
+Next: [15. When it refuses](15-when-it-refuses.md)

@@ -16,8 +16,14 @@ It exists so a fresh context can be useful in a few minutes instead of an hour.
 
 Maps what moves through a program: where it starts, what it runs, what it touches, and
 why. **What moves is the subject; internal computation is not.** Local variables,
-arithmetic and control flow are deliberately absent — leaving them out is most of what
-makes the output readable.
+arithmetic and private helpers that touch no boundary are deliberately absent — leaving
+them out is most of what makes the output readable.
+
+**Control flow was on that list until 2026-09-07 and the amendment is narrow**: a loop or a
+decision is a subject *only where something moves inside it*. A loop that increments a
+counter is the internal computation nobody asked for; a loop that issues one call per item
+is a rate, and a rate is flow. `resolve/shape.py` is the one place that judgement is made,
+and Shape mode is where a reader sees it.
 
 The reader is someone who **reads code but does not write it**, orienting in a codebase
 they did not build. Judge every change by whether it helps them orient, not by how many
@@ -204,7 +210,39 @@ program has a most-commented routine and a maximum alone is a claim nobody can w
 
 ## What we are doing now
 
-**Milestone 4 is built and installed, 2026-09-10. Nothing is owed and nothing is half-done.**
+**The user guide is written, 2026-09-10 — `docs/`, and it is the first documentation this tool
+has ever had for the person it is built for.** Seventeen files, 1,879 lines, **29 screenshots
+taken from a live server**, and `README.md` rewritten: it still ended *"the interactive
+dashboard is designed but not yet built"*, which was the most wrong sentence in the repository.
+**1,402** tests, mypy and ruff clean.
+
+**Read `docs/README.md` before writing another page of it.** Three rules held throughout and
+each was paid for: name every control by the words on it (all 44 quoted labels are grepped back
+against `web/static/`), state what a thing costs because the product does, and never cite a rule
+number — `RULES.md` is for whoever builds the tool.
+
+**`docs/` is DunneFlow's own corpus now**, 9 documents to 26, which is the one way a tutorial
+can put a false fact into the map. Measured before and after: **zero** naming rules from
+`docs/`, and one definition, which was a heading of mine reading as a glossary section and is
+reworded. **Re-measure this after adding a page** — the command is in `HANDOFF.md`'s
+**2026-09-10** entry, second of that date.
+
+**One defect, found by driving the product to photograph it and not by a test.** The
+version-pair control named a pair it was not showing: `buildRevControls()` derived its compared
+end from `chosenPair()`, which cannot tell *nothing chosen yet* from *chosen: on its own*, so a
+first visit read **on its own** while the strip, the routine marks and the code overlay all ran
+a comparison. It asks `comparedRevInForce()` now — the third surface to be given that same fix,
+and the only one the reader can click. The guard that stood over it could only see that *a* key
+was read (rule 37); there is a real one beside it now.
+
+**Every map in `output/` was stale** and nothing said so until one was opened. The screenshot
+corpus is **DunneFlow itself against `../dunneflow-2026-09-08`** (a worktree at `f795bc3`,
+sealed) — a better corpus for a guide than Society, because every routine a screenshot names is
+one the reader can go and read.
+
+### Milestone 4 — built and installed, 2026-09-10
+
+**Nothing is owed and nothing is half-done.**
 `DunneFlow.app` in `/Applications` is **universal2, Developer ID signed under the hardened
 runtime, notarised by Apple and stapled** — Gatekeeper says `accepted / source=Notarized
 Developer ID`, and all **53** Mach-O files in the installed bundle are `x86_64 arm64`, checked
@@ -3556,6 +3594,8 @@ for; chunk labels (`5v`, `6a`) and dated headings are stable, line numbers are n
 
 | When | What was built | Search `HANDOFF.md` for |
 |---|---|---|
+| 2026-09-10 | The user guide, and the one control that named a pair it was not showing | `the user guide, and the one control` |
+| 2026-09-10 | Milestone 4: the application says what it is doing, and a build that runs anywhere | `milestone 4: the application` |
 | 2026-09-09 | Milestone 3: signed with a Developer ID, and a universal build that refuses to lie | `milestone 3: signed` |
 | 2026-09-09 | Milestone 2: packaging, and a `DunneFlow.app` that opens on a fresh machine | `milestone 2: packaging` |
 | 2026-09-09 | Clearing the deck: four decisions and a withdrawal | `clearing the deck before the binary` |

@@ -2803,7 +2803,20 @@ function buildRevControls() {
      the server does not send, but a field *this file* does not send itself. */
   const pair = chosenPair();
   const base = pair.base || servingRevision() || usable[0].revision;
-  const compared = pair.compared || "";
+  /* **What is in force, not what was chosen** — and that is rule 51 landing a third time
+     on one question.
+     `comparedRev` has three states and the middle one has no option: *nothing chosen yet*
+     (`""`), *chosen: on its own* (`ALONE`), and a revision. This read `chosenPair().compared`,
+     which is empty for the first two alike, so a first visit selected the row that says
+     **on its own** while `comparedRevInForce()` was filling the comparison back in from its
+     fallback — the strip said *compared with*, the routine list marked itself, the code
+     overlay drew, and the one control that names the pair said there was not one.
+     `versionStrip()` was given this same fix and its comment says why: *"Two answers to
+     'what is this held against', and fixing one fixed nothing a reader could see."* This
+     was the third answer, and the only one the reader can click. So the state's three
+     states reach the menu through the same one function every other surface asks, and a
+     first visit now opens on the pair it is actually showing. */
+  const compared = comparedRevInForce();
 
   /* As short as it can be while still telling two versions apart. `versionName()` is the
      tree and the label -- what a person recognises -- and it drops the instant, which is

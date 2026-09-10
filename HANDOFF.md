@@ -14667,3 +14667,133 @@ laid along the spine they were geometrically clear of the back and still merged 
 
 Then **Windows**, and a **`.dmg`** whenever something needs handing over — `release.sh dmg` works
 now that the credentials are in the keychain.
+
+## 2026-09-10 — the user guide, and the one control that named a pair it was not showing
+
+The asked-for work was documentation: DunneFlow had none for the person it is built for. Everything
+below came out of **driving the product in order to photograph it**, which is the same shape as the
+session before it — the tests prove the source tree, and the defect lived in the first surface a
+reader meets.
+
+| | |
+|---|---|
+| written | `docs/` — 17 files, 1,879 lines, **29 screenshots** taken from a live server |
+| tests | 1,401 → **1,402**, mypy and ruff clean throughout |
+| defects found | **one**, in the version-pair control; not reported by a test |
+| corpus | `docs/` is DunneFlow's own documentation now — **9 documents → 26** |
+| `README.md` | rewritten; it still ended *"the interactive dashboard is designed but not yet built"* |
+
+### The guide, and who it is addressed to
+
+Sixteen numbered files plus an index, in the register the tool is built for: someone who reads code
+and does not write it. Installing · getting the code · the start page · the first map · the shell ·
+the six views · chasing rabbits · Settings · comparing two versions · when it refuses · the command
+line.
+
+Three rules held throughout, and each is worth keeping for whoever writes the next page.
+
+* **Name every control by the words on it.** `◇ Keep this`, `‹ out`, `show crossings`,
+  `+ Analyse a directory…`. All 44 quoted labels were grepped back against `web/static/` at the end;
+  one had drifted in my prose and not in the product.
+* **State what a thing costs**, because the product does. The force layout is 89 ms with a GPU and
+  9.7 s without; the findings overlay is 1.3–4.1 s the first time. Documentation vaguer than the
+  screen is documentation that will be believed over it.
+* **Never cite a rule number.** `RULES.md` is for whoever builds the tool. A tutorial says *the map
+  refuses because the analysis that wrote it never finished*.
+
+`docs/02-getting-the-code.md` is the one a reader will not expect and is the one that had to exist:
+**DunneFlow never asks a version control system anything.** git, Perforce, Lore, a zip on a memory
+stick — get a directory, point the tool at it. The page teaches the two traps that make a map lie
+rather than fail: the default branch that is three months stale, and a sparse checkout or a narrow
+Perforce client view, where **what is not on disk is not in the map**.
+
+### What photographing it found
+
+**The version-pair control named a pair it was not showing.** On a fresh session with two versions,
+the menu read *DunneFlow · on its own* while the strip beside it read *compared with
+dunneflow-2026-09-08*, the routine list marked itself, and the code overlay drew.
+
+`comparedRev` has **three** states — *nothing chosen yet* (`""`), *chosen: on its own* (`ALONE`), and
+a revision — and that distinction is load-bearing and already recorded: collapsing the first two is
+the defect Tom reported months ago, when choosing *on its own* went on naming a pair.
+`comparedRevInForce()` was fixed then, and `versionStrip()` was fixed after it with a comment saying
+exactly why: *"Two answers to 'what is this held against', and fixing one fixed nothing a reader
+could see."*
+
+**`buildRevControls()` was the third answer, and the only one the reader can click.** It derived its
+compared end from `chosenPair().compared`, which is empty for *nothing chosen yet* and *chosen: on
+its own* alike. One line:
+
+```js
+-  const compared = pair.compared || "";
++  const compared = comparedRevInForce();
+```
+
+Verified in the browser across all four states with `localStorage` cleared, each surviving a reload:
+`""` → names the pair · `ALONE` → *on its own*, `comparing()` false · an explicit revision → names it
+· and the **reversed base**, which matters because the fallback keys on `serving` and not on `base` —
+`dunneflow-2026-09-08 ← DunneFlow`, with `captured:` correctly flipped to *base first*.
+
+*What was not changed is the default.* A two-version program opens **comparing**, so the routine
+marks and the code overlay draw on a first visit; the fallback exists for that and its comment says
+so. The defect was the control misreporting, never the behaviour.
+
+### The guard that watched it happen
+
+`test_the_pair_control_shows_the_pair_that_is_actually_in_force` has that name and does not test it.
+It asserts that the keys `buildRevControls` reads off `chosenPair()` are keys `chosenPair()` returns
+— which catches the *previous* defect in that function and is blind to this one, because
+`pair.compared` is a real key being read for the wrong question. Rule 37 exactly: a guard that checks
+a name appears has not checked that anything happens.
+
+`test_the_pair_control_takes_its_compared_end_from_the_one_function` is beside it now, asserting the
+compared end comes from `comparedRevInForce()` and that `comparedRevInForce` still tests for `ALONE`.
+
+**And the mutation check first proved nothing, which is worth recording.** Reverting the line with a
+first-occurrence string replace edited a *different* function: two other places legitimately hold
+`const compared = comparedRevInForce();`, and the first is 1,200 lines above `buildRevControls`. The
+test passed, correctly, over a file where the control was still fixed — a green mutation check that
+had mutated nothing (rule 59, from the other side). Anchored on the surrounding comment it fails with
+the diagnosis.
+
+### The corpus check, which the guide had to pass
+
+`docs/` sits at the repository root, which is DunneFlow's documentation root — so the guide is read
+back as DunneFlow's own corpus. That is correct and wanted, and it is also the one way a tutorial can
+put a false fact into the map.
+
+Measured before and after. Naming rules from `docs/`: **zero**, which is the one that mattered — a
+tutorial about naming is exactly the shape `_table()` fires on. Definitions: **one**, and it was
+mine. The heading *"Where a definition came from"* was read as a glossary section and minted the term
+`Where a definition came from` at `HEADING_PARA`. The heading is *"Following a citation back"* now,
+and the corpus gains 17 documents and **no** definitions and **no** rules.
+
+The fix belongs in the tutorial and not in the detector: the detector read that heading exactly as it
+should, and rule 1 says precision beats recall in the other direction too — a section heading that
+announces a definition is a section heading that announces a definition.
+
+### Every map in `output/` was stale, and nothing said so until it was opened
+
+`serve output/mensores` refused on `standards.db`; the graph was stale too, and so were both sealed
+snapshots and `output/beads` and `output/dunneflow`. Rebuilding the Society pair is the three-command
+recipe and costs two analyses; Tom's call was to **analyse DunneFlow itself and clone an older
+version into a sister directory**, which is what the screenshots and the comparison chapter are of:
+`../dunneflow-2026-09-08`, a worktree at `f795bc3`, sealed as `FOR_COMPARISON`, against the current
+tree. 864 routines → 910, and 49 deleted · 63 behaving differently · 14 edited only.
+
+It is a better corpus for a guide than Society, and not only because it was to hand: every routine a
+screenshot names is one the reader can go and read.
+
+### One stale sentence in `BRIEFING.md`
+
+*"Local variables, arithmetic and control flow are deliberately absent"* — the control-flow half was
+amended on 2026-09-07 and Shape mode is the amendment. Corrected in the file whose whole job is to
+orient a fresh context, and in `README.md`, which said it too.
+
+### Open
+
+Nothing from this session. The **icon** and **Windows** are where they were.
+
+The guide has **no page on the anomaly worklist**, deliberately: it is a navigator destination rather
+than one of the six views, and it is the one surface whose discipline — severity, confidence and
+blind spot as three different questions — deserves a page of its own rather than a paragraph.

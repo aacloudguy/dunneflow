@@ -4240,7 +4240,41 @@ body.detached-code #trailMount { display: none !important; }
 .start-progwhat { font-size: .78rem; color: var(--text-muted); margin-left: auto;
                   text-align: right; }
 
+/* A map is open and this page was asked for anyway — the state `/start` exists to be
+   reachable in. Marked with the accent rather than a severity colour: nothing is wrong here,
+   a reader has simply arrived at the page for the other state, so this is *where you are*
+   and not *what went wrong* (design rule 4 — colour is the scarcest channel, and this is
+   not the difference axis). */
+.start-open { padding: .75rem .9rem; border: 1px solid var(--border);
+              border-left: 3px solid var(--accent); border-radius: .35rem;
+              background: var(--surface); display: flex; flex-direction: column;
+              gap: .35rem; }
+.start-openlead { margin: 0; font-size: .92rem; }
+.start-open .hint { margin: 0; font-size: .78rem; color: var(--text-muted); }
+.start-openacts { display: flex; align-items: baseline; gap: .9rem; flex-wrap: wrap;
+                  margin-top: .15rem; }
+
+/* The chosen maps directory is on a disk that is not connected.
+   **This one does spend the severity channel** (design rule 4), unlike `.start-open` beside
+   it: the path stated above is a fallback, the list below is the fallback's contents, and a
+   reader who skims past this will conclude their maps are gone. It is the one thing on the
+   page that must be read before anything else on it. */
+/* `--sev-suspect`, and the tier is the argument rather than the colour: the maps are almost
+   certainly fine and on a disk that is elsewhere, so this is *something is not as you left
+   it* and not *something is broken*. Both variants come from the sets, never a literal, so
+   it follows the palette the reader chose (`tokens.css`' whole bargain). */
+.start-gone { padding: .75rem .9rem; border: 1px solid var(--sev-suspect);
+              border-left: 3px solid var(--sev-suspect); border-radius: .35rem;
+              background: var(--sev-suspect-bg); display: flex; flex-direction: column;
+              gap: .45rem; }
+.start-gonelead { margin: 0; font-size: .92rem; }
+
 .start-empty { margin: 0; font-size: .92rem; color: var(--text-muted); }
+
+/* The row for the program being read. An `<a>`, so it looks and behaves exactly like the
+   button rows beside it while going somewhere instead of posting — `.start-prog` already
+   carries the shape, and this adds only the mark that says which one it is. */
+.start-progopen { text-decoration: none; border-color: var(--accent); }
 .start-foot { border-top: 1px solid var(--border); padding-top: 1.25rem;
               display: flex; flex-direction: column; gap: .6rem; align-items: flex-start; }
 .start-analyze { font-size: .92rem; padding: .55rem .9rem; }

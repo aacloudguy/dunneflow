@@ -7,12 +7,19 @@
  * the worst place it could be put.
  *
  * The boundary is `graph.js`': this owns a gesture and knows nothing about the page it
- * sits in. What it needs from a host arrives as four functions and nothing else --
+ * sits in. What it needs from a host arrives as five functions and nothing else -- and
+ * **nothing else** is the load-bearing half, not the list. A sixth thing taken as a global
+ * is a module that works on the host which happens to define it and throws on the other,
+ * with no symptom until the moment it matters. That is not hypothetical; see `pollAnalysis`.
  *
  *   used(key)          the usage counter, or a no-op
- *   changed()          repaint whatever else the host draws
+ *   changed()          repaint whatever else the host draws -- **including the list of
+ *                      programs**, because an analysis makes one and both hosts name them.
+ *                      Awaited, so a finished run can refresh the list before it offers to
+ *                      open what it just made.
  *   clearOverlays()    take down anything that would sit *over* this dialog
  *   openProgram(name)  open the program an analysis just made
+ *   whileRunning()     what is true of *this page* while an analysis runs (below)
  *
  * -- and `esc` is local, exactly as it is in `prose.js`: a module that turns data into
  * markup carries its own escaper rather than reaching for the page's.
@@ -412,8 +419,22 @@
       if (a.state === "done") {
         /* The list, refreshed, so the program that was just made is in the control before
            the reader is invited to open it. Without this the offer below names something the
-           `<select>` has never heard of. */
-        await loadPrograms();
+           `<select>` has never heard of.
+         *
+         * **Through the host, and that is the whole of a defect worth the paragraph.** This
+         * was a bare `loadPrograms()` -- a `shell.js` global. The shell defines one, so the
+         * shell worked; the start page loads only this file and `start.js`, so there it threw
+         * `ReferenceError` on the one tick that ever sees `done`, *before* the paint below
+         * and before the loop's `return`. The panel froze on whichever step the previous poll
+         * had painted -- 7 of 7 for a ninety-second tree, 2 of 7 for one that finished between
+         * polls -- offering *Stop it* for a run that was over and claiming what it had written
+         * was unfinished, over three maps that had all completed perfectly. And the start
+         * page, whose `changed` is exactly this refresh, never learned a map had arrived.
+         *
+         * A module that reaches for a global has picked one host and cannot say which; the
+         * contract at the top of this file exists so it does not have to. `tests/
+         * test_analyze_boundary.py` holds the whole class, not this instance. */
+        await HOST.changed();
         paintAnalysis();
         return;
       }

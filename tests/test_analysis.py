@@ -24,7 +24,7 @@ import sys
 import threading
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pytest
 
@@ -793,4 +793,69 @@ def test_stopping_reaches_the_workers_the_child_started(tmp_path: Path) -> None:
     )
     assert seen[-1]["state"] == "stopped", (
         f"a stopped run did not report itself stopped: {seen[-1]}"
+    )
+
+
+# ----------------------------------------- the fourth argument, and who answers it --- #
+
+
+def test_nothing_open_means_no_program_is_being_read(tmp_path: Path) -> None:
+    """`check`'s `serving` is `None` from cold, and the handler is what has to say so.
+
+    **The docstring was right and unenforced.** `check` states it plainly -- *"Passed as
+    `None` rather than as some stand-in path, because a stand-in would have to be a
+    directory name, and a name that accidentally matched would refuse the first analysis a
+    reader ever asks for (rule 30)"* -- and both call sites passed `out_dir.resolve()`
+    whatever `opened` said. From cold `out_dir` **is** the output root, so its basename was
+    offered up as the name of a program being read, and nothing was being read.
+
+    Reproduced against the signed build before it was fixed: a cold root called `render`,
+    asked to analyse a directory called `render`, answered *"render is the program being
+    read -- its graph is open here"* over a server holding no graph at all. **The frozen
+    default root is called `DunneFlow`**, which is what makes this the first analysis a new
+    reader is likely to ask for.
+
+    Asserted on `_serving_dir` rather than through `check`, because `check` was never wrong:
+    give it `None` and it has always behaved. What broke is who decides, so that is what is
+    pinned (rule 51 -- one place answers it, and this is the place).
+    """
+    root = tmp_path / "DunneFlow"
+    root.mkdir()
+
+    live = serve_mod._Live.__new__(serve_mod._Live)
+    live.lock = threading.Lock()
+    live.out_root = root
+    # **`out_dir` is set exactly as a cold server sets it** -- `where()` returns `(root,
+    # root)` for a directory holding no map, so from cold `out_dir` *is* `out_root`. That
+    # equality is the whole defect, so a test that left the attribute off would catch the
+    # regression with an `AttributeError` and never exercise the sentence (rule 59: prove
+    # what the failure looks like, or a mutation reads as caught when it was only skipped).
+    live.out_dir = root
+    # `opened` is a read-only property over `_base` -- *is there a base* asked of the one
+    # field that answers it. Driven here rather than stubbed, so this test exercises the
+    # same mechanism the route gate does.
+    live._base = None
+
+    handler = serve_mod._Handler.__new__(serve_mod._Handler)
+    handler._live = live
+
+    assert handler._serving_dir() is None, (
+        "a cold server offered its own root as the program being read"
+    )
+
+    # And the refusal that depended on it does not fire, which is the point of the whole
+    # exercise: a reader may analyse a tree that happens to share the root's name.
+    tree = tmp_path / "elsewhere" / "DunneFlow"
+    tree.mkdir(parents=True)
+    (tree / "m.py").write_text(TINY)
+    v = analysis.check(str(tree), "", root, handler._serving_dir())
+    assert v.ok, f"a cold server refused the first analysis: {v.refusal}"
+
+    # Open something, and the refusal comes back -- it is a real guard, not dead weight.
+    live._base = cast("Any", object())
+    live.out_dir = root / "DunneFlow"
+    assert handler._serving_dir() == (root / "DunneFlow").resolve()
+    served = analysis.check(str(tree), "", root, handler._serving_dir())
+    assert not served.ok and "the program being read" in served.refusal, (
+        "with a program open the guard stopped firing -- the fix went too far"
     )

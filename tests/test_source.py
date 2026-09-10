@@ -559,7 +559,10 @@ def test_adopting_the_same_revision_twice_reuses_it(tmp_path: Path) -> None:
     """Re-analysing one snapshot must not leave two half-filled ones behind.
 
     The property `open_working` has, for the reason it has it: `analyze` is run again after
-    every edit. An empty `tree` is filled in; a recorded one is left alone.
+    every edit. An empty `tree` is filled in, and a recorded one is **re-stamped** -- the
+    half this asserted the wrong way round until renaming the checkout showed what it cost:
+    `source.db` moved to the new leaf and `docsource.db` kept the old one, so one snapshot
+    was recorded as read from two different trees.
     """
     store = sourcedb.DocSourceStore(tmp_path / "docsource.db")
     store.adopt_revision("2026-01-01T00:00:00Z")
@@ -568,6 +571,13 @@ def test_adopting_the_same_revision_twice_reuses_it(tmp_path: Path) -> None:
     rows = store.revisions()
     assert len(rows) == 1, f"adopting twice left {len(rows)} revisions"
     assert rows[0]["tree"] == "named-later", "an empty tree was not filled in"
+
+    # And the tree the reader has just analysed from wins over the one recorded before it.
+    store.adopt_revision("2026-01-01T00:00:00Z", tree="renamed")
+    store.commit()
+    rows = store.revisions()
+    assert len(rows) == 1, f"re-adopting left {len(rows)} revisions"
+    assert rows[0]["tree"] == "renamed", "a recorded tree was not re-stamped"
     store.close()
 
 

@@ -32,7 +32,7 @@ from dunneflow import revisions
 from dunneflow.docstore import DocStore
 from dunneflow.extractors.docs import extract_doc
 from dunneflow.extractors.python.extract import extract_file
-from dunneflow.sourcedb import SourceStore
+from dunneflow.sourcedb import DocSourceStore, SourceStore
 from dunneflow.store import Store
 from dunneflow.web import serve as serve_mod
 
@@ -823,3 +823,115 @@ def test_switching_program_is_a_post_like_switching_version() -> None:
     assert serve_mod._Handler.ROUTES.get("/api/programs") == "_r_programs", (
         "the list is not a GET"
     )
+
+
+def test_a_close_clears_every_cache(two_programs: Any) -> None:
+    """A close is a program switch whose destination is *no program*, so the same list goes.
+
+    **Poisoned first, and that is not decoration.** The obvious spelling of this test — open
+    something, close it, assert the caches are empty — passes over a `close_program` that
+    clears nothing at all, because nothing in that sequence ever *fills* a cache: `findings`
+    is only populated when somebody asks for anomalies. A check that cannot fail has already
+    failed, and it fails silently (rule 43). Caught by mutating `close_program` and watching
+    the first version of this stay green.
+
+    The keys are the reason, and they are `switch_program`'s: `findings` is keyed on
+    `graph_db.name`, a basename two program directories share, and `filepairs` on `("", "")`
+    for any pair of unrevisioned ones. After a close the next thing opened may be any program
+    under the root, so every key that does not name one is unsafe.
+    """
+    lv, _root, alpha, _beta = two_programs
+    lv.switch_program(alpha, "alpha")
+    assert lv.progress()["state"] == "done", lv.progress()
+    for cache in serve_mod._Live.PROGRAM_CACHES:
+        getattr(lv, cache)["poisoned"] = ["from the program we are putting down"]
+
+    lv.close_program()
+
+    assert lv.opened is False
+    for cache in serve_mod._Live.PROGRAM_CACHES:
+        assert not getattr(lv, cache), (
+            f"`{cache}` survived a close — its keys are shared between programs, so the "
+            "next program opened is served what the one you closed left behind"
+        )
+
+
+def test_a_close_leaves_no_sidecar_open_and_returns_out_dir_to_the_root(
+        two_programs: Any) -> None:
+    """All **three** sidecars, and the third is the one that keeps getting missed.
+
+    `standards` joined `source` and `docsource` when `--standards` arrived; it was added to
+    `switch_program`'s `was` tuple and to the swap, and to neither of its two closes — so
+    every program switch leaked a `standards.db` handle, invisibly, because a leaked
+    read-only SQLite handle costs nothing a reader can see. The sidecars are a set of three
+    and anything enumerating two of them has fallen behind (rule 36).
+    """
+    lv, root, alpha, _beta = two_programs
+    # **The fixture's programs have no sidecars, and a leak cannot show through a `None`.**
+    # All three are built here so `switch_program` has three real handles to hand over --
+    # without them this test passes over any close at all, which is the failure mode the
+    # comment below is about, one level further out.
+    SourceStore(alpha / "source.db").close()
+    DocSourceStore(alpha / "docsource.db").close()
+    DocStore(alpha / serve_mod.STANDARDS_DB).close()
+
+    lv.switch_program(alpha, "alpha")
+    assert lv.progress()["state"] == "done", lv.progress()
+
+    # **Held before the close, because the field going `None` is not the handle shutting.**
+    # The first version of this asserted only `lv.standards is None` and passed happily over
+    # a `close_program` that dropped the reference without closing it -- which is precisely
+    # the leak being guarded against, since a leaked read-only SQLite handle has no symptom
+    # (rule 43: a check that cannot fail has already failed). What is asserted is that the
+    # connection refuses to work afterwards.
+    held = [s for s in (lv.source, lv.docsource, lv.standards) if s is not None]
+    assert len(held) == 3, f"the fixture opened {len(held)} sidecars, not three"
+
+    lv.close_program()
+
+    assert (lv.source, lv.docsource, lv.standards) == (None, None, None)
+    for store in held:
+        with pytest.raises(sqlite3.ProgrammingError):
+            store.conn.execute("SELECT 1")
+    # `where()` returns `(root, root)` for a directory holding no map, and `serve()` tests
+    # that equality to decide it is cold. A close that left `out_dir` in the program
+    # directory would leave a base-shaped hole rather than the start state.
+    assert lv.out_dir == lv.out_root == root
+
+
+def test_a_program_switch_closes_all_three_of_the_outgoing_sidecars(
+        two_programs: Any) -> None:
+    """The leak this was written from, and it had been there since `--standards` landed.
+
+    `switch_program` captures `was = (out_dir, source, docsource, standards)` — four — and
+    then closed `(was[1], was[2])`. Three sidecars in, two out, so **every program switch
+    left one `standards.db` handle open**, on both the success path and the failure path.
+    It had no symptom: a leaked read-only SQLite handle costs nothing a reader can see until
+    a session has done it a few hundred times, and nothing counts them.
+
+    Found by writing `close_program` beside it. That is rule 36's warning arriving as it
+    usually does — not as a loop narrowed to a literal, but as a list that stopped agreeing
+    with the tuple above it — and the fix is `was[1:]`, which cannot fall behind again.
+
+    Asserted on the **connections**, never on the fields: `switch_program` repoints those to
+    the incoming program either way, so a field check passes over the leak (rule 43).
+    """
+    lv, _root, alpha, beta = two_programs
+    for out in (alpha, beta):
+        SourceStore(out / "source.db").close()
+        DocSourceStore(out / "docsource.db").close()
+        DocStore(out / serve_mod.STANDARDS_DB).close()
+
+    lv.switch_program(alpha, "alpha")
+    assert lv.progress()["state"] == "done", lv.progress()
+    outgoing = [s for s in (lv.source, lv.docsource, lv.standards) if s is not None]
+    assert len(outgoing) == 3, f"alpha opened {len(outgoing)} sidecars, not three"
+
+    lv.switch_program(beta, "beta")
+    assert lv.progress()["state"] == "done", lv.progress()
+
+    # Every one of alpha's handles is shut, and beta's three are live in their place.
+    for store in outgoing:
+        with pytest.raises(sqlite3.ProgrammingError):
+            store.conn.execute("SELECT 1")
+    assert len([s for s in (lv.source, lv.docsource, lv.standards) if s is not None]) == 3

@@ -445,8 +445,14 @@ class SourceStore:
         snapshot existed, and every read resolves through that. A store that holds bodies
         nothing can name is a store with no readers.
 
-        Idempotent: re-analysing the same revision reuses its row and fills a `tree` that
-        was empty, exactly as `open_working` does.
+        Idempotent: re-analysing the same revision reuses its row and re-stamps its
+        `tree`, exactly as `open_working` does -- and *exactly* as it does is the point.
+        This filled an empty `tree` only, and left a recorded one alone. Renaming the
+        checkout is what found it: `source.db` re-stamped to the new leaf and this one kept
+        the old, so the two sidecars named two different trees for one snapshot -- the very
+        disagreement the paragraph above says must never happen. Whichever tree the reader
+        just analysed from is what the snapshot is now of, and one authority on that is the
+        whole reason this method exists (rule 51).
         """
         self._require_writable("open a revision")
         row = self.conn.execute(
@@ -457,7 +463,7 @@ class SourceStore:
                 "VALUES(?, ?, ?, ?)",
                 (revision, STATE_WORKING, revision, tree),
             )
-        elif tree and not str(row[0]):
+        elif tree:
             self.conn.execute(
                 "UPDATE revisions SET tree = ? WHERE revision = ?", (tree, revision))
         return revision

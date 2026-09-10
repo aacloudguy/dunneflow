@@ -38,7 +38,12 @@ from .resolve.glossary import bind
 from .resolve.mirror import BANDS as MIRROR_BANDS
 from .resolve.mirror import measure as measure_mirror
 from .resolve.naming import measure
-from .runtime import default_output_root, tool_version
+from .runtime import (
+    MapsRootGone,
+    default_output_root,
+    platform_output_root,
+    tool_version,
+)
 from .sourcedb import STATE_FOR_COMPARISON, DocSourceStore, SourceStore
 from .sourcedb import capture as capture_source
 from .standards import STANDARDS_DB, standards_refusal
@@ -1414,12 +1419,35 @@ def cmd_migrate(args: argparse.Namespace) -> int:
 
 def cmd_serve(args: argparse.Namespace) -> int:
     """Open the map. Read-only throughout -- serving can never damage what it shows."""
-    from .web.serve import serve
+    import webbrowser
+
+    from .web.serve import already_serving, serve, where
     # The root when nobody said, on `_out_root`'s argument one command over: a
     # double-clicked application has no working directory for a relative default to mean
     # anything against. `serve` itself decides whether what it is handed is a program or
     # a root -- by whether it holds a map, never by what it is called.
-    given = Path(args.out_dir) if args.out_dir else default_output_root()
+    # **The chosen root may be on a disk that is not here**, which is the ordinary case for
+    # a feature whose whole point is keeping maps off the boot drive. Falling back is right
+    # -- an application that silently does nothing when double-clicked is worse than one
+    # that opens and explains -- but the fallback is **said**, twice: here for a terminal,
+    # and on the page for the reader who has no terminal. Rule 49 forbids a substitution
+    # that hides the failure; it is a stated substitution that makes it recoverable.
+    #
+    # What must never happen is `mkdir` on the chosen path: `/Volumes` is an ordinary
+    # directory on the boot disk, so creating it would put a new empty maps root on exactly
+    # the drive the reader moved theirs off. `read_root_pointer` raises before returning a
+    # path precisely so that this line is never reached with one.
+    gone = ""
+    if args.out_dir:
+        given = Path(args.out_dir)
+    else:
+        try:
+            given = default_output_root()
+        except MapsRootGone as exc:
+            gone = str(exc)
+            given = platform_output_root()
+            _emit(f"error: {gone}")
+            _emit(f"opening {given} in the meantime — nothing there has been touched")
     if not args.out_dir:
         # **Made when nobody named it, and only then.** With no argument this is the
         # application's own data directory, and on a machine that has never run DunneFlow
@@ -1434,9 +1462,25 @@ def cmd_serve(args: argparse.Namespace) -> int:
         # (rule 49 -- a plausible answer hiding the failure).
         given.mkdir(parents=True, exist_ok=True)
         _emit(f"no directory given; reading {given}")
+    # **One application, one server.** A double-clicked DunneFlow gets no Dock
+    # running-indicator, so a reader who does not see a window fast enough launches it
+    # again -- and `_free_port` used to hand each launch a fresh port, leaving three servers
+    # on three ports with three sets of open stores and nothing on screen saying so.
+    # Reported by Tom, who predicted the behaviour exactly from the missing dot.
+    #
+    # **Only when it is DunneFlow, and only when it is reading the same maps.** Two output
+    # roots are two servers and always were; this joins the reader to their own application
+    # rather than to any process that happens to hold the port (`already_serving`).
+    running = already_serving(args.port, where(given)[1])
+    if running is not None:
+        _emit(f"DunneFlow is already reading these maps at {running} — opening that")
+        if not args.no_open:
+            webbrowser.open(running)
+        return 0
     try:
         serve(given, port=args.port,
-              open_browser=not args.no_open, revision=args.revision, emit=_emit)
+              open_browser=not args.no_open, revision=args.revision, emit=_emit,
+              root_gone=gone)
     except (FileNotFoundError, StaleGraphError, UnfinishedMapError) as exc:
         _emit(f"error: {exc}")
         return 2

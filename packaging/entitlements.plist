@@ -14,7 +14,17 @@
     to this one. See web/serve.py, _p_pickdir.
 
   * com.apple.security.cs.allow-jit and com.apple.security.cs.allow-unsigned-executable-memory
-    — CPython 3.12 has no JIT, and nothing here builds a ctypes callback closure.
+    — CPython 3.12 has no JIT, and nothing here builds a ctypes callback closure. That second
+    clause is now load bearing rather than incidental: dunneflow/macapp.py calls into AppKit
+    through ctypes so the application appears in the Dock with a running indicator, and it
+    does so entirely by calling functions that already exist. It installs no
+    NSApplicationDelegate, because defining an Objective C class with Python methods is
+    exactly the closure this claim rules out; quit is NSApplication's own default handling of
+    the quit Apple Event instead. tests/test_frozen.py asserts the module contains no
+    CFUNCTYPE, so the claim above cannot quietly stop being true. Pressed rather than
+    assumed: the Developer ID signed build, hardened runtime on and this dictionary empty,
+    registers with the window server, serves, and quits cleanly, with nothing denied in the
+    AMFI log.
 
   * com.apple.security.cs.disable-library-validation — every Mach-O file in the bundle is
     signed by the same Developer ID that signs the bundle, so library validation has nothing

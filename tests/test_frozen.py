@@ -19,7 +19,7 @@ from pathlib import Path
 
 import pytest
 
-from dunneflow import runtime
+from dunneflow import macapp, runtime
 from dunneflow.cli import _out_root, build_parser
 from dunneflow.detectors import (
     RulesMissing,
@@ -50,6 +50,14 @@ def as_frozen(monkeypatch, tmp_path):
     monkeypatch.setattr(sys, "frozen", True, raising=False)
     monkeypatch.setattr(sys, "_MEIPASS", str(tmp_path), raising=False)
     (tmp_path / "dunneflow").mkdir()
+    # **The pointer is a file in the developer's real home, and this fixture makes tests
+    # read it.** `default_output_root()` consults it once `frozen()` is true, so without
+    # this line every assertion about the frozen root depends on whether whoever is running
+    # the suite has ever moved their own maps -- which is exactly how this was found: a
+    # manual test left a pointer at a scratchpad directory and `test_the_output_root_of_an
+    # _application` began failing with a path from another session. Pointed at the
+    # temporary directory so the tests are hermetic and no test can write to the real one.
+    monkeypatch.setattr(runtime, "platform_output_root", lambda: tmp_path / "AppSupport")
     return tmp_path
 
 
@@ -178,17 +186,33 @@ def test_the_output_root_from_a_checkout():
 
 
 @pytest.mark.skipif(sys.platform != "darwin", reason="the other two branches are untested")
-def test_the_output_root_of_an_application(as_frozen):
+def test_the_output_root_of_an_application():
     """Application Support, never Documents -- and that is not tidiness.
 
     `source.db` holds the private source of whatever was read, and `~/Documents` is swept
     into iCloud Drive on a signed-in Mac. That would be egress by accident, out of a tool
     whose posture is deterministic and local (design rule 14).
+
+    Asked of `platform_output_root`, which is where this claim lives now: once the root
+    became movable, `default_output_root()` answers *what this reader chose* and this
+    answers *where it goes when they have not chosen*. Only the second is a claim about
+    Apple's layout, and only the second can be asserted without a pointer in the way.
     """
-    root = runtime.default_output_root()
+    root = runtime.platform_output_root()
     assert root == Path.home() / "Library" / "Application Support" / "DunneFlow"
     assert root.is_absolute()
     assert "Documents" not in root.parts
+
+
+def test_an_application_that_has_chosen_nothing_gets_the_platform_root(as_frozen):
+    """The two only come apart once somebody moves their maps, and this is the *before*.
+
+    Worth its own test because it is the state every reader starts in, and because the
+    fixture now points `platform_output_root` at a temporary directory -- so this also
+    pins that a frozen build with no pointer consults nothing else.
+    """
+    assert runtime.read_root_pointer() is None
+    assert runtime.default_output_root() == runtime.platform_output_root()
 
 
 # --------------------------------------------------------------------------- #
@@ -492,3 +516,69 @@ def test_the_entitlements_file_asks_for_nothing():
     assert body.strip() == "", f"an entitlement was added: {body.strip()!r}"
     assert "com.apple.security.cs.disable-library-validation" in text, (
         "the file has to keep saying which entitlements were considered and why not")
+
+
+# --------------------------------------------------------------------------- #
+# The Dock, and the entitlements it must not cost
+
+
+def test_only_a_packaged_macos_build_takes_the_main_thread():
+    """A checkout is a terminal program and must keep its main thread and its Ctrl-C.
+
+    `run_as_application` moves the HTTP server onto a background thread and hands the main
+    one to `[NSApp run]`. That is right for a double-clicked application and an intrusion
+    into somebody's shell, so the gate is frozen **and** macOS — the two non-macOS branches
+    of `runtime` are untested and this is not the place to guess at them.
+    """
+    assert macapp.available() is False, "a checkout would take the main thread"
+
+
+def test_a_packaged_build_is_a_dock_application(as_frozen, monkeypatch):
+    """The symptom this exists for: no running indicator under the Dock icon.
+
+    `lsappinfo` gave the cause exactly — `type="Foreground"` but **`!cgsConnection`**. The
+    plist was never the problem (`LSBackgroundOnly` was already false); a command line tool
+    in a bundle simply never touches AppKit, so the window server has nothing to indicate.
+    Measured on the built app before and after: `!cgsConnection` present, then gone, with a
+    LaunchServices `checkin time` appearing beside it.
+    """
+    monkeypatch.setattr(sys, "platform", "darwin")
+    assert macapp.available() is True
+
+
+def test_the_dock_costs_no_entitlement():
+    """**`packaging/entitlements.plist` asks for nothing, and this must not change that.**
+
+    That file is empty because it was measured to be — and one of the measurements is that
+    *"CPython 3.12 has no JIT and nothing builds a ctypes closure"*. A `CFUNCTYPE` wrapping a
+    **Python callable** is exactly such a closure: libffi writes a trampoline into
+    executable memory, which under the hardened runtime needs
+    `allow-unsigned-executable-memory`. Everything in `macapp` is a call *out* to a function
+    that already exists, so nothing is compiled at run time.
+
+    This is why there is no `NSApplicationDelegate`: installing one means defining an
+    Objective-C class whose methods are Python functions, which is the closure this refuses
+    to build. Quit works instead through `NSApplication`'s own default handling of the quit
+    Apple Event — verified by quitting the built app and watching the port come free.
+    """
+    src = Path(macapp.__file__ or "").read_text(encoding="utf-8")
+    body = src.split('"""', 2)[2]          # past the module docstring, which explains it all
+    for closure in ("CFUNCTYPE", "PYFUNCTYPE"):
+        assert closure not in body, (
+            f"macapp builds a ctypes closure ({closure}) — that needs "
+            "allow-unsigned-executable-memory, and packaging/entitlements.plist is empty "
+            "because it was measured to be. Either find another way, or add the "
+            "entitlement *and* record the failure that earned it."
+        )
+
+
+def test_the_server_still_runs_when_there_is_no_window_server(monkeypatch):
+    """A Dock icon is a nicety; a server that would not start without one is not.
+
+    `run_as_application` answers `False` where AppKit cannot be loaded or
+    `sharedApplication` returns NULL — over SSH, or in a session with no `WindowServer` —
+    and `_run` must then serve exactly as it always did (rule 49's shape: the fallback is
+    the *working* path, not a plausible-looking substitute).
+    """
+    monkeypatch.setattr(macapp, "_appkit", lambda: None)
+    assert macapp.run_as_application(lambda: None, lambda: None) is False

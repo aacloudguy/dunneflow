@@ -13778,6 +13778,14 @@ function wire() {
         Analyze.open();
         return;
       }
+      /* Closing, on exactly the analyse option's terms: repaint first so the `<select>` is
+         never left reading a thing that is not the program being served, then act. */
+      if (want === CLOSE_OPTION) {
+        paintPrograms(PROGRAMS);
+        used("program:close");
+        closeMap();
+        return;
+      }
       /* The served program is `selected`, so choosing it again is a no-op the server would
          refuse by name. Returning here keeps that out of the progress overlay, which exists
          for switches that are actually happening. */
@@ -16957,6 +16965,9 @@ async function loadPrograms() {
 
 /* A narrow write: the topbar is static markup `render()` never rebuilds, so this is set
  * here or it is not set at all (rule 44). */
+/* Not a program, and cannot be mistaken for one — see `paintPrograms`' last option. */
+const CLOSE_OPTION = "/close";
+
 function paintPrograms(rows) {
   const prog = $("#prog");
   if (!prog) return;
@@ -16976,7 +16987,18 @@ function paintPrograms(rows) {
       p.openable ? "" : " disabled"}>${esc(p.name)}${n}${
       p.openable ? "" : " \u2014 no map here"}${
       unfinished ? " \u2014 never finished being read" : ""}</option>`;
-  }).join("") + `<option value="${esc(Analyze.OPTION)}">+ Analyze a directory\u2026</option>`;
+    /* **The way back, in the control that answers "which program am I reading".** Its last
+       two options are the two things in this list that are not programs -- one makes a map,
+       one puts the map down -- and both route away before anything treats them as a name.
+       A leading slash is what makes that safe: `analysis.check` refuses a name with a
+       separator in it, so no directory can ever be called this (rule 30, the same trick
+       `ANALYZE_OPTION` uses and for the same reason).
+
+       It is here rather than in `analyze.js` because closing is not that module's subject:
+       it owns the analyse gesture and knows nothing about this page. */
+  }).join("")
+    + `<option value="${esc(Analyze.OPTION)}">+ Analyze a directory\u2026</option>`
+    + `<option value="${esc(CLOSE_OPTION)}">\u00d7 Close this map</option>`;
 }
 
 /* Switching program, which is `switchBase` with a wider blast radius on the server.
@@ -17216,7 +17238,14 @@ document.addEventListener("keydown", (ev) => {
 const Analyze = window.DunneFlowAnalyze;
 Analyze.wire({
   used: (key) => used(key),
-  changed: () => render(),
+  /* **The list first, then the panes.** `changed` is "repaint whatever else this host
+     draws", and on the shell that is two things: the program `<select>`, which an analysis
+     has just added a row to, and the view. It repainted only the second, and `analyze.js`
+     made up the difference by calling this page's `loadPrograms` as a global -- which is
+     exactly what broke the start page, where no such global exists. Awaited in order, because
+     the offer to open the new program is painted the moment this returns and a `<select>`
+     that has never heard of it is a control that cannot act on the sentence beside it. */
+  changed: async () => { await loadPrograms(); render(); },
   clearOverlays: () => { if (REBUILD) { REBUILD = null; paintRebuild(); } },
   openProgram: (name) => switchProgram(name),
   /* The whole reason an analysis is a dismissible panel rather than the switch scrim: it
@@ -17236,6 +17265,41 @@ Analyze.wire({
 function programSwitchFailed() {
   paintPrograms(PROGRAMS);
   render();
+}
+
+/* Put the map down and go back to the start page.
+ *
+ * **The shell must leave, and that is not tidiness.** Every one of the sixty-odd routes this
+ * page is about to ask now answers 409, so a shell left standing over a closed base is a
+ * page that renders perfectly and is wired to nothing -- design rule 16, arrived at from the
+ * other side. The server has already decided `/` is the start page, so a reload is the whole
+ * of the transition (rule 51: one decision, on the server, where the base is).
+ *
+ * **`sessionStorage["dunneflow:switched"]` is deliberately not written.** That flag tells an
+ * arriving *shell* its selection may be missing; the page arriving here is the start page,
+ * which never reads it, so setting it would leave a one-shot armed for whichever program is
+ * opened next -- and it would then claim the reader had switched from a version they were
+ * never on (rule 33's neighbourhood: a step that carries the wrong subject). */
+async function closeMap() {
+  REBUILD = { revision: "", program: "", state: "asking", step: "closing the map",
+              done_steps: 0, steps: 0, since: Date.now() };
+  render();
+  let d;
+  try {
+    d = await fetch("/api/close", { method: "POST" }).then(r => r.json());
+  } catch (err) {
+    REBUILD = { revision: "", state: "failed",
+                reason: "the server could not be asked: " + err.message };
+    programSwitchFailed();
+    return;
+  }
+  if (!d.started) {
+    REBUILD = { revision: "", state: "failed",
+                reason: d.reason || "it was refused, with no reason given" };
+    programSwitchFailed();
+    return;
+  }
+  location.assign("/");
 }
 
 /* The routine list, from the document backend that already carries what is needed.

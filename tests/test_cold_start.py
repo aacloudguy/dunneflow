@@ -27,7 +27,7 @@ import pytest
 from dunneflow import revisions
 from dunneflow.extractors.python.extract import extract_file
 from dunneflow.store import Store
-from dunneflow.web.serve import _Handler, _Live, where
+from dunneflow.web.serve import _Handler, _Live, already_serving, where
 
 STATIC = Path(__file__).resolve().parents[1] / "src" / "dunneflow" / "web" / "static"
 
@@ -258,3 +258,172 @@ def test_a_name_that_could_address_another_directory_is_refused(cold):
     base, _live, _root = cold
     for name in ("../..", "/etc", "alpha/../beta"):
         assert json.loads(_post(base + f"/api/program?name={name}")[1])["started"] is False
+
+
+# --------------------------------------------------------------------------- #
+# The way back
+
+
+def test_start_is_reachable_from_cold_and_is_the_start_page(cold):
+    """`/start` is a second *address*, not a second answer, so from cold it agrees with `/`."""
+    base, _live, _root = cold
+    status, body = _get(base + "/start")
+    assert status == 200
+    assert '<script src="/static/start.js"></script>' in body
+    assert '<script src="/static/shell.js"></script>' not in body
+
+
+def test_closing_with_nothing_open_is_refused_over_the_socket(cold):
+    """It is not in `POST_WITHOUT_BASE`, and a close with nothing open has no subject.
+
+    Over the socket for this file's standing reason: the sentence rides in `send_error`'s
+    `explain` and never its message, because the status line is latin-1 and this project
+    writes em dashes everywhere (rule 91). A refusal that cannot be delivered is worse than
+    the confident empty answer the gate exists to prevent.
+    """
+    base, _live, _root = cold
+    status, body = _post(base + "/api/close")
+    assert status == 409, f"closing from cold answered {status}"
+    assert "nothing is open" in body
+    assert "/api/close" in body
+
+
+def test_start_still_serves_the_start_page_with_a_map_open(cold):
+    """The whole point of the route: reachable when `/` has become the shell.
+
+    Until this existed there was no way back at all -- `/` was the shell for the life of the
+    process, so the maps-directory control on the start page became unreachable the moment a
+    reader opened anything. Checked as a *pair*: `/` must still be the shell, or this has
+    quietly become a second answer to which page `/` is (rule 51).
+    """
+    base, live, _root = cold
+    assert json.loads(_post(base + "/api/program?name=alpha")[1])["started"] is True
+    for _ in range(200):
+        if live.opened:
+            break
+        _get(base + "/api/base")
+    assert live.opened, "the base was never built"
+
+    _, shell = _get(base + "/")
+    assert '<script src="/static/shell.js"></script>' in shell
+
+    status, page = _get(base + "/start")
+    assert status == 200
+    assert '<script src="/static/start.js"></script>' in page
+    assert '<script src="/static/shell.js"></script>' not in page
+
+
+def test_a_close_returns_the_server_to_the_state_it_booted_in(cold):
+    """Close is `switch_program` with no destination, so cold is what it must leave behind.
+
+    Every field a cold boot establishes is checked, not just `opened`: `out_dir == out_root`
+    is what `where()` returns for a directory holding no map and what `serve()` tests to
+    decide it is cold, and a close that left `out_dir` in the program directory would leave
+    `analysis.check` measuring a name against a root nobody is reading.
+    """
+    base, live, root = cold
+    assert json.loads(_post(base + "/api/program?name=alpha")[1])["started"] is True
+    for _ in range(200):
+        if live.opened:
+            break
+        _get(base + "/api/base")
+    assert live.opened
+
+    d = json.loads(_post(base + "/api/close")[1])
+    assert d["started"] is True
+    # **`steps: 0`, never six.** A close pays none of `BUILD_STEPS`, and reporting a full
+    # bar would be a count of work that never happened (rule 32).
+    assert d["steps"] == 0 and d["done_steps"] == 0
+
+    assert live.opened is False
+    assert live.out_dir == live.out_root == root
+    assert live.source is None and live.docsource is None and live.standards is None
+
+    # And the server is *usable*, not merely empty: `/` is the start page again, the list
+    # still names both programs, and a base-needing route refuses as it did from cold.
+    assert '<script src="/static/start.js"></script>' in _get(base + "/")[1]
+    listed = json.loads(_get(base + "/api/programs")[1])
+    assert listed["serving"] == ""
+    assert [p["name"] for p in listed["programs"]] == ["alpha", "beta"]
+    assert _get(base + "/api/cover")[0] == 409
+
+
+def test_a_closed_server_can_open_a_different_program(cold):
+    """The caches are keyed on basenames, so the second open is where a stale one shows.
+
+    `findings` is keyed on `graph_db.name` and every program here writes
+    `graph@2026-01-01T00:00:00Z.db`, so two programs key **identically**. If a close left
+    `PROGRAM_CACHES` populated, `beta` would be served `alpha`'s findings -- confidently and
+    wrongly, which is `switch_program`'s own stated reason for clearing them.
+    """
+    base, live, _root = cold
+    for name in ("alpha", "beta", "alpha"):
+        assert json.loads(_post(base + f"/api/program?name={name}")[1])["started"] is True
+        for _ in range(200):
+            if live.opened:
+                break
+            _get(base + "/api/base")
+        assert live.opened, f"{name} never opened"
+        assert json.loads(_get(base + "/api/programs")[1])["serving"] == name
+        assert json.loads(_post(base + "/api/close")[1])["started"] is True
+        assert live.opened is False
+
+
+def test_a_second_launch_on_the_same_root_joins_the_first(cold):
+    """**One application, one server** — the fix for a missing Dock indicator.
+
+    A double-clicked DunneFlow gets no running-indicator in the Dock: `lsappinfo` reports
+    the process as `type="Foreground"` but `!cgsConnection`, because a command line tool in
+    a bundle never touches AppKit and so never connects to the window server. A reader who
+    does not see a window fast enough launches it again — and `_free_port` handed each
+    launch a fresh port, so three double-clicks left **three servers** on 8787, 50595 and
+    50596, each holding its own stores, with nothing anywhere saying so. Measured before the
+    fix, and predicted by Tom from the missing dot alone.
+
+    **Same root, not same program.** Two output roots are two servers and always were; a
+    developer serving a second root must not be silently sent to the first.
+    """
+    base, _live, root = cold
+    port = int(base.rsplit(":", 1)[1])
+
+    assert already_serving(port, root) == base + "/"
+
+    # A different root is a different application's worth of maps, and gets its own server.
+    other = root.parent / "other-maps"
+    other.mkdir()
+    assert already_serving(port, other) is None
+
+    # And a port nobody is holding is not a running DunneFlow.
+    assert already_serving(1, root) is None
+
+
+def test_only_dunneflow_is_ever_joined(cold, tmp_path):
+    """A port answering JSON is not a DunneFlow, and joining one would be a hijack.
+
+    The `Server:` header is asked *before* the body, because another program on 8787 could
+    answer with a `root` field and the reader would be sent somewhere else entirely — a
+    shape that resembles an identity is not one (rule 30).
+    """
+    from http.server import BaseHTTPRequestHandler
+
+    class Impostor(BaseHTTPRequestHandler):
+        server_version = "NotDunneFlow"
+
+        def do_GET(self):                         # noqa: N802
+            body = json.dumps({"root": str(tmp_path)}).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *a):                # noqa: N802
+            return
+
+    httpd = ThreadingHTTPServer(("127.0.0.1", 0), Impostor)
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    try:
+        assert already_serving(httpd.server_address[1], tmp_path) is None
+    finally:
+        httpd.shutdown()
+        httpd.server_close()

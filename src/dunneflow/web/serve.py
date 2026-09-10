@@ -24,6 +24,7 @@ import subprocess
 import sys
 import threading
 import time
+import urllib.request
 import webbrowser
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -33,14 +34,25 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs
 
-from .. import revisions
+from .. import macapp, revisions, runtime
 from ..docstore import DocStore
 from ..resolve import version as version_order
 from ..runtime import resource_root
 from ..sourcedb import DocSourceStore, SourceStore
 from ..standards import STANDARDS_DB
 from ..store import StaleGraphError, Store, UnfinishedMapError
-from . import analysis, anomalychanges, changes, diagram, filediff, packages, plate, queries, table
+from . import (
+    analysis,
+    anomalychanges,
+    changes,
+    diagram,
+    filediff,
+    packages,
+    plate,
+    queries,
+    roots,
+    table,
+)
 from .code import build_file, build_files
 from .corpus import build_corpus, build_document, serving
 from .cover import anomalies as build_anomalies
@@ -412,9 +424,15 @@ class _Base:
 class NothingOpen(RuntimeError):
     """A route that needs a version on screen was reached with none.
 
-    Never a reader's doing: the start page is what a server with no base serves, and the
-    shell is never loaded without one. So this is a route missing from `_Handler.NEEDS_BASE`
-    -- a defect with a sentence, rather than a blank page with none.
+    Two ways now, and it used to be one. It is still a route missing from
+    `_Handler.NEEDS_BASE` -- a defect with a sentence, rather than a blank page with none --
+    and since `/api/close` it is **also a race a reader can win**: `opened` goes true ->
+    false for the first time in this tool's life, so a request that passed the route gate
+    can reach `current` a moment after the base has gone.
+
+    The old sentence said *"never a reader's doing"*, and closing a map is now exactly a
+    reader's doing. Both are answered identically, by `_refuse_without_base`, because the
+    right answer to *there is no base* does not depend on whose fault it is.
     """
 
 
@@ -486,8 +504,15 @@ class _Live:
     PROGRAM_CACHES: tuple[str, ...] = ("changes", "anomalypairs", "filepairs", "findings")
 
     def __init__(self, source_db: Path, out_dir: Path,
-                 out_root: Path | None = None) -> None:
+                 out_root: Path | None = None, root_gone: str = "") -> None:
         self.lock = threading.Lock()
+        # **Why the root on screen is not the root the reader chose**, or `""` when it is.
+        # A sentence rather than a flag, for the reason every refusal here is a sentence:
+        # the page has to *say* which disk, and a boolean cannot (rule 89). Set once at
+        # boot and never after -- reconnecting the disk is a restart, because the root is
+        # the server's state and re-pointing it under a live reader is what `POST /api/root`
+        # is for.
+        self.root_gone = root_gone
         # The program directory, so a second point in time can be found. The graph being
         # served is one revision of it; every other revision is a file beside this one.
         self.out_dir = out_dir
@@ -896,10 +921,16 @@ class _Live:
             self.open(graph_db, step)
         except Exception as exc:                  # noqa: BLE001 -- a report, not a swallow
             (self.out_dir, self.source, self.docsource, self.standards) = was
-            if source is not None:
-                source.close()
-            if docsource is not None:
-                docsource.close()
+            # **All three, and `standards` was missing from both of these lists.** It was
+            # added to `was` and to the swap when `--standards` arrived and to neither of
+            # the closes, so every program switch leaked one `standards.db` handle on the
+            # way past -- silently, because a leaked read-only SQLite handle costs nothing
+            # a reader can see until the process has done it a few hundred times. The
+            # sidecars are a set of three; anything that enumerates two of them is a list
+            # that has fallen behind the tuple above it (rule 36).
+            for opened in (source, docsource, standards):
+                if opened is not None:
+                    opened.close()
             # **Which failure it is, as a field.** The page offers *Analyse it again* on
             # this one and nothing on the others, and deciding that by reading the reason
             # would make a sentence written for a reader into a wire format (rule 30).
@@ -913,11 +944,71 @@ class _Live:
         with self.lock:
             for cache in self.PROGRAM_CACHES:
                 getattr(self, cache).clear()
-        for old in (was[1], was[2]):
+        for old in was[1:]:
             if old is not None:
                 old.close()
         self.note(state="done", revision=name, program=name, step="",
                   done_steps=len(BUILD_STEPS), steps=len(BUILD_STEPS), ms=ms())
+
+    def close_program(self) -> None:
+        """Put the server back to having nothing open, so `/` is the start page again.
+
+        **`switch_program` with no destination**, and that framing decides everything below.
+        A program switch repoints `out_dir`, swaps three sidecars and empties every cache
+        that is keyed on something a program owns; this does the same, to nothing. So it
+        clears `PROGRAM_CACHES` for exactly `switch_program`'s stated reasons -- `findings`
+        keyed on a **basename** and `filepairs` on `("", "")` -- because after a close the
+        next thing opened may be any program under the root, including one whose graph file
+        is named identically to the one just closed.
+
+        **Named `close_program`, never `close`.** `_Live.close` is the process going away
+        and leaves an object nobody may use again; this leaves one that is fully usable and
+        merely empty. Two methods of one name where only one of them is recoverable is
+        rule 16's mistake -- opening a thing as the wrong kind -- moved onto a lifetime.
+
+        **Rule 20 applies, but not in its usual direction, and the difference is worth
+        stating.** `open()` builds before it swaps so that a failure leaves the reader with
+        what they had. Closing builds nothing and cannot fail, so what survives of that rule
+        is the other half: *unpublish before you shut*. `_base` is dropped and the fields
+        are emptied **before** any handle is closed, so no request can ever reach a store
+        that is reachable and shut -- which is the one race this method could otherwise
+        introduce, and it is why the whole swap is a single hold of `self.lock` rather than
+        `switch_program`'s two. That method closes outside the lock because it has just
+        spent ten seconds building and has already repointed; four `close()` calls are
+        microseconds and buy nothing by being let out.
+
+        **The analysis is not touched -- not the process, not the slot, not the report.**
+        Rule 82: a slot names what is being replaced, and an analysis of some other tree
+        into some other directory replaces nothing here. A reader going back to the start
+        page has not cancelled their ninety-second read, and `start.js` already carries the
+        panel across by asking `/api/analysis` at boot.
+        """
+        t = time.perf_counter()
+        with self.lock:
+            # Unpublished first. Everything below this line is unreachable by any request
+            # that is not already inside `self.lock`, which is the invariant the class
+            # docstring names and `tests/test_base_switch.py` guards.
+            outgoing, self._base = self._base, None
+            was = (self.source, self.docsource, self.standards)
+            self.source = self.docsource = self.standards = None
+            # `out_dir == out_root` is what `where()` returns for a directory holding no
+            # map, and what `serve()` tests to decide it is cold. Restoring it is what makes
+            # this a *return* to the start state rather than a base-shaped hole.
+            self.out_dir = self.out_root
+            for cache in self.PROGRAM_CACHES:
+                getattr(self, cache).clear()
+            if outgoing is not None:
+                outgoing.store.close()
+                if outgoing.docs is not None:
+                    outgoing.docs.close()
+            for old in was:
+                if old is not None:
+                    old.close()
+        # **`steps=0`, not `len(BUILD_STEPS)`.** A close pays none of the six build steps,
+        # and six-of-six would be a count of work that never happened (rule 32). `_r_base`
+        # already answers `base: ""` honestly from here -- no version is on screen.
+        self.note(state="done", revision="", program="", step="",
+                  done_steps=0, steps=0, ms=round((time.perf_counter() - t) * 1000))
 
     def switch(self, graph_db: Path, revision: str) -> None:
         """Make `graph_db` the base, reporting each step. Runs on its own thread.
@@ -1130,6 +1221,30 @@ class _Handler(BaseHTTPRequestHandler):
         `/` means, and it never has to boot without one.
         """
         self._file(STATIC / ("index.html" if self._live.opened else "start.html"))
+
+    def _r_start(self, q: dict[str, list[str]]) -> None:
+        """The start page, whatever is open. **A second address, never a second answer.**
+
+        `_r_index` decides *which page is `/`*, and its docstring plus `start.js`' own
+        comment insist that decision lives on the server and nowhere else. This does not
+        duplicate it -- it declines to make it. Asked for the start page, it serves the
+        start page; `/` is untouched, so there is still exactly one place deciding what a
+        reader sees when a base is open (rule 51).
+
+        **Why it earns a route.** Design rule 20's closing line -- *nothing may strand the
+        reader off-screen with no way back* -- and the way back has to survive the shell
+        being unusable. A control inside `shell.js` cannot help a reader whose `shell.js`
+        has thrown; a URL they can type can. That is the whole justification, and it is why
+        this is four words long and reads no state at all.
+
+        **It does not close anything.** The temptation is real -- an escape hatch reads as
+        *get me out* -- but a GET that tears down the base is precisely what `POST_ROUTES`
+        exists to prevent: a prefetch, a bookmark reload or a link preview would drop the
+        reader's map, and unlike a switch there would be nothing left on screen to show that
+        anything had happened. This page *shows* the state and offers the gesture; the
+        reader performs it, as a POST.
+        """
+        self._file(STATIC / "start.html")
 
     def _r_graph(self, q: dict[str, list[str]]) -> None:
         """The stack, at the altitude asked for.
@@ -2591,7 +2706,13 @@ class _Handler(BaseHTTPRequestHandler):
             })
         self._json({"programs": rows,
                     "serving": here.name if opened else "",
-                    "root": str(self._live.out_root)})
+                    "root": str(self._live.out_root),
+                    # Empty unless the reader's chosen maps directory is on a disk that is
+                    # not connected, in which case `root` above is the fallback and this
+                    # says so. It rides here rather than on a route of its own because it
+                    # is a fact *about the root*, and this is the one route that answers
+                    # where maps are (rule 51) -- the same bargain `root` itself makes.
+                    "root_gone": self._live.root_gone})
 
     def _finished(self, d: Path, is_here: bool) -> bool:
         """Did the analysis that wrote this program's newest map finish?
@@ -2663,6 +2784,140 @@ class _Handler(BaseHTTPRequestHandler):
                          name=f"dunneflow-program-{asked}", daemon=True).start()
         self._started(True, "")
 
+    def _p_close(self, q: dict[str, list[str]]) -> None:
+        """Close the map, so the reader is back at the start page. `_p_program`, one out.
+
+        The two belong side by side: `_p_program` moves the base sideways and this removes
+        it. **There has to be a way back** -- until this route existed, `/` was the shell
+        for as long as the process lived and nothing could return a reader to the start
+        page, so the maps-directory control there was unreachable the moment a map opened.
+
+        **Not in `POST_WITHOUT_BASE`, and the frozenset's direction is the argument.** That
+        list names *exceptions*; closing with nothing open has no subject, so leaving it off
+        is the answer rather than an omission. The reader who produces that 409 is racing
+        themselves -- two tabs, one close -- and it is read as *already closed*.
+
+        **Synchronous, unlike both switches.** They run on a thread because they build a
+        base and that takes ten seconds; this closes four handles and clears four dicts, so
+        a thread would buy nothing and cost the caller the ability to know it was done. The
+        reply already carries the terminal report, so the shell's `pollBase` and the start
+        page's `watch` both settle on it without a line of new watching.
+        """
+        if not self._live.claim("closing"):
+            # A switch is mid-flight and holds `was`; closing under it would have the
+            # failing switch restore handles this method had already shut. One `claim` makes
+            # that impossible, and it is the build slot rather than a third one because a
+            # close is a thing that replaces the base (rule 82).
+            running = self._live.progress().get("revision", "")
+            self._started(False, f"a switch to {running} is still running", steps=())
+            return
+        self._live.close_program()
+        self._started(True, "", steps=())
+
+    def _r_root(self, q: dict[str, list[str]]) -> None:
+        """The pre-flight for a maps-directory change, live, for whoever is typing.
+
+        The same function the POST calls, so the warning under the field and the refusal at
+        the button are one sentence from one place and cannot drift (rule 41) --
+        `_r_analysis` does exactly this for the analyse dialog, and this is that arrangement
+        one subject over.
+
+        A GET because it reads and decides nothing; `_p_root` is the POST that acts.
+        """
+        asked = (q.get("path") or [""])[0]
+        carry = (q.get("move") or ["1"])[0] != "0"
+        if not asked:
+            self._json({"ok": False, "refusal": "", "note": ""})
+            return
+        v = roots.check(asked, self._live.out_root)
+        body = {"ok": v.ok, "refusal": v.refusal, "note": v.note}
+        if v.ok and carry:
+            # Only when it is going to be used. A reader who unticked the box must not be
+            # shown a shortfall for space they are not going to need (rule 32).
+            room = roots.will_fit(self._live.out_root,
+                                  Path(asked.strip()).expanduser().resolve())
+            body["ok"] = room.ok
+            body["refusal"] = room.refusal
+            body["note"] = " ".join(x for x in (v.note, room.note) if x)
+        self._json(body)
+
+    def _p_root(self, q: dict[str, list[str]]) -> None:
+        """Keep maps somewhere else, optionally carrying the existing ones there.
+
+        **In `POST_WITHOUT_BASE`, and only reachable with nothing open.** Choosing where maps
+        live precedes having any map, exactly as `/api/pickdir` does -- but re-pointing under
+        a *live* reader would mean tearing down a base, repointing three sidecars and
+        rebuilding, which is `switch_program`'s blast radius for a gesture nobody performs
+        mid-read. So it refuses while something is open and names the way out (rule 89); the
+        start page's control closes the map first.
+
+        **A POST, and blocking.** Rule 82's test is not how long a job takes but what the
+        reader loses while it runs: an analysis replaces nothing on screen and gets a
+        dismissible panel, but this replaces *the list this page is showing* and moves the
+        files underneath it. So it takes the build slot -- the one that names what is being
+        replaced -- rather than a third one, and the page waits.
+
+        **Synchronous and in-process, unlike an analysis.** An analysis is exiled to a
+        subprocess because the serving process must never become a writer to the tree it is
+        serving (rule 20). Nothing is being served here: that is the precondition, not a
+        coincidence, which is why the same argument does not reach this.
+        """
+        if self._live.opened:
+            self._started(False, "a map is open — close it first, then move the maps "
+                                 "directory", steps=())
+            return
+        asked = (q.get("path") or [""])[0]
+        # `0` and only `0` is off, on `_p_analyze`'s precedent: an absent parameter means
+        # the caller did not say, and carrying the maps across is what a reader means by
+        # moving them.
+        carry = (q.get("move") or ["1"])[0] != "0"
+
+        verdict = roots.check(asked, self._live.out_root)
+        if not verdict.ok:
+            self._started(False, verdict.refusal, steps=())
+            return
+        target = Path(asked.strip()).expanduser().resolve()
+        if carry:
+            room = roots.will_fit(self._live.out_root, target)
+            if not room.ok:
+                self._started(False, room.refusal, steps=())
+                return
+        if not self._live.claim("moving the maps"):
+            running = self._live.progress().get("revision", "")
+            self._started(False, f"{running} is already running", steps=())
+            return
+        try:
+            moved: list[str] = []
+            if carry:
+                moved = roots.move(self._live.out_root, target, step=lambda label, i, n:
+                                   self._live.note(state="working", revision="moving",
+                                                   program="", step=label,
+                                                   done_steps=i, steps=n, ms=0))
+            runtime.write_root_pointer(target)
+            with self._live.lock:
+                # Nothing is open, so this is a field rather than a teardown -- which is the
+                # whole reason the control lives on the start page. `out_dir` follows it for
+                # `close_program`'s reason: cold means the two are equal, and a root change
+                # that moved only one of them would leave `analysis.check` measuring a name
+                # against a root nobody is reading.
+                self._live.out_root = target
+                self._live.out_dir = target
+                # The reader's chosen root is now the one being served, whatever the boot
+                # had to say about a disk that was missing then.
+                self._live.root_gone = ""
+                for cache in self._live.PROGRAM_CACHES:
+                    getattr(self._live, cache).clear()
+        except Exception as exc:                  # noqa: BLE001 -- a report, not a swallow
+            # The pointer is written only after a successful move, so a failure here leaves
+            # both the maps and the recorded location exactly as they were.
+            self._live.note(state="failed", revision="moving", program="", steps=0,
+                            ms=0, reason=why(exc))
+            self._started(False, why(exc), steps=())
+            return
+        self._live.note(state="done", revision="", program="", step="",
+                        done_steps=0, steps=0, ms=0)
+        self._json({"started": True, "reason": "", "root": str(target), "moved": moved})
+
     def _r_analysis(self, q: dict[str, list[str]]) -> None:
         """What an analysis is doing, or that none is. `_r_base`'s half about a switch.
 
@@ -2679,12 +2934,39 @@ class _Handler(BaseHTTPRequestHandler):
         # button are the same sentence from the same function (rule 41).
         asked = (q.get("path") or [""])[0]
         if asked:
-            with self._live.lock:
-                here = self._live.out_dir.resolve()
             v = analysis.check(asked, (q.get("name") or [""])[0],
-                               self._live.out_root, here)
+                               self._live.out_root, self._serving_dir())
             body["check"] = {"ok": v.ok, "refusal": v.refusal, "note": v.note}
         self._json(body)
+
+    def _serving_dir(self) -> Path | None:
+        """The program directory being read, or **`None` when none is** — `analysis.check`'s
+        fourth argument, answered in one place because two call sites got it wrong the same
+        way (rule 51).
+
+        `check` has always documented the contract: *"`serving` is `None` when nothing is
+        open… Passed as `None` rather than as some stand-in path, because a stand-in would
+        have to be a directory name, and a name that accidentally matched would refuse the
+        first analysis a reader ever asks for (rule 30)."* Both callers passed
+        `out_dir.resolve()` unconditionally, and from cold `out_dir` **is** the output root —
+        precisely the stand-in that docstring forbids, and its basename is a real name.
+
+        So the refusal fired on the root's own name with nothing open, claiming *"X is the
+        program being read — its graph is open here"* over a server holding no graph at all.
+        Reproduced against the signed build: a cold root called `render`, analysing any
+        directory called `render`, refused. **And the frozen default root is called
+        `DunneFlow`**, so the reader this refusal was most likely to meet is somebody who has
+        just double-clicked the application and pointed it at their own checkout — the first
+        analysis they ever ask for, refused by the sentence written to stop that happening.
+
+        The docstring was right and unenforced, which is the shape rule 30 keeps taking: a
+        label — here a directory's basename — got read as an identity. `opened` is the fact,
+        never the path.
+        """
+        if not self._live.opened:
+            return None
+        with self._live.lock:
+            return self._live.out_dir.resolve()
 
     def _p_pickdir(self, q: dict[str, list[str]]) -> None:
         """Ask the operating system for a directory, and hand back an absolute path.
@@ -2798,11 +3080,10 @@ class _Handler(BaseHTTPRequestHandler):
         field said was fine (rule 41). The two answers this adds are about the *server*
         rather than the request: an analysis already running, and nothing to run it with.
         """
-        with self._live.lock:
-            here = self._live.out_dir.resolve()
         out_root = self._live.out_root
         verdict = analysis.check((q.get("path") or [""])[0],
-                                 (q.get("name") or [""])[0], out_root, here)
+                                 (q.get("name") or [""])[0], out_root,
+                                 self._serving_dir())
         if not verdict.ok:
             self._started(False, verdict.refusal, steps=())
             return
@@ -2942,6 +3223,8 @@ class _Handler(BaseHTTPRequestHandler):
         "/api/anomalychanges": "_r_anomalychanges",
         "/api/base": "_r_base",
         "/api/programs": "_r_programs",
+        "/start": "_r_start",
+        "/api/root": "_r_root",
         "/api/analysis": "_r_analysis",
         "/api/about": "_r_about",
         "/favicon.ico": "_r_favicon",
@@ -2962,6 +3245,8 @@ class _Handler(BaseHTTPRequestHandler):
         # The way out of the one above. A POST for the same reason and a sharper one: it
         # ends a process, which is not a thing a prefetch may do.
         "/api/analyze/stop": "_p_stop_analysis",
+        "/api/close": "_p_close",
+        "/api/root": "_p_root",
         # Two gestures that reach outside the browser, and both are POSTs for the reason
         # above and a sharper one: one puts a modal window on the reader's screen and the
         # other brings the Finder forward. Neither is a thing a prefetch may do.
@@ -2991,6 +3276,11 @@ class _Handler(BaseHTTPRequestHandler):
         "/api/programs",        # the list, and the root it was empty in
         "/api/base",            # what is being built, asked hardest while there is no base
         "/api/analysis",        # a run outlives the page, and starts before any base
+        "/api/root",            # the pre-flight for moving them, asked while typing
+        # The way back, and it has to work from cold as well -- where it is the common case
+        # and `/` already agrees with it. Never a base's business (rule 20's neighbourhood:
+        # this reads a file and decides nothing).
+        "/start",
     })
 
     POST_WITHOUT_BASE: frozenset[str] = frozenset({
@@ -2999,17 +3289,25 @@ class _Handler(BaseHTTPRequestHandler):
         "/api/analyze/stop",
         "/api/pickdir",         # choosing a directory precedes having any map
         "/api/reveal",          # the root is exactly what a cold reader asks about
+        # Where maps are kept precedes having any map, exactly as `pickdir` does — and it
+        # refuses while a map *is* open, so it can only ever act from cold anyway.
+        "/api/root",
     })
 
     def _refuse_without_base(self, raw: str) -> None:
         """Say what is not open, rather than answering as though something were.
 
-        A reader cannot reach this: the start page is what a bare server serves and the
-        shell is never loaded without a base. So it is a defect -- a route that ought to be
-        in `WITHOUT_BASE`, or a page asking too early -- and it gets a status and a
-        sentence, which is a thing that can be found. An empty payload would be
-        indistinguishable from a version with nothing in it (rule 49), and that is the
-        failure this whole gate exists to make impossible.
+        Mostly a defect -- a route that ought to be in `WITHOUT_BASE`, or a page asking too
+        early -- and it gets a status and a sentence, which is a thing that can be found. An
+        empty payload would be indistinguishable from a version with nothing in it (rule
+        49), and that is the failure this whole gate exists to make impossible.
+
+        **It said *"a reader cannot reach this"*, and since `/api/close` they can.** Load
+        `/start` while a map is open, close the map in another tab, then press *Close it*:
+        that is a race, not a defect, and the 409 is still exactly the right answer -- the
+        base really is gone, and the page reads the refusal as *already closed* and reloads
+        its list. `NothingOpen` arriving from inside a handler is routed here too, so one
+        sentence covers the defect and the race (rule 41).
         """
         # **The reason goes in `explain`, never in the message.** `send_error`'s second
         # argument is the HTTP *status line*, which `http.server` encodes as latin-1 -- so a
@@ -3032,7 +3330,17 @@ class _Handler(BaseHTTPRequestHandler):
             if not self._live.opened and raw not in self.GET_WITHOUT_BASE:
                 self._refuse_without_base(raw)
                 return
-            getattr(self, handler)(parse_qs(query))
+            # **The gate is a check and the handler is a later moment**, and `/api/close`
+            # is the first thing in this codebase that makes `opened` go true -> false. So
+            # a request can pass the gate and reach `current` after the base has gone, and
+            # an escaping `NothingOpen` goes to `socketserver.handle_error` -- which closes
+            # the connection with **nothing on it at all**, rule 91's symptom reached by a
+            # different door. Answered as the gate would have answered it, from the same
+            # function, so the race and the defect give one sentence (rule 41).
+            try:
+                getattr(self, handler)(parse_qs(query))
+            except NothingOpen:
+                self._refuse_without_base(raw)
             return
         for prefix, root in self.TREES:
             if raw.startswith(prefix):
@@ -3054,7 +3362,11 @@ class _Handler(BaseHTTPRequestHandler):
         if not self._live.opened and raw not in self.POST_WITHOUT_BASE:
             self._refuse_without_base(raw)
             return
-        getattr(self, handler)(parse_qs(query))
+        # The same race, on the table that can cause it. See `do_GET`.
+        try:
+            getattr(self, handler)(parse_qs(query))
+        except NothingOpen:
+            self._refuse_without_base(raw)
 
     def _json(self, obj: dict[str, Any]) -> None:
         body = json.dumps(obj, separators=(",", ":")).encode("utf-8")
@@ -3084,6 +3396,51 @@ class _Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
 
+def already_serving(port: int, out_root: Path) -> str | None:
+    """The URL of a DunneFlow already serving **this same root**, or `None`.
+
+    **The application has no way to say "I am already running", so it has to ask.** A
+    double-clicked application gets no Dock running-indicator -- the bundle is a command
+    line tool that never becomes a foreground process -- so a reader who does not see a
+    window appear fast enough launches it again. Before this, every launch took a fresh
+    port: three double-clicks left **three servers** on 8787, 50595 and 50596, three browser
+    tabs, and three sets of SQLite handles, with nothing on any screen saying so. Measured,
+    not supposed.
+
+    That is `_free_port`'s wander, which is right for its own case and wrong for this one.
+    A port held by something that is not DunneFlow is a reason to move; a port held by
+    **DunneFlow reading the same maps** is the reader's own application, and the useful
+    thing to do is show it to them.
+
+    **The same root, and not merely the same program.** A developer serving two output
+    roots wants two servers and would be badly served by the second launch silently opening
+    the first; a reader double-clicking twice wants one. The root is what tells those apart,
+    so it is what is asked -- `/api/programs` carries it for the start page already, and
+    this needs no route of its own (rule 51).
+
+    Answers `None` on anything unexpected. This runs before a server exists and its only job
+    is to decide whether to make one; a probe that raised would turn a stale socket into an
+    application that will not start.
+    """
+    url = f"http://127.0.0.1:{port}/"
+    try:
+        with urllib.request.urlopen(f"{url}api/programs", timeout=1.5) as r:  # noqa: S310
+            # **The header, before the body.** Another program on 8787 could answer JSON
+            # with a `root` in it, and joining that would send the reader somewhere else
+            # entirely. `server_version` is this handler's own name (rule 30 -- what is
+            # asked is identity, never a shape that resembles one).
+            if not str(r.headers.get("Server", "")).startswith("DunneFlow"):
+                return None
+            said = json.loads(r.read().decode("utf-8"))
+    except (OSError, ValueError):
+        return None
+    try:
+        theirs = Path(str(said.get("root", ""))).resolve()
+    except OSError:
+        return None
+    return url if theirs == out_root.resolve() else None
+
+
 def _free_port(preferred: int) -> int:
     """Take the asked-for port, or any free one, rather than failing on a stale server."""
     with socket.socket() as s:
@@ -3109,16 +3466,37 @@ def _run(live: _Live, port: int, open_browser: bool, emit: Any) -> None:
     handler = partial(_Handler, live=live)
     httpd = ThreadingHTTPServer(("127.0.0.1", port), handler)
     url = f"http://127.0.0.1:{port}/"
-    emit(f"serving {url}  (ctrl-c to stop)")
+    dock = macapp.available()
+    # **Both, where both are true.** The packaged build takes this path whether it was
+    # double-clicked or run from a shell, and Ctrl-C still ends it — the signal is handed
+    # back to the operating system precisely so that it does (`macapp.run_as_application`).
+    # Naming only the Dock would be false to whoever is reading this line, since the only
+    # people who ever see it are at a terminal.
+    emit(f"serving {url}  ({'quit from the Dock, or ctrl-c' if dock else 'ctrl-c'} to stop)")
     if open_browser:
         threading.Timer(0.4, lambda: webbrowser.open(url)).start()
+
+    def shut() -> None:
+        httpd.server_close()
+        live.close()
+
+    # **The packaged application takes the main thread; everything else keeps it.**
+    # A bundle whose process never touches AppKit gets no Dock running-indicator -- no dot
+    # under the icon -- so a reader who does not see a window fast enough launches it again.
+    # `already_serving` stops that becoming three servers; this is the other half, and it is
+    # the half that answers the question the reader actually asked.
+    #
+    # `run_as_application` returns `False` where there is no window server to connect to,
+    # and then this falls through to the loop it always ran. A Dock icon is a nicety; a
+    # server that would not start without one would be the tail wagging the dog.
+    if dock and macapp.run_as_application(httpd.serve_forever, shut):
+        return
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
         emit("stopped")
     finally:
-        httpd.server_close()
-        live.close()
+        shut()
 
 
 def _serve_cold(live: _Live, out_root: Path, port: int,
@@ -3183,7 +3561,7 @@ def no_map_here(out_dir: Path, out_root: Path, revision: str | None) -> str:
 
 
 def serve(out_dir: Path, *, port: int = 8787, open_browser: bool = True,
-          revision: str | None = None, emit: Any = print) -> None:
+          revision: str | None = None, emit: Any = print, root_gone: str = "") -> None:
     """Open one version of a program and serve it until interrupted.
 
     `revision` chooses which one, defaulting to the newest -- never a fixed `graph.db`
@@ -3195,6 +3573,12 @@ def serve(out_dir: Path, *, port: int = 8787, open_browser: bool = True,
     can switch it from the page, and that choice survives a reload; without this flag it
     could not survive a restart of `serve`, and the alternative -- a server reading the
     browser's stored settings -- does not exist.
+
+    `root_gone` is a sentence, empty unless the reader's chosen maps directory is on a disk
+    that is not connected. It is carried rather than re-derived because only `cli` knows
+    that a fallback happened -- by the time a path arrives here it is just a path, and a
+    server that re-read the pointer would be a second place deciding where maps live
+    (rule 51). Passed to the page, which is where the reader who has no terminal reads it.
     """
     out_dir, out_root = where(out_dir)
     graph_db = revisions.resolve(out_dir, revisions.GRAPH, revision)
@@ -3210,7 +3594,7 @@ def serve(out_dir: Path, *, port: int = 8787, open_browser: bool = True,
     if (graph_db is None or not graph_db.exists()) and not cold:
         raise FileNotFoundError(no_map_here(out_dir, out_root, revision))
 
-    live = _Live(out_dir / "source.db", out_dir, out_root)
+    live = _Live(out_dir / "source.db", out_dir, out_root, root_gone=root_gone)
     # The same door a base switch goes through, and the whole reason it takes a `step`
     # callback: the terminal gets the boot, a watching page gets a switch, and neither is
     # a second way of building a version (rule 51).

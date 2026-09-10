@@ -159,6 +159,20 @@ failure that earned it recorded beside it. The file's own XML is stricter than m
 before the `DOCTYPE`, or a double hyphen inside one, is `AMFIUnserializeXML: syntax error`, and
 both were paid for.
 
+**The Dock presence is bought without spending one, and that is why it is shaped as it is.**
+`macapp.py` calls AppKit through `ctypes` so the application registers with the window server
+— the frozen app showed a Dock icon with **no running indicator**, and `lsappinfo` named the
+cause exactly: `type="Foreground"` but `!cgsConnection`, because a command line tool in a
+bundle never touches AppKit. `LSBackgroundOnly` was already false; the plist was never it.
+Every call is *out* to a function that already exists, so `allow-unsigned-executable-memory`
+stays unnecessary — which is what rules out an `NSApplicationDelegate`, since defining an
+Objective-C class with Python methods is precisely that closure. Quit is `NSApplication`'s own
+default handling of the quit Apple Event, so ⌘Q and Dock → Quit work with no delegate at all;
+the one-line version that only connects would have given a dot and an application nobody could
+quit. `tests/test_frozen.py` asserts the module contains no `CFUNCTYPE`, so the claim above
+cannot quietly stop being true. Measured on the Developer ID build with `flags=0x10000(runtime)`
+and the dictionary empty: registers, serves, quits, nothing denied in the AMFI log.
+
 **Nothing uses `codesign --deep`.** Apple deprecates it and it applies the *outer* bundle's
 entitlements to everything nested, which is the opposite of what an empty entitlements file is
 for. Every Mach-O file is found — never listed, so a dependency's dylib cannot arrive ad-hoc
@@ -171,7 +185,10 @@ to survive.
 **Four questions have two answers, and `runtime.py` is the only place either is given**
 (rule 51): am I frozen, where do my files live, where do maps go, and how do I run myself.
 Every one of them was `Path(__file__)` or a spelled-out `sys.executable` somewhere, and
-frozen each is wrong in a different way.
+frozen each is wrong in a different way. A fifth — *what does an application look like on
+this operating system* — is `macapp.py` rather than a fifth branch here, because it is one
+long macOS-only answer read by `serve` alone, and `runtime` stays four short ones read by
+everything.
 
 * **`resource_root()` keeps `dunneflow` as its last segment in both worlds**, and that is
   load-bearing rather than tidy. `fingerprint_files` labels every input relative to it, so
@@ -191,13 +208,29 @@ frozen each is wrong in a different way.
 * **`self_argv()`** is how the analysis subprocess runs this same build. `-m dunneflow.cli`
   means nothing to a binary, and that would have broken **+ Analyze a directory…** on the
   one build where it is the only way in.
-* **`default_output_root()`** is `./output` from a checkout and
-  `~/Library/Application Support/DunneFlow` frozen. Never `~/Documents`: `source.db` holds
-  the private source of whatever was read, and Documents is swept into iCloud Drive on a
+* **`default_output_root()`** is `./output` from a checkout and, frozen, **whatever the
+  reader chose** — `platform_output_root()` when they have not. That platform answer is
+  `~/Library/Application Support/DunneFlow` and never `~/Documents`: `source.db` holds the
+  private source of whatever was read, and Documents is swept into iCloud Drive on a
   signed-in Mac — egress by accident, out of a tool whose posture is deterministic and local
   (design rule 14). `serve` **creates it only when nobody named a directory**; one the
   reader typed is never created, because a mistyped path would otherwise become a new empty
   root reporting no programs in a place they have never used (rule 49).
+* **The root moves, and a one-line pointer at `<platform root>/root` remembers where.**
+  Maps are not small and Application Support is on the boot disk, so `Move…` on the start
+  page re-points and optionally carries the existing programs across (`web/roots.py`,
+  `POST /api/root`) — copy every program, verify every copy, and only then delete, so a
+  failure leaves the originals untouched and takes the partial copies with it.
+  **Three states, never two**: no pointer, one that resolves, and one naming a disk that is
+  not connected. The third **raises** `MapsRootGone`, and the reason is `cmd_serve`'s
+  `mkdir(parents=True)`: `/Volumes` is an ordinary directory *on the boot disk*, so a
+  pointer's target that got created would put a new empty maps root on precisely the drive
+  the reader was clearing, and then report no programs in it (rule 49). **A pointer's target
+  is never created.** `serve` falls back to the platform root and *says so* — on the terminal
+  and in a banner on the start page, because a stated substitution is recoverable and a
+  silent one is the failure. And **a checkout never reads or writes it**: the two worlds share
+  a home directory, and a checkout that stamped the pointer once sent the packaged
+  application to a scratchpad that no longer existed.
 
 `packaging/dunneflow.spec` bundles as **data** everything something reads as a *file*: the
 rules (loaded as YAML) and the detectors' loader plus both extractor trees (**hashed**, not

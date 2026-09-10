@@ -13,6 +13,8 @@ cross one, a call recorded twice at two confidences, and boundaries of two kinds
 from __future__ import annotations
 
 import re
+import shutil
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -857,3 +859,86 @@ def test_a_base_holds_its_plate_orders_and_a_switch_cannot_carry_them() -> None:
         "one of the two answers will be forgotten when the other moves"
     )
     assert "plate_orders" not in serve_mod._Live.COMPARISON_CACHES
+
+
+# --------------------------------------------------------------------------- #
+# Snap-to-fit, and the floor under it
+
+
+def _js_engine():
+    """Whatever this machine has, or nothing. DunneFlow ships with no Node, ever."""
+    engine = next((c for c in ("node", "deno", "bun") if shutil.which(c)), None)
+    if engine is None:
+        jsc = Path("/System/Library/Frameworks/JavaScriptCore.framework"
+                   "/Versions/A/Helpers/jsc")
+        engine = str(jsc) if jsc.exists() else None
+    return engine
+
+
+def test_a_fit_on_one_node_still_shows_half_its_plate() -> None:
+    """**Snap-to-fit framed a single node as a sphere filling the pane.**
+
+    `bounds` ends `radius: r || 1`, and a selected node with no neighbours to spread it has
+    `r === 0` -- so the fit framed a box **two world units** across and drew one magnified
+    dot. Reported by Tom: *"you can't tell what you're seeing until you zoom out, then you
+    can see giant node spheres."* Measured on Society's map before the fix: 3 world units
+    visible against a plate 669 across.
+
+    That `|| 1` is rule 49 in one character: *this has no extent* is not a size, and
+    substituting a plausible one hides the failure rather than deferring it.
+
+    **The arithmetic is taken from the file, not restated here.** A copy of `fitView`'s
+    formula in this test would agree with a broken implementation, which is the failure it
+    exists to catch (rule 14's neighbourhood, and this file's own standing rule that every
+    list is derived from the source). So `visibleFloor` and the clamp are lifted out of
+    `graph.js` by name and run.
+    """
+    engine = _js_engine()
+    if engine is None:
+        pytest.skip("no JavaScript engine on this machine to run the arithmetic with")
+
+    root = Path(__file__).resolve().parents[1]
+    src = root.joinpath("src/dunneflow/web/static/graph.js").read_text(encoding="utf-8")
+
+    # The clamp, read off the source so a rename or a removal fails here rather than
+    # silently restoring the defect.
+    assert "const floor = visibleFloor(d, chosen);" in src, (
+        "fitView no longer asks visibleFloor for a floor — a lone node will frame as a dot"
+    )
+    assert "scale = Math.min(scale, Math.min(w, h) / floor);" in src, (
+        "the floor is no longer clamped against the tighter pane dimension — a short pane "
+        "will crop the plate it was supposed to keep in view"
+    )
+
+    share = re.search(r"const PLATE_SHARE = ([0-9.]+);", src)
+    assert share, "PLATE_SHARE is gone; how much plate a fit must show is now unstated"
+    assert float(share.group(1)) >= 0.5, (
+        f"PLATE_SHARE is {share.group(1)} — Tom asked for at least half the hosting plate"
+    )
+
+    # And the guarantee itself, exercised. A plate 669 units across, one node on it with no
+    # neighbours, in the squattest pane the shell produces.
+    prog = f"""
+    const PLATE_SHARE = {share.group(1)};
+    const plateAcross = 669, w = 258, h = 165;
+    // What `bounds` hands back for a selection of one: no extent, and the `|| 1` fudge.
+    const bRadius = 1, bHeight = 1;
+    const floor = plateAcross * PLATE_SHARE;
+    let worst = 1;
+    for (const rot of [0, 35, 55, 90]) {{
+      const t = rot * Math.PI / 180;
+      const vertical = Math.abs(bHeight * Math.cos(t)) + Math.abs(2 * bRadius * Math.sin(t));
+      let scale = Math.min((w * 0.90) / (2 * bRadius), (h * 0.88) / vertical);
+      scale = Math.min(scale, Math.min(w, h) / floor);
+      // The share of the plate visible in the tighter direction.
+      worst = Math.min(worst, (Math.min(w, h) / scale) / plateAcross);
+    }}
+    console.log(worst.toFixed(3));
+    """
+    r = subprocess.run([engine, "-e", prog], capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr or r.stdout
+    worst = float(r.stdout.strip())
+    assert worst >= 0.5, (
+        f"at the worst tilt only {worst:.0%} of the hosting plate stays visible; "
+        "a fit on one node is a magnified dot again"
+    )

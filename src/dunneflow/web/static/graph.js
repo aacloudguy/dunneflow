@@ -379,18 +379,90 @@ function bounds(d, subset = null) {
   return { centre, radius: r || 1, height: (hi[2] - lo[2]) || 1 };
 }
 
+/* How much of the hosting plate a fit must leave visible, however small the selection is.
+ *
+ * A framed radius of half the plate's radius spans the plate's full radius across the
+ * screen -- half its width -- which is the reader's own statement of what they wanted:
+ * enough of the neighbourhood to know where they are. */
+const PLATE_SHARE = 0.5;
+
+/* One plate's drawn radius, measured from the nodes on it.
+ *
+ * **From `positions`, not from the solver's circle.** The circle is in base coordinates and
+ * is absent under the spiral entirely, so using it would mean two expressions for one
+ * quantity that disagree the moment a spread slider moves (rule 51's shape). The drawn
+ * nodes are the picture, and the picture is what a fit has to frame.
+ */
+function plateRadius(d, diskId) {
+  const idx = d.byDisk.get(diskId);
+  if (!idx || idx.length < 2) return 0;
+  let lox = Infinity, loy = Infinity, hix = -Infinity, hiy = -Infinity;
+  for (const i of idx) {
+    const x = d.positions[i * 3], y = d.positions[i * 3 + 1];
+    if (x < lox) lox = x;
+    if (x > hix) hix = x;
+    if (y < loy) loy = y;
+    if (y > hiy) hiy = y;
+  }
+  const cx = (lox + hix) / 2, cy = (loy + hiy) / 2;
+  let r = 0;
+  for (const i of idx) {
+    const h = Math.hypot(d.positions[i * 3] - cx, d.positions[i * 3 + 1] - cy);
+    if (h > r) r = h;
+  }
+  return r;
+}
+
+/* How much *world* a fit on this selection must leave visible, in the tighter dimension.
+ *
+ * **The defect this exists for.** `bounds` ends `radius: r || 1`, and one selected node
+ * with no neighbours to spread it has `r === 0` -- so the fit framed a box two world units
+ * across and drew a single sphere filling the pane. Reported as *you cannot tell what you
+ * are seeing until you zoom out, and then they are giant spheres*. That `|| 1` is rule 49
+ * exactly: a plausible number standing in for *this has no extent*, which is not a size at
+ * all and cannot be scaled to.
+ *
+ * Snap-to-fit means *put this back in view*, and a lone node has no view of its own. So the
+ * floor comes from the plate it sits on -- the smallest thing around it that is still a
+ * place. Zero for an empty selection, where the whole stack is already the subject and
+ * nothing needs flooring.
+ *
+ * **A span, not a radius, and applied to the *smaller* of the two pane dimensions.** The
+ * first spelling floored the radius and let the existing arithmetic carry it, which
+ * guarantees the share across the width and lets a short pane crop the height -- measured
+ * at 56% of the plate wide and 35% tall in a 258x165 pane. The reader asked for half the
+ * plate, not half of it in whichever direction the layout happened to be generous.
+ */
+function visibleFloor(d, subset) {
+  if (!subset || !subset.size) return 0;
+  const disks = new Set();
+  subset.forEach((i) => {
+    const k = d.raw.nodes.disk[i];
+    if (k !== undefined) disks.add(k);
+  });
+  let r = 0;
+  // The **largest** hosting plate when a selection spans several: the floor has to leave
+  // the whole selection framed, and a smaller plate's share would crop the bigger one.
+  for (const k of disks) r = Math.max(r, plateRadius(d, k));
+  return 2 * r * PLATE_SHARE;
+}
+
 /* Fit the bounding *cylinder*, at the tilt in force. A sphere is rotation-invariant and
  * therefore safe at every angle by being wrong at nearly all of them. Orbiting about Z
  * leaves the footprint circular, so tilt is the only term that changes the silhouette.
  *
  * With a selection it frames the selection: having pushed everything else out of the way,
- * the next thing anyone wants is to see what is left, filling the screen.
+ * the next thing anyone wants is to see what is left, filling the screen -- **but never
+ * closer than `selectionFloor`**, because "filling the screen" stops being useful the
+ * moment the selection is smaller than the thing it sits on. One node has no extent to
+ * fill a screen with; framing it alone is a magnified dot with no context.
  *
  * Measured against the *container*, not the window. As a page of its own those were the
  * same number; inside a three-pane shell they are not, and framing against the window
  * puts the stack partly under the inspector. */
 function fitView(d, rotationX = g.viewState.rotationX, subset = null) {
-  const b = bounds(d, subset ?? (g.members.size ? g.members : null));
+  const chosen = subset ?? (g.members.size ? g.members : null);
+  const b = bounds(d, chosen);
   const t = (rotationX * Math.PI) / 180;
   const vertical = Math.abs(b.height * Math.cos(t)) + Math.abs(2 * b.radius * Math.sin(t));
   /* `clientWidth` of the container the engine was handed, and the 0.90 is margin -- not a
@@ -423,7 +495,19 @@ function fitView(d, rotationX = g.viewState.rotationX, subset = null) {
     return { ...g.viewState, rotationX };
   }
   g.fitOwed = false;
-  const scale = Math.min((w * 0.90) / (2 * b.radius), (h * 0.88) / vertical);
+  let scale = Math.min((w * 0.90) / (2 * b.radius), (h * 0.88) / vertical);
+  /* **The floor, applied to the scale rather than to the bounds.** Clamping here says the
+   * thing that was actually wanted -- *this many world units stay visible* -- in one place
+   * and at every tilt, because `scale` is what top-down, tilt and the default all end at.
+   * Flooring the radius instead would have to be threaded through `vertical` as well, which
+   * is two expressions for one guarantee and the shape rule 78 keeps punishing.
+   *
+   * `Math.min(w, h)` is the tighter pane dimension: the share has to survive a pane that is
+   * short as well as one that is narrow. */
+  const floor = visibleFloor(d, chosen);
+  if (floor > 0) scale = Math.min(scale, Math.min(w, h) / floor);
+  // The centre stays the selection's own: the complaint was the zoom, and a lone node's
+  // bounding box centre *is* the node, so it is already centred exactly as asked.
   return { ...g.viewState, target: b.centre, rotationX, zoom: Math.log2(scale) };
 }
 

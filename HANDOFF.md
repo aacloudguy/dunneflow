@@ -14480,3 +14480,190 @@ Two once-only commands, both Tom's, both written into `release.sh`'s header and 
 install python.org's universal2 3.12.10, and store an App Store Connect API key with
 `xcrun notarytool store-credentials dunneflow`. Everything downstream of them is written.
 Then the icon, then Windows.
+
+## 2026-09-10 — milestone 4: the application says what it is doing, and a build that runs anywhere
+
+The folder was renamed to `DunneFlow` and the company became **Dunne, Corp.** — a C-corp, no
+longer an LLC. That was the whole of the asked-for work, and it took twenty minutes. Everything
+below came out of running the signed build afterwards, which is the point worth keeping: **the
+1,368 tests prove the source tree, and every defect this session lived in the artifact or in the
+surface a first-time reader meets.**
+
+| | |
+|---|---|
+| tests | 1,368 → **1,401**, mypy and ruff clean throughout |
+| defects found | **eight**, none reported by a test |
+| features | the way back, a movable maps root, a Dock presence, notarisation |
+| the binary | universal2, Developer ID, **notarised and stapled**, in `/Applications` |
+| `extractor` | still `9:e8c9ac8a851c41b7` in both builds (rule 12 holds) |
+
+### The rename, and what it exposed
+
+`DunneCorp LLC` appeared exactly once, in the topbar. `documenter` appeared in no source file
+at all — only in generated state that had gone stale: **both virtualenvs** (editable install and
+every console-script shebang pointing at the old path), `output/dunneflow` (schema 5 against a
+current 9, with 5,800 absolute paths), a dead scratchpad path in `standards.db`'s WAL, and
+`build/`, `dist/` and every cache. All regenerated; `migrate` could not help, because the map
+predated the fingerprint that migration is allowed to re-stamp.
+
+Two things fell out of it:
+
+* **`adopt_revision` did not re-stamp its `tree`.** It filled an empty one and left a recorded
+  one alone, while `open_working` overwrites. So `source.db` moved to the new leaf and
+  `docsource.db` kept the old — one snapshot recorded as read from two different trees, which is
+  the disagreement that method's own docstring says must never happen (rule 51).
+* **`types-PyYAML` was installed by hand and never declared**, so `uv run mypy .` had only ever
+  been green on this machine. Rebuilding the venv found it.
+
+### The stall: three analyses that finished and reported themselves frozen
+
+Tom ran three analyses from the packaged app. Each froze — at *step 7 of 7*, then *2 of 7*, then
+*2 of 7* — and the start page stayed at *"No map has been made yet"*. **All three had finished**:
+`complete = 'yes'`, full maps on disk.
+
+```
+ReferenceError: loadPrograms is not defined
+    at tick (http://127.0.0.1:8787/static/analyze.js:416)
+```
+
+`analyze.js` called a **`shell.js` global**. The shell defines it; `start.html` loads only
+`analyze.js` and `start.js`. It threw on the one tick that ever sees `state === "done"`, *before*
+the panel repainted and before the loop returned — so the panel froze on whichever poll last
+landed, which is why a 90-second tree stopped at 7 of 7 and a fast one at 2 of 7.
+
+The hook it should have used — `changed()` — was **wired by both hosts and called by nobody**.
+One defect with two halves: a documented contract entry that was dead, and an undocumented
+global that only one host had. `tests/test_analyze_boundary.py` holds the class: no identifier
+called in `analyze.js` may be a top-level declaration of `shell.js`.
+
+### There was no way back, and now there are two
+
+`/` is the shell for as long as a base is open, and nothing closed one — so the maps-directory
+control became unreachable the moment a reader opened anything. `POST /api/close` is
+`switch_program` with no destination (1 ms); `GET /start` always serves the start page and is
+the drastic route, typeable when `shell.js` has thrown (design rule 20). The shell's `<select>`
+gained `× Close this map` on `Analyze.OPTION`'s existing pattern.
+
+**`/api/close` is the first thing in this tool's life that makes `opened` go true → false**, and
+that is a new state: a request can pass the route gate and reach `current` after the base has
+gone. `NothingOpen` would escape to `socketserver.handle_error` and close the socket with
+nothing on it — rule 91's symptom by a different door. Both dispatch paths catch it now and
+answer as the gate would.
+
+### Maps can be kept somewhere else
+
+`Move…` on the start page: `web/roots.py`, `POST /api/root`, copy-verify-delete so a failure
+leaves the originals untouched and takes the partial copies with it. Verified through the signed
+binary: **287 MB onto an external APFS volume in 2.3 s**, old root emptied, maps opening from the
+new location.
+
+**The pointer has three states and the third is the ordinary one.** An unplugged drive raises
+`MapsRootGone` rather than falling back, because `cmd_serve` calls `mkdir(parents=True)` and
+`/Volumes` is an ordinary directory *on the boot disk* — a created pointer target would put a new
+empty maps root on precisely the drive the reader was clearing, and then report no programs in it
+(rule 49). **A pointer's target is never created.** `serve` falls back to the platform root and
+*says so*, on the terminal and in a banner.
+
+**And a checkout neither reads nor writes it.** Found the hard way, immediately: a checkout's
+`serve` moved two maps into a scratchpad and stamped that path into the *real*
+`~/Library/Application Support/DunneFlow/root`, so the packaged application would have opened
+next and told its reader their maps were on a disk that was gone. The tell was `test_frozen.py`
+failing with a path from another session — the fixture had made the whole file non-hermetic.
+
+### Three more, each found on the way past
+
+* **A false refusal on first use.** Both `analysis.check` call sites passed the output root as
+  *the program being read* with nothing open. The frozen default root is called **DunneFlow**, so
+  analysing any directory of that name was refused with *"its graph is open here"* over a server
+  holding no graph. `check`'s own docstring forbade exactly this and was unenforced (rule 30).
+* **A handle leak on every program switch.** `switch_program` captured four things and closed
+  two; `standards.db` leaked on both paths, silently, since `--standards` landed (rule 36).
+* **Repeat launches.** Measured: three double-clicks, **three servers** on 8787, 50595 and 50596,
+  each holding its own stores. `_free_port`'s wander is right for its own case and wrong for this
+  one. `already_serving` joins a DunneFlow reading the **same root** — so two roots are still two
+  servers, and a developer is not silently sent to the wrong one.
+
+### The Dock had no dot, and the fix had to cost no entitlement
+
+Tom, from a screenshot: *"Most users will not understand how to find a running process and will
+just continue launching it over and over."* `lsappinfo` named the cause exactly —
+`type="Foreground"` but **`!cgsConnection`**. `LSBackgroundOnly` was already false; the plist was
+never it. A command line tool in a bundle never touches AppKit, so the window server has nothing
+to indicate.
+
+The one-line version — `[NSApplication sharedApplication]` — buys the dot and a Dock icon that
+**cannot be quit**, which is worse than no dot. So `macapp.py` moves the server to a background
+thread and gives the main one to `[NSApp run]`; quit is `NSApplication`'s own default handling of
+the quit Apple Event. **No delegate**, because that means Python methods on an Objective-C class,
+which means `ctypes.CFUNCTYPE` closures, which means `allow-unsigned-executable-memory` — and
+`entitlements.plist` is empty because it was measured to be. A test asserts the module contains
+no `CFUNCTYPE`. Verified on the signed hardened build: registers, serves, quits, entitlements
+still `<dict></dict>`, nothing denied in the AMFI log.
+
+Ctrl-C is handed back to the OS on that path only: Python's SIGINT handler runs between bytecodes
+on a main thread that is now inside ObjC, so it would appear dead until an unrelated event woke
+the loop. Every store this process holds is read-only, so there is no write to interrupt.
+
+### Notarisation, which was one credential and not a certificate
+
+Tom: *"I thought the presence of the credentials was sufficient."* The keychain had **Developer ID
+Application** and **Developer ID Installer**, both valid — and they sign. Notarisation is an
+authenticated upload to Apple's notary service, and a certificate cannot authenticate an HTTPS
+call because the private key never leaves the Mac. `notarytool history` said so in as many words.
+One `store-credentials` later the step ran unattended: **Accepted**, stapled, and Gatekeeper
+flipped from *rejected — Unnotarized Developer ID* to **accepted — Notarized Developer ID**.
+
+### Snap-to-fit framed a dot
+
+Reported as *"you can't tell what you're seeing until you zoom out, then you can see giant node
+spheres."* `bounds` ends `radius: r || 1`, and one node with no neighbours has `r === 0` — so the
+fit framed **two world units**, measured at 3 units against a plate 669 across, at all three
+views since they share one `scale`.
+
+The floor is half the hosting plate, measured from the **drawn positions** and clamped on the
+**scale** against `Math.min(w, h)`. The first spelling floored the radius, which guarantees the
+share across the width and lets a short pane crop the height — 56% wide but 35% tall in a 258×165
+pane. After: **50% in the tighter direction, 78% in the wider**, at default, top-down and tilt
+alike, node exactly centred, with the whole-stack, busy-node and whole-plate cases byte-identical
+to before.
+
+### Universal by default
+
+Unset `DUNNEFLOW_ARCH` meant *this machine*, which made the fast build easy and the shippable one
+the thing you had to remember — and forgetting is silent, because an arm64 bundle runs perfectly
+on the machine that made it. **12.9 s universal against 11.5 s host**, so the cheap default was
+buying nothing. `host` is still one word for the verification gate.
+
+**A default is a habit, so the artifact is checked rather than the command.** `require_universal`
+gates `sign`, `notarize`, `dmg` and `install` — deliberately not `build` or `verify`, since one
+makes the thing and the other must stay able to say what is wrong with it.
+
+### Two tests that passed over the defect they were written for
+
+Both are rule 34, and both are worth remembering because the file they were added to already
+warns about it.
+
+* The `analyze.js` boundary scan reported `loadPrograms` as a leak **after it was fixed** — the
+  explanatory comment names it. And its first stripper, which removed string literals too, was a
+  JavaScript parser written in regular expressions: a regex literal in `shell.js` carries a
+  double quote, which opened a string the scanner closed thousands of lines later, and
+  `Analyze.wire` vanished from a 20,000-line file with no error. It strips comments only now.
+* The universal-default test asserted `"or 'universal2'" in ast.unparse(func)` and **passed over a
+  spec whose default had been deleted**, because the refusal one line below reads *"Leave it unset
+  for 'universal2'"* and `for` ends in `or`. It reads the syntax now: the assignment must be a
+  `BoolOp(Or)` whose fallback is that constant.
+
+Every fix this session was mutation-checked — the defect reintroduced, the test watched to fail,
+the fix restored.
+
+### Open
+
+The **icon**. `packaging/icon/build_icon.py` draws a hare leaping a river as geometry rather than
+a picture: `GAP` is 96 canvas units of blue between them (3 px at 32), the river runs the full
+width, and the hare is a near-black silhouette because value contrast is all that survives at
+32 px — the tan-on-blue candidate dissolved into its own background. Ears are upright, not swept:
+laid along the spine they were geometrically clear of the back and still merged into it by eye.
+**Not committed and not wired in**; `icon=None` in the spec, and Tom has not passed judgement.
+
+Then **Windows**, and a **`.dmg`** whenever something needs handing over — `release.sh dmg` works
+now that the credentials are in the keychain.

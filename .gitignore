@@ -30,3 +30,7 @@ htmlcov/
 # Editors
 .idea/
 *.swp
+
+# Icon renders. `packaging/icon/build_icon.py` writes the whole ladder in a second, and a
+# PNG in git is a second answer to what the SVG says (rule 51, in a very small key).
+packaging/icon/render_*.png

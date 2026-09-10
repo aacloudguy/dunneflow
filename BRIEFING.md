@@ -204,6 +204,57 @@ program has a most-commented routine and a maximum alone is a claim nobody can w
 
 ## What we are doing now
 
+**Milestone 4 is built and installed, 2026-09-10. Nothing is owed and nothing is half-done.**
+`DunneFlow.app` in `/Applications` is **universal2, Developer ID signed under the hardened
+runtime, notarised by Apple and stapled** — Gatekeeper says `accepted / source=Notarized
+Developer ID`, and all **53** Mach-O files in the installed bundle are `x86_64 arm64`, checked
+in place rather than in `dist/`. **1,401** tests, mypy clean over **139** source files, ruff
+clean. The binary still stamps `extractor = 9:e8c9ac8a851c41b7` — the checkout's, so the two
+builds read each other's maps (rule 12).
+
+**Both once-only commands that were Tom's are done.** The universal2 interpreter is installed
+and `.venv-universal` builds from it; notarytool credentials sit in the keychain under the
+profile `dunneflow`. `./packaging/release.sh all` now runs end to end unattended, and
+**`universal2` is the default** — `host` has to be asked for, and `require_universal` gates the
+four steps whose output reaches another machine.
+
+**None of that was the asked-for work**, and that is the thing to carry forward. The rename that
+started the session took twenty minutes; **eight defects** came out of *running the signed
+build*, and not one was reported by a test — the suite proves the source tree, and every one of
+these lived in the artifact or in the first surface a new reader meets. `HANDOFF.md`'s
+**2026-09-10** section carries each with its evidence.
+
+| Fixed | Was |
+|---|---|
+| an analysis reporting itself frozen for ever | `analyze.js` reached for a `shell.js` global; three finished maps looked hung |
+| no way back to the start page | `/` was the shell for the life of the process |
+| the Dock had no running indicator | a CLI in a bundle never connects to the window server |
+| relaunching made a second server | three double-clicks left three servers on three ports |
+| a false refusal on a reader's first analysis | the output root was offered as *the program being read* |
+| snap-to-fit framing one node as a giant sphere | `radius: r \|\| 1` — two world units, at every tilt |
+| `standards.db` leaked on every program switch | a list of two where the tuple had three |
+| a checkout writing the packaged app's maps pointer | the two worlds share a home directory |
+
+**New and reader-facing:** maps can be kept on another disk (`Move…` on the start page — 287 MB
+onto an external volume in 2.3 s, through the signed binary), a map can be closed back to the
+start page, and `/start` is reachable by URL when the shell has stopped working.
+
+### Where to pick up
+
+1. **The icon.** `packaging/icon/build_icon.py` draws a hare leaping a river as geometry — every
+   proportion is a named number and the whole ladder re-renders in a second. **Not committed and
+   not wired in**: `icon=None` in the spec, and Tom has not passed judgement. When he does,
+   `iconutil` builds the `.icns`, one line changes in the spec, then `release.sh all`.
+2. **A `.dmg`**, whenever something needs handing to somebody. `release.sh dmg` builds, signs,
+   notarises and staples one, and works now that the credentials exist.
+3. **Windows**, last, and still deliberately after everything else.
+
+**The port-8787 collision recorded below on 2026-09-09 is closed.** `already_serving` joins an
+existing DunneFlow reading the same root rather than taking a new port, so a double-click on a
+running application opens the browser at it. Two *different* roots are still two servers.
+
+### Before that: milestone 3 — signed with a Developer ID (2026-09-09)
+
 **Milestone 3 — signing — is built and installed, 2026-09-09.** `DunneFlow.app` is signed with
 `Developer ID Application: Thomas Williams (G3RLJWV327)` under the hardened runtime with a
 secure timestamp, and it is in `/Applications`. **1,368** tests, mypy clean over **134** source

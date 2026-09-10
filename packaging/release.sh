@@ -125,10 +125,35 @@ step_build() {
     lipo -archs "$APP/Contents/MacOS/dunneflow"
 }
 
+# **Nothing single-arch may be signed, notarised, imaged or installed.**
+#
+# A default is a habit and a guard is a guarantee, and this is the failure a habit cannot
+# catch: an arm64 bundle builds, signs, notarises, installs and runs perfectly on the
+# machine that made it. The whole of the failure lands on somebody else's Intel Mac, weeks
+# later, as "the application cannot be opened" -- with nothing here to look at. That is
+# rule 49's shape at the scale of a release, so the check is on the artifact rather than on
+# which command someone remembered to run.
+#
+# Asked of the executable, which is what `lipo` can answer for; `step_verify` walks every
+# Mach-O in the bundle and is the fuller version of this question.
+require_universal() {
+    local exe archs
+    exe="$APP/Contents/MacOS/${APP_NAME%.app}"
+    [ -f "$exe" ] || die "there is no executable in $APP_NAME — run '$0 build' first"
+    archs="$(lipo -archs "$exe" 2>/dev/null)"
+    case " $archs " in
+        *" arm64 "*) case " $archs " in *" x86_64 "*) return 0 ;; esac ;;
+    esac
+    die "$APP_NAME is $archs, not universal — this must not be $1.
+Run '$0 build', which builds for arm64 and x86_64. A DUNNEFLOW_ARCH=host build is for the
+verification gate and for nothing that leaves this machine."
+}
+
 # --- sign ------------------------------------------------------------------------------------
 step_sign() {
     say "signing as ${IDENTITY}"
     [ -d "$APP" ] || die "there is no $APP_NAME to sign — run '$0 build' first"
+    require_universal "signed"
     security find-identity -v -p codesigning | grep -qF "$IDENTITY" || die \
         "no codesigning identity matching '$IDENTITY' in the keychain"
 
@@ -153,6 +178,7 @@ step_sign() {
 step_notarize() {
     say "notarising $APP_NAME"
     [ -d "$APP" ] || die "there is no $APP_NAME to notarise"
+    require_universal "notarised"
     local zip="$DIST/${APP_NAME%.app}-notarize.zip"
     # ditto, not zip(1): a .app is a directory of symlinks and extended attributes, and zip(1)
     # flattens both. What Apple receives has to be what was signed.
@@ -168,6 +194,7 @@ step_dmg() {
     local dmg stage
     dmg="$(dmg_path)"
     say "disk image $(basename "$dmg")"
+    require_universal "put in a disk image"
     xcrun stapler validate "$APP" >/dev/null 2>&1 || die \
         "the .app is not stapled — run '$0 notarize' before building the image.
 A disk image built around an un-notarised app is a notarised wrapper on a refused program."
@@ -223,6 +250,7 @@ step_verify() {
 step_install() {
     say "installing into /Applications"
     [ -d "$APP" ] || die "there is no $APP_NAME to install"
+    require_universal "installed"
     local target="/Applications/$APP_NAME"
     if [ -e "$target" ]; then
         rm -rf "$target" 2>/dev/null || die \

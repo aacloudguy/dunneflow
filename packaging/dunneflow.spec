@@ -59,30 +59,43 @@ PKG = ROOT / "src" / "dunneflow"
 def _target_arch() -> str | None:
     """Which architectures to build for, and a refusal rather than a plausible answer.
 
-    `None` is PyInstaller's own word for *the machine I am running on*. The check is on
-    `sys._base_executable` rather than `sys.executable`, because a virtual environment's
-    `python` is a stub that says nothing about the interpreter behind it.
+    **Universal is the default**, and it used to be the other way round. Unset meant *this
+    machine*, which made the fast build the easy one and the shippable build the one you had
+    to remember -- and forgetting is silent, because an arm64 bundle installs and runs
+    perfectly on the machine that built it. The whole failure lands on somebody else's Intel
+    Mac. Measured before flipping it: 12.9s universal against 11.5s host, so the cheap
+    default was not even buying anything (Tom's call, on those numbers).
+
+    `host` is still there and still one word, for the verification gate in `CLAUDE.md` that
+    wants a bundle to run ground truth through rather than a bundle to hand over. `None` is
+    PyInstaller's own word for *the machine I am running on*.
+
+    The check is on `sys._base_executable` rather than `sys.executable`, because a virtual
+    environment's `python` is a stub that says nothing about the interpreter behind it.
     """
-    asked = os.environ.get("DUNNEFLOW_ARCH", "").strip()
-    if not asked:
+    asked = os.environ.get("DUNNEFLOW_ARCH", "").strip() or "universal2"
+    if asked in ("host", "native"):
         return None
     if asked != "universal2":
         raise SystemExit(
             f"DUNNEFLOW_ARCH={asked!r} is not a target this file knows. "
-            "Leave it unset to build for this machine, or set it to 'universal2'."
+            "Leave it unset for 'universal2', or set it to 'host' to build only for this "
+            "machine."
         )
     real = getattr(sys, "_base_executable", None) or sys.executable
     fat, archs = get_binary_architectures(real)
     if not fat or "x86_64" not in archs or "arm64" not in archs:
         raise SystemExit(
-            "DUNNEFLOW_ARCH=universal2 was asked for, and this interpreter cannot produce "
-            f"it: {real} is {'+'.join(archs)}.\n"
+            "A universal2 build was asked for (the default), and this interpreter cannot "
+            f"produce it: {real} is {'+'.join(archs)}.\n"
             "A universal2 build needs a universal2 interpreter, which uv's managed Pythons "
-            "and Homebrew's are not. Install python.org's "
-            "https://www.python.org/ftp/python/3.12.10/python-3.12.10-macos11.pkg, then "
-            "build from a virtual environment made with "
-            "/Library/Frameworks/Python.framework/Versions/3.12/bin/python3. "
-            "packaging/release.sh does that for you."
+            "and Homebrew's are not. Either:\n"
+            "  ./packaging/release.sh build          — builds it properly, and makes the "
+            "universal2 environment first if it is missing\n"
+            "  DUNNEFLOW_ARCH=host pyinstaller …     — a fast build for this machine only, "
+            "which is what the verification gate wants and must never be shipped\n"
+            "The universal2 interpreter is python.org's "
+            "https://www.python.org/ftp/python/3.12.10/python-3.12.10-macos11.pkg."
         )
     return "universal2"
 

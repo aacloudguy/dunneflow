@@ -582,3 +582,84 @@ def test_the_server_still_runs_when_there_is_no_window_server(monkeypatch):
     """
     monkeypatch.setattr(macapp, "_appkit", lambda: None)
     assert macapp.run_as_application(lambda: None, lambda: None) is False
+
+
+def test_universal_is_the_default_and_host_must_be_asked_for():
+    """Shipping-shaped by default, because forgetting is silent.
+
+    Unset used to mean *this machine*, which made the fast build the easy one and the
+    shippable build the one you had to remember. An arm64 bundle builds, signs, notarises,
+    installs and runs perfectly on the machine that made it -- the entire failure lands on
+    somebody else's Intel Mac, weeks later, with nothing here to look at. Measured before
+    flipping it: 12.9s universal against 11.5s host, so the cheap default bought nothing.
+    """
+    src = SPEC.read_text(encoding="utf-8")
+    tree = ast.parse(src)
+    func = next(n for n in tree.body
+                if isinstance(n, ast.FunctionDef) and n.name == "_target_arch")
+    # **Asked of the syntax, never of the text** -- rule 34, and this test paid for it. The
+    # first spelling asserted `"or 'universal2'" in ast.unparse(func)`, which passed happily
+    # over a spec whose default had been deleted: the refusal message one line below reads
+    # *"Leave it unset for 'universal2'"*, and `for` ends in `or`. A guard matching prose
+    # about the thing rather than the thing is the failure `test_frozen` was written to
+    # avoid, three tests up.
+    #
+    # So: find the assignment to `asked` and require it to be an `or` whose fallback is the
+    # literal `universal2`. That cannot be satisfied by a sentence.
+    assigned = next(
+        (n for n in ast.walk(func)
+         if isinstance(n, ast.Assign)
+         and any(getattr(t, "id", "") == "asked" for t in n.targets)),
+        None,
+    )
+    assert assigned is not None, "_target_arch no longer computes `asked`"
+    assert isinstance(assigned.value, ast.BoolOp) and isinstance(assigned.value.op, ast.Or), (
+        "`asked` is no longer an `... or <default>` — a forgotten flag now decides the "
+        "architecture, and an arm64 build ships silently"
+    )
+    fallback = assigned.value.values[-1]
+    assert isinstance(fallback, ast.Constant) and fallback.value == "universal2", (
+        f"the default is {ast.unparse(fallback)}, not 'universal2' — a forgotten flag "
+        "ships an arm64 app that only fails on somebody else's Intel Mac"
+    )
+    # And the way out is still there, or the verification gate has no fast build.
+    reachable = {n.value for n in ast.walk(func)
+                 if isinstance(n, ast.Constant) and isinstance(n.value, str)}
+    assert "host" in reachable, (
+        "DUNNEFLOW_ARCH=host is gone; the verification gate now pays for a universal build"
+    )
+
+
+def test_nothing_single_arch_can_be_signed_notarised_imaged_or_installed():
+    """**A default is a habit; this is the guarantee.**
+
+    The one failure a default cannot prevent is somebody building `host` for a quick check
+    and then signing and installing it by hand. So the check is on the *artifact* rather
+    than on which command was remembered, and it gates exactly the four steps whose output
+    reaches another machine.
+
+    Derived from the script rather than listed here: a fifth shipping step added tomorrow
+    should fail this until it is gated too (rule 36 -- a hand-kept list agrees with a wrong
+    implementation).
+    """
+    sh = (SPEC.parent / "release.sh").read_text(encoding="utf-8")
+    assert "require_universal()" in sh, "the universal guard is gone from release.sh"
+
+    bodies = {}
+    for name in ("step_sign", "step_notarize", "step_dmg", "step_install", "step_verify",
+                 "step_build", "step_venv"):
+        start = sh.find(f"{name}() {{")
+        assert start != -1, f"release.sh no longer defines {name}"
+        bodies[name] = sh[start:sh.find("\n}\n", start)]
+
+    for shipping in ("step_sign", "step_notarize", "step_dmg", "step_install"):
+        assert "require_universal" in bodies[shipping], (
+            f"{shipping} does not require a universal bundle — a DUNNEFLOW_ARCH=host build "
+            "can be shipped by hand, and it will only fail on somebody else's Intel Mac"
+        )
+    # `build` makes the thing and `verify` reports on whatever is there; neither is a gate,
+    # and putting one in `verify` would stop it being able to *tell you* what went wrong.
+    for reporting in ("step_build", "step_verify"):
+        assert "require_universal" not in bodies[reporting], (
+            f"{reporting} refuses a thin bundle, so it can no longer be used to diagnose one"
+        )

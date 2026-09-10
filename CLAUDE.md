@@ -110,10 +110,13 @@ into iCloud Drive, and invisible to a reader who wants to hand a colleague a map
 ## Packaging — the frozen application
 
 ```bash
-uv run pyinstaller packaging/dunneflow.spec --noconfirm    # → dist/DunneFlow.app (31 MB)
+DUNNEFLOW_ARCH=host uv run pyinstaller packaging/dunneflow.spec --noconfirm
 ```
 
-That is the **development** build: this machine's architecture, ad-hoc signed, seven seconds.
+That is the **development** build: this machine's architecture, ad-hoc signed, ~11 s, and it
+**must never leave this machine** — every step in `release.sh` refuses it by name. Building for
+one architecture is now something you have to ask for; see `DUNNEFLOW_ARCH` below.
+
 A **release** is `packaging/release.sh`, one verb per step so any of them can be run alone:
 
 ```bash
@@ -127,10 +130,23 @@ A **release** is `packaging/release.sh`, one verb per step so any of them can be
 ./packaging/release.sh all
 ```
 
-**`DUNNEFLOW_ARCH` has two answers and no third**, and the spec **refuses rather than falling
-back** (rule 49): asked for `universal2` under an interpreter that cannot produce one it raises
-and names both. A universal build that quietly came out arm64 would sign, notarise and ship,
-and be found by a colleague on an Intel Mac rather than here.
+**`DUNNEFLOW_ARCH` has two answers and no third, and `universal2` is the default.** It was the
+other way round until 2026-09-10, which made the fast build the easy one and the shippable
+build the one you had to remember — and forgetting is silent, because an arm64 bundle installs
+and runs perfectly on the machine that built it. Measured before flipping it: **12.9 s universal
+against 11.5 s host**, so the cheap default was not buying anything. `host` is the other answer,
+for the verification gate below.
+
+The spec **refuses rather than falling back** (rule 49): asked for `universal2` under an
+interpreter that cannot produce one it raises and names both ways out. A universal build that
+quietly came out arm64 would sign, notarise and ship, and be found by a colleague on an Intel
+Mac rather than here.
+
+**And a default is a habit, so the artifact is checked rather than the command.**
+`require_universal` gates `sign`, `notarize`, `dmg` and `install` — the four steps whose output
+reaches somebody else — because the one failure a default cannot prevent is a `host` build being
+signed and shipped by hand. Asked of the executable with `lipo`; `verify` walks all 53 Mach-O
+files in the bundle, which is the fuller form of the same question.
 
 **A universal build needs a universal interpreter, and it cannot be uv's.** uv's managed
 Pythons and Homebrew's are single-arch by construction; python-build-standalone ships no
@@ -453,7 +469,7 @@ moved, **through the binary as well as beside it** — the tests prove the sourc
 not the artifact:
 
 ```bash
-uv run pyinstaller packaging/dunneflow.spec --noconfirm
+DUNNEFLOW_ARCH=host uv run pyinstaller packaging/dunneflow.spec --noconfirm
 dist/DunneFlow.app/Contents/MacOS/dunneflow analyze <tree> --name x --output <tmp>
 ```
 

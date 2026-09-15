@@ -5,7 +5,7 @@ It exists so a fresh context can be useful in a few minutes instead of an hour.
 
 | Read | For |
 |---|---|
-| `CLAUDE.md` | The rules. 92 engineering rules — numbered to 93, since 21 does not exist — and 30 dashboard design rules, each earned from a false result on real code. **Binding.** |
+| `CLAUDE.md` | The rules. 93 engineering rules — numbered to 94, since 21 does not exist — and 30 dashboard design rules, each earned from a false result on real code. **Binding.** |
 | `HANDOFF.md` | The chronological record — what was built when, what it cost, what broke. ~1,700 lines. Read *sections*, not the whole thing. |
 | **this file** | Where things are, what is done, what we are doing now, what not to re-open. |
 | Artifact `f993d319-d2b7-4217-9130-cdbba698d1bc` | The ratified dashboard design — a complete working UI, the source of truth for every view. Read it with the **Artifact tool**, not from a screenshot. |
@@ -211,7 +211,7 @@ program has a most-commented routine and a maximum alone is a claim nobody can w
 
 ## What we are doing now
 
-**Linux Mint runs it — 2026-09-15, on the `linux` branch and not yet merged.** Every gate green
+**Linux Mint runs it — 2026-09-15, merged to `main` at `15a6d33`.** Every gate green
 on Mint (XFCE, X11) / Python 3.12.3: **1,446 passed, 1 skipped**, mypy clean on `darwin`,
 `linux` *and* `win32`, ruff clean.
 Built, installed from `packaging/release-linux.sh`, launched from the application menu and

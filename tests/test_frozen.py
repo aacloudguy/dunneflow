@@ -81,7 +81,7 @@ def test_a_named_and_absent_input_is_refused(tmp_path):
     that straight through to a `FileNotFoundError` raised from inside a hash.
     """
     here = tmp_path / "real.yaml"
-    here.write_text("a: 1")
+    here.write_text("a: 1", encoding="utf-8")
     with pytest.raises(RulesMissing) as exc:
         fingerprint_files([here, tmp_path / "gone.yaml"])
     assert "gone.yaml" in str(exc.value)
@@ -330,6 +330,7 @@ def test_a_chosen_output_root_is_taken_in_silence(capsys):
 SPEC = SRC.parent.parent / "packaging" / "dunneflow.spec"
 ENTRY = SRC.parent.parent / "packaging" / "dunneflow_app.py"
 RELEASE = SRC.parent.parent / "packaging" / "release.sh"
+RELEASE_PS1 = SRC.parent.parent / "packaging" / "release.ps1"
 ENTITLEMENTS = SRC.parent.parent / "packaging" / "entitlements.plist"
 
 
@@ -459,20 +460,137 @@ def test_a_universal_build_refuses_rather_than_coming_out_single_arch(monkeypatc
     back to the host architecture the build would report success, sign, notarise and ship,
     and the failure would arrive as *"the application cannot be opened"* on a colleague's
     Intel Mac with nothing on this machine to look at.
+
+    **Three refusals now, and the third is the same rule on another platform.**
+    `target_arch` is a Mach-O idea; a Windows executable holds the one architecture its
+    interpreter was built for. So a `DUNNEFLOW_ARCH` set out of habit off macOS is refused by
+    name rather than *accepted and ignored*, which is how somebody comes to believe they
+    built a thing they did not. Counted rather than listed, so adding a fourth way out of
+    this function means coming back here and saying what it is.
     """
     source = SPEC.read_text(encoding="utf-8")
     tree = ast.parse(source)
     func = next(n for n in tree.body
                 if isinstance(n, ast.FunctionDef) and n.name == "_target_arch")
-    # Every way out of the function: the two refusals, and the two answers.
+    # Every way out of the function: the three refusals, and the two answers.
     raises = [n for n in ast.walk(func) if isinstance(n, ast.Raise)]
-    assert len(raises) == 2, "a universal build must refuse an unknown target and a thin one"
+    assert len(raises) == 3, (
+        "a universal build must refuse an unknown target, a thin interpreter, and a macOS "
+        "answer asked for on a platform that has no such choice to make"
+    )
     for node in raises:
         assert ast.unparse(node.exc.func) == "SystemExit"
+    # And the platform refusal must be reached *before* anything macOS-only is touched:
+    # `PyInstaller.utils.osx` needs `macholib`, which is genuinely absent off a Mac, so an
+    # import at the top of the file would make this spec unreadable there rather than
+    # merely inapplicable.
+    # `ast.unparse` normalises every string literal to single quotes, so the comparison is
+    # written in its spelling rather than the file's.
+    body = ast.unparse(func)
+    assert body.index("sys.platform != 'darwin'") < body.index("PyInstaller.utils.osx"), (
+        "the spec reaches for a macOS-only module before it has refused the platform"
+    )
     # And the answer is asked of the real interpreter, never of the virtual environment's
     # stub, which says nothing about what is behind it.
     assert "_base_executable" in ast.unparse(func)
     assert "target_arch=_target_arch()" in source
+
+
+def test_the_windows_script_and_the_spec_name_the_same_executables():
+    """`release.ps1`'s subject, and rule 41's shape again: a claim and a population.
+
+    The PowerShell script freezes, checks, zips and installs two executables by name; the
+    spec decides what those names are. Disagree and `verify` reports that the build is
+    missing a file that is sitting right there under another name.
+
+    **The two names must differ by more than case**, and that is not style. NTFS is
+    case-insensitive, so `DunneFlow.exe` and `dunneflow.exe` are one file there -- the
+    second `EXE()` would overwrite the first, and the build would end with one binary where
+    the spec says two and no error anywhere.
+    """
+    tree = ast.parse(SPEC.read_text(encoding="utf-8"))
+    names = [ast.literal_eval(k.value)
+             for n in ast.walk(tree)
+             if isinstance(n, ast.Call) and getattr(n.func, "id", "") == "EXE"
+             for k in n.keywords if k.arg == "name" and isinstance(k.value, ast.Constant)]
+    windows = [n for n in names if n != "dunneflow"]
+    assert "dunneflow-cli" in names, "the spec no longer builds a console executable"
+
+    script = RELEASE_PS1.read_text(encoding="utf-8")
+    for name in windows:
+        assert f"'{name}.exe'" in script, f"release.ps1 does not name {name}.exe"
+    lowered = [n.lower() for n in windows]
+    assert len(set(lowered)) == len(lowered), (
+        "two executables whose names differ only in case are one file on NTFS"
+    )
+    # Nothing in this script may reach a network. A release that is not to be published has
+    # to be one that *cannot* be, by reading it (rule 13 -- a claim a query can answer).
+    for word in ("Invoke-RestMethod", "Invoke-WebRequest", "curl", "Start-BitsTransfer"):
+        assert word not in script, f"release.ps1 reaches the network with {word}"
+
+
+def test_the_windows_script_can_be_read_by_the_powershell_windows_ships_with():
+    """A `.ps1` holding non-ASCII **must** carry a UTF-8 BOM, or 5.1 will not parse it.
+
+    Windows PowerShell -- the built-in one, which is what `powershell` means on every Windows
+    machine -- reads a BOM-less script as **ANSI**, not UTF-8. An em dash inside a
+    double-quoted string then decodes as two characters, the closing quote is consumed with
+    them, and the failure is reported as *"The string is missing the terminator"* forty lines
+    further down, where there is nothing wrong.
+
+    Found by a probe script of this session's own writing failing exactly that way; the
+    release script carries the same characters and had only ever been run under `pwsh`, which
+    reads UTF-8 either way and so could never have shown it. PowerShell 7 accepts the BOM, so
+    it costs nothing and satisfies both.
+
+    Asserted as a **condition**, not a flat "there is a BOM": a script that is pure ASCII does
+    not need one, and a guard that demanded it anyway would be a rule about a file rather than
+    about the failure it prevents.
+    """
+    raw = RELEASE_PS1.read_bytes()
+    bom = raw.startswith(b"\xef\xbb\xbf")
+    body = raw[3:] if bom else raw
+    non_ascii = [ch for ch in body.decode("utf-8") if ord(ch) > 127]
+    if non_ascii:
+        assert bom, (
+            f"release.ps1 holds {len(non_ascii)} non-ASCII characters "
+            f"({''.join(sorted(set(non_ascii)))}) and no BOM — Windows PowerShell will read "
+            "them as ANSI and fail to parse the file"
+        )
+
+
+def test_the_folder_picker_says_while_it_is_opening():
+    """Design rule 16's neighbour: an untouched control and a working one looked identical.
+
+    The dialog belongs to a helper process the server starts, and the first one on a machine
+    pays to load the toolkit it draws with — measured at 0.6s warm and several seconds cold on
+    Windows, against an `osascript` that is effectively instant. For all of that time the
+    button was exactly as it is when nothing is wired to it, and it was **reported as a picker
+    that does not open**.
+
+    Both call sites, because there are two and only one of them was ever going to be
+    remembered (rule 78). Asserted on the source, because the state is set before an `await`
+    and no rendered DOM can show that it was.
+    """
+    js = SRC / "web" / "static"
+
+    analyze = (js / "analyze.js").read_text(encoding="utf-8")
+    body = analyze.split("async function pickDirectory", 1)[1].split("\n  }", 1)[0]
+    assert "picking = true" in body, "the analyse dialog's picker never says it is opening"
+    assert body.index("picking = true") < body.index("await fetch"), (
+        "the picker says it is opening after the wait it is meant to cover"
+    )
+    assert "paintAnalyze()" in body.split("picking = true", 1)[1].split("await fetch", 1)[0], (
+        "the state is set and never painted, which is the same as not setting it"
+    )
+    assert "a.picking" in analyze, "nothing renders the opening state"
+
+    start = (js / "start.js").read_text(encoding="utf-8")
+    handler = start.split("data-movepick", 1)[1].split("return;\n    }", 1)[0]
+    assert "Opening" in handler, "the start page's picker never says it is opening"
+    assert "finally" in handler, (
+        "a throw would leave the start page saying 'Opening…' for ever"
+    )
 
 
 def test_the_release_script_and_the_spec_name_the_same_bundle():

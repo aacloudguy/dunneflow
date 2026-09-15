@@ -171,7 +171,7 @@ def test_standards_are_not_governance_tickets(tmp_path: Path) -> None:
 
 def _sql(tmp_path: Path, body: str):
     src = tmp_path / "m.py"
-    src.write_text(body)
+    src.write_text(body, encoding="utf-8")
     return extract_file(src, tmp_path).sql
 
 
@@ -254,7 +254,7 @@ def test_an_unresolvable_placeholder_still_records_the_statement(tmp_path):
 
 
 def _control(tmp_path: Path, src: str):
-    (tmp_path / "m.py").write_text(src)
+    (tmp_path / "m.py").write_text(src, encoding="utf-8")
     return extract_file(tmp_path / "m.py", tmp_path).control
 
 
@@ -370,7 +370,7 @@ def test_a_control_point_carries_its_header_as_written(tmp_path):
 
 
 def _arms(tmp_path: Path, src: str):
-    (tmp_path / "m.py").write_text(src)
+    (tmp_path / "m.py").write_text(src, encoding="utf-8")
     ff = extract_file(tmp_path / "m.py", tmp_path)
     by_point = {p.point_id: p for p in ff.control}
     return [(by_point[a.point_id].kind.value, a.idx, a.kind.value, a.header)
@@ -409,7 +409,8 @@ def f(x):
         g()
     elif fetch():
         h()
-""")
+""",
+        encoding="utf-8")
     ff = extract_file(tmp_path / "m.py", tmp_path)
     point = ff.control[0]
     arms = sorted(ff.control_arms, key=lambda a: a.idx)
@@ -504,7 +505,8 @@ def f(rows):
             k(line)
         else:
             m(line)
-""")
+""",
+        encoding="utf-8")
     ff = extract_file(tmp_path / "m.py", tmp_path)
     ids = [p.point_id for p in ff.control]
     assert len(set(ids)) == len(ids), "two points share an id, so their arms merge"

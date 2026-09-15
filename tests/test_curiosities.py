@@ -33,7 +33,7 @@ def _store(tmp_path: Path, source: str, name: str = "m.py") -> Store:
     tree = tmp_path / "tree"
     tree.mkdir(exist_ok=True)
     src = tree / name
-    src.write_text(source)
+    src.write_text(source, encoding="utf-8")
     store = Store(tmp_path / "graph.db")
     analyze_tree(tree, store)
     resolve_calls(store)

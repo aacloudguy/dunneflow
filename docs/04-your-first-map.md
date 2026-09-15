@@ -13,6 +13,12 @@ your terminal: the server reads the tree itself, so a relative path would mean n
 it. **Choose…** opens a folder picker if you would rather not type one. The typed field
 never goes away — the picker is a convenience over a control that still works.
 
+> **On Windows the picker opens behind your browser** — **Alt-Tab to it**, or click it in
+> the taskbar. The button says *Opening…* while the chooser starts, and the first one after
+> you launch DunneFlow takes a few seconds. This is Windows rather than DunneFlow: a program
+> running in the background may not bring a window to the front, and DunneFlow is in the
+> background while you are looking at a browser. Typing the path always works.
+
 Point it at the directory that holds the code. For a Python project that is usually
 `src/`, or the package directory, rather than the repository root.
 

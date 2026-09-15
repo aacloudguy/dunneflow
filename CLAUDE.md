@@ -14,7 +14,7 @@ by *how often you need it*, not by importance:
 | File | What it holds | When to read it |
 |---|---|---|
 | `CLAUDE.md` | commands, verification gates, architecture, and the **index** of every rule | every session — it is loaded for you |
-| `RULES.md` | the 91 engineering rules **in full**, with the false result each came from — numbered to 92, because 21 does not exist and the numbers are addresses | before working in the area a rule governs |
+| `RULES.md` | the 92 engineering rules **in full**, with the false result each came from — numbered to 93, because 21 does not exist and the numbers are addresses | before working in the area a rule governs |
 | `DESIGN-RULES.md` | the 30 dashboard design rules in full | before building or changing a view |
 | `PERFORMANCE.md` | every measured figure, with its budget and its conditions | before quoting or retaking a number |
 | `BRIEFING.md` | state: what is built, what is next, what is closed | at the start of a session |
@@ -101,16 +101,30 @@ arrives as five functions — `used`, `changed`, `clearOverlays`, `openProgram`,
 shell says the map you are reading stays open and stays true; the start page has no map to
 say that about.
 
-`POST /api/pickdir` runs `osascript` for a folder, because `analysis.check` refuses a
-relative path and a browser cannot hand a server what a picker chose. `activate` comes first
-— the dialog belongs to a process with no window, and without it the panel opens *behind*
-the browser (rule 90, one process over). The typed field stays, always: the picker is a
-convenience over a control that still works (design rule 2). `POST /api/reveal` opens the
-root in the Finder and is bounded to it, which is the answer to the one cost of
-`~/Library/Application Support` — the correct place for an application's data, never swept
-into iCloud Drive, and invisible to a reader who wants to hand a colleague a map (rule 89).
+`POST /api/pickdir` asks the operating system for a folder, because `analysis.check` refuses
+a relative path and a browser cannot hand a server what a picker chose. **`pick_folder` is
+the one place the platform is decided** (rule 51) — `osascript` on macOS, a Windows Forms
+folder dialog through `powershell -STA` on Windows — and most of what either costs is making
+the dialog open *in front*: this process has no window, so its dialog is placed behind the
+one that does, which is always the browser the reader just clicked in. macOS needs
+`activate`; Windows needs a topmost owner form to hand `ShowDialog`. Rule 90, twice. Three
+outcomes and not two: a path, a *cancel* (empty, with no reason, and not an error), and a
+failure that says why. The typed field stays, always: the picker is a convenience over a
+control that still works (design rule 2).
+
+`POST /api/reveal` opens the root in the Finder or in Explorer and is bounded to it — the
+bound is judged in the handler, before anything is spawned, and `reveal_dir` asks nothing
+about permission. It is the answer to the one cost of `~/Library/Application Support`, and of
+`%LOCALAPPDATA%\DunneFlow`: each is the correct place for an application's data, neither is
+swept into a sync folder, and both are invisible to a reader who wants to hand a colleague a
+map (rule 89). Windows' `explorer` **exits 1 on success**, so its return code is deliberately
+not read.
 
 ## Packaging — the frozen application
+
+**Two platforms, one spec.** `packaging/dunneflow.spec` builds for whichever it is run on,
+and the sections below are macOS's unless they say otherwise; **Windows** is at the foot of
+this one.
 
 ```bash
 DUNNEFLOW_ARCH=host uv run pyinstaller packaging/dunneflow.spec --noconfirm
@@ -258,6 +272,49 @@ imported — rule 12 puts the reader in the key), `web/static`, `web/vendor`, an
 `dunneflow/…`, per `resource_root()`. `packaging/dunneflow_app.py` defaults a bare argv to
 `serve` — the **application's** decision, not the CLI's, which keeps its usage message.
 
+### Windows
+
+```powershell
+./packaging/release.ps1 all        # build · verify · zip · install
+```
+
+**Four verbs against `release.sh`'s seven**, and the three that are missing are missing for
+stated reasons rather than because nobody got to them. There is no `venv`: a Windows
+executable holds one architecture, so `DUNNEFLOW_ARCH` has no answer there but `host` and the
+spec **refuses a macOS answer by name** rather than accepting a word it would then ignore.
+There is no `sign`/`notarize`: an unsigned Windows binary meets SmartScreen, which is a
+warning a reader clicks past, where an unsigned bundle meets Gatekeeper, which is a refusal
+they cannot — so `verify` **says the build is unsigned** rather than leaving somebody to
+learn it from a dialog. There is no `dmg`; a `.zip` is what Windows opens untaught.
+
+**Two executables, and the second is not a convenience.** `console=False` on macOS costs
+nothing at a shell, because a Mach-O bundle run from a terminal inherits that terminal's
+streams. A Windows GUI-subsystem binary is given **no standard streams at all**, so
+`DunneFlow.exe analyze …` would do the work and print none of it — and the gate below, which
+exists to run ground truth *through the binary*, would have nothing to read. So the spec
+builds both from one `Analysis` and one `COLLECT`, as Windows does for `python.exe` and
+`pythonw.exe`:
+
+| | |
+|---|---|
+| `DunneFlow.exe` | windowed. What a reader double-clicks. |
+| `dunneflow-cli.exe` | console. The command line, and what the gate runs through. |
+
+The names differ by more than case because **NTFS is case-insensitive**: `DunneFlow.exe` and
+`dunneflow.exe` are one file there, and the second `EXE()` would overwrite the first with no
+error anywhere. `tests/test_frozen.py` asserts that, and that nothing in `release.ps1`
+reaches a network.
+
+The icon is `packaging/icon/dunneflow.ico`, written from the **same composed canvas** as the
+`.icns` by `build_supplied_icon.py` — Pillow writes it and runs anywhere, where `iconutil` is
+macOS's alone, so off a Mac the `.icns` is left untouched and the script says so. Its ladder
+is its own: Explorer's medium-icons view is **48px**, which nothing in the macOS ladder is.
+
+Measured 2026-09-15 on Windows 11, Python 3.12.4: **33.7 MB** built, a **16.6 MB** zip, both
+executables 3.1 MB, and `extractor 9:d6179cee25581502` stamped by the binary and computed by
+the checkout alike — which is the one check that is not a size (rule 12, and see
+**Packaging** above).
+
 **The 1,363 tests prove the source tree, not the artifact**, so the ground truth is run
 *through the binary*. Taken 2026-09-09 on `../society-2026-08-29/src` with
 `--standards ../dunnecorp-standards`, 628 files in **37.7 s**: the four executables at
@@ -340,12 +397,27 @@ be read.
 * **`claim_analysis` asks `poll()`, not `state == "working"`** (rule 30). A watcher that dies
   without noting used to leave that label true for ever; the stale lock is now cleared rather
   than left for somebody to notice. This is the *"or locked"* half.
-* **The child gets its own session and the signal goes to the group.** `analyze` runs a
+* **The child gets a group of its own and the stop goes to the group.** `analyze` runs a
   `ProcessPoolExecutor` whose workers inherit the pipes: signalling the parent alone left
   **eleven workers** holding stdout open, so `run`'s read loop never returned and the report
   said `working` over a child that had gone — the very jam, arriving through the fix for it.
-* A stopped run is `state: "stopped"`, **not `failed`** — the reader did it on purpose, and a
-  negative exit code is the child's own evidence rather than a flag set from outside (rule 13).
+  `own_group()` is the one place the platform's spelling of that is decided: a new session on
+  POSIX, `CREATE_NEW_PROCESS_GROUP` on Windows. The wrong one there is not an error —
+  `start_new_session` is *accepted and ignored* — it is a stop that does nothing, and the jam
+  was reproduced whole on Windows before this existed: 17 descendants, `terminate()`, and the
+  read loop still running 60 s later.
+* **Two rungs, and each platform spells both.** `SIGTERM` then `SIGKILL` to the group; a
+  **console break** then `taskkill /F /T` on Windows, measured to take a pool of eight from 8
+  descendants to 0 where `terminate()` took it from 9 to 9.
+* A stopped run is `state: "stopped"`, **not `failed`** — the reader did it on purpose, and
+  the exit code is the child's own evidence rather than a flag set from outside (rule 13).
+  `was_stopped` knows the two spellings: a negative code on POSIX, `STATUS_CONTROL_C_EXIT` on
+  Windows. **The one exception is bounded and stated**: a packaged Windows build is windowed,
+  so it has no console to raise a break in and must use the forceful rung, which leaves exit
+  1 — indistinguishable from a broken analysis. `note_forced` records that this process did
+  the killing, *before* the kill because `taskkill` returns after the child is already gone
+  and a note taken afterwards loses the race, and **withdrawn if the kill could not be
+  delivered**, which is what keeps it a record of what happened rather than of what was asked.
 
 The slot records `began` and `moved`, and `moved` bumps **only when something changed** — a
 timestamp refreshed by being polled would say a run was moving because it was being watched,
@@ -466,6 +538,13 @@ uv run pytest        # all tests
 uv run mypy .        # src must be clean
 uv run ruff check .  # must pass
 ```
+
+**All three run on Windows as well, and the suite is expected to be green on both.** One
+test skips off macOS, by name, and nothing else is conditional. `mypy` is worth running with
+`--platform darwin` and `--platform linux` from either machine when anything under a
+`sys.platform` branch has moved: it checks the branches this machine cannot execute, and it
+is the only gate that can — a Linux-only `name is not defined` in `reveal_dir` was found
+exactly that way and no test on any platform would have caught it.
 
 And when anything under `runtime.py`, `packaging/`, `detectors/` or `extractors/` has
 moved, **through the binary as well as beside it** — the tests prove the source tree and
@@ -590,6 +669,17 @@ docs   ──► extract ──► docs.db  (SQLite) ─────────
   the arguments of one must not land on the other — 287 such pairs on Mensores. The id
   holds no position, like every other id here: an ordinal among identical expressions in
   the same caller, with the residue stated in the docstring rather than hidden.
+
+  **A stored path is an identity too, which is why `stored_path` lives here** beside
+  `make_id` — the one place a `path` or `file` column is spelled, and every writer passes
+  through it (rule 51). Rule 60 made those paths relative because an absolute one names one
+  machine's directory layout; **rule 93 is the same argument about the separator**, because
+  `web\\serve.py` and `web/serve.py` are one file and two keys, so the pair cannot be
+  compared and a Windows build and a macOS build cannot read each other's maps. It was six
+  spellings in six modules and every one was right where it was written. The reading side
+  never was in doubt: `conformance` reaches for `PurePosixPath`, `migrate` matches
+  `LIKE '/%'`, the shell takes a leaf with `split("/")` — every consumer had already decided
+  a stored path is POSIX, and only the writers had never been asked.
 - `store.py` — SQLite. **The spine, not an export format.** Nothing holds the whole
   program in memory; reachability is recursive SQL over indexed edges. This is the one
   decision that lets the tool survive growth — do not replace it with in-memory graphs.
@@ -1348,6 +1438,8 @@ it was written from.
      that is narrower than prose will not say so.
  92. A defence assembled from where this run writes does not survive the run being done
      from somewhere else.
+ 93. A stored path's separator belongs to the machine that wrote it, and that makes it a
+     bad key.
 ```
 
 ## Anomalies: the discipline

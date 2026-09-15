@@ -2977,10 +2977,12 @@ class _Handler(BaseHTTPRequestHandler):
         instruction for somebody who has just double-clicked an application -- and a
         browser cannot hand a server what a folder picker chose, by design.
 
-        So the picker is the operating system's, run by this process: `osascript`, which is
-        on every Mac and is not a dependency. `activate` comes first because the dialog
-        belongs to a process with no window, and without it the panel opens **behind the
-        browser** -- rule 90's shape, one process over.
+        So the picker is the operating system's, run by this process -- `osascript` on
+        macOS, a Windows Forms folder dialog through `powershell` on Windows, neither of
+        which is a dependency. **Which one, and the whole business of making it open in
+        front, is `pick_folder`'s** (rule 51): this route is the same three answers on every
+        platform, and a handler that knew one of them would be the place a second platform
+        got added by copying it.
 
         **The typed field stays**, and that is the whole posture: this is a convenience over
         a control that still works, never a replacement for one (design rule 2). Cancelling
@@ -2989,51 +2991,24 @@ class _Handler(BaseHTTPRequestHandler):
         A POST for `_p_analyze`'s reason and a sharper one: it puts a modal window on the
         reader's screen, which is not a thing a prefetch may do.
         """
-        if sys.platform != "darwin":
-            self._json({"picked": "", "reason": "the folder picker is macOS only — "
-                                                "type the whole path instead"})
-            return
-        script = ('activate\n'
-                  'POSIX path of (choose folder with prompt '
-                  '"Choose a directory for DunneFlow to read")')
-        try:
-            # Bounded, because this blocks on a person: a dialog left open must not hold a
-            # server thread for ever. Three minutes is long enough to go and find a folder
-            # and short enough to recover from a dialog nobody ever saw.
-            done = subprocess.run(["osascript", "-e", script], capture_output=True,
-                                  text=True, timeout=180)
-        except (OSError, subprocess.TimeoutExpired):
-            self._json({"picked": "", "reason": "the picker did not answer — "
-                                                "type the whole path instead"})
-            return
-        if done.returncode != 0:
-            # Cancelling is the ordinary way out of a dialog, and is not a failure. Told
-            # apart from a real one by AppleScript's own words rather than by assuming
-            # every non-zero exit is a cancel (rule 30).
-            said = (done.stderr or "").strip()
-            cancelled = "-128" in said or "canceled" in said.lower()
-            self._json({"picked": "",
-                        "reason": "" if cancelled else (said or "the picker failed")})
-            return
-        # A trailing separator is how `POSIX path of` spells a directory; `analysis.check`
-        # takes either, and the field shows what a person would write.
-        self._json({"picked": done.stdout.strip().rstrip("/") or ""})
+        picked, reason = pick_folder()
+        self._json({"picked": picked, "reason": reason})
 
     def _p_reveal(self, q: dict[str, list[str]]) -> None:
-        """Show a directory in the Finder. **Only ever one inside the output root.**
+        """Show a directory in the file manager. **Only ever one inside the output root.**
 
-        The root is `~/Library/Application Support/DunneFlow` in a packaged build, which is
-        Apple's answer for an application's own data and is never swept into iCloud Drive --
-        and is invisible to a reader who wants to hand a colleague a map or delete one. A
-        page that names a place the reader cannot reach is rule 89's shape, so it opens.
+        The root in a packaged build is the platform's own answer for an application's data
+        -- `~/Library/Application Support/DunneFlow`, or `%LOCALAPPDATA%\\DunneFlow` -- chosen
+        because neither is swept into a sync folder, and invisible in both cases to a reader
+        who wants to hand a colleague a map or delete one. A page that names a place the
+        reader cannot reach is rule 89's shape, so it opens.
 
-        **Bounded to the root and its programs**, because this hands a path to `open` and a
-        localhost POST is a thing a page in another tab can send. A path outside is refused
-        by name rather than sanitised into one that is inside (rule 30).
+        **Bounded to the root and its programs**, because this hands a path to the shell and
+        a localhost POST is a thing a page in another tab can send. A path outside is refused
+        by name rather than sanitised into one that is inside (rule 30). The bound is judged
+        **here and before anything is spawned**; which file manager to hand it to is
+        `reveal_dir`'s question and it asks nothing about permission.
         """
-        if sys.platform != "darwin":
-            self._json({"revealed": False, "reason": "revealing is macOS only"})
-            return
         root = self._live.out_root.resolve()
         asked = (q.get("path") or [""])[0].strip()
         target = Path(asked).resolve() if asked else root
@@ -3044,12 +3019,8 @@ class _Handler(BaseHTTPRequestHandler):
         if not target.is_dir():
             self._json({"revealed": False, "reason": f"{target} is not there"})
             return
-        try:
-            subprocess.run(["open", str(target)], capture_output=True, timeout=10)
-        except (OSError, subprocess.TimeoutExpired) as exc:
-            self._json({"revealed": False, "reason": str(exc)})
-            return
-        self._json({"revealed": True, "reason": ""})
+        shown, why = reveal_dir(target)
+        self._json({"revealed": shown, "reason": why})
 
     def _p_stop_analysis(self, q: dict[str, list[str]]) -> None:
         """Stop the running analysis. A POST, for `_p_analyze`'s reason and its own.
@@ -3544,6 +3515,124 @@ def where(given: Path) -> tuple[Path, Path]:
     if revisions.holds_a_map(given):
         return given, given.parent
     return given, given
+
+
+# **A folder picker and a reveal are the two things this server asks the operating system
+# for, and they are the only two places in `web/` that are not portable by construction.**
+# Each is a *convenience over a control that still works* (design rule 2) -- the typed field
+# and the stated path are the controls -- so a platform with no answer refuses in a sentence
+# and nothing else changes.
+#
+# A dialog opens **in front**, and buying that is most of the code on both platforms. The
+# process holding these has no window of its own, so its dialog is placed behind whatever
+# does -- which here is always the reader's browser, since that is where they just clicked.
+# macOS needs `activate`; Windows needs a topmost owner form to hand `ShowDialog`. Rule 90,
+# twice, one process over from where it was first paid for.
+
+# Windows' folder picker, as one line for `powershell -Command`. `-STA` is required: a
+# Windows Forms dialog will not open on a multi-threaded apartment, and the failure is a
+# refusal on stderr rather than a hang. `ShowNewFolderButton` is off because this chooses a
+# tree to *read*, and an empty new directory is never the answer to that.
+_WINDOWS_PICKER = (
+    "Add-Type -AssemblyName System.Windows.Forms;"
+    "$d = New-Object System.Windows.Forms.FolderBrowserDialog;"
+    "$d.Description = 'Choose a directory for DunneFlow to read';"
+    "$d.ShowNewFolderButton = $false;"
+    "$t = New-Object System.Windows.Forms.Form;"
+    "$t.TopMost = $true;"
+    "if ($d.ShowDialog($t) -eq [System.Windows.Forms.DialogResult]::OK)"
+    " { [Console]::Out.Write($d.SelectedPath) };"
+    "$t.Dispose()"
+)
+
+# So the helper process does not flash a console window over the page. Windows-only, and
+# read through `getattr` because the constant does not exist in `subprocess` anywhere else.
+_NO_CONSOLE = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
+NO_PICKER = ("the folder picker is not available on this platform — "
+             "type the whole path instead")
+NO_REVEAL = "showing a directory in a file manager is not available on this platform"
+
+
+def pick_folder() -> tuple[str, str]:
+    """Ask the operating system for a directory. Returns `(path, reason)`.
+
+    **Three outcomes and not two.** A path is a choice; an empty path with an empty reason
+    is a *cancel*, which is the ordinary way out of a dialog and not a failure; an empty
+    path with a reason is something that went wrong and that the reader is told about.
+    Collapsing the last two would report every cancel as an error in the panel.
+
+    Bounded on both platforms, because this blocks on a person: a dialog left open must not
+    hold a server thread for ever. Three minutes is long enough to go and find a folder and
+    short enough to recover from one nobody ever saw.
+    """
+    if sys.platform == "darwin":
+        script = ('activate\n'
+                  'POSIX path of (choose folder with prompt '
+                  '"Choose a directory for DunneFlow to read")')
+        try:
+            done = subprocess.run(["osascript", "-e", script], capture_output=True,
+                                  text=True, timeout=180)
+        except (OSError, subprocess.TimeoutExpired):
+            return "", "the picker did not answer — type the whole path instead"
+        if done.returncode != 0:
+            # Cancelling is the ordinary way out of a dialog, and is not a failure. Told
+            # apart from a real one by AppleScript's own words rather than by assuming
+            # every non-zero exit is a cancel (rule 30).
+            said = (done.stderr or "").strip()
+            cancelled = "-128" in said or "canceled" in said.lower()
+            return "", ("" if cancelled else (said or "the picker failed"))
+        # A trailing separator is how `POSIX path of` spells a directory; `analysis.check`
+        # takes either, and the field shows what a person would write.
+        return done.stdout.strip().rstrip("/") or "", ""
+
+    if sys.platform == "win32":
+        try:
+            done = subprocess.run(
+                ["powershell", "-NoProfile", "-STA", "-Command", _WINDOWS_PICKER],
+                capture_output=True, text=True, encoding="utf-8", errors="replace",
+                timeout=180, creationflags=_NO_CONSOLE)
+        except (OSError, subprocess.TimeoutExpired):
+            return "", "the picker did not answer — type the whole path instead"
+        # **A cancel is silence here, not an exit code**, which is the other half of the
+        # same rule 30 the macOS branch states: the script writes a path only on `OK`, so
+        # nothing on stdout *is* the cancel and there is no code to read it out of. A
+        # non-zero exit is therefore always a real failure -- PowerShell absent, the
+        # assembly unavailable, `-STA` refused -- and says so in its own words.
+        if done.returncode != 0:
+            said = (done.stderr or "").strip().splitlines()
+            return "", (said[0] if said else "the picker failed")
+        return done.stdout.strip() or "", ""
+
+    return "", NO_PICKER
+
+
+def reveal_dir(target: Path) -> tuple[bool, str]:
+    """Show one directory in the platform's file manager. Returns `(shown, reason)`.
+
+    **Whether the directory may be shown at all is the caller's question, not this one's**
+    -- `_p_reveal` bounds it to the output root before anything is spawned, because this
+    hands a path to a shell and a localhost POST is a thing a page in another tab can send.
+
+    Windows' `explorer` **exits 1 on success**, which is long-standing and documented
+    nowhere useful, so its return code is deliberately not read: treating it as a failure
+    would report every successful reveal as a broken one, and there is no code it gives that
+    means anything else (rule 30 -- this is not a status, whatever its shape).
+    """
+    # Bound before the branches rather than in an `else`, so the refusal is one statement
+    # on every platform and mypy can check all three of them from any one of them.
+    argv: list[str] = []
+    if sys.platform == "darwin":
+        argv = ["open", str(target)]
+    elif sys.platform == "win32":
+        argv = ["explorer", str(target)]
+    if not argv:
+        return False, NO_REVEAL
+    try:
+        subprocess.run(argv, capture_output=True, timeout=10)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return False, str(exc)
+    return True, ""
 
 
 def no_map_here(out_dir: Path, out_root: Path, revision: str | None) -> str:

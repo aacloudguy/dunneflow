@@ -5,7 +5,7 @@ It exists so a fresh context can be useful in a few minutes instead of an hour.
 
 | Read | For |
 |---|---|
-| `CLAUDE.md` | The rules. 90 engineering rules — numbered to 91, since 21 does not exist — and 30 dashboard design rules, each earned from a false result on real code. **Binding.** |
+| `CLAUDE.md` | The rules. 92 engineering rules — numbered to 93, since 21 does not exist — and 30 dashboard design rules, each earned from a false result on real code. **Binding.** |
 | `HANDOFF.md` | The chronological record — what was built when, what it cost, what broke. ~1,700 lines. Read *sections*, not the whole thing. |
 | **this file** | Where things are, what is done, what we are doing now, what not to re-open. |
 | Artifact `f993d319-d2b7-4217-9130-cdbba698d1bc` | The ratified dashboard design — a complete working UI, the source of truth for every view. Read it with the **Artifact tool**, not from a screenshot. |
@@ -209,6 +209,69 @@ program and every card states **the middle it is being read against**, because e
 program has a most-commented routine and a maximum alone is a claim nobody can weigh.
 
 ## What we are doing now
+
+**Windows runs it, and is accepted — 2026-09-15, at the keyboard.** Tom, having run the
+installed application: *"The application seems to work fine on Windows, so that is
+approved."* Every gate green on Windows 11 / Python 3.12.4: **1,420 passed, 1 skipped**, mypy
+clean on `darwin`, `linux` *and* `win32`, ruff clean. The packaged application is built,
+installed from `packaging/release.ps1`, and exercised as a reader runs it. **Nothing about
+macOS changed** — every platform branch keeps its darwin path verbatim.
+
+Accepted **with one platform difference documented rather than fixed**, which was Tom's call
+on his own evidence: *"I had to alt-tab to get to the chooser, but it was there. As long as we
+update our user docs, it should be fine."* `docs/01-installing.md`, `03` and `04` say so where
+a reader meets it.
+
+The pause entry below surveyed what a Windows session would face: the picker, reveal, the
+Dock, packaging. It was right as far as it went, and **the three real defects were not on
+it** — each was a line correct on the machine it was written on and wrong on the machine it
+was run on, which is rule 92's family.
+
+* **Stored paths were spelled in the writer's alphabet** — `web\serve.py` against
+  `web/serve.py`, one file and two keys, so a pair cannot be compared and the two builds
+  cannot read each other's maps. Six writers, all correct where written. It surfaced as a
+  conformance lane reporting **NO_POPULATION over 78 files it had failed to find**, and as
+  `fingerprint_files` computing **different fingerprints from identical bytes** — rule 12
+  inverted. Now **rule 93**, and `schema.stored_path` is the one place a path is spelled.
+* **Stopping an analysis did not reach the pool.** `start_new_session` is *accepted and
+  ignored* on Windows, so the jam `_signal_group` was written to prevent arrived whole: 17
+  descendants, and `run`'s loop still going 60 s later saying `working`. `own_group()` now
+  decides the spelling once, and the ladder has two rungs on both platforms.
+* **A guard named the plausible exception class.** `os.kill` with `CTRL_BREAK_EVENT` and no
+  console raises `SystemError`, not `OSError`, so the stop route **closed the connection
+  without a response**. Only the signed build reaches that line (rule 48).
+
+Also: the CLI could not be piped (`print` went to `cp1252`, and this program's own sentences
+are outside it — `cli.speak_utf8()`); the folder picker and reveal are **built** rather than
+refused, each opening in front of the browser (rule 90, twice); and `.gitattributes` keeps the
+hashed extractor files LF, a defect **this session introduced itself** in nine files and the
+file caught.
+
+Packaging is `packaging/release.ps1` — `build · verify · zip · install`, four verbs against
+`release.sh`'s seven, the absences stated. **Two executables**, because a Windows
+GUI-subsystem binary is given no standard streams at all and the ground-truth gate would have
+nothing to read: `DunneFlow.exe` to double-click, `dunneflow-cli.exe` for the command line,
+named apart because NTFS is case-insensitive. 33.7 MB built, a 16.6 MB zip, **unsigned and
+`verify` says so**. Running it with no arguments created `%LOCALAPPDATA%\DunneFlow` — the
+win32 branch the survey named as never exercised.
+
+**Three more, found by Tom looking rather than by any gate — same day.** All three were live
+while 1,417 tests, mypy on three platforms and a ground truth through the binary were green.
+The folder picker **opens behind the browser** — Windows does not let a background process
+raise a window, and every measurement that said otherwise was taken from an interactive
+shell, which has foreground rights a server does not (rule 24, three times over). Documented
+rather than fixed, by Tom's call: it is one Alt-Tab away and the alternative is borrowing
+another thread's foreground rights. It also said *nothing* while opening, and a multi-second
+cold start behind a button that looks untouched is design rule 16 from the other end — that
+half is fixed. The About dialog asserted *"the tree has moved on since"*, which it cannot know and
+which is false when read straight after an analysis; it says **may have** now. And
+`release.ps1` could not be parsed by the PowerShell Windows actually ships with — a BOM-less
+`.ps1` is read as ANSI by 5.1, and this session had only ever run it under `pwsh`.
+
+**Still open on Windows:** no Authenticode signature (a purchase and a decision, not a build
+step), and `macapp`'s Dock work has no Windows counterpart *and needs none until something
+reports a symptom* — a taskbar entry comes free.
+
 
 **Design rule 26 is met in Diagram mode at last — 2026-09-15, approved by Tom at the keyboard** (*"this is much nicer"*), seen in the shipped notarised build. Reported by Tom as *"the view
 does not change between lines on the ROUTINES"*, and driven before it was answered: two of the

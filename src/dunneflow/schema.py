@@ -20,6 +20,7 @@ import hashlib
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from enum import StrEnum
+from pathlib import Path, PurePath
 from typing import Literal
 
 # Bump whenever the stored shape or the meaning of an extracted fact changes.
@@ -882,6 +883,38 @@ class DocFacts:
 # --------------------------------------------------------------------------- #
 # Identity
 # --------------------------------------------------------------------------- #
+
+
+def stored_path(rel: Path | str) -> str:
+    """One relative path, spelled the way every store keeps it: with forward slashes.
+
+    **Rule 93, and it is rule 60 one platform over.** That rule made a stored path
+    relative because an absolute one is a bad key -- it names one machine's directory
+    layout, so two revisions read from two trees give one file two unrelated keys and
+    nothing can pair it across time. A path spelled with the *separator of the machine
+    that wrote it* is a bad key for exactly the same reason: `web\\serve.py` and
+    `web/serve.py` are the same file and two different keys, so a map written on Windows
+    and a map written on macOS cannot be compared, and neither can read the other's.
+
+    It is not only the pairing. A stored path is read back as a **POSIX** path all over this
+    tool, by code that was right when there was only one platform: `conformance` matches a
+    rule's `paths:` glob against it and splits it with `PurePosixPath`, `threads` takes its
+    last segment, and the shell draws a leaf with `split("/")` -- each of which silently
+    yields the whole path, or nothing, when the separator is a backslash. The conformance
+    lane is the sharpest: `files / kebab-case` measured **0 of 78** against a population it
+    had quietly failed to find, which is rule 49's shape in the surface built to refuse it.
+
+    So the separator is decided **here**, once, and every writer of a `path` or `file`
+    column passes through it (rule 51). It was six spellings of `str(p.relative_to(root))`
+    and `os.path.relpath(...)` in six modules, every one of them correct on the machine it
+    was written on.
+
+    `PurePath` is the platform's own parser and that is deliberate: on Windows it splits on
+    both separators, and on POSIX it splits on neither -- where a backslash is an ordinary
+    character in a filename and must survive as one. Nothing here re-spells a path the
+    running platform would not.
+    """
+    return PurePath(rel).as_posix()
 
 
 def make_id(*parts: str) -> str:

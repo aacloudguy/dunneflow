@@ -2,10 +2,15 @@
 
 **This is a conditioner, not a generator**, and the distinction is the point.
 `build_icon.py` beside it draws the hare as geometry so that a number can change and the
-whole ladder re-render; this takes a picture somebody made and does the four things a
-`.icns` needs doing to it -- square it, scale it, round it, ladder it. Nothing here can
-improve the drawing, which is why the measurements it prints matter more than the files it
-writes.
+whole ladder re-render; this takes a picture somebody made and does the four things an
+application icon needs doing to it -- square it, scale it, round it, ladder it. Nothing here
+can improve the drawing, which is why the measurements it prints matter more than the files
+it writes.
+
+**Two containers, one master.** `dunneflow.icns` for macOS and `dunneflow.ico` for Windows
+come out of the same composed 1024 canvas, so the two platforms show the same mark. Pillow
+writes the `.ico` and runs anywhere; `iconutil` writes the `.icns` and is macOS's alone, so
+off a Mac the `.icns` is left alone and the script says so.
 
 The canvas rules are `build_icon.py`'s, copied deliberately so the two candidates can be
 compared at the same size without one of them having an advantage the other does not:
@@ -65,6 +70,13 @@ LADDER = [
     ("icon_256x256.png", 256), ("icon_256x256@2x.png", 512),
     ("icon_512x512.png", 512), ("icon_512x512@2x.png", 1024),
 ]
+
+# **The Windows ladder is its own, and 48 is why it is written out rather than derived.**
+# Explorer's "medium icons" view is 48px and nothing in the macOS ladder is, so a `.ico`
+# built from `LADDER`'s sizes would be resampled by Windows at the one size a reader sees
+# most. 256 is the largest an `.ico` holds and is stored PNG-compressed by Pillow, which is
+# what keeps the file small enough to be worth committing.
+ICO_LADDER = [16, 20, 24, 32, 40, 48, 64, 128, 256]
 
 
 def luminance(rgb: tuple[int, ...]) -> float:
@@ -217,9 +229,34 @@ def main() -> int:
     for px in (16, 32, 64, 128, 256, 512, 1024):
         master.resize((px, px), Image.LANCZOS).save(HERE / f"supplied_{px}.png")
 
+    # **The same master, in both containers**, and that is the decision rather than the
+    # economy. `compose()` has already squared the drawing, kept the artist's bleed and
+    # drawn the 22.4% corner; Windows rounds nothing on an application's behalf, so the
+    # rounding it inherits here is macOS's convention carried over deliberately -- the mark
+    # in the taskbar and the mark in the Dock are then recognisably one application rather
+    # than two drawings of one rabbit. A squared-off Windows variant is the alternative and
+    # was not taken: it would mean two masters, and the first time one of them was
+    # regenerated they would stop agreeing.
+    ico = HERE / "dunneflow.ico"
+    master.save(ico, format="ICO",
+                sizes=[(px, px) for px in ICO_LADDER])
+    print(f"\nwrote {ico}   ({ico.stat().st_size:,} bytes, "
+          f"{len(ICO_LADDER)} sizes: {', '.join(str(s) for s in ICO_LADDER)})")
+
+    # **`iconutil` is macOS's and there is no substitute**, so on any other platform the
+    # `.icns` is left exactly as it is rather than half-written. It is committed, and this
+    # script regenerates it byte for byte from the drawing beside it -- so a Windows machine
+    # that cannot rebuild it is not a Windows machine that has lost it. Said out loud,
+    # because a build that quietly produced one of the two icons it names is design rule 1's
+    # subject (no filter is ever silent).
     icns = HERE / "dunneflow.icns"
+    if sys.platform != "darwin":
+        print(f"\n{icns.name} left untouched — `iconutil` is macOS's, and this is "
+              f"{sys.platform}. The committed .icns is still the one this drawing makes; "
+              f"rebuild it on a Mac if the drawing changes.")
+        return 0
     subprocess.run(["iconutil", "-c", "icns", str(iconset), "-o", str(icns)], check=True)
-    print(f"\nwrote {icns}  ({icns.stat().st_size:,} bytes)")
+    print(f"wrote {icns}  ({icns.stat().st_size:,} bytes)")
     return 0
 
 

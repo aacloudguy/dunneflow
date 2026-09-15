@@ -17406,8 +17406,16 @@ function aboutDialog() {
     <div class="about-foot">
       <button class="linkbtn" data-aboutagain>Analyse this again&hellip;</button>
       <button class="linkbtn" data-closeabout>Close</button>
+      <!-- **"may have", and the difference is a claim this dialog cannot make.** It
+           said *has moved on since*, which is a statement about a tree this map has
+           not looked at since it was read -- and opened straight after an analysis it
+           is simply false, which is where it was reported. Every other line in this
+           dialog is something the map recorded; this was the one asserting a fact
+           about the world instead. What is true, and all that is true, is that
+           nothing here has been checked against that tree since. Rule 13's family: a
+           claim on screen that no query could answer. -->
       <span class="hint">A map is a reading of a program at a moment. The tree it was read
-         from has moved on since; this map has not.</span>
+         from may have moved on since; this map has not.</span>
     </div>
   </div>`;
 }

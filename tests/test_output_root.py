@@ -91,7 +91,10 @@ def test_a_root_with_programs_names_them(tmp_path):
     said = no_map_here(tmp_path, tmp_path, None)
     assert "mensores" in said and "dunneflow" in said
     # The root itself is not one of the choices, however `program_dirs` reports it.
-    assert tmp_path.name not in said.split(":", 1)[1]
+    # Split on the sentence's own words rather than on the first colon: the sentence opens
+    # with a path, and on Windows that path starts `C:` -- so the first colon is the drive
+    # letter's and the "listed programs" half came back holding the whole thing.
+    assert tmp_path.name not in said.split("Under this root:", 1)[1]
 
 
 def test_an_empty_root_names_the_command_instead(tmp_path):

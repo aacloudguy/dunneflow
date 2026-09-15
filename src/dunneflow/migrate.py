@@ -53,6 +53,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from . import revisions
+from .schema import stored_path
 
 # The marker. Present means "the paths in this store are relative to the tree it was read
 # from"; absent means a store written before that was true. Deliberately **not** the
@@ -209,13 +210,20 @@ def _strip(conn: sqlite3.Connection, tbl: str, col: str, root: str) -> tuple[int
     other 54,746 moved, and wrong in the one place the ground truth lives.
 
     So: `substr` for what is under the root, and `os.path.relpath` for what is above it,
-    which is exactly what `entrypoints_from_packaging` now does when writing. The two agree
-    by construction rather than by memory. They are **counted separately** because a `..`
-    path is worth an operator knowing about, and a total that hid it would be rule 32's
+    which is exactly what `entrypoints_from_packaging` now does when writing -- through
+    `stored_path`, as it does, because a `..` computed on Windows comes back spelled with a
+    backslash and the two have to agree on the spelling as well as on the path. The two
+    agree by construction rather than by memory. They are **counted separately** because a
+    `..` path is worth an operator knowing about, and a total that hid it would be rule 32's
     defect -- a number that does not say what it counted.
 
     A path that is already relative is left untouched: this migration runs once, and a
     second pass must not treat `mensores/cli.py` as something to make relative again.
+
+    The **absolute** test is `LIKE '/%'` and stays that way. Every store this migration is
+    allowed to speak for was written by one named build, on macOS, and holds POSIX absolute
+    paths; a drive-letter test here would be a branch for a store that cannot exist
+    (rule 62 -- this speaks for exactly one prior state, and that state is that one).
     """
     prefix = root.rstrip("/") + "/"
     under = conn.execute(
@@ -232,7 +240,7 @@ def _strip(conn: sqlite3.Connection, tbl: str, col: str, root: str) -> tuple[int
     for value in outside:
         above += conn.execute(
             f'UPDATE "{tbl}" SET "{col}" = ? WHERE "{col}" = ?',
-            (os.path.relpath(str(value), prefix.rstrip("/")), value),
+            (stored_path(os.path.relpath(str(value), prefix.rstrip("/"))), value),
         ).rowcount or 0
     return int(under), int(above)
 

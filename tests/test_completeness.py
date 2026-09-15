@@ -43,7 +43,7 @@ def _render(tmp_path: Path) -> Path:
 
 def test_every_routine_is_listed(tmp_path):
     """120 routines in one module: all 120 appear, not the first 60."""
-    doc = (_render(tmp_path) / "03-routines.md").read_text()
+    doc = (_render(tmp_path) / "03-routines.md").read_text(encoding="utf-8")
     for i in range(120):
         assert f"routine_{i:03d}" in doc, f"routine_{i:03d} missing"
 
@@ -52,12 +52,12 @@ def test_no_truncation_notices_anywhere(tmp_path):
     out = _render(tmp_path)
     pattern = re.compile(r"\*[^*\n]{0,80}\b(?:more|not listed|further)\b[^*\n]{0,80}\*")
     for path in out.glob("*.md"):
-        found = pattern.findall(path.read_text())
+        found = pattern.findall(path.read_text(encoding="utf-8"))
         assert not found, f"{path.name} still hides content: {found[:3]}"
 
 
 def test_every_boundary_target_is_listed(tmp_path):
-    doc = (_render(tmp_path) / "05-boundaries.md").read_text()
+    doc = (_render(tmp_path) / "05-boundaries.md").read_text(encoding="utf-8")
     for i in range(120):
         assert f"VAR_{i:03d}" in doc, f"VAR_{i:03d} missing from the boundary ledger"
 
@@ -86,7 +86,7 @@ def test_comments_are_recorded_whole(tmp_path):
 
 def test_diagram_abbreviation_is_backed_by_a_full_listing(tmp_path):
     """A bounded picture is allowed only where the complete content sits beside it."""
-    doc = (_render(tmp_path) / "02-flows.md").read_text()
+    doc = (_render(tmp_path) / "02-flows.md").read_text(encoding="utf-8")
     if "conveys nothing" in doc:  # a diagram was bounded
         assert "Every routine reachable from" in doc, (
             "a diagram was abbreviated with no complete inventory beneath it"

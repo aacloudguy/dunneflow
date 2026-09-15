@@ -34,7 +34,7 @@ import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 
-from ..schema import Provenance
+from ..schema import Provenance, stored_path
 
 # Files a package conventionally states its own version in, in the order they are looked
 # at. Not a search of the whole tree: `__version__` appears in vendored copies, test
@@ -85,7 +85,7 @@ def _from_pyproject(root: Path, relative_to: Path) -> ProgramVersion | None:
     value = data.get("project", {}).get("version")
     if not isinstance(value, str) or not value.strip():
         return None
-    where = os.path.relpath(pyproject.resolve(), relative_to.resolve())
+    where = stored_path(os.path.relpath(pyproject.resolve(), relative_to.resolve()))
     return ProgramVersion(value.strip(), Provenance.DECLARED_CODE, where)
 
 
@@ -121,7 +121,8 @@ def _from_dunder(tree: Path) -> ProgramVersion | None:
                 value = node.value
                 if not isinstance(value, ast.Constant) or not isinstance(value.value, str):
                     continue
-                where = f"{os.path.relpath(path.resolve(), tree.resolve())}:{node.lineno}"
+                where = (f"{stored_path(os.path.relpath(path.resolve(), tree.resolve()))}"
+                         f":{node.lineno}")
                 return ProgramVersion(value.value.strip(),
                                       Provenance.DECLARED_CODE, where)
     return None

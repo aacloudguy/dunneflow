@@ -218,7 +218,8 @@ def test_re_extracting_a_file_takes_its_arguments_with_it(tmp_path):
 
     tree = tmp_path / "prog"
     tree.mkdir()
-    (tree / "m.py").write_text("def emit(a):\n    return a\n\n\ndef go():\n    emit(1)\n")
+    (tree / "m.py").write_text(
+        "def emit(a):\n    return a\n\n\ndef go():\n    emit(1)\n", encoding="utf-8")
     store = Store(tmp_path / "graph.db")
     try:
         analyze_tree(tree, store)

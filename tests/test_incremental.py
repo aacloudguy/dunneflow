@@ -84,7 +84,8 @@ def test_stale_schema_discards_the_graph(tmp_path: Path) -> None:
     """
     root = tmp_path / "src"
     root.mkdir()
-    (root / "a.py").write_text('"""Module prose."""\n\n\ndef alpha() -> None:\n    pass\n')
+    (root / "a.py").write_text(
+        '"""Module prose."""\n\n\ndef alpha() -> None:\n    pass\n', encoding="utf-8")
 
     db = tmp_path / "g.db"
     s1 = Store(db)
@@ -114,7 +115,7 @@ def test_changed_detector_rules_discard_the_graph(tmp_path: Path) -> None:
     """
     root = tmp_path / "src"
     root.mkdir()
-    (root / "a.py").write_text("def alpha() -> None:\n    pass\n")
+    (root / "a.py").write_text("def alpha() -> None:\n    pass\n", encoding="utf-8")
     db = tmp_path / "g.db"
 
     s1 = Store(db)
@@ -135,7 +136,7 @@ def test_changed_detector_rules_discard_the_graph(tmp_path: Path) -> None:
 def test_matching_schema_keeps_the_graph(tmp_path: Path) -> None:
     root = tmp_path / "src"
     root.mkdir()
-    (root / "a.py").write_text("def alpha() -> None:\n    pass\n")
+    (root / "a.py").write_text("def alpha() -> None:\n    pass\n", encoding="utf-8")
     db = tmp_path / "g.db"
     s1 = Store(db)
     analyze_tree(root, s1)
@@ -206,18 +207,18 @@ def test_fingerprint_changes_when_any_input_changes(tmp_path: Path) -> None:
     from dunneflow.detectors import fingerprint_files
 
     a, b = tmp_path / "a.yaml", tmp_path / "b.yaml"
-    a.write_text("one")
-    b.write_text("two")
+    a.write_text("one", encoding="utf-8")
+    b.write_text("two", encoding="utf-8")
 
     base = fingerprint_files([a, b])
     assert fingerprint_files([b, a]) == base, "the hash depends on argument order"
 
-    a.write_text("one!")
+    a.write_text("one!", encoding="utf-8")
     assert fingerprint_files([a, b]) != base, "a content change did not change the hash"
 
-    a.write_text("one")
+    a.write_text("one", encoding="utf-8")
     c = tmp_path / "c.yaml"
-    c.write_text("")
+    c.write_text("", encoding="utf-8")
     assert fingerprint_files([a, b, c]) != base, "an added empty file did not change the hash"
 
 
@@ -234,7 +235,7 @@ def test_a_reader_refuses_a_stale_graph_instead_of_emptying_it(tmp_path: Path) -
     """
     root = tmp_path / "src"
     root.mkdir()
-    (root / "a.py").write_text("def alpha() -> None:\n    pass\n")
+    (root / "a.py").write_text("def alpha() -> None:\n    pass\n", encoding="utf-8")
     db = tmp_path / "g.db"
 
     s1 = Store(db)
@@ -265,7 +266,7 @@ def test_a_reader_leaves_a_current_graph_untouched(tmp_path: Path) -> None:
     """A read must not write, not even the meta stamps a writable open refreshes."""
     root = tmp_path / "src"
     root.mkdir()
-    (root / "a.py").write_text("def alpha() -> None:\n    pass\n")
+    (root / "a.py").write_text("def alpha() -> None:\n    pass\n", encoding="utf-8")
     db = tmp_path / "g.db"
 
     s1 = Store(db)

@@ -307,15 +307,16 @@ def test_a_prose_rule_change_discards_only_the_document_store(tmp_path: Path) ->
 def _corpus(root: Path) -> Path:
     """A tree shaped like the real one: a checkout, with documents, holding a worktree."""
     (root / ".git").mkdir()                      # the corpus is itself a checkout
-    (root / "README.md").write_text("# The program\n")
+    (root / "README.md").write_text("# The program\n", encoding="utf-8")
     (root / ".claude").mkdir()
-    (root / ".claude" / "CLAUDE.md").write_text("# The charter\n")
+    (root / ".claude" / "CLAUDE.md").write_text("# The charter\n", encoding="utf-8")
     nest = root / ".claude" / "worktrees" / "agent-1"
     nest.mkdir(parents=True)
-    (nest / ".git").write_text("gitdir: /elsewhere\n")   # a worktree: a .git *file*
-    (nest / "README.md").write_text("# A stale copy\n")
+    # a worktree: a .git *file*
+    (nest / ".git").write_text("gitdir: /elsewhere\n", encoding="utf-8")
+    (nest / "README.md").write_text("# A stale copy\n", encoding="utf-8")
     (nest / "deep").mkdir()
-    (nest / "deep" / "PLAN.md").write_text("# Also stale\n")
+    (nest / "deep" / "PLAN.md").write_text("# Also stale\n", encoding="utf-8")
     return root
 
 
@@ -339,11 +340,11 @@ def test_a_nested_clone_is_not_this_program(tmp_path: Path) -> None:
     from dunneflow.walk import discover_docs
 
     root = tmp_path
-    (root / "README.md").write_text("# The program\n")
+    (root / "README.md").write_text("# The program\n", encoding="utf-8")
     nest = root / "docs" / "vendored"
     nest.mkdir(parents=True)
     (nest / ".git").mkdir()
-    (nest / "GUIDE.md").write_text("# Someone else's\n")
+    (nest / "GUIDE.md").write_text("# Someone else's\n", encoding="utf-8")
 
     found = {p.relative_to(root).as_posix() for p in discover_docs(root)}
     assert found == {"README.md"}, sorted(found)
@@ -355,11 +356,11 @@ def test_every_marker_is_a_checkout(tmp_path: Path, marker: str) -> None:
     from dunneflow.walk import discover_docs
 
     root = tmp_path
-    (root / "README.md").write_text("# The program\n")
+    (root / "README.md").write_text("# The program\n", encoding="utf-8")
     nest = root / "sub"
     nest.mkdir()
     (nest / marker).mkdir()
-    (nest / "OTHER.md").write_text("# Not ours\n")
+    (nest / "OTHER.md").write_text("# Not ours\n", encoding="utf-8")
 
     found = {p.relative_to(root).as_posix() for p in discover_docs(root)}
     assert found == {"README.md"}, f"{marker}: {sorted(found)}"
@@ -377,9 +378,9 @@ def test_the_root_is_never_treated_as_nested(tmp_path: Path) -> None:
 
     root = tmp_path
     (root / ".git").mkdir()
-    (root / "README.md").write_text("# The program\n")
+    (root / "README.md").write_text("# The program\n", encoding="utf-8")
     (root / "docs").mkdir()
-    (root / "docs" / "guide.md").write_text("# A guide\n")
+    (root / "docs" / "guide.md").write_text("# A guide\n", encoding="utf-8")
 
     found = {p.relative_to(root).as_posix() for p in discover_docs(root)}
     assert found == {"README.md", "docs/guide.md"}, sorted(found)
@@ -399,7 +400,11 @@ def test_a_pruned_checkout_is_named(tmp_path: Path) -> None:
     list(discover_docs(root, nested=nested))
 
     assert len(nested) == 1, nested
-    assert nested[0].endswith("worktrees/agent-1"), nested
+    # Compared as a path rather than as text. This one is **not** a stored key: it is read
+    # off the screen by whoever ran the command, so it is spelled the way that reader's own
+    # platform spells a path (`stored_path` governs what goes into a store, and nothing
+    # here goes into one). Asserting on `/` would be asserting on the separator.
+    assert Path(nested[0]).parts[-2:] == ("worktrees", "agent-1"), nested
 
 
 def test_the_walk_reports_what_it_skipped(tmp_path: Path) -> None:

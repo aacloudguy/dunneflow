@@ -15230,3 +15230,205 @@ run writes, so it holds wherever the maps root lands — which on Windows is som
 started it. His page reported *"The diagram could not be drawn. Failed to fetch"* — an error
 naming the feature that had just shipped, when the drawing was fine and the server was gone.
 **Kill by port, never by name.** A process this tool did not start is not its to end.
+
+## Windows, made to run — 2026-09-15
+
+The survey above was written without a Windows machine to hand and said which parts of the
+claim were untested. This is the session that put a machine under it. **Every gate is green
+on Windows 11 / Python 3.12.4 — 1,417 passed, 1 skipped, mypy clean on `darwin`, `linux` and
+`win32`, ruff clean — and the packaged application is built, installed and exercised.**
+Nothing about macOS changed: every platform branch keeps the darwin path it had, verbatim.
+
+The survey's own list was short and it was right as far as it went — the picker, reveal, the
+Dock, and packaging. **What it could not see is that the three biggest defects were not on
+it**, because each was a line that is correct on the machine it was written on and wrong on
+the machine it was run on. That is the shape worth carrying, and it is rule 92's family:
+a defence, a key or a guard derived from the process rather than from the subject.
+
+### 1. Stored paths were spelled in the writer's alphabet — rule 93
+
+The one with consequences. `str(p.relative_to(root))` stores `web\serve.py` on Windows where
+the same commit stores `web/serve.py` on macOS: one file, two keys. Six writers, all correct
+where written — both extractors, `entrypoints`, `version`, `walk`'s two cache keys, and
+`fingerprint_files`.
+
+Found by running the suite, but **not reported as a path problem by any of it**. The
+conformance lane said `files / kebab-case` was **NO_POPULATION** over 78 files it had failed
+to find, because a `paths:` glob is POSIX and `fnmatch` does not know `web\serve.py` is under
+`web/`. `PurePosixPath(p).stem` returned `web\serve`. The corpus listed paths back differently
+from the set it had just scanned. In the shell, the *leaf* every pane draws with
+`split("/").slice(-2)` came out as the whole path.
+
+The sharpest is `fingerprint_files`, which inverts rule 12: the label goes into the hash, so
+the two builds compute **different fingerprints from identical bytes** and each discards the
+other's map as *written by a different tool* — the exact refusal `resource_root()`'s layout
+exists to prevent, arriving through the one thing that layout does not control.
+
+Remedied as rule 51 always prescribes: `schema.stored_path`, beside `make_id`, because a
+stored path *is* an identity. Measured after: **0 backslash paths** in any column, the
+`../../pyproject.toml` case spelled right, and the binary and the checkout both stamping
+`9:d6179cee25581502`.
+
+**What makes the family hard to see is that the reading side was already right.**
+`conformance` reaches for `PurePosixPath`, `migrate` matches `LIKE '/%'`, the shell splits on
+`/` — every consumer had decided a stored path is POSIX and said so in code. Only the writers
+had never been asked, because for as long as there was one platform the question had one
+answer.
+
+### 2. Stopping an analysis did not reach the pool — the jam, reproduced whole
+
+`start_new_session=True` is **accepted and silently ignored** on Windows, so every analysis
+ran in the server's own group and `stop` reached the parent alone. Measured: **17
+descendants**, `terminate()`, and `run`'s read loop **still running 60 seconds later** with
+the panel saying `working` over a child that had gone. That is the jam `_signal_group`'s
+docstring describes, arriving on the other platform through the same fix.
+
+`own_group()` now decides the spelling once — a new session, or `CREATE_NEW_PROCESS_GROUP` —
+and the ladder has two rungs on both: `SIGTERM`/`SIGKILL` to the group, or a **console break**
+then `taskkill /F /T`. Measured on a pool of eight: the break takes 8 descendants to 0 and
+leaves exit `0xC000013A`; `terminate()` took 9 to 9.
+
+*Three smaller things fell out of it.* `signal.SIGKILL` does not exist on Windows and was
+referenced unconditionally — three mypy errors, and an `AttributeError` waiting on the second
+rung. `text=True` on the child's pipes decodes with the **locale**, which is `cp1252` here
+while the child writes UTF-8. And `was_stopped` now knows both spellings of the evidence,
+because a negative exit code is POSIX's and not a fact about stopping.
+
+**One residue, bounded and paid for.** A packaged Windows build is windowed and has no
+console to raise a break in, so it must use the forceful rung, which leaves exit 1 —
+indistinguishable from a broken analysis. `note_forced` records that this process did the
+killing; *before* the kill, because `taskkill` returns after the child is already gone and a
+note taken afterwards **loses the race** (built that way first, and every stop on the
+packaged build went on reporting a failure); and **withdrawn if the kill could not be
+delivered**, which is what keeps it a record of what happened rather than of what was asked.
+
+### 3. A guard named the plausible exception class, not the real one
+
+`os.kill(pid, CTRL_BREAK_EVENT)` with no console does not raise `OSError`.
+`GenerateConsoleCtrlEvent` fails with `WinError 6` and CPython returns a value with the error
+still set, so what arrives is `SystemError: <built-in function kill> returned a result with an
+exception set`. Uncaught, it killed the handler thread: **`POST /api/analyze/stop` closed the
+connection without a response**, the Stop button reported a network failure, and the analysis
+was left running by nothing at all.
+
+Found only by pressing the signed build (rule 48) — the checkout has a console, takes the
+polite rung, and never reaches the line. Rule 42's family, and the wrong class was the
+plausible one.
+
+### Everything else, in one breath
+
+* **The CLI could not be piped.** `print` went to the locale encoding; 535 box-drawing
+  characters, six arrows and four emoji in this program's own sentences are outside cp1252,
+  so a redirected or piped run ended in `UnicodeEncodeError` from inside `print`. Everything
+  else about this tool had already settled on UTF-8 — every file it writes names the
+  encoding — and only the two streams were left to chance. `cli.speak_utf8()`, at the one
+  function every way in passes through, and only where the encoding is not already right.
+* **The folder picker and reveal** are built rather than refused: `pick_folder` and
+  `reveal_dir` decide the platform once, and most of what either costs is making the dialog
+  open *in front* of the browser — rule 90, twice. Both pressed through the real routes:
+  `{"picked":"C:\\Users\\…"}` and `{"revealed":true}`.
+* **`.gitattributes`.** Git's default on Windows is `autocrlf=true`, which would check the
+  hashed extractor files out with CRLF — same commit, different bytes, different fingerprint.
+  Worth noting that **this session introduced that defect itself**, in nine files, by patching
+  them with `Path.write_text` and no `newline=`; caught by the file it was writing.
+* **`macapp.available()` needed nothing**, as the survey guessed. It was bought for a
+  reported symptom — a Dock icon with no running indicator — and Windows gives a taskbar
+  entry for free. A Windows equivalent still needs its own symptom first.
+
+### Packaging
+
+`packaging/release.ps1`, four verbs: `build · verify · zip · install`. Three of
+`release.sh`'s seven are absent for stated reasons rather than for want of time — no `venv`
+(one architecture), no `sign`/`notarize` (SmartScreen is a warning where Gatekeeper is a
+refusal, and `verify` **says the build is unsigned** rather than letting a dialog say it), no
+`dmg`. Nothing in it reaches a network, and `test_frozen.py` asserts that.
+
+**Two executables**, and the second is not a convenience. `console=False` costs nothing at a
+macOS shell, which hands a bundle its streams; a Windows GUI-subsystem binary is given **no
+standard streams at all**, so `DunneFlow.exe analyze …` would do the work and print none of
+it — and the gate that exists to run ground truth *through the binary* would have nothing to
+read. One `Analysis`, one `COLLECT`, `DunneFlow.exe` and `dunneflow-cli.exe`. The names differ
+by more than case because **NTFS is case-insensitive** and the second `EXE()` would otherwise
+overwrite the first in silence.
+
+The icon is `dunneflow.ico`, from the **same composed canvas** as the `.icns` — Pillow writes
+it anywhere, `iconutil` is macOS's, so off a Mac the `.icns` is left untouched and the script
+says so. Its ladder is its own: Explorer's medium-icons view is **48px**, which nothing in
+the macOS ladder is. The rounding is macOS's convention carried over deliberately, so the
+mark in the taskbar and the mark in the Dock are one application.
+
+Measured: **33.7 MB** built, a **16.6 MB** zip, 3.1 MB per executable. The installed
+application was run as a reader runs it — no arguments — and it **created
+`%LOCALAPPDATA%\DunneFlow`**, which is `platform_output_root()`'s win32 branch and the thing
+the survey named as untested; served the start page on 8787; reported that root back through
+`/api/programs` with no programs and no `root_gone`; and revealed it in Explorer.
+
+### One number this session could not reproduce
+
+`RULES.md` states **3,241** rule citations across `src/` and `tests/`, retaken 2026-09-15 with
+the command it carries. That command here gives **2,979 on the unmodified HEAD** and 3,009
+after this session's work — with and without the `__pycache__` exclusion alike. Left exactly
+as it is rather than overwritten: retaking a measurement means reproducing its conditions, and
+a figure taken with one `grep` cannot be corrected with another (rule 24, which is the rule
+that paragraph is about). Worth settling on a Mac.
+
+### What looking found, which the gates did not — same day
+
+Tom ran the installed application and reported three things. **Every gate was green when he
+did**, which is the part worth keeping: 1,417 tests, mypy on three platforms, a build, a
+verify and a ground truth through the binary all said yes, and none of them was pointed at
+what a person sees.
+
+**1. "The directory chooser does not open."** It opens. Measured from the packaged server:
+on screen in **0.6s warm**, `WS_EX_TOPMOST`, foreground, in front. What it does not do is
+*say anything while it is opening* — and the first picker on a machine pays to load the
+toolkit it draws with, which is several seconds cold against an `osascript` that is
+effectively instant. For all of that time the button was exactly as it looks when nothing is
+wired to it, which is design rule 16 read from the other end: **a working control that looks
+broken is the same defect as a broken one that looks fine.** Both call sites now say
+*Opening…* before the `await` and are disabled while it runs; the start page restores the
+label in a `finally`, because a throw must not leave it saying that for ever.
+
+*This entry first said the foreground problem could not be reproduced. It was wrong, and the
+correction is worth more than the claim.* Tom pressed it afterwards: **"I had to alt-tab to
+get to the chooser, but it was there."** So the dialog does land behind the browser, and every
+measurement saying otherwise was taken from an **interactive shell** — which has the
+foreground rights a server process does not, because it received the last input. Rule 24 in
+its own words: the instrument measured a different thing under the same name, and it did so
+three times, confidently, with numbers.
+
+**Accepted at the keyboard**, 2026-09-15: *"The application seems to work fine on Windows, so
+that is approved."*
+
+**The chooser is documented rather than fixed, which is Tom's call and the right one.** Windows will
+not let a background process raise a window, and that is the rule rather than a bug in it:
+the browser owns the foreground, DunneFlow does not, and the workaround —
+`AttachThreadInput` onto the foreground thread to borrow its rights — is a trick to be
+reached for when something is actually broken, not when a dialog is one Alt-Tab away.
+`docs/01-installing.md` and `docs/04-your-first-map.md` say where it goes and how to reach
+it. The *Opening…* state stays regardless: it was a real defect on its own, and it is what
+tells a reader the chooser is coming rather than absent.
+
+**2. The About dialog asserted something it cannot know.** *"The tree it was read from **has**
+moved on since; this map has not."* Every other line in that dialog is a fact the map
+recorded; that one was a statement about the world, made by a dialog that has not looked at
+the world since the analysis — and read straight after one it is simply false, which is where
+Tom met it. It says **may have** now. Rule 13's family: a claim on screen that no query could
+answer. The guard asserts the *shape* rather than the wording, so a rewrite cannot reintroduce
+it in other words.
+
+**3. `release.ps1` could not be read by the PowerShell Windows ships with.** This session
+wrote it, ran it only under `pwsh`, and never noticed. Windows PowerShell 5.1 — which is what
+`powershell` means on every Windows machine — reads a BOM-less `.ps1` as **ANSI**: an em dash
+inside a double-quoted string decodes as two characters, the closing quote goes with them, and
+the failure is reported as *"The string is missing the terminator"* forty lines further down,
+where nothing is wrong. Found when a probe script of this session's own writing failed exactly
+that way. A UTF-8 BOM fixes it and costs PowerShell 7 nothing; the guard asserts it **only
+where the file holds non-ASCII**, because a rule about a file is not a rule about the failure.
+
+**And one more Windows fact, from the same run.** `release.ps1 build` failed with
+`UnauthorizedAccessException` on `libcrypto-3.dll` because DunneFlow was running — Windows
+will not let an open file be replaced, where macOS will happily rebuild a bundle out from
+under a running copy. The raw error names a file the reader has never heard of and no action
+they can take (rule 89), so `build` and `install` now ask first and name the process and the
+command that ends it.

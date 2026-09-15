@@ -71,8 +71,8 @@ def _corpus(tmp_path: Path, *, bodies: bool = True) -> tuple[Path, Path]:
     for rel, text in CORPUS.items():
         f = tree / rel
         f.parent.mkdir(parents=True, exist_ok=True)
-        f.write_text(text)
-    (tree / "m.py").write_text("def run():\n    return 1\n")
+        f.write_text(text, encoding="utf-8")
+    (tree / "m.py").write_text("def run():\n    return 1\n", encoding="utf-8")
 
     graph = Store(revisions.db_path(out, revisions.GRAPH, REV))
     graph.write_file_facts(extract_file(tree / "m.py", tree))

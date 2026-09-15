@@ -55,7 +55,8 @@ your route.
 
 ![The trail bar: "TRAIL +3 behind › render_all › Shape › A boundary, once per pass › mark_duplicates" then "← Back", "Forward →", "Clear" and "◆ 2 kept"](images/12-trail-bar.png)
 
-**← Back** (`⌘Z`) and **Forward →** (`⇧⌘Z`) step along it. They work from anywhere — the
+**← Back** (`⌘Z`, or `Ctrl+Z` on Windows) and **Forward →** (`⇧⌘Z`, `Ctrl+Shift+Z`) step
+along it. They work from anywhere — the
 person who needs Back is by definition lost and should not have to find a particular pane
 first.
 

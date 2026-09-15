@@ -114,9 +114,11 @@ reconnect that disk, or choose somewhere else
 
 DunneFlow falls back to the standard location so that the application opens rather than
 doing nothing — but it says so on the terminal *and* in a banner on the start page. What it
-will not do is create the missing directory: `/Volumes` is an ordinary folder on your
-startup disk, so a helpful `mkdir` would put a new empty maps root on the very disk you
-were trying to keep clear, and then report no programs in it.
+will not do is create the missing directory. On a Mac `/Volumes` is an ordinary folder on
+your startup disk, so a helpful `mkdir` would put a new empty maps root on the very disk you
+were trying to keep clear, and then report no programs in it; on Windows it would either
+fail on a drive letter that is not there or write to one that now points somewhere else.
+Neither is an answer worth guessing at.
 
 ---
 

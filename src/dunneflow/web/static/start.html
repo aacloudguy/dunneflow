@@ -32,11 +32,12 @@
 
   <!-- Where the maps are, stated as a path and openable.
 
-       `~/Library/Application Support/DunneFlow` is the right place for an application's
-       own data and is never swept into iCloud Drive — which matters, because `source.db`
-       holds the private source of whatever was read. What it is not is findable: a reader
-       who wants to hand a colleague a map, or delete one, cannot get there from the Finder
-       without knowing the path. So the path is here, selectable, and it opens. -->
+       `~/Library/Application Support/DunneFlow`, and `%LOCALAPPDATA%\DunneFlow` on Windows,
+       are each the right place for an application's own data and neither is swept into a
+       sync folder — which matters, because `source.db` holds the private source of whatever
+       was read. What neither is, is findable: a reader who wants to hand a colleague a map,
+       or delete one, cannot get there from the Finder or from Explorer without knowing the
+       path. So the path is here, selectable, and it opens. -->
   <section class="start-root">
     <span class="start-rootlabel">maps are kept in</span>
     <code class="mono start-rootpath" id="rootpath"></code>

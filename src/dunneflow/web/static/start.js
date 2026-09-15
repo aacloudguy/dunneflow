@@ -346,12 +346,24 @@
        is analysis-specific: it asks the operating system for a directory and hands back an
        absolute path, which is exactly what this field wants (rule 51 — one picker). */
     if (t.closest("[data-movepick]")) {
+      /* **It says while it is opening**, for `analyze.js`' reason and in its words: the
+         dialog belongs to a helper process, the first of those on a machine pays to load the
+         toolkit it draws with, and for all of that time an untouched button is
+         indistinguishable from one wired to nothing (design rule 16). Restored in a
+         `finally`, so a throw cannot leave the page saying "Opening..." for ever. */
+      const btn = t.closest("[data-movepick]");
+      const was = btn.innerHTML;
+      btn.innerHTML = "Opening&hellip;";
+      btn.disabled = true;
       let d;
       try {
         d = await fetch("/api/pickdir", { method: "POST" }).then(r => r.json());
       } catch (err) {
         showVerdict({ ok: false, refusal: err.message });
         return;
+      } finally {
+        btn.innerHTML = was;
+        btn.disabled = false;
       }
       /* Cancelling is the ordinary way out of a dialog and is not a failure — `_p_pickdir`
          tells the two apart by AppleScript's own words and sends an empty reason for one. */

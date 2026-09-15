@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import shutil
 import sqlite3
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 import pytest
 
@@ -175,12 +175,25 @@ def test_two_revisions_read_from_two_trees_pair_by_path(tmp_path: Path) -> None:
 # --------------------------------------------------------------------------- #
 
 
-def _make_legacy(tmp_path: Path) -> tuple[Path, Path, Path, str]:
+# The root a legacy store records, as one recorded it. **A POSIX absolute path, and not
+# `tmp_path`**, because that is the shape of the prior state this migration is allowed to
+# speak for: every store carrying `PREVIOUS_CODE_EXTRACTOR` was written by one named build
+# on macOS. Re-absolutising against the running platform's own root instead produced a
+# Windows fixture -- `C:\...` -- that `_strip` correctly declines to treat as absolute, so
+# the guard passed by having nothing to do. Nothing in the migration opens the tree: it
+# works from the recorded root and the stored strings alone, which is what lets the fixture
+# state one.
+LEGACY_ROOT = "/analysed/tree"
+
+
+def _make_legacy(tmp_path: Path) -> tuple[Path, Path, str, str]:
     """A program directory exactly as one written before paths went relative.
 
-    Built by analysing normally and then putting it *back*: paths re-absolutised, the root
-    recorded, the marker removed and the old fingerprint stamped. Faithful rather than
-    hand-written, so the guard runs against the shape the real stores actually had.
+    Built by analysing normally and then putting it *back*: paths re-absolutised against
+    `LEGACY_ROOT`, that root recorded, the marker removed and the old fingerprint stamped.
+    Faithful rather than hand-written, so the guard runs against the shape the real stores
+    actually had -- and the third value returned is that recorded root, which is the one a
+    caller can build a path *above* the tree from.
     """
     root = _tree(tmp_path / "tree")
     out = tmp_path / "out"
@@ -202,9 +215,9 @@ def _make_legacy(tmp_path: Path) -> tuple[Path, Path, Path, str]:
 
     conn = sqlite3.connect(db)
     for tbl, col in migrate.path_columns(conn, migrate.GRAPH_EXEMPT):
-        conn.execute(f'UPDATE "{tbl}" SET "{col}" = ? || "{col}"', (str(root) + "/",))
+        conn.execute(f'UPDATE "{tbl}" SET "{col}" = ? || "{col}"', (LEGACY_ROOT + "/",))
     conn.execute("INSERT OR REPLACE INTO meta(key,value) VALUES('source_root',?)",
-                 (str(root),))
+                 (LEGACY_ROOT,))
     conn.execute("INSERT OR REPLACE INTO meta(key,value) VALUES('extractor',?)",
                  (migrate.PREVIOUS_CODE_EXTRACTOR,))
     conn.execute("DELETE FROM meta WHERE key = ?", (migrate.META_PATHS,))
@@ -212,11 +225,11 @@ def _make_legacy(tmp_path: Path) -> tuple[Path, Path, Path, str]:
     conn.close()
 
     sconn = sqlite3.connect(out / "source.db")
-    sconn.execute('UPDATE paths SET path = ? || path', (str(root) + "/",))
+    sconn.execute('UPDATE paths SET path = ? || path', (LEGACY_ROOT + "/",))
     sconn.execute("DELETE FROM meta WHERE key = ?", (migrate.META_PATHS,))
     sconn.commit()
     sconn.close()
-    return out, db, root, rev
+    return out, db, LEGACY_ROOT, rev
 
 
 def test_a_reader_refuses_an_unmigrated_store_names_the_fix_and_repairs_nothing(
@@ -328,7 +341,7 @@ def test_a_path_above_the_analysed_tree_becomes_a_dotdot_rather_than_staying_abs
     out, db, root, _rev = _make_legacy(tmp_path)
     conn = sqlite3.connect(db)
     conn.execute("INSERT INTO entrypoints(id,kind,name,file) VALUES('x','CLI','x',?)",
-                 (str(root.parent / "pyproject.toml"),))
+                 (f"{PurePosixPath(root).parent}/pyproject.toml",))
     conn.commit()
     conn.close()
 
@@ -486,7 +499,7 @@ def test_the_docs_store_answers_the_same_question_on_its_own_fingerprint() -> No
     src = Path("src/dunneflow")
     for mod, want in (("store.py", "PREVIOUS_CODE_EXTRACTOR"),
                       ("docstore.py", "PREVIOUS_DOC_EXTRACTOR")):
-        text = (src / mod).read_text()
+        text = (src / mod).read_text(encoding="utf-8")
         assert f"migration_speaks_for(self.conn, {want})" in text, (
             f"{mod} must ask the migration whether it can speak for this store, "
             f"and ask it about {want}")

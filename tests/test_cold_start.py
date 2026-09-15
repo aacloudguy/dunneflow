@@ -57,7 +57,7 @@ def _make_program(root: Path, name: str) -> Path:
     out.mkdir(parents=True)
     src = root / f"{name}_src"
     src.mkdir()
-    (src / "one.py").write_text(ONE)
+    (src / "one.py").write_text(ONE, encoding="utf-8")
     revision = "2026-01-01T00:00:00Z"
     store = Store(revisions.db_path(out, revisions.GRAPH, revision))
     store.write_file_facts(extract_file(src / "one.py", src))

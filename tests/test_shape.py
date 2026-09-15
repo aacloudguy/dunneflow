@@ -151,7 +151,7 @@ def polling(conn):
 @pytest.fixture(scope="module")
 def store(tmp_path_factory):
     tree = tmp_path_factory.mktemp("shape_program")
-    (tree / "m.py").write_text(PROGRAM)
+    (tree / "m.py").write_text(PROGRAM, encoding="utf-8")
     st = Store(tmp_path_factory.mktemp("shape_graph") / "graph.db")
     analyze_tree(tree, st)
     resolve_calls(st)
@@ -423,7 +423,8 @@ def test_two_comprehensions_on_one_line_still_nest(store, tmp_path):
     tree.mkdir()
     (tree / "n.py").write_text(
         "import os\n\n\ndef f(rows):\n"
-        "    return [a for a in [os.stat(b) for b in rows]]\n")
+        "    return [a for a in [os.stat(b) for b in rows]]\n",
+        encoding="utf-8")
     st = Store(tmp_path / "graph.db")
     analyze_tree(tree, st)
     resolve_calls(st)

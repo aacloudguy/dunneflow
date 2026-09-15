@@ -391,7 +391,7 @@ def test_the_tree_is_never_a_path(tmp_path):
     label.
     """
     import re
-    src = Path("src/dunneflow/cli.py").read_text()
+    src = Path("src/dunneflow/cli.py").read_text(encoding="utf-8")
     call = re.search(r"source\.open_working\((.*?)\)", src, re.S)
     assert call, "cmd_analyze no longer opens a working revision"
     assert "tree=tree_leaf" in call.group(1).replace(" ", ""), (
@@ -654,7 +654,7 @@ def test_analyze_lands_the_document_bodies_under_the_graphs_own_revision() -> No
     paths"* with all 2,064 rows present.
     """
     import re
-    src = Path("src/dunneflow/cli.py").read_text()
+    src = Path("src/dunneflow/cli.py").read_text(encoding="utf-8")
     adopt = re.search(r"docsource\.adopt_revision\((.*?)\)", src)
     assert adopt, (
         "analyze no longer adopts a revision for the document sidecar, so its bodies are "

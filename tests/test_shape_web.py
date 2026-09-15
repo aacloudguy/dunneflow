@@ -75,7 +75,7 @@ def recovering(conn, row):
 @pytest.fixture(scope="module")
 def store(tmp_path_factory):
     tree = tmp_path_factory.mktemp("shapeweb_program")
-    (tree / "m.py").write_text(PROGRAM)
+    (tree / "m.py").write_text(PROGRAM, encoding="utf-8")
     st = Store(tmp_path_factory.mktemp("shapeweb_graph") / "graph.db")
     analyze_tree(tree, st)
     resolve_calls(st)

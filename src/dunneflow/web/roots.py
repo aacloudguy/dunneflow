@@ -40,6 +40,14 @@ from .analysis import Verdict
 HEADROOM = 1.05
 
 
+# The file `check` writes and removes to find out whether a directory can be written to.
+# Named because the guard has to be able to stand something in its way: `chmod` cannot make
+# a Windows directory read-only, so the only condition a test can build on both platforms is
+# a directory occupying this exact name. A second spelling would be a test that passes while
+# the code probes somewhere else (rule 51).
+WRITE_PROBE = ".dunneflow-write-test"
+
+
 def _size(path: Path) -> int:
     """Bytes under `path`, following nothing. Symlinks are counted as links, not targets.
 
@@ -104,7 +112,7 @@ def check(path: str, current: Path) -> Verdict:
         return Verdict(refusal=f"{chosen} contains {here}, where maps are kept now — "
                                "pick a directory that does not")
 
-    probe = chosen / ".dunneflow-write-test"
+    probe = chosen / WRITE_PROBE
     try:
         probe.touch()
         probe.unlink()

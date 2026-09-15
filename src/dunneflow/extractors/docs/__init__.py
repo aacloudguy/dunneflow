@@ -15,7 +15,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from ...schema import DocFacts, DocFormat, Heading, hash_source
+from ...schema import DocFacts, DocFormat, Heading, hash_source, stored_path
 from .markdown import _text, scan_markdown, scan_with
 
 MARKDOWN_SUFFIXES = frozenset({".md", ".markdown", ".mdx"})
@@ -71,9 +71,9 @@ def extract_doc(path: Path, root: Path) -> DocFacts:
         # Keyed the same way as a document that *was* read. An unreadable file recorded
         # under a different spelling of its own name is a row nothing else can join to.
         try:
-            unread = str(path.resolve().relative_to(root.resolve()))
+            unread = stored_path(path.resolve().relative_to(root.resolve()))
         except ValueError:
-            unread = str(path)
+            unread = stored_path(path)
         return DocFacts(path=unread, fmt=DocFormat.TEXT, content_hash="",
                         errors=[f"unreadable: {exc}"])
 
@@ -86,7 +86,7 @@ def extract_doc(path: Path, root: Path) -> DocFacts:
     # first day and then thrown away, with `str(path)` -- one machine's absolute layout --
     # stored as the identity of every document. See `extract_file` for why that is wrong
     # in three separate ways; the argument is the same for prose as for code.
-    key = str(rel)
+    key = stored_path(rel)
 
     fmt = FORMATS.get(path.suffix.lower(), DocFormat.TEXT)
     try:

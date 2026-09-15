@@ -26,7 +26,7 @@ def _graph(tmp_path: Path, name: str, source: str) -> Path:
     tree = tmp_path / name
     tree.mkdir()
     src = tree / "m.py"
-    src.write_text(source)
+    src.write_text(source, encoding="utf-8")
     db = tmp_path / f"{name}.db"
     store = Store(db)
     store.write_file_facts(extract_file(src, tree))
@@ -257,7 +257,7 @@ def test_the_diff_contains_no_write_statement():
 
     from dunneflow.web import changes as mod
 
-    tree = ast.parse(Path(mod.__file__).read_text())
+    tree = ast.parse(Path(mod.__file__).read_text(encoding="utf-8"))
     docstrings = set()
     for node in ast.walk(tree):
         if isinstance(node, (ast.Module, ast.FunctionDef, ast.AsyncFunctionDef,
@@ -872,8 +872,8 @@ def test_a_comment_in_a_file_whose_bytes_did_not_change_is_not_looked_for(tmp_pa
     def two_files(tmp, name, one, two):
         tree = tmp / name
         tree.mkdir()
-        (tree / "one.py").write_text(one)
-        (tree / "two.py").write_text(two)
+        (tree / "one.py").write_text(one, encoding="utf-8")
+        (tree / "two.py").write_text(two, encoding="utf-8")
         db = tmp / f"{name}.db"
         store = Store(db)
         for f in sorted(tree.glob("*.py")):
@@ -898,8 +898,8 @@ def test_a_routine_that_moved_files_is_still_compared(tmp_path):
     def two_files(tmp, name, one, two):
         tree = tmp / name
         tree.mkdir()
-        (tree / "one.py").write_text(one)
-        (tree / "two.py").write_text(two)
+        (tree / "one.py").write_text(one, encoding="utf-8")
+        (tree / "two.py").write_text(two, encoding="utf-8")
         db = tmp / f"{name}.db"
         store = Store(db)
         for f in sorted(tree.glob("*.py")):
@@ -1134,8 +1134,8 @@ def test_a_docstring_in_a_file_whose_bytes_did_not_change_is_not_looked_for(tmp_
     def two_files(tmp, name, one, two):
         tree = tmp / name
         tree.mkdir()
-        (tree / "one.py").write_text(one)
-        (tree / "two.py").write_text(two)
+        (tree / "one.py").write_text(one, encoding="utf-8")
+        (tree / "two.py").write_text(two, encoding="utf-8")
         db = tmp / f"{name}.db"
         store = Store(db)
         for f in sorted(tree.glob("*.py")):
@@ -1235,8 +1235,8 @@ def test_the_bound_names_the_files_that_differ_and_no_others(tmp_path):
     def two_files(tmp, name, one, two):
         tree = tmp / name
         tree.mkdir()
-        (tree / "one.py").write_text(one)
-        (tree / "two.py").write_text(two)
+        (tree / "one.py").write_text(one, encoding="utf-8")
+        (tree / "two.py").write_text(two, encoding="utf-8")
         db = tmp / f"{name}.db"
         store = Store(db)
         for f in sorted(tree.glob("*.py")):

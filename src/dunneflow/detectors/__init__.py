@@ -17,7 +17,14 @@ from typing import Any
 import yaml
 
 from ..runtime import resource_root
-from ..schema import Annotation, BoundaryKind, Confidence, Direction, EntrypointKind
+from ..schema import (
+    Annotation,
+    BoundaryKind,
+    Confidence,
+    Direction,
+    EntrypointKind,
+    stored_path,
+)
 
 # Through `resource_root()` rather than `Path(__file__)`, and the difference only shows
 # frozen: `__file__` for a module imported out of a PyInstaller archive names a path that
@@ -431,7 +438,13 @@ def fingerprint_files(paths: Iterable[Path]) -> str:
     h = hashlib.sha256()
     for path in wanted:
         try:
-            label = str(path.relative_to(_PKG_ROOT))
+            # **Through `stored_path`, and that is rule 12 rather than tidiness.** The
+            # label goes into the hash, so spelling it the way the writing machine spells
+            # a path would give one unchanged file two fingerprints -- and a map written
+            # by the Windows build would be discarded by the macOS build as *written by a
+            # different tool*, with the same commit on both. That is the refusal
+            # `resource_root`'s layout exists to prevent, one platform over.
+            label = stored_path(path.relative_to(_PKG_ROOT))
         except ValueError:      # a path from outside the package, as in tests
             label = path.name
         h.update(label.encode("utf-8"))

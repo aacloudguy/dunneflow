@@ -64,6 +64,7 @@ from ...schema import (
     control_point_id,
     hash_source,
     make_id,
+    stored_path,
 )
 
 MODULE_SCOPE = "<module>"
@@ -1652,13 +1653,13 @@ def extract_file(path: Path, root: Path, src: str | None = None) -> FileFacts:
     # relative path since the day it was written; this line said `rel` and did not.
     outside = ""
     try:
-        rel = str(path.resolve().relative_to(root.resolve()))
+        rel = stored_path(path.resolve().relative_to(root.resolve()))
     except ValueError:
         # Unreachable via `discover()`, which only yields files under `root`. Recorded
         # rather than swallowed: a fallback that quietly stores the absolute path again
         # would reintroduce the defect with no symptom, which is the shape this project
         # keeps paying for.
-        rel = str(path)
+        rel = stored_path(path)
         outside = f"outside the analysed root {root}: stored absolute"
     module = module_name(path, root)
     facts = FileFacts(path=rel, lang="python", module=module, content_hash=hash_source(src))

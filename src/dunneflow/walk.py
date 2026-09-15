@@ -21,7 +21,7 @@ from . import revisions
 from .docstore import DocStore
 from .extractors.docs import DOC_SUFFIXES, extract_doc
 from .extractors.python.extract import extract_file
-from .schema import DocFacts, FileFacts, hash_source
+from .schema import DocFacts, FileFacts, hash_source, stored_path
 from .store import Store
 
 # Directories that never contain the program under study.
@@ -221,7 +221,7 @@ def analyze_docs_tree(
     live: list[str] = []
     for p in docs:
         # Relative for the key, absolute for the read -- see `analyze_tree`.
-        key = str(p.relative_to(root))
+        key = stored_path(p.relative_to(root))
         live.append(key)
         try:
             st = p.stat()
@@ -322,7 +322,9 @@ def analyze_tree(
         # itself across two revisions read from two different trees. The **path** stays
         # absolute, because that is what opens the file. Keying on the absolute form is
         # what made moving a tree a full re-parse and a churned graph rather than a no-op.
-        key = str(p.relative_to(root))
+        # `stored_path` rather than `str` because the key has to be the one the store
+        # holds, and a store written on another platform spells it with forward slashes.
+        key = stored_path(p.relative_to(root))
         live.append(key)
         try:
             src = p.read_text(encoding="utf-8", errors="replace")

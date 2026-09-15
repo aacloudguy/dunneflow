@@ -14,6 +14,7 @@ here and only one of them is the feature:
 from __future__ import annotations
 
 import shutil
+import sys
 from collections import namedtuple
 from pathlib import Path
 from typing import Any
@@ -42,7 +43,7 @@ def _make_program(root: Path, name: str) -> Path:
     out.mkdir(parents=True)
     src = root / f"{name}_src"
     src.mkdir()
-    (src / "one.py").write_text(ONE)
+    (src / "one.py").write_text(ONE, encoding="utf-8")
     rev = "2026-01-01T00:00:00Z"
     store = Store(revisions.db_path(out, revisions.GRAPH, rev))
     store.write_file_facts(extract_file(src / "one.py", src))
@@ -163,7 +164,7 @@ def test_each_refusal_says_which_one_it_is(tmp_path: Path) -> None:
         seen.append(v.refusal)
 
     a_file = tmp_path / "afile"
-    a_file.write_text("x")
+    a_file.write_text("x", encoding="utf-8")
     v = roots.check(str(a_file), current)
     assert not v.ok and "not a directory" in v.refusal
     seen.append(v.refusal)
@@ -199,6 +200,18 @@ def test_a_root_that_cannot_be_written_is_refused_by_pressing_it(tmp_path: Path)
     _make_program(current, "alpha")
     locked = tmp_path / "locked"
     locked.mkdir()
+    if sys.platform == "win32":
+        # **The same claim, by the one means this platform offers.** `chmod(0o500)` does
+        # nothing to a Windows directory -- measured: the write that follows it succeeds --
+        # so a fixture built that way would assert the refusal against a directory that is
+        # perfectly writable, and pass only where it was already passing. A directory
+        # standing where the probe file goes is genuinely unwritable on both platforms, and
+        # it makes the docstring's point *harder*: `os.access(W_OK)` answers yes here and
+        # the write still fails, which is exactly why this is pressed rather than inferred.
+        (locked / roots.WRITE_PROBE).mkdir()
+        v = roots.check(str(locked), current)
+        assert not v.ok and "cannot be written to" in v.refusal
+        return
     locked.chmod(0o500)
     try:
         v = roots.check(str(locked), current)

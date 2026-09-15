@@ -48,7 +48,7 @@ def _live(tmp_path: Path, **meta: str) -> Any:
     from dunneflow.extractors.python.extract import extract_file
     tree = tmp_path / "tree"
     tree.mkdir()
-    (tree / "m.py").write_text(TINY)
+    (tree / "m.py").write_text(TINY, encoding="utf-8")
     store.write_file_facts(extract_file(tree / "m.py", tree))
     store.set_meta("revision", rev)
     store.set_meta("program", "tinyprog")
@@ -100,7 +100,7 @@ def test_the_determinism_claim_is_checkable_rather_than_prose() -> None:
     for area in ("extractors", "resolve", "canonical"):
         for mod in (SRC / area).rglob("*.py"):
             looked += 1
-            found = banned.search(mod.read_text())
+            found = banned.search(mod.read_text(encoding="utf-8"))
             assert not found, (
                 f"{mod.relative_to(SRC)} imports {found.group(1)} -- the About dialog "
                 "claims every fact here was read deterministically and locally, and that "
@@ -177,7 +177,7 @@ def test_the_dialog_renders_missing_and_recorded_differently() -> None:
     an argument rather than falling through to the same empty string -- which is what
     would make a legacy map read as a guarantee it never made.
     """
-    shell = (SRC / "web/static/shell.js").read_text()
+    shell = (SRC / "web/static/shell.js").read_text(encoding="utf-8")
     body = shell.split("function aboutSays", 1)[1].split("\nfunction ", 1)[0]
     assert "recorded" in body, "aboutSays ignores whether the field was recorded at all"
     assert body.count("return") >= 2, "one return cannot render two different answers"
@@ -197,12 +197,43 @@ def test_the_dialog_renders_missing_and_recorded_differently() -> None:
         assert args.count(",") >= 1, f"{field} has no sentence for the unrecorded case"
 
 
+def test_the_dialog_claims_nothing_about_a_tree_it_has_not_looked_at() -> None:
+    """Rule 13's family, in the one line of this dialog that was not a recorded fact.
+
+    The footer read *"The tree it was read from **has** moved on since; this map has not."*
+    Every other line here is something the map wrote down — the date, the leaf, the tool
+    version, the two guarantees. That one was a statement about the world, made by a dialog
+    that has not looked at the world since the analysis, and **opened straight after an
+    analysis it is simply false** — which is where Tom reported it.
+
+    What is true, and all that is true, is that nothing here has been checked against that
+    tree since. So the sentence says *may have*.
+
+    Asserted on the shape rather than on the wording: the claim is any assertion in the
+    indicative about that tree having changed, and a rewrite that reintroduced it in other
+    words would be the same defect.
+    """
+    shell = (SRC / "web/static/shell.js").read_text(encoding="utf-8")
+    # Anchored on the sentence rather than on `about-foot`, which is also a class name in the
+    # stylesheet above and so matches there first.
+    opener = "A map is a reading of a program at a moment."
+    assert shell.count(opener) == 1, "the footer sentence is no longer where this looks"
+    foot = shell.split(opener, 1)[1].split("</span>", 1)[0]
+    assert "may have moved on" in foot, (
+        "the About footer no longer hedges a claim it cannot make"
+    )
+    for asserted in ("has moved on", "will have moved on", "is now out of date"):
+        assert asserted not in foot, (
+            f"the About footer states {asserted!r} about a tree it has not looked at since"
+        )
+
+
 def test_the_route_is_a_get_and_reads_nothing_it_can_change() -> None:
     """It is a read, like everything else under `web/` but the one analysis route."""
     handler = serve_mod._Handler
     assert handler.ROUTES.get("/api/about") == "_r_about"
     assert "_r_about" not in handler.POST_ROUTES.values()
-    src = Path(serve_mod.__file__).read_text()
+    src = Path(serve_mod.__file__).read_text(encoding="utf-8")
     body = src.split("def _r_about", 1)[1].split("\n    def ", 1)[0]
     assert "set_meta" not in body, "the About route writes to the store it came to read"
     assert "with self._live.lock" in body, (
@@ -222,7 +253,7 @@ def test_analyze_records_what_read_the_map(tmp_path: Path) -> None:
     from dunneflow.cli import build_parser, cmd_analyze
     tree = tmp_path / "src"
     tree.mkdir()
-    (tree / "m.py").write_text(TINY)
+    (tree / "m.py").write_text(TINY, encoding="utf-8")
     out = tmp_path / "out"
     args = build_parser().parse_args(
         ["analyze", str(tree), "--name", "rec", "--output", str(out),

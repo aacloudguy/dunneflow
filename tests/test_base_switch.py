@@ -75,8 +75,9 @@ def _program(tmp_path: Path) -> tuple[Path, str, str]:
     for i, source in enumerate((ONE, TWO)):
         tree = tmp_path / f"tree{i}"
         tree.mkdir()
-        (tree / "m.py").write_text(source)
-        (tree / "README.md").write_text(f"# Revision {i}\n\nWhat this version is for.\n")
+        (tree / "m.py").write_text(source, encoding="utf-8")
+        (tree / "README.md").write_text(
+            f"# Revision {i}\n\nWhat this version is for.\n", encoding="utf-8")
         rev = f"2026-08-30T10:0{i}:00Z"
         store = Store(revisions.db_path(out, revisions.GRAPH, rev))
         store.write_file_facts(extract_file(tree / "m.py", tree))
@@ -259,7 +260,7 @@ def test_the_progress_report_is_replaced_whole(live: Any) -> None:
 
 
 def _handler_source() -> ast.ClassDef:
-    tree = ast.parse(SERVE_PY.read_text())
+    tree = ast.parse(SERVE_PY.read_text(encoding="utf-8"))
     for node in ast.walk(tree):
         if isinstance(node, ast.ClassDef) and node.name == "_Handler":
             return node
@@ -391,7 +392,7 @@ def test_a_refusal_carries_no_progress_because_nothing_is_running() -> None:
 def test_the_post_dispatch_fails_by_name(live: Any) -> None:
     """A chain ends in a fallback and a fallback that looks deliberate is worse than a
     404. Design rule 16: an unknown path fails loudly, and the POST table is its own."""
-    src = SERVE_PY.read_text()
+    src = SERVE_PY.read_text(encoding="utf-8")
     assert "def do_POST" in src, "nothing takes a POST; the base cannot be switched"
     body = src.split("def do_POST", 1)[1].split("\n    def ", 1)[0]
     assert "POST_ROUTES" in body, "do_POST does not route from the table"
@@ -649,8 +650,8 @@ def two_programs(tmp_path: Path) -> Any:
         out.mkdir(parents=True)
         tree = tmp_path / f"src-{name}"
         tree.mkdir()
-        (tree / "m.py").write_text(ONE if name == "alpha" else TWO)
-        (tree / "README.md").write_text(f"# {name}\n\nProse for {name}.\n")
+        (tree / "m.py").write_text(ONE if name == "alpha" else TWO, encoding="utf-8")
+        (tree / "README.md").write_text(f"# {name}\n\nProse for {name}.\n", encoding="utf-8")
         rev = "2026-08-30T10:00:00Z"                      # the same, deliberately
         store = Store(revisions.db_path(out, revisions.GRAPH, rev))
         store.write_file_facts(extract_file(tree / "m.py", tree))
@@ -759,7 +760,11 @@ def test_a_switch_that_fails_inside_the_build_puts_the_program_back(
     # analyse leaves behind. **With a real sidecar beside it**, so the switch genuinely
     # opens a handle before it fails — without one there is nothing to leak and the guard
     # below would pass against code that leaks every time.
-    (broken / "graph@2026-08-30T10:00:00Z.db").write_text("not a database at all")
+    # `as_filename`'s spelling, with the colons replaced, because that is the only name
+    # `analyze` can have left here -- and the colons are illegal in a Windows filename, so a
+    # fixture carrying them tests the harness rather than the switch (rule 24).
+    (broken / "graph@2026-08-30T10-00-00Z.db").write_text(
+        "not a database at all", encoding="utf-8")
     SourceStore(broken / "source.db").close()
 
     opened: list[Any] = []

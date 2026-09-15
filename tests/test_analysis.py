@@ -66,7 +66,7 @@ def world(tmp_path: Path) -> Any:
 
     tree = tmp_path / "tree"
     tree.mkdir()
-    (tree / "m.py").write_text(TINY)
+    (tree / "m.py").write_text(TINY, encoding="utf-8")
     return root, serving, tree
 
 
@@ -122,7 +122,7 @@ def test_the_served_program_is_refused_because_its_graph_is_open_here(world: Any
     # **The sentence has to stay true of the code it describes.** If `_discard_if_stale`
     # ever stops dropping tables, this refusal is telling the reader something that is no
     # longer so -- and a refusal nobody can justify is one somebody will remove.
-    store_src = Path(sys.modules[Store.__module__].__file__ or "").read_text()
+    store_src = Path(sys.modules[Store.__module__].__file__ or "").read_text(encoding="utf-8")
     dropper = store_src.split("def _discard_if_stale", 1)
     assert len(dropper) == 2, "_discard_if_stale is gone; this refusal has lost its reason"
     assert "DROP TABLE" in dropper[1].split("\n    def ", 1)[0], (
@@ -165,7 +165,7 @@ def test_a_file_where_the_directory_would_go_is_refused_before_the_child_sees_it
     thing the reader this tool is written for can act on.
     """
     root, serving, tree = world
-    (root / "blocked").write_text("")
+    (root / "blocked").write_text("", encoding="utf-8")
     v = analysis.check(str(tree), "blocked", root, serving)
     assert not v.ok
     assert "already sitting where that program's directory would go" in v.refusal
@@ -492,7 +492,7 @@ def test_a_report_that_says_nothing_new_does_not_reset_the_silence() -> None:
 
 
 def _handler_source() -> ast.ClassDef:
-    tree = ast.parse(SERVE_PY.read_text())
+    tree = ast.parse(SERVE_PY.read_text(encoding="utf-8"))
     for node in ast.walk(tree):
         if isinstance(node, ast.ClassDef) and node.name == "_Handler":
             return node
@@ -523,7 +523,7 @@ def test_no_get_route_starts_an_analysis() -> None:
         "a GET starts an analysis -- a prefetch would read a tree off this disk"
     )
     # And the handler itself must be the only thing that starts the thread.
-    src = SERVE_PY.read_text()
+    src = SERVE_PY.read_text(encoding="utf-8")
     body = src.split("def _r_analysis", 1)[1].split("\n    def ", 1)[0]
     assert "Thread(" not in body, "the read route starts work; it is meant to report it"
 
@@ -535,7 +535,7 @@ def test_the_pre_flight_is_one_function_for_the_field_and_the_button() -> None:
     every day after (rule 41). Both routes call `analysis.check`, and this reads that off
     the source rather than hoping.
     """
-    src = SERVE_PY.read_text()
+    src = SERVE_PY.read_text(encoding="utf-8")
     for route in ("_r_analysis", "_p_analyze"):
         body = src.split(f"def {route}", 1)[1].split("\n    def ", 1)[0]
         assert "analysis.check(" in body, (
@@ -633,7 +633,8 @@ def test_the_marker_survives_a_real_kill(tmp_path: Path) -> None:
     # Enough files that the run cannot finish before it is killed.
     for i in range(400):
         (tree / f"m{i}.py").write_text(
-            f'"""Module {i}."""\nimport sqlite3\n\n\ndef f{i}(p):\n    return sqlite3.connect(p)\n')
+            f'"""Module {i}."""\nimport sqlite3\n\n\ndef f{i}(p):\n    return sqlite3.connect(p)\n',
+        encoding="utf-8")
     out = tmp_path / "out"
     proc = subprocess.Popen(analysis.argv(tree, "killed", out, docs=False),
                             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
@@ -661,7 +662,7 @@ def test_a_finished_run_clears_the_marker(tmp_path: Path) -> None:
     """The other half, or the marker is a permanent accusation."""
     tree = tmp_path / "src"
     tree.mkdir()
-    (tree / "m.py").write_text(TINY)
+    (tree / "m.py").write_text(TINY, encoding="utf-8")
     out = tmp_path / "out"
     done = subprocess.run(analysis.argv(tree, "whole", out, docs=False),
                           capture_output=True, text=True, timeout=300)
@@ -748,6 +749,163 @@ def test_query_reads_an_unfinished_map_and_says_so(tmp_path: Path, capsys: Any) 
     )
 
 
+class _Unreachable:
+    """A child that cannot be signalled, however it is asked."""
+
+    pid = 4242
+
+    def __init__(self, raises: BaseException) -> None:
+        self._raises = raises
+
+    def poll(self) -> None:
+        return None
+
+    def send_signal(self, sig: int) -> None:
+        raise self._raises
+
+    def wait(self, timeout: float | None = None) -> int:
+        return 0
+
+
+@pytest.mark.parametrize("blows_up", [
+    SystemError("<built-in function kill> returned a result with an exception set"),
+    OSError(6, "The handle is invalid"),
+    ValueError("only SIGTERM is supported"),
+])
+def test_the_polite_rung_answers_rather_than_raising_however_it_fails(
+        monkeypatch: pytest.MonkeyPatch, blows_up: BaseException) -> None:
+    """**The class this actually raises is not the one it looks like it should** (rule 42).
+
+    With no console -- which is every packaged Windows build, since a windowed binary is
+    given none -- `GenerateConsoleCtrlEvent` fails with `WinError 6`, and CPython's `os.kill`
+    returns a value with that error still set. What reaches the caller is therefore
+    `SystemError`, not the `OSError` the guard was written for.
+
+    Uncaught it did not merely skip a rung: it killed the handler thread, so
+    `POST /api/analyze/stop` **closed the connection without a response**. The reader's Stop
+    button reported a network failure over an analysis that had in fact been left running,
+    which is a control that says the opposite of what happened. Found by pressing the signed
+    build rather than by reading a signature (rule 48), and pinned here so the guard cannot
+    narrow again.
+
+    Parameterised over all three plausible classes rather than the one that bit, because the
+    contract is *this function answers*, and a guard listing exactly the failures already
+    seen is a guard that will be surprised again.
+    """
+    monkeypatch.setattr(analysis.os, "kill", _raiser(blows_up), raising=False)
+    monkeypatch.setattr(analysis.os, "killpg", _raiser(blows_up), raising=False)
+    monkeypatch.setattr(analysis.os, "getpgid", _raiser(blows_up), raising=False)
+    assert analysis._interrupt_group(_Unreachable(blows_up)) is False, (
+        "a rung that cannot be delivered must report that, not raise into the handler"
+    )
+
+
+def _raiser(exc: BaseException):
+    def go(*_a: object, **_k: object) -> None:
+        raise exc
+    return go
+
+
+def test_a_stop_is_told_from_a_failure_by_the_childs_own_exit_code() -> None:
+    """Rule 13, on both platforms -- and the two platforms spell it differently.
+
+    POSIX reports a death by signal as a negative return code; Windows has no such thing and
+    a process broken out of its wait reports `STATUS_CONTROL_C_EXIT`. Neither is a flag this
+    process set when it asked, which is the whole point: a flag can disagree with what
+    happened, and an exit code cannot.
+
+    Asserted for the running platform only, because `was_stopped` reads `sys.platform` and a
+    test that monkeypatched it would be asserting against a branch that cannot run here.
+    """
+    assert analysis.was_stopped(0) is False, "a clean exit is not a stop"
+    assert analysis.was_stopped(1) is False, "a failure is not a stop"
+    if sys.platform == "win32":
+        assert analysis.was_stopped(analysis.CONTROL_C_EXIT) is True
+        assert analysis.was_stopped(analysis.CONTROL_C_EXIT - (1 << 32)) is True, (
+            "the same status signed is what a C reader writes down"
+        )
+    else:
+        assert analysis.was_stopped(-15) is True and analysis.was_stopped(-9) is True
+
+
+def test_a_forced_kill_is_still_a_stop_and_says_which_it_was() -> None:
+    """The sentence a reader gets after pressing Stop on a packaged Windows build.
+
+    `taskkill /F` leaves exit 1, which is what a broken analysis leaves -- and the rung that
+    *does* leave evidence, a console break, is exactly the one a windowed binary cannot use
+    because it is given no console. So before `note_forced` existed, every deliberate stop on
+    the surface most readers have reported **"the analysis exited 1 without saying why"**: a
+    control saying the opposite of what the reader had just done.
+
+    What is asserted is both halves. It reads as *stopped*, and it does not claim the polite
+    ending it did not have -- *asked to stop* and *had to be killed* stay two facts (rule 32),
+    and only one of them is tidy.
+    """
+    seen: list[dict[str, Any]] = []
+    killed = _Unreachable(OSError("unused"))
+    analysis.note_forced(killed)
+    assert analysis.was_forced(killed) is True
+
+    # `run`'s own reading of an exit code, exercised through the branch rather than around it.
+    code = 1
+    assert analysis.was_stopped(code) is False, "exit 1 is not a stop on its own evidence"
+    assert analysis.was_stopped(code) or analysis.was_forced(killed), (
+        "a forced kill must still read as a stop"
+    )
+    src = Path(analysis.__file__).read_text(encoding="utf-8")
+    body = src.split("def run(", 1)[1]
+    assert "was_forced(proc)" in body, "run ignores that this process did the killing"
+    assert "not stopped when asked" in body, (
+        "a forced ending must not be reported in the words of a polite one (rule 32)"
+    )
+    assert seen == []
+
+
+def test_the_forced_note_is_taken_before_the_kill_and_withdrawn_if_it_fails() -> None:
+    """The ordering, and it was measured rather than reasoned about.
+
+    Taken *after* `_kill_group` returns it reads as the tidier thing -- a record of what
+    happened rather than of what was asked. It also loses a race it cannot win: `taskkill`
+    returns only once the child is already gone, so `run`'s loop unblocks and reports while
+    `stop` is still inside `subprocess.run`. Built that way, every stop on the packaged
+    Windows build went on saying *"the analysis exited 1 without saying why"*.
+
+    What keeps rule 13 is the **withdrawal**, not the order: a kill that could not be
+    delivered clears the note, so what survives is still a record of what happened.
+    """
+    src = Path(analysis.__file__).read_text(encoding="utf-8")
+    body = src.split("def stop(", 1)[1]
+    assert body.index("note_forced(proc)") < body.index("_kill_group(proc)"), (
+        "the note is taken after the kill, where `run` has already read past it"
+    )
+    assert "note_forced(proc, False)" in body, (
+        "a kill that could not be delivered leaves a note claiming it was"
+    )
+
+
+def test_the_child_is_put_in_a_group_this_platform_can_signal() -> None:
+    """One idea, two spellings, and the wrong one is silent rather than an error.
+
+    `start_new_session` is **accepted and ignored** by `Popen` on Windows -- measured -- so a
+    build that kept it there would start every analysis in the server's own group, and
+    stopping one would reach the parent and leave its pool workers holding stdout open. That
+    is the jam `_interrupt_group` exists to prevent, and it would have arrived with no
+    exception anywhere.
+    """
+    made = analysis.own_group()
+    if sys.platform == "win32":
+        assert made == {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP}
+    else:
+        assert made == {"start_new_session": True}
+    # And `run` must actually use it, rather than spelling one of them at the call site.
+    src = Path(analysis.__file__).read_text(encoding="utf-8")
+    body = src.split("def run(", 1)[1]
+    assert "**own_group()" in body, "run builds its own group instead of asking"
+    assert "start_new_session=True" not in body, (
+        "run names one platform's spelling at the call site (rule 51)"
+    )
+
+
 def test_stopping_reaches_the_workers_the_child_started(tmp_path: Path) -> None:
     """**The jam this chunk is about, arriving through the fix for it.**
 
@@ -764,7 +922,8 @@ def test_stopping_reaches_the_workers_the_child_started(tmp_path: Path) -> None:
     tree.mkdir()
     for i in range(400):
         (tree / f"m{i}.py").write_text(
-            f'"""Module {i}."""\nimport sqlite3\n\n\ndef f{i}(p):\n    return sqlite3.connect(p)\n')
+            f'"""Module {i}."""\nimport sqlite3\n\n\ndef f{i}(p):\n    return sqlite3.connect(p)\n',
+        encoding="utf-8")
     out = tmp_path / "out"
 
     seen: list[dict[str, Any]] = []
@@ -847,7 +1006,7 @@ def test_nothing_open_means_no_program_is_being_read(tmp_path: Path) -> None:
     # exercise: a reader may analyse a tree that happens to share the root's name.
     tree = tmp_path / "elsewhere" / "DunneFlow"
     tree.mkdir(parents=True)
-    (tree / "m.py").write_text(TINY)
+    (tree / "m.py").write_text(TINY, encoding="utf-8")
     v = analysis.check(str(tree), "", root, handler._serving_dir())
     assert v.ok, f"a cold server refused the first analysis: {v.refusal}"
 

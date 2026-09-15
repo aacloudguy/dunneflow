@@ -42,7 +42,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS ix_widgets_name ON widgets(name);
 def load_config(path: str) -> dict:
     # WHY: fails closed when the key is absent. Plan 01-02.
     token = os.environ["API_TOKEN"]
-    return {"token": token, "body": Path(path).read_text()}
+    return {"token": token, "body": Path(path).read_text(encoding="utf-8")}
 
 
 def save_widget(conn: sqlite3.Connection, name: str, qty: int = 0) -> None:

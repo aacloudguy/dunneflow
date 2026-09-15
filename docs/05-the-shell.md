@@ -105,7 +105,7 @@ that the layout is a choice you made and get it back.
 | | |
 |---|---|
 | `/` | jump to the search box |
-| `⌘Z` / `⇧⌘Z` | Back and Forward along the trail, from anywhere |
+| `⌘Z` / `⇧⌘Z` (`Ctrl+Z` / `Ctrl+Shift+Z` on Windows) | Back and Forward along the trail, from anywhere |
 | `Enter` | open the detail window for whatever the pointer is over in the graph |
 | `s` | show or hide the source pane in the inspector |
 | `Esc` | close the source viewer, then the detail window, in that order |

@@ -160,8 +160,8 @@ def test_argparse_commands_are_counted_even_with_no_app_object(tmp_path):
         "    sub = p.add_subparsers()\n"
         "    g = sub.add_parser('go')\n"
         "    g.set_defaults(func=cmd_go)\n"
-        "    return p\n"
-    )
+        "    return p\n",
+        encoding="utf-8")
     store = Store(tmp_path / "g.db")
     analyze_tree(root, store)
     resolve_calls(store)

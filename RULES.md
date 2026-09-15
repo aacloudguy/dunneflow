@@ -1813,3 +1813,43 @@ rule of that number — a blank canvas must say why it is blank — which does e
     taken from the machine doing the work. Each is correct where it was written and each
     stops being correct when the same code runs somewhere else, silently, because the
     expression still evaluates and still returns something plausible (rule 49).
+
+93. **A stored path's separator belongs to the machine that wrote it, and that makes it a
+    bad key.** Rule 60's sequel, one platform over, and the same failure: it made paths
+    relative because an absolute one names one machine's directory layout, and left them
+    spelled in one machine's *alphabet*. Run on Windows, `str(p.relative_to(root))` stores
+    `web\\serve.py` where the same commit on macOS stores `web/serve.py` — one file, two
+    unrelated keys, so the pair cannot be compared and neither build can read the other's
+    map. Six modules minted a path and every one of them was correct where it was written:
+    the two extractors, `entrypoints`, `version`, `walk`'s two cache keys, and
+    `fingerprint_files`.
+
+    **The costs were not theoretical and none of them looked like a path problem.** The
+    conformance lane reported `files / kebab-case` as **NO_POPULATION** over 78 files it had
+    quietly failed to find, because a rule's `paths:` glob is POSIX and `fnmatch` does not
+    know that `web\\serve.py` is under `web/` — rule 49's shape in the surface built to
+    refuse it. `PurePosixPath(p).stem` returned `web\\serve` for the same reason. The
+    document corpus listed its own paths back differently from the set it had just scanned.
+    And in the shell, `String(path).split("/").slice(-2)` — the leaf a reader is shown rather
+    than a path (rule 60 again) — returned the whole path, so every "leaf" on every pane was
+    the full thing.
+
+    The sharpest one is `fingerprint_files`, because it inverts rule 12. The label goes into
+    the hash, so the Windows build and the macOS build compute **different fingerprints from
+    identical bytes** — and each would discard the other's map as *written by a different
+    tool*. That is precisely the refusal `resource_root()`'s layout was shaped to prevent,
+    arriving through the one thing that layout does not control. Measured after the fix: both
+    stamp `9:d6179cee25581502`, and each opens the other's map.
+
+    **The remedy is the shape rule 51 always prescribes**: one function, `schema.stored_path`,
+    beside `make_id` and `call_site_id` because a stored path *is* an identity, and every
+    writer passes through it. `PurePath` is deliberately the platform's own parser — on
+    Windows it splits on both separators, and on POSIX it splits on neither, where a
+    backslash is an ordinary character in a filename and has to survive as one. Nothing
+    re-spells a path the running platform would not.
+
+    What makes the whole family hard to see is that **the reading side was already right**.
+    `conformance` reached for `PurePosixPath`, the shell split on `/`, `migrate` matched
+    `LIKE '/%'`: every consumer had decided a stored path was POSIX, correctly, and said so
+    in code. Only the writers had never been asked, because for as long as there was one
+    platform the question had one answer.

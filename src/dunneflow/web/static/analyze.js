@@ -111,7 +111,7 @@
 
   function openAnalyze(prefill) {
     ANALYZE = Object.assign({ path: "", name: "", docs: true, busy: false, blocked: null,
-                             pickfail: "" }, prefill || {});
+                             picking: false, pickfail: "" }, prefill || {});
     ANALYZE_CHECK = null;
     paintAnalyze();
     askAnalyzeCheck();
@@ -185,8 +185,17 @@
                hand a server what a folder picker chose, so the picker is the operating
                system's, run by the server process. Typing the whole path still works and is
                still the thing the hint describes; this is the shorter way to the same
-               value. Disabled while a run is starting, like Analyse beside it. -->
-          <button class="linkbtn" data-anpick${a.busy ? " disabled" : ""}>Choose&hellip;</button>
+               value. Disabled while a run is starting, like Analyse beside it.
+
+               **And it says while it is opening**, which is not decoration. The dialog
+               belongs to a helper process the server starts, and the first one of those on
+               a machine pays for loading the toolkit it draws with -- measured at 0.6s warm
+               and several seconds cold on Windows. For all of that time this button looked
+               exactly as it does when nothing is wired to it (design rule 16), and it was
+               reported as a picker that does not open. A control that is working has to
+               look different from one that is not. -->
+          <button class="linkbtn" data-anpick${a.busy || a.picking ? " disabled" : ""}>${
+            a.picking ? "Opening&hellip;" : "Choose&hellip;"}</button>
         </div>
         <p class="hint">The whole path, as this machine sees it &mdash; the server reads the
            tree itself, so a path relative to your terminal would mean nothing to it.${
@@ -270,17 +279,24 @@
    * indistinguishable from one that worked (design rule 16).
    */
   async function pickDirectory() {
-    if (!ANALYZE || ANALYZE.busy) return;
+    if (!ANALYZE || ANALYZE.busy || ANALYZE.picking) return;
     ANALYZE.pickfail = "";
+    // **Said before the await, and painted.** Everything below waits on a person in front of
+    // a dialog, which is as long as they take; the button has to stop looking idle first.
+    ANALYZE.picking = true;
+    paintAnalyze();
     let d;
     try {
       d = await fetch("/api/pickdir", { method: "POST" }).then(r => r.json());
     } catch (err) {
+      if (!ANALYZE) return;
+      ANALYZE.picking = false;
       ANALYZE.pickfail = "the picker could not be asked: " + err.message;
       paintAnalyze();
       return;
     }
     if (!ANALYZE) return;             // cancelled while the dialog was open
+    ANALYZE.picking = false;
     if (d.picked) {
       ANALYZE.path = d.picked;
       paintAnalyze();

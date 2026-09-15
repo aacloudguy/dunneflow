@@ -22,10 +22,12 @@ whether the emptiness below is *nothing here* or *nothing found*.
 
 **Maps are kept in** — the path, selectable, with two buttons.
 
-- **Show me** opens it in the Finder. Useful when you want to hand a map to a colleague,
-  or delete one.
+- **Show me** opens it in the Finder, or in File Explorer on Windows. Useful when you want
+  to hand a map to a colleague, or delete one.
 - **Move…** points DunneFlow somewhere else, and optionally carries the existing maps
-  across. See [Installing](01-installing.md#moving-them-somewhere-else).
+  across. See [Installing](01-installing.md#moving-them-somewhere-else). Its **Choose…**
+  button opens a folder chooser; on Windows that chooser can open *behind* your browser, so
+  Alt-Tab to it if it does not appear.
 
 **The program list** — every directory under the maps root that actually holds a map.
 Each row says how many points in time it holds: *one point in time*, or *3 points in
@@ -62,9 +64,11 @@ that, names the disk, and offers **Try again** and **Choose somewhere else**.
 DunneFlow falls back to the standard location so that double-clicking the app does
 *something* rather than nothing — but it says so loudly, because a silent substitution
 would have you looking at an empty list on a machine where all your maps still exist.
-What it will never do is *create* the missing directory: `/Volumes` is an ordinary folder
-on your startup disk, so a helpful `mkdir` there would put a new empty maps root on the
-very disk you were trying to keep clear.
+What it will never do is *create* the missing directory. On a Mac, `/Volumes` is an
+ordinary folder on your startup disk, so a helpful `mkdir` there would put a new empty maps
+root on the very disk you were trying to keep clear; on Windows the same `mkdir` either
+fails on a drive letter that is not there or writes to one that has been reassigned to
+something else. Neither is an answer, so it does not guess.
 
 ---
 

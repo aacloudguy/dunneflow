@@ -34,9 +34,12 @@ uv sync
 uv run dunneflow serve
 ```
 
-That opens the start page in a browser, which is where you make your first map. There is
-also a signed macOS application — built for Apple silicon and Intel, asking the system for
-no permissions at all — which does the same thing when double-clicked. See
+That opens the start page in a browser, which is where you make your first map.
+
+There is also a double-clickable application that does the same thing with no Python to
+install: **macOS**, signed and notarised, built for Apple silicon and Intel and asking the
+system for no permissions at all; and **Windows**, as a zip holding `DunneFlow.exe` and a
+`dunneflow-cli.exe` beside it for the command line. See
 [docs/01-installing.md](docs/01-installing.md).
 
 ## The dashboard
@@ -166,6 +169,9 @@ measured figure with the budget it was taken against is in
 
 ## Status
 
-Working and verified at scale, with the dashboard and comparison built. A signed macOS
-application exists and is awaiting notarisation. TypeScript extraction, cross-process
-stitching and Windows come after that. See `BRIEFING.md`.
+Working and verified at scale, with the dashboard and comparison built. The macOS
+application is signed, notarised and shipping. **Windows runs it too** — the full suite,
+the dashboard and a packaged build are green there — with one signature still to buy and
+one platform difference documented rather than fixed: a folder chooser asked for by a
+background process opens behind the browser. TypeScript extraction and cross-process
+stitching come next. See `BRIEFING.md`.

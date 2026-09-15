@@ -243,8 +243,9 @@ def test_the_walk_prunes_the_output_directory_it_is_writing_into(tmp_path):
     root = tmp_path
     prog = root / "out" / "prog"
     (prog / "map@2026-01-01T00-00-00Z").mkdir(parents=True)
-    (prog / "map@2026-01-01T00-00-00Z" / "01-entrypoints.md").write_text("# generated\n")
-    (root / "README.md").write_text("# real prose\n")
+    (prog / "map@2026-01-01T00-00-00Z" / "01-entrypoints.md").write_text(
+        "# generated\n", encoding="utf-8")
+    (root / "README.md").write_text("# real prose\n", encoding="utf-8")
 
     found = {p.relative_to(root).as_posix()
              for p in discover_docs(root, exclude=frozenset({prog}))}

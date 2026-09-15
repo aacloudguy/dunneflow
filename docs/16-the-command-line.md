@@ -4,8 +4,16 @@ Everything the dashboard does, DunneFlow will also do from a terminal — and a 
 only the terminal does at all.
 
 Every example below is `uv run dunneflow …` from a checkout. From the installed
-application the binary is
-`/Applications/DunneFlow.app/Contents/MacOS/dunneflow`.
+application, the binary is:
+
+| | |
+|---|---|
+| macOS | `/Applications/DunneFlow.app/Contents/MacOS/dunneflow` |
+| Windows | `dunneflow-cli.exe`, beside `DunneFlow.exe` in the folder you unzipped |
+
+**On Windows use `dunneflow-cli.exe` and not `DunneFlow.exe`.** They are the same program,
+but the one you double-click is built without a console, so from a terminal it does the work
+and prints nothing at all. The `-cli` one is the same build with its output attached.
 
 ## The two arguments almost everything takes
 

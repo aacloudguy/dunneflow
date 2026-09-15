@@ -11,7 +11,7 @@ import os
 import tomllib
 from pathlib import Path
 
-from ..schema import Entrypoint, EntrypointKind, make_id
+from ..schema import Entrypoint, EntrypointKind, make_id, stored_path
 from ..store import Store
 
 
@@ -49,8 +49,10 @@ def entrypoints_from_packaging(root: Path, store: Store,
         return []
     base = (relative_to or root).resolve()
     # `os.path.relpath` rather than `Path.relative_to`, which cannot express `..` and would
-    # raise here on every `src/` layout -- which is most of them.
-    where = os.path.relpath(pyproject.resolve(), base)
+    # raise here on every `src/` layout -- which is most of them. Through `stored_path`
+    # because it lands in the same column as a routine's file and must be spelled the same
+    # way, whichever platform wrote it.
+    where = stored_path(os.path.relpath(pyproject.resolve(), base))
     try:
         data = tomllib.loads(pyproject.read_text(encoding="utf-8"))
     except (tomllib.TOMLDecodeError, OSError):

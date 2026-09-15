@@ -23,10 +23,12 @@ anywhere.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import signal
 import subprocess
+import sys
 import threading
 from collections import deque
 from collections.abc import Callable
@@ -160,37 +162,190 @@ def argv(source: Path, name: str, out_root: Path, docs: bool) -> list[str]:
     return out
 
 
-def _signal_group(proc: Any, sig: int) -> bool:
-    """Signal the child **and everything it started**, falling back to the child alone.
+# **What a stopped child's own exit code is, on each platform.** POSIX reports a death by
+# signal as a negative return code; Windows has no such thing, and a process broken out of
+# its wait reports `STATUS_CONTROL_C_EXIT` instead -- which is the same kind of fact, made
+# by the child rather than set from outside (rule 13). Held in both spellings because the
+# raw status reaches Python unsigned and the same value signed is what a C reader expects.
+CONTROL_C_EXIT = 0xC000013A
+_WINDOWS_STOPPED = frozenset({CONTROL_C_EXIT, CONTROL_C_EXIT - (1 << 32)})
 
-    `analyze` runs a `ProcessPoolExecutor`, and its workers inherit the pipes. Signalling
-    the parent alone kills the parent and leaves up to eleven workers alive holding stdout
-    open -- measured -- so `run`'s read loop never ends and the report says `working` for
-    ever over a child that has gone. That is the jam this whole chunk is about, arriving
-    through the fix for it.
 
-    So the child is started in its **own session** (`start_new_session`) and the signal goes
-    to the group. The fallback is for a `Popen` that has no group to speak of -- a test
-    double, or a platform without one -- where signalling the child is the best available
-    answer rather than an error.
+def own_group() -> dict[str, Any]:
+    """How a child is put in a group of its own, so stopping it can reach what it starts.
+
+    One idea and two spellings, and neither is optional: `analyze` runs a
+    `ProcessPoolExecutor` whose workers inherit the pipes, so a stop that reaches only the
+    parent leaves them holding stdout open and `run`'s read loop never returns.
+
+    Named and returned rather than written inline at the `Popen`, because the group this
+    makes is the thing `_interrupt_group` and `_kill_group` address -- three places that
+    have to agree about one decision (rule 51). `start_new_session` is **silently ignored**
+    on Windows, so the wrong one there is not an error; it is a stop that does nothing.
     """
+    if sys.platform == "win32":
+        return {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP}
+    return {"start_new_session": True}
+
+
+def _interrupt_group(proc: Any) -> bool:
+    """Ask the child **and everything it started** to stop, and let it close what it holds.
+
+    `analyze` holds three SQLite connections and a process pool, so the first rung is always
+    the polite one. On POSIX that is `SIGTERM` to the process group, falling back to the
+    child alone for a `Popen` that has no group to speak of -- a test double, or a platform
+    without one.
+
+    On Windows it is a **console break** to the group, which is the same instrument under
+    another name: it reaches every process in the group, the child raises
+    `KeyboardInterrupt` and unwinds, and its exit code says so afterwards. Measured on a
+    pool of eight workers -- 8 descendants before, **0** after, exit `0xC000013A`. Plain
+    `terminate()`, which is what a `Popen` does with `SIGTERM` there, left **all nine
+    processes alive**, and the reader's panel said `working` over a child that had gone:
+    the exact jam the POSIX side of this function was written to prevent, reproduced whole
+    on the other platform.
+
+    Returns whether the ask was *delivered*. It can honestly fail on Windows, where a break
+    needs a console and a double-clicked application has none. That is a rung skipped rather
+    than a refusal -- `_kill_group` needs no console.
+
+    **`SystemError` is in the guard because that is the class this actually raises**, and it
+    was found by pressing the packaged application rather than by reading the documentation
+    (rule 48). With no console, `GenerateConsoleCtrlEvent` fails with `WinError 6`, and
+    CPython's `os.kill` returns a value with that error still set -- so what reaches the
+    caller is not the `OSError` every line of this function was written to expect but
+    `SystemError: <built-in function kill> returned a result with an exception set`. Uncaught,
+    it left `_p_stop_analysis` with a dead handler thread: **the connection closed without a
+    response**, the reader's Stop button reported a network failure, and the analysis was
+    killed anyway by nothing at all. A guard that names the wrong class has not guarded
+    anything (rule 42), and the wrong class here was the plausible one.
+    """
+    if sys.platform == "win32":
+        try:
+            os.kill(proc.pid, signal.CTRL_BREAK_EVENT)
+            return True
+        except (OSError, SystemError, AttributeError, TypeError, ValueError):
+            return False
     try:
-        os.killpg(os.getpgid(proc.pid), sig)
+        os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
         return True
     except (OSError, AttributeError, TypeError):
         try:
-            proc.send_signal(sig)
+            proc.send_signal(signal.SIGTERM)
             return True
         except (OSError, AttributeError, TypeError):
             return False
 
 
+def _kill_group(proc: Any) -> bool:
+    """Take the child **and everything it started** down, whatever they are doing.
+
+    The second rung. On Windows it is a different instrument rather than a harder signal:
+    there is no `SIGKILL`, and `terminate()` reaches one process. `taskkill /F /T` walks the
+    tree and ships with Windows; measured, it takes the same pool of eight from 8
+    descendants to 0.
+
+    **It costs the child's evidence**, and `note_forced` is what pays for that. A tree taken
+    down this way exits 1, which is exactly what an analysis that genuinely broke exits with,
+    so the exit code alone cannot tell the two apart -- and the polite rung is the one a
+    packaged Windows build cannot use. `stop` therefore records that this rung ran; see
+    `note_forced` for why that is not the flag rule 13 refuses, for why it is written before
+    the kill rather than after it, and for the one instant of residue it leaves. On POSIX
+    both rungs leave a negative code, the child speaks for itself, and none of this applies.
+    """
+    if sys.platform == "win32":
+        try:
+            subprocess.run(["taskkill", "/F", "/T", "/PID", str(proc.pid)],
+                           capture_output=True, timeout=15)
+            return True
+        except (OSError, SystemError, subprocess.TimeoutExpired, ValueError):
+            return False
+    try:
+        os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+        return True
+    except (OSError, AttributeError, TypeError):
+        try:
+            proc.send_signal(signal.SIGKILL)
+            return True
+        except (OSError, AttributeError, TypeError):
+            return False
+
+
+# Where "this process took that child down" is recorded: **on the child's own handle**, and
+# never in a module global. The two functions that care already share the `Popen` -- `stop`
+# sets it, `run` reads it -- and a global would be one fact about whichever analysis ran last.
+FORCED = "dunneflow_forced"
+
+
+def note_forced(proc: Any, forced: bool = True) -> None:
+    """Record that this process is killing the child outright, because nothing else will.
+
+    **The narrow exception to rule 13, and the bound on it is what makes it payable.** That
+    rule says a stop must be told from a failure by the child's *own* evidence, never by a
+    flag this process set when it asked -- because the ask and the outcome can disagree. On
+    POSIX that costs nothing: both rungs leave a negative exit code and the child speaks for
+    itself either way.
+
+    Windows has one rung that can speak and one that cannot. A console break leaves
+    `STATUS_CONTROL_C_EXIT`; `taskkill /F` leaves **1**, which is what a broken analysis
+    leaves. And the polite rung is exactly the one a *packaged* build cannot use, because a
+    windowed binary is given no console -- so on the surface most readers actually have, every
+    deliberate stop was reported as *"the analysis exited 1 without saying why"*. A control
+    that reports the opposite of what the reader just did is worse than the rule it was
+    keeping.
+
+    So this is not quite the flag rule 13 refuses, and the difference is that it is
+    **withdrawn when the kill fails** -- `stop` clears it on a `_kill_group` that could not
+    deliver, so what survives is a record of what happened rather than of what was asked for.
+
+    **It is taken before the kill and not after, and that ordering was measured.** Written
+    afterwards it lost a race it cannot win: `taskkill` returns only once the child is
+    already gone, so `run`'s read loop unblocks, reaches `proc.wait()` and reports -- all
+    while `stop` is still inside `subprocess.run`. Every stop on the packaged build went on
+    reading *"the analysis exited 1 without saying why"* with this note set a moment too
+    late. The window the early write opens is harmless in the other direction: `run` only
+    reads this once the child is dead, and the child only dies from a kill that worked.
+
+    The residue is stated rather than hidden: a child that broke of its own accord in the
+    same instant it was force-killed is reported as stopped. That is one instant, against
+    every stop on a packaged Windows build.
+    """
+    # A `Popen` double a test supplied with `__slots__`, or anything else that will not take
+    # an attribute, is left alone. Nothing here is worth failing a stop over.
+    with contextlib.suppress(AttributeError):
+        setattr(proc, FORCED, forced)
+
+
+def was_forced(proc: Any) -> bool:
+    """Did this process take that child down? See `note_forced` for why this exists."""
+    return bool(getattr(proc, FORCED, False))
+
+
+def was_stopped(code: int) -> bool:
+    """Does this exit code say the child was stopped, rather than that it broke?
+
+    **The child's own evidence, on whichever platform it ran** -- never a flag this process
+    set when it asked, which could disagree with what actually happened (rule 13). POSIX
+    spells it as a negative return code; Windows spells it `STATUS_CONTROL_C_EXIT`. One
+    function, so the two spellings cannot be read in one place and forgotten in another.
+    """
+    if sys.platform == "win32":
+        return code in _WINDOWS_STOPPED
+    return code < 0
+
+
 def stop(proc: Any, *, grace: float = 3.0) -> str:
     """End a running analysis, and say how it ended.
 
-    `SIGTERM` first, because `analyze` holds three SQLite connections and a process pool and
-    a clean exit closes them; `SIGKILL` only if it will not go. **To the whole group either
-    way** -- see `_signal_group`, which is where the interesting part is.
+    The polite rung first, because `analyze` holds three SQLite connections and a process
+    pool and a clean exit closes them; the forceful one only if it will not go. **To the
+    whole group either way** -- see `_interrupt_group`, which is where the interesting part
+    is, and `own_group`, which is what makes a group there is to address.
+
+    The forceful rung is tried even where the polite one could not be delivered, which is
+    Windows' case and costs POSIX nothing: there, an ask that cannot be delivered is a child
+    already out of reach, so the second rung fails the same way and the answer is the same
+    sentence.
 
     The map it was writing is left marked unfinished by its own hand: the marker is
     committed as the run starts, so there is nothing for this to write and nothing here
@@ -201,14 +356,19 @@ def stop(proc: Any, *, grace: float = 3.0) -> str:
     """
     if proc is None or proc.poll() is not None:
         return "it had already ended"
-    if not _signal_group(proc, signal.SIGTERM):
+    if _interrupt_group(proc):
+        try:
+            proc.wait(timeout=grace)
+            return "stopped"
+        except subprocess.TimeoutExpired:
+            pass
+    # **Before the kill, and withdrawn if it cannot be delivered.** `taskkill` returns after
+    # the child is already gone, so a note taken afterwards is read too late -- see
+    # `note_forced`, where the race and the reason it only runs one way are written down.
+    note_forced(proc)
+    if not _kill_group(proc):
+        note_forced(proc, False)
         return "it could not be signalled"
-    try:
-        proc.wait(timeout=grace)
-        return "stopped"
-    except subprocess.TimeoutExpired:
-        pass
-    _signal_group(proc, signal.SIGKILL)
     try:
         proc.wait(timeout=grace)
         return "killed — it did not stop when asked"
@@ -233,11 +393,19 @@ def run(source: Path, name: str, out_root: Path, docs: bool,
     cmd = argv(source, name, out_root, docs)
     tail: deque[str] = deque(maxlen=REASON_LINES)
     try:
-        # **Its own session**, so stopping it can reach the pool workers it will start.
+        # **Its own group**, so stopping it can reach the pool workers it will start.
         # Without this the parent dies and its workers keep the pipes open -- see
-        # `_signal_group`.
+        # `own_group`, which is the one place the platform's spelling of that is decided.
+        #
+        # **And the pipe is read as UTF-8, named rather than left to the locale.** `text=True`
+        # alone decodes with `locale.getpreferredencoding()`, which is `cp1252` on a Windows
+        # machine in most of the world -- while the child, whose every output file is UTF-8,
+        # writes UTF-8. The `--progress-json` contract carries a path, a program name and a
+        # failure's own words, any of which can be non-ASCII; with the locale in the middle
+        # a step name arrives mojibake and a path outside cp1252 ends the run with a decode
+        # error in the watcher rather than a failure in the work.
         proc = popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
-                     start_new_session=True)
+                     encoding="utf-8", errors="replace", **own_group())
     except OSError as exc:
         note(state="failed", program=name, reason=f"could not start the analysis: {exc}")
         return
@@ -284,12 +452,16 @@ def run(source: Path, name: str, out_root: Path, docs: bool,
     drainer.join(timeout=2.0)
     if code != 0:
         # **A run somebody stopped is not a run that broke**, and the panel says a different
-        # thing about each. A terminated child exits on a signal, which POSIX reports as a
-        # negative return code -- so the distinction is in the code itself and does not need
-        # a flag set from outside that could disagree with what actually happened (rule 13).
-        if code < 0:
+        # thing about each. A stopped child says so in its own exit code -- so the
+        # distinction is in the code itself and does not need a flag set from outside that
+        # could disagree with what actually happened (rule 13). Which code that is differs
+        # by platform and is `was_stopped`'s to know, not this line's.
+        if was_stopped(code) or was_forced(proc):
+            how = ("signal " + str(-code) if code < 0
+                   else "a console break" if was_stopped(code)
+                   else "being killed, having not stopped when asked")
             note(state="stopped", program=name,
-                 reason=f"stopped on signal {-code}. What it had written is left marked "
+                 reason=f"stopped on {how}. What it had written is left marked "
                         f"unfinished — analysing {name} again completes it.")
             return
         note(state="failed", program=name, reason=_reason(tail, code))

@@ -27,13 +27,36 @@ gaining a frozen branch. Stamping a version into a file at build time would be t
 that docstring refuses, one build system further away -- and a shipped binary that records
 no tool version fails the one panel that exists to say which DunneFlow read the map.
 
-**`console=False` affects the double-click and nothing else.** Launched from the Finder it
-opens no terminal window; run as `DunneFlow.app/Contents/MacOS/dunneflow analyze …` from a
-shell it inherits that shell's streams and prints exactly as the checkout does. That is what
-lets the ground truth be run *through the binary* rather than beside it.
+**`console=False` affects the double-click and nothing else -- on macOS.** Launched from the
+Finder it opens no terminal window; run as `DunneFlow.app/Contents/MacOS/dunneflow analyze …`
+from a shell it inherits that shell's streams and prints exactly as the checkout does. That
+is what lets the ground truth be run *through the binary* rather than beside it.
+
+**On Windows that second sentence is false, and it is why there are two executables.** A
+GUI-subsystem binary there is not merely "started without a terminal": it is *given no
+standard streams at all*, so `DunneFlow.exe analyze …` from PowerShell would do the work and
+print not one line of it -- and the verification gate in `CLAUDE.md`, which exists to run the
+ground truth through the binary, would have nothing to read. Windows' own answer to this is
+`python.exe` beside `pythonw.exe`, and this file's is the same shape:
+
+* `DunneFlow.exe`      -- windowed. What a reader double-clicks; no console window.
+* `dunneflow-cli.exe`  -- console. The command line, and what the gate runs through.
+
+They are **one `Analysis` and one `COLLECT`**, so the archive, the data and the vendored
+engine exist once and the second executable costs a few hundred kilobytes. The names differ
+by more than case deliberately: NTFS is case-insensitive, so `DunneFlow.exe` and
+`dunneflow.exe` are one file there and the second build would silently overwrite the first.
+
+**`BUNDLE` is macOS's and is skipped everywhere else.** An `.app` is a directory with a
+plist; Windows has nothing it corresponds to, and asking for one produces a directory nothing
+can launch.
 
 **`DUNNEFLOW_ARCH` chooses which machines the result runs on**, and there are two answers
-rather than one. Unset builds for the machine doing the building, which is what the
+rather than one -- both of them macOS's. `target_arch` is a Mach-O idea: a Windows PE holds
+one architecture and PyInstaller builds for the interpreter it is running under, so on
+Windows this file takes no answer but `host` and **refuses the other by name** rather than
+accepting a word it would then ignore (rule 49 -- a setting that is quietly dropped is worse
+than one that is rejected, because only the second can be seen). Unset builds for the machine doing the building, which is what the
 verification gate in `CLAUDE.md` runs and what keeps that gate at seven seconds. `universal2`
 builds for Apple Silicon *and* Intel, and is what a release is, and needs an interpreter that
 is itself universal2 -- uv's managed Pythons and Homebrew's are single-arch by construction,
@@ -42,7 +65,10 @@ produce it, this file raises** rather than quietly building for one architecture
 "universal" build that is arm64 inside would be found by a colleague on an Intel Mac and not
 here, which is rule 49 exactly.
 
-Signing, notarisation and the disk image are `packaging/release.sh`.
+Signing, notarisation and the disk image are `packaging/release.sh`. The Windows build has
+no equivalent and needs none for now: `packaging/release.ps1` freezes and zips, and there is
+nothing to sign against -- an unsigned Windows binary meets SmartScreen, which is a warning a
+reader can click past, and not Gatekeeper, which is a refusal they cannot.
 """
 
 import os
@@ -50,7 +76,10 @@ import sys
 from pathlib import Path
 
 from PyInstaller.utils.hooks import copy_metadata
-from PyInstaller.utils.osx import get_binary_architectures
+
+# `PyInstaller.utils.osx` needs `macholib`, which is a macOS-only dependency and genuinely
+# absent elsewhere -- so it is imported where it is used rather than here, and this file can
+# be read at all on Windows.
 
 ROOT = Path(SPECPATH).parent           # noqa: F821 -- SPECPATH is PyInstaller's
 PKG = ROOT / "src" / "dunneflow"
@@ -59,11 +88,16 @@ PKG = ROOT / "src" / "dunneflow"
 # word, so a path that has stopped existing would build a perfectly good application with
 # the generic bundle icon and nothing anywhere would say so (rule 49). A build asked for an
 # icon that is not there should fail while somebody is watching it.
-ICON = ROOT / "packaging" / "icon" / "dunneflow.icns"
+#
+# One container per platform, out of one drawing -- `build_supplied_icon.py` writes both from
+# the same composed canvas, so this is a choice of file and never a second icon.
+ICON = ROOT / "packaging" / "icon" / (
+    "dunneflow.ico" if sys.platform == "win32" else "dunneflow.icns")
 if not ICON.exists():
     raise SystemExit(
         f"{ICON} is not there — build it first:\n"
-        f"  uv run --with pillow python packaging/icon/build_supplied_icon.py <source>")
+        f"  uv run --with pillow python packaging/icon/build_supplied_icon.py "
+        f"packaging/icon/rabbit-head.png")
 
 
 def _target_arch() -> str | None:
@@ -83,6 +117,23 @@ def _target_arch() -> str | None:
     The check is on `sys._base_executable` rather than `sys.executable`, because a virtual
     environment's `python` is a stub that says nothing about the interpreter behind it.
     """
+    if sys.platform != "darwin":
+        # **`target_arch` is Mach-O's and nothing else has one.** A PE holds one
+        # architecture and PyInstaller builds for the interpreter running it, so there is no
+        # choice here to make -- but a `DUNNEFLOW_ARCH` somebody set out of habit must not be
+        # *accepted and ignored*, which is how a person comes to believe they built something
+        # they did not. `host` is the one word that is true everywhere, so it is the one word
+        # this takes.
+        asked = os.environ.get("DUNNEFLOW_ARCH", "").strip()
+        if asked and asked not in ("host", "native"):
+            raise SystemExit(
+                f"DUNNEFLOW_ARCH={asked!r} is a macOS answer and this is {sys.platform}. "
+                "A Windows executable holds one architecture, the one this interpreter is "
+                "built for, and there is nothing here to choose. Leave it unset, or set it "
+                "to 'host'."
+            )
+        return None
+
     asked = os.environ.get("DUNNEFLOW_ARCH", "").strip() or "universal2"
     if asked in ("host", "native"):
         return None
@@ -92,6 +143,8 @@ def _target_arch() -> str | None:
             "Leave it unset for 'universal2', or set it to 'host' to build only for this "
             "machine."
         )
+    from PyInstaller.utils.osx import get_binary_architectures
+
     real = getattr(sys, "_base_executable", None) or sys.executable
     fat, archs = get_binary_architectures(real)
     if not fat or "x86_64" not in archs or "arm64" not in archs:
@@ -169,21 +222,44 @@ a = Analysis(                                   # noqa: F821
 )
 pyz = PYZ(a.pure)                               # noqa: F821
 
+_WINDOWS = sys.platform == "win32"
+
 exe = EXE(                                      # noqa: F821
     pyz,
     a.scripts,
     [],
     exclude_binaries=True,
-    name="dunneflow",
+    # `dunneflow` inside the `.app`, where the bundle supplies the name a reader sees;
+    # `DunneFlow` on Windows, where this file *is* the name a reader sees.
+    name="DunneFlow" if _WINDOWS else "dunneflow",
     debug=False,
     strip=False,
     upx=False,
     console=False,
+    icon=str(ICON) if _WINDOWS else None,
     target_arch=_target_arch(),
 )
 
+# **The console half, Windows only** -- see the note at the top. Built from the same `pyz`
+# and the same `a.scripts`, so it is the same program and not a second assembly of it; the
+# only difference is the subsystem it is linked for, which is the whole point.
+exes = [exe]
+if _WINDOWS:
+    exes.append(EXE(                            # noqa: F821
+        pyz,
+        a.scripts,
+        [],
+        exclude_binaries=True,
+        name="dunneflow-cli",
+        debug=False,
+        strip=False,
+        upx=False,
+        console=True,
+        icon=str(ICON),
+    ))
+
 coll = COLLECT(                                 # noqa: F821
-    exe,
+    *exes,
     a.binaries,
     a.datas,
     strip=False,
@@ -191,16 +267,17 @@ coll = COLLECT(                                 # noqa: F821
     name="dunneflow",
 )
 
-app = BUNDLE(                                   # noqa: F821
-    coll,
-    name="DunneFlow.app",
-    icon=str(ICON),
-    bundle_identifier="com.dunnecorp.dunneflow",
-    info_plist={
-        # It serves on localhost and opens the default browser. Nothing here reaches a
-        # network, and the map states that as a standing guarantee.
-        "NSHighResolutionCapable": True,
-        "LSBackgroundOnly": False,
-        "CFBundleShortVersionString": "0.1.0",
-    },
-)
+if not _WINDOWS:
+    app = BUNDLE(                               # noqa: F821
+        coll,
+        name="DunneFlow.app",
+        icon=str(ICON),
+        bundle_identifier="com.dunnecorp.dunneflow",
+        info_plist={
+            # It serves on localhost and opens the default browser. Nothing here reaches a
+            # network, and the map states that as a standing guarantee.
+            "NSHighResolutionCapable": True,
+            "LSBackgroundOnly": False,
+            "CFBundleShortVersionString": "0.1.0",
+        },
+    )

@@ -12,6 +12,7 @@ re-read.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import multiprocessing
 import sqlite3
@@ -58,6 +59,42 @@ def _default_paths(target: Path, name: str | None, out_root: Path) -> tuple[str,
 
 def _emit(msg: str) -> None:
     print(msg, file=sys.stderr)
+
+
+def speak_utf8() -> None:
+    """Say what this program's own channels are encoded in, rather than letting a locale.
+
+    **Everything else about this tool already settled on UTF-8 and only the two streams were
+    left to chance.** Every file it writes names `encoding="utf-8"`, every source and every
+    document it reads is decoded as UTF-8, and `hash_source` hashes the UTF-8 encoding -- so
+    a map is a UTF-8 artefact by construction. `print`, alone, went to whatever
+    `locale.getpreferredencoding()` said, which on a Windows machine in most of the world is
+    `cp1252`: 256 characters, and this program's own sentences are outside them.
+
+    Two ways that bites, and the first is a crash rather than a blemish. `render/anomalies`
+    writes its badges with 🔴 and the naming report writes `\u2192`; neither is in cp1252, so a
+    command whose output was **redirected or piped** -- which is exactly how `--progress-json`
+    is read, and how a reader captures a report -- ended in a `UnicodeEncodeError` raised from
+    inside `print`, several frames from anything that could say what had gone wrong. The
+    second is quieter: the em dash and the middle dot that every summary line uses *are* in
+    cp1252, so those runs did not fail, they simply wrote a different byte than the one the
+    reader's terminal was reading, and the sentence arrived broken.
+
+    **Only where it is not already right, and never on a stream that cannot answer.** A
+    console on Windows is UTF-16 through its own API and needs nothing; macOS is UTF-8
+    already, so this is a no-op there and the platform is not tested for -- what is tested
+    for is the encoding actually in force, which is the honest question (rule 30). A stream
+    that pytest or a caller has replaced may have no `reconfigure` at all and is left exactly
+    as it was: this decides an encoding, and may not decide who owns the stream.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        if (getattr(stream, "encoding", "") or "").lower().replace("-", "") == "utf8":
+            continue
+        # A replaced or non-reconfigurable stream is left exactly as it is. Nothing here is
+        # worth failing a command over, and doing nothing is the behaviour every earlier
+        # build had.
+        with contextlib.suppress(AttributeError, OSError, ValueError):
+            stream.reconfigure(encoding="utf-8")       # type: ignore[union-attr]
 
 
 def _out_root(args: argparse.Namespace) -> Path:
@@ -1523,8 +1560,14 @@ def main(argv: list[str] | None = None) -> int:
     over. It is a no-op in every other case, which is why calling it here **and** in the
     packaged entry script is right rather than redundant -- whichever one is the real entry
     point of a given build, the first statement executed has made the call.
+
+    `speak_utf8()` comes second, and before the parser, so that a usage message and an
+    argument error are written in the same encoding as everything after them. It is here
+    rather than in the packaged entry script for the reason `freeze_support` is in both:
+    this is the one function every way in passes through (rule 51).
     """
     multiprocessing.freeze_support()
+    speak_utf8()
     args = build_parser().parse_args(argv)
     return int(args.func(args))
 

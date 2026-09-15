@@ -7,10 +7,11 @@ application icon needs doing to it -- square it, scale it, round it, ladder it. 
 can improve the drawing, which is why the measurements it prints matter more than the files
 it writes.
 
-**Two containers, one master.** `dunneflow.icns` for macOS and `dunneflow.ico` for Windows
-come out of the same composed 1024 canvas, so the two platforms show the same mark. Pillow
-writes the `.ico` and runs anywhere; `iconutil` writes the `.icns` and is macOS's alone, so
-off a Mac the `.icns` is left alone and the script says so.
+**Three containers, one master.** `dunneflow.icns` for macOS, `dunneflow.ico` for Windows
+and the `hicolor/` PNG tree for Linux all come out of the same composed 1024 canvas, so the
+three platforms show the same mark. Pillow writes the `.ico` and the PNGs and runs anywhere;
+`iconutil` writes the `.icns` and is macOS's alone, so off a Mac the `.icns` is left alone
+and the script says so.
 
 The canvas rules are `build_icon.py`'s, copied deliberately so the two candidates can be
 compared at the same size without one of them having an advantage the other does not:
@@ -33,6 +34,16 @@ Both the drawing and the `.icns` are committed, and regenerating from the one gi
 byte for byte:
 
     uv run --with pillow python packaging/icon/build_supplied_icon.py packaging/icon/rabbit-head.png
+
+**That sentence needs its condition, which it did not have until somebody ran this on a third
+machine** (rule 24). *Byte for byte* holds against **the Pillow the committed file was written
+with**, and not across versions of it: re-run on Pillow 12.3.0, `dunneflow.ico` came out
+**98,590 bytes against the committed 100,255** -- same ladder, same master, same visible mark,
+a different encoder. Nothing is wrong with either file. What is wrong is reading a byte
+comparison as a check that the drawing has not changed, because it also fails when only the
+library did. So a run that rewrites a committed container on a machine that is not the one it
+was made on should be **reverted rather than committed**: the mark is identical and the churn
+is not.
 
 **What the larger source bought**, measured: the upscale to a 1024px canvas fell from
 **3.85x to 1.28x**, so 512 and 1024 stopped being soft. The fill contrast against the ground
@@ -77,6 +88,24 @@ LADDER = [
 # most. 256 is the largest an `.ico` holds and is stored PNG-compressed by Pillow, which is
 # what keeps the file small enough to be worth committing.
 ICO_LADDER = [16, 20, 24, 32, 40, 48, 64, 128, 256]
+
+# **The Linux ladder is a directory tree rather than a container**, and that is the whole
+# difference. An ELF executable carries no icon and a `.desktop` entry names one by *theme
+# name*, so what ships is the freedesktop hicolor layout -- one PNG per size, found by the
+# icon theme at whatever size the thing drawing it asked for.
+#
+# These are the hicolor specification's own sizes, and the small end of the list is where a
+# reader actually meets them: a window list and Alt-Tab ask for 22 or 24, the XFCE
+# applications menu for 24 or 32, a GNOME app grid for 48 or 256. Neither the macOS ladder
+# nor the Windows one holds 22 or 96, which is why this is written out rather than derived
+# from either (`ICO_LADDER`'s argument about 48, one platform over).
+#
+# **Committed, like the two containers and for the same reason**: installing must not need
+# Pillow. And from *this* master, never from `dunneflow.svg` beside it -- that file is
+# `build_icon.py`'s geometric candidate, which was not the one chosen, and shipping it as
+# `scalable/` would put a different mark on Linux than the one in the Dock and the taskbar.
+# One drawing, three containers.
+HICOLOR_LADDER = [16, 22, 24, 32, 48, 64, 96, 128, 256, 512]
 
 
 def luminance(rgb: tuple[int, ...]) -> float:
@@ -237,6 +266,18 @@ def main() -> int:
     # than two drawings of one rabbit. A squared-off Windows variant is the alternative and
     # was not taken: it would mean two masters, and the first time one of them was
     # regenerated they would stop agreeing.
+    # The hicolor tree, laid out exactly as it is installed, so `release-linux.sh install`
+    # is a copy and never a second opinion about where an icon goes (rule 51).
+    written = 0
+    for px in HICOLOR_LADDER:
+        into = HERE / "hicolor" / f"{px}x{px}" / "apps"
+        into.mkdir(parents=True, exist_ok=True)
+        master.resize((px, px), Image.LANCZOS).save(into / "dunneflow.png")
+        written += (into / "dunneflow.png").stat().st_size
+    print(f"\nwrote {HERE / 'hicolor'}  ({written:,} bytes over "
+          f"{len(HICOLOR_LADDER)} sizes: "
+          f"{', '.join(str(s) for s in HICOLOR_LADDER)})")
+
     ico = HERE / "dunneflow.ico"
     master.save(ico, format="ICO",
                 sizes=[(px, px) for px in ICO_LADDER])

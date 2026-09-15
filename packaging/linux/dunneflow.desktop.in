@@ -1,0 +1,36 @@
+[Desktop Entry]
+# How DunneFlow appears in a Linux application menu. `release-linux.sh install` writes the
+# installed copy from this one, substituting @EXEC@ for the path it put the binary at --
+# a template rather than a file, because a per-user install lives under the reader's own
+# home directory and no committed line can know that path.
+#
+# `Version` is the **desktop entry specification's** version and never this program's. It
+# reads like the application's version and is not, which is the one field in this file
+# somebody will get wrong.
+Version=1.0
+Type=Application
+Name=DunneFlow
+GenericName=Program Map
+Comment=Map what moves through a program: entrypoints, flows, routines, and boundaries
+Exec=@EXEC@
+Icon=dunneflow
+Terminal=false
+
+# **`StartupNotify=false`, and it is measured rather than conventional.** The launcher's
+# busy cursor is cleared by the window the started process maps -- and this process maps
+# none: it serves on localhost and opens the reader's browser, which is a different process
+# the notification never reaches. Left true, every launch would spin for the twenty seconds
+# a desktop waits before giving up on an application that did in fact start. There is no
+# `StartupWMClass` for the same reason: there is no window to name.
+#
+# The problem that buys on macOS -- a reader who sees nothing and launches it again -- is
+# already answered here and answered better. `already_serving` joins a second launch to the
+# first one's server and opens the browser at it, so a double-click while it is running is
+# not a second server on a second port. That is the Dock running-indicator's whole job,
+# done by the program rather than by the window server.
+StartupNotify=false
+
+# Development is what it is; Documentation is what it produces. Both are registered
+# freedesktop main categories, so no `X-` prefix and nothing invented.
+Categories=Development;Documentation;
+Keywords=code;map;graph;call graph;analysis;entrypoint;boundary;

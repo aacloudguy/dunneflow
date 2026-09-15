@@ -84,16 +84,31 @@ from PyInstaller.utils.hooks import copy_metadata
 ROOT = Path(SPECPATH).parent           # noqa: F821 -- SPECPATH is PyInstaller's
 PKG = ROOT / "src" / "dunneflow"
 
+# **Three platforms, asked once.** `_WINDOWS` was the only one named, and everything else
+# read as "not Windows" -- which was true while there were two and quietly wrong the moment
+# there were three: `BUNDLE` was guarded by `if not _WINDOWS`, so a Linux build would have
+# tried to produce a `.app`. A negation is a fine way to say *the other one* and no way at
+# all to say *the other two* (rule 51's shape, in a boolean).
+_MACOS = sys.platform == "darwin"
+_WINDOWS = sys.platform == "win32"
+_LINUX = sys.platform.startswith("linux")
+
 # The icon, and it is **named rather than found**: PyInstaller takes `icon=None` without a
 # word, so a path that has stopped existing would build a perfectly good application with
 # the generic bundle icon and nothing anywhere would say so (rule 49). A build asked for an
 # icon that is not there should fail while somebody is watching it.
 #
-# One container per platform, out of one drawing -- `build_supplied_icon.py` writes both from
-# the same composed canvas, so this is a choice of file and never a second icon.
-ICON = ROOT / "packaging" / "icon" / (
-    "dunneflow.ico" if sys.platform == "win32" else "dunneflow.icns")
-if not ICON.exists():
+# One container per platform, out of one drawing -- `build_supplied_icon.py` writes them all
+# from the same composed canvas, so this is a choice of file and never a second icon.
+#
+# **Linux is `None`, and that is the whole answer rather than a gap.** An ELF executable
+# carries no icon: what a reader sees in the menu is the PNG named by the `.desktop` entry,
+# and that pair is installed by `release-linux.sh` rather than embedded by anything here. So
+# there is nothing for this file to require, and requiring the `.icns` anyway -- which is what
+# "not Windows" used to do -- would fail a Linux build over a file it would then not use.
+ICON = None if _LINUX else ROOT / "packaging" / "icon" / (
+    "dunneflow.ico" if _WINDOWS else "dunneflow.icns")
+if ICON is not None and not ICON.exists():
     raise SystemExit(
         f"{ICON} is not there — build it first:\n"
         f"  uv run --with pillow python packaging/icon/build_supplied_icon.py "
@@ -117,20 +132,25 @@ def _target_arch() -> str | None:
     The check is on `sys._base_executable` rather than `sys.executable`, because a virtual
     environment's `python` is a stub that says nothing about the interpreter behind it.
     """
-    if sys.platform != "darwin":
-        # **`target_arch` is Mach-O's and nothing else has one.** A PE holds one
-        # architecture and PyInstaller builds for the interpreter running it, so there is no
-        # choice here to make -- but a `DUNNEFLOW_ARCH` somebody set out of habit must not be
-        # *accepted and ignored*, which is how a person comes to believe they built something
-        # they did not. `host` is the one word that is true everywhere, so it is the one word
-        # this takes.
+    if not _MACOS:
+        # **`target_arch` is Mach-O's and nothing else has one.** A PE and an ELF each hold
+        # one architecture and PyInstaller builds for the interpreter running it, so there is
+        # no choice here to make -- but a `DUNNEFLOW_ARCH` somebody set out of habit must not
+        # be *accepted and ignored*, which is how a person comes to believe they built
+        # something they did not. `host` is the one word that is true everywhere, so it is
+        # the one word this takes.
+        #
+        # **A fat ELF is not a counter-example.** `FatELF` was proposed and never merged, and
+        # a `lipo` for Linux does not exist -- so a machine that wants both architectures
+        # builds twice, on two machines, which is a different answer to a different question
+        # and not something this variable could ever have expressed.
         asked = os.environ.get("DUNNEFLOW_ARCH", "").strip()
         if asked and asked not in ("host", "native"):
+            kind = "An ELF executable" if _LINUX else "A Windows executable"
             raise SystemExit(
                 f"DUNNEFLOW_ARCH={asked!r} is a macOS answer and this is {sys.platform}. "
-                "A Windows executable holds one architecture, the one this interpreter is "
-                "built for, and there is nothing here to choose. Leave it unset, or set it "
-                "to 'host'."
+                f"{kind} holds one architecture, the one this interpreter is built for, and "
+                "there is nothing here to choose. Leave it unset, or set it to 'host'."
             )
         return None
 
@@ -222,8 +242,6 @@ a = Analysis(                                   # noqa: F821
 )
 pyz = PYZ(a.pure)                               # noqa: F821
 
-_WINDOWS = sys.platform == "win32"
-
 exe = EXE(                                      # noqa: F821
     pyz,
     a.scripts,
@@ -267,7 +285,7 @@ coll = COLLECT(                                 # noqa: F821
     name="dunneflow",
 )
 
-if not _WINDOWS:
+if _MACOS:
     app = BUNDLE(                               # noqa: F821
         coll,
         name="DunneFlow.app",

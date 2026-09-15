@@ -366,6 +366,8 @@ SPEC = SRC.parent.parent / "packaging" / "dunneflow.spec"
 ENTRY = SRC.parent.parent / "packaging" / "dunneflow_app.py"
 RELEASE = SRC.parent.parent / "packaging" / "release.sh"
 RELEASE_PS1 = SRC.parent.parent / "packaging" / "release.ps1"
+RELEASE_LINUX = SRC.parent.parent / "packaging" / "release-linux.sh"
+DESKTOP_IN = SRC.parent.parent / "packaging" / "linux" / "dunneflow.desktop.in"
 ENTITLEMENTS = SRC.parent.parent / "packaging" / "entitlements.plist"
 
 
@@ -519,11 +521,18 @@ def test_a_universal_build_refuses_rather_than_coming_out_single_arch(monkeypatc
     # `PyInstaller.utils.osx` needs `macholib`, which is genuinely absent off a Mac, so an
     # import at the top of the file would make this spec unreadable there rather than
     # merely inapplicable.
-    # `ast.unparse` normalises every string literal to single quotes, so the comparison is
-    # written in its spelling rather than the file's.
+    # **Asserted on the guard's name, and then on what that name means.** This read the
+    # literal `sys.platform != 'darwin'` until Linux arrived and the spec started naming its
+    # three platforms once at the top -- at which point the test failed over a rename while
+    # the property it defends was untouched. Reading a name is only safe if the name's
+    # definition is read too: a `_MACOS` quietly redefined as anything else would otherwise
+    # satisfy the ordering below while guarding nothing (rule 37).
     body = ast.unparse(func)
-    assert body.index("sys.platform != 'darwin'") < body.index("PyInstaller.utils.osx"), (
+    assert body.index("not _MACOS") < body.index("PyInstaller.utils.osx"), (
         "the spec reaches for a macOS-only module before it has refused the platform"
+    )
+    assert "_MACOS = sys.platform == 'darwin'" in ast.unparse(tree), (
+        "_MACOS no longer asks which platform this is, so the guard above guards nothing"
     )
     # And the answer is asked of the real interpreter, never of the virtual environment's
     # stub, which says nothing about what is behind it.
@@ -562,6 +571,108 @@ def test_the_windows_script_and_the_spec_name_the_same_executables():
     # to be one that *cannot* be, by reading it (rule 13 -- a claim a query can answer).
     for word in ("Invoke-RestMethod", "Invoke-WebRequest", "curl", "Start-BitsTransfer"):
         assert word not in script, f"release.ps1 reaches the network with {word}"
+
+
+def test_a_linux_build_makes_no_app_bundle():
+    """`BUNDLE` is macOS's, and it was guarded by *not Windows*.
+
+    That was true while there were two platforms and silently wrong the moment there were
+    three: asked for on Linux it produces a directory with a plist in it that nothing can
+    launch, and PyInstaller reports success. A negation is a fine way to say *the other one*
+    and no way at all to say *the other two*.
+
+    Read out of the `if` that encloses the call rather than out of the file's text, so a
+    second `BUNDLE` added under a different guard cannot hide behind the first one's.
+    """
+    tree = ast.parse(SPEC.read_text(encoding="utf-8"))
+    guarded = [n for n in ast.walk(tree)
+               if isinstance(n, ast.If)
+               and any(isinstance(c, ast.Call) and getattr(c.func, "id", "") == "BUNDLE"
+                       for c in ast.walk(n))]
+    assert guarded, "the spec no longer builds a macOS bundle at all"
+    for node in guarded:
+        assert ast.unparse(node.test) == "_MACOS", (
+            f"BUNDLE is built under `{ast.unparse(node.test)}`, which is not a test for macOS"
+        )
+
+
+def test_the_linux_script_and_the_spec_name_the_same_things():
+    """Rule 41 a third time: a claim in a shell script, a population in the spec.
+
+    The script copies a directory and links a binary by name; the spec decides both names.
+    Disagree and `install` reports that a file it is sitting on top of is missing.
+
+    **The icon is the third name and the one with no compiler behind it.** An ELF carries
+    none, so what a reader sees in the menu is whatever the desktop entry's `Icon=` resolves
+    to in the icon theme -- a *string*, matched against filenames on disk. Spelled two ways,
+    the entry is valid, the install succeeds, every check passes, and the menu shows a
+    generic grey square.
+    """
+    tree = ast.parse(SPEC.read_text(encoding="utf-8"))
+    names = [ast.literal_eval(k.value)
+             for n in ast.walk(tree)
+             if isinstance(n, ast.Call) and getattr(n.func, "id", "") == "COLLECT"
+             for k in n.keywords if k.arg == "name" and isinstance(k.value, ast.Constant)]
+    assert names == ["dunneflow"], f"the spec collects into {names}"
+
+    script = RELEASE_LINUX.read_text(encoding="utf-8")
+    assert f'APP="$DIST/{names[0]}"' in script, "release-linux.sh looks for another directory"
+    assert 'BIN="$APP/dunneflow"' in script, "release-linux.sh looks for another executable"
+
+    entry = DESKTOP_IN.read_text(encoding="utf-8")
+    icon = next(line.split("=", 1)[1].strip()
+                for line in entry.splitlines() if line.startswith("Icon="))
+    ladder = sorted((SRC.parent.parent / "packaging" / "icon" / "hicolor").rglob("*.png"))
+    assert ladder, "the hicolor ladder is not committed"
+    for png in ladder:
+        assert png.stem == icon, (
+            f"the desktop entry asks the icon theme for {icon!r} and the committed ladder "
+            f"holds {png.stem!r} — the menu would draw a generic square"
+        )
+
+    # Nothing in this script may reach a network, on `release.ps1`'s argument: a release
+    # that is not to be published has to be one that *cannot* be, by reading it (rule 13).
+    for word in ("curl", "wget", "http://", "https://", "scp ", "rsync "):
+        assert word not in script, f"release-linux.sh reaches the network with {word!r}"
+
+
+def test_a_linux_install_never_lands_inside_the_maps_root(monkeypatch):
+    """**The one genuinely Linux-shaped trap in the packaging**, and it has no counterpart.
+
+    On macOS the application is in `/Applications` and its data in `~/Library/Application
+    Support/DunneFlow`; on Windows, `%LOCALAPPDATA%\\DunneFlow` beside a program somewhere
+    else. Neither pair can collide. On Linux the obvious place for an application's files
+    under `$HOME` and the obvious place for its data are **the same directory** --
+    `~/.local/share/DunneFlow` -- and that is exactly what `platform_output_root()` answers.
+
+    Installed there, the program would sit inside the tree its own `Move…` offers to
+    relocate and inside the corpus its own analyses walk, and nothing would say so until a
+    reader moved their maps to an external disk and took the application with them.
+
+    Asserted against the function rather than against a spelling, so moving the maps root
+    moves this test with it -- and **asked of the Linux branch on whatever machine is
+    running**, rather than of this one. Written against `platform_output_root()` as it
+    answers here, it would have failed on a Mac for the reason it exists: there the two
+    directories are nowhere near each other, which is the whole point being made.
+    """
+    monkeypatch.setattr(sys, "platform", "linux")
+    monkeypatch.delenv("XDG_DATA_HOME", raising=False)
+    script = RELEASE_LINUX.read_text(encoding="utf-8")
+    installs = [line.split("=", 1)[1].strip().strip('"')
+                for line in script.splitlines()
+                if line.startswith(("LIBDIR=", "BINLINK=", "DESKTOP=", "ICONS="))]
+    assert len(installs) == 4, f"the install targets changed shape: {installs}"
+
+    maps = runtime.platform_output_root()
+    assert maps.parent.name == "share" and maps.name == "DunneFlow", (
+        f"this test is written against {maps} and the maps root has moved"
+    )
+    for target in installs:
+        landed = Path(target.replace("$PREFIX", str(Path.home() / ".local")))
+        assert maps not in landed.parents and landed != maps, (
+            f"{target} installs into the reader's maps root — the application would be "
+            f"inside the directory it offers to move"
+        )
 
 
 def test_the_windows_script_can_be_read_by_the_powershell_windows_ships_with():

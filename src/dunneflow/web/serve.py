@@ -19,6 +19,7 @@ apart again.
 from __future__ import annotations
 
 import json
+import os
 import socket
 import subprocess
 import sys
@@ -3550,9 +3551,93 @@ _WINDOWS_PICKER = (
 # read through `getattr` because the constant does not exist in `subprocess` anywhere else.
 _NO_CONSOLE = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
+# **Linux ships no one dialog, so it has a short list of them and a fixed order.** macOS and
+# Windows each have exactly one thing that can ask a person for a folder and it is always
+# there; a Linux desktop has whichever its toolkit brought, and plenty have both or neither.
+# So this is the one list (rule 51), tried in order, and a machine with none of them refuses
+# in a sentence naming what would give it one (rule 89) rather than pretending. That refusal
+# is affordable for the reason the whole family is: the typed field is the control and the
+# picker is a convenience over it (design rule 2).
+#
+# **Both spell the outcome the same way**, which is what lets one reader serve two commands:
+# exit 0 with the path on stdout, exit 1 for a cancel. Measured on zenity 3.44.2 -- a dialog
+# closed from the window manager's own button exits 1 with **nothing at all on stderr**.
+#
+# `org.freedesktop.portal.FileChooser` is the modern answer and is deliberately not here: it
+# returns its result over a signal on a Request object, so reading it means subscribing to
+# the session bus, which means a D-Bus binding this tool does not have and will not grow for
+# a convenience. Under a portal-backed desktop `zenity` opens the portal's own dialog anyway.
+_PICK_PROMPT = "Choose a directory for DunneFlow to read"
+_LINUX_PICKERS: tuple[tuple[str, list[str]], ...] = (
+    ("zenity", ["zenity", "--file-selection", "--directory", "--title", _PICK_PROMPT]),
+    ("kdialog", ["kdialog", "--title", _PICK_PROMPT,
+                 "--getexistingdirectory", str(Path.home())]),
+)
+
+# **Two rungs for the reveal, and the first is the standards-track one.**
+# `org.freedesktop.FileManager1.ShowFolders` is the desktop's own *reveal*: an activatable
+# D-Bus service every major file manager implements, so it starts one that is not already
+# running, and it consults no MIME default at all. `xdg-open` is the second rung and is the
+# one everybody reaches for first -- it works, and it is not quite this question. It hands the
+# directory to whatever the desktop says opens `inode/directory`, and **measured on the
+# machine this was written on that is `org.gnome.baobab.desktop`**, a disk usage analyser. It
+# opened Thunar regardless, because XFCE's `xdg-open` routes through `exo-open` and never
+# reads that default -- so one rung is right by construction and the other was right by luck,
+# and they are in that order for that reason.
+#
+# **`--print-reply` is load-bearing.** Without it `dbus-send` does not wait, and exits 0 for
+# having sent a message nobody may be listening for -- so a desktop with no file manager on
+# the bus would report a successful reveal and never reach the second rung (rule 76: an echo
+# is not an act). With it the exit code is the call's own answer. Its timeout is set inside
+# the one this process applies, so the rung reports rather than being killed mid-ladder.
+_REVEAL_BUS = [
+    "dbus-send", "--session", "--print-reply", "--reply-timeout=6000",
+    "--dest=org.freedesktop.FileManager1", "/org/freedesktop/FileManager1",
+    "org.freedesktop.FileManager1.ShowFolders",
+]
+
 NO_PICKER = ("the folder picker is not available on this platform — "
              "type the whole path instead")
 NO_REVEAL = "showing a directory in a file manager is not available on this platform"
+NO_LINUX_PICKER = ("no folder picker is installed — zenity or kdialog would give you one; "
+                   "type the whole path instead")
+NO_SESSION = ("there is no desktop session here to open a window in — "
+              "type the whole path instead")
+NO_SESSION_REVEAL = "there is no desktop session here to show a directory in"
+
+
+def _desktop_session() -> bool:
+    """Is there a screen to put a window on?
+
+    Asked of the environment rather than of a platform, which is the honest question (rule
+    30): a Linux build serving over SSH with no forwarding is the same state as one on a
+    headless box, and the reader in both cases is looking at a browser somewhere else.
+
+    **It is asked before anything is spawned, and that is what makes the cancel readable.**
+    Measured on zenity 3.44.2: a cancel exits **1 with an empty stderr**, and a failure to
+    open the display exits **1 with a line on stderr** -- the same code, told apart only by
+    text that a perfectly healthy desktop also writes for its own harmless reasons. Ruling
+    out the failure that actually happens, in advance and by name, is what leaves exit 1
+    meaning one thing.
+    """
+    return bool(os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"))
+
+
+def _picker_order() -> tuple[tuple[str, list[str]], ...]:
+    """Which dialog to try first, which is a question about the desktop and not the folder.
+
+    A GTK dialog on Plasma and a Qt dialog on GNOME both *work*; each simply looks like it
+    came from somewhere else, and this is the one window in the tool a reader navigates
+    rather than reads. `XDG_CURRENT_DESKTOP` is the standard way to ask and every session
+    manager sets it.
+
+    `sorted` is stable, so this promotes one entry and leaves the rest in the order declared
+    above -- rather than expressing a two-element preference as a reversal that a third
+    picker would silently break.
+    """
+    kde = "kde" in os.environ.get("XDG_CURRENT_DESKTOP", "").lower()
+    first = "kdialog" if kde else "zenity"
+    return tuple(sorted(_LINUX_PICKERS, key=lambda entry: entry[0] != first))
 
 
 def pick_folder() -> tuple[str, str]:
@@ -3605,7 +3690,87 @@ def pick_folder() -> tuple[str, str]:
             return "", (said[0] if said else "the picker failed")
         return done.stdout.strip() or "", ""
 
+    if sys.platform == "linux":
+        if not _desktop_session():
+            return "", NO_SESSION
+        for name, argv in _picker_order():
+            try:
+                done = subprocess.run(argv, capture_output=True, text=True,
+                                      encoding="utf-8", errors="replace", timeout=180)
+            except FileNotFoundError:
+                # Not installed. **The one failure that is not this picker's answer**, so it
+                # is the one that falls through to the next rather than being reported: a
+                # reader on Plasma with no zenity must not be told the picker failed when
+                # kdialog is sitting right there.
+                continue
+            except (OSError, subprocess.TimeoutExpired):
+                return "", "the picker did not answer — type the whole path instead"
+            if done.returncode == 0:
+                # `rstrip` and then *the path back again*, because `/` is a directory whose
+                # whole spelling is its separator -- stripped, it becomes the empty string,
+                # which this function already spends three outcomes distinguishing from a
+                # path. Absurd as a source tree and cheap to not get wrong.
+                picked = done.stdout.strip()
+                return (picked.rstrip("/") or picked), ""
+            if done.returncode == 1:
+                # A cancel. **The residue is stated rather than hidden**: a dialog that
+                # opened and then broke exits this way too and is reported as a cancel. That
+                # is the trade `_desktop_session` buys -- the failure that actually happens
+                # is refused before anything is spawned, and what remains has no measured
+                # discriminator, only stderr text a healthy desktop also writes.
+                return "", ""
+            said = (done.stderr or "").strip().splitlines()
+            return "", (said[0] if said else f"{name} failed")
+        # Every picker tried and none of them installed. Rule 89: the sentence names the two
+        # packages that would answer, because the reader's alternative is to type a path and
+        # they may prefer to fix it once.
+        return "", NO_LINUX_PICKER
+
     return "", NO_PICKER
+
+
+def _reveal_linux(target: Path) -> tuple[bool, str]:
+    """Show one directory on a Linux desktop, by the two means a desktop offers.
+
+    The rungs and why they are in this order are stated at `_REVEAL_BUS` above. What is
+    worth saying here is what happens when they run out.
+
+    **The last rung's reason is the one reported, not the first.** A ladder that kept its
+    earliest complaint would answer *"dbus-send is not installed"* on a machine where the
+    interesting fact is what `xdg-open` said -- and `xdg-open` is the rung every desktop has,
+    so its refusal is the one a reader can act on (rule 89). The first rung failing is
+    ordinary: plenty of sessions have no file manager on the bus, and that is precisely the
+    case the second rung exists for.
+
+    Permission is not asked about here, exactly as on the other two platforms: `_p_reveal`
+    bounds the path to the output root before anything is spawned, because this hands a path
+    to the desktop and a localhost POST is a thing a page in another tab can send.
+    """
+    if not _desktop_session():
+        return False, NO_SESSION_REVEAL
+    # `as_uri` percent-encodes, which the bus requires and a space in a directory name would
+    # otherwise break; `str(target)` is what a command line wants. Two spellings of one path
+    # because the two rungs are genuinely different interfaces, not one with a flag.
+    rungs = [
+        [*_REVEAL_BUS, f"array:string:{target.as_uri()}", "string:"],
+        ["xdg-open", str(target)],
+    ]
+    why = NO_REVEAL
+    for argv in rungs:
+        try:
+            done = subprocess.run(argv, capture_output=True, text=True,
+                                  encoding="utf-8", errors="replace", timeout=10)
+        except FileNotFoundError:
+            why = f"{argv[0]} is not installed"
+            continue
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            why = str(exc)
+            continue
+        if done.returncode == 0:
+            return True, ""
+        said = (done.stderr or "").strip().splitlines()
+        why = said[-1] if said else f"{argv[0]} exited {done.returncode}"
+    return False, why
 
 
 def reveal_dir(target: Path) -> tuple[bool, str]:
@@ -3620,6 +3785,10 @@ def reveal_dir(target: Path) -> tuple[bool, str]:
     would report every successful reveal as a broken one, and there is no code it gives that
     means anything else (rule 30 -- this is not a status, whatever its shape).
     """
+    # Linux is a ladder rather than one command, so it answers for itself; see
+    # `_reveal_linux`. The two that *are* one command keep the shape below.
+    if sys.platform == "linux":
+        return _reveal_linux(target)
     # Bound before the branches rather than in an `else`, so the refusal is one statement
     # on every platform and mypy can check all three of them from any one of them.
     argv: list[str] = []

@@ -20,13 +20,20 @@ the claim, and prints it beside the geometric icon's for the same ground.
 
 Run it: `uv run --with pillow python packaging/icon/build_supplied_icon.py <source.jpg>`
 
-**The icon the application ships** is `dunneflow.icns`, made from `hare-head.jpg` beside it
--- a zoomed head-only crop of Tom's leaping hare, chosen over the full-body drawing and over
-`build_icon.py`'s geometry because it is the only one of the three that still reads as a hare
-at 32px and at 16px. Both the drawing and the `.icns` are committed, and regenerating from the
-one gives the other byte for byte:
+**The icon the application ships** is `dunneflow.icns`, made from `rabbit-head.png` beside
+it -- Tom's rabbit head at 800x528, which replaced a 266px crop of the same subject. Head-only
+rather than the whole leaping animal, and that was settled by looking: it is the only framing
+that still reads as a rabbit at 32px and at 16px, where the full-body drawing is a smudge.
+Both the drawing and the `.icns` are committed, and regenerating from the one gives the other
+byte for byte:
 
-    uv run --with pillow python packaging/icon/build_supplied_icon.py packaging/icon/hare-head.jpg
+    uv run --with pillow python packaging/icon/build_supplied_icon.py packaging/icon/rabbit-head.png
+
+**What the larger source bought**, measured: the upscale to a 1024px canvas fell from
+**3.85x to 1.28x**, so 512 and 1024 stopped being soft. The fill contrast against the ground
+is unchanged at 1.75:1 -- what carries the shape at small sizes is the dark outline, which is
+heavier in this drawing, and the four-point star reads where the old fan of thin rays turned
+to mush below 64px.
 """
 
 from __future__ import annotations
@@ -114,17 +121,43 @@ def rounded_mask(size: int, radius: int) -> Image.Image:
 
 
 def compose(source: Path) -> Image.Image:
+    """The drawing on the icon canvas, **keeping whatever bleed the artist drew**.
+
+    An edge the subject already runs off is a decision, not an accident, and centring
+    undoes it: the rabbit is cut level at the neck because it is meant to run off the
+    bottom, and centring floats that cut in the middle of the canvas with blue underneath,
+    where it reads as a picture that failed to load rather than a head leaning out of its
+    frame. So every edge the art meets in its *own* frame it meets in this one too, and
+    only the edges it left a margin on get ground.
+
+    Centring is still right for a drawing that sits inside its frame on all four sides,
+    which is the case this started with -- so the rule is read off the source rather than
+    switched on by a flag (rule 30: the drawing says which it is).
+    """
     src = Image.open(source).convert("RGB")
     bg = ground(src)
     left, top, right, bottom = art_box(src, bg)
     art = src.crop((left, top, right, bottom))
 
-    target_w = round(SIZE * ART_WIDTH)
+    bleeds_l, bleeds_r = left == 0, right == src.width
+    bleeds_t, bleeds_b = top == 0, bottom == src.height
+
+    # Full width when it runs off both sides -- the corner radius takes the extremes, which
+    # is what a bleed is for. Otherwise the stated inset, so nothing sits in the rounding.
+    target_w = SIZE if (bleeds_l and bleeds_r) else round(SIZE * ART_WIDTH)
     target_h = round(art.height * target_w / art.width)
     art = art.resize((target_w, target_h), Image.LANCZOS)
 
+    x = 0 if bleeds_l else (SIZE - target_w if bleeds_r else (SIZE - target_w) // 2)
+    if bleeds_t and not bleeds_b:
+        y = 0
+    elif bleeds_b and not bleeds_t:
+        y = SIZE - target_h
+    else:
+        y = (SIZE - target_h) // 2
+
     canvas = Image.new("RGB", (SIZE, SIZE), bg)
-    canvas.paste(art, ((SIZE - target_w) // 2, (SIZE - target_h) // 2))
+    canvas.paste(art, (x, y))
 
     out = canvas.convert("RGBA")
     out.putalpha(rounded_mask(SIZE, CORNER))

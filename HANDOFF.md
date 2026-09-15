@@ -15004,3 +15004,55 @@ The ad-hoc host build that stood in `/Applications` for part of the day is gone,
 this one. The notarised 2026-09-10 build is still parked at
 `~/Library/Application Support/DunneFlow-builds/` (53 MB); it is superseded now and can be
 deleted whenever Tom wants — left alone rather than swept up, since it is his.
+
+## 2026-09-15 — the icon settled, and a second release
+
+Tom supplied `rabbit_icon.png` at **800×528**, replacing the 266px crop that shipped an hour
+earlier, and the numbers say what it bought. The upscale to a 1024 canvas falls from **3.85×
+to 1.28×**, so 512 and 1024 stop being soft — which was the one stated cost of the previous
+one. Fill contrast is **unchanged at 1.75:1** against the same ground, and that is worth
+recording rather than glossing: the ratio `build_icon.py`'s docstring warns about is not what
+decides this icon. The **dark outline** carries the silhouette where the fill cannot, and it
+is heavier in this drawing; the four-point star reads where the old fan of thin rays turned to
+mush below 64px. Compared at 128 · 64 · 32 · 16 against the one it replaced, it is better at
+every one.
+
+**The conditioner learned one rule from it, and it is a rule rather than a fix.** `compose()`
+centred the art on the canvas, which was right for a drawing that sits inside its own frame on
+all four sides — the first candidate did. This one runs off its **left, right and bottom**
+(measured: margins 0, 0, 0, with 26px only at the top), because the rabbit is cut level at the
+neck to lean out of frame. Centring undid that: it floated the flat cut in mid-canvas with
+blue underneath, where it reads as an image that failed to load rather than a head leaning
+out. So every edge the art meets in its own frame it now meets in this one, full-bleed
+horizontally when it runs off both sides, and only the edges with a margin get ground. **Read
+off the source, never set by a flag** (rule 30) — the drawing says which kind it is, and
+centring is still what a fully-inset drawing gets.
+
+`./packaging/release.sh all` again, unattended: universal2, Developer ID, notarised
+(**Accepted**), stapled, `DunneFlow-0.1.0.dmg`, installed. Verified in place: Gatekeeper
+`accepted / source=Notarized Developer ID`, **53 of 53 Mach-O files universal**, `stapler
+validate` passes, the bundle's `.icns` is byte-identical to the committed one, and the icon
+was pulled back out through LaunchServices to confirm macOS draws it at 128 · 64 · 32 · 16.
+
+### Deleted, superseded
+
+Tom: *"delete anything that is superceded."*
+
+* Eleven loose images in the repository root — the icon exploration (`rabbit_cartoon`,
+  `rabbit_outline`, `rabbit_photo`, `rabbit_stylized`, `riverimagery`, `river-icons…`,
+  `flowimages`, `flowimages2`), the first crop `Another_icon.jpg`, and `rabbit_head.png`, a
+  higher-resolution drawing in a different, outline-free style that Tom did not choose. The
+  chosen drawing is committed as `packaging/icon/rabbit-head.png` and is the only copy kept.
+* `python-3.12.10-macos11.pkg` (44 MB) — the universal2 interpreter, installed since
+  2026-09-10 and one `curl` away in `release.sh`'s own header.
+* `~/Library/Application Support/DunneFlow-builds/` (53 MB) — the notarised 2026-09-10 build,
+  parked this morning as a safety net while an ad-hoc build stood in `/Applications`. Two
+  notarised releases later it is not a net any more.
+* Every regenerable render under `packaging/icon/` — both ladders, the `.iconset` and the
+  comparison sheets. `rsvg-convert` was checked to be present before the geometric ladder went,
+  or they would have been unremakeable here rather than merely absent.
+
+**Kept, and it is a judgement rather than an oversight:** `build_icon.py` and `dunneflow.svg`.
+The icon they draw is not the one that ships, but that docstring is where the 32px contrast
+rule was earned, and it is what every candidate since has been measured against. Deleting the
+drawing would have thrown away the reasoning with it.

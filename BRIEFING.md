@@ -310,36 +310,41 @@ start page, and `/start` is reachable by URL when the shell has stopped working.
    checkout, so the defect that started the day cannot be reproduced with the application that
    shipped. It stamps `9:e8c9ac8a851c41b7`, the checkout's (rule 12), which is the first time a
    *universal* build has been asked. See `HANDOFF.md` under 2026-09-15.
-1. **The icon — wired in and installed for testing, 2026-09-15, and waiting on Tom's eye.**
-   `icon=None` is gone: the spec names `packaging/icon/dunneflow.icns` and **refuses to build
-   without it** rather than shipping the generic bundle icon in silence (rule 49).
+1. ~~**The icon.**~~ *Settled and shipped 2026-09-15.* `icon=None` is gone: the spec names
+   `packaging/icon/dunneflow.icns` and **refuses to build without it** rather than shipping the
+   generic bundle icon in silence (rule 49).
 
-   Three candidates exist and the choice was made on a measurement. `build_icon.py` still draws
-   the hare over a river as geometry; Tom supplied a drawing of a leaping hare, and then a
-   zoomed **head-only** crop of it. `build_supplied_icon.py` is the conditioner that squares,
-   scales, rounds and ladders a supplied drawing under `build_icon.py`'s own canvas rules, and
-   prints what it measures. The drawing's fill is **1.73:1** against its ground where the
-   geometric hare is **4.74:1** on the same blue — which is the ratio `build_icon.py`'s
-   docstring already records a candidate failing at 32px for. What the number misses is the
-   dark navy outline, which carries the silhouette where the fill cannot.
+   It is Tom's rabbit head — `packaging/icon/rabbit-head.png`, 800×528, committed beside the
+   `.icns` it regenerates byte for byte. **Head-only rather than the whole leaping animal, and
+   that was settled by looking**: it is the only framing that still reads as a rabbit at 32px
+   and 16px, where the full-body drawing is a smudge. Three candidates were built and compared
+   at 128 · 64 · 32 · 16, and the answer was checked against what macOS itself draws from the
+   installed bundle rather than against the source files.
 
-   **The head-only crop is installed**, because it is the only one of the three that still
-   reads as a hare at 32px and at 16px — ears, eye and muzzle all survive, verified against
-   what macOS itself draws from the installed bundle rather than against the source files. Its
-   cost is resolution: 266px of source for a 1024px icon, a **3.85×** upscale, so 512 and 1024
-   are soft on the linework by construction. If it is kept, the thing worth asking for is the
-   same drawing larger.
+   *What the drawing that replaced the first crop bought, measured:* the upscale to a 1024
+   canvas fell from **3.85× to 1.28×**, so 512 and 1024 stopped being soft. Fill contrast
+   against the ground is unchanged at **1.75:1** — the geometric hare is 4.74:1 on the same
+   blue — and that number is not what decides it: the **dark outline** carries the silhouette
+   where the fill cannot, and it is heavier here. The four-point star reads where the old fan
+   of thin rays turned to mush below 64px.
 
-   `/Applications/DunneFlow.app` is that test build — **host arch, ad-hoc signed**, so it is
-   for looking at and not for keeping. The notarised 2026-09-10 build is parked intact at
-   `~/Library/Application Support/DunneFlow-builds/`. Neither the `.icns` nor the drawing it
-   came from is committed yet; the ladder and the comparison sheets are ignored as
-   `render_*.png` already was.
+   `build_supplied_icon.py` is the conditioner — it squares, scales, rounds and ladders a
+   supplied drawing under `build_icon.py`'s own canvas rules, and prints the contrast and the
+   upscale factor so a candidate is judged on evidence. **It keeps whatever bleed the artist
+   drew**: an edge the subject already runs off is a decision, and centring undid it — the
+   rabbit is cut level at the neck to run off the bottom, and centring floated that cut in
+   mid-canvas with blue underneath, where it read as an image that failed to load. The rule is
+   read off the source, never set by a flag (rule 30).
 
-   *Found while comparing:* the geometric icon's **bottom corners are square** — the river
-   bands are drawn over the rounded rect and run to `SIZE` without being clipped to it, so
-   three sides are rounded and one is not. Visible in `render_1024.png` and in every
-   comparison sheet. Untouched, since that icon is not the candidate.
+   `build_icon.py` and `dunneflow.svg` are **kept**, though the icon they draw is not the one
+   that ships: that docstring is where the 32px contrast rule was earned, and it is what every
+   candidate since has been measured against.
+
+   *Still open, and it is a drawing question rather than a code one:* the geometric icon's
+   **bottom corners are square** — the river bands are drawn over the rounded rect and run to
+   `SIZE` without being clipped, so three sides round and one does not. Untouched, since that
+   icon is not the one that ships.
+
 2. **A `.dmg`**, whenever something needs handing to somebody. `release.sh dmg` builds, signs,
    notarises and staples one, and works now that the credentials exist.
 3. **Windows**, last, and still deliberately after everything else.

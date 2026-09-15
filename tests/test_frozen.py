@@ -204,6 +204,41 @@ def test_the_output_root_of_an_application():
     assert "Documents" not in root.parts
 
 
+@pytest.mark.skipif(sys.platform != "linux", reason="asserts this platform's own layout")
+def test_the_output_root_of_an_application_on_linux(monkeypatch):
+    """`$XDG_DATA_HOME`, and the specification's three states rather than two.
+
+    Same claim as the macOS test one specification over: an application's own data goes
+    where the platform says it goes, and never in a directory a sync client watches. The
+    XDG default is `~/.local/share`; Nextcloud, Dropbox and Drive all sync a *named*
+    directory under `$HOME` and none of them syncs that one.
+
+    **The relative case is the one worth a test.** The specification says a relative path in
+    one of these variables is invalid and must be ignored, and here that is not deference:
+    it resolves against the working directory, and a desktop entry gives a process no
+    working directory worth the name. Honoured, it would scatter maps roots wherever the
+    launcher started and report no programs from each of them in turn (rule 49).
+    """
+    monkeypatch.delenv("XDG_DATA_HOME", raising=False)
+    root = runtime.platform_output_root()
+    assert root == Path.home() / ".local" / "share" / "DunneFlow"
+    assert root.is_absolute()
+    assert "Documents" not in root.parts
+
+    monkeypatch.setenv("XDG_DATA_HOME", "")
+    assert runtime.platform_output_root() == root, "empty is unset, per the specification"
+
+    monkeypatch.setenv("XDG_DATA_HOME", "/srv/maps")
+    assert runtime.platform_output_root() == Path("/srv/maps") / "DunneFlow"
+
+    monkeypatch.setenv("XDG_DATA_HOME", "relative/share")
+    said = runtime.platform_output_root()
+    assert said == root, (
+        f"a relative XDG_DATA_HOME was honoured and put the maps root at {said}"
+    )
+    assert said.is_absolute()
+
+
 def test_an_application_that_has_chosen_nothing_gets_the_platform_root(as_frozen):
     """The two only come apart once somebody moves their maps, and this is the *before*.
 

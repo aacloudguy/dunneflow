@@ -2998,10 +2998,11 @@ class _Handler(BaseHTTPRequestHandler):
         """Show a directory in the file manager. **Only ever one inside the output root.**
 
         The root in a packaged build is the platform's own answer for an application's data
-        -- `~/Library/Application Support/DunneFlow`, or `%LOCALAPPDATA%\\DunneFlow` -- chosen
-        because neither is swept into a sync folder, and invisible in both cases to a reader
-        who wants to hand a colleague a map or delete one. A page that names a place the
-        reader cannot reach is rule 89's shape, so it opens.
+        -- `~/Library/Application Support/DunneFlow`, `%LOCALAPPDATA%\\DunneFlow`, or
+        `$XDG_DATA_HOME/DunneFlow` -- chosen because none of the three is swept into a sync
+        folder, and invisible in all three cases to a reader who wants to hand a colleague a
+        map or delete one. A page that names a place the reader cannot reach is rule 89's
+        shape, so it opens.
 
         **Bounded to the root and its programs**, because this hands a path to the shell and
         a localhost POST is a thing a page in another tab can send. A path outside is refused

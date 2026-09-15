@@ -1252,10 +1252,14 @@ def build_parser() -> argparse.ArgumentParser:
     def common(sp: argparse.ArgumentParser) -> None:
         sp.add_argument("path", help="the source tree to analyse")
         sp.add_argument("--name", help="program name (defaults to the directory name)")
+        # **Asked rather than spelled** (rule 51). This read
+        # `~/Library/Application Support/DunneFlow` as a literal, which was true of the
+        # machine it was written on and of no other -- a Windows reader was told their maps
+        # default somewhere no Windows has ever had, and a Linux reader the same. The one
+        # place that answers is the one the command itself consults.
         sp.add_argument("--output", default=None,
-                        help="output root (default: ./output, or "
-                             "~/Library/Application Support/DunneFlow "
-                             "in a packaged application)")
+                        help=f"output root (default: ./output, or "
+                             f"{platform_output_root()} in a packaged application)")
         sp.add_argument("--db", help="graph database path")
 
     a = sub.add_parser("analyze", help="extract, resolve, and write the map")

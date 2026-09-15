@@ -72,10 +72,20 @@ def platform_output_root() -> Path:
     would upload it, which is egress by accident out of a tool whose whole posture is
     deterministic and local (design rule 14).
 
-    The two non-macOS branches are the conventional locations and are **untested** -- Windows
-    is deliberately after this milestone and no Linux build is planned. They are here rather
-    than absent because a wrong default is worse than an unexercised one, and a `KeyError`
-    from an absent branch would be worse than both.
+    **Each platform's own answer to the same question, and all three are now exercised.**
+    Windows is `%LOCALAPPDATA%`, which is the same argument as Apple's: an application's own
+    data, on the boot disk, and never inside a directory a sync client watches. Linux is the
+    XDG Base Directory specification's `$XDG_DATA_HOME`, whose default is `~/.local/share` --
+    and never `~/Documents` there either, for the reason above one cloud over.
+
+    **`$XDG_DATA_HOME` is three states rather than two**, and the third is the specification's
+    own: unset or empty means the default; an absolute path is the answer; a **relative** path
+    is *invalid and must be ignored*, in the specification's words. That last one is not
+    pedantry here. A relative `XDG_DATA_HOME` resolves against the working directory, and a
+    packaged application launched from a desktop entry has no working directory worth the name
+    -- so honouring one would put `source.db` wherever the launcher happened to start, and
+    report no programs the next time it started somewhere else. A plausible value hiding the
+    failure it was written for (rule 49), and this time the value is a whole maps root.
 
     Split out of `default_output_root` when the root became movable: this is the place that
     never moves, which is what makes it the right place to keep the note saying where the
@@ -86,7 +96,9 @@ def platform_output_root() -> Path:
         return home / "Library" / "Application Support" / "DunneFlow"
     if sys.platform == "win32":
         return Path(os.environ.get("LOCALAPPDATA") or home / "AppData" / "Local") / "DunneFlow"
-    return home / ".local" / "share" / "DunneFlow"
+    said = os.environ.get("XDG_DATA_HOME", "").strip()
+    base = Path(said) if said and Path(said).is_absolute() else home / ".local" / "share"
+    return base / "DunneFlow"
 
 
 def root_pointer() -> Path:

@@ -1,10 +1,11 @@
 """Choosing where maps are kept, and moving the ones that are already there.
 
-The application writes to `~/Library/Application Support/DunneFlow`, which is the right
-place for an application's own data and is on the boot disk. Maps are not small -- one
-Society snapshot is 168 MB, and `source.db` and `docsource.db` grow with every revision
-captured -- so a reader with disk pressure needs them somewhere else, and until this module
-existed there was no way to say so short of a terminal.
+The application writes to whatever this platform calls an application's own data
+directory -- `~/Library/Application Support/DunneFlow`, `%LOCALAPPDATA%\\DunneFlow`,
+`$XDG_DATA_HOME/DunneFlow` -- which is the right place for it and is on the boot disk.
+Maps are not small -- one Society snapshot is 168 MB, and `source.db` and `docsource.db`
+grow with every revision captured -- so a reader with disk pressure needs them somewhere
+else, and until this module existed there was no way to say so short of a terminal.
 
 **Two operations, and they are separable on purpose.** Pointing says *maps live here now*;
 moving carries the existing ones across. The dialog offers both together because a reader

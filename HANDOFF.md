@@ -14964,3 +14964,43 @@ has not checked anything. The selector is anchored to the start of a line now, a
 was run against the original CSS to watch it fail before it was kept.
 
 **1,409** tests, mypy clean over 140 source files, ruff clean.
+
+## 2026-09-15 — the release, run end to end for the first time
+
+`./packaging/release.sh all`, unattended, all seven steps. This is the first time the whole
+thing has run in one go: the two once-only prerequisites were done on 2026-09-10 and the
+script had never been asked for `all` since.
+
+| Step | Outcome |
+|---|---|
+| `venv` | the universal2 environment, from the python.org 3.12.10 interpreter |
+| `build` | `DUNNEFLOW_ARCH=universal2`, arm64 + x86_64 |
+| `sign` | `Developer ID Application: Thomas Williams (G3RLJWV327)`, hardened runtime, secure timestamp |
+| `notarize` | submission `6fae2a04-d444-4f70-b6ea-cbda741722bc` — **Accepted**, stapled, validated |
+| `dmg` | `DunneFlow-0.1.0.dmg`, **22.7 MB**, signed, notarised and stapled in its own right |
+| `verify` | all 53 Mach-O files universal; Gatekeeper `accepted / source=Notarized Developer ID` |
+| `install` | `/Applications/DunneFlow.app`, signature intact after the copy |
+
+**Verified in place rather than from the build log**, which is the distinction this project
+keeps paying for. Of the installed bundle: Gatekeeper `accepted / source=Notarized Developer
+ID`; **53 Mach-O files, 0 not universal**, walked in `/Applications` and not in `dist/`;
+`stapler validate` passes.
+
+And the artifact carries what was committed, checked through the artifact:
+
+* the toolbar fix — `.tb-searchwrap { … max-width: 26rem }` read out of the bundled
+  `tokens.css`;
+* the icon — byte-identical to the committed `dunneflow.icns`;
+* **rule 92** — the shipped binary analysing this checkout reports 26 documents, **0 stated
+  rules**, and names all four maps it skipped. The defect that started the day cannot be
+  reproduced with the application that shipped.
+* **rule 12** — the universal build stamps `extractor = 9:e8c9ac8a851c41b7`, which is the
+  checkout's, so this build and a checkout still read each other's maps. Worth stating
+  because this is the first *universal* binary to be asked: the fingerprint hashes the
+  detector and extractor trees and has nothing to do with architecture, and now that is
+  measured rather than assumed.
+
+The ad-hoc host build that stood in `/Applications` for part of the day is gone, replaced by
+this one. The notarised 2026-09-10 build is still parked at
+`~/Library/Application Support/DunneFlow-builds/` (53 MB); it is superseded now and can be
+deleted whenever Tom wants — left alone rather than swept up, since it is his.

@@ -301,10 +301,15 @@ start page, and `/start` is reachable by URL when the shell has stopped working.
 
 ### Where to pick up
 
-0. **Cut a release**, so the installed application carries rule 92's fix. Nothing else is
-   owed for it: the code, the tests and the records are done, and `./packaging/release.sh all`
-   runs unattended now that the interpreter and the notarytool credentials exist. Whether it
-   waits for the icon is the only question — one release would carry both.
+0. ~~**Cut a release**, so the installed application carries rule 92's fix.~~ *Done
+   2026-09-15, and it carried the icon with it.* `./packaging/release.sh all` ran unattended,
+   all seven steps: universal2, Developer ID, **notarised (Accepted) and stapled**,
+   `DunneFlow-0.1.0.dmg` at 22.7 MB, and installed. Verified in the installed bundle rather
+   than from the build log — Gatekeeper `accepted / source=Notarized Developer ID`, **53 of 53
+   Mach-O files universal**, and the shipped binary reports **0 stated rules** on this
+   checkout, so the defect that started the day cannot be reproduced with the application that
+   shipped. It stamps `9:e8c9ac8a851c41b7`, the checkout's (rule 12), which is the first time a
+   *universal* build has been asked. See `HANDOFF.md` under 2026-09-15.
 1. **The icon — wired in and installed for testing, 2026-09-15, and waiting on Tom's eye.**
    `icon=None` is gone: the spec names `packaging/icon/dunneflow.icns` and **refuses to build
    without it** rather than shipping the generic bundle icon in silence (rule 49).

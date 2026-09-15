@@ -15432,3 +15432,184 @@ will not let an open file be replaced, where macOS will happily rebuild a bundle
 under a running copy. The raw error names a file the reader has never heard of and no action
 they can take (rule 89), so `build` and `install` now ask first and name the process and the
 command that ends it.
+
+---
+
+## 2026-09-15 — Linux Mint, made to run
+
+Third platform, same shape as the second: a branch of its own (`linux`), nothing about macOS
+or Windows changed, and every platform branch keeps its existing path verbatim. Every gate
+green on Linux Mint (XFCE, X11), Python 3.12.3 — **1,446 passed, 1 skipped**, ruff clean, mypy
+clean on `darwin`, `linux` and `win32` alike. One test skips, and it is the macOS maps root
+asserting Apple's layout; the Linux one beside it skips on a Mac for the same reason.
+
+**The survey was mostly right and the suite found the defect first**, which is the opposite of
+the Windows session and worth noticing. The first `uv run pytest` on this machine came back
+**1,418 passed, 1 skipped, 2 failed**, before a line had been read.
+
+### What the suite caught: two of four rungs
+
+`_interrupt_group` and `_kill_group` are two rungs with two branches each — four guards over
+one question, *could this ask be delivered?* The Windows pair was widened to `SystemError` and
+`ValueError` when the packaged build proved `os.kill` raises the first of those with no console
+to break in. **The POSIX pair beside them was not.** It still named
+`(OSError, AttributeError, TypeError)`, which was right on the day it was written and had
+simply never been asked the newer question.
+
+Nothing about that is Windows-shaped. The test that caught it is parameterised over all three
+classes *because the contract is "this function answers"*, and says so in its own docstring. It
+passed on Windows because the branch it runs there is the widened one, and on macOS because no
+POSIX rung there had ever been made to fail. Linux ran the narrow branch and it raised straight
+through into the handler thread — where the cost is already on record: **a Stop button that
+reports a network failure over an analysis still running.**
+
+`UNDELIVERABLE` is the one tuple now. The second rung gained the test the first one had (it had
+none on any platform), and a third test asserts over the source that no rung spells its own
+classes. Rule 51, recovered from rule 42's fix.
+
+### The picker and the reveal, which Linux answers as ladders
+
+The only two places in `web/` that are not portable by construction, and the only two with no
+Linux branch at all — each returned the sentence saying so. Both are a convenience over a
+control that still works (design rule 2), which is what made refusing affordable and why this
+could wait for the platform to be real.
+
+**Linux ships no one dialog, so it has a list.** `_LINUX_PICKERS` is tried in order, promoted
+by `XDG_CURRENT_DESKTOP` so Plasma is offered kdialog's — *promoted, never excluded*, so a
+Plasma session with only zenity still gets a picker. Neither installed refuses naming both
+(rule 89). `org.freedesktop.portal.FileChooser` is deliberately absent: its result arrives on a
+signal, which means a D-Bus binding this tool will not grow for a convenience.
+
+**Exit 1 means two things, and the display check is what separates them.** Measured on zenity
+3.44.2: a cancel exits **1 with an empty stderr**; a failure to open the display exits **1 with
+a line on it**. One code, told apart only by text that a healthy desktop also writes for
+harmless reasons. So `_desktop_session` rules out the failure that actually happens *before
+anything is spawned*, and what is left reads as the cancel. The residue is stated rather than
+hidden: a dialog that opened and then broke reads as a cancel too.
+
+**Rule 90 costs nothing here, and that is measured rather than assumed.** macOS needs
+`activate` and Windows a topmost owner form; the zenity dialog took focus from the terminal on
+its own, with `_NET_ACTIVE_WINDOW` moving to it.
+
+**The reveal is two rungs and `xdg-open` is the second.** `FileManager1.ShowFolders` is the
+desktop's own reveal — an activatable D-Bus service, no MIME default consulted. `xdg-open` is
+what everybody reaches for first and answers a slightly different question: it hands the
+directory to whatever the desktop says opens `inode/directory`, and **on this machine
+`xdg-mime query default inode/directory` answers `org.gnome.baobab.desktop`** — a disk usage
+analyser. It opened Thunar regardless, because XFCE's `xdg-open` routes through `exo-open` and
+never reads that default. One rung is right by construction and the other was right by luck.
+`--print-reply` is load-bearing: without it `dbus-send` exits 0 for having *sent* a message
+nobody may be listening for (rule 76). An exhausted ladder reports the **last** rung's reason,
+because `xdg-open` is the rung every desktop has.
+
+**Pressed rather than reasoned about** (rule 48), against the live session:
+
+| Pressed | Came back |
+|---|---|
+| a real dialog, accept button via XTEST | `('/home/reader/dunneflow', '')` |
+| the same dialog, closed from the window manager | `('', '')` — a clean cancel |
+| no `DISPLAY`, no `WAYLAND_DISPLAY` | the refusal, and **nothing spawned** |
+| `reveal_dir` on a real directory | Thunar, through rung one |
+| the same with `dbus-send` shimmed to exit 1 | Thunar, through `xdg-open` |
+| both rungs shimmed to fail | `xdg-open`'s own sentence, not the bus's |
+
+`tests/test_desktop.py` is the first test either function has had **on any platform**.
+`sys.platform` is monkeypatched rather than skipped around, so the Linux reader is exercised on
+all three machines — a suite that only ran it here is precisely how the stop rungs came to be
+guarded three ways.
+
+### The maps root, and the trap that has no counterpart
+
+`platform_output_root` already had a Linux branch, written as the conventional location and
+marked untested. It was wrong the way an untested branch usually is: it named `~/.local/share`
+as a literal where the XDG specification names **`$XDG_DATA_HOME`**, whose default that merely
+is. Three states now, the third being the specification's own — a **relative** path is invalid
+and must be ignored, which here is not deference: it resolves against the working directory,
+and a desktop entry gives a process none worth the name.
+
+**And `--output --help` was one machine's path printed to every reader.** It read
+`~/Library/Application Support/DunneFlow` as a literal, so a Windows reader had already been
+told their maps default somewhere no Windows has ever had. It asks the function now.
+
+**The trap is that `~/.local/share/DunneFlow` is the obvious place for both things.** It is
+where an application's files go under `$HOME`, and it is already the reader's *maps* root. On
+macOS the pair is `/Applications` and `~/Library/Application Support` and cannot collide; here
+the natural spelling of both is one directory. Installed there, the program would sit inside
+the tree its own `Move…` offers to relocate and inside the corpus its own analyses walk — and
+nothing would say so until somebody moved their maps to an external disk and took the
+application with them. The binary goes to `~/.local/lib/dunneflow`; a test asserts no install
+target lands in `platform_output_root()`, and was mutated to prove it fails when it should.
+
+### Rule 94, minted from the spec before it was built with
+
+`packaging/dunneflow.spec` named only `_WINDOWS` and said everything else by negation. Exactly
+true while there were two platforms:
+
+* `BUNDLE` under `if not _WINDOWS` would have built a `.app` on Linux, and **PyInstaller would
+  have reported success** — there is no step in a spec that checks what a bundle is for;
+* `ICON = "dunneflow.ico" if win32 else "dunneflow.icns"`, over a guard that raises when the
+  named file is missing, would have refused the build over a macOS icon container it would then
+  never have used — rule 49 pointing the wrong way.
+
+**A negation is a fine way to say *the other one* and no way at all to say *the other two*.**
+Caught by neither gate and by no test: `mypy --platform linux` type-checks a `BUNDLE` call
+perfectly, and the suite proves the source tree rather than the artifact. Found by reading the
+spec before building with it, and pinned afterwards — the guard's *name and its definition*
+both, because asserting on a name alone would pass a `_MACOS` redefined to mean anything
+(rule 37).
+
+### The build, and the one check that is not a size
+
+**9.5 s, 32 MB, a 13 MB tarball, glibc 2.14 the floor.** The binary stamps
+`extractor 9:d6179cee25581502` — which is what this checkout computes and what the **Windows**
+build stamped. Both directions pressed: the checkout opened the binary's map and the binary
+opened the checkout's, 925 routines either way. Rule 12 holds across all three platforms.
+
+**`verify` printed that fingerprint and compared nothing** — rule 37, in the step written to
+defend rule 12. It reads the stamp back out with the binary's own `query` now and refuses on a
+mismatch. And `tar` named its first archive `DunneFlow--linux-x86_64.tar.gz`: `app_version`
+asked the binary for `--version`, which this CLI has not got; argparse printed usage to a
+swallowed stderr and an empty string went into a path. It reads the dist-info the spec bundles,
+which is the same file `tool_version()` stamps into every map.
+
+**A third icon container out of the same master** — `hicolor/`, ten PNGs at the freedesktop
+sizes, verified through the GTK icon theme at 24, 32, 48 and 256. Never from `dunneflow.svg`
+beside it: that is the geometric candidate, which was not the one chosen.
+
+**And the `.ico` regenerated 1,665 bytes smaller.** Under Pillow 12.3.0 it came out 98,590
+bytes against the committed 100,255 — same ladder, same master, same visible mark, a different
+encoder. The committed file was restored untouched and the docstring's *byte for byte* claim
+gained the condition it never had (rule 24): it holds against the Pillow that wrote it, not
+across versions of it. A byte comparison reads as *the drawing has not changed* and also fails
+when only the library did.
+
+### Pressed as a reader would, end to end
+
+Installed into `~/.local`, launched **from the XFCE application menu**: served the start page,
+Chrome opened on it. A second launch joined the first through `already_serving` rather than
+starting a second server — which is the Dock running-indicator's whole job, done by the program
+instead of by the window server, and better. `/api/reveal` opened Thunar; `/api/pickdir` opened
+a dialog and cancelled cleanly. An analysis ran through `self_argv()` re-executing the
+*installed* binary, was stopped mid-run (`"stopped on signal 15"`, map left marked unfinished),
+then run to completion — 1,644 documents — and opened as the base, with About reporting
+`tool_version 0.1.0`. `uninstall` took back all thirteen files and left 102 MB of maps
+untouched.
+
+`StartupNotify=false` in the desktop entry is measured, not conventional: this process maps no
+window, so the launcher's busy cursor would spin for the twenty seconds a desktop waits before
+giving up on an application that did in fact start.
+
+### Two things this session could not do
+
+**The ground truth was not run.** None of the four Society trees is on this machine, and
+neither is `../dunnecorp-standards` — so no Mensores figure was retaken here and none is
+restated as though it had been. What was pressed instead is DunneFlow's own tree and
+`../dunnenote`: real code, enough to exercise the binary end to end, and honest about being a
+different measurement.
+
+**And the citation count did not reproduce.** `RULES.md` recorded 3,241 · 2,422 · 819 · 128 as
+of 2026-09-15; run against that very commit it comes back **3,297 · 2,463 · 834 · 128**.
+Nothing is wrong with the command — it was taken partway through a session and the session kept
+writing, so a true measurement of a tree that no longer existed was committed as a live one.
+Rule 24, in the sentence about counting rules, one turn after the last time. The figures are
+retaken last this time: **3,323 · 2,486 · 837 · 129**.

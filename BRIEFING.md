@@ -173,7 +173,8 @@ carried an identity to be paired on.
 **Not built:** `dunneflow infer` (the model pass) · attestation · the project profile ·
 any language but Python. **Packaging is built as of 2026-09-09** — a 31 MB unsigned
 `DunneFlow.app` that opens on a machine which has never run it, with the ground truth
-retaken *through the binary*; what remains is signing, an icon, and Windows. **The Inference page is withdrawn as of
+retaken *through the binary*; the icon is drawn, Windows and **Linux** both run it, and what
+remains is signing and notarisation. **The Inference page is withdrawn as of
 2026-09-09** — built as a mockup, never wired, and now delinked from every control and
 document with the code kept whole behind `INFERENCE_SHIPPED`. **Document mode is complete** — chunks 1, 2,
 3, both lanes of 4, and **chunk 5 as of 2026-09-04**. The pane reads the map's eight documents
@@ -209,6 +210,46 @@ program and every card states **the middle it is being read against**, because e
 program has a most-commented routine and a maximum alone is a claim nobody can weigh.
 
 ## What we are doing now
+
+**Linux Mint runs it — 2026-09-15, on the `linux` branch and not yet merged.** Every gate green
+on Mint (XFCE, X11) / Python 3.12.3: **1,446 passed, 1 skipped**, mypy clean on `darwin`,
+`linux` *and* `win32`, ruff clean.
+Built, installed from `packaging/release-linux.sh`, launched from the application menu and
+exercised as a reader runs it. **Nothing about macOS or Windows changed** — every platform
+branch keeps its existing path verbatim.
+
+**The suite found the defect before anything was read**, which is the opposite of the Windows
+session. `_interrupt_group` and `_kill_group` are four guards over one question; the Windows
+pair was widened to `SystemError` and `ValueError` and the **POSIX pair beside them was not**,
+so the rung raised into the handler thread — a Stop button reporting a network failure over an
+analysis still running. `UNDELIVERABLE` is the one tuple now, and a test over the source keeps
+it that way. Rule 51, recovered from rule 42's fix.
+
+**The picker and the reveal are built rather than refused, and both are ladders.** Linux ships
+no one dialog, so `_LINUX_PICKERS` is an ordered list promoted by `XDG_CURRENT_DESKTOP`, and
+the reveal is `FileManager1.ShowFolders` then `xdg-open` — in that order because
+`xdg-mime query default inode/directory` on this machine answers **a disk usage analyser**, and
+only XFCE's routing through `exo-open` saved it. **Exit 1 means both "cancel" and "no display"**
+on zenity, so the session is checked before anything is spawned, which is what leaves exit 1
+meaning one thing. Rule 90 costs nothing here: the dialog takes focus on its own, measured.
+`tests/test_desktop.py` is the first test either function has had **on any platform**.
+
+**Rule 94, minted from the spec before it was built with.** `BUNDLE` under `if not _WINDOWS`
+would have built a `.app` on Linux with PyInstaller reporting success. *A negation is a fine way
+to say the other one and no way at all to say the other two.* Caught by neither gate and by no
+test.
+
+**`~/.local/share/DunneFlow` is the trap and it is Linux's alone** — the obvious place for an
+application's files *and* already the maps root, where macOS's `/Applications` and
+`~/Library/Application Support` cannot collide. The binary goes to `~/.local/lib/dunneflow`,
+and a test asserts no install target lands in `platform_output_root()`.
+
+**9.5 s to build, 32 MB, a 13 MB tarball, glibc 2.14 the floor**, and `extractor
+9:d6179cee25581502` — the same fingerprint the Windows build stamps, with each build opening
+the other's map. `release-linux.sh` is six verbs and gains **`uninstall`**, which the other two
+do not need: a macOS uninstall is one `.app` in the Trash and this one is thirteen files in
+four places. **Still open on Linux:** no signature and nothing that wants one; no ground truth,
+because none of the Society trees is on that machine.
 
 **Windows runs it, and is accepted — 2026-09-15, at the keyboard.** Tom, having run the
 installed application: *"The application seems to work fine on Windows, so that is

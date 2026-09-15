@@ -14,17 +14,19 @@ by *how often you need it*, not by importance:
 | File | What it holds | When to read it |
 |---|---|---|
 | `CLAUDE.md` | commands, verification gates, architecture, and the **index** of every rule | every session — it is loaded for you |
-| `RULES.md` | the 92 engineering rules **in full**, with the false result each came from — numbered to 93, because 21 does not exist and the numbers are addresses | before working in the area a rule governs |
+| `RULES.md` | the 93 engineering rules **in full**, with the false result each came from — numbered to 94, because 21 does not exist and the numbers are addresses | before working in the area a rule governs |
 | `DESIGN-RULES.md` | the 30 dashboard design rules in full | before building or changing a view |
 | `PERFORMANCE.md` | every measured figure, with its budget and its conditions | before quoting or retaking a number |
 | `BRIEFING.md` | state: what is built, what is next, what is closed | at the start of a session |
 | `HANDOFF.md` | the full chronological record, session by session | when you need why something is the way it is |
 
 A rule is cited as a bare number — "rule 45", "design rule 19" — from code comments, tests
-and both records; **3,241** such citations across `src/` and `tests/` as of 2026-09-15 —
-2,422 to the engineering rules and 819 to the design ones, over 128 files. `RULES.md` carries
+and both records; **3,323** such citations across `src/` and `tests/` as of 2026-09-15 —
+2,486 to the engineering rules and 837 to the design ones, over 129 files. `RULES.md` carries
 the command that counts them, because the first retake gave two different answers in two
-shells. **The numbers are
+shells — and the *second* retake, recorded the same day, did not reproduce against its own
+commit either: it was taken partway through a session and the session kept writing. A figure
+has to be taken last. **The numbers are
 addresses. Never reuse one, never renumber, never close a gap.**
 
 ## What this tool is for
@@ -112,19 +114,54 @@ outcomes and not two: a path, a *cancel* (empty, with no reason, and not an erro
 failure that says why. The typed field stays, always: the picker is a convenience over a
 control that still works (design rule 2).
 
-`POST /api/reveal` opens the root in the Finder or in Explorer and is bounded to it — the
-bound is judged in the handler, before anything is spawned, and `reveal_dir` asks nothing
-about permission. It is the answer to the one cost of `~/Library/Application Support`, and of
-`%LOCALAPPDATA%\DunneFlow`: each is the correct place for an application's data, neither is
-swept into a sync folder, and both are invisible to a reader who wants to hand a colleague a
-map (rule 89). Windows' `explorer` **exits 1 on success**, so its return code is deliberately
-not read.
+**Linux is a list rather than a command, and rule 90 costs nothing there.** macOS and Windows
+each ship exactly one thing that can ask a person for a folder; a Linux desktop ships whichever
+its toolkit brought, so `_LINUX_PICKERS` is the one ordered list — zenity, kdialog — promoted
+by `XDG_CURRENT_DESKTOP` so Plasma is offered the Qt dialog, *promoted and never excluded*, and
+a machine with neither refuses naming both (rule 89). The dialog takes focus on its own,
+measured. `org.freedesktop.portal.FileChooser` is deliberately absent: its result arrives on a
+signal, which means a D-Bus binding this tool will not grow for a convenience.
+
+**And `_desktop_session` is what makes a cancel readable there.** Measured on zenity 3.44.2, a
+cancel exits **1 with an empty stderr** and a failure to open the display exits **1 with a line
+on it** — one code, told apart only by text that a healthy desktop also writes for harmless
+reasons. So the display is checked *before anything is spawned* and the failure that actually
+happens is refused by name, which leaves exit 1 meaning one thing. The residue is stated: a
+dialog that opened and then broke reads as a cancel.
+
+`POST /api/reveal` opens the root in the Finder, in Explorer or in the desktop's file manager
+and is bounded to it — the bound is judged in the handler, before anything is spawned, and
+`reveal_dir` asks nothing about permission. It is the answer to the one cost of
+`~/Library/Application Support`, of `%LOCALAPPDATA%\DunneFlow`, and of
+`$XDG_DATA_HOME/DunneFlow`: each is the correct place for an application's data, none is swept
+into a sync folder, and all three are invisible to a reader who wants to hand a colleague a map
+(rule 89). Windows' `explorer` **exits 1 on success**, so its return code is deliberately not
+read.
+
+**Linux is two rungs, and `xdg-open` is the second.** `org.freedesktop.FileManager1.ShowFolders`
+is the desktop's own *reveal* — an activatable D-Bus service every major file manager
+implements, so it starts one that is not running and consults no MIME default at all.
+`xdg-open` is what everybody reaches for first and answers a slightly different question: it
+hands the directory to whatever the desktop says opens `inode/directory`, and **measured on the
+machine this was written on that is `org.gnome.baobab.desktop`**, a disk usage analyser. It
+opened Thunar regardless, because XFCE's `xdg-open` routes through `exo-open` and never reads
+that default. One rung is right by construction and the other was right by luck.
+`--print-reply` is load-bearing: without it `dbus-send` exits 0 for having *sent* a message
+nobody may be listening for, and the second rung would never run (rule 76). An exhausted ladder
+reports the **last** rung's reason, because `xdg-open` is the one every desktop has.
 
 ## Packaging — the frozen application
 
-**Two platforms, one spec.** `packaging/dunneflow.spec` builds for whichever it is run on,
-and the sections below are macOS's unless they say otherwise; **Windows** is at the foot of
-this one.
+**Three platforms, one spec.** `packaging/dunneflow.spec` builds for whichever it is run on,
+and the sections below are macOS's unless they say otherwise; **Windows** and **Linux** are at
+the foot of this one.
+
+**`_MACOS`, `_WINDOWS` and `_LINUX` are asked once, and that is rule 94.** The spec named only
+`_WINDOWS` and said everything else by negation, which was an exact statement of the truth
+while there were two platforms: `BUNDLE` under `if not _WINDOWS` would have built a `.app` on
+Linux and PyInstaller would have reported success, and `ICON` would have refused the build over
+a missing `.icns` it would then never have used. A negation is a fine way to say *the other
+one* and no way at all to say *the other two*.
 
 ```bash
 DUNNEFLOW_ARCH=host uv run pyinstaller packaging/dunneflow.spec --noconfirm
@@ -243,12 +280,18 @@ everything.
   one build where it is the only way in.
 * **`default_output_root()`** is `./output` from a checkout and, frozen, **whatever the
   reader chose** — `platform_output_root()` when they have not. That platform answer is
-  `~/Library/Application Support/DunneFlow` and never `~/Documents`: `source.db` holds the
-  private source of whatever was read, and Documents is swept into iCloud Drive on a
-  signed-in Mac — egress by accident, out of a tool whose posture is deterministic and local
-  (design rule 14). `serve` **creates it only when nobody named a directory**; one the
-  reader typed is never created, because a mistyped path would otherwise become a new empty
-  root reporting no programs in a place they have never used (rule 49).
+  `~/Library/Application Support/DunneFlow`, `%LOCALAPPDATA%\DunneFlow` or
+  `$XDG_DATA_HOME/DunneFlow`, and never `~/Documents`: `source.db` holds the private source
+  of whatever was read, and Documents is swept into iCloud Drive on a signed-in Mac — egress
+  by accident, out of a tool whose posture is deterministic and local (design rule 14).
+  **`$XDG_DATA_HOME` is three states rather than two**, and the third is the specification's
+  own: unset or empty is the default `~/.local/share`, an absolute path is the answer, and a
+  **relative** one is invalid and must be ignored. Not deference to a document — a relative
+  path resolves against the working directory, and a desktop entry gives a process none worth
+  the name, so honouring one would scatter maps roots wherever the launcher started and report
+  no programs from each in turn (rule 49). `serve` **creates it only when nobody named a
+  directory**; one the reader typed is never created, because a mistyped path would otherwise
+  become a new empty root reporting no programs in a place they have never used (rule 49).
 * **The root moves, and a one-line pointer at `<platform root>/root` remembers where.**
   Maps are not small and Application Support is on the boot disk, so `Move…` on the start
   page re-points and optionally carries the existing programs across (`web/roots.py`,
@@ -315,7 +358,71 @@ executables 3.1 MB, and `extractor 9:d6179cee25581502` stamped by the binary and
 the checkout alike — which is the one check that is not a size (rule 12, and see
 **Packaging** above).
 
-**The 1,363 tests prove the source tree, not the artifact**, so the ground truth is run
+### Linux
+
+```bash
+./packaging/release-linux.sh all   # build · verify · tar · install
+```
+
+**Six verbs, and the three that are missing are missing for stated reasons.** There is no
+`venv`: an ELF holds one architecture, `FatELF` was proposed and never merged, and there is no
+`lipo` for Linux — so `DUNNEFLOW_ARCH` has no answer here but `host` and the spec **refuses a
+macOS answer by name**. There is no `sign`/`notarize`: nothing on Linux refuses an unsigned
+binary, so `verify` **says the build is unsigned** rather than leaving that to be assumed.
+There is no `dmg`; a `.tar.gz` is what every Linux opens untaught.
+
+**`uninstall` is the verb the other two scripts do not have**, and it is not symmetry. A macOS
+uninstall is one `.app` in the Trash and a Windows one is a folder; this is **thirteen files in
+four places** under `~/.local`, which no reader can undo by looking at it. The maps are never
+touched — an uninstall that took them would be the one unrecoverable thing the script could do.
+
+**One executable, not two.** `console=False` costs a Windows build its standard streams and so
+buys a second `EXE()` there; an ELF has no subsystem flag and PyInstaller ignores the setting,
+so `dunneflow` prints from a terminal exactly as the checkout does and the gate runs through it
+unchanged.
+
+**`~/.local/share/DunneFlow` is the one genuinely Linux-shaped trap in the packaging.** It is
+the obvious place for an application's files under `$HOME` and it is already the reader's
+**maps** root — `runtime.platform_output_root()`. On macOS the pair is `/Applications` and
+`~/Library/Application Support` and cannot collide; here the natural spelling of both is one
+directory, and installed there the program would sit inside the tree its own `Move…` offers to
+relocate and inside the corpus its own analyses walk. So the binary goes to
+`~/.local/lib/dunneflow`, the name a terminal types to `~/.local/bin`, and the entry and icons
+to the two freedesktop trees. `tests/test_frozen.py` asserts no install target lands in
+`platform_output_root()`. **Nothing needs root**, which is what keeps all of it inside one
+reader's home.
+
+The icon is `packaging/icon/hicolor/` — ten PNGs at the freedesktop sizes, written from the
+**same composed canvas** as the `.icns` and the `.ico`. Never from `dunneflow.svg` beside it:
+that is `build_icon.py`'s geometric candidate, which was not the one chosen, and shipping it as
+`scalable/` would put a different mark on Linux than the one in the Dock. Its ladder is its own
+— 22 and 96 are hicolor's and are in neither of the others. **An ELF carries no icon at all**,
+so what a reader sees is whatever the desktop entry's `Icon=` name resolves to in the theme; a
+test pins the entry's spelling against the committed filenames, because spelled two ways the
+entry is valid, the install succeeds, every check passes, and the menu draws a generic square.
+
+`packaging/linux/dunneflow.desktop.in` is a template, not a file: a per-user install lives under
+the reader's own home and no committed line can know that path. **`StartupNotify=false` is
+measured rather than conventional** — this process maps no window, so the launcher's busy
+cursor would spin for the twenty seconds a desktop waits before giving up. There is no
+`StartupWMClass` for the same reason. The problem a Dock indicator buys on macOS is answered
+here by the program instead: `already_serving` joins a second launch to the first one's server
+and opens the browser at it, so a double-click while it is running is not a second server.
+
+Measured 2026-09-15 on Linux Mint (XFCE, X11), Python 3.12.3: **9.5 s** to build, **32 MB**
+built, a **13 MB** tarball, `glibc 2.14` the floor, and `extractor 9:d6179cee25581502` stamped
+by the binary and computed by the checkout alike — the same fingerprint the Windows build
+stamps. Both directions pressed: each build opened the other's map, 925 routines either way.
+
+**`verify` compares that fingerprint rather than printing it.** The first version printed the
+checkout's, ran the binary, and said *"the binary analysed a tree and wrote a map"* — rule 37,
+in the step written to defend rule 12. It reads the stamp back out with the binary's own
+`query` now. And `tar` named its first archive `DunneFlow--linux-x86_64.tar.gz`: `app_version`
+asked the binary for `--version`, which this CLI has not got, and an empty string went into a
+path (rule 49, in a file name). It reads the dist-info the spec bundles — the same file
+`tool_version()` stamps into every map.
+
+**The 1,446 tests prove the source tree, not the artifact**, so the ground truth is run
 *through the binary*. Taken 2026-09-09 on `../society-2026-08-29/src` with
 `--standards ../dunnecorp-standards`, 628 files in **37.7 s**: the four executables at
 **1,381 · 423 · 292 · 112**, `naming.md` byte-identical to the `CORP` fixture with its three
@@ -539,12 +646,19 @@ uv run mypy .        # src must be clean
 uv run ruff check .  # must pass
 ```
 
-**All three run on Windows as well, and the suite is expected to be green on both.** One
-test skips off macOS, by name, and nothing else is conditional. `mypy` is worth running with
-`--platform darwin` and `--platform linux` from either machine when anything under a
-`sys.platform` branch has moved: it checks the branches this machine cannot execute, and it
-is the only gate that can — a Linux-only `name is not defined` in `reveal_dir` was found
-exactly that way and no test on any platform would have caught it.
+**All three run on Windows and on Linux as well, and the suite is expected to be green on all
+three.** Two tests skip off their own platform, by name — the macOS and Linux maps roots, each
+asserting its own layout — and nothing else is conditional. Everything else that is
+platform-shaped is tested by **monkeypatching `sys.platform`** rather than by skipping, so the
+Linux picker and the Windows stop rungs are exercised on whichever machine is running:
+`tests/test_desktop.py` says why, and the two-of-four guard drift in `analysis.py` is what
+happens when they are not.
+
+`mypy` is worth running with `--platform darwin`, `--platform linux` and `--platform win32`
+from any machine when anything under a `sys.platform` branch has moved: it checks the branches
+this machine cannot execute, and it is the only gate that can — a Linux-only
+`name is not defined` in `reveal_dir` was found exactly that way and no test on any platform
+would have caught it.
 
 And when anything under `runtime.py`, `packaging/`, `detectors/` or `extractors/` has
 moved, **through the binary as well as beside it** — the tests prove the source tree and
@@ -552,7 +666,9 @@ not the artifact:
 
 ```bash
 DUNNEFLOW_ARCH=host uv run pyinstaller packaging/dunneflow.spec --noconfirm
-dist/DunneFlow.app/Contents/MacOS/dunneflow analyze <tree> --name x --output <tmp>
+dist/DunneFlow.app/Contents/MacOS/dunneflow analyze <tree> --name x --output <tmp>   # macOS
+dist/dunneflow/dunneflow analyze <tree> --name x --output <tmp>                      # Linux
+./packaging/release-linux.sh verify        # does all of it, and compares the fingerprint
 ```
 
 The one check that is not a ground-truth number: the `extractor` the binary stamps must
@@ -583,6 +699,14 @@ named here.
 
 **All four are read-only.** They are copies kept for documentation. Never write to any of
 them. All output belongs in `output/`.
+
+**None of the four is on the Linux machine, and neither is `../dunnecorp-standards`.** So the
+ground truth above cannot be run there and no figure in this file was retaken on it. What a
+Linux session can press instead is DunneFlow's own tree and `../dunnenote` — real code, not a
+toy, and enough to exercise the binary end to end — and that is what the Linux figures in
+**Packaging** were taken against. A session that needs the recorded numbers needs the trees:
+clone them, or take the measurement on the Mac. Do not restate a Mensores figure measured
+somewhere else as though it had been reproduced (rule 24).
 
 Rebuilding the pair after a schema bump is two analyses and a seal, in this order — a
 sealed snapshot is never re-analysed in place, by design (rules 25 and 62):
@@ -1440,6 +1564,7 @@ it was written from.
      from somewhere else.
  93. A stored path's separator belongs to the machine that wrote it, and that makes it a
      bad key.
+ 94. A boolean that says "the other one" stops being true when there are three.
 ```
 
 ## Anomalies: the discipline

@@ -9,14 +9,21 @@ agree with a rule and still reimplement the defect it was written from: every on
 was, at the time, the obvious thing to do.
 
 Cited as bare numbers — "rule 45" — from code comments, tests, `HANDOFF.md` and
-`BRIEFING.md`; **3,241** such citations across `src/` and `tests/`, 2,422 of them to these
-rules and 819 to the design ones, over 128 files — retaken 2026-09-15 with the command
-below, which is why the command is written down. The numbers are therefore **addresses**,
-never an ordering, and are never reused or closed up.
+`BRIEFING.md`; **3,323** such citations across `src/` and `tests/`, 2,486 of them to these
+rules and 837 to the design ones, over 129 files — retaken 2026-09-15 on the Linux branch
+with the command below, which is why the command is written down. The numbers are therefore
+**addresses**, never an ordering, and are never reused or closed up.
 
-*That figure was 768 and is retaken here rather than carried.* It was measured on 2026-09-02
-at the split, when there were 102 rules, and five sessions of code have been written since —
-a five-day-old count restated as a live one is rule 24's defect in a sentence about rules.
+*That figure was 768 and is retaken rather than carried.* It was measured on 2026-09-02 at
+the split, when there were 102 rules, and sessions of code have been written since — an
+old count restated as a live one is rule 24's defect in a sentence about rules.
+
+**And the retake before this one did not reproduce either, which is the same defect one turn
+later.** The figures written above on 2026-09-15 were 3,241 · 2,422 · 819 · 128; run against
+that very commit they come back **3,297 · 2,463 · 834 · 128**. Nothing is wrong with the
+command — it was taken partway through a session and more code was written after it, so what
+was recorded was a true measurement of a tree that no longer existed by the time the sentence
+holding it was committed. A figure has to be taken *last*, not merely reproduced twice.
 
 **The method, because the first retake was wrong twice.** Counted as occurrences of `rule N`
 or `rules N`, case-insensitive, **excluding `__pycache__`** — the first run through an
@@ -26,9 +33,9 @@ by the query. A count that changes with the shell it is run in is not a measurem
 24), so the exclusion is stated and the figure was reproduced twice before being written:
 
 ```bash
-grep -rhoiE "\brules? [0-9]+"        --exclude-dir=__pycache__ src tests | wc -l   # 3,241
-grep -rhoiE "\bdesign rules? [0-9]+" --exclude-dir=__pycache__ src tests | wc -l   #   819
-grep -rliE "\brules? [0-9]+"         --exclude-dir=__pycache__ src tests | wc -l   #   124
+grep -rhoiE "\brules? [0-9]+"        --exclude-dir=__pycache__ src tests | wc -l   # 3,323
+grep -rhoiE "\bdesign rules? [0-9]+" --exclude-dir=__pycache__ src tests | wc -l   #   837
+grep -rliE "\brules? [0-9]+"         --exclude-dir=__pycache__ src tests | wc -l   #   129
 ```
 
 
@@ -1853,3 +1860,39 @@ rule of that number — a blank canvas must say why it is blank — which does e
     `LIKE '/%'`: every consumer had decided a stored path was POSIX, correctly, and said so
     in code. Only the writers had never been asked, because for as long as there was one
     platform the question had one answer.
+
+94. **A boolean that says "the other one" stops being true when there are three.** A
+    two-valued test of a set that later grows does not raise, does not warn, and does not
+    read as wrong: it keeps answering, and one of its two answers has quietly become a
+    third platform's. Both instances here are in `packaging/dunneflow.spec`, and neither was
+    a mistake on the day it was written.
+
+    `BUNDLE` — the macOS `.app` — was guarded by `if not _WINDOWS`, which was an exact
+    statement of the truth while there were two platforms. Built on Linux it would have
+    produced a directory with an `Info.plist` in it that nothing on the machine can launch,
+    and **PyInstaller would have reported success**: there is no step in a spec that checks
+    what a bundle is for. The same file's `ICON` read `"dunneflow.ico" if win32 else
+    "dunneflow.icns"` over a guard that raises when the named file is missing, so a Linux
+    build would have refused to start over the absence of a macOS icon container it would
+    then never have used — rule 49 pointing the wrong way, failing on a file that is not an
+    input.
+
+    **The tell is that the negation is doing two jobs.** `not _WINDOWS` is being read as
+    *"the platform this branch is for"* while it is written as *"not the platform the other
+    branch is for"*, and the two are the same sentence only in a closed world of two. So the
+    remedy is to name every member, once: `_MACOS`, `_WINDOWS`, `_LINUX`, each an assertion
+    about itself, and every branch guarded by the one it is actually about. A fourth platform
+    then arrives as an unhandled case rather than as somebody else's `else`.
+
+    **It generalises past platforms**, which is why it is a rule and not a note in the spec.
+    Any `if not X` over an enumeration — two revision kinds, two provenance tiers, two lanes —
+    is a claim that the enumeration is closed, made in a place that will not be looked at
+    when it opens. Rule 30's *"three verdicts, never two"* and design rule 21's *"three
+    absences, three answers"* are the same argument arriving from the other side: those say
+    what collapsing states costs a reader, and this says what it costs the next branch.
+
+    Caught by neither gate and by no test: `mypy --platform linux` type-checks a `BUNDLE`
+    call perfectly, and the suite proves the source tree rather than the artifact. It was
+    found by reading the spec before building with it, and pinned afterwards —
+    `tests/test_frozen.py` now reads the guard *and its definition*, because asserting on a
+    name alone would pass a `_MACOS` redefined to mean anything (rule 37).

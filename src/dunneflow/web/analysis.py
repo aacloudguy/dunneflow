@@ -188,6 +188,21 @@ def own_group() -> dict[str, Any]:
     return {"start_new_session": True}
 
 
+# **What "the ask could not be delivered" looks like, and it is one tuple because there are
+# four rungs.** The Windows branches were widened to `SystemError` and `ValueError` when the
+# packaged build proved `os.kill` raises the first of those (see `_interrupt_group`), and the
+# two POSIX branches beside them were left as they were -- so the same guard was written four
+# times in three spellings, and a Linux checkout raised straight through the two narrow ones
+# into the handler thread. That is rule 42's defect recovered by rule 51: the rule belongs
+# where every rung passes, not at each of them.
+#
+# `AttributeError` and `TypeError` are a `Popen` double that has no `pid` worth the name;
+# `OSError` is the process being out of reach; `SystemError` and `ValueError` are CPython's
+# own two ways of refusing a signal it cannot send. None of them is a reason to fail a stop:
+# every one means *this rung did not happen*, which is what the `False` says.
+UNDELIVERABLE = (OSError, SystemError, AttributeError, TypeError, ValueError)
+
+
 def _interrupt_group(proc: Any) -> bool:
     """Ask the child **and everything it started** to stop, and let it close what it holds.
 
@@ -224,16 +239,16 @@ def _interrupt_group(proc: Any) -> bool:
         try:
             os.kill(proc.pid, signal.CTRL_BREAK_EVENT)
             return True
-        except (OSError, SystemError, AttributeError, TypeError, ValueError):
+        except UNDELIVERABLE:
             return False
     try:
         os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
         return True
-    except (OSError, AttributeError, TypeError):
+    except UNDELIVERABLE:
         try:
             proc.send_signal(signal.SIGTERM)
             return True
-        except (OSError, AttributeError, TypeError):
+        except UNDELIVERABLE:
             return False
 
 
@@ -258,16 +273,16 @@ def _kill_group(proc: Any) -> bool:
             subprocess.run(["taskkill", "/F", "/T", "/PID", str(proc.pid)],
                            capture_output=True, timeout=15)
             return True
-        except (OSError, SystemError, subprocess.TimeoutExpired, ValueError):
+        except (*UNDELIVERABLE, subprocess.TimeoutExpired):
             return False
     try:
         os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
         return True
-    except (OSError, AttributeError, TypeError):
+    except UNDELIVERABLE:
         try:
             proc.send_signal(signal.SIGKILL)
             return True
-        except (OSError, AttributeError, TypeError):
+        except UNDELIVERABLE:
             return False
 
 

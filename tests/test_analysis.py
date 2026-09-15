@@ -800,6 +800,50 @@ def test_the_polite_rung_answers_rather_than_raising_however_it_fails(
     )
 
 
+@pytest.mark.parametrize("blows_up", [
+    SystemError("<built-in function kill> returned a result with an exception set"),
+    OSError(6, "The handle is invalid"),
+    ValueError("only SIGTERM is supported"),
+])
+def test_the_forceful_rung_answers_rather_than_raising_however_it_fails(
+        monkeypatch: pytest.MonkeyPatch, blows_up: BaseException) -> None:
+    """**The same contract, one rung down** -- and the rung nothing had ever asked.
+
+    `stop` calls this one *after* the polite one, so an exception escaping here lands in the
+    same handler thread and closes the same connection without a response. It was tested on
+    neither platform, and on POSIX it genuinely raised: the guard there listed three classes
+    where the Windows branch beside it listed five, because widening one and not the other is
+    what happens when a rule is kept at four call sites (rule 51).
+    """
+    monkeypatch.setattr(analysis.os, "kill", _raiser(blows_up), raising=False)
+    monkeypatch.setattr(analysis.os, "killpg", _raiser(blows_up), raising=False)
+    monkeypatch.setattr(analysis.os, "getpgid", _raiser(blows_up), raising=False)
+    assert analysis._kill_group(_Unreachable(blows_up)) is False, (
+        "the second rung raised into the handler rather than reporting it could not act"
+    )
+
+
+def test_every_rung_reads_one_name_for_what_it_cannot_deliver() -> None:
+    """The guard is stated once, so widening it cannot reach three rungs of four.
+
+    Over the source, because that is the only place the *shape* of the defect is visible: all
+    four rungs answered correctly on Windows and two of them raised on POSIX, and no test of
+    behaviour on either machine alone would have said why. What is asserted is that no rung
+    spells its own tuple -- a fifth rung written tomorrow has one name to reach for, and a
+    sixth class added to `UNDELIVERABLE` reaches every one of them.
+    """
+    body = Path(analysis.__file__ or "").read_text(encoding="utf-8")
+    rungs = body[body.index("def _interrupt_group"):body.index("FORCED = ")]
+    spelled = [line.strip() for line in rungs.splitlines()
+               if line.strip().startswith("except (") and "UNDELIVERABLE" not in line]
+    assert not spelled, (
+        f"a rung names its own failure classes rather than UNDELIVERABLE: {spelled}"
+    )
+    assert rungs.count("except UNDELIVERABLE:") >= 4, (
+        "the rungs stopped sharing one guard"
+    )
+
+
 def _raiser(exc: BaseException):
     def go(*_a: object, **_k: object) -> None:
         raise exc

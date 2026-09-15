@@ -210,7 +210,7 @@ program has a most-commented routine and a maximum alone is a claim nobody can w
 
 ## What we are doing now
 
-**Design rule 26 is met in Diagram mode at last — 2026-09-15.** Reported by Tom as *"the view
+**Design rule 26 is met in Diagram mode at last — 2026-09-15, approved by Tom at the keyboard** (*"this is much nicer"*), seen in the shipped notarised build. Reported by Tom as *"the view
 does not change between lines on the ROUTINES"*, and driven before it was answered: two of the
 three premises were wrong. The diagram is one compartment rather than all the routines, and
 selecting a routine *does* switch it and *does* mark the right boxes. What was true is that

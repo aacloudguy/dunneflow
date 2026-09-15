@@ -15154,3 +15154,21 @@ and the **frame it** button is correctly not drawn there.
 and rule 73 says a picture must not move under a gesture. Tom asked for it on the button.
 
 **1,410** tests, mypy clean over 140 source files, ruff clean.
+
+## Looked at, at the keyboard — Tom, 2026-09-15, on framing the selection
+
+*"This is much nicer, approved."*
+
+Seen in the shipped application rather than in a checkout — the universal2, notarised build
+installed the same day, serving its own map. So the whole chain is signed off at once: the fit,
+the three-sentence note, the two constants, and the release that carried them.
+
+**Nothing is owed on it.** The item is closed in `BRIEFING.md` rather than merely built.
+
+*One thing this session cost that was not the feature.* Verifying it, I ran
+`pkill -f "dunneflow serve"` to clear my own test servers; the pattern matched Tom's, so the
+page he was reading lost its server and reported **"The diagram could not be drawn. Failed to
+fetch"** on every attempt. The drawing was fine and the server was gone — an error whose
+obvious reading is a defect in the thing it names, which is the expensive kind. The rule is
+narrow and needs no minting: **kill by port, never by name**, which is what the other three
+stops in this session already did. A process this tool did not start is not its to end.

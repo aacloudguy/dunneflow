@@ -383,14 +383,18 @@ def cmd_analyze(args: argparse.Namespace) -> int:
         doc_store = DocStore(revisions.db_path(out_dir, revisions.DOCS, revision))
         doc_store.set_meta("revision", revision)
         doc_store.set_meta("program", program)
-        # **Every map under the output root, kept out of this run's corpus.** Not just this
-        # program's directory: `output/mensores` is where this map goes and `output/` is
-        # where every *other* map goes, and reading a report about some other program as
-        # documentation about this one is the same mistake one directory up. Analysing
-        # DunneFlow itself read 46 of 54 documents that way.
+        # **Every map, kept out of this run's corpus** -- asked of the tree by the walk,
+        # which is where that question belongs and where `discover_docs` records why.
         #
-        # Directories holding a graph, never the *name* `output` -- so a folder of
-        # hand-written prose sitting beside two program directories is still read.
+        # This used to read `frozenset({out_dir}) | revisions.program_dirs(out_dir.parent)`,
+        # and the second half was the whole defence: every map under the output root, not
+        # just this program's. It held from a checkout, where the output root is `./output`
+        # and so inside the tree being read, and it was empty from the packaged application,
+        # whose root is `~/Library/Application Support/DunneFlow` (rule 92). Left here now
+        # it would be a no-op reading as the live defence, so it is gone.
+        #
+        # `out_dir` stays, because the walk cannot see it: it is created above and holds no
+        # graph until this run writes one.
         # `analyze_docs_tree` has taken a `progress` callback since it was written and was
         # never given one, so on a 2,064-document corpus the bar sat still through most of
         # a minute. The terminal never noticed -- there was nothing drawing a bar.
@@ -402,7 +406,7 @@ def cmd_analyze(args: argparse.Namespace) -> int:
         doc_stats = analyze_docs_tree(
             docs_root, doc_store, jobs=args.jobs, recheck=args.recheck_docs,
             progress=doc_progress,
-            exclude=frozenset({out_dir}) | revisions.program_dirs(out_dir.parent))
+            exclude=frozenset({out_dir}))
         duplicates = doc_store.mark_duplicates()
         dc = doc_store.counts()
         if not args.quiet:
@@ -425,6 +429,14 @@ def cmd_analyze(args: argparse.Namespace) -> int:
                 shown = (where.relative_to(docs_root)
                          if where.is_relative_to(docs_root) else where)
                 _emit(f"  skipped {shown} — a checkout of its own, not this program")
+            # And its own sentence, because it is its own reason. A map found here is a
+            # report *about a program* -- usually a different one -- and a reader told only
+            # that something was "skipped" cannot tell that from a checkout.
+            for d in doc_stats.maps:
+                where = Path(d)
+                shown = (where.relative_to(docs_root)
+                         if where.is_relative_to(docs_root) else where)
+                _emit(f"  skipped {shown} — a map of a program, not documentation about one")
         doc_store.optimize()
 
         # The **document** sidecar, the exact mirror of the source one below and driven the
@@ -482,7 +494,7 @@ def cmd_analyze(args: argparse.Namespace) -> int:
         for root in standards_roots:
             st = analyze_docs_tree(
                 root, standards_store, jobs=args.jobs, recheck=args.recheck_docs,
-                exclude=frozenset({out_dir}) | revisions.program_dirs(out_dir.parent))
+                exclude=frozenset({out_dir}))
             std_found += st.found
             std_read += st.parsed
             # Design rule 1 again, and it matters more here than for the corpus: a reader
@@ -491,6 +503,15 @@ def cmd_analyze(args: argparse.Namespace) -> int:
                 where = Path(d)
                 shown = where.relative_to(root) if where.is_relative_to(root) else where
                 _emit(f"  skipped {shown} — a checkout of its own, not a standard")
+            # The corpus walk's second sentence, worded for this reader: they named this
+            # directory as somebody's standard, so what they are owed is why a part of it
+            # is not one. `standards_refusal` already turns the whole root away for being
+            # inside the output tree; this is the same argument for a map found within a
+            # root that is otherwise perfectly good.
+            for d in st.maps:
+                where = Path(d)
+                shown = where.relative_to(root) if where.is_relative_to(root) else where
+                _emit(f"  skipped {shown} — a map of a program, not a standard")
         standards_store.mark_duplicates()
         sc = standards_store.counts()
         if not args.quiet:

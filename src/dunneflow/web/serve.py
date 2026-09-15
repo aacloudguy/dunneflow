@@ -3532,11 +3532,16 @@ def where(given: Path) -> tuple[Path, Path]:
     hand-written prose, and nothing here may claim a directory because of what it is
     called (rule 30).
 
+    It is asked by calling `revisions.holds_a_map` rather than by spelling the glob out,
+    and that is the point of the sentence above: this said it was asking the same question
+    as `analyze` while asking it separately, which is three copies of one rule waiting to
+    disagree (rule 51).
+
     A root is returned as `(root, root)`, its own program directory, which is what makes
     the refusal below able to say what *is* there. The caller decides what that means.
     """
     given = given.resolve()
-    if any(given.glob(f"{revisions.GRAPH}*.db")):
+    if revisions.holds_a_map(given):
         return given, given.parent
     return given, given
 

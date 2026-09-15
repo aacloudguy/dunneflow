@@ -210,6 +210,28 @@ program has a most-commented routine and a maximum alone is a claim nobody can w
 
 ## What we are doing now
 
+**A map of another program was being read as this one's documentation, and only the packaged
+application did it — fixed 2026-09-15, and it is engineering rule 92.** Found by looking at
+what five days of real use had left in `~/Library/Application Support/DunneFlow`, not by a
+test. DunneFlow's own map as the signed binary built it: **122 of 147 documents** out of
+`output/`, **122 of 122** stated naming rules mined from generated reports *about Mensores*,
+655 of 680 definitions likewise, and a **289 MB** document store beside a 6 MB graph.
+
+The exclusion was correct and content-tested — `program_dirs(out_root)`, a directory holding a
+graph and never the name `output` — and it was **assembled from where the run writes**. From a
+checkout that is `./output`, inside the tree being read; frozen it is a directory in the
+reader's Library with no bearing on the tree, so a checkout's own maps went back into the
+corpus. `discover_docs` asks the question of the tree now, off the listing `os.walk` already
+took, and names what it pruned. 147 → **26** documents, 122 → **0** rules, 289 MB → **0.64 MB**,
+verified *through the binary*; the hand-written page sitting loose in `output/` is still read.
+`names_a_map`/`holds_a_map` replaced three separate spellings of one glob (rule 51), with an AST
+guard refusing a fourth. **1,408** tests, mypy and ruff clean. Full record in `HANDOFF.md` under
+2026-09-15.
+
+**`/Applications/DunneFlow.app` is still the 2026-09-10 build and does not carry this fix.** Its
+poisoned map has been replaced with a correct one, but the application goes on reproducing the
+defect until a release is cut — which is now item 1 below.
+
 **The user guide is written, 2026-09-10 — `docs/`, and it is the first documentation this tool
 has ever had for the person it is built for.** Seventeen files, 1,879 lines, **29 screenshots
 taken from a live server**, and `README.md` rewritten: it still ended *"the interactive
@@ -279,10 +301,40 @@ start page, and `/start` is reachable by URL when the shell has stopped working.
 
 ### Where to pick up
 
-1. **The icon.** `packaging/icon/build_icon.py` draws a hare leaping a river as geometry — every
-   proportion is a named number and the whole ladder re-renders in a second. **Not committed and
-   not wired in**: `icon=None` in the spec, and Tom has not passed judgement. When he does,
-   `iconutil` builds the `.icns`, one line changes in the spec, then `release.sh all`.
+0. **Cut a release**, so the installed application carries rule 92's fix. Nothing else is
+   owed for it: the code, the tests and the records are done, and `./packaging/release.sh all`
+   runs unattended now that the interpreter and the notarytool credentials exist. Whether it
+   waits for the icon is the only question — one release would carry both.
+1. **The icon — wired in and installed for testing, 2026-09-15, and waiting on Tom's eye.**
+   `icon=None` is gone: the spec names `packaging/icon/dunneflow.icns` and **refuses to build
+   without it** rather than shipping the generic bundle icon in silence (rule 49).
+
+   Three candidates exist and the choice was made on a measurement. `build_icon.py` still draws
+   the hare over a river as geometry; Tom supplied a drawing of a leaping hare, and then a
+   zoomed **head-only** crop of it. `build_supplied_icon.py` is the conditioner that squares,
+   scales, rounds and ladders a supplied drawing under `build_icon.py`'s own canvas rules, and
+   prints what it measures. The drawing's fill is **1.73:1** against its ground where the
+   geometric hare is **4.74:1** on the same blue — which is the ratio `build_icon.py`'s
+   docstring already records a candidate failing at 32px for. What the number misses is the
+   dark navy outline, which carries the silhouette where the fill cannot.
+
+   **The head-only crop is installed**, because it is the only one of the three that still
+   reads as a hare at 32px and at 16px — ears, eye and muzzle all survive, verified against
+   what macOS itself draws from the installed bundle rather than against the source files. Its
+   cost is resolution: 266px of source for a 1024px icon, a **3.85×** upscale, so 512 and 1024
+   are soft on the linework by construction. If it is kept, the thing worth asking for is the
+   same drawing larger.
+
+   `/Applications/DunneFlow.app` is that test build — **host arch, ad-hoc signed**, so it is
+   for looking at and not for keeping. The notarised 2026-09-10 build is parked intact at
+   `~/Library/Application Support/DunneFlow-builds/`. Neither the `.icns` nor the drawing it
+   came from is committed yet; the ladder and the comparison sheets are ignored as
+   `render_*.png` already was.
+
+   *Found while comparing:* the geometric icon's **bottom corners are square** — the river
+   bands are drawn over the rounded rect and run to `SIZE` without being clipped to it, so
+   three sides are rounded and one is not. Visible in `render_1024.png` and in every
+   comparison sheet. Untouched, since that icon is not the candidate.
 2. **A `.dmg`**, whenever something needs handing to somebody. `release.sh dmg` builds, signs,
    notarises and staples one, and works now that the credentials exist.
 3. **Windows**, last, and still deliberately after everything else.

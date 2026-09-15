@@ -9,8 +9,8 @@ agree with a rule and still reimplement the defect it was written from: every on
 was, at the time, the obvious thing to do.
 
 Cited as bare numbers — "rule 45" — from code comments, tests, `HANDOFF.md` and
-`BRIEFING.md`; **3,132** such citations across `src/` and `tests/`, 2,326 of them to these
-rules and 806 to the design ones, over 124 files — retaken 2026-09-09 with the command
+`BRIEFING.md`; **3,241** such citations across `src/` and `tests/`, 2,422 of them to these
+rules and 819 to the design ones, over 128 files — retaken 2026-09-15 with the command
 below, which is why the command is written down. The numbers are therefore **addresses**,
 never an ordering, and are never reused or closed up.
 
@@ -26,8 +26,8 @@ by the query. A count that changes with the shell it is run in is not a measurem
 24), so the exclusion is stated and the figure was reproduced twice before being written:
 
 ```bash
-grep -rhoiE "\brules? [0-9]+"        --exclude-dir=__pycache__ src tests | wc -l   # 3,132
-grep -rhoiE "\bdesign rules? [0-9]+" --exclude-dir=__pycache__ src tests | wc -l   #   806
+grep -rhoiE "\brules? [0-9]+"        --exclude-dir=__pycache__ src tests | wc -l   # 3,241
+grep -rhoiE "\bdesign rules? [0-9]+" --exclude-dir=__pycache__ src tests | wc -l   #   819
 grep -rliE "\brules? [0-9]+"         --exclude-dir=__pycache__ src tests | wc -l   #   124
 ```
 
@@ -1764,3 +1764,52 @@ rule of that number — a blank canvas must say why it is blank — which does e
     port, and one of its assertions is simply that the em dash comes back —
     `assert "—" in body`. A sentence that cannot be delivered is not a sentence, and the only
     instrument that knows the difference is the wire.
+
+92. **A defence assembled from where this run writes does not survive the run being done
+    from somewhere else.** The exclusion was content-tested, argued from a measured failure
+    and correct — and it evaporated the moment the output root moved out of the tree being
+    read, which is precisely what installing the application does.
+
+    Rule 57's own defect had already been paid for once: pointing DunneFlow at itself read
+    46 of 54 documents out of `output/`, its own generated reports about a *different*
+    program, and all 942 naming rules it then claimed came from them. The fix was
+    `exclude = {out_dir} | revisions.program_dirs(out_dir.parent)` — every directory under
+    the output root holding a `graph*.db`, recognised by content and never by the name
+    `output`, which is right on both counts. `program_dirs` even stated its own bound
+    honestly: one level down and no deeper, because a recursive search would *"cost every
+    project a walk to protect against a layout nobody uses."*
+
+    **That layout is what an installed application does.** From a checkout the output root
+    is `./output`, inside the tree being read, so the set enumerates exactly the maps in the
+    way and the defence holds. Frozen, `default_output_root()` is
+    `~/Library/Application Support/DunneFlow`, so the same expression enumerates a directory
+    in the reader's Library with no bearing on the tree at all — and a checkout's own
+    `output/`, full of maps, went straight back into the corpus.
+
+    Measured on DunneFlow's own map as the signed binary built it, 2026-09-10: **122 of 147
+    documents** came out of `output/`, **122 of 122** stated naming rules were mined from
+    them — every rule the map claimed was about Mensores — 655 of 680 definitions likewise,
+    and the document store was **289 MB** against a 6 MB graph, 13,449 tables and 161,047
+    table rows of somebody else's generated report.
+
+    **The remedy is to ask the question of the thing being read, not of the thing being
+    written.** `discover_docs` is already walking every directory of the documentation root
+    and already prunes a nested checkout off `os.walk`'s own listing at no `stat` cost
+    (rule 57); a map's spine is in `filenames` for the same price. `exclude` stays for the
+    one thing a marker cannot answer — this run's `out_dir`, which is created before the
+    documents are scanned and holds no graph until after — and the two are now two
+    mechanisms with two stated reasons rather than one doing both jobs badly.
+
+    **1,402 green tests said nothing about any of it**, and the reason is worth more than
+    the fix. `tests/test_map_index.py` drives the whole of `cmd_analyze` and asserts this
+    exact property — with `out = tmp_path/"out"` beside `tree = tmp_path/"src"`. Every test
+    in the suite put the output root inside the analysed tree, because that is what a
+    developer's arrangement looks like, so the suite proved the one shape where the defect
+    cannot appear. It is rule 24's family at the level of a fixture: **a test that only ever
+    constructs the developer's own arrangement has not measured the product.**
+
+    The family this belongs to is any defence derived from the process rather than from the
+    subject — a path relative to the cwd, an exclusion built from the destination, a limit
+    taken from the machine doing the work. Each is correct where it was written and each
+    stops being correct when the same code runs somewhere else, silently, because the
+    expression still evaluates and still returns something plausible (rule 49).

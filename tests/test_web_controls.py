@@ -368,6 +368,60 @@ def test_layout_dimensions_are_stored_in_rem() -> None:
     assert not offenders, f"layout dimensions the scale multiplier cannot reach: {offenders}"
 
 
+def test_the_search_flags_are_capped_on_the_box_they_are_measured_against() -> None:
+    """Reported by Tom with two pictures: the three flags outside the search field.
+
+    `.srch-flags` is `position: absolute; right: .35rem`, which is an offset from
+    `.tb-searchwrap`. So the wrapper and the field have to end in the same place, and they
+    did not: the `max-width: 26rem` sat on `.tb-search` while the wrapper was `flex: 1 1
+    auto` with no cap at all. The field stopped at 26rem, the wrapper went on absorbing
+    every spare pixel of the toolbar, and the flags went with the wrapper.
+
+    Measured in the browser before the fix, at one root size: the overhang is
+    `wrapper - field - .35rem`, **16px at a 1,222px window and 1,354px at 2,560px**. It
+    grows one-for-one with the window, which is why it reads as a wide-window bug and is
+    really wrong at every width except the one where the two boxes happen to agree.
+
+    The two rules are 3,400 lines apart in one file and each is correct alone, so what is
+    asserted is the *relationship* rather than either value: whatever element the flags are
+    positioned against is the element that carries the cap, and nothing inside it may
+    re-cap itself smaller.
+    """
+    css = _css_code(_read("tokens.css"))
+
+    def body(selector: str) -> str:
+        """The rule whose selector *is* this, never one that merely ends with it.
+
+        Anchored to the start of a line, because the first spelling was not and matched
+        `:root[data-topfit="on"] .tb-searchwrap { min-width: 8.5em }` — a real rule for a
+        different question, whose body naturally has no `position: relative`. That is rule
+        54 inside the guard written for the defect: a check that names the wrong container
+        has not checked anything, and here it would have failed against correct CSS.
+        """
+        m = re.search(r"(?m)^" + re.escape(selector) + r"\s*\{([^}]*)\}", css)
+        assert m, f"{selector} has no rule of its own in tokens.css at all"
+        return m.group(1)
+
+    wrap = body(".tb-searchwrap")
+    assert "position: relative" in wrap, (
+        "the flags are absolutely positioned against `.tb-searchwrap`; without "
+        "`position: relative` they would be offset from the viewport instead")
+    assert re.search(r"max-width:\s*[\d.]+rem", wrap), (
+        "`.tb-searchwrap` carries no width cap, so it grows with the toolbar while the "
+        "field inside it does not — which is how the flags left the box. The cap belongs "
+        "on the element `right: .35rem` is measured from")
+
+    # The field must not cap itself below its wrapper. Both rules that can set it are
+    # checked, because the defect was a cap in the *base* rule surviving a wrapper rule
+    # that overrode `flex` and nothing else.
+    assert not re.search(r"max-width:\s*[\d.]+(rem|px|em)", body(".tb-search")), (
+        "`.tb-search` caps its own width again; the wrapper's cap is the only one, or the "
+        "field stops short of the box the flags are pinned to")
+    assert "max-width: none" in body(".tb-searchwrap .tb-search"), (
+        "the field must be released to fill its wrapper, or a cap inherited from anywhere "
+        "puts its right edge and the flags' right edge in two different places")
+
+
 def test_a_narrow_window_never_deletes_a_pane_it_cannot_fit() -> None:
     """Reported by Tom with a picture, and the wording is the whole diagnosis: *"the left
     Navigator pane collapses and cannot be brought back without making the window wide

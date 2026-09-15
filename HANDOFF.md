@@ -14797,3 +14797,170 @@ Nothing from this session. The **icon** and **Windows** are where they were.
 The guide has **no page on the anomaly worklist**, deliberately: it is a navigator destination rather
 than one of the six views, and it is the one surface whose discipline — severity, confidence and
 blind spot as three different questions — deserves a page of its own rather than a paragraph.
+
+## 2026-09-15 — the map the application read as documentation, and rule 92
+
+Found by looking at what five days of real use had left on disk, rather than by a test. The
+maps root the packaged application writes to — `~/Library/Application Support/DunneFlow` —
+held four maps, and the one of **DunneFlow itself** had a `docs@….db` of **289 MB** beside a
+6 MB graph. That ratio is the whole story: 13,449 tables and 161,047 table rows, out of a
+program whose own prose is a few megabytes.
+
+### What it was
+
+| | the app's map | the checkout's (`output/dunneflow`) |
+|---|---|---|
+| documents read | 147 | 8 |
+| of those, from `output/` | **122** | 0 |
+| stated naming rules | **122 — every one** | 0 |
+| definitions | 680, of which **655** from `output/` | — |
+| `docs@….db` | **289 MB** | small |
+
+So the map the application built of this program stated 122 naming rules **about Mensores**,
+mined out of `output/mensores/map@…/06-governance.md` and its siblings, and 96% of its
+glossary's documentation tier came from the same place. It is the failure `walk.py` already
+records as fixed — *"every one of the 942 rules it then claimed to have found came from
+them"* — arriving again through a door the fix never covered.
+
+### Why the defence was absent
+
+`exclude = frozenset({out_dir}) | revisions.program_dirs(out_dir.parent)`, at both call
+sites, and `out_dir.parent` **is** the output root. `program_dirs` asks the right question
+and asks it the right way: *does this directory hold a `graph*.db`*, by content and never by
+the name `output`, which is a fine name for a directory of hand-written prose (rule 30). It
+even stated its own bound honestly — one level down and no deeper, because a recursive search
+would *"cost every project a walk to protect against a layout nobody uses."*
+
+**That layout is what an installed application does.** From a checkout the output root is
+`./output`, inside the tree being read, so the set enumerates exactly the maps in the way.
+Frozen it is a directory in the reader's Library, so the same expression enumerates something
+with no bearing on the tree at all — and a checkout's own `output/`, full of maps, went
+straight back into the corpus. **The defence was assembled from where the run writes, and
+installing the application moved that out of the tree the run reads.** Rule 92.
+
+### What 1,402 green tests were saying
+
+Nothing, and the reason is worth more than the fix. `tests/test_map_index.py:197`,
+`test_a_map_is_not_read_as_documentation`, drives the whole of `cmd_analyze` and asserts this
+exact property — with `out = tmp_path/"out"` beside `tree = tmp_path/"src"`. Every test in
+the suite put the output root inside the analysed tree, because that is what a developer's
+arrangement looks like. The suite proved the one shape in which the defect cannot appear.
+Rule 24's family at the level of a fixture.
+
+### The fix
+
+Ask the question of the tree, on the walk that is already happening. `discover_docs` prunes a
+nested checkout off `os.walk`'s own listing at no `stat` cost (rule 57); a map's spine is in
+`filenames` for the same price. Four parts:
+
+* **`revisions.names_a_map(names)` and `holds_a_map(path)`** — one spelling of the marker.
+  `any(glob("graph*.db"))` was written out **three times**, twice in `program_dirs` and once
+  re-implemented in `serve.where`, whose own docstring called it *"the same question `analyze`
+  asks"* while asking it separately. Adding a fourth in `walk.py` would have been rule 51's
+  defect committed inside the fix for rule 57's. A test over the AST refuses a fourth, and was
+  checked by putting one back: it names `serve.py:3544` and the exact expression.
+* **`discover_docs` prunes a map wherever it sits**, by `dirnames`, so a program directory
+  takes its `map@<revision>/` with it. **Applied at the root too**, unlike the checkout
+  marker, and that asymmetry is the point: the corpus is itself a checkout and that is why
+  the root is exempt there, but a corpus is never itself a map.
+* **`exclude` stays**, narrowed to `{out_dir}`, for the one thing a marker cannot see — this
+  run's own output directory, created before the documents are scanned and holding no graph
+  until after. `program_dirs(out_dir.parent)` is gone from both call sites: it is a no-op that
+  would read as the live defence and rot. Its eleven other callers in `serve` and `roots` are
+  untouched, and its docstring now records what its own bound cost.
+* **`WalkStats.maps`, and two sentences** — *a map of a program, not documentation about one*
+  for the corpus walk, *not a standard* for the standards walk, because the standards reader
+  named the directory and the corpus reader did not. Design rule 1, and the number is larger
+  here than the 14% a pruned worktree cost: silently, this is 83% of what the reader can see.
+
+### Measured, through the binary, because that is where it lived
+
+`DUNNEFLOW_ARCH=host`, analysing this checkout:
+
+```
+documents 26 (read 26, cached 0, removed 0, failed 0): 25 definitions, 0 stated rules
+  skipped output/mensores@2026-08-29T19-43-39Z — a map of a program, not documentation about one
+  skipped output/dunneflow — a map of a program, not documentation about one
+  skipped output/mensores — a map of a program, not documentation about one
+  skipped output/beads — a map of a program, not documentation about one
+```
+
+147 → **26** documents, 122 → **0** stated rules, 655 → **0** definitions out of `output/`,
+289 MB → **0.68 MB**, 161,047 table rows → **830**. And `output/dashboard-uitest.md` — a
+hand-written page sitting loose in `output/` — **is still read**, which is the property the
+name blacklist was rejected for, demonstrated on the real tree rather than in a fixture.
+
+The binary still stamps `extractor = 9:e8c9ac8a851c41b7`, the checkout's, so the two builds
+go on reading each other's maps (rule 12).
+
+### The poisoned map, replaced — and one thing that came out of doing it
+
+Re-analysed in place: **`removed 121`**, and the store's content became correct immediately.
+The *file* stayed at **275.5 MB**, because SQLite does not return freed pages to the
+filesystem and `optimize()` is `PRAGMA optimize` — query-planner statistics, not space.
+`freelist_count` was **70,350 of 70,539 pages, 99.7%**. One `VACUUM` took it to **0.64 MB**.
+
+Deliberately *not* made a code change. A removal that large is the defect's own footprint and
+not a thing analysis does; adding a `VACUUM` to every run would cost every reader time for a
+case that should never happen again. Recorded here so the next person who sees a map that
+shed documents and did not shrink knows which pragma is which.
+
+**`/Applications/DunneFlow.app` is still the 2026-09-10 notarised build and does not have
+this fix.** The map it wrote has been replaced with a correct one, but the application itself
+will reproduce the defect until a release is cut. That is the first thing on the list.
+
+Gates: **1,408** tests (six new), mypy clean over 139 source files, ruff clean.
+
+## 2026-09-15 — the three search flags, outside the box they belong to
+
+Reported by Tom with two pictures: the `Aa`, `|ab|` and `.*` flags sitting outside the
+topbar's search field, and further outside the wider the window got.
+
+**The mechanism, and it is two correct rules 3,400 lines apart in one file.**
+`.srch-flags` is `position: absolute; right: .35rem`, which is an offset from
+`.tb-searchwrap`. So the wrapper and the field have to end in the same place. They did not:
+`max-width: 26rem` was on `.tb-search` (`tokens.css:780`, from when the field was a bare
+flex item in the toolbar row) and the wrapper that was later put around it is `flex: 1 1
+auto` with **no cap at all** (`tokens.css:4179`). The field stopped at 26rem; the wrapper
+went on absorbing every spare pixel in the toolbar; the flags went with the wrapper.
+
+**Measured in the browser rather than reasoned about**, at `rootFontPx 16`, with the
+toolbar's width forced so the flex distribution is the real one:
+
+| toolbar | wrapper | field | flags past the field's right edge |
+|---|---|---|---|
+| 1,222 px | 438 | 416 | **16 px** |
+| 1,600 px | 816 | 416 | **394 px** |
+| 2,000 px | 1,216 | 416 | **794 px** |
+| 2,560 px | 1,776 | 416 | **1,354 px** |
+
+The overhang is exactly `wrapper − field − .35rem` and grows one-for-one with the window.
+So it is not a wide-window bug: it is wrong at **every** width except the single one where
+the wrapper happens to equal the field, and Tom's first picture is that defect at 16px —
+which is why the initial view already showed it "flowing out of the box".
+
+That is rule 53's family read backwards. A layout bounded by arithmetic is right at one
+window size; this one was bounded in the wrong *element*, so it was right at one width and
+wrong either side. Rule 71's companion supplies the rest: a class name is global and a
+stylesheet gives no warning, so the rule that put a wrapper round the field never learned
+that the field already capped itself.
+
+**The fix is to move the cap onto the box the flags are measured against** — `max-width:
+26rem` on `.tb-searchwrap`, `max-width: none` on `.tb-searchwrap .tb-search` so the field
+fills it. Nothing else moves: `.tb-right` is already `margin-left: auto`, so the slack the
+wrapper used to eat goes where it was always meant to and the right-hand group stays
+pinned. Verified from the served stylesheet with the trial override removed: the flags sit
+**6 px inside** the field at 760 · 900 · 1,222 · 1,600 · 2,000 · 2,560 · 3,440 px, and at
+all four combinations of `topfit` and `panefit`, which are the settings that touch these
+same three elements.
+
+**The guard, and it caught itself first.** `test_the_search_flags_are_capped_on_the_box_
+they_are_measured_against` asserts the *relationship* rather than either number: whatever
+element the flags are positioned against carries the cap, and nothing inside it re-caps
+itself. Its first spelling matched `:root[data-topfit="on"] .tb-searchwrap { min-width:
+8.5em }` — a real rule for a different question — and failed against perfectly correct CSS.
+**Rule 54 inside the guard written for this defect**: a check that names the wrong container
+has not checked anything. The selector is anchored to the start of a line now, and the test
+was run against the original CSS to watch it fail before it was kept.
+
+**1,409** tests, mypy clean over 140 source files, ruff clean.

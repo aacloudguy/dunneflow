@@ -55,6 +55,16 @@ from PyInstaller.utils.osx import get_binary_architectures
 ROOT = Path(SPECPATH).parent           # noqa: F821 -- SPECPATH is PyInstaller's
 PKG = ROOT / "src" / "dunneflow"
 
+# The icon, and it is **named rather than found**: PyInstaller takes `icon=None` without a
+# word, so a path that has stopped existing would build a perfectly good application with
+# the generic bundle icon and nothing anywhere would say so (rule 49). A build asked for an
+# icon that is not there should fail while somebody is watching it.
+ICON = ROOT / "packaging" / "icon" / "dunneflow.icns"
+if not ICON.exists():
+    raise SystemExit(
+        f"{ICON} is not there — build it first:\n"
+        f"  uv run --with pillow python packaging/icon/build_supplied_icon.py <source>")
+
 
 def _target_arch() -> str | None:
     """Which architectures to build for, and a refusal rather than a plausible answer.
@@ -184,7 +194,7 @@ coll = COLLECT(                                 # noqa: F821
 app = BUNDLE(                                   # noqa: F821
     coll,
     name="DunneFlow.app",
-    icon=None,
+    icon=str(ICON),
     bundle_identifier="com.dunnecorp.dunneflow",
     info_plist={
         # It serves on localhost and opens the default browser. Nothing here reaches a

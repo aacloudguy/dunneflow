@@ -53,6 +53,14 @@ no_implicit_optional = true
 module = "tests.*"
 disallow_untyped_defs = false
 
+[[tool.mypy.overrides]]
+# Pillow is never installed in the checked environment and is not meant to be: the icon
+# scripts are run on demand with `uv run --with pillow`, because nothing the application
+# ships needs an image library and adding one to the project environment would put it in
+# the bundle. So the import is genuinely absent here rather than merely unstubbed.
+module = "PIL.*"
+ignore_missing_imports = true
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"

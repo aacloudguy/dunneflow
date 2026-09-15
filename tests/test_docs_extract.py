@@ -740,6 +740,112 @@ def test_a_map_beside_the_docs_is_not_documentation(tmp_path: Path) -> None:
     )
 
 
+# Rule 92, the same subject one door over. Everything above hands `discover_docs` an
+# `exclude` set computed from the output root, which is what `analyze` did -- and that set
+# is empty of anything in this tree whenever the output root is somewhere else, which is
+# where an installed application always keeps it. So the question is asked of the tree by
+# the walk itself, and these are the four things that has to get right.
+
+
+def test_a_map_nested_deeper_than_one_level_is_pruned(tmp_path: Path) -> None:
+    """The half `program_dirs` could not reach, and the shape that actually bit.
+
+    `program_dirs` looks at the output root and one level of children, because program
+    directories are siblings by construction. A checkout's `output/` is two levels down
+    from the tree root and deeper still in a monorepo, so nothing above is even asked
+    about it. DunneFlow's own map, built by the packaged application: 122 of 147
+    documents came out of a directory no exclude set had ever heard of.
+    """
+    from dunneflow.walk import discover_docs
+
+    (tmp_path / "README.md").write_text("# Real prose", encoding="utf-8")
+    buried = tmp_path / "a" / "b" / "c" / "mensores"
+    buried.mkdir(parents=True)
+    (buried / "graph@2026-01-01T00-00-00Z.db").write_bytes(b"")
+    (buried / "06-governance.md").write_text("# Generated", encoding="utf-8")
+    (buried / "map@2026-01-01T00-00-00Z").mkdir()
+    (buried / "map@2026-01-01T00-00-00Z" / "11-naming.md").write_text(
+        "# Generated", encoding="utf-8")
+
+    found = {p.relative_to(tmp_path).as_posix() for p in discover_docs(tmp_path)}
+    assert found == {"README.md"}, (
+        f"a map four levels down was read as documentation: {sorted(found)} -- no "
+        "exclusion computed from the output root can see it (rule 92)"
+    )
+
+
+def test_a_docs_root_that_is_itself_a_map_yields_nothing(tmp_path: Path) -> None:
+    """The one place this marker and the checkout marker disagree, deliberately.
+
+    `test_the_root_is_never_treated_as_nested` exempts the root from the VCS test because
+    the corpus is itself a checkout and that is the point. A corpus is never itself a
+    *map*, so the opposite holds: `--docs` aimed into a program directory is the failure
+    and not the ordinary case. It cannot fire by accident on the default path, where the
+    docs root is the nearest ancestor holding a `pyproject.toml` and a program directory
+    holds none.
+    """
+    from dunneflow.walk import discover_docs
+
+    prog = tmp_path / "mensores"
+    prog.mkdir()
+    (prog / "graph@2026-01-01T00-00-00Z.db").write_bytes(b"")
+    (prog / "06-governance.md").write_text("# Generated", encoding="utf-8")
+
+    maps: list[str] = []
+    found = list(discover_docs(prog, maps=maps))
+    assert not found, f"the root's own map was read as documentation: {found}"
+    assert maps == [str(prog.resolve())], (
+        f"a docs root that yielded nothing did not say why: {maps}"
+    )
+
+
+def test_a_pruned_map_is_named(tmp_path: Path) -> None:
+    """Design rule 1, and the number is larger here than for a checkout.
+
+    A pruned worktree was 14% of Mensores' corpus. A pruned map was **122 of 147
+    documents** of DunneFlow's own, so the version that prunes correctly and says nothing
+    reports a corpus 83% smaller than what the reader can see in the directory -- and
+    across two points in time, a project that deleted most of its documentation.
+    """
+    from dunneflow.walk import discover_docs
+
+    (tmp_path / "README.md").write_text("# Real prose", encoding="utf-8")
+    prog = tmp_path / "output" / "mensores"
+    prog.mkdir(parents=True)
+    (prog / "graph@2026-01-01T00-00-00Z.db").write_bytes(b"")
+    (prog / "06-governance.md").write_text("# Generated", encoding="utf-8")
+
+    maps: list[str] = []
+    found = {p.relative_to(tmp_path).as_posix()
+             for p in discover_docs(tmp_path, maps=maps)}
+    assert found == {"README.md"}, sorted(found)
+    assert maps == [str(prog.resolve())], (
+        f"the walk pruned a map and did not name it: {maps}"
+    )
+
+
+def test_a_directory_called_output_holding_prose_is_still_read(tmp_path: Path) -> None:
+    """The property the name test was rejected for, asserted against the new mechanism.
+
+    `output/` is a fine name for a directory of hand-written documents, and nothing may
+    drop one because a tool its author has never heard of writes there (rule 30). The
+    exclude set honoured that and this has to honour it too, or the fix trades one false
+    corpus for another.
+    """
+    from dunneflow.walk import discover_docs
+
+    out = tmp_path / "output"
+    (out / "notes").mkdir(parents=True)
+    (out / "decisions.md").write_text("# Ours", encoding="utf-8")
+    (out / "notes" / "more.md").write_text("# Also ours", encoding="utf-8")
+
+    maps: list[str] = []
+    found = {p.relative_to(tmp_path).as_posix()
+             for p in discover_docs(tmp_path, maps=maps)}
+    assert found == {"output/decisions.md", "output/notes/more.md"}, sorted(found)
+    assert not maps, f"prose was mistaken for a map: {maps}"
+
+
 def test_program_dirs_recognises_a_map_and_not_a_name(tmp_path: Path) -> None:
     """A graph makes a program directory. Being called `output` does not."""
     from dunneflow import revisions

@@ -251,3 +251,79 @@ def test_the_walk_prunes_the_output_directory_it_is_writing_into(tmp_path):
     assert found == {"README.md"}, (
         f"excluding a program directory did not prune what is under it: {sorted(found)}"
     )
+
+
+# ---------------------------------------------------------------------------------------
+# Rule 92. Everything above is the checkout shape: `out` sits beside `tree` under one
+# `tmp_path`, so the output root is inside the tree being read and every defence built out
+# of it holds. The packaged application puts its maps in `~/Library/Application Support`,
+# which is the one arrangement none of these tests -- and nothing in the suite -- had ever
+# constructed. DunneFlow's own map, built by the signed binary on 2026-09-10, read 122 of
+# its 147 documents out of `output/` and stated 122 naming rules about another program.
+
+
+def _stale_map(tree: Path) -> Path:
+    """A map of *some other program*, sitting in the tree that is about to be read.
+
+    Which is what a checkout looks like the moment anybody has run `dunneflow analyze` in
+    it once. Both layouts, because both exist on disk: the loose `NN-*.md` files of the
+    flat layout, and a `map@<revision>/` beside them.
+    """
+    prog = tree / "output" / "mensores"
+    revisions.db_path(prog, revisions.GRAPH, "2026-01-01T00:00:00Z").parent.mkdir(
+        parents=True)
+    revisions.db_path(prog, revisions.GRAPH, "2026-01-01T00:00:00Z").touch()
+    (prog / "06-governance.md").write_text(
+        "# Governance\n\n| Type | Convention |\n|---|---|\n| Files | kebab-case |\n",
+        encoding="utf-8")
+    inner = revisions.map_dir(prog, "2026-01-01T00:00:00Z")
+    inner.mkdir()
+    (inner / "06-governance.md").write_text(
+        "# Governance\n\n| Type | Convention |\n|---|---|\n| Files | kebab-case |\n",
+        encoding="utf-8")
+    return prog
+
+
+def test_a_map_in_the_tree_is_refused_when_the_output_root_is_elsewhere(tmp_path):
+    """The defect the packaged build shipped, and the only shape that shows it.
+
+    `exclude` was `{out_dir} | program_dirs(out_dir.parent)`, and `out_dir.parent` is the
+    output root -- so from a checkout it enumerated `./output` and pruned everything, and
+    from the application it enumerated a directory in the reader's Library that has no
+    bearing on the tree at all. The half-working version passes every other test in this
+    file, because every other test puts `out` inside `tmp_path` beside `tree`.
+
+    The answer is that the question is asked of the tree by the walk. So this puts the
+    output root **outside** the analysed tree, which is the arrangement an installed
+    application is always in.
+    """
+    project = tmp_path / "project"
+    project.mkdir()
+    tree = _tree(project)
+    stale = _stale_map(project)
+    assert (stale / "06-governance.md").exists(), "there is no map to be misread"
+
+    out = tmp_path / "elsewhere"
+    assert _analyse(tree, out, "--docs", str(project)) == 0
+
+    from dunneflow.docstore import DocStore
+    doc_db = revisions.newest(out / "prog", revisions.DOCS)
+    assert doc_db is not None, "no document store was written"
+    docs = DocStore(doc_db, writable=False)
+    try:
+        paths = {r["path"] for r in docs.conn.execute("SELECT path FROM documents")}
+        rules = docs.conn.execute("SELECT COUNT(*) FROM doc_rules").fetchone()[0]
+    finally:
+        docs.close()
+
+    assert paths, "no documents were read at all, so this test proves nothing"
+    offenders = sorted(p for p in paths if "governance" in p or "map@" in p)
+    assert not offenders, (
+        f"a map of another program was read as this one's documentation: {offenders} -- "
+        "the exclusion was built from where this run writes, and the output root is not "
+        "in this tree (rule 92)"
+    )
+    assert rules == 0, (
+        f"{rules} naming rules were mined out of a generated report; the corpus states "
+        "rules about a program it has never read"
+    )

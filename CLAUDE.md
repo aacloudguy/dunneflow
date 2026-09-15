@@ -14,15 +14,15 @@ by *how often you need it*, not by importance:
 | File | What it holds | When to read it |
 |---|---|---|
 | `CLAUDE.md` | commands, verification gates, architecture, and the **index** of every rule | every session — it is loaded for you |
-| `RULES.md` | the 90 engineering rules **in full**, with the false result each came from — numbered to 91, because 21 does not exist and the numbers are addresses | before working in the area a rule governs |
+| `RULES.md` | the 91 engineering rules **in full**, with the false result each came from — numbered to 92, because 21 does not exist and the numbers are addresses | before working in the area a rule governs |
 | `DESIGN-RULES.md` | the 30 dashboard design rules in full | before building or changing a view |
 | `PERFORMANCE.md` | every measured figure, with its budget and its conditions | before quoting or retaking a number |
 | `BRIEFING.md` | state: what is built, what is next, what is closed | at the start of a session |
 | `HANDOFF.md` | the full chronological record, session by session | when you need why something is the way it is |
 
 A rule is cited as a bare number — "rule 45", "design rule 19" — from code comments, tests
-and both records; **3,132** such citations across `src/` and `tests/` as of 2026-09-09 —
-2,326 to the engineering rules and 806 to the design ones, over 124 files. `RULES.md` carries
+and both records; **3,241** such citations across `src/` and `tests/` as of 2026-09-15 —
+2,422 to the engineering rules and 819 to the design ones, over 128 files. `RULES.md` carries
 the command that counts them, because the first retake gave two different answers in two
 shells. **The numbers are
 addresses. Never reuse one, never renumber, never close a gap.**
@@ -70,7 +70,10 @@ which is how `serve` runs it. See the `serve` section below.
 **`serve` takes a program, an output root, or nothing at all**, and tells the two apart by
 the same question `analyze` asks to keep a program's own output out of its own corpus:
 *does this directory hold a map*. Never by name — `output/` is a fine name for a directory
-of hand-written prose (rule 30). Handed a root with nothing open it **serves the start
+of hand-written prose (rule 30). **Literally the same function**, `revisions.holds_a_map`
+and its listing form `names_a_map`: the glob was written out three times, twice in
+`program_dirs` and once here, with this file's own sentence claiming they were one question
+while they were three answers (rule 51). A test over the source refuses a fourth. Handed a root with nothing open it **serves the start
 page** rather than refusing: `web/static/start.html`, whose whole job is to say there is
 nothing yet and offer the two things that can be done about it. That is the state a
 double-clicked application begins in.
@@ -599,6 +602,21 @@ docs   ──► extract ──► docs.db  (SQLite) ─────────
   change one fact. A language with no entry compares its expressions as written.
 - `extractors/docs/` — Markdown, reStructuredText and plain text, scanned by hand for
   the same reason: no markdown library. Emits `DocFacts`.
+
+  **A map is pruned out of the corpus by the walk, not by a set of paths — rule 92.**
+  `discover_docs` asks `revisions.names_a_map` of the listing `os.walk` already took, so a
+  directory holding a `graph*.db` goes with everything beneath it, `map@<revision>/`
+  included, wherever in the tree it sits. It used to be an `exclude` set built from
+  `program_dirs(out_root)`, which is right from a checkout — where the output root is
+  `./output`, inside the tree being read — and empty of anything relevant from the
+  **packaged application**, whose root is `~/Library/Application Support/DunneFlow`.
+  Measured on DunneFlow's own map as the signed binary built it: **122 of 147 documents**
+  out of `output/`, **all 122** stated naming rules mined from them, and a 289 MB document
+  store. `exclude` remains for the one thing a marker cannot see — this run's own `out_dir`,
+  created before the scan and holding no graph until after — and both walks **name what they
+  pruned**, in their own words, because a corpus 83% smaller than the directory is design
+  rule 1's whole subject. Unlike the checkout marker this one applies at the root too: a
+  corpus is itself a checkout and is never itself a map.
 
   **A constraint is not a definition, and the judgement is on the opening.**
   `- `definition`: 1 ≤ len ≤ 5000 chars` is a validation rule for a field, written in the
@@ -1328,6 +1346,8 @@ it was written from.
      and every other instruction still reaches the right one.
  91. A sentence written for a reader has to fit the channel it is put in, and a channel
      that is narrower than prose will not say so.
+ 92. A defence assembled from where this run writes does not survive the run being done
+     from somewhere else.
 ```
 
 ## Anomalies: the discipline

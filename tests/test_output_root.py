@@ -158,6 +158,47 @@ def test_no_route_works_the_output_root_out_for_itself():
         "one thing a server with nothing open still knows:\n  " + "\n  ".join(offenders))
 
 
+def test_nothing_spells_the_map_marker_for_itself():
+    """`glob("graph*.db")` was written out three times, and a fourth was about to be.
+
+    Twice in `program_dirs` and once re-implemented in `serve.where`, whose own docstring
+    called it "the same question `analyze` asks" while asking it separately -- rule 51's
+    exact shape, three copies of one rule waiting to disagree. `revisions.names_a_map` and
+    `holds_a_map` are the one answer now, and the walk reads them rather than making a
+    fourth.
+
+    Parsed, never scanned. The pattern appears in the prose explaining it in at least four
+    docstrings, and a check that reports its own explanation is rule 34 -- which this
+    project has now paid for three times.
+    """
+    import dunneflow
+
+    src = Path(dunneflow.__file__).parent
+    owner = src / "revisions.py"
+    offenders = []
+    for mod in sorted(src.rglob("*.py")):
+        if mod == owner:
+            continue
+        tree = ast.parse(mod.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            func = node.func
+            if not isinstance(func, ast.Attribute) or func.attr not in {"glob", "rglob"}:
+                continue
+            if not node.args:
+                continue
+            written = ast.unparse(node.args[0])
+            # The literal and its f-string form, which is how the three copies were spelt.
+            if "graph" in written.lower() and ".db" in written.lower():
+                rel = mod.relative_to(src.parent)
+                offenders.append(f"{rel}:{node.lineno}: {ast.unparse(node)}")
+    assert not offenders, (
+        "these spell the map marker for themselves instead of asking "
+        "`revisions.holds_a_map` or `revisions.names_a_map`, which is how there came to "
+        "be three answers to one question (rule 51):\n  " + "\n  ".join(offenders))
+
+
 # --------------------------------------------------------------------------- #
 # The one refusal that has no subject when nothing is open
 

@@ -17,6 +17,7 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from . import revisions
 from .docstore import DocStore
 from .extractors.docs import DOC_SUFFIXES, extract_doc
 from .extractors.python.extract import extract_file
@@ -79,6 +80,11 @@ class WalkStats:
     # not derivable from `found`, and a corpus quietly 14% smaller than the tree is
     # exactly the kind of silent filter design rule 1 exists to forbid.
     nested: list[str] = field(default_factory=list)
+    # Maps pruned by `discover_docs`, and the same argument one subject over -- with the
+    # number larger rather than smaller. DunneFlow's own tree read through the packaged
+    # application was **122 of 147 documents** somebody else's map, so the corpus a silent
+    # prune would shrink here is 83% of what the reader can see in the directory.
+    maps: list[str] = field(default_factory=list)
 
 
 def is_test_path(path: Path) -> bool:
@@ -119,31 +125,57 @@ def discover(root: Path, include_tests: bool = False,
 
 def discover_docs(root: Path, suffixes: frozenset[str] = DOC_SUFFIXES,
                   nested: list[str] | None = None,
-                  exclude: frozenset[Path] = frozenset()) -> Iterator[Path]:
+                  exclude: frozenset[Path] = frozenset(),
+                  maps: list[str] | None = None) -> Iterator[Path]:
     """Every document under `root` that is plausibly about the program.
 
     Nested checkouts are pruned and, when `nested` is given, named -- see `VCS_MARKERS`.
     The test costs nothing: `os.walk` has already listed this directory, so the marker
     is in `dirnames` (a clone) or in `filenames` (a worktree) and needs no `stat`.
 
-    **`exclude` is how a program's own output stays out of its own corpus**, and it is a
-    path rather than a name on purpose. Pointing DunneFlow at itself read 46 of 54
-    documents out of `output/` -- its own generated reports, including 369,684 words of
-    `06-governance.md` *about a different program* -- and every one of the 942 rules it
-    then claimed to have found came from them. That is rule 57 with the tool's own output
-    in place of a stale worktree, and worse, because the output is about somebody else.
+    **A map is pruned wherever it sits**, on that same free test and named in `maps` --
+    `revisions.names_a_map` reads the listing `os.walk` has already taken. Pointing
+    DunneFlow at itself read 46 of 54 documents out of `output/` -- its own generated
+    reports, including 369,684 words of `06-governance.md` *about a different program* --
+    and every one of the 942 rules it then claimed to have found came from them. That is
+    rule 57 with the tool's own output in place of a stale worktree, and worse, because
+    the output is about somebody else.
 
-    Blacklisting the *name* `output` was the obvious fix and is the wrong one: it is a
-    perfectly good name for a directory of hand-written documents, and no scanner should
-    silently drop one because a tool it has never heard of writes there. What is actually
-    known is a **path** -- `analyze` is writing to it in this very run -- so that is what is
-    passed. A project whose generated docs live somewhere else is unaffected either way,
-    which is honest: DunneFlow can only exclude what it can know.
+    **It is asked of this tree rather than computed from where the run writes, and that
+    distinction is rule 92.** The first fix passed `exclude` a set built by
+    `revisions.program_dirs(out_root)`, which is correct and was measured -- from a
+    checkout, where the output root is `./output` and therefore inside the tree being
+    read. Frozen it is `~/Library/Application Support/DunneFlow`, so the set enumerates a
+    directory nowhere near this walk and a checkout's own maps went back into the corpus.
+    Retaken on DunneFlow's map as the packaged application built it, 2026-09-10: **122 of
+    147 documents** out of `output/`, **122 of 122** stated naming rules, 655 of 680
+    definitions, and a document store of **289 MB**.
+
+    Pruning is by `dirnames`, so a program directory takes its `map@<revision>/`
+    subdirectories with it. **Unlike the checkout marker this one is applied at `root`
+    too**, and the asymmetry is the point: a corpus is itself a checkout and that is why
+    the root is exempt there, but a corpus is never itself a map, so a `--docs` pointed
+    into a program directory is the failure rather than the ordinary case. It cannot fire
+    by accident on the default path, where the docs root is the nearest ancestor holding a
+    `pyproject.toml` and a program directory holds none.
+
+    **`exclude` stays, and it is not the same mechanism.** It is a path known for certain
+    rather than a marker read off the disk, which is what answers for this run's own
+    `out_dir`: that directory is created before the documents are scanned and holds no
+    graph until after, so nothing on the walk can recognise it. Blacklisting the *name*
+    `output` was the obvious fix for both and is the wrong one -- it is a perfectly good
+    name for a directory of hand-written documents, and no scanner should silently drop
+    one because a tool it has never heard of writes there.
     """
     root = root.resolve()
     skip = {p.resolve() for p in exclude}
     for dirpath, dirnames, filenames in os.walk(root):
         here = Path(dirpath)
+        if revisions.names_a_map(filenames):
+            dirnames[:] = []
+            if maps is not None:
+                maps.append(str(here))
+            continue
         if here != root and (VCS_MARKERS & (set(dirnames) | set(filenames))):
             dirnames[:] = []
             if nested is not None:
@@ -179,7 +211,8 @@ def analyze_docs_tree(
     root = root.resolve()
     stats = WalkStats()
 
-    docs = sorted(discover_docs(root, nested=stats.nested, exclude=exclude))
+    docs = sorted(discover_docs(root, nested=stats.nested, exclude=exclude,
+                                maps=stats.maps))
     stats.found = len(docs)
 
     known = store.known_hashes()

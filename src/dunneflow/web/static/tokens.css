@@ -777,8 +777,12 @@ body {
   min-width: 0; max-width: 14rem;
   text-overflow: ellipsis;
 }
+/* **The cap is on `.tb-searchwrap`, not here** -- see the wrapper's own rules. This said
+ * `max-width: 26rem` for as long as the field was a bare flex item, and kept saying it
+ * after the wrapper went round it, which put the field's right edge and the flags' right
+ * edge in two different places. */
 .tb-search {
-  flex: 1; max-width: 26rem;
+  flex: 1;
   font: inherit; font-size: .8rem;
   background: rgba(255,255,255,.09);
   color: var(--chrome-text);
@@ -4175,10 +4179,26 @@ body.detached-code #trailMount { display: none !important; }
 
 /* The topbar search and its three flags. A wrapper so the flags sit inside the field's
    visual box rather than beside it in the toolbar's flex row, where they would compete with
-   the revision picker for space. Every dimension in rem (design rule 3). */
+   the revision picker for space. Every dimension in rem (design rule 3).
+
+   **The width cap lives here, on the box the flags are measured against.** `right: .35rem`
+   is an offset from the *wrapper*, so the wrapper and the field have to end in the same
+   place -- and they did not. The cap was on `.tb-search` while the wrapper was `flex: 1 1
+   auto` with none, so the field stopped at 26rem and the wrapper went on absorbing every
+   spare pixel in the toolbar, carrying the flags out into the chrome with it. Measured in
+   the browser at one root size: the overhang is `wrapper - field - .35rem`, which is
+   **16px at a 1,222px window and 1,354px at 2,560px** -- it grows one-for-one with the
+   window, which is why it looks like a wide-window bug and is really a bug at every width.
+
+   That is rule 53's family read backwards. A layout bounded by arithmetic is right at one
+   window size; this one was bounded in the wrong *element*, so it was right at the one
+   width where the wrapper happened to equal the field and wrong either side of it. The two
+   rules are 3,400 lines apart in this file and each is correct alone (rule 71's companion:
+   a stylesheet gives no warning). Keep the cap and the `position: relative` together. */
 .tb-searchwrap { position: relative; display: flex; align-items: center; flex: 1 1 auto;
-                 min-width: 0; }
-.tb-searchwrap .tb-search { flex: 1 1 auto; min-width: 0; padding-right: 7rem; }
+                 min-width: 0; max-width: 26rem; }
+.tb-searchwrap .tb-search { flex: 1 1 auto; min-width: 0; max-width: none;
+                            padding-right: 7rem; }
 .tb-searchwrap .srch-flags { position: absolute; right: .35rem; display: flex; gap: .15rem; }
 
 /* ── The start page ─────────────────────────────────────────────────────────────

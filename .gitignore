@@ -34,3 +34,13 @@ htmlcov/
 # Icon renders. `packaging/icon/build_icon.py` writes the whole ladder in a second, and a
 # PNG in git is a second answer to what the SVG says (rule 51, in a very small key).
 packaging/icon/render_*.png
+# The same rule for the conditioned candidates: every one of these is one command away
+# from the drawing it was made from, and the comparison sheets are for looking at once.
+packaging/icon/supplied_*.png
+packaging/icon/head_*.png
+packaging/icon/comparison.png
+packaging/icon/three_way.png
+packaging/icon/*.iconset/
+# The `.icns` is deliberately NOT ignored. It is a build *input* now -- the spec refuses to
+# build without it (rule 49) -- and unlike the ladder it cannot be regenerated from anything
+# in this repository unless the drawing it came from is here too.

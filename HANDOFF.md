@@ -15172,3 +15172,61 @@ fetch"** on every attempt. The drawing was fine and the server was gone — an e
 obvious reading is a defect in the thing it names, which is the expensive kind. The rule is
 narrow and needs no minting: **kill by port, never by name**, which is what the other three
 stops in this session already did. A process this tool did not start is not its to end.
+
+## Paused 2026-09-15 — and what a Windows session actually faces
+
+Everything from this session is committed and pushed. `/Applications/DunneFlow.app` is the
+universal2, Developer ID signed, notarised and stapled build carrying all of it, and
+`dist/DunneFlow-0.1.0.dmg` is beside it.
+
+**This is a survey, not a plan.** Nothing below has been tried on Windows, and saying which
+parts are untested is most of its value.
+
+### Already written for Windows, and never exercised
+
+`runtime.platform_output_root()` has a `win32` branch — `%LOCALAPPDATA%/DunneFlow`, falling
+back to `~/AppData/Local`. Its own docstring says it is **untested** and why it exists anyway:
+*"a wrong default is worse than an unexercised one, and a `KeyError` from an absent branch
+would be worse than both."* That is the first thing to put a real path through, because every
+other frozen behaviour hangs off it — the maps root, the `root` pointer that moves it, and
+`MapsRootGone` when the drive it names is absent.
+
+### Refuses in words already, so nothing crashes — but nothing works either
+
+Each of these is guarded by `sys.platform != "darwin"` and answers a sentence rather than
+raising. A Windows reader meets a working application with three macOS-shaped holes in it:
+
+| surface | what it says today | what Windows needs |
+|---|---|---|
+| `POST /api/pickdir` (`serve.py:2992`) | *"the folder picker is macOS only — type the whole path instead"* | a native folder dialog, and the typed field stays either way (design rule 2) |
+| `POST /api/reveal` (`serve.py:3034`) | *"revealing is macOS only"* | `explorer.exe /select,` or equivalent |
+| `macapp.available()` | `frozen() and sys.platform == "darwin"` | nothing, probably — the Dock problem it solves does not exist on Windows, and a taskbar entry comes free. **Check before building anything**: `macapp.py` was bought to fix a real reported symptom, and a Windows equivalent needs its own symptom first. |
+
+### Not written at all
+
+**Packaging is entirely macOS.** `release.sh`'s seven verbs are `codesign`, `notarytool`,
+`iconutil`, `lipo`, `hdiutil` and a `BUNDLE` — none of which exists there. A Windows build is
+its own script, and the questions it has to answer are different ones: one-file or one-dir,
+whether to sign at all (an unsigned binary gets SmartScreen, which is not Gatekeeper), and
+what the installer is. **`DUNNEFLOW_ARCH`'s two answers are `host` and `universal2`, both of
+which are macOS ideas** — the spec refuses rather than falling back (rule 49), so it will
+refuse honestly on Windows rather than produce something odd.
+
+**The icon is `.icns`.** Windows wants `.ico`, which `build_supplied_icon.py` is most of the
+way to already: it composes a 1024 master and a size ladder, and Pillow — the tool it already
+uses — writes `.ico` directly, so the ladder is there and only the container changes. The
+drawing and its canvas rules are platform-free.
+
+### What does not need re-deciding
+
+The analysis path, the stores, the dashboard and every rule in `RULES.md` are platform-free and
+were never the macOS part. **Rule 92 in particular is now a Windows fact as much as a macOS
+one**: the corpus exclusion is asked of the tree being read rather than computed from where the
+run writes, so it holds wherever the maps root lands — which on Windows is somewhere else again.
+
+### One thing this session cost, worth carrying
+
+`pkill -f "dunneflow serve"` matched a server Tom was reading and not just the test servers that
+started it. His page reported *"The diagram could not be drawn. Failed to fetch"* — an error
+naming the feature that had just shipped, when the drawing was fine and the server was gone.
+**Kill by port, never by name.** A process this tool did not start is not its to end.

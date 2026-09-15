@@ -368,7 +368,13 @@ start page, and `/start` is reachable by URL when the shell has stopped working.
 
 2. **A `.dmg`**, whenever something needs handing to somebody. `release.sh dmg` builds, signs,
    notarises and staples one, and works now that the credentials exist.
-3. **Windows**, last, and still deliberately after everything else.
+3. **Windows**, last, and still deliberately after everything else. **`HANDOFF.md`'s
+   2026-09-15 pause carries the survey** — which parts are written and untested (the
+   `win32` branch of `platform_output_root`), which refuse in words today and so leave a
+   working application with three macOS-shaped holes (`pickdir`, `reveal`, the Dock), and
+   which do not exist at all (all of `release.sh`, and an `.ico` in place of the `.icns`).
+   It is a survey rather than a plan: nothing in it has been tried on Windows, and saying
+   so is most of its value.
 
 **The port-8787 collision recorded below on 2026-09-09 is closed.** `already_serving` joins an
 existing DunneFlow reading the same root rather than taking a new port, so a double-click on a

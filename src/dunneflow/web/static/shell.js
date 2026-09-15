@@ -3740,6 +3740,12 @@ function renderDiagram() {
       <label class="dgm-toggle"><input type="checkbox" id="dgmPorts" ${
         c.portsDrawn ? "checked" : ""}> <span class="muted">show crossings</span></label>
       <button class="gbtn" data-dgm="fit">fit</button>
+      ${/* Design rule 26's stated half, filled by `markDiagramSelection` on the narrow path
+            and deliberately empty here: this markup is written by `renderDiagram()`, which
+            runs when the *drawing* changes, and a selection changes far more often than that.
+            Rendering the sentence here as well would be two places answering one question,
+            and the one that runs less often would be the stale one (rule 51). */""}
+      <span class="hint" id="dgmSel"></span>
     </div>
     <div class="dgm-canvas" id="dgmCanvas"><div class="dgm-pan" id="dgmPan">${c.svg}</div>
       <div class="hovercard" id="dgmCard" hidden aria-hidden="true"></div></div>`;
@@ -3903,17 +3909,164 @@ function dgmSize() {
   return (w > 0 && h > 0) ? { svg, w, h } : null;
 }
 
-function dgmFit() {
+/* How much of the compartment a fit must leave visible, however small the selection is.
+ *
+ * `graph.js`' `PLATE_SHARE` one geometry over, and **not its number**: 0.5 is recorded there
+ * as "the reader's own statement of what they wanted" about a plate, and a plate is the
+ * neighbourhood a node sits in. Here the neighbourhood is already in the frame -- a selection
+ * is framed with everything it has an arrow to -- so this floor has the narrower job its own
+ * measurement gave it: an **isolated** box has no neighbours to spread it, and framing one
+ * box alone fills the pane with a single label and no arrows, which is `visibleFloor`'s
+ * "magnified dot with no context" in two dimensions.
+ *
+ * Measured on this program's own compartments rather than chosen: see `HANDOFF.md`. */
+const DGM_SHARE = 0.18;
+
+/* How small the box you picked is allowed to end up, in pixels of its **own** shorter side.
+ *
+ * The complaint this whole feature answers is a mark measuring **7x3 px** in a 537x240 pane,
+ * so the fix has a number in it and this is the number.
+ *
+ * **Per box, never over their union.** The first spelling measured the marks' combined
+ * bounding box, which contains the gap between them: two marks a third of the drawing apart
+ * have a union far taller than either, so the guarantee read as satisfied while the boxes
+ * themselves stayed 17x8 and 22x5. A promise about the subject has to be measured on the
+ * subject.
+ *
+ * **12, and it is a floor rather than a target.** Measured on `pkg:dunneflow`: the median box
+ * has 3 neighbours and framing them already lands its marks at 28x11, so a floor much above
+ * this would override a frame that was working and crop the neighbourhood for nothing. The
+ * busiest box has 31 neighbours spread over the whole drawing and lands at 22x5, which is
+ * where a mark stops carrying its label and becomes a coloured smudge. 12 separates those two
+ * cases, which is the job: bind where the neighbourhood cannot help, and stand aside where it
+ * can. */
+const DGM_MIN_MARK = 12;
+
+/* The content-space box around a set of drawn boxes, or null for an empty set.
+ *
+ * **Measured through the live transform rather than through the SVG's own geometry.**
+ * `getBBox()` would answer in whichever user space Graphviz's inner `<g>` establishes, and
+ * that is a second coordinate system to keep in step with this one. `dgmView` is the only
+ * transform between content and container and it is ours, so inverting it is exact:
+ * `#dgmPan` carries `translate(x,y) scale(k)` in that order, so the translate is *not*
+ * scaled and a container pixel `p` is content `(p - dgmView.x) / dgmView.k`. */
+function dgmBounds(els) {
+  const c = $("#dgmCanvas");
+  if (!c || !els || !els.length || !dgmView.k) return null;
+  const base = c.getBoundingClientRect();
+  let lo = [Infinity, Infinity], hi = [-Infinity, -Infinity];
+  for (const el of els) {
+    const b = el.getBoundingClientRect();
+    const x0 = (b.left - base.left - dgmView.x) / dgmView.k;
+    const y0 = (b.top - base.top - dgmView.y) / dgmView.k;
+    const x1 = (b.right - base.left - dgmView.x) / dgmView.k;
+    const y1 = (b.bottom - base.top - dgmView.y) / dgmView.k;
+    lo = [Math.min(lo[0], x0), Math.min(lo[1], y0)];
+    hi = [Math.max(hi[0], x1), Math.max(hi[1], y1)];
+  }
+  if (!isFinite(lo[0]) || !isFinite(hi[0])) return null;
+  return { x: lo[0], y: lo[1], w: Math.max(hi[0] - lo[0], 1), h: Math.max(hi[1] - lo[1], 1) };
+}
+
+/* **The marked boxes, and every box an arrow joins them to.** Tom's call on what "fit to the
+ * selection" should frame, and it is the reason the feature is worth having: two boxes alone
+ * fill the pane and take every arrow out of it, which is a diagram with its subject removed.
+ *
+ * The neighbours come from `diagramNow.edges` -- the server already sends every arrow keyed
+ * by the id `dot()` wrote on it, each carrying `from` and `to` (`web/diagram.py:edge_payload`)
+ * -- so this costs no request and no parsing of ids off the DOM. Rule 45's argument in the
+ * other direction, as that payload's own docstring puts it: the answer rode in with the
+ * picture.
+ *
+ * Null rather than an empty list when nothing is marked, so the caller can tell *nothing is
+ * selected* from *the selection is not in this compartment*: they are different sentences
+ * and only one of them is about this drawing (design rule 21). */
+function dgmSelectionFrame() {
+  const host = $("#dgmPan");
+  if (!host) return null;
+  const marked = [...host.querySelectorAll("g.node.dgm-on")];
+  if (!marked.length) return null;
+  /* **The seed is read from a snapshot, never from the set being filled.** Written as one
+     loop over the arrows testing and adding to the same `Set`, this is not a one-step
+     expansion at all: a box added early matches later arrows in the same pass, so the frame
+     grows transitively in whatever order the payload happens to list its edges. Measured on
+     `pkg:dunneflow` before it was separated -- `_Handler.do_GET` framed **97 of 111 boxes**
+     and the "fit" zoomed *out*, which is how it was caught. Order-dependent and silent: the
+     median box here has 3 neighbours and looked perfect. */
+  const seed = new Set(marked.map(g => g.id));
+  const want = new Set(seed);
+  const edges = (diagramNow && diagramNow.edges) || {};
+  for (const e of Object.values(edges)) {
+    if (seed.has(e.from)) want.add(e.to);
+    if (seed.has(e.to)) want.add(e.from);
+  }
+  /* Read back off the drawing rather than trusting the ids: an arrow may name a box that is
+     not drawn at this altitude, and a frame is built from what is on screen (rule 31 -- an
+     endpoint that is not here is not an endpoint here). */
+  return [...host.querySelectorAll("g.node")].filter(g => want.has(g.id));
+}
+
+/* `subset` is a list of drawn `g.node` elements to frame, or nothing for the whole drawing.
+ *
+ * **Defaulting to the whole drawing is load-bearing**, not politeness. Two callers must go on
+ * meaning the whole compartment whatever is selected: `renderDiagram()`, where a fresh drawing
+ * has just replaced the old one, and `render()`'s deferred payment, where the reason there was
+ * no fit is that nothing had been laid out yet. Graph mode took the other default --
+ * `subset ?? g.members` -- and it can, because its "fit" is the only fit it has; here `fit`
+ * has to stay the way back (design rule 20), so the selection is the argument and never the
+ * default. */
+function dgmFit(subset) {
   const c = $("#dgmCanvas");
   const size = dgmSize();
   if (!c || !size) { dgmNeedsFit = true; return false; }
   const cw = c.clientWidth, ch = c.clientHeight;
   if (!cw || !ch) { dgmNeedsFit = true; return false; }
+  let box = subset ? dgmBounds(subset) : { x: 0, y: 0, w: size.w, h: size.h };
+  if (!box) return false;
   // A hair inside the pane, so a box on the rim is not clipped by its own stroke.
-  const k = Math.min(cw / size.w, ch / size.h) * 0.97;
+  let k = Math.min(cw / box.w, ch / box.h) * 0.97;
+  if (subset) {
+    /* **The guarantee is stated about the thing the reader picked, not about the frame.**
+     *
+     * Framing the selection with everything it touches is right for the compartment's median
+     * box -- 3 neighbours here -- and does almost nothing for its busiest: `_Handler` has 31
+     * of the 111, so "what it connects to" is a third of the drawing spread across the whole
+     * of it, and the fit moved a 7x3 px mark to 10x4. Measured, not predicted.
+     *
+     * So the neighbourhood sets the frame and this sets the floor under it: whatever else is
+     * in view, a marked box reaches `DGM_MIN_MARK` pixels. Expressed on the *subject* rather
+     * than as a ceiling on the frame's span because that is the sentence the reader would
+     * say -- *I must be able to see what I picked* -- and a span ceiling is the same clamp
+     * stated in units nobody asked in.
+     *
+     * Re-centred on the marks when it bites, because raising the zoom about the frame's
+     * centre is what would carry the subject off the edge -- the selection is what has to
+     * stay, and the neighbours are what can be cropped. */
+    const lit = subset.filter(g => g.classList.contains("dgm-on"));
+    const marks = dgmBounds(lit);
+    /* The **smallest** mark's own shorter side, each measured on its own: see `DGM_MIN_MARK`.
+       Taking the union's would let two distant marks satisfy a promise neither of them keeps. */
+    let smallest = Infinity;
+    for (const g of lit) {
+      const one = dgmBounds([g]);
+      if (one) smallest = Math.min(smallest, Math.min(one.w, one.h));
+    }
+    if (marks && isFinite(smallest) && smallest > 0) {
+      const need = DGM_MIN_MARK / smallest;
+      if (need > k) { k = need; box = marks; }
+    }
+    /* **And the ceiling on top, on the scale rather than on the bounds** -- `visibleFloor`'s
+       own reasoning: flooring the bounds threads one guarantee through two expressions, which
+       is the shape rule 78 keeps punishing. It is last because it is the one that must win: a
+       lone box with no neighbours has nothing to set a frame from, and the minimum above
+       would otherwise fill the pane with one label. The whole drawing is never clamped -- it
+       *is* the compartment, and there is nothing outside it to keep in view. */
+    const floor = Math.min(size.w, size.h) * DGM_SHARE;
+    if (floor > 0) k = Math.min(k, Math.min(cw, ch) / floor);
+  }
   dgmView.k = k;
-  dgmView.x = (cw - size.w * k) / 2;
-  dgmView.y = (ch - size.h * k) / 2;
+  dgmView.x = (cw - box.w * k) / 2 - box.x * k;
+  dgmView.y = (ch - box.h * k) / 2 - box.y * k;
   dgmNeedsFit = false;
   dgmApply();
   return true;
@@ -3956,7 +4109,38 @@ function markDiagramSelection() {
     g.classList.toggle("dgm-on", on);
     if (on) marked++;
   });
+  dgmSelectionNote(marked, want.size > 0);
   return marked;
+}
+
+/* **The selection, stated** -- design rule 26's other half, and the half this view never had.
+ *
+ * The rule is explicit that the list must *not* move the camera: "a list you can click through
+ * is useless if every click throws away where you were looking". What it requires instead is
+ * that an unseeable selection is **said**, and that framing it is one click away. The stack has
+ * both -- `offScreenNote()` says *off screen* and offers **find it**. Here the mark was applied
+ * correctly and silently, and in a 111-box compartment fitted to the pane it measured **7x3
+ * pixels**: a correct answer nobody can distinguish from no answer, which is what Tom reported.
+ *
+ * **Three sentences, never two** (design rule 21). *Nothing selected* says nothing at all --
+ * design rule 24's refusal of furniture pretending to be information. *Selected and here* gets
+ * a count and the button. *Selected and not here* is the answer `markDiagramSelection` has
+ * always given by returning 0 and saying nothing, and it is a different fact from an empty
+ * selection: the reader is looking at a compartment their subject does not live in.
+ *
+ * **On the narrow path**, like `updateControlsSummary()`: this writes one span and never calls
+ * `renderDiagram()`, which rewrites the mount. That mount exists precisely so a repaint cannot
+ * throw away the reader's pan and zoom, and this runs on every render. */
+function dgmSelectionNote(marked, anySelection) {
+  const el = $("#dgmSel");
+  if (!el) return;
+  if (!anySelection) { el.innerHTML = ""; return; }
+  if (!marked) {
+    el.innerHTML = ` · <span class="warnnote">what you picked is not in this compartment</span>`;
+    return;
+  }
+  el.innerHTML = ` · <b class="num">${marked}</b> box${marked === 1 ? "" : "es"} selected ` +
+    `<button class="gbtn" data-dgm="fitsel">frame it</button>`;
 }
 
 /* ═══ mode toggle ═══ */
@@ -4038,8 +4222,27 @@ function diagramEdgeAt(ev) {
  * whenever a different compartment is drawn -- handlers bound to elements would stop working
  * silently the moment they were replaced. */
 document.addEventListener("click", (ev) => {
+  /* **Routed on the value, and that is not tidiness.** This read `if (fit) { dgmFit(); }` and
+     ignored `data-dgm` entirely while there was one button to press, which is correct and
+     unnoticeable until there are two: the second button matches the same selector, calls the
+     whole-drawing fit, and renders, looks live and does the wrong thing -- design rule 16 with
+     a false positive on top, and the hardest kind to see because something *does* happen. */
   const fit = ev.target.closest("[data-dgm]");
-  if (fit) { dgmFit(); return; }
+  if (fit) {
+    if (fit.dataset.dgm === "fitsel") {
+      /* **Refused, never fallen back to the whole drawing** (rule 49). The button is only
+         drawn while something is marked, so an empty frame here means the selection went
+         between the paint and the press -- and a "frame it" that silently framed everything
+         instead is a plausible answer to a question nobody asked, which is the failure that
+         rule exists for. Doing nothing leaves the reader where they were, and the note above
+         the button has already been rewritten to say why. */
+      const sel = dgmSelectionFrame();
+      if (sel && sel.length) dgmFit(sel);
+      return;
+    }
+    dgmFit();
+    return;
+  }
   const up = ev.target.closest("[data-dgmup]");
   if (up) { openDiagramBox(null); return; }
   const mount = $("#diagramMount");
@@ -14082,10 +14285,13 @@ const WIRED_ATTRS = new Set([
      complete list showing rather than its first six. `presgroup` carries the band and the
      side it names, never a position among the three groups on a line (rule 30). */
   "changeband", "presgroup",
-  /* The compartment diagram's own controls. `dgm` is the fit button; the compartment picker
-     is an id and the boxes are routed by Graphviz's own `g.node` class and the `id=` the
-     server put on each one, which is the box id -- so a click resolves to a thing this
-     program knows about rather than to a shape (rule 30). */
+  /* The compartment diagram's own controls. `dgm` is **the two fit buttons** and its *value*
+     says which -- `fit` frames the whole compartment, `fitsel` the selection and what it
+     connects to. One attribute for both because they are one question asked at two scopes,
+     and the handler switches on the value; it used to ignore it, which is the trap recorded
+     there. The compartment picker is an id, and the boxes are routed by Graphviz's own
+     `g.node` class and the `id=` the server put on each one, which is the box id -- so a
+     click resolves to a thing this program knows about rather than to a shape (rule 30). */
   "dgm",
   /* A **box** in a fold's own pane, and the one way to the code. `box` rather than `fold`
      because `data-fold` has collapsed a pane since design rule 24 -- a class name and a

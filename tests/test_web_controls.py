@@ -1774,6 +1774,61 @@ def test_a_diagram_box_carries_what_it_stands_for() -> None:
     )
 
 
+def test_the_diagram_can_frame_the_selection_and_says_when_it_cannot() -> None:
+    """Design rule 26's other half, which Diagram mode never had.
+
+    The rule is explicit that the list must *not* move the camera, and that what is required
+    instead is that an unseeable selection is **stated** with framing one click away. The
+    stack has both -- `offScreenNote()` says *off screen* and offers **find it**. Here the
+    mark was applied correctly and silently: measured on `pkg:dunneflow`, 111 boxes fitted to
+    a 537x240 pane put the marked boxes at **7x3 px**, which is a correct answer nobody can
+    tell from no answer. Reported by Tom as *"the view does not change between lines"*.
+
+    Four claims, and the second is the one that would have shipped a dead control.
+    """
+    js = _code(_read("shell.js"))
+
+    # 1. The fit takes a subset, and the whole-drawing default survives -- two callers mean
+    #    the whole compartment whatever is selected (a fresh drawing, and the deferred fit).
+    assert "function dgmFit(subset)" in js, (
+        "`dgmFit` takes no subset, so there is nothing for a selection fit to ask for")
+    assert "function dgmSelectionFrame(" in js, "nothing computes what to frame"
+
+    # 2. **The handler routes on the value.** It read `if (fit) { dgmFit(); }` and ignored
+    #    `data-dgm` entirely, which is right with one button and silently wrong with two: the
+    #    second matches the same selector and calls the whole-drawing fit, so it renders,
+    #    looks live, and does the wrong thing (design rule 16, with something happening).
+    handler = js[js.index('closest("[data-dgm]")'):][:600]
+    assert "dataset.dgm" in handler, (
+        "the [data-dgm] branch does not read the attribute's value, so both fit buttons do "
+        "the same thing -- the second one renders, looks live and is wrong")
+
+    # 3. The neighbours come from the payload that rode in with the picture (rule 45), not
+    #    from a second request or from parsing ids back off the DOM.
+    frame = _fn(js, "dgmSelectionFrame")
+    assert "diagramNow.edges" in frame, (
+        "the neighbours are not read from `diagramNow.edges`, which the server already sends")
+    # The seed is snapshotted: testing and adding to one set walks the graph transitively in
+    # edge order. Measured before it was separated: 97 of 111 boxes framed, and the fit
+    # zoomed *out*. The median box has 3 neighbours, so it looked perfect.
+    assert "const seed" in frame and "seed.has" in frame, (
+        "the expansion reads the set it is filling, so it is a flood fill in edge order "
+        "rather than the one step it claims to be")
+
+    # 4. Three sentences, never two (design rule 21): nothing selected says nothing, a
+    #    selection here gets a count and the button, and a selection that lives somewhere
+    #    else is the honest answer this used to give by staying silent.
+    note = _fn(js, "dgmSelectionNote")
+    assert "not in this compartment" in note, (
+        "a selection outside the drawn compartment is not stated, which is the silence the "
+        "whole feature was reported for")
+    assert 'data-dgm="fitsel"' in note and "selected" in note, (
+        "the note does not offer the frame button beside the count")
+    assert 'innerHTML = ""' in note, (
+        "with nothing selected the note must say nothing at all, not an empty-looking "
+        "sentence -- design rule 24 refuses furniture pretending to be information")
+
+
 def test_a_click_in_the_diagram_has_a_consequence_the_reader_can_see() -> None:
     """A click that only fills a pane the reader has collapsed has done nothing.
 

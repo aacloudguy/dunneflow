@@ -210,6 +210,27 @@ program has a most-commented routine and a maximum alone is a claim nobody can w
 
 ## What we are doing now
 
+**Design rule 26 is met in Diagram mode at last — 2026-09-15.** Reported by Tom as *"the view
+does not change between lines on the ROUTINES"*, and driven before it was answered: two of the
+three premises were wrong. The diagram is one compartment rather than all the routines, and
+selecting a routine *does* switch it and *does* mark the right boxes. What was true is that
+none of it could be seen — fitted to a 537×240 pane the marks measured **7×3 px**, so a correct
+selection was indistinguishable from one that did nothing.
+
+That is the rule's own third paragraph, unbuilt here: *the list must not move the camera, so an
+off-screen selection is stated and framing it is one click away.* Both halves now exist. The
+head says one of **three** things — nothing, *N boxes selected* with a **frame it** button, or
+*what you picked is not in this compartment*, which is the answer the code always gave by
+saying nothing. **frame it** frames the selection and everything an arrow joins it to (Tom's
+call), floored so the busiest box and the median one behave alike: **7×3 → 37×17** for a box
+with 31 neighbours and 7×3 → 35×17 for one with 3. `fit` is untouched, so the way back is one
+press (design rule 20), and nothing auto-fits — the list still may not move the camera.
+
+*Two defects found by measuring, both introduced in this work and both silent:* the neighbour
+expansion was a **flood fill** in edge order (97 of 111 boxes framed, and the fit zoomed *out*),
+and the click handler **ignored the attribute it routed on**, so the second button did the first
+button's job. Both guarded, and each guard checked by spelling the defect back. **1,410** tests.
+
 **A map of another program was being read as this one's documentation, and only the packaged
 application did it — fixed 2026-09-15, and it is engineering rule 92.** Found by looking at
 what five days of real use had left in `~/Library/Application Support/DunneFlow`, not by a

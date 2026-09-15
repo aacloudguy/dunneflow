@@ -15056,3 +15056,101 @@ Tom: *"delete anything that is superceded."*
 The icon they draw is not the one that ships, but that docstring is where the 32px contrast
 rule was earned, and it is what every candidate since has been measured against. Deleting the
 drawing would have thrown away the reasoning with it.
+
+## 2026-09-15 — the Diagram frames what you picked, and design rule 26's other half
+
+Tom, on a Diagram: *"the view does not change between lines on the ROUTINES… maybe what should
+happen is that parts of it are highlighted, so I can use the fit feature, but that just centers
+the entire Diagram, not a subset of it. Is this a bug, or just how it works?"*
+
+**Driven before it was answered, and two of the three premises were wrong.** The diagram is not
+all the routines — it is one compartment, 111 boxes for `dunneflow` and 2 for `packaging`. And
+selecting a routine *does* change it: from the `packaging` compartment, picking `serve` switched
+the drawing to `dunneflow`, because `diagramWanted()` reads the plate the selection lit.
+`markDiagramSelection()` marked the right boxes on every selection tried.
+
+**What was true is that none of it could be seen.** Fitted to a 537×240 pane, the marked boxes
+measured **7×3 px and 9×2 px** — a 3px accent stroke on a box three pixels tall, with the view
+never moving to it. So a correct selection was indistinguishable from one that did nothing,
+which is exactly what was reported.
+
+So this was never a bug in the plumbing; it is **design rule 26's third paragraph, unbuilt for
+this view**: *"the list must not move the camera … so an off-screen selection is stated and
+framing it is one click away."* The stack has both halves — `offScreenNote()` and **find it**.
+Diagram mode had neither.
+
+### What was built
+
+* **`dgmFit(subset)`** frames a set of drawn boxes, defaulting to the whole drawing. The default
+  is load-bearing rather than polite: `renderDiagram()` fits a drawing that has just replaced
+  the old one, and `render()` pays a fit that was deferred because nothing had been laid out.
+  Graph mode can default the other way (`subset ?? g.members`) because its fit is the only one
+  it has; here **`fit` has to stay the way back** (design rule 20), so the selection is the
+  argument and never the default.
+* **`dgmSelectionFrame()`** is the marked boxes and everything an arrow joins them to — Tom's
+  call on what to frame, and the reason the feature is worth having: two boxes alone fill the
+  pane and take every arrow out of it. The neighbours come from `diagramNow.edges`, which the
+  server already sends keyed by arrow, so it costs no request (rule 45, as that payload's own
+  docstring puts it: the answer rode in with the picture).
+* **The note**, on the narrow path — `markDiagramSelection()` writes one span and never calls
+  `renderDiagram()`, which would rewrite the mount and throw away the reader's pan and zoom.
+  **Three sentences, never two** (design rule 21): nothing at all when nothing is selected,
+  *N boxes selected* with the button when the selection is here, and *what you picked is not in
+  this compartment* when it is not — which is the answer this code has always given by
+  returning 0 and saying nothing.
+* **`data-dgm="fitsel"`**, the same attribute with a new value, so `WIRED_ATTRS` is untouched.
+
+### Two defects found by measuring, both mine, both silent
+
+**The expansion was a flood fill.** Written as one loop over the arrows testing and adding to
+the same `Set`, it is not a one-step expansion: a box added early matches later arrows in the
+same pass, so the frame grows transitively in whatever order the payload lists its edges. It
+framed **97 of 111 boxes** and the fit zoomed *out* — 11.2×5.3 px became 7.1×3.3. Order-
+dependent and invisible: the median box in this compartment has 3 neighbours and looked
+perfect. The seed is snapshotted now.
+
+**The handler ignored the attribute it routed on.** `if (fit) { dgmFit(); }` is correct with one
+button and silently wrong with two — the second matches the same selector, calls the
+whole-drawing fit, and so renders, looks live and does the wrong thing. Design rule 16 with
+something actually happening, which is the harder kind to see. Both are guarded, and the guard
+was checked by spelling each defect back and watching it fail.
+
+### The numbers, and how the two constants were chosen
+
+Degree over `pkg:dunneflow`'s 111 boxes: **median 3, p75 5, p90 8, max 31**, with 7 isolated.
+So framing the neighbourhood is right for almost every box and does nearly nothing for the
+busiest — `_Handler` touches 31 of 111, spread over the whole drawing.
+
+**`DGM_MIN_MARK = 12`** is the answer to that, and it is stated about the subject rather than as
+a ceiling on the frame, because *I must be able to see what I picked* is the sentence the reader
+would say. **Per box, never over their union** — the first spelling measured the marks' combined
+bounding box, which contains the gap between them, so two distant marks satisfied a promise
+neither kept and the boxes stayed 17×8 and 22×5. 12 was measured rather than picked: the median
+box's neighbourhood already lands its marks at 28×11, so a higher floor would override a frame
+that was working; the busiest lands at 22×5, where a mark stops carrying its label.
+
+**`DGM_SHARE = 0.18`** is the ceiling underneath it, `visibleFloor`'s mechanism one geometry
+over — clamped on the scale and not on the bounds, for its reason — and deliberately **not** its
+number: `PLATE_SHARE = 0.5` is recorded as a statement about a *plate*, which is the
+neighbourhood a node sits in, and here the neighbourhood is already in the frame. Its remaining
+job is the 7 isolated boxes, which have nothing to set a frame from.
+
+Measured through the served page, marks at fit-all against marks after **frame it**:
+
+| selected | neighbours | before | after | in view |
+|---|---|---|---|---|
+| `_Handler.do_GET` | 31 | 7×3 · 9×2 | **37×17 · 48×12** | 26 boxes · 62 arrows |
+| `run` | 3 | 7×3 · 6×2 | **35×17 · 30×12** | 27 boxes · 79 arrows |
+| `serve` | — | 7×3 · 6×2 | **38×17 · 30×12** | 29 boxes · 77 arrows |
+
+The busiest box and the median one now behave the same, which is the job. `fit` returns to all
+111, so the way back is real (design rule 20). All three sentences of the note were read off the
+page, the third by pinning the compartment picker to `<small outside>` and selecting elsewhere —
+and the **frame it** button is correctly not drawn there.
+
+### What deliberately did not change
+
+**No auto-fit on selection.** Design rule 26 is explicit that the list must not move the camera,
+and rule 73 says a picture must not move under a gesture. Tom asked for it on the button.
+
+**1,410** tests, mypy clean over 140 source files, ruff clean.

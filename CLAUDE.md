@@ -1605,6 +1605,7 @@ it was written from.
  93. A stored path's separator belongs to the machine that wrote it, and that makes it a
      bad key.
  94. A boolean that says "the other one" stops being true when there are three.
+ 95. A cache key assembled from a directory does not cover what that directory imports.
 ```
 
 ## Anomalies: the discipline

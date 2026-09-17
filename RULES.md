@@ -1898,3 +1898,49 @@ rule of that number — a blank canvas must say why it is blank — which does e
     found by reading the spec before building with it, and pinned afterwards —
     `tests/test_frozen.py` now reads the guard *and its definition*, because asserting on a
     name alone would pass a `_MACOS` redefined to mean anything (rule 37).
+
+95. **A cache key assembled from a directory does not cover what that directory imports.**
+    `rules_fingerprint()` is rule 12's enforcement: a cached fact is valid only if the
+    source *and the tool that read it* are unchanged, so `code_extraction_inputs()` names
+    the rules, the loader, and the reader —
+    `(_PKG_ROOT / "extractors" / "python").rglob("*.py")`. That glob is an exact statement
+    of *where the reader lives* and it is not a statement of *what the reader reads*, and
+    those stopped being the same thing the first time a module outside that tree shaped a
+    stored fact.
+
+    **The whole of the reader's reach is three imports, and two of them are outside the
+    key.** `extractors/python/extract.py` reaches out of its own tree for exactly
+    `detectors` (in the key, and the reason the key exists), `schema`, and `sql`.
+    `sql.parse` classifies every SQL statement the extractor finds in the program being
+    read — its direction, its operation, and the tables it names — so `sql.py` shapes all
+    1,055 of Society's `sql_ops` rows, all 43 `db_tables` and all 73 `db_indexes`. Edit one
+    entry in its `_OP_DIRECTION` table and every cached graph on the machine keeps its old
+    answer, reports it as current, and is *not* discarded, because the fingerprint it is
+    checked against did not move. That is rule 12's failure mode reached through rule 12's
+    own defence.
+
+    **It is silent in the direction that matters.** A key that moves when it should not
+    costs a re-extraction and announces itself; a key that fails to move when it should
+    costs nothing, says nothing, and leaves two graphs on one machine disagreeing about
+    what a program does with its database. Nobody looks, because the cache is working
+    exactly as designed.
+
+    `schema.py` is the second gap and was already known — `PLAN-v2.md` §1f puts it in the
+    key — but it was named for a different reason, that `SCHEMA_VERSION` is bumped by hand
+    and a forgotten bump is the same failure. `sql.py` was named by nobody, and the
+    difference is instructive: the module whose *absence* from a list is hardest to notice
+    is the one no document ever had a reason to mention.
+
+    **The remedy is not a longer list.** A hand-kept list drifts the moment somebody adds a
+    file — `code_extraction_inputs`' own docstring says so, which is why it globs at all.
+    What the key needs is the reader's *imports*, resolved: the tree, plus every module
+    inside this package that the tree reaches. Until that exists the honest form is the
+    glob plus the named few, and the test that asserts membership must assert the named few
+    too, or it proves only that the glob still globs (rule 37).
+
+    *Not to be confused with `canonical/`, which is outside the key deliberately and
+    correctly.* Its docstring sets the right test — **what does this extraction actually
+    read** — and a canonicaliser is not read by extraction at all: it decides whether two
+    stored expressions are the same expression, afterwards, and cannot change one fact.
+    `sql.py` fails that test, which is how it was found. The test was never wrong; nobody
+    had applied it to this module.

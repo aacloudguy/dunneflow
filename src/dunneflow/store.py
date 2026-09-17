@@ -21,6 +21,7 @@ from collections.abc import Iterable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
 from .detectors import rules_fingerprint
 from .migrate import (
@@ -452,6 +453,27 @@ class StaleGraphError(RuntimeError):
     """
 
 
+def read_only_uri(path: Path) -> str:
+    """A path, as a SQLite URI that cannot write — and the one place that spelling lives.
+
+    `f"file:{path}?mode=ro"` is what four sites in this codebase already write by hand,
+    and it is right until a path contains a character the URI grammar has already spent.
+    A `?` in a directory name ends the path and starts the query; a `#` ends it and starts
+    a fragment; a `%` begins an escape that is probably not one. Each yields a URI naming
+    a database nobody asked for, and — because `mode=ro` was in the part that got eaten —
+    one that SQLite would then happily **create**, which is the exact failure
+    `refuse_missing` below exists to prevent, arriving through the fix for something else.
+
+    Rule 91: a sentence has to fit the channel it is put in, and a filename inside a URI
+    is on that rule's own list of channels narrower than the text going through them.
+    Nothing validates on the way in; the failure is at the far end.
+
+    `safe="/"` keeps the separators separators. A Windows `\\` is escaped to `%5C` and
+    SQLite decodes it back before opening, so both spellings survive the round trip.
+    """
+    return f"file:{quote(str(path), safe='/')}?mode=ro"
+
+
 def refuse_missing(path: Path, what: str) -> None:
     """A read of a path that is not there refuses, and never brings one into being.
 
@@ -513,6 +535,27 @@ class Store:
 
         A reader also refuses a path that is not there at all, and `refuse_missing` says
         why that is a different failure from a stale one and a worse one.
+
+        **And `writable=False` opens a connection that cannot write**, which it did not
+        until 2026-09-17. It was assigned to `self.writable` and never read again: it
+        chose mkdir-versus-refuse and refuse-versus-discard, and the connection underneath
+        was an ordinary read-write handle on all fourteen reading sites. So
+        `dunneflow query --sql "DELETE FROM routines"` emptied a table through a store
+        whose whole name for itself was *not writable*. Tolerable while a person was the
+        one typing it; not once a language model composes the statement, which is what
+        `dunneflow mcp` now lets one do.
+
+        `?mode=ro` rather than a second parameter beside this one. `Store(readonly=True)`
+        was the shape first proposed, and two parameters answering *"can this connection
+        write"* is rule 30: the lie would have stayed in place at thirteen sites in order
+        to close it at one. Measured against the golden graph before it was chosen -- WAL,
+        with the sidecar files present, with them removed, and with the containing
+        directory made read-only -- all 4,823 routines read in every case.
+
+        The residue, because it is not nothing: SQLite refuses the *writes*, not every
+        statement. `PRAGMA writable_schema=ON` is accepted here and does nothing, and
+        `ATTACH` is accepted and reaches a database that is not this one -- which is why
+        `mcp/tools.py` classifies a statement as well, rather than trusting this alone.
         """
         self.path = Path(path)
         self.writable = writable
@@ -525,7 +568,16 @@ class Store:
         # request on its own thread, and sqlite refuses a connection used off the thread
         # that made it -- serialising the calls is not enough on its own, which is worth
         # saying because a lock looks like it should be.
-        self.conn = sqlite3.connect(self.path, check_same_thread=not shared)
+        #
+        # `uri=True` is only ever passed on the read path, and that is deliberate rather
+        # than incidental: a writer is handed a plain `Path`, and `changes.py:857` records
+        # the trap from the other side -- a URI handed to something that opens it without
+        # `uri=True` names a file called `file:...?mode=ro`.
+        self.conn = (
+            sqlite3.connect(read_only_uri(self.path), uri=True, check_same_thread=not shared)
+            if not writable else
+            sqlite3.connect(self.path, check_same_thread=not shared)
+        )
         self.conn.row_factory = sqlite3.Row
         self._refuse_wrong_kind()
         if not writable:

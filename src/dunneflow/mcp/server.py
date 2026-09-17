@@ -19,11 +19,13 @@ import contextlib
 import json
 import sys
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any, TextIO
 
 from ..runtime import tool_version
-from . import jsonrpc
+from . import Refused, jsonrpc, resources, tools
 from .jsonrpc import Malformed, Request
+from .session import Session
 
 #: The protocol revisions this server knows, newest first. A client asking for one of
 #: these is answered with **its own**; a client asking for anything else is answered with
@@ -77,6 +79,9 @@ class Server:
         "notifications/initialized": "_initialized",
         "ping": "_ping",
         "tools/list": "_tools_list",
+        "tools/call": "_tools_call",
+        "resources/list": "_resources_list",
+        "resources/read": "_resources_read",
     }
 
     #: The methods answerable before `initialize` has been received, named as the
@@ -93,13 +98,14 @@ class Server:
     BEFORE_INITIALIZE: frozenset[str] = frozenset(
         {"initialize", "notifications/initialized", "ping"})
 
-    def __init__(self, stdin: TextIO, stdout: TextIO,
+    def __init__(self, stdin: TextIO, stdout: TextIO, session: Session | None = None,
                  log: Callable[[str], None] = lambda _msg: None) -> None:
         self._in = stdin
         self._out = stdout
         self._log = log
         self._ready = False
         self._version = LATEST
+        self._session = session
 
     # ---- the loop --- #
 
@@ -195,7 +201,8 @@ class Server:
         self._log(f"{name} asked for protocol {asked!r}; answering {self._version!r}")
         return {
             "protocolVersion": self._version,
-            "capabilities": {"tools": {"listChanged": False}},
+            "capabilities": {"tools": {"listChanged": False},
+                             "resources": {"subscribe": False, "listChanged": False}},
             "serverInfo": {"name": SERVER_NAME, "version": tool_version()},
         }
 
@@ -218,19 +225,106 @@ class Server:
 
     # ---- tools --- #
 
+    @property
+    def session(self) -> Session:
+        """The map this server is reading.
+
+        Refused rather than built on demand. A server constructed without one is a
+        programming error here, not a reader's mistake, and answering out of a session
+        nobody opened is the shape rule 49 warns about.
+        """
+        if self._session is None:
+            raise Malformed(jsonrpc.INTERNAL_ERROR,
+                            "this server was started without a map to read")
+        return self._session
+
     def _tools_list(self, _params: dict[str, Any]) -> dict[str, Any]:
         """What this server can be asked to do.
 
-        Empty until the bodies land, and empty *honestly*: a client reads this list and
-        will not call what is not in it, so an entry here that answers nothing would be a
-        control wired to nothing — which looks exactly like one that works (design rule
-        16).
+        Straight off `tools.TOOLS`, so the list and the bodies are one table. A name here
+        with nothing behind it is a control wired to nothing, which looks exactly like one
+        that works (design rule 16), and a body nothing lists is unreachable — the suite
+        asserts both directions because either alone passes while the feature is broken.
         """
-        return {"tools": []}
+        return {"tools": [tool.as_mcp() for tool in tools.TOOLS]}
+
+    def _tools_call(self, params: dict[str, Any]) -> dict[str, Any]:
+        """Run one tool.
+
+        **A refusal is a successful call carrying `isError`, not a JSON-RPC error**, and
+        the difference is who the sentence is for. A JSON-RPC error is a fault in the
+        *protocol* — a method that does not exist, a message that is not a message — and a
+        client handles it. A stale map, an unfinished one, a rejected statement: those are
+        answers to the question that was asked, and MCP puts them in front of the model,
+        which is the only thing that can do anything about them.
+
+        The sentence is `serve.why(exc)` verbatim, so `StaleGraphError` and
+        `UnfinishedMapError` arrive as the whole sentences they were written as, with no
+        Python class name in front (rule 91's neighbour).
+        """
+        from ..web.serve import why
+
+        name = params.get("name")
+        if not isinstance(name, str) or name not in tools.BY_NAME:
+            raise Malformed(jsonrpc.INVALID_PARAMS,
+                            f"this server has no tool called {name!r}",
+                            {"known": [t.name for t in tools.TOOLS]})
+        arguments = params.get("arguments") or {}
+        if not isinstance(arguments, dict):
+            raise Malformed(jsonrpc.INVALID_PARAMS, "arguments must be an object",
+                            {"got": type(arguments).__name__})
+
+        tool = tools.BY_NAME[name]
+        try:
+            payload = tool.body(self.session, arguments)
+        except Refused as exc:
+            # Already a sentence written for whoever asked; `why` would put a class name
+            # in front of it, which is the one thing that sentence must not have.
+            self._log(f"{name} refused: {exc}")
+            return self._content(str(exc), is_error=True)
+        except Exception as exc:  # noqa: BLE001 — every refusal is an answer; see above
+            self._log(f"{name} failed: {exc!r}")
+            return self._content(why(exc), is_error=True)
+        return self._content(payload)
+
+    def _content(self, payload: Any, *, is_error: bool = False) -> dict[str, Any]:
+        """A tool result, as text.
+
+        **Text only, and no `structuredContent`.** That field arrived in the 2025-06-18
+        revision and this server negotiates down to 2024-11-05, so sending it would make
+        the shape of an answer depend on which version the handshake settled — two answers
+        to one question, decided by something the caller never sees. Indented JSON, because
+        the reader is a model: the newlines live inside a JSON string in the message and
+        the framing is untouched.
+        """
+        text = payload if isinstance(payload, str) else json.dumps(
+            payload, indent=2, ensure_ascii=False, default=str)
+        return {"content": [{"type": "text", "text": text}], "isError": is_error}
+
+    # ---- resources --- #
+
+    def _resources_list(self, _params: dict[str, Any]) -> dict[str, Any]:
+        return {"resources": resources.listing(self.session)}
+
+    def _resources_read(self, params: dict[str, Any]) -> dict[str, Any]:
+        """One resource by URI.
+
+        A URI nobody serves is `INVALID_PARAMS` and not an empty `contents`: a resource
+        that exists and holds nothing is a different fact from one that does not exist, and
+        a client shown the first for the second stops looking (rule 30).
+        """
+        uri = params.get("uri")
+        if not isinstance(uri, str) or not uri:
+            raise Malformed(jsonrpc.INVALID_PARAMS, "name a uri to read")
+        try:
+            return {"contents": resources.read(self.session, uri)}
+        except KeyError as exc:
+            raise Malformed(jsonrpc.INVALID_PARAMS, str(exc.args[0])) from exc
 
 
-def serve(argv_log: Callable[[str], None] = lambda _msg: None) -> int:
-    """Run one session on this process's own streams.
+def serve(given: Path, revision: str | None = None,
+          log: Callable[[str], None] = lambda _msg: None) -> int:
+    """Open the map and run one session on this process's own streams.
 
     **stdin is decoded here**, because `cli.speak_utf8` settles stdout and stderr and
     leaves stdin alone — every other command reads files and arguments, and this is the
@@ -239,8 +333,17 @@ def serve(argv_log: Callable[[str], None] = lambda _msg: None) -> int:
 
     A stream a caller has replaced is left exactly as it is, which is `speak_utf8`'s own
     rule: this decides an encoding and may not decide who owns the stream.
+
+    The session is built **before** the loop starts, so a map that cannot be opened is a
+    refusal on the terminal with a non-zero exit rather than a server that handshakes
+    cheerfully and then fails every call. That is `serve`'s own boot order.
     """
     with contextlib.suppress(AttributeError, OSError, ValueError):
         if (getattr(sys.stdin, "encoding", "") or "").lower().replace("-", "") != "utf8":
             sys.stdin.reconfigure(encoding="utf-8")  # type: ignore[union-attr]
-    return Server(sys.stdin, sys.stdout, log=argv_log).serve()
+
+    session = Session(given, revision, log=log)
+    try:
+        return Server(sys.stdin, sys.stdout, session, log=log).serve()
+    finally:
+        session.close()

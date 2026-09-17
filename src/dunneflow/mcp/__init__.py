@@ -34,3 +34,19 @@ excludes `web/` for exactly this reason: a surface that serves facts is not a su
 makes them. This is `web/`'s sibling and belongs on the same side of that line. `ingest/`
 is the opposite case and does belong in the guard; it goes in when it is wired.
 """
+
+
+class Refused(Exception):
+    """A tool saying no, in a sentence written for whoever asked.
+
+    The same claim `StaleGraphError` and `UnfinishedMapError` make one layer down, and made
+    here for the same reason: `serve.why()` prefixes an exception with its class name
+    because `ValueError` and `OSError` say little on their own, and that is exactly wrong
+    in front of *"this tool runs reads; that is DELETE (WRITE)"*. A class name first puts a
+    Python word in front of a sentence aimed at a reader who is not reading Python —
+    and here that reader is a model, which will repeat what it is given.
+
+    So a refusal that is already a whole sentence gets a type that says so, and `server.py`
+    renders it bare. Anything else keeps its class name, which is the existing decision and
+    still the right one for a bare `OSError`.
+    """

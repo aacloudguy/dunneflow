@@ -1279,8 +1279,14 @@ def cmd_mcp(args: argparse.Namespace) -> int:
             _emit(f"error: {exc}")
             given = platform_output_root()
             _emit(f"opening {given} in the meantime — nothing there has been touched")
-    _emit(f"dunneflow mcp — reading {given}")
-    return serve_mcp(_emit)
+    try:
+        return serve_mcp(given, args.revision, _emit)
+    except (FileNotFoundError, StaleGraphError, UnfinishedMapError) as exc:
+        # Refused before a single message is exchanged, and on **stderr** with a non-zero
+        # exit. A server that handshakes cheerfully and then fails every call gives an
+        # agent nothing to act on; this gives its launcher a sentence and a code.
+        _emit(f"error: {exc}")
+        return 2
 
 
 def cmd_render(args: argparse.Namespace) -> int:

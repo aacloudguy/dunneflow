@@ -272,9 +272,16 @@ def test_every_method_in_the_table_has_a_handler_and_every_handler_is_in_the_tab
         assert callable(getattr(server.Server, attribute, None)), (
             f"{method} routes to {attribute!r}, which is not a method"
         )
-    lifecycle = {"_initialize", "_initialized", "_ping", "_tools_list"}
-    assert set(table.values()) == lifecycle, (
-        f"a handler exists that no method reaches: {lifecycle - set(table.values())}"
+    # Written out rather than derived, and that is the guard. `Server` has other private
+    # methods -- `_handle`, `_dispatch`, `_fail`, `_content` -- and no convention tells a
+    # handler from a helper, so anything derived would either miss one or admit all of
+    # them. A list that has to be edited when a method is added is the cost of noticing
+    # when one is added and routed to nothing.
+    handlers = {"_initialize", "_initialized", "_ping", "_tools_list", "_tools_call",
+                "_resources_list", "_resources_read"}
+    assert set(table.values()) == handlers, (
+        f"routed but not expected: {set(table.values()) - handlers}; "
+        f"expected but not routed: {handlers - set(table.values())}"
     )
 
 

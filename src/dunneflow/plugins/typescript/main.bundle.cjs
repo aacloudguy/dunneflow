@@ -25250,12 +25250,12 @@ ${lanes.join("\n")}
         function parenthesizeExpressionOfExpressionStatement(expression) {
           const emittedExpression = skipPartiallyEmittedExpressions(expression);
           if (isCallExpression(emittedExpression)) {
-            const callee = emittedExpression.expression;
-            const kind = skipPartiallyEmittedExpressions(callee).kind;
+            const callee2 = emittedExpression.expression;
+            const kind = skipPartiallyEmittedExpressions(callee2).kind;
             if (kind === 219 || kind === 220) {
               const updated = factory2.updateCallExpression(
                 emittedExpression,
-                setTextRange(factory2.createParenthesizedExpression(callee), callee),
+                setTextRange(factory2.createParenthesizedExpression(callee2), callee2),
                 emittedExpression.typeArguments,
                 emittedExpression.arguments
               );
@@ -30251,61 +30251,61 @@ ${lanes.join("\n")}
           }
         }
         function createCallBinding(expression, recordTempVariable, languageVersion, cacheIdentifiers = false) {
-          const callee = skipOuterExpressions(
+          const callee2 = skipOuterExpressions(
             expression,
             63
             /* All */
           );
           let thisArg;
           let target;
-          if (isSuperProperty(callee)) {
+          if (isSuperProperty(callee2)) {
             thisArg = createThis();
-            target = callee;
-          } else if (isSuperKeyword(callee)) {
+            target = callee2;
+          } else if (isSuperKeyword(callee2)) {
             thisArg = createThis();
-            target = languageVersion !== void 0 && languageVersion < 2 ? setTextRange(createIdentifier("_super"), callee) : callee;
-          } else if (getEmitFlags(callee) & 8192) {
+            target = languageVersion !== void 0 && languageVersion < 2 ? setTextRange(createIdentifier("_super"), callee2) : callee2;
+          } else if (getEmitFlags(callee2) & 8192) {
             thisArg = createVoidZero();
             target = parenthesizerRules().parenthesizeLeftSideOfAccess(
-              callee,
+              callee2,
               /*optionalChain*/
               false
             );
-          } else if (isPropertyAccessExpression(callee)) {
-            if (shouldBeCapturedInTempVariable(callee.expression, cacheIdentifiers)) {
+          } else if (isPropertyAccessExpression(callee2)) {
+            if (shouldBeCapturedInTempVariable(callee2.expression, cacheIdentifiers)) {
               thisArg = createTempVariable(recordTempVariable);
               target = createPropertyAccessExpression(
                 setTextRange(
                   factory2.createAssignment(
                     thisArg,
-                    callee.expression
+                    callee2.expression
                   ),
-                  callee.expression
+                  callee2.expression
                 ),
-                callee.name
+                callee2.name
               );
-              setTextRange(target, callee);
+              setTextRange(target, callee2);
             } else {
-              thisArg = callee.expression;
-              target = callee;
+              thisArg = callee2.expression;
+              target = callee2;
             }
-          } else if (isElementAccessExpression(callee)) {
-            if (shouldBeCapturedInTempVariable(callee.expression, cacheIdentifiers)) {
+          } else if (isElementAccessExpression(callee2)) {
+            if (shouldBeCapturedInTempVariable(callee2.expression, cacheIdentifiers)) {
               thisArg = createTempVariable(recordTempVariable);
               target = createElementAccessExpression(
                 setTextRange(
                   factory2.createAssignment(
                     thisArg,
-                    callee.expression
+                    callee2.expression
                   ),
-                  callee.expression
+                  callee2.expression
                 ),
-                callee.argumentExpression
+                callee2.argumentExpression
               );
-              setTextRange(target, callee);
+              setTextRange(target, callee2);
             } else {
-              thisArg = callee.expression;
-              target = callee;
+              thisArg = callee2.expression;
+              target = callee2;
             }
           } else {
             thisArg = createVoidZero();
@@ -32972,7 +32972,7 @@ ${lanes.join("\n")}
           "Fragment"
         );
       }
-      function createExpressionForJsxElement(factory2, callee, tagName, props, children, location) {
+      function createExpressionForJsxElement(factory2, callee2, tagName, props, children, location) {
         const argumentsList = [tagName];
         if (props) {
           argumentsList.push(props);
@@ -32992,7 +32992,7 @@ ${lanes.join("\n")}
         }
         return setTextRange(
           factory2.createCallExpression(
-            callee,
+            callee2,
             /*typeArguments*/
             void 0,
             argumentsList
@@ -86502,9 +86502,9 @@ ${lanes.join("\n")}
           }
           const expression = node.kind === 214 ? node.expression : node.kind === 216 ? node.tag : node.kind === 171 && !legacyDecorators ? node.expression : void 0;
           if (expression) {
-            const callee = skipOuterExpressions(expression);
-            if (isAccessExpression(callee)) {
-              return callee.expression;
+            const callee2 = skipOuterExpressions(expression);
+            if (isAccessExpression(callee2)) {
+              return callee2.expression;
             }
           }
         }
@@ -116399,7 +116399,7 @@ ${lanes.join("\n")}
           const tagName = getTagName(node);
           const attrs = node.attributes.properties;
           const objectProperties = length(attrs) ? transformJsxAttributesToObjectProps(attrs) : factory2.createNull();
-          const callee = currentFileState.importSpecifier === void 0 ? createJsxFactoryExpression(
+          const callee2 = currentFileState.importSpecifier === void 0 ? createJsxFactoryExpression(
             factory2,
             context.getEmitResolver().getJsxFactoryEntity(currentSourceFile),
             compilerOptions.reactNamespace,
@@ -116408,7 +116408,7 @@ ${lanes.join("\n")}
           ) : getImplicitImportForName("createElement");
           const element = createExpressionForJsxElement(
             factory2,
-            callee,
+            callee2,
             tagName,
             objectProperties,
             mapDefined(children, transformJsxChildToExpression),
@@ -211217,6 +211217,12 @@ function matchNetwork(rules2, dotted2) {
 var LITERAL_MIN = 3;
 var LITERAL_MAX = 2e5;
 var MODULE_SCOPE = "<module>";
+function namesAValue(tag) {
+  if (import_typescript2.default.isJsxNamespacedName(tag)) return false;
+  if (!import_typescript2.default.isIdentifier(tag)) return true;
+  const first = tag.text[0] ?? "";
+  return !(first >= "a" && first <= "z") && !tag.text.includes("-");
+}
 function moduleName(rel) {
   const noSuffix = rel.replace(/\.(m|c)?[jt]sx?$/, "");
   return noSuffix.split("/").filter(Boolean).join(".");
@@ -211436,6 +211442,10 @@ var Extractor = class {
       this.callExpr(node);
       return;
     }
+    if (import_typescript2.default.isJsxSelfClosingElement(node) || import_typescript2.default.isJsxOpeningElement(node)) {
+      this.jsxElement(node);
+      return;
+    }
     if (import_typescript2.default.isPropertyAccessExpression(node) || import_typescript2.default.isElementAccessExpression(node)) {
       if (this.accessBoundary(node)) return;
     }
@@ -211449,8 +211459,21 @@ var Extractor = class {
     node.forEachChild((child) => this.expressionsIn(child));
   }
   /**
-   * A function or arrow **bound to a name**: `const f = () => {}`, `{ f() {} }`,
-   * `x.f = function () {}`. An anonymous one is not a routine — see this file's header.
+   * A function or arrow **bound to a name**: a declaration, a class member, and
+   * `const f = () => {}` — which is how most TypeScript functions are written. An
+   * anonymous one is not a routine; see this file's header.
+   *
+   * **Two shapes it does not reach, and they were claimed here until chunk 11 pressed
+   * one.** `{ f() {} }` and `x.f = function () {}` bind a name as plainly as a `const`
+   * does and neither becomes a routine: an object literal is a `Constant` whose value is
+   * the literal whole, and the method bodies' calls belong to the enclosing scope. The
+   * sentence was in this docstring from the day the reader was written and nothing had
+   * ever asked it for one — rule 37, in prose. Measured over the three TypeScript corpora
+   * before it was written down: **20 object-literal methods and 84 property functions**
+   * across DunneNote, DunneCorp and uigen, so it is a real gap of about a hundred rather
+   * than a rounding error, and it is stated rather than quietly closed here — it would
+   * move DunneNote's routine count, which is the figure chunk 11 holds fixed to prove it
+   * changed nothing but JSX.
    */
   namedFunction(node) {
     if (import_typescript2.default.isFunctionDeclaration(node)) {
@@ -211751,6 +211774,64 @@ var Extractor = class {
     this.maybeComprehension(node);
     if (import_typescript2.default.isCallExpression(node)) this.expressionsIn(node.expression);
     for (const arg of node.arguments ?? []) this.expressionsIn(arg);
+  }
+  /**
+   * `<PageHero title={x}>…</PageHero>` — a call, with its props for arguments.
+   *
+   * **Three things it deliberately does not do**, each of which was the obvious thing:
+   *
+   * - **It does not offer the tag to the boundary rules.** `matchCall` would put `<Link>`
+   *   in front of every `method:` and `prefix:` list in the file, and a component named
+   *   `Command` or `Image` matching one is rule 5 arriving through a door nobody was
+   *   watching. A component is a routine of this program; a boundary is what leaves it.
+   * - **Children are not arguments.** They are rendered output, and calling a page's whole
+   *   body argument 0 would store the file twice, once as source and once as an `expr`
+   *   (rule 8 cuts the other way here — the whole of a thing, but only where the thing is
+   *   the argument).
+   * - **It is not a construction.** `is_construction` says `new`, and JSX writes none.
+   *
+   * The closing tag is not a second call: `forEachChild` reaches it, and a `JsxClosingElement`
+   * holds nothing but the name.
+   */
+  jsxElement(node) {
+    if (namesAValue(node.tagName)) {
+      const expr = dotted(node.tagName);
+      if (expr) {
+        const owner = this.owner();
+        const site = this.recordCall(
+          owner.id,
+          expr,
+          this.startLine(node),
+          false,
+          this.jsxProps(node),
+          false
+        );
+        this.callNodes.push({ site, node });
+      }
+    }
+    this.expressionsIn(node.attributes);
+  }
+  /**
+   * A component's props, as keyword arguments — because that is what they are.
+   *
+   * `{...rest}` is `splat`, the same field TypeScript's `...args` and Python's `*args`
+   * already use. A **boolean shorthand** — `<Field disabled/>` — carries the keyword and
+   * an empty `expr`, because the program wrote no value there: React's transform supplies
+   * `true`, and putting `true` in a column headed *as written* would be this reader
+   * inventing the one word the file does not contain (rule 30).
+   */
+  jsxProps(node) {
+    const out = [];
+    node.attributes.properties.forEach((attr, idx) => {
+      if (import_typescript2.default.isJsxSpreadAttribute(attr)) {
+        out.push({ idx, expr: this.text(attr.expression), splat: true });
+        return;
+      }
+      const init2 = attr.initializer;
+      const expr = init2 === void 0 ? "" : import_typescript2.default.isJsxExpression(init2) ? this.text(init2.expression) : this.text(init2);
+      out.push({ idx, expr, keyword: this.text(attr.name) });
+    });
+    return out;
   }
   callArgs(node) {
     const out = [];
@@ -213494,6 +213575,9 @@ var Session = class {
 };
 
 // src/edges.ts
+function callee(node) {
+  return import_typescript4.default.isJsxSelfClosingElement(node) || import_typescript4.default.isJsxOpeningElement(node) ? node.tagName : node.expression;
+}
 function anchorsOf(decls, anchors) {
   const out = [];
   for (const d of decls) {
@@ -213603,7 +213687,7 @@ function resolveOne(checker, node, anchors) {
     const hit = climb(declared, anchors);
     if (hit !== null) return { routine: hit, how: "signature" };
   }
-  let symbol = checker.getSymbolAtLocation(node.expression);
+  let symbol = checker.getSymbolAtLocation(callee(node));
   if (symbol !== void 0 && (symbol.flags & import_typescript4.default.SymbolFlags.Alias) !== 0) {
     try {
       symbol = checker.getAliasedSymbol(symbol);

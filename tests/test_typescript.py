@@ -580,7 +580,7 @@ def test_python_keeps_the_same_answer_because_all_its_keys_are_dotted():
 EDGE_TREE: dict[str, str] = {
     "tsconfig.json": """{
   "compilerOptions": { "strict": true, "target": "ES2022", "module": "ESNext",
-                       "moduleResolution": "bundler", "baseUrl": ".",
+                       "moduleResolution": "bundler", "baseUrl": ".", "jsx": "react-jsx",
                        "paths": { "$lib/*": ["lib/*"] } }
 }
 """,
@@ -613,6 +613,15 @@ export function pick(a: string | number): string | number {
   return a;
 }
 """,
+    "lib/widgets.tsx": """
+export function Panel({ heading }: { heading: string }) {
+  return <section>{heading}</section>;
+}
+
+export function Star() {
+  return <b>*</b>;
+}
+""",
     "caller.ts": """
 import { save, resync as resyncState, Hierarchy, pick } from "$lib/store";
 
@@ -642,6 +651,30 @@ export function viaLibrary(): number {
   return Math.max(1, 2);
 }
 """,
+    # Chunk 11. A component element is a call, an intrinsic one is the page, and the two
+    # are told apart by React's own rule rather than by what anything resolves to.
+    "page.tsx": """
+import { Panel } from "$lib/widgets";
+import * as icons from "$lib/widgets";
+
+export function Card({ title }: { title: string }) {
+  return <p className="lead">{title}</p>;
+}
+
+export function Page({ wide }: { wide: boolean }) {
+  const rest = { id: "x" };
+  return (
+    <div className="page">
+      <Card title="Hello" />
+      <Panel heading={"Two"} wide {...rest}>
+        <span>body</span>
+      </Panel>
+      <icons.Star />
+      <my-widget />
+    </div>
+  );
+}
+""",
 }
 
 
@@ -661,7 +694,7 @@ def edges(tmp_path_factory):
         p = root / name
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text(source, encoding="utf-8")
-        if name.endswith(".ts"):
+        if name.endswith((".ts", ".tsx")):
             paths.append(p)
     PLUGIN.probe()
     PLUGIN.open(root, paths)
@@ -676,12 +709,12 @@ def edges(tmp_path_factory):
     return facts, supplied, outside, unknown
 
 
-def _edge_for(facts, supplied, caller: str, expr: str):
+def _edge_for(facts, supplied, caller: str, expr: str, path: str = "caller.ts"):
     """The supplied edge for one call, found by the identity the reader minted."""
-    sites = [c for c in facts["caller.ts"].calls
+    ff = facts[path]
+    sites = [c for c in ff.calls
              if c.callee_expr == expr
-             and any(r.name == caller and r.id == c.caller_id
-                     for r in facts["caller.ts"].routines)]
+             and any(r.name == caller and r.id == c.caller_id for r in ff.routines)]
     assert len(sites) == 1, f"{caller} -> {expr}: {len(sites)} call sites"
     by_site = {e.site_id: e for e in supplied}
     return by_site.get(sites[0].site_id)
@@ -841,3 +874,83 @@ def test_a_warm_run_keeps_the_edges_it_did_not_re_read(tmp_path):
         assert second.supplied == first.supplied
     finally:
         store.close()
+
+
+# --------------------------------------------------------- JSX: an element is a call --- #
+#
+# Chunk 11. In a React program the component tree *is* the flow, and chunk 9 left it
+# unread: a page rendering eleven components looked like a routine that called one
+# function. What is asserted here is the judgement — which tags are calls — and that the
+# checker answers a tag exactly as it answers a callee.
+
+
+def _calls_of(facts, path: str, caller: str) -> list:
+    ff = facts[path]
+    owner = next(r for r in ff.routines if r.name == caller)
+    return [c for c in ff.calls if c.caller_id == owner.id]
+
+
+def test_a_component_element_is_a_call_and_an_intrinsic_one_is_not(edges):
+    """`<Card/>` is a call; `<div>`, `<span>` and `<my-widget/>` are the page.
+
+    React's own rule, and it is about spelling rather than about types: a bare lowercase
+    tag is passed through as a *string*, so it names no routine anybody could go to. A
+    hyphenated tag is a custom element and is a string too. Getting this wrong in either
+    direction is visible immediately — every `<div>` in a corpus as a call site, or every
+    component missing.
+    """
+    facts, _, _, _ = edges
+    spelled = [c.callee_expr for c in _calls_of(facts, "page.tsx", "Page")]
+    assert sorted(spelled) == ["Card", "Panel", "icons.Star"]
+
+
+def test_a_props_are_the_arguments_a_component_was_handed(edges):
+    """What a caller passed, which is what `call_args` is for — keyword by construction.
+
+    A boolean shorthand carries no value, and `true` is React's transform rather than the
+    program's word for it (rule 30), so the keyword is recorded and the expression is
+    empty. A spread is `splat`, the field `...args` already uses.
+    """
+    facts, _, _, _ = edges
+    panel = next(c for c in _calls_of(facts, "page.tsx", "Page") if c.callee_expr == "Panel")
+    assert [(a.idx, a.keyword, a.expr, bool(a.splat)) for a in panel.args] == [
+        (0, "heading", '"Two"', False),
+        (1, "wide", "", False),
+        (2, None, "rest", True),
+    ]
+    # The children are not arguments: `<span>body</span>` is rendered output, and storing
+    # it as argument 3 would put the page's body in a column headed *what was passed*.
+    assert len(panel.args) == 3
+
+
+def test_the_checker_names_the_component_a_tag_reaches(edges):
+    """A tag is resolved by the question that resolves a callee, not by its name."""
+    facts, supplied, _, _ = edges
+    local = _edge_for(facts, supplied, "Page", "Card", path="page.tsx")
+    assert local is not None
+    assert (local.file, local.name) == ("page.tsx", "Card")
+
+    imported = _edge_for(facts, supplied, "Page", "Panel", path="page.tsx")
+    assert imported is not None
+    assert (imported.file, imported.name) == ("lib/widgets.tsx", "Panel")
+
+
+def test_a_dotted_tag_is_one_name_and_reaches_what_it_names(edges):
+    """`<icons.Star/>` through a namespace import — clause 1 of the dotted contract, in a
+    tag, and the alias followed to what it was bound to."""
+    facts, supplied, _, _ = edges
+    edge = _edge_for(facts, supplied, "Page", "icons.Star", path="page.tsx")
+    assert edge is not None
+    assert edge.name == "Star"
+
+
+def test_a_tag_is_never_offered_to_a_boundary_rule(edges):
+    """A component called `Command` or `Image` must not match a `method:` list (rule 5).
+
+    The tag goes nowhere near `matchCall`, so this holds by construction rather than by
+    the rules happening not to contain a component's name today.
+    """
+    facts, _, _, _ = edges
+    assert facts["page.tsx"].boundaries == []
+    assert all(c.at_boundary is not True
+               for c in _calls_of(facts, "page.tsx", "Page"))

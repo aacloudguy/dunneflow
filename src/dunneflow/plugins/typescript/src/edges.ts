@@ -44,7 +44,7 @@
  */
 
 import ts from "typescript";
-import { walkFile } from "./extract.js";
+import { walkFile, type CallNode } from "./extract.js";
 import type { Routine, SuppliedEdge } from "./facts.js";
 import { relPath, type Session } from "./program.js";
 import type { RuleSet } from "./rules.js";
@@ -67,6 +67,23 @@ export interface EdgeHarvest {
   unknown: number;
   /** Files whose walk threw. Named rather than counted: it is a defect, not a filter. */
   failed: string[];
+}
+
+/**
+ * The expression naming what is called: the callee, or a component element's tag.
+ *
+ * One function because rung 2 asks one question — *what is this name bound to* — and the
+ * three node kinds spell the name in two fields. `getResolvedSignature` needs no such
+ * thing: it takes the union whole, which is what `ts.CallLikeExpression` means.
+ *
+ * A `ts.Node` rather than a `ts.Expression`, because `<svg:circle>`'s namespaced tag is
+ * neither — and `getSymbolAtLocation` asks about a node. Such a tag never reaches here:
+ * `namesAValue` refused it a call site, so the width costs nothing and refuses nothing.
+ */
+function callee(node: CallNode): ts.Node {
+  return ts.isJsxSelfClosingElement(node) || ts.isJsxOpeningElement(node)
+    ? node.tagName
+    : node.expression;
 }
 
 /** Where a routine lives, as the extractor recorded it. */
@@ -126,7 +143,7 @@ export function collectEdges(session: Session, rules: RuleSet): EdgeHarvest {
   const where = new Map<Routine, Target>();
   const pending: {
     checker: ts.TypeChecker;
-    calls: { site_id: string; caller_id: string; node: ts.CallExpression | ts.NewExpression }[];
+    calls: { site_id: string; caller_id: string; node: CallNode }[];
   }[] = [];
   const failed: string[] = [];
 
@@ -227,7 +244,7 @@ export function collectEdges(session: Session, rules: RuleSet): EdgeHarvest {
  */
 function resolveOne(
   checker: ts.TypeChecker,
-  node: ts.CallExpression | ts.NewExpression,
+  node: CallNode,
   anchors: Map<ts.Node, Routine>,
 ): { routine: Routine; how: string } | number | "outside" | "unknown" {
   let answered = false;
@@ -244,7 +261,7 @@ function resolveOne(
     // call genuinely outside the map.
   }
 
-  let symbol = checker.getSymbolAtLocation(node.expression);
+  let symbol = checker.getSymbolAtLocation(callee(node));
   if (symbol !== undefined && (symbol.flags & ts.SymbolFlags.Alias) !== 0) {
     // An import binds a name to something declared elsewhere, and *elsewhere* is the whole
     // question. Unaliasing is the checker doing what `resolve/python/calls.py` spends its

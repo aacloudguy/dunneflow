@@ -20,9 +20,19 @@
  *   (rule 30), and the alternative — thousands of `<anonymous>` rows — is rule 1's own
  *   subject. React's components are named, and `useEffect`'s callbacks are chunk 11's.
  * - **The DOM is not a boundary.** `detectors/typescript.yaml`'s header says why.
- * - **JSX is not read at all** in this chunk. `.tsx` is claimed and parsed, so a component
- *   is a routine and its calls are calls; what is not recorded is conditional rendering,
- *   which is a decision about a rendered element and this tool does not model elements.
+ * - **JSX conditional rendering is not a decision.** `{cond && <X/>}` and a ternary in
+ *   JSX are left out, because `shape.judge()`'s test is *does something move inside it*
+ *   and what moves is a rendered element — which this tool does not model. Recording them
+ *   would put thousands of points on a worklist no reader can act on (rule 1).
+ *
+ * **What JSX *is*, since chunk 11: a component element is a call.** `<PageHero title={x}/>`
+ * is the caller handing another routine of this program its arguments, which is the one
+ * thing this tool exists to record — and in a React program it is most of the flow. The
+ * tag names the callee, the props are its keyword arguments, and the checker names the far
+ * end exactly as it does for `f(x)`. An intrinsic element — a bare lowercase tag, or a
+ * hyphenated one — is **not** a call: it is React's own rule for telling a value from a
+ * string, and it is the same judgement `detectors/typescript.yaml` already makes about the
+ * DOM, which is the program's rendered output rather than something it calls.
  */
 
 import ts from "typescript";
@@ -56,6 +66,39 @@ const LITERAL_MIN = 3;
 const LITERAL_MAX = 200_000;
 
 const MODULE_SCOPE = "<module>";
+
+/**
+ * Every node this reader records a call site at.
+ *
+ * Widened for JSX in chunk 11 and named rather than spelled out at each use, because the
+ * edge pass has to hold exactly this set: a node the extractor minted a `site_id` at and
+ * the checker can be asked about. All three are `ts.CallLikeExpression`s, which is the
+ * compiler's own word for *something that resolves to a signature* — `getResolvedSignature`
+ * takes the union, so a component element is answered by the same question as `f(x)`.
+ */
+export type CallNode = ts.CallExpression | ts.NewExpression | ts.JsxOpeningLikeElement;
+
+/**
+ * Whether a JSX tag names a **value** rather than an element of the page.
+ *
+ * React's own rule, and it is a rule about spelling rather than about types: the transform
+ * passes a bare lowercase identifier through as the *string* `"div"`, and anything else as
+ * the thing that name is bound to. A hyphenated tag is a custom element, which is also a
+ * string. `<Foo.Bar/>`, `<this.X/>` and `<Foo/>` all name a value.
+ *
+ * So `<div>` is not a call and `<Container>` is. That is the same judgement
+ * `detectors/typescript.yaml` makes when it refuses to report the DOM at all: an element
+ * the browser draws is this program's output, and 721 of DunneCorp's 910 tags are that.
+ */
+export function namesAValue(
+  tag: ts.JsxTagNameExpression,
+): tag is Exclude<ts.JsxTagNameExpression, ts.JsxNamespacedName> {
+  // `<svg:circle>`: a namespaced tag is XML, never a binding.
+  if (ts.isJsxNamespacedName(tag)) return false;
+  if (!ts.isIdentifier(tag)) return true;
+  const first = tag.text[0] ?? "";
+  return !(first >= "a" && first <= "z") && !tag.text.includes("-");
+}
 
 /**
  * A module name for a language that has none.
@@ -113,7 +156,7 @@ export class Extractor {
    * call site it names cannot come out of two different traversals with two different
    * ordinals (`callSiteId` has one).
    */
-  callNodes: { site: CallSite; node: ts.CallExpression | ts.NewExpression }[] = [];
+  callNodes: { site: CallSite; node: CallNode }[] = [];
   /**
    * The program's checker, when this walk is the edge pass. Held and never *used* here:
    * what a call resolves to is `edges.ts`' question, and an extractor that answered it
@@ -322,6 +365,10 @@ export class Extractor {
       this.callExpr(node);
       return;
     }
+    if (ts.isJsxSelfClosingElement(node) || ts.isJsxOpeningElement(node)) {
+      this.jsxElement(node);
+      return;
+    }
     if (ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node)) {
       if (this.accessBoundary(node)) return;
     }
@@ -337,8 +384,21 @@ export class Extractor {
   }
 
   /**
-   * A function or arrow **bound to a name**: `const f = () => {}`, `{ f() {} }`,
-   * `x.f = function () {}`. An anonymous one is not a routine — see this file's header.
+   * A function or arrow **bound to a name**: a declaration, a class member, and
+   * `const f = () => {}` — which is how most TypeScript functions are written. An
+   * anonymous one is not a routine; see this file's header.
+   *
+   * **Two shapes it does not reach, and they were claimed here until chunk 11 pressed
+   * one.** `{ f() {} }` and `x.f = function () {}` bind a name as plainly as a `const`
+   * does and neither becomes a routine: an object literal is a `Constant` whose value is
+   * the literal whole, and the method bodies' calls belong to the enclosing scope. The
+   * sentence was in this docstring from the day the reader was written and nothing had
+   * ever asked it for one — rule 37, in prose. Measured over the three TypeScript corpora
+   * before it was written down: **20 object-literal methods and 84 property functions**
+   * across DunneNote, DunneCorp and uigen, so it is a real gap of about a hundred rather
+   * than a rounding error, and it is stated rather than quietly closed here — it would
+   * move DunneNote's routine count, which is the figure chunk 11 holds fixed to prove it
+   * changed nothing but JSX.
    */
   namedFunction(node: ts.Node): boolean {
     if (ts.isFunctionDeclaration(node)) {
@@ -667,6 +727,64 @@ export class Extractor {
 
     if (ts.isCallExpression(node)) this.expressionsIn(node.expression);
     for (const arg of node.arguments ?? []) this.expressionsIn(arg);
+  }
+
+  /**
+   * `<PageHero title={x}>…</PageHero>` — a call, with its props for arguments.
+   *
+   * **Three things it deliberately does not do**, each of which was the obvious thing:
+   *
+   * - **It does not offer the tag to the boundary rules.** `matchCall` would put `<Link>`
+   *   in front of every `method:` and `prefix:` list in the file, and a component named
+   *   `Command` or `Image` matching one is rule 5 arriving through a door nobody was
+   *   watching. A component is a routine of this program; a boundary is what leaves it.
+   * - **Children are not arguments.** They are rendered output, and calling a page's whole
+   *   body argument 0 would store the file twice, once as source and once as an `expr`
+   *   (rule 8 cuts the other way here — the whole of a thing, but only where the thing is
+   *   the argument).
+   * - **It is not a construction.** `is_construction` says `new`, and JSX writes none.
+   *
+   * The closing tag is not a second call: `forEachChild` reaches it, and a `JsxClosingElement`
+   * holds nothing but the name.
+   */
+  jsxElement(node: ts.JsxOpeningLikeElement): void {
+    if (namesAValue(node.tagName)) {
+      const expr = dotted(node.tagName);
+      if (expr) {
+        const owner = this.owner();
+        const site = this.recordCall(owner.id, expr, this.startLine(node), false,
+                                     this.jsxProps(node), false);
+        this.callNodes.push({ site, node });
+      }
+    }
+    // The props' own expressions are this routine's work whatever the tag is: a handler
+    // written inline on a `<button>` calls what it calls.
+    this.expressionsIn(node.attributes);
+  }
+
+  /**
+   * A component's props, as keyword arguments — because that is what they are.
+   *
+   * `{...rest}` is `splat`, the same field TypeScript's `...args` and Python's `*args`
+   * already use. A **boolean shorthand** — `<Field disabled/>` — carries the keyword and
+   * an empty `expr`, because the program wrote no value there: React's transform supplies
+   * `true`, and putting `true` in a column headed *as written* would be this reader
+   * inventing the one word the file does not contain (rule 30).
+   */
+  jsxProps(node: ts.JsxOpeningLikeElement): CallArg[] {
+    const out: CallArg[] = [];
+    node.attributes.properties.forEach((attr, idx) => {
+      if (ts.isJsxSpreadAttribute(attr)) {
+        out.push({ idx, expr: this.text(attr.expression), splat: true });
+        return;
+      }
+      const init = attr.initializer;
+      const expr = init === undefined
+        ? ""
+        : (ts.isJsxExpression(init) ? this.text(init.expression) : this.text(init));
+      out.push({ idx, expr, keyword: this.text(attr.name) });
+    });
+    return out;
   }
 
   callArgs(node: ts.CallExpression | ts.NewExpression): CallArg[] {

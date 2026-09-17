@@ -844,3 +844,32 @@ added tomorrow is still picked up — on the first record rather than on every o
 *The same assumption `lang_fingerprint` had to be corrected on, in the same words: an
 application does not become a source checkout halfway through a run, and a dataclass does
 not grow a field between two files.*
+
+### What the string-literal split cost the wire (chunk 8, measured 2026-09-17)
+
+Retaken on the same corpus and the same machine, by the same method, because chunk 8 puts
+every string a file spells out **on the wire** — 42,502 of them for Society, where before
+they never left the reader. A figure taken against a different payload under the same
+label would be a different measurement (rule 24), so the whole table is retaken rather than
+one row appended.
+
+| | Per file | Chunk 7 |
+|---|---:|---:|
+| in-process, serial | **4.31 ms** | 4.57 ms |
+| — the host's judgement of the strings | **0.12 ms** | *did not exist* |
+| out of process, sequential | **6.83 ms** | 6.75 ms |
+| — encode | 0.93 ms | |
+| — decode | 1.39 ms | |
+| overhead over serial | **1.58×** | 1.48× |
+
+**The literals are 3.8 MB of a 26.5 MB payload — 14% — and they cost a tenth of the
+protocol's overhead.** The judgement itself is 0.12 ms a file, **75 ms for the whole
+corpus**, and it is the same work the extractor used to do inline; what moved is where it
+happens, not how much of it there is.
+
+**The floor of the bound is not what saves the wire, and that was measured before it was
+set.** Of 46,524 strings, the floor at three drops 4,022. Taking six instead — the bound
+`_scan_sql` has always applied, and the number `PLAN-v2.md` named — would drop a further
+6,861 and save **0.43 MB, 1.6% of the payload**, while putting every four-character
+filename a `detectors/<lang>.yaml` might name outside the map with nothing to say so. The
+ceiling is the half that earns its place.

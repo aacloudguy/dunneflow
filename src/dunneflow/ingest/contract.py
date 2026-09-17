@@ -81,7 +81,14 @@ def stamp_lang(facts: FileFacts) -> FileFacts:
             f"a file whose language is blank cannot be routed, cannot be resolved by the "
             f"right rules, and would be stored as a fact about nothing."
         )
+    # `module_scope` is here because it is a record inside these facts like any other,
+    # and it is the one the host may still append *after* this ran: `ingest.literals.judge`
+    # claims it when a string turns out to be a fact. Stamped here whether or not it is
+    # ever claimed -- where the reader already recorded module-level work it is the same
+    # object as the one in `routines` and stamping it twice writes the same value.
     records: list[Routine | DataStructure] = [*facts.routines, *facts.structures]
+    if facts.module_scope is not None:
+        records.append(facts.module_scope)
     for record in records:
         if record.lang and record.lang != facts.lang:
             raise PluginRefused(

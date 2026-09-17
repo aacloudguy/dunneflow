@@ -36,7 +36,8 @@ from typing import Literal
 # facts no longer fit is refused by name rather than by a hash nobody can interpret.
 #
 # 10: `files.extractor` -- which reader produced each row, per language.
-SCHEMA_VERSION = 10
+# 11: `FileFacts.literals` -- a reader reports the strings, the host judges them.
+SCHEMA_VERSION = 11
 
 
 # --------------------------------------------------------------------------- #
@@ -658,6 +659,50 @@ class Constant:
     private: bool = False         # leading underscore: internal to the module
 
 
+class LiteralKind(StrEnum):
+    """Whether the text is what the file says, or what the file would assemble.
+
+    Two facts that look identical once they are a string, and telling them apart is the
+    whole reason this field exists. `"chaos_?.py"` is a glob a person wrote; the `?` in
+    `f"{stem}.py"`'s reported text is the placeholder the reader left where a value goes.
+    A judgement that cannot tell them apart has to treat every `?` as one or the other,
+    and both readings are wrong half the time (rule 30).
+    """
+
+    PLAIN = "PLAIN"
+    INTERPOLATED = "INTERPOLATED"
+
+
+@dataclass(slots=True)
+class StringLiteral:
+    """A string the source spells out, reported so the **host** can judge what it means.
+
+    The one fact a reader is asked for and told not to interpret. What a string *is* --
+    a SQL statement, the name of a file, or prose that happens to contain a dot -- is one
+    question with one answer, and a plugin that answered it for its own language would
+    make the same text read two ways in a `.py` and a `.ts` (rule 51, in the fact
+    contract, which is the most expensive place to have it). So `ingest/literals.py`
+    decides, for every language at once, and `detectors/<lang>.yaml` stays the extension
+    point: adding an extension is a YAML edit and never a plugin rebuild.
+
+    `text` is the string **whole and as the reader resolved it** (rule 8): a 200 KB
+    schema block is stored entire, because a DDL statement cut off at eighty characters
+    is no longer the schema. An interpolated string arrives with its interpolations
+    already stood in for -- that needs the syntax tree and so is the reader's -- and
+    `kind` says so, because the placeholder is otherwise indistinguishable from a
+    character somebody typed.
+
+    `routine_id` is the routine the string sits in, decided where the reader was standing
+    when it saw it. The host cannot recompute it: by the time facts arrive, a line number
+    is all that is left of where anything was.
+    """
+
+    routine_id: str
+    line: int
+    text: str
+    kind: LiteralKind = LiteralKind.PLAIN
+
+
 @dataclass(slots=True)
 class Artefact:
     """A file the program names: a database, a config, a script, a document.
@@ -725,6 +770,24 @@ class FileFacts:
     constants: list[Constant] = field(default_factory=list)
     control: list[ControlPoint] = field(default_factory=list)
     control_arms: list[ControlArm] = field(default_factory=list)
+    # Every string this file spells out, for the host to judge. `sql`, `tables`, `indexes`
+    # and `artefacts` above are **filled from these, by the host**, and a reader that sends
+    # literals must not also send those (`ingest.literals.judge` refuses it): two answers to
+    # one question, and only ever noticed when they differ.
+    literals: list[StringLiteral] = field(default_factory=list)
+    # The routine module-level code belongs to, **prepared and not claimed**. A file's
+    # module scope is a routine only where something belongs to it, and a reader cannot
+    # know that about a string: what a string *means* is `ingest.literals.judge`'s answer,
+    # and this is what lets it claim the scope after it has one. Where the reader has
+    # already recorded module-level work -- a call, a constant, a comment -- the same
+    # routine is in `routines` and this is the same object; where it has not, this is a
+    # row nobody has claimed and it stays out of the map.
+    module_scope: Routine | None = None
+    # Strings the reader did not send because they fall outside `ingest.literals`' bound.
+    # A count and not a list, because the thing to know is whether the number is zero; a
+    # filter nobody can see is design rule 1's subject, and this one runs in a process the
+    # host cannot look inside.
+    literals_dropped: int = 0
     errors: list[str] = field(default_factory=list)
 
 

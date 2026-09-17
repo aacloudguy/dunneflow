@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from dunneflow.extractors.python.extract import extract_file, module_name
+from dunneflow.ingest.literals import judge
 from dunneflow.schema import BoundaryKind, signature_parts
 
 
@@ -170,9 +171,12 @@ def test_standards_are_not_governance_tickets(tmp_path: Path) -> None:
 
 
 def _sql(tmp_path: Path, body: str):
+    # Two halves now, and the test has to run both: the reader reports the strings and
+    # `ingest.literals` says which of them are statements. Calling `extract_file` alone
+    # would assert against an empty list for ever (rule 37).
     src = tmp_path / "m.py"
     src.write_text(body, encoding="utf-8")
-    return extract_file(src, tmp_path).sql
+    return judge(extract_file(src, tmp_path)).sql
 
 
 def test_an_fstring_names_its_table_from_a_module_constant(tmp_path):

@@ -1951,3 +1951,41 @@ rule of that number — a blank canvas must say why it is blank — which does e
     one named module, by the interim form this body already describes, and the key still
     knows where the reader lives rather than what it reads. The next module to reach out
     of `extractors/python/` will be in no key either, and nothing will say so.
+
+96. **A record minted on demand exists because somebody asked, so a new question invents
+    records.**
+    `_Extractor._owner()` returns the routine that encloses, and at module level it *mints*
+    a synthetic `<module>` routine and appends it. So the rule the map actually held —
+    **the module scope is a routine only where something belongs to it** — was true by
+    accident rather than by statement: whichever fact asked first did the minting, and a
+    file with nothing at module level got none because nothing had asked.
+
+    Chunk 8 asked a new question. A string literal has to name its owner *before* anybody
+    knows whether it is a fact — what a string means is the host's answer now, and the
+    reader reports it either way — so `_owner()` was called for every module-level string
+    in the corpus. **65 of Society's 628 files gained a `<module>` routine owning nothing
+    at all**: no SQL operation, no artefact, no call, no comment. A 1.3% inflation of every
+    routine count, every dead-code number and every naming population in the map, and the
+    thing deciding it was `LITERAL_MIN` — a bound whose entire purpose is to save bytes on
+    a pipe.
+
+    **It was invisible to every check except identity.** The change touches no routine, so
+    nothing about it suggested reading the routine table; the tests were green; the map
+    opened and looked right. It was caught by `routines.id` and `routines.body` moving in
+    the golden — which is why that gate is a digest of the sorted ids and not a count
+    (a total can hold while its contents swap), and why it is run on a change that has no
+    business moving it.
+
+    **The remedy is to separate preparing from claiming, and to state the rule the accident
+    was keeping.** `module_scope()` builds the row and appends nothing; `_owner()` claims
+    it, as every fact-recording caller always did; `_owner_id()` names it without claiming,
+    because `make_id` is derived from names and needs no row to exist. The host claims it
+    if and only if one of those strings turned out to be a fact — `ingest.literals`, the
+    one place that knows.
+
+    **The general shape, which is what makes this a rule rather than a fix.** Lazy
+    construction ties a record's *existence* to the set of questions the code happens to
+    ask. That is stable only while the questions are, and a seam exists to let new askers
+    arrive — a second language, a second surface, a host that wants a fact the reader used
+    to keep to itself. Ask *who owns this* without deciding *that this is owned*, or the
+    answer creates the owner.

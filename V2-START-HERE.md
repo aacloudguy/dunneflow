@@ -14,7 +14,7 @@ been rewritten yet. Where they describe the tool they are accurate; where they d
 |---|---|
 | `PLAN-v2.md` | the whole design: the plugin protocol, the registry, the fingerprint split, the TypeScript plugin, the MCP server, the 14 chunks and the gate on each |
 | `CLAUDE.md` | the standing orders — **binding**, and the rules index |
-| `RULES.md` · `DESIGN-RULES.md` | carried over **verbatim, numbering intact**. The numbers are addresses: never reused, never renumbered, never closed up. **v2 continues at engineering rule 96** — 95 is the fingerprint's blind spot, minted 2026-09-17. A rule is never closed; the `sql.py` gap it was minted from was shut by chunk 6, and the general remedy it names is not built. |
+| `RULES.md` · `DESIGN-RULES.md` | carried over **verbatim, numbering intact**. The numbers are addresses: never reused, never renumbered, never closed up. **v2 continues at engineering rule 97** — 95 is the fingerprint's blind spot and 96 is the record minted on demand, both 2026-09-17. A rule is never closed; 95's `sql.py` gap was shut by chunk 6 and the general remedy it names is not built. |
 | `PERFORMANCE.md` | v1's figures. **Every one of them was measured on v1** and none has been reproduced here — do not restate one as though it had been (rule 24). |
 
 ## The four decisions, already taken
@@ -93,6 +93,21 @@ been rewritten yet. Where they describe the tool they are accurate; where they d
   on Society **no call site spells any of the seven names that differ**, and the digest is
   unmoved. `sql.py` joined the core key, which shuts the gap rule 95 was minted from. **1,588 passed · 1 skipped**,
   mypy clean over 164 files, ruff clean, **7 of 7 digests identical**.
+* **The string-literal split.** `FileFacts.literals`; the Python reader stops deciding
+  what a string *means* and reports the strings; `ingest/literals.py` runs the SQL and
+  artefact scanning for every language at once, so `detectors/<lang>.yaml` stays an
+  extension point a plugin never has to be rebuilt for. **7 of 7 digests identical** and
+  the four tables the split moves — `artefacts` 364, `sql_ops` 1,055, `db_tables` 43,
+  `db_indexes` 73 — byte-identical to v1 row for row; 0 of 628 files differ over the wire;
+  the frozen binary agrees and stamps the same fingerprints. It **invented 65 routines**
+  before it was right: `_owner()` mints the module scope on demand, so asking who owns a
+  *string* — which happens before anybody knows whether it is a fact — minted it for every
+  file with a module-level string. Preparing the scope is separate from claiming it now.
+  `LiteralKind` tells a glob from an interpolation placeholder, `reports_literals` stops
+  being a field nobody reads, and the bound's floor is **3 rather than 6**, measured:
+  six is SQL's own and would put a four-character filename outside the map to save 1.6% of
+  the payload. `SCHEMA_VERSION` is **11**. **1,670 passed · 1 skipped**, mypy clean over
+  173 files, ruff clean.
 * **`dunneflow mcp`** — the whole of `PLAN-v2.md` §3, brought forward and shipped. Twelve
   tools, two resources, one base at a time with `programs`/`open` as the topbar's controls,
   and `analyze`/`analysis_status`/`analysis_stop` for making a map rather than reading one.
@@ -135,22 +150,25 @@ is faithful rather than merely plausible.
 
 **The MCP server was brought forward** on 2026-09-17, from `PLAN-v2.md`'s chunk 4 to the
 front, and the walk was wired behind it the same day — so the ordering that remains is the
-plan's own, and chunks 5, 6 and 7 were taken in it. Tom's call on the front-loading, and his reasoning is recorded: the existing
+plan's own, and chunks 5, 6, 7 and 8 were taken in it. Tom's call on the front-loading, and his reasoning is recorded: the existing
 tool is usable as-is, so v1 defects found along the way are rolled into whichever feature
 chunk owns them rather than scheduled as work of their own.
 
-1. **The string-literal split** — `PLAN-v2.md` chunk 8. `FileFacts.literals`, the
-   plugin-side `6 ≤ len ≤ 200_000` bound with **the count it dropped reported** rather than
-   silently filtered, and SQL and artefact scanning moved out of the Python extractor into
-   `ingest/literals.py` so the host judges what a string *means*. Done **before** TypeScript
-   exists, so TypeScript never sees the old shape. **Gate: golden unchanged**, which is the
-   proof the split is faithful — and `sql.py` is already in the core key, which is where
-   that judgement now belongs.
-2. **TypeScript, extraction only** — chunk 9. The pnpm package, the esbuild bundle,
+1. **TypeScript, extraction only** — chunk 9. The pnpm package, the esbuild bundle,
    `detectors/typescript.yaml`, and the dotted fixture's rules 5, 6 and 7 stopping being
    unexercised — clause 7 brings `CallSite.is_construction` with the reader that fills it.
    **Gate: DunneNote's ground truth**, `PLAN-v2.md` §5, and the Tauri seam is the sharp one:
    30 files import `@tauri-apps/api/core` and **29 are tests**.
+
+**A fifth v1 defect was found by chunk 8's gate and is not fixed.** The **rendered map is
+not run-to-run stable**: two analyses of Society by the same build differ in seven of the
+fifteen documents — 2,215 lines in `06-governance.md`, 988 in `12-traceability.md` — and
+every difference examined is *order*, never content. `as_completed` decides which file is
+written first, so every rowid varies, and a query with no `ORDER BY` or one ordering on a
+column with ties returns rows in whatever order the pool finished in (rule 66). It touches
+no stored fact — the golden's digests are over sorted ids and are unmoved — and it is a
+chunk of its own, because a report that has to be diffed against a baseline cannot also be
+the thing being changed. `HANDOFF.md` 2026-09-17 has the table and the two named sites.
 
 **Of the four confirmed v1 defects, three are closed.** `BKIND_GLYPH` went in `679d772`;
 `writable=False` now opens `?mode=ro` and genuinely refuses a write, which is what the MCP

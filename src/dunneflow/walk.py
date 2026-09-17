@@ -28,6 +28,7 @@ from pathlib import Path
 from . import ingest, revisions
 from .docstore import DocStore
 from .extractors.docs import DOC_SUFFIXES, extract_doc
+from .ingest import literals
 from .ingest.contract import DiscoveryRules
 from .schema import DocFacts, FileFacts, hash_source, stored_path
 from .store import Store
@@ -132,6 +133,17 @@ class WalkStats:
     # application was **122 of 147 documents** somebody else's map, so the corpus a silent
     # prune would shrink here is 83% of what the reader can see in the directory.
     maps: list[str] = field(default_factory=list)
+    # Language -> strings the reader did not send, because they fall outside
+    # `ingest.literals`' bound. A filter **inside** a file rather than a file left out,
+    # and it is listed beside them because it is the same claim: this one runs in a
+    # process the host cannot look inside, so the count is the only way it can be seen at
+    # all. It is per language because the bound is applied by each reader in turn.
+    literals_dropped: dict[str, int] = field(default_factory=dict)
+    # Languages whose reader declares `reports_literals: false`. A real answer and not an
+    # empty one -- that language contributes no SQL and no named files, on purpose -- and
+    # it has to be said, because a map with neither is indistinguishable from a program
+    # that touches no database and names no files.
+    no_literals: list[str] = field(default_factory=list)
 
 
 def walk_languages(stats: WalkStats) -> str:
@@ -173,6 +185,15 @@ def walk_residue(stats: WalkStats) -> list[str]:
         listed = ", ".join(f"{n:,} {lang}"
                            for lang, n in sorted(stats.lang_skipped.items()))
         out.append(f"skipped by the reader's own rule: {listed}")
+    if stats.no_literals:
+        out.append(f"no strings reported by: {', '.join(sorted(stats.no_literals))} — "
+                   f"that language contributes no SQL and no named files to this map")
+    if stats.literals_dropped:
+        listed = ", ".join(f"{n:,} {lang}"
+                           for lang, n in sorted(stats.literals_dropped.items()))
+        out.append(f"strings not judged: {listed} — outside the "
+                   f"{literals.LITERAL_MIN}–{literals.LITERAL_MAX:,} character bound a "
+                   f"reader applies before sending")
     if stats.maps:
         out.append(f"pruned {len(stats.maps):,} "
                    + ("directory" if len(stats.maps) == 1 else "directories")
@@ -557,12 +578,23 @@ def analyze_tree(
             if progress:
                 progress(path, _offset + i, total)
 
+        if not plugin.manifest.reports_literals:
+            stats.no_literals.append(lang)
         plugin.open(root, owned.get(lang, []))
         try:
             # One transaction per reader; per-file commits dominate otherwise.
             with store.batch():
                 for ff in plugin.extract(wanted, root, relay, jobs):
                     _verify_lang(ff, lang)
+                    # What a string *means* is decided here, for every language at once,
+                    # and never by the reader that found it (rule 51). This is the one
+                    # place both kinds of reader pass through, which is why it is here
+                    # and not in each of the two wrappers.
+                    literals.judge(ff, plugin.manifest.reports_literals)
+                    if ff.literals_dropped:
+                        stats.literals_dropped[lang] = (
+                            stats.literals_dropped.get(lang, 0) + ff.literals_dropped
+                        )
                     store.write_file_facts(ff)
                     stats.parsed += 1
                     if ff.errors:

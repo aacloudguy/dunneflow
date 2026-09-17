@@ -16617,3 +16617,179 @@ application and where they live — rather than reporting that nothing failed.
   `ingest-conform` to its command block would put v2 state in the one file that declares
   itself v1's, which is the split it exists to keep. Chunk 14 owns the rewrite, and the two
   commands are in `--help`, in this entry, and in `V2-START-HERE.md` until then.
+
+## 2026-09-17 — the string-literal split, and the 65 routines it invented
+
+`PLAN-v2.md`'s chunk 8, done **before** TypeScript exists so that TypeScript never sees the
+old shape. `FileFacts` gains `literals`; the Python reader stops deciding what a string
+*means* and reports the strings; `ingest/literals.py` runs today's SQL and artefact
+scanning for every language at once.
+
+**The gate held.** Society: **7 of 7 golden digests identical**, 4,823 routines, and the
+four tables the split actually moves — `artefacts` 364, `sql_ops` 1,055, `db_tables` 43,
+`db_indexes` 73 — **byte-identical to v1 row for row**. Over the wire through
+`tests/plugins/python-oop/`, **0 of 628 files differ**. Through the frozen binary, 7 of 7
+again, and the binary and the checkout stamp the same two fingerprints
+(`11:59503f09d349e32b` core, `1.0.0:5ed1444ffe4c8c48` for the reader) and open each
+other's maps, 4,823 routines both ways. **1,670 passed · 1 skipped**, mypy clean over 173
+files, ruff clean.
+
+### Why the judgement is the host's
+
+There is nothing about `looks_like_sql` or `_scan_artefact` that is Python's: both take a
+string and an extension table and neither has ever looked at a syntax tree. A plugin
+carrying its own copy means the same `"INSERT INTO queue (id) VALUES (?)"` reads one way in
+a `.py` and another in a `.ts` — not because the languages differ, because two people wrote
+two scanners. Rule 51 in the fact contract, which is the most expensive place to have it.
+
+It also keeps `detectors/<lang>.yaml` the extension point: teaching the tool that
+`.parquet` names a file is a YAML edit that moves the fingerprint and re-reads every
+language, rather than a YAML edit **plus** a plugin rebuild — and the rebuild is the half
+somebody forgets. And it shrinks the plugin contract to one rules-facing thing,
+`ingest/dotted.py`'s normalisation: one contract with one fixture instead of four.
+
+**Three things stay with the reader, each because only the reader can do them.** The
+interpolation — `f"{root}/g.json"` still names `g.json`, and assembling that text needs the
+module's own constant table and the tree that holds it. The routine a string sits in — by
+the time facts reach the host, a line number is all that is left of where anything was. And
+**not being a docstring**, which is rule 9: a docstring opening *"Insert candidate into
+capture_queue"* is a sentence about a statement, and admitted host-side it would be a
+statement.
+
+### The defect the split created, and it is the interesting half
+
+The first run of the gate reported **2 of 7 digests moved** — `routines.id` and
+`routines.body` — from a change that touches no routine at all. 65 of Society's 628 files
+had gained a `<module>` routine, and every one of them owned **nothing**: zero SQL
+operations, zero artefacts.
+
+`_owner()` mints the synthetic module-scope routine on demand and appends it, so *the
+module scope was a routine only where something belonged to it* — true by accident, because
+whichever fact asked first did the minting and a file with nothing at module level had
+nothing asking. A **string** has to name an owner before anybody knows whether it is a fact,
+so asking there minted the scope for every file with a module-level string. A 1.3%
+inflation of every routine count in the map, decided by whether a string cleared a bound
+that exists to save wire. **Rule 96**, and rule 49's shape exactly: the filter that hides
+is the one whose effect looks like an ordinary number.
+
+So **preparing the module scope is now separate from claiming it**. `module_scope()` builds
+the row and appends nothing; `_owner()` claims it, as every fact-recording caller always
+did; `_owner_id()` names it without claiming, because `make_id` is derived from names and
+needs no row to exist. `ingest.literals` claims it if and only if one of those strings
+turned out to be a fact. `FileFacts.module_scope` carries the prepared row across the wire,
+and `stamp_lang` stamps it whether or not it is ever claimed — it is a record inside these
+facts like any other, and it is the one the host may still append *after* stamping.
+
+*This is the second time in v2 that a change with no business touching routine counts
+touched them, and both were caught by the same gate. The counts holding is not the claim —
+`routines.id` is a digest of the sorted ids, and a total can hold while its contents swap.*
+
+### `LiteralKind`, and the glob that has been losing
+
+`?` in an interpolated string is the placeholder the reader left where a value goes; `?` in
+a string somebody typed is a glob. The old scan could not tell them apart and treated every
+one as a placeholder, so `"chaos_?.py"` — a real pattern, and `Artefact.is_pattern` exists
+to say so — was refused. `StringLiteral.kind` is `PLAIN` or `INTERPOLATED`, and the
+placeholder test now applies only to the second. **Measured before it was taken: Society's
+`artefacts` rows are byte-identical either way**, so the reading costs the golden nothing
+and gains the case it was written for.
+
+### The bound, and the reason for it that turned out to be false
+
+The plan says the reader applies `_scan_sql`'s `6 ≤ len ≤ 200_000` before sending and
+reports what it dropped. Two corrections, both measured.
+
+**Six is SQL's own bound and cannot be the shared one.** The shortest string that can name
+a file is three — `x.y`, a one-character stem and a one-character extension, both of which
+a `detectors/<lang>.yaml` may legitimately declare. Applying SQL's floor to the artefact
+question is a bound written for one question quietly deciding another. On Society it
+happens to cost nothing (the shortest artefact literal there is **seven** characters) —
+which is not the same claim as *it cannot cost anything*. So `LITERAL_MIN` is 3 and six
+stays inside `_sql`.
+
+**And the floor is not what saves the wire.** Of 46,524 strings the floor at three drops
+4,022; taking six would drop a further 6,861 and save **0.43 MB of a 26.5 MB payload,
+1.6%**. The ceiling is the half that earns its place — a vendored blob has no business
+being lexically scanned for SQL. The comment that first justified the floor by the wire was
+written before the measurement and has been corrected; it was wrong in the direction this
+project keeps paying for, a plausible reason for a real decision.
+
+**What it dropped is said out loud.** `FileFacts.literals_dropped` travels with the facts,
+`WalkStats.literals_dropped` sums it per language, and the run says
+*strings not judged: 4,022 python — outside the 3–200,000 character bound a reader applies
+before sending*. A filter that runs in a process the host cannot look inside is exactly the
+silent one design rule 1 forbids.
+
+### `reports_literals` stops being a field nobody reads
+
+It was declared in every manifest and on the wire and compared nowhere. It decides whether
+the host judges a language's strings at all now, so a manifest saying yes over a process
+saying no is a map with no SQL and no named files in it and nothing anywhere saying why —
+so the **capabilities are checked in the handshake**, beside lang, protocol, schema and
+version, and a disagreement refuses the language quoting both. `judge` refuses both
+directions too: a reader that declared none and sent some, and a reader that sent `sql` or
+`artefacts` it judged itself. A language that genuinely reports none is a **real answer**
+and the run says so — *no strings reported by: kotlin — that language contributes no SQL
+and no named files to this map*.
+
+### Figures
+
+| | |
+|---|---|
+| strings Society spells out | 46,524 |
+| reported | 42,502 |
+| dropped by the bound | 4,022 |
+| the host's judgement | 0.12 ms a file, **75 ms** for the corpus |
+| literals on the wire | 3.8 MB of 26.5 MB — 14% |
+| protocol overhead over serial | 1.58×, from 1.48× before the split |
+
+`SCHEMA_VERSION` is **11**: the stored shape did not move, but what a plugin must emit did,
+and a reader built against 10 that sends no literals would now produce a map with no SQL in
+it. That is precisely the refusal the number is still kept for.
+
+### Found by this chunk's gate and **not fixed**: the rendered map is not run-to-run stable
+
+Comparing chunk 6's map against chunk 8's turned up row-order differences in documents this
+change has no business touching, so the obvious suspicion was the `<module>` fix shifting
+rowids. It is not. **Two analyses of Society by the same build, minutes apart, differ**:
+
+| Document | run 1 vs run 2 | run 1 vs run 3 |
+|---|---:|---:|
+| `01-entrypoints.md` | 4 | 4 |
+| `06-governance.md` | 2,215 | 2,076 |
+| `07-database.md` | 4 | 0 |
+| `09-anomalies.md` | 4 | 8 |
+| `10-glossary.md` | 104 | 104 |
+| `11-naming.md` | 0 | 4 |
+| `12-traceability.md` | 988 | 910 |
+
+**Every difference examined is order and not content** — the same rows, and the same items
+inside a `<br>`- or `;`-joined cell, in another sequence. Nothing is lost and no number
+moves; `07-database.md` and `11-naming.md` each came out stable in one pair and unstable in
+the other, which is what a coin looks like.
+
+**The cause is one shape in several places.** `analyze_tree` collects facts through
+`as_completed`, so which file is written first varies per run and so does every rowid. A
+query with no `ORDER BY`, or one ordering on a column with ties — `render/database.py:99`
+is `ORDER BY name` over index names that repeat across migrations;
+`resolve/naming.py:276` is `sorted(exceptions, key=lambda e: e.name)`, a stable sort whose
+input order is rowid order, and `_console` occurs in three files — then returns rows in
+whatever order the pool happened to finish in. Rule 66 exactly: *an order the tool cannot
+defend is not an order*, and these are undefended ties rather than wrong answers.
+
+**It is v1's, not v2's.** The pool and its `as_completed` predate the `ingest/` seam;
+chunk 2 moved them from `analyze_tree` into `InProcessPlugin` unchanged. And it is not
+`SOURCE_DATE_EPOCH`-shaped either — the timestamps are already stated on every page.
+
+**Left alone deliberately**, and this is the one place in the chunk where that is a choice
+rather than a finding. It is seven documents across both stores and several renderers, it
+touches no stored fact (the golden proves that: 7 of 7 digests identical, and a digest is
+over the *sorted* ids), and rolling it into chunk 8 would make the chunk's own gate
+unreadable — a report that has to be diffed against a baseline cannot also be the thing
+being changed. It is a chunk of its own, and the fix is a total order on every rendered
+list rather than a stable pool, because a stable pool would buy determinism by giving up
+the parallelism.
+
+*It is worth saying plainly that the map has been like this for a year and nobody noticed,
+including every session that diffed two maps by hand. The gate that found it was looking at
+something else.*

@@ -25,16 +25,14 @@ from __future__ import annotations
 
 import ast
 import io
-import re
 import tokenize
 from collections.abc import Sequence
 from pathlib import Path
 
-from ... import sql as sqlmod
 from ...detectors import RuleSet, load_rules, mine_annotations
+from ...ingest.literals import in_bounds
 from ...schema import (
     ArmKind,
-    Artefact,
     BoundaryHit,
     CallArg,
     CallSite,
@@ -53,13 +51,12 @@ from ...schema import (
     Field_,
     FileFacts,
     ImportRec,
-    IndexSchema,
+    LiteralKind,
     NetworkCall,
     Param,
     Routine,
-    SqlStatement,
+    StringLiteral,
     StructureKind,
-    TableSchema,
     call_site_id,
     control_point_id,
     hash_source,
@@ -114,12 +111,6 @@ def dotted_name(node: ast.AST) -> str:
         parts.append(cur.id)
         return ".".join(reversed(parts))
     return ""
-
-
-# A file basename, as a person would write one. Deliberately narrow: no spaces, no
-# quoting, no shell metacharacters beyond the glob forms, and an extension of at most
-# eight characters. Anything else is prose that happens to contain a dot.
-_ARTEFACT_NAME = re.compile(r"^[A-Za-z0-9_*?\[\]][A-Za-z0-9_.*?\[\]-]*\.[A-Za-z0-9]{1,8}$")
 
 
 def _literal(node: ast.AST | None) -> str | None:
@@ -217,21 +208,18 @@ class _Extractor(ast.NodeVisitor):
         # between them is what connects "serve" to the function that implements it.
         self._argparse_var: dict[str, str] = {}
         self._argparse_ep: dict[str, Entrypoint] = {}
-        self.sql: list[SqlStatement] = []
         self.network: list[NetworkCall] = []
         self._awaited: set[int] = set()
-        self.tables: list[TableSchema] = []
-        self.indexes: list[IndexSchema] = []
-        self.artefacts: list[Artefact] = []
         self.constants: list[Constant] = []
+        # Every string this file spells out, in the order it was read. The order is a
+        # contract and not an accident: `ingest.literals` keeps one naming act per file
+        # per line, so an interpolated string has to arrive before the plain parts it was
+        # assembled from or `f"{root}/g.json"` loses to the bare `"/g.json"` inside it.
+        self.literals: list[StringLiteral] = []
+        self.literals_dropped = 0
+        self._module_claimed = False
         # Module-level `name -> string`, or None where the name is not one value.
         self._module_strings: dict[str, str | None] = {}
-        # An f-string is visited whole and then descended into, so `f"{root}/g.json"`
-        # would name `g.json` twice -- once with the fuller literal, once from the
-        # bare constant part. The same file named on the same line is one naming act;
-        # the f-string is seen first and so keeps the more informative literal.
-        self._artefact_seen: set[tuple[str, int]] = set()
-        self._sql_seen: set[tuple[str, int]] = set()
         # A broken program may define one qualified name twice. Both keep an identity
         # of their own rather than merging, so the collision can be reported.
         self._seen_qualnames: dict[str, int] = {}
@@ -268,14 +256,22 @@ class _Extractor(ast.NodeVisitor):
         self._seen_qualnames[qualname] = n + 1
         return make_id(qualname) if n == 0 else make_id(qualname, f"#{n + 1}")
 
-    def _owner(self) -> Routine:
-        """Whichever routine currently encloses. Module level gets a synthetic one.
+    def module_scope(self) -> Routine:
+        """The routine module-level code belongs to, **prepared and not claimed**.
 
         Module-level work matters: a `os.getenv` at import time is exactly the
         "fed inputs at startup" the reader cares about, and it belongs to something.
+
+        Preparing it is separate from claiming it because **the module scope is a routine
+        only where something belongs to it**, and that used to be true by accident rather
+        than by rule: whichever fact asked first did the minting, so a file with nothing at
+        module level got no such routine because nothing had asked. It stopped being true
+        the moment a *string* asked -- `_literal` has to name an owner for every string it
+        reports, and a string is not yet a fact. Measured: 65 of Society's 628 files gained
+        a `<module>` routine owning nothing at all, a 1.3% inflation of every routine count
+        in the map, decided by whether a string cleared a bound that exists to save wire.
+        Rule 96.
         """
-        if self._scope:
-            return self._scope[-1]
         if self._module_routine is None:
             self._module_routine = Routine(
                 id=make_id(f"{self.module}.{MODULE_SCOPE}"),
@@ -288,8 +284,31 @@ class _Extractor(ast.NodeVisitor):
                 docstring="Module-level code: runs at import, before anything is called.",
                 body_hash=hash_source("\n".join(self.lines)),
             )
-            self.routines.append(self._module_routine)
         return self._module_routine
+
+    def _owner(self) -> Routine:
+        """Whichever routine encloses, claiming the module scope where none does.
+
+        Every caller of this is recording a fact, so the claim is the record of it.
+        `_literal` is the one thing that asks who owns something **without** knowing yet
+        whether there is anything to own, and it asks `_owner_id` instead.
+        """
+        if self._scope:
+            return self._scope[-1]
+        scope = self.module_scope()
+        if not self._module_claimed:
+            self._module_claimed = True
+            self.routines.append(scope)
+        return scope
+
+    def _owner_id(self) -> str:
+        """Who a string belongs to, **without** deciding that it belongs to anybody.
+
+        The id is derived from names and needs no row to exist (`make_id`), so it can be
+        named before there is anything to hang on it. `ingest.literals.judge` claims the
+        module scope if and when one of these strings turns out to be a fact.
+        """
+        return self._scope[-1].id if self._scope else self.module_scope().id
 
     # -- module-level names ------------------------------------------------- #
 
@@ -1371,18 +1390,30 @@ class _Extractor(ast.NodeVisitor):
         ))
 
     def visit_Constant(self, node: ast.Constant) -> None:
-        """Every string literal is a candidate statement.
+        """Every string literal is reported. What one *means* is not decided here.
 
         Looking only at call arguments would miss most of the schema: DDL is usually a
         module-level constant or an `executescript` block, far from any cursor.
+
+        **A docstring is not one of these**, and that exclusion has to live here because
+        only the reader can see it: rule 9, and a docstring opening "Insert candidate into
+        capture_queue..." is a sentence about a statement rather than a statement. By the
+        time `ingest/literals.py` has the string, nothing distinguishes the two.
         """
         if isinstance(node.value, str) and id(node) not in self._docstrings:
-            self._scan_sql(node.value, node.lineno)
-            self._scan_artefact(node.value, node.lineno)
+            self._literal(node.value, node.lineno, LiteralKind.PLAIN)
         self.generic_visit(node)
 
     def visit_JoinedStr(self, node: ast.JoinedStr) -> None:
-        """An f-string with interpolation still names its tables."""
+        """An f-string, with its interpolations stood in for.
+
+        `f"{root}/tabularium.db"` still names the file and `f"CREATE TABLE {t} (...)"`
+        still names its table, so the text has to be assembled -- and assembling it needs
+        the module's own constant table and the tree that holds it, which is why this half
+        stays with the reader while the judgement does not. What leaves is marked
+        `INTERPOLATED`, because `?` here is a placeholder this reader wrote and `?` in a
+        string somebody typed is a glob (rule 30).
+        """
         parts = []
         for v in node.values:
             if isinstance(v, ast.Constant) and isinstance(v.value, str):
@@ -1391,83 +1422,26 @@ class _Extractor(ast.NodeVisitor):
                 parts.append(self._interpolated(v) or "?")
             else:
                 parts.append("?")
-        joined = "".join(parts)
-        self._scan_sql(joined, node.lineno)
-        # `f"{root}/tabularium.db"` still names the file; `f"{name}.db"` does not, and
-        # is rejected below because the stem itself came back as the `?` placeholder.
-        self._scan_artefact(joined, node.lineno)
+        self._literal("".join(parts), node.lineno, LiteralKind.INTERPOLATED)
         self.generic_visit(node)
 
-    def _scan_artefact(self, text: str, line: int) -> None:
-        """A string literal that names a file the program uses.
+    def _literal(self, text: str, line: int, kind: LiteralKind) -> None:
+        """Report one string, or count it as dropped by the host's own bound.
 
-        Precision is bought entirely by the extension list in `detectors/*.yaml`
-        (rule 5): a trailing dotted part is not a file extension, or `"1.2.3"`,
-        `"utf-8"` and `"mensores.cli"` would all read as named files. Everything
-        else here is a guard against reading prose as a path.
-
-        The literal is recorded whole (rule 8). The basename is what gets matched,
-        because `.mensores/tabularium.db` and `tabularium.db` name the same file.
+        The bound is `ingest.literals`' and is applied here because this is where the wire
+        is: what it genuinely saves is the **ceiling**, a vendored blob nobody should be
+        lexically scanning for SQL. Its floor saves 1.6% of the payload and is set where it
+        is so that no judgement the host might make can fall below it -- measured, and
+        written down there rather than here. It is a *filter running where the host cannot
+        see it*, so the count travels with the facts rather than being left to be inferred
+        from a silence (design rule 1).
         """
-        raw = text.strip()
-        if not raw or len(raw) > 512 or any(ch.isspace() for ch in raw):
+        if not in_bounds(text):
+            self.literals_dropped += 1
             return
-        if "://" in raw:            # a URL is a network boundary, not a local artefact
-            return
-        base = raw.replace("\\", "/").rsplit("/", 1)[-1]
-        if "." not in base[1:]:     # leading dot is a hidden file, not an extension
-            return
-        stem, _, ext = base.rpartition(".")
-        kind = self.rules.artefact_kind(ext)
-        if kind is None or not stem:
-            return
-        # `?` is the placeholder an f-string leaves where a value was interpolated.
-        # A stem that is only a placeholder names nothing a reader could look up.
-        if "?" in stem or not any(ch.isalnum() for ch in stem):
-            return
-        if not _ARTEFACT_NAME.match(base):
-            return
-        if (base, line) in self._artefact_seen:
-            return
-        self._artefact_seen.add((base, line))
-        self.artefacts.append(Artefact(
-            name=base, stem=stem, ext=ext.lower(), kind=kind,
-            routine_id=self._owner().id, line=line, literal=text,
-            is_pattern=any(ch in base for ch in "*?[") ,
+        self.literals.append(StringLiteral(
+            routine_id=self._owner_id(), line=line, text=text, kind=kind,
         ))
-
-    def _scan_sql(self, text: str, line: int) -> None:
-        if len(text) < 6 or len(text) > 200_000:
-            return
-        # `executescript` blocks hold a whole schema; each statement counts separately.
-        chunks = text.split(";") if text.count(";") else [text]
-        for chunk in chunks[:200]:
-            if not sqlmod.looks_like_sql(chunk):
-                continue
-            op = sqlmod.parse(chunk)
-            if op is None:
-                continue
-            key = (op.sql[:80], line)
-            if key in self._sql_seen:
-                continue
-            self._sql_seen.add(key)
-            self.sql.append(SqlStatement(
-                routine_id=self._owner().id, operation=op.operation,
-                direction=op.direction, tables=op.tables, sql=op.sql, line=line,
-            ))
-            if op.operation == "CREATE TABLE":
-                td = sqlmod.parse_table_def(chunk)
-                if td and td.name:
-                    self.tables.append(TableSchema(
-                        name=td.name, file=self.path, line=line, temporary=td.temporary,
-                        columns=[(c.name, c.type, c.constraints) for c in td.columns],
-                    ))
-            elif op.operation == "CREATE INDEX":
-                for ix in sqlmod.parse_index_defs(chunk):
-                    self.indexes.append(IndexSchema(
-                        name=ix.name, table=ix.table, columns=ix.columns,
-                        file=self.path, line=line, unique=ix.unique,
-                    ))
 
     def visit_Subscript(self, node: ast.Subscript) -> None:
         # os.environ["X"] is an environment read that never appears as a call.
@@ -1699,12 +1673,16 @@ def extract_file(path: Path, root: Path, src: str | None = None) -> FileFacts:
     facts.classes = ex.classes
     facts.cli_apps = ex.cli_apps
     facts.cli_mounts = ex.cli_mounts
-    facts.sql = ex.sql
     facts.network = ex.network
-    facts.tables = ex.tables
-    facts.indexes = ex.indexes
-    facts.artefacts = ex.artefacts
     facts.constants = ex.constants
+    # `sql`, `tables`, `indexes` and `artefacts` are deliberately not set here: they are
+    # `ingest.literals.judge`'s to fill from these, for every language at once, and a
+    # reader that filled them itself is refused there (rule 30).
+    facts.literals = ex.literals
+    facts.literals_dropped = ex.literals_dropped
+    # Prepared, and claimed by the host only if one of those strings turns out to be a
+    # fact. See `_Extractor.module_scope`.
+    facts.module_scope = ex.module_scope()
     facts.control = ex.control
     facts.control_arms = ex.control_arms
 

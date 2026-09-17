@@ -1642,6 +1642,8 @@ it was written from.
      bad key.
  94. A boolean that says "the other one" stops being true when there are three.
  95. A cache key assembled from a directory does not cover what that directory imports.
+ 96. A record minted on demand exists because somebody asked, so a new question invents
+     records.
 ```
 
 ## Anomalies: the discipline

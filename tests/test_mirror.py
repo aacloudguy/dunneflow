@@ -23,6 +23,7 @@ import pytest
 
 from dunneflow.docstore import DocStore
 from dunneflow.extractors.python.extract import extract_file
+from dunneflow.ingest.literals import judge
 from dunneflow.render.mirror import render_mirror
 from dunneflow.render.page import Stamp
 from dunneflow.resolve.mirror import (
@@ -152,9 +153,11 @@ def band_of(result, term: str) -> str:
 
 
 def _artefacts(tmp_path: Path, source: str):
+    # `extract_file` reports the strings; `ingest.literals.judge` says which of them name
+    # a file. Both halves, or this asserts against an empty list for ever (rule 37).
     f = tmp_path / "t.py"
     f.write_text(source, encoding="utf-8")
-    return extract_file(f, tmp_path).artefacts
+    return judge(extract_file(f, tmp_path)).artefacts
 
 
 def test_a_path_assembled_from_parts_still_names_its_file(tmp_path):

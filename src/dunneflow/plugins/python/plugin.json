@@ -3,7 +3,7 @@
   "display": "Python",
   "version": "1.0.0",
   "protocol": 1,
-  "schema_version": 10,
+  "schema_version": 11,
   "rules": "python.yaml",
   "in_process": true,
   "reader": "extractors/python",
@@ -12,7 +12,7 @@
     "cls"
   ],
   "supplies_edges": false,
-  "reports_literals": false,
+  "reports_literals": true,
   "discovery": {
     "suffixes": [
       ".py"

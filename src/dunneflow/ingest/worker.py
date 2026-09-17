@@ -265,6 +265,23 @@ class NdjsonWorker:
                     f"nobody can vouch for."
                 )
 
+        # The capabilities, asked the same way and for the same reason. They were declared
+        # on both sides and compared on neither until `reports_literals` started deciding
+        # whether the host judges this language's strings at all — a manifest saying yes
+        # over a process saying no is then a map with no SQL and no named files in it, and
+        # nothing anywhere that says why.
+        caps = reply.get("capabilities") or {}
+        for field, declared in (("supplies_edges", m.supplies_edges),
+                                ("reports_literals", m.reports_literals)):
+            said = bool(caps.get(field, False))
+            if said != declared:
+                raise PluginRefused(
+                    f"the {m.lang} plugin at {m.root} disagrees with itself about "
+                    f"{field}: its manifest says {declared!r} and the running process says "
+                    f"{said!r}. A capability decides what the host does with what comes "
+                    f"back, so the two must be one answer."
+                )
+
     # -------------------------------------------------------------- session ---- #
 
     def open(self, root: Path, files: Sequence[str]) -> dict[str, Any]:

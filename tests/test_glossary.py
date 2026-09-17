@@ -16,6 +16,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from dunneflow.extractors.python.extract import extract_file
+from dunneflow.ingest.literals import judge
 from dunneflow.store import Store
 
 WITH_DOC = '''"""Interview engine -- Y-combinator-style spec interview orchestrator.
@@ -73,8 +74,9 @@ def test_absent_docstring_is_empty_not_invented(tmp_path: Path) -> None:
 
 def test_docstring_still_does_not_reach_code_shaped_detectors(tmp_path: Path) -> None:
     """Capturing prose must not undo rule 9."""
-    facts = _extract(tmp_path, SQL_SHAPED_DOC)
+    facts = judge(_extract(tmp_path, SQL_SHAPED_DOC))
     assert facts.doc.startswith("Insert candidate into capture_queue")
+    assert facts.literals == [], "a docstring was reported as a string to be judged"
     assert facts.sql == [], "a docstring was read as a SQL statement"
     assert facts.boundaries == [], "a docstring was read as a boundary touch"
 

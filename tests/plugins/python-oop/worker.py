@@ -78,7 +78,7 @@ def on_hello(frame: dict[str, Any]) -> dict[str, Any]:
         "version": VERSION,
         "protocol": PROTOCOL,
         "schema_version": SCHEMA_VERSION,
-        "capabilities": {"supplies_edges": False, "reports_literals": False},
+        "capabilities": {"supplies_edges": False, "reports_literals": True},
     }
     if lie in ready:
         # Rule 30 made testable: the manifest is a label and this process is the identity,

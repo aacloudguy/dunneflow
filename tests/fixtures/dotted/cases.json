@@ -17,91 +17,135 @@
       "rule": 1,
       "expect": "a.b.c",
       "why": "the identifier chain in source order, dot-joined",
-      "source": {"python": "import a\na.b.c()\n"}
+      "source": {
+        "python": "import a\na.b.c()\n",
+        "typescript": "declare const a: { b: { c(): void } };\na.b.c();\n"
+      }
     },
     {
       "id": "bare-name",
       "rule": 1,
       "expect": "helper",
       "why": "a chain of one is still a chain",
-      "source": {"python": "def helper():\n    pass\n\nhelper()\n"}
+      "source": {
+        "python": "def helper():\n    pass\n\nhelper()\n",
+        "typescript": "function helper(): void {}\nhelper();\n"
+      }
     },
     {
       "id": "fold-constructor",
       "rule": 2,
       "expect": "Path.read_text",
       "why": "a call in the middle folds to its callee — reading a file this way is one of the commonest boundary touches there is",
-      "source": {"python": "from pathlib import Path\n\ndef f(p):\n    return Path(p).read_text()\n"}
+      "source": {
+        "python": "from pathlib import Path\n\ndef f(p):\n    return Path(p).read_text()\n",
+        "typescript": "declare function Path(p: string): { read_text(): string };\nexport function f(p: string) {\n  return Path(p).read_text();\n}\n"
+      }
     },
     {
       "id": "fold-repeatedly",
       "rule": 2,
       "expect": "a.b.c.d",
       "why": "the fold is not once",
-      "source": {"python": "import a\na.b(1).c(2).d()\n"}
+      "source": {
+        "python": "import a\na.b(1).c(2).d()\n",
+        "typescript": "declare const a: any;\na.b(1).c(2).d();\n"
+      }
     },
     {
       "id": "rootless-subscript",
       "rule": 3,
       "expect": "",
       "why": "no name at the root, so nothing may be matched against a rule",
-      "source": {"python": "d = {}\nd['k']()\n"}
+      "source": {
+        "python": "d = {}\nd['k']()\n",
+        "typescript": "const d: Record<string, () => void> = {};\nd['k']();\n"
+      }
     },
     {
       "id": "subscript-mid-chain",
       "rule": 3,
       "expect": "",
       "why": "a subscript anywhere kills the chain: naming it would mean deciding what handlers['x'] is, and deciding that is resolution",
-      "source": {"python": "import reg\nreg.handlers['x'].run()\n"}
+      "source": {
+        "python": "import reg\nreg.handlers['x'].run()\n",
+        "typescript": "declare const reg: any;\nreg.handlers['x'].run();\n"
+      }
     },
     {
       "id": "alias-not-expanded",
       "rule": 4,
       "expect": "np.array",
       "why": "the written library prefix, never the resolved one — rules are written against the spelling people use",
-      "source": {"python": "import numpy as np\nnp.array([1])\n"}
+      "source": {
+        "python": "import numpy as np\nnp.array([1])\n",
+        "typescript": "import * as np from 'numpy';\nnp.array([1]);\n"
+      }
     },
     {
       "id": "from-import-not-expanded",
       "rule": 4,
       "expect": "loads",
       "why": "`from json import loads` then `loads(x)` is `loads`, not `json.loads`",
-      "source": {"python": "from json import loads\nloads('{}')\n"}
+      "source": {
+        "python": "from json import loads\nloads('{}')\n",
+        "typescript": "import { loads } from 'json';\nloads('{}');\n"
+      }
     },
     {
       "id": "optional-chain",
       "rule": 5,
       "expect": "a.b.c",
       "why": "nullability is not identity",
-      "source": {}
+      "source": {
+        "typescript": "declare const a: any;\na?.b!.c();\n"
+      }
     },
     {
       "id": "type-arguments",
       "rule": 6,
       "expect": "foo",
       "why": "a type argument is not part of the name",
-      "source": {}
+      "source": {
+        "typescript": "declare function foo<T>(): void;\nfoo<string>();\n"
+      }
     },
     {
       "id": "construction",
       "rule": 7,
       "expect": "Foo",
-      "why": "`new Foo()` is `Foo` plus is_construction — the clause chunk 9 implements with the reader that fills it",
-      "source": {}
+      "why": "`new Foo()` is `Foo` **and** carries `is_construction`, so the two spellings stay two facts — asserting only the name would pass on a reader that had flattened them (rule 37)",
+      "source": {
+        "typescript": "class Foo {}\nnew Foo();\n"
+      },
+      "expect_construction": true
     },
     {
       "id": "receiver-self",
       "rule": 8,
       "expect": "self.other",
       "why": "the receiver word as written; each language declares its own in receiver_words",
-      "source": {"python": "class C:\n    def m(self):\n        self.other()\n\n    def other(self):\n        pass\n"}
+      "source": {
+        "python": "class C:\n    def m(self):\n        self.other()\n\n    def other(self):\n        pass\n"
+      }
     },
     {
       "id": "receiver-cls",
       "rule": 8,
       "expect": "cls.other",
       "why": "Python declares two receiver words and both are written as written",
-      "source": {"python": "class C:\n    @classmethod\n    def m(cls):\n        cls.other()\n"}
+      "source": {
+        "python": "class C:\n    @classmethod\n    def m(cls):\n        cls.other()\n"
+      }
+    },
+    {
+      "id": "receiver-this",
+      "rule": 8,
+      "expect": "this.other",
+      "why": "TypeScript's receiver word is `this`, written as written and never expanded",
+      "source": {
+        "typescript": "class C {\n  m(): void {\n    this.other();\n  }\n\n  other(): void {}\n}\n"
+      }
     }
   ]
 }

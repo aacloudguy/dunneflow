@@ -185,13 +185,19 @@ def test_the_claim_counts_what_was_read_and_not_what_this_build_can_read(tmp_pat
     [
         ([], ""),
         (["python"], "Python"),
-        (["python", "typescript"], "Python and typescript"),
-        (["go", "python", "typescript"], "go, Python and typescript"),
+        (["python", "typescript"], "Python and TypeScript"),
+        (["go", "python", "typescript"], "go, Python and TypeScript"),
     ],
 )
 def test_a_language_is_spelled_by_its_own_plugin_or_by_its_key(langs, expected):
     """`python` is the key and `Python` is the word; a language with no plugin here keeps
-    its key, because inventing a capitalisation is a guess about somebody else's name."""
+    its key, because inventing a capitalisation is a guess about somebody else's name.
+
+    *The middle case read `typescript` until the TypeScript plugin shipped*, which is
+    exactly what the lower-case arm was demonstrating: a language nobody here reads
+    keeps its key. `go` still does, so the contrast is now between two real answers
+    rather than between one answer and a placeholder.
+    """
     assert languages.named(langs) == expected
 
 

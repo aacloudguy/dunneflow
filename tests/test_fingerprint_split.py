@@ -110,13 +110,18 @@ def test_a_language_this_build_cannot_read_is_left_alone(tmp_path):
 
     Its rows cannot be re-read and cannot be checked; the walk already says that language
     was not read this time, which is the fact somebody can act on (rule 89).
+
+    *This said `typescript` until the TypeScript reader shipped*, at which point the
+    row stopped being one this build cannot read and started being one it can — so
+    the refusal fired, correctly, and the test was measuring the wrong thing. `go` is
+    a language nothing here claims, which is what the case is about.
     """
     db = _analysed(tmp_path)
     st = Store(db)
     try:
         st.conn.execute(
             "INSERT INTO files(path, lang, module, content_hash, extractor)"
-            " VALUES('a.ts', 'typescript', 'a', 'h', '0.1.0:aaaaaaaaaaaaaaaa')")
+            " VALUES('a.go', 'go', 'a', 'h', '0.1.0:aaaaaaaaaaaaaaaa')")
         st.conn.commit()
     finally:
         st.close()
@@ -125,7 +130,7 @@ def test_a_language_this_build_cannot_read_is_left_alone(tmp_path):
     try:
         assert st.reread == {}
         assert st.conn.execute(
-            "SELECT COUNT(*) FROM files WHERE lang='typescript'").fetchone()[0] == 1
+            "SELECT COUNT(*) FROM files WHERE lang='go'").fetchone()[0] == 1
     finally:
         st.close()
 

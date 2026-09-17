@@ -95,6 +95,31 @@ class ResolveStats:
     def rate(self) -> float:
         return (self.resolved / self.total * 100) if self.total else 0.0
 
+    def unresolved_sentence(self) -> str:
+        """*typescript: 5,119 calls left external — this build has no resolver for it.*
+
+        **The one place those words live** (rule 51), because the field was written in
+        chunk 6 and read by nothing until chunk 9 made it fire. `resolve/calls.py`'s own
+        docstring already promised the language would be *named*, and `unresolved_langs`
+        was filled and printed nowhere — rule 35's shape, an empty view with no symptom,
+        in the sentence that is the whole difference between *nothing resolved* and
+        *nothing to resolve*.
+
+        Empty where every language has a resolver, so a map of one language reads exactly
+        as it always did.
+        """
+        if not self.unresolved_langs:
+            return ""
+        listed = ", ".join(
+            f"{lang} {n:,}" for lang, n in sorted(self.unresolved_langs.items())
+        )
+        one = len(self.unresolved_langs) == 1
+        return (
+            f"left external for want of a resolver: {listed} — this build reads "
+            f"{'that language' if one else 'those languages'} and cannot yet see the far "
+            f"end of {'its' if one else 'their'} calls"
+        )
+
     def add(self, other: ResolveStats) -> None:
         """Fold one language's figures into the total. Never the `langs` map itself."""
         self.total += other.total

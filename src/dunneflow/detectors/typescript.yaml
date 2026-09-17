@@ -1,0 +1,239 @@
+# Boundary rules for TypeScript.
+#
+# This file is the extension point, and it is read **in this process** and handed to the
+# reader over the wire (`detectors.rules_document`, `ingest/worker.py:open`). A plugin
+# with its own baked-in copy would stop moving the moment somebody edited this file, and
+# `detectors/*.yaml` is in the core extraction key precisely so that an edit re-reads
+# every language. There is one file.
+#
+# Rules are matched against the **dotted form** of a call expression, exactly as Python's
+# are — the contract is `ingest/dotted.py` and it is the same contract. So
+# `fs.promises.readFile(...)` matches as `fs.promises.readFile`, `a?.b!.c()` as `a.b.c`,
+# `new WebSocket(u)` as `WebSocket`, and `Path(p).read_text()`'s TypeScript cousin
+# `createClient(x).query()` as `createClient.query`.
+#
+# Match forms, unchanged from python.yaml because they are the contract and not a dialect:
+#   exact     -- the full dotted name equals one of these
+#   prefix    -- the dotted name starts with one of these (include the trailing dot)
+#   method    -- the last segment equals one of these, whatever the receiver
+#   subscript -- an index expression on this dotted name (process.env["X"])
+#   contains  -- the dotted name contains one of these
+#
+# **The import prefix is what a TypeScript rule mostly matches, and that is rule 4.** A
+# reader never resolves or expands an alias, so `import { readFile } from "node:fs"` then
+# `readFile(p)` is spelled `readFile` and `import * as fs from "node:fs"` then
+# `fs.readFile(p)` is spelled `fs.readFile`. Both spellings are declared where both are
+# written; a rule that named only one would miss half of every corpus with no symptom.
+#
+# **There is no BROWSER kind and that was settled by measurement, not taste** —
+# `PLAN-v2.md`'s open question 1. `fetch` and WebSocket are the network under another
+# name; `localStorage`, `sessionStorage` and IndexedDB are persistent named storage shared
+# across an origin, which is what DATABASE means, and their `target` carries the
+# `localStorage:` prefix so no reader is misled. The DOM is the program's own rendered
+# output rather than its environment, and is deliberately **not reported at all** — 81
+# `.svelte` files' worth of `querySelector` would be thousands of rows drowning the panel
+# they were added to (rule 1). The residue is stated in words rather than in a kind.
+
+version: 1
+
+boundaries:
+  # -- environment ------------------------------------------------------------ #
+  # `process.env.X` is a property read and not a call, so it arrives here as a subscript
+  # in the same way `os.environ["X"]` does. The reader spells a dotted property access on
+  # `process.env` as a subscript on `process.env`, which is what makes one rule serve
+  # `process.env.PORT` and `process.env["PORT"]` alike.
+  - kind: ENV
+    direction: IN
+    salience: high
+    subscript: [process.env, import.meta.env, Deno.env]
+    exact: [Deno.env.get, process.env.get]
+    target_arg: 0
+  - kind: ENV
+    direction: OUT
+    salience: high
+    exact: [Deno.env.set]
+    target_arg: 0
+
+  # -- files ------------------------------------------------------------------ #
+  # Node spells its filesystem four ways and a corpus uses all four: the callback API,
+  # the promise API, the sync API, and the `node:` prefixed module specifiers that are now
+  # the recommended form. The prefix list carries the namespace-import spellings and the
+  # method list carries the named-import ones.
+  - kind: FILE
+    direction: OUT
+    salience: high
+    prefix: [fs.promises.write, fsp.write, fs.write, fs.appendFile, fs.mkdir, fs.rm,
+             fs.unlink, fs.rename, fs.copyFile, fs.chmod, fs.truncate]
+    method: [writeFile, writeFileSync, appendFile, appendFileSync, mkdir, mkdirSync,
+             rm, rmSync, rmdir, rmdirSync, unlink, unlinkSync, rename, renameSync,
+             copyFile, copyFileSync, createWriteStream, truncate, truncateSync,
+             writeTextFile, writeFile_, remove]
+    exact: [writeFile, writeFileSync, appendFile, appendFileSync, mkdir, mkdirSync,
+            rm, rmSync, unlink, unlinkSync, rename, renameSync, copyFile, copyFileSync,
+            createWriteStream]
+    target_arg: 0
+  - kind: FILE
+    direction: IN
+    salience: normal
+    prefix: [fs.promises.read, fsp.read, fs.read, fs.createReadStream, fs.opendir]
+    method: [readFile, readFileSync, readdir, readdirSync, createReadStream, opendir,
+             opendirSync, readTextFile, readDir]
+    exact: [readFile, readFileSync, readdir, readdirSync, createReadStream, open]
+    target_arg: 0
+  - kind: FILE
+    direction: IN
+    salience: low
+    prefix: [fs.stat, fs.lstat, fs.exists, fs.access, fs.promises.stat,
+             fs.promises.access]
+    method: [stat, statSync, lstat, lstatSync, existsSync, access, accessSync]
+    exact: [existsSync, statSync, lstatSync, access, accessSync]
+    target_arg: 0
+
+  # -- processes -------------------------------------------------------------- #
+  # Tauri's `invoke` is here rather than under NETWORK and the reason is stated: it is an
+  # IPC call into a Rust process in the same application, which is what PROCESS means. It
+  # crosses no network and it is not a request anybody could serve from elsewhere.
+  - kind: PROCESS
+    direction: BOTH
+    salience: high
+    prefix: [child_process., cp., execa.]
+    method: [spawn, spawnSync, exec, execSync, execFile, execFileSync, fork]
+    exact: [spawn, spawnSync, exec, execSync, execFile, execFileSync, fork, execa,
+            invoke, Command.create]
+    target_arg: 0
+  - kind: PROCESS
+    direction: OUT
+    salience: normal
+    exact: [process.exit, process.abort, process.kill, Deno.exit]
+    target_arg: 0
+
+  # -- network ---------------------------------------------------------------- #
+  # `fetch` is the whole modern surface and it is a bare global, so `exact` rather than a
+  # prefix. `new WebSocket(u)` folds to `WebSocket` by clause 7 of the dotted contract and
+  # keeps `is_construction` beside it, so the two spellings stay two facts.
+  - kind: NETWORK
+    direction: BOTH
+    salience: high
+    exact: [fetch, WebSocket, EventSource, XMLHttpRequest, globalThis.fetch,
+            window.fetch, node-fetch, got, superagent]
+    prefix: [axios., ky., got., superagent., undici., http.request, https.request,
+             http.get, https.get, socket.emit, io.]
+    method: [subscribe, publish]
+    target_arg: 0
+
+  # -- large-model APIs ------------------------------------------------------- #
+  - kind: LLM_API
+    direction: BOTH
+    salience: high
+    prefix: [anthropic., openai., ai., generateText, streamText, generateObject,
+             streamObject, google.generativeai.]
+    exact: [generateText, streamText, generateObject, streamObject, embed, embedMany]
+    contains: [.messages.create, .chat.completions.create, .completions.create]
+    target_arg: 0
+
+  # -- cloud SDKs ------------------------------------------------------------- #
+  # The v3 AWS SDKs are all `client.send(new SomeCommand(...))`, so the receiver varies
+  # and the method does not. `.send` alone would be far too broad, so the `Command`
+  # construction is what carries the evidence and `contains` catches the module prefix.
+  - kind: CLOUD_SDK
+    direction: BOTH
+    salience: high
+    prefix: [DynamoDBClient., DynamoDBDocumentClient., S3Client., SNSClient.,
+             SQSClient., LambdaClient., SecretsManagerClient., CloudWatchClient.,
+             firebase., admin.firestore., supabase.]
+    contains: [DynamoDBDocument, CloudFormation]
+    target_arg: 0
+
+  # -- databases -------------------------------------------------------------- #
+  # `localStorage` and IndexedDB live here, and the reason is in this file's header: they
+  # are persistent named storage shared across an origin, which is what DATABASE means.
+  # The target carries the store's own name so nobody reads one as a table.
+  - kind: DATABASE
+    direction: BOTH
+    salience: high
+    prefix: [prisma., db., knex., sql., pool., client.query, conn., drizzle.,
+             mongoose., collection., supabase.from]
+    method: [findUnique, findFirst, findMany, createMany, updateMany, deleteMany,
+             upsert, aggregate, groupBy, executeRaw, queryRaw, transaction]
+    exact: [localStorage.getItem, localStorage.setItem, localStorage.removeItem,
+            localStorage.clear, sessionStorage.getItem, sessionStorage.setItem,
+            sessionStorage.removeItem, sessionStorage.clear, indexedDB.open,
+            indexedDB.deleteDatabase, caches.open]
+    subscript: [localStorage, sessionStorage]
+    target_arg: 0
+
+  # -- queues and messaging --------------------------------------------------- #
+  - kind: QUEUE
+    direction: BOTH
+    salience: normal
+    prefix: [amqp., kafka., producer., consumer., bullmq., queue.add, redis.publish,
+             redis.subscribe]
+    exact: [postMessage, self.postMessage, worker.postMessage]
+    target_arg: 0
+
+  # -- standard input and output ---------------------------------------------- #
+  # `console.*` is low salience for python.yaml's reason: real, numerous, and recorded so
+  # it can be filtered rather than dropped.
+  - kind: STDIO
+    direction: OUT
+    salience: low
+    prefix: [console., process.stdout.write, process.stderr.write, Deno.stdout.write]
+    target_arg: 0
+  - kind: STDIO
+    direction: IN
+    salience: normal
+    prefix: [process.stdin.]
+    exact: [prompt, readline.question]
+    target_arg: 0
+
+  # -- cryptography ----------------------------------------------------------- #
+  - kind: CRYPTO
+    direction: BOTH
+    salience: high
+    prefix: [crypto., bcrypt., argon2., jose., jwt., nacl., subtle.]
+    exact: [hash, compare, hashSync, compareSync, randomUUID, randomBytes,
+            createHash, createHmac, sign, verify]
+    target_arg: 0
+
+# What counts as a network call in its own right, for the `net_calls` table. The
+# prefixes are matched longest-first by `load_rules`, so `axios.` and a bare `fetch`
+# can both be declared without one shadowing the other.
+network:
+  libraries:
+    fetch: {protocol: HTTP, async: true}
+    globalThis.fetch: {protocol: HTTP, async: true}
+    window.fetch: {protocol: HTTP, async: true}
+    "axios.": {protocol: HTTP, async: true}
+    "ky.": {protocol: HTTP, async: true}
+    "got.": {protocol: HTTP, async: true}
+    "undici.": {protocol: HTTP, async: true}
+    "superagent.": {protocol: HTTP, async: true}
+    "http.request": {protocol: HTTP, async: false}
+    "https.request": {protocol: HTTPS, async: false}
+    "http.get": {protocol: HTTP, async: false}
+    "https.get": {protocol: HTTPS, async: false}
+    WebSocket: {protocol: WS, async: true}
+    EventSource: {protocol: HTTP, async: true}
+    "socket.emit": {protocol: WS, async: true}
+  verbs: [get, post, put, patch, delete, head, options, request]
+  # The option-bag keys a request carries, read only where they are written literally.
+  kwargs:
+    timeout: [timeout, timeoutMs, signal]
+    retries: [retry, retries, maxRetries]
+    tls: [rejectUnauthorized, agent, ca]
+    payload: [body, data, json, form]
+    headers: [headers]
+
+# Which extensions name a file the program uses. Read **host-side**, by
+# `ingest/literals.py`, which is why a `.parquet` added here costs no plugin rebuild.
+# Deliberately not a copy of python.yaml's: a TypeScript program names `.ts` and `.mjs`
+# files, and a Python one does not.
+artefacts:
+  extensions:
+    DATABASE: [db, sqlite, sqlite3, duckdb]
+    CONFIG: [json5, yaml, yml, toml, ini, cfg, conf, env, editorconfig, npmrc, nvmrc]
+    SCRIPT: [ts, tsx, js, jsx, mjs, cjs, mts, cts, sh, bash, zsh, ps1, bat]
+    DOCUMENT: [md, mdx, rst, txt, adoc, pdf, html, htm]
+    DATA: [json, jsonl, ndjson, csv, tsv, xml, parquet, avro, proto, wasm]
+    ARCHIVE: [zip, tar, gz, tgz, bz2, xz, zst, 7z]
+    STYLE: [css, scss, sass, less]

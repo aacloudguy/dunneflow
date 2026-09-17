@@ -594,6 +594,12 @@ def cmd_analyze(args: argparse.Namespace) -> int:
             f"{rstats.inferred:,} inferred, {rstats.external:,} external "
             f"({rstats.rate():.0f}% internal) in {t_resolve:.1f}s"
         )
+        # A language this build reads and cannot resolve is **named**, because *nothing
+        # resolved* and *nothing to resolve* are the same 0% and opposite facts (design
+        # rule 1). It fires for the first time with TypeScript, whose supplied edges are
+        # a chunk away.
+        if (said := rstats.unresolved_sentence()):
+            _emit("  " + said)
         _emit(
             f"cli: {clistats.apps} apps, {clistats.commands_found} commands "
             f"({clistats.commands_attached} in a tree), "

@@ -873,3 +873,29 @@ set.** Of 46,524 strings, the floor at three drops 4,022. Taking six instead —
 6,861 and save **0.43 MB, 1.6% of the payload**, while putting every four-character
 filename a `detectors/<lang>.yaml` might name outside the map with nothing to say so. The
 ceiling is the half that earns its place.
+
+### TypeScript, read over the pipe (chunk 9, measured 2026-09-17)
+
+`../DunneNote` at 0.9.0 — **443 program `.ts` files** of 758 on disk, the other 315 left out
+as tests. Apple M1, warm disk, median of three cold runs (the output directory removed each
+time). Code only; `--no-docs`, so the corpus walk is out of it.
+
+| | |
+|---|---:|
+| cold, 443 files | **1.5 s** extraction · 1.83 s wall |
+| per file | **3.4 ms** |
+| warm, nothing changed | 0.1 s · 0.36 s wall |
+| spawn and handshake, on its own | **0.18 s**, once |
+| the bundle | 9.5 MB, TypeScript 5.9.3 inlined |
+
+**3.4 ms a file against Python's 4.3 ms serial**, and the comparison is worth stating
+carefully: these are different languages, different files and different work — TypeScript
+here resolves nothing — so what the figure says is that **the pipe is not the cost**, which
+is what chunk 7 measured directly and this corroborates at a second language. 0.18 s of
+spawn amortised over 443 files is 0.4 ms each.
+
+**`typescript@7` cannot be used and that is a fact about the package rather than a
+preference.** `npm install typescript` now installs the Go port, whose JavaScript entry
+point exposes no `createProgram`, no `SyntaxKind` and no `createSourceFile` — measured:
+`typeof ts.createProgram` is `undefined` at 7.0.2 and `function` at 5.9.3. The plugin pins
+5.9.3.

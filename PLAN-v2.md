@@ -732,6 +732,30 @@ accurate shape, checked rather than assumed:
 **767 `.ts` on disk, 322 of them tests, so 445 program files.** Every figure below was
 checked by hand:
 
+> **Amendment, 2026-09-17, after chunk 9 read the tree.** Three of the figures in this
+> section do not reproduce, and they are corrected here rather than edited above, because
+> what was checked by hand is part of the record.
+>
+> * **758 files, not 767.** `apps/desktop/tests/visual/__screenshots__/` holds nine
+>   *directories* named `cal-month.spec.ts`, `canvas.spec.ts` and so on, each full of PNGs,
+>   and `find -name "*.ts"` matches a directory as happily as a file. The walk's arithmetic
+>   closes exactly: **443 read + 315 left out as tests = 758**, with nothing
+>   claimed-but-unread.
+> * **Two program files import `@tauri-apps/api/core`, not one.** The second is
+>   `legacy/v0.1/src/lib/ipc.ts` — a second copy of the program kept in the tree with its
+>   own `tsconfig.json`. The property this corpus was chosen for is unharmed and is what
+>   the map reports: 29 test files import that module and **none of them is in the map**,
+>   which is the test exclusion working. *Exactly one* was true of a tree without the
+>   legacy copy.
+> * **`fetch` is called in no non-test `.ts` at all**, where this section says once. That
+>   zero is what found the network matcher's defect: `startswith` made `fetch` match
+>   `fetchImpl`, and the one row DunneNote reported was that.
+> * **81 `.svelte` files, not 70** — unclaimed by name and count either way.
+>
+> Reproducing: `find` counts directories, so the file count is `p.is_file()` and not
+> `find -name`.
+
+
 | Area | Contents | What must be true |
 |---|---|---|
 | `apps/desktop` | 550 `.ts` (most of the tests), 70 `.svelte`, own `tsconfig.json` | routines and boundaries throughout |

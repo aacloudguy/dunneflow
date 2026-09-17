@@ -1,0 +1,565 @@
+"""The TypeScript reader: a second language, read by another program.
+
+`test_wire.py` proved the protocol against an extractor whose output was already known.
+This is the first reader whose output nobody has a baseline for, so what is asserted here
+is the **contract** rather than a diff: the dotted spelling, the identity functions, the
+rule matching, and the facts that a snippet plainly contains.
+
+**One session for the whole file.** Spawning the reader costs a handshake over a 9.5 MB
+bundle, so the snippets are written into one tree and extracted in one `open`/`extract`
+pass — which is also how a run does it, so the path under test is the path that runs.
+"""
+
+from __future__ import annotations
+
+import json
+import shutil
+import subprocess
+from pathlib import Path
+
+import pytest
+
+from dunneflow import ingest
+from dunneflow.detectors import load_rules, rules_document
+from dunneflow.ingest import dotted as dotted_contract
+from dunneflow.ingest.literals import judge
+from dunneflow.schema import (
+    SCHEMA_VERSION,
+    ArmKind,
+    FileFacts,
+    call_site_id,
+    control_point_id,
+    hash_source,
+    make_id,
+)
+
+LANG = "typescript"
+PLUGIN = ingest.PLUGINS.get(LANG)
+BUNDLE = PLUGIN.manifest.root / PLUGIN.manifest.entry if PLUGIN else Path("missing")
+
+# Two reasons to skip and they are different facts. No plugin at all is a build assembled
+# without its readers; no `node` is this machine's state and is recoverable (rules 49, 89).
+pytestmark = [
+    pytest.mark.skipif(PLUGIN is None, reason="this build ships no TypeScript reader"),
+    pytest.mark.skipif(shutil.which("node") is None,
+                       reason="node is not on this machine, and the reader is a node program"),
+]
+
+
+SNIPPETS: dict[str, str] = {
+    # Every fact a reader is asked for, in one file a person can read.
+    "shop.ts": '''/**
+ * The shop, and what it touches.
+ */
+import { readFile } from "node:fs/promises";
+import * as path from "node:path";
+
+export const DB_FILE = "tabularium.db";
+
+export interface Widget {
+  id: string;
+  name?: string;
+}
+
+export class Store {
+  rows: Widget[] = [];
+
+  async save(name: string): Promise<void> {
+    // WHY: the insert is the whole point.
+    const sql = "INSERT INTO widgets (name) VALUES (?)";
+    if (!name) {
+      throw new Error("no name");
+    }
+    for (const row of this.rows) {
+      console.log(row.id);
+    }
+  }
+}
+
+export const load = async () => {
+  const key = process.env.API_KEY;
+  const body = await readFile(path.join("/tmp", DB_FILE), "utf8");
+  const names = ["a", "b"].map((n) => n.toUpperCase());
+  let i = 0;
+  do {
+    i += 1;
+  } while (i < 3);
+  switch (i) {
+    case 1:
+      return "one";
+    default:
+      return "many";
+  }
+};
+''',
+    # The DOM, and what must not come of it.
+    "page.ts": '''export function paint(): void {
+  const el = document.querySelector("#root");
+  window.addEventListener("click", () => {});
+  localStorage.setItem("seen", "1");
+}
+''',
+    # An `else if` ladder, which TypeScript writes in two words.
+    "ladder.ts": '''export function band(n: number): string {
+  if (n < 1) {
+    return "low";
+  } else if (n < 10) {
+    return "mid";
+  } else if (n < 100) {
+    return "high";
+  } else {
+    return "vast";
+  }
+}
+''',
+    # Prose that is not a fact, so the module scope must stay unclaimed (rule 96).
+    "prose.ts": 'export const GREETING = "hello there, reader";\n',
+    # A string that is a fact, so it must be claimed.
+    "named.ts": 'export const DB = "tabularium.db";\n',
+}
+
+
+@pytest.fixture(scope="module")
+def facts(tmp_path_factory) -> dict[str, FileFacts]:
+    """Every snippet, read in one session and judged the way a run judges it."""
+    root = tmp_path_factory.mktemp("tstree")
+    paths = []
+    for name, source in SNIPPETS.items():
+        p = root / name
+        p.write_text(source, encoding="utf-8")
+        paths.append(p)
+    assert PLUGIN is not None
+    PLUGIN.probe()
+    PLUGIN.open(root, paths)
+    try:
+        out = {ff.path: judge(ff, PLUGIN.manifest.reports_literals)
+               for ff in PLUGIN.extract(paths, root)}
+    finally:
+        PLUGIN.close()
+    for ff in out.values():
+        assert ff.errors == [], f"{ff.path}: {ff.errors}"
+    return out
+
+
+def _by_name(records):
+    return {r.name: r for r in records}
+
+
+# ----------------------------------------------------------------- the reader --- #
+
+def test_the_reader_is_a_program_and_says_the_same_thing_the_manifest_does():
+    """Rule 30: the manifest is a label and the running process is the identity.
+
+    `NdjsonWorker._handshake` refuses a disagreement on any of six, so reaching `ready` at
+    all is the assertion — this names what it agreed about.
+    """
+    assert PLUGIN is not None
+    m = PLUGIN.manifest
+    assert m.lang == LANG
+    assert m.schema_version == SCHEMA_VERSION
+    assert m.in_process is False
+    assert m.supplies_edges is False, "chunk 9 is extraction only; edges are chunk 10's"
+    assert m.reports_literals is True
+    assert BUNDLE.exists(), "the reader is its built bundle, and it is committed"
+    assert set(m.fingerprint) == {"plugin.json", BUNDLE.name}
+
+
+def test_the_bundle_is_what_the_fingerprint_names_and_nothing_globs_for_it():
+    """Rule 12: a glob over a directory that was not bundled returns nothing and blames
+    the whole build for one missing plugin, so the files are named."""
+    assert PLUGIN is not None
+    named = [PLUGIN.manifest.root / n for n in PLUGIN.manifest.fingerprint]
+    assert all(p.exists() for p in named), named
+    assert PLUGIN.manifest.reader == "", "a reader over a pipe is its bundle, not a package here"
+
+
+def test_the_types_the_reader_emits_are_generated_from_the_schema():
+    """A hand-written copy drifts, and here the drift is a fact that stops existing.
+
+    It was written by hand first and was wrong inside an hour: a `NetworkCall.library`
+    field that `schema.py` has not got, which the codec drops and names in
+    `FileFacts.errors` — and `WalkStats` counts a file with an error as **failed**, so
+    every TypeScript file holding a network call would have been reported unreadable.
+    """
+    import sys
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
+    import gen_facts_ts
+
+    assert gen_facts_ts.OUT.read_text(encoding="utf-8") == gen_facts_ts.generate(), (
+        "src/facts.ts has drifted from schema.py — run "
+        "`uv run python tools/gen_facts_ts.py --write` and rebuild the bundle"
+    )
+
+
+# ---------------------------------------------------------------- the contract --- #
+
+def test_the_dotted_contract_is_kept_and_rules_5_6_and_7_are_exercised():
+    """The interface between any extractor and every rule in every YAML file.
+
+    A reader that spells an expression differently does not fail; it makes every rule miss,
+    so the map comes back with no boundaries and no ways in, looking exactly like a program
+    that has none. Rules 5, 6 and 7 had no exercise at all until this language arrived.
+    """
+    assert PLUGIN is not None
+    results = dotted_contract.run(PLUGIN, LANG)
+    failed = [r for r in results if not r.passed]
+    assert not failed, [(r.case.id, r.error or r.got) for r in failed]
+    exercised = {r.case.rule for r in results if not r.skipped}
+    assert {5, 6, 7} <= exercised, "the three clauses Python cannot express"
+
+
+def test_a_construction_is_a_fact_of_its_own(facts):
+    """Clause 7. `new Error(...)` and `Error(...)` call one name and do two things."""
+    shop = facts["shop.ts"]
+    made = [c for c in shop.calls if c.is_construction]
+    assert [c.callee_expr for c in made] == ["Error"]
+    assert all(not c.is_construction for c in shop.calls if c.callee_expr != "Error")
+
+
+# ------------------------------------------------------------------ identity --- //
+
+def test_every_id_the_reader_minted_is_the_one_python_would_have(facts):
+    """BLAKE2b, twice, across a process boundary — and the fixture is the real output.
+
+    `PLAN-v2.md` asked for ten vectors asserted from both sides. This is that assertion
+    made against **what the reader actually sent**, which is strictly stronger and needs no
+    second surface: a vectors file the plugin never reads would prove a function nothing
+    calls (rule 35), and a conformance frame added to be tested would prove that frame and
+    not the one the map is built from.
+
+    It is not a formality. `crypto.createHash("blake2b512", { outputLength: 8 })` — the
+    line the plan specified — is refused by Node's OpenSSL, and truncating a 512-bit digest
+    is a **different hash**, because BLAKE2b puts the digest length in its parameter block.
+    A reader that shipped the truncation would mint ids that look exactly like ids.
+    """
+    shop = facts["shop.ts"]
+    by = _by_name(shop.routines)
+    assert by["save"].id == make_id("shop.Store.save")
+    assert by["load"].id == make_id("shop.load")
+    assert shop.content_hash == hash_source(SNIPPETS["shop.ts"])
+
+    log = next(c for c in shop.calls if c.callee_expr == "console.log")
+    assert log.site_id == call_site_id(by["save"].id, "console.log", 0)
+
+    loop = next(p for p in shop.control if p.word == "for")
+    assert loop.point_id == control_point_id(
+        by["save"].id, "LOOP", "const row of this.rows", 0)
+
+
+def test_two_identical_expressions_in_one_routine_stay_two_call_sites(facts):
+    """`call_site_id`'s ordinal, which is the only discriminator that is not a position."""
+    ladder = facts["ladder.ts"]
+    ids = [c.site_id for c in ladder.calls]
+    assert len(ids) == len(set(ids))
+
+
+# ------------------------------------------------------------------- the rules --- #
+
+def test_the_rules_the_reader_matched_are_the_rules_this_process_holds(facts):
+    """One file, and the plugin is handed it rather than carrying a copy (rule 51).
+
+    Asserted by putting every dotted name the reader recorded through **this process's**
+    `match_call` and requiring the two to agree about which of them is a boundary. A plugin
+    with a baked-in rule set would pass this today and drift the moment somebody edited the
+    YAML, so `rules_document` is what travels and this is what says the two agree.
+    """
+    rules = load_rules(LANG)
+    shop = facts["shop.ts"]
+    here = {c.callee_expr for c in shop.calls if rules.match_call(c.callee_expr)}
+    there = {c.callee_expr for c in shop.calls if c.at_boundary}
+    assert here == there, here ^ there
+    assert "console.log" in there and "readFile" in there
+
+
+def test_the_rules_travel_with_the_session_and_are_the_file_on_disk():
+    doc = rules_document(LANG)
+    assert doc["version"] == 1
+    kinds = {r["kind"] for r in doc["boundaries"]}
+    assert {"ENV", "FILE", "NETWORK", "DATABASE", "STDIO", "CRYPTO", "CLOUD_SDK"} <= kinds
+
+
+def test_an_environment_read_is_a_boundary_whether_it_is_written_as_a_property(facts):
+    """`process.env.X` is a property read, and `os.environ["X"]`'s analogue.
+
+    One `subscript:` rule serves both spellings, which is what keeps the rule vocabulary
+    the same in both languages rather than a TypeScript dialect of it.
+    """
+    env = [b for b in facts["shop.ts"].boundaries if b.kind.value == "ENV"]
+    assert [(b.direction.value, b.target) for b in env] == [("IN", "API_KEY")]
+
+
+def test_the_dom_is_not_a_boundary_and_storage_is_a_database(facts):
+    """`PLAN-v2.md`'s open question 1, settled by counting rather than by taste.
+
+    There is no `BROWSER` kind. `localStorage` is persistent named storage shared across
+    an origin, which is what DATABASE means; the DOM is the program's own rendered output
+    rather than its environment, and 81 `.svelte` files' worth of `querySelector` would be
+    thousands of rows drowning the panel they were added to (rule 1). The residue is
+    stated in words, and this is where it stops being a hope.
+    """
+    page = facts["page.ts"]
+    kinds = {b.kind.value for b in page.boundaries}
+    assert "DATABASE" in kinds
+    assert [b.target for b in page.boundaries if b.kind.value == "DATABASE"] == ["seen"]
+    evidence = " ".join(b.evidence for b in page.boundaries)
+    assert "querySelector" not in evidence and "addEventListener" not in evidence
+
+
+def test_a_types_package_reports_no_boundaries():
+    """The failure the plan says to look for, stated as its own case.
+
+    Measured on DunneNote's `packages/api-types`: 206 files, 205 TYPE_ALIAS structures and
+    **zero** boundaries. Here it is the property rather than the corpus — a file that
+    declares types and calls nothing must touch nothing.
+    """
+    assert PLUGIN is not None
+    root = Path(__file__).parent
+    del root
+    # The snippet is the assertion; no session is needed because `shop.ts` already proves
+    # the reader finds boundaries when there are any.
+    types_only = facts_of("types.ts", "export type A = string;\nexport interface B { a: A }\n")
+    assert types_only.boundaries == []
+    assert types_only.calls == []
+    assert {s.kind.value for s in types_only.structures} == {"TYPE_ALIAS", "INTERFACE"}
+
+
+def facts_of(name: str, source: str) -> FileFacts:
+    """One snippet through the reader, for the cases that want their own session."""
+    import tempfile
+
+    assert PLUGIN is not None
+    with tempfile.TemporaryDirectory(prefix="dunneflow-ts-") as td:
+        root = Path(td)
+        path = root / name
+        path.write_text(source, encoding="utf-8")
+        PLUGIN.open(root, [path])
+        try:
+            out = list(PLUGIN.extract([path], root))
+        finally:
+            PLUGIN.close()
+    assert len(out) == 1
+    return judge(out[0], PLUGIN.manifest.reports_literals)
+
+
+# ------------------------------------------------------------------- the words --- #
+
+def test_typescripts_four_arm_words_are_its_own_and_python_keeps_its_own(facts):
+    """`ArmKind`: the word in the source, and nothing invented.
+
+    `PLAN-v2.md` said *catch, do, switch*; two of those are right. A `switch` is a **point**
+    and its arms are `case` — already there — and `default`, which was not. And TypeScript
+    has no `elif`: it writes `else if`, which is what its rung is called.
+    """
+    arms = {a.kind for a in facts["shop.ts"].control_arms}
+    assert ArmKind.CATCH not in arms  # shop.ts has no try
+    assert ArmKind.DO in arms
+    assert ArmKind.DEFAULT in arms
+    assert ArmKind.CASE in arms
+
+    ladder = {a.kind for a in facts["ladder.ts"].control_arms}
+    assert ladder == {ArmKind.IF, ArmKind.ELSE_IF, ArmKind.ELSE}
+    assert ArmKind.ELIF not in ladder, "`elif` is Python's word and only Python's"
+
+
+def test_an_else_if_ladder_is_one_decision_with_four_ways_out(facts):
+    """Flattened at extraction, for the reason Python's `elif` is: the tree shape says
+    *2 arms* three times where a reader sees one decision with four ways out."""
+    points = facts["ladder.ts"].control
+    assert len(points) == 1, [p.header for p in points]
+    assert points[0].kind.value == "DECISION"
+    assert points[0].arms == 4
+
+
+def test_a_one_armed_decision_that_leaves_records_how_it_left(facts):
+    """`if (!x) throw` and `if (!x) return` are the same sentence and opposite facts."""
+    guard = next(p for p in facts["shop.ts"].control if p.kind.value == "GUARD")
+    assert guard.exits == "throw", "TypeScript's word, where Python's is `raise`"
+    assert guard.header == "!name"
+
+
+def test_a_map_chain_is_a_loop_that_is_an_expression(facts):
+    """The judgement Python's comprehensions already get."""
+    comps = [p for p in facts["shop.ts"].control if p.kind.value == "COMPREHENSION"]
+    assert [p.word for p in comps] == ["map"]
+
+
+# ----------------------------------------------------------------- the strings --- #
+
+def test_the_reader_reports_strings_and_the_host_says_what_they_mean(facts):
+    """Chunk 8's split, holding for a language that did not exist when it was made.
+
+    The SQL and the artefact below were decided by `ingest/literals.py` — the same function
+    that decides them for Python — so the same text cannot read two ways in a `.ts` and a
+    `.py` (rule 51, in the fact contract).
+    """
+    shop = facts["shop.ts"]
+    assert [op.operation for op in shop.sql] == ["INSERT"]
+    assert [op.tables for op in shop.sql] == [["widgets"]]
+    assert [a.name for a in shop.artefacts] == ["tabularium.db"]
+    assert any(lit.text.startswith("INSERT INTO") for lit in shop.literals)
+
+
+def test_a_template_literal_is_marked_as_assembled(facts):
+    """`?` in a template is a placeholder this reader wrote; `?` somebody typed is a glob."""
+    ff = facts_of("tmpl.ts", "const name = 'x';\nexport const u = `https://h/${name}.db`;\n")
+    kinds = {lit.kind.value for lit in ff.literals}
+    assert "INTERPOLATED" in kinds
+
+
+def test_the_module_scope_is_claimed_only_by_a_string_that_was_a_fact(facts):
+    """Rule 96, across the wire this time.
+
+    `prose.ts` holds a string and nothing that string turns out to be; `named.ts` holds one
+    that names a file. The first must leave no `<module>` routine behind, or every routine
+    count in a TypeScript map is inflated by whichever files happen to hold a long enough
+    string.
+    """
+    prose, named = facts["prose.ts"], facts["named.ts"]
+    assert prose.literals and [r.name for r in prose.routines] == []
+    assert prose.module_scope is not None and prose.module_scope.lang == LANG
+    assert [r.name for r in named.routines] == ["<module>"]
+    assert named.artefacts[0].routine_id == named.module_scope.id
+
+
+# -------------------------------------------------------------------- the walk --- #
+
+def test_a_typescript_test_is_left_out_by_the_readers_own_rule():
+    """`Path("client.test.ts").stem` is `"client.test"`, which Python's rule never caught —
+    measured at 322 of DunneNote's 767 `.ts` files, 42% of the corpus."""
+    assert PLUGIN is not None
+    rules = PLUGIN.manifest.discovery
+    assert rules.is_test(Path("src/lib/client.test.ts"))
+    assert rules.is_test(Path("src/lib/client.spec.tsx"))
+    assert rules.is_test(Path("tests/visual/canvas.ts"))
+    assert not rules.is_test(Path("src/lib/client.ts"))
+    assert not rules.is_test(Path("src/lib/latest.ts")), "an edge, never a substring (rule 5)"
+
+
+def test_the_suffixes_are_claimed_and_the_ones_nobody_reads_are_not():
+    assert ingest.language_of("a/b/c.ts") == LANG
+    assert ingest.language_of("a/b/c.tsx") == LANG
+    # The two DunneNote reports by name and count, and neither is claimed by accident.
+    assert ingest.language_of("a/b/c.svelte") is None
+    assert ingest.language_of("a/b/c.rs") is None
+
+
+def test_the_reader_needs_node_and_says_so_with_both_ways_forward():
+    """`ToolchainMissing` is the machine's state and a reader can act on it (rules 49, 89)."""
+    assert PLUGIN is not None
+    tc = PLUGIN.manifest.toolchain
+    assert tc is not None
+    assert tc.command == "node" and tc.min_version
+    assert "node" in tc.install.lower() or "brew" in tc.install.lower()
+
+
+def test_the_bundle_runs_under_plain_node_with_nothing_installed():
+    """No `pnpm install` at analysis time, which is why the bundle is committed.
+
+    The compiler is inlined, and the handshake is the cheapest proof that it loads: it was
+    two different failures before it did — a dynamic `require` an ESM bundle cannot answer,
+    and a `__filename` it has not got.
+    """
+    out = subprocess.run(  # noqa: S603
+        ["node", str(BUNDLE)],
+        input=json.dumps({"t": "hello", "id": 1, "protocol": 1,
+                          "schema_version": SCHEMA_VERSION, "lang": LANG}) + "\n",
+        capture_output=True, text=True, timeout=120, check=False,
+    )
+    assert out.returncode == 0 or out.stdout, out.stderr[-2000:]
+    reply = json.loads(out.stdout.splitlines()[0])
+    assert reply["t"] == "ready" and reply["lang"] == LANG
+    assert reply["schema_version"] == SCHEMA_VERSION
+
+
+def test_a_file_with_windows_line_endings_is_read_and_not_reported_as_changed(tmp_path):
+    """The contract that was an accident of a default until it cost two files.
+
+    The host hashes what `Path.read_text` gave it, and Python reads text with **universal
+    newlines**: `\r\n` and a lone `\r` both arrive as `\n`. `readFileSync` keeps them, so a
+    CRLF file hashed differently on the two sides and the echo check refused it — correctly,
+    and with the wrong reason, because the file had not changed.
+
+    Measured on `../uigen`: **2 of 54 files**, both generated with CRLF, both reported
+    unreadable in a map that was otherwise perfect, and neither would have been read on any
+    later run either. `ingest.contract.SOURCE_TEXT` is where the term now lives.
+    """
+    assert PLUGIN is not None
+    source = 'export const A = "one";\r\nexport function f(): number {\r\n  return 1;\r\n}\r\n'
+    path = tmp_path / "crlf.ts"
+    path.write_bytes(source.encode("utf-8"))
+    PLUGIN.open(tmp_path, [path])
+    try:
+        out = list(PLUGIN.extract([path], tmp_path))
+    finally:
+        PLUGIN.close()
+    assert len(out) == 1
+    ff = out[0]
+    assert ff.errors == [], ff.errors
+    assert ff.content_hash == hash_source(
+        path.read_text(encoding="utf-8", errors="replace")), (
+        "the reader hashed the carriage returns the host had already dropped"
+    )
+    assert [r.name for r in ff.routines] == ["f"]
+
+
+def test_the_echo_names_both_things_that_look_like_a_mismatch():
+    """A race and a reader that decodes differently are one symptom and two facts."""
+    from dunneflow.ingest.contract import SOURCE_TEXT
+
+    assert "newlines normalised" in SOURCE_TEXT
+    import inspect
+
+    from dunneflow.ingest import outofprocess
+
+    said = inspect.getsource(outofprocess.OutOfProcessPlugin._one)
+    assert "changed" in said and "read it differently" in said
+
+
+def test_an_overload_set_keeps_two_identities_rather_than_colliding():
+    """TypeScript's commonest way of declaring one name twice, and it is not broken code.
+
+    Found by the store: `UNIQUE constraint failed: routines.id` on uigen's generated Prisma
+    client, where `PrismaClient.$transaction` is declared twice as an overload. Python has
+    had `_identity`'s ordinal since it was written; this reader had not.
+    """
+    ff = facts_of("over.ts", "export function f(a: string): void;\n"
+                             "export function f(a: number): void;\n"
+                             "export function f(a: unknown): void {}\n")
+    ids = [r.id for r in ff.routines]
+    assert len(ids) == 3
+    assert len(set(ids)) == 3, "two declarations of one name collapsed into one identity"
+    assert ids[0] == make_id("over.f"), "the first keeps the plain id"
+
+
+def test_a_bare_library_name_matches_exactly_and_never_as_a_prefix():
+    """Rule 5, in the matcher rather than in a rule file.
+
+    `requests.` and `httpx.AsyncClient` are namespace prefixes and `startswith` is what
+    they mean. `fetch` is a bare name, and a prefix test makes it match `fetchImpl`,
+    `fetchAll` and `fetchingState`. Python's own rules hid it for a year because every one
+    of them contains a dot; TypeScript's do not, and DunneNote reported **exactly one**
+    network call — `fetchImpl`, a parameter holding an implementation, in the corpus whose
+    stated ground truth is that no non-test file calls `fetch` at all.
+
+    The residue is stated rather than hidden: a call *through* a name that holds `fetch` is
+    a network call and is no longer reported as one. Knowing that needs the far end of the
+    name, which is resolution, and chunk 10's supplied edges are where it comes back.
+    """
+    rules = load_rules(LANG)
+    assert rules.network_profile("fetch") == ("HTTP", True)
+    assert rules.network_profile("fetchImpl") is None
+    assert rules.network_profile("axios.get") == ("HTTP", True)
+
+    ff = facts_of("net.ts", "declare const fetchImpl: typeof fetch;\n"
+                            "export async function a() { return await fetchImpl('/x'); }\n"
+                            "export async function b() { return await fetch('/y'); }\n")
+    assert [n.expr for n in ff.network] == ["fetch"]
+
+
+def test_python_keeps_the_same_answer_because_all_its_keys_are_dotted():
+    """The change could not move the golden, and this is why rather than a hope."""
+    from dunneflow.detectors import rules_document
+
+    keys = list((rules_document("python").get("network") or {}).get("libraries", {}))
+    assert keys and all("." in k for k in keys), [k for k in keys if "." not in k]

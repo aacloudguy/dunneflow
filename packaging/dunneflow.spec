@@ -7,7 +7,7 @@
 exactly what a module inside a PyInstaller archive does not have. The four kinds:
 
 * `detectors/*.yaml` and `detectors/docs/*.yaml` -- the rules, loaded by `yaml.safe_load`.
-* `schema.py`, `sql.py`, `ingest/`, `plugins/`, `detectors/__init__.py`, `detectors/prose.py` and both
+* `schema.py`, `sql.py`, `ingest/`, every plugin's fingerprinted bytes, `detectors/__init__.py`, `detectors/prose.py` and both
   extractor trees -- **hashed**, not imported, by `core_fingerprint()`, `lang_fingerprint()`
   and `doc_rules_fingerprint()`. Rule 12 says a cached
   fact is valid only if the source *and the tool that read it* are unchanged, so the reader
@@ -72,6 +72,7 @@ nothing to sign against -- an unsigned Windows binary meets SmartScreen, which i
 reader can click past, and not Gatekeeper, which is a refusal they cannot.
 """
 
+import json
 import os
 import sys
 from pathlib import Path
@@ -198,10 +199,40 @@ def _tree(src: Path, dest: str) -> list[tuple[str, str]]:
     return out
 
 
+def _plugin_files() -> list[tuple[str, str]]:
+    """`plugin.json` and the files it names, for every plugin in the tree.
+
+    Read off the manifests rather than off the directory, so a plugin's shipped bytes are
+    the bytes its language's stamp is computed from. A file a plugin needs at runtime and
+    does not fingerprint is a file whose change does not discard a map (rule 12), so there
+    is deliberately no third category.
+    """
+    out: list[tuple[str, str]] = []
+    for manifest in sorted((PKG / "plugins").glob("*/plugin.json")):
+        dest = f"dunneflow/plugins/{manifest.parent.name}"
+        wanted = {"plugin.json"}
+        wanted.update(json.loads(manifest.read_text(encoding="utf-8")).get("fingerprint", []))
+        for name in sorted(wanted):
+            path = manifest.parent / name
+            if not path.is_file():
+                raise SystemExit(
+                    f"the {manifest.parent.name} plugin fingerprints {name} and this tree "
+                    f"has no such file at {path}. A plugin ships the bytes it is stamped "
+                    f"from; build it before building the application."
+                )
+            out.append((str(path), dest))
+    return out
+
+
 datas = [
-    # The rules: the extension point, loaded as YAML.
-    (str(PKG / "detectors" / "python.yaml"), "dunneflow/detectors"),
-    (str(PKG / "detectors" / "annotations.yaml"), "dunneflow/detectors"),
+    # The rules: the extension point, loaded as YAML. **Globbed, never named**, and that
+    # is rule 92 rather than economy: this line named `python.yaml` and `annotations.yaml`
+    # for as long as there was one language, and the TypeScript reader's `typescript.yaml`
+    # would have been left out of the bundle entirely — `load_rules` would then have raised
+    # `RulesMissing` on the first `.ts` file in the signed application and nowhere else.
+    # `core_extraction_inputs()` has globbed this same directory all along, so a hand-kept
+    # list here was already a second answer waiting to disagree with the key.
+    *[(str(p), "dunneflow/detectors") for p in sorted((PKG / "detectors").glob("*.yaml"))],
     (str(PKG / "detectors" / "docs" / "prose.yaml"), "dunneflow/detectors/docs"),
     # The readers, as **bytes to be hashed**. See the note above: rule 12 puts the reader in
     # the cache key, and a reader with no file hashes to nothing at all.
@@ -214,12 +245,18 @@ datas = [
     *_tree(PKG / "ingest", "dunneflow/ingest"),
     *_tree(PKG / "extractors" / "python", "dunneflow/extractors/python"),
     *_tree(PKG / "extractors" / "docs", "dunneflow/extractors/docs"),
-    # **Every plugin, wholesale, and never an enumeration.** `plugin.json` is read as a
-    # file by the registry and hashed into its language's stamp, and rule 92 is the reason
-    # this is a tree rather than a list: a defence assembled from the members that existed
-    # when it was written does not survive a new one. A test asserts every registered
-    # plugin's fingerprint files are in here.
-    *_tree(PKG / "plugins", "dunneflow/plugins"),
+    # **Every plugin, and exactly the bytes its manifest names.** A tree here was right
+    # while the only plugin was a `plugin.json`; the TypeScript reader brought a
+    # `node_modules` of several thousand files, a lockfile and a TypeScript source tree,
+    # none of which the application runs — `_tree` would have put all of it in the signed
+    # bundle.
+    #
+    # So it is derived from the manifests rather than from the directory listing, which
+    # makes it the same list rule 12 hashes: **what ships and what is stamped are the same
+    # bytes by construction**, rather than two answers that agree until somebody adds a
+    # file. Rule 92's argument is kept — nothing here enumerates the plugins — and a test
+    # asserts every registered plugin's fingerprint files are in `datas`.
+    *_plugin_files(),
     # The page, and the vendored engine.
     *_tree(PKG / "web" / "static", "dunneflow/web/static"),
     *_tree(PKG / "web" / "vendor", "dunneflow/web/vendor"),

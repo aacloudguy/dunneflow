@@ -45,6 +45,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
+from ..detectors import rules_document
 from ..schema import SCHEMA_VERSION
 from .contract import PluginManifest, PluginRefused, ProtocolError
 
@@ -292,7 +293,14 @@ class NdjsonWorker:
         only what missed the cache.
         """
         self._opened = (root, list(files))
-        return self.request({"t": "open", "root": str(root), "files": list(files)})
+        # **The rules travel with the session**, because a reader that is another program
+        # cannot import `detectors/` and must not carry its own copy: a baked-in rule set
+        # stops moving the moment somebody edits the YAML, and that file is in the core
+        # extraction key exactly so an edit re-reads every language (rule 51). Sent as
+        # written — `detectors.rules_document` — so there is one file and not a second
+        # rendering of it. A reader that wants none ignores the key.
+        return self.request({"t": "open", "root": str(root), "files": list(files),
+                             "rules": rules_document(self.manifest.lang)})
 
     def respawn(self) -> None:
         """Bring a dead worker back, in the state the dead one was in.

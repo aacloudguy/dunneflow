@@ -28,6 +28,27 @@ from ..schema import DataStructure, FileFacts, Routine
 
 ProgressFn = Callable[[str, int, int], None]
 
+# **What a reader must read, and it was an accident of a default until it cost two files.**
+#
+# The host opens a source file with `Path.read_text(encoding="utf-8", errors="replace")`,
+# and Python reads text files with **universal newlines** on: `\r\n` and a lone `\r` both
+# arrive as `\n`. Every hash the host computes — `content_hash`, `Routine.body_hash`, the
+# blob key in `source.db` — is of *that* text, and the in-process reader is handed the same
+# string, so Python could never disagree with itself.
+#
+# A reader in another runtime reads bytes. Node's `readFileSync(p, "utf8")` keeps the
+# carriage returns, so a CRLF file hashes differently on the two sides — and the echo check
+# in `OutOfProcessPlugin._one` then refuses it, correctly and with the wrong reason: the
+# file did not change, the two sides read it differently. Measured on `../uigen`: **2 of 54
+# files**, both generated with CRLF, both reported unreadable in a map that was otherwise
+# perfect, and neither would ever have been read on any later run.
+#
+# So it is a term of the protocol rather than a property of one implementation, and it is
+# stated here because this is the file a plugin author reads. There is no way for the host
+# to enforce it — the enforcement *is* the echo, which is why the echo exists.
+SOURCE_TEXT = "utf-8, errors replaced, newlines normalised to \n"
+
+
 
 class ToolchainMissing(RuntimeError):
     """The thing that reads this language is not on this machine.

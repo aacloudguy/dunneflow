@@ -93,6 +93,31 @@ been rewritten yet. Where they describe the tool they are accurate; where they d
   on Society **no call site spells any of the seven names that differ**, and the digest is
   unmoved. `sql.py` joined the core key, which shuts the gap rule 95 was minted from. **1,588 passed · 1 skipped**,
   mypy clean over 164 files, ruff clean, **7 of 7 digests identical**.
+* **TypeScript, extraction only.** A pnpm package bundled by esbuild into one committed
+  `main.bundle.cjs` with the compiler inlined, speaking chunk 7's protocol. **DunneNote:
+  443 program files read, 0 failed**, 315 left out as tests, 1,518 routines, 708
+  structures; `packages/api-types` reports **zero** boundaries over 206 files, and the 283
+  `.rs` and 81 `.svelte` files are named and counted. Python unmoved — **7 of 7 digests**,
+  4,823 routines. The frozen binary reads a TypeScript tree and stamps the same two
+  fingerprints. `SCHEMA_VERSION` is **12**. **1,699 passed · 1 skipped**, mypy clean over
+  175 files, ruff clean.
+
+  Six defects, four of them found by things written to find them: the plan's
+  `crypto.createHash("blake2b512", {outputLength: 8})` is refused by Node **and** is the
+  wrong hash (BLAKE2b puts the length in its parameter block), so BLAKE2b is implemented
+  from RFC 7693; `localStorage.setItem` produced two rows for one act (rule 40); a `.map`
+  on an unnamed receiver stopped being a loop; and `fetch` prefix-matched `fetchImpl`
+  (rule 5 — Python's own rules hid it because every one of them contains a dot). The other
+  two came from running it on real trees: a TypeScript **overload set** is one name
+  declared three times, and **Python reads text with universal newlines and Node does
+  not**, so every CRLF file hashed differently on the two sides and was refused as
+  *changed while it was being read*. That is a term of the protocol now,
+  `ingest.contract.SOURCE_TEXT`.
+
+  Three things keep the reader honest: the rules **travel** in the `open` frame rather
+  than being baked in; `src/facts.ts` is **generated** from `schema.py` and a test compares;
+  and `ingest-conform typescript` is 12 of 12 with the dotted contract's clauses 5, 6 and 7
+  exercised for the first time.
 * **The string-literal split.** `FileFacts.literals`; the Python reader stops deciding
   what a string *means* and reports the strings; `ingest/literals.py` runs the SQL and
   artefact scanning for every language at once, so `detectors/<lang>.yaml` stays an
@@ -150,15 +175,18 @@ is faithful rather than merely plausible.
 
 **The MCP server was brought forward** on 2026-09-17, from `PLAN-v2.md`'s chunk 4 to the
 front, and the walk was wired behind it the same day — so the ordering that remains is the
-plan's own, and chunks 5, 6, 7 and 8 were taken in it. Tom's call on the front-loading, and his reasoning is recorded: the existing
+plan's own, and chunks 5 through 9 were taken in it. Tom's call on the front-loading, and his reasoning is recorded: the existing
 tool is usable as-is, so v1 defects found along the way are rolled into whichever feature
 chunk owns them rather than scheduled as work of their own.
 
-1. **TypeScript, extraction only** — chunk 9. The pnpm package, the esbuild bundle,
-   `detectors/typescript.yaml`, and the dotted fixture's rules 5, 6 and 7 stopping being
-   unexercised — clause 7 brings `CallSite.is_construction` with the reader that fills it.
-   **Gate: DunneNote's ground truth**, `PLAN-v2.md` §5, and the Tauri seam is the sharp one:
-   30 files import `@tauri-apps/api/core` and **29 are tests**.
+1. **Supplied edges** — chunk 10. The `edges` frame, `resolve/typescript/calls.py`, and a
+   `ts.createProgram` built in `open`, which the protocol already has the shape for.
+   **Gate: the resolution rate measured on DunneNote**, against today's honest floor of
+   *0 internal, 4,990 external*. It is also where two stated residues come back: a call
+   through a name that holds `fetch`, and the `fetchImpl` the network matcher now refuses.
+2. **TSX / React** — chunk 11, against `../DunneCorp`. Smoke-checked already and it reads:
+   123 files, 0 failed, and **CLOUD_SDK and CRYPTO fire for the first time outside Python**.
+   The 33 App Router route names are the assertion that has not been made.
 
 **A fifth v1 defect was found by chunk 8's gate and is not fixed.** The **rendered map is
 not run-to-run stable**: two analyses of Society by the same build differ in seven of the

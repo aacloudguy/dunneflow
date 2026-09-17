@@ -16793,3 +16793,210 @@ the parallelism.
 *It is worth saying plainly that the map has been like this for a year and nobody noticed,
 including every session that diffed two maps by hand. The gate that found it was looking at
 something else.*
+
+## 2026-09-17 — TypeScript, extraction only: a second language, read by another program
+
+`PLAN-v2.md`'s chunk 9. A pnpm package at `src/dunneflow/plugins/typescript/`, bundled by
+esbuild into one committed `main.bundle.cjs` with the TypeScript compiler inlined, speaking
+the NDJSON protocol chunk 7 proved. **No supplied edges**: every TypeScript call is left
+external, and the run says so.
+
+**The gate.** `../DunneNote` at 0.9.0: **443 program files read, 0 failed**, 315 left out
+as tests, 1,518 routines, 708 structures, 139 boundary touches. Python unmoved — Society
+still **7 of 7 golden digests identical**, 4,823 routines, 5,653 certain · 788 inferred ·
+4,063 external. **1,699 passed · 1 skipped**, mypy clean over 175 files, ruff clean. The
+frozen binary reads a TypeScript tree and stamps the same two fingerprints the checkout
+does (`12:7bd00b06f965e1a2` core, `1.0.0:4507b02b56cfefe4` for the reader).
+
+### Ground truth, and three of the plan's numbers do not reproduce
+
+Every figure was retaken rather than carried (rule 24), and the plan's were checked by hand
+against a tree that has moved since.
+
+| Claim | Plan | Measured now |
+|---|---|---|
+| `.ts`/`.tsx` on disk | 767 | **758** |
+| files importing `@tauri-apps/api/core` | 30, 29 of them tests | **31, 29 tests** |
+| program files importing it | **one** | **two** |
+| `.svelte` | 70 | **81** |
+| `fetch` in non-test `.ts` | once | **never** |
+
+**The 767 counts nine directories.** `apps/desktop/tests/visual/__screenshots__/` holds
+directories named `cal-month.spec.ts`, `canvas.spec.ts` and seven more, each full of PNGs,
+and `find -name "*.ts"` matches a directory as happily as a file. 758 is the file count, and
+the walk's own arithmetic closes exactly: **443 read + 315 left out as tests = 758**, with
+nothing claimed-but-unread.
+
+**The second Tauri file is `legacy/v0.1/src/lib/ipc.ts`.** The seam is still a seam — one
+per copy of the program, and `legacy/v0.1/` is a second copy kept in the tree with its own
+`tsconfig.json`. The property the plan wanted from it holds and is what the map reports: 29
+test files import that module and **not one of them is in the map**, which is the test
+exclusion working. The claim *exactly one program file* was true of a tree without the
+legacy copy.
+
+**And `fetch` is never called in a non-test `.ts` at all** — see the network defect below,
+which is what that zero found.
+
+The three the plan named that do reproduce: **`packages/api-types` reports 0 boundaries**
+over 206 files and 205 `TYPE_ALIAS` structures — the failure it says to look for, and it
+does not happen; the 283 `.rs` and 81 `.svelte` files are **reported unclaimed by name and
+count**; and `apps/host-http` is Rust and is absent rather than quietly missing.
+
+### Four defects found, every one by something that was written to find it
+
+**`crypto.createHash("blake2b512", { outputLength: 8 })` is wrong twice**, and it is the
+line the plan specified. Node's OpenSSL refuses it outright — `not XOF or invalid length` —
+and had it worked it would still be the wrong hash, because BLAKE2b puts the digest length
+in its **parameter block**: `blake2b(b"ab")[:8]` is `b32c0573d242b3a9` and
+`blake2b(b"ab", digest_size=8)` is `0e52b5f187de1088`. A reader that shipped the truncation
+would mint ids that look exactly like ids and match nothing in the map. So BLAKE2b is
+implemented in `src/ids.ts` from RFC 7693, and parity is asserted against **the reader's
+real output** rather than a vectors file it never reads: a fixture nobody runs proves a
+function nobody calls (rule 35), and a conformance frame added to be tested would prove that
+frame rather than the one the map is built from.
+
+**One act became two rows.** `localStorage.setItem("seen", "1")` matched the call rule with
+`seen` as its target *and* the `subscript: [localStorage]` rule with `setItem` as its
+target — rule 40, two detectors recording one act. A property access that is being *called*
+belongs to the call rule; `process.env.PORT`, which is not called, is still the other's.
+
+**A loop stopped being a loop when its receiver had no name.** `["a","b"].map(fn)` has no
+dotted form by clause 3, so no call is recorded — correctly — and the comprehension was
+inside that same test, so the span disappeared too. Rule 3 governs what may be matched
+against a rule, never whether a span exists; Python records `[f(x) for x in ["a","b"]]`
+without hesitating. **+18 comprehensions on DunneNote**, 222 → 240.
+
+**`fetch` matched `fetchImpl`.** `RuleSet.network_profile` is `dotted.startswith(prefix)`,
+which is exactly right for `requests.` and `httpx.AsyncClient` and exactly wrong for a bare
+name. Python's own rules hid it for a year because **every one of them contains a dot**;
+TypeScript's `fetch`, `WebSocket` and `EventSource` do not. DunneNote reported exactly one
+network call and it was `fetchImpl` — a parameter holding an implementation — in the corpus
+whose ground truth is that no program file calls `fetch` at all. A key with no dot now
+matches exactly (rule 5), in the host and in the reader. *The residue is stated*: a call
+through a name that holds `fetch` is a network call and is no longer reported as one.
+Knowing that needs the far end of the name, which is resolution, and chunk 10 is where it
+comes back.
+
+### And two the corpora found that no test would have
+
+**An overload set is one name declared three times.** uigen died with
+`UNIQUE constraint failed: routines.id` on its generated Prisma client, where
+`PrismaClient.$transaction` is declared twice. Not broken code — it is how TypeScript
+spells an overload. `extractors/python/extract.py:_identity` has had the ordinal since it
+was written; this reader had not.
+
+**Python reads text with universal newlines and Node does not.** The host hashes what
+`Path.read_text` gave it, and Python turns `\r\n` and a lone `\r` into `\n`; `readFileSync`
+keeps them. So every CRLF file hashed differently on the two sides, and the echo check
+refused it — **correctly, and with the wrong reason**: *changed while it was being read*,
+about a file that had not changed. Measured on uigen: **2 of 54 files**, both generated with
+CRLF, both reported unreadable in a map that was otherwise perfect, and neither would have
+been read on any later run either. It was a property of one implementation's default and is
+now a term of the protocol, `ingest.contract.SOURCE_TEXT`, stated in the file a plugin
+author reads — and the echo's sentence names both things that look like this, because a
+race and a reader that decodes differently are one symptom and two facts.
+
+*Both of these were found by running the tool on a real tree rather than by a test, which is
+`CLAUDE.md`'s own reason for keeping the ground truth: unit tests on a toy program cannot
+catch a defect that only appears at scale.* uigen went from 161 routines to **566** once the
+two files were readable.
+
+### What the reader does, and what it deliberately does not
+
+`ts.createSourceFile` per file, **no program and no checker**. Chunk 9 is extraction only,
+so the compilation is not needed yet; `open` already takes the whole file set, which is the
+shape chunk 10 builds the program in without touching the protocol. Saying so is the point —
+a `ts.createProgram` over `node_modules` paid for nothing would be the easy thing to leave in.
+
+**An anonymous function is not a routine.** Declarations, methods, and functions or arrows
+*bound to a name* are; a callback passed inline is not, and its calls and boundaries belong
+to the nearest named routine. Naming one means inventing a word for a reader to look for in
+a file that does not contain it (rule 30), and thousands of `<anonymous>` rows is rule 1's
+own subject. React's components are named; `useEffect`'s callbacks are chunk 11's.
+
+**There is no `BROWSER` kind**, which `PLAN-v2.md` settled by counting. `fetch` and
+WebSocket are the network under another name; `localStorage`, `sessionStorage` and IndexedDB
+are persistent named storage shared across an origin, which is what DATABASE means, with the
+store's own key as the target. The DOM is the program's own rendered output rather than its
+environment and is **not reported at all** — 81 `.svelte` files' worth of `querySelector`
+would be thousands of rows drowning the panel they were added to. A test asserts the residue
+rather than leaving it in prose.
+
+### Four words for `ArmKind`, and the plan named three of them
+
+*catch, do, switch*, said the plan; two of those are right. A `switch` is a **point**, and
+its arms are `case` — already there — and `default`, which was not. And TypeScript has no
+`elif`: it writes `else if`, two words, which is what its rung is called. The enum's own
+docstring is what chose them — *the word in the source, and nothing invented* — and reading
+the rule rather than the summary is the whole of the difference. `EXCEPT` stays Python's and
+`CATCH` is TypeScript's; spelling one language's arm with the other's word is the same
+defect as renaming it.
+
+### The three things that keep a second reader honest
+
+**The rules travel; they are never baked in.** `detectors.rules_document` sends
+`typescript.yaml` **as written** in the `open` frame, so a YAML edit moves the core key and
+re-reads every language with no plugin rebuild (rule 51). What the plugin transcribes is the
+four match tests and nothing else, and a test puts the same dotted names through both.
+
+**The types are generated, not transcribed.** `tools/gen_facts_ts.py` writes `src/facts.ts`
+from `schema.py`, and a test regenerates and compares. It exists because the hand-written
+version was wrong inside an hour: a `NetworkCall.library` field that does not exist, which
+the codec drops and names in `FileFacts.errors` — and `WalkStats` counts a file with an
+error as **failed**, so every TypeScript file holding a network call would have been
+reported unreadable in a map that otherwise looked perfect.
+
+**The dotted contract is kept, and clauses 5, 6 and 7 stopped being hypothetical.**
+`dunneflow ingest-conform typescript` is 12 of 12 with rules 5, 6 and 7 exercised for the
+first time; Python is 10 of 10 with those three correctly named unexercised. Clause 7 is
+asserted **both halves** — `new Foo()` must spell `Foo` *and* carry `is_construction`, or a
+reader that flattened the two would pass on the name alone (rule 37). And the report no
+longer lists rule 8 as unexercised when one of its cases ran: rule 8 is a case per receiver
+word, `self`, `cls` and `this`, so a language that skips two and passes one has exercised it.
+
+### Two packaging defects this chunk created, and both are closed
+
+**`detectors/typescript.yaml` would not have shipped.** The spec named `python.yaml` and
+`annotations.yaml` by hand, which was the whole truth while there was one language;
+`load_rules` would have raised `RulesMissing` on the first `.ts` file in the signed
+application and nowhere else. It globs `detectors/*.yaml` now — which is what
+`core_extraction_inputs()` has always done, so the hand-kept list was already a second
+answer waiting to disagree with the key (rule 92).
+
+**And `node_modules` would have shipped with it.** `_tree(PKG / "plugins")` was right while
+a plugin was one `plugin.json`; the TypeScript reader brings several thousand files of
+workshop. The bundled list is derived from the **manifests** now — `plugin.json` plus each
+one's `fingerprint` — which buys the stronger property rather than merely excluding a
+directory: *what ships and what is stamped are the same bytes by construction*. 41 MB
+built, and the plugin directory in the bundle is three files.
+
+### Also fixed on the way past
+
+**`unresolved_langs` was filled by chunk 6 and read by nothing.** `resolve/calls.py`'s own
+docstring promised a language with no resolver would be *named* with its count; the counter
+existed and nothing printed it — rule 35's shape, in the sentence that is the whole
+difference between *nothing resolved* and *nothing to resolve*. Chunk 9 is the first run
+where it fires, and a run now says *left external for want of a resolver: typescript 4,990*.
+
+**And `load_rules` silently lost its cache** for about an hour: an edit inserted
+`rules_document` between `load_rules` and its `@lru_cache`, so the decorator landed on the
+new function and the YAML would have been re-parsed once per file. Caught by
+`test_languages.py` calling `load_rules.cache_clear()`.
+
+### Figures
+
+| | |
+|---|---|
+| DunneNote, cold | **1.5 s** for 443 files — 3.4 ms each |
+| warm, nothing changed | 0.1 s |
+| spawn and handshake | 0.18 s, once |
+| the bundle | 9.5 MB, TypeScript 5.9.3 inlined |
+| control points | 1,236 guards · 459 decisions · 275 loops · 240 comprehensions · 210 handlers |
+| constructions | 299 |
+| the application | 41 MB |
+
+`SCHEMA_VERSION` is **12**: `CallSite.is_construction`, and the four `ArmKind` words.
+
+*`typescript@7` cannot be used, and it is what `npm install typescript` gets you today.* The
+Go port's JavaScript entry exposes no `createProgram` and no `SyntaxKind` — measured,
+`undefined` at 7.0.2 and `function` at 5.9.3. The plugin pins 5.9.3.

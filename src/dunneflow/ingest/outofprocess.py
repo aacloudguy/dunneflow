@@ -27,6 +27,7 @@ from ..runtime import host_interpreter
 from ..schema import FileFacts, hash_source, stored_path
 from .codec import CodecError, decode_facts
 from .contract import (
+    SOURCE_TEXT,
     PluginManifest,
     PluginRefused,
     ProgressFn,
@@ -239,10 +240,18 @@ class OutOfProcessPlugin:
             # The file changed under the run. Storing the facts under a hash they do not
             # describe is how a stale answer becomes a cached one nobody will revisit
             # (rule 12), so they are recorded as a failure with both hashes named.
+            # **Two things look like this and only one of them is the file's fault.** It
+            # may have changed under the run; or the two sides may have *read the same
+            # bytes differently*, which is what happens to every CRLF file when a reader
+            # skips the newline normalisation `ingest.contract.SOURCE_TEXT` requires. The
+            # first is a race and the second is a plugin defect, and naming only the first
+            # sent a session looking for a race that was not there.
             return self._synthesised(
                 path, root,
-                f"changed while it was being read: the host hashed {wanted} and the {lang} "
-                f"reader hashed {echoed}. Its facts describe neither version for certain.",
+                f"the host hashed {wanted} and the {lang} reader hashed {echoed}, so its "
+                f"facts describe neither version for certain. Either the file changed "
+                f"while it was being read, or the reader read it differently — a source "
+                f"file is {SOURCE_TEXT}.",
             )
 
         try:

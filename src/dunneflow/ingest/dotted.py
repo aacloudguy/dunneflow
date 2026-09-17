@@ -37,16 +37,23 @@ that reader's *ordinary* `extract` (rule 51: what is tested is exactly what runs
 6. **Type arguments are not part of the name.** `foo<T>()` → `foo`.
 7. **`new Foo()` → `Foo`, and the construction is recorded separately.** `new
    WebSocket(url)` and `WebSocket(url)` are two facts and must not become one (rule 30).
-   **This clause is not implemented.** It needs a `CallSite.is_construction`, which is a
-   schema change for a language that does not exist yet — a field nothing sets is a field
-   nothing can be trusted to set (rule 35). Chunk 9 adds it with the reader that fills it.
+   `CallSite.is_construction` carries the second half. It waited until there was a reader
+   to fill it — a field nothing sets is a field nothing can be trusted to set (rule 35) —
+   and it is False for Python, which has no such syntax. The fixture asserts **both**
+   halves, because a reader that spelled the name right and dropped the flag would have
+   flattened the two and passed on the name alone (rule 37).
 8. **The receiver word is written as written.** `self.x`, `this.x`. Each language declares
    its own in `receiver_words`, and its resolver reads it from there.
 
 Rules 5, 6 and 7 have nothing to say about Python, and the runner **names them as
 unexercised** rather than counting them passed (design rule 1): a conformance report that
 says *8 of 8* about a language with no syntax for three of them is a report that means
-nothing.
+nothing. TypeScript exercises all three, and they stopped being hypothetical the day it
+arrived.
+
+**Rule 8 is a case per receiver word rather than one case with several snippets**, because
+the expected spelling *is* what is being tested: Python writes `self` and `cls`,
+TypeScript writes `this`, and one case would have to expect one of them and skip the rest.
 """
 
 from __future__ import annotations
@@ -85,6 +92,11 @@ class Case:
     rule: int
     expect: str
     why: str = ""
+    # Clause 7 is two claims and the name is only one of them: `new Foo()` must spell
+    # `Foo` **and** carry `is_construction`, or the two spellings have been flattened into
+    # one fact. Asserting the name alone would pass on exactly the reader this clause
+    # exists to refuse (rule 37).
+    expect_construction: bool = False
     # One snippet per language. A language with no snippet is not a failure — it is a rule
     # that language has no syntax for, and the report says so.
     source: dict[str, str] = field(default_factory=dict)
@@ -94,6 +106,7 @@ class Case:
 class Result:
     case: Case
     got: list[str] = field(default_factory=list)
+    constructions: list[str] = field(default_factory=list)
     skipped: bool = False
     error: str = ""
 
@@ -105,7 +118,12 @@ class Result:
             return False
         # `expect: ""` is rule 3 — the chain has no name, so the extractor records no call
         # at all. Asking for the absence is the only way to state it.
-        return not self.got if self.expect_nothing else self.case.expect in self.got
+        if self.expect_nothing:
+            return not self.got
+        if self.case.expect not in self.got:
+            return False
+        return (not self.case.expect_construction
+                or self.case.expect in self.constructions)
 
     @property
     def expect_nothing(self) -> bool:
@@ -123,7 +141,9 @@ def load(path: Path | None = None) -> list[Case]:
     raw = json.loads(where.read_text(encoding="utf-8"))
     return [
         Case(id=str(c["id"]), rule=int(c["rule"]), expect=str(c["expect"]),
-             why=str(c.get("why", "")), source=dict(c.get("source", {})))
+             why=str(c.get("why", "")),
+             expect_construction=bool(c.get("expect_construction", False)),
+             source=dict(c.get("source", {})))
         for c in raw["cases"]
     ]
 
@@ -165,7 +185,12 @@ def run(plugin: IngestPlugin, lang: str, cases: Sequence[Case] | None = None) ->
                 elif ff.errors:
                     out.append(Result(case=case, error="; ".join(ff.errors)))
                 else:
-                    out.append(Result(case=case, got=[c.callee_expr for c in ff.calls]))
+                    out.append(Result(
+                        case=case,
+                        got=[c.callee_expr for c in ff.calls],
+                        constructions=[c.callee_expr for c in ff.calls
+                                       if c.is_construction],
+                    ))
     return sorted(out, key=lambda r: (r.case.rule, r.case.id))
 
 
@@ -186,7 +211,13 @@ def report(results: Sequence[Result], lang: str) -> list[str]:
             mark, said = "–", f"{lang} has no syntax for rule {r.case.rule}"
         elif r.passed:
             mark, said = "✓", ("no call recorded, as required"
-                               if r.expect_nothing else r.case.expect)
+                               if r.expect_nothing
+                               else (f"{r.case.expect} · a construction"
+                                     if r.case.expect_construction else r.case.expect))
+        elif r.case.expect_construction and r.case.expect in r.got:
+            mark = "✗"
+            said = (f"{r.case.expect!r} was recorded and not as a construction — "
+                    f"`new X()` and `X()` have been flattened into one fact")
         else:
             mark = "✗"
             said = r.error or f"wanted {r.case.expect!r}, got {r.got!r}"
@@ -199,10 +230,16 @@ def report(results: Sequence[Result], lang: str) -> list[str]:
         + "."
     )
     if skipped:
-        rules = sorted({r.case.rule for r in skipped})
+        ran_rules = {r.case.rule for r in ran}
+        rules = sorted({r.case.rule for r in skipped} - ran_rules)
+    if skipped and rules:
+        word = "Rule" if len(rules) == 1 else "Rules"
         lines.append(
-            f"Rules {', '.join(str(x) for x in rules)} are not exercised here and are "
-            f"**not** counted as passing: a rule this language cannot express is a rule "
-            f"this run says nothing about."
+            f"{word} {', '.join(str(x) for x in rules)} {'is' if len(rules) == 1 else 'are'} "
+            f"not exercised here and {'is' if len(rules) == 1 else 'are'} **not** counted "
+            f"as passing: a rule this language cannot express is a rule this run says "
+            f"nothing about. A rule is named here only where **no** case of it ran — rule "
+            f"8 is one case per receiver word, so a language that skips two and passes one "
+            f"has exercised it."
         )
     return lines

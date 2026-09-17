@@ -37,7 +37,8 @@ from typing import Literal
 #
 # 10: `files.extractor` -- which reader produced each row, per language.
 # 11: `FileFacts.literals` -- a reader reports the strings, the host judges them.
-SCHEMA_VERSION = 11
+# 12: `CallSite.is_construction`, and four `ArmKind` words TypeScript writes.
+SCHEMA_VERSION = 12
 
 
 # --------------------------------------------------------------------------- #
@@ -301,6 +302,13 @@ class CallSite:
     # `call_site_id` -- from names and an ordinal, never from a position (`make_id`).
     site_id: str = ""
     args: list[CallArg] = field(default_factory=list)
+    # **`new Foo()` is `Foo` and is not `Foo()`** -- `ingest/dotted.py` clause 7. The two
+    # spellings call the same name and do two different things, and a map that flattened
+    # them would say a routine calls `WebSocket` without saying it opens one (rule 30).
+    # Declared here rather than earlier because a field nothing sets is a field nothing
+    # can be trusted to set (rule 35): it arrived with the TypeScript reader that fills
+    # it, and it is False for Python, which has no such syntax.
+    is_construction: bool = False
 
 
 class ControlKind(StrEnum):
@@ -324,22 +332,39 @@ class ControlKind(StrEnum):
 class ArmKind(StrEnum):
     """The word in the source, and nothing invented.
 
-    Nine words, because Python has nine ways to open one arm of something. `ELSE`
-    appears once and means three different things -- after a `for`, after a `try`, after
-    an `if` -- and it is the *point's* kind that says which, exactly as it is for the
+    Nine words for Python, because Python has nine ways to open one arm of something.
+    `ELSE` appears once and means three different things -- after a `for`, after a `try`,
+    after an `if` -- and it is the *point's* kind that says which, exactly as it is for the
     reader looking at the line. Naming them `LOOP_ELSE`, `TRY_ELSE` and `ELSE` would put
     a distinction in the data that the source does not make (rule 30's neighbour).
+
+    **Four more for TypeScript, and the rule is what chose them rather than a list.**
+    `PLAN-v2.md` said *catch, do, switch*; two of those are right and the third is not,
+    which is what reading the rule above rather than the plan's summary gets you. A
+    `switch` is a **point**, and its arms are `case` -- which is already here -- and
+    `default`, which was not. And TypeScript has no `elif`: it writes `else if`, two words,
+    which is exactly what its arm is called. Python's ladder is one word and TypeScript's
+    is two, and flattening either onto the other would be inventing a word for a reader to
+    find in a file that does not contain it.
+
+    A value is **added and never reused**: `EXCEPT` is Python's word and `CATCH` is
+    TypeScript's, and spelling one language's arm with the other's word is the same defect
+    as renaming it.
     """
 
     IF = "if"
     ELIF = "elif"
     ELSE = "else"
+    ELSE_IF = "else if"     # TypeScript's ladder; `elif` is Python's word and only Python's
     CASE = "case"
+    DEFAULT = "default"     # the last arm of a `switch`
     TRY = "try"
     EXCEPT = "except"
+    CATCH = "catch"         # TypeScript's word for Python's `except`
     FINALLY = "finally"
     FOR = "for"      # also `async for` -- the arm is the body, and `async` is not a way out
     WHILE = "while"
+    DO = "do"               # `do { ... } while (x)` -- the body is entered before the test
 
 
 @dataclass(slots=True)

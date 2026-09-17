@@ -259,9 +259,22 @@ class RuleSet:
     builtins: frozenset[str] = field(default_factory=frozenset)
 
     def network_profile(self, dotted: str) -> tuple[str, bool] | None:
-        """(protocol, is_async_library) for a call, by longest matching prefix."""
+        """(protocol, is_async_library) for a call, by longest matching prefix.
+
+        **A key with no dot in it matches exactly, and that is rule 5.** `requests.` and
+        `httpx.AsyncClient` are namespace prefixes and `startswith` is what they mean;
+        `fetch` is a bare name, and a prefix test makes it match `fetchImpl`,
+        `fetchAll` and `fetchingState`. Python's own rules hid this for a year because
+        every one of them contains a dot — TypeScript's `fetch`, `WebSocket` and
+        `EventSource` do not, and DunneNote reported exactly one network call, which was
+        `fetchImpl`: a parameter holding an implementation, not the global.
+
+        The residue is stated: a call **through** a name that holds `fetch` is a network
+        call and is no longer reported as one. Knowing that needs the far end of the name,
+        which is resolution, and a plugin that supplies edges is where it comes back.
+        """
         for prefix, protocol, is_async in self.net_libraries:
-            if dotted.startswith(prefix):
+            if dotted == prefix or ("." in prefix and dotted.startswith(prefix)):
                 return protocol, is_async
         return None
 
@@ -344,6 +357,39 @@ def _declared_rules(lang: str) -> str:
             f"by registering a plugin, never by asking for its rules."
         )
     return plugin.manifest.rules
+
+
+@lru_cache(maxsize=8)
+def rules_document(lang: str) -> dict[str, Any]:
+    """This language's rules file **as written**, for a reader that is another program.
+
+    `load_rules` turns the same bytes into indexed dataclasses for use in this process. A
+    reader on the far side of a pipe cannot be handed those, and must not carry its own
+    copy of the file: a plugin with a baked-in rule set is a second answer that stops
+    moving the moment somebody edits the YAML, and `detectors/*.yaml` is in the core
+    extraction key precisely so that an edit re-reads every language (rule 51).
+
+    So the document travels. **The declarations cross the wire and the matching is the
+    reader's**, which is the seam `PLAN-v2.md` §1e draws: what needs the syntax tree stays
+    with the reader, and a boundary match needs the tree to know what was called with what.
+    What must never differ is the file, and there is one.
+
+    Refusals are `load_rules`' and deliberately so — the same three answers, from the same
+    two functions, so a language cannot be readable here and refused there.
+    """
+    declared = _declared_rules(lang)
+    if not declared:
+        return {}
+    path = RULES_DIR / declared
+    if not path.exists():
+        raise RulesMissing(
+            f"the {lang} plugin declares its extraction rules in {declared} and this "
+            f"build has no such file at {path}. A language whose rules are missing reads "
+            f"as a language with no boundaries, no ways in and no CLI at all, which is "
+            f"indistinguishable from a program that has none."
+        )
+    data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    return dict(data)
 
 
 @lru_cache(maxsize=8)

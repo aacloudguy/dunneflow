@@ -356,7 +356,10 @@ def test_the_double_is_not_in_the_shipped_plugins_dir():
     from dunneflow.ingest import PLUGINS_DIR
     assert DOUBLE.parent.parent != PLUGINS_DIR
     assert not (PLUGINS_DIR / "python-oop").exists()
-    assert sorted(PLUGINS) == ["python"]
+    assert "python-oop" not in PLUGINS
+    # The readers this build ships, and the double is not among them however many
+    # there are.
+    assert sorted(PLUGINS) == ["python", "typescript"]
 
 
 # ---------------------------------------------------------------- conformance - #

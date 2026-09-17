@@ -1,0 +1,49 @@
+{
+  "lang": "typescript",
+  "display": "TypeScript",
+  "version": "1.0.0",
+  "protocol": 1,
+  "schema_version": 12,
+  "rules": "typescript.yaml",
+  "in_process": false,
+  "entry": "main.bundle.cjs",
+  "workers": 1,
+  "toolchain": {
+    "command": "node",
+    "probe": ["--version"],
+    "min_version": "20.0.0",
+    "install": "brew install node, or nodejs.org"
+  },
+  "receiver_words": ["this", "self"],
+  "supplies_edges": false,
+  "reports_literals": true,
+  "discovery": {
+    "suffixes": [".ts", ".tsx", ".mts", ".cts"],
+    "skip_dirs": [
+      "node_modules",
+      "dist",
+      "build",
+      "out",
+      "coverage",
+      ".next",
+      ".nuxt",
+      ".svelte-kit",
+      ".astro",
+      ".turbo",
+      "storybook-static"
+    ],
+    "test_dirs": ["tests", "test", "__tests__", "e2e", "__mocks__", "cypress"],
+    "test_name_suffixes": [
+      ".test.ts",
+      ".test.tsx",
+      ".spec.ts",
+      ".spec.tsx",
+      ".test.mts",
+      ".spec.mts"
+    ],
+    "test_stem_prefixes": [],
+    "test_stem_suffixes": [],
+    "test_stem_exact": ["setupTests", "vitest.setup", "jest.setup"]
+  },
+  "fingerprint": ["plugin.json", "main.bundle.cjs"]
+}

@@ -51,7 +51,10 @@ def test_the_registry_and_the_walk_read_one_table():
     """Rule 51: the walk asking a second time is how the two come to disagree."""
     assert ingest.suffix_owners(ingest.discovery()) == ingest.LANG_SUFFIX
     assert ingest.language_of("a/b/c.py") == "python"
-    assert ingest.language_of("a/b/c.ts") is None
+    assert ingest.language_of("a/b/c.ts") == "typescript"
+    # `None` is an answer and not a failure, and `.go` is what it is about now that
+    # `.ts` has a reader. What must never happen is the file being read anyway.
+    assert ingest.language_of("a/b/c.go") is None
 
 
 # ------------------------------------------------------------------- the walk --- #
@@ -160,7 +163,11 @@ def test_nothing_left_out_says_nothing(tmp_path):
 def test_the_walk_defaults_to_every_reader_this_build_ships(tmp_path):
     _write(tmp_path, "a.py")
     _write(tmp_path, "b.ts")
-    assert [p.name for p in walk.discover(tmp_path)] == ["a.py"]
+    _write(tmp_path, "c.go")
+    # Both readers this build ships, and neither one by name. `c.go` is the third
+    # answer: a suffix nobody claims is left out and counted, never handed to
+    # whichever reader happened to be nearest.
+    assert [p.name for p in walk.discover(tmp_path)] == ["a.py", "b.ts"]
 
 
 # -------------------------------------------------------------- the dispatch --- #

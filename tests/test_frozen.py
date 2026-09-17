@@ -164,7 +164,7 @@ def test_a_plugins_own_files_are_in_the_bundle():
     from dunneflow import ingest
 
     spec = SPEC.read_text(encoding="utf-8")
-    assert '"dunneflow/plugins"' in spec, "plugins/ is not bundled at all"
+    assert "dunneflow/plugins" in spec, "plugins/ is not bundled at all"
     for lang in ingest.PLUGINS:
         for path in ingest.plugin_fingerprint_files(lang):
             top = path.relative_to(SRC).parts[0]
@@ -172,6 +172,37 @@ def test_a_plugins_own_files_are_in_the_bundle():
                 f"{lang}'s fingerprint reads {path.name} out of {top}/, which the spec "
                 f"does not bundle — frozen, that hashes nothing"
             )
+
+
+def test_a_plugin_ships_the_bytes_it_is_stamped_from_and_not_its_workshop():
+    """The bundle is derived from the manifests, never from the directory listing.
+
+    `_tree(PKG / "plugins")` was the whole truth while a plugin was one `plugin.json`. The
+    TypeScript reader brought a `node_modules` of several thousand files, a lockfile and a
+    source tree, none of which the application runs — and all of which a tree would have
+    signed and shipped.
+
+    Deriving it from `fingerprint` buys the stronger property, which is why it is asserted
+    here rather than the absence: **what ships and what is stamped are the same bytes**, so
+    a file a plugin needs at runtime and does not fingerprint cannot exist. Two answers
+    that merely agree today are what this replaces.
+    """
+    spec = SPEC.read_text(encoding="utf-8")
+    assert "_tree(PKG / \"plugins\"" not in spec, (
+        "the plugin directory is bundled wholesale again — that ships node_modules"
+    )
+    assert "fingerprint" in spec, "the bundled list is no longer derived from the manifests"
+
+    # And the thing a grep cannot see: the workshop exists, so the rule has something to
+    # exclude. Skipped where it does not, because an assertion that cannot fail is worse
+    # than none (rule 37).
+    from dunneflow import ingest
+
+    workshops = [p for p in (SRC / "plugins").glob("*/node_modules") if p.is_dir()]
+    if workshops:
+        for lang in ingest.PLUGINS:
+            shipped = {p.name for p in ingest.plugin_fingerprint_files(lang)}
+            assert "package.json" not in shipped and "tsconfig.json" not in shipped
 
 
 def test_the_two_keys_do_not_share_a_reader():

@@ -135,7 +135,11 @@ CREATE TABLE IF NOT EXISTS calls (
     external    INTEGER NOT NULL DEFAULT 0,
     at_boundary INTEGER NOT NULL DEFAULT 0,
     ambiguous   INTEGER NOT NULL DEFAULT 0,
-    site_id     TEXT NOT NULL DEFAULT ''
+    site_id     TEXT NOT NULL DEFAULT '',
+    -- `new Foo()` against `Foo()`. Two spellings that call one name and do two different
+    -- things, so they stay two facts (rule 30, and `ingest/dotted.py` clause 7). Always 0
+    -- for Python, which has no such syntax.
+    construction INTEGER NOT NULL DEFAULT 0
 );
 
 -- What one caller actually passed, as written. Hangs off `calls.site_id` rather than
@@ -997,9 +1001,10 @@ class Store:
         c.executemany(
             "INSERT INTO calls"
             "(file,caller_id,callee_expr,line,callee_id,confidence,external,at_boundary,"
-            "site_id) VALUES(?,?,?,?,?,?,?,?,?)",
+            "site_id,construction) VALUES(?,?,?,?,?,?,?,?,?,?)",
             [(ff.path, k.caller_id, k.callee_expr, k.line, k.callee_id, k.confidence.value,
-              int(k.external), int(k.at_boundary), k.site_id) for k in ff.calls],
+              int(k.external), int(k.at_boundary), k.site_id, int(k.is_construction))
+             for k in ff.calls],
         )
         c.executemany(
             "INSERT INTO call_args(site_id,idx,expr,keyword,splat) VALUES(?,?,?,?,?)",

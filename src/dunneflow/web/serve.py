@@ -134,6 +134,32 @@ def _sidecar_state(sidecar: SourceStore | None, revision: str | None, *,
     return {"opens": store is not None, "reason": why}
 
 
+def glossary_sidecars(source: SourceStore | None, docsource: DocSourceStore | None,
+                      source_revision: str | None,
+                      docsource_revision: str | None) -> dict[str, Any]:
+    """Which provenance tiers can actually open their citation, one entry per tier.
+
+    **A capability test, not a provenance test**, which is the distinction design rule 13
+    rests on here: `senseOpens()` in the shell asked `provenance === "DECLARED_CODE"` for
+    as long as `source.db` was the only sidecar, so every documentation-derived definition
+    rendered a dead end. The question is whether the corpus a tier quotes has a sidecar
+    *this base* can read.
+
+    Lifted out of `_r_glossary` when `dunneflow mcp` became the second caller. It is the
+    same argument the route already made for not folding it into `bind_glossary` -- the
+    terms belong to the base, this belongs to the process and to the version on screen --
+    and a second surface answering it from its own copy is how the dashboard and the agent
+    come to disagree about whether a button is live (rule 51).
+
+    The caller holds `_Live.lock`; nothing here takes it.
+    """
+    return {
+        "DECLARED_CODE": _sidecar_state(source, source_revision, absent=NO_SOURCE_SIDECAR),
+        "DECLARED_DOCS": _sidecar_state(docsource, docsource_revision,
+                                        absent=NO_DOC_SIDECAR),
+    }
+
+
 def columnar(model: GraphModel) -> dict[str, Any]:
     """The whole stack as parallel arrays, with every drawn thing already positioned.
 
@@ -2034,16 +2060,14 @@ class _Handler(BaseHTTPRequestHandler):
         answers with different lifetimes: the terms belong to the base and are built once,
         the sidecars belong to the *process* and to which version the base is on. A shallow
         copy, so the cached payload is never mutated by the route that serves it.
+
+        The block itself is `glossary_sidecars` above, shared with the MCP server.
         """
         with self._live.lock:
             base = self._live.current
-            self._json({**base.glossary, "sidecars": {
-                "DECLARED_CODE": _sidecar_state(self._live.source, base.source_revision,
-                                                absent=NO_SOURCE_SIDECAR),
-                "DECLARED_DOCS": _sidecar_state(self._live.docsource,
-                                                base.docsource_revision,
-                                                absent=NO_DOC_SIDECAR),
-            }})
+            self._json({**base.glossary, "sidecars": glossary_sidecars(
+                self._live.source, self._live.docsource,
+                base.source_revision, base.docsource_revision)})
 
     def _r_table(self, q: dict[str, list[str]]) -> None:
         """The routines that touch one table.

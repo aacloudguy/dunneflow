@@ -509,16 +509,19 @@ def test_the_glossary_says_which_corpora_can_be_opened() -> None:
     on -- so a base switched to a version whose bodies were never captured must change this
     without rebuilding a glossary that has not changed.
     """
-    body = inspect.getsource(serve_mod._Handler._r_glossary)
-    assert '"sidecars"' in body, (
+    route = inspect.getsource(serve_mod._Handler._r_glossary)
+    block = inspect.getsource(serve_mod.glossary_sidecars)
+    assert '"sidecars"' in route, (
         "the glossary payload states nothing about which sidecars this map has, so the page "
         "has to decide for itself and every documentation citation is a guess"
     )
+    # The route sends the block and `glossary_sidecars` builds it -- two places since the
+    # MCP server became its second caller, so the guard asks each one for its own half.
     for tier in ("DECLARED_CODE", "DECLARED_DOCS"):
-        assert f'"{tier}"' in body, f"{tier} citations have no capability to test"
+        assert f'"{tier}"' in block, f"{tier} citations have no capability to test"
     # A shallow copy, never a mutation: the base's glossary is built once and served on
     # every request, and writing into it would make one request's answer the next one's.
-    assert "**base.glossary" in body, (
+    assert "**base.glossary" in route, (
         "the cached payload is mutated by the route that serves it"
     )
 
@@ -598,7 +601,7 @@ def test_the_two_sidecars_are_asked_about_their_own_revisions() -> None:
     and crossing them here would report a documentation citation as openable because the
     *code* sidecar has bodies for this version.
     """
-    body = inspect.getsource(serve_mod._Handler._r_glossary)
+    body = inspect.getsource(serve_mod.glossary_sidecars)
     code = body.split('"DECLARED_CODE"', 1)[1].split('"DECLARED_DOCS"', 1)[0]
     docs = body.split('"DECLARED_DOCS"', 1)[1]
     assert "source_revision" in code and "docsource_revision" not in code, (
@@ -623,7 +626,7 @@ def test_the_client_routes_exactly_the_tiers_the_server_reports() -> None:
     routed = set(re.findall(r"(\w+): \"/api/\w+\"",
                             shell.split("const VIEWER_ROUTE = {", 1)[1].split("}", 1)[0]))
     reported = set(re.findall(r'"(DECLARED_\w+)": _sidecar_state',
-                              inspect.getsource(serve_mod._Handler._r_glossary)))
+                              inspect.getsource(serve_mod.glossary_sidecars)))
     assert routed == reported, (
         f"the shell routes {sorted(routed)} and the server reports {sorted(reported)}: a "
         "tier in one and not the other is a dead control or an unreachable route"

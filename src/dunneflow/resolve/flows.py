@@ -165,6 +165,50 @@ def entry_reach(store: Store, routine_id: str) -> tuple[int, list[BoundaryKind]]
     return len(reach), kinds
 
 
+#: The annotation kinds that mean *somebody signed off on this*. Named here rather than
+#: written into the statement below, so that a surface can say which kinds it asked about
+#: and the sentence and the query cannot drift (rule 41).
+GOVERNANCE_KINDS: tuple[str, ...] = ("PLAN", "DECISION", "AUDIT_LOCK")
+
+
+def ways_in_affected(store: Store, routine_ids: list[str]) -> list[dict]:
+    """The ways in that reach any of these routines — *impact*'s second half.
+
+    Out of `cmd_impact`, where it was written inline and was the one part of that answer
+    living only as print code. `dunneflow impact` and the MCP `impact` tool have to agree
+    about which ways in a change disturbs, and two statements cannot be relied upon to
+    (rule 51).
+
+    Empty in, empty out, and deliberately so: the caller has already decided there are
+    callers to ask about, and `IN ()` is not valid SQL.
+    """
+    if not routine_ids:
+        return []
+    holes = ",".join("?" * len(routine_ids))
+    return [dict(r) for r in store.query(
+        f"SELECT DISTINCT name, kind FROM entrypoints WHERE routine_id IN ({holes})"
+        " ORDER BY name",
+        tuple(routine_ids),
+    )]
+
+
+def governance_over(store: Store, routine_ids: list[str]) -> list[str]:
+    """The plans, decisions and audit locks recorded against any of these routines.
+
+    The values alone, deduplicated and ordered, because that is what both surfaces print.
+    `GOVERNANCE_KINDS` above is the population, stated once.
+    """
+    if not routine_ids:
+        return []
+    holes = ",".join("?" * len(routine_ids))
+    kinds = ",".join("?" * len(GOVERNANCE_KINDS))
+    return [r["value"] for r in store.query(
+        f"SELECT DISTINCT value FROM annotations WHERE owner_id IN ({holes})"
+        f" AND kind IN ({kinds}) ORDER BY value",
+        (*routine_ids, *GOVERNANCE_KINDS),
+    )]
+
+
 def app_command_routines(store: Store, app_id: str, seen: set[str] | None = None) -> list[str]:
     """Every routine reachable as a command of one CLI application, including its
     mounted sub-applications."""

@@ -3,7 +3,7 @@
 **The defect, found 2026-09-09 while retaking the ground truth.**
 `dunneflow touches output/mensores --routine mensores.cli.app` answered about
 **`mensores.cli.apply.apply`** and reported a reach of 1. `app` is a Typer object rather
-than a routine, so nothing could match it exactly; `_find_routine` then fell back to
+than a routine, so nothing could match it exactly; `find_routine` then fell back to
 `qualname LIKE '%needle%'` and returned the first plausible thing it found -- silently.
 
 That is rule 49 (a fallback that yields a plausible value has hidden the failure it was
@@ -20,7 +20,7 @@ The sample program is the defect's own shape by luck: `app = typer.Typer(name="s
 sits at module scope in `sample.py`, so `sample.app` is a name the program really uses and
 really is not a routine.
 
-Every assertion below was run against the unfixed `_find_routine` first (rule 37): the
+Every assertion below was run against the unfixed `find_routine` first (rule 37): the
 three that matter fail there, and they fail by *passing silently*, which is the defect.
 """
 
@@ -28,7 +28,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from dunneflow.cli import _find_routine, _search_said
+from dunneflow.lookup import find_routine, search_said
 from dunneflow.store import Store
 from dunneflow.walk import analyze_tree
 
@@ -41,18 +41,18 @@ def resolve(name):
 
 def test_an_exact_qualname_answers_with_nothing_added(analyzed: Store) -> None:
     """The common case must not grow a caveat. A note on every answer is no note."""
-    found = _find_routine(analyzed, "sample.main")
+    found = find_routine(analyzed, "sample.main")
 
     assert found.exact, "a qualname the program declares is an exact match"
     assert [m["qualname"] for m in found.matches] == ["sample.main"]
-    assert _search_said("sample.main", found, len(found.matches)) == [], (
+    assert search_said("sample.main", found, len(found.matches)) == [], (
         "an exact, unbounded answer says nothing about how it was found"
     )
 
 
 def test_a_bare_name_is_still_an_exact_match(analyzed: Store) -> None:
     """`name = ?` is deliberate and stays. `main` is how a reader asks about `main`."""
-    found = _find_routine(analyzed, "main")
+    found = find_routine(analyzed, "main")
 
     assert found.exact
     assert [m["qualname"] for m in found.matches] == ["sample.main"]
@@ -66,7 +66,7 @@ def test_a_name_that_is_not_a_routine_names_the_module_instead(analyzed: Store) 
     and the honest reply is the one fact the map does hold -- that `sample` is a module it
     read, and nothing in it is named `app`.
     """
-    found = _find_routine(analyzed, "sample.app")
+    found = find_routine(analyzed, "sample.app")
 
     assert not found.exact, "nothing is named this, and the search must say so"
     assert found.matches == [], "and nothing in this program's names even contains it"
@@ -76,7 +76,7 @@ def test_a_name_that_is_not_a_routine_names_the_module_instead(analyzed: Store) 
         "the count is the next question and this module answers it"
     )
 
-    said = "\n".join(_search_said("sample.app", found, 0))
+    said = "\n".join(search_said("sample.app", found, 0))
     assert "no routine is named 'sample.app'" in said
     assert "sample is a module here" in said
     assert "sample.py" in said, "and it names the file, so the reader can go and look"
@@ -98,10 +98,10 @@ def test_a_module_that_declares_no_routines_says_that_rather_than_a_count(
     store = Store(tmp_path / "graph.db")
     analyze_tree(tmp_path, store)
 
-    found = _find_routine(store, "pkg.app")
+    found = find_routine(store, "pkg.app")
     assert found.module == "pkg", "read from `files`, which recorded the __init__"
     assert found.module_routines == 0
-    said = "\n".join(_search_said("pkg.app", found, 0))
+    said = "\n".join(search_said("pkg.app", found, 0))
     assert "declares no routines at all" in said, (
         "'declares 0 routines' would be arithmetic; this is the reason nothing matched"
     )
@@ -110,13 +110,13 @@ def test_a_module_that_declares_no_routines_says_that_rather_than_a_count(
 
 def test_a_name_search_says_it_is_a_name_search(analyzed: Store) -> None:
     """The fallback kept, and labelled. Two routines' names contain `widget`."""
-    found = _find_routine(analyzed, "widget")
+    found = find_routine(analyzed, "widget")
 
     assert not found.exact
     assert found.total == 2, "save_widget and read_widgets"
     assert {m["name"] for m in found.matches} == {"save_widget", "read_widgets"}
 
-    said = "\n".join(_search_said("widget", found, len(found.matches)))
+    said = "\n".join(search_said("widget", found, len(found.matches)))
     assert "no routine is named 'widget'" in said
     assert "2 routine names contain it" in said
     assert "a name search, not the routine you asked for" in said
@@ -125,9 +125,9 @@ def test_a_name_search_says_it_is_a_name_search(analyzed: Store) -> None:
 
 def test_a_bounded_name_search_says_how_many_it_held_back(analyzed: Store) -> None:
     """`--limit` deciding the answer in silence is the same defect one level down."""
-    found = _find_routine(analyzed, "widget")
+    found = find_routine(analyzed, "widget")
 
-    said = "\n".join(_search_said("widget", found, 1))
+    said = "\n".join(search_said("widget", found, 1))
     assert "2 routine names contain it, showing 1" in said
 
 
@@ -143,12 +143,12 @@ def test_a_bounded_exact_answer_says_how_many_share_the_name(tmp_path: Path) -> 
     store = Store(tmp_path / "graph.db")
     analyze_tree(tmp_path, store)
 
-    found = _find_routine(store, "resolve")
+    found = find_routine(store, "resolve")
     assert found.exact
     assert found.total == 3, "counted, never `len(rows)` -- the LIMIT decided that"
 
-    assert _search_said("resolve", found, 3) == [], "all three shown, nothing to say"
-    assert _search_said("resolve", found, 2) == [
+    assert search_said("resolve", found, 3) == [], "all three shown, nothing to say"
+    assert search_said("resolve", found, 2) == [
         "3 routines are named 'resolve'; showing 2."
     ]
     store.close()
@@ -156,7 +156,7 @@ def test_a_bounded_exact_answer_says_how_many_share_the_name(tmp_path: Path) -> 
 
 def test_a_needle_matching_nothing_at_all_is_unchanged(analyzed: Store) -> None:
     """Three answers, never two -- and this is the third, which was always right."""
-    found = _find_routine(analyzed, "zzzznope")
+    found = find_routine(analyzed, "zzzznope")
 
     assert not found.exact
     assert found.matches == []

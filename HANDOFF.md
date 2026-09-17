@@ -16245,3 +16245,159 @@ warm with the cache, against 4.7 s without it on the same tree and the same disk
   per-language stamps. It cannot: such a store has no `extractor` column, and the reader
   that produced its rows is long gone. `language_stamps()` answers *nothing recorded* for
   it, which is why a migrated snapshot still opens.
+
+## 2026-09-17 — the resolver, split per language
+
+`PLAN-v2.md`'s chunk 6. `resolve/calls.py` was one 281-line function that was Python all
+the way down: it split `callee_expr` on dots, knew `self` and `cls`, walked `__init__.py`
+packages, and asked **this interpreter** what its builtins were. The walk had already been
+made to group by language and dispatch; resolution had not, so the first TypeScript file
+extracted would have had its calls put through Python's name rules — chunk 9's defect,
+arriving three chunks early and silently.
+
+The gate held: **7 of 7 digests identical** against the v1 graph, `calls.resolved`
+included — that digest is `(site_id, callee_id, confidence, external, ambiguous)`, which
+is precisely the tuple §1g says must not move. **1,588 passed · 1 skipped**, mypy clean
+over 164 files, ruff clean.
+
+| | Before | After |
+|---|---|---|
+| Who decides a boundary call is external | Python's resolver (rule 2) | the driver, before dispatch |
+| Who writes `UPDATE calls SET callee_id` | three places in one function | `resolve/calls.py`, once |
+| What a resolver returns | a target, and four counters it maintained itself | `Edge` or `NoEdge`, and no arithmetic |
+| Which routines can win a bare name | every routine in the map | that language's |
+
+### The seam, and why `NoEdge` carries two fields
+
+`resolve/contract.py` is `ingest/contract.py`'s shape one subject over. A resolver is
+handed its own language's non-boundary call rows and yields one `Decision` per row, in the
+order it was given them; it never writes to the store and never counts.
+
+**`Edge | NoEdge` rather than `str | None`**, because a missing target carries two facts the
+driver cannot recover: how many definitions competed, and whether the match was *rejected
+as implausible* or simply never found. They are separate fields and not one because a single
+row can be both — a bare call to a builtin is suppressed **and** has its rivals counted —
+and flattening the pair moves `ambiguous` with no symptom anywhere.
+
+A resolver answering the wrong number of rows is **refused rather than zipped**: decisions
+pair with rows by position, so a short answer does not lose edges, it misplaces every one
+after the discrepancy.
+
+### Three answers where a language has no resolver, never two
+
+A language with one is resolved. A language with none has every call left **external and is
+named**, with its count, in `ResolveStats.unresolved_langs`. That is not a placeholder:
+TypeScript extraction lands at chunk 9 and its supplied edges at chunk 10, so there is a
+whole chunk during which a TypeScript map legitimately has no internal edges — honest and
+shippable, as long as it says so. Silence there reads exactly like a program that calls
+nothing.
+
+### `_BUILTINS` — measured across five interpreters, not recalled
+
+`frozenset(dir(builtins))` is a fact about the **analysing machine's Python version** in a
+value that decides what a call means, and no fingerprint hashed it: two builds at the same
+commit on two machines would disagree about the same program and nothing would move to say
+so. It is `builtins:` in `detectors/python.yaml` now, hashed by `rules_fingerprint()` like
+every other rule, with its twin in `resolve/traceability.py` reading the same list.
+
+The list is the **union of `dir(builtins)` over CPython 3.9, 3.10, 3.11, 3.12 and 3.13**,
+taken by running all five through `uv` rather than written from memory:
+
+| | 3.9 | 3.10 | 3.11 | 3.12 | 3.13 | union |
+|---|---|---|---|---|---|---|
+| names | 152 | 155 | 157 | 157 | 159 | **159** |
+
+Every earlier version is a subset of 3.13, so the union *is* 3.13's set and no question of
+precedence arises. The seven names that differ over that range — `aiter`, `anext` and
+`EncodingWarning` (3.10), `ExceptionGroup` and `BaseExceptionGroup` (3.11),
+`PythonFinalizationError` and `_IncompleteInputError` (3.13) — are exactly what the
+analysing machine used to decide. A union is also the precision-favouring direction (rule
+1): a name in the set is *suppressed*, so a name here wrongly costs an edge in a program
+that shadows a builtin, and a name missing is the false edge rule 3 was minted from.
+
+**The diff, measured and not assumed.** On Society, **no call site spells any of the seven**
+— the resolution digest is unmoved, which the golden confirms. That is a fact about this
+corpus and not about the change: what it says is that the machine-dependence happened to
+cost nothing *here*, not that it costs nothing (rule 24). What is now true regardless is
+that a 3.9 machine and a 3.13 machine produce the same map.
+
+**Quoted throughout in the YAML, and the loader refuses a non-string entry by name.**
+Unquoted, `True` and `False` are YAML booleans: the list would hold two `bool`s, read
+correctly, hold the right number of entries, and silently stop suppressing two of the
+commonest words in the language (rule 49). A comment saying *quote them* is a comment.
+
+### Rule 95's gap, shut — and the rule itself is not
+
+`sql.py` shapes every `sql_ops` row and was in **no cache key at all** — editing SQL parsing
+left every cached graph stale and undiscarded. It joins `core_extraction_inputs()` rather
+than Python's, because §1e settles the judgement of a string literal as the **host's**: a
+plugin reimplementing `looks_like_sql` means the same string in a `.py` and a `.ts` file
+can be read two different ways, which is rule 51 in the fact contract.
+
+**What is shut is the instance, not the class**, and rule 95's own body says which: the
+remedy it names is a key built from the reader's *resolved imports*, and this is the honest
+interim form it also names — the glob plus the named few, with a test that asserts the named
+few rather than only that the glob still globs (rule 37). The next module that reaches out
+of `extractors/python/` will be in no key either, and nothing will say so.
+
+`tests/test_frozen.py` failed the moment it joined — `sql.py` is hashed and so must travel
+as **data**, or frozen it hashes nothing. That is the guard working rather than a test
+needing an update, exactly as it did for `ingest/` in chunk 5.
+
+### Two smaller things, in scope because they are this defect
+
+* **`resolve/cli.py` read `load_rules("python").cli_launches`.** The whole truth with one
+  reader, and the shape that makes a second language's CLI vanish without a symptom: the
+  entrypoints are there, the calls are there, and nothing joins them. It is the union over
+  the languages **the map holds** now, off the graph rather than off the plugins this build
+  ships (rule 24).
+* **`receiver_words` was declared and read by nothing.** `plugins/python/plugin.json` has
+  carried `["self", "cls"]` since the day it was written while the resolver spelled the set
+  itself — rule 35's exact shape, a declared value with no symptom when it is wrong. The
+  resolver reads the manifest, and a test asserts the literal is gone from the source.
+
+### Read as syntax, not as text — rule 34, paid for again
+
+The test that no resolver reads this interpreter's builtins was written as a substring scan
+and failed immediately: both modules that stopped doing it explain **why** in a comment, and
+every such comment contains every word the scan looks for. It parses the file and asks
+whether anything under `resolve/` still *imports* the module, which no amount of prose can
+answer wrongly. `test_frozen.py` had already learnt this about PyYAML's C extension.
+
+### Measured
+
+| | |
+|---|---|
+| Golden gate, v1 graph against this one | **7 of 7 digests identical** |
+| Society | 628 files, 4,823 routines, 30,544 call sites, 6,441 internal calls |
+| Resolution | 5,653 certain · 788 inferred · 4,063 external, 21% internal |
+| The four executables | **1,381 · 423 · 292 · 112** |
+| Conformance | **4 checked · 1 no population · 10 not checkable** |
+| The research paper | **0** naming rules, from 12 stated corpus-wide |
+| Call sites spelling a builtins-delta name | **0** |
+| Resolution of Society | 0.9 s |
+
+**Through the binary as well as beside it**, because `detectors/` and `packaging/` both
+moved. A host build reading its own 92-file tree stamps core `10:cef6b94462148e63` and
+python `1.0.0:bbc593d505e58080` — both what the checkout computes — and the checkout opens
+the binary's map, 1,043 routines either way.
+
+**Both stamps moved, and each for its own reason**, which is the split doing exactly what
+chunk 5 built it for: core `10:91525594e021b516` → `10:cef6b94462148e63` because `sql.py`
+joined it, and python `1.0.0:5ad58664e93395f9` → `1.0.0:bbc593d505e58080` because
+`python.yaml` gained the builtins block. A `typescript.yaml` edit would have moved neither.
+
+### Open, and stated
+
+* `resolve/entrypoints.py`, `resolve/flows.py` and `resolve/naming.py` are **not** split.
+  They are rules-driven or language-neutral; `flows.py:215`'s substring test for *declared*
+  is still scheduled onto chunk 12, where a `package.json` `bin` exists to outrank a
+  guessed `main`.
+* **Resolution is in no cache key and does not join one.** `resolve_calls` re-runs over the
+  whole store on every analyse, so rule 12 has nothing to say about it. Worth writing down,
+  because this chunk moved code that looks exactly like extraction and a later session
+  reading `resolve/python/` beside `extractors/python/` could reasonably assume otherwise.
+* The `builtins` list will go stale: CPython 3.14 will add names and nothing here will
+  notice. That is the trade the declaration buys — it is now a decision somebody has to
+  make rather than a value that varies by machine — and the retake is one `uv` command per
+  version, recorded above.

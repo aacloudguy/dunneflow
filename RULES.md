@@ -1944,3 +1944,10 @@ rule of that number — a blank canvas must say why it is blank — which does e
     stored expressions are the same expression, afterwards, and cannot change one fact.
     `sql.py` fails that test, which is how it was found. The test was never wrong; nobody
     had applied it to this module.
+
+    *The `sql.py` instance was shut on 2026-09-17 by v2's chunk 6*, which put it in
+    `core_extraction_inputs()` — core rather than Python's, because judging a string
+    literal is the host's job by design. **The rule stands unchanged**: what was fixed is
+    one named module, by the interim form this body already describes, and the key still
+    knows where the reader lives rather than what it reads. The next module to reach out
+    of `extractors/python/` will be in no key either, and nothing will say so.

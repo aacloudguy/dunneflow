@@ -371,3 +371,60 @@ type_aliases:
   factories:
     - NewType
     - TypeVar
+
+# The names a bare call may mean without this program having defined them, and so the
+# names a bare call is never resolved to a local routine by (rule 3). `list(...)` is the
+# builtin even in a program that happens to define a routine called `list`; falling back
+# to name matching here manufactured 261 false edges on the first real target, all of them
+# to the same unlucky function.
+#
+# **Declared here rather than taken from `dir(builtins)`, and that is rule 12.** The set
+# is an input to what a call *means*, and read off the running interpreter it is a fact
+# about the machine doing the analysing: two builds at the same commit on two machines
+# would disagree about the same program, and no fingerprint would move to say so. Here it
+# is hashed by `rules_fingerprint()` like every other rule, so editing it discards exactly
+# the graphs it would change.
+#
+# **Measured, not recalled.** The union of `dir(builtins)` over CPython 3.9, 3.10, 3.11,
+# 3.12 and 3.13, taken by running all five. Every earlier version is a subset of 3.13, so
+# the union is 3.13's set and no question of precedence arises. The seven names that
+# differ across that range -- `aiter` and `anext` (3.10), `EncodingWarning` (3.10),
+# `ExceptionGroup` and `BaseExceptionGroup` (3.11), `PythonFinalizationError` and
+# `_IncompleteInputError` (3.13) -- are exactly what the analysing machine used to decide.
+#
+# A union is also the precision-favouring direction (rule 1): a name in this set is
+# *suppressed*, so the cost of one being here wrongly is a lost edge in a program that
+# shadows a builtin, and the cost of one missing is the false edge rule 3 was minted from.
+#
+# Quoted throughout. Unquoted, `True` and `False` are YAML booleans and would arrive as
+# two bools rather than two names -- a list that looks right, holds 159 entries, and
+# silently stops suppressing two of the commonest words in the language. `load_rules`
+# refuses a non-string entry by name rather than trusting this comment.
+builtins: [
+  "ArithmeticError", "AssertionError", "AttributeError", "BaseException",
+  "BaseExceptionGroup", "BlockingIOError", "BrokenPipeError", "BufferError", "BytesWarning",
+  "ChildProcessError", "ConnectionAbortedError", "ConnectionError",
+  "ConnectionRefusedError", "ConnectionResetError", "DeprecationWarning", "EOFError",
+  "Ellipsis", "EncodingWarning", "EnvironmentError", "Exception", "ExceptionGroup", "False",
+  "FileExistsError", "FileNotFoundError", "FloatingPointError", "FutureWarning",
+  "GeneratorExit", "IOError", "ImportError", "ImportWarning", "IndentationError",
+  "IndexError", "InterruptedError", "IsADirectoryError", "KeyError", "KeyboardInterrupt",
+  "LookupError", "MemoryError", "ModuleNotFoundError", "NameError", "None",
+  "NotADirectoryError", "NotImplemented", "NotImplementedError", "OSError", "OverflowError",
+  "PendingDeprecationWarning", "PermissionError", "ProcessLookupError",
+  "PythonFinalizationError", "RecursionError", "ReferenceError", "ResourceWarning",
+  "RuntimeError", "RuntimeWarning", "StopAsyncIteration", "StopIteration", "SyntaxError",
+  "SyntaxWarning", "SystemError", "SystemExit", "TabError", "TimeoutError", "True",
+  "TypeError", "UnboundLocalError", "UnicodeDecodeError", "UnicodeEncodeError",
+  "UnicodeError", "UnicodeTranslateError", "UnicodeWarning", "UserWarning", "ValueError",
+  "Warning", "ZeroDivisionError", "_IncompleteInputError", "__build_class__", "__debug__",
+  "__doc__", "__import__", "__loader__", "__name__", "__package__", "__spec__", "abs",
+  "aiter", "all", "anext", "any", "ascii", "bin", "bool", "breakpoint", "bytearray",
+  "bytes", "callable", "chr", "classmethod", "compile", "complex", "copyright", "credits",
+  "delattr", "dict", "dir", "divmod", "enumerate", "eval", "exec", "exit", "filter",
+  "float", "format", "frozenset", "getattr", "globals", "hasattr", "hash", "help", "hex",
+  "id", "input", "int", "isinstance", "issubclass", "iter", "len", "license", "list",
+  "locals", "map", "max", "memoryview", "min", "next", "object", "oct", "open", "ord",
+  "pow", "print", "property", "quit", "range", "repr", "reversed", "round", "set",
+  "setattr", "slice", "sorted", "staticmethod", "str", "sum", "super", "tuple", "type",
+  "vars", "zip"]

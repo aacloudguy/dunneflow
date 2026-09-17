@@ -7,7 +7,7 @@
 exactly what a module inside a PyInstaller archive does not have. The four kinds:
 
 * `detectors/*.yaml` and `detectors/docs/*.yaml` -- the rules, loaded by `yaml.safe_load`.
-* `schema.py`, `ingest/`, `plugins/`, `detectors/__init__.py`, `detectors/prose.py` and both
+* `schema.py`, `sql.py`, `ingest/`, `plugins/`, `detectors/__init__.py`, `detectors/prose.py` and both
   extractor trees -- **hashed**, not imported, by `core_fingerprint()`, `lang_fingerprint()`
   and `doc_rules_fingerprint()`. Rule 12 says a cached
   fact is valid only if the source *and the tool that read it* are unchanged, so the reader
@@ -208,6 +208,9 @@ datas = [
     (str(PKG / "detectors" / "__init__.py"), "dunneflow/detectors"),
     (str(PKG / "detectors" / "prose.py"), "dunneflow/detectors"),
     (str(PKG / "schema.py"), "dunneflow"),
+    # What a string literal *means* -- in the core key since rule 95, because a change to
+    # SQL parsing reshapes every `sql_ops` row and moved no key at all before it.
+    (str(PKG / "sql.py"), "dunneflow"),
     *_tree(PKG / "ingest", "dunneflow/ingest"),
     *_tree(PKG / "extractors" / "python", "dunneflow/extractors/python"),
     *_tree(PKG / "extractors" / "docs", "dunneflow/extractors/docs"),

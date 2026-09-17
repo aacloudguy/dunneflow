@@ -20,10 +20,12 @@ discard every graph on the machine -- sealed snapshots included, which exist pre
 they can be read after their source tree is gone (rules 25 and 62). The key's own docstring
 sets the test: *scope is decided by asking what this extraction actually reads.*
 
-Adding a language therefore touches two places, and they are two concerns rather than one
-split in half: `extractors/<lang>/` reads facts, and `canonical/<lang>.py` says when two
-expressions are the same. A language may have the first and not the second, and then its
-expressions compare as written -- which is honest, and is what `canonical` does.
+Adding a language therefore touches three places, and they are three concerns rather than
+one split up: `extractors/<lang>/` reads facts, `canonical/<lang>.py` says when two
+expressions are the same, and `resolve/<lang>/calls.py` says which definition a call meant.
+A language may have the first and neither of the others: its expressions then compare as
+written -- which is honest, and is what `canonical` does -- and its calls are left external,
+which the map says out loud rather than passing them to somebody else's name rules.
 """
 
 from __future__ import annotations

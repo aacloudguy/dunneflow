@@ -251,6 +251,12 @@ class RuleSet:
     # Subscript bases and call factories that make an assignment a type alias.
     alias_constructors: frozenset[str] = field(default_factory=frozenset)
     alias_factories: frozenset[str] = field(default_factory=frozenset)
+    # Names a bare call may mean without this program having defined them, so a bare call
+    # is never resolved inward to a routine that happens to share one (rule 3). Declared
+    # per language rather than read off this interpreter, because `dir(builtins)` is a
+    # fact about the **analysing machine's** version and it is an input to what a call
+    # means -- which put it outside every fingerprint. See `builtins` in the YAML.
+    builtins: frozenset[str] = field(default_factory=frozenset)
 
     def network_profile(self, dotted: str) -> tuple[str, bool] | None:
         """(protocol, is_async_library) for a call, by longest matching prefix."""
@@ -435,7 +441,33 @@ def load_rules(lang: str) -> RuleSet:
         alias_factories=frozenset(
             (data.get("type_aliases", {}) or {}).get("factories", [])
         ),
+        builtins=_builtins(data.get("builtins", []) or [], lang, path),
     )
+
+
+def _builtins(raw: Any, lang: str, path: Path) -> frozenset[str]:
+    """The declared builtin names, refusing anything that is not one.
+
+    **The refusal is the point, not the parsing.** `True` and `False` written unquoted in
+    YAML are booleans, so a list that reads correctly, holds the right number of entries
+    and passes every eye arrives holding two `bool`s -- and the two commonest words in the
+    language quietly stop being suppressed, which is a handful of false edges and no
+    symptom anywhere (rule 49). A comment in the YAML saying *quote them* is a comment; a
+    name in the refusal is something somebody can act on (rule 89).
+    """
+    if not isinstance(raw, list):
+        raise RulesMissing(
+            f"the {lang} rules at {path} declare `builtins` as {type(raw).__name__} and "
+            f"it has to be a list of names."
+        )
+    bad = [x for x in raw if not isinstance(x, str)]
+    if bad:
+        raise RulesMissing(
+            f"the {lang} rules at {path} declare {len(bad)} builtin name(s) that are not "
+            f"text: {bad!r}. Unquoted, `True` and `False` are YAML booleans — quote every "
+            f"entry, or those names stop being suppressed and nothing says so."
+        )
+    return frozenset(raw)
 
 def _artefact_extensions(data: dict[str, Any]) -> dict[str, list[str]]:
     """The `artefacts.extensions` block, or nothing if the language declares none."""
@@ -536,6 +568,7 @@ def core_extraction_inputs() -> list[Path]:
         RULES_DIR / "__init__.py",      # the loader that decides what a rule means
         *(_PKG_ROOT / "ingest").glob("*.py"),  # who reads a file, and what it may say
         _PKG_ROOT / "schema.py",        # what a fact *is*
+        _PKG_ROOT / "sql.py",           # what a string literal *means* -- rule 95
     ]
 
 

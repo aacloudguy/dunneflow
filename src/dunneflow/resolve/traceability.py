@@ -28,12 +28,12 @@ Nothing here needs a model, and nothing here is a verdict.
 
 from __future__ import annotations
 
-import builtins
 import re
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from functools import cache
 
+from ..detectors import load_rules
 from ..docstore import DocStore
 from ..schema import Confidence
 from ..store import Store
@@ -63,14 +63,19 @@ _IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{2,}$")
 # to having landed was the word `list`, and it was the only such case on Mensores --
 # which is why the exclusion is this narrow and not a guessed stopword list.
 #
-# **This interpreter's builtins, and so Python's alone** -- deliberately left as it is
-# rather than derived from what the map holds, because deriving it would be a claim and
-# not a fix: there is no list of TypeScript's or Go's builtins here to exclude, and a
-# sentence saying *the builtins of every language read are excluded* would be false the
-# first time a second language arrived. The page says which language's these are; the
-# list itself moves when `_BUILTINS` moves into `python.yaml` with its twin in
-# `resolve/calls.py`, which is the resolver chunk's work and not this one's.
-_BUILTINS = frozenset(dir(builtins))
+# **Python's builtins, and Python's alone** -- deliberately not derived from what the map
+# holds, because deriving it would be a claim and not a fix: there is no list of
+# TypeScript's or Go's builtins here to exclude, and a sentence saying *the builtins of
+# every language read are excluded* would be false the first time a second language
+# arrived. The page says which language's these are.
+#
+# **Off `detectors/python.yaml` now, with its twin in `resolve/python/calls.py`.** It was
+# `frozenset(dir(builtins))`, which is a fact about the machine doing the analysing rather
+# than about Python -- `aiter` and `anext` arrived in 3.10, `ExceptionGroup` in 3.11 -- in
+# a value that decides which symbols count as distinctive and that no fingerprint hashed.
+# Declared, it is hashed by `rules_fingerprint()` like every other rule.
+def _builtins() -> frozenset[str]:
+    return load_rules("python").builtins
 
 # How many distinctive symbols a plan must name, and have exist, before its work is
 # called likely rather than possible. Printed in the report so it can be argued with.
@@ -468,8 +473,9 @@ def measure(store: Store, docs: DocStore | None) -> Traceability:
 
     # --- did the unannotated ones land? ------------------------------------ #
     pop = _symbol_population(store)
+    builtins_ = _builtins()
     unique = {name for name, n in pop.items()
-              if n == 1 and name not in _BUILTINS}
+              if n == 1 and name not in builtins_}
     result.total_symbols, result.unique_symbols = len(pop), len(unique)
 
     # Only documents that are the subject of an *unannotated* id can contribute

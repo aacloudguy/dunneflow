@@ -14,7 +14,7 @@ been rewritten yet. Where they describe the tool they are accurate; where they d
 |---|---|
 | `PLAN-v2.md` | the whole design: the plugin protocol, the registry, the fingerprint split, the TypeScript plugin, the MCP server, the 14 chunks and the gate on each |
 | `CLAUDE.md` | the standing orders — **binding**, and the rules index |
-| `RULES.md` · `DESIGN-RULES.md` | carried over **verbatim, numbering intact**. The numbers are addresses: never reused, never renumbered, never closed up. **v2 continues at engineering rule 96** — 95 is the fingerprint's blind spot, minted 2026-09-17. |
+| `RULES.md` · `DESIGN-RULES.md` | carried over **verbatim, numbering intact**. The numbers are addresses: never reused, never renumbered, never closed up. **v2 continues at engineering rule 96** — 95 is the fingerprint's blind spot, minted 2026-09-17. A rule is never closed; the `sql.py` gap it was minted from was shut by chunk 6, and the general remedy it names is not built. |
 | `PERFORMANCE.md` | v1's figures. **Every one of them was measured on v1** and none has been reproduced here — do not restate one as though it had been (rule 24). |
 
 ## The four decisions, already taken
@@ -67,6 +67,19 @@ been rewritten yet. Where they describe the tool they are accurate; where they d
   end, and through the frozen binary: both builds compute the same two stamps and open
   each other's maps. `SCHEMA_VERSION` is **10** and no longer load-bearing. **1,575 passed
   · 1 skipped**, mypy clean over 160 files, ruff clean, golden unmoved.
+* **The resolver is split.** `resolve/python/` holds Python's name rules, `RESOLVERS`
+  says who answers for which language, and the driver in `resolve/calls.py` groups by
+  `files.lang`. Two things hoisted into it so a new resolver inherits them: the
+  `at_boundary` suppression (rule 2), so a boundary row never reaches a resolver at all,
+  and the missing-target bookkeeping, so **one place** writes `UPDATE calls SET callee_id`
+  where v1 had three. A resolver returns `Edge` or `NoEdge` and does no arithmetic. A
+  language with **no** resolver has every call left external and is **named** with its
+  count — which is what chunk 9 needs, since TypeScript extraction lands a chunk before
+  its supplied edges do. `_BUILTINS` is `detectors/python.yaml` now, the measured union
+  over CPython 3.9–3.13, so a map no longer depends on the analysing machine's version;
+  on Society **no call site spells any of the seven names that differ**, and the digest is
+  unmoved. `sql.py` joined the core key, which shuts the gap rule 95 was minted from. **1,588 passed · 1 skipped**,
+  mypy clean over 164 files, ruff clean, **7 of 7 digests identical**.
 * **`dunneflow mcp`** — the whole of `PLAN-v2.md` §3, brought forward and shipped. Twelve
   tools, two resources, one base at a time with `programs`/`open` as the topbar's controls,
   and `analyze`/`analysis_status`/`analysis_stop` for making a map rather than reading one.
@@ -109,19 +122,20 @@ is faithful rather than merely plausible.
 
 **The MCP server was brought forward** on 2026-09-17, from `PLAN-v2.md`'s chunk 4 to the
 front, and the walk was wired behind it the same day — so the ordering that remains is the
-plan's own. Tom's call on the front-loading, and his reasoning is recorded: the existing
+plan's own, and chunks 5 and 6 were taken in it. Tom's call on the front-loading, and his reasoning is recorded: the existing
 tool is usable as-is, so v1 defects found along the way are rolled into whichever feature
 chunk owns them rather than scheduled as work of their own.
 
-1. **The resolver split** — `PLAN-v2.md` chunk 6. `resolve/python/` moved verbatim, a
-   `RESOLVERS` table, the driver grouping by language, `at_boundary` and the no-edge
-   bookkeeping hoisted, and `_BUILTINS` out of `resolve/calls.py` and
-   `resolve/traceability.py` into `python.yaml`. **Gate: Society's resolution tuples
-   identical except for the `_BUILTINS` move, whose diff is measured and recorded.**
-2. **Rule 95 is still open and now has a home.** `sql.py` shapes every `sql_ops` row and is
-   in no key, so editing it leaves every cached graph stale and undiscarded. The keys exist
-   to put it in; it was left out of chunk 5 deliberately, because deciding whether SQL
-   parsing is core or per-language is the resolver chunk's question.
+1. **The codec and the protocol** — `PLAN-v2.md` chunk 7, and the plan calls it the chunk
+   that de-risks everything: `NdjsonWorker`, `ingest-schema`, `ingest-conform`, and a
+   `plugins/python-oop/` test double that runs **the Python extractor through a subprocess
+   worker**, so the protocol is validated against the one extractor whose output is known
+   exactly. **Gate: byte-identical facts** — and the measurement that says whether
+   out-of-process was the right call, subprocess overhead against in-process extraction.
+2. **The string-literal split** — chunk 8. `FileFacts.literals`, and SQL and artefact
+   scanning moved into `ingest/literals.py`. Done **before** TypeScript exists, so
+   TypeScript never sees the old shape. **Gate: golden unchanged**, which is the proof the
+   split is faithful.
 
 **Of the four confirmed v1 defects, three are closed.** `BKIND_GLYPH` went in `679d772`;
 `writable=False` now opens `?mode=ro` and genuinely refuses a write, which is what the MCP

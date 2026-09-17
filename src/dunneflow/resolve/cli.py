@@ -17,7 +17,8 @@ from pathlib import Path
 
 from ..detectors import load_rules
 from ..store import Store
-from .calls import _absolute
+from . import languages
+from .python.calls import _absolute
 
 
 @dataclass(slots=True)
@@ -115,7 +116,16 @@ def resolve_cli(store: Store) -> CliStats:
 
     # A way in that launches an app object commands everything attached to it.
     # `def main(): mcp.run()` is a one-line function and a whole server at once.
-    launch = load_rules("python").cli_launches
+    #
+    # **The launch methods of every language the map holds**, not Python's. This read
+    # `load_rules("python")` while Python was the only reader, which was the whole truth
+    # at the time and is the shape that makes a second language's CLI silently vanish --
+    # the entrypoints are there, the calls are there, and nothing joins them. Off the
+    # graph rather than off the plugins this build ships, because the claim is about the
+    # map (rule 24).
+    launch: frozenset[str] = frozenset()
+    for held in languages.read(store):
+        launch |= load_rules(held).cli_launches
     if launch:
         marks = " OR ".join(["c.callee_expr LIKE ?"] * len(launch))
         params = tuple(f"%.{m}" for m in sorted(launch))

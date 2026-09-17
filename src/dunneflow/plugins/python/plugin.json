@@ -1,0 +1,52 @@
+{
+  "lang": "python",
+  "version": "1.0.0",
+  "protocol": 1,
+  "schema_version": 9,
+  "rules": "python.yaml",
+  "in_process": true,
+  "receiver_words": [
+    "self",
+    "cls"
+  ],
+  "supplies_edges": false,
+  "reports_literals": false,
+  "discovery": {
+    "suffixes": [
+      ".py"
+    ],
+    "skip_dirs": [
+      "__pycache__",
+      ".mypy_cache",
+      ".ruff_cache",
+      ".pytest_cache",
+      ".venv",
+      "venv",
+      "env",
+      ".env",
+      "site-packages",
+      ".tox",
+      ".nox",
+      ".eggs",
+      "htmlcov"
+    ],
+    "test_dirs": [
+      "tests",
+      "test",
+      "testing"
+    ],
+    "test_name_suffixes": [],
+    "test_stem_prefixes": [
+      "test_"
+    ],
+    "test_stem_suffixes": [
+      "_test"
+    ],
+    "test_stem_exact": [
+      "conftest"
+    ]
+  },
+  "fingerprint": [
+    "plugin.json"
+  ]
+}

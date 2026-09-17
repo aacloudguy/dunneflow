@@ -28,7 +28,7 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
 // node_modules/typescript/lib/typescript.js
 var require_typescript = __commonJS({
   "node_modules/typescript/lib/typescript.js"(exports2, module2) {
-    var ts6 = {};
+    var ts7 = {};
     ((module3) => {
       "use strict";
       var __defProp2 = Object.defineProperty;
@@ -210756,9 +210756,9 @@ Additional information: BADCLIENT: Bad error code, ${badCode} not found in range
         };
       }
     })({ get exports() {
-      return ts6;
+      return ts7;
     }, set exports(v2) {
-      ts6 = v2;
+      ts7 = v2;
       if (typeof module2 !== "undefined" && module2.exports) {
         module2.exports = v2;
       }
@@ -210771,7 +210771,7 @@ var import_node_readline = require("node:readline");
 var import_node_path2 = require("node:path");
 
 // src/extract.ts
-var import_typescript3 = __toESM(require_typescript(), 1);
+var import_typescript4 = __toESM(require_typescript(), 1);
 
 // src/ids.ts
 var IV = new Uint32Array([
@@ -211144,6 +211144,14 @@ function isConstruction(node) {
 function asArray(value) {
   return Array.isArray(value) ? value.map((v2) => String(v2)) : [];
 }
+function asTarget(value, fallback = "arg") {
+  if (value === void 0 || value === null) return fallback;
+  const word = String(value);
+  if (word === "arg" || word === "receiver_tail" || word === "package") return word;
+  throw new Error(
+    `detectors/typescript.yaml declares target: ${word} \u2014 the strategies are arg, receiver_tail and package. A rule whose target nobody reads is a boundary row naming the wrong thing, every time, with nothing to say so.`
+  );
+}
 function parseRules(doc) {
   const data = doc ?? {};
   const boundaries = [];
@@ -211158,7 +211166,8 @@ function parseRules(doc) {
       method: new Set(asArray(raw["method"])),
       subscript: new Set(asArray(raw["subscript"])),
       contains: asArray(raw["contains"]),
-      targetArg: raw["target_arg"] === void 0 || raw["target_arg"] === null ? null : Number(raw["target_arg"])
+      targetArg: raw["target_arg"] === void 0 || raw["target_arg"] === null ? null : Number(raw["target_arg"]),
+      target: asTarget(raw["target"])
     };
     boundaries.push(rule);
     for (const s of rule.subscript) subscriptIndex.set(s, rule);
@@ -211176,6 +211185,15 @@ function parseRules(doc) {
   )) {
     netKwargs.set(k, new Set(asArray(v2)));
   }
+  const packages = Object.entries(
+    data["packages"] ?? {}
+  ).map(([name, v2]) => ({
+    name,
+    kind: String(v2["kind"]),
+    direction: String(v2["direction"] ?? "BOTH"),
+    salience: String(v2["salience"] ?? "normal"),
+    target: asTarget(v2["target"], "package")
+  })).sort((a, b) => b.name.length - a.name.length);
   const routes = (data["routes"] ?? []).map(
     (raw) => ({
       framework: String(raw["framework"] ?? ""),
@@ -211196,7 +211214,8 @@ function parseRules(doc) {
     netLibraries,
     netVerbs: new Set(asArray(network["verbs"])),
     netKwargs,
-    routes
+    routes,
+    packages
   };
 }
 function matchesCall(rule, dotted2) {
@@ -211322,13 +211341,53 @@ function waysIn(rel, sf, rules2, routines, anchors) {
   return [];
 }
 
+// src/pkg.ts
+var import_typescript3 = __toESM(require_typescript(), 1);
+var NODE_MODULES = "/node_modules/";
+var TYPES_SCOPE = "@types/";
+function packageOf(file) {
+  const at = file.lastIndexOf(NODE_MODULES);
+  if (at === -1) return "";
+  const parts = file.slice(at + NODE_MODULES.length).split("/");
+  const head = parts[0] ?? "";
+  const name = head.startsWith("@") ? `${head}/${parts[1] ?? ""}` : head;
+  return name.startsWith(TYPES_SCOPE) ? name.slice(TYPES_SCOPE.length) : name;
+}
+function declarationOf(checker, node) {
+  const declared = checker.getResolvedSignature(node)?.declaration;
+  if (declared !== void 0) return declared;
+  let symbol = checker.getSymbolAtLocation(node.expression);
+  if (symbol !== void 0 && (symbol.flags & import_typescript3.default.SymbolFlags.Alias) !== 0) {
+    try {
+      symbol = checker.getAliasedSymbol(symbol);
+    } catch {
+      return void 0;
+    }
+  }
+  return symbol?.declarations?.[0];
+}
+function packageBoundary(checker, node, rules2) {
+  if (checker === void 0 || rules2.packages.length === 0) return null;
+  const declared = declarationOf(checker, node);
+  if (declared === void 0) return null;
+  const pkg = packageOf(declared.getSourceFile().fileName);
+  if (!pkg) return null;
+  for (const rule of rules2.packages) {
+    if (rule.name.endsWith("/") ? pkg.startsWith(rule.name) : pkg === rule.name) {
+      return { rule, pkg };
+    }
+  }
+  return null;
+}
+
 // src/extract.ts
 var LITERAL_MIN = 3;
 var LITERAL_MAX = 2e5;
 var MODULE_SCOPE = "<module>";
+var PROMISE_TAIL = /* @__PURE__ */ new Set(["then", "catch", "finally"]);
 function namesAValue(tag) {
-  if (import_typescript3.default.isJsxNamespacedName(tag)) return false;
-  if (!import_typescript3.default.isIdentifier(tag)) return true;
+  if (import_typescript4.default.isJsxNamespacedName(tag)) return false;
+  if (!import_typescript4.default.isIdentifier(tag)) return true;
   const first = tag.text[0] ?? "";
   return !(first >= "a" && first <= "z") && !tag.text.includes("-");
 }
@@ -211383,10 +211442,14 @@ var Extractor = class {
    */
   callNodes = [];
   /**
-   * The program's checker, when this walk is the edge pass. Held and never *used* here:
-   * what a call resolves to is `edges.ts`' question, and an extractor that answered it
-   * would be a reader deciding what a name means — the thing chunk 9 deliberately refused
-   * to do by guessing and chunk 10 refuses to do by inference.
+   * The program's checker, where there is one. `undefined` when nothing has been opened.
+   *
+   * **It was held and never used until chunk 11c**, and the reason it is used now is worth
+   * stating because it looks like the line chunk 9 drew being crossed. It is not: what a
+   * call resolves to is still `edges.ts`' question and this walk never answers it. What
+   * this asks is narrower and is a different fact — *which package declares the far end* —
+   * because a boundary is a per-file fact and cannot be filled by a whole-program sweep
+   * the way an edge can (`pkg.ts`). A name is still never matched against a routine here.
    */
   checker;
   scope = [];
@@ -211498,23 +211561,23 @@ var Extractor = class {
     for (const stmt of this.sf.statements) this.visit(stmt);
   }
   visit(node) {
-    if (import_typescript3.default.isImportDeclaration(node) || import_typescript3.default.isExportDeclaration(node)) {
+    if (import_typescript4.default.isImportDeclaration(node) || import_typescript4.default.isExportDeclaration(node)) {
       this.importDecl(node);
       return;
     }
-    if (import_typescript3.default.isImportEqualsDeclaration(node)) {
+    if (import_typescript4.default.isImportEqualsDeclaration(node)) {
       this.importEquals(node);
       return;
     }
-    if (import_typescript3.default.isFunctionDeclaration(node)) {
+    if (import_typescript4.default.isFunctionDeclaration(node)) {
       this.routine(node, node.name?.text ?? "default", node);
       return;
     }
-    if (import_typescript3.default.isClassDeclaration(node) || import_typescript3.default.isClassExpression(node)) {
+    if (import_typescript4.default.isClassDeclaration(node) || import_typescript4.default.isClassExpression(node)) {
       this.classDecl(node);
       return;
     }
-    if (import_typescript3.default.isInterfaceDeclaration(node)) {
+    if (import_typescript4.default.isInterfaceDeclaration(node)) {
       this.structure(
         node,
         node.name.text,
@@ -211524,20 +211587,20 @@ var Extractor = class {
       );
       return;
     }
-    if (import_typescript3.default.isTypeAliasDeclaration(node)) {
+    if (import_typescript4.default.isTypeAliasDeclaration(node)) {
       this.structure(node, node.name.text, "TYPE_ALIAS", [], []);
       return;
     }
-    if (import_typescript3.default.isEnumDeclaration(node)) {
+    if (import_typescript4.default.isEnumDeclaration(node)) {
       this.structure(node, node.name.text, "ENUM", this.enumFields(node), []);
       return;
     }
-    if (import_typescript3.default.isVariableStatement(node)) {
+    if (import_typescript4.default.isVariableStatement(node)) {
       this.variableStatement(node);
       return;
     }
-    if (import_typescript3.default.isModuleDeclaration(node)) {
-      if (node.body && import_typescript3.default.isModuleBlock(node.body)) {
+    if (import_typescript4.default.isModuleDeclaration(node)) {
+      if (node.body && import_typescript4.default.isModuleBlock(node.body)) {
         for (const s of node.body.statements) this.visit(s);
       }
       return;
@@ -211547,20 +211610,20 @@ var Extractor = class {
   /** Everything that is not a declaration: calls, control, strings. */
   expressionsIn(node) {
     if (this.controlPoint(node)) return;
-    if (import_typescript3.default.isCallExpression(node) || import_typescript3.default.isNewExpression(node)) {
+    if (import_typescript4.default.isCallExpression(node) || import_typescript4.default.isNewExpression(node)) {
       this.callExpr(node);
       return;
     }
-    if (import_typescript3.default.isJsxSelfClosingElement(node) || import_typescript3.default.isJsxOpeningElement(node)) {
+    if (import_typescript4.default.isJsxSelfClosingElement(node) || import_typescript4.default.isJsxOpeningElement(node)) {
       this.jsxElement(node);
       return;
     }
-    if (import_typescript3.default.isPropertyAccessExpression(node) || import_typescript3.default.isElementAccessExpression(node)) {
+    if (import_typescript4.default.isPropertyAccessExpression(node) || import_typescript4.default.isElementAccessExpression(node)) {
       if (this.accessBoundary(node)) return;
     }
-    if (import_typescript3.default.isStringLiteral(node) || import_typescript3.default.isNoSubstitutionTemplateLiteral(node)) {
+    if (import_typescript4.default.isStringLiteral(node) || import_typescript4.default.isNoSubstitutionTemplateLiteral(node)) {
       this.literal(node.text, this.startLine(node), "PLAIN");
-    } else if (import_typescript3.default.isTemplateExpression(node)) {
+    } else if (import_typescript4.default.isTemplateExpression(node)) {
       this.templateLiteral(node);
       return;
     }
@@ -211585,15 +211648,15 @@ var Extractor = class {
    * changed nothing but JSX.
    */
   namedFunction(node) {
-    if (import_typescript3.default.isFunctionDeclaration(node)) {
+    if (import_typescript4.default.isFunctionDeclaration(node)) {
       this.routine(node, node.name?.text ?? "default", node);
       return true;
     }
-    if (import_typescript3.default.isClassDeclaration(node) || import_typescript3.default.isClassExpression(node)) {
+    if (import_typescript4.default.isClassDeclaration(node) || import_typescript4.default.isClassExpression(node)) {
       this.classDecl(node);
       return true;
     }
-    if (import_typescript3.default.isVariableStatement(node)) {
+    if (import_typescript4.default.isVariableStatement(node)) {
       this.variableStatement(node);
       return true;
     }
@@ -211604,7 +211667,7 @@ var Extractor = class {
     const parent = this.scope[this.scope.length - 1];
     const prefix = parent !== void 0 ? parent.routine.qualname : className !== null ? `${this.module}.${className}` : this.module;
     const qualname = `${prefix}.${name}`;
-    const isAsync = (import_typescript3.default.getCombinedModifierFlags(fn) & import_typescript3.default.ModifierFlags.Async) !== 0;
+    const isAsync = (import_typescript4.default.getCombinedModifierFlags(fn) & import_typescript4.default.ModifierFlags.Async) !== 0;
     const routine = {
       id: this.identity(qualname),
       name,
@@ -211672,7 +211735,7 @@ var Extractor = class {
     });
     const fields = [];
     for (const member of node.members) {
-      if (import_typescript3.default.isPropertyDeclaration(member) && member.name) {
+      if (import_typescript4.default.isPropertyDeclaration(member) && member.name) {
         const field = { name: this.text(member.name) };
         if (member.type) field.type = this.text(member.type);
         if (member.initializer) field.default = this.text(member.initializer);
@@ -211695,12 +211758,12 @@ var Extractor = class {
     this.classStack.push(name);
     try {
       for (const member of node.members) {
-        if (import_typescript3.default.isMethodDeclaration(member) || import_typescript3.default.isGetAccessor(member) || import_typescript3.default.isSetAccessor(member) || import_typescript3.default.isConstructorDeclaration(member)) {
-          const mname = import_typescript3.default.isConstructorDeclaration(member) ? "constructor" : this.text(member.name);
+        if (import_typescript4.default.isMethodDeclaration(member) || import_typescript4.default.isGetAccessor(member) || import_typescript4.default.isSetAccessor(member) || import_typescript4.default.isConstructorDeclaration(member)) {
+          const mname = import_typescript4.default.isConstructorDeclaration(member) ? "constructor" : this.text(member.name);
           this.routine(member, mname, member, name);
-        } else if (import_typescript3.default.isPropertyDeclaration(member) && member.initializer) {
+        } else if (import_typescript4.default.isPropertyDeclaration(member) && member.initializer) {
           const init2 = member.initializer;
-          if (import_typescript3.default.isArrowFunction(init2) || import_typescript3.default.isFunctionExpression(init2)) {
+          if (import_typescript4.default.isArrowFunction(init2) || import_typescript4.default.isFunctionExpression(init2)) {
             this.routine(init2, this.text(member.name), member, name);
           } else {
             this.expressionsIn(init2);
@@ -211738,7 +211801,7 @@ var Extractor = class {
   interfaceFields(node) {
     const out = [];
     for (const member of node.members) {
-      if ((import_typescript3.default.isPropertySignature(member) || import_typescript3.default.isMethodSignature(member)) && member.name) {
+      if ((import_typescript4.default.isPropertySignature(member) || import_typescript4.default.isMethodSignature(member)) && member.name) {
         const field = { name: this.text(member.name) };
         if (member.type) field.type = this.text(member.type);
         out.push(field);
@@ -211756,15 +211819,15 @@ var Extractor = class {
   // ----------------------------------------------------------------- import --- //
   importDecl(node) {
     const spec = node.moduleSpecifier;
-    if (spec === void 0 || !import_typescript3.default.isStringLiteral(spec)) return;
+    if (spec === void 0 || !import_typescript4.default.isStringLiteral(spec)) return;
     const module2 = spec.text;
     const line = this.startLine(node);
-    const clause = import_typescript3.default.isImportDeclaration(node) ? node.importClause : node.exportClause;
+    const clause = import_typescript4.default.isImportDeclaration(node) ? node.importClause : node.exportClause;
     if (clause === void 0) {
       this.imports.push({ module: module2, name: "", alias: "", is_from: false, line });
       return;
     }
-    if (import_typescript3.default.isImportClause(clause)) {
+    if (import_typescript4.default.isImportClause(clause)) {
       if (clause.name) {
         this.imports.push({
           module: module2,
@@ -211775,7 +211838,7 @@ var Extractor = class {
         });
       }
       const bindings = clause.namedBindings;
-      if (bindings && import_typescript3.default.isNamespaceImport(bindings)) {
+      if (bindings && import_typescript4.default.isNamespaceImport(bindings)) {
         this.imports.push({
           module: module2,
           name: module2,
@@ -211783,7 +211846,7 @@ var Extractor = class {
           is_from: false,
           line
         });
-      } else if (bindings && import_typescript3.default.isNamedImports(bindings)) {
+      } else if (bindings && import_typescript4.default.isNamedImports(bindings)) {
         for (const el of bindings.elements) {
           const original = el.propertyName?.text ?? el.name.text;
           this.imports.push({
@@ -211797,7 +211860,7 @@ var Extractor = class {
       }
       return;
     }
-    if (import_typescript3.default.isNamedExports(clause)) {
+    if (import_typescript4.default.isNamedExports(clause)) {
       for (const el of clause.elements) {
         const original = el.propertyName?.text ?? el.name.text;
         this.imports.push({
@@ -211812,7 +211875,7 @@ var Extractor = class {
   }
   importEquals(node) {
     const ref = node.moduleReference;
-    if (import_typescript3.default.isExternalModuleReference(ref) && ref.expression && import_typescript3.default.isStringLiteral(ref.expression)) {
+    if (import_typescript4.default.isExternalModuleReference(ref) && ref.expression && import_typescript4.default.isStringLiteral(ref.expression)) {
       this.imports.push({
         module: ref.expression.text,
         name: ref.expression.text,
@@ -211824,15 +211887,15 @@ var Extractor = class {
   }
   // --------------------------------------------------------------- variable --- //
   variableStatement(node) {
-    const isConst = (node.declarationList.flags & import_typescript3.default.NodeFlags.Const) !== 0;
+    const isConst = (node.declarationList.flags & import_typescript4.default.NodeFlags.Const) !== 0;
     const atModuleScope = this.scope.length === 0;
     for (const decl of node.declarationList.declarations) {
       const init2 = decl.initializer;
-      if (init2 !== void 0 && (import_typescript3.default.isArrowFunction(init2) || import_typescript3.default.isFunctionExpression(init2)) && import_typescript3.default.isIdentifier(decl.name)) {
+      if (init2 !== void 0 && (import_typescript4.default.isArrowFunction(init2) || import_typescript4.default.isFunctionExpression(init2)) && import_typescript4.default.isIdentifier(decl.name)) {
         this.routine(init2, decl.name.text, node);
         continue;
       }
-      if (atModuleScope && init2 !== void 0 && import_typescript3.default.isIdentifier(decl.name)) {
+      if (atModuleScope && init2 !== void 0 && import_typescript4.default.isIdentifier(decl.name)) {
         const name = decl.name.text;
         const constant = {
           name,
@@ -211856,7 +211919,20 @@ var Extractor = class {
     const line = this.startLine(node);
     if (expr) {
       const owner = this.owner();
-      const rule = matchCall(this.rules, expr);
+      const inPackage = packageBoundary(this.checker, node, this.rules);
+      const named = matchCall(this.rules, expr);
+      const rule = inPackage !== null ? {
+        kind: inPackage.rule.kind,
+        direction: inPackage.rule.direction,
+        salience: inPackage.rule.salience,
+        exact: /* @__PURE__ */ new Set(),
+        prefix: [],
+        method: /* @__PURE__ */ new Set(),
+        subscript: /* @__PURE__ */ new Set(),
+        contains: [],
+        targetArg: 0,
+        target: inPackage.rule.target
+      } : named;
       const site = this.recordCall(
         owner.id,
         expr,
@@ -211871,7 +211947,13 @@ var Extractor = class {
           routine_id: owner.id,
           kind: rule.kind,
           direction: rule.direction,
-          target: this.target(node, rule.targetArg),
+          target: this.target(
+            node,
+            expr,
+            rule.target,
+            rule.targetArg,
+            inPackage?.pkg ?? ""
+          ),
           line,
           evidence: expr
         };
@@ -211881,7 +211963,7 @@ var Extractor = class {
       this.maybeNetwork(node, expr, line);
     }
     this.maybeComprehension(node);
-    if (import_typescript3.default.isCallExpression(node)) this.expressionsIn(node.expression);
+    if (import_typescript4.default.isCallExpression(node)) this.expressionsIn(node.expression);
     for (const arg of node.arguments ?? []) this.expressionsIn(arg);
   }
   /**
@@ -211932,12 +212014,12 @@ var Extractor = class {
   jsxProps(node) {
     const out = [];
     node.attributes.properties.forEach((attr, idx) => {
-      if (import_typescript3.default.isJsxSpreadAttribute(attr)) {
+      if (import_typescript4.default.isJsxSpreadAttribute(attr)) {
         out.push({ idx, expr: this.text(attr.expression), splat: true });
         return;
       }
       const init2 = attr.initializer;
-      const expr = init2 === void 0 ? "" : import_typescript3.default.isJsxExpression(init2) ? this.text(init2.expression) : this.text(init2);
+      const expr = init2 === void 0 ? "" : import_typescript4.default.isJsxExpression(init2) ? this.text(init2.expression) : this.text(init2);
       out.push({ idx, expr, keyword: this.text(attr.name) });
     });
     return out;
@@ -211946,17 +212028,34 @@ var Extractor = class {
     const out = [];
     (node.arguments ?? []).forEach((arg, idx) => {
       const rec = { idx, expr: this.text(arg) };
-      if (import_typescript3.default.isSpreadElement(arg)) rec.splat = true;
+      if (import_typescript4.default.isSpreadElement(arg)) rec.splat = true;
       out.push(rec);
     });
     return out;
   }
-  /** What is being touched: the literal where it is knowable, the expression where not. */
-  target(node, idx) {
+  /**
+   * What is being touched, by the strategy the rule declares (`rules.TargetKind`).
+   *
+   * `arg` is the original: the literal where it is knowable, the expression where not.
+   * `receiver_tail` is the segment before the method, which is where Prisma and every
+   * client shaped like it names the thing — `db.booking.findMany(…)` touches **booking**,
+   * where the argument is `{ where: { email } }` and names nothing at all. `package` is
+   * the dependency, for a rule the checker matched: what a `stripe` call touches is
+   * Stripe, and the expression is already in `evidence`.
+   */
+  target(node, expr, kind, idx, pkg) {
+    if (kind === "package") return pkg;
+    if (kind === "receiver_tail") {
+      const parts = expr.split(".");
+      while (parts.length > 1 && PROMISE_TAIL.has(parts[parts.length - 1] ?? "")) {
+        parts.pop();
+      }
+      return parts.length >= 3 ? parts[parts.length - 2] ?? "" : parts[0] ?? "";
+    }
     if (idx === null) return "";
     const arg = (node.arguments ?? [])[idx];
     if (arg === void 0) return "";
-    if (import_typescript3.default.isStringLiteral(arg) || import_typescript3.default.isNoSubstitutionTemplateLiteral(arg)) return arg.text;
+    if (import_typescript4.default.isStringLiteral(arg) || import_typescript4.default.isNoSubstitutionTemplateLiteral(arg)) return arg.text;
     return this.text(arg);
   }
   /**
@@ -211966,7 +212065,7 @@ var Extractor = class {
    */
   accessBoundary(node) {
     const parent = node.parent;
-    if (parent !== void 0 && (import_typescript3.default.isCallExpression(parent) || import_typescript3.default.isNewExpression(parent)) && parent.expression === node) {
+    if (parent !== void 0 && (import_typescript4.default.isCallExpression(parent) || import_typescript4.default.isNewExpression(parent)) && parent.expression === node) {
       return false;
     }
     const base = dotted(node.expression);
@@ -211974,12 +212073,12 @@ var Extractor = class {
     const rule = matchSubscript(this.rules, base);
     if (rule === null) return false;
     let target;
-    if (import_typescript3.default.isPropertyAccessExpression(node)) {
-      if (import_typescript3.default.isPrivateIdentifier(node.name)) return false;
+    if (import_typescript4.default.isPropertyAccessExpression(node)) {
+      if (import_typescript4.default.isPrivateIdentifier(node.name)) return false;
       target = node.name.text;
     } else {
       const arg = node.argumentExpression;
-      target = import_typescript3.default.isStringLiteral(arg) || import_typescript3.default.isNoSubstitutionTemplateLiteral(arg) ? arg.text : this.text(arg) || "?";
+      target = import_typescript4.default.isStringLiteral(arg) || import_typescript4.default.isNoSubstitutionTemplateLiteral(arg) ? arg.text : this.text(arg) || "?";
     }
     const line = this.startLine(node);
     const key = `${base}\0${target}\0${line}`;
@@ -212010,17 +212109,17 @@ var Extractor = class {
     if (this.rules.netVerbs.has(last)) call.verb = last.toUpperCase();
     const first = (node.arguments ?? [])[0];
     if (first !== void 0) {
-      call.destination = import_typescript3.default.isStringLiteral(first) || import_typescript3.default.isNoSubstitutionTemplateLiteral(first) ? first.text : this.text(first);
+      call.destination = import_typescript4.default.isStringLiteral(first) || import_typescript4.default.isNoSubstitutionTemplateLiteral(first) ? first.text : this.text(first);
     }
     if (lib.isAsync) call.is_async = true;
     if (this.isAwaited(node)) call.awaited = true;
     if (this.inAsyncRoutine()) call.in_async_routine = true;
     const bag = (node.arguments ?? [])[1];
-    if (bag !== void 0 && import_typescript3.default.isObjectLiteralExpression(bag)) {
+    if (bag !== void 0 && import_typescript4.default.isObjectLiteralExpression(bag)) {
       for (const [field, keys] of this.rules.netKwargs) {
         for (const prop of bag.properties) {
-          if (!import_typescript3.default.isPropertyAssignment(prop) || !prop.name) continue;
-          const key = import_typescript3.default.isIdentifier(prop.name) || import_typescript3.default.isStringLiteral(prop.name) ? prop.name.text : "";
+          if (!import_typescript4.default.isPropertyAssignment(prop) || !prop.name) continue;
+          const key = import_typescript4.default.isIdentifier(prop.name) || import_typescript4.default.isStringLiteral(prop.name) ? prop.name.text : "";
           if (keys.has(key)) {
             call[field] = this.text(prop.initializer);
             break;
@@ -212032,7 +212131,7 @@ var Extractor = class {
   }
   isAwaited(node) {
     const parent = node.parent;
-    return parent !== void 0 && import_typescript3.default.isAwaitExpression(parent);
+    return parent !== void 0 && import_typescript4.default.isAwaitExpression(parent);
   }
   // --------------------------------------------------------------- control --- //
   nextControlOrdinal(routineId, kind, header) {
@@ -212085,32 +212184,32 @@ var Extractor = class {
   }
   /** Returns true when the node was a control point and has been walked. */
   controlPoint(node) {
-    if (import_typescript3.default.isIfStatement(node)) {
+    if (import_typescript4.default.isIfStatement(node)) {
       if (this.isElseIfRung(node)) return false;
       this.ifLadder(node);
       return true;
     }
-    if (import_typescript3.default.isSwitchStatement(node)) {
+    if (import_typescript4.default.isSwitchStatement(node)) {
       this.switchStatement(node);
       return true;
     }
-    if (import_typescript3.default.isTryStatement(node)) {
+    if (import_typescript4.default.isTryStatement(node)) {
       this.tryStatement(node);
       return true;
     }
-    if (import_typescript3.default.isForOfStatement(node) || import_typescript3.default.isForInStatement(node)) {
+    if (import_typescript4.default.isForOfStatement(node) || import_typescript4.default.isForInStatement(node)) {
       this.forInOf(node);
       return true;
     }
-    if (import_typescript3.default.isForStatement(node)) {
+    if (import_typescript4.default.isForStatement(node)) {
       this.forStatement(node);
       return true;
     }
-    if (import_typescript3.default.isWhileStatement(node)) {
+    if (import_typescript4.default.isWhileStatement(node)) {
       this.whileStatement(node);
       return true;
     }
-    if (import_typescript3.default.isDoStatement(node)) {
+    if (import_typescript4.default.isDoStatement(node)) {
       this.doStatement(node);
       return true;
     }
@@ -212118,7 +212217,7 @@ var Extractor = class {
   }
   isElseIfRung(node) {
     const parent = node.parent;
-    return parent !== void 0 && import_typescript3.default.isIfStatement(parent) && parent.elseStatement === node;
+    return parent !== void 0 && import_typescript4.default.isIfStatement(parent) && parent.elseStatement === node;
   }
   ifLadder(node) {
     const rungs = [];
@@ -212127,7 +212226,7 @@ var Extractor = class {
     while (cursor !== void 0) {
       rungs.push(cursor);
       const other = cursor.elseStatement;
-      if (other !== void 0 && import_typescript3.default.isIfStatement(other)) {
+      if (other !== void 0 && import_typescript4.default.isIfStatement(other)) {
         cursor = other;
       } else {
         tail = other;
@@ -212162,13 +212261,13 @@ var Extractor = class {
    * because `if (!x) return` and `if (!x) throw` are the same sentence and opposite facts.
    */
   leavesWith(body) {
-    const statements = import_typescript3.default.isBlock(body) ? [...body.statements] : [body];
+    const statements = import_typescript4.default.isBlock(body) ? [...body.statements] : [body];
     const last = statements[statements.length - 1];
     if (last === void 0) return "";
-    if (import_typescript3.default.isReturnStatement(last)) return "return";
-    if (import_typescript3.default.isThrowStatement(last)) return "throw";
-    if (import_typescript3.default.isContinueStatement(last)) return "continue";
-    if (import_typescript3.default.isBreakStatement(last)) return "break";
+    if (import_typescript4.default.isReturnStatement(last)) return "return";
+    if (import_typescript4.default.isThrowStatement(last)) return "throw";
+    if (import_typescript4.default.isContinueStatement(last)) return "continue";
+    if (import_typescript4.default.isBreakStatement(last)) return "break";
     return "";
   }
   switchStatement(node) {
@@ -212176,7 +212275,7 @@ var Extractor = class {
     const clauses = node.caseBlock.clauses;
     const point = this.addPoint(node, "DECISION", header, "switch", clauses.length || 1);
     clauses.forEach((clause, i) => {
-      const isDefault = import_typescript3.default.isDefaultClause(clause);
+      const isDefault = import_typescript4.default.isDefaultClause(clause);
       this.addArm(
         point,
         i,
@@ -212214,8 +212313,8 @@ var Extractor = class {
     });
   }
   forInOf(node) {
-    const word = import_typescript3.default.isForOfStatement(node) && node.awaitModifier ? "for await" : "for";
-    const header = `${this.text(node.initializer)} ${import_typescript3.default.isForOfStatement(node) ? "of" : "in"} ${this.text(node.expression)}`;
+    const word = import_typescript4.default.isForOfStatement(node) && node.awaitModifier ? "for await" : "for";
+    const header = `${this.text(node.initializer)} ${import_typescript4.default.isForOfStatement(node) ? "of" : "in"} ${this.text(node.expression)}`;
     const once = this.onceRange(node.expression, node.statement);
     const point = this.addPoint(node, "LOOP", header, word, 1, "", once);
     this.addArm(point, 0, "for", node.statement);
@@ -212266,13 +212365,13 @@ var Extractor = class {
    * token long (rule 1).
    */
   maybeComprehension(node) {
-    if (!import_typescript3.default.isCallExpression(node)) return;
-    if (!import_typescript3.default.isPropertyAccessExpression(node.expression)) return;
+    if (!import_typescript4.default.isCallExpression(node)) return;
+    if (!import_typescript4.default.isPropertyAccessExpression(node.expression)) return;
     const last = node.expression.name.text;
     if (!ITERATION_METHODS.has(last)) return;
     const first = (node.arguments ?? [])[0];
     if (first === void 0) return;
-    if (!import_typescript3.default.isArrowFunction(first) && !import_typescript3.default.isFunctionExpression(first)) return;
+    if (!import_typescript4.default.isArrowFunction(first) && !import_typescript4.default.isFunctionExpression(first)) return;
     const receiver = node.expression.expression;
     const header = this.text(node.expression);
     const once = receiver ? this.onceRange(receiver, first) : [0, 0];
@@ -212317,7 +212416,7 @@ var Extractor = class {
    * there. Recording it twice would make one sentence two facts (rule 40).
    */
   leadingComments(node) {
-    const ranges = import_typescript3.default.getLeadingCommentRanges(this.src, node.getFullStart()) ?? [];
+    const ranges = import_typescript4.default.getLeadingCommentRanges(this.src, node.getFullStart()) ?? [];
     const out = [];
     for (const range of ranges) {
       const raw = this.src.slice(range.pos, range.end);
@@ -212331,7 +212430,7 @@ var Extractor = class {
     const mods = node.modifiers;
     const out = [];
     for (const mod of mods ?? []) {
-      if (import_typescript3.default.isDecorator(mod)) out.push(this.text(mod.expression));
+      if (import_typescript4.default.isDecorator(mod)) out.push(this.text(mod.expression));
     }
     return out;
   }
@@ -212353,7 +212452,7 @@ var ITERATION_METHODS = /* @__PURE__ */ new Set([
 ]);
 function moduleDoc(sf, src) {
   const first = sf.statements[0];
-  const ranges = import_typescript3.default.getLeadingCommentRanges(src, first ? first.getFullStart() : 0) ?? [];
+  const ranges = import_typescript4.default.getLeadingCommentRanges(src, first ? first.getFullStart() : 0) ?? [];
   const head = ranges[0];
   if (head === void 0) return "";
   const raw = src.slice(head.pos, head.end);
@@ -212362,13 +212461,13 @@ function moduleDoc(sf, src) {
 }
 function makeSourceFile(rel, source) {
   const isTsx = rel.endsWith(".tsx") || rel.endsWith(".jsx");
-  return import_typescript3.default.createSourceFile(
+  return import_typescript4.default.createSourceFile(
     rel,
     source,
-    { languageVersion: import_typescript3.default.ScriptTarget.Latest, jsDocParsingMode: import_typescript3.default.JSDocParsingMode.ParseAll },
+    { languageVersion: import_typescript4.default.ScriptTarget.Latest, jsDocParsingMode: import_typescript4.default.JSDocParsingMode.ParseAll },
     /* setParentNodes */
     true,
-    isTsx ? import_typescript3.default.ScriptKind.TSX : import_typescript3.default.ScriptKind.TS
+    isTsx ? import_typescript4.default.ScriptKind.TSX : import_typescript4.default.ScriptKind.TS
   );
 }
 function walkFile(rel, source, rules2, sf, checker) {
@@ -212378,14 +212477,14 @@ function walkFile(rel, source, rules2, sf, checker) {
   ex.run();
   return ex;
 }
-function extractFile(rel, source, rules2, sf) {
+function extractFile(rel, source, rules2, sf, checker) {
   const facts = {
     path: rel,
     lang: "typescript",
     module: moduleName(rel),
     content_hash: hashSource(source)
   };
-  const ex = walkFile(rel, source, rules2, sf);
+  const ex = walkFile(rel, source, rules2, sf, checker);
   const doc = moduleDoc(ex.sf, source);
   if (doc) facts.doc = doc;
   const ways = waysIn(rel, ex.sf, rules2, ex.routines, ex.anchors);
@@ -212407,10 +212506,10 @@ function extractFile(rel, source, rules2, sf) {
 }
 
 // src/edges.ts
-var import_typescript5 = __toESM(require_typescript(), 1);
+var import_typescript6 = __toESM(require_typescript(), 1);
 
 // src/program.ts
-var import_typescript4 = __toESM(require_typescript(), 1);
+var import_typescript5 = __toESM(require_typescript(), 1);
 var import_node_path = require("node:path");
 var import_node_fs = require("node:fs");
 
@@ -213539,14 +213638,14 @@ function optionsFor(configPath) {
     // answer about code that compiles perfectly for its own author.
     skipLibCheck: true,
     noResolve: false,
-    target: import_typescript4.default.ScriptTarget.Latest
+    target: import_typescript5.default.ScriptTarget.Latest
   };
   if (configPath === null) return base;
-  const read = import_typescript4.default.readConfigFile(configPath, import_typescript4.default.sys.readFile);
+  const read = import_typescript5.default.readConfigFile(configPath, import_typescript5.default.sys.readFile);
   if (read.error !== void 0) return base;
-  const parsed = import_typescript4.default.parseJsonConfigFileContent(
+  const parsed = import_typescript5.default.parseJsonConfigFileContent(
     read.config,
-    import_typescript4.default.sys,
+    import_typescript5.default.sys,
     (0, import_node_path.dirname)(configPath),
     void 0,
     configPath
@@ -213596,7 +213695,7 @@ var Session = class {
       const roots = groups.get(config) ?? [];
       const options = optionsFor(config === "" ? null : config);
       const host = this.compilerHost(options);
-      const program = import_typescript4.default.createProgram(roots, options, host);
+      const program = import_typescript5.default.createProgram(roots, options, host);
       this.projects.push({
         config,
         program,
@@ -213620,7 +213719,7 @@ var Session = class {
    * rather than by re-deriving a line.
    */
   compilerHost(options) {
-    const host = import_typescript4.default.createCompilerHost(
+    const host = import_typescript5.default.createCompilerHost(
       options,
       /* setParentNodes */
       true
@@ -213628,8 +213727,8 @@ var Session = class {
     const cache = this.byPath;
     const libOf = (fileName) => fileName.startsWith(LIB_DIR) ? TS_LIBS[fileName.slice(LIB_DIR.length + 1)] : void 0;
     host.getDefaultLibLocation = () => LIB_DIR;
-    host.getDefaultLibFileName = (o) => `${LIB_DIR}/${import_typescript4.default.getDefaultLibFileName(o)}`;
-    host.fileExists = (fileName) => libOf(fileName) !== void 0 || import_typescript4.default.sys.fileExists(fileName);
+    host.getDefaultLibFileName = (o) => `${LIB_DIR}/${import_typescript5.default.getDefaultLibFileName(o)}`;
+    host.fileExists = (fileName) => libOf(fileName) !== void 0 || import_typescript5.default.sys.fileExists(fileName);
     host.readFile = (fileName) => {
       const lib = libOf(fileName);
       if (lib !== void 0) return lib;
@@ -213679,6 +213778,24 @@ var Session = class {
     }
     return held;
   }
+  /**
+   * The checker of the project holding one file, for the **extraction** pass.
+   *
+   * Chunk 10 needed a checker only in the edge sweep, which walks each project in turn and
+   * has one to hand. Chunk 11c needs one per `extract` request, because a boundary can
+   * now be a fact about the package a call resolves into (`pkg.ts`) and boundaries are
+   * per-file facts — so the answer has to be available where the file is read.
+   *
+   * `undefined` where nothing has been opened, which is the shape chunk 9's tests drive
+   * and is a real answer: no checker, no package rules, and the name rules decide alone.
+   */
+  checkerFor(abs) {
+    const at = (0, import_node_path.resolve)(abs);
+    for (const project of this.projects) {
+      if (project.program.getSourceFile(at) !== void 0) return project.checker;
+    }
+    return void 0;
+  }
   close() {
     this.projects = [];
     this.byPath.clear();
@@ -213687,7 +213804,7 @@ var Session = class {
 
 // src/edges.ts
 function callee(node) {
-  return import_typescript5.default.isJsxSelfClosingElement(node) || import_typescript5.default.isJsxOpeningElement(node) ? node.tagName : node.expression;
+  return import_typescript6.default.isJsxSelfClosingElement(node) || import_typescript6.default.isJsxOpeningElement(node) ? node.tagName : node.expression;
 }
 function anchorsOf(decls, anchors) {
   const out = [];
@@ -213697,11 +213814,24 @@ function anchorsOf(decls, anchors) {
   }
   return out;
 }
+function namesARoutine(node) {
+  if (import_typescript6.default.isFunctionTypeNode(node) || import_typescript6.default.isConstructorTypeNode(node) || import_typescript6.default.isCallSignatureDeclaration(node) || import_typescript6.default.isConstructSignatureDeclaration(node) || import_typescript6.default.isMethodSignature(node) || import_typescript6.default.isIndexSignatureDeclaration(node) || import_typescript6.default.isPropertySignature(node)) {
+    return false;
+  }
+  if (import_typescript6.default.isParameter(node) || import_typescript6.default.isBindingElement(node)) return false;
+  if (import_typescript6.default.isVariableDeclaration(node)) {
+    const init2 = node.initializer;
+    return init2 !== void 0 && (import_typescript6.default.isArrowFunction(init2) || import_typescript6.default.isFunctionExpression(init2));
+  }
+  return true;
+}
 function climb(node, anchors) {
+  if (!namesARoutine(node)) return null;
   let at = node;
-  while (at !== void 0 && !import_typescript5.default.isSourceFile(at)) {
+  while (at !== void 0 && !import_typescript6.default.isSourceFile(at)) {
     const hit = anchors.get(at);
     if (hit !== void 0) return hit;
+    if (import_typescript6.default.isFunctionLike(at)) return null;
     at = at.parent;
   }
   return null;
@@ -213799,7 +213929,7 @@ function resolveOne(checker, node, anchors) {
     if (hit !== null) return { routine: hit, how: "signature" };
   }
   let symbol = checker.getSymbolAtLocation(callee(node));
-  if (symbol !== void 0 && (symbol.flags & import_typescript5.default.SymbolFlags.Alias) !== 0) {
+  if (symbol !== void 0 && (symbol.flags & import_typescript6.default.SymbolFlags.Alias) !== 0) {
     try {
       symbol = checker.getAliasedSymbol(symbol);
     } catch {
@@ -213874,7 +214004,13 @@ function onExtract(frame) {
   const echoed = hashSource(source);
   let facts;
   try {
-    facts = extractFile(rel, source, rules, session.sourceFile(abs, rel, source));
+    facts = extractFile(
+      rel,
+      source,
+      rules,
+      session.sourceFile(abs, rel, source),
+      session.checkerFor(abs)
+    );
   } catch (err) {
     return {
       t: "failed",

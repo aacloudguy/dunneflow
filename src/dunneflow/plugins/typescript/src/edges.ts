@@ -113,19 +113,86 @@ function anchorsOf(
 }
 
 /**
+ * Whether a declaration could name a routine at all — the climb's one stopping condition.
+ *
+ * **Found by chunk 11c and it is a false edge, not a missing one.** `lib/rate-limit.ts`
+ * writes `const { DynamoDBClient } = await import("@aws-sdk/client-dynamodb")` and then
+ * `new DynamoDBClient({})`. The checker answers that call with the **binding element** —
+ * which sits *inside* `getDocClient` — so an unguarded climb walks up out of it, finds the
+ * first anchor above, and reports `getDocClient` calling `getDocClient`. Two of DunneCorp's
+ * internal edges were that, and both named a routine that calls itself once, in a program
+ * with no recursion in it.
+ *
+ * **And a type is not an implementation.** `run(action: () => Promise<R>)` calling
+ * `action()` resolves — through rung 1 — to the `FunctionType` node in the parameter's own
+ * annotation, which climbs to `run` and reports it calling itself. That was the last self
+ * call left on DunneCorp after the three value shapes below, and it is the same defect a
+ * third way: a shape somebody wrote down is not somewhere control can go.
+ *
+ * Three value shapes and one argument: each names a **value** rather than a declared
+ * function.
+ * A destructured binding and a parameter are values whatever encloses them — `run(action)`
+ * calling `action()` is a call through something its caller supplied, and reporting it as
+ * `run` calling `run` is the same false edge in its last shape. A `const` names a routine
+ * only when what it is bound to is a function, which is the same test
+ * `Extractor.variableStatement` applies when it decides to record one there, so the two
+ * cannot disagree about what `const f = () => {}` is.
+ *
+ * Measured after: **58 of DunneCorp's 403 internal edges were a routine calling itself**,
+ * and one remained until `isParameter` joined the list. `const [x, setX] = useState()` is
+ * the commonest line in React, so a React map was 27% self-calls — the kind of number that
+ * looks like a busy program rather than a broken reader (rule 49).
+ */
+function namesARoutine(node: ts.Node): boolean {
+  // A type is not an implementation. Every kind here can appear **only** inside a type,
+  // so a call that resolves to one goes wherever the value it was called through came
+  // from — which is exactly what this map cannot say. An overload *signature* is a
+  // `FunctionDeclaration` with no body and is deliberately not in this list, because
+  // resolving an overload set to the declaration the arguments fit is chunk 10's own
+  // feature and the shape it was tested on.
+  if (ts.isFunctionTypeNode(node) || ts.isConstructorTypeNode(node)
+      || ts.isCallSignatureDeclaration(node) || ts.isConstructSignatureDeclaration(node)
+      || ts.isMethodSignature(node) || ts.isIndexSignatureDeclaration(node)
+      || ts.isPropertySignature(node)) {
+    return false;
+  }
+  if (ts.isParameter(node) || ts.isBindingElement(node)) return false;
+  if (ts.isVariableDeclaration(node)) {
+    const init = node.initializer;
+    return init !== undefined
+      && (ts.isArrowFunction(init) || ts.isFunctionExpression(init));
+  }
+  return true;
+}
+
+/**
  * The nearest routine this node sits in, by the anchors the extractor recorded.
  *
- * The climb is unconditional and stops at the first anchor, because a checker's declaration
- * is frequently an inner node of the thing the extractor anchored on — it points at an
- * `ArrowFunction` and the routine was anchored on the `VariableStatement` three levels up.
- * It stops at the source file rather than running out of parents, so a declaration that
- * belongs to no routine answers *nothing* rather than the file.
+ * The climb is needed because a checker's declaration is frequently an inner node of the
+ * thing the extractor anchored on — it points at an `ArrowFunction` and the routine was
+ * anchored on the `VariableStatement` three levels up. It stops at the source file rather
+ * than running out of parents, so a declaration that belongs to no routine answers
+ * *nothing* rather than the file.
+ *
+ * **It has two stopping conditions and each catches what the other cannot.**
+ * `namesARoutine` refuses a declaration that could not name a function at all; the
+ * function-like test inside the loop refuses a declaration that sits **inside a function
+ * this reader did not record**, where every anchor above belongs to something else. A
+ * binding directly inside a named function needs the first and passes the second; an arrow
+ * handed to `useCallback` needs the second and passes the first.
  */
 function climb(node: ts.Node, anchors: Map<ts.Node, Routine>): Routine | null {
+  if (!namesARoutine(node)) return null;
   let at: ts.Node | undefined = node;
   while (at !== undefined && !ts.isSourceFile(at)) {
     const hit = anchors.get(at);
     if (hit !== undefined) return hit;
+    // **The climb stops at a function this reader did not record.** `const triggerRefresh
+    // = useCallback(() => {…})` is an anonymous callback, which is deliberately not a
+    // routine (see `extract.ts`' header) — so a declaration inside it belongs to it, and
+    // the anchor above it is the *enclosing* component. Walking past one is how a React
+    // provider came to call itself six times.
+    if (ts.isFunctionLike(at)) return null;
     at = at.parent;
   }
   return null;

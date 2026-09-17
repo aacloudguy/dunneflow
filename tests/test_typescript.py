@@ -1142,3 +1142,132 @@ def test_the_route_names_are_the_yaml_s_and_the_derivation_is_the_readers():
     assert "app" in rule["roots"] and "src/app" in rule["roots"]
     assert "page.tsx" in rule["pages"] and "route.ts" in rule["handlers"]
     assert rule["strip_groups"] is True
+
+
+# ------------------------------------------ the boundary a name cannot reach --- #
+#
+# Chunk 11c. The `boundaries` rules match the dotted *spelling* of an expression, which is
+# a guess about what somebody called a local variable. These match the package the checker
+# resolved the call into, which is what the compiler worked out to type it.
+
+PACKAGE_TREE: dict[str, str] = {
+    "tsconfig.json": """{
+  "compilerOptions": { "strict": true, "target": "ES2022", "module": "ESNext",
+                       "moduleResolution": "bundler" }
+}
+""",
+    # A stand-in for a dependency, laid out the way one is: inside `node_modules`, with the
+    # package's name in the path, which is the only thing `packageOf` reads.
+    "node_modules/resend/index.d.ts": """
+export declare class Resend {
+  constructor(key: string);
+  emails: { send(opts: { to: string }): Promise<void> };
+}
+""",
+    "node_modules/resend/package.json": '{"name":"resend","types":"index.d.ts"}\n',
+    "node_modules/@types/bcrypt/index.d.ts": """
+export declare function hash(plain: string, rounds: number): Promise<string>;
+""",
+    "node_modules/@types/bcrypt/package.json": '{"name":"@types/bcrypt"}\n',
+    "node_modules/bcrypt/package.json": '{"name":"bcrypt","types":"../@types/bcrypt/index.d.ts"}\n',
+    "send.ts": """
+import { Resend } from "resend";
+import { hash } from "bcrypt";
+
+export async function notify(to: string): Promise<void> {
+  const resend = new Resend("k");
+  await resend.emails.send({ to });
+}
+
+export async function secret(plain: string): Promise<string> {
+  return hash(plain, 12);
+}
+""",
+}
+
+
+@pytest.fixture(scope="module")
+def packages(tmp_path_factory):
+    if PLUGIN is None:
+        pytest.skip("no typescript plugin in this build")
+    root = tmp_path_factory.mktemp("tspkgs")
+    paths = []
+    for name, source in PACKAGE_TREE.items():
+        p = root / name
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(source, encoding="utf-8")
+        # Only the program's own file is handed over; `node_modules` is the dependency and
+        # the walk never offers one.
+        if name == "send.ts":
+            paths.append(p)
+    PLUGIN.probe()
+    PLUGIN.open(root, paths)
+    try:
+        facts = {ff.path: ff for ff in PLUGIN.extract(paths, root)}
+    finally:
+        PLUGIN.close()
+    return facts
+
+
+def test_a_local_const_holding_a_client_is_still_a_boundary(packages):
+    """`const resend = new Resend(k); resend.emails.send(…)`.
+
+    No rule could match that by name without matching the *variable*, which is rule 5 and
+    is why every Python rule in `detectors/*.yaml` contains a dot. The checker resolved it
+    to type the call, and the package it landed in is the answer.
+    """
+    hits = [b for b in packages["send.ts"].boundaries if b.evidence == "resend.emails.send"]
+    assert len(hits) == 1
+    hit = hits[0]
+    assert (hit.kind.value, hit.direction.value) == ("NETWORK", "OUT")
+    # The thing touched is the dependency; the expression is already the evidence.
+    assert hit.target == "resend"
+
+
+def test_a_package_that_ships_its_types_apart_is_the_same_dependency(packages):
+    """`bcrypt.hash` resolves into `@types/bcrypt`, and they are one dependency.
+
+    Measured on uigen, where `@types/bcrypt` is the only spelling `bcrypt` ever has.
+    """
+    hits = [b for b in packages["send.ts"].boundaries if b.evidence == "hash"]
+    assert [(h.kind.value, h.target) for h in hits] == [("CRYPTO", "bcrypt")]
+
+
+def test_one_call_is_one_boundary_however_it_was_matched(packages):
+    """Rule 40: two lanes claiming one act would be two numbers about one thing."""
+    lines = [b.line for b in packages["send.ts"].boundaries]
+    assert len(lines) == len(set(lines)), packages["send.ts"].boundaries
+
+
+def test_the_package_table_is_the_yamls_and_names_what_it_measured():
+    """The entries that are *absent* matter as much: `zod` is 169 calls in DunneCorp and is
+    validation, `@types/node` is 159 in DunneNote and would collapse every file, process
+    and console boundary into one target called `node`."""
+    table = rules_document("typescript")["packages"]
+    assert table["stripe"]["kind"] == "NETWORK"
+    assert table["@aws-sdk/"]["kind"] == "CLOUD_SDK"
+    # `.prisma` is not a typo: a generated client's types live in `node_modules/.prisma`.
+    assert table[".prisma"]["target"] == "receiver_tail"
+    for absent in ("zod", "@types/node", "react", "next", "svelte", "prosemirror-model"):
+        assert absent not in table, absent
+
+
+def test_an_unknown_target_strategy_is_refused_rather_than_defaulted(tmp_path):
+    """Rule 49, in the file whose whole point is that somebody can edit it.
+
+    Driven through the reader itself, because the refusal is the plugin's: a misspelt
+    strategy that quietly fell back would leave every row it governs naming the wrong
+    thing with nothing to say so.
+    """
+    if PLUGIN is None:
+        pytest.skip("no typescript plugin in this build")
+    doc = dict(rules_document("typescript"))
+    doc["packages"] = {"resend": {"kind": "NETWORK", "target": "the-wrong-word"}}
+    out = subprocess.run(
+        ["node", str(BUNDLE)],
+        input=json.dumps({"t": "open", "id": 1, "root": str(tmp_path),
+                          "files": [], "rules": doc}) + "\n",
+        capture_output=True, text=True, timeout=120,
+    )
+    assert "the-wrong-word" in (out.stdout + out.stderr)
+    assert "receiver_tail" in (out.stdout + out.stderr), "and it names the ones that work"

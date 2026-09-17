@@ -23,6 +23,33 @@ export interface BoundaryRule {
   subscript: Set<string>;
   contains: string[];
   targetArg: number | null;
+  target: TargetKind;
+}
+
+/**
+ * What to call the thing a boundary touches.
+ *
+ * `arg` is the original and the default: the argument at `target_arg`, as written, which
+ * is right for `readFile(p)` and `console.log("…")` where the thing touched is named in
+ * the call. The other two are for the shapes where it is not.
+ *
+ * `receiver_tail` is the dotted segment before the method — `db.booking.findMany(…)`
+ * touches **booking**, and 130 of DunneCorp's rows were recording `{ where: { email } }`
+ * instead, which is a piece of an expression rather than a thing the program touches.
+ *
+ * `package` is the dependency itself, for a rule matched on one: the thing touched *is*
+ * Stripe, and the expression as written is already in `evidence`.
+ */
+export type TargetKind = "arg" | "receiver_tail" | "package";
+
+/** A dependency this program reaches, and what reaching it means. See `pkg.ts`. */
+export interface PackageRule {
+  /** The package, or a scope with its trailing slash: `@aws-sdk/`. */
+  name: string;
+  kind: string;
+  direction: string;
+  salience: string;
+  target: TargetKind;
 }
 
 export interface NetLibrary {
@@ -56,10 +83,36 @@ export interface RuleSet {
   netVerbs: Set<string>;
   netKwargs: Map<string, Set<string>>;
   routes: RouteRule[];
+  packages: PackageRule[];
 }
 
 function asArray(value: unknown): string[] {
   return Array.isArray(value) ? value.map((v) => String(v)) : [];
+}
+
+/**
+ * An unknown `target:` is **refused**, not defaulted.
+ *
+ * **The default differs by table and that is deliberate.** A `boundaries` rule matched a
+ * spelling and says what was passed, so `arg` is right; a `packages` rule matched a
+ * dependency and the dependency *is* the thing touched, so `package` is. One default for
+ * both would make every package row name its first argument, which for `send({to})` is
+ * `{ to }` — a piece of an expression rather than a thing (it is what this chunk went to
+ * the trouble of fixing for Prisma).
+ *
+ * A misspelt strategy that quietly fell back to `arg` would leave every row it governs
+ * looking exactly like a rule nobody had thought about — rule 49, in a config file the
+ * whole point of which is that somebody can edit it without reading this code.
+ */
+function asTarget(value: unknown, fallback: TargetKind = "arg"): TargetKind {
+  if (value === undefined || value === null) return fallback;
+  const word = String(value);
+  if (word === "arg" || word === "receiver_tail" || word === "package") return word;
+  throw new Error(
+    `detectors/typescript.yaml declares target: ${word} — the strategies are arg, ` +
+    `receiver_tail and package. A rule whose target nobody reads is a boundary row ` +
+    `naming the wrong thing, every time, with nothing to say so.`,
+  );
 }
 
 export function parseRules(doc: unknown): RuleSet {
@@ -80,6 +133,7 @@ export function parseRules(doc: unknown): RuleSet {
       targetArg: raw["target_arg"] === undefined || raw["target_arg"] === null
         ? null
         : Number(raw["target_arg"]),
+      target: asTarget(raw["target"]),
     };
     boundaries.push(rule);
     for (const s of rule.subscript) subscriptIndex.set(s, rule);
@@ -104,6 +158,20 @@ export function parseRules(doc: unknown): RuleSet {
     netKwargs.set(k, new Set(asArray(v)));
   }
 
+  const packages: PackageRule[] = Object.entries(
+    (data["packages"] as Record<string, Record<string, unknown>>) ?? {},
+  )
+    .map(([name, v]) => ({
+      name,
+      kind: String(v["kind"]),
+      direction: String(v["direction"] ?? "BOTH"),
+      salience: String(v["salience"] ?? "normal"),
+      target: asTarget(v["target"], "package"),
+    }))
+    // Longest first, so a package inside a declared scope can be given its own answer
+    // without the scope shadowing it.
+    .sort((a, b) => b.name.length - a.name.length);
+
   const routes: RouteRule[] = ((data["routes"] as Record<string, unknown>[]) ?? []).map(
     (raw) => ({
       framework: String(raw["framework"] ?? ""),
@@ -126,6 +194,7 @@ export function parseRules(doc: unknown): RuleSet {
     netVerbs: new Set(asArray(network["verbs"])),
     netKwargs,
     routes,
+    packages,
   };
 }
 

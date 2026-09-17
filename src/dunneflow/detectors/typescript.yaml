@@ -198,6 +198,94 @@ boundaries:
 # What counts as a network call in its own right, for the `net_calls` table. The
 # prefixes are matched longest-first by `load_rules`, so `axios.` and a bare `fetch`
 # can both be declared without one shadowing the other.
+# -- the boundary a name cannot reach ------------------------------------------ #
+#
+# **Matched against the package the checker resolved a call into, not against its
+# spelling.** The `boundaries` rules above match the dotted form of an expression, which is
+# a guess about what somebody called a local variable; these match what the compiler
+# already worked out to type the call. Three of DunneCorp's four most interesting
+# boundaries are written in ways no spelling rule can find:
+#
+#     const resend = new Resend(apiKey);  await resend.emails.send({…})
+#     await getStripe().checkout.sessions.create({…})
+#     await doc.send(new UpdateCommand({…}))
+#
+# **A package rule outranks a name rule**, and a call still yields exactly one boundary
+# (rule 40). Where the checker has spoken its answer is the fact; the spellings above are
+# the fallback for everything it could not resolve. `plugins/typescript/src/pkg.ts` is the
+# one place it is asked.
+#
+# **Every entry below was measured**, and the count is the corpus it was measured on. That
+# matters most for the ones that are *not* here: `zod` is 169 calls in DunneCorp and is
+# validation rather than a boundary, `prosemirror-*` is 143 in DunneNote and is a document
+# model in memory, `svelte` is 256, and `@types/node` is 159 — which must stay out, or
+# every file, process and console boundary in the map would collapse into one target
+# called `node`. A package this tool cannot say anything true about is left to the name
+# rules, which can at least say what was passed.
+#
+# **`@types/foo` is `foo`.** A package that ships no types of its own declares them in a
+# separate one, and they are the same dependency — measured on uigen, where `@types/bcrypt`
+# is the only spelling `bcrypt` ever has. A trailing slash makes an entry a **scope**:
+# `@aws-sdk/` matches every package in it and `stripe` never matches `stripe-webhooks`.
+#
+# `target` says what to call the thing touched, and `package` is the default: the
+# dependency is the thing, and the expression as written is already the evidence.
+# `receiver_tail` is for the one shape where the program names something more specific in
+# the middle of the call — `db.booking.findMany(…)` touches **booking**, and 130 of
+# DunneCorp's rows are that shape.
+packages:
+  # -- databases -------------------------------------------------------------- #
+  # `.prisma` is not a typo: a generated Prisma client's types live in
+  # `node_modules/.prisma/client`, and that is where 130 of DunneCorp's calls resolve to.
+  # `@prisma/client` is where the rest of them land.
+  ".prisma":        {kind: DATABASE, direction: BOTH, salience: high, target: receiver_tail}
+  "@prisma/client": {kind: DATABASE, direction: BOTH, salience: high, target: receiver_tail}
+  "pg":             {kind: DATABASE, direction: BOTH, salience: high}
+  "mysql2":         {kind: DATABASE, direction: BOTH, salience: high}
+  "better-sqlite3": {kind: DATABASE, direction: BOTH, salience: high}
+  "mongodb":        {kind: DATABASE, direction: BOTH, salience: high}
+  "mongoose":       {kind: DATABASE, direction: BOTH, salience: high}
+  "drizzle-orm":    {kind: DATABASE, direction: BOTH, salience: high}
+  "knex":           {kind: DATABASE, direction: BOTH, salience: high}
+  "@supabase/":     {kind: DATABASE, direction: BOTH, salience: high}
+
+  # -- network ---------------------------------------------------------------- #
+  # 6 calls each in DunneCorp, and neither is reachable by name: `getStripe()` is a factory
+  # and `resend` is a local `const`.
+  "stripe":         {kind: NETWORK, direction: BOTH, salience: high}
+  "resend":         {kind: NETWORK, direction: OUT,  salience: high}
+  "axios":          {kind: NETWORK, direction: BOTH, salience: high}
+  "ky":             {kind: NETWORK, direction: BOTH, salience: high}
+  "got":            {kind: NETWORK, direction: BOTH, salience: high}
+  "undici":         {kind: NETWORK, direction: BOTH, salience: high}
+  "node-fetch":     {kind: NETWORK, direction: BOTH, salience: high}
+
+  # -- cloud SDKs ------------------------------------------------------------- #
+  # **`@smithy/` is here because the measurement put it here.** `doc.send(new
+  # UpdateCommand(…))` is the one call that actually reaches DynamoDB, and `.send` is
+  # declared by smithy — AWS's own protocol library — rather than by `@aws-sdk/lib-dynamodb`,
+  # which declares the command. A table holding only `@aws-sdk/` catches the construction
+  # and misses the request.
+  "@aws-sdk/":      {kind: CLOUD_SDK, direction: BOTH, salience: high}
+  "@smithy/":       {kind: CLOUD_SDK, direction: BOTH, salience: high}
+  "@google-cloud/": {kind: CLOUD_SDK, direction: BOTH, salience: high}
+  "firebase-admin": {kind: CLOUD_SDK, direction: BOTH, salience: high}
+
+  # -- large-model APIs ------------------------------------------------------- #
+  # uigen, which is the only tree here that calls one: `ai` 4, `@ai-sdk/anthropic` 1.
+  "ai":             {kind: LLM_API, direction: BOTH, salience: high}
+  "@ai-sdk/":       {kind: LLM_API, direction: BOTH, salience: high}
+  "@anthropic-ai/": {kind: LLM_API, direction: BOTH, salience: high}
+  "openai":         {kind: LLM_API, direction: BOTH, salience: high}
+
+  # -- cryptography ----------------------------------------------------------- #
+  # `bcryptjs` 4 in DunneCorp, `bcrypt` 2 and `jose` 7 in uigen.
+  "bcryptjs":       {kind: CRYPTO, direction: BOTH, salience: high}
+  "bcrypt":         {kind: CRYPTO, direction: BOTH, salience: high}
+  "argon2":         {kind: CRYPTO, direction: BOTH, salience: high}
+  "jose":           {kind: CRYPTO, direction: BOTH, salience: high}
+  "jsonwebtoken":   {kind: CRYPTO, direction: BOTH, salience: high}
+
 # -- ways in a framework declares by where a file sits ------------------------- #
 #
 # **A Next.js App Router page is a way in, and nothing in the file says so.** There is no

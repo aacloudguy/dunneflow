@@ -237,6 +237,25 @@ export class Session {
     return held;
   }
 
+  /**
+   * The checker of the project holding one file, for the **extraction** pass.
+   *
+   * Chunk 10 needed a checker only in the edge sweep, which walks each project in turn and
+   * has one to hand. Chunk 11c needs one per `extract` request, because a boundary can
+   * now be a fact about the package a call resolves into (`pkg.ts`) and boundaries are
+   * per-file facts — so the answer has to be available where the file is read.
+   *
+   * `undefined` where nothing has been opened, which is the shape chunk 9's tests drive
+   * and is a real answer: no checker, no package rules, and the name rules decide alone.
+   */
+  checkerFor(abs: string): ts.TypeChecker | undefined {
+    const at = resolve(abs);
+    for (const project of this.projects) {
+      if (project.program.getSourceFile(at) !== undefined) return project.checker;
+    }
+    return undefined;
+  }
+
   close(): void {
     this.projects = [];
     this.byPath.clear();

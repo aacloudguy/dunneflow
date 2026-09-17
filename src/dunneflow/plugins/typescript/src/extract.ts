@@ -38,8 +38,12 @@
 import ts from "typescript";
 import { callSiteId, controlPointId, hashSource, makeId } from "./ids.js";
 import { dotted, isConstruction } from "./dotted.js";
-import { matchCall, matchNetwork, matchSubscript, type RuleSet } from "./rules.js";
+import {
+  matchCall, matchNetwork, matchSubscript,
+  type BoundaryRule, type RuleSet, type TargetKind,
+} from "./rules.js";
 import { waysIn } from "./routes.js";
+import { packageBoundary } from "./pkg.js";
 import type {
   ArmKind,
   BoundaryHit,
@@ -68,6 +72,9 @@ const LITERAL_MIN = 3;
 const LITERAL_MAX = 200_000;
 
 const MODULE_SCOPE = "<module>";
+
+/** What a promise chain adds after the call that did the work. See `target`. */
+const PROMISE_TAIL = new Set(["then", "catch", "finally"]);
 
 /**
  * Every node this reader records a call site at.
@@ -160,10 +167,14 @@ export class Extractor {
    */
   callNodes: { site: CallSite; node: CallNode }[] = [];
   /**
-   * The program's checker, when this walk is the edge pass. Held and never *used* here:
-   * what a call resolves to is `edges.ts`' question, and an extractor that answered it
-   * would be a reader deciding what a name means — the thing chunk 9 deliberately refused
-   * to do by guessing and chunk 10 refuses to do by inference.
+   * The program's checker, where there is one. `undefined` when nothing has been opened.
+   *
+   * **It was held and never used until chunk 11c**, and the reason it is used now is worth
+   * stating because it looks like the line chunk 9 drew being crossed. It is not: what a
+   * call resolves to is still `edges.ts`' question and this walk never answers it. What
+   * this asks is narrower and is a different fact — *which package declares the far end* —
+   * because a boundary is a per-file fact and cannot be filled by a whole-program sweep
+   * the way an edge can (`pkg.ts`). A name is still never matched against a routine here.
    */
   checker: ts.TypeChecker | undefined;
 
@@ -701,7 +712,20 @@ export class Extractor {
 
     if (expr) {
       const owner = this.owner();
-      const rule = matchCall(this.rules, expr);
+      // **The checker first, the spelling second** — `pkg.ts` says why. A package rule is
+      // what the compiler resolved; a name rule is a guess about what somebody called a
+      // local variable. Either way it is one boundary and never one from each (rule 40).
+      const inPackage = packageBoundary(this.checker, node, this.rules);
+      const named = matchCall(this.rules, expr);
+      const rule: BoundaryRule | null = inPackage !== null
+        ? {
+            kind: inPackage.rule.kind,
+            direction: inPackage.rule.direction,
+            salience: inPackage.rule.salience,
+            exact: new Set(), prefix: [], method: new Set(), subscript: new Set(),
+            contains: [], targetArg: 0, target: inPackage.rule.target,
+          }
+        : named;
       const site = this.recordCall(owner.id, expr, line, rule !== null,
                                    this.callArgs(node), isConstruction(node));
       this.callNodes.push({ site, node });
@@ -710,7 +734,8 @@ export class Extractor {
           routine_id: owner.id,
           kind: rule.kind as BoundaryHit["kind"],
           direction: rule.direction as BoundaryHit["direction"],
-          target: this.target(node, rule.targetArg),
+          target: this.target(node, expr, rule.target, rule.targetArg,
+                              inPackage?.pkg ?? ""),
           line,
           evidence: expr,
         };
@@ -800,8 +825,40 @@ export class Extractor {
     return out;
   }
 
-  /** What is being touched: the literal where it is knowable, the expression where not. */
-  target(node: ts.CallExpression | ts.NewExpression, idx: number | null): string {
+  /**
+   * What is being touched, by the strategy the rule declares (`rules.TargetKind`).
+   *
+   * `arg` is the original: the literal where it is knowable, the expression where not.
+   * `receiver_tail` is the segment before the method, which is where Prisma and every
+   * client shaped like it names the thing — `db.booking.findMany(…)` touches **booking**,
+   * where the argument is `{ where: { email } }` and names nothing at all. `package` is
+   * the dependency, for a rule the checker matched: what a `stripe` call touches is
+   * Stripe, and the expression is already in `evidence`.
+   */
+  target(
+    node: ts.CallExpression | ts.NewExpression,
+    expr: string,
+    kind: TargetKind,
+    idx: number | null,
+    pkg: string,
+  ): string {
+    if (kind === "package") return pkg;
+    if (kind === "receiver_tail") {
+      const parts = expr.split(".");
+      // **A promise's own methods are dropped first.** `db.user.update({…}).catch(…)`
+      // folds to `db.user.update.catch` by clause 2 of the dotted contract, so the model
+      // is two segments back rather than one — 1 of DunneCorp's 130 rows, which named
+      // `update` where every other row named a table. The list is here rather than in the
+      // YAML because it is a fact about the language and not about any library.
+      while (parts.length > 1 && PROMISE_TAIL.has(parts[parts.length - 1] ?? "")) {
+        parts.pop();
+      }
+      // `db.booking.findMany` -> booking; `db.$transaction` -> db. Two segments have no
+      // tail beyond the root, and the root is then the most specific thing written.
+      return parts.length >= 3
+        ? (parts[parts.length - 2] ?? "")
+        : (parts[0] ?? "");
+    }
     if (idx === null) return "";
     const arg = (node.arguments ?? [])[idx];
     if (arg === undefined) return "";
@@ -1322,6 +1379,7 @@ export function extractFile(
   source: string,
   rules: RuleSet,
   sf?: ts.SourceFile,
+  checker?: ts.TypeChecker,
 ): FileFacts {
   const facts: FileFacts = {
     path: rel,
@@ -1330,7 +1388,7 @@ export function extractFile(
     content_hash: hashSource(source),
   };
 
-  const ex = walkFile(rel, source, rules, sf);
+  const ex = walkFile(rel, source, rules, sf, checker);
   const doc = moduleDoc(ex.sf, source);
   if (doc) facts.doc = doc;
 

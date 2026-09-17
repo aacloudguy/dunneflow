@@ -133,7 +133,8 @@ function onExtract(frame: Frame): Record<string, unknown> {
   try {
     // The compilation's own source file where there is one, so the extraction walk and
     // the edge pass are one traversal of one tree (`program.Session.sourceFile`).
-    facts = extractFile(rel, source, rules, session.sourceFile(abs, rel, source));
+    facts = extractFile(rel, source, rules, session.sourceFile(abs, rel, source),
+                        session.checkerFor(abs));
   } catch (err) {
     return {
       t: "failed",

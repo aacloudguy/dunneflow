@@ -80,6 +80,28 @@ def _rules(block: dict[str, Any], lang: str) -> DiscoveryRules:
     )
 
 
+def plugin_fingerprint_files(lang: str) -> list[Path]:
+    """Every file whose bytes decide what this reader does.
+
+    Two shapes, and each is the honest one for its kind. A reader on the far side of a
+    pipe is its **built bundle** -- `plugin.json` and `main.bundle.mjs`, named rather than
+    globbed (rule 12: a glob over a directory that was not bundled returns nothing and
+    blames the whole build for one missing plugin), and never its source tree and never
+    `node_modules`. A reader that runs in this interpreter is a package in this program,
+    so its whole tree is globbed: it cannot forget a file somebody adds, which is the
+    defence the extraction keys were built on.
+    """
+    plugin = PLUGINS.get(lang)
+    if plugin is None:
+        raise PluginRefused(f"nothing in this build reads {lang!r}.")
+    m = plugin.manifest
+    out = [m.root / name for name in m.fingerprint]
+    if m.reader:
+        out += [p for p in (resource_root() / m.reader).rglob("*.py")
+                if "__pycache__" not in p.parts]
+    return out
+
+
 def suffix_owners(rules: Sequence[DiscoveryRules]) -> dict[str, str]:
     """Which language owns each suffix, refusing where two of them both do.
 
@@ -146,6 +168,30 @@ def read_manifest(path: Path) -> PluginManifest:
             f"it. A reader that owns nothing is a reader that does nothing."
         )
 
+    in_process = bool(data.get("in_process", False))
+    reader = str(data.get("reader", "")).strip()
+    fingerprint = tuple(str(x) for x in data.get("fingerprint", []))
+    if in_process and not reader:
+        raise PluginRefused(
+            f"the {lang} plugin at {path} runs in this interpreter and does not say where "
+            f"its reader lives. Its bytes would then be in no cache key at all, which is "
+            f"rule 12 unenforced for every fact it produces."
+        )
+    if reader and not in_process:
+        raise PluginRefused(
+            f"the {lang} plugin at {path} is not an in-process reader and declares "
+            f"`reader: {reader}`. A reader on the far side of a pipe is its own bundled "
+            f"files; those belong in `fingerprint`, which is hashed, and pointing at this "
+            f"package would hash something that never reads anything."
+        )
+    if not fingerprint:
+        raise PluginRefused(
+            f"the {lang} plugin at {path} names no `fingerprint` files. A plugin that "
+            f"contributes nothing to the cache key cannot be told from a different "
+            f"version of itself, and a declared version alone is a label that does not "
+            f"move when somebody edits it (rule 30)."
+        )
+
     tc = data.get("toolchain")
     toolchain = None
     if isinstance(tc, dict):
@@ -167,10 +213,12 @@ def read_manifest(path: Path) -> PluginManifest:
         toolchain=toolchain,
         entry=str(data.get("entry", "")),
         workers=int(data.get("workers", 1)),
+        in_process=in_process,
+        reader=reader,
         receiver_words=tuple(str(x) for x in data.get("receiver_words", [])),
         supplies_edges=bool(data.get("supplies_edges", False)),
         reports_literals=bool(data.get("reports_literals", False)),
-        fingerprint=tuple(str(x) for x in data.get("fingerprint", [])),
+        fingerprint=fingerprint,
         root=path.parent,
     )
 
@@ -198,9 +246,21 @@ def _load() -> tuple[dict[str, IngestPlugin], dict[str, str]]:
                                       m.discovery])
         manifests[m.lang] = m
 
-        reader = _IN_PROCESS.get(m.lang)
-        if reader is not None:
-            plugins[m.lang] = InProcessPlugin(m, reader)
+        runs_here = _IN_PROCESS.get(m.lang)
+        if m.in_process != (runs_here is not None):
+            # A manifest is a label and the code is the identity (rule 30). The two
+            # disagreeing means either a plugin claiming to be part of this program when
+            # it is not, or a reader running here that nothing declared -- and the second
+            # is the one that would quietly skip the checks above.
+            raise PluginRefused(
+                f"the {m.lang} plugin at {m.root} declares in_process="
+                f"{str(m.in_process).lower()} and this build "
+                f"{'has' if runs_here else 'has no'} in-process reader for it. What runs "
+                f"in this process is decided by `ingest._IN_PROCESS`, never by a data "
+                f"file, and a disagreement about that is a build defect."
+            )
+        if runs_here is not None:
+            plugins[m.lang] = InProcessPlugin(m, runs_here)
         else:
             raise PluginRefused(
                 f"the {m.lang} plugin at {m.root} is not an in-process reader and this "

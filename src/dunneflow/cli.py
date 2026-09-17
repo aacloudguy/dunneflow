@@ -575,6 +575,13 @@ def cmd_analyze(args: argparse.Namespace) -> int:
             # Say it out loud. A silent rebuild looks like a slow run; an unsaid
             # one looks like a fast run that quietly told you last week's truth.
             _emit("graph written by an older DunneFlow — discarded and re-extracted")
+        # And the cheaper half of the same fact. A reader that changed costs its own
+        # language a re-read and costs the others nothing, which is the whole point of
+        # splitting the key -- and a reader watching 412 files re-parse in a repository
+        # they did not touch is owed the reason (design rule 1).
+        for lang, n in sorted(getattr(store, "reread", {}).items()):
+            _emit(f"the {lang} reader has changed — {n:,} file{'' if n == 1 else 's'} "
+                  f"dropped and read again; every other language kept its facts")
         _emit(
             f"files {stats.found} (parsed {stats.parsed}, cached {stats.cached}, "
             f"removed {stats.removed}, failed {stats.failed}) in {t_extract:.1f}s"

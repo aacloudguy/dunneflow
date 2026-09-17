@@ -25,7 +25,7 @@ already keeps between deciding and dropping.
 
 ## Re-stamping the extractor fingerprint, and why it is allowed exactly once
 
-Making paths relative meant editing the extractors, which changes `rules_fingerprint()`,
+Making paths relative meant editing the extractors, which changes their fingerprint,
 which makes every existing store stale -- so a correctly migrated graph would be one nobody
 could open. This module therefore re-stamps `meta.extractor` as well.
 
@@ -398,7 +398,7 @@ def migrate_program(out_dir: Path) -> Report:
     Order is load-bearing. The graphs' recorded roots are read first, because the sidecar
     has no root of its own and migrating a graph deletes the key that supplies it.
     """
-    from .detectors import rules_fingerprint
+    from .detectors import core_fingerprint
     from .detectors.prose import doc_rules_fingerprint
     from .schema import DOC_SCHEMA_VERSION, SCHEMA_VERSION
 
@@ -416,7 +416,7 @@ def migrate_program(out_dir: Path) -> Report:
     for g in graphs:
         report.stores.append(_migrate_one(
             g, "graph", roots.get(revisions.revision_of(g) or "", ""), "source_root",
-            PREVIOUS_CODE_EXTRACTOR, f"{SCHEMA_VERSION}:{rules_fingerprint()}",
+            PREVIOUS_CODE_EXTRACTOR, f"{SCHEMA_VERSION}:{core_fingerprint()}",
             GRAPH_EXEMPT,
         ))
 

@@ -26,7 +26,17 @@ from typing import Literal
 # Bump whenever the stored shape or the meaning of an extracted fact changes.
 # A mismatch discards the graph and re-extracts: graph.db is derived data, and a
 # stale map that answers confidently is worse than no map at all.
-SCHEMA_VERSION = 9
+#
+# **It stopped being load-bearing on 2026-09-17 and it is still here.** This file is in
+# the core extraction key now, so a change to what a fact *is* moves the fingerprint
+# whether or not anybody remembers this line -- which is rule 12's own failure mode, a
+# forgotten bump leaving a confident map answering the previous version of the tool. What
+# the number still does is two things a hash cannot: it is the generation a person reads
+# off `meta`, and it is what a plugin declares it was written against, so a reader whose
+# facts no longer fit is refused by name rather than by a hash nobody can interpret.
+#
+# 10: `files.extractor` -- which reader produced each row, per language.
+SCHEMA_VERSION = 10
 
 
 # --------------------------------------------------------------------------- #

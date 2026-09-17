@@ -497,8 +497,34 @@ def fingerprint_files(paths: Iterable[Path]) -> str:
     return h.hexdigest()[:16]
 
 
-def code_extraction_inputs() -> list[Path]:
-    """Every file that shapes code extraction: the rules, the loader, and the reader.
+# The rules files that belong to no single language, and so to all of them.
+# `annotations.yaml` mines governance markers out of comments and prose alike; a
+# language's own rules file is named by that language's plugin and is hashed with it.
+_SHARED_RULES = ("annotations.yaml",)
+
+
+def core_extraction_inputs() -> list[Path]:
+    """Every file that shapes code extraction **whatever language is being read**.
+
+    This was `code_extraction_inputs()` and it held the Python reader and `python.yaml`,
+    which was the whole truth while Python was the only reader. Split, because the thing
+    rule 12 protects is *a cached fact against the tool that read it*, and editing the
+    TypeScript plugin has nothing to say about a fact the Python reader produced. What is
+    left here is what every reader passes through: the rule loader, the shared rules, the
+    ingest seam that routes and stamps, and the fact contract itself.
+
+    **`schema.py` joins the key, and `SCHEMA_VERSION` stops being load-bearing.** The
+    version is bumped by hand and a forgotten bump is precisely rule 12's failure mode --
+    a confident map answering the previous version of the tool. It stays as the
+    human-readable generation marker, and the file that actually defines what a fact *is*
+    is now hashed like everything else that decides that.
+
+    **`ingest/*.py` is in and `canonical/` is still out**, on the test this list has always
+    applied: what does extraction actually read. The registry decides which reader sees a
+    file, the contract decides what a reader may say, and `stamp_lang` writes a field into
+    every record -- all three shape what a fact is. A canonicaliser still cannot change a
+    fact, only whether two facts compare equal, and it cost a sealed snapshot once to learn
+    that (rules 25 and 62).
 
     Named separately from the hash so a test can assert *membership* rather than
     re-deriving the list, which is the same defence the annotation prefilter uses --
@@ -506,14 +532,16 @@ def code_extraction_inputs() -> list[Path]:
     omits one is the silent no-op this project has paid for repeatedly.
     """
     return [
-        *RULES_DIR.glob("*.yaml"),      # the rules: python.yaml, annotations.yaml
+        *(RULES_DIR / name for name in _SHARED_RULES),
         RULES_DIR / "__init__.py",      # the loader that decides what a rule means
-        *(_PKG_ROOT / "extractors" / "python").rglob("*.py"),  # the reader itself
+        *(_PKG_ROOT / "ingest").glob("*.py"),  # who reads a file, and what it may say
+        _PKG_ROOT / "schema.py",        # what a fact *is*
     ]
 
 
-def rules_fingerprint() -> str:
-    """A hash of everything that shapes *code* extraction -- rules and reader alike.
+@lru_cache(maxsize=1)
+def core_fingerprint() -> str:
+    """A hash of everything that shapes code extraction in **every** language.
 
     `detectors/*.yaml` is the extension point -- teaching DunneFlow a framework is a
     config edit, not a code change. That makes it the thing most often edited and the
@@ -532,6 +560,51 @@ def rules_fingerprint() -> str:
 
     Scope is decided by asking what this extraction actually reads. `detectors/docs/`
     and `prose.py` are absent deliberately -- they shape the *other* corpus, and
-    editing a prose rule must not discard the code graph.
+    editing a prose rule must not discard the code graph. A **reader** is absent for the
+    same argument one axis over: it shapes one language's facts, it is hashed into that
+    language's stamp (`ingest.lang_fingerprint`), and a graph that differs only there
+    loses that language's files rather than all of them.
     """
-    return fingerprint_files(code_extraction_inputs())
+    return fingerprint_files(core_extraction_inputs())
+
+
+def lang_extraction_inputs(lang: str) -> list[Path]:
+    """Every file that shapes **one** language's extraction: its rules and its reader.
+
+    Here rather than in `ingest` because this is the module that owns `RULES_DIR` and the
+    hash, and because the two halves of the answer come from two places: the rules file the
+    plugin declares, which lives beside this one, and the plugin's own files, which the
+    plugin knows about. Asking the registry from here keeps one function that can be asked
+    *what decides this language* (rule 51).
+    """
+    from ..ingest import plugin_fingerprint_files
+
+    declared = _declared_rules(lang)
+    rules = [RULES_DIR / declared] if declared else []
+    return [*rules, *plugin_fingerprint_files(lang)]
+
+
+@lru_cache(maxsize=8)
+def lang_fingerprint(lang: str) -> str:
+    """One reader's stamp: the version it declares and the bytes it is made of.
+
+    **Cached, and that is a measured decision rather than a habit.** `write_file_facts`
+    stamps every row, so an uncached answer re-reads and re-hashes the whole reader once
+    per file -- 628 times over ten files on Society, for a value that cannot change while
+    the process is running. `load_rules` and `resource_root` make the same assumption, in
+    the same words: an application does not become a source checkout halfway through a
+    run.
+
+    **A declared version alone is a label** (rule 30) and it does not move when somebody
+    edits the reader during development, which is exactly when it must. So the version is
+    what a reader *says* it is and the hash is what it *is*, and the pair is what a file's
+    facts are stamped with.
+    """
+    from ..ingest import PLUGINS
+
+    plugin = PLUGINS.get(lang)
+    if plugin is None:
+        raise RulesMissing(
+            f"nothing in this build reads {lang!r}, so there is no reader to fingerprint."
+        )
+    return f"{plugin.manifest.version}:{fingerprint_files(lang_extraction_inputs(lang))}"

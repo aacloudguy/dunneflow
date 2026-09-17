@@ -610,7 +610,7 @@ def test_only_the_python_canonicaliser_knows_how_to_canonicalise():
     """The seam, asserted from the other end: one place makes a canonical form, per language.
 
     And it lives **beside** the extractors rather than inside one, which is not cosmetic:
-    `code_extraction_inputs()` globs `extractors/python/*.py` into the cache key, so a
+    `lang_extraction_inputs()` globs `extractors/python/*.py` into that language's key, so a
     canonicaliser there would discard every graph on the machine — sealed snapshots included
     — every time it was edited, for a change that cannot alter one fact.
     """

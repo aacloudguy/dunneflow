@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import quote
 
-from .detectors import rules_fingerprint
+from .detectors import core_fingerprint, lang_fingerprint
 from .migrate import (
     META_PATHS,
     PATHS_RELATIVE,
@@ -69,7 +69,14 @@ CREATE TABLE IF NOT EXISTS files (
     module       TEXT NOT NULL,
     content_hash TEXT NOT NULL,
     doc          TEXT NOT NULL DEFAULT '',
-    errors       TEXT NOT NULL DEFAULT '[]'
+    errors       TEXT NOT NULL DEFAULT '[]',
+    -- **Which reader produced this row, as a version and a hash of its bytes.** The
+    -- other half of rule 12's split: `meta.extractor` says what every language passed
+    -- through, and this says what *this* file passed through. It is what makes a partial
+    -- discard possible -- editing the TypeScript reader costs the TypeScript rows and
+    -- leaves the Python ones alone -- and it is the only place that fact is recorded, so
+    -- a map cannot hold two answers about which reader read a file (rule 40).
+    extractor    TEXT NOT NULL DEFAULT ''
 );
 
 CREATE TABLE IF NOT EXISTS routines (
@@ -582,13 +589,19 @@ class Store:
         self._refuse_wrong_kind()
         if not writable:
             self.rebuilt = False
+            self.reread = {}
             self._refuse_if_stale()
+            self._refuse_if_a_language_is_stale()
             return
         self.rebuilt = self._discard_if_stale()
         self.conn.executescript(SCHEMA_SQL)
+        # **The other half of the split, and it happens after the schema exists** -- a
+        # brand-new database has no `files` table until the line above has run. Whole
+        # languages only; the reader that changed loses its rows and nothing else does.
+        self.reread = self._discard_stale_languages()
         self.set_meta("kind", "graph")
         self.set_meta("schema_version", str(SCHEMA_VERSION))
-        self.set_meta("extractor", f"{SCHEMA_VERSION}:{rules_fingerprint()}")
+        self.set_meta("extractor", f"{SCHEMA_VERSION}:{core_fingerprint()}")
         # Paths in this graph are relative to the tree it was read from, and the tree is
         # deliberately not recorded -- see `migrate.py`. Stated rather than assumed,
         # because a store with no rows has no absolute path to find and "empty" must not
@@ -621,7 +634,7 @@ class Store:
         The decision, with no side effect. Kept apart from `_discard_if_stale` so a
         reader can ask the same question and refuse rather than destroy.
         """
-        want = f"{SCHEMA_VERSION}:{rules_fingerprint()}"
+        want = f"{SCHEMA_VERSION}:{core_fingerprint()}"
         try:
             row = self.conn.execute(
                 "SELECT value FROM meta WHERE key = 'extractor'"
@@ -666,6 +679,87 @@ class Store:
             f"{self.path} was written by a different version of DunneFlow and "
             f"cannot be read safely -- re-run `dunneflow analyze` to rebuild it"
         )
+
+    def _refuse_if_a_language_is_stale(self) -> None:
+        """A reader never serves facts a different reader produced -- per language.
+
+        The same rule as `_refuse_if_stale`, one axis in, and the sentence says what the
+        cheaper remedy costs: analysing again re-reads **that language** and leaves every
+        other language's rows where they are. Naming the language matters, because *this
+        map is stale* over a Python map whose forty TypeScript files are the problem sends
+        somebody looking in the wrong place (rule 89).
+        """
+        stale = self.stale_languages()
+        if not stale:
+            return
+        named = "; ".join(f"{lang} (read by {was})" for lang, was in sorted(stale.items()))
+        raise StaleGraphError(
+            f"{self.path} holds facts from a reader this build is not: {named}. Re-run "
+            f"`dunneflow analyze` -- it re-reads only the language that changed, and "
+            f"leaves the rest of the map alone."
+        )
+
+    def language_stamps(self) -> dict[str, set[str]]:
+        """Which reader stamps this map holds, per language.
+
+        **Three states, never two** (rule 63, and `finished()`'s shape one store over): a
+        map written before this column existed has no column at all and says nothing --
+        `dunneflow migrate` re-stamps a store that predates it -- which is a different
+        fact from a map whose rows name a reader this build does not match. Reading a
+        column that is not there is an exception rather than an empty answer, so the
+        question is asked of the table first.
+        """
+        have = {str(r[1]) for r in self.conn.execute("PRAGMA table_info(files)")}
+        if "extractor" not in have:
+            return {}
+        out: dict[str, set[str]] = {}
+        for row in self.conn.execute(
+                "SELECT DISTINCT lang, extractor FROM files WHERE lang <> ''"):
+            out.setdefault(str(row[0]), set()).add(str(row[1]))
+        return out
+
+    def stale_languages(self) -> dict[str, str]:
+        """Languages whose rows were read by a reader this build is not, and by which.
+
+        A language this build has **no reader for** is deliberately absent: its rows
+        cannot be re-read and cannot be checked, and refusing a map over a plugin somebody
+        uninstalled would refuse the map for ever. The walk already says that language was
+        not read this time, which is the fact a reader can act on (rule 89).
+        """
+        from .ingest import PLUGINS
+
+        out: dict[str, str] = {}
+        for lang, stamps in self.language_stamps().items():
+            if lang not in PLUGINS:
+                continue
+            want = lang_fingerprint(lang)
+            others = sorted(x for x in stamps if x != want)
+            if others:
+                out[lang] = ", ".join(x or "(unrecorded)" for x in others)
+        return out
+
+    def _discard_stale_languages(self) -> dict[str, int]:
+        """Forget the files one reader produced, when that reader has changed.
+
+        The point of splitting rule 12's key. Core mismatch is still everything dropped;
+        a reader that changed costs **its own** files a re-extraction and costs every
+        other language nothing -- which is what makes a TypeScript plugin editable in a
+        repository that is mostly Python.
+
+        No new destruction mechanism: `forget_file` is the one `write_file_facts` already
+        calls per file, so a language's rows leave by the same door every re-read uses,
+        and `source.db` is never touched (rule 25).
+        """
+        stale = self.stale_languages()
+        out: dict[str, int] = {}
+        for lang in sorted(stale):
+            paths = [str(r[0]) for r in self.conn.execute(
+                "SELECT path FROM files WHERE lang = ?", (lang,))]
+            for path in paths:
+                self.forget_file(path)
+            self.conn.commit()
+            out[lang] = len(paths)
+        return out
 
     def _discard_if_stale(self) -> bool:
         """Drop a graph written by a different version of DunneFlow.
@@ -853,9 +947,10 @@ class Store:
         c = self.conn
         self.forget_file(ff.path)
         c.execute(
-            "INSERT INTO files(path, lang, module, content_hash, doc, errors)"
-            " VALUES(?,?,?,?,?,?)",
-            (ff.path, ff.lang, ff.module, ff.content_hash, ff.doc, json.dumps(ff.errors)),
+            "INSERT INTO files(path, lang, module, content_hash, doc, errors, extractor)"
+            " VALUES(?,?,?,?,?,?,?)",
+            (ff.path, ff.lang, ff.module, ff.content_hash, ff.doc, json.dumps(ff.errors),
+             lang_fingerprint(ff.lang)),
         )
         for r in ff.routines:
             c.execute(

@@ -11,7 +11,8 @@ character of its content changed, and comparing what was written puts its caller
 So this is where that question is answered, and the answer is per language.
 
 **Beside `extractors/` rather than inside it, and that placement is load-bearing.**
-`detectors.code_extraction_inputs()` globs `extractors/python/*.py` into the cache key,
+`detectors.lang_extraction_inputs()` globs `extractors/python/*.py` into that language's
+cache key,
 because rule 12 says a cached fact is valid only if the source *and the tool that read it*
 are unchanged. Nothing here is read by extraction: a canonicaliser cannot change a single
 fact, only whether two facts are judged equal. Living in that glob, editing one would

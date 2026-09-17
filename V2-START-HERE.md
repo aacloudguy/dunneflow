@@ -59,6 +59,14 @@ been rewritten yet. Where they describe the tool they are accurate; where they d
   off `SELECT DISTINCT lang FROM files`. A run says `read: python 628` on all three
   channels, the About dialog included. **1,562 passed · 1 skipped**, mypy clean over 159
   files, ruff clean, golden unmoved.
+* **Rule 12 is split.** Three keys instead of one: `meta.extractor` for what every reader
+  passes through (now including `schema.py` and `ingest/*.py`), and `files.extractor` per
+  row for the reader that produced it — a version and a hash of its rules and its bytes.
+  Editing one language's reader costs that language a re-read and costs the others
+  nothing; a read of a map whose reader has moved is refused **by name**. Pressed end to
+  end, and through the frozen binary: both builds compute the same two stamps and open
+  each other's maps. `SCHEMA_VERSION` is **10** and no longer load-bearing. **1,575 passed
+  · 1 skipped**, mypy clean over 160 files, ruff clean, golden unmoved.
 * **`dunneflow mcp`** — the whole of `PLAN-v2.md` §3, brought forward and shipped. Twelve
   tools, two resources, one base at a time with `programs`/`open` as the topbar's controls,
   and `analyze`/`analysis_status`/`analysis_stop` for making a map rather than reading one.
@@ -105,16 +113,15 @@ plan's own. Tom's call on the front-loading, and his reasoning is recorded: the 
 tool is usable as-is, so v1 defects found along the way are rolled into whichever feature
 chunk owns them rather than scheduled as work of their own.
 
-1. **The fingerprint, split** — `PLAN-v2.md` chunk 5. `rules_fingerprint(lang)` and
-   `code_extraction_inputs(lang)`, per-language `meta`, and a
-   `files.extractor` column. A rule change in one language must not discard another
-   language's graph. **Rule 95 belongs here**: `sql.py` shapes every `sql_ops` row and is in
-   no key, so editing it leaves every cached graph stale and undiscarded. A plugin's own
-   `fingerprint` list is declared in its manifest and read by nothing yet — that is this
-   chunk's first wire, and it is why editing `plugin.json` today discards nothing.
-2. **The resolver split** — chunk 6. `resolve/python/`, a `RESOLVERS` table, and
-   `_BUILTINS` out of two modules and into `python.yaml`, whose diff is measured and
-   recorded rather than absorbed.
+1. **The resolver split** — `PLAN-v2.md` chunk 6. `resolve/python/` moved verbatim, a
+   `RESOLVERS` table, the driver grouping by language, `at_boundary` and the no-edge
+   bookkeeping hoisted, and `_BUILTINS` out of `resolve/calls.py` and
+   `resolve/traceability.py` into `python.yaml`. **Gate: Society's resolution tuples
+   identical except for the `_BUILTINS` move, whose diff is measured and recorded.**
+2. **Rule 95 is still open and now has a home.** `sql.py` shapes every `sql_ops` row and is
+   in no key, so editing it leaves every cached graph stale and undiscarded. The keys exist
+   to put it in; it was left out of chunk 5 deliberately, because deciding whether SQL
+   parsing is core or per-language is the resolver chunk's question.
 
 **Of the four confirmed v1 defects, three are closed.** `BKIND_GLYPH` went in `679d772`;
 `writable=False` now opens `?mode=ro` and genuinely refuses a write, which is what the MCP

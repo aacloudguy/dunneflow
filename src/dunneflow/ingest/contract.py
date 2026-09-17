@@ -209,6 +209,18 @@ class PluginManifest:
     toolchain: Toolchain | None = None
     entry: str = ""
     workers: int = 1
+    # **Whether this reader claims to run in this interpreter**, which is a claim and not
+    # a decision: `ingest._IN_PROCESS` decides, and a manifest that disagrees with it is
+    # refused naming both (rule 30). It was declared and read by nothing at all until the
+    # fingerprint needed to know which kind of reader it was hashing.
+    in_process: bool = False
+    # Where the reader lives, **relative to the package root** rather than to this
+    # plugin's directory -- an in-process reader is part of this program, so
+    # `extractors/python` is a path in the same tree. Empty for a reader on the far side
+    # of a pipe, whose own bytes are its `fingerprint` files. One of the two is always
+    # required: a reader whose bytes are in no key is rule 12 unenforced, and a build that
+    # cannot say which files those are cannot enforce it later either.
+    reader: str = ""
     receiver_words: tuple[str, ...] = ()
     supplies_edges: bool = False
     reports_literals: bool = False

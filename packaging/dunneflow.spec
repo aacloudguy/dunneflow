@@ -7,8 +7,9 @@
 exactly what a module inside a PyInstaller archive does not have. The four kinds:
 
 * `detectors/*.yaml` and `detectors/docs/*.yaml` -- the rules, loaded by `yaml.safe_load`.
-* `detectors/__init__.py`, `detectors/prose.py` and both extractor trees -- **hashed**, not
-  imported, by `rules_fingerprint()` and `doc_rules_fingerprint()`. Rule 12 says a cached
+* `schema.py`, `ingest/`, `plugins/`, `detectors/__init__.py`, `detectors/prose.py` and both
+  extractor trees -- **hashed**, not imported, by `core_fingerprint()`, `lang_fingerprint()`
+  and `doc_rules_fingerprint()`. Rule 12 says a cached
   fact is valid only if the source *and the tool that read it* are unchanged, so the reader
   is in the key; frozen, a reader that exists only inside the archive hashes to nothing.
   They are imported from the archive as usual -- these copies are read as bytes and never
@@ -206,8 +207,16 @@ datas = [
     # the cache key, and a reader with no file hashes to nothing at all.
     (str(PKG / "detectors" / "__init__.py"), "dunneflow/detectors"),
     (str(PKG / "detectors" / "prose.py"), "dunneflow/detectors"),
+    (str(PKG / "schema.py"), "dunneflow"),
+    *_tree(PKG / "ingest", "dunneflow/ingest"),
     *_tree(PKG / "extractors" / "python", "dunneflow/extractors/python"),
     *_tree(PKG / "extractors" / "docs", "dunneflow/extractors/docs"),
+    # **Every plugin, wholesale, and never an enumeration.** `plugin.json` is read as a
+    # file by the registry and hashed into its language's stamp, and rule 92 is the reason
+    # this is a tree rather than a list: a defence assembled from the members that existed
+    # when it was written does not survive a new one. A test asserts every registered
+    # plugin's fingerprint files are in here.
+    *_tree(PKG / "plugins", "dunneflow/plugins"),
     # The page, and the vendored engine.
     *_tree(PKG / "web" / "static", "dunneflow/web/static"),
     *_tree(PKG / "web" / "vendor", "dunneflow/web/vendor"),

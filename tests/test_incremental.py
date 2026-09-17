@@ -166,13 +166,27 @@ def test_the_reader_is_in_the_cache_key() -> None:
     Membership is asserted rather than re-derived: a test that rebuilt the list would
     agree with a wrong list.
     """
-    from dunneflow.detectors import code_extraction_inputs
+    from dunneflow.detectors import core_extraction_inputs, lang_extraction_inputs
     from dunneflow.detectors.prose import doc_extraction_inputs
 
-    code = {p.name for p in code_extraction_inputs()}
-    assert "extract.py" in code, "the Python reader is not in the code cache key"
-    assert "python.yaml" in code and "annotations.yaml" in code
-    assert "__init__.py" in code, "the rule loader is not in the code cache key"
+    # **Two keys now, and which half a file is in is the claim.** The reader and its own
+    # rules stamp the language; the loader, the shared rules, the ingest seam and the fact
+    # contract stamp every language at once. A file in the wrong half is either a plugin
+    # edit that discards somebody else's graph, or a core edit that discards nothing.
+    core = {p.name for p in core_extraction_inputs()}
+    assert "annotations.yaml" in core, "the shared rules are not in the core cache key"
+    assert "__init__.py" in core, "the rule loader is not in the core cache key"
+    assert "schema.py" in core, "what a fact *is* is not in the core cache key"
+    assert "contract.py" in core, "the ingest seam is not in the core cache key"
+
+    python = {p.name for p in lang_extraction_inputs("python")}
+    assert "extract.py" in python, "the Python reader is not in the Python cache key"
+    assert "python.yaml" in python, "Python's own rules are not in its cache key"
+    assert "plugin.json" in python, "the plugin's own manifest is not in its cache key"
+    assert "extract.py" not in core and "python.yaml" not in core, (
+        "one language's reader is in the key every language shares, so editing it would "
+        "discard every other language's graph"
+    )
 
     docs = {p.name for p in doc_extraction_inputs()}
     assert "markdown.py" in docs, "the document reader is not in the doc cache key"
@@ -185,10 +199,11 @@ def test_the_two_corpora_do_not_invalidate_each_other() -> None:
     The stores are separate so each corpus can be re-read on its own; a shared key
     would make a documentation edit cost a full re-parse of the source.
     """
-    from dunneflow.detectors import code_extraction_inputs
+    from dunneflow.detectors import core_extraction_inputs, lang_extraction_inputs
     from dunneflow.detectors.prose import doc_extraction_inputs
 
-    code = {p.resolve() for p in code_extraction_inputs()}
+    code = {p.resolve() for p in (*core_extraction_inputs(),
+                                  *lang_extraction_inputs("python"))}
     docs = {p.resolve() for p in doc_extraction_inputs()}
 
     assert not any(p.name == "markdown.py" for p in code), "docs reader leaked into the code key"
@@ -298,7 +313,8 @@ def test_a_reader_refuses_a_stale_document_store(tmp_path: Path) -> None:
 def test_the_cache_key_holds_only_what_extraction_reads() -> None:
     """The key's own rule, asserted where it can be broken by an ordinary edit.
 
-    `code_extraction_inputs()` globs `extractors/python/*.py`, which is the right default:
+    `lang_extraction_inputs("python")` globs `extractors/python/*.py`, which is the right
+    default:
     rule 12 was earned by a key that hashed the rules and not the reader, and a glob cannot
     forget a file somebody adds. But the glob is a *mechanism* and "what extraction actually
     reads" is the *rule*, and a file dropped into that folder is in the key whether or not
@@ -314,9 +330,9 @@ def test_the_cache_key_holds_only_what_extraction_reads() -> None:
     """
     import ast
 
-    from dunneflow.detectors import code_extraction_inputs
+    from dunneflow.detectors import core_extraction_inputs, lang_extraction_inputs
 
-    for path in code_extraction_inputs():
+    for path in (*core_extraction_inputs(), *lang_extraction_inputs("python")):
         if path.suffix != ".py" or not path.stat().st_size:
             continue
         tree = ast.parse(path.read_text(encoding="utf-8"))
@@ -330,7 +346,8 @@ def test_the_cache_key_holds_only_what_extraction_reads() -> None:
             "graph on the machine"
         )
 
-    names = {p.name for p in code_extraction_inputs()}
+    names = {p.name for p in (*core_extraction_inputs(),
+                              *lang_extraction_inputs("python"))}
     assert "canonical.py" not in names, (
         "a canonicaliser is in the code extraction key. It cannot change a fact — only "
         "whether two facts compare equal — so editing one would discard every graph, sealed "

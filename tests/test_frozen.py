@@ -23,9 +23,11 @@ from dunneflow import macapp, runtime
 from dunneflow.cli import _out_root, build_parser
 from dunneflow.detectors import (
     RulesMissing,
-    code_extraction_inputs,
+    core_extraction_inputs,
+    core_fingerprint,
     fingerprint_files,
-    rules_fingerprint,
+    lang_extraction_inputs,
+    lang_fingerprint,
 )
 from dunneflow.detectors.prose import doc_extraction_inputs, doc_rules_fingerprint
 from dunneflow.web.analysis import argv
@@ -101,13 +103,18 @@ def test_a_directory_is_not_a_rule_file(tmp_path):
 
 
 def test_neither_fingerprint_is_the_hash_of_nothing():
-    assert rules_fingerprint() != HASH_OF_NOTHING
+    assert core_fingerprint() != HASH_OF_NOTHING
     assert doc_rules_fingerprint() != HASH_OF_NOTHING
-    assert rules_fingerprint() != doc_rules_fingerprint()
+    assert core_fingerprint() != doc_rules_fingerprint()
+    # And the third key, which is a version and a hash: the hash half is what moves when
+    # somebody edits the reader, so it may not be the hash of nothing either.
+    assert lang_fingerprint("python").split(":", 1)[1] != HASH_OF_NOTHING
 
 
-@pytest.mark.parametrize("inputs", [code_extraction_inputs, doc_extraction_inputs],
-                         ids=["code", "docs"])
+@pytest.mark.parametrize(
+    "inputs",
+    [core_extraction_inputs, doc_extraction_inputs, lambda: lang_extraction_inputs("python")],
+    ids=["core", "docs", "python"])
 def test_every_extraction_input_is_a_file_that_exists(inputs):
     """The membership assertion the two `*_inputs` functions were split out for.
 
@@ -116,20 +123,67 @@ def test_every_extraction_input_is_a_file_that_exists(inputs):
     *which* file, at the moment somebody moves one.
     """
     found = inputs()
-    assert found, f"{inputs.__name__} found nothing"
+    assert found, "an extraction key found nothing"
     absent = [p for p in found if not p.is_file()]
-    assert not absent, f"{inputs.__name__} names files that are not there: {absent}"
+    assert not absent, f"an extraction key names files that are not there: {absent}"
+
+
+def test_every_rules_file_is_in_exactly_one_key():
+    """The glob became a list, and a list is a thing somebody forgets to add to.
+
+    `core_extraction_inputs` globbed `detectors/*.yaml` while every rules file governed
+    every extraction there was. Splitting it made the language files the plugins' to
+    declare — which is more precise and is also how a rules file comes to be in **no**
+    key: written, loaded, and invisible to rule 12. So the directory is the authority and
+    the keys are checked against it.
+
+    `detectors/docs/` is out of this by the same rule one corpus over, and is asserted
+    above.
+    """
+    from dunneflow import ingest
+
+    on_disk = {p.name for p in (SRC / "detectors").glob("*.yaml")}
+    keyed = {p.name for p in core_extraction_inputs() if p.suffix == ".yaml"}
+    for lang in ingest.PLUGINS:
+        keyed |= {p.name for p in lang_extraction_inputs(lang) if p.suffix == ".yaml"}
+    assert on_disk <= keyed, (
+        f"rules files in no cache key at all: {sorted(on_disk - keyed)} — they are loaded "
+        "and hashed by nothing, so editing one leaves every cached graph stale and "
+        "undiscarded (rule 95's shape, one directory over)"
+    )
+
+
+def test_a_plugins_own_files_are_in_the_bundle():
+    """Rule 92: a defence assembled from an enumeration does not survive a new member.
+
+    The spec bundled `extractors/python` and `extractors/docs` by name, which was the
+    whole truth when those were the readers. A plugin arrives as a directory now, so what
+    is asserted is that **every registered plugin's** fingerprint files travel — checked
+    against the registry rather than against a list written beside it.
+    """
+    from dunneflow import ingest
+
+    spec = SPEC.read_text(encoding="utf-8")
+    assert '"dunneflow/plugins"' in spec, "plugins/ is not bundled at all"
+    for lang in ingest.PLUGINS:
+        for path in ingest.plugin_fingerprint_files(lang):
+            top = path.relative_to(SRC).parts[0]
+            assert top in spec, (
+                f"{lang}'s fingerprint reads {path.name} out of {top}/, which the spec "
+                f"does not bundle — frozen, that hashes nothing"
+            )
 
 
 def test_the_two_keys_do_not_share_a_reader():
     """Editing a prose rule must not discard the code graph, and the reverse.
 
-    Stated in `rules_fingerprint`'s docstring as the reason `detectors/docs/` and
+    Stated in `core_fingerprint`'s docstring as the reason `detectors/docs/` and
     `prose.py` are absent from the code key. Asserted here because both lists now come
     from `resource_root()`, and a resource root is exactly the sort of change that makes
     two globs start overlapping.
     """
-    code = {p.relative_to(SRC) for p in code_extraction_inputs()}
+    code = {p.relative_to(SRC)
+            for p in (*core_extraction_inputs(), *lang_extraction_inputs("python"))}
     docs = {p.relative_to(SRC) for p in doc_extraction_inputs()}
     # By relative path and never by name: both keys hold a file called `__init__.py`, and
     # they are two different files. That is `fingerprint_files`' own labelling argument,
@@ -375,7 +429,7 @@ ENTITLEMENTS = SRC.parent.parent / "packaging" / "entitlements.plist"
 def test_the_spec_bundles_every_extraction_input():
     """A file the fingerprint hashes must travel as **data**, not only in the archive.
 
-    This is the whole of blocker 1's other half: `code_extraction_inputs()` names the
+    This is the whole of blocker 1's other half: the extraction keys name the
     detectors' loader and both extractor trees, and a module that exists only inside a
     PyInstaller archive has no file to read. The spec is parsed rather than run, so this
     costs nothing and still fails the moment a reader is added to a key and not to the
@@ -383,7 +437,8 @@ def test_the_spec_bundles_every_extraction_input():
     """
     spec = SPEC.read_text(encoding="utf-8")
     wanted = {p.relative_to(SRC).parts[0] for p in
-              (*code_extraction_inputs(), *doc_extraction_inputs())}
+              (*core_extraction_inputs(), *lang_extraction_inputs("python"),
+               *doc_extraction_inputs())}
     for top in sorted(wanted):
         assert top in spec, f"{top}/ is hashed into a cache key and is not in the spec"
     # The page and the engine, which are not hashed but are 404s without this.

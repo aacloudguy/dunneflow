@@ -16133,3 +16133,115 @@ is the resolver chunk's work.
   construction site inside every extractor — and the refusal in `stamp_lang` is what makes
   the blank safe today.
 * `CLAUDE.md`'s *Adding a language* is still v1's sentence. Chunk 14.
+
+## 2026-09-17 — rule 12, split per language
+
+`PLAN-v2.md`'s chunk 5. One key protected every fact in the map, so editing the reader for
+one language would discard every other language's facts — which is the thing that makes a
+TypeScript plugin unmergeable in a repository that is mostly Python. There are three keys
+now, and the gate held: **7 of 7 digests identical**, 1,575 passed · 1 skipped, mypy clean
+over 160 files, ruff clean.
+
+| Key | Holds | Moves when |
+|---|---|---|
+| `meta.extractor` | `annotations.yaml`, `detectors/__init__.py`, `ingest/*.py`, **`schema.py`** | anything every reader passes through changes |
+| `files.extractor` | per row: `<plugin version>:<hash of its rules and its reader>` | that one language's reader changes |
+
+**`schema.py` joins the core key and `SCHEMA_VERSION` stops being load-bearing.** The bump
+is by hand and a forgotten bump is precisely rule 12's failure mode. The number stays for
+the two things a hash cannot do: it is the generation a person reads off `meta`, and it is
+what a plugin declares it was written against, so a reader whose facts no longer fit is
+refused by name rather than by a hash nobody can interpret. It is **10** now —
+`files.extractor` is a stored-shape change.
+
+**`ingest/*.py` is in the core key and `canonical/` still is not**, on the test this list
+has always applied: what does extraction actually read. The registry decides which reader
+sees a file, the contract decides what a reader may say, and `stamp_lang` writes a field
+into every record — all three shape what a fact *is*. A canonicaliser still cannot change
+a fact, only whether two facts compare equal, and it cost a sealed snapshot once to learn
+that (rules 25 and 62).
+
+### Two places where the plan was not followed, and why
+
+* **The per-language stamp is a column and not `meta.extractor.<lang>`.** The plan had
+  both. Two places recording one fact is two numbers about one thing (rule 40), and the
+  meta key is derivable from the column while the column can express something the key
+  cannot: a map half-updated by an interrupted run. So the rows are the authority and
+  `language_stamps()` is the one place they are read. It also keeps `meta` at 16 keys,
+  which is what let the golden's row counts stay byte-identical.
+* **A language's own rules file is in that language's key, not the core.** The plan's table
+  put `detectors/*.yaml` in the core, which would make editing `typescript.yaml` discard
+  the Python graph — the exact outcome the chunk exists to prevent, and the opposite of its
+  own stated goal. `_SHARED_RULES` is the core's list (`annotations.yaml`, which mines
+  governance markers from comments and prose alike) and a plugin declares its own. **The
+  glob became a list, so the directory is now the authority**: a test asserts every
+  `detectors/*.yaml` is in exactly one key, because a rules file in no key at all is loaded,
+  hashed by nothing, and invisible to rule 12 — rule 95's shape one directory over.
+
+### What a changed reader now costs, measured
+
+Pressed end to end rather than asserted, by moving the Python plugin's declared version
+and analysing again:
+
+```
+the python reader has changed — 1 file dropped and read again; every other language kept its facts
+```
+
+The core stamp did not move (`10:ac876498ab54a443` before and after) and the row's stamp
+did (`1.0.0:…` → `1.0.1:…`). With the version put back, a **read** of that map is refused
+by name: *holds facts from a reader this build is not: python (read by 1.0.1:81094cd…)*,
+with the sentence saying that analysing again re-reads only the language that changed. A
+read may refuse and may never repair (rule 20), and it did not: the rows were still there
+afterwards.
+
+**Three states, never two, twice over.** A language this build has **no reader for** is
+left alone rather than refused — its rows cannot be re-read and cannot be checked, and
+refusing a map over a plugin somebody uninstalled would refuse it for ever; the walk
+already says that language was not read this time, which is the fact somebody can act on
+(rule 89). And a map with **no such column at all** — what `dunneflow migrate` leaves —
+says nothing rather than reading as stale (rule 63).
+
+### The reader must say where it lives, and the manifest is still only a label
+
+* An **in-process** plugin declares `reader: extractors/python`, package-relative, and is
+  refused without one: its bytes would be in no cache key at all, which is rule 12
+  unenforced for every fact it produces. An out-of-process plugin is refused *with* one —
+  its own bytes are its `fingerprint` files, the **built bundle** and never the source tree.
+* A plugin naming no `fingerprint` files at all is refused. A declared version alone is a
+  label that does not move when somebody edits the reader (rule 30), which is exactly when
+  it must.
+* `in_process` in the manifest is now read, and cross-checked against `ingest._IN_PROCESS`:
+  a disagreement refuses naming both. What runs in this process is decided by that table
+  and never by a data file.
+
+### Packaging, and the guard that caught it
+
+`schema.py`, `ingest/` and `plugins/` are hashed, so frozen they must travel as **data** or
+they hash nothing. `tests/test_frozen.py` derives what the spec must bundle from the keys
+themselves and failed the moment `ingest/` joined one — which is the defence working rather
+than a test needing an update. `plugins/` is bundled **wholesale**, and a second test walks
+the registry rather than a list beside it: rule 92 says a defence assembled from an
+enumeration does not survive a new member, and `extractors/python` and `extractors/docs`
+were exactly such an enumeration.
+
+**Verified through the binary, as `CLAUDE.md` requires when `packaging/` or `detectors/`
+moves.** A host build analysing Society reports the same two stamps the checkout computes
+— core `10:91525594e021b516` and python `1.0.0:5ad58664e93395f9` — and the two builds open
+each other's maps, 4,823 routines either way.
+
+### Measured
+
+`lang_fingerprint` is cached, and that was a measurement rather than a habit:
+`write_file_facts` stamps every row, so an uncached answer re-reads and re-hashes the whole
+reader once per file — 628 times over ten files on Society. Extraction of Society is 2.2 s
+warm with the cache, against 4.7 s without it on the same tree and the same disk state.
+
+### Open, and stated
+
+* `CLAUDE.md` quotes v1's fingerprint (`extractor = 9:e8c9ac8a851c41b7`) as a measured
+  packaging figure. It is still true of v1 and is no longer true here; that file is v2's to
+  rewrite in chunk 14, and no figure in it has been retaken (rule 24).
+* `migrate.py` re-stamps a schema-5 store to the current core value and says nothing about
+  per-language stamps. It cannot: such a store has no `extractor` column, and the reader
+  that produced its rows is long gone. `language_stamps()` answers *nothing recorded* for
+  it, which is why a migrated snapshot still opens.

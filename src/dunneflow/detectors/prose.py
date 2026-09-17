@@ -3,10 +3,11 @@
 The rules live in `detectors/docs/*.yaml`; only the matching lives here. That split is
 what makes "teach it about another documentation habit" a config edit.
 
-The subdirectory is deliberate. `rules_fingerprint()` globs `detectors/*.yaml` and does
-not recurse, so editing a prose rule invalidates the document store without discarding
-the code graph -- the two corpora are re-read independently, which is the whole reason
-they are stored apart.
+The subdirectory is deliberate. Neither code key reaches into it -- the core one names
+the rules every language shares and a language's own key names the file its plugin
+declares -- so editing a prose rule invalidates the document store without discarding the
+code graph. The two corpora are re-read independently, which is the whole reason they are
+stored apart.
 """
 
 from __future__ import annotations
@@ -121,7 +122,7 @@ def load_prose_rules() -> ProseRules:
 
 
 def doc_extraction_inputs() -> list[Path]:
-    """Every file that shapes document extraction. See `code_extraction_inputs`."""
+    """Every file that shapes document extraction. See `core_extraction_inputs`."""
     return [
         *DOC_RULES_DIR.glob("*.yaml"),              # the prose rules
         DOC_RULES_DIR.parent / "annotations.yaml",  # governs both corpora

@@ -3,9 +3,10 @@
   "display": "Python",
   "version": "1.0.0",
   "protocol": 1,
-  "schema_version": 9,
+  "schema_version": 10,
   "rules": "python.yaml",
   "in_process": true,
+  "reader": "extractors/python",
   "receiver_words": [
     "self",
     "cls"

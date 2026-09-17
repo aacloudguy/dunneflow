@@ -1241,7 +1241,46 @@ def build_parser() -> argparse.ArgumentParser:
                          "The reader can switch it from the page; this is how a chosen "
                          "base survives a restart of the server.")
     sv.set_defaults(func=cmd_serve)
+
+    mc = sub.add_parser("mcp", help="answer the map to an agent over MCP, on stdin/stdout")
+    mc.add_argument("out_dir", nargs="?", default=None,
+                    help="an analysed program's directory, or the output root holding "
+                         "several (default: the output root)")
+    mc.add_argument("--revision", default=None,
+                    help="which point in time to open as the base (default: the newest)")
+    mc.set_defaults(func=cmd_mcp)
     return p
+
+
+def cmd_mcp(args: argparse.Namespace) -> int:
+    """Serve the map to an agent over MCP. Read-only throughout, like `serve`.
+
+    **Nothing may be printed.** stdout carries JSON-RPC and nothing else, so every sentence
+    this command has to say goes to stderr through `_emit` — including the ones `serve`
+    prints happily, such as `_out_root`'s *"no --output given"*. That is the same
+    two-channel discipline `--progress-json` already runs under, one degree stricter: a
+    progress reader skips a line it cannot parse and an MCP client may fail the session.
+
+    The argument is `serve`'s, and so is the question it is asked: whether a directory is a
+    program or a root is decided by whether it **holds a map**, never by what it is called
+    (rule 30). One function answers it for both — `web.serve.where`.
+    """
+    from .mcp.server import serve as serve_mcp
+
+    given = Path(args.out_dir) if args.out_dir else None
+    if given is None:
+        try:
+            given = default_output_root()
+        except MapsRootGone as exc:
+            # Said and then carried on, exactly as `cmd_serve` does: an agent that gets
+            # silence cannot tell a missing disk from an empty map (rule 49). What is
+            # never done is `mkdir` on the chosen path -- see `cmd_serve` for why that
+            # would put a new empty root on the very drive the reader was clearing.
+            _emit(f"error: {exc}")
+            given = platform_output_root()
+            _emit(f"opening {given} in the meantime — nothing there has been touched")
+    _emit(f"dunneflow mcp — reading {given}")
+    return serve_mcp(_emit)
 
 
 def cmd_render(args: argparse.Namespace) -> int:

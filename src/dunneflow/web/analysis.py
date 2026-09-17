@@ -149,7 +149,7 @@ def argv(source: Path, name: str, out_root: Path, docs: bool) -> list[str]:
     one.** It used to be spelled out here as `[sys.executable, "-m", "dunneflow.cli", ...]`,
     which is right in a checkout and meaningless in a packaged application: `-m` names a
     module to an interpreter, and there is no interpreter to name it to. That would have
-    left **+ Analyze a directory...** -- the only way a first-time reader gets a map at all
+    left **+ Analyse a directory...** -- the only way a first-time reader gets a map at all
     -- failing on the one build where it is the only way in.
 
     `--quiet` **with** `--progress-json`, deliberately: it empties the prose channel so

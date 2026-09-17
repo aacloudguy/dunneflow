@@ -10,7 +10,7 @@ all six views are already showing it. Switching view never loses your place.
 ## The top bar
 
 **The program menu** (`dunneflow — 78 files`) switches between every program under your
-maps root. Its last two entries are **+ Analyze a directory…**, so you can read a new tree
+maps root. Its last two entries are **+ Analyse a directory…**, so you can read a new tree
 without going back to the start page, and **× Close this map**, which puts you back on the
 start page with nothing open.
 
@@ -92,7 +92,7 @@ indistinguishable from a group that has nothing.
 
 Everything known about the current selection, on the right.
 
-![The inspector for dunneflow.cli.cmd_serve: the qualified name, its file and line range, ANALYZED and ROUTINE tags, "◇ Keep this" and "Collapse all" buttons, then IN 2 listing its callers with confidence tags and its docstring, then OUT 14 listing what it calls](images/05-inspector.png)
+![The inspector for dunneflow.cli.cmd_serve: the qualified name, its file and line range, ANALYSED and ROUTINE tags, "◇ Keep this" and "Collapse all" buttons, then IN 2 listing its callers with confidence tags and its docstring, then OUT 14 listing what it calls](images/05-inspector.png)
 
 - **IN** What calls this, and how sure DunneFlow is about each: `CERTAIN`, `INFERRED`,
   `EXTERNAL`. Confidence is drawn as shape and wording, never as colour alone.

@@ -35,6 +35,35 @@ commit either: it was taken partway through a session and the session kept writi
 has to be taken last. **The numbers are
 addresses. Never reuse one, never renumber, never close a gap.**
 
+## House spelling — British in prose, and an identifier is an address
+
+**Prose is British English.** Measured before it was decided rather than asserted: across
+every `.md` in this repository, outside fenced blocks and inline code, the split was
+**381 `-ise` to 35 `-ize`** — `analyse`, `colour`, `behaviour`, `normalise`,
+`canonicalise`. The 35 were drift, quotations, or identifiers, and the convention was
+already the one the project had been writing in for a year. Tom's own inclination is
+American and he has said so; this is his delegation of the choice, not a claim about which
+is correct.
+
+**Three kinds of word, and only the first one moves.**
+
+| | |
+|---|---|
+| **Prose** — comments, docstrings, documents, and **the strings a reader sees on screen** | British. A UI label is prose: the reader reads it, nobody imports it. |
+| **Identifiers** — `dunneflow analyze`, `analyze.js`, `Analyze.OPTION`, `analyze_tree`, a CSS `color:` | **Never touched.** They are addresses, like the rule numbers: something types them, imports them or matches them, and a spelling change is a rename with no warning. |
+| **Quotations** — Tom's words in `HANDOFF.md`, a sentence read out of somebody else's document, a library's own name | **Never touched, in either direction.** Evidence is quoted as written or it is not evidence. |
+
+**The dated record is not rewritten.** `HANDOFF.md` says what was built and what it was
+called at the time; `BRIEFING.md`'s "before that" entries are the same. Correcting a
+spelling there would be editing the record to agree with the present, which is the one
+thing a record may not do. Live surfaces — the product, the user guide, this file — are
+brought into line instead.
+
+*What this rule was minted from:* the program selector's last option read
+**+ Analyze a directory…** and the dialog it opened was titled **Analyse a directory** —
+two spellings of one control, a second apart, in the gesture that is the only way a
+first-time reader gets a map at all. Rule 71's shape in the reader's language.
+
 ## What this tool is for
 
 A program is started, fed inputs at its boundary, pulls more from its environment
@@ -282,7 +311,7 @@ everything.
   sixteen more analyses. `walk.py`'s serial fallback cannot catch it: nothing in the parent
   raises, because the parent is fine and the children are the program.
 * **`self_argv()`** is how the analysis subprocess runs this same build. `-m dunneflow.cli`
-  means nothing to a binary, and that would have broken **+ Analyze a directory…** on the
+  means nothing to a binary, and that would have broken **+ Analyse a directory…** on the
   one build where it is the only way in.
 * **`default_output_root()`** is `./output` from a checkout and, frozen, **whatever the
   reader chose** — `platform_output_root()` when they have not. That platform answer is
@@ -460,7 +489,7 @@ stale in the one file every session loads, and it was found by a chapter of the 
 disagreeing with it.* What is still open is stated in `BRIEFING.md` and nowhere else, so
 there is one place to read it.
 
-**`serve` also *makes* a program.** The `<select>`'s last option, `+ Analyze a directory…`,
+**`serve` also *makes* a program.** The `<select>`'s last option, `+ Analyse a directory…`,
 reads a source tree into a new directory under the output root and puts it in the list —
 `POST /api/analyze`, `GET /api/analysis`, `web/analysis.py`. Four things about it:
 

@@ -47,7 +47,7 @@ The inspector on the right is the part to read now.
 
 > **web.serve._reveal_linux**
 > web/serve.py:3732–3773
-> ANALYZED · ROUTINE
+> ANALYSED · ROUTINE
 
 **IN 1** — who calls it. `reveal_dir`, marked **CERTAIN**, with its own first line quoted
 underneath: *"Show one directory on a Linux desktop, by the two means a desktop offers."*

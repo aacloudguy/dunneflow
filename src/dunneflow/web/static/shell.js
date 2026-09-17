@@ -11816,7 +11816,7 @@ function viewInspectorFold(s) {
       <div class="loc">${esc(id.file || "")}${(s.where || {}).first
         ? `:${s.where.first}–${s.where.last}` : ""} ${gotoCodeBtn(id.file, (s.where || {}).first)}</div>
       <div class="tags">
-        <span class="badge certain">ANALYZED</span>
+        <span class="badge certain">ANALYSED</span>
         <span class="kind-tag">${esc(what.toUpperCase())}</span>
         <span class="kind-tag">${id.folded} folded</span>
         <span style="margin-left:auto;display:flex;gap:.3rem">
@@ -12079,7 +12079,7 @@ function viewInspectorConstant(s) {
       <div class="loc">${esc(id.file || "")}${id.line ? `:${id.line}` : ""} ${
         gotoCodeBtn(id.file, id.line)}</div>
       <div class="tags">
-        <span class="badge certain">ANALYZED</span>
+        <span class="badge certain">ANALYSED</span>
         <span class="kind-tag">CONSTANT</span>
         ${tags}
         <span style="margin-left:auto;display:flex;gap:.3rem">
@@ -12236,7 +12236,7 @@ function viewInspectorPlate(s) {
       <h2>${breakable(s.label || s.id)}</h2>
       <div class="loc">a plate of the stack, at <code>${esc(id.level || "")}</code> detail</div>
       <div class="tags">
-        <span class="badge certain">ANALYZED</span>
+        <span class="badge certain">ANALYSED</span>
         <span class="kind-tag">${esc(id.tag || "PLATE")}</span>
         ${id.merged ? `<span class="kind-tag">MERGED</span>` : ""}
         <span class="kind-tag">${total.toLocaleString()} on it</span>
@@ -12389,7 +12389,7 @@ function viewInspectorTable(s) {
       <h2>${breakable(s.label || s.id)}</h2>
       <div class="loc">a database table — ${esc(id.origin || "")}</div>
       <div class="tags">
-        <span class="badge certain">ANALYZED</span>
+        <span class="badge certain">ANALYSED</span>
         <span class="kind-tag">TABLE</span>
         ${id.temporary ? `<span class="kind-tag">TEMPORARY</span>` : ""}
         <span class="kind-tag">${(id.ops || 0).toLocaleString()} operations</span>
@@ -12680,7 +12680,7 @@ function viewInspector() {
       <div class="loc">${esc(fileName)}${id.line_start
         ? `:${id.line_start}–${id.line_end}` : ""}</div>
       <div class="tags">
-        <span class="badge certain">ANALYZED</span>
+        <span class="badge certain">ANALYSED</span>
         <span class="kind-tag">${esc(s.kind || "")}</span>
         ${id.class_name ? `<span class="kind-tag">${esc(id.class_name)}</span>` : ""}
         <span style="margin-left:auto;display:flex;gap:.3rem">
@@ -14006,7 +14006,7 @@ function wire() {
       const want = String(progSel.value);
       /* The last option makes a program rather than choosing one, so it is routed away
          before anything here treats it as a name. **And the control is repainted**: a
-         `<select>` left reading "+ Analyze a directory..." is a claim about what is being
+         `<select>` left reading "+ Analyse a directory..." is a claim about what is being
          served, and it is the control the reader will believe because it is the one they
          touched (`programSwitchFailed`'s reason, one gesture over). */
       if (want === Analyze.OPTION) {
@@ -17178,7 +17178,7 @@ async function loadCover() {
  *
  * **It has never worked, and it looked as though it did.** The ratified design has this
  * select with three options -- `mensores — 623 files`, `dunneflow — 23 files`,
- * `+ Analyze a directory…` -- and no change handler even there: a statement of intent
+ * `+ Analyse a directory…` -- and no change handler even there: a statement of intent
  * wearing a working control's clothes. The port carried the markup across and emptied the
  * options with every other pinned array, and unlike all of those it never got the endpoint
  * that fills it. Design rule 16's own text, in the topbar of the mockup that ratified it.
@@ -17237,7 +17237,7 @@ function paintPrograms(rows) {
        It is here rather than in `analyze.js` because closing is not that module's subject:
        it owns the analyse gesture and knows nothing about this page. */
   }).join("")
-    + `<option value="${esc(Analyze.OPTION)}">+ Analyze a directory\u2026</option>`
+    + `<option value="${esc(Analyze.OPTION)}">+ Analyse a directory\u2026</option>`
     + `<option value="${esc(CLOSE_OPTION)}">\u00d7 Close this map</option>`;
 }
 

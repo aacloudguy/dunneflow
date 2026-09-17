@@ -4,7 +4,7 @@ Open DunneFlow with a map already showing — any map — and the first control 
 is the program list. Its last two entries are not programs:
 
 ```
-+ Analyze a directory…
++ Analyse a directory…
 × Close this map
 ```
 

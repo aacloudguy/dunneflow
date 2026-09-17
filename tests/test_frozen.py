@@ -171,7 +171,7 @@ def test_self_argv_from_a_checkout():
 def test_the_analysis_subprocess_runs_this_same_build(as_frozen, tmp_path):
     """Blocker 3, at the surface it would have broken.
 
-    **+ Analyze a directory...** is the only way a first-time reader gets a map at all,
+    **+ Analyse a directory...** is the only way a first-time reader gets a map at all,
     and it is the one build where it is the only way in.
     """
     cmd = argv(tmp_path, "x", tmp_path, docs=True)

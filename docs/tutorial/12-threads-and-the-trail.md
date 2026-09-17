@@ -82,7 +82,7 @@ the second number is the useful one.
 
 Press **◇ Keep this** on the `source.db` thread, then follow it.
 
-![The inspector for source.db, tagged ANALYZED and ARTEFACT with a filled "Kept" badge. IN 6 lists six routines that name the file, in cli, migrate and web.serve, each tagged INFERRED. OUT 0 reads "It calls nothing this map can see." TOUCHES 0 reads "It touches no boundary, table, remote or named file. Everything it does, it does in memory." GOVERNANCE 0 reads "No annotations and no comments. The code says what it does and nothing says why." THREADS TO PULL 0 reads "Nothing is beside this one — no shared plan, no shared table, nothing at the other end of anything it touches. That is an ordinary thing to be." The trail above reads dunneflow › cmd_analyze › source.db, followed by Back, Forward, Clear and a badge reading "1 kept"](images/12-trail-and-kept.jpg)
+![The inspector for source.db, tagged ANALYSED and ARTEFACT with a filled "Kept" badge. IN 6 lists six routines that name the file, in cli, migrate and web.serve, each tagged INFERRED. OUT 0 reads "It calls nothing this map can see." TOUCHES 0 reads "It touches no boundary, table, remote or named file. Everything it does, it does in memory." GOVERNANCE 0 reads "No annotations and no comments. The code says what it does and nothing says why." THREADS TO PULL 0 reads "Nothing is beside this one — no shared plan, no shared table, nothing at the other end of anything it touches. That is an ordinary thing to be." The trail above reads dunneflow › cmd_analyze › source.db, followed by Back, Forward, Clear and a badge reading "1 kept"](images/12-trail-and-kept.jpg)
 
 The trail gains a badge: **◆ 1 kept**. The navigator's EXPLORE group gains a row. And the
 page behind it says what the shelf is for:

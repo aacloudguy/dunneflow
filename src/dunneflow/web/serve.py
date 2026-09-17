@@ -2371,7 +2371,14 @@ class _Handler(BaseHTTPRequestHandler):
         Three rows is not 36x of anything, but the rule is about the *habit*, and the
         cheap path is also the shorter code.
         """
-        keys = ("program_version", "program_version_tier", "program_version_where")
+        keys = ("program_version", "program_version_tier", "program_version_where",
+                # **Every declaration, where there is more than one.** Written by
+                # `analyze` only when two root manifests state different versions, so a
+                # program that declares one has exactly the `meta` it always had. The
+                # strip draws one value because a strip has room for one; this is what
+                # lets it say *and one other* rather than quietly showing whichever
+                # `manifests.PROVIDERS` happened to order first.
+                "program_versions")
         # One read of `current` and one decision from it. Asking "is this the served
         # graph?" outside the lock and then reading the store inside it is two questions
         # about a thing that can move between them -- which is the whole failure mode a
@@ -2402,6 +2409,14 @@ class _Handler(BaseHTTPRequestHandler):
         key = version_order.order_key(out.get("version", ""))
         if key is not None:
             out["version_kind"], out["version_key"] = key[0], list(key[1])
+        # JSON on the way out rather than a string the page has to parse. A map written
+        # before this key existed has no `versions` at all, which is the *not recorded*
+        # state and not an empty list (rule 30).
+        if out.get("versions"):
+            try:
+                out["versions"] = json.loads(str(out["versions"]))
+            except ValueError:               # a value this build cannot read is not a
+                out.pop("versions")          # reason to fail a listing
         return out
 
     def _r_revisions(self, q: dict[str, list[str]]) -> None:

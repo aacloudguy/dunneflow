@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from collections.abc import Iterable, Iterator
+from collections.abc import Iterable, Iterator, Sequence
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
@@ -46,6 +46,7 @@ from .schema import (
     Routine,
     StructureKind,
     SuppliedEdge,
+    TargetKind,
 )
 
 SCHEMA_SQL = """
@@ -252,7 +253,37 @@ CREATE TABLE IF NOT EXISTS entrypoints (
     evidence   TEXT NOT NULL DEFAULT '',
     grp        TEXT NOT NULL DEFAULT '',
     parent_id  TEXT,
-    target_expr TEXT NOT NULL DEFAULT ''
+    target_expr TEXT NOT NULL DEFAULT '',
+    -- Read out of a manifest, as against recognised in code. See `Entrypoint.declared`.
+    declared   INTEGER NOT NULL DEFAULT 0,
+    -- What `target_expr` names, where this was declared. See `schema.TargetKind`.
+    target_kind TEXT NOT NULL DEFAULT 'NONE'
+);
+
+-- Every manifest this analysis read, and what each one declared.
+--
+-- **A table rather than a sentence**, because the claim on the cover -- *this program
+-- declares two versions* -- is one a reader must be able to put a query behind (design
+-- rule 13). `dunneflow query --sql "SELECT * FROM manifests"` returns the rows the
+-- sentence was made from.
+--
+-- `ways_in` is a count and not a join: the entrypoints a manifest declared are in
+-- `entrypoints`, keyed by their own ids, and a second copy of that relationship here
+-- would be two numbers about one thing (rule 40). What this column carries is how many
+-- this provider produced, which is what makes *read and declared nothing* legible.
+--
+-- `at_root` separates the program's own declaration from a member's. Declared rather
+-- than inferred from the shape of `path`, because `../pyproject.toml` and
+-- `packages/api-types/package.json` are both outside the analysed directory in
+-- different directions (rule 30).
+CREATE TABLE IF NOT EXISTS manifests (
+    path     TEXT PRIMARY KEY,
+    provider TEXT NOT NULL,
+    name     TEXT NOT NULL DEFAULT '',
+    version  TEXT NOT NULL DEFAULT '',
+    ways_in  INTEGER NOT NULL DEFAULT 0,
+    at_root  INTEGER NOT NULL DEFAULT 0,
+    note     TEXT NOT NULL DEFAULT ''
 );
 
 CREATE TABLE IF NOT EXISTS classes (
@@ -1092,10 +1123,12 @@ class Store:
         )
         c.executemany(
             "INSERT OR REPLACE INTO entrypoints"
-            "(id,kind,name,routine_id,module,file,evidence,grp,parent_id,target_expr)"
-            " VALUES(?,?,?,?,?,?,?,?,?,?)",
+            "(id,kind,name,routine_id,module,file,evidence,grp,parent_id,target_expr,"
+            "declared,target_kind)"
+            " VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
             [(e.id, e.kind.value, e.name, e.routine_id, e.module, ff.path, e.evidence,
-              e.group, e.parent_id, e.target_expr) for e in ff.entrypoints],
+              e.group, e.parent_id, e.target_expr, int(e.declared), e.target_kind.value)
+             for e in ff.entrypoints],
         )
         c.executemany(
             "INSERT INTO classes(name,qualname,module,file,line,bases)"
@@ -1162,11 +1195,31 @@ class Store:
         """Record an entrypoint discovered outside any single file (e.g. packaging metadata)."""
         self.conn.execute(
             "INSERT OR REPLACE INTO entrypoints"
-            "(id,kind,name,routine_id,module,file,evidence,grp,parent_id,target_expr)"
-            " VALUES(?,?,?,?,?,?,?,?,?,?)",
+            "(id,kind,name,routine_id,module,file,evidence,grp,parent_id,target_expr,"
+            "declared,target_kind)"
+            " VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
             (e.id, e.kind.value, e.name, e.routine_id, e.module, file, e.evidence,
-             e.group, e.parent_id, e.target_expr),
+             e.group, e.parent_id, e.target_expr, int(e.declared), e.target_kind.value),
         )
+
+    def replace_manifests(self, rows: Sequence[tuple[str, str, str, str, int, int, str]]
+                          ) -> None:
+        """What this analysis read out of the tree's manifests, rewritten whole.
+
+        **Replaced rather than merged**, unlike a file's facts. A manifest is not
+        content-addressed and is not cached: every analysis reads every one it walks
+        past, so the rows this run computed *are* the answer, and a manifest deleted
+        between two runs must leave with them. The same argument `replace_supplied_edges`
+        is written under one table over.
+        """
+        with self.batch():
+            self.conn.execute("DELETE FROM manifests")
+            self.conn.executemany(
+                "INSERT OR REPLACE INTO manifests"
+                "(path,provider,name,version,ways_in,at_root,note)"
+                " VALUES(?,?,?,?,?,?,?)",
+                rows,
+            )
 
     # -- reads ------------------------------------------------------------- #
 
@@ -1249,6 +1302,8 @@ class Store:
                 id=r["id"], kind=EntrypointKind(r["kind"]), name=r["name"],
                 routine_id=r["routine_id"], module=r["module"], evidence=r["evidence"],
                 group=r["grp"], parent_id=r["parent_id"], target_expr=r["target_expr"],
+                declared=bool(r["declared"]),
+                target_kind=TargetKind(r["target_kind"]),
             )
             for r in self.conn.execute("SELECT * FROM entrypoints ORDER BY kind, name")
         ]

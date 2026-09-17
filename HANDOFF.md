@@ -17352,3 +17352,174 @@ corpus. DunneFlow's own tree is mixed: Python plus the TypeScript reader's `.ts`
 convention mined across both at once would report that the program has no convention, and
 the next measurement is whether the lanes need splitting or only their denominators do.
 
+
+## 2026-09-17 — manifest providers: what a program declares about itself
+
+`PLAN-v2.md` build-order row 12, and the last of the four confirmed v1 defects.
+
+Before this, one manifest existed as far as the tool was concerned. `cli.py:283` walked up
+for `pyproject.toml`; `resolve/entrypoints.py` read `[project.scripts]` out of it;
+`resolve/version.py:_from_pyproject` read `[project] version` out of the same file. A
+`package.json` `bin` and a Cargo `[[bin]]` were invisible, so **DunneNote, DunneCorp and
+uigen each recorded no version at all** and DunneNote recorded no way in.
+
+`resolve/manifests/` is six providers, one per filename, plus a registry. `resolve/` is in
+no fingerprint, so the package invalidates nothing by existing; `Entrypoint` gaining two
+fields is what discards every stored map, and `SCHEMA_VERSION` is **14**.
+
+### Tom's criterion, and it changed the design mid-plan
+
+The plan scoped discovery to a walk **up** from the analysed tree. Asked about it, Tom:
+*"I need to be sure that any module that has inputs and/or outputs is included, because
+that is 'flow'. It doesn't matter how the tree is traversed, it must include the entire
+application."*
+
+That settles it, and not the way the plan had it. A `bin` is a way in and a way in is
+where flow starts, so a manifest is read **wherever the code walk reaches one** — which
+turned three predicted ways in for DunneNote into four, and admitted its Cargo workspace
+members, its `packages/api-types`, and its in-tree `legacy/v0.1/`. Walk-up-only would have
+seen none of them.
+
+`walk.discover` collects them off the listing it had already taken, rather than walking
+again: `SKIP_DIRS`, every dotted directory and every directory holding a map are gone
+before a filename is looked at (rule 92, rule 51). Measured — `node_modules`, `.next`,
+`dist`, `build`, `target` and `vendor` are all pruned, so no build output and no vendored
+package is reached, and **Society's `src/` holds no nested manifest at all**, which is what
+makes the golden safe by construction rather than by luck.
+
+### The rest of the decisions, taken in the session
+
+* **`go.mod` declares no version of the program.** Its `go` directive is a toolchain floor
+  — `go 1.25.6` in beads-main — and reporting it would be `_from_dunder`'s refusal in
+  reverse: a number certainly in the file and certainly not the answer. What it does
+  declare is a `/vN` module-path suffix, Go's only way to say *this is major version 2*,
+  recorded as a major and **saying it is a major only**. Tom's call, against the plan's
+  table, which said go.mod "answers version".
+* **All six providers**, with the record stating that `build.gradle.kts` is proved by
+  fixtures and nothing else — there is no such file anywhere on this machine (rule 24).
+* **`legacy/v0.1/` is read and named.** Its code is already in the map; pruning a
+  directory by its name would be a guess this tool refuses.
+* **`"scripts"` is never a way in.** 31 of them across the four JavaScript corpora —
+  DunneNote 4, DunneCorp 16, uigen 8, Society 3 — every one declined by name.
+
+### `declared` becomes a field, and two sites were parsing prose
+
+`flows.py:259` decided *was this declared* with `"[project.scripts]" in e.evidence`, a
+substring test against a sentence `web/waysin.py:120` renders verbatim and
+`tests/test_waysin.py:127` pins byte for byte. It is the **primary sort key** of the
+way-in list, so every declared TypeScript executable would have ranked below a guessed
+name for ever. Seven sites tested that string; two went further and **parsed** it —
+`resolve/cli.py:153` and `render/markdown.py:218` both recovered the target with
+`evidence.rsplit("= ", 1)[-1]`, a value `Entrypoint.target_expr` had been carrying since
+the family was written.
+
+`declared` and `target_kind` are both **host-owned** (`ingest.codec._HOST_OWNED`): a
+manifest is read in this process after extraction, so a reader that sends either is
+refused rather than believed — `Routine.lang`'s defence, two records over. Neither appears
+in the generated `facts.ts`, and a test asserts it.
+
+The marker was also **already lying**: `[project.gui-scripts]` entries were merged into the
+same dictionary and labelled `[project.scripts]`, in the one string a reader is shown
+unparsed. Each table names itself now.
+
+### Rule 98, and it is the defect of the chunk
+
+`anomalies._entrypoint_problems` had been right for a year and began reporting DunneNote's
+`dunnenote-host` — the front door of that application — as *leads nowhere*. Nothing about
+the detector changed; what changed is that a manifest can now declare a way into a
+language this build has no reader for. The finding was about DunneFlow and was filed
+against somebody else's program, which is `anomalies.py`'s founding discipline arriving
+through a feature instead of a detector. **Chunk 11 paid the same bill**: admitting `.d.ts`
+turned uigen's vendored Prisma client into 83 BROKEN.
+
+And the first fix did not finish it. Suppressing the unreadable languages left
+`@dunnenote/api-types` still SUSPECT, over 289 lines of `export type { X } from './X'` — a
+file that is in the map, was read, and declares no routine because there is nothing to
+declare. `binding_note` gives **five answers and only one is a fault**: names no file ·
+no reader claims the suffix · the language is one this map holds none of · read and
+declares nothing · **not a file this map holds**. One function, so the panel, the Markdown
+renderer, the run's own output and the anomaly worklist cannot disagree (rules 51 and 13).
+
+*Both were found by running it and reading the anomaly, not by a test.* The tests came
+after.
+
+### Rule 99, found on a corpus no chunk had read before
+
+beads-main declares `beads-mcp = "beads_mcp.server:main"` in
+`integrations/beads-mcp/pyproject.toml`. The module is real and is stored as
+`integrations.beads-mcp.src.beads_mcp.server`, because a module name here is derived from
+the tree somebody pointed `analyze` at — so the exact match answers *no* and the map says
+a real front door leads nowhere. Rule 64's family, one level down: there one root was the
+wrong root, here there are several and the analysed tree is none of them. The exact name
+first, then a **dotted-suffix** match taken only when exactly one routine has it.
+
+### Three more, each found by running it
+
+**`ways_in` dropped every unbound declaration**, so the four DunneNote gained would have
+been in the `entrypoints` table and on no screen. A declared one is kept now; a
+conventional `main` that resolved to nothing still goes, because nothing declared it.
+**`_flows` then crashed on `d["roots"][0]`** — uigen, `IndexError` — and the Flows page
+states them in a section of their own instead, because a page mentioning none of
+DunneNote's four would read as a program with nothing to trace. **`render/network.py`**
+excludes them from the zone map: a zone answers *which process is this routine in* and an
+unbound way in holds no routines.
+
+### Identity, and why the golden holds
+
+`make_id("script", name)` at the package root, `make_id("script", <manifest path>, name)`
+below it. The root's declarations are the program's own and their names are its contract —
+which is also v1's mint, so Society's four script ids are byte-identical. A member's `bin`
+is identified by the member **and** the name, because two members may each declare `serve`
+and `INSERT OR REPLACE` would keep whichever was walked last: a way in disappearing with no
+error anywhere (rule 35's shape). A collision is refused and named rather than overwritten.
+
+### Figures
+
+| | Society | DunneNote | DunneCorp | uigen | beads-main |
+|---|---|---|---|---|---|
+| manifests read | 2 | **20** | 1 | 2 | 7 |
+| declared version | none (`dynamic`) | **0.9.0**, two witnesses | **0.1.0** | **0.1.0** | 0.49.2 |
+| ways in | 178 | **0 → 4** | 36 | 3 → 4 | 33 |
+| `scripts` refused | 3 | 20 | 16 | 8 | 14 |
+| anomalies | 0 broken · 94 suspect | 0 · 0 | 0 · 2 | 0 · 0 | 0 · 1 |
+
+**Society is unmoved: 7 of 7 golden digests identical**, 4,823 routines, 6,441 internal
+calls, 178 ways in. Its `package.json` is read and contributes **nothing** — no `bin`, no
+`main`, no version — and its three `scripts` are declined by name; its `pyproject.toml`
+says `dynamic = ["version"]`, which is now a *stated* absence rather than a silent
+fall-through to the directory-name guess, and the map still records `2026-08-29` INFERRED.
+
+DunneNote's four: `@dunnenote/api-types` (LIBRARY, from `main`), and `dunnenote`,
+`dunnenote-host` and `calnote` — three Rust binaries, two of them found by the
+`src/main.rs` convention with no `[[bin]]`, all declared·unbound and all saying why.
+Extraction is untouched: 1,518 routines, 1,867 internal calls, 708 structures, 139
+boundary touches.
+
+beads-main is the one corpus with a real `bin`, and it was not on the plan's list: `bd` and
+`@beads/bd` out of `npm-package/package.json`, plus the `beads-mcp` console script rule 99
+was minted from. uigen's generated Prisma client is read and its `main: index.js` recorded
+as declared·unbound — visible, correctly labelled, and inflating nothing.
+
+Go and Swift have populations and neither declares much, which is the point: beads-main and
+rain-main give a module path and no version; AlphaVantage-main and TestReality declare
+`.library` products and no executable, which is the negative that proves the provider reads
+**products** rather than package names.
+
+**1,798 passed · 1 skipped**, mypy clean over 188 files, ruff clean. The frozen binary reads
+DunneNote to the figure and both builds stamp `14:c6cd0c4e1d15e9e3` core and
+`1.1.0:92eb0d173e9807a7` for the TypeScript reader, and open each other's maps.
+
+### What is deliberately not done
+
+**A workspace is not modelled.** Cargo members are read because the walk reaches them, not
+because `members = [...]` was followed; `version.workspace = true` is **named and not
+resolved**, 14 times on DunneNote and collapsed to one line. `pnpm-workspace.yaml` is not
+read at all.
+
+**`package.json` `exports` is read only where it names a single target.** uigen's Prisma
+client has nineteen subpaths across six runtime conditions; that is one package declaring
+one entry point in many dialects, and picking a condition would be this tool choosing a
+module system on the reader's behalf.
+
+**`build.gradle.kts` has no population on this machine** and its tests are fixtures. Said
+here rather than left to read as measured.

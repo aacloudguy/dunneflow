@@ -678,6 +678,9 @@ body {
    one and a guessed one must not look alike (design rule 13). */
 .verstrip-ver { font-family: var(--f-mono); color: var(--accent); }
 .verstrip-ver.inferred { color: var(--text-faint); font-style: italic; }
+/* A second declared version, said rather than chosen. Faint because it is a note
+   about the value beside it and not a value of its own (design rule 4). */
+.verstrip-also { color: var(--text-faint); font-size: 0.85em; }
 .verstrip-sep { color: var(--text-faint); }
 /* The assumption in force. A control, because it is the reader's to change -- and it is
    here rather than in Settings because a colour nobody can account for is worse than no

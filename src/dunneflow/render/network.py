@@ -121,7 +121,11 @@ def render_network(store: Store, out: Path, program: str, stamp: Stamp) -> Path 
     # Only things you can actually start are zones. An inbound handler runs *inside*
     # an executable; treating it as its own zone would answer "which process is this
     # in?" with the handler's own name.
-    executables = [d for d in ways_in(store) if d["kind"] in ("CLI", "MAIN")]
+    # `d["roots"]` because a **declared way in that bound nothing has no routines**, so
+    # it cannot be a zone: a zone is *which process is this routine in*, and this one
+    # holds none. It is named on the Flows page instead of drawn as an empty box here.
+    executables = [d for d in ways_in(store)
+                   if d["kind"] in ("CLI", "MAIN") and d["roots"]]
     zones: dict[str, set[str]] = {}
     for d in executables:
         zones[d["name"]] = store.reachable_from_many(d["roots"])

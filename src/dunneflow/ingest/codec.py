@@ -50,7 +50,7 @@ from enum import Enum
 from functools import cache
 from typing import Any, Literal, Union, get_args, get_origin
 
-from ..schema import DataStructure, FileFacts, Routine
+from ..schema import DataStructure, Entrypoint, FileFacts, Routine
 
 
 class CodecError(ValueError):
@@ -70,6 +70,11 @@ class CodecError(ValueError):
 _HOST_OWNED: dict[type, frozenset[str]] = {
     Routine: frozenset({"lang"}),
     DataStructure: frozenset({"lang"}),
+    # `declared` says a way in was read out of a **manifest**, which happens in this
+    # process after extraction (`resolve/manifests`). A reader has not seen a manifest
+    # and cannot answer the question, so a reader that sends the field is refused rather
+    # than believed -- the same argument `lang` is protected by, one record over.
+    Entrypoint: frozenset({"declared", "target_kind"}),
 }
 
 

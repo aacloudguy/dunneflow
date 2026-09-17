@@ -39,7 +39,9 @@ from typing import Literal
 # 11: `FileFacts.literals` -- a reader reports the strings, the host judges them.
 # 12: `CallSite.is_construction`, and four `ArmKind` words TypeScript writes.
 # 13: `SuppliedEdge` -- a reader whose toolchain resolves names says where a call goes.
-SCHEMA_VERSION = 13
+# 14: `Entrypoint.declared` and `target_kind` -- a way in read out of a manifest,
+#     said as fields rather than as a sentence somebody has to parse back.
+SCHEMA_VERSION = 14
 
 
 # --------------------------------------------------------------------------- #
@@ -81,6 +83,30 @@ class EntrypointKind(StrEnum):
     SCHEDULED = "SCHEDULED"
     SIGNAL = "SIGNAL"
     LIBRARY = "LIBRARY"
+
+
+class TargetKind(StrEnum):
+    """How to find the thing a **declared** way in names -- said, never inferred.
+
+    `mensores.cli:app`, `./cli.js` and `src/main.rs` are three shapes of string and a
+    fourth that looks like any of them is one guess away: `Path("mensores.cli:app").suffix`
+    is `.cli:app`, which a reader looking for a language would report as a suffix nobody
+    claims. The provider that read the manifest knows which kind it read, so it says
+    (rule 30) -- and it is stored, because `render/markdown.py` and `anomalies.py` ask the
+    question long after the provider has gone.
+
+    `NONE` is a real answer rather than a failure. A Swift `.executable` product names a
+    *target* and a Gradle `mainClass` names a class on a classpath; neither is a file this
+    map holds or a module it can look up, and building a path out of either would be a
+    claim about something nobody has evaluated.
+
+    It is meaningful only where `Entrypoint.declared` is true. A way in recognised in code
+    was not named by a target at all, and carries `NONE` because there is nothing to say.
+    """
+
+    MODULE_ATTR = "MODULE_ATTR"
+    FILE = "FILE"
+    NONE = "NONE"
 
 
 class Confidence(StrEnum):
@@ -700,6 +726,20 @@ class Entrypoint:
     group: str = ""       # the CLI app object this command attaches to, if any
     parent_id: str | None = None  # the app this belongs to, once resolved
     target_expr: str = ""  # routine named by expression, when not resolvable in-file
+    # **Was this read out of a manifest, or recognised in code?** A field, because it was
+    # a substring test -- `"[project.scripts]" in e.evidence` at `flows.py:259` -- against
+    # a sentence `web/waysin.py:120` renders verbatim. It is the primary sort key of the
+    # way-in list, so a `package.json` `bin`, which can never match that string, would
+    # have ranked below a guessed name for ever (rule 30).
+    #
+    # **Host-owned** (`ingest.codec._HOST_OWNED`): a reader may never send it. A manifest
+    # is read by `resolve/manifests`, in this process, after extraction -- a plugin has
+    # not seen one and has nothing to say about the question.
+    declared: bool = False
+    # What kind of thing `target_expr` names, where this was declared. See
+    # `TargetKind`: a module-and-attribute, a file, or a name this tool cannot
+    # turn into a place to open. Host-owned for `declared`'s reason.
+    target_kind: TargetKind = TargetKind.NONE
 
 
 @dataclass(slots=True)

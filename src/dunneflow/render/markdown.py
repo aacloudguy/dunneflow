@@ -18,6 +18,7 @@ from ..anomalies import detect
 from ..detectors import rules_document
 from ..docstore import DocStore
 from ..resolve.cli import command_tree
+from ..resolve.entrypoints import binding_note
 from ..resolve.flows import boundary_index, trace_flow, ways_in
 from ..schema import StructureKind
 from ..store import Store
@@ -210,14 +211,24 @@ def _entrypoints(store: Store, out: Path, program: str, stamp: Stamp) -> Path:
     for e in eps:
         by_kind[e.kind.value].append(e)
 
-    scripts = [e for e in eps if "[project.scripts]" in e.evidence]
+    # **`declared`, and `target_expr`.** This was `"[project.scripts]" in e.evidence` and
+    # `e.evidence.rsplit("= ", 1)[-1]` -- a substring test and a parse against a sentence
+    # written for a person, which a `package.json` `bin` can never match (rule 30).
+    scripts = [e for e in eps if e.declared]
     if scripts:
         lines.append("## Executables\n")
+        # **A reason in the last column, never a bare *no*.** *no* over a Rust binary
+        # this build has no reader for is a claim that the program is broken; what
+        # happened is that the map holds none of that language. `binding_note` words it
+        # in one place (rule 51) and `anomalies` decides on the same answer (rule 98).
         lines.append("| Command | Target | Resolved |\n|---|---|---|")
         for e in scripts:
-            tgt = e.evidence.rsplit("= ", 1)[-1]
-            ok = "yes" if (e.routine_id or e.parent_id) else "no"
-            lines.append(f"| `{_esc(e.name)}` | `{_esc(tgt)}` | {ok} |")
+            tgt = e.target_expr or "—"
+            if e.routine_id or e.parent_id:
+                ok = "yes"
+            else:
+                ok = f"not bound — {binding_note(store, e.id).sentence}"
+            lines.append(f"| `{_esc(e.name)}` | `{_esc(tgt)}` | {_esc(ok)} |")
         lines.append("")
 
         for e in scripts:
@@ -237,7 +248,7 @@ def _entrypoints(store: Store, out: Path, program: str, stamp: Stamp) -> Path:
             lines.append("")
 
     for kind in sorted(by_kind):
-        items = [e for e in by_kind[kind] if "[project.scripts]" not in e.evidence]
+        items = [e for e in by_kind[kind] if not e.declared]
         if not items:
             continue
         lines.append(f"## {kind} ({len(items)})\n")
@@ -327,7 +338,13 @@ def _flows(store: Store, out: Path, program: str, stamp: Stamp) -> Path:
         "capped so they stay readable — the caption says what was left out.\n"
     )
 
-    for d in ranked:
+    # **A declared way in that bound nothing sets nothing in motion here**, so there is no
+    # flow to draw -- and that is a different page's subject, not a silence (design
+    # rule 1). It is stated at the foot rather than dropped: `dunnenote-host` is a real
+    # front door of that application, and a Flows page that mentions none of its four
+    # would read as a program with nothing to trace.
+    unbound = [d for d in ranked if not d["roots"]]
+    for d in [d for d in ranked if d["roots"]]:
         flow = trace_flow(store, d["roots"][0], d["name"], d["kind"])
         if not flow.nodes:
             continue
@@ -355,6 +372,18 @@ def _flows(store: Store, out: Path, program: str, stamp: Stamp) -> Path:
         lines.append("```\n")
         lines.append(_flow_inventory(store, d))
 
+
+    if unbound:
+        lines.append(f"## Declared, and not traced here ({len(unbound)})\n")
+        lines.append(
+            "These are declared ways into this program that this map cannot follow. "
+            "Each one is a real front door; what is missing is the code behind it.\n"
+        )
+        lines.append("| Way in | Kind | Why |\n|---|---|---|")
+        for d in unbound:
+            lines.append(f"| `{_esc(d['name'])}` | {_esc(d['kind'])} | "
+                         f"{_esc(d.get('why', ''))} |")
+        lines.append("")
 
     path = out / "02-flows.md"
     path.write_text("\n".join(lines), encoding="utf-8")

@@ -946,6 +946,40 @@ docs   ──► extract ──► docs.db  (SQLite) ─────────
   in no cache key, and no fact depends on it — which is why `markdown-it` is vendored in
   `web/vendor/` and why nothing under `extractors/` may import it. State the line rather
   than blur it, or the next reader will correctly call the library a violation.
+- `resolve/manifests/` — **what a program declares about itself**, one provider per
+  filename: `pyproject.toml`, `package.json`, `Cargo.toml`, `go.mod`, `Package.swift`,
+  `build.gradle.kts`. Six small modules rather than one reader with six branches, because
+  `web/waysin.py:120` renders the **evidence verbatim** and a `package.json` entry
+  claiming to come from `pyproject.toml` would be a visible falsehood in the one string a
+  reader is shown unparsed.
+
+  **Entrypoints and version are independent columns.** `go.mod` declares a module path and
+  no version of the program — its `go` directive is a toolchain floor, and reporting
+  `1.25.6` would be a number certainly in the file and certainly not the answer; what it
+  *does* declare is a `/vN` major suffix, which is Go's only way to say *this is major
+  version 2*. `Package.swift` declares executables and no version at all. `"scripts"` in a
+  `package.json` is **never** a way in — it is a task runner, and the four JavaScript
+  corpora here hold 31 of them and not one `bin` at their roots (rule 30). Every refusal
+  is a sentence the run prints, one line per *kind* of refusal: DunneNote's twenty
+  manifests produce twenty-one notes and eleven are the same one.
+
+  **Discovery is the whole tree, not a walk up it.** Tom's criterion, 2026-09-17: *any
+  module that has inputs and/or outputs is included, because that is flow — it must
+  include the entire application.* A `bin` is a way in, so a member declaring one is part
+  of the program whether or not it sits at the top. `walk.discover` collects manifests off
+  the listing it already took, so which directories count is answered once (rule 92); the
+  package root is read as well, because a `src/` layout puts it above the analysed tree.
+  **The root's manifests answer the program's version and a member's does not** — and when
+  two roots declare different versions, both are recorded and neither is picked.
+
+  **Three states for a way in, never two** (design rule 21). `Entrypoint.declared` is a
+  *field* — it was `"[project.scripts]" in e.evidence` at `flows.py:259`, a substring test
+  against a prose sentence that a `package.json` `bin` can never match (rule 30) — and a
+  declared way in that bound nothing is kept, with `binding_note` saying which of five
+  things happened. Only one of the five is a fault; see rule 98 for the false SUSPECT that
+  taught it. The `manifests` table records what was read, so the sentence on the cover has
+  a query behind it (design rule 13).
+
 - `standards.py` + `standards.db` — **somebody else's rules, admitted without being
   absorbed.** `--standards <dir>` reads an outside naming standard through the *same* walk
   as the corpus (so `discover_docs` refuses a nested checkout for it too, rule 57) into a
@@ -1645,6 +1679,10 @@ it was written from.
  96. A record minted on demand exists because somebody asked, so a new question invents
      records.
  97. A bundled program does not carry the files it reads, and it answers anyway.
+ 98. A detector's population is whatever the map holds, so admitting a new kind of fact
+     re-runs every detector against something it has never seen.
+ 99. A name is relative to the root that declared it, and a nested manifest's root is
+     not the analysed tree's.
 ```
 
 ## Anomalies: the discipline

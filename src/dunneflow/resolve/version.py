@@ -7,8 +7,11 @@ this tool exists to serve.
 
 Three tiers, in the order they are trusted, and each says how it knows:
 
-* `pyproject.toml [project] version` -- packaging metadata, the thing the program is
-  actually published as. Proven by a file the reader can open.
+* **what a manifest declares** -- packaging metadata, the thing the program is actually
+  published as. Proven by a file the reader can open. Read by `resolve/manifests`, one
+  provider per filename, and handed to `detect` rather than read here: `pyproject.toml`
+  was the only manifest this tool knew when that reader lived in this file, and it is now
+  one of six (rule 51).
 * `__version__` at module scope -- the same claim written in code, proven by a file and
   a line.
 * **the directory's own name** -- `society-2026-08-26`, `myapp-1.2.3`. A guess, marked
@@ -30,7 +33,7 @@ from __future__ import annotations
 import ast
 import os
 import re
-import tomllib
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -63,30 +66,6 @@ class ProgramVersion:
     @property
     def inferred(self) -> bool:
         return self.provenance is Provenance.INFERRED
-
-
-def _from_pyproject(root: Path, relative_to: Path) -> ProgramVersion | None:
-    """`[project] version`, found the way the entrypoint reader finds its scripts.
-
-    The package root is not always the analysed tree: a `src/` layout puts
-    `pyproject.toml` one directory above the code, so the honest `where` is
-    `../pyproject.toml` and `os.path.relpath` is what expresses it (rule 61).
-
-    `tomllib` gives no line numbers, so `where` is a file and not a file:line. Saying
-    which is better than implying a precision that is not there.
-    """
-    pyproject = root / "pyproject.toml"
-    if not pyproject.exists():
-        return None
-    try:
-        data = tomllib.loads(pyproject.read_text(encoding="utf-8"))
-    except (tomllib.TOMLDecodeError, OSError):
-        return None
-    value = data.get("project", {}).get("version")
-    if not isinstance(value, str) or not value.strip():
-        return None
-    where = stored_path(os.path.relpath(pyproject.resolve(), relative_to.resolve()))
-    return ProgramVersion(value.strip(), Provenance.DECLARED_CODE, where)
 
 
 def _from_dunder(tree: Path) -> ProgramVersion | None:
@@ -173,15 +152,41 @@ def order_key(value: str) -> tuple[str, tuple[int, ...]] | None:
     return None
 
 
-def detect(tree: Path, *, package_root: Path | None = None,
-           leaf: str = "") -> ProgramVersion | None:
+def detect(tree: Path, *, package_root: Path | None = None, leaf: str = "",
+           declared: Sequence[ProgramVersion] = ()) -> ProgramVersion | None:
     """The best-proven version this program states about itself, or None.
 
     Order is trust, not convenience: something published beats something written in a
     module, and both beat a guess off a directory name. Returning `None` is a real answer
     -- most programs say nothing about their version, and inventing one would be worse
     than the silence.
+
+    **`declared` arrives from `resolve/manifests` and is no longer read here.**
+    `_from_pyproject` stood in this file while `pyproject.toml` was the only manifest
+    there was; it is now one of six providers, each with its own sentence, and this
+    module would otherwise be a seventh reader of the first one (rule 51). What is left
+    here is the two tiers a *manifest* cannot answer: a `__version__` written in code,
+    and the guess off a directory name.
+
+    **The caller passes every declaration and this returns the first.** Which one that is
+    was decided by `manifests.PROVIDERS`' stated order, and nothing is thrown away --
+    `manifests.versions()` still holds them all, and the map records them all, because
+    two manifests declaring different versions is the honest answer and also a signal.
+
+    A caller that has a `package_root` and no readings still gets the manifest tier: this
+    asks the providers for that one directory rather than answering a tier short, which
+    is the silent-worse-answer shape rule 49 is about. The import is local because
+    `manifests` imports `ProgramVersion` from here -- a cycle at module scope, and the
+    late import is the statement that the dependency runs this way round.
     """
-    return (_from_pyproject(package_root or tree, tree)
-            or _from_dunder(tree)
-            or from_directory_name(leaf))
+    if not declared and package_root is not None:
+        from . import manifests
+        readings = manifests.read_all(
+            sorted(package_root / n for n in manifests.MANIFEST_FILES
+                   if (package_root / n).is_file()),
+            [], relative_to=tree,
+        )
+        declared = [r.version for r in manifests.versions(readings) if r.version]
+    if declared:
+        return declared[0]
+    return _from_dunder(tree) or from_directory_name(leaf)

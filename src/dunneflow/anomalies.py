@@ -25,6 +25,7 @@ import sqlite3
 import sys
 from dataclasses import dataclass, field
 
+from .resolve.entrypoints import binding_note
 from .schema import make_id
 from .store import Store
 
@@ -776,9 +777,22 @@ def _messaging_hazards(store: Store, r: Report) -> None:
 
 def _entrypoint_problems(store: Store, r: Report) -> None:
     for row in store.query(
-        "SELECT kind, name, module, evidence, file FROM entrypoints"
+        "SELECT id, kind, name, module, evidence, file, declared FROM entrypoints"
         " WHERE routine_id IS NULL AND parent_id IS NULL"
     ):
+        # **A known limit is not a suspicion.** A manifest may declare a way in whose
+        # target this build has no reader for at all -- DunneNote's three Rust binaries,
+        # uigen's generated `index.js` -- and every one of them is a real way into that
+        # application. Reporting them SUSPECT would be chunk 11's 83 false BROKENs one
+        # surface over: a finding about DunneFlow's reach, filed against somebody else's
+        # program. What the map says instead is *declared and not bound*, with the
+        # reason, wherever a way in is drawn.
+        #
+        # The **condition** is asked, never the sentence. `binding_note` returns the
+        # wording and the judgement together so the two cannot disagree (rule 13), and
+        # a guard that matched the wording would be rule 30 in the guard.
+        if row["declared"] and binding_note(store, str(row["id"])).known_limit:
+            continue
         r.add(Anomaly(
             kind="ENTRYPOINT_NO_TARGET", severity=SUSPECT, confidence=PROBABLE,
             title=f"Way in `{row['name']}` leads nowhere",

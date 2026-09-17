@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 
 from ..schema import BoundaryHit, BoundaryKind, Direction
 from ..store import Store
+from .entrypoints import binding_note
 
 DEFAULT_DEPTH = 6
 DEFAULT_MAX_NODES = 45
@@ -250,25 +251,49 @@ def ways_in(store: Store) -> list[dict]:
             roots.append(e.routine_id)
         if e.parent_id:
             roots.extend(r for r in app_command_routines(store, e.parent_id) if r)
-        if not roots:
+        # **A declaration that bound nothing is still a way in** (design rule 21). It was
+        # dropped here, which was right while the only declarations were Python console
+        # scripts -- one that reached no routine really was a broken `[project.scripts]`
+        # entry. It is wrong the moment a manifest can declare a way into a language this
+        # build has no reader for: DunneNote's three Rust binaries are the front doors of
+        # that application, and a panel that silently holds none of them tells a reader
+        # the program has no way in.
+        #
+        # Only a **declared** one is kept. A conventional `main` that resolved to nothing
+        # is the old case and still goes: nothing declared it, so there is nothing to
+        # report but an absence.
+        if not roots and not e.declared:
             continue
-        key = f"app:{e.parent_id}" if e.parent_id else (e.routine_id or "")
-        if not roots:
-            continue
+        # The id, where there are no roots to key on. Every unbound declaration would
+        # otherwise collapse onto the empty string and the panel would hold one of them.
+        key = (f"app:{e.parent_id}" if e.parent_id
+               else (e.routine_id or f"ep:{e.id}"))
 
-        declared = "[project.scripts]" in e.evidence
+        # **A field, not a substring test against a sentence.** This read
+        # `"[project.scripts]" in e.evidence` until chunk 12, which is rule 30 in the
+        # one place it decides a sort: `declared` is the primary key of the score
+        # below, so a `package.json` `bin` -- which can never contain that string --
+        # would have ranked below a guessed name for every TypeScript program there
+        # is. The provider that read the manifest sets the field.
+        declared = e.declared
         score = (0 if declared else 1, rank.get(e.kind.value, 3), len(e.name))
         prev = best.get(key)
         if prev is None or score < prev["_score"]:
-            reach = store.reachable_from_many(roots)
+            reach = store.reachable_from_many(roots) if roots else []
             kinds = sorted(
                 {b.kind for b in store.boundaries_reached_many(roots)},
                 key=lambda k: k.value,
-            )
+            ) if roots else []
             best[key] = {
                 "name": e.name, "kind": e.kind.value, "evidence": e.evidence,
                 "roots": roots, "reach": len(reach), "kinds": kinds,
                 "declared": declared, "aliases": [] if prev is None else prev["aliases"],
+                # **Bound, and why not.** A reach of 0 says how much this way in commands
+                # and says nothing about whether it commands anything *here*; those are
+                # different facts and the second is the one a reader needs in front of a
+                # Rust binary (rule 32). `binding_note` words it in one place.
+                "bound": bool(roots),
+                "why": "" if roots else binding_note(store, e.id).sentence,
                 # **The app object, when this way in is a command tree rather than a
                 # routine.** `mensores` names `mensores.cli:app` -- a Typer object, which
                 # is not a routine and has no file to open -- and expands here to the 107

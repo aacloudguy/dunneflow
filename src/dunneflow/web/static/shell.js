@@ -2713,8 +2713,21 @@ function versionStrip() {
        which is presentation, and `data-` in this shell means a control something listens
        for. The roster guard is right to refuse it. */
     const tier = r.version_tier === "INFERRED" ? " inferred" : "";
+    /* **Two declared versions are both shown, and neither is picked.** A tree whose
+       `package.json` says 2.0.0 beside a `pyproject.toml` saying 1.0.0 has stated two
+       things about itself, and drawing whichever the server ordered first would make this
+       strip quietly authoritative about a question nobody has answered. It is also a
+       signal worth seeing: a tree with two disagreeing declared versions may be two
+       programs. The rows are the server's (`meta.program_versions`), and the title names
+       the file behind each. */
+    const others = Array.isArray(r.versions) ? r.versions : [];
+    const also = others.length > 1
+      ? ` <span class="verstrip-also" title="${esc(others.map(
+          v => `${v.value} — ${v.where}`).join("\n"))}">and ${others.length - 1} other${
+          others.length === 2 ? "" : "s"}</span>`
+      : "";
     return `<span class="verstrip-ver${tier}"
-      title="${esc(r.version_where || "")}">${esc(r.version)}</span>`;
+      title="${esc(r.version_where || "")}">${esc(r.version)}</span>${also}`;
   };
 
   /* **No comparison, and it says which kind of none.** Two ways to get here and the reader
@@ -4811,6 +4824,15 @@ function authorityTag(e) {
  * 107 routines across 44 files. A file invented to fill the column would be one of the 107
  * chosen arbitrarily, which is what clicking used to do (rule 1). */
 function wayInWhat(e) {
+  /* **Declared and not bound is a third state, and it says which.** A manifest can declare
+     a way into a language this build has no reader for — DunneNote's three Rust binaries
+     are the front doors of that application — and drawing one with a reach of 0 and
+     nothing else says the program has a door that leads nowhere. The sentence is the
+     server's (`resolve/entrypoints.binding_note`), which is also what the anomaly worklist
+     decides on, so the two cannot disagree (rule 13). */
+  if (e.bound === false) {
+    return `${esc(e.evidence || "")} · <span class="hint">not bound — ${esc(e.why || "")}</span>`;
+  }
   const where = e.where && e.where.file
     ? `<span class="mono">${esc(srcShort(e.where.file))}${e.where.line ? `:${e.where.line}` : ""}</span>`
     : (e.app ? `<span class="hint">starts ${Number(e.starts || 0).toLocaleString()} routines across ${Number(e.files || 0).toLocaleString()} files</span>` : "");

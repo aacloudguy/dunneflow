@@ -30,11 +30,16 @@ from .migrate import MigrationRefused, migrate_program
 from .render.index import legacy_map_files, render_index
 from .render.markdown import render_all
 from .render.snapshot import mapless, render_maps
-from .resolve import languages
+from .resolve import languages, manifests
 from .resolve import version as program_version
 from .resolve.calls import resolve_calls
 from .resolve.cli import resolve_cli
-from .resolve.entrypoints import entrypoints_from_packaging
+from .resolve.entrypoints import (
+    binding_note,
+    collisions,
+    entrypoints_from_manifests,
+    record_manifests,
+)
 from .resolve.flows import entry_reach, governance_over, ways_in_affected
 from .resolve.glossary import bind
 from .resolve.mirror import BANDS as MIRROR_BANDS
@@ -277,14 +282,17 @@ def cmd_analyze(args: argparse.Namespace) -> int:
     # `--no-source` leaves nothing to ask, so the clock answers instead. The layout is
     # the same either way; what is missing is the state (WORKING / FOR_COMPARISON),
     # which only the sidecar records.
-    # Where `pyproject.toml` lives, which may be above `src/`. Found once, here, because
-    # three things want it: the entrypoint reader, the version reader, and the name of the
-    # tree recorded below.
-    pkg_root = target
-    for candidate in (target, *target.parents):
-        if (candidate / "pyproject.toml").exists():
-            pkg_root = candidate
-            break
+    # Where the **manifests** live, which may be above `src/`. Found once, here, because
+    # four things want it: the entrypoint reader, the version reader, the documentation
+    # root, and the name of the tree recorded below.
+    #
+    # This walked up for `pyproject.toml` alone until chunk 12, which was the whole truth
+    # while Python was the only language and is an answer of *no* for every TypeScript,
+    # Rust, Go and Swift tree there is. `find_package_root` asks for any of the six, and
+    # returns **every** manifest at that level -- two at one directory is the ordinary
+    # polyglot repository (DunneNote's `package.json` beside its `Cargo.toml`), and
+    # stopping at the first would make the answer depend on which name sorts earlier.
+    pkg_root, root_manifests = manifests.find_package_root(target)
 
     # The leaf that **identifies this tree**, and only the leaf: `target` is an absolute
     # path, and recording it would put one machine's directory layout into a map built to
@@ -396,20 +404,44 @@ def cmd_analyze(args: argparse.Namespace) -> int:
     )
     t_extract = time.perf_counter() - t0
 
-    # Relative to the analysed tree, like every other stored path -- which for a
-    # `src/` layout means `../pyproject.toml`, because packaging metadata sits
-    # above the code. See the note there.
-    entrypoints_from_packaging(pkg_root, store, relative_to=source_root)
+    # **Every manifest, not one.** The package root's -- which for a `src/` layout means
+    # `../pyproject.toml`, because packaging metadata sits above the code -- and every
+    # one the walk passed inside the tree. The second half is Tom's criterion, 2026-09-17:
+    # *any module that has inputs and/or outputs is included, because that is flow*. A
+    # `bin` is a way in, so a member declaring one is part of the application whether or
+    # not it sits at the top of it.
+    #
+    # The walk collected them off the listing it had already taken, so which directories
+    # count is answered once: `SKIP_DIRS`, every dotted directory and every directory
+    # holding a map are gone before a filename is looked at (rule 92).
+    readings = manifests.read_all(root_manifests, stats.manifests,
+                                  relative_to=source_root)
+    entrypoints_from_manifests(readings, store)
+    record_manifests(readings, store)
 
     # What the program says its own version is, with the tier it was learned at. Recorded
     # even when it is nothing: two versions of a program are two directories, and a reader
     # holding both is entitled to whatever each one claims about itself -- or to being told
     # plainly that it claims nothing. Never asked of a VCS; see `resolve/version.py`.
-    found = program_version.detect(source_root, package_root=pkg_root, leaf=tree_leaf)
+    stated = [r.version for r in manifests.versions(readings) if r.version]
+    found = program_version.detect(source_root, package_root=pkg_root, leaf=tree_leaf,
+                                   declared=stated)
     if found is not None:
         store.set_meta("program_version", found.value)
         store.set_meta("program_version_tier", str(found.provenance))
         store.set_meta("program_version_where", found.where)
+    # **Two declared versions are both recorded, and neither is picked.** The key above
+    # carries one value because a version strip draws one; this carries every declaration
+    # with the file that made it, so the cover can say *this program declares two* rather
+    # than quietly showing whichever `PROVIDERS` happened to order first. A tree stating
+    # two versions is the honest answer and also a signal: it may be two programs.
+    #
+    # Written only where more than one root manifest declares anything, so a Python
+    # program's `meta` is exactly what it was.
+    if len(stated) > 1:
+        store.set_meta("program_versions", json.dumps(
+            [{"value": v.value, "tier": str(v.provenance), "where": v.where}
+             for v in stated]))
 
     # Documentation is a parallel input, read from the package root because that is
     # where prose lives relative to `src/`. It is never a prerequisite: a program with
@@ -618,6 +650,23 @@ def cmd_analyze(args: argparse.Namespace) -> int:
             f"({clistats.commands_attached} in a tree), "
             f"{clistats.mounts_resolved}/{clistats.mounts_total} mounts"
         )
+        # **What the tree declares about itself**, on `walk_residue`'s precedent and for
+        # its reason: a run that read twenty manifests and reported none of them leaves a
+        # reader unable to tell *nothing declares a way in* from *nothing was looked at*
+        # (design rule 1). The refusals are indented beneath, one line per kind of
+        # refusal and never one per file -- DunneNote's twenty manifests produce
+        # twenty-one notes and eleven of them are the same sentence.
+        _emit(manifests.summary(readings))
+        for said in manifests.residue(readings):
+            _emit("  " + said)
+        for said in collisions(readings):
+            _emit("  " + said)
+        # A declared way in this map cannot open is stated here rather than left to be
+        # noticed as a blank in a panel. Three of DunneNote's four are Rust.
+        for ep in store.entrypoints():
+            if ep.declared and not (ep.routine_id or ep.parent_id):
+                _emit(f"  `{ep.name}` is declared and not bound — "
+                      + binding_note(store, ep.id).sentence)
 
     # The source sidecar. Driven by the hashes the graph just recorded rather than by a
     # second walk of the tree, so a file whose body is already held is never opened: a

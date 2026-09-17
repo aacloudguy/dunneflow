@@ -14,7 +14,7 @@ been rewritten yet. Where they describe the tool they are accurate; where they d
 |---|---|
 | `PLAN-v2.md` | the whole design: the plugin protocol, the registry, the fingerprint split, the TypeScript plugin, the MCP server, the 14 chunks and the gate on each |
 | `CLAUDE.md` | the standing orders — **binding**, and the rules index |
-| `RULES.md` · `DESIGN-RULES.md` | carried over **verbatim, numbering intact**. The numbers are addresses: never reused, never renumbered, never closed up. **v2 continues at engineering rule 98** — 95 is the fingerprint's blind spot, 96 is the record minted on demand, 97 is the bundled program that does not carry the files it reads, all three 2026-09-17. A rule is never closed; 95's `sql.py` gap was shut by chunk 6 and the general remedy it names is not built. |
+| `RULES.md` · `DESIGN-RULES.md` | carried over **verbatim, numbering intact**. The numbers are addresses: never reused, never renumbered, never closed up. **v2 continues at engineering rule 100** — 95 is the fingerprint's blind spot, 96 the record minted on demand, 97 the bundled program that does not carry the files it reads, 98 the detector handed a population it was never shown, 99 the name that is relative to the root that declared it. All five 2026-09-17. A rule is never closed; 95's `sql.py` gap was shut by chunk 6 and the general remedy it names is not built. |
 | `PERFORMANCE.md` | v1's figures. **Every one of them was measured on v1** and none has been reproduced here — do not restate one as though it had been (rule 24). |
 
 ## The four decisions, already taken
@@ -190,6 +190,30 @@ been rewritten yet. Where they describe the tool they are accurate; where they d
   both builds open each other's maps. **1,753 passed · 1 skipped**, mypy clean over 179
   files, ruff clean. `SCHEMA_VERSION` stays **13**; the TypeScript reader is **1.1.0**.
 
+* **Manifest providers.** `resolve/manifests/`, six providers one per filename, and the
+  `pyproject.toml` walk-up generalised to any of them. **Discovery is the whole tree** —
+  Tom's criterion, *any module that has inputs and/or outputs is included, because that is
+  flow* — collected off the listing `walk.discover` already took, so `SKIP_DIRS`, dotted
+  directories and maps are pruned once (rule 92). **DunneNote goes from no version and no
+  way in to 0.9.0 with two witnesses and four ways in**; DunneCorp and uigen record 0.1.0
+  where they recorded nothing. `"scripts"` is never a way in and 31 across four corpora are
+  declined by name. `Entrypoint.declared` is a **field** at last, which is the last of the
+  four confirmed v1 defects: it was `"[project.scripts]" in e.evidence`, and two sites went
+  further and parsed the sentence back for a target `target_expr` already held.
+  `SCHEMA_VERSION` is **14**. **1,798 passed · 1 skipped**, mypy clean over 188 files, ruff
+  clean, **7 of 7 golden digests identical**, and both builds stamp
+  `14:c6cd0c4e1d15e9e3` and `1.1.0:92eb0d173e9807a7`.
+
+  **Rule 98 is the defect of the chunk, and it is chunk 11's twice over.** A detector
+  unchanged for a year began calling DunneNote's `dunnenote-host` *leads nowhere* — the
+  front door of that application, in a language this build has no reader for. Admitting a
+  new kind of fact re-runs every judgement against a population it has never seen, exactly
+  as `.d.ts` turned uigen's Prisma client into 83 BROKEN. The remedy is
+  `binding_note`'s **five answers, of which one is a fault**. Rule 99 came from beads-main,
+  a corpus no chunk had read: a nested manifest's module name is relative to *its* root and
+  not the analysed tree's. Three more were found by running it — `ways_in` dropped every
+  unbound declaration, `_flows` then crashed on `roots[0]`, and the zone map counted one.
+
 ## The gate everything is measured against
 
 `output/GOLDEN-v1.txt` holds row counts, distributions, and **seven identity digests** —
@@ -230,16 +254,14 @@ plan's own, and chunks 5 through 9 were taken in it. Tom's call on the front-loa
 tool is usable as-is, so v1 defects found along the way are rolled into whichever feature
 chunk owns them rather than scheduled as work of their own.
 
-1. **Manifest providers** — chunk 12. `resolve/manifests/`, a generalised `pkg_root`, and
-   per-provider evidence, so a `package.json` `bin` outranks a guessed `main` and
-   `flows.py:215`'s substring test for *declared* becomes a field on `Entrypoint`. That is
-   the last of the four confirmed v1 defects, and it is scheduled here rather than
-   outstanding.
-2. **Open question 6 — the naming lanes across a mixed corpus**, which chunk 11 deferred
+1. **Open question 6 — the naming lanes across a mixed corpus**, which chunk 11 deferred
    and now has a tree to measure on: DunneFlow's own, Python plus the TypeScript reader's
    `.ts`. A convention mined across both at once reports that the program has no
    convention; what is unknown is whether the lanes need splitting or only their
    denominators do.
+2. **Chunks 13 and 14** — packaging (the fingerprint-equality gate extended to compare
+   per-language stamps between binary and checkout, which chunk 12 did by hand and no
+   script does) and the documentation rewrite of "Adding a language".
 
 **The `fetch`-through-a-name residue is still open**, and chunk 10 was where it was scheduled
 to close. It did not, and the reason is stated rather than quiet: DunneNote calls `fetch` in
@@ -257,14 +279,15 @@ no stored fact — the golden's digests are over sorted ids and are unmoved — 
 chunk of its own, because a report that has to be diffed against a baseline cannot also be
 the thing being changed. `HANDOFF.md` 2026-09-17 has the table and the two named sites.
 
-**Of the four confirmed v1 defects, three are closed.** `BKIND_GLYPH` went in `679d772`;
+**All four confirmed v1 defects are closed.** `BKIND_GLYPH` went in `679d772`;
 `writable=False` now opens `?mode=ro` and genuinely refuses a write, which is what the MCP
 `query` tool needed; and `is_test_path` is gone, replaced by `DiscoveryRules.is_test` per
 language, so `client.test.ts` is a test rather than 42% of a corpus read as program code.
-The one that remains is scheduled where it belongs rather than outstanding:
-`flows.py:215`'s substring test for *declared* becomes a field on `Entrypoint` when the
-manifest providers land, which is the first point a `package.json` `bin` exists to outrank
-a guessed `main`.
+And the fourth went with chunk 12: `flows.py:259`'s substring test for *declared* is a
+field on `Entrypoint`, set by the provider that read the manifest — which is the first
+point a `package.json` `bin` exists to outrank a guessed `main`. Two sites nearby were
+doing worse than testing that sentence: they **parsed** it back with `rsplit("= ", 1)` for
+a target `target_expr` had been carrying all along.
 
 ## Three things not to re-open
 

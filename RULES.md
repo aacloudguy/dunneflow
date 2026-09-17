@@ -2030,3 +2030,57 @@ rule of that number — a blank canvas must say why it is blank — which does e
     — is not, and the failure is silent by construction: the code that would have reported
     a missing file is the code that was written to work without it. Ask of anything
     inlined: what does it open, and where does it think it is?
+
+98. **A detector's population is whatever the map holds, so admitting a new kind of fact
+    re-runs every detector against something it has never seen.**
+    `anomalies._entrypoint_problems` had been correct for a year. Its rule — *a way in
+    with no routine and no parent leads nowhere* — was exactly right while the only
+    declared ways in were Python console scripts, because one of those that reached no
+    routine really was a broken `[project.scripts]` entry.
+
+    Chunk 12 taught the tool to read a `package.json` `bin`, a Cargo `[[bin]]` and a
+    SwiftPM `.executable`, and the same detector, unchanged, began reporting DunneNote's
+    `dunnenote-host` as *leads nowhere*. It is the front door of that application. What
+    leads nowhere is DunneFlow: there is no Rust reader, so the binary's `src/main.rs` is
+    in no map. The finding was about this tool and was filed against somebody else's
+    program — which is `anomalies.py`'s founding discipline, *six confident findings in a
+    row were defects in this tool*, arriving through a feature rather than through a
+    detector.
+
+    **It happened twice in two chunks.** Chunk 11 admitted `.d.ts` files as program source
+    and `MISSING_BODY` turned uigen's vendored Prisma client into **83 BROKEN** out of a
+    command that gates CI on BROKEN. Same shape, different detector: a population widened
+    in one place, a judgement written against the old one somewhere else.
+
+    And it was not finished by the first fix. Suppressing the unreadable languages left
+    `@dunnenote/api-types` still reported, over 289 lines of `export type { X } from './X'`
+    — a file that is in the map, was read, and declares no routine because there is
+    nothing to declare. **Five answers, and only one of them is a fault**
+    (`resolve/entrypoints.binding_note`): the declaration names no file at all; no reader
+    claims the suffix; the language is one this map holds none of; the file is read and
+    declares nothing; the file is not there. Only the last is worth a reader's attention.
+
+    The remedy is not a longer suppression list. It is to ask, of every feature that
+    widens what a map can hold: **which existing judgement now has a population it was
+    never shown?** `dunneflow check` gates CI on BROKEN, so the cost of getting that wrong
+    is somebody else's build.
+
+99. **A name is relative to the root that declared it, and a nested manifest's root is not
+    the analysed tree's.**
+    `../beads-main/integrations/beads-mcp/pyproject.toml` declares
+    `beads-mcp = "beads_mcp.server:main"`. That module is real, it is in the tree, and it
+    is stored as `integrations.beads-mcp.src.beads_mcp.server`, because a module name in
+    this map is derived from the directory somebody pointed `analyze` at. An exact match
+    answers *no*, and the map then says a real front door leads nowhere.
+
+    This is rule 64's family — *the leaf that identifies a tree is the package root's, not
+    the analysed directory's* — one level down and one direction over. There, one root was
+    the wrong root; here there are **several**, one per manifest, and the analysed tree is
+    none of them.
+
+    The fix is bounded rather than clever: the exact name first, then a **dotted-suffix**
+    match, taken only when exactly one routine has it. That is not rule 5's forbidden bare
+    name — `beads_mcp.server` is a dotted path matched at a segment edge — and the
+    uniqueness test is `_resolve_routine`'s own remedy sitting beside it. Two copies of a
+    package in one monorepo leave the declaration unbound **and saying so**, which is the
+    right answer rather than a coin toss.

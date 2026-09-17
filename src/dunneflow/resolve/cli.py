@@ -147,10 +147,21 @@ def resolve_cli(store: Store) -> CliStats:
                 stats.launches_linked += 1
 
     # Console scripts name the root app of the tree.
+    #
+    # **Two fields, where this used to be a LIKE and a `rsplit`.** It selected on
+    # `evidence LIKE '%[project.scripts]%'` and then recovered the target with
+    # `evidence.rsplit("= ", 1)[-1]` -- parsing a sentence written for a person to get
+    # back a value that was in hand when the sentence was built, out of the one string
+    # `web/waysin.py` renders verbatim (rule 30). `declared` says which rows these are
+    # and `target_expr` carries `mensores.cli:app` as itself.
+    #
+    # `target_expr <> ''` is not redundant with `declared`: a Cargo `[[bin]]` and a
+    # `package.json` `bin` are declared too, and neither names a Python app object.
     for e in store.query(
-        "SELECT id, module, evidence FROM entrypoints WHERE evidence LIKE '%[project.scripts]%'"
+        "SELECT id, module, target_expr FROM entrypoints"
+        " WHERE declared = 1 AND target_expr <> ''"
     ):
-        target = e["evidence"].rsplit("= ", 1)[-1].strip()
+        target = str(e["target_expr"]).strip()
         mod, _, attr = target.partition(":")
         found = r.resolve(mod, attr or "app")
         if found:
@@ -187,7 +198,7 @@ def resolve_cli(store: Store) -> CliStats:
     # per entry point.
     counted = (
         "FROM entrypoints"
-        " WHERE kind = 'CLI' AND evidence NOT LIKE '%[project.scripts]%'"
+        " WHERE kind = 'CLI' AND declared = 0"
     )
     row = store.query(
         f"SELECT COUNT(*), SUM(parent_id IS NOT NULL) {counted}"
@@ -196,7 +207,7 @@ def resolve_cli(store: Store) -> CliStats:
     stats.commands_attached = row[1] or 0
     stats.scripts_linked = store.query(
         "SELECT COUNT(*) FROM entrypoints"
-        " WHERE parent_id IS NOT NULL AND evidence LIKE '%[project.scripts]%'"
+        " WHERE parent_id IS NOT NULL AND declared = 1"
     )[0][0]
     return stats
 
@@ -246,7 +257,7 @@ def command_tree(store: Store, app_id: str, depth: int = 0,
     callback = None
     for c in store.query(
         "SELECT name, routine_id, module, evidence FROM entrypoints WHERE parent_id = ?"
-        " AND evidence NOT LIKE '%[project.scripts]%' ORDER BY name",
+        " AND declared = 0 ORDER BY name",
         (app_id,),
     ):
         item = {"name": c["name"], "routine_id": c["routine_id"], "module": c["module"]}

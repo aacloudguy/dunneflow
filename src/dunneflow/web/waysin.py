@@ -120,6 +120,14 @@ def listing(store: Store) -> list[dict[str, Any]]:
             # exactly what was found -- `pyproject.toml [project.scripts] mensores =
             # mensores.cli:app`, or `conventional name 'run' at module level`.
             "evidence": w["evidence"],
+            # **Bound, and why not** -- the third state a way in has (design rule 21).
+            # A declared way in whose target this build cannot read is a real front door
+            # of the program that this map cannot open, and drawing it with a reach of 0
+            # and nothing else says the program has a door that leads nowhere. The
+            # sentence comes from `binding_note`, which is also what `anomalies` decides
+            # on, so the panel and the worklist cannot disagree (rule 13).
+            "bound": bool(w.get("bound", True)),
+            "why": str(w.get("why", "")),
             # A command tree, not a routine (rule 30). Declared rather than inferred from
             # the length of `nodes`.
             "app": bool(app_id),

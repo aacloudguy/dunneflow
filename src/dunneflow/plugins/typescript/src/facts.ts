@@ -22,7 +22,7 @@
  */
 
 /** `schema.SCHEMA_VERSION`. A plugin declaring another number is refused by name. */
-export const SCHEMA_VERSION = 13;
+export const SCHEMA_VERSION = 14;
 
 export type ArmKind = "if" | "elif" | "else" | "else if" | "case" | "default" | "try" | "except" | "catch" | "finally" | "for" | "while" | "do";
 
@@ -39,6 +39,8 @@ export type EntrypointKind = "CLI" | "MAIN" | "MCP_TOOL" | "HTTP_ROUTE" | "QUEUE
 export type LiteralKind = "PLAIN" | "INTERPOLATED";
 
 export type StructureKind = "DATACLASS" | "PYDANTIC" | "TYPEDDICT" | "NAMEDTUPLE" | "ENUM" | "CLASS" | "INTERFACE" | "TYPE_ALIAS";
+
+export type TargetKind = "MODULE_ATTR" | "FILE" | "NONE";
 
 export interface Routine {
   id: string;

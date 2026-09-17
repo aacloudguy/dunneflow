@@ -30,6 +30,14 @@ from .docstore import DocStore
 from .extractors.docs import DOC_SUFFIXES, extract_doc
 from .ingest import literals
 from .ingest.contract import DiscoveryRules
+
+# **The one import this module makes into `resolve/`, and it is a name rather than a
+# behaviour.** Which filenames declare something is a *discovery* fact -- `PLAN-v2.md`
+# §1h calls its section "Discovery and manifests" -- and the providers own the list
+# because they are what makes a name mean anything (rule 51: a second copy beside the
+# walk would drift the day somebody adds a seventh). Nothing here reads a manifest;
+# `resolve/manifests` does that, after extraction, with the paths this walk hands it.
+from .resolve.manifests import MANIFEST_FILES
 from .schema import DocFacts, FileFacts, hash_source, stored_path
 from .store import Store
 
@@ -133,6 +141,18 @@ class WalkStats:
     # application was **122 of 147 documents** somebody else's map, so the corpus a silent
     # prune would shrink here is 83% of what the reader can see in the directory.
     maps: list[str] = field(default_factory=list)
+    # Every manifest this walk passed -- `package.json`, `Cargo.toml`, `pyproject.toml`
+    # and the rest -- for `resolve/manifests` to read. Collected **here** rather than by a
+    # second walk of its own, because the only question is *which directories are part of
+    # this program*, and this loop has already answered it: `SKIP_DIRS`, every dotted
+    # directory and every directory holding a map are gone by the time a filename is
+    # looked at. A second traversal would be a second answer, and the two would disagree
+    # the first time somebody extended one of the three (rule 92, and rule 51's shape).
+    #
+    # A manifest is **not** source and no reader claims one, so it still counts towards
+    # `unclaimed` where its suffix is unread. Both are true at once: `Package.swift` is a
+    # manifest this tool reads and Swift source it does not.
+    manifests: list[Path] = field(default_factory=list)
     # Language -> strings the reader did not send, because they fall outside
     # `ingest.literals`' bound. A filter **inside** a file rather than a file left out,
     # and it is listed beside them because it is the same claim: this one runs in a
@@ -309,6 +329,12 @@ def discover(root: Path, include_tests: bool = False,
             suffix = p.suffix.lower()
             lang = owner.get(suffix)
             rel = p.relative_to(root)
+            # Declarations follow the corpus. This is not a filter on what is yielded --
+            # a manifest is never source -- it is the walk answering the one question
+            # `resolve/manifests` cannot answer for itself: which directories in this
+            # tree are the program's.
+            if stats is not None and fn in MANIFEST_FILES:
+                stats.manifests.append(p)
             if lang is None:
                 # A document is read by `analyze_docs_tree`, so naming it unread here
                 # would be a false claim rather than a missing one (rule 13).

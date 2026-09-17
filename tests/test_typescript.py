@@ -1271,3 +1271,130 @@ def test_an_unknown_target_strategy_is_refused_rather_than_defaulted(tmp_path):
     )
     assert "the-wrong-word" in (out.stdout + out.stderr)
     assert "receiver_tail" in (out.stdout + out.stderr), "and it names the ones that work"
+
+
+# ------------------------------------- React: the callback, and the file's own word --- #
+#
+# Chunk 11d and 11e. A hook's callback is where a React component does the things this
+# tool records; a directive prologue is a word written above the thing it marks.
+
+REACT_TREE: dict[str, str] = {
+    "tsconfig.json": """{
+  "compilerOptions": { "strict": true, "target": "ES2022", "module": "ESNext",
+                       "moduleResolution": "bundler", "jsx": "react-jsx" }
+}
+""",
+    "panel.tsx": """
+"use client";
+
+import { useEffect, useCallback, useState } from "react";
+
+export function Panel({ id }: { id: string }) {
+  const [seen, setSeen] = useState(false);
+
+  useEffect(() => {
+    console.log("opened", id);
+  }, [id]);
+
+  useEffect(() => {
+    console.error("second effect");
+  }, []);
+
+  const save = useCallback(() => {
+    console.warn("saving", id);
+  }, [id]);
+
+  return <button onClick={save}>{seen}</button>;
+}
+""",
+    "actions.ts": """
+"use server";
+
+export async function createThing(name: string): Promise<string> {
+  return name;
+}
+
+export async function deleteThing(id: string): Promise<void> {
+  console.log(id);
+}
+""",
+}
+
+
+@pytest.fixture(scope="module")
+def react(tmp_path_factory):
+    if PLUGIN is None:
+        pytest.skip("no typescript plugin in this build")
+    root = tmp_path_factory.mktemp("tsreact")
+    paths = []
+    for name, source in REACT_TREE.items():
+        p = root / name
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(source, encoding="utf-8")
+        if name.endswith((".ts", ".tsx")):
+            paths.append(p)
+    PLUGIN.probe()
+    PLUGIN.open(root, paths)
+    try:
+        facts = {ff.path: ff for ff in PLUGIN.extract(paths, root)}
+    finally:
+        PLUGIN.close()
+    for ff in facts.values():
+        assert ff.errors == [], f"{ff.path}: {ff.errors}"
+    return facts
+
+
+def test_an_effect_is_a_routine_nested_in_the_component(react):
+    """What an effect touches is filed under the effect, not under the component that
+    merely declares it (rule 10)."""
+    names = {r.qualname for r in react["panel.tsx"].routines}
+    assert "panel.Panel.useEffect" in names
+    effect = next(r for r in react["panel.tsx"].routines
+                  if r.qualname == "panel.Panel.useEffect")
+    assert effect.is_nested is True
+    owned = [b for b in react["panel.tsx"].boundaries if b.routine_id == effect.id]
+    assert [b.evidence for b in owned] == ["console.log"]
+
+
+def test_a_second_effect_is_a_second_name_and_not_a_collision(react):
+    """Found by running this on uigen: two effects in one component were two routines with
+    one qualname, and `NAME_COLLISION` reported a **BROKEN** defect in a program that has
+    none — out of a command that gates CI on BROKEN. A name the program chose twice is a
+    collision and is the finding; a name this reader applies by convention is expected to
+    repeat and carries the ordinal that says which one it is."""
+    names = sorted(r.qualname for r in react["panel.tsx"].routines
+                   if r.name.startswith("useEffect"))
+    assert names == ["panel.Panel.useEffect", "panel.Panel.useEffect#2"]
+    ids = {r.id for r in react["panel.tsx"].routines}
+    assert len(ids) == len(react["panel.tsx"].routines)
+
+
+def test_a_hook_bound_to_a_name_takes_that_name(react):
+    """`const save = useCallback(() => {…})` is **save** — the word the file uses, and the
+    only way that arrow becomes a routine at all (`variableStatement` looks for a function
+    and finds a call)."""
+    saves = [r for r in react["panel.tsx"].routines if r.name == "save"]
+    assert len(saves) == 1
+    assert saves[0].qualname == "panel.Panel.save"
+
+
+def test_a_directive_marks_every_routine_in_its_file(react):
+    """A file-level `"use server"` marks all of its exports — that is what it means — so a
+    reader asking which routines are server actions has to find them all."""
+    assert all("use server" in (r.decorators or [])
+               for r in react["actions.ts"].routines), react["actions.ts"].routines
+    assert all("use client" in (r.decorators or [])
+               for r in react["panel.tsx"].routines)
+
+
+def test_the_words_and_the_sentence_are_the_languages_and_not_the_renderers():
+    """`render/markdown.py` prints the count and the query; what a mark *means* comes from
+    `detectors/<lang>.yaml`, so a sentence about React is not written into a
+    language-agnostic renderer where no language could edit it (rule 51)."""
+    declared = rules_document("typescript")["directives"]
+    assert declared["use server"]["claimed"] is False
+    assert "across the wire" in declared["use server"]["says"]
+    # `use client` is recorded and *is* claimed — it hides nothing, so it is not listed
+    # under what the map does not claim.
+    assert declared["use client"].get("claimed", True) is True
+    assert "use strict" not in declared

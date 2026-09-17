@@ -84,6 +84,10 @@ export interface RuleSet {
   netKwargs: Map<string, Set<string>>;
   routes: RouteRule[];
   packages: PackageRule[];
+  /** Hooks whose first argument is work rather than a value. See `extract.hookRoutine`. */
+  hookCallbacks: Set<string>;
+  /** Directive prologues worth recording, in the order a file may write them. */
+  directives: Set<string>;
 }
 
 function asArray(value: unknown): string[] {
@@ -195,6 +199,12 @@ export function parseRules(doc: unknown): RuleSet {
     netKwargs,
     routes,
     packages,
+    hookCallbacks: new Set(asArray((data["hooks"] as Record<string, unknown>)?.["callbacks"])),
+    // Only the words matter here; what each one *means* is the host's to print, and a
+    // plugin that carried the sentence would be a second place it could be edited.
+    directives: new Set(Object.keys(
+      (data["directives"] as Record<string, unknown>) ?? {},
+    )),
   };
 }
 

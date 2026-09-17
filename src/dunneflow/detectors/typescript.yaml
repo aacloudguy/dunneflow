@@ -286,6 +286,54 @@ packages:
   "jose":           {kind: CRYPTO, direction: BOTH, salience: high}
   "jsonwebtoken":   {kind: CRYPTO, direction: BOTH, salience: high}
 
+# -- React: the callback that is work, and the word a file says about itself ---- #
+#
+# **A hook's callback is a routine.** `useEffect(() => { … }, [deps])` is where a React
+# component does the things this tool exists to record — a fetch, a subscription, a write
+# — and chunk 9 filed every one of them under the component that merely *declares* the
+# effect. The callback is nested in the component, so its qualname carries it (rule 10).
+#
+# The name is stated and never invented (rule 30), and there are two readings because the
+# source has two: where the hook's call is bound to a name, that is the routine's name
+# (`const createFile = useCallback(…)` is **createFile**); where it is not, the routine is
+# the hook's own word, which is written at that line (`useEffect`, and `useEffect#2` for a
+# second one in the same component — `Extractor.identity`'s disambiguation, not a new one).
+#
+# **The population is small and is stated rather than implied**: 4 in DunneCorp, 16 in
+# uigen, 0 in DunneNote — 20 over every TypeScript tree here. `useEffect` *as a rate* is a
+# second feature and is deferred: judging it needs the dependency array read as part of the
+# judgement, which `resolve/shape.py` has no vocabulary for.
+hooks:
+  callbacks: [useEffect, useLayoutEffect, useInsertionEffect, useCallback, useMemo]
+
+# **A directive prologue marks the thing below it, which is what a decorator is**, so it is
+# recorded in `routines.decorators` and needs no column of its own. That is what makes two
+# holes this map deliberately leaves answerable by query rather than by assertion:
+# `"use server"` actions are not claimed as ways in, and the map says how many there are.
+#
+# **Each one carries the sentence the map prints about it**, because the renderer is
+# language-agnostic and the words are not: what `"use server"` means is TypeScript's to
+# say, and a sentence about React written into `render/markdown.py` would be a claim no
+# language could edit. `claimed: false` is what puts it under *Not claimed as a way in*
+# in the Ways in chapter, with its count and the query that returns it (design rule 13).
+#
+# `"use strict"` is deliberately **not** here. It is a real directive and says nothing
+# about what moves, and putting it on every routine of a legacy file is noise in the one
+# column that otherwise says something (rule 1).
+directives:
+  "use client":
+    says: >-
+      marks a module that runs in the browser as well as on the server. Its exports are
+      components and event handlers, which are already routines here.
+  "use server":
+    claimed: false
+    says: >-
+      marks a module whose exports are called across the wire, which is what HTTP_ROUTE
+      means — so these are ways in, and are not claimed as them. Nothing in the tree says
+      which of a module's exports a client actually calls, and claiming every export of
+      every action file would put names in "Where to start" that no request ever reaches
+      (rule 1). Recorded and not claimed, rather than silently absent.
+
 # -- ways in a framework declares by where a file sits ------------------------- #
 #
 # **A Next.js App Router page is a way in, and nothing in the file says so.** There is no

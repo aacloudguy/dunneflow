@@ -15,6 +15,7 @@ from datetime import datetime
 from pathlib import Path
 
 from ..anomalies import detect
+from ..detectors import rules_document
 from ..docstore import DocStore
 from ..resolve.cli import command_tree
 from ..resolve.flows import boundary_index, trace_flow, ways_in
@@ -245,9 +246,58 @@ def _entrypoints(store: Store, out: Path, program: str, stamp: Stamp) -> Path:
             lines.append(f"| `{_esc(e.name)}` | `{_esc(e.module)}` | {_esc(e.evidence)} |")
         lines.append("")
 
+    lines.extend(_unclaimed_marks(store, program))
+
     path = out / "01-entrypoints.md"
     path.write_text("\n".join(lines), encoding="utf-8")
     return path
+
+
+def _unclaimed_marks(store: Store, program: str) -> list[str]:
+    """What is marked as a way in by the language and deliberately not claimed as one.
+
+    A directive prologue -- `"use server"` -- marks a module whose exports are called
+    across the wire, which is what HTTP_ROUTE means. They are not claimed, because nothing
+    in the tree says which of a module's exports a client actually calls and claiming every
+    one would put names in "Where to start" that no request reaches (rule 1). **A hole a
+    reader can act on is stated; one that is merely absent is a false claim of
+    completeness**, and this is design rule 13's shape: the count, and the query that
+    returns exactly it.
+
+    **The words are the language's and not this renderer's.** Which marks exist, whether
+    each is claimed, and the sentence printed about it all come from
+    `detectors/<lang>.yaml` -- the same document the reader was handed (rule 51). A
+    sentence about React written into this file would be a claim no language could edit,
+    and a second place to edit it.
+    """
+    langs = [str(r["lang"]) for r in
+             store.query("SELECT DISTINCT lang FROM files WHERE lang <> '' ORDER BY lang")]
+    out: list[str] = []
+    for lang in langs:
+        declared = rules_document(lang).get("directives") or {}
+        for mark, block in sorted(declared.items()):
+            if not isinstance(block, dict) or block.get("claimed", True):
+                continue
+            rows = store.query(
+                "SELECT count(*) AS n, count(DISTINCT file) AS files FROM routines "
+                "WHERE lang = ? AND decorators LIKE ?", (lang, f'%"{mark}"%'))
+            n = int(rows[0]["n"]) if rows else 0
+            if not n:
+                continue
+            files = int(rows[0]["files"])
+            if not out:
+                out.append("## Not claimed as a way in\n")
+            out.append(
+                f"**{n} routine{'' if n == 1 else 's'} in {files} "
+                f"{'file' if files == 1 else 'files'}** "
+                f"{'is' if n == 1 else 'are'} marked `{mark}`, which "
+                f"{str(block.get('says', '')).strip()}\n"
+            )
+            out.append("```")
+            out.append(f'dunneflow query <dir> --sql "SELECT file, name FROM routines '
+                       f"WHERE lang = '{lang}' AND decorators LIKE '%{mark}%'\"")
+            out.append("```\n")
+    return out
 
 
 def _count_commands(tree: dict) -> int:

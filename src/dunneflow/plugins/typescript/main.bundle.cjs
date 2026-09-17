@@ -211215,7 +211215,13 @@ function parseRules(doc) {
     netVerbs: new Set(asArray(network["verbs"])),
     netKwargs,
     routes,
-    packages
+    packages,
+    hookCallbacks: new Set(asArray(data["hooks"]?.["callbacks"])),
+    // Only the words matter here; what each one *means* is the host's to print, and a
+    // plugin that carried the sentence would be a second place it could be edited.
+    directives: new Set(Object.keys(
+      data["directives"] ?? {}
+    ))
   };
 }
 function matchesCall(rule, dotted2) {
@@ -211467,6 +211473,14 @@ var Extractor = class {
   // collision can be reported — `extractors/python/extract.py:_identity`, one language
   // over, and the store's `UNIQUE(routines.id)` is what finds it when it is missing.
   seenQualnames = /* @__PURE__ */ new Map();
+  /**
+   * The file's own directive prologue, read once and carried onto every routine in it.
+   *
+   * A file-level `"use server"` marks **all** of its exports — that is what the directive
+   * means — so a reader asking which routines are server actions must find them all, and
+   * one row on a module scope that may never be claimed (rule 96) would answer for none.
+   */
+  fileDirectives = [];
   lines;
   // ------------------------------------------------------------------ lines --- //
   line(pos) {
@@ -211509,6 +211523,9 @@ var Extractor = class {
         docstring: "Module-level code: runs at import, before anything is called.",
         body_hash: hashSource(this.src)
       };
+      if (this.fileDirectives.length) {
+        this.moduleRoutine.decorators = [...this.fileDirectives];
+      }
     }
     return this.moduleRoutine;
   }
@@ -211558,6 +211575,7 @@ var Extractor = class {
   }
   // ------------------------------------------------------------------ walk --- //
   run() {
+    this.fileDirectives = this.directivesOf(this.sf.statements);
     for (const stmt of this.sf.statements) this.visit(stmt);
   }
   visit(node) {
@@ -211693,7 +211711,12 @@ var Extractor = class {
     if (doc) routine.docstring = doc;
     const comments = this.leadingComments(node);
     if (comments.length) routine.comments = comments;
-    const decorators = this.decorators(node);
+    const decorators = [...this.decorators(node), ...this.fileDirectives];
+    if (fn.body !== void 0 && import_typescript4.default.isBlock(fn.body)) {
+      for (const own of this.directivesOf(fn.body.statements)) {
+        if (!decorators.includes(own)) decorators.push(own);
+      }
+    }
     if (decorators.length) routine.decorators = decorators;
     this.routines.push(routine);
     this.anchors.set(node, routine);
@@ -211964,7 +211987,85 @@ var Extractor = class {
     }
     this.maybeComprehension(node);
     if (import_typescript4.default.isCallExpression(node)) this.expressionsIn(node.expression);
-    for (const arg of node.arguments ?? []) this.expressionsIn(arg);
+    const claimed = this.hookRoutine(node, expr);
+    (node.arguments ?? []).forEach((arg, idx) => {
+      if (claimed && idx === 0) return;
+      this.expressionsIn(arg);
+    });
+  }
+  /**
+   * `useEffect(() => {…})` — the callback is where a React component does the things this
+   * tool records, and chunk 9 filed every one of them under the component that merely
+   * declares the effect.
+   *
+   * **The name is stated, never invented** (rule 30), and the source spells it two ways.
+   * Where the hook's call is bound to a name, that is the name — `const createFile =
+   * useCallback(…)` is **createFile**, and it is also the only way that arrow becomes a
+   * routine at all, since `variableStatement` looks for a function and finds a call.
+   * Where it is not, the routine is the hook's own word, which is written at that line.
+   *
+   * Which hooks are data (`detectors/typescript.yaml`), so React Query or a house hook is
+   * an edit there. An arrow that is not the first argument is not a callback in any of
+   * them, and a hook handed a named function already has a routine.
+   */
+  hookRoutine(node, expr) {
+    if (!expr || !this.rules.hookCallbacks.has(expr)) return false;
+    const fn = (node.arguments ?? [])[0];
+    if (fn === void 0 || !(import_typescript4.default.isArrowFunction(fn) || import_typescript4.default.isFunctionExpression(fn))) {
+      return false;
+    }
+    const parent = node.parent;
+    if (parent !== void 0 && import_typescript4.default.isVariableDeclaration(parent) && import_typescript4.default.isIdentifier(parent.name)) {
+      this.routine(fn, parent.name.text, fn);
+      return true;
+    }
+    this.routine(fn, this.freeHookName(expr), fn);
+    return true;
+  }
+  /**
+   * `useEffect`, then `useEffect#2` — and the ordinal is in the **qualname**, not only in
+   * the id.
+   *
+   * Found by running chunk 11d on uigen: two effects in one component are two routines
+   * with one qualname, and `NAME_COLLISION` read that exactly as it is written to —
+   * *defined 2 times, only the last one exists at run time* — at **BROKEN**, out of a
+   * command that gates CI on BROKEN. The program is fine; the name was this reader's.
+   *
+   * So the two cases are kept apart rather than the detector being taught an exception. A
+   * name the *program* chose twice is a collision and is the finding; a name **this reader
+   * applies by convention** is expected to repeat, and it carries the ordinal that says
+   * which one it is. The residue is the one `call_site_id` already states: an ordinal is a
+   * position, and inserting an effect above another renames it.
+   */
+  freeHookName(word) {
+    const top = this.scope[this.scope.length - 1];
+    const prefix = top !== void 0 ? top.routine.qualname : this.module;
+    let name = word;
+    let n = 1;
+    while (this.seenQualnames.has(`${prefix}.${name}`)) {
+      n += 1;
+      name = `${word}#${n}`;
+    }
+    return name;
+  }
+  /**
+   * The directive prologue of a file or of a function body — `"use client"`, `"use server"`.
+   *
+   * A word written above the thing it marks, which is what a decorator is, so it is
+   * recorded in `decorators` and needs no column of its own. Only the leading run of bare
+   * string statements is a prologue: a string in the middle of a body is an expression
+   * somebody wrote, and reading one as a directive would be the language's own rule
+   * loosened for convenience.
+   */
+  directivesOf(statements) {
+    const found = [];
+    for (const stmt of statements) {
+      if (!import_typescript4.default.isExpressionStatement(stmt)) break;
+      const expr = stmt.expression;
+      if (!import_typescript4.default.isStringLiteral(expr) && !import_typescript4.default.isNoSubstitutionTemplateLiteral(expr)) break;
+      if (this.rules.directives.has(expr.text)) found.push(expr.text);
+    }
+    return found;
   }
   /**
    * `<PageHero title={x}>…</PageHero>` — a call, with its props for arguments.

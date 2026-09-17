@@ -1,0 +1,373 @@
+# Boundary and entrypoint rules for Python.
+#
+# This file is the extension point. Teaching the tool about a new framework means
+# adding a rule here -- not editing the extractor. Rules are matched against the
+# dotted form of a call expression, so `os.path.join(...)` matches as "os.path.join"
+# and `self.conn.execute(...)` matches as "self.conn.execute".
+#
+# Match forms:
+#   exact        -- full dotted name must equal one of these
+#   prefix       -- dotted name starts with one of these (include the trailing dot)
+#   method       -- last attribute equals one of these, whatever the receiver
+#   subscript    -- an index expression on this dotted name (os.environ["X"])
+#
+# target_arg: which positional argument names the thing being touched. When it is a
+# string literal the literal is recorded; otherwise the expression source is recorded
+# so the reader can still see what varies.
+#
+# salience: high | normal | low. Low-salience hits are real but numerous (logging,
+# print); they are recorded and filterable rather than dropped.
+
+version: 1
+
+boundaries:
+  # -- environment ------------------------------------------------------------ #
+  - kind: ENV
+    direction: IN
+    salience: high
+    exact: [os.getenv, os.environ.get, os.environ.setdefault]
+    subscript: [os.environ]
+    target_arg: 0
+  - kind: ENV
+    direction: OUT
+    salience: high
+    exact: [os.putenv]
+    target_arg: 0
+
+  # -- files ------------------------------------------------------------------ #
+  - kind: FILE
+    direction: IN
+    salience: normal
+    exact: [open, io.open, codecs.open]
+    method: [read_text, read_bytes, readlines, iterdir, glob, rglob]
+    target_arg: 0
+  - kind: FILE
+    direction: OUT
+    salience: high
+    method: [write_text, write_bytes, mkdir, touch, unlink, rmdir, rename, replace, chmod]
+    exact: [os.remove, os.unlink, os.rename, os.replace, os.makedirs, os.mkdir]
+    prefix: [shutil.]
+    target_arg: 0
+  - kind: FILE
+    direction: IN
+    salience: low
+    exact: [pathlib.Path.exists, os.path.exists, os.path.isfile, os.path.isdir]
+    method: [exists, is_file, is_dir, stat]
+    target_arg: 0
+
+  # -- processes -------------------------------------------------------------- #
+  - kind: PROCESS
+    direction: BOTH
+    salience: high
+    prefix: [subprocess.]
+    exact: [os.system, os.popen, os.execv, os.spawnv]
+    target_arg: 0
+
+  # -- network ---------------------------------------------------------------- #
+  - kind: NETWORK
+    direction: BOTH
+    salience: high
+    prefix: [requests., httpx., urllib.request., aiohttp., socket., http.client.]
+    exact: [urlopen]
+    target_arg: 0
+
+  # -- databases -------------------------------------------------------------- #
+  - kind: DATABASE
+    direction: BOTH
+    salience: high
+    prefix: [sqlite3.connect, psycopg2.connect, psycopg.connect, asyncpg.connect]
+    method: [execute, executemany, executescript, cursor, commit, rollback, fetchone, fetchall]
+    target_arg: 0
+
+  # -- messaging -------------------------------------------------------------- #
+  # Messaging fails differently from RPC: a call that "succeeds" may mean only that a
+  # broker accepted the message. Delivery, ordering, and acknowledgement are separate
+  # questions, so producers, consumers, and acks are recorded separately rather than
+  # collapsed into one "queue" fact.
+  - kind: QUEUE
+    direction: OUT
+    salience: high
+    prefix: [kafka.KafkaProducer, aiokafka.AIOKafkaProducer, confluent_kafka.Producer]
+    method: [publish, basic_publish, send_message, send_messages, produce, enqueue,
+             xadd, lpush, rpush, put_nowait]
+    exact: [redis.publish]
+    target_arg: 0
+  - kind: QUEUE
+    direction: IN
+    salience: high
+    prefix: [kafka.KafkaConsumer, aiokafka.AIOKafkaConsumer, confluent_kafka.Consumer]
+    # `poll` is deliberately absent: it is how you check a subprocess's exit status
+    # as often as it is how you read a broker, and Kafka consumers are already
+    # matched by prefix above.
+    method: [basic_consume, receive_message, receive_messages, xread, blpop, brpop,
+             psubscribe]
+    target_arg: 0
+  - kind: QUEUE
+    direction: BOTH
+    salience: normal
+    prefix: [pika., kombu., celery., nats., zmq., paho., stomp., redis.,
+             azure.servicebus., google.cloud.pubsub_v1.]
+    method: [ack, nack, basic_ack, basic_nack, basic_reject,
+             change_message_visibility, delete_message]
+    target_arg: 0
+  # In-process and inter-process queues are real queues but not message brokers:
+  # nothing crosses a machine, and nothing can be lost in transit. Kept, at low
+  # salience, so concurrency is visible without being confused with messaging.
+  - kind: QUEUE
+    direction: BOTH
+    salience: low
+    prefix: [multiprocessing.Queue, asyncio.Queue, queue.Queue, queue.SimpleQueue,
+             collections.deque]
+    method: [task_done, join_thread]
+    target_arg: 0
+
+  # -- standard streams ------------------------------------------------------- #
+  - kind: STDIO
+    direction: OUT
+    salience: normal
+    exact: [print, sys.stdout.write, sys.stderr.write, typer.echo, typer.secho, click.echo]
+    target_arg: 0
+  - kind: STDIO
+    direction: IN
+    salience: high
+    exact: [input, sys.stdin.read, sys.stdin.readline, typer.prompt, click.prompt]
+    target_arg: 0
+  - kind: STDIO
+    direction: OUT
+    salience: low
+    prefix: [logging., logger., log., self.logger., self.log.]
+    method: [debug, info, warning, warn, error, exception, critical]
+    target_arg: 0
+
+  # -- cloud ------------------------------------------------------------------ #
+  - kind: CLOUD_SDK
+    direction: BOTH
+    salience: high
+    prefix: [boto3., botocore., google.cloud., azure.]
+    target_arg: 0
+
+  # -- model APIs ------------------------------------------------------------- #
+  # Matched on the full call path, not on a bare method name: `create` is one of the
+  # most common method names there is, and matching it alone made every local
+  # `store.create(...)` look like a call to a model provider.
+  - kind: LLM_API
+    direction: BOTH
+    salience: high
+    prefix: [anthropic., openai., bedrock_runtime.]
+    contains: [.messages.create, .messages.stream, .chat.completions.create,
+               .completions.create, .invoke_model]
+    target_arg: 0
+
+  # -- cryptography ----------------------------------------------------------- #
+  # Not I/O, but load-bearing: worth seeing on a flow that handles trust.
+  - kind: CRYPTO
+    direction: BOTH
+    salience: normal
+    prefix: [cryptography., hmac., secrets., ssl.]
+    exact: [hashlib.md5, hashlib.sha1, hashlib.sha256, hashlib.sha512, hashlib.blake2b]
+    target_arg: 0
+
+# --------------------------------------------------------------------------- #
+# Remote calls, in the detail an infrastructure engineer needs.
+#
+# A remote call has a signature just as a function does, and it is a longer one:
+# protocol, verb, destination, port, whether it blocks, how long before it gives up,
+# and whether it retries. Those are the fields you end up reconstructing by hand from
+# a packet capture at two in the morning, so they are recorded here instead.
+#
+# Longest prefix wins, which is how `httpx.AsyncClient` is async while `httpx.` is not.
+# --------------------------------------------------------------------------- #
+
+network:
+  libraries:
+    "requests.":                {protocol: HTTP,  async: false}
+    "httpx.AsyncClient":        {protocol: HTTP,  async: true}
+    "httpx.":                   {protocol: HTTP,  async: false}
+    "aiohttp.":                 {protocol: HTTP,  async: true}
+    "urllib.request.":          {protocol: HTTP,  async: false}
+    "http.client.":             {protocol: HTTP,  async: false}
+    "socket.":                  {protocol: TCP,   async: false}
+    "asyncio.open_connection":  {protocol: TCP,   async: true}
+    "asyncio.start_server":     {protocol: TCP,   async: true}
+    "grpc.aio":                 {protocol: gRPC,  async: true}
+    "grpc.":                    {protocol: gRPC,  async: false}
+    "websockets.":              {protocol: WebSocket, async: true}
+    "smtplib.":                 {protocol: SMTP,  async: false}
+    "ftplib.":                  {protocol: FTP,   async: false}
+    "paramiko.":                {protocol: SSH,   async: false}
+    "anthropic.AsyncAnthropic": {protocol: HTTPS, async: true}
+    "anthropic.":               {protocol: HTTPS, async: false}
+    "openai.AsyncOpenAI":       {protocol: HTTPS, async: true}
+    "openai.":                  {protocol: HTTPS, async: false}
+    "boto3.":                   {protocol: HTTPS, async: false}
+    "botocore.":                {protocol: HTTPS, async: false}
+    # Messaging transports. The protocol decides the delivery semantics, so it is
+    # worth naming precisely rather than lumping all of it under "queue".
+    "aiokafka.":                {protocol: Kafka,     async: true}
+    "kafka.":                   {protocol: Kafka,     async: false}
+    "confluent_kafka.":         {protocol: Kafka,     async: false}
+    "aio_pika.":                {protocol: AMQP,      async: true}
+    "pika.":                    {protocol: AMQP,      async: false}
+    "kombu.":                   {protocol: AMQP,      async: false}
+    "celery.":                  {protocol: Celery,    async: false}
+    "nats.":                    {protocol: NATS,      async: true}
+    "zmq.asyncio":              {protocol: ZeroMQ,    async: true}
+    "zmq.":                     {protocol: ZeroMQ,    async: false}
+    "paho.":                    {protocol: MQTT,      async: false}
+    "stomp.":                   {protocol: STOMP,     async: false}
+    "redis.asyncio":            {protocol: Redis,     async: true}
+    "redis.":                   {protocol: Redis,     async: false}
+    "azure.servicebus.aio":     {protocol: ServiceBus, async: true}
+    "azure.servicebus.":        {protocol: ServiceBus, async: false}
+    "google.cloud.pubsub_v1.":  {protocol: PubSub,    async: false}
+  # The verb, where the call names one.
+  verbs: [get, post, put, delete, patch, head, options, request, urlopen,
+          send, sendall, sendto, recv, recvfrom, connect, create_connection,
+          invoke_model, publish, subscribe, produce, consume, poll, ack, nack,
+          basic_publish, basic_consume, send_message, receive_message, xadd, xread]
+  # Keyword arguments worth lifting out, because these are the ones that decide
+  # whether a hung RPC is a hang or a slow success.
+  kwargs:
+    timeout: [timeout, read_timeout, connect_timeout, request_timeout, deadline]
+    retries: [retries, max_retries, retry, num_retries]
+    payload: [json, data, content, files, body, payload]
+    port:    [port]
+    tls:     [verify, ssl, verify_ssl, use_tls, secure]
+    headers: [headers, auth, credentials]
+    # Messaging-specific: these decide whether a message can be lost or duplicated.
+    topic:   [topic, queue, channel, subject, routing_key, exchange, stream,
+              queue_name, topic_arn, queue_url]
+    ack:     [ack, auto_ack, acks, ack_policy, enable_auto_commit, durable,
+              delivery_mode, persistent]
+
+# --------------------------------------------------------------------------- #
+# Entrypoints: how the program is started or woken.
+# Matched against the dotted form of each decorator on a routine.
+# --------------------------------------------------------------------------- #
+
+# Some servers register handlers by subclassing rather than by decorator. A
+# `do_POST` on a BaseHTTPRequestHandler is every bit an inbound entrypoint, and it is
+# how the off-box witness service is written.
+handler_bases:
+  BaseHTTPRequestHandler: HTTP_ROUTE
+  SimpleHTTPRequestHandler: HTTP_ROUTE
+  StreamRequestHandler: QUEUE_CONSUMER
+  BaseRequestHandler: QUEUE_CONSUMER
+handler_methods: [do_GET, do_POST, do_PUT, do_DELETE, do_PATCH, do_HEAD, do_OPTIONS,
+                  handle, handle_one_request]
+
+entrypoints:
+  - kind: CLI
+    decorator_method: [command, callback, group]
+    evidence: "CLI command decorator"
+  - kind: MCP_TOOL
+    decorator_method: [tool, resource, prompt, list_tools, call_tool]
+    evidence: "MCP listener decorator"
+  - kind: HTTP_ROUTE
+    decorator_method: [route, get, post, put, delete, patch, websocket]
+    evidence: "HTTP route decorator"
+  - kind: QUEUE_CONSUMER
+    decorator_method: [consumer, subscribe, listen, on_message]
+    evidence: "queue consumer decorator"
+  - kind: SCHEDULED
+    decorator_method: [scheduled, cron, periodic_task, task]
+    evidence: "scheduled job decorator"
+
+# Names that, defined at module top level, are conventionally a way in.
+entry_names: [main, run, cli, app, serve, handler, lambda_handler]
+
+# Command-line applications are objects, not functions. A real CLI is a tree of them:
+# commands attach to an app, and apps mount onto other apps. Modelling that tree is
+# what turns "one executable" into the readable list of what it can actually be told
+# to do.
+# The same shape recurs well beyond CLIs: a server object is created, handlers are
+# attached to it by decorator, and something later calls .run() on it. Modelling all
+# of them the same way is what stops an MCP server or a web app from looking like a
+# one-line program whose main() calls nothing.
+cli:
+  app_factories:
+    - Typer          # typer
+    - AsyncTyper
+    - Group          # click
+    - Command
+    - ArgumentParser # argparse
+    - FastMCP        # MCP servers
+    - Server
+    - FastAPI        # web
+    - APIRouter
+    - Flask
+    - Blueprint
+  mount_methods: [add_typer, add_command, add_parser, add_subparsers, include_router,
+                  register_blueprint]
+  # Calling one of these on an app object is what actually starts it, so the routine
+  # that does so is the way in to everything attached to that object.
+  launch_methods: [run, run_server, serve, serve_forever, run_forever, main_loop,
+                   run_stdio, run_sync]
+
+# -- named artefacts ---------------------------------------------------------- #
+#
+# A file the program names in a string literal: `"tabularium.db"`, `"groma.json"`,
+# `"STATUSQUO.md"`. These are naming acts -- a person chose that word -- and they are
+# vocabulary as much as a package name is, but they reach no other detector: a path
+# assembled as `root / ".mensores" / "tabularium.db"` is not a boundary target, not a
+# table, and not a module.
+#
+# Only an extension listed here admits a literal, which is what keeps this precise
+# (rule 5). `"1.2.3"`, `"utf-8"` and `"mensores.cli"` all have a trailing dotted part
+# and none of them is a file; requiring a known extension is the whole defence.
+# Adding a language or a format is an edit here, not a code change.
+#
+# `org` was removed on evidence: org-mode files are rare in a Python codebase and
+# `.org` is a common TLD, so the only thing it ever matched was `host="freetsa.org"`.
+# The same hazard is latent in `md` (Moldova) and `pl` (Poland); neither has produced a
+# false hit on the corpus and both are removed the moment one does. A TLD and a file
+# extension are indistinguishable in a bare literal, so this list is the only defence.
+artefacts:
+  extensions:
+    DATABASE: [db, sqlite, sqlite3, duckdb, mdb, rdb]
+    CONFIG:   [yaml, yml, toml, ini, cfg, conf, properties, env, editorconfig]
+    SCRIPT:   [py, sh, bash, zsh, fish, ps1, bat, rb, pl, lua, js, ts, mjs]
+    DOCUMENT: [md, rst, txt, adoc, pdf, html, htm]
+    DATA:     [json, jsonl, ndjson, csv, tsv, xml, parquet, avro, proto, sql, lock,
+               pickle, pkl, npy, log]
+    ARCHIVE:  [zip, tar, gz, tgz, bz2, xz, whl, jar]
+
+# -- type aliases ------------------------------------------------------------- #
+#
+# `QueueState = Literal["pending", "adjudicating", "emitted", "rejected", "skipped"]`
+# is an enumerated vocabulary declared without the word `enum`. `StructureKind.TYPE_ALIAS`
+# existed in the schema from the start and nothing ever produced one, because only a
+# `class` statement became a structure. 83 of these on Mensores, 67 of them `Literal`.
+#
+# A module-level assignment is a type alias only when its value is subscripted from a
+# constructor named here, or is a call to one of the factories. That list is the whole
+# precision defence, exactly as the artefact extension list is: `X = SOME_DICT["key"]`
+# is also a Subscript, and without a known base it would read as a type.
+#
+# A bare `X = Y` alias is deliberately NOT admitted. It cannot be told from
+# `DEFAULT = OTHER_DEFAULT` without resolving `Y`, and rule 1 says precision first --
+# it is recorded as a constant instead, which is true either way.
+type_aliases:
+  constructors:
+    - Literal
+    - Union
+    - Optional
+    - Callable
+    - Mapping
+    - MutableMapping
+    - Sequence
+    - MutableSequence
+    - Iterable
+    - Iterator
+    - Awaitable
+    - Coroutine
+    - AsyncIterator
+    - dict
+    - list
+    - set
+    - frozenset
+    - tuple
+    - type
+  factories:
+    - NewType
+    - TypeVar

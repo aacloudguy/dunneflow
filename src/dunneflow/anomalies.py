@@ -1,0 +1,905 @@
+"""Finding what is wrong, and being honest about what that means.
+
+A program worth reading may well be broken. Ingest therefore never fails on a bad
+program: a file that will not parse yields a recorded error rather than an exception,
+colliding definitions keep separate identities rather than merging, and an edge lost to
+ambiguity is recorded as lost rather than silently omitted.
+
+Every anomaly carries a **blind spot**: the sentence describing what would make it a
+false alarm. This is not decoration. In the first real run against a live codebase,
+six confident findings in a row were defects in this tool rather than in the program
+under study -- nested closures sharing a qualname, docstrings parsed as SQL, an upsert
+clause read as a table, a `__main__` guard assumed to call `main`, an async context
+manager read as an un-awaited call, and test-only helpers reported as dead because
+tests were excluded from the scan. A finding without its blind spot is a guess wearing
+a uniform.
+
+Severity says what it means; confidence says how sure the tool is. They are different
+questions and are never blurred.
+"""
+
+from __future__ import annotations
+
+import json
+import sqlite3
+import sys
+from dataclasses import dataclass, field
+
+from .schema import make_id
+from .store import Store
+
+# What it means for the program.
+BROKEN = "BROKEN"    # the program cannot be correct as written
+SUSPECT = "SUSPECT"  # probably wrong, or a latent operational hazard
+INFO = "INFO"        # worth knowing; not necessarily wrong
+
+# How sure the tool is.
+CERTAIN = "CERTAIN"
+PROBABLE = "PROBABLE"
+POSSIBLE = "POSSIBLE"
+
+_SEVERITY_ORDER = {BROKEN: 0, SUSPECT: 1, INFO: 2}
+_CONFIDENCE_ORDER = {CERTAIN: 0, PROBABLE: 1, POSSIBLE: 2}
+
+_STDLIB = frozenset(sys.stdlib_module_names)
+
+
+@dataclass(slots=True)
+class Occurrence:
+    """One of the things a finding is about, and how to open it.
+
+    **`nav` is the name of a *route*, not the kind of the thing.** `routine`, `t`, `file`,
+    `ep` and `b` are entries in the shell's `NAV_ROUTES` and are what a navigator row
+    already writes -- so an occurrence carries a subject the router acts on rather than a
+    label with no way in (rule 30). Naming the kind instead would need a second table
+    mapping kinds to routes at the far end, which is a second place to forget one (rule 51).
+
+    `file` and `line` travel beside the id rather than instead of it: they are what makes a
+    row worth reading before it is clicked, and for the two occurrence families with no
+    selectable subject -- an index, a lost call site -- they *are* the way in.
+    """
+
+    nav: str
+    id: str
+    label: str
+    file: str = ""
+    line: int = 0
+
+
+@dataclass(slots=True)
+class Anomaly:
+    """One finding, and what makes it *this* finding rather than another.
+
+    `ident_parts` is what the detector says identifies its finding, and it has no
+    default: a detector that does not answer the question cannot construct one. That is
+    deliberate, and it is the half of this design that has to survive a second language.
+    Detectors are query-driven over the store, so a Kotlin or C++ extractor's facts run
+    through the ones here unchanged -- and will bring detectors of their own. A central
+    rule that *inferred* identity from `subject` would have to go on being right about
+    every one of them; a rule declared beside the detector makes adding one a
+    self-contained job.
+
+    Two constraints on the parts, and both were measured rather than reasoned:
+
+    * **No position.** Not a line, and -- for a detector that groups -- not a file
+      either. `file` on a grouped finding is `MIN(file)`, an arbitrary tiebreak that
+      moves when an unrelated file changes: keyed with it, Mensores' pair loses three of
+      its 106 pairings and reports them as removed-and-added. That is `make_id`'s own
+      argument one level up, and `changes.py` makes it again for facts.
+    * **The parts come from the fact contract**, never from a language's syntax. Every
+      detector here already groups by store columns -- `qualname`, `callee_expr`, `tbl`,
+      `module` -- which is exactly what `schema.py` guarantees any extractor emits.
+
+    A finding that is about the *whole program* -- `DEAD_CODE`, `UNREACHABLE` -- declares
+    `()`, and that empty tuple is a statement rather than an omission: there is one of
+    these per program, so the kind alone identifies it. Before this it was an empty
+    `subject` that fell out of a default argument, which reads identically and claims
+    nothing.
+    """
+
+    kind: str
+    severity: str
+    confidence: str
+    title: str
+    detail: str
+    blind_spot: str
+    # What identifies this finding across two versions of one program. Required.
+    ident_parts: tuple[str, ...]
+    subject: str = ""
+    file: str = ""
+    line: int = 0
+    count: int = 1
+    # **The things this finding is about, as a population rather than as prose.**
+    #
+    # `detail` has always carried them as a semicolon-joined string of names, and that is
+    # rule 41 exactly: a prose claim and a machine-readable population are two things, and
+    # only one of them can be asked a question. The worklist's two jump buttons sat disabled
+    # for want of this, saying so in their tooltips -- honest, and the weakest form of the
+    # fix.
+    #
+    # Never a sample. Rule 8 bounds a diagram, not a reference list, and the whole point is
+    # that the list was unreachable.
+    occurrences: list[Occurrence] = field(default_factory=list)
+    # Why this finding lists nothing, **when it lists nothing**. An empty list and *"this
+    # kind cannot be enumerated"* are different answers (design rule 21), and flattening
+    # them gives a button that silently does nothing on exactly the findings that most need
+    # explaining. `detect` refuses a finding that answers neither.
+    unenumerated: str = ""
+
+    @property
+    def ident(self) -> str:
+        """The identity, derived -- never stored beside the parts it comes from.
+
+        A second copy of an answer is a second thing to keep in step (rule 51), and the
+        parts are kept because the pairing is a *claim*: two findings are said to be one,
+        and the parts are how a reader or a guard sees why (design rule 13).
+
+        `make_id` joins on `\\x00`, so no part can be spelled to look like a boundary
+        between two -- the separator collision `diagram.py` has to assert its way around
+        cannot arise here. The `"finding"` prefix is the same namespacing `make_id("ep",
+        ...)` and `make_id("site", ...)` already use, so a finding's id can never collide
+        with a routine's.
+        """
+        return make_id("finding", self.kind, *self.ident_parts)
+
+
+@dataclass(slots=True)
+class Report:
+    items: list[Anomaly] = field(default_factory=list)
+    _seen: dict[str, int] = field(default_factory=dict, repr=False)
+
+    def add(self, a: Anomaly) -> None:
+        """Keep the finding, disambiguating a genuine repeat rather than merging it.
+
+        Nine of the detectors group, so their key is unique by construction. Four do not
+        -- `PARSE_ERROR` reports one finding per error in a file, and two files can
+        legitimately create indexes of the same name -- and for those a key can repeat.
+        Left alone, two findings would share an id and the pairing would quietly speak
+        about one of them twice.
+
+        So an exact repeat takes an **ordinal among identical keys**, which is the same
+        residue `_identity()` gives colliding qualnames and `call_site_id` gives two
+        identical expressions in one routine. It is a position of last resort and it is
+        stated here rather than hidden: it is stable only while the repeats keep their
+        order, which for a stored, ordered query they do.
+
+        Note what this does *not* do: it never invents the key, only breaks a tie in it.
+        The detector still says what identifies its finding.
+        """
+        n = self._seen.get(a.ident, 0)
+        self._seen[a.ident] = n + 1
+        if n:
+            a.ident_parts = (*a.ident_parts, f"#{n + 1}")
+        self.items.append(a)
+
+    def sorted(self) -> list[Anomaly]:
+        return sorted(
+            self.items,
+            key=lambda a: (
+                _SEVERITY_ORDER.get(a.severity, 9),
+                _CONFIDENCE_ORDER.get(a.confidence, 9),
+                -a.count,
+                a.kind,
+            ),
+        )
+
+    def counts(self) -> dict[str, int]:
+        out = {BROKEN: 0, SUSPECT: 0, INFO: 0}
+        for a in self.items:
+            out[a.severity] = out.get(a.severity, 0) + 1
+        return out
+
+    @property
+    def broken(self) -> int:
+        return self.counts()[BROKEN]
+
+
+# --------------------------------------------------------------------------- #
+# Detectors. Each is query-driven, so they run against a stored graph without
+# re-reading a line of source.
+# --------------------------------------------------------------------------- #
+
+
+def _routine_rows(store: Store, where: str,
+                  args: tuple[object, ...] = ()) -> list[Occurrence]:
+    """The routines a finding is about, as occurrences the shell can already open.
+
+    One helper rather than the same three lines in six detectors: what a routine occurrence
+    *is* -- the `routine` route, the node id, the qualname to print -- is one answer, and
+    six copies would drift the day a route is renamed (rule 51).
+
+    `where` is interpolated because every caller passes a literal written in this file; the
+    values that come from data are bound.
+    """
+    return [
+        Occurrence(nav="routine", id=str(x["id"]), label=str(x["qualname"]),
+                   file=str(x["file"] or ""), line=int(x["line_start"] or 0))
+        for x in store.query(
+            f"SELECT id, qualname, file, line_start FROM routines {where}"
+            " ORDER BY file, line_start", args)
+    ]
+
+
+def _parse_failures(store: Store, r: Report) -> None:
+    for row in store.query("SELECT path, errors FROM files WHERE errors != '[]'"):
+        for err in json.loads(row["errors"]):
+            r.add(Anomaly(
+                kind="PARSE_ERROR", severity=BROKEN, confidence=CERTAIN,
+                title=f"{row['path']} could not be parsed",
+                detail=err,
+                blind_spot="None. The file is not valid Python for the interpreter "
+                           "running DunneFlow; if the program targets an older or "
+                           "newer syntax, that is the difference.",
+                # One finding per error, so the path alone would merge a file's two
+                # failures into one. The message is what tells them apart, and it is
+                # what the finding is *about*.
+                ident_parts=(row["path"], err),
+                subject=row["path"], file=row["path"],
+                # A file, and `file` is the code browser's own route.
+                occurrences=[Occurrence(nav="file", id=row["path"], label=row["path"],
+                                        file=row["path"])],
+            ))
+
+
+def _name_collisions(store: Store, r: Report) -> None:
+    for row in store.query(
+        "SELECT qualname, COUNT(*) n, GROUP_CONCAT(line_start) lines, MIN(file) f"
+        "  FROM routines WHERE name != '<module>'"
+        " GROUP BY qualname HAVING n > 1 ORDER BY n DESC"
+    ):
+        # **Every definition that collides, not the group.** The finding is that several
+        # things share one name, so a single occurrence would name one arbitrarily -- the
+        # same reason `MIN(file)` is kept out of the key just below.
+        members = _routine_rows(
+            store, "WHERE name != '<module>' AND qualname = ?", (row["qualname"],))
+        r.add(Anomaly(
+            kind="NAME_COLLISION", severity=BROKEN, confidence=CERTAIN,
+            title=f"`{row['qualname']}` is defined {row['n']} times",
+            detail=f"`{row['qualname']}` is defined {row['n']} times "
+                   f"(lines {row['lines']}). Only the last one exists at run time; "
+                   f"every call resolves to it and the others are unreachable.",
+            blind_spot="If these are nested functions in different enclosing scopes "
+                       "they are distinct and this is a naming defect in DunneFlow, "
+                       "not in the program. Check whether the definitions sit inside "
+                       "different functions.",
+            # Grouped by qualname, so the qualname is the key -- unique by construction.
+            # `f` is MIN(file) and is deliberately not here: it names one of the
+            # colliding definitions arbitrarily, and which one it names can move.
+            ident_parts=(row["qualname"],),
+            subject=row["qualname"], file=row["f"], count=row["n"],
+            occurrences=members,
+        ))
+
+
+def _redefinitions(store: Store, r: Report) -> None:
+    for row in store.query(
+        "SELECT module, name, COUNT(*) n, GROUP_CONCAT(line_start) lines, MIN(file) f"
+        "  FROM routines WHERE name != '<module>' AND is_nested = 0 AND is_method = 0"
+        " GROUP BY module, name HAVING n > 1 ORDER BY n DESC"
+    ):
+        r.add(Anomaly(
+            kind="REDEFINITION", severity=SUSPECT, confidence=CERTAIN,
+            title=f"`{row['name']}` is defined {row['n']} times in one module",
+            detail=f"`{row['name']}` is defined {row['n']} times in `{row['module']}` "
+                   f"(lines {row['lines']}). The later definition shadows the earlier.",
+            blind_spot="Conditional definitions (`if TYPE_CHECKING:`, platform "
+                       "branches, try/except ImportError) legitimately define a name "
+                       "more than once and only one is ever live.",
+            # The GROUP BY key, both halves of it: the same name in two modules is two
+            # findings, and joining them into one string would be a key that cannot say
+            # which part is which.
+            ident_parts=(row["module"], row["name"]),
+            subject=f"{row['module']}.{row['name']}", file=row["f"], count=row["n"],
+            occurrences=_routine_rows(
+                store,
+                "WHERE name != '<module>' AND is_nested = 0 AND is_method = 0"
+                "  AND module = ? AND name = ?",
+                (row["module"], row["name"])),
+        ))
+
+
+def _lost_edges(store: Store, r: Report) -> None:
+    """Calls that meant something local but could not be pinned to one definition."""
+    rows = store.query(
+        "SELECT callee_expr, MAX(ambiguous) rivals, COUNT(*) n, MIN(file) f"
+        "  FROM calls"
+        " WHERE ambiguous > 1"
+        "   AND (callee_expr NOT LIKE '%.%' OR callee_expr LIKE 'self.%'"
+        "        OR callee_expr LIKE 'cls.%')"
+        " GROUP BY callee_expr ORDER BY n DESC"
+    )
+    for row in rows:
+        r.add(Anomaly(
+            kind="LOST_EDGE", severity=SUSPECT, confidence=PROBABLE,
+            title=f"`{row['callee_expr']}` could not be connected: "
+                  f"{row['rivals']} definitions share the name",
+            detail=f"`{row['callee_expr']}` is called {row['n']} times, and "
+                   f"{row['rivals']} routines share that name. The call graph has no "
+                   f"edge here, so anything downstream is missing from every flow "
+                   f"that passes through it.",
+            blind_spot="If the receiver is a third-party object, or the method is "
+                       "supplied by a mixin or set dynamically, no local definition "
+                       "was ever intended and nothing is wrong.",
+            # The expression that could not be pinned. **Not** the rivals and not the
+            # callers: both are what the finding *reports*, and both move while the
+            # finding stays the same one -- 93 of Mensores' 106 findings are this kind,
+            # so keying on either would report most of the program as churn.
+            ident_parts=(row["callee_expr"],),
+            subject=row["callee_expr"], file=row["f"], count=row["n"],
+            # **The call sites, never the rivals.** The callee not resolving *is* the
+            # finding, so there is no callee node to open -- but every call is written
+            # somewhere, and that is what a reader wants to look at. Opening a rival would
+            # be the guess rule 5 forbids, dressed as a destination.
+            occurrences=[
+                Occurrence(nav="file", id=str(x["file"]),
+                           label=f"{x['caller']} \u2192 {row['callee_expr']}",
+                           file=str(x["file"]), line=int(x["line"] or 0))
+                for x in store.query(
+                    "SELECT c.file, c.line, r.qualname AS caller FROM calls c"
+                    "  LEFT JOIN routines r ON r.id = c.caller_id"
+                    " WHERE c.ambiguous > 1 AND c.callee_expr = ?"
+                    " ORDER BY c.file, c.line", (row["callee_expr"],))
+            ],
+        ))
+
+
+def _dead_code(store: Store, r: Report, include_tests: bool) -> None:
+    rows = store.query(
+        "SELECT id, qualname, file, line_start FROM routines"
+        " WHERE name != '<module>' AND is_method = 0 AND is_nested = 0"
+        "   AND name NOT LIKE '\\_\\_%' ESCAPE '\\'"
+        "   AND id NOT IN (SELECT callee_id FROM calls WHERE callee_id IS NOT NULL)"
+        "   AND id NOT IN (SELECT routine_id FROM entrypoints"
+        "                   WHERE routine_id IS NOT NULL)"
+        " ORDER BY qualname"
+    )
+    if not rows:
+        return
+    scope = (
+        "Tests were included in this scan."
+        if include_tests
+        else "**Tests were excluded from this scan**, so a routine used only by tests "
+             "appears here. Re-run with `--include-tests` to remove those."
+    )
+    r.add(Anomaly(
+        kind="DEAD_CODE", severity=INFO, confidence=POSSIBLE,
+        title=f"{len(rows)} routines are never called and are not a way in",
+        detail="; ".join(x["qualname"] for x in rows),
+        blind_spot=f"{scope} Routines reached by name (plugin registries, "
+                   f"`getattr`, entry-point groups) also appear here, because no "
+                   f"static analysis can see those calls.",
+        # One per program: this is a finding *about the program*, not about any of the
+        # routines it lists. `file` and `line` point at the first of them so the row is
+        # clickable, and neither may enter the key -- which routine sorts first is not
+        # part of what this finding is.
+        ident_parts=(),
+        subject="", file=rows[0]["file"], line=rows[0]["line_start"], count=len(rows),
+        # The rows the title counts and `detail` names in prose, as a population -- the
+        # same query, so the number and the list cannot disagree (rule 13).
+        occurrences=[
+            Occurrence(nav="routine", id=str(x["id"]), label=str(x["qualname"]),
+                       file=str(x["file"] or ""), line=int(x["line_start"] or 0))
+            for x in rows
+        ],
+    ))
+
+
+def _unreachable(store: Store, r: Report) -> None:
+    ways_in = [
+        row["routine_id"]
+        for row in store.query(
+            "SELECT DISTINCT routine_id FROM entrypoints WHERE routine_id IS NOT NULL"
+        )
+    ]
+    if not ways_in:
+        return
+    reached = store.reachable_from_many(ways_in)
+    total = store.query(
+        "SELECT COUNT(*) n FROM routines WHERE name != '<module>'"
+    )[0]["n"]
+    stranded = total - len({r_ for r_ in reached})
+    if stranded <= 0:
+        return
+    # **The stranded routines themselves.** The count was a subtraction and nothing named
+    # the rows it stood for, so the finding said *N of M* and a reader could reach none of
+    # them. The complement of the reached set is the answer this already had in hand.
+    strand_rows = [
+        Occurrence(nav="routine", id=str(x["id"]), label=str(x["qualname"]),
+                   file=str(x["file"] or ""), line=int(x["line_start"] or 0))
+        for x in store.query(
+            "SELECT id, qualname, file, line_start FROM routines"
+            " WHERE name != '<module>' ORDER BY file, line_start")
+        if str(x["id"]) not in {str(v) for v in reached}
+    ]
+    r.add(Anomaly(
+        kind="UNREACHABLE", severity=INFO, confidence=POSSIBLE,
+        title=f"{stranded:,} of {total:,} routines are not reachable from any way in",
+        detail="These cannot run when the program is started by any entrypoint "
+               "DunneFlow found.",
+        blind_spot="An edge lost to ambiguity strands everything behind it, so "
+                   "LOST_EDGE findings inflate this number. Library code meant to be "
+                   "imported by other programs is also unreachable by design.",
+        ident_parts=(),  # one per program
+        count=stranded,
+        occurrences=strand_rows,
+    ))
+
+
+def _schema_drift(store: Store, r: Report) -> None:
+    for row in store.query(
+        "SELECT name, COUNT(DISTINCT file || ':' || line) defs FROM db_tables"
+        " GROUP BY name HAVING defs > 1"
+    ):
+        shapes = store.query(
+            "SELECT file, COUNT(*) n FROM db_columns WHERE tbl = ? GROUP BY file",
+            (row["name"],),
+        )
+        widths = sorted({s["n"] for s in shapes})
+        if len(widths) <= 1:
+            continue
+        r.add(Anomaly(
+            kind="SCHEMA_DRIFT", severity=SUSPECT, confidence=PROBABLE,
+            title=f"`{row['name']}` is created with {len(widths)} different shapes",
+            detail=f"`{row['name']}` has {row['defs']} CREATE statements with column "
+                   f"counts {widths}. Which shape exists depends on which code path "
+                   f"created the database.",
+            blind_spot="Migrations legitimately create the same table at different "
+                       "versions; check whether these statements belong to different "
+                       "migration steps.",
+            # Grouped by the table's name. The shapes and the statement count are
+            # what the finding says about it, and both move while it stays one finding.
+            ident_parts=(row["name"],),
+            subject=row["name"], count=row["defs"],
+            # The table first -- `t` is the route the whole shell uses for one -- then each
+            # statement that creates it, because *which* shapes disagree is the question a
+            # reader opens this to answer.
+            occurrences=[
+                Occurrence(nav="t", id=str(row["name"]), label=str(row["name"])),
+                *[Occurrence(nav="file", id=str(x["file"]),
+                             label=f"{row['name']} \u2014 {x['n']} columns here",
+                             file=str(x["file"]))
+                  for x in shapes],
+            ],
+        ))
+
+
+def _one_way_tables(store: Store, r: Report) -> None:
+    for row in store.query(
+        "SELECT tbl, SUM(direction='READ') rd, SUM(direction='WRITE') wr"
+        "  FROM sql_ops WHERE tbl != '' GROUP BY tbl"
+        " HAVING (rd = 0 AND wr > 0) OR (wr = 0 AND rd > 0)"
+        " ORDER BY (rd + wr) DESC"
+    ):
+        write_only = row["rd"] == 0
+        r.add(Anomaly(
+            kind="ONE_WAY_TABLE", severity=INFO, confidence=POSSIBLE,
+            title=(f"`{row['tbl']}` is written but never read back" if write_only
+                   else f"`{row['tbl']}` is read but never written"),
+            detail=f"`{row['tbl']}`: {row['rd']} reads, {row['wr']} writes.",
+            blind_spot="The other half may live in another program, in tests, in a "
+                       "migration, or in SQL built by string interpolation that "
+                       "DunneFlow could not attribute to a table.",
+            # Grouped by the table. Note what is *not* in the key: which way it is
+            # one-way. A table that gains its first read stops being this finding
+            # rather than becoming a different one, and that is the honest reading --
+            # the finding is about the table, and it went.
+            ident_parts=(row["tbl"],),
+            subject=row["tbl"], count=row["rd"] + row["wr"],
+            # The table, then the routines that touch it -- which is what a reader is
+            # really after: *who writes this and never reads it back*.
+            occurrences=[
+                Occurrence(nav="t", id=str(row["tbl"]), label=str(row["tbl"])),
+                *[Occurrence(nav="routine", id=str(x["id"]), label=str(x["qualname"]),
+                             file=str(x["file"] or ""), line=int(x["line_start"] or 0))
+                  for x in store.query(
+                      "SELECT DISTINCT r.id, r.qualname, r.file, r.line_start"
+                      "  FROM sql_ops o JOIN routines r ON r.id = o.routine_id"
+                      " WHERE o.tbl = ? ORDER BY r.file, r.line_start", (row["tbl"],))],
+            ],
+        ))
+
+
+def _orphan_indexes(store: Store, r: Report) -> None:
+    for row in store.query(
+        "SELECT name, tbl, file, line FROM db_indexes"
+        " WHERE tbl NOT IN (SELECT name FROM db_tables)"
+    ):
+        r.add(Anomaly(
+            kind="ORPHAN_INDEX", severity=SUSPECT, confidence=PROBABLE,
+            title=f"`{row['name']}` indexes `{row['tbl']}`, which is never created here",
+            detail=f"`{row['name']}` indexes `{row['tbl']}`, which has no CREATE "
+                   f"TABLE anywhere in this program.",
+            blind_spot="The table may be created by a migration tool, by another "
+                       "program sharing the database, or by SQL loaded from a file.",
+            # Not grouped, so the key is what names this index and the table it
+            # claims. `file` stays out even here: an index moved between files is the
+            # same orphan, and `line` is a position in any case. Two indexes of one
+            # name over one table take the ordinal `Report.add` gives a genuine repeat.
+            ident_parts=(row["name"], row["tbl"]),
+            subject=row["name"], file=row["file"], line=row["line"],
+            # An index is not a subject this shell selects, and inventing a route for one
+            # would be a link to nothing. It has a definition site, and that is a real
+            # place to be taken -- the file, at the line the CREATE INDEX is written.
+            occurrences=[Occurrence(nav="file", id=str(row["file"]),
+                                    label=f"CREATE INDEX {row['name']}",
+                                    file=str(row["file"]), line=int(row["line"] or 0))],
+        ))
+
+
+def _remote_call_hazards(store: Store, r: Report) -> None:
+    total = store.query("SELECT COUNT(*) n FROM net_calls")[0]["n"]
+    if not total:
+        return
+    no_timeout = store.query(
+        "SELECT r.id AS rid, r.qualname, n.expr, n.protocol, r.file, n.line"
+        "  FROM net_calls n"
+        " JOIN routines r ON n.routine_id = r.id WHERE n.timeout = ''"
+    )
+    if no_timeout:
+        r.add(Anomaly(
+            kind="NO_TIMEOUT", severity=SUSPECT, confidence=PROBABLE,
+            title=f"{len(no_timeout)} of {total} remote calls set no timeout",
+            detail="; ".join(f"{x['qualname']} ({x['protocol']})" for x in no_timeout),
+            blind_spot="A timeout may be set on the client object rather than the "
+                       "call, or globally by the library's configuration. Check the "
+                       "client construction before treating any one of these as a bug.",
+            ident_parts=(),  # one per program: it counts the calls, it is not one
+            count=len(no_timeout),
+            file=no_timeout[0]["file"], line=no_timeout[0]["line"],
+            # The routines making the calls, which is what `detail` already names in prose
+            # -- the same rows, so the count and the list cannot disagree.
+            occurrences=[
+                Occurrence(nav="routine", id=str(x["rid"]), label=str(x["qualname"]),
+                           file=str(x["file"] or ""), line=int(x["line"] or 0))
+                for x in no_timeout
+            ],
+        ))
+
+    no_retry = store.query("SELECT COUNT(*) n FROM net_calls WHERE retries = ''")[0]["n"]
+    if no_retry == total and total > 2:
+        r.add(Anomaly(
+            kind="NO_RETRY", severity=INFO, confidence=PROBABLE,
+            title=f"None of the {total} remote calls declares a retry policy",
+            detail="A single transient failure propagates to the caller.",
+            blind_spot="Retries are often handled by a transport adapter, a service "
+                       "mesh, or the caller rather than at the call site.",
+            ident_parts=(),  # one per program
+            count=total,
+            # Every remote call, because the finding is that *none* of them retries -- the
+            # population is the whole of `net_calls` and naming one would be arbitrary.
+            occurrences=[
+                Occurrence(nav="routine", id=str(x["rid"]), label=str(x["qualname"]),
+                           file=str(x["file"] or ""), line=int(x["line"] or 0))
+                for x in store.query(
+                    "SELECT r.id AS rid, r.qualname, r.file, n.line FROM net_calls n"
+                    "  JOIN routines r ON n.routine_id = r.id"
+                    " ORDER BY r.file, n.line")
+            ],
+        ))
+
+    unawaited = store.query(
+        "SELECT r.id AS rid, r.qualname, n.expr, r.file, n.line FROM net_calls n"
+        " JOIN routines r ON n.routine_id = r.id"
+        " WHERE n.is_async = 1 AND n.awaited = 0"
+    )
+    for x in unawaited:
+        r.add(Anomaly(
+            kind="ASYNC_NOT_AWAITED", severity=BROKEN, confidence=PROBABLE,
+            title=f"`{x['expr']}` in `{x['qualname']}` is never awaited",
+            detail=f"`{x['qualname']}` calls `{x['expr']}` without awaiting it. The "
+                   f"coroutine is created and never run.",
+            blind_spot="The result may be awaited elsewhere, passed to "
+                       "`asyncio.gather`, or scheduled as a task. Calls managed by "
+                       "`async with` are already excluded.",
+            # The routine and the expression it never awaits. Two identical
+            # expressions in one routine are two of these, and they take the ordinal --
+            # the same residue `call_site_id` carries, for the same reason.
+            ident_parts=(x["qualname"], x["expr"]),
+            subject=x["qualname"], file=x["file"], line=x["line"],
+            # One call, one occurrence -- the routine that makes it.
+            occurrences=[Occurrence(nav="routine", id=str(x["rid"]),
+                                    label=str(x["qualname"]), file=str(x["file"] or ""),
+                                    line=int(x["line"] or 0))],
+        ))
+
+
+# What "reaches out of the program" means for a loop. Database, queue and network -- the
+# things whose cost is per call rather than per instruction. `FILE`, `STDIO`, `ENV` and
+# `PROCESS` are deliberately out: a loop that writes a line per row is what writing a file
+# *is*, and reporting it would put most of the program on a worklist.
+_REACHES_OUT = ("DATABASE", "QUEUE", "NETWORK")
+
+# Every loop that reaches one of those on **every pass**, with what its bound looks like.
+#
+# **Three tables unioned to places, not one table asked.** `boundaries` alone misses two of
+# Society's 74 -- `for col in _SPEC_COLUMNS: ... ALTER TABLE Spec` is a `sql_ops` row that
+# the boundary detector did not also record -- and a finding whose title counts database
+# work has to count all of it (rule 13). The `UNION` deduplicates the line, which is
+# exactly what `resolve/shape.places` does, so an `INSERT` recorded as a `DATABASE` row
+# *and* a `SQL` row on one line is one act here as it is everywhere else (rule 40).
+#
+# `control.once_start`/`once_end` are the lines the loop evaluates once, so the iterable of
+# `for row in conn.execute(q).fetchall():` is excluded here exactly as it is in
+# `resolve/shape.py` -- 9 of those 74 are that shape, and reporting them would be
+# reporting one query as a query per row.
+#
+# `k.name` is the loop's header matched against a constant **declared in the same module**.
+# Not a bare name match across the program (rule 5): a module-scoped name is exact, and
+# what it buys is the difference between a bound nobody can read and `for stmt in INDEXES:`.
+_LOOPED_OUT = """
+WITH reaches AS (
+    SELECT routine_id, line FROM boundaries
+     WHERE kind IN (?, ?, ?) AND routine_id IS NOT NULL AND line IS NOT NULL
+    UNION
+    SELECT routine_id, line FROM sql_ops
+     WHERE routine_id IS NOT NULL AND line IS NOT NULL
+    UNION
+    SELECT routine_id, line FROM net_calls
+     WHERE routine_id IS NOT NULL AND line IS NOT NULL)
+SELECT c.point_id, c.word, c.header, c.file, c.line_start,
+       r.id AS rid, r.qualname, r.module,
+       COUNT(DISTINCT x.line) AS places,
+       COALESCE(k.value, '') AS bound
+  FROM control c
+  JOIN routines r ON r.id = c.routine_id
+  JOIN reaches x ON x.routine_id = c.routine_id
+                AND x.line BETWEEN c.line_start AND c.line_end
+                AND NOT (c.once_start > 0
+                         AND x.line BETWEEN c.once_start AND c.once_end)
+  LEFT JOIN constants k ON k.module = r.module AND k.name = c.header
+ WHERE c.kind IN ('LOOP', 'COMPREHENSION')
+ GROUP BY c.point_id
+ ORDER BY c.file, c.line_start
+"""
+
+
+def _bounded(row: sqlite3.Row) -> str:
+    """Why this loop's bound is readable, or "" where nothing static can count it.
+
+    Three shapes, and the point of naming them is that they are the ones a reader can
+    already answer for themselves. A `while` is a poll or a retry and is that shape on
+    purpose; a literal written at the loop and a collection the module declares both say
+    how many passes there are, on the line above.
+
+    What is left is the population this finding is about: an argument, a query's rows, a
+    directory listing -- a number that exists only at run time.
+    """
+    if row["word"] == "while":
+        return "a while loop, which is a poll or a retry and is this shape on purpose"
+    header = str(row["header"] or "").lstrip()
+    if header[:1] in ("(", "[", "{"):
+        return "a collection written at the loop, so its size is on the line"
+    if str(row["bound"] or "").lstrip()[:1] in ("(", "[", "{"):
+        return "a collection this program declares, so its size can be read"
+    return ""
+
+
+def _looped_boundaries(store: Store, r: Report) -> None:
+    """A database, queue or network call written inside a loop.
+
+    **The measurement chose the shape of this, and it is worth saying how.** Read as
+    `net_calls` alone it fires twice on Society, and both are `wait_until_serving` --
+    `while True:` poll loops with a deadline, which is the second blind spot below. Two of
+    two findings would have been false alarms, which is what `CLAUDE.md` means by
+    verifying a detector's findings against real source before shipping it.
+
+    Widened to the database it is real: 74 loops, of which 39 have a bound a reader can
+    read off the page. Those 39 are **named and not reported** (design rule 1) -- it is
+    the 39 that make the 35 credible, exactly as the 1,222 still loops make the 261 rates.
+
+    One finding for the program, on `NO_TIMEOUT`'s model: this is one thing to think about
+    and 35 places to look at it, and the count comes off the same list the occurrences do
+    so the two cannot disagree (rule 13).
+    """
+    rows = store.query(_LOOPED_OUT, _REACHES_OUT)
+    if not rows:
+        return
+    reported = [x for x in rows if not _bounded(x)]
+    if not reported:
+        return
+
+    named: dict[str, int] = {}
+    for x in rows:
+        why = _bounded(x)
+        if why:
+            named[why] = named.get(why, 0) + 1
+    aside = "; ".join(f"{n} over {why}" for why, n in sorted(named.items()))
+
+    r.add(Anomaly(
+        kind="LOOPED_BOUNDARY", severity=INFO, confidence=PROBABLE,
+        # **Loops and places are different numbers, and both are said** (rule 32). The
+        # loops answer *how many times could this run in a pass*; the places answer *how
+        # many acts are in there*, and one figure would be whichever the reader assumed.
+        # `places` is the query's own `COUNT(DISTINCT line)`, which is
+        # `resolve/shape.places` in SQL for the reason that function exists.
+        title=f"{len(reported)} loops reach a database, a queue or the network on every"
+              f" pass — {sum(int(x['places']) for x in reported)} places in all",
+        detail=(
+            "; ".join(f"{x['qualname']} ({x['file']}:{x['line_start']})"
+                      for x in reported)
+            + (f". Not counted here: {aside} — the loop says how many passes it makes."
+               if aside else "")
+        ),
+        blind_spot=(
+            "The thing being looped over may hold one item, and nothing static can "
+            "count it — that is why a loop whose bound is written down is named "
+            "above rather than reported. A retry or poll loop is this shape on "
+            "purpose and is excluded on its `while`. And a local database file is "
+            "not a network: DunneFlow reads the call, not what is at the other end "
+            "of it, so a SQLite store and a remote one look identical here."
+        ),
+        # One per program: it counts the loops, it is not one of them. The same
+        # positionless key `NO_TIMEOUT` and `NO_RETRY` declare.
+        ident_parts=(),
+        count=len(reported),
+        file=str(reported[0]["file"]), line=int(reported[0]["line_start"] or 0),
+        # **The routine, not the span.** There is no `NAV_ROUTES` entry for a control
+        # point, and `web/shape.py:_row` answers the same question the same way: a span
+        # is not a node in the graph, and minting an id to make a row clickable would be
+        # a link to nothing. The line is the loop's, so the reader lands on it.
+        occurrences=[
+            Occurrence(nav="routine", id=str(x["rid"]), label=str(x["qualname"]),
+                       file=str(x["file"] or ""), line=int(x["line_start"] or 0))
+            for x in reported
+        ],
+    ))
+
+
+def _messaging_hazards(store: Store, r: Report) -> None:
+    producers = store.query(
+        "SELECT COUNT(*) n FROM boundaries WHERE kind = 'QUEUE' AND direction = 'OUT'"
+    )[0]["n"]
+    consumers = store.query(
+        "SELECT COUNT(*) n FROM boundaries WHERE kind = 'QUEUE' AND direction = 'IN'"
+    )[0]["n"]
+    if producers and not consumers:
+        r.add(Anomaly(
+            kind="PRODUCERS_WITHOUT_CONSUMERS", severity=INFO, confidence=POSSIBLE,
+            title=f"{producers} queue producers and no consumer in this program",
+            detail="Messages are published but nothing here reads them.",
+            blind_spot="The consumer is very often a separate program or service, "
+                       "which is the normal shape for messaging.",
+            ident_parts=(),  # one per program
+            count=producers,
+            # The publishing sites. A queue producer's identity is its target and its file,
+            # so the honest way in is the code that publishes.
+            occurrences=[
+                Occurrence(nav="file", id=str(x["file"]),
+                           label=f"publishes to {x['target'] or 'a queue'}",
+                           file=str(x["file"]), line=int(x["line"] or 0))
+                for x in store.query(
+                    "SELECT target, file, line FROM boundaries"
+                    " WHERE kind = 'QUEUE' AND direction = 'OUT' ORDER BY file, line")
+            ],
+        ))
+
+
+def _entrypoint_problems(store: Store, r: Report) -> None:
+    for row in store.query(
+        "SELECT kind, name, module, evidence, file FROM entrypoints"
+        " WHERE routine_id IS NULL AND parent_id IS NULL"
+    ):
+        r.add(Anomaly(
+            kind="ENTRYPOINT_NO_TARGET", severity=SUSPECT, confidence=PROBABLE,
+            title=f"Way in `{row['name']}` leads nowhere",
+            detail=f"`{row['name']}` ({row['kind']}) was detected from "
+                   f"{row['evidence']}, but no routine could be found for it.",
+            blind_spot="The target may be built dynamically, or supplied by a "
+                       "dependency rather than defined in this program.",
+            # A way in is named within a module, and both halves are needed: two
+            # modules may each declare a `main` that leads nowhere.
+            ident_parts=(row["module"], row["name"]),
+            subject=row["name"], file=row["file"],
+            # `ep` is the way-in route the cover's rows already take. The finding is that
+            # this way in leads nowhere, and opening it is how a reader sees that.
+            occurrences=[Occurrence(nav="ep", id=str(row["name"]),
+                                    label=str(row["name"]), file=str(row["file"] or ""))],
+        ))
+    for row in store.query(
+        "SELECT parent_var, child_expr, file, line FROM cli_mounts WHERE child_id IS NULL"
+    ):
+        r.add(Anomaly(
+            kind="UNRESOLVED_MOUNT", severity=SUSPECT, confidence=PROBABLE,
+            title=f"Mounted sub-application `{row['child_expr']}` could not be found",
+            detail=f"`{row['parent_var']}` mounts `{row['child_expr']}`, which "
+                   f"resolves to no application object. Its commands are missing "
+                   f"from the command tree.",
+            blind_spot="The sub-application may come from an installed package "
+                       "rather than from this source tree.",
+            # Which application mounts which sub-application. `file` stays out: the
+            # mount moved to another module is the same unresolved mount.
+            ident_parts=(row["parent_var"], row["child_expr"]),
+            subject=row["child_expr"], file=row["file"], line=row["line"],
+            # The mount resolves to nothing -- that is the finding -- so the way in is the
+            # line where it is written, never a guess at what it meant.
+            occurrences=[Occurrence(nav="file", id=str(row["file"]),
+                                    label=f"{row['parent_var']} mounts {row['child_expr']}",
+                                    file=str(row["file"]), line=int(row["line"] or 0))],
+        ))
+
+
+def _type_gaps(store: Store, r: Report) -> None:
+    total = store.query(
+        "SELECT COUNT(*) n FROM routines WHERE name != '<module>'"
+    )[0]["n"]
+    if not total:
+        return
+    missing = store.query(
+        "SELECT id, qualname, file, line_start FROM routines"
+        " WHERE name != '<module>' AND returns IS NULL ORDER BY qualname"
+    )
+    untyped = store.query(
+        "SELECT COUNT(DISTINCT routine_id) n FROM params"
+        " WHERE type IS NULL AND name NOT IN ('self', 'cls')"
+    )[0]["n"]
+    if missing:
+        r.add(Anomaly(
+            kind="MISSING_RETURN_TYPE", severity=INFO, confidence=CERTAIN,
+            title=f"{len(missing)} of {total:,} routines declare no return type",
+            detail="; ".join(x["qualname"] for x in missing),
+            blind_spot="None as a fact; whether it matters depends on whether the "
+                       "project requires annotations.",
+            ident_parts=(),  # one per program
+            count=len(missing), file=missing[0]["file"], line=missing[0]["line_start"],
+            occurrences=[
+                Occurrence(nav="routine", id=str(x["id"]), label=str(x["qualname"]),
+                           file=str(x["file"] or ""), line=int(x["line_start"] or 0))
+                for x in missing
+            ],
+        ))
+    if untyped:
+        r.add(Anomaly(
+            kind="UNTYPED_PARAMETER", severity=INFO, confidence=CERTAIN,
+            title=f"{untyped:,} routines have at least one parameter with no type",
+            detail="What moves in is undeclared, so the map cannot say what these "
+                   "routines accept.",
+            blind_spot="None as a fact.",
+            ident_parts=(),  # one per program
+            count=untyped,
+            # The routines the count is over. `DISTINCT` there and here, so the number and
+            # the list are one population asked twice rather than two answers.
+            occurrences=_routine_rows(
+                store,
+                "WHERE name != '<module>' AND id IN ("
+                "  SELECT DISTINCT routine_id FROM params"
+                "   WHERE type IS NULL AND name NOT IN ('self', 'cls'))"),
+        ))
+
+
+DETECTORS = (
+    _parse_failures,
+    _name_collisions,
+    _redefinitions,
+    _lost_edges,
+    _unreachable,
+    _schema_drift,
+    _one_way_tables,
+    _orphan_indexes,
+    _remote_call_hazards,
+    _looped_boundaries,
+    _messaging_hazards,
+    _entrypoint_problems,
+    _type_gaps,
+)
+
+
+def detect(store: Store, include_tests: bool = False) -> Report:
+    """Run every detector against a stored graph."""
+    report = Report()
+    for fn in DETECTORS:
+        fn(store, report)
+    _dead_code(store, report, include_tests)
+    # **Every finding says what it is about, or why it cannot.** Asserted here rather than
+    # in `Report.add`, and the difference is what the rule is *about*: this is a contract on
+    # **detectors**, not on the `Anomaly` type -- `add` is also called by tests building a
+    # finding by hand to check how an identity takes an ordinal, and holding those to a rule
+    # about enumeration would be the guard drifting from its own subject.
+    #
+    # A detector that answers neither produces a control that looks live and does nothing --
+    # design rule 16 arriving from the data rather than from the markup, where no amount of
+    # reading the shell would ever find it.
+    for a in report.items:
+        assert a.occurrences or a.unenumerated, (
+            f"{a.kind}: a finding must list what it is about, or say why it cannot"
+        )
+    return report

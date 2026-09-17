@@ -1,0 +1,277 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>DunneFlow</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="stylesheet" href="/static/tokens.css">
+
+<!--
+  The ratified shell, now reading from the store.
+
+  Every count on this page is a measurement over `graph.db`. Nothing is pinned:
+  the navigator, the cover and the top bar are all generated from `/api/cover`,
+  because a dashboard that ships one program's numbers inside it will show them
+  to the next program too, confidently and wrongly.
+
+  The 2.5D graph is a view inside this page, not a page of its own. There is no
+  iframe: WebGL has no requirement to be the top-level document, deck.gl mounts
+  into any div, and an iframe would cut the single shared selection in half --
+  turning "click a routine in the text, see it in the graph" into a postMessage
+  protocol, which is the one interaction the whole design is built around.
+-->
+
+
+
+<a class="skip-link" href="#main">Skip to main view</a>
+
+<div class="app">
+
+  <!-- ══════════ TOP BAR ══════════ -->
+  <header class="topbar">
+    <div class="brand">
+      <b>DunneFlow</b>
+      <span>by DunneCorp</span>
+    </div>
+
+    <label class="sr-only" for="prog">Program</label>
+    <select class="tb-select" id="prog"></select>
+
+    <!-- **This was a readout, and it is a button now.** Its own comment set the condition:
+         *"it becomes interactive when something needs to open a file from disk"* -- and
+         `About this map` is that, one step in. Rewritten as the reversal it is rather than
+         left standing beside markup that contradicts it.
+
+         It never was a *path* and still is not: a map records the **leaf** of the tree it
+         was read from and never the tree, because a path is one machine's directory layout
+         in an artefact built to be handed over (rule 60). The leaf names the tree; that is
+         all a reader looking at this label wants, and it is all the store can honestly give.
+
+         Filled by `paintSrcPath` from `/api/about`, which is also what the button opens.
+         **Not bound is stated, never left blank** -- and there are three of those now, not
+         one: no sidecar to ask, a sidecar recording no name, and a name (design rule 21).
+
+         It used to be filled from `meta.source_root` -- one developer's disk in a tooltip
+         on every other machine, which its own comment said and which is exactly why the
+         root is no longer recorded at all. See `migrate.py`. -->
+    <button class="srcpath" id="srcPath" data-aboutopen
+            title="What read this map, and whether anything in it was guessed">
+      <span class="srcpath-k">source directory</span>
+      <span class="srcpath-v" id="srcPathV">reading...</span>
+    </button>
+
+    <!-- Filled from /api/revisions by buildRevControls(). Empty here on purpose: an
+         option written into the markup is a claim about a program this page has not read
+         yet, and the one that used to sit here said "current" on every map whether or not
+         the store had ever heard of such a revision.
+
+         **One control, and its options are the pairs** — "current", or "current ← the
+         2026-08-26 tree" — so the thing on screen reads which two points are being shown
+         rather than leaving the reader to combine two menus. It was briefly two selects,
+         one per end, and they were 448px of a 1,278px window between them: a `<select>` is
+         as wide as its longest option, and these are filled with a label and an instant
+         apiece. Together they pushed the search box and the whole right-hand group off the
+         screen. Two controls for one question was the wrong shape as well as the wide
+         one. -->
+    <label class="sr-only" for="rev">Which point in time, and what it is compared with</label>
+    <select class="tb-select" id="rev"></select>
+
+    <label class="sr-only" for="search">Search routines, boundaries, tables</label>
+    <!-- The three flags are the Code box's three, written here rather than generated
+         because the topbar is static markup that `render()` never touches. `navFlags()`
+         keeps their pressed state in step; the routing is the same `searchflag` table. -->
+    <div class="tb-searchwrap">
+      <input class="tb-search" id="search" type="search" placeholder="Search routines, tables, boundaries…   /">
+      <div class="srch-flags" id="navFlags"></div>
+    </div>
+
+    <div class="tb-right">
+      <div class="scale-group">
+        <span class="sm" aria-hidden="true">A</span>
+        <input type="range" id="scaleSlider" class="scaleslider"
+               min="0.75" max="1.75" step="0.0625" value="1"
+               aria-label="Interface scale" aria-valuetext="100 percent">
+        <span class="lg" aria-hidden="true">A</span>
+        <span class="scale-val num" id="scaleVal">100%</span>
+      </div>
+      <button class="tb-btn" id="themeBtn" aria-label="Theme: system">◐ System</button>
+      <button class="tb-btn" id="settingsBtn" aria-pressed="false">⚙ Settings</button>
+    </div>
+  </header>
+
+  <!-- ══════════ THE VERSION STRIP ══════════ -->
+  <!-- Which version is on screen, and what it is being held against. **Always present**,
+       on every screen and whether or not a comparison is running, because the one thing a
+       reader must never have to infer from an absence is whether they are looking at a
+       comparison. With one version it says so in as many words.
+
+       Its own grid row rather than a band inside `.centre`, because it is about the whole
+       screen: the navigator's counts, the inspector's figures and the code browser's lines
+       all belong to the base, and a strip spanning only the middle would be a claim about
+       the middle. Not in the toolbar either -- that is a single-line flex row that does not
+       wrap, and two unbounded selects once made a 1,278px window carry a 2,068px toolbar.
+
+       Filled by `versionStrip()`; empty here so nothing can pin one program's versions into
+       the markup (rule 34), and a static shell that says nothing is better than one that
+       says something false before the first fetch. -->
+  <div class="verstrip" id="verStrip"></div>
+
+  <div class="body">
+
+    <!-- ══════════ NAVIGATOR ══════════ -->
+    <!-- Two elements, not one: a collapsed pane must leave something behind that says
+         where it went and gives it back. A pane that simply disappears is a silent
+         filter, which design rule 1 forbids, and the reader has no way to know the
+         layout is a choice rather than the product. -->
+    <!-- The divider between the navigator and the centre. A separate element rather than a
+         border on the pane, because it needs a hit area wider than a hairline and must not
+         move when the pane scrolls. -->
+    <div class="navgrip" id="navGrip" role="separator" aria-orientation="vertical"
+         tabindex="0" aria-label="Resize the navigator"></div>
+    <button class="rail rail-left" id="navigatorRail" data-pane="navigator"
+            hidden aria-expanded="false" aria-controls="navigator"
+            title="Show the navigator"><span class="railtext">Navigator</span></button>
+    <nav class="navigator" id="navigator" aria-label="Program navigator">
+      <!-- generated by buildNav() from /api/cover: the counts are the program's,
+           not this file's. A pinned navigator is a confident lie about a codebase
+           nobody has read. -->
+    </nav>
+
+    <!-- ══════════ CENTRE ══════════ -->
+    <main class="centre" id="main">
+
+      <div class="crumbbar">
+        <div class="crumbs" id="crumbs"></div>
+        <!-- Two drawings of one selection, not a fourth mode. The stack holds ten
+             thousand nodes and answers what is in here; the overview holds forty boxes
+             and answers what this is shaped like. Both were always the plan. -->
+        <div class="modes" role="group" aria-label="Graph layout" id="layouts" hidden>
+          <button data-layout="stack" aria-pressed="true">Stack</button>
+          <button data-layout="packages" aria-pressed="false">Overview</button>
+        </div>
+        <!-- Why the toggle is dimmed, when it is. Written here rather than generated
+             because the crumbbar is static markup that `render()` never rebuilds -- the
+             same reason the search flags are written here. `paintModes()` fills it. -->
+        <p class="modes-why" id="modesWhy" hidden></p>
+        <div class="modes" role="group" aria-label="View mode" id="modes">
+          <button data-mode="graph" aria-pressed="true">Graph</button>
+          <button data-mode="table" aria-pressed="false">Table</button>
+          <button data-mode="doc" aria-pressed="false">Document</button>
+          <button data-mode="code" aria-pressed="false">Code</button>
+          <!-- A fifth way of looking at one selection, not a layout inside Graph. The stack
+               draws every thing the program declares; this draws one compartment as a
+               diagram -- a different level of detail, which is the whole point of it. -->
+          <button data-mode="diagram" aria-pressed="false">Diagram</button>
+          <!-- The sixth, and the only one that draws what a routine *does* rather than
+               what it is connected to: its loops, its decisions and its refusals, nested
+               as they are written. Nassi and Shneiderman's drawing, which is nested boxes
+               and no arrows at all -- structured code has no `goto` to draw. -->
+          <button data-mode="shape" aria-pressed="false">Shape</button>
+        </div>
+      </div>
+
+      <div id="trailMount"></div>
+
+      <!-- ═══ THE FILTER STRIP ═══ -->
+      <div class="filterstrip" id="filterstrip">
+        <span class="fs-label">Filtered</span>
+        <div class="chips" id="chips"></div>
+        <span class="fs-counts">showing <b id="fsShown">0</b> of <b id="fsTotal">0</b> routines</span>
+        <span class="fs-hidden" id="fsHidden"></span>
+        <div class="fs-actions">
+          <button class="linkbtn" id="showHidden" aria-expanded="false">Show hidden</button>
+          <button class="linkbtn" id="clearFilters">Clear all</button>
+        </div>
+        <div class="hiddenlist" id="hiddenList" hidden></div>
+      </div>
+
+      <!--
+        Two permanent children, and the split is load-bearing.
+
+        `render()` fills `#viewMount` with innerHTML on every keystroke. A deck.gl
+        canvas cannot live there: it would be destroyed and rebuilt continuously,
+        losing its GL context, its camera and the reader's place in the program.
+        So the graph gets a mount `render()` never touches, and mode swaps which of
+        the two is on screen.
+      -->
+      <div class="viewport" id="viewport">
+        <!--
+          The legend is a *pane*, not an overlay, and the mount is a grid so that its
+          column can collapse rather than its contents (design rule 24, and the same
+          reason `.body` puts the state on the track: a pane hidden while its column
+          stayed 26rem would leave a 26rem hole).
+
+          `.graphcanvas` exists so the stage and the HUD share a containing block that
+          is only the drawable area. `Graph.mount()` is handed `#graphStage`, so its
+          `clientWidth` is now the width the stack can actually use — which is what lets
+          `fitView` frame with plain arithmetic instead of the `0.60 : 0.90` fudge the
+          pre-merge engine needed while the legend sat on top of the picture.
+        -->
+        <!-- Its own mount, kept out of `render()`'s innerHTML path for the reason the graph
+             is: rewriting it on every keystroke would throw away a laid-out SVG, the
+             reader's pan and zoom, and the place they had got to. -->
+        <div class="diagrammount" id="diagramMount" hidden></div>
+
+        <div class="graphmount" id="graphMount" hidden>
+          <div class="graphcanvas">
+            <div class="graphstage" id="graphStage"></div>
+            <div class="graphhud" id="graphHud"></div>
+            <!--
+              The pop-up. It lives here, beside the stage rather than inside `#viewMount`,
+              for the same reason the canvas does: `render()` rewrites that mount on every
+              keystroke, and a card rebuilt under the cursor is a card that flickers and
+              loses its place. `.graphcanvas` is also the box deck.gl reports hover
+              coordinates against, so positioning is arithmetic rather than a correction.
+            -->
+            <div class="hovercard" id="hoverCard" hidden aria-hidden="true"></div>
+          </div>
+          <aside class="graphlegend" id="graphLegend" aria-label="Plates"></aside>
+          <button class="rail rail-right" id="legendRail" data-pane="legend"
+                  hidden aria-expanded="false" aria-controls="graphLegend"
+                  title="Show the plates"><span class="railtext">Plates</span></button>
+        </div>
+        <div class="viewmount" id="viewMount"></div>
+      </div>
+    </main>
+
+    <!-- ══════════ INSPECTOR ══════════ -->
+    <aside class="inspector" aria-label="Inspector" id="inspector"></aside>
+    <button class="rail rail-right" id="inspectorRail" data-pane="inspector"
+            hidden aria-expanded="false" aria-controls="inspector"
+            title="Show the inspector"><span class="railtext">Inspector</span></button>
+
+  </div>
+</div>
+
+<!--
+  The navigator's pop-up. Body level, and that is structural rather than tidy: the
+  navigator scrolls its own content, so a card inside it is clipped by that scroller
+  at exactly the rows nearest the edges -- which is most of them, since the pane is
+  a long list. Fixed positioning against the window is the only place it can be whole.
+
+  A second element rather than a second card: the markup, the fetch, the dwell and the
+  cache are all the graph card's, and the only things that differ are where it is
+  anchored and what is free to draw before the server answers.
+-->
+<div class="hovercard navcard" id="navCard" hidden aria-hidden="true"></div>
+
+
+<!--
+  Order matters and is not incidental. deck.gl defines the `deck` global that
+  `shading.js` and `graph.js` both read at parse time, and `shell.js` reads
+  `window.DunneFlowGraph` when it mounts. These are classic scripts sharing one
+  global scope, which is why each of them wraps itself in an IIFE and exports
+  exactly one name.
+
+  `prose.js` needs nothing at parse time and is 6 KB; what it *renders* with is
+  `markdown-it`, 125 KB, and that is fetched lazily the first time a document is
+  opened. Most sessions never open one, and paying for it at boot would slow the
+  screen everyone sees for the one many never reach -- the same bargain the
+  drawing engine already makes.
+-->
+<script src="/vendor/deck.gl.min.js"></script>
+<script src="/static/settings.js"></script>
+<script src="/static/shading.js"></script>
+<script src="/static/graph.js"></script>
+<script src="/static/forcelayout.js"></script>
+<script src="/static/prose.js"></script>
+<script src="/static/analyze.js"></script>
+<script src="/static/shell.js"></script>

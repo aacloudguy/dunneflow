@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  What DunneFlow asks the hardened runtime for, and today the answer is nothing.
+
+  An entitlement is a claim that the ordinary rules have to be relaxed for this program, and
+  every PyInstaller guide on the internet carries the same four of them, copied from each
+  other. None of the four is indicated here, and each was checked rather than assumed:
+
+  * com.apple.security.automation.apple-events — the folder picker spawns /usr/bin/osascript,
+    Apple's own signed binary, running `activate` and `choose folder`. Those are Standard
+    Additions commands that execute inside osascript itself; no Apple Event is sent to another
+    application, and the entitlement that would be needed belongs to that process rather than
+    to this one. See web/serve.py, _p_pickdir.
+
+  * com.apple.security.cs.allow-jit and com.apple.security.cs.allow-unsigned-executable-memory
+    — CPython 3.12 has no JIT, and nothing here builds a ctypes callback closure. That second
+    clause is now load bearing rather than incidental: dunneflow/macapp.py calls into AppKit
+    through ctypes so the application appears in the Dock with a running indicator, and it
+    does so entirely by calling functions that already exist. It installs no
+    NSApplicationDelegate, because defining an Objective C class with Python methods is
+    exactly the closure this claim rules out; quit is NSApplication's own default handling of
+    the quit Apple Event instead. tests/test_frozen.py asserts the module contains no
+    CFUNCTYPE, so the claim above cannot quietly stop being true. Pressed rather than
+    assumed: the Developer ID signed build, hardened runtime on and this dictionary empty,
+    registers with the window server, serves, and quits cleanly, with nothing denied in the
+    AMFI log.
+
+  * com.apple.security.cs.disable-library-validation — every Mach-O file in the bundle is
+    signed by the same Developer ID that signs the bundle, so library validation has nothing
+    to refuse. This one would come back the moment a dependency shipped a dylib signed by
+    somebody else.
+
+  So the dictionary is empty, deliberately, and the file is here rather than absent because
+  release.sh names it and because an empty list of claims is itself a claim worth reading.
+
+  To add one: put the key in, and put the failure that earned it in the comment above it —
+  what was run, what the system said, and where. An entitlement with no reproduced failure
+  beside it is a guess wearing a uniform.
+
+  Note for whoever edits this: AMFI parses the file, and its XML is stricter than most. A
+  comment before the DOCTYPE is a syntax error, and so is a double hyphen anywhere inside a
+  comment. Both were paid for here.
+-->
+<plist version="1.0">
+<dict>
+</dict>
+</plist>

@@ -1,0 +1,38 @@
+# Line endings: LF in the working tree, on every platform, and that is rule 12 rather than
+# tidiness.
+#
+# `fingerprint_files` hashes the **bytes** of every file that shapes extraction -- the
+# detectors' YAML, the rules loader, and both extractor trees -- and a cached fact is valid
+# only if the tool that read it is unchanged. Git's default on Windows is `autocrlf=true`,
+# which checks those same files out with CRLF: same commit, different bytes, different
+# fingerprint. A map written by a checkout on one platform would then be discarded by a
+# checkout of the *same commit* on the other as "written by a different tool", which is the
+# refusal `resource_root()`'s layout exists to prevent, one platform over.
+#
+# It is not only the hash. `packaging/release.sh` is run by `/bin/sh`, which reads a CRLF
+# line ending as part of the command on the line; and `extractors/python/extract.py` slices
+# an expression out of a file on **byte** offsets (rule 75), which `ast` computes against
+# the text as `read_text` hands it over -- universal newlines, so LF. The source this tool
+# *reads* may hold anything and is translated on the way in; the source this tool *is* has
+# one answer, and this file is where it is given.
+#
+# `text=auto` leaves git to decide what is text at all, so the 32 tracked images and icons
+# are untouched. Every tracked text file is already LF in the index, so this changes nothing
+# today and holds for the next clone.
+
+* text=auto eol=lf
+
+# Never translated, whatever git guesses. An icon or a screenshot with a byte rewritten is
+# a corrupt file rather than a differently-spelled one.
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.ico   binary
+*.icns  binary
+*.db    binary
+*.pdf   binary
+*.zip   binary
+*.woff  binary
+*.woff2 binary
+*.ttf   binary

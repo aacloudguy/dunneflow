@@ -1,0 +1,46 @@
+# Generated maps and the graph/doc stores. Everything here is reproducible with
+# `uv run dunneflow analyze <path> --name <program>` — nothing in it is a source.
+output/
+
+# Virtualenv (uv rebuilds it from uv.lock)
+.venv/
+
+# The universal2 build environment, made from python.org's framework interpreter by
+# `packaging/release.sh venv`. Not uv's, and not a second project environment: it exists
+# only because a universal build needs an interpreter that is itself universal.
+.venv-universal/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+
+# Tool caches
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# macOS
+.DS_Store
+
+# Editors
+.idea/
+*.swp
+
+# Icon renders. `packaging/icon/build_icon.py` writes the whole ladder in a second, and a
+# PNG in git is a second answer to what the SVG says (rule 51, in a very small key).
+packaging/icon/render_*.png
+# The same rule for the conditioned candidates: every one of these is one command away
+# from the drawing it was made from, and the comparison sheets are for looking at once.
+packaging/icon/supplied_*.png
+packaging/icon/head_*.png
+packaging/icon/comparison.png
+packaging/icon/three_way.png
+packaging/icon/*.iconset/
+# The `.icns` is deliberately NOT ignored. It is a build *input* now -- the spec refuses to
+# build without it (rule 49) -- and unlike the ladder it cannot be regenerated from anything
+# in this repository unless the drawing it came from is here too.

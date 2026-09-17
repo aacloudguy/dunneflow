@@ -1,0 +1,66 @@
+[project]
+name = "dunneflow"
+version = "0.1.0"
+description = "DunneFlow — maps what moves through a program: entrypoints, flows, routines, and boundaries."
+requires-python = ">=3.12"
+dependencies = [
+    "pyyaml>=6.0",
+]
+
+[project.scripts]
+dunneflow = "dunneflow.cli:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "mypy>=1.11",
+    "ruff>=0.6",
+    "pyinstaller>=6.22.2",
+    "types-pyyaml>=6.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/dunneflow"]
+
+[tool.ruff]
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.mypy]
+python_version = "3.12"
+files = ["src", "tests"]
+# `uv run mypy .` is the gate CLAUDE.md prescribes, and `.` overrides `files` above. Once a
+# build exists, `dist/` holds a *copy* of this package — the spec bundles both extractor trees
+# and the detectors' loader as data, so `rules_fingerprint()` has files to hash — and mypy
+# finds two modules with one name and stops before checking anything at all. The artifact is
+# not source.
+exclude = '^(dist|build|\.venv-universal)/'
+strict = false
+warn_unused_ignores = true
+disallow_untyped_defs = true
+no_implicit_optional = true
+
+[[tool.mypy.overrides]]
+# Tests assert behaviour; annotating every fixture parameter would obscure that
+# without catching anything.
+module = "tests.*"
+disallow_untyped_defs = false
+
+[[tool.mypy.overrides]]
+# Pillow is never installed in the checked environment and is not meant to be: the icon
+# scripts are run on demand with `uv run --with pillow`, because nothing the application
+# ships needs an image library and adding one to the project environment would put it in
+# the bundle. So the import is genuinely absent here rather than merely unstubbed.
+module = "PIL.*"
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

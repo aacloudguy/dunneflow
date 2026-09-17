@@ -1,0 +1,145 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>DunneFlow</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="stylesheet" href="/static/tokens.css">
+
+<!--
+  The page a server with nothing open serves.
+
+  **Not the shell with everything emptied.** The shell is an application about one version
+  of one program — a navigator counting its routines, a cover, a stack, an inspector — and
+  there is no honest way to draw it over nothing. Drawing it empty would be forty panes each
+  having to say why it is blank, which is design rule 21 applied in the place it helps least:
+  the answer is the same for all of them, and the reader has not asked any of the questions
+  yet.
+
+  So this page's whole job is to say there is nothing yet and offer the two things that can
+  be done about it — open one of the programs that are here, or read a new tree. Once a base
+  exists, `/` is the shell, and the shell never has to boot without one.
+
+  It shares `tokens.css` and `analyze.js` with the shell rather than copying either. The
+  dialog on this page is the same dialog, from the same file, asking the same server for the
+  same verdicts — which is the point of taking it out of `shell.js` at all.
+-->
+
+<div class="start">
+
+  <header class="start-head">
+    <div class="brand"><span class="brand-mark">◈</span> DunneFlow</div>
+    <p class="start-lead" id="lead">reading…</p>
+  </header>
+
+  <!-- Where the maps are, stated as a path and openable.
+
+       `~/Library/Application Support/DunneFlow`, and `%LOCALAPPDATA%\DunneFlow` on Windows,
+       are each the right place for an application's own data and neither is swept into a
+       sync folder — which matters, because `source.db` holds the private source of whatever
+       was read. What neither is, is findable: a reader who wants to hand a colleague a map,
+       or delete one, cannot get there from the Finder or from Explorer without knowing the
+       path. So the path is here, selectable, and it opens. -->
+  <section class="start-root">
+    <span class="start-rootlabel">maps are kept in</span>
+    <code class="mono start-rootpath" id="rootpath"></code>
+    <button class="linkbtn" data-reveal hidden id="revealBtn">Show me</button>
+    <!-- Maps are not small — one Society snapshot is 168 MB, and the sidecars grow with
+         every revision captured — and `Application Support` is on the boot disk. A reader
+         with disk pressure has to be able to say otherwise without a terminal. -->
+    <button class="linkbtn" data-movemaps hidden id="moveBtn">Move…</button>
+    <span class="hint" id="revealNote"></span>
+  </section>
+
+  <!-- The chosen maps directory is on a disk that is not here.
+
+       Stated, never silent. Falling back is right — an application that does nothing when
+       double-clicked is worse than one that opens and explains — but rule 49 is about
+       substitutions that *hide* the failure, so this one is said in the loudest place on
+       the page and names the disk. The list below is the fallback's contents, which is why
+       this has to be read before it. -->
+  <section class="start-gone" id="rootGone" hidden>
+    <p class="start-gonelead" id="rootGoneWhy"></p>
+    <div class="start-openacts">
+      <button class="linkbtn" data-tryagain>Try again</button>
+      <button class="linkbtn" data-movemaps>Choose somewhere else</button>
+    </div>
+  </section>
+
+  <!-- Where maps are kept. Opened by either **Move…** above.
+
+       The same markup as the analyse dialog, deliberately: `analyze-scrim`, `analyze`,
+       `analyze-field` and the rest are already styled and already behave, and a second set
+       of dialog classes would be a second answer to what a dialog looks like (rule 71 — a
+       class name is global, and a stylesheet gives no warning). -->
+  <div id="moveScrim" hidden>
+    <div class="analyze-scrim" data-movecancel></div>
+    <div class="analyze" role="dialog" aria-modal="true" aria-labelledby="moveTitle">
+      <h2 class="analyze-title" id="moveTitle">Where maps are kept</h2>
+
+      <label class="analyze-field">
+        <span>New directory</span>
+        <div class="analyze-pick">
+          <input type="text" id="movePath" spellcheck="false" autocomplete="off"
+                 placeholder="/Volumes/YourDisk/DunneFlow">
+          <!-- Beside the field, never instead of it (design rule 2). -->
+          <button class="linkbtn" data-movepick>Choose…</button>
+        </div>
+        <p class="hint">A directory that already exists, on a disk that is connected —
+          DunneFlow will not create one, because a path on a disk that is not mounted would
+          quietly be made on your startup disk instead. Keep maps on a locally-attached
+          disk: they are SQLite databases, and network shares do not lock reliably.</p>
+      </label>
+
+      <label class="analyze-check">
+        <input type="checkbox" id="moveCarry" checked>
+        <span id="moveCarryWhat">Move the maps that are here now</span>
+      </label>
+
+      <p class="analyze-refusal" id="moveRefusal" hidden></p>
+      <p class="analyze-note" id="moveNote" hidden></p>
+
+      <div class="analyze-foot">
+        <button class="linkbtn" data-movego id="moveGo" disabled>Use it</button>
+        <button class="linkbtn" data-movecancel>Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- A map is open, and this page was asked for anyway.
+
+       `/` is the shell whenever a base exists, so the only way to be here in that state is
+       to have asked for `/start` by name — which is exactly what that route is for: the way
+       back when the shell has stopped working (design rule 20, *nothing may strand the
+       reader with no way back*). Two things can be done about it and both are offered,
+       because arriving here is not the same as wanting to close anything: **Back to it** is
+       the common case and comes first; **Close it** is the one that needs the whole
+       sentence, since "close" is a word a reader can hear as "close the tab".
+
+       Hidden when nothing is open, and that blank is spoken for — the lead above already
+       says whether any map has been made (design rule 21). -->
+  <section class="start-open" id="openNow" hidden>
+    <p class="start-openlead">
+      <b id="openName"></b> is open in this server.
+    </p>
+    <p class="hint">Closing it returns this page to its start state. Nothing on disk is
+      touched, and an analysis that is running keeps running.</p>
+    <div class="start-openacts">
+      <a class="linkbtn" href="/" data-backtoit>Back to it</a>
+      <button class="linkbtn" data-closemap>Close it</button>
+      <span class="hint" id="closeNote"></span>
+    </div>
+  </section>
+
+  <main id="main" class="start-main">
+    <div id="programs" class="start-programs"></div>
+  </main>
+
+  <footer class="start-foot">
+    <button class="linkbtn start-analyze" data-startanalyze>+ Analyse a directory…</button>
+    <p class="hint">Nothing leaves this machine. The analysis is stdlib parsing, and no part
+      of it calls a model or opens a network connection.</p>
+  </footer>
+
+</div>
+
+<script src="/static/analyze.js"></script>
+<script src="/static/start.js"></script>

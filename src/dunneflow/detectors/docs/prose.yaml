@@ -1,0 +1,368 @@
+# Prose detectors: how a document is classified, and what counts as a definition or a
+# stated naming rule.
+#
+# This is the extension point for documentation, exactly as `python.yaml` is for source.
+# It lives in a subdirectory so that editing it invalidates `docs.db` without discarding
+# `graph.db` -- `rules_fingerprint()` globs `detectors/*.yaml` and never recurses.
+#
+# Rule 1 governs here as everywhere: a false definition tells the reader a word means
+# something it does not, which is worse than an absent one. Every shape below is
+# corroborated by its context; none matches on position alone.
+
+version: 1
+
+# --------------------------------------------------------------------------- #
+# Classification. Load-bearing rather than decorative: a research paper *about*
+# naming standards is not a naming standard, and only this tells them apart.
+#
+# Precedence, first tier that matches wins:
+#   1. exact filename stem   -- an unambiguous filename is a strong claim
+#   2. frontmatter `kind`    -- the author saying what they wrote
+#   3. path segment          -- the drawer it was filed in
+#   4. stem substring        -- weaker, so it loses to `kind: research`
+#   5. a heading in the body
+# --------------------------------------------------------------------------- #
+
+exact_stems:
+  readme: README
+  glossary: GLOSSARY
+  terminology: GLOSSARY
+  naming: NAMING_STANDARD
+  nomenclature: NAMING_STANDARD
+  conventions: NAMING_STANDARD
+  changelog: CHANGELOG
+  changes: CHANGELOG
+  history: CHANGELOG
+  contributing: CONTRIBUTING
+  security: REFERENCE
+  project: REFERENCE
+  architecture: REFERENCE
+  overview: REFERENCE
+  roadmap: ROADMAP
+  milestones: ROADMAP
+  issues: ISSUE
+  agents: TOOLING
+  claude: TOOLING
+
+frontmatter_kind:
+  research: RESEARCH
+  adr: DECISION
+  decision: DECISION
+  plan: PLAN
+  phase: PLAN
+  spec: SPEC
+  specification: SPEC
+  reference: REFERENCE
+  guide: GUIDE
+  howto: GUIDE
+  tutorial: GUIDE
+  issue: ISSUE
+  roadmap: ROADMAP
+  changelog: CHANGELOG
+  naming: NAMING_STANDARD
+  standard: NAMING_STANDARD
+  glossary: GLOSSARY
+
+path_segments:
+  adrs: DECISION
+  adr: DECISION
+  decisions: DECISION
+  research: RESEARCH
+  phases: PLAN
+  plans: PLAN
+  milestones: PLAN
+  issues: ISSUE
+  specs: SPEC
+  guides: GUIDE
+  tutorials: GUIDE
+  reference: REFERENCE
+  skills: TOOLING
+  ".claude": TOOLING
+  commands: TOOLING
+
+stem_contains:
+  naming: NAMING_STANDARD
+  glossary: GLOSSARY
+  terminology: GLOSSARY
+  vocabulary: GLOSSARY
+  roadmap: ROADMAP
+  changelog: CHANGELOG
+  readme: README
+  style-guide: NAMING_STANDARD
+  styleguide: NAMING_STANDARD
+  handbook: NAMING_STANDARD
+
+heading_class:
+  GLOSSARY: '(?i)^\s*(glossary|terminology|definitions?|vocabulary)\b'
+  NAMING_STANDARD: '(?i)^\s*(naming|nomenclature)\b.*\b(standard|system|convention|rule|scheme)'
+
+# --------------------------------------------------------------------------- #
+# Sections. A definition or a rule is admitted only inside one of these.
+# --------------------------------------------------------------------------- #
+
+definition_headings: '(?i)\b(glossary|terminolog\w*|definitions?|vocabulary|lexicon|nomenclature|what .{0,20}\bmean)\b'
+
+naming_headings: '(?i)\b(naming|nomenclature|conventions?|style guide|house style|vocabulary)\b'
+
+# Table headers that make a table a definition table. Both halves are required: a
+# term column and a meaning column. `| Name | Port |` is not a glossary.
+term_columns: '(?i)^\s*(?:the\s+)?(term|name|word|component|concept|abbreviation|acronym|symbol|latin name|role name)\b'
+meaning_columns: '(?i)^\s*(?:the\s+)?(meaning|definition|description|role|what it (is|does)|purpose|gloss)\b'
+
+# Table headers that make a table a **naming standard**, and the same both-halves rule for
+# the same reason: a scope column and a pattern column, or it is not a standard. These are
+# matched as *whole* headers rather than as a prefix, because the words are ordinary --
+# "Type" and "Rule" head a great many tables that state nothing about names, and the cell
+# corroboration below is what admits or refuses those.
+#
+# A header match is only ever half the evidence. A column also qualifies on its **cells**:
+# see `table_rule_columns`, which takes either. Headers vary between organisations
+# ("Type/Convention", "Element/Style", "What/How") so header-matching alone is brittle;
+# cells alone missed the one real table in this corpus, whose pattern column scores 43% on
+# regexes tuned for prose sentences.
+scope_columns: '(?i)^\s*(type|kind|element|identifier|artefact|artifact|what|item|construct|object|thing|context)s?\s*$'
+pattern_columns: '(?i)^\s*(convention|style|case|casing|format|pattern|spelling|rule|naming)s?\s*$'
+
+# --------------------------------------------------------------------------- #
+# Stated naming rules.
+#
+# Three conditions, all required: the right section, a normative voice, and a lane.
+# The counter-example that shaped this is real -- a research document headed
+# "Naming-Standards Importer Design" whose "Recommended locks" read as rules and are
+# not. It is excluded because its frontmatter says `kind: research`, and because its
+# sentences name no identifier class and show no pattern.
+# --------------------------------------------------------------------------- #
+
+modals: '(?i)(\bmust\b|\bmust not\b|\bshall\b|\bshould\b|\bnever\b|\balways\b|\bonly\b|\bdo not\b|\bdon''t\b|\bavoid\b|\bprefer\b|\brequired?\b|\buse\b|\bevery\b|\ball\b|\bno\b|-only\b|\bbinding\b|\bforbidden\b|\bmandatory\b)'
+
+# Naming a class of identifier makes a rule FORM: it can be pointed at rows in the
+# graph, and it belongs in a table.
+identifier_classes:
+  - variable
+  - variables
+  - function
+  - functions
+  - method
+  - methods
+  - routine
+  - routines
+  - class
+  - classes
+  - module
+  - modules
+  - package
+  - packages
+  - file
+  - files
+  - filename
+  - filenames
+  - directory
+  - directories
+  - folder
+  - branch
+  - branches
+  - commit
+  - commits
+  - endpoint
+  - endpoints
+  - route
+  - routes
+  - api
+  - table
+  - tables
+  - column
+  - columns
+  - command
+  - commands
+  - subcommand
+  - flag
+  - flags
+  - option
+  - options
+  - argument
+  - arguments
+  - parameter
+  - parameters
+  - constant
+  - constants
+  - type
+  - types
+  - interface
+  - test
+  - tests
+  - fixture
+  - identifier
+  - identifiers
+  - namespace
+  - repository
+  - service
+  - queue
+  - topic
+  - bucket
+  - environment variable
+  - env var
+
+# A concrete spelling pattern also makes a rule FORM. Deliberately narrow: a
+# backticked token is not a pattern unless it looks like one, or `mensores
+# disceptator` would be read as a spelling rule when it is a vocabulary rule.
+pattern_tokens:
+  - '(?i)\b(snake_case|camelCase|PascalCase|kebab-case|SCREAMING_SNAKE_CASE|UPPER_SNAKE|screaming snake|title case|lower ?case|upper ?case|mixed ?case)\b'
+  # A glob, and only a glob: no spaces, so it cannot run from one backtick across a
+  # paragraph of bold prose to the next -- which it did, and matched 140 characters
+  # of trademark commentary as a spelling pattern.
+  - '`[A-Za-z0-9_./-]*[*?][A-Za-z0-9_./*?-]*`'
+  - '(?i)\b(prefix|suffix|prefixed|suffixed|begins? with|starts? with|ends? with|leading underscore|trailing underscore)\b'
+  - '(?i)\b(regex|pattern)\b\s*[:`]'
+  # The two below are for **table cells**, which are compressed in ways prose is not, and
+  # each is taken from a cell that actually occurs rather than imagined. Both are from
+  # `harness/rules/style.md:30`, the corpus's one real naming-convention table:
+  #
+  #   | Bash variables  | CAPS_UNDERSCORES |
+  #   | Type attributes | colon separator  |
+  #
+  # **What they earn, measured, because the first version of this comment overclaimed.**
+  # On this corpus they change *no result*: that table's column is headed `Convention`,
+  # which `pattern_columns` matches, so it qualifies on its header and yields its seven
+  # rules with these regexes removed. What they earn is the **cell** path — 3 of 7 cells
+  # match without them and 5 of 7 with — and the cell path is the one that has to carry a
+  # table whose header this list has never seen, which is every standard written by
+  # somebody who does not work here. That is the whole point of the feature, so the
+  # vocabulary is kept broader than this corpus exercises, exactly as `identifier_classes`
+  # already is.
+  #
+  # Deliberately absent: a rule for a backticked *template* -- `NN-kebab-name`,
+  # `NN-NN-PLAN.md`. That is what the comment above warns about, a backticked token read as
+  # a spelling rule, and it is not needed: the column already qualifies without it, and
+  # those rows become rules anyway once the column is established.
+  - '(?i)\b(caps[_ ]?underscores?|all[_ ]?caps|upper[_ ]?underscores?)\b'
+  - '(?i)\b(colon|hyphen|underscore|dot|dash|slash)[- ]?(separator|separated|delimited|delimiter)\b'
+
+# A rule that governs what a name may be drawn from or must mean, rather than how it
+# is spelled. Admitted from a naming section by shape (a list item), or anywhere in a
+# naming-standard document when the sentence is about naming at all.
+# Which kinds of document may state a rule at all.
+#
+# The counter-example is measured, not imagined: a research paper headed
+# "1. Naming-Standards Importer Design" yielded ten confident FORM rules -- glob
+# patterns, rule-set mappings, RE2 recommendations -- every one of them a description
+# of software being designed to read naming standards, not a naming standard. A section
+# heading is not enough. The document has to be the kind of thing that states rules.
+#
+# Deliberately excluded: RESEARCH, DECISION, PLAN, ROADMAP, ISSUE, CHANGELOG. An ADR
+# really can decide a convention, and that rule is lost here; recall is what precision
+# costs, and the model pass is where it comes back.
+rule_bearing_classes:
+  - NAMING_STANDARD
+  - README
+  - CONTRIBUTING
+  - GUIDE
+  - REFERENCE
+  - SPEC
+
+# Sections of a naming-standards document that report findings rather than state
+# rules. Every one of these is evidence-led, from NAMING.md itself: its trademark
+# status, its registry availability results, and its runner-up list are all normative
+# in voice -- "Action before any filing", "prefix `mensores-<role>` if ever standalone"
+# -- and none of them is a rule anyone follows when naming a function. A rule stated
+# inside one of these is lost; that is precision bought at the cost of recall, and the
+# model pass exists to recover the remainder.
+excluded_headings: '(?i)\b(status|availability|results?|runner.?ups?|trademark|domain|brand|registry|verdict|findings|appendix|background|references|prior art|open questions)\b'
+
+# --------------------------------------------------------------------------- #
+# A constraint is not a definition.
+#
+# `- `definition`: 1 <= len <= 5000 chars` is a validation rule for a field, written in
+# the shape a gloss is written in, inside a section whose heading mentions the glossary.
+# It reached the glossary of Society as one of 60 defined terms, glossing the word
+# `definition` -- so the page said the program defines that word and meant a bound on a
+# string's length. Rule 12's family: prose-shaped is not the same as prose.
+#
+# **The test is on the opening, and that is the whole of its precision.** A gloss that
+# *begins* by stating a bound, a bare type, a regex or a placeholder value is stating a
+# shape; a sentence that mentions "<=30s p95" halfway through is prose about a budget, and
+# three such definitions in this corpus are correctly kept. Measured over all 240
+# definitions Society yields: 5 refused, every one of them a field constraint or a
+# reserved-future null, and no definition anybody wrote is among them.
+#
+# What it deliberately does not do is judge the *section*: a heading that merely mentions
+# the glossary still admits definitions, and 29 came from one such heading here. That is a
+# larger trade -- 77 of 240 -- and Tom's call was to leave it standing and refuse the
+# constraint alone.
+constraint_glosses: |-
+  (?ix) ^\s* (?:
+      [-+]?\d+(?:\.\d+)? \s* (?: [≤≥<>=] | \.\. )
+    | [≤≥<>]=? \s* \d
+    | (?:an?\s+)? (?:anchored\s+|unanchored\s+)? regexp? \b
+    | (?: null | none | n/a ) \b
+    | (?: list|dict|set|tuple|str|string|int|integer|float|bool|boolean|optional|enum
+        | uuid|ulid|iso\s?8601|timestamp ) \b \s* [,:(]? \s* (?: [≤≥<>] | \d | , | $ )
+    | max(?:imum)?\s+\d
+  )
+
+naming_domain_words: '(?i)\b(nam(e|es|ed|ing)|term|terms|word|words|vocabulary|nomenclature|phrase|spelling|label|call(ed)?|invoke[ds]?|gloss|etymolog\w*|binomial|acronym|abbreviation|title)\b'
+
+# --------------------------------------------------------------------------- #
+# Words that need no glossary entry.
+#
+# A glossary is for the words a reader cannot look up. `handler`, `config` and `queue`
+# are ordinary programming vocabulary; `disceptator`, `groma` and `tabularium` are not,
+# and neither is `oscal`. Rather than ship a dictionary, this lists the vocabulary a
+# working programmer already has -- which is the smaller list, and the one a project can
+# usefully edit when its domain says otherwise.
+#
+# Blind spot: an unlisted ordinary word is reported as an undefined term. That is the
+# right way round -- a term wrongly listed as needing a definition costs a glance, and a
+# real coinage silently dropped costs the reader the word.
+# --------------------------------------------------------------------------- #
+ordinary_words:
+  - abstract, accept, access, account, action, active, adapter, add, admin, agent, alert
+  - algorithm, alias, all, allocate, analysis, analyze, api, app, append, apply, arg
+  - args, argument, array, artifact, assert, asset, assign, async, attach, attribute
+  - audit, auth, author, backend, backup, base, batch, benchmark, bin, binary, bind
+  - block, body, bool, boolean, branch, buffer, build, builder, bundle, byte, cache
+  - calc, call, callback, cancel, capture, case, catalog, category, cell, chain, change
+  - channel, chart, check, child, chunk, class, clean, clear, cli, client, clock, clone
+  - close, cloud, cluster, cmd, code, collect, column, command, commit, common, compare
+  - compile, complete, component, compose, compute, condition, config, connect
+  - connection, console, constant, consumer, container, content, context, control
+  - convert, copy, core, count, counter, create, credential, current, cursor, custom
+  - daemon, data, database, date, db, debug, decode, decorator, default, define, delete
+  - delta, dependency, deploy, describe, description, detail, detect, dev, device, diff
+  - digest, dir, directory, disable, discover, dispatch, display, doc, document, domain
+  - download, driver, dump, duration, edge, edit, element, email, empty, enable, encode
+  - end, endpoint, engine, entry, entrypoint, enum, env, environment, error, event
+  - exception, exec, execute, exists, exit, expand, export, expression, extend
+  - extension, external, extract, factory, fail, failure, feature, fetch, field, file
+  - filter, find, finish, first, fix, flag, flow, flush, folder, format, forward, frame
+  - from, front, func, function, gate, gateway, generate, get, git, global, graph, group
+  - guard, handle, handler, hash, head, header, health, helper, hex, history, home, hook
+  - host, html, http, id, identifier, image, import, index, info, init, initialize
+  - input, insert, inspect, install, instance, int, integer, interface, internal
+  - interval, invoke, io, issue, item, iterate, job, join, json, key, kind, label, last
+  - layer, lazy, len, level, lib, library, limit, line, link, list, load, loader, local
+  - lock, log, logger, login, lookup, loop, main, make, manage, manager, map, mark
+  - master, match, max, memory, merge, message, meta, method, metric, middleware, migrate
+  - migration, min, mode, model, module, monitor, mount, move, name, namespace, network
+  - new, next, node, normalize, note, notify, null, number, object, offset, ok, open
+  - operation, option, order, output, override, owner, package, page, param, parameter
+  - parent, parse, parser, partial, pass, patch, path, pattern, pause, payload, pending
+  - permission, pin, ping, pipe, pipeline, plan, platform, plugin, policy, pool, port
+  - post, prefix, prepare, print, priority, process, processor, producer, profile
+  - program, progress, project, prompt, property, protocol, provider, proxy, publish
+  - pull, push, put, query, queue, quota, random, range, rate, raw, read, reader, ready
+  - record, recover, redirect, ref, reference, refresh, region, register, registry
+  - release, reload, remote, remove, render, repo, report, request, require, reset
+  - resolve, resource, response, restart, restore, result, resume, retry, return, review
+  - revision, role, rollback, root, route, router, row, rule, run, runner, runtime
+  - sample, save, scan, scanner, schedule, scheduler, schema, scope, script, search
+  - second, section, secret, secure, security, seed, select, send, sender, serialize
+  - server, service, session, set, setting, setup, shard, shell, shutdown, sign
+  - signature, simple, single, size, skip, slot, snapshot, socket, sort, source, spec
+  - split, sql, stack, stage, start, state, static, statistic, status, step, stop
+  - storage, store, stream, string, strip, struct, style, submit, subscribe, success
+  - suffix, summary, support, sync, syntax, system, table, tag, target, task, team
+  - template, temp, term, test, text, thread, threshold, time, timeout, timestamp
+  - title, to, token, tool, topic, total, trace, track, transaction, transform
+  - translate, tree, trigger, type, unit, update, upgrade, upload, url, usage, user
+  - util, utility, valid, validate, value, verify, version, view, wait, walk, warn
+  - warning, watch, web, worker, workflow, wrap, wrapper, write, writer, yaml, zone

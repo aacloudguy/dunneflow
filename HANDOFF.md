@@ -16401,3 +16401,219 @@ joined it, and python `1.0.0:5ad58664e93395f9` → `1.0.0:bbc593d505e58080` beca
   notice. That is the trade the declaration buys — it is now a decision somebody has to
   make rather than a value that varies by machine — and the retake is one `uv` command per
   version, recorded above.
+
+## 2026-09-17 — the codec and the wire, proved against the extractor we already know
+
+`PLAN-v2.md`'s chunk 7, which the plan itself calls *the chunk that de-risks everything*.
+Everything from the TypeScript plugin onward assumes a reader on the far side of a pipe can
+send `FileFacts` indistinguishable from the ones this process makes. Nothing had ever tested
+that, because there had never been a reader on the far side of a pipe —
+`ingest._load()` refused one by name: *"this build has no worker for it yet"*.
+
+So the worker, the codec and the handshake were built, and proved by running **the Python
+extractor itself** through a subprocess. A difference between the two answers is then the
+protocol and can be nothing else.
+
+**The gate held, three ways.** 628 files of Society, **zero differing** by dataclass
+equality; the graph written over the wire gives **7 of 7 golden digests identical** against
+both the v1 graph and the in-process v2 one; and the map it wrote reports the four
+executables at **1,381 · 423 · 292 · 112** and conformance at **4 · 1 · 10**. **1,647
+passed · 1 skipped**, mypy clean over 171 files, ruff clean.
+
+### The measurement the chunk exists for, and it overturned the obvious answer
+
+| | Per file | |
+|---|---:|---|
+| in-process, pool | 1.73 ms | what a run costs today |
+| in-process, serial | 4.57 ms | the honest comparison |
+| out of process, sequential | 6.75 ms | **1.48×** |
+| — the codec | 2.12 ms | 98% of the overhead |
+| — the pipe and the round trip | 0.05 ms | 0.3% of the run |
+
+**The transport is free.** A round trip is **0.022 ms**, measured directly over 2,000
+requests rather than by subtraction; spawn and handshake are 70 ms, once. The
+one-file-at-a-time shape the plan specified costs nothing worth recovering and
+**pipelining would buy nothing** — the obvious optimisation is the wrong one, which is
+worth writing down before somebody spends a chunk on it.
+
+**And the codec was 8.7× slower than it is**, which was found by measuring rather than by
+reading: `typing.get_type_hints()` re-resolves a class's annotations on every call and
+caches nothing, so asked once per record it made **serialising a file's facts cost four
+times what parsing the file cost** — 18.25 ms against 4.57 — and 99% of the protocol's
+whole overhead. This module's own docstring had claimed `typing` cached it. `codec._plan`
+is cached per class now; the plan is still derived, and what is cached is the derivation.
+Full figures in `PERFORMANCE.md`, including the before.
+
+### The codec — reflective, and four refusals because they are four facts
+
+Driven by `dataclasses.fields()` and `get_type_hints()`, never a table of hand-written
+pairs: a hand-kept list drifts the moment somebody adds a field, and here the drift is
+silent in the worst direction — a field that stops travelling is a *fact that stops
+existing*, in a map that opens perfectly and reports a smaller program.
+
+| What arrived | Answer |
+|---|---|
+| an unknown key | dropped, and **named in `FileFacts.errors`** — a newer plugin may know more than this build, and that is not an error |
+| a missing field with no default, or a wrong type | **refuses the record**, naming the class, the field and what came. `"7"` is not `7` |
+| an enum value that is not a member | **refuses and quotes it**, listing the members. Never coerced, never defaulted |
+| a line that is not JSON | **refuses the language once, loudly** — not skipped 600 times quietly |
+
+A refused record refuses its whole **file**: keeping the other thirty-nine routines is a
+map that is quietly smaller with nothing anywhere saying a file was read badly.
+
+**A shape the codec has never seen is refused on the *declared type*, not on a value**, and
+that distinction was found by the test written for it. `encode` omits a field left at its
+default, so a `complex` field nobody had set yet sailed straight through and would have
+failed on the day somebody set it, in whichever run happened to be first. The check moved
+into `_plan`, where it is cached and costs nothing per record.
+
+**`lang` is refused on a nested record**, stricter than `stamp_lang`'s test on purpose.
+That refuses a *disagreement*, which is right for a reader that cannot disagree with
+itself; over a pipe, a plugin that sends the field **at all** is a second answer to a
+question `FileFacts.lang` has already answered. It is not encoded either, so a plugin
+author cannot learn to send it by watching what the host does.
+
+### The worker
+
+`ingest/worker.py` knows frames and nothing above them — `mcp/jsonrpc.py`'s split, one
+protocol over. NDJSON, the same framing the MCP server speaks.
+
+* **Every request carries an `id` and every reply must echo it**, including `hello`, `open`
+  and `close`, which the plan's sketch shows without one. Uniform, because the first plugin
+  to answer `open` while a file request is outstanding would otherwise be read as having
+  answered the file. Proving that needed a worker that *lies*: rewinding the host's counter
+  proves nothing, because a well-behaved worker echoes whatever it is given and the two
+  agree again (rule 37).
+* **The handshake is checked against the manifest** on lang, version, protocol and schema
+  version, and a disagreement refuses quoting both (rule 30).
+* **The hash travels and is echoed**; a mismatch is recorded as a failure naming both
+  hashes rather than filed under a hash it does not describe (rule 12).
+* **stderr is drained on its own thread into a 4 KB ring and never parsed** —
+  `runtime._desktop_session`'s lesson: text a healthy process also writes cannot be a
+  control channel. A chatty plugin is a working plugin, and a test says so.
+* **A dead worker is respawned once and the file it died on is not retried.** Retrying is
+  how one poison file refuses a whole language — the fresh worker meets the same file and
+  dies again, and the second death is the refusal. So one crash is a fact about a file and
+  two is a fact about the reader.
+
+### `test_frozen.py` caught a real bug, and it was the interpreter
+
+`plugin_argv` spelled `sys.executable` for a plugin whose toolchain is `python`. Right in a
+checkout, and **frozen `sys.executable` is DunneFlow** — the plugin would have been started
+by running the application with a script path as its subcommand. The guard that found it
+exists for exactly that shape and has now found it twice.
+
+So `runtime.py` gains its fifth question, `host_interpreter()`, and the distinction it
+makes is the whole point: `self_argv` answers *how do I run this program again*, this
+answers *what interpreter may I hand somebody else*, and in a checkout they are the same
+executable — which is precisely why it had to be written down. A frozen build **refuses**,
+naming what a real Python plugin would have to do instead. The only one that exists is a
+test double and tests do not run frozen (rule 35).
+
+The same pass caught `dotted.py` finding its fixtures through `Path(__file__)`. Through
+`resource_root()` now, and frozen it says where they should be and what to do — rather than
+reporting that nothing failed.
+
+### The dotted-name contract, written down at last
+
+`detectors/python.yaml`'s header has claimed since it was written that rules match *"the
+dotted form of a call expression"*. That normalisation is **the real interface between any
+extractor and the rules** — every `exact`, `prefix`, `method` and `contains` is matched
+against it — and it was undocumented, unversioned, and known only to the one extractor that
+implemented it. A plugin that spells expressions differently does not fail: it makes every
+rule miss, and the map comes back with no boundaries, no ways in and no CLI, looking exactly
+like a program that has none.
+
+`ingest/dotted.py`'s docstring **is** the contract, eight clauses, with
+`tests/fixtures/dotted/cases.json` beside it. Two things about how it is run:
+
+* **Through the reader's ordinary `extract`, not a conformance frame.** A protocol surface
+  that exists only to be tested proves that surface and not the one maps are built from.
+  So the same runner serves both kinds of reader with no branch, and
+  `dunneflow ingest-conform python` passes in this process and over the wire alike.
+* **Rules 5, 6 and 7 are named as *unexercised*, never counted as passing** (design rule 1).
+  A report saying *8 of 8* about a language with no syntax for three of them means nothing.
+  Clause 7 — `new Foo()` plus `CallSite.is_construction` — is the contract's one
+  unimplemented clause, and it stays unimplemented: a field nothing sets is a field nothing
+  can be trusted to set. Chunk 9 adds it with the reader that fills it.
+
+Two clauses were **discovered by writing the cases** rather than transcribed from the plan:
+a subscript kills the chain *anywhere* in it and not only at its root
+(`reg.handlers['x'].run()` is `""`, because naming it means deciding what `handlers['x']`
+is, and deciding that is resolution), and the fold in clause 2 applies repeatedly
+(`a.b(1).c(2).d()` → `a.b.c.d`).
+
+### `dunneflow ingest-schema`
+
+`schema.py` as data — 29 record types, 230 fields, 14 enumerations — out of the same
+reflection the wire uses, so the descriptor a plugin generates its types from and the wire
+it then talks cannot describe two different shapes (rule 13). Its purpose is that a
+`SCHEMA_VERSION` bump breaks a plugin's **build** rather than its output, which is the one
+failure mode a fact contract across a process boundary has and one inside a process does
+not. It names the host-owned fields, because that is the thing a plugin author will
+otherwise get wrong.
+
+### Where the double lives, and why it is not where the plan put it
+
+`PLAN-v2.md` says `plugins/python-oop/`. It is `tests/plugins/python-oop/`, and the reason
+is the registry's own rule: `_load()` reads every `plugins/*/plugin.json` at import and
+`suffix_owners` refuses two readers claiming one suffix, naming both. Shipped beside the
+real Python plugin it would refuse the build at import; claiming another suffix it would
+not read the files the comparison is about. So it is built through `read_manifest` and
+`OutOfProcessPlugin` — the public path, minus the registry — and a test asserts it is not
+in the shipped directory.
+
+Its misbehaviour is driven by seven environment variables, because the failure paths that
+matter most run least: a worker that cannot be made to die, lie, throw, echo a wrong hash,
+answer with somebody else's id, or write prose on stdout leaves every one of the host's
+refusals proved by reading it rather than by running it.
+
+### Measured
+
+| | |
+|---|---|
+| Society over the wire vs in process | **0 of 628 files differ**, by dataclass equality |
+| Golden, wire graph against v1 | **7 of 7 digests identical** |
+| Golden, wire graph against in-process v2 | **7 of 7 digests identical** |
+| The four executables, over the wire | 1,381 · 423 · 292 · 112 |
+| Conformance, over the wire | 4 checked · 1 no population · 10 not checkable |
+| Payload | 21.5 MB of JSON for 628 files |
+| Dotted conformance | 10 of 10 exercised, 3 named unexercised, in process and over the wire |
+
+**Both fingerprints moved, each for its own reason**, which is chunk 5's split still doing
+its job: core `10:cef6b94462148e63` → `10:95a28959eb3fa92e` because `ingest/*.py` gained
+four modules, and the python row stamp is **different in the map the double wrote**
+(`1.0.0:9718762d…` against `1.0.0:bbc593d5…`) because the double is a different reader with
+different bytes. Opening that map with the normal build is refused **by name** — *holds
+facts from a reader this build is not* — which is the split working across a process
+boundary, and was worth pressing rather than assuming.
+
+**Through the binary**, because `ingest/` is in the core key and `cli.py` grew two commands:
+a host build stamps core `10:95a28959eb3fa92e` and python `1.0.0:bbc593d505e58080`, both
+what the checkout computes. Frozen, `ingest-conform` says the fixtures are not in an
+application and where they live — rather than reporting that nothing failed.
+
+### Open, and stated
+
+* **`lost` is always nought for an out-of-process reader**, and that is not an oversight.
+  It means *a file that never arrived at all*, which is the only thing an in-process pool
+  can say when a worker dies — the parent cannot attribute the death to a file. Here the
+  host holds the pipe and knows exactly which request was outstanding, so a death produces
+  a record naming the file and the reason. The better answer is kept rather than degraded
+  to match the worse one, and `WalkStats` counts it off `ff.errors` like any other failure.
+* **A file the reader threw on is not cached** — no `content_hash` — so it is read again
+  next run. A file that will not *parse* still is, with its hash, which is v1's behaviour
+  preserved deliberately. The difference is that one is a fact about the file and the other
+  is a fact about the reader.
+* **One worker, not `manifest.workers` of them.** Python declares 1 and the TypeScript
+  growth axis is per-`tsconfig.json`, which is chunk 9's shape. A pool built now would be a
+  pool nothing exercises (rule 35).
+* `ingest/manifest.py` and `ingest/discovery.py` stay unsplit, as chunk 5's deviations
+  already recorded: they work, and they are in the fingerprint key, so moving them is churn
+  that discards graphs for no behaviour.
+* **`CLAUDE.md` was not touched, and that is a deliberate departure from this chunk's own
+  plan**, which listed it among the files to update. `V2-START-HERE.md` states that where
+  that file describes *commands* it describes v1 — so adding `ingest-schema` and
+  `ingest-conform` to its command block would put v2 state in the one file that declares
+  itself v1's, which is the split it exists to keep. Chunk 14 owns the rewrite, and the two
+  commands are in `--help`, in this entry, and in `V2-START-HERE.md` until then.

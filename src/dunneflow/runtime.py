@@ -233,6 +233,41 @@ def self_argv(*args: str) -> list[str]:
     return [sys.executable, "-m", "dunneflow.cli", *args]
 
 
+class NoInterpreter(RuntimeError):
+    """This build has no Python interpreter to lend, and cannot get one.
+
+    Always a packaging fact rather than a reader's mistake, and it is stated rather than
+    worked around: `shutil.which("python3")` would find *some* interpreter, which is
+    exactly the wrong answer -- a different standard library reading a tree whose facts
+    are then filed under this build's fingerprint (rule 12).
+    """
+
+
+def host_interpreter() -> str:
+    """The Python that is running this, for a plugin that is itself written in Python.
+
+    **Not `self_argv`, and the difference is the whole of why this exists.** `self_argv`
+    answers *how do I run this program again*; this answers *what interpreter may I hand
+    somebody else*. In a checkout they are the same executable and the distinction is
+    invisible -- which is precisely why it had to be written down, because frozen
+    `sys.executable` **is DunneFlow**, and starting a plugin with it would run the
+    application with a script path as its subcommand.
+
+    So a frozen build refuses. The only Python-toolchain plugin that exists is a test
+    double and tests do not run frozen; a real one would have to be started through
+    `self_argv` with a subcommand of its own, which is work nothing has asked for yet
+    (rule 35). Stated here rather than discovered by whoever writes that plugin.
+    """
+    if frozen():
+        raise NoInterpreter(
+            "this is a packaged DunneFlow and has no Python interpreter to lend a plugin: "
+            "frozen, `sys.executable` is DunneFlow itself. A plugin written in Python has "
+            "to ship its own runtime or be reached through `self_argv` with a subcommand "
+            "of its own."
+        )
+    return sys.executable
+
+
 def tool_version() -> str:
     """Which DunneFlow read this map. From the package metadata, never a literal beside it.
 

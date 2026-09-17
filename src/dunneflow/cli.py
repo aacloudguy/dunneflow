@@ -1265,7 +1265,102 @@ def build_parser() -> argparse.ArgumentParser:
     mc.add_argument("--revision", default=None,
                     help="which point in time to open as the base (default: the newest)")
     mc.set_defaults(func=cmd_mcp)
+
+    # --- the plugin author's two commands ---------------------------------- #
+    # Both are about the *seam* rather than about a map, which is why neither takes an
+    # output directory: one describes what a reader must emit and the other asks whether
+    # a reader emits it.
+    isc = sub.add_parser(
+        "ingest-schema",
+        help="what a reader must emit: every fact type, as data a plugin generates from")
+    isc.add_argument("--json", action="store_true",
+                     help="emit the descriptor itself rather than a summary for reading")
+    isc.set_defaults(func=cmd_ingest_schema)
+
+    icf = sub.add_parser(
+        "ingest-conform",
+        help="does this language's reader spell a call expression the way the rules match?")
+    icf.add_argument("lang", help="which language's reader to put through the cases")
+    icf.set_defaults(func=cmd_ingest_conform)
     return p
+
+
+def cmd_ingest_schema(args: argparse.Namespace) -> int:
+    """Print what a reader has to emit, as data.
+
+    **The point is that a plugin's own types are generated from this**, so a
+    `SCHEMA_VERSION` bump breaks that plugin's *build* rather than its output — which is
+    the one failure mode a fact contract across a process boundary has that a contract
+    inside one process does not.
+
+    Out of `codec.describe()`, which is the same reflection the wire itself uses. A second,
+    hand-written description of `schema.py` would be exactly the drift the codec was made
+    reflective to avoid, one file over (rule 13).
+    """
+    from .ingest.codec import describe
+
+    shape = describe()
+    if args.json:
+        print(json.dumps(shape, indent=2, sort_keys=True))
+        return 0
+
+    records, enums = shape["records"], shape["enums"]
+    fields = sum(len(v) for v in records.values())
+    _emit(f"fact schema {shape['schema_version']} — {len(records)} record types, "
+          f"{fields} fields, {len(enums)} enumerations")
+    _emit(f"document schema {shape['doc_schema_version']}")
+    _emit("")
+    for name in sorted(records):
+        required = [f["name"] for f in records[name] if f["required"]]
+        owned = [f["name"] for f in records[name] if f["host_owned"]]
+        line = f"  {name:16} {len(records[name]):2} fields"
+        if required:
+            line += f", required: {', '.join(required)}"
+        if owned:
+            # Named because it is the one thing a plugin author will otherwise get wrong:
+            # a field the host writes, refused rather than accepted, if a reader sends it.
+            line += f"  [the host writes {', '.join(owned)} — a reader must not send it]"
+        _emit(line)
+    _emit("")
+    for name in sorted(enums):
+        _emit(f"  {name:16} {', '.join(enums[name])}")
+    _emit("")
+    _emit("Generate your plugin's types from `--json` rather than transcribing this: a "
+          "schema bump should break your build, not your output.")
+    return 0
+
+
+def cmd_ingest_conform(args: argparse.Namespace) -> int:
+    """Put a reader through the dotted-name cases, in whatever process it lives in.
+
+    The cases go through the reader's **ordinary** extract, so what is proved is the path
+    the map is built from and not a conformance surface beside it (rule 51). For the Python
+    reader that is this process; for a reader on the far side of a pipe it is the pipe,
+    with no branch here to say which.
+    """
+    from .ingest import PLUGINS, dotted
+
+    lang = args.lang
+    plugin = PLUGINS.get(lang)
+    if plugin is None:
+        known = ", ".join(sorted(PLUGINS)) or "(none)"
+        _emit(f"nothing in this build reads {lang!r}. This build reads: {known}.")
+        return 2
+    try:
+        results = dotted.run(plugin, lang)
+    except dotted.FixtureMissing as exc:
+        _emit(str(exc))
+        return 2
+
+    _emit(f"the dotted-name contract, against the {lang} reader "
+          f"({'in this process' if plugin.manifest.in_process else 'over the wire'})")
+    _emit("")
+    for line in dotted.report(results, lang):
+        _emit(line)
+    failed = [r for r in results if not r.skipped and not r.passed]
+    # Non-zero so a plugin's build can gate on it — which is the only reason a conformance
+    # runner is a command rather than a test.
+    return 1 if failed else 0
 
 
 def cmd_mcp(args: argparse.Namespace) -> int:

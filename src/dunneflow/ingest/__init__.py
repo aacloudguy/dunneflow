@@ -50,6 +50,7 @@ from .contract import (
     stamp_lang as stamp_lang,  # re-exported: `ingest.stamp_lang` is where callers look
 )
 from .inprocess import InProcessPlugin, _extract_one
+from .outofprocess import OutOfProcessPlugin
 
 # Settled at import, on `detectors/__init__.py`'s precedent and for its reason: an
 # application does not become a source checkout halfway through a run.
@@ -259,13 +260,12 @@ def _load() -> tuple[dict[str, IngestPlugin], dict[str, str]]:
                 f"in this process is decided by `ingest._IN_PROCESS`, never by a data "
                 f"file, and a disagreement about that is a build defect."
             )
-        if runs_here is not None:
-            plugins[m.lang] = InProcessPlugin(m, runs_here)
-        else:
-            raise PluginRefused(
-                f"the {m.lang} plugin at {m.root} is not an in-process reader and this "
-                f"build has no worker for it yet."
-            )
+        # The two kinds, and the manifest has already been cross-checked against
+        # `_IN_PROCESS` above — so this is a dispatch and never a judgement.
+        plugins[m.lang] = (
+            InProcessPlugin(m, runs_here) if runs_here is not None
+            else OutOfProcessPlugin(m)
+        )
 
     if not plugins:
         raise PluginRefused(

@@ -67,6 +67,19 @@ been rewritten yet. Where they describe the tool they are accurate; where they d
   end, and through the frozen binary: both builds compute the same two stamps and open
   each other's maps. `SCHEMA_VERSION` is **10** and no longer load-bearing. **1,575 passed
   · 1 skipped**, mypy clean over 160 files, ruff clean, golden unmoved.
+* **The codec and the wire.** A reader on the far side of a pipe now works and is proved
+  against the one extractor whose output is known exactly: `tests/plugins/python-oop/` runs
+  **the Python extractor itself** through a subprocess, and Society comes back with **0 of
+  628 files differing** and **7 of 7 golden digests identical** — against the v1 graph and
+  against the in-process v2 one. `ingest/codec.py` is reflective over `dataclasses.fields()`
+  and strict four ways; `ingest/worker.py` spawns, shakes hands, correlates on an id, drains
+  stderr without ever parsing it, and respawns once without retrying the file that killed
+  it. `ingest/dotted.py` writes down the normalisation contract that every rule in every
+  detectors YAML has always been matched against, with `dunneflow ingest-conform` to check a
+  reader keeps it and `dunneflow ingest-schema` to generate a plugin's types from. **The
+  transport is free** — 0.022 ms a round trip, 0.3% of the run — and the codec is 98% of the
+  1.48× overhead, so pipelining would buy nothing. **1,647 passed · 1 skipped**, mypy clean
+  over 171 files, ruff clean.
 * **The resolver is split.** `resolve/python/` holds Python's name rules, `RESOLVERS`
   says who answers for which language, and the driver in `resolve/calls.py` groups by
   `files.lang`. Two things hoisted into it so a new resolver inherits them: the
@@ -122,20 +135,22 @@ is faithful rather than merely plausible.
 
 **The MCP server was brought forward** on 2026-09-17, from `PLAN-v2.md`'s chunk 4 to the
 front, and the walk was wired behind it the same day — so the ordering that remains is the
-plan's own, and chunks 5 and 6 were taken in it. Tom's call on the front-loading, and his reasoning is recorded: the existing
+plan's own, and chunks 5, 6 and 7 were taken in it. Tom's call on the front-loading, and his reasoning is recorded: the existing
 tool is usable as-is, so v1 defects found along the way are rolled into whichever feature
 chunk owns them rather than scheduled as work of their own.
 
-1. **The codec and the protocol** — `PLAN-v2.md` chunk 7, and the plan calls it the chunk
-   that de-risks everything: `NdjsonWorker`, `ingest-schema`, `ingest-conform`, and a
-   `plugins/python-oop/` test double that runs **the Python extractor through a subprocess
-   worker**, so the protocol is validated against the one extractor whose output is known
-   exactly. **Gate: byte-identical facts** — and the measurement that says whether
-   out-of-process was the right call, subprocess overhead against in-process extraction.
-2. **The string-literal split** — chunk 8. `FileFacts.literals`, and SQL and artefact
-   scanning moved into `ingest/literals.py`. Done **before** TypeScript exists, so
-   TypeScript never sees the old shape. **Gate: golden unchanged**, which is the proof the
-   split is faithful.
+1. **The string-literal split** — `PLAN-v2.md` chunk 8. `FileFacts.literals`, the
+   plugin-side `6 ≤ len ≤ 200_000` bound with **the count it dropped reported** rather than
+   silently filtered, and SQL and artefact scanning moved out of the Python extractor into
+   `ingest/literals.py` so the host judges what a string *means*. Done **before** TypeScript
+   exists, so TypeScript never sees the old shape. **Gate: golden unchanged**, which is the
+   proof the split is faithful — and `sql.py` is already in the core key, which is where
+   that judgement now belongs.
+2. **TypeScript, extraction only** — chunk 9. The pnpm package, the esbuild bundle,
+   `detectors/typescript.yaml`, and the dotted fixture's rules 5, 6 and 7 stopping being
+   unexercised — clause 7 brings `CallSite.is_construction` with the reader that fills it.
+   **Gate: DunneNote's ground truth**, `PLAN-v2.md` §5, and the Tauri seam is the sharp one:
+   30 files import `@tauri-apps/api/core` and **29 are tests**.
 
 **Of the four confirmed v1 defects, three are closed.** `BKIND_GLYPH` went in `679d772`;
 `writable=False` now opens `?mode=ro` and genuinely refuses a write, which is what the MCP

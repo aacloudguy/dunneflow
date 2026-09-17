@@ -789,3 +789,58 @@ checkout's `rules_fingerprint()` at the same commit — and the checkout opens t
 without refusing them. That is the whole point of the `datas` layout in
 `packaging/dunneflow.spec`, and it is a *measurement* rather than a design claim: laid out
 any other way the two builds would refuse each other's maps under rule 12.
+
+---
+
+## The wire — a reader on the far side of a pipe (v2, measured 2026-09-17)
+
+**Every figure above this heading was measured on v1.** These are v2's, and they are the
+first ones taken here (rule 24: none of v1's has been reproduced in this tree).
+
+`PLAN-v2.md` says the number that matters most is taken at chunk 7: **the subprocess
+protocol's overhead against in-process extraction, measured on the Python test double** —
+the one comparison where both sides produce provably identical facts. They do: 628 files,
+zero differing, seven of seven golden digests identical.
+
+Society (`../society-2026-08-29/src`, 628 files, 21.5 MB of JSON), Apple M1, warm disk,
+median of three alternating runs. Extraction only — no store, no resolution, no documents.
+
+| | Total | Per file |
+|---|---:|---:|
+| in-process, pool (default jobs) | **1.08 s** | 1.73 ms |
+| in-process, serial (`--jobs 1`) | **2.87 s** | 4.57 ms |
+| out of process, one worker, sequential | **4.24 s** | 6.75 ms |
+| — of which the codec (encode + decode) | 1.34 s | 2.12 ms |
+| — of which the pipe and the round trip | 0.03 s | 0.05 ms |
+
+**The transport is free and the codec is the whole cost.** Measured directly rather than
+by subtraction: a round trip is **0.022 ms** over 2,000 requests, which is 14 ms across all
+628 files — 0.3% of the run. Spawn and handshake are **70 ms**, once. So the sequential
+one-file-at-a-time shape the protocol was built with costs nothing worth recovering, and
+**pipelining would buy nothing**: the obvious optimisation is the wrong one, and it is
+written down here so nobody spends a chunk on it.
+
+**The comparison to make is against serial, not against the pool.** 1.48× is the
+protocol's price for the same work; 3.9× against the pool is the price of one worker
+against ten, which is a deployment choice rather than a protocol cost. A type-checking
+reader's growth axis is one worker per project, not per file, because the resolved-symbol
+information it exists to provide only exists inside a program.
+
+### The codec was 8.7× slower, and it was `get_type_hints`
+
+Taken before the fix and kept, because it is the measurement that produced the design:
+
+| | Per file | Overhead over serial |
+|---|---:|---:|
+| reflecting per record | 18.25 ms | **4.96×** |
+| reflecting once per record *type*, cached | 2.12 ms | **1.48×** |
+
+`typing.get_type_hints()` re-resolves a class's annotations on every call and caches
+nothing — asked once per record it made **serialising a file's facts cost four times what
+parsing the file cost**, and 99% of the whole protocol's overhead. `codec._plan` is cached
+per class now. The plan is still *derived*; what is cached is the derivation, so a field
+added tomorrow is still picked up — on the first record rather than on every one.
+
+*The same assumption `lang_fingerprint` had to be corrected on, in the same words: an
+application does not become a source checkout halfway through a run, and a dataclass does
+not grow a field between two files.*

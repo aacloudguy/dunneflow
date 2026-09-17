@@ -3,8 +3,10 @@
  *
  * **The file does not live here and must not.** It arrives in the `open` frame
  * (`detectors.rules_document`), because a plugin carrying its own copy is a second answer
- * that stops moving the moment somebody edits the YAML — and `detectors/*.yaml` is in the
- * core extraction key precisely so that an edit re-reads every language. What crosses the
+ * that stops moving the moment somebody edits the YAML — and that file is in **this
+ * language's** extraction stamp precisely so that an edit re-reads every TypeScript file.
+ * (It said *the core key, re-reads every language* until chunk 11; chunk 5 split the
+ * fingerprint and left the sentence behind, in three files at once.) What crosses the
  * wire is the document as written; what is here is `detectors.BoundaryRule.matches_call`,
  * transcribed, and it is transcribed rather than shared for the one reason rule 51 admits:
  * a process boundary is the place a rule cannot be moved to.

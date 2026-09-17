@@ -214054,7 +214054,7 @@ var SCHEMA_VERSION = 13;
 // src/main.ts
 var PROTOCOL = 1;
 var LANG = "typescript";
-var VERSION = "1.0.0";
+var VERSION = "1.1.0";
 var session = new Session();
 var rules = parseRules({});
 function send(frame) {

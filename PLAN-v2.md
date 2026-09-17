@@ -703,7 +703,7 @@ if you ever want one.
 | 8 | **String-literal split.** `FileFacts.literals`, plugin-side bound, SQL and artefact scanning moved into `ingest/literals.py`. Done **before** TypeScript exists, so TypeScript never sees the old shape | golden unchanged — that is the proof the split is faithful |
 | 9 | **TypeScript, extraction only.** The plugin, the esbuild bundle, `hello`/`open`/`extract`/`close`, `detectors/typescript.yaml`, dotted conformance green. No supplied edges yet — TS calls are external | DunneNote ground truth (below). A map with routines, boundaries and SQL and no internal TS edges is honest and shippable |
 | 10 | **Supplied edges.** The `edges` frame, `resolve/typescript/calls.py`, confidence semantics per language documented | resolution rate measured on DunneNote |
-| 11 | **TSX / React** | uigen ground truth (below) |
+| 11 | **TSX / React** — *done 2026-09-17.* A JSX element is a call; the 36 ways in a Next.js tree declares by file layout; boundaries matched on the package the checker resolved into; a hook's callback is a routine; the map states what it does not claim | DunneCorp ground truth met and printed; `.d.ts` excluded on 83 false BROKENs; 112 self-calls found and fixed |
 | 12 | **Manifest providers.** `resolve/manifests/`, generalised `pkg_root`, per-provider evidence | DunneNote's `package.json` and uigen's read; no sentence says `pyproject.toml` about either |
 | 13 | **Packaging.** Spec bundles `plugins/` wholesale; the fingerprint-equality gate extended to compare **per-language** stamps between binary and checkout | a frozen binary reads a TypeScript tree |
 | 14 | **Docs.** Rewrite "Adding a language"; register `ingest/` and `plugins/` in the architecture list beside `canonical/`'s paragraph | — |

@@ -366,8 +366,10 @@ def rules_document(lang: str) -> dict[str, Any]:
     `load_rules` turns the same bytes into indexed dataclasses for use in this process. A
     reader on the far side of a pipe cannot be handed those, and must not carry its own
     copy of the file: a plugin with a baked-in rule set is a second answer that stops
-    moving the moment somebody edits the YAML, and `detectors/*.yaml` is in the core
-    extraction key precisely so that an edit re-reads every language (rule 51).
+    moving the moment somebody edits the YAML, and a language's rules file is in **that
+    language's** stamp (`lang_extraction_inputs`) precisely so that an edit re-reads every
+    file of it (rule 51). *This said "the core extraction key ... every language" until
+    chunk 11 — true when written, and made false by chunk 5's own split.*
 
     So the document travels. **The declarations cross the wire and the matching is the
     reader's**, which is the seam `PLAN-v2.md` §1e draws: what needs the syntax tree stays

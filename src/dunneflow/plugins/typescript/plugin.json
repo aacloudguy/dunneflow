@@ -1,7 +1,7 @@
 {
   "lang": "typescript",
   "display": "TypeScript",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "protocol": 1,
   "schema_version": 13,
   "rules": "typescript.yaml",

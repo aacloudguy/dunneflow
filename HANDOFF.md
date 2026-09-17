@@ -17179,3 +17179,176 @@ and it wants a corpus that contains one.
 
 *Cold is the external volume with a warm page cache; the same run on a cold one is 4.1 s with
 2.1 s of programs (rule 24 — a row states its conditions where they are load-bearing).*
+
+## 2026-09-17 — TSX and React: the component tree is the flow
+
+`PLAN-v2.md`'s chunk 11, against `../DunneCorp` (`dunne-web` 0.1.0) with `../uigen` as the
+second opinion. Five things, and the two that were not on the list are the ones worth
+reading.
+
+**A JSX element is a call.** In a React program the component tree *is* the flow, and chunk
+9 left it unread: `app/(marketing)/services/[slug]/page.tsx` rendered eleven components and
+the map said it called one function. A tag that names a value is a call site — the tag is
+the callee through the same dotted contract, the props are its keyword arguments, and the
+checker names the far end exactly as it does for `f(x)`. An intrinsic element is not: a bare
+lowercase tag is React's own signal for a *string*, which is the page rather than something
+the program calls, and it is the same judgement `detectors/typescript.yaml` already makes
+about the DOM.
+
+The arithmetic closes exactly. **215** capitalised tags by grep over the 123 files read,
+minus **42** that are type names in generic positions, is **173** — the number of call sites
+recorded, with no tag missed and nothing recorded that is not one. Every one of the 173 was
+resolved by the checker: 116 to routines in this map, 57 to libraries, and `unknown` did not
+move from 8.
+
+**The 36 ways in nothing in the files declares.** A Next.js page carries no decorator, no
+registration call and no telling export name: the *path* is the declaration. So
+`detectors/typescript.yaml` gains a `routes:` section — which directories start a route
+tree, which filenames are a page and which a handler, and which segments are not URL — and
+`plugins/typescript/src/routes.ts` is the one place it is read. All 33 route names were
+printed and read by eye against the tree: no `(marketing)` group survives into any name,
+`[slug]` and `[...nextauth]` are kept as the program wrote them, `app/(marketing)/page.tsx`
+is `/`, and each lands on the component its file default-exports. Three handler verbs, named
+verb-first.
+
+`export const { GET, POST } = handlers;` is next-auth's own spelling and no scan for exported
+functions finds anything in it. Both verbs are ways in whose routine is `None`, and the
+anomaly detector read that correctly with no help: `ENTRYPOINT_NO_TARGET`, SUSPECT, blind
+spot *"may be supplied by a dependency"*. It is.
+
+**The boundary a name cannot reach.** Three of DunneCorp's four most interesting boundaries
+are written in ways no spelling rule can find — a local `const` holding a client, a factory
+call, a typed receiver — and the checker resolved every one of them to type the call. A
+`packages:` table matches the package a call lands in, and a package rule outranks a name
+rule, because a name rule is a guess about what somebody called a variable and a package
+rule is what the compiler worked out. One call is still one boundary (rule 40).
+
+Two things the measurement said that a guess would not: `.prisma` is where 130 of DunneCorp's
+calls resolve, because a generated client's types live in `node_modules/.prisma/client`; and
+`doc.send(…)` — the one call that actually reaches DynamoDB — is declared by `@smithy/core`
+rather than by `@aws-sdk/lib-dynamodb`, which declares only the command. The entries that are
+**absent** matter as much: `zod` is 169 calls and is validation, `prosemirror-*` is 143 and is
+a document model in memory, and `@types/node` is 159, which would collapse every file,
+process and console boundary into one target called `node`.
+
+`target:` is a named strategy now. DunneCorp's 130 DATABASE rows named `{ where: { email } }`;
+`receiver_tail` names the model, and the 13 targets are the Prisma schema — user 34, ticket
+15, service 15, booking 12. A promise tail is dropped first, because
+`db.user.update({…}).catch(…)` folds to `db.user.update.catch` and named `update` where every
+other row named a table.
+
+**A hook's callback is a routine** nested in the component (rule 10), so what an effect
+touches is filed under the effect. The name is stated and never invented: `const save =
+useCallback(…)` is **save** — and that is the only way that arrow becomes a routine at all —
+and a bare `useEffect(…)` is `useEffect`, the word written at that line. The population is
+stated rather than implied: **20** over every TypeScript tree here, 4 in DunneCorp, 16 in
+uigen, 0 in DunneNote.
+
+**And the map says two things it does not claim.** A directive prologue is a word written
+above the thing it marks, which is what a decorator is, so `"use client"` and `"use server"`
+go in `routines.decorators`. The Ways in chapter prints *27 routines in 8 files are marked
+`use server`*, the sentence saying why they are not claimed, and the query that returns
+exactly 27 — design rule 13, and the printed query was run. The words are the language's:
+which marks exist, whether each is claimed and what is printed about it all come from
+`detectors/<lang>.yaml`, because a sentence about React written into `render/markdown.py`
+would be a claim no language could edit.
+
+### Three defects, and only one of them was on anybody's list
+
+**A `.d.ts` is not program source, and uigen is what says so.** It vendors a generated Prisma
+client as `src/generated/prisma/*.d.ts`; read as program code it contributed **422 routines
+with no bodies, 632 structures and 83 BROKEN anomalies** — every one an overload set in a
+library's declarations reported as a name collision in somebody's program, out of a command
+that exits non-zero on BROKEN. A declaration file declares and never implements.
+`DiscoveryRules.skip_names` is the third kind of *not mine*, beside `skip_dirs` and the test
+rules, and only the reader that claims `.ts` can say a `.d.ts` is a header. uigen is 566 → 144
+routines, 655 → 23 structures, 83 → 0 broken. What it costs is stated: DunneCorp's
+`types/next-auth.d.ts` is 3 real interfaces and they go with it.
+
+**112 of DunneCorp's 403 internal edges were a routine calling itself**, and the package rule
+would have masked the first two rather than fixing them. `new DynamoDBClient({})` after
+`const { DynamoDBClient } = await import(…)` resolved to the *binding element*, which sits
+inside `getDocClient`, so the climb walked up out of it and found the enclosing routine.
+Pulling that thread found four shapes, each measured: a destructured binding, a parameter, a
+`const` bound to something that is not a function, and a **type** — `run(action: () => R)`
+calling `action()` resolves to the `FunctionType` in its own annotation. Plus one stopping
+condition in the climb, which the four cannot express: it must not walk out of a function
+this reader did not record, or `const f = useCallback(() => {…})` reports the enclosing
+component calling itself.
+
+`const [x, setX] = useState()` is the commonest line in React, so a React map was **27%
+self-calls** — a number that reads as a busy program rather than a broken reader (rule 49).
+DunneCorp 403 → 291 internal edges and 58 self-calls → 0; DunneNote 1,935 → 1,867; uigen 302
+→ 241. Twelve self-calls remain across the three corpora and **every one is genuine
+recursion** — three read against the source, including a React tree component that renders
+itself, found through JSX.
+
+**Chunk 11d shipped a false BROKEN anomaly before it was right.** Two effects in one uigen
+component are two routines with one qualname, and `NAME_COLLISION` said exactly what it is
+written to say: *defined 2 times, only the last one exists at run time*. The program is fine;
+the name was this reader's. So the two cases are kept apart rather than the detector taught
+an exception — a name the **program** chose twice is a collision and is the finding; a name
+this reader applies by convention carries the ordinal that says which one it is. `useEffect`
+and `useEffect#2`, in the qualname and not only in the id.
+
+### Two claims corrected, both of them prose
+
+**`namedFunction`'s docstring named two shapes the reader does not record** — `{ f() {} }` and
+`x.f = function () {}` — and had said so since the day it was written, with nothing ever
+asking it for one (rule 37, in prose). Measured before it was written down: **20
+object-literal methods and 84 property functions** across the three corpora, so it is a real
+gap of about a hundred rather than a rounding error. Stated and not closed: closing it would
+move the routine count this chunk holds fixed to prove it changed nothing but JSX.
+
+**Four files said `detectors/*.yaml` is in the core extraction key so an edit re-reads every
+language.** True when written and made false by chunk 5's own split: `_SHARED_RULES` is
+`annotations.yaml` alone and a language's YAML is in *its* stamp. Right about why the file
+travels and wrong about what editing it discards, which is the half a reader acts on.
+
+### Figures
+
+| | DunneCorp | DunneNote | uigen |
+|---|---|---|---|
+| files read | 121 | 442 | 46 |
+| routines | 209 | 1,518 | 160 |
+| internal calls | 291 of 1,175 (25%) | 1,867 of 5,119 (36%) | 251 of 782 (32%) |
+| boundary touches | 252 | 139 | 52 |
+| ways in | **36** | 0 | 3 |
+| structures | 37 | 708 | 23 |
+| anomalies | 0 broken · 2 suspect | 0 broken | 0 broken |
+
+DunneCorp's boundaries: DATABASE 130 · STDIO 69 · ENV 27 · NETWORK 12 · CRYPTO 5 · PROCESS 5
+· CLOUD_SDK 4 — NETWORK and three of the four CLOUD_SDK rows unreachable before this chunk.
+uigen gained 12, all of it `jose` 7 · `ai` 4 · `@ai-sdk/` 1. DunneNote's 139 did not move,
+because nothing it depends on is a boundary this tool models.
+
+**Python is untouched: 7 of 7 golden digests identical**, 4,823 routines, 6,441 internal
+calls, 178 ways in. The frozen binary reads DunneCorp to the figure — 209 · 291 · 252 · 36 —
+and the two builds stamp the same `13:7146233f6df5abd2` and `1.1.0:6e73bfa22d8416cd` and open
+each other's maps. **1,753 passed · 1 skipped**, mypy clean over 179 files, ruff clean.
+`SCHEMA_VERSION` is unchanged at **13**: nothing about the stored shape moved, and the
+TypeScript reader's own version carries the generation instead.
+
+*Cost: DunneNote cold 2.9 s against chunk 10's 2.7 s, 0.7 s of it building programs either
+way — a warm page cache both times (rule 24). Asking the checker which package every call
+lands in is not measurable at this size.*
+
+### What is deliberately not done
+
+**The zod hole is stated here rather than counted in the map**, and that is a departure from
+the plan this chunk was approved on. The mechanism would have been `constants.value LIKE
+'z.%'` — a match on a local alias, which is rule 5 and is the thing this chunk spent its
+middle third removing. A schema is not a `DataStructure` here and the map does not pretend
+otherwise; giving that hole a number needs a fact type it has not got, and a guess with a
+count beside it reads more true than silence, not less.
+
+**Conditional rendering is still not a decision.** `{cond && <X/>}` is out, because
+`shape.judge()`'s test is *does something move inside it* and what moves is a rendered
+element. **`useEffect` as a rate** is still deferred: judging it needs the dependency array,
+which `resolve/shape.py` has no vocabulary for.
+
+**Open question 6 — naming and conformance per language — is still open**, and it now has a
+corpus. DunneFlow's own tree is mixed: Python plus the TypeScript reader's `.ts`. A
+convention mined across both at once would report that the program has no convention, and
+the next measurement is whether the lanes need splitting or only their denominators do.
+

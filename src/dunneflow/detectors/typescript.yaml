@@ -3,8 +3,14 @@
 # This file is the extension point, and it is read **in this process** and handed to the
 # reader over the wire (`detectors.rules_document`, `ingest/worker.py:open`). A plugin
 # with its own baked-in copy would stop moving the moment somebody edited this file, and
-# `detectors/*.yaml` is in the core extraction key precisely so that an edit re-reads
-# every language. There is one file.
+# this file is in **TypeScript's** extraction stamp (`detectors.lang_extraction_inputs`)
+# precisely so that an edit re-reads every TypeScript file — and costs Python nothing.
+# There is one file.
+#
+# *That sentence said "the core extraction key ... re-reads every language" until chunk
+# 11, in three files at once. It was true when it was written and chunk 5 made it false:
+# `_SHARED_RULES` is `annotations.yaml` alone. It was right about why the file travels
+# and wrong about what editing it discards, which is the half a reader acts on.*
 #
 # Rules are matched against the **dotted form** of a call expression, exactly as Python's
 # are — the contract is `ingest/dotted.py` and it is the same contract. So

@@ -164,6 +164,32 @@ been rewritten yet. Where they describe the tool they are accurate; where they d
   the committed bundle was the committed source (rule 37), which this chunk closed before it
   edited either.
 
+* **TSX and React.** A JSX element whose tag names a value is a call — the props are its
+  keyword arguments and the checker names the far end — so a React program's component tree
+  is in the map at last. **DunneCorp: 173 component elements**, and the arithmetic closes
+  (215 capitalised tags by grep, minus 42 that are type names in generic positions);
+  **36 ways in** where a Next.js tree declares them by where its files sit, all 33 route
+  names printed and read with no `(group)` surviving into one; **boundaries the spelling
+  rules cannot reach**, matched on the package the checker resolved a call into, which is
+  NETWORK 0 → 12, CLOUD_SDK 1 → 4 and 130 DATABASE rows that name the Prisma model instead
+  of a fragment of an argument; a hook's callback is a routine nested in its component; and
+  the map **states what it does not claim** — 27 routines in 8 files marked `use server`,
+  with the query that returns exactly 27.
+
+  Three defects, and two were not on any list. A **`.d.ts` is not program source**: uigen
+  vendors a generated Prisma client as one, and read as code it contributed 422 bodyless
+  routines and **83 BROKEN anomalies** out of a command that gates CI on BROKEN.
+  **112 of DunneCorp's 403 internal edges were a routine calling itself** — `const [x, setX]
+  = useState()` is the commonest line in React, and the checker's declaration for `setX` is
+  a binding inside the component; four declaration shapes and one stopping condition in the
+  climb, measured one at a time, and the twelve self-calls left across three corpora are all
+  genuine recursion. And **chunk 11d shipped a false BROKEN itself** before the qualname
+  carried the ordinal that tells two effects apart.
+
+  Python unmoved (**7 of 7 digests**), the frozen binary reads DunneCorp to the figure and
+  both builds open each other's maps. **1,753 passed · 1 skipped**, mypy clean over 179
+  files, ruff clean. `SCHEMA_VERSION` stays **13**; the TypeScript reader is **1.1.0**.
+
 ## The gate everything is measured against
 
 `output/GOLDEN-v1.txt` holds row counts, distributions, and **seven identity digests** —
@@ -204,10 +230,16 @@ plan's own, and chunks 5 through 9 were taken in it. Tom's call on the front-loa
 tool is usable as-is, so v1 defects found along the way are rolled into whichever feature
 chunk owns them rather than scheduled as work of their own.
 
-1. **TSX / React** — chunk 11, against `../DunneCorp`. Smoke-checked at chunk 9 and it
-   reads: 123 files, 0 failed, and **CLOUD_SDK and CRYPTO fire for the first time outside
-   Python**. The 33 App Router route names are the assertion that has not been made — and
-   it is now also the first corpus where the checker's answer meets JSX.
+1. **Manifest providers** — chunk 12. `resolve/manifests/`, a generalised `pkg_root`, and
+   per-provider evidence, so a `package.json` `bin` outranks a guessed `main` and
+   `flows.py:215`'s substring test for *declared* becomes a field on `Entrypoint`. That is
+   the last of the four confirmed v1 defects, and it is scheduled here rather than
+   outstanding.
+2. **Open question 6 — the naming lanes across a mixed corpus**, which chunk 11 deferred
+   and now has a tree to measure on: DunneFlow's own, Python plus the TypeScript reader's
+   `.ts`. A convention mined across both at once reports that the program has no
+   convention; what is unknown is whether the lanes need splitting or only their
+   denominators do.
 
 **The `fetch`-through-a-name residue is still open**, and chunk 10 was where it was scheduled
 to close. It did not, and the reason is stated rather than quiet: DunneNote calls `fetch` in

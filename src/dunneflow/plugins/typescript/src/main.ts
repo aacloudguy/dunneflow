@@ -39,7 +39,7 @@ import { SCHEMA_VERSION, type FileFacts } from "./facts.js";
 
 const PROTOCOL = 1;
 const LANG = "typescript";
-const VERSION = "1.0.0";
+const VERSION = "1.1.0";
 
 interface Frame {
   t?: string;
@@ -75,8 +75,8 @@ function onOpen(frame: Frame): Record<string, unknown> {
   session.root = String(frame["root"] ?? ".");
   // **The rules arrive with the session and are never baked in.** A plugin carrying its
   // own copy of `detectors/typescript.yaml` is a second answer that stops moving the
-  // moment somebody edits the file, and that file is in the core extraction key precisely
-  // so an edit re-reads every language (rule 51).
+  // moment somebody edits the file, and that file is in this language's extraction stamp
+  // precisely so an edit re-reads every TypeScript file (rule 51).
   rules = parseRules(frame["rules"]);
   const files = (frame["files"] as string[]) ?? [];
   const diagnostics: string[] = [];

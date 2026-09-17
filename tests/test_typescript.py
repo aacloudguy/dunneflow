@@ -954,3 +954,191 @@ def test_a_tag_is_never_offered_to_a_boundary_rule(edges):
     assert facts["page.tsx"].boundaries == []
     assert all(c.at_boundary is not True
                for c in _calls_of(facts, "page.tsx", "Page"))
+
+
+# ------------------------------------------------- ways in a framework declares --- #
+#
+# Chunk 11b. A Next.js page declares nothing in the file: `app/(marketing)/services/
+# [slug]/page.tsx` serves `/services/[slug]` because of where it is. The names are
+# `detectors/typescript.yaml`'s `routes:` section and the derivation is `routes.ts`.
+
+ROUTE_TREE: dict[str, str] = {
+    "tsconfig.json": """{
+  "compilerOptions": { "strict": true, "target": "ES2022", "module": "ESNext",
+                       "moduleResolution": "bundler", "jsx": "react-jsx" }
+}
+""",
+    # A group vanishes; a dynamic segment is kept exactly as written.
+    "app/(marketing)/page.tsx": """
+export default function HomePage() {
+  return <main>home</main>;
+}
+""",
+    "app/(marketing)/services/[slug]/page.tsx": """
+export default async function ServiceDetailPage() {
+  return <article>one</article>;
+}
+""",
+    # `export default X;` names a component declared above it.
+    "app/admin/page.tsx": """
+function AdminPage() {
+  return <section>admin</section>;
+}
+
+export default AdminPage;
+""",
+    # A handler declares one way in per verb, and `PUT` is not exported so it is not one.
+    "app/api/ticket/route.ts": """
+export async function GET(): Promise<string> {
+  return "read";
+}
+
+export async function POST(): Promise<string> {
+  return "write";
+}
+
+async function PUT(): Promise<string> {
+  return "unexported";
+}
+""",
+    # next-auth's own spelling: the verbs are bound by destructuring a library's object,
+    # so nothing in the file declares a function at all.
+    "app/api/auth/[...nextauth]/route.ts": """
+const handlers = { GET: async () => "g", POST: async () => "p" };
+export const { GET, POST } = handlers;
+""",
+    # Around a route rather than a route: nothing is served at its URL.
+    "app/(marketing)/layout.tsx": """
+export default function MarketingLayout() {
+  return <div>shell</div>;
+}
+""",
+    # Outside every declared root: a component, and not a way in.
+    "components/card.tsx": """
+export default function Card() {
+  return <p>card</p>;
+}
+""",
+}
+
+
+@pytest.fixture(scope="module")
+def routes(tmp_path_factory):
+    """One session over a Next.js-shaped tree, extracted the way a run extracts."""
+    if PLUGIN is None:
+        pytest.skip("no typescript plugin in this build")
+    root = tmp_path_factory.mktemp("tsroutes")
+    paths = []
+    for name, source in ROUTE_TREE.items():
+        p = root / name
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(source, encoding="utf-8")
+        if name.endswith((".ts", ".tsx")):
+            paths.append(p)
+    PLUGIN.probe()
+    PLUGIN.open(root, paths)
+    try:
+        facts = {ff.path: ff for ff in PLUGIN.extract(paths, root)}
+    finally:
+        PLUGIN.close()
+    for ff in facts.values():
+        assert ff.errors == [], f"{ff.path}: {ff.errors}"
+    return facts
+
+
+def _ways(facts) -> dict[str, list]:
+    return {path: ff.entrypoints for path, ff in facts.items() if ff.entrypoints}
+
+
+def test_a_page_is_named_by_its_url_with_the_route_groups_gone(routes):
+    """`(marketing)` shares a layout and is not a URL segment.
+
+    A `(…)` surviving into a route name is a name no reader can type into a browser, and
+    it is the first thing anybody who writes Next.js checks.
+    """
+    named = sorted(ep.name for eps in _ways(routes).values() for ep in eps)
+    assert named == [
+        "/",
+        "/admin",
+        "/services/[slug]",
+        "GET /api/auth/[...nextauth]",
+        "GET /api/ticket",
+        "POST /api/auth/[...nextauth]",
+        "POST /api/ticket",
+    ]
+    assert not any("(" in n for n in named), named
+
+
+def test_a_dynamic_segment_keeps_the_programs_own_word_for_it(routes):
+    """`[slug]` and `[...nextauth]`, never `:slug` — translating is inventing (rule 30)."""
+    named = {ep.name for eps in _ways(routes).values() for ep in eps}
+    assert "/services/[slug]" in named
+    assert "GET /api/auth/[...nextauth]" in named
+
+
+def test_a_page_lands_on_the_component_it_default_exports(routes):
+    """Both spellings: the modifier on the declaration, and `export default X;`."""
+    by_name = {ep.name: ep for eps in _ways(routes).values() for ep in eps}
+    home = by_name["/"]
+    page = next(r for r in routes["app/(marketing)/page.tsx"].routines
+                if r.name == "HomePage")
+    assert home.routine_id == page.id
+    assert home.kind.value == "HTTP_ROUTE"
+
+    admin = by_name["/admin"]
+    declared = next(r for r in routes["app/admin/page.tsx"].routines
+                    if r.name == "AdminPage")
+    assert admin.routine_id == declared.id
+
+
+def test_a_handler_declares_one_way_in_per_verb_it_exports(routes):
+    """One `route.ts` serving GET and POST is two ways in; an unexported `PUT` is none."""
+    eps = _ways(routes)["app/api/ticket/route.ts"]
+    assert [ep.name for ep in eps] == ["GET /api/ticket", "POST /api/ticket"]
+    assert all(ep.routine_id is not None for ep in eps)
+
+
+def test_a_verb_bound_by_destructuring_is_still_a_way_in(routes):
+    """`export const { GET, POST } = handlers;` — next-auth's own spelling.
+
+    A scan for exported *functions* finds nothing here and reports a route file serving no
+    method. The routine is `None` and that is the true answer: the thing that serves the
+    request was supplied by a dependency, and `ENTRYPOINT_NO_TARGET` says so.
+    """
+    eps = _ways(routes)["app/api/auth/[...nextauth]/route.ts"]
+    assert [ep.name for ep in eps] == [
+        "GET /api/auth/[...nextauth]", "POST /api/auth/[...nextauth]",
+    ]
+    assert all(ep.routine_id is None for ep in eps)
+
+
+def test_what_sits_around_a_route_is_not_one_and_nor_is_a_component(routes):
+    """`layout.tsx` is a framework hook; `components/card.tsx` is outside every root."""
+    claimed = set(_ways(routes))
+    assert "app/(marketing)/layout.tsx" not in claimed
+    assert "components/card.tsx" not in claimed
+
+
+def test_a_declaration_file_is_not_program_source():
+    """A `.d.ts` declares and never implements — the reader's own rule, not the walk's.
+
+    Measured on uigen, which vendors a generated Prisma client as `src/generated/prisma/
+    *.d.ts`: read as program source it contributed 422 routines with no bodies and **83
+    BROKEN anomalies**, every one an overload set in a library's declarations reported as
+    a name collision in somebody's program — and `dunneflow check` exits non-zero on
+    BROKEN. What it costs is stated too: DunneCorp's `types/next-auth.d.ts` is 3 genuine
+    interfaces and they go with it.
+    """
+    rules = {r.lang: r for r in ingest.discovery()}["typescript"]
+    assert ".d.ts" in rules.skip_names
+    assert ".ts" in rules.suffixes, "and it is still a file this reader claims"
+
+
+def test_the_route_names_are_the_yaml_s_and_the_derivation_is_the_readers():
+    """Teaching this tool SvelteKit is an edit to the YAML, not to the plugin."""
+    doc = rules_document("typescript")
+    rule = doc["routes"][0]
+    assert rule["kind"] == "HTTP_ROUTE"
+    assert "app" in rule["roots"] and "src/app" in rule["roots"]
+    assert "page.tsx" in rule["pages"] and "route.ts" in rule["handlers"]
+    assert rule["strip_groups"] is True

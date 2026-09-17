@@ -73,6 +73,7 @@ def _rules(block: dict[str, Any], lang: str) -> DiscoveryRules:
         lang=lang,
         suffixes=frozenset(str(s).lower() for s in block.get("suffixes", [])),
         skip_dirs=frozenset(str(s) for s in block.get("skip_dirs", [])),
+        skip_names=tuple(str(s) for s in block.get("skip_names", [])),
         test_dirs=frozenset(str(s) for s in block.get("test_dirs", [])),
         test_name_suffixes=tuple(str(s) for s in block.get("test_name_suffixes", [])),
         test_stem_prefixes=tuple(str(s) for s in block.get("test_stem_prefixes", [])),

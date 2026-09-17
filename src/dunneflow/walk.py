@@ -205,7 +205,8 @@ def walk_residue(stats: WalkStats) -> list[str]:
     if stats.lang_skipped:
         listed = ", ".join(f"{n:,} {lang}"
                            for lang, n in sorted(stats.lang_skipped.items()))
-        out.append(f"skipped by the reader's own rule: {listed}")
+        out.append(f"skipped by the reader's own rule: {listed} — a directory or a "
+                   f"filename that reader does not count as program source")
     if stats.no_literals:
         out.append(f"no strings reported by: {', '.join(sorted(stats.no_literals))} — "
                    f"that language contributes no SQL and no named files to this map")
@@ -315,7 +316,9 @@ def discover(root: Path, include_tests: bool = False,
                     _tally(stats.unclaimed, suffix)
                 continue
             rule = by_lang[lang]
-            if any(part in rule.skip_dirs for part in rel.parts[:-1]):
+            if any(part in rule.skip_dirs for part in rel.parts[:-1]) or (
+                rule.skip_names and rel.name.endswith(rule.skip_names)
+            ):
                 if stats is not None:
                     _tally(stats.lang_skipped, lang)
                 continue

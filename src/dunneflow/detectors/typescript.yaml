@@ -198,6 +198,38 @@ boundaries:
 # What counts as a network call in its own right, for the `net_calls` table. The
 # prefixes are matched longest-first by `load_rules`, so `axios.` and a bare `fetch`
 # can both be declared without one shadowing the other.
+# -- ways in a framework declares by where a file sits ------------------------- #
+#
+# **A Next.js App Router page is a way in, and nothing in the file says so.** There is no
+# decorator, no registration call and no export name: the *path* is the declaration, and
+# `app/(marketing)/services/[slug]/page.tsx` means the URL `/services/[slug]`. That is a
+# convention rather than a guess — it is how the framework routes, and a reader who did not
+# know it would find 33 components with nothing calling them and no way in to the program
+# at all.
+#
+# The names here are data and the derivation is code, exactly as `boundaries` above splits
+# them. Teaching this file SvelteKit's `+page.svelte` or Remix's `routes/` is an edit here.
+#
+# **A route group vanishes, and that is the one thing to get right.** `(marketing)` exists
+# to share a layout and is not a URL segment, so a `(…)` surviving into a route name is a
+# name no reader can type into a browser — the first thing anybody who writes Next.js
+# checks. A dynamic segment is the opposite: `[slug]` and `[...nextauth]` are kept exactly
+# as written, because the program's own word for that hole is the only name it has.
+routes:
+  - framework: Next.js App Router
+    kind: HTTP_ROUTE
+    # Both layouts are in the wild and neither outranks the other: DunneCorp puts `app/` at
+    # the root, uigen puts it under `src/`. The deepest match wins, so a directory called
+    # `app` nested inside a `src/app` route tree cannot be read as a second root.
+    roots: [app, src/app]
+    pages: [page.tsx, page.ts, page.jsx, page.js]
+    handlers: [route.ts, route.tsx, route.js]
+    # A handler file is named by the verbs it exports, because that is what it declares:
+    # one file serves as many methods as it exports functions.
+    verbs: [GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS]
+    strip_groups: true
+    evidence: Next.js App Router
+
 network:
   libraries:
     fetch: {protocol: HTTP, async: true}

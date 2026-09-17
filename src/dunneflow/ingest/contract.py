@@ -139,6 +139,16 @@ class DiscoveryRules:
     that finds nothing, and it buys a plugin that can contribute a filter without being
     able to impose one.
 
+    **`skip_names` is the third kind of *not mine*, and it was paid for.** uigen vendors a
+    generated Prisma client as `src/generated/prisma/*.d.ts`: read as program source it
+    contributed 500-odd routines with no bodies and **83 BROKEN anomalies**, every one an
+    overload set in a library's declarations reported as a name collision in somebody's
+    program -- and `dunneflow check` exits non-zero on BROKEN. A `.d.ts` is TypeScript's
+    header file: it declares and never implements, so a routine from one is a signature
+    and not a routine. Measured against what it costs: `types/next-auth.d.ts` in DunneCorp
+    is 3 genuine interfaces, and they go with it. Stated rather than hidden -- the walk
+    names the count.
+
     **The test rules are three shapes because languages spell a test three ways**, and
     `test_suffixes` exists because the obvious spelling is wrong. `Path("client.test.ts")`
     has stem `"client.test"`, which starts with neither `test_` nor ends with `_test`, so
@@ -162,6 +172,12 @@ class DiscoveryRules:
     lang: str
     suffixes: frozenset[str]
     skip_dirs: frozenset[str] = frozenset()
+    # The END of the whole filename, for a file this language claims by suffix and does
+    # **not** consider program source: `.d.ts`. Not a test, not a directory, and not a
+    # suffix the walk could route away -- a declaration file is `.ts` and belongs to the
+    # TypeScript reader, which is exactly why only that reader can say it is a header
+    # rather than a program.
+    skip_names: tuple[str, ...] = ()
     # Any path component equal to one of these makes everything below it a test.
     test_dirs: frozenset[str] = frozenset()
     # The END of the whole filename, separator included: `.test.ts`, `.spec.tsx`.

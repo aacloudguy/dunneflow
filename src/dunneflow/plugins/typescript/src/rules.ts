@@ -31,12 +31,31 @@ export interface NetLibrary {
   isAsync: boolean;
 }
 
+/**
+ * A framework that declares its ways in by **where a file sits**.
+ *
+ * No decorator, no registration call, no export name — Next.js routes on the path, so the
+ * path is the declaration. What is declared here is which directories start a route tree,
+ * which filenames are a page and which a handler, and which segments are not URL.
+ */
+export interface RouteRule {
+  framework: string;
+  kind: string;
+  roots: string[];
+  pages: Set<string>;
+  handlers: Set<string>;
+  verbs: Set<string>;
+  stripGroups: boolean;
+  evidence: string;
+}
+
 export interface RuleSet {
   boundaries: BoundaryRule[];
   subscriptIndex: Map<string, BoundaryRule>;
   netLibraries: NetLibrary[];
   netVerbs: Set<string>;
   netKwargs: Map<string, Set<string>>;
+  routes: RouteRule[];
 }
 
 function asArray(value: unknown): string[] {
@@ -85,12 +104,28 @@ export function parseRules(doc: unknown): RuleSet {
     netKwargs.set(k, new Set(asArray(v)));
   }
 
+  const routes: RouteRule[] = ((data["routes"] as Record<string, unknown>[]) ?? []).map(
+    (raw) => ({
+      framework: String(raw["framework"] ?? ""),
+      kind: String(raw["kind"] ?? "HTTP_ROUTE"),
+      // Longest first, so `src/app` is matched before `app` and a route tree under `src/`
+      // cannot be read as two roots, one of them starting three segments in.
+      roots: asArray(raw["roots"]).sort((a, b) => b.length - a.length),
+      pages: new Set(asArray(raw["pages"])),
+      handlers: new Set(asArray(raw["handlers"])),
+      verbs: new Set(asArray(raw["verbs"])),
+      stripGroups: raw["strip_groups"] !== false,
+      evidence: String(raw["evidence"] ?? raw["framework"] ?? ""),
+    }),
+  );
+
   return {
     boundaries,
     subscriptIndex,
     netLibraries,
     netVerbs: new Set(asArray(network["verbs"])),
     netKwargs,
+    routes,
   };
 }
 

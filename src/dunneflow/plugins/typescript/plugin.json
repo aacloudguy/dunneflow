@@ -32,6 +32,7 @@
       ".turbo",
       "storybook-static"
     ],
+    "skip_names": [".d.ts", ".d.tsx", ".d.mts", ".d.cts"],
     "test_dirs": ["tests", "test", "__tests__", "e2e", "__mocks__", "cypress"],
     "test_name_suffixes": [
       ".test.ts",

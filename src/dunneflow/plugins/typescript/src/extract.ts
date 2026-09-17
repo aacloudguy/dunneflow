@@ -39,6 +39,7 @@ import ts from "typescript";
 import { callSiteId, controlPointId, hashSource, makeId } from "./ids.js";
 import { dotted, isConstruction } from "./dotted.js";
 import { matchCall, matchNetwork, matchSubscript, type RuleSet } from "./rules.js";
+import { waysIn } from "./routes.js";
 import type {
   ArmKind,
   BoundaryHit,
@@ -51,6 +52,7 @@ import type {
   ControlKind,
   ControlPoint,
   DataStructure,
+  Entrypoint,
   Field_,
   FileFacts,
   ImportRec,
@@ -1331,6 +1333,13 @@ export function extractFile(
   const ex = walkFile(rel, source, rules, sf);
   const doc = moduleDoc(ex.sf, source);
   if (doc) facts.doc = doc;
+
+  // **Where the file sits is a declaration**, and the only one a Next.js page makes. Taken
+  // after the walk because it needs the routines it recorded: a page's way in points at the
+  // component the file default-exports, and a handler's at the function it exported under
+  // that verb (`routes.ts`).
+  const ways: Entrypoint[] = waysIn(rel, ex.sf, rules, ex.routines, ex.anchors);
+  if (ways.length) facts.entrypoints = ways;
 
   if (ex.routines.length) facts.routines = ex.routines;
   if (ex.calls.length) facts.calls = ex.calls;

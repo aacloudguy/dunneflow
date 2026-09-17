@@ -24,8 +24,8 @@ from collections.abc import Iterator, Sequence
 from pathlib import Path
 
 from ..runtime import host_interpreter
-from ..schema import FileFacts, hash_source, stored_path
-from .codec import CodecError, decode_facts
+from ..schema import FileFacts, SuppliedEdge, hash_source, stored_path
+from .codec import CodecError, decode, decode_facts
 from .contract import (
     SOURCE_TEXT,
     PluginManifest,
@@ -154,6 +154,22 @@ class OutOfProcessPlugin:
         # of a number. The better answer is kept rather than degraded to match the worse
         # one, and `WalkStats` counts it off `ff.errors` like any other failure.
         self.lost = 0
+        # Call sites this reader walked and could not name a far end for, in two numbers
+        # because they are two facts — see `IngestPlugin`. The host counts what it
+        # *received*; these are the reader's own count of what it did not send, and the two
+        # together say whether a thin answer is a thin program or a thin reader (rule 32).
+        # Filled by `edges`, nought until it has been asked.
+        self.edges_outside = 0
+        self.edges_unknown = 0
+        # Fields an edge carried that this build does not read. Survivable by design — a
+        # plugin built against a later schema knows about fields this one does not — but
+        # never silent: a file can carry its dropped keys in `FileFacts.errors` and an
+        # edge has nowhere to put them, so they are held here and the walk says them
+        # (design rule 1). Deduped, because one unknown key on nine thousand edges is one
+        # fact.
+        self.edge_notes: list[str] = []
+        # What the reader said when it opened the session. See `open`.
+        self.opened_notes: list[str] = []
         self._worker: NdjsonWorker | None = None
 
     # ------------------------------------------------------------ lifecycle --- #
@@ -165,7 +181,82 @@ class OutOfProcessPlugin:
         worker = NdjsonWorker(plugin_argv(self.manifest), self.manifest)
         worker.start()
         self._worker = worker
-        worker.open(root, [str(p) for p in all_files])
+        reply = worker.open(root, [str(p) for p in all_files])
+        # **What the reader said about the session it just built, kept rather than
+        # discarded.** `opened` has carried `program_ms` and `diagnostics` since chunk 7 and
+        # this process threw both away — a field a plugin fills and nobody reads is an empty
+        # view with no symptom (rule 35), and here what it holds is how a monorepo was
+        # divided into compilations. A reader that says that is one somebody can check;
+        # 1,935 edges with no account of which projects produced them is a number nobody
+        # can weigh (design rule 1).
+        self.opened_notes = [str(d) for d in (reply.get("diagnostics") or [])]
+        ms = reply.get("program_ms")
+        if isinstance(ms, int) and ms > 0:
+            self.opened_notes.append(f"opened in {ms / 1000:.1f}s")
+
+    def edges(self) -> Iterator[SuppliedEdge]:
+        """Where this language's calls go, asked once and read as a stream.
+
+        **Every frame is decoded by the same strict codec the facts are**, so an unknown
+        key, a missing field or a value of the wrong shape refuses the edge by name rather
+        than arriving as a plausible row (rule 49). A `SuppliedEdge` that will not decode
+        is a `ProtocolError` and not a dropped row: unlike a file, there is no per-edge
+        error channel and a silently short answer is a resolution rate nobody can weigh.
+
+        **The terminator's tally is checked against what arrived.** A plugin that says it
+        supplied 9,014 edges and sent 900 has a defect the host can see for nothing, and a
+        count nobody checks is rule 37 — the guard that watches a name appear.
+        """
+        worker = self._worker
+        lang = self.manifest.lang
+        if worker is None:
+            raise PluginRefused(
+                f"the {lang} plugin was asked for edges before `open`. A checker's answer "
+                f"is an answer about a whole compilation, and `open` is where it is built."
+            )
+        supplied = 0
+        notes: list[str] = []
+        self.edge_notes = []
+        self.edges_outside = 0
+        self.edges_unknown = 0
+        for frame in worker.stream({"t": "edges"}, "edges_done"):
+            if frame["t"] == "edges_done":
+                said = frame.get("supplied")
+                if isinstance(said, int) and said != supplied:
+                    raise ProtocolError(
+                        f"the {lang} plugin says it supplied {said:,} edges and sent "
+                        f"{supplied:,}. A tally that disagrees with the stream means one "
+                        f"of the two is not what the reader actually did, and there is no "
+                        f"way to tell which from here."
+                    )
+                # **Two reasons, kept apart** (design rule 21). A call whose far end the
+                # reader *named* and this map does not hold is an external call and the map
+                # is right about it; a call the reader could not resolve at all is the
+                # reader's limit. Flattened, a healthy map of a program that leans on its
+                # dependencies reads exactly like a reader that has stopped resolving. A
+                # plugin that sends neither is not refused — the sum is the term of the
+                # protocol and these are the reader's own elaboration of it.
+                self.edges_outside = int(frame.get("outside") or 0)
+                self.edges_unknown = int(frame.get("unknown") or 0)
+                break
+            if frame["t"] != "edge":
+                raise ProtocolError(
+                    f"the {lang} plugin sent {frame['t']!r} during an `edges` stream; the "
+                    f"frames of one are `edge` and `edges_done`."
+                )
+            try:
+                edge = decode(SuppliedEdge, frame.get("edge"), notes)
+            except CodecError as exc:
+                raise ProtocolError(
+                    f"the {lang} plugin sent an edge this build cannot read: {exc}. An "
+                    f"edge has no error channel of its own, so one that will not decode "
+                    f"is refused rather than dropped — a short answer is a resolution "
+                    f"rate nobody can weigh."
+                ) from exc
+            if edge.file:
+                supplied += 1
+            yield edge
+        self.edge_notes = sorted(set(notes))
 
     def close(self) -> None:
         if self._worker is not None:

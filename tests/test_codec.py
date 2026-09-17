@@ -241,3 +241,31 @@ def test_the_descriptor_marks_the_fields_a_reader_must_not_send():
 
 def test_the_descriptor_is_json():
     json.dumps(describe())
+
+
+# ------------------------------------------------------------- a supplied edge -- #
+
+def test_a_supplied_edge_round_trips(): 
+    """The second shape a reader emits, and the reason it is in `schema.py`.
+
+    It hangs off no field of `FileFacts` — a checker's answer is about a program and not
+    about a file — so nothing reaches it from the root the other tests walk. Putting it
+    beside the rest is what makes it the strict codec's business rather than something
+    hand-parsed at the one call site that reads it.
+    """
+    from dunneflow.schema import SuppliedEdge
+
+    edge = SuppliedEdge(site_id="s", caller_id="c", file="b.ts", line=12, name="save",
+                        how="signature")
+    wire = encode(edge)
+    assert "candidates" not in wire, "a field at its default never travels"
+    assert decode(SuppliedEdge, wire) == edge
+
+
+def test_an_edge_with_a_field_of_the_wrong_shape_is_refused():
+    """An edge has no `errors` list of its own, so there is nowhere for a dropped field to
+    be recorded — which is why the host turns this into a refusal rather than a gap."""
+    from dunneflow.schema import SuppliedEdge
+
+    with pytest.raises(CodecError):
+        decode(SuppliedEdge, {"site_id": "s", "caller_id": "c", "line": "twelve"})

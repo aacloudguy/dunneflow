@@ -19,18 +19,21 @@
  * on what that file is.
  *
  * `open` takes the whole file set because a reader that resolves symbols needs the whole
- * compilation. **This chunk resolves nothing**, so it holds the set and builds no program:
- * chunk 9 is extraction only and every TypeScript call is left external by the host, which
- * names the count. Stated rather than left to be discovered — the protocol already has the
- * shape chunk 10 needs, and pretending to use it now would be a `ts.createProgram` over
- * node_modules paid for nothing.
+ * compilation, and that is now what it is for: one `ts.Program` per `tsconfig.json`, built
+ * there and held for the session (`program.ts`).
+ *
+ * **`edges` is the one frame that streams**, and the id discipline does not relax for it:
+ * every `edge` carries the request's id and so does the `edges_done` that ends the run.
+ * One frame per edge rather than one array, because a monorepo's answer is tens of
+ * thousands of them and a single JSON line holding all of them is a payload with no bound.
  */
 
 import { createInterface } from "node:readline";
-import { readFileSync } from "node:fs";
-import { relative } from "node:path";
+import { resolve as resolvePath } from "node:path";
 import { extractFile } from "./extract.js";
+import { collectEdges } from "./edges.js";
 import { hashSource } from "./ids.js";
+import { Session, readSource, relPath } from "./program.js";
 import { parseRules, type RuleSet } from "./rules.js";
 import { SCHEMA_VERSION, type FileFacts } from "./facts.js";
 
@@ -44,10 +47,8 @@ interface Frame {
   [key: string]: unknown;
 }
 
-const session: { root: string; rules: RuleSet } = {
-  root: ".",
-  rules: parseRules({}),
-};
+const session = new Session();
+let rules: RuleSet = parseRules({});
 
 function send(frame: Record<string, unknown>): void {
   process.stdout.write(JSON.stringify(frame) + "\n");
@@ -65,7 +66,7 @@ function onHello(): Record<string, unknown> {
     version: VERSION,
     protocol: PROTOCOL,
     schema_version: SCHEMA_VERSION,
-    capabilities: { supplies_edges: false, reports_literals: true },
+    capabilities: { supplies_edges: true, reports_literals: true },
   };
 }
 
@@ -76,9 +77,10 @@ function onOpen(frame: Frame): Record<string, unknown> {
   // own copy of `detectors/typescript.yaml` is a second answer that stops moving the
   // moment somebody edits the file, and that file is in the core extraction key precisely
   // so an edit re-reads every language (rule 51).
-  session.rules = parseRules(frame["rules"]);
+  rules = parseRules(frame["rules"]);
   const files = (frame["files"] as string[]) ?? [];
-  if (session.rules.boundaries.length === 0) {
+  const diagnostics: string[] = [];
+  if (rules.boundaries.length === 0) {
     // Not an error and not silent. A run with no rules yields a map with no boundaries,
     // no network calls and nothing to say why — which looks exactly like a program that
     // touches nothing (rule 49).
@@ -86,19 +88,23 @@ function onOpen(frame: Frame): Record<string, unknown> {
       `no boundary rules arrived with this session, so nothing in these ${files.length} ` +
       `files can be matched against one. The map will report no boundaries at all.`,
     );
+    diagnostics.push("no boundary rules arrived with this session");
   }
+  // **The compilation, built here because here is the only place it can be.** A checker
+  // over a subset answers wrongly rather than partially, which is why `open` is handed
+  // every file of this language whether or not it changed.
+  diagnostics.push(...session.open(session.root, files));
   return {
     t: "opened",
     files: files.length,
     program_ms: Date.now() - started,
-    diagnostics: [],
+    diagnostics,
   };
 }
 
 function onExtract(frame: Frame): Record<string, unknown> {
-  const abs = String(frame["path"] ?? "");
-  let rel = relative(session.root, abs).split("\\").join("/");
-  if (!rel || rel.startsWith("..")) rel = abs.split("\\").join("/");
+  const abs = resolvePath(String(frame["path"] ?? ""));
+  const rel = relPath(session.root, abs);
 
   let source: string;
   try {
@@ -108,9 +114,10 @@ function onExtract(frame: Frame): Record<string, unknown> {
     // does not, so a CRLF file hashes differently on the two sides — every one of them,
     // and the host's echo check then reports the file as having *changed while it was
     // being read*. Measured on uigen: 2 of 54 files, both generated with CRLF, both
-    // reported unreadable in a map that was otherwise perfect. See
+    // reported unreadable in a map that was otherwise perfect. `program.readSource` is
+    // the one place it is done, because the compilation must read the same bytes. See
     // `ingest/contract.py:SOURCE_TEXT`.
-    source = readFileSync(abs, "utf8").replace(/\r\n?/g, "\n");
+    source = readSource(abs);
   } catch (err) {
     // The host hashes what *it* read and compares; a file this reader cannot open at all
     // is a failure it may describe, because nothing was read badly — nothing was read.
@@ -124,7 +131,9 @@ function onExtract(frame: Frame): Record<string, unknown> {
 
   let facts: FileFacts;
   try {
-    facts = extractFile(rel, source, session.rules);
+    // The compilation's own source file where there is one, so the extraction walk and
+    // the edge pass are one traversal of one tree (`program.Session.sourceFile`).
+    facts = extractFile(rel, source, rules, session.sourceFile(abs, rel, source));
   } catch (err) {
     return {
       t: "failed",
@@ -136,6 +145,41 @@ function onExtract(frame: Frame): Record<string, unknown> {
   // same shape the in-process Python reader produces — so it is cached and not retried,
   // and `WalkStats` counts it the way it counts every other unreadable file.
   return { t: "facts", hash: echoed, facts };
+}
+
+/**
+ * Every call's far end, streamed.
+ *
+ * Asked once per session, after the files and before `close`. It answers about the **whole
+ * compilation** and not about what changed, because a checker's answer for one file is
+ * built out of all of them — which is why the host replaces its stored set whole rather
+ * than merging into it.
+ *
+ * A file the walk threw on is **named on stderr**, not folded into the tally: the tally is
+ * a claim the host checks against what arrived, and a count that quietly absorbed a failure
+ * would make that check pass over a reader that had lost a file (rule 37).
+ */
+function onEdges(id: number | undefined): void {
+  const harvest = collectEdges(session, rules);
+  for (const edge of harvest.edges) send({ t: "edge", id, edge });
+  if (harvest.failed.length) {
+    note(`the edge pass could not walk ${harvest.failed.length} file(s): ` +
+         harvest.failed.slice(0, 20).join(", "));
+  }
+  send({
+    t: "edges_done",
+    id,
+    supplied: harvest.edges.filter((e) => e.file !== undefined && e.file !== "").length,
+    // Two reasons, two numbers. `outside` is a call whose far end the checker named and
+    // this map does not hold — a library, a `.d.ts`, a declaration with no body — and a
+    // map full of them is a correct map of a program that leans on its dependencies.
+    // `unknown` is a call the checker could not resolve at all. Summed into `unresolved`
+    // for the protocol's own arithmetic, and sent apart as well, because the sum is the
+    // one thing neither of them says (rule 32).
+    unresolved: harvest.outside + harvest.unknown,
+    outside: harvest.outside,
+    unknown: harvest.unknown,
+  });
 }
 
 const HANDLERS: Record<string, (frame: Frame) => Record<string, unknown>> = {
@@ -158,9 +202,28 @@ function main(): void {
     }
     const id = frame.id;
     if (frame.t === "close") {
+      session.close();
       send({ t: "closed", id });
       rl.close();
       process.exit(0);
+    }
+    // Outside `HANDLERS` because a handler there returns one frame and this returns a run
+    // of them. Kept a special case rather than widening every handler's type, on `close`'s
+    // precedent: two frames of five are not the shape, and a signature that admitted a
+    // stream everywhere would say every frame might be one.
+    if (frame.t === "edges") {
+      try {
+        onEdges(id);
+      } catch (err) {
+        send({
+          t: "error",
+          id,
+          reason: err instanceof Error
+            ? `${err.message}\n${err.stack ?? ""}`.trim()
+            : String(err),
+        });
+      }
+      return;
     }
     const handler = HANDLERS[String(frame.t)];
     if (handler === undefined) {

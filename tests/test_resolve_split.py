@@ -299,6 +299,14 @@ def test_a_call_whose_file_is_not_in_the_map_is_refused(tmp_path):
 
 
 def test_a_call_row_carries_no_rowid(tmp_path):
-    """A resolver has no use for one that is not a second way to write (rule 20)."""
+    """A resolver has no use for one that is not a second way to write (rule 20).
+
+    `site_id` joined it for chunk 10 and is the opposite case, which is why the set is
+    spelled out rather than loosened: a rowid is a **position in one database** and a
+    `site_id` is this call's **identity**, minted from the caller, the expression and an
+    ordinal. A supplied edge names a call site by that identity, so a resolver without it
+    would have to match on file and line — a second identity function for call sites, in
+    the one place the two could disagree unnoticed (rule 30).
+    """
     assert not hasattr(CallRow("a.py", "a:f", "x"), "rowid")
-    assert set(CallRow.__slots__) == {"file", "caller_id", "callee_expr"}
+    assert set(CallRow.__slots__) == {"file", "caller_id", "callee_expr", "site_id"}

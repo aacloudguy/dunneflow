@@ -22,7 +22,7 @@
  */
 
 /** `schema.SCHEMA_VERSION`. A plugin declaring another number is refused by name. */
-export const SCHEMA_VERSION = 12;
+export const SCHEMA_VERSION = 13;
 
 export type ArmKind = "if" | "elif" | "else" | "else if" | "case" | "default" | "try" | "except" | "catch" | "finally" | "for" | "while" | "do";
 
@@ -307,4 +307,14 @@ export interface FileFacts {
   module_scope?: Routine | null;
   literals_dropped?: number;
   errors?: string[];
+}
+
+export interface SuppliedEdge {
+  site_id: string;
+  caller_id: string;
+  file?: string;
+  line?: number;
+  name?: string;
+  how?: string;
+  candidates?: number;
 }

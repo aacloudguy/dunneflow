@@ -40,6 +40,7 @@ from .resolve.glossary import bind
 from .resolve.mirror import BANDS as MIRROR_BANDS
 from .resolve.mirror import measure as measure_mirror
 from .resolve.naming import measure
+from .resolve.typescript import calls as ts_edges
 from .runtime import (
     MapsRootGone,
     default_output_root,
@@ -587,6 +588,8 @@ def cmd_analyze(args: argparse.Namespace) -> int:
             f"removed {stats.removed}, failed {stats.failed}) in {t_extract:.1f}s"
         )
         _emit(f"  read: {walk_languages(stats)}")
+        for said in stats.reader_notes:
+            _emit(f"    {said}")
         for line in walk_residue(stats):
             _emit("  " + line)
         _emit(
@@ -594,6 +597,16 @@ def cmd_analyze(args: argparse.Namespace) -> int:
             f"{rstats.inferred:,} inferred, {rstats.external:,} external "
             f"({rstats.rate():.0f}% internal) in {t_resolve:.1f}s"
         )
+        # **What was handed over, as against what was argued for.** A supplied edge is
+        # CERTAIN and so is a Python edge pinned by an import, so the line above cannot
+        # tell them apart — and *how much of this map did we not have to guess* is the
+        # question chunk 10 exists to be able to answer (rule 32). Said only where
+        # something was supplied, so a Python-only run reads exactly as it always did.
+        if rstats.supplied:
+            _emit(f"  {rstats.supplied:,} of those were supplied by a reader's own "
+                  f"toolchain rather than resolved by name")
+        if (said := ts_edges.LAST.sentence()):
+            _emit("  " + said)
         # A language this build reads and cannot resolve is **named**, because *nothing
         # resolved* and *nothing to resolve* are the same 0% and opposite facts (design
         # rule 1). It fires for the first time with TypeScript, whose supplied edges are

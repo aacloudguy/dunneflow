@@ -45,6 +45,7 @@ from .schema import (
     Param,
     Routine,
     StructureKind,
+    SuppliedEdge,
 )
 
 SCHEMA_SQL = """
@@ -151,6 +152,25 @@ CREATE TABLE IF NOT EXISTS call_args (
     expr    TEXT NOT NULL,
     keyword TEXT,
     splat   INTEGER NOT NULL DEFAULT 0
+);
+
+-- Where a call goes, according to a reader whose toolchain resolved it. Not `calls`'
+-- column, because it is a different provenance answering a different question: `calls`
+-- holds what the caller *wrote*, and the resolver's answer lands in `calls.callee_id`
+-- like every other language's. This is the evidence that answer was made from.
+--
+-- **Keyed by language and replaced whole**, never by file -- see `SuppliedEdge`. A checker
+-- answers about a compilation, so a per-file delete would leave half a set behind, and the
+-- half left behind is the stale half. `forget_file` therefore does not touch it.
+CREATE TABLE IF NOT EXISTS supplied_edges (
+    lang       TEXT NOT NULL,
+    site_id    TEXT NOT NULL,
+    caller_id  TEXT NOT NULL,
+    file       TEXT NOT NULL DEFAULT '',
+    line       INTEGER NOT NULL DEFAULT 0,
+    name       TEXT NOT NULL DEFAULT '',
+    how        TEXT NOT NULL DEFAULT '',
+    candidates INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS boundaries (
@@ -370,6 +390,8 @@ CREATE INDEX IF NOT EXISTS ix_calls_callee     ON calls(callee_id);
 CREATE INDEX IF NOT EXISTS ix_calls_file       ON calls(file);
 CREATE INDEX IF NOT EXISTS ix_calls_site       ON calls(site_id);
 CREATE INDEX IF NOT EXISTS ix_callargs_site    ON call_args(site_id);
+CREATE INDEX IF NOT EXISTS ix_supplied_site    ON supplied_edges(site_id);
+CREATE INDEX IF NOT EXISTS ix_supplied_lang    ON supplied_edges(lang);
 CREATE INDEX IF NOT EXISTS ix_bound_routine    ON boundaries(routine_id);
 CREATE INDEX IF NOT EXISTS ix_bound_kind       ON boundaries(kind);
 CREATE INDEX IF NOT EXISTS ix_bound_sal        ON boundaries(salience);
@@ -935,6 +957,14 @@ class Store:
                       "artefacts", "constants", "control"):
             c.execute(f"DELETE FROM {table} WHERE file = ?", (path,))
         c.execute("DELETE FROM files WHERE path = ?", (path,))
+        # **`supplied_edges` is deliberately not here**, and it is the one table a file's
+        # facts do not own. Its rows are keyed by language rather than by file because a
+        # checker answers about a compilation: an edge out of this file was computed from
+        # every other file, and a row naming *this* file as a target belongs to a caller
+        # somewhere else. Deleting either half per file leaves the other half stale, with
+        # nothing to say so. The set is replaced whole by `replace_supplied_edges`
+        # whenever its reader is opened, which is every run where any file of that
+        # language changed.
 
     def prune_missing(self, live_paths: Iterable[str]) -> int:
         """Forget files that have disappeared from the source tree."""
@@ -943,6 +973,29 @@ class Store:
         for p in gone:
             self.forget_file(p)
         return len(gone)
+
+    def replace_supplied_edges(self, lang: str, edges: Iterable[SuppliedEdge]) -> int:
+        """Everything this language's reader says about where its calls go. Whole, never partial.
+
+        One `DELETE` and one `executemany`, because the answer is a whole-program answer
+        and a half-replaced set is exactly the staleness this table exists to avoid --
+        see `SuppliedEdge` and the note in `forget_file`. Per language, so a TypeScript
+        session cannot disturb what another reader supplied.
+
+        A reader that supplies **nothing** still clears its own rows, and that is the
+        point rather than an edge case: a plugin whose checker stopped resolving would
+        otherwise keep answering out of the last run that worked.
+        """
+        c = self.conn
+        c.execute("DELETE FROM supplied_edges WHERE lang = ?", (lang,))
+        rows = [(lang, e.site_id, e.caller_id, e.file, e.line, e.name, e.how, e.candidates)
+                for e in edges]
+        c.executemany(
+            "INSERT INTO supplied_edges(lang,site_id,caller_id,file,line,name,how,candidates)"
+            " VALUES(?,?,?,?,?,?,?,?)",
+            rows,
+        )
+        return len(rows)
 
     # -- writes ------------------------------------------------------------ #
 
@@ -1137,6 +1190,12 @@ class Store:
             out[t] = self.conn.execute(f"SELECT COUNT(*) AS n FROM {t}").fetchone()["n"]
         out["resolved_calls"] = self.conn.execute(
             "SELECT COUNT(*) AS n FROM calls WHERE callee_id IS NOT NULL"
+        ).fetchone()["n"]
+        # Beside `resolved_calls` and never folded into it: *how many edges this map has*
+        # and *how many of them a toolchain handed over* are two numbers, and one of them
+        # is the whole difference between a name argument and a checker (rule 32).
+        out["supplied_edges"] = self.conn.execute(
+            "SELECT COUNT(*) AS n FROM supplied_edges"
         ).fetchone()["n"]
         return out
 

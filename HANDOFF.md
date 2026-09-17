@@ -17000,3 +17000,182 @@ new function and the YAML would have been re-parsed once per file. Caught by
 *`typescript@7` cannot be used, and it is what `npm install typescript` gets you today.* The
 Go port's JavaScript entry exposes no `createProgram` and no `SyntaxKind` — measured,
 `undefined` at 7.0.2 and `function` at 5.9.3. The plugin pins 5.9.3.
+
+## 2026-09-17 — supplied edges: the checker names the far end
+
+`PLAN-v2.md`'s chunk 10. The TypeScript reader builds a `ts.Program` per `tsconfig.json` in
+`open` and answers a new `edges` frame out of the checker; `resolve/typescript/calls.py`
+turns each location into an id. **Nothing guesses**: a call the checker did not resolve is
+left external, and a bare name is never matched against a routine that happens to share it.
+
+**The gate.** `../DunneNote`, against chunk 9's honest floor of *0 internal, 4,990
+external*:
+
+| | chunk 9 | chunk 10 |
+|---|---|---|
+| internal edges | **0** | **1,935** |
+| rate | 0% | **38% internal** |
+| of which supplied by a toolchain | — | **1,935**, all of them |
+| ambiguous (several declarations) | — | **0** |
+| resolved outside the map | — | 2,868 |
+| the checker could not resolve | — | 187 |
+
+Python unmoved: **7 of 7 golden digests identical**, 4,823 routines, 6,441 internal calls.
+**1,727 passed · 1 skipped**, mypy clean over 178 files, ruff clean. `SCHEMA_VERSION` is
+**13**. The frozen binary and the checkout stamp the same two fingerprints
+(`13:4601e63bc473ecfe` core, `1.0.0:066b557e0b6ae705` for the reader) and open each other's
+maps, 1,935 supplied edges either way.
+
+**Extraction did not move, and that was the risk worth measuring.** Both passes now walk the
+program's source files rather than each parsing its own, so an argument had to become a
+measurement (rule 24). Every chunk 9 figure reproduces exactly: 1,518 routines, 708
+structures, 139 boundary touches, 299 constructions, and 1,236 guards · 459 decisions · 275
+loops · 240 comprehensions · 210 handlers.
+
+### Twelve edges read against the source, because a rate is a number
+
+Two are worth writing down, and both are cases a name could not have got right.
+
+**`resyncState(state, current.value)`** in `numeric-field-action.ts:109` resolves to
+`resync` in `numeric-field.ts:140`. Line 50 of the caller is
+`import { resync as resyncState, … }` — and **line 105 of the same file declares its own
+`function resync()`**. A resolver matching the expression finds nothing called
+`resyncState`; one matching the target's name finds two. The checker had already chosen,
+because choosing is what it did to type the call.
+
+**`hierarchy.selectNode(pageId)`** in `search-jump.ts:82` resolves to
+`HierarchyStore.selectNode` in `hierarchy-store.svelte.ts:116`. The receiver's type is the
+whole answer and it is the one thing a reader without a checker cannot have.
+
+### Rule 97, and it is the defect of the chunk
+
+**The bundled compiler was shipping without its own standard library.** esbuild moved every
+line of TypeScript's *code* into `main.bundle.cjs` and none of the ninety-nine `lib*.d.ts`
+files the compiler opens **by path** at run time, off `__dirname` — which after bundling is
+the plugin's directory, where no such file exists and none ever will.
+
+It does not refuse. It builds a program with no `Array`, no `Promise`, no `Map` and no DOM,
+types every value through one of them as `any`, and **answers every question it is asked**.
+Measured both ways on 5,119 call sites:
+
+| | edges | outside the map | could not resolve |
+|---|---|---|---|
+| **with the libraries** | **1,935** | 2,868 | **187** |
+| without | 1,931 | 472 | **2,587** |
+
+**Four edges.** The map is the same map, and a check on the number this chunk exists to
+produce would have passed. What moved was the *account*: the run went from saying it could
+not name the far end of half the program's calls to saying those calls go to `Math`, `JSON`,
+`Set` and the DOM — external, and right.
+
+**It was found by splitting a residue rather than by a test.** Chunk 10 first reported one
+number for *could not name the far end*, and 2,587 of 5,119 was too large to leave alone.
+Separating *the checker said, and the answer is not here* from *the checker could not say* is
+what made a missing library visible at all — design rule 21 paying for itself one process
+away from where it was written. The remedy is `src/libs.ts` and `build.mjs`' `tsLibs`
+plugin: 99 files, 3.0 MB, read at bundle time and served from memory under a sentinel path
+that is on no disk. A build with no `node_modules` **refuses**, and `Session.open` says so in
+its diagnostics if an empty one ever arrives — because what this defect proves is that
+nothing else would.
+
+### And a regression from chunk 6 that had been in the record for a day
+
+**`ResolveStats.external` had stopped counting external calls.** v1 counted one in the tail
+every no-target path fell through; the chunk 6 split gave each `NoEdge` its own branch and
+kept the count only on the boundary one. So Society read **4,063 external** over 30,544 calls
+of which 24,103 leave the program — 4,063 being the `at_boundary` count wearing another word
+— and `5,653 + 788 + 4,063` reaches nowhere near the total it is printed beside.
+
+It is in chunk 9's entry above as a recorded figure and it was wrong. The true number is
+**24,103**, the store's own, and `certain + inferred + external` is now the total (rule 13).
+Found by chunk 10's gate rather than by a test, because a resolution rate is the first figure
+anybody checks the arithmetic of; `test_supplied_edges.py` is that test now.
+
+### Three more, each found by reading rather than by a failure
+
+**`NdjsonWorker.respawn` re-opened a worker without its rules.** `open` was spelled out a
+second time there and the `rules` key was left off, so a worker that died once read the rest
+of the run with **no boundary rules at all** — no boundaries, no SQL, no network, and nothing
+anywhere saying why. The plugin's own warning for that case exists and goes to stderr, which
+the host never parses (rule 35). The frame is built in one place now (rule 51), and it
+matters more after this chunk than before: a respawned worker has to rebuild its programs
+too, and the two are the same omission.
+
+**The `opened` frame's `diagnostics` and `program_ms` had been discarded for three chunks.**
+Both fields were declared in chunk 7 and filled with nothing; this chunk gave them something
+to say and then threw it away. They reach the run now:
+
+```
+  read: typescript 443
+    typescript (no tsconfig): 206 files
+    typescript apps/desktop/tsconfig.json: 226 files
+    typescript legacy/v0.1/tsconfig.json: 11 files
+    typescript opened in 0.7s
+```
+
+**Nothing checked that the committed bundle was the committed source** — rule 37 in the one
+place it could cost a whole feature. Everything that tested the bundle tested that it
+*exists*, that the fingerprint names it, and that `node main.bundle.cjs` answers `hello`, and
+all three pass over a bundle built from last month's source. This is the first chunk to edit
+`src/` after the bundle was committed, so it is the first time an entire `edges`
+implementation could have sat in a file nothing runs. `build.mjs` takes
+`DUNNEFLOW_BUNDLE_OUT` now and a test rebuilds to a scratch file and compares bytes.
+
+### The design, and the three decisions inside it
+
+**A supplied edge is a whole-program fact, so it is stored whole.** `SuppliedEdge` is in
+`schema.py` beside `CallSite` and deliberately **not** a field on `FileFacts`: a checker's
+answer for `a.ts` is built out of `b.ts`, so an edge filed under its caller goes stale the
+moment `b.ts` moves a function and `a.ts` does not change — the line it names would point at
+whatever drifted into that position and nothing would be re-read to notice. So
+`supplied_edges` is keyed by language, replaced whole whenever that language's reader is
+opened, and **`forget_file` does not touch it**. A run that reads no file of a language
+changes none of its edges, and they are still true because nothing of that language changed.
+Pressed: a warm DunneNote is 443 cached, 0 parsed, and the same 1,935 edges.
+
+**A target is named by location and resolved by node identity, not by re-deriving a line.**
+`line_start` is taken from a different node for each of the five shapes a routine is written
+in — the declaration for a `function`, the *member* for a class field holding an arrow, the
+whole `VariableStatement` for `const f = () => {}`. `Extractor.anchors` records which node
+each routine was made at, the edge pass walks a checker's declaration up to the first anchor,
+and a second function that worked the line out again would disagree on exactly the shapes
+nobody tests (rule 51). The host still keeps a containing-span fallback and a name check, and
+**both fired nought times out of 1,935** — which is what says the two sides agree.
+
+**One program per `tsconfig.json`, inside the plugin.** `PLAN-v2.md` puts the growth axis at
+one worker per project; realising it in the plugin costs the host nothing — no protocol
+change, `workers` still 1, the same file set. It is not tidiness: `legacy/v0.1` declares
+`paths: { "$lib/*": ["src/lib/*"] }` relative to itself and one options object holds one
+`paths` map, so a single program would silently fail to resolve every `$lib` import in one of
+the two copies of that program. Root names are the **host's** file set and never the
+tsconfig's `include`, or the 315 test files the walk excluded would come back.
+
+**`INFERRED` is never produced for TypeScript**, and `resolve/contract.py` now carries the
+per-language table. Where the checker gives several declarations the answer is external with
+the count in `ambiguous`, exactly as Python answers a name collision; `INFERRED` is a claim
+that a name-uniqueness argument was made, and for a checker none was made or needed (rule 6).
+On DunneNote it happens **0 times**.
+
+### What is deliberately not closed
+
+**The `fetch`-through-a-name residue stays open**, and chunk 9's entry above says this chunk
+is where it comes back. It is not, and the reason is the corpus rather than the mechanism:
+DunneNote calls `fetch` in **no program file at all**, and the only `fetchImpl` in the tree is
+in `client-http.test.ts`, which the map excludes. Reporting a boundary out of a whole-program
+pass is a real feature and building it here would mean building it with no population to
+measure it against. The mechanism is now in place — the checker can say what a name holds —
+and it wants a corpus that contains one.
+
+### Figures
+
+| | |
+|---|---|
+| DunneNote, cold | **2.7 s** for 443 files, of which **0.7 s** is three `ts.Program`s |
+| warm, nothing changed | 0.1 s — and the 1,935 edges are not re-asked |
+| the bundle | **12.6 MB** (9.5 + 3.0 of `lib*.d.ts`) |
+| the application | **44 MB** |
+| how each edge was resolved | 1,899 by `getResolvedSignature`, 36 by a lone symbol |
+| the three projects | `(no tsconfig)` 206 · `apps/desktop` 226 · `legacy/v0.1` 11 |
+
+*Cold is the external volume with a warm page cache; the same run on a cold one is 4.1 s with
+2.1 s of programs (rule 24 — a row states its conditions where they are load-bearing).*

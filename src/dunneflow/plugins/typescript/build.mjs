@@ -11,6 +11,49 @@
 // plan took deliberately: the compiler is the only thing that can say what a TypeScript
 // import refers to once `paths`, `bundler` resolution and `exports` maps are in play.
 import { build } from "esbuild";
+import { readdirSync, readFileSync } from "node:fs";
+import { join, resolve } from "node:path";
+
+/**
+ * Carry TypeScript's own `lib*.d.ts` into the bundle, in place of `src/libs.ts`' empty map.
+ *
+ * A bundled `tsc` looks for its default library beside `__dirname`, which after bundling is
+ * this plugin's directory — so without this the compiler builds a program with no `Array`,
+ * no `Promise` and no DOM, types everything through them as `any`, **and still answers**.
+ * `src/libs.ts` has the measurement; the short version is that it costs four edges and the
+ * whole explanation of where the other 2,868 calls go.
+ *
+ * Read from `node_modules` at bundle time and never at analysis time, for the reason the
+ * bundle itself is committed: `plugin.json` fingerprints these bytes, so what is stamped and
+ * what runs have to be one thing (rule 12).
+ */
+const tsLibs = {
+  name: "ts-libs",
+  setup(build) {
+    const target = resolve("src/libs.ts");
+    const dir = resolve("node_modules/typescript/lib");
+    build.onLoad({ filter: /src[\\/]libs\.ts$/ }, (args) => {
+      if (resolve(args.path) !== target) return null;
+      const names = readdirSync(dir).filter((f) => /^lib\..*\.d\.ts$/.test(f));
+      if (names.length === 0) {
+        // Refused rather than bundled empty: an empty map is exactly the state this plugin
+        // exists to leave behind, and it produces a reader that works and explains nothing.
+        throw new Error(`no lib*.d.ts under ${dir} — run pnpm install first`);
+      }
+      const entries = names
+        .map((n) => `  ${JSON.stringify(n)}: ${JSON.stringify(readFileSync(join(dir, n), "utf8"))},`)
+        .join("\n");
+      const bytes = names.reduce((n, f) => n + readFileSync(join(dir, f)).length, 0);
+      console.log(`  ${names.length} lib*.d.ts — ${(bytes / 1024 / 1024).toFixed(1)} MB`);
+      return {
+        loader: "ts",
+        contents:
+          `export const TS_LIBS: Record<string, string> = {\n${entries}\n};\n` +
+          `export const LIB_DIR = "/__dunneflow_ts_libs__";\n`,
+      };
+    });
+  },
+};
 
 const result = await build({
   entryPoints: ["src/main.ts"],
@@ -25,12 +68,19 @@ const result = await build({
   format: "cjs",
   platform: "node",
   target: "node20",
-  outfile: "main.bundle.cjs",
+  // `DUNNEFLOW_BUNDLE_OUT` is the freshness gate's, and nothing else uses it: it builds to
+  // a scratch file and compares bytes, because every other check on this bundle — that it
+  // exists, that the fingerprint names it, that `node` can run it — passes over one built
+  // from last month's source (rule 37).
+  outfile: process.env.DUNNEFLOW_BUNDLE_OUT ?? "main.bundle.cjs",
   legalComments: "none",
 
   minify: false,
   metafile: true,
+  plugins: [tsLibs],
 });
 
-const out = result.metafile.outputs["main.bundle.cjs"];
-console.log(`main.bundle.cjs — ${(out.bytes / 1024 / 1024).toFixed(1)} MB`);
+// Keyed by esbuild on the path *it* wrote, which is not the one that was asked for when
+// that was absolute — so the one output is taken rather than looked up by name.
+const [name, out] = Object.entries(result.metafile.outputs)[0];
+console.log(`${name} — ${(out.bytes / 1024 / 1024).toFixed(1)} MB`);

@@ -144,6 +144,27 @@ class WalkStats:
     # it has to be said, because a map with neither is indistinguishable from a program
     # that touches no database and names no files.
     no_literals: list[str] = field(default_factory=list)
+    # Language -> edges its reader handed over, where its toolchain resolved the far end
+    # of a call itself. Beside the extraction counts rather than inside them because it is
+    # a different pass over a different question: `parsed` is files read, this is calls
+    # whose target somebody already knew (rule 32).
+    supplied_edges: dict[str, int] = field(default_factory=dict)
+    # Language -> call sites its reader walked and could **not** name a far end for, in
+    # two dictionaries because they are two facts (design rule 21). `edges_outside` is a
+    # call whose far end the reader named and this map does not hold, which is an external
+    # call and correct; `edges_unknown` is one the reader could not resolve at all, which
+    # is its limit. Only the reader can count either: the host sees what arrived and never
+    # what did not.
+    # What each reader said when it opened its session: how it divided the file set into
+    # compilations, and how long that took. Not residue -- these files **are** in the map
+    # -- so it is said beside `read:` rather than among the things left out.
+    reader_notes: list[str] = field(default_factory=list)
+    edges_outside: dict[str, int] = field(default_factory=dict)
+    edges_unknown: dict[str, int] = field(default_factory=dict)
+    # Fields an edge carried that this build does not read. Survivable -- a plugin built
+    # against a later schema knows about fields this one does not -- and never silent: an
+    # edge has no `errors` list of its own to carry them in, so they come out here.
+    edge_notes: list[str] = field(default_factory=list)
 
 
 def walk_languages(stats: WalkStats) -> str:
@@ -194,6 +215,19 @@ def walk_residue(stats: WalkStats) -> list[str]:
         out.append(f"strings not judged: {listed} — outside the "
                    f"{literals.LITERAL_MIN}–{literals.LITERAL_MAX:,} character bound a "
                    f"reader applies before sending")
+    if stats.edges_outside:
+        listed = ", ".join(f"{n:,} {lang}"
+                           for lang, n in sorted(stats.edges_outside.items()))
+        out.append(f"calls resolved to somewhere outside this map: {listed} — a library, "
+                   f"a type declaration or a file no reader claimed; external, and right")
+    if stats.edges_unknown:
+        listed = ", ".join(f"{n:,} {lang}"
+                           for lang, n in sorted(stats.edges_unknown.items()))
+        out.append(f"calls whose far end the reader could not name at all: {listed} — "
+                   f"left external rather than guessed by name")
+    if stats.edge_notes:
+        out.append("edges carried fields this build does not read: "
+                   + "; ".join(stats.edge_notes))
     if stats.maps:
         out.append(f"pruned {len(stats.maps):,} "
                    + ("directory" if len(stats.maps) == 1 else "directories")
@@ -581,6 +615,7 @@ def analyze_tree(
         if not plugin.manifest.reports_literals:
             stats.no_literals.append(lang)
         plugin.open(root, owned.get(lang, []))
+        stats.reader_notes.extend(f"{lang} {n}" for n in plugin.opened_notes)
         try:
             # One transaction per reader; per-file commits dominate otherwise.
             with store.batch():
@@ -599,6 +634,22 @@ def analyze_tree(
                     stats.parsed += 1
                     if ff.errors:
                         stats.failed += 1
+            # **Asked after the files and before `close`, and asked whether or not this
+            # run read anything of this language.** A checker answers about the whole
+            # compilation, so its answer is not a function of what changed -- and the set
+            # is replaced whole for exactly that reason (see `SuppliedEdge`). Inside the
+            # `try` because a reader that dies here must still be closed; outside the
+            # `batch` because the edges are not this file's facts and share no
+            # transaction with them.
+            if plugin.manifest.supplies_edges:
+                n = store.replace_supplied_edges(lang, plugin.edges())
+                stats.supplied_edges[lang] = n
+                if plugin.edges_outside:
+                    stats.edges_outside[lang] = plugin.edges_outside
+                if plugin.edges_unknown:
+                    stats.edges_unknown[lang] = plugin.edges_unknown
+                stats.edge_notes.extend(f"{lang}: {n}" for n in plugin.edge_notes)
+                store.conn.commit()
         finally:
             plugin.close()
         # A file whose reader died never arrives at all, so the reader is the only thing

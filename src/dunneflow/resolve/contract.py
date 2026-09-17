@@ -16,6 +16,26 @@ The types live here rather than beside the driver because the driver imports the
 resolvers and the resolvers import these -- one module for the contract is what stops
 that being a cycle.
 
+**What each tier means is per language, and it is written down here because this is what a
+third resolver's author reads.** `Confidence` is one enum and the argument behind it is
+not; flattening the two would make a word mean whatever the newest resolver decided.
+
+**python.** `CERTAIN` is an import, the enclosing module or the enclosing class pinning the
+name. `INFERRED` is *exactly one routine in the whole program has that name*. External is no
+match at all, a builtin, or a boundary.
+
+**typescript.** `CERTAIN` is the checker resolving the call to a declaration inside one
+routine of this map. `INFERRED` is **never produced**. External is a target outside the map,
+several competing declarations, or a call the checker could not resolve.
+
+The TypeScript row is the opinionated half and it is deliberate. Where a checker gives
+several declarations -- a merged overload set, an `any`-typed receiver, `obj[k]()` -- the
+honest answer is **external with the candidate count in `ambiguous`**, exactly as Python
+already answers a name collision. Not `INFERRED`: that word is a claim that a
+name-uniqueness argument was made, and for a checker none was made or needed. Marking a
+supplied edge `INFERRED` would blur precisely what rule 6 says never to blur, and would
+make *"Inferred facts: none"* at `GET /api/about` a false sentence.
+
 **`Edge` and `NoEdge` rather than `str | None`.** A missing target carries two facts the
 driver cannot recover: how many definitions competed for the name, and whether the match
 was *rejected as implausible* or simply never found. Those are different things -- rule 6
@@ -42,11 +62,19 @@ class Edge:
     reached by following a **declared** supertype rather than by a direct match, which is
     a thing any language with inheritance can say. It is counted separately because an
     edge recovered that way is the one most worth being able to find again.
+
+    `supplied` says the far end was **handed over by a toolchain that had already resolved
+    it**, rather than argued for from names. It is `inherited`'s shape and it is counted
+    for a sharper reason: the two provenances answer different questions and only one of
+    them can be wrong about a rebinding. A map that folded them would be unable to say how
+    much of itself is a checker's answer and how much is this tool's inference — which is
+    the claim `GET /api/about` makes in two rows.
     """
 
     target: str
     confidence: Confidence
     inherited: bool = False
+    supplied: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -80,6 +108,11 @@ class ResolveStats:
     suppressed: int = 0  # matches rejected as implausible rather than merely absent
     ambiguous: int = 0   # edges lost because several definitions shared the name
     inherited: int = 0   # edges recovered by following a base class
+    # Edges a reader's own toolchain handed over, as against edges this tool argued for.
+    # Beside `certain` rather than inside it: a supplied edge is CERTAIN, but so is a
+    # Python edge pinned by an import, and *how many of these did we not have to guess*
+    # is the question this chunk exists to be able to answer (rule 32).
+    supplied: int = 0
     # One entry per language the map holds, filled on the total only, so a figure can say
     # what it counts (rule 32). A map of one language reads exactly as it always did.
     langs: dict[str, ResolveStats] = field(default_factory=dict)
@@ -129,6 +162,7 @@ class ResolveStats:
         self.suppressed += other.suppressed
         self.ambiguous += other.ambiguous
         self.inherited += other.inherited
+        self.supplied += other.supplied
 
 
 @dataclass(frozen=True, slots=True)
@@ -139,11 +173,19 @@ class CallRow:
     reach the whole store through them, and `rowid` is the driver's business -- it is the
     address the one `UPDATE` writes to, and a resolver has no use for it that is not a
     second way to write.
+
+    **`site_id` is here and `rowid` is not, and the difference is the whole of rule 30.**
+    A rowid is a position in one database; `site_id` is this call's identity, derived from
+    the caller, the expression and an ordinal and never from a line. A reader that supplies
+    an edge names the site by that identity, so a resolver that had to match on anything
+    else -- file and line, say -- would be a second identity function for call sites, in
+    the one place the two could disagree without anybody noticing.
     """
 
     file: str
     caller_id: str
     callee_expr: str
+    site_id: str = ""
 
 
 class Resolver(Protocol):

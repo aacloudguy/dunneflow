@@ -22,10 +22,17 @@ them** (rule 51):
 
 **Three answers where a language has no resolver, never two** (design rule 21). A language
 with one is resolved; a language with none has every call left external **and is named**,
-with how many calls that was. The second is not hypothetical and not a placeholder: a
-TypeScript map arrives one chunk before TypeScript's supplied edges do, and a map with
-routines, boundaries and no internal TypeScript edges is honest and shippable — as long as
-it says so. Silence there would read exactly like a program that calls nothing.
+with how many calls that was. It is not a placeholder and it was not hypothetical: chunk 9
+shipped a TypeScript map a whole chunk before TypeScript's supplied edges, and *left
+external for want of a resolver: typescript 4,990* is what made that map honest rather than
+a program that appears to call nothing. `RESOLVERS` has two entries now and a third
+language will arrive the same way.
+
+**And the two resolvers get there by different means, which is the point of the seam.**
+Python's argues from names, imports and enclosing scopes and says how much to trust each
+answer; TypeScript's is handed the answer by a checker that already made it and does no
+arguing at all. Both return `Edge` or `NoEdge`, both are counted here, and `Edge.supplied`
+is what keeps the two provenances countable side by side (rule 32).
 """
 
 from __future__ import annotations
@@ -34,6 +41,7 @@ from ..schema import Confidence
 from ..store import Store
 from .contract import CallRow, Edge, Resolver, ResolveStats
 from .python.calls import resolve as _resolve_python
+from .typescript.calls import resolve as _resolve_typescript
 
 # `ResolveStats` is re-exported deliberately: it was this module's type for a year and
 # `cli.py` and fourteen test files ask this module for it. The contract moved; the address
@@ -44,7 +52,10 @@ __all__ = ["RESOLVERS", "ResolveStats", "resolve_calls"]
 # named here rather than derived from a dotted string in a manifest for the same reason
 # `ingest._IN_PROCESS` is: what runs in this process is decided by a file that is under
 # test, never by a data file.
-RESOLVERS: dict[str, Resolver] = {"python": _resolve_python}
+RESOLVERS: dict[str, Resolver] = {
+    "python": _resolve_python,
+    "typescript": _resolve_typescript,
+}
 
 
 def resolve_calls(store: Store) -> ResolveStats:
@@ -65,7 +76,7 @@ def resolve_calls(store: Store) -> ResolveStats:
     for row in store.query(
         "SELECT c.rowid AS rowid, c.file AS file, c.caller_id AS caller_id,"
         "       c.callee_expr AS callee_expr, c.at_boundary AS at_boundary,"
-        "       f.lang AS lang"
+        "       c.site_id AS site_id, f.lang AS lang"
         "  FROM calls c LEFT JOIN files f ON f.path = c.file"
     ):
         stats.total += 1
@@ -93,7 +104,7 @@ def resolve_calls(store: Store) -> ResolveStats:
 
         work.setdefault(lang, []).append((row["rowid"], CallRow(
             file=row["file"], caller_id=row["caller_id"],
-            callee_expr=row["callee_expr"],
+            callee_expr=row["callee_expr"], site_id=row["site_id"],
         )))
 
     for lang, pairs in work.items():
@@ -130,8 +141,22 @@ def resolve_calls(store: Store) -> ResolveStats:
                     per.inferred += 1
                 if d.inherited:
                     per.inherited += 1
+                if d.supplied:
+                    per.supplied += 1
                 updates.append((d.target, d.confidence.value, 0, 0, rowid))
             else:
+                # **A call with no edge is an external call, and it is counted here.** The
+                # `UPDATE` two lines down writes `external = 1` to the store, so a figure
+                # that did not count it was a number disagreeing with the column it
+                # describes (rule 13). Lost in the chunk 6 split and unnoticed for three
+                # chunks: v1 counted it in the tail every no-target path fell through, and
+                # the split gave each `NoEdge` its own branch and kept only the boundary
+                # one. Society read *4,063 external* over 30,544 calls of which 24,103
+                # leave the program — which is the `at_boundary` count wearing another
+                # word, and 4,063 + 5,653 + 788 does not reach 30,544 either. Found by
+                # chunk 10's gate, because a resolution rate is the first thing anybody
+                # checks the arithmetic of.
+                per.external += 1
                 # An edge lost to ambiguity is not the same as a call that leaves the
                 # program. Recording the candidate count makes a missing connection
                 # visible instead of invisible — which is the whole point when the

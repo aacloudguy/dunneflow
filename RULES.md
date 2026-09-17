@@ -1989,3 +1989,44 @@ rule of that number — a blank canvas must say why it is blank — which does e
     arrive — a second language, a second surface, a host that wants a fact the reader used
     to keep to itself. Ask *who owns this* without deciding *that this is owned*, or the
     answer creates the owner.
+
+97. **A bundled program does not carry the files it reads, and it answers anyway.**
+    The TypeScript plugin is a pnpm package bundled by esbuild into one committed
+    `main.bundle.cjs` with the compiler inlined — which is the right shape and is what
+    makes rule 12's per-language stamp a claim about bytes somebody can point at. Bundling
+    moved every line of TypeScript's *code* into the file. It moved none of `lib.es5.d.ts`,
+    `lib.dom.d.ts` or the other ninety-seven `lib*.d.ts` files the compiler opens **by
+    path** at run time, off `__dirname` — which after bundling is the plugin's own
+    directory, where no such file exists and none ever will.
+
+    **The compiler does not refuse.** It builds a program with no `Array`, no `Promise`, no
+    `Map`, no DOM; every value typed through one of them becomes `any`; and it answers
+    every question it is asked. Measured on `../DunneNote`, 5,119 call sites, with the
+    libraries and without: **1,935 edges against 1,931**. Four. The map is the same map. A
+    check on the number of edges — which is the number the chunk existed to produce — would
+    have passed.
+
+    What moved was the **account**: 2,868 calls resolved to somewhere outside the map and
+    187 could not be resolved at all, against 472 and 2,587 without. So the run's own
+    sentence went from *the reader could not name the far end of half this program's calls*
+    to *those calls go to `Math`, `JSON`, `Set` and the DOM — external, and right*. The
+    first reads as a reader that mostly does not work and the second as a program that uses
+    its platform, and only one of them is true.
+
+    **It was found by splitting a residue into its two reasons, not by a test.** Chunk 10
+    reported one number for *could not name the far end*, and 2,587 of 5,119 was too large
+    to leave alone; separating *the checker said, and the answer is not here* from *the
+    checker could not say* is what made the missing library visible at all. Design rule 21
+    paying for itself one process away from where it was written.
+
+    The remedy is `src/libs.ts` and `build.mjs`' `tsLibs` plugin: the ninety-nine files are
+    read at bundle time and carried as data, 3.0 MB, and the compiler host serves them from
+    memory under a sentinel path that is on no disk. A build with no `node_modules` refuses
+    rather than bundling an empty map, and `Session.open` says so in its diagnostics if one
+    ever arrives — because the one thing this defect proves is that nothing else would.
+
+    **The general shape.** A dependency that reads *code* is carried by bundling it. A
+    dependency that reads *files* — a grammar, a schema, a locale table, a standard library
+    — is not, and the failure is silent by construction: the code that would have reported
+    a missing file is the code that was written to work without it. Ask of anything
+    inlined: what does it open, and where does it think it is?

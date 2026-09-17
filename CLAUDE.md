@@ -1644,6 +1644,7 @@ it was written from.
  95. A cache key assembled from a directory does not cover what that directory imports.
  96. A record minted on demand exists because somebody asked, so a new question invents
      records.
+ 97. A bundled program does not carry the files it reads, and it answers anyway.
 ```
 
 ## Anomalies: the discipline

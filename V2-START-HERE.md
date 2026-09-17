@@ -14,7 +14,7 @@ been rewritten yet. Where they describe the tool they are accurate; where they d
 |---|---|
 | `PLAN-v2.md` | the whole design: the plugin protocol, the registry, the fingerprint split, the TypeScript plugin, the MCP server, the 14 chunks and the gate on each |
 | `CLAUDE.md` | the standing orders — **binding**, and the rules index |
-| `RULES.md` · `DESIGN-RULES.md` | carried over **verbatim, numbering intact**. The numbers are addresses: never reused, never renumbered, never closed up. **v2 continues at engineering rule 97** — 95 is the fingerprint's blind spot and 96 is the record minted on demand, both 2026-09-17. A rule is never closed; 95's `sql.py` gap was shut by chunk 6 and the general remedy it names is not built. |
+| `RULES.md` · `DESIGN-RULES.md` | carried over **verbatim, numbering intact**. The numbers are addresses: never reused, never renumbered, never closed up. **v2 continues at engineering rule 98** — 95 is the fingerprint's blind spot, 96 is the record minted on demand, 97 is the bundled program that does not carry the files it reads, all three 2026-09-17. A rule is never closed; 95's `sql.py` gap was shut by chunk 6 and the general remedy it names is not built. |
 | `PERFORMANCE.md` | v1's figures. **Every one of them was measured on v1** and none has been reproduced here — do not restate one as though it had been (rule 24). |
 
 ## The four decisions, already taken
@@ -139,6 +139,31 @@ been rewritten yet. Where they describe the tool they are accurate; where they d
   `.mcp.json` is committed, so a session started in this tree finds it. **1,529 passed ·
   1 skipped**, mypy clean over 156 files, ruff clean; the golden has not moved.
 
+* **Supplied edges.** The TypeScript checker names the far end of a call and the host turns
+  the location into an id — `edges`/`edge`/`edges_done`, a `ts.Program` per `tsconfig.json`
+  built in `open`, and `resolve/typescript/calls.py`. DunneNote goes from **0 internal edges
+  to 1,935**, 38% internal, every one of them supplied rather than guessed and **0 ambiguous**;
+  twelve were read against the source by hand, including an import alias that collides with a
+  local name and a method reached through a typed receiver — two cases a name could not get
+  right. Python unmoved (**7 of 7 digests**) and extraction unmoved: all of chunk 9's figures
+  reproduce exactly. `SCHEMA_VERSION` is **13**. **1,727 passed · 1 skipped**, mypy clean over
+  178 files, ruff clean; the frozen binary and the checkout stamp the same two fingerprints
+  and open each other's maps.
+
+  **Rule 97 is the defect of the chunk**: the bundled compiler was shipping without its own
+  `lib*.d.ts`, which esbuild cannot carry because the compiler opens them **by path**. It
+  does not refuse — it builds a program with no `Array` and no DOM and answers anyway, four
+  edges short, and what it loses is not the map but the *account*: 2,587 calls move from *the
+  reader could not say* to *these go to `Math` and the DOM*. Found by splitting one residue
+  into its two reasons (design rule 21), not by a test.
+
+  Four more: `ResolveStats.external` had stopped counting external calls in the chunk 6 split,
+  so Society's recorded *4,063 external* was the `at_boundary` count and the true figure is
+  **24,103**; `respawn` re-opened a worker without its rules; the `opened` frame's
+  `diagnostics` and `program_ms` had been discarded since chunk 7; and nothing checked that
+  the committed bundle was the committed source (rule 37), which this chunk closed before it
+  edited either.
+
 ## The gate everything is measured against
 
 `output/GOLDEN-v1.txt` holds row counts, distributions, and **seven identity digests** —
@@ -179,14 +204,16 @@ plan's own, and chunks 5 through 9 were taken in it. Tom's call on the front-loa
 tool is usable as-is, so v1 defects found along the way are rolled into whichever feature
 chunk owns them rather than scheduled as work of their own.
 
-1. **Supplied edges** — chunk 10. The `edges` frame, `resolve/typescript/calls.py`, and a
-   `ts.createProgram` built in `open`, which the protocol already has the shape for.
-   **Gate: the resolution rate measured on DunneNote**, against today's honest floor of
-   *0 internal, 4,990 external*. It is also where two stated residues come back: a call
-   through a name that holds `fetch`, and the `fetchImpl` the network matcher now refuses.
-2. **TSX / React** — chunk 11, against `../DunneCorp`. Smoke-checked already and it reads:
-   123 files, 0 failed, and **CLOUD_SDK and CRYPTO fire for the first time outside Python**.
-   The 33 App Router route names are the assertion that has not been made.
+1. **TSX / React** — chunk 11, against `../DunneCorp`. Smoke-checked at chunk 9 and it
+   reads: 123 files, 0 failed, and **CLOUD_SDK and CRYPTO fire for the first time outside
+   Python**. The 33 App Router route names are the assertion that has not been made — and
+   it is now also the first corpus where the checker's answer meets JSX.
+
+**The `fetch`-through-a-name residue is still open**, and chunk 10 was where it was scheduled
+to close. It did not, and the reason is stated rather than quiet: DunneNote calls `fetch` in
+**no program file at all**, so there was no population to measure a boundary-from-resolution
+feature against. The mechanism now exists — the checker can say what a name holds — and it
+wants a corpus with one in it.
 
 **A fifth v1 defect was found by chunk 8's gate and is not fixed.** The **rendered map is
 not run-to-run stable**: two analyses of Society by the same build differ in seven of the
@@ -209,7 +236,7 @@ a guessed `main`.
 
 ## Three things not to re-open
 
-* **The rule numbers.** Addresses, not an ordering. v2 continues at 96.
+* **The rule numbers.** Addresses, not an ordering. v2 continues at 98.
 * **No `BROWSER` boundary kind.** Settled on measurement — `BoundaryKind` is read in only six
   places outside `schema.py`, but changing the enum changes the meaning of a fact and
   discards every stored map; and it is not needed. `fetch`/WebSocket are the network under

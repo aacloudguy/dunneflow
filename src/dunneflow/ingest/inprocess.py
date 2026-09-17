@@ -23,7 +23,7 @@ from collections.abc import Callable, Iterator, Sequence
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 
-from ..schema import FileFacts
+from ..schema import FileFacts, SuppliedEdge
 from .contract import PluginManifest, ProgressFn, stamp_lang
 
 
@@ -49,6 +49,13 @@ class InProcessPlugin:
         # somebody has to hold the number or the file disappears silently. Reset per
         # `extract`, because a plugin outlives one call.
         self.lost = 0
+        # Always nought and always empty here: this reader is never asked for edges, and
+        # the two fields are the contract's rather than this class's. See `edges` below.
+        self.edges_outside = 0
+        self.edges_unknown = 0
+        self.edge_notes: list[str] = []
+        # Nothing to say: this reader opens nothing, which `open` below states in words.
+        self.opened_notes: list[str] = []
 
     def probe(self) -> None:
         """Nothing to find. This reader is the process doing the asking."""
@@ -60,6 +67,21 @@ class InProcessPlugin:
         protocol's shape: a reader that resolves symbols cannot say this, and `open` exists
         for the ones that cannot.
         """
+
+    def edges(self) -> Iterator[SuppliedEdge]:
+        """Nothing to supply. This reader has no checker, so it knows no far end.
+
+        Stated rather than left blank, for `open`'s reason one frame over: *this is the
+        difference*. Every Python edge in a map is `resolve/python/calls.py`'s own
+        argument from names, imports and enclosing scopes, and it carries a `confidence`
+        precisely because nothing proved it. A reader whose toolchain resolves the symbol
+        hands over the answer instead, and the two provenances are counted side by side.
+
+        The host never asks — `walk.analyze_tree` reads `supplies_edges` off the manifest
+        first — so this is the answer to a question nobody puts, kept because a protocol
+        one of two implementations does not answer is not a protocol.
+        """
+        return iter(())
 
     def close(self) -> None:
         """Nothing to release. Safe to call twice, as the contract requires."""

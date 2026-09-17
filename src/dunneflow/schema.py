@@ -38,7 +38,8 @@ from typing import Literal
 # 10: `files.extractor` -- which reader produced each row, per language.
 # 11: `FileFacts.literals` -- a reader reports the strings, the host judges them.
 # 12: `CallSite.is_construction`, and four `ArmKind` words TypeScript writes.
-SCHEMA_VERSION = 12
+# 13: `SuppliedEdge` -- a reader whose toolchain resolves names says where a call goes.
+SCHEMA_VERSION = 13
 
 
 # --------------------------------------------------------------------------- #
@@ -309,6 +310,51 @@ class CallSite:
     # can be trusted to set (rule 35): it arrived with the TypeScript reader that fills
     # it, and it is False for Python, which has no such syntax.
     is_construction: bool = False
+
+
+@dataclass(slots=True)
+class SuppliedEdge:
+    """Where a call goes, according to a reader whose toolchain already knows.
+
+    **The one fact in this file that is not about one file**, and that is why it is not a
+    field on `FileFacts`. A type checker's answer for `a.ts` is built out of `b.ts`, so an
+    edge filed under its caller would go stale the moment `b.ts` moved a function and
+    `a.ts` did not change -- the line it names would then point at whatever had drifted
+    into that position, and nothing would be re-read to notice. So supplied edges are a
+    whole-program answer, asked once per session and **replaced whole**; a run that reads
+    no file of a language changes none of its edges, and they are still true because
+    nothing of that language changed.
+
+    **A target is named by location and never by id** (`PLAN-v2.md` §1g). A plugin minting
+    ids would be a second implementation of `make_id`, in the one place a disagreement is
+    least recoverable: two ids that look exactly like ids and match nothing. The host looks
+    the location up among the routines it stored, and a location that matches none is an
+    **external** call -- the call certainly happens and this map cannot see the other end,
+    which is rule 26 by construction rather than by luck.
+
+    `candidates` is the honest answer where the checker gave several declarations -- a
+    merged overload set, an `any`-typed receiver, `obj[k]()`. It is **no edge**, with the
+    count recorded exactly as Python already records a name collision, and it is never
+    `INFERRED`: that word is a claim that a name-uniqueness argument was made, and for a
+    checker none was made or needed (rule 6).
+
+    `how` is which question the checker answered -- `signature` for
+    `getResolvedSignature`, `symbol` for a lone declaration behind a symbol. Evidence for
+    a reader, never a condition: the host does the same thing with either.
+    """
+
+    site_id: str
+    caller_id: str
+    # The **target's** stored path, relative and POSIX (rule 93). Empty where there is no
+    # target, which is what a row carrying only `candidates` is.
+    file: str = ""
+    line: int = 0
+    # What the target is called. The host checks it against the routine it matched rather
+    # than trusting the line alone: a line that has drifted lands on some routine, and a
+    # silently wrong edge is worse than a missing one (rule 1).
+    name: str = ""
+    how: str = ""
+    candidates: int = 0
 
 
 class ControlKind(StrEnum):

@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import json
 import os
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -397,3 +398,133 @@ def test_the_worker_writes_frames_on_stdout_and_nothing_else(manifest, tree):
     for line in lines:
         assert isinstance(json.loads(line), dict)      # every one of them, or it is prose
     assert proc.stderr.strip()                          # and it did speak, on the other one
+
+
+# --------------------------------------------------------------- the `edges` -- #
+#
+# The second kind of frame: one request and a **run** of answers ending in a named
+# terminator. It is pressed here against the double rather than against the TypeScript
+# reader for the reason every other frame is — what is under test is the wire, and a test
+# that needed `node` and a `ts.Program` to prove the id discipline would be proving a
+# compiler instead (rule 24).
+
+
+@pytest.fixture
+def edging(manifest, monkeypatch):
+    """The double, claiming the capability, with a manifest that agrees.
+
+    Both halves, because the handshake refuses a disagreement — which is exactly the
+    property being relied on here rather than worked around.
+    """
+    monkeypatch.setenv("DUNNEFLOW_OOP_EDGES", "1")
+    return replace(manifest, supplies_edges=True)
+
+
+def test_edges_arrive_as_records_and_the_two_kinds_are_kept_apart(edging, tree):
+    """A target and a candidate count are two different answers, and both are rows."""
+    plugin = OutOfProcessPlugin(edging)
+    plugin.open(tree, [])
+    try:
+        got = list(plugin.edges())
+    finally:
+        plugin.close()
+
+    assert [e.site_id for e in got] == ["site-a", "site-b"]
+    assert got[0].file == "sample.py" and got[0].line == 12 and got[0].how == "signature"
+    assert got[1].file == "" and got[1].candidates == 3
+    # The reader's own account of what it could not turn into an edge, in the two numbers
+    # that are two facts (design rule 21).
+    assert (plugin.edges_outside, plugin.edges_unknown) == (5, 2)
+
+
+def test_a_tally_that_disagrees_with_the_stream_is_refused(edging, tree, monkeypatch):
+    """Rule 37: a count a plugin sends is a claim, and one checked against nothing is a
+    guard that has watched a name appear."""
+    monkeypatch.setenv("DUNNEFLOW_OOP_MISCOUNT", "1")
+    plugin = OutOfProcessPlugin(edging)
+    plugin.open(tree, [])
+    with pytest.raises(ProtocolError, match="says it supplied"):
+        list(plugin.edges())
+    plugin.close()
+
+
+def test_an_edge_this_build_cannot_read_refuses_rather_than_being_dropped(
+        edging, tree, monkeypatch):
+    """Unlike a file, an edge has no `errors` list to carry its own failure in.
+
+    So a short answer would be a resolution rate nobody can weigh — which looks exactly
+    like a program whose calls go nowhere.
+    """
+    monkeypatch.setenv("DUNNEFLOW_OOP_BADEDGE", "1")
+    plugin = OutOfProcessPlugin(edging)
+    plugin.open(tree, [])
+    with pytest.raises(ProtocolError, match="cannot read"):
+        list(plugin.edges())
+    plugin.close()
+
+
+def test_a_frame_that_is_neither_an_edge_nor_the_terminator_is_refused(
+        edging, tree, monkeypatch):
+    """A stream is where a misdirected frame would be absorbed silently: it arrives in the
+    middle of a run of legitimate ones and looks like one of them."""
+    monkeypatch.setenv("DUNNEFLOW_OOP_STRAY", "1")
+    plugin = OutOfProcessPlugin(edging)
+    plugin.open(tree, [])
+    with pytest.raises(ProtocolError, match="during an `edges` stream"):
+        list(plugin.edges())
+    plugin.close()
+
+
+def test_every_frame_of_a_stream_is_matched_by_id(edging, tree, monkeypatch):
+    """Not only the first. The id check inside `stream` is what makes that true."""
+    monkeypatch.setenv("DUNNEFLOW_OOP_WRONGID", "1")
+    plugin = OutOfProcessPlugin(edging)
+    with pytest.raises((PluginRefused, ProtocolError)):
+        plugin.open(tree, [])
+    plugin.close()
+
+
+def test_asking_for_edges_before_open_is_refused(edging):
+    """A checker's answer is an answer about a whole compilation, and `open` is where one
+    is built."""
+    plugin = OutOfProcessPlugin(edging)
+    with pytest.raises(PluginRefused, match="before `open`"):
+        list(plugin.edges())
+
+
+def test_a_reader_in_this_interpreter_supplies_nothing_and_says_so(tree):
+    """A real answer rather than a missing one: Python's reader has no checker, so every
+    Python edge is `resolve/python/calls.py`'s own argument from names."""
+    plugin = PLUGINS["python"]
+    assert plugin.manifest.supplies_edges is False
+    assert list(plugin.edges()) == []
+    assert (plugin.edges_outside, plugin.edges_unknown, plugin.edge_notes) == (0, 0, [])
+
+
+def test_a_respawned_worker_is_opened_with_its_rules(manifest, tree):
+    """The `open` frame is built in one place, and this is why.
+
+    `respawn` spelled it out a second time and left `rules` off, so a worker that died once
+    read the rest of the run with **no boundary rules at all** — no boundaries, no SQL, no
+    network, and nothing anywhere saying why. The plugin's own warning for that case goes
+    to stderr, which the host never parses (rule 35).
+    """
+    sent: list[dict] = []
+    worker = NdjsonWorker(plugin_argv(manifest), manifest)
+
+    real = worker.request
+
+    def spy(frame):
+        sent.append(frame)
+        return real(frame)
+
+    worker.request = spy
+    worker.start()
+    worker.open(tree, ["sample.py"])
+    worker.respawn()
+    worker.stop()
+
+    opens = [f for f in sent if f["t"] == "open"]
+    assert len(opens) == 2, "the first open, and the respawned worker's"
+    assert opens[0] == opens[1], "the same frame, rules included, from one place"
+    assert opens[1]["rules"], "a respawned worker that lost its rules finds no boundaries"

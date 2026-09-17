@@ -76,7 +76,7 @@ interface Scope {
   isAsync: boolean;
 }
 
-class Extractor {
+export class Extractor {
   routines: Routine[] = [];
   calls: CallSite[] = [];
   boundaries: BoundaryHit[] = [];
@@ -89,6 +89,38 @@ class Extractor {
   literals: StringLiteral[] = [];
   network: NetworkCall[] = [];
   literalsDropped = 0;
+  /**
+   * **Which node a routine was declared at**, so the edge pass never has to work it out a
+   * second time.
+   *
+   * `line_start` is taken from a different node for each of the five shapes a routine is
+   * written in — the declaration for a `function`, the *member* for a class field holding
+   * an arrow, the whole `VariableStatement` for `const f = () => {}`. A second function
+   * that re-derived it from a declaration the checker handed back would be a second answer
+   * to *where does this routine begin*, and the two would disagree on exactly the shapes
+   * nobody tests (rule 51). So the mapping is recorded as it is made, and the edge pass
+   * walks a declaration's ancestors until one of them is a key here.
+   *
+   * Both the anchor and the function node are keys, because the checker points at either
+   * depending on how the name was reached.
+   */
+  anchors = new Map<ts.Node, Routine>();
+  /**
+   * Every call site beside the node it was written at, for the edge pass and nothing else.
+   *
+   * Empty and unused during ordinary extraction, which is the point: the ids here are
+   * minted by the **same** walk that mints the ones in `calls`, so a supplied edge and the
+   * call site it names cannot come out of two different traversals with two different
+   * ordinals (`callSiteId` has one).
+   */
+  callNodes: { site: CallSite; node: ts.CallExpression | ts.NewExpression }[] = [];
+  /**
+   * The program's checker, when this walk is the edge pass. Held and never *used* here:
+   * what a call resolves to is `edges.ts`' question, and an extractor that answered it
+   * would be a reader deciding what a name means — the thing chunk 9 deliberately refused
+   * to do by guessing and chunk 10 refuses to do by inference.
+   */
+  checker: ts.TypeChecker | undefined;
 
   private scope: Scope[] = [];
   private classStack: string[] = [];
@@ -199,7 +231,7 @@ class Extractor {
     atBoundary: boolean,
     args: CallArg[],
     construction: boolean,
-  ): void {
+  ): CallSite {
     const key = `${callerId}\u0000${expr}`;
     const ordinal = this.callOrdinal.get(key) ?? 0;
     this.callOrdinal.set(key, ordinal + 1);
@@ -215,6 +247,7 @@ class Extractor {
     if (construction) site.is_construction = true;
     if (args.length) site.args = args;
     this.calls.push(site);
+    return site;
   }
 
   literal(text: string, line: number, kind: "PLAIN" | "INTERPOLATED"): void {
@@ -368,6 +401,8 @@ class Extractor {
     if (decorators.length) routine.decorators = decorators;
 
     this.routines.push(routine);
+    this.anchors.set(node, routine);
+    this.anchors.set(fn, routine);
     this.scope.push({ routine, isAsync });
     const savedDepth = this.depth;
     this.depth = 0;
@@ -605,8 +640,9 @@ class Extractor {
     if (expr) {
       const owner = this.owner();
       const rule = matchCall(this.rules, expr);
-      this.recordCall(owner.id, expr, line, rule !== null, this.callArgs(node),
-                      isConstruction(node));
+      const site = this.recordCall(owner.id, expr, line, rule !== null,
+                                   this.callArgs(node), isConstruction(node));
+      this.callNodes.push({ site, node });
       if (rule !== null) {
         const hit: BoundaryHit = {
           routine_id: owner.id,
@@ -1120,29 +1156,63 @@ function moduleDoc(sf: ts.SourceFile, src: string): string {
     .trim();
 }
 
-export function extractFile(rel: string, source: string, rules: RuleSet): FileFacts {
-  const module = moduleName(rel);
-  const facts: FileFacts = {
-    path: rel,
-    lang: "typescript",
-    module,
-    content_hash: hashSource(source),
-  };
-
+/**
+ * **The one place a `ts.SourceFile` is made**, and both passes go through it (rule 51).
+ *
+ * Two parses of one file with different options are two ASTs, and an edge pass walking the
+ * second would mint `site_id`s against nodes the extraction never saw — ids that look
+ * exactly like ids and match nothing. It is also what makes the checker answerable at all:
+ * `getResolvedSignature` answers only for nodes belonging to its own program, so the
+ * program's compiler host calls **this** function and the extractor is handed what it
+ * built.
+ */
+export function makeSourceFile(rel: string, source: string): ts.SourceFile {
   const isTsx = rel.endsWith(".tsx") || rel.endsWith(".jsx");
-  const sf = ts.createSourceFile(
+  return ts.createSourceFile(
     rel,
     source,
     { languageVersion: ts.ScriptTarget.Latest, jsDocParsingMode: ts.JSDocParsingMode.ParseAll },
     /* setParentNodes */ true,
     isTsx ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
   );
+}
 
-  const ex = new Extractor(rel, module, source, sf, rules);
-  const doc = moduleDoc(sf, source);
-  if (doc) facts.doc = doc;
-
+/**
+ * One walk of one file, with the extractor left standing so a caller can read more off it.
+ *
+ * `extractFile` wants the facts; `edges.ts` wants `anchors` and `callNodes`, which are the
+ * same walk's by-products. Two walks would be two sets of ordinals.
+ */
+export function walkFile(
+  rel: string,
+  source: string,
+  rules: RuleSet,
+  sf?: ts.SourceFile,
+  checker?: ts.TypeChecker,
+): Extractor {
+  const module = moduleName(rel);
+  const ex = new Extractor(rel, module, source, sf ?? makeSourceFile(rel, source), rules);
+  ex.checker = checker;
   ex.run();
+  return ex;
+}
+
+export function extractFile(
+  rel: string,
+  source: string,
+  rules: RuleSet,
+  sf?: ts.SourceFile,
+): FileFacts {
+  const facts: FileFacts = {
+    path: rel,
+    lang: "typescript",
+    module: moduleName(rel),
+    content_hash: hashSource(source),
+  };
+
+  const ex = walkFile(rel, source, rules, sf);
+  const doc = moduleDoc(ex.sf, source);
+  if (doc) facts.doc = doc;
 
   if (ex.routines.length) facts.routines = ex.routines;
   if (ex.calls.length) facts.calls = ex.calls;

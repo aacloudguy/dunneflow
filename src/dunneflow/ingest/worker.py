@@ -29,9 +29,13 @@ dies again, and the second death is the refusal. So the file is reported failed,
 worker comes back, and the run continues — a **second** death, on some other file, is what
 says the reader itself cannot be trusted.
 
-Frames this module does not send: `edges`, `edge`, `edges_done`. They are chunk 10's, when
-a plugin exists whose toolchain can supply an edge, and a frame nothing sends is a frame
-nothing tests (rule 35).
+**One reply, or many.** `request` is one frame and one answer; `stream` is one frame and a
+run of answers ending in a named terminator. `edges` is the second kind, because a
+compilation's answer is tens of thousands of edges and a single JSON line holding all of
+them is a payload with no bound (rule 8's argument, on the wire). The id discipline does
+not relax for it: **every** frame in the run carries the request's id, including the
+terminator, so a stray reply to something else cannot arrive in the middle of a stream and
+be read as part of it.
 """
 
 from __future__ import annotations
@@ -41,7 +45,7 @@ import json
 import subprocess
 import threading
 from collections import deque
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -206,6 +210,44 @@ class NdjsonWorker:
                 )
             return reply
 
+    def stream(self, frame: dict[str, Any], done: str) -> Iterator[dict[str, Any]]:
+        """Send one frame and read every answer until the one named `done`.
+
+        The terminator is yielded last rather than swallowed, so a caller can read the
+        plugin's own tally off it and check it against what actually arrived — a count a
+        plugin sends is a claim, and a claim checked against nothing is rule 37.
+
+        **The id is checked on every frame of the run**, not only on the first. A stream is
+        exactly where a misdirected reply would be absorbed silently: it arrives in the
+        middle of a run of legitimate frames and looks like one of them.
+
+        Under the same lock `request` takes, because a stream and a request interleaved on
+        one pipe is two conversations sharing a channel. The lock is held for the whole
+        run, so a caller that abandons the iterator half way leaves the pipe with unread
+        frames on it — which is why the one caller drains it.
+        """
+        with self._lock:
+            ident = self._id()
+            self._write({**frame, "id": ident})
+            while True:
+                reply = self._read()
+                got = reply.get("id")
+                if got != ident:
+                    raise ProtocolError(
+                        f"the {self.manifest.lang} plugin answered request {ident} with a "
+                        f"frame carrying id {got!r}, part way through a {frame['t']!r} "
+                        f"stream. A frame that does not match is not a late answer, it is "
+                        f"an answer to something else arriving as this one."
+                    )
+                if reply["t"] == "error":
+                    raise ProtocolError(
+                        f"the {self.manifest.lang} plugin refused {frame['t']!r}: "
+                        f"{reply.get('reason', '(no reason given)')}"
+                    )
+                yield reply
+                if reply["t"] == done:
+                    return
+
     # -------------------------------------------------------------- stderr ----- #
 
     def _drain_stderr(self) -> None:
@@ -285,6 +327,25 @@ class NdjsonWorker:
 
     # -------------------------------------------------------------- session ---- #
 
+    def _open_frame(self, root: Path, files: Sequence[str]) -> dict[str, Any]:
+        """The `open` frame, built in **one place** (rule 51).
+
+        `respawn` spelled this out a second time and left the rules off, so a worker that
+        died once read the rest of the run with no boundary rules at all — no boundaries,
+        no SQL, no network, and nothing anywhere saying why. The plugin's own warning for
+        that case is written and would have gone to stderr, which the host never parses
+        (rule 35: a second spelling of a frame is an empty view with no symptom).
+
+        **The rules travel with the session**, because a reader that is another program
+        cannot import `detectors/` and must not carry its own copy: a baked-in rule set
+        stops moving the moment somebody edits the YAML, and that file is in the core
+        extraction key exactly so an edit re-reads every language (rule 51). Sent as
+        written — `detectors.rules_document` — so there is one file and not a second
+        rendering of it. A reader that wants none ignores the key.
+        """
+        return {"t": "open", "root": str(root), "files": list(files),
+                "rules": rules_document(self.manifest.lang)}
+
     def open(self, root: Path, files: Sequence[str]) -> dict[str, Any]:
         """Hand over **every** file of this language, changed or not.
 
@@ -293,14 +354,7 @@ class NdjsonWorker:
         only what missed the cache.
         """
         self._opened = (root, list(files))
-        # **The rules travel with the session**, because a reader that is another program
-        # cannot import `detectors/` and must not carry its own copy: a baked-in rule set
-        # stops moving the moment somebody edits the YAML, and that file is in the core
-        # extraction key exactly so an edit re-reads every language (rule 51). Sent as
-        # written — `detectors.rules_document` — so there is one file and not a second
-        # rendering of it. A reader that wants none ignores the key.
-        return self.request({"t": "open", "root": str(root), "files": list(files),
-                             "rules": rules_document(self.manifest.lang)})
+        return self.request(self._open_frame(root, files))
 
     def respawn(self) -> None:
         """Bring a dead worker back, in the state the dead one was in.
@@ -315,4 +369,4 @@ class NdjsonWorker:
         self.start()
         if self._opened is not None:
             root, files = self._opened
-            self.request({"t": "open", "root": str(root), "files": files})
+            self.request(self._open_frame(root, files))

@@ -37,7 +37,13 @@ OUT = resource_root() / "plugins" / "typescript" / "src" / "facts.ts"
 
 # The reader's half of the contract. `DocFacts` and its parts are the *other* walk's, and a
 # source reader that could name them would be a source reader that could emit them.
-ROOT = schema.FileFacts
+#
+# **Two roots, because a reader emits two shapes of thing.** `FileFacts` is what a file is;
+# `SuppliedEdge` is what a *program* is, answered once per session by a reader whose
+# toolchain resolved a name — so it hangs off no field of `FileFacts` and is unreachable
+# from it. A single root would leave the edge type hand-written, which is the exact drift
+# this generator exists to kill.
+ROOTS = (schema.FileFacts, schema.SuppliedEdge)
 
 HEADER = '''/**
  * `schema.py`'s types, as this reader has to emit them.
@@ -150,7 +156,16 @@ def _host_owned(cls: type) -> frozenset[str]:
 
 
 def generate() -> str:
-    records, enums = _reachable(ROOT)
+    records: list[type] = []
+    enums: list[type] = []
+    for root in ROOTS:
+        found, found_enums = _reachable(root)
+        # Deduped across roots in **discovery order**, never sorted: a reader reads a
+        # record's parts before the record that holds them, and two roots sharing a part
+        # must not emit it twice (rule 66 — an order the tool cannot defend is not an
+        # order, and this one it can).
+        records += [c for c in found if c not in records]
+        enums += [e for e in found_enums if e not in enums]
     lines = [HEADER.replace("{version}", str(schema.SCHEMA_VERSION))]
 
     for enum in sorted(enums, key=lambda e: e.__name__):

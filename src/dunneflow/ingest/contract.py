@@ -24,7 +24,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Protocol
 
-from ..schema import DataStructure, FileFacts, Routine
+from ..schema import DataStructure, FileFacts, Routine, SuppliedEdge
 
 ProgressFn = Callable[[str, int, int], None]
 
@@ -260,7 +260,8 @@ class PluginManifest:
 class IngestPlugin(Protocol):
     """One language's reader.
 
-    The lifecycle is `probe` · `open` · `extract` · `close`, and `open` is not a formality.
+    The lifecycle is `probe` · `open` · `extract` · `edges` · `close`, and `open` is not a
+    formality.
     An in-process reader needs nothing from it; a reader that resolves symbols needs **every
     file in the compilation**, including the ones whose content hash says they have not
     changed, because a type checker over a subset is a type checker that answers wrongly.
@@ -277,6 +278,24 @@ class IngestPlugin(Protocol):
     # a crashed worker is a file that silently leaves the map — design rule 1, one process
     # over. Reset by `extract`, because a plugin outlives one call.
     lost: int
+    # What the last `edges` could not turn into an edge, in **two numbers because they are
+    # two facts** (design rule 21). `edges_outside` is a call whose far end the reader named
+    # and this map does not hold — a library, a `.d.ts`, a declaration with no body — which
+    # is an external call the map is right about. `edges_unknown` is a call the reader could
+    # not resolve at all, which is the reader's limit. Flattened, a healthy map of a program
+    # that leans on its dependencies reads exactly like a reader that has stopped resolving.
+    #
+    # `edge_notes` is the fields an edge carried that this build does not read. All three
+    # are `lost`'s shape and exist for its reason: only the reader can count what never left
+    # it, and a number nobody holds is a filter nobody can see (design rule 1).
+    edges_outside: int
+    edges_unknown: int
+    edge_notes: list[str]
+    # What the reader said when `open` built its session — how it divided the file set
+    # into compilations, how long that took, whatever else it has to declare. Empty for a
+    # reader that opens nothing, and the `opened` frame carried both fields for three
+    # chunks with the host discarding them (rule 35).
+    opened_notes: list[str]
 
     def probe(self) -> None:
         """Raise `ToolchainMissing` if this machine cannot run this reader.
@@ -302,6 +321,24 @@ class IngestPlugin(Protocol):
         doing; how many files that means at once is still the reader's to decide, and a
         reader with nothing to spend it on ignores it. Leaving it out would have made
         `--jobs` a flag that silently stopped reaching the only extractor there is.
+        """
+        ...
+
+    def edges(self) -> Iterator[SuppliedEdge]:
+        """Where this language's calls go, if this reader's toolchain already knows.
+
+        Asked **once per session**, after `extract` and before `close`, and only where the
+        manifest declares `supplies_edges` -- so a reader that resolves nothing is never
+        asked and a reader that does is asked whether or not any file changed this run.
+
+        It answers about the **whole compilation**, not about the files `extract` was
+        given, which is why it takes no arguments: the checker's answer for one file is
+        built out of all of them, so an answer restricted to what changed would be an
+        answer built from a subset and wrong rather than partial. The host replaces the
+        stored set whole (`Store.replace_supplied_edges`).
+
+        An empty iterator is a real answer, not an omission, and `InProcessPlugin` gives
+        it in words.
         """
         ...
 

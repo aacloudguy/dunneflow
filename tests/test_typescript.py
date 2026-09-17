@@ -13,8 +13,10 @@ pass — which is also how a run does it, so the path under test is the path tha
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -158,7 +160,10 @@ def test_the_reader_is_a_program_and_says_the_same_thing_the_manifest_does():
     assert m.lang == LANG
     assert m.schema_version == SCHEMA_VERSION
     assert m.in_process is False
-    assert m.supplies_edges is False, "chunk 9 is extraction only; edges are chunk 10's"
+    # Three places say this and the handshake refuses a disagreement between two of them:
+    # `plugin.json`, the `ready` frame's `capabilities`, and this. Reaching `ready` proves
+    # the first two agree; this is what stops the pair moving without anybody deciding to.
+    assert m.supplies_edges is True
     assert m.reports_literals is True
     assert BUNDLE.exists(), "the reader is its built bundle, and it is committed"
     assert set(m.fingerprint) == {"plugin.json", BUNDLE.name}
@@ -563,3 +568,276 @@ def test_python_keeps_the_same_answer_because_all_its_keys_are_dotted():
 
     keys = list((rules_document("python").get("network") or {}).get("libraries", {}))
     assert keys and all("." in k for k in keys), [k for k in keys if "." not in k]
+
+
+# ---------------------------------------------------------- the checker's answer --- #
+#
+# Chunk 10. The reader builds a `ts.Program` per `tsconfig.json` in `open` and answers the
+# `edges` frame out of the checker — so what is pressed here is what a compiler can say
+# that a name cannot, and each case is one this reader would have got **wrong** by
+# guessing.
+
+EDGE_TREE: dict[str, str] = {
+    "tsconfig.json": """{
+  "compilerOptions": { "strict": true, "target": "ES2022", "module": "ESNext",
+                       "moduleResolution": "bundler", "baseUrl": ".",
+                       "paths": { "$lib/*": ["lib/*"] } }
+}
+""",
+    # A second `save`, in a file nobody imports. A resolver matching on the name has two
+    # routines called `save` in the program and no way to choose; the checker has already
+    # chosen, because choosing is what it did to type the call.
+    "other.ts": """
+export function save(value: string): string {
+  return "not the one";
+}
+""",
+    "lib/store.ts": """
+export function save(value: string): string {
+  return value;
+}
+
+export function resync(a: string, b: string): string {
+  return a + b;
+}
+
+export class Hierarchy {
+  selectNode(id: string): string {
+    return id;
+  }
+}
+
+export function pick(a: string): string;
+export function pick(a: number): number;
+export function pick(a: string | number): string | number {
+  return a;
+}
+""",
+    "caller.ts": """
+import { save, resync as resyncState, Hierarchy, pick } from "$lib/store";
+
+const store = new Hierarchy();
+
+export function viaImport(): string {
+  return save("x");
+}
+
+export function viaAlias(): string {
+  return resyncState("a", "b");
+}
+
+export function viaReceiver(): string {
+  return store.selectNode("n");
+}
+
+export function viaOverload(): number {
+  return pick(1);
+}
+
+export function viaAny(bag: any): unknown {
+  return bag.whatever();
+}
+
+export function viaLibrary(): number {
+  return Math.max(1, 2);
+}
+""",
+}
+
+
+@pytest.fixture(scope="module")
+def edges(tmp_path_factory):
+    """One session over a small tree with a `tsconfig.json`, opened and asked for edges.
+
+    A real `tsconfig.json` because the grouping and its `paths` map are half the feature:
+    `$lib/store` resolves only through it, and a reader that ignored the project would
+    report every call through it external with nothing saying why (rule 49).
+    """
+    if PLUGIN is None:
+        pytest.skip("no typescript plugin in this build")
+    root = tmp_path_factory.mktemp("tsedges")
+    paths = []
+    for name, source in EDGE_TREE.items():
+        p = root / name
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(source, encoding="utf-8")
+        if name.endswith(".ts"):
+            paths.append(p)
+    PLUGIN.probe()
+    PLUGIN.open(root, paths)
+    try:
+        facts = {ff.path: ff for ff in PLUGIN.extract(paths, root)}
+        supplied = list(PLUGIN.edges())
+        outside, unknown = PLUGIN.edges_outside, PLUGIN.edges_unknown
+    finally:
+        PLUGIN.close()
+    for ff in facts.values():
+        assert ff.errors == [], f"{ff.path}: {ff.errors}"
+    return facts, supplied, outside, unknown
+
+
+def _edge_for(facts, supplied, caller: str, expr: str):
+    """The supplied edge for one call, found by the identity the reader minted."""
+    sites = [c for c in facts["caller.ts"].calls
+             if c.callee_expr == expr
+             and any(r.name == caller and r.id == c.caller_id
+                     for r in facts["caller.ts"].routines)]
+    assert len(sites) == 1, f"{caller} -> {expr}: {len(sites)} call sites"
+    by_site = {e.site_id: e for e in supplied}
+    return by_site.get(sites[0].site_id)
+
+
+def test_an_import_beats_another_routine_of_the_same_name(edges):
+    """The case a name could not get right, in a tree that holds the name twice.
+
+    `other.ts` exports a `save` as well, and nothing imports it. A resolver matching on the
+    name has two candidates and no way to choose; the checker has already chosen, because
+    choosing is what it did to type the call.
+    """
+    facts, supplied, _, _ = edges
+    edge = _edge_for(facts, supplied, "viaImport", "save")
+    assert edge is not None
+    assert edge.file == "lib/store.ts"
+    assert edge.name == "save"
+    target = [r for r in facts["lib/store.ts"].routines if r.name == "save"][0]
+    assert edge.line == target.line_start, "the line the extractor recorded, not a second one"
+
+
+def test_an_alias_is_followed_to_what_it_was_bound_to(edges):
+    """`import { resync as resyncState }`. Nothing in the tree is *called* `resyncState`,
+    so a name match finds nothing at all and the edge is simply lost."""
+    facts, supplied, _, _ = edges
+    edge = _edge_for(facts, supplied, "viaAlias", "resyncState")
+    assert edge is not None
+    assert (edge.file, edge.name) == ("lib/store.ts", "resync")
+
+
+def test_a_method_through_a_typed_receiver_reaches_its_class(edges):
+    """`store.selectNode(...)` where `store: Hierarchy`. The receiver's type is the whole
+    answer, and it is the one thing a reader without a checker cannot have."""
+    facts, supplied, _, _ = edges
+    edge = _edge_for(facts, supplied, "viaReceiver", "store.selectNode")
+    assert edge is not None
+    assert (edge.file, edge.name) == ("lib/store.ts", "selectNode")
+
+
+def test_an_overload_set_resolves_to_the_signature_the_call_fits(edges):
+    """Three declarations of one name, and the checker picks by the arguments.
+
+    Chunk 9 gave each overload an identity of its own (`UNIQUE(routines.id)` found that);
+    this is what makes those identities reachable rather than merely distinct.
+    """
+    facts, supplied, _, _ = edges
+    edge = _edge_for(facts, supplied, "viaOverload", "pick")
+    assert edge is not None
+    assert edge.name == "pick"
+    assert edge.how == "signature"
+
+
+def test_a_call_through_an_any_is_left_alone_and_a_library_call_is_named_outside(edges):
+    """The two kinds of *no*, and they are two numbers (design rule 21).
+
+    `bag.whatever()` on an `any` is *the checker could not say*. `Math.max` is *it said,
+    and the answer is not in this map* — external, and the map is right about it. A reader
+    that flattened them would make a healthy program that leans on its platform read
+    exactly like a reader that had stopped resolving.
+    """
+    facts, supplied, outside, unknown = edges
+    assert _edge_for(facts, supplied, "viaAny", "bag.whatever") is None
+    assert _edge_for(facts, supplied, "viaLibrary", "Math.max") is None
+    assert outside >= 1, "Math.max resolves into lib.es5.d.ts"
+    assert unknown >= 1, "a call on an `any` resolves to nothing at all"
+
+
+def test_the_standard_library_travels_in_the_bundle(edges):
+    """Without it the compiler builds a program with no `Array` and **answers anyway**.
+
+    That is rule 49 in its purest form: edges still come out, so nothing looks wrong, while
+    every value typed through the platform is `any`. Measured on DunneNote at 1,935 edges
+    either way and 2,587 calls moving from *could not resolve* to *resolves to a library*.
+    The observable consequence is this: `Math.max` has to land in `outside`, which can only
+    happen if `lib.es5.d.ts` was there to resolve it.
+    """
+    _, _, outside, _ = edges
+    assert outside >= 1
+
+
+def test_the_project_is_what_makes_a_path_alias_resolve(edges):
+    """`$lib/store` is `tsconfig.json`'s `paths`, and nothing else in the world knows it.
+
+    It is why there is a program per `tsconfig.json` rather than one for the tree: one
+    options object holds one `paths` map, and a monorepo's copies disagree.
+    """
+    facts, supplied, _, _ = edges
+    assert _edge_for(facts, supplied, "viaImport", "save") is not None
+
+
+def test_the_bundle_is_the_source_it_was_built_from():
+    """Rule 37, and the gap this chunk had to close before it could edit either.
+
+    Everything that tested the bundle tested that it **exists**, that the fingerprint names
+    it, and that `node main.bundle.cjs` answers `hello` — and all three pass over a bundle
+    built from last month's source. This chunk is the first to edit `src/` after the bundle
+    was committed, so it is the first time that could cost a whole feature sitting in a file
+    nothing runs.
+
+    Skipped where `node_modules` is absent, because rebuilding needs esbuild — the same
+    shape as the `node` skip above, and named rather than silent.
+    """
+    if PLUGIN is None:
+        pytest.skip("no typescript plugin in this build")
+    root = PLUGIN.manifest.root
+    if not (root / "node_modules" / "esbuild").exists():
+        pytest.skip("esbuild is not installed here — `pnpm install` in the plugin first")
+    with tempfile.TemporaryDirectory(prefix="dunneflow-bundle-") as tmp:
+        out = Path(tmp) / "rebuilt.cjs"
+        done = subprocess.run(
+            ["node", str(root / "build.mjs")],
+            cwd=root, capture_output=True, text=True, check=False,
+            env={**os.environ, "DUNNEFLOW_BUNDLE_OUT": str(out)},
+        )
+        assert done.returncode == 0, done.stderr
+        assert out.read_bytes() == BUNDLE.read_bytes(), (
+            "main.bundle.cjs is not what src/ builds — run `node build.mjs` and commit it"
+        )
+
+
+def test_a_warm_run_keeps_the_edges_it_did_not_re_read(tmp_path):
+    """The whole storage argument, end to end.
+
+    Supplied edges are a **whole-program** answer, so they are replaced whole whenever
+    their reader is opened and left alone when it is not. A run that reads no file of a
+    language changes none of its edges, and they are still true because nothing of that
+    language changed. Per-file caching would be the alternative and it goes stale silently:
+    the checker's answer for `a.ts` is built out of `b.ts`, so a `b.ts` that moved a
+    function would leave `a.ts`' stored line pointing at whatever drifted into it.
+    """
+    if PLUGIN is None:
+        pytest.skip("no typescript plugin in this build")
+    from dunneflow.resolve.calls import resolve_calls
+    from dunneflow.store import Store
+    from dunneflow.walk import analyze_tree
+
+    root = tmp_path / "tree"
+    root.mkdir()
+    (root / "lib.ts").write_text("export function save(v: string): string { return v; }\n")
+    (root / "app.ts").write_text(
+        'import { save } from "./lib";\nexport function go(): string { return save("x"); }\n'
+    )
+    store = Store(tmp_path / "graph.db")
+    try:
+        cold = analyze_tree(root, store)
+        assert cold.parsed == 2
+        assert cold.supplied_edges["typescript"] >= 1
+        first = resolve_calls(store)
+        assert first.supplied >= 1
+        held = store.counts()["supplied_edges"]
+
+        warm = analyze_tree(root, store)
+        assert (warm.parsed, warm.cached) == (0, 2)
+        assert "typescript" not in warm.supplied_edges, "the reader was never opened"
+        assert store.counts()["supplied_edges"] == held, "and its answer was left alone"
+        second = resolve_calls(store)
+        assert second.supplied == first.supplied
+    finally:
+        store.close()

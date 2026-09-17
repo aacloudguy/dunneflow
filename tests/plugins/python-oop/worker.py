@@ -52,6 +52,13 @@ VERSION = "1.0.0"
 #   DUNNEFLOW_OOP_LIE      a field name; `ready` disagrees with the manifest about it
 #   DUNNEFLOW_OOP_EXTRA    anything truthy; every routine carries a field this build lacks
 #   DUNNEFLOW_OOP_WRONGID  anything truthy; every reply carries somebody else's id
+#   DUNNEFLOW_OOP_EDGES    anything truthy; `ready` claims `supplies_edges` and `edges`
+#                          answers with a small stream
+#   DUNNEFLOW_OOP_MISCOUNT anything truthy; `edges_done` claims more than it sent
+#   DUNNEFLOW_OOP_BADEDGE  anything truthy; an edge arrives in a shape this build cannot
+#                          read
+#   DUNNEFLOW_OOP_STRAY    anything truthy; a frame that is neither `edge` nor `edges_done`
+#                          arrives inside the stream
 
 
 def _hit(var: str, path: str) -> bool:
@@ -78,7 +85,10 @@ def on_hello(frame: dict[str, Any]) -> dict[str, Any]:
         "version": VERSION,
         "protocol": PROTOCOL,
         "schema_version": SCHEMA_VERSION,
-        "capabilities": {"supplies_edges": False, "reports_literals": True},
+        "capabilities": {
+            "supplies_edges": bool(os.environ.get("DUNNEFLOW_OOP_EDGES")),
+            "reports_literals": True,
+        },
     }
     if lie in ready:
         # Rule 30 made testable: the manifest is a label and this process is the identity,
@@ -140,6 +150,32 @@ def on_extract(frame: dict[str, Any]) -> dict[str, Any]:
     return {"t": "facts", "hash": echoed, "facts": body}
 
 
+# What `edges` answers with. Fixed rather than computed: this double exists to press the
+# **wire**, and a stream whose contents depended on a real resolution would be proving the
+# resolver instead (rule 24 — a measurement must measure the thing it names).
+EDGES = [
+    {"site_id": "site-a", "caller_id": "caller-a", "file": "sample.py", "line": 12,
+     "name": "save", "how": "signature"},
+    {"site_id": "site-b", "caller_id": "caller-a", "candidates": 3, "how": "symbol"},
+]
+
+
+def on_edges(ident: Any) -> None:
+    """A stream, not a reply: every frame carries the request's id, terminator included."""
+    for edge in EDGES:
+        body = dict(edge)
+        if os.environ.get("DUNNEFLOW_OOP_BADEDGE"):
+            body["line"] = "twelve"
+        send({"t": "edge", "id": ident, "edge": body})
+    if os.environ.get("DUNNEFLOW_OOP_STRAY"):
+        send({"t": "facts", "id": ident, "facts": {}})
+    supplied = sum(1 for e in EDGES if e.get("file"))
+    if os.environ.get("DUNNEFLOW_OOP_MISCOUNT"):
+        supplied += 40
+    send({"t": "edges_done", "id": ident, "supplied": supplied, "unresolved": 7,
+          "outside": 5, "unknown": 2})
+
+
 HANDLERS = {"hello": on_hello, "open": on_open, "extract": on_extract}
 
 
@@ -160,6 +196,11 @@ def main() -> int:
         if kind == "close":
             send({"t": "closed", "id": ident})
             return 0
+        if kind == "edges":
+            # Outside `HANDLERS` because a handler there returns one frame and this
+            # returns a run of them -- `main.ts` keeps the same shape for the same reason.
+            on_edges(ident)
+            continue
         handler = HANDLERS.get(str(kind))
         if handler is None:
             send({"t": "error", "id": ident, "reason": f"unknown frame {kind!r}"})

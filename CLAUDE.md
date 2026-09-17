@@ -1,3 +1,9 @@
+> **This is the v2 tree. Read `V2-START-HERE.md` first, then `PLAN-v2.md`.**
+>
+> This file below is still v1's and has not been rewritten. Where it describes the tool it
+> is accurate; where it describes state, commands or architecture it describes v1. v1 itself
+> is at `../DunneFlow`, untouched and still runnable.
+
 # DunneFlow
 
 Maps what moves through a program: where it starts, what it runs, what it touches, and

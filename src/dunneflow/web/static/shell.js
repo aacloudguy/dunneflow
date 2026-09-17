@@ -4609,7 +4609,7 @@ function renderFilters() {
    must not read as a missing row. */
 const BKIND_GLYPH = {
   DATABASE: "▤", FILE: "▣", STDIO: "▷", CRYPTO: "✦", ENV: "◈",
-  PROCESS: "▶", LLM_API: "✧", NETWORK: "◆", QUEUE: "◇", CLOUD: "☁",
+  PROCESS: "▶", LLM_API: "✧", NETWORK: "◆", QUEUE: "◇", CLOUD_SDK: "☁",
 };
 
 /* **"Where to start" fits its names**, and it is the field on this page where losing a tail

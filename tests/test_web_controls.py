@@ -14033,3 +14033,48 @@ def test_the_naming_pages_do_not_deny_a_capability_this_build_has() -> None:
             f"the shell still says {denial!r}, and this build imports a standard and "
             f"measures it -- see viewChecked"
         )
+
+
+def test_every_boundary_kind_has_its_own_glyph() -> None:
+    """`BKIND_GLYPH` covers `BoundaryKind` exactly, in both directions.
+
+    Written from a defect that had been in the table since the table was: the key was
+    spelled `CLOUD` and the enum value is `CLOUD_SDK`, so every CLOUD_SDK boundary drew the
+    fallback mark rather than the cloud.
+
+    **Nobody had ever seen it, and that is the interesting part.** Every map on the machine
+    it was found on holds **zero** CLOUD_SDK boundaries — Society imports no `boto3`, no
+    `google.cloud` and no `azure`, so the rule at `python.yaml:143` is right and simply
+    never fires. A kind can therefore be wrong for as long as it likes without a single
+    reader being misled, and no amount of looking at real maps would have found it. A check
+    over the source is the only instrument that could, which is why this test reads the
+    table rather than a picture of one.
+
+    **The fallback is what hid it**, which is rule 49 in the one channel where a reader
+    cannot check the answer: `BKIND_GLYPH[b.kind] || "◇"` is a perfectly good defence
+    against a kind this build has never heard of, and it is indistinguishable from a
+    defence against a typo. Worse, the four read sites do not agree on the fallback — one
+    draws `◦` and three draw `◇` — so the same boundary was drawn two different ways
+    depending on which pane you were looking at, and neither was wrong enough to notice.
+    And `◇` is *also* QUEUE's own glyph, so in three of the four panes an unrecognised kind
+    was drawn as a queue.
+
+    So the guard is two-way rather than one. A missing key is the defect that happened; an
+    **extra** key is the same defect one step earlier, because `CLOUD` was an extra key for
+    the whole of its life and a one-way check would have called it fine.
+    """
+    from dunneflow.schema import BoundaryKind
+
+    js = _read("shell.js")
+    body = js.split("const BKIND_GLYPH = {", 1)[1].split("\n};", 1)[0]
+    keys = set(re.findall(r"([A-Z][A-Z_]*)\s*:", body))
+    assert keys, "BKIND_GLYPH changed shape -- this test is blind"
+
+    kinds = {k.value for k in BoundaryKind}
+    assert keys == kinds, (
+        f"BKIND_GLYPH and BoundaryKind disagree. "
+        f"No glyph for: {sorted(kinds - keys) or 'none'}. "
+        f"Glyph for something that is not a boundary kind: {sorted(keys - kinds) or 'none'}. "
+        f"A kind with no glyph draws the fallback, which looks exactly like a kind the "
+        f"build has never heard of -- and in three of the four panes, exactly like a QUEUE."
+    )

@@ -37,6 +37,7 @@ from urllib.parse import parse_qs
 
 from .. import macapp, revisions, runtime
 from ..docstore import DocStore
+from ..resolve import languages
 from ..resolve import version as version_order
 from ..runtime import resource_root
 from ..sourcedb import DocSourceStore, SourceStore
@@ -2279,6 +2280,14 @@ class _Handler(BaseHTTPRequestHandler):
                 "program", "revision", "analysed_at", "tool_version", "extractor",
                 "schema_version", "inference", "model", "analysis_args")}
             counts = base.store.counts()
+            # **What this map was read from, not what this build can read** (rule 24).
+            # The dialog's subject is the map on screen, and the same claim the mirror
+            # page makes in prose is the one this row states as a count.
+            # The stored key **and** the word for it: `files.lang` holds `python` and a
+            # sentence a reader reads says `Python`, and the page owns neither spelling
+            # (rule 51 -- the same argument `none` is decided here rather than there).
+            langs = [{"lang": k, "display": languages.display(k), "files": n}
+                     for k, n in languages.counts(base.store).items()]
             docs = base.docs.counts() if base.docs is not None else None
             source_revision = base.source_revision
             out_name = self._live.out_dir.name
@@ -2346,6 +2355,7 @@ class _Handler(BaseHTTPRequestHandler):
                        # in it are different facts (design rule 11 -- documentation is
                        # optional, and its absence is stated rather than shown as zero).
                        "documents": (docs or {}).get("documents") if docs else None},
+            "languages": langs,
         })
 
     def _version_of(self, graph: Path) -> dict[str, Any]:

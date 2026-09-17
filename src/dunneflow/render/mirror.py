@@ -6,7 +6,7 @@ interesting rows are the ones nothing was found for -- and an absence looks exac
 same whether it is drift or a blind spot.
 
 So the page leads with what it could not see, before any count is read: the admission
-rule and everything it set aside, and the fact that only Python was extracted. Every
+rule and everything it set aside, and which languages the graph was read from. Every
 band states what would make placing a term there wrong, every term carries the
 definition and the line it came from, and every claim ships the query behind it.
 
@@ -19,6 +19,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from ..docstore import DocStore
+from ..resolve import languages
 from ..resolve.mirror import (
     ARTEFACT_NAMES_SQL,
     BANDS,
@@ -112,9 +113,7 @@ def _what_it_could_not_see(m: Mirror) -> list[str]:
         "Every interesting row on this page is an **absence**, and an absence is the "
         "one finding that cannot prove itself. Three things limit what it means "
         "here.\n",
-        "**Only Python was extracted.** A word living in a shell script, a template, "
-        "a front end, a sibling service or a database migration is absent from this "
-        "graph and present in the product. *Absent from this program* is the strongest "
+        languages.only(m.langs) + " *Absent from this program* is the strongest "
         "claim on this page, and it is weaker than *unused*.\n",
         f"**{m.excluded_total:,} of the {m.definitions_seen:,} definitions read are "
         "not words.** The definition extractor admits headings, test names and code "
@@ -219,7 +218,7 @@ def _bands(m: Mirror) -> list[str]:
             f'<a id="{_slug(band.key)}"></a>\n',
             f"{band.meaning} **{len(terms):,} term"
             f"{'s' if len(terms) != 1 else ''}.**\n",
-            f"> **What would make a placement here wrong.** {band.blind_spot}\n",
+            f"> **What would make a placement here wrong.** {band.spot(m.langs)}\n",
         ]
         if not terms:
             lines.append("Nothing in this band.\n")

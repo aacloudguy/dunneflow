@@ -309,8 +309,10 @@ def _method(t: Traceability) -> list[str]:
         f"{t.total_symbols:,} names this program defines, {t.unique_symbols:,} "
         "identify exactly one routine, structure or table; the rest — `__init__`, "
         "`check`, `to_dict` — could never distinguish one plan from another, and are "
-        "not counted. Python builtins are excluded on top of that: one id's entire "
-        "claim to having landed was the word `list`.\n",
+        "not counted. **Python's** builtin names are excluded on top of that — they are "
+        "the only language's this tool holds, so the exclusion is narrower than it "
+        "sounds and narrower in one direction: one id's entire claim to having landed "
+        "was the word `list`.\n",
         "| Threshold | Value |",
         "|---|---:|",
         f"| Distinctive symbols for *likely* rather than *possibly* landed "

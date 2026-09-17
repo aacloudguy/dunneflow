@@ -24,7 +24,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Protocol
 
-from ..schema import FileFacts
+from ..schema import DataStructure, FileFacts, Routine
 
 ProgressFn = Callable[[str, int, int], None]
 
@@ -58,6 +58,40 @@ class ProtocolError(RuntimeError):
     this module reads, and every fact already taken from it is suspect. Skipping six
     hundred of these quietly is how a map comes back confident and empty.
     """
+
+
+def stamp_lang(facts: FileFacts) -> FileFacts:
+    """Write the file's language onto every record inside it, and refuse a second answer.
+
+    **A language travels in exactly one place**, `FileFacts.lang`, and this is the one
+    place it is copied down onto the routines and structures below it (rule 51). A plugin
+    never sets it: it cannot then forget it on one record out of forty, and it cannot
+    disagree with itself. For an out-of-process reader this is what the codec does on
+    decode; in this process it is done here, so both kinds of reader are stamped by the
+    same function rather than by two that have to be kept in step.
+
+    A record that arrives **already carrying** a language is refused rather than
+    overwritten, and rather than accepted. It is a host-derived field, so a value in it
+    is a second answer to a question the file has already answered — and the two are only
+    ever noticed when they differ, which is long after the map was written.
+    """
+    if not facts.lang:
+        raise PluginRefused(
+            f"{facts.path} came back with no language on it. A reader says what it read; "
+            f"a file whose language is blank cannot be routed, cannot be resolved by the "
+            f"right rules, and would be stored as a fact about nothing."
+        )
+    records: list[Routine | DataStructure] = [*facts.routines, *facts.structures]
+    for record in records:
+        if record.lang and record.lang != facts.lang:
+            raise PluginRefused(
+                f"{facts.path} is {facts.lang!r} and carries a record claiming "
+                f"{record.lang!r} ({record.id}). The language is the file's answer and "
+                f"the host's to write; a record that brings its own is a second answer "
+                f"to one question."
+            )
+        record.lang = facts.lang
+    return facts
 
 
 @dataclass(frozen=True, slots=True)
@@ -157,6 +191,13 @@ class PluginManifest:
     """
 
     lang: str
+    # What to call this language in a sentence a person reads. `lang` is the key -- it is
+    # what `files.lang` stores, what a suffix maps to and what a manifest declares -- and
+    # `python` is not how the word is spelled in prose. The plugin says it, because the
+    # alternative is a table of display names kept beside the manifests and out of step
+    # with them (rule 51); a plugin that says nothing is called by its key, which is
+    # honest rather than guessed.
+    display: str
     version: str
     protocol: int
     schema_version: int
@@ -188,6 +229,14 @@ class IngestPlugin(Protocol):
     """
 
     manifest: PluginManifest
+    # Files the last `extract` could not deliver **at all**, as opposed to files that came
+    # back carrying an error. The two are different facts and only one of them is visible
+    # to the host: a file that will not parse arrives as an empty `FileFacts` with its
+    # error on it and the host counts that off `ff.errors`, while a file whose reader died
+    # never arrives, so the reader is the only thing that can say it existed. Without this
+    # a crashed worker is a file that silently leaves the map — design rule 1, one process
+    # over. Reset by `extract`, because a plugin outlives one call.
+    lost: int
 
     def probe(self) -> None:
         """Raise `ToolchainMissing` if this machine cannot run this reader.
@@ -203,8 +252,17 @@ class IngestPlugin(Protocol):
         ...
 
     def extract(self, work: Sequence[Path], root: Path,
-                progress: ProgressFn | None = None) -> Iterator[FileFacts]:
-        """Facts for the files that missed the cache, in any order."""
+                progress: ProgressFn | None = None,
+                jobs: int | None = None) -> Iterator[FileFacts]:
+        """Facts for the files that missed the cache, in any order.
+
+        `jobs` is **the machine's owner speaking, not the host's opinion of the reader**,
+        and that is why it crosses a seam that otherwise leaves parallelism entirely to
+        the plugin. It is `--jobs`, typed by somebody who knows what else this machine is
+        doing; how many files that means at once is still the reader's to decide, and a
+        reader with nothing to spend it on ignores it. Leaving it out would have made
+        `--jobs` a flag that silently stopped reaching the only extractor there is.
+        """
         ...
 
     def close(self) -> None:

@@ -33,6 +33,7 @@ why there is one.
 from __future__ import annotations
 
 import json
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
@@ -44,6 +45,9 @@ from .contract import (
     PluginManifest,
     PluginRefused,
     Toolchain,
+)
+from .contract import (
+    stamp_lang as stamp_lang,  # re-exported: `ingest.stamp_lang` is where callers look
 )
 from .inprocess import InProcessPlugin, _extract_one
 
@@ -74,6 +78,30 @@ def _rules(block: dict[str, Any], lang: str) -> DiscoveryRules:
         test_stem_suffixes=tuple(str(s) for s in block.get("test_stem_suffixes", [])),
         test_stem_exact=frozenset(str(s) for s in block.get("test_stem_exact", [])),
     )
+
+
+def suffix_owners(rules: Sequence[DiscoveryRules]) -> dict[str, str]:
+    """Which language owns each suffix, refusing where two of them both do.
+
+    **The one place that question is answered** (rule 51). `_load()` asks it of the
+    plugins this build ships and `walk.discover` asks it of whatever rules it was handed,
+    so a walk and the registry cannot come to two different answers about `.js`.
+
+    A suffix claimed twice refuses **naming both**, never first-wins: whichever the
+    directory listing happened to yield first is not an order this tool can defend
+    (rule 66).
+    """
+    owner: dict[str, str] = {}
+    for r in rules:
+        for suffix in sorted(r.suffixes):
+            if suffix in owner and owner[suffix] != r.lang:
+                raise PluginRefused(
+                    f"{suffix} is claimed by both {owner[suffix]!r} and {r.lang!r}. "
+                    f"A suffix belongs to one reader; whichever of the two was listed "
+                    f"first is not a decision this tool can defend."
+                )
+            owner[suffix] = r.lang
+    return owner
 
 
 def read_manifest(path: Path) -> PluginManifest:
@@ -130,6 +158,7 @@ def read_manifest(path: Path) -> PluginManifest:
 
     return PluginManifest(
         lang=lang,
+        display=str(data.get("display", "")).strip() or lang,
         version=str(data.get("version", "")),
         protocol=protocol,
         schema_version=declared,
@@ -165,14 +194,8 @@ def _load() -> tuple[dict[str, IngestPlugin], dict[str, str]]:
                 f"two plugins declare the language {m.lang!r}: "
                 f"{manifests[m.lang].root} and {m.root}."
             )
-        for suffix in sorted(m.discovery.suffixes):
-            if suffix in suffix_owner:
-                raise PluginRefused(
-                    f"{suffix} is claimed by both {suffix_owner[suffix]!r} and {m.lang!r}. "
-                    f"A suffix belongs to one reader; whichever of the two was listed "
-                    f"first is not a decision this tool can defend."
-                )
-            suffix_owner[suffix] = m.lang
+        suffix_owner = suffix_owners([*(x.discovery for x in manifests.values()),
+                                      m.discovery])
         manifests[m.lang] = m
 
         reader = _IN_PROCESS.get(m.lang)

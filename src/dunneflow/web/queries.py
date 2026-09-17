@@ -1021,8 +1021,9 @@ ORDER BY r.qualname
 # **Whole segments, never substrings**, and this is rule 5 in its most literal form. A
 # term matched anywhere inside a name matches half the program: `mensor` would claim
 # every `dimensions` and `groma` every `programmatic`. Rule 18 found the same defect in
-# `walk.is_test_path`, where `test_` as a substring dropped the real `_test_stage.py` out
-# of the map entirely -- a marker must sit at an edge of a segment.
+# the walk's test rule (`DiscoveryRules.is_test` now, `walk.is_test_path` then), where
+# `test_` as a substring dropped the real `_test_stage.py` out of the map entirely -- a
+# marker must sit at an edge of a segment.
 #
 # Six globs rather than one because GLOB has no alternation, and lowercased on both sides
 # because GLOB is case-sensitive while a term is a word rather than an identifier. That

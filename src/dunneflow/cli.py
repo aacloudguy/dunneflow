@@ -30,6 +30,7 @@ from .migrate import MigrationRefused, migrate_program
 from .render.index import legacy_map_files, render_index
 from .render.markdown import render_all
 from .render.snapshot import mapless, render_maps
+from .resolve import languages
 from .resolve import version as program_version
 from .resolve.calls import resolve_calls
 from .resolve.cli import resolve_cli
@@ -49,7 +50,7 @@ from .sourcedb import STATE_FOR_COMPARISON, DocSourceStore, SourceStore
 from .sourcedb import capture as capture_source
 from .standards import STANDARDS_DB, standards_refusal
 from .store import StaleGraphError, Store, UnfinishedMapError, unfinished_sentence
-from .walk import analyze_docs_tree, analyze_tree
+from .walk import analyze_docs_tree, analyze_tree, walk_languages, walk_residue
 
 
 def _default_paths(target: Path, name: str | None, out_root: Path) -> tuple[str, Path]:
@@ -578,6 +579,9 @@ def cmd_analyze(args: argparse.Namespace) -> int:
             f"files {stats.found} (parsed {stats.parsed}, cached {stats.cached}, "
             f"removed {stats.removed}, failed {stats.failed}) in {t_extract:.1f}s"
         )
+        _emit(f"  read: {walk_languages(stats)}")
+        for line in walk_residue(stats):
+            _emit("  " + line)
         _emit(
             f"calls {rstats.total:,}: {rstats.certain:,} certain, "
             f"{rstats.inferred:,} inferred, {rstats.external:,} external "
@@ -675,7 +679,11 @@ def cmd_analyze(args: argparse.Namespace) -> int:
                   routines=c["routines"], calls=c["resolved_calls"],
                   boundaries=c["boundaries"], structures=c["structures"],
                   entrypoints=c["entrypoints"],
-                  files=stats.found, documents=doc_stats.found if doc_stats else 0)
+                  files=stats.found, documents=doc_stats.found if doc_stats else 0,
+                  # The machine channel says the same things the sentence does, per
+                  # language and per unclaimed suffix -- rule 13, across two channels.
+                  languages=dict(sorted(stats.by_lang.items())),
+                  unread=dict(sorted(stats.unclaimed.items())))
     else:
         print(
             f"{program}: {c['routines']:,} routines · {c['resolved_calls']:,} internal "
@@ -940,8 +948,9 @@ def cmd_mirror(args: argparse.Namespace) -> int:
         if len(absent) > args.limit:
             print(f"\n  ... see 13-mirror.md for all {len(absent):,}, "
                   "each with its definition and the line it came from")
-    print("\nonly Python is extracted: absent from this graph is not absent from "
-          "the product.")
+    # Read off the graph rather than written down, because this is the one sentence on
+    # the page that is a claim about what the tool could see (rule 13).
+    print("\n" + languages.only_plain(languages.read(store)) + ".")
 
     if docs is not None:
         docs.close()

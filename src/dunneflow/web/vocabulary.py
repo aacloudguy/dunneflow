@@ -323,8 +323,9 @@ def terms_in(glossary: dict[str, Any], name: str, module: str) -> list[dict[str,
     Matched on whole segments, never on substrings. Rule 5 in its most literal form: a
     term matched anywhere inside a name matches half the program -- `mensor` would claim
     every `dimensions`, and `groma` every `programatic` -- and rule 18 caught the same
-    defect in `walk.is_test_path`, where `test_` as a substring dropped `_test_stage.py`
-    out of the map entirely. A word must sit at a segment boundary to count.
+    defect in the walk's test rule (`DiscoveryRules.is_test` now, `walk.is_test_path`
+    then), where `test_` as a substring dropped `_test_stage.py` out of the map
+    entirely. A word must sit at a segment boundary to count.
     """
     segs = {s.lower() for s in name.replace("-", "_").split("_") if s}
     segs |= {s.lower() for s in module.split(".") if s}

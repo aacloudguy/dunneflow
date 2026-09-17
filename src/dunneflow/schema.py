@@ -219,7 +219,16 @@ class Routine:
     file: str
     line_start: int
     line_end: int
-    lang: str = "python"
+    # **The host's answer, never the reader's** — blank until it is stamped, and never
+    # `"python"`. It defaulted to `"python"` for as long as Python was the only reader
+    # there was, which is a fact about a record that nothing in the record decided: a
+    # plugin that forgot to say would have had every routine it emitted claim to be
+    # Python, and the map would have been wrong in the one column nothing reads twice.
+    # `FileFacts.lang` is the only place a language travels, `ingest.stamp_lang` is the
+    # one place it is written onto the records below it (rule 51), and a record that
+    # arrives carrying one of its own is refused rather than believed — two answers to
+    # one question is how the two come to disagree.
+    lang: str = ""
     params: list[Param] = field(default_factory=list)
     returns: str | None = None
     decorators: list[str] = field(default_factory=list)
@@ -475,7 +484,8 @@ class DataStructure:
     module: str
     file: str
     line: int
-    lang: str = "python"
+    # Blank until the host stamps it, exactly as `Routine.lang` is. See there.
+    lang: str = ""
     fields: list[Field_] = field(default_factory=list)
     docstring: str | None = None
     bases: list[str] = field(default_factory=list)

@@ -15956,3 +15956,180 @@ Six commits, each green on all three gates and each leaving the golden where it 
   meaning it.
 * `ingest/` still has no tests, and is still absent from the no-egress guard in
   `test_about.py` — it belongs there and goes in when it is wired.
+
+## 2026-09-17 — the walk, wired to the registry
+
+`ingest/` was written as a shape and nothing routed through it. It does now: `walk.py`
+names no language, imports no extractor, and asks the registry which reader owns a file.
+`PLAN-v2.md`'s chunk 2, finished — the gate was that the golden does not move, and it did
+not.
+
+**The gate, run rather than asserted.** Society re-analysed by this build against the
+preserved v1 graph: `tools/golden.py <v1> <v2>` reports **7 of 7 digests identical**, and
+the whole written report — all 25 row counts, all five distributions — diffs clean against
+`output/GOLDEN-v1.txt` apart from the two digests that file's own statement was lost for
+and which the script redefines. The four `[project.scripts]` executables still reach
+**1,381 · 423 · 292 · 112**, and conformance still reads **4 checked · 1 no population ·
+10 not checkable**. 1,540 passed · 1 skipped, mypy clean over 157 files, ruff clean.
+
+### What changed, and the reasons that are not obvious
+
+* **`is_test_path` is deleted, not moved.** Its rule-5 precision is carried across whole —
+  a marker matches at an **edge** and never as a substring, because `_test_stage.py` is a
+  pipeline stage and was once dropped from a map entire for containing the word — and what
+  it could not do is spell a test any way but Python's. Its three tests in
+  `test_comments.py` now ask the Python plugin's own `DiscoveryRules`, which is what says
+  the move carried the spelling across rather than approximating it.
+* **`--jobs` crosses the seam, and that is the one thing the host tells a reader about
+  parallelism.** `InProcessPlugin` owns the pool by design, so wiring it left `--jobs`
+  assigned and read by nobody — a flag that silently stopped reaching the only extractor
+  there is. It is on `extract` now, documented as *the machine's owner speaking, not the
+  host's opinion of the reader*: a reader decides what a number of jobs means and one with
+  nothing to spend it on ignores it.
+* **`IngestPlugin.lost` is on the contract.** A file that will not parse comes back as an
+  empty `FileFacts` carrying its error and the host counts it; a file whose worker *died*
+  never comes back at all, so only the reader can say it existed. Without it a crashed
+  worker is a file that leaves the map with no symptom anywhere.
+* **Three new counters, and the fourth is deliberately absent.** `unclaimed` (suffix →
+  count), `tests_excluded` (per language) and `pruned` (directory name → count) fire today
+  and are printed by `walk_residue`. `declined` is not built: no language can be declined
+  in a build whose only reader needs no toolchain, and a counter for a state this build
+  cannot reach is rule 35 with a sentence attached. It lands with the first out-of-process
+  plugin, which is the first thing that can raise `ToolchainMissing`.
+* **The residue is one line per kind and never one per file.** A run that pruned four
+  hundred `__pycache__` directories has one fact to report; the paths are not kept.
+  Measured on DunneFlow's own tree: *unread: 46 .jpg, 15 .png, 8 .js, …*, *left out as
+  tests: 65 python*, *pruned 19 directories: `__pycache__` ×12, …*. On Society: seven
+  suffixes, no tests, nothing pruned.
+* **Five names added to `SKIP_DIRS`** — `target`, `vendor`, `obj`, `Pods`, `DerivedData`:
+  other languages' build output, which `DOC_SKIP_DIRS` has partly had all along. `.gradle`,
+  `.build` and `.turbo` are deliberately **not** listed, because everything below a dot is
+  already pruned and a second answer is how two rules come to disagree. Checked before
+  adding them that Society's `src` holds no directory of any of those names.
+
+### The map prune, and the root asymmetry that runs the other way
+
+The code walk now prunes a directory holding a map, on the free test `discover_docs`
+already uses. It was never needed while only Python was read — a program directory holds
+no `.py` — and it became needed the moment the walk started *saying what it had passed
+over*: analysing DunneFlow's own tree reported twelve unread `.db` files that are this
+tool's own writing.
+
+**Applied below the root and never at it**, which is the opposite of the document walk's
+asymmetry and for the opposite reason. There, `--docs` pointed into a program directory is
+the failure rather than the ordinary case. Here the root is the tree somebody named, and a
+graph written *beside* the source it was taken from is ordinary — `--output .` is one, and
+so is every test in this suite that keeps its store inside the tree it analyses. The first
+version pruned at the root too and **fourteen tests went red at once**, every one of them a
+tree reading as a map because its own `graph.db` sat in it. An empty map and a line about a
+directory is exactly the shape of failure rule 49 is about.
+
+*Candidate rule, not minted:* **a marker read off the disk says different things about the
+root and about what is below it, and which of the two is the failure case depends on what
+the reader named.** The next free number is 96; `PLAN-v2.md` already holds the other
+candidate, `Entrypoint.declared` as a field rather than a substring test.
+
+### Open, and stated
+
+* **`tests/test_mcp_tools.py::test_a_second_analysis_is_refused_and_told_what_is_running`
+  failed once in fifteen runs and passes alone.** It starts a real analysis of a one-file
+  tree and immediately asks for a second; when the first finishes first there is nothing to
+  refuse. A check that cries wolf has already failed (rule 43), and the fix is the test's
+  rather than the slot's — left for whoever owns it, because weakening the assertion would
+  lose the property it is there for.
+* `ingest/` and `plugins/` are **in** the no-egress guard now, which was the condition
+  recorded when it was left out.
+* `CLAUDE.md`'s *Adding a language* still says "write one extractor, nothing else changes".
+  It is registration now. That rewrite is chunk 14 and is deliberately not taken here.
+
+## 2026-09-17 — `lang` becomes a discriminator
+
+`PLAN-v2.md`'s chunk 3, and the cheapest possible proof that the column works: nothing in
+v1 ever branched on `lang` — no `WHERE lang =`, no `GROUP BY lang` anywhere in `src/` — so
+it was written, stored, selected, shipped to the browser as a display string, and never
+read by a condition. It is read by four now, and the gate held: **7 of 7 digests
+identical**, every row count and distribution unchanged, 1,562 passed · 1 skipped, mypy
+clean over 159 files, ruff clean.
+
+### The default that was a claim
+
+`Routine.lang` and `DataStructure.lang` defaulted to `"python"`. That was never wrong while
+there was one reader, and it is the worst possible default the day there are two: a plugin
+that forgot to say would have had every routine it emitted claim to be Python, in the one
+column nothing reads twice. They default to `""` now.
+
+**Not deleted outright, which is what the plan said, and the reason is worth recording.**
+A required field has to be passed at construction, and the four construction sites are
+inside the Python extractor — so making it required is exactly the per-record duplication
+the stamping design exists to remove, and it would have left a plugin able to set the field
+on record 39 of 40. A blank is the honest third state: a record nobody stamped claims
+nothing, and `stamp_lang` refuses it rather than storing it.
+
+* **`ingest.stamp_lang` is the one place a language is written onto a record** (rule 51).
+  `FileFacts.lang` is the only place one travels; the in-process reader stamps on the way
+  out of `extract`, and the codec will stamp on decode, so both kinds of reader pass
+  through one function rather than two that have to be kept in step.
+* **A record that arrives carrying its own language is refused**, never overwritten and
+  never accepted. Two answers to one question are only ever noticed when they differ, and
+  by then the map is written.
+* **The host verifies the claim** — `_verify_lang` in `walk.py`, `language_of(path)`
+  against `facts.lang`, refusing and naming both. A manifest is a label and the running
+  reader is the identity (rule 30), and this is the seam a reader on the far side of a pipe
+  arrives through.
+
+### `load_rules` has three answers now, and the middle one is the change
+
+It returned an empty `RuleSet` for any missing YAML. For Python that branch never fired —
+which is exactly why it read as harmless — and on a new language it fires on the first run
+and every boundary, every way in and every CLI mount silently disappears into a map that
+comes back whole and plausible (rule 49). Now: a language whose plugin **declares** a rules
+file gets it; one whose plugin declares **none** gets an empty set, because that is a
+decision somebody wrote in a manifest and not an absent file inferred into one (rule 30);
+and a language nobody ships, or a declared file that is not there, is **refused** by name.
+The default argument is gone for `discover`'s reason — a question with a default answer is
+a question nobody has to ask.
+
+### Five claims about Python, four of them now derived
+
+`resolve/languages.py` is the one place the fact is read (`SELECT DISTINCT lang FROM
+files`, shipped beside the sentence per rule 13) and the one place the sentence is
+composed. **It counts what was read and never what this build can read**: a version that
+reads TypeScript, pointed at a Python tree, must still say Python or the sentence describes
+the tool instead of the map (rule 24). Three answers, never two — no source at all is its
+own sentence.
+
+The spelling in prose is the plugin's own (`PluginManifest.display`, `"Python"`), with the
+stored key as the fallback, because a map may hold a language whose reader is no longer
+installed and inventing a capitalisation is a guess about somebody else's product name.
+
+* the mirror's ABSENT band carries `{languages}` and `Band.spot()` fills it — `replace`
+  and not `format`, because every other band is prose full of punctuation and one stray
+  brace would turn a page into an exception
+* `13-mirror.md`'s *Read this first*, and `dunneflow mirror`'s closing line
+* `render/mirror.py`'s own docstring, which asserted it in passing
+
+**The fifth is deliberately not derived, and that is a decision rather than an oversight.**
+`render/traceability.py` excludes *Python builtins* from symbol evidence, and the list is
+`dir(builtins)` of this interpreter. Deriving that sentence from what the map holds would
+make it a claim and not a fix — there is no list of TypeScript's or Go's builtins here, so
+*the builtins of every language read are excluded* would be false the first time a second
+language arrived. The page names the language instead, and the note beside `_BUILTINS` says
+the list moves when it moves into `python.yaml` with its twin in `resolve/calls.py`, which
+is the resolver chunk's work.
+
+### What a run says about languages, on all three channels
+
+* the summary: `read: python 628`, beside `unread: 70 .json, …`
+* `--progress-json`'s `done`: `"languages": {"python": 628}, "unread": {".json": 70}`
+* **the About dialog**: *Read from — Python 628*, from `/api/about`'s new `languages`
+  block. Verified in the browser against Society, not just in a test: the row draws, and it
+  draws the plugin's word rather than the stored key. A map that records no language for
+  any file says so rather than drawing an empty row (design rule 21).
+
+### Open, and stated
+
+* `Routine.lang` and `DataStructure.lang` are blank-by-default rather than required. If a
+  future reader wants the stricter shape, the cost is passing the language at every
+  construction site inside every extractor — and the refusal in `stamp_lang` is what makes
+  the blank safe today.
+* `CLAUDE.md`'s *Adding a language* is still v1's sentence. Chunk 14.

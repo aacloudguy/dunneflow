@@ -239,14 +239,19 @@ def test_identity_of_the_module_scope_does_not_move(tmp_path):
 # --------------------------------------------------------------------------- #
 
 
+def _python_rules():
+    """How the Python reader spells *this is a test*, straight off its manifest."""
+    from dunneflow import ingest
+
+    return ingest.PLUGINS["python"].manifest.discovery
+
+
 @pytest.mark.parametrize(
     "name",
     ["test_thing.py", "thing_test.py", "conftest.py"],
 )
 def test_a_real_test_is_still_excluded(name):
-    from dunneflow.walk import is_test_path
-
-    assert is_test_path(Path(name))
+    assert _python_rules().is_test(Path(name))
 
 
 @pytest.mark.parametrize(
@@ -261,16 +266,16 @@ def test_a_module_that_merely_contains_the_word_is_not(name):
     boundaries, comments and all. Found while checking why 30 comments were still
     missing after the module-scope fix; the answer was that their files were never
     read.
-    """
-    from dunneflow.walk import is_test_path
 
-    assert not is_test_path(Path(name))
+    Asked of the **Python plugin's** rules now rather than of `walk.is_test_path`, which
+    is gone: the rule is per language because a test is spelled per language, and this
+    file is what says the move carried Python's spelling across whole.
+    """
+    assert not _python_rules().is_test(Path(name))
 
 
 def test_a_tests_directory_is_still_excluded():
-    from dunneflow.walk import is_test_path
-
-    assert is_test_path(Path("tests/helpers/thing.py"))
+    assert _python_rules().is_test(Path("tests/helpers/thing.py"))
 
 
 # --------------------------------------------------------------- doc markers --- #

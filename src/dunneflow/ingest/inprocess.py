@@ -24,7 +24,7 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 
 from ..schema import FileFacts
-from .contract import PluginManifest, ProgressFn
+from .contract import PluginManifest, ProgressFn, stamp_lang
 
 
 def _extract_one(args: tuple[str, str]) -> FileFacts:
@@ -68,7 +68,8 @@ class InProcessPlugin:
         return self.manifest.version
 
     def extract(self, work: Sequence[Path], root: Path,
-                progress: ProgressFn | None = None) -> Iterator[FileFacts]:
+                progress: ProgressFn | None = None,
+                jobs: int | None = None) -> Iterator[FileFacts]:
         """Facts for `work`, in whatever order they finish.
 
         Failures are the caller's to count: a file that will not parse comes back as an
@@ -79,7 +80,10 @@ class InProcessPlugin:
         if not work:
             return
         self.lost = 0
-        jobs = self._jobs or min(os.cpu_count() or 4, 16)
+        # What the run was told, then what this plugin was built with, then this
+        # machine -- in that order, because the first of the three is a person and the
+        # other two are defaults.
+        jobs = jobs or self._jobs or min(os.cpu_count() or 4, 16)
         payload = [(str(p), str(root)) for p in work]
         out: list[FileFacts] = []
 
@@ -107,4 +111,9 @@ class InProcessPlugin:
                 if progress:
                     progress(a[0], i, len(payload))
 
-        yield from out
+        # Stamped on the way out, which is where a reader on the far side of a pipe is
+        # stamped too (`ingest.stamp_lang`, and rule 51): the Python extractor sets the
+        # language on the file and on nothing below it, so there is exactly one record of
+        # what was read and nothing that can fall out of step with it.
+        for facts in out:
+            yield stamp_lang(facts)

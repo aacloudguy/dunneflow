@@ -319,12 +319,57 @@ class RuleSet:
         return None
 
 
+def _declared_rules(lang: str) -> str:
+    """Which rules file this language says it has, refusing a language nobody reads.
+
+    Asked of the plugin registry rather than of the directory listing, because *what this
+    language declares* is the manifest's answer and `detectors/` holding a file of that
+    name is a consequence. Imported inside the function: `ingest` reads every manifest at
+    import and the extractor imports this module, so asking at call time keeps the two
+    from having to be ordered.
+    """
+    from ..ingest import PLUGINS
+
+    plugin = PLUGINS.get(lang)
+    if plugin is None:
+        raise RulesMissing(
+            f"nothing in this build reads {lang!r}, so it has no extraction rules to "
+            f"load. The readers here are {', '.join(sorted(PLUGINS))}; a language arrives "
+            f"by registering a plugin, never by asking for its rules."
+        )
+    return plugin.manifest.rules
+
+
 @lru_cache(maxsize=8)
-def load_rules(lang: str = "python") -> RuleSet:
-    """Load and index the rules for one language. Cached; the files are static."""
-    path = RULES_DIR / f"{lang}.yaml"
-    if not path.exists():
+def load_rules(lang: str) -> RuleSet:
+    """Load and index the rules for one language. Cached; the files are static.
+
+    **Three answers, never two**, and the middle one is the whole of this change. A
+    language whose plugin declares a rules file gets it; a language whose plugin declares
+    **none** gets an empty `RuleSet`, which is a decision somebody wrote down; and a
+    language nobody ships, or one whose declared file is not there, is **refused**.
+
+    It used to return an empty `RuleSet` for any missing YAML. For Python that branch
+    never fired, so it read as harmless — and for a new language it fires on the first
+    run and every boundary, every way in and every CLI mount silently disappears. The map
+    comes back whole, plausible, and empty of the one thing the rules decide (rule 49).
+
+    The default argument is gone for the same reason `discover`'s was: `lang` is the
+    question, and a question with a default answer is a question nobody has to ask.
+    """
+    declared = _declared_rules(lang)
+    if not declared:
+        # Deliberately none. Different from *missing*, and the manifest is where that
+        # difference is stated rather than inferred from an absent file (rule 30).
         return RuleSet([], [], frozenset(), {})
+    path = RULES_DIR / declared
+    if not path.exists():
+        raise RulesMissing(
+            f"the {lang} plugin declares its extraction rules in {declared} and this "
+            f"build has no such file at {path}. A language whose rules are missing reads "
+            f"as a language with no boundaries, no ways in and no CLI at all, which is "
+            f"indistinguishable from a program that has none."
+        )
     data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
 
     bounds: list[BoundaryRule] = []

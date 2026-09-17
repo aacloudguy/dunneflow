@@ -45,10 +45,12 @@ from __future__ import annotations
 
 import re
 from collections import defaultdict
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 
 from ..docstore import DocStore
 from ..store import Store
+from . import languages
 
 # --------------------------------------------------------------------------- #
 # Admission: what counts as a term at all
@@ -182,7 +184,20 @@ class Band:
     key: str
     label: str
     meaning: str
+    # May carry `{languages}`, which is filled in by `spot()` from what the map actually
+    # holds. A blind spot that names a language is a claim about the map rather than
+    # about the band, and it was written as a constant while there was only ever one
+    # answer to it.
     blind_spot: str
+
+    def spot(self, langs: Sequence[str]) -> str:
+        """The blind spot, with what was actually read filled in.
+
+        `replace` rather than `format`, deliberately: every other band's text is prose
+        full of backticks and punctuation, and a stray brace in one of them would turn a
+        sentence into an exception on a page nobody was editing.
+        """
+        return self.blind_spot.replace("{languages}", languages.named(langs) or "nothing")
 
 
 BANDS: tuple[Band, ...] = (
@@ -218,9 +233,10 @@ BANDS: tuple[Band, ...] = (
         "Absent",
         "Defined in documentation, and nowhere in the code at all. The strongest "
         "signal of drift the two stores can produce together.",
-        "One blind spot still puts words here that the program does use: only Python "
-        "is extracted, so a word living in a shell script, a template, a front end or "
-        "a sibling program is absent from this graph and present in the product. Two "
+        "One blind spot still puts words here that the program does use: this map was "
+        "read from {languages} alone, so a word living in a shell script, a template, a "
+        "front end or a sibling program is absent from this graph and present in the "
+        "product. Two "
         "others have been closed, and both moved terms out of this band -- comments "
         "outside every function were not recorded at all, 53% of them, and a "
         "module-level constant was not a recorded name, so `JTBD_OPENERS` read as "
@@ -335,6 +351,10 @@ class Mirror:
 
     terms: list[MirroredTerm] = field(default_factory=list)
     excluded: dict[str, list[str]] = field(default_factory=dict)
+    # What the graph was read from, on the report rather than asked of a store again:
+    # every page that explains an absence has to name the languages it could see, and a
+    # renderer holds no store to ask (rule 87, in the small).
+    langs: list[str] = field(default_factory=list)
     had_docs: bool = True
     definitions_seen: int = 0
     documents_scanned: int = 0
@@ -514,7 +534,7 @@ def _prose_corpus(store: Store) -> list[tuple[str, str, str]]:
 
 def measure(store: Store, docs: DocStore | None) -> Mirror:
     """Every term the documentation defines, and what the code does with it."""
-    report = Mirror(had_docs=docs is not None)
+    report = Mirror(had_docs=docs is not None, langs=languages.read(store))
 
     counts = store.query(
         "SELECT COUNT(*) refs, COUNT(DISTINCT name) names FROM artefacts"

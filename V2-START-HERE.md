@@ -39,12 +39,26 @@ been rewritten yet. Where they describe the tool they are accurate; where they d
   `output/mensores-v1/`. Society (`../society-2026-08-29/src`, 628 files) read by **v1's**
   code with `--standards ../dunnecorp-standards`.
 * **The `ingest/` seam** — contract, registry, in-process wrapper, `plugins/python/plugin.json`.
-  **Not wired.** `walk.py` is untouched and the fingerprint is untouched, so the golden cannot
-  have moved.
 * **The gate is runnable** — `tools/golden.py`, and the section below says what it reproduces.
 * **A read means a read.** `Store(writable=False)` opens `?mode=ro`, so the fourteen sites
   that open a map to read it can no longer write to one. Nothing on the analysis path
   changed, so the golden is untouched.
+* **`walk.py` is wired to it** — `discover()` takes the suffix union off the manifests and
+  a plugin's own skip and test rules, `analyze_tree` groups by language and dispatches, and
+  `is_test_path` is gone in favour of `DiscoveryRules.is_test`. The walk says what it left
+  out: unread suffixes, tests, pruned directories. **Gate run and green: 7 of 7 digests
+  identical against the v1 graph**, every row count and distribution byte-identical, the
+  four executables still at 1,381 · 423 · 292 · 112 and conformance still 4 · 1 · 10.
+  **1,540 passed · 1 skipped**, mypy clean over 157 files, ruff clean.
+* **`lang` is load-bearing** — the two `"python"` defaults on `Routine` and
+  `DataStructure` are gone, `ingest.stamp_lang` is the one place a language is written onto
+  a record and refuses a record that brings its own, the host verifies what a reader
+  claimed against what it was handed, `load_rules` lost its default and now answers
+  *declared* · *declared none* · *refused* instead of returning an empty rule set for a
+  missing file, and four of the five hardcoded "only Python is extracted" claims are read
+  off `SELECT DISTINCT lang FROM files`. A run says `read: python 628` on all three
+  channels, the About dialog included. **1,562 passed · 1 skipped**, mypy clean over 159
+  files, ruff clean, golden unmoved.
 * **`dunneflow mcp`** — the whole of `PLAN-v2.md` §3, brought forward and shipped. Twelve
   tools, two resources, one base at a time with `programs`/`open` as the topbar's controls,
   and `analyze`/`analysis_status`/`analysis_stop` for making a map rather than reading one.
@@ -85,24 +99,28 @@ is faithful rather than merely plausible.
 
 ## What is next
 
-**The MCP server was brought forward**, 2026-09-17, from `PLAN-v2.md`'s chunk 4 to the
-front. It is the one chunk that delivers a new capability without touching ingest at all,
-so it can be written against a tool that is not moving underneath it, and it gives an agent
-something to drive before two gated refactors land. Tom's call, and his reasoning is
-recorded: the existing tool is usable as-is, so v1 defects found along the way are rolled
-into whichever feature chunk owns them rather than scheduled as work of their own.
+**The MCP server was brought forward** on 2026-09-17, from `PLAN-v2.md`'s chunk 4 to the
+front, and the walk was wired behind it the same day — so the ordering that remains is the
+plan's own. Tom's call on the front-loading, and his reasoning is recorded: the existing
+tool is usable as-is, so v1 defects found along the way are rolled into whichever feature
+chunk owns them rather than scheduled as work of their own.
 
-1. Wire `walk.py` to the registry — `discover()` takes the suffix union, `analyze_tree`
-   groups by language and dispatches. **Gate: the seven digests do not move.**
-3. `rules_fingerprint(lang)` and `code_extraction_inputs(lang)`, per-language `meta`, and a
+1. **The fingerprint, split** — `PLAN-v2.md` chunk 5. `rules_fingerprint(lang)` and
+   `code_extraction_inputs(lang)`, per-language `meta`, and a
    `files.extractor` column. A rule change in one language must not discard another
    language's graph. **Rule 95 belongs here**: `sql.py` shapes every `sql_ops` row and is in
-   no key, so editing it leaves every cached graph stale and undiscarded.
+   no key, so editing it leaves every cached graph stale and undiscarded. A plugin's own
+   `fingerprint` list is declared in its manifest and read by nothing yet — that is this
+   chunk's first wire, and it is why editing `plugin.json` today discards nothing.
+2. **The resolver split** — chunk 6. `resolve/python/`, a `RESOLVERS` table, and
+   `_BUILTINS` out of two modules and into `python.yaml`, whose diff is measured and
+   recorded rather than absorbed.
 
-**Of the four confirmed v1 defects, two are closed.** `BKIND_GLYPH` went in `679d772`;
+**Of the four confirmed v1 defects, three are closed.** `BKIND_GLYPH` went in `679d772`;
 `writable=False` now opens `?mode=ro` and genuinely refuses a write, which is what the MCP
-`query` tool needed. The two that remain are scheduled where they belong rather than
-outstanding: `is_test_path` is *replaced* by `DiscoveryRules` when `walk.py` is wired, and
+`query` tool needed; and `is_test_path` is gone, replaced by `DiscoveryRules.is_test` per
+language, so `client.test.ts` is a test rather than 42% of a corpus read as program code.
+The one that remains is scheduled where it belongs rather than outstanding:
 `flows.py:215`'s substring test for *declared* becomes a field on `Entrypoint` when the
 manifest providers land, which is the first point a `package.json` `bin` exists to outrank
 a guessed `main`.

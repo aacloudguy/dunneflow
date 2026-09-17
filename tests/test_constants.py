@@ -197,7 +197,7 @@ def test_the_constructor_list_is_the_defence():
     """The rule lives in `detectors/python.yaml`, not in a branch."""
     from dunneflow.detectors import load_rules
 
-    rules = load_rules()
+    rules = load_rules("python")
     assert rules.is_type_expression("Literal")
     assert rules.is_type_expression("typing.Literal")
     assert not rules.is_type_expression("SOME_DICT")

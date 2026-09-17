@@ -17400,6 +17400,16 @@ function aboutDialog() {
           ? "<span class=\"about-dim\">documentation not scanned</span>"
           : `${Number(c.documents).toLocaleString()} documents`,
       ].filter(Boolean).join(" &middot; "));
+  /* **What it was read from, and never what this build can read.** The same claim the
+     mirror page makes in prose, as the count it comes from: a map holding four
+     TypeScript files beside 628 Python ones is not a polyglot map, and the second
+     number is what says so (rule 32). An older map that recorded no language at all
+     says that rather than showing an empty row (design rule 21). */
+  const langs = d.languages || [];
+  row("Read from", langs.length
+        ? langs.map(l => `${esc(l.display || l.lang)} <span class="about-dim">${
+            Number(l.files).toLocaleString()}</span>`).join(" &middot; ")
+        : "<i>this map records no language for any of its files</i>");
   if (d.analysis_args && d.analysis_args.recorded && d.analysis_args.value) {
     row("It was told", esc(d.analysis_args.value));
   }

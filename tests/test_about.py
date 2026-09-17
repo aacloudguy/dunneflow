@@ -92,12 +92,20 @@ def test_the_determinism_claim_is_checkable_rather_than_prose() -> None:
 
     Tom, 2026-09-04: *"Inference should always be voluntary and secondary."* Voluntary
     means somebody turns it on; until somebody does, this is what says so.
+
+    **`ingest/` joined the guard the day it was wired**, and that was the condition stated
+    when it was written: it decides which reader a file goes to and holds the one that
+    runs in this interpreter, so from the moment `walk.py` dispatches through it, it is on
+    the path that produced every fact. `plugins/` is here for the same reason and is also
+    why a plugin is discovered from `resource_root()/plugins/` and never from an
+    entry-point group -- a guarantee printed on screen cannot survive arbitrary
+    third-party code arriving on the ingest path.
     """
     banned = re.compile(
         r"^\s*(?:import|from)\s+(requests|httpx|urllib3|aiohttp|openai|anthropic|"
         r"google\.generativeai|cohere|mistralai|ollama)\b", re.M)
     looked = 0
-    for area in ("extractors", "resolve", "canonical"):
+    for area in ("extractors", "resolve", "canonical", "ingest", "plugins"):
         for mod in (SRC / area).rglob("*.py"):
             looked += 1
             found = banned.search(mod.read_text(encoding="utf-8"))
@@ -168,6 +176,37 @@ def test_every_absence_answers_in_its_own_words(tmp_path: Path) -> None:
     )
     assert d["counts"]["files"] == 1 and d["counts"]["routines"] >= 1
     assert d["program"] == "tinyprog"
+
+
+def test_the_dialog_says_what_the_map_was_read_from(tmp_path: Path) -> None:
+    """The mirror page's claim, as the count it comes from (rule 32).
+
+    Two things at once, and the second is the one that will go wrong later: the block is
+    what this **map** holds, never what this **build** can read — a version that reads
+    TypeScript and was pointed at a Python tree must still say Python here, or the dialog
+    describes the tool instead of the map (rule 24).
+    """
+    live = _live(tmp_path)
+    try:
+        d = _about(live)
+    finally:
+        live.close()
+    assert d["languages"] == [{"lang": "python", "display": "Python", "files": 1}]
+
+
+def test_the_dialog_spells_a_language_with_the_word_the_plugin_gave_it() -> None:
+    """`files.lang` holds `python`; a sentence a reader reads says `Python`.
+
+    The page owns neither spelling — the same argument that keeps `none` on the server
+    (rule 51). A page that rendered the key would put a lowercase identifier in a dialog
+    whose every other row is prose.
+    """
+    shell = (SRC / "web/static/shell.js").read_text(encoding="utf-8")
+    body = shell.split('row("Read from"', 1)[1].split(");", 1)[0]
+    assert "l.display" in body, "the dialog renders the stored key rather than the word"
+    assert "records no language" in body, (
+        "a map with no language recorded renders an empty row (design rule 21)"
+    )
 
 
 def test_the_dialog_renders_missing_and_recorded_differently() -> None:

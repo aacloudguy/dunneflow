@@ -323,6 +323,27 @@ def _query(session: Session, args: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+# ---- making a map --- #
+
+
+def _analyze(session: Session, args: dict[str, Any]) -> dict[str, Any]:
+    """Read a source tree into a map. A long job, so it returns a handle."""
+    return session.analyze(path=_want(args, "path"),
+                           name=str(args.get("name", "") or ""),
+                           # An absent parameter means the caller did not say, and
+                           # documentation is an input this tool reads by default
+                           # (design rule 11).
+                           docs=bool(args.get("docs", True)))
+
+
+def _analysis_status(session: Session, _args: dict[str, Any]) -> dict[str, Any]:
+    return session.analysis_status()
+
+
+def _analysis_stop(session: Session, _args: dict[str, Any]) -> dict[str, Any]:
+    return session.analysis_stop()
+
+
 # ---- the table --- #
 
 TOOLS: tuple[Tool, ...] = (
@@ -396,6 +417,28 @@ TOOLS: tuple[Tool, ...] = (
           "limit": {"type": "integer",
                     "description": f"rows to return (default {DEFAULT_ROWS}, max {MAX_ROWS})"}},
          ("sql",)),
+    Tool("analyze",
+         "Read a source tree into a new map under this output root. A long job: this "
+         "returns straight away with a handle, and `analysis_status` says how it is going. "
+         "Analysing into a name that already exists rewrites that program's working "
+         "snapshot, and the answer says so.",
+         _analyze,
+         {"path": {"type": "string",
+                   "description": "an absolute path to the source tree to read"},
+          "name": {"type": "string",
+                   "description": "what to call the program (default: the directory's name)"},
+          "docs": {"type": "boolean",
+                   "description": "read documentation as well as source (default true)"}},
+         ("path",)),
+    Tool("analysis_status",
+         "How the running analysis is going, or how the last one ended. Carries the "
+         "child's own progress: the step, how many of them, and how long it has been "
+         "silent.",
+         _analysis_status),
+    Tool("analysis_stop",
+         "End the running analysis. What it has written so far is marked unfinished, so "
+         "no reader can mistake it for a map of the whole program.",
+         _analysis_stop),
 )
 
 BY_NAME: dict[str, Tool] = {tool.name: tool for tool in TOOLS}

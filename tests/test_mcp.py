@@ -18,8 +18,10 @@ perfectly correct on its face.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import subprocess
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
@@ -71,6 +73,81 @@ def drive(messages: list[Any], where: Path | None = None) -> Session:
                 f"stdout line {n} is not a JSON-RPC message, so something wrote to the "
                 f"protocol channel: {line!r} ({exc})") from exc
     return Session(replies, done.stdout, done.stderr)
+
+
+class Driving:
+    """A session held open across several calls, for the tools that share state.
+
+    `drive` spawns a process per run, which is right for everything whose answer depends
+    only on the message. It is wrong for `analyze`, `analysis_status` and `analysis_stop`,
+    whose whole subject is one slot on one `_Live` — asked down three separate pipes they
+    would each get a fresh server and every answer would be *nothing is running*, which is
+    a test that passes while the feature does not exist.
+    """
+
+    def __init__(self, proc: subprocess.Popen[str]) -> None:
+        self._proc = proc
+        self._next = 0
+
+    def send(self, message: dict[str, Any]) -> None:
+        assert self._proc.stdin is not None
+        self._proc.stdin.write(json.dumps(message) + "\n")
+        self._proc.stdin.flush()
+
+    def read(self) -> dict[str, Any]:
+        assert self._proc.stdout is not None
+        line = self._proc.stdout.readline()
+        assert line, "the server closed its output with a reply outstanding"
+        try:
+            return dict(json.loads(line))
+        except ValueError as exc:
+            raise AssertionError(
+                f"a line on the protocol channel is not a message: {line!r}") from exc
+
+    def request(self, method: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
+        self._next += 1
+        self.send({"jsonrpc": "2.0", "id": self._next, "method": method,
+                   "params": params or {}})
+        reply = self.read()
+        assert reply["id"] == self._next, f"replies arrived out of order: {reply}"
+        return reply
+
+    def tool(self, name: str, arguments: dict[str, Any] | None = None) -> Any:
+        """One tool call that must succeed, decoded."""
+        reply = self.request("tools/call", {"name": name, "arguments": arguments or {}})
+        assert "error" not in reply, reply
+        result = reply["result"]
+        assert result["isError"] is False, result["content"][0]["text"]
+        return json.loads(result["content"][0]["text"])
+
+    def refused(self, name: str, arguments: dict[str, Any] | None = None) -> str:
+        """One tool call that must refuse, as the sentence it refused with."""
+        reply = self.request("tools/call", {"name": name, "arguments": arguments or {}})
+        assert "error" not in reply, f"a refusal became a protocol error: {reply}"
+        assert reply["result"]["isError"] is True, reply
+        return str(reply["result"]["content"][0]["text"])
+
+
+@contextlib.contextmanager
+def driving(where: Path) -> Iterator[Driving]:
+    """A handshaken session on `where`, closed and checked on the way out."""
+    proc = subprocess.Popen(self_argv("mcp", str(where)), stdin=subprocess.PIPE,
+                            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                            bufsize=1)
+    session = Driving(proc)
+    try:
+        session.request("initialize", {"protocolVersion": server.LATEST})
+        session.send(READY)
+        yield session
+    finally:
+        assert proc.stdin is not None
+        proc.stdin.close()
+        try:
+            proc.wait(timeout=120)
+        except subprocess.TimeoutExpired:  # pragma: no cover - only on a wedged server
+            proc.kill()
+            raise
+    assert proc.returncode == 0, f"the server exited {proc.returncode}"
 
 
 @pytest.fixture()

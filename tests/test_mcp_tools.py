@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+import time
 from pathlib import Path
 from typing import Any
 
@@ -25,7 +26,7 @@ from dunneflow.mcp import jsonrpc, resources, tools
 from dunneflow.runtime import self_argv
 from dunneflow.web import analysis
 
-from .test_mcp import HELLO, READY, drive
+from .test_mcp import HELLO, READY, drive, driving
 
 
 @pytest.fixture(scope="session")
@@ -374,3 +375,99 @@ def test_a_revision_that_is_not_there_is_refused_before_a_single_message(
         f"it wrote to the protocol channel before refusing: {done.stdout!r}"
     )
     assert "1999-01-01" in done.stderr, done.stderr
+
+
+# ---- the one thing here that writes --- #
+#
+# The stop *rungs* are `tests/test_analysis.py`'s and are not re-tested here: SIGTERM then
+# SIGKILL to a group of the child's own, a console break then `taskkill /F /T` on Windows,
+# and the eleven pool workers that hold stdout open if you signal the parent alone. This
+# file owns the tool, not the machinery, and a test that raced a real child to assert a
+# rung would be flaky about something already pinned deterministically next door.
+
+
+def test_an_analysis_returns_a_handle_rather_than_blocking(tmp_path: Path) -> None:
+    """A long job may not be a blocked call, and the map it makes must be openable after.
+
+    The whole loop, over one pipe: a cold root, `analyze`, poll to `done`, `open` what was
+    made, and read a fact out of it. The boundaries are the assertion that matters — a map
+    that opens and holds nothing would pass every step before this one.
+    """
+    root = tmp_path / "maps"
+    root.mkdir()
+    tree = tmp_path / "tree"
+    tree.mkdir()
+    (tree / "m.py").write_text(
+        'import os\n\n\ndef f(p):\n    return os.environ["X"] + open(p).read()\n',
+        encoding="utf-8")
+
+    with driving(root) as session:
+        started = session.tool("analyze", {"path": str(tree), "name": "tiny",
+                                           "docs": False})
+        assert started["started"] is True
+        assert started["program"] == "tiny"
+
+        for _ in range(120):
+            state = session.tool("analysis_status")
+            if state.get("state") in {"done", "failed", "stopped"}:
+                break
+            time.sleep(0.25)
+        assert state["state"] == "done", state
+        assert state["files"] == 1 and state["routines"] >= 1, state
+
+        assert session.tool("open", {"program": "tiny"})["opened"] is True
+        touched = session.tool("touches", {"routine": "f"})
+        assert set(touched["routines"][0]["boundary_kinds"]) == {"ENV", "FILE"}
+
+
+def test_a_second_analysis_is_refused_and_told_what_is_running(tmp_path: Path) -> None:
+    """One slot, and the refusal names the job holding it (rule 89).
+
+    A refusal that said only *"one is already running"* would be true and a dead end: the
+    one thing the caller may want to do about it is stop that one.
+    """
+    root = tmp_path / "maps"
+    root.mkdir()
+    tree = tmp_path / "tree"
+    tree.mkdir()
+    (tree / "m.py").write_text("def f():\n    return 1\n", encoding="utf-8")
+
+    with driving(root) as session:
+        session.tool("analyze", {"path": str(tree), "name": "first", "docs": False})
+        said = session.refused("analyze", {"path": str(tree), "name": "second",
+                                           "docs": False})
+        assert "already running" in said, said
+        assert "first" in said, said
+        assert "analysis_stop" in said, said
+
+
+def test_stopping_nothing_is_refused_rather_than_reported_as_a_stop(
+        tmp_path: Path) -> None:
+    """*Nothing was running* and *I stopped it* are different facts."""
+    root = tmp_path / "maps"
+    root.mkdir()
+    with driving(root) as session:
+        assert "no analysis is running" in session.refused("analysis_stop")
+
+
+def test_analysing_a_relative_path_is_refused_by_the_same_check_the_dialog_asks(
+        tmp_path: Path) -> None:
+    """Every refusal here is `analysis.check`'s, so no two surfaces can disagree (rule 41)."""
+    root = tmp_path / "maps"
+    root.mkdir()
+    with driving(root) as session:
+        assert session.refused("analyze", {"path": "some/relative/tree"})
+
+
+def test_analysing_into_the_program_being_read_is_refused(mapped: Path) -> None:
+    """`Store._discard_if_stale` drops every table of a graph written by another build, and
+    this server is holding that graph open — so an analysis aimed here can empty the map
+    under a live reader.
+
+    It is also what `serving_dir` exists for: `None` when nothing is open, never the output
+    root standing in for a program, because the root's basename is a real name and would
+    refuse the first analysis anybody ever asked for (rule 30).
+    """
+    with driving(mapped / "sample") as session:
+        said = session.refused("analyze", {"path": str(mapped), "name": "sample"})
+        assert said, "analysing over the open map was allowed"

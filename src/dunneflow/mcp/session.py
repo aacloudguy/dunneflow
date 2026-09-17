@@ -20,12 +20,14 @@ three different facts with three different things to do about them. A failed swi
 
 from __future__ import annotations
 
+import threading
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
 from .. import revisions
 from ..store import Store
+from ..web import analysis
 from ..web.serve import NothingOpen, _Base, _Live, no_map_here, where
 from . import Refused
 
@@ -184,3 +186,98 @@ class Session:
         self._say_open()
         return {"opened": True, "program": self.live.out_dir.name,
                 "revision": base.revision, "root": base.root}
+
+    # ---- making a map, which is the one thing here that writes --- #
+
+    def serving_dir(self) -> Path | None:
+        """The program directory being read, or **`None` when none is**.
+
+        `analysis.check`'s fourth argument, and the one place this server answers it —
+        `serve.py` has its own `_serving_dir` for the same reason, minted after two call
+        sites got it wrong the same way. The contract is that `None` means nothing is
+        open, never a stand-in path: from cold `out_dir` **is** the output root, and its
+        basename is a real name, so passing it would refuse an analysis for colliding with
+        a program nobody is serving. `opened` is the fact, never the path (rule 30).
+        """
+        if not self.live.opened:
+            return None
+        with self.live.lock:
+            return self.live.out_dir.resolve()
+
+    def analyze(self, path: str, name: str = "", docs: bool = True) -> dict[str, Any]:
+        """Read a source tree into a new map. **Returns a handle; never blocks.**
+
+        A subprocess running `dunneflow analyze`, never an in-process call, and that is
+        `web/analysis.py`'s decision rather than one taken again here: every store this
+        process opens is read-only, so an in-process analysis would make this a writer to
+        the tree it serves; `walk.py`'s process pool must stay out of a request thread; and
+        what runs is then exactly the tested command rather than a second assembly of the
+        same steps (rule 51).
+
+        **Every refusal is `analysis.check`'s.** The same function the dialog asks while a
+        reader types, so this surface cannot refuse something another one called fine
+        (rule 41). The two answers added here are about the *server* rather than the
+        request: an analysis is already running, and there is nothing to run it against.
+
+        The slot is its own, beside the switch slot rather than sharing it: a switch
+        replaces what is on screen and an analysis replaces nothing, so one slot would mean
+        a ninety-second read of an unrelated tree locking out `open` (rule 82).
+        """
+        verdict = analysis.check(path, name, self.out_root, self.serving_dir())
+        if not verdict.ok:
+            raise Refused(verdict.refusal)
+
+        source = Path(path.strip()).expanduser().resolve()
+        program = (name or source.name).strip()
+        if not self.live.claim_analysis(program):
+            # The refusal carries the running job, because the one thing the caller may
+            # want to do about it is stop that one — and a refusal has to name something
+            # that can act on it (rule 89).
+            running = self.live.analysis_progress().get("program", "")
+            raise Refused(
+                f"an analysis of {running} is already running — ask `analysis_status` how "
+                f"it is going, or `analysis_stop` to end it")
+
+        def hold(proc: Any) -> None:
+            with self.live.analysis_lock:
+                self.live.analysis_proc = proc
+
+        threading.Thread(
+            target=analysis.run,
+            kwargs={"source": source, "name": program, "out_root": self.out_root,
+                    "docs": docs, "note": self.live.note_analysis, "on_start": hold},
+            name=f"dunneflow-mcp-analyze-{program}", daemon=True).start()
+        self._log(f"analysing {source} as {program}")
+        return {"started": True, "program": program, "source": str(source),
+                "docs": docs,
+                # A **note** is not a refusal, and flattening the two would turn "this
+                # rewrites an existing program's working snapshot" into either silence or a
+                # failure. Three outcomes, never two.
+                "note": verdict.note,
+                "status": self.live.analysis_progress()}
+
+    def analysis_status(self) -> dict[str, Any]:
+        """How the running analysis is going, or how the last one ended.
+
+        The child's own NDJSON, relayed — `note_analysis` replaces the report whole and
+        bumps `moved` only when something actually changed, so *silent for 4 m* means what
+        it says rather than meaning nobody asked. `running` is the **process's** answer and
+        not the label's: a watcher that died without noting would leave `state: working`
+        true for ever (rule 30).
+        """
+        return self.live.analysis_progress()
+
+    def analysis_stop(self) -> dict[str, Any]:
+        """End the running analysis. Two rungs, and the child gets a group of its own.
+
+        `analyze` runs a `ProcessPoolExecutor` whose workers inherit the pipes, so
+        signalling the parent alone leaves the pool holding stdout open and the read loop
+        never returns — the jam, arriving through the fix for it. All of that is
+        `web/analysis.py`'s and none of it is re-decided here.
+        """
+        there, said = self.live.stop_analysis()
+        if not there:
+            raise Refused("no analysis is running")
+        self._log(said)
+        return {"stopped": True, "said": said,
+                "status": self.live.analysis_progress()}

@@ -44,8 +44,12 @@ been rewritten yet. Where they describe the tool they are accurate; where they d
 * **The gate is runnable** — `tools/golden.py`, and the section below says what it reproduces.
 * **A read means a read.** `Store(writable=False)` opens `?mode=ro`, so the fourteen sites
   that open a map to read it can no longer write to one. Nothing on the analysis path
-  changed, so the golden is untouched. **1,467 passed · 1 skipped**, mypy clean over 146
-  files, ruff clean.
+  changed, so the golden is untouched.
+* **`dunneflow mcp`** — the whole of `PLAN-v2.md` §3, brought forward and shipped. Twelve
+  tools, two resources, one base at a time with `programs`/`open` as the topbar's controls,
+  and `analyze`/`analysis_status`/`analysis_stop` for making a map rather than reading one.
+  `.mcp.json` is committed, so a session started in this tree finds it. **1,529 passed ·
+  1 skipped**, mypy clean over 156 files, ruff clean; the golden has not moved.
 
 ## The gate everything is measured against
 
@@ -88,10 +92,7 @@ something to drive before two gated refactors land. Tom's call, and his reasonin
 recorded: the existing tool is usable as-is, so v1 defects found along the way are rolled
 into whichever feature chunk owns them rather than scheduled as work of their own.
 
-1. **`dunneflow mcp`** — hand-written stdlib JSON-RPC 2.0 over stdio, bound to one map at
-   startup and switchable, twelve tools, resources for the DDL and the generated documents.
-   See `PLAN-v2.md` §3; the ordering and the tool list are settled.
-2. Wire `walk.py` to the registry — `discover()` takes the suffix union, `analyze_tree`
+1. Wire `walk.py` to the registry — `discover()` takes the suffix union, `analyze_tree`
    groups by language and dispatches. **Gate: the seven digests do not move.**
 3. `rules_fingerprint(lang)` and `code_extraction_inputs(lang)`, per-language `meta`, and a
    `files.extractor` column. A rule change in one language must not discard another

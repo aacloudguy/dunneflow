@@ -225,6 +225,41 @@ With nothing open it serves [the start page](03-the-start-page.md). `--revision`
 which point in time opens as the base; it defaults to the newest, and you can change it
 from the toolbar afterwards.
 
+## Answering an agent
+
+```bash
+uv run dunneflow mcp [dir] [--revision <rev>]
+```
+
+The same map, answered to a program instead of to you. `mcp` speaks
+[MCP](https://modelcontextprotocol.io) on its standard input and output, so a coding agent
+can ask the questions the dashboard answers — and make a map of a tree it has just been
+pointed at.
+
+It takes the same argument `serve` does, and asks the same question of it: a program
+directory or an output root, decided by whether the directory holds a map rather than by
+what it is called.
+
+**Twelve tools.** `overview` is the cover and is where to start. `touches`, `impact` and
+`routine` are one routine's three questions. `find` searches names and the text of the
+source together. `glossary` is what the program's words mean and who says so. `query` runs
+SQL against the graph — reads only, and the schema is offered as a resource so an agent can
+write its own. `programs` and `open` are the topbar's two controls. `analyze`,
+`analysis_status` and `analysis_stop` read a new tree into a map, report on it, and end it.
+
+**It cannot change a map.** Every store it opens is read-only, which since 2026-09-17 means
+the SQLite connection itself refuses a write rather than merely intending not to. `query`
+refuses anything that is not a read by name, before the connection gets the chance.
+
+Registering it with Claude Code:
+
+```bash
+claude mcp add dunneflow -- uv run dunneflow mcp output
+```
+
+This repository carries a `.mcp.json` doing the same thing, so a session started here finds
+it without being told.
+
 ## Cleaning up
 
 A superseded sealed snapshot is dropped **by hand**, deliberately. DunneFlow owns no

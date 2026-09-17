@@ -98,11 +98,47 @@ uv run dunneflow query    <path> --sql "..."        # ask the graph directly
 uv run dunneflow migrate  <dir>                     # stored paths: absolute -> relative
 uv run dunneflow render   <dir> [--revision <rev>]  # a snapshot's map, from the graph it has
 uv run dunneflow serve    [dir] [--revision <rev>]  # the dashboard; a program, a root, or neither
+uv run dunneflow mcp      [dir] [--revision <rev>]  # the same map, answered to an agent over MCP
 uv run dunneflow analyze  <path> --standards <dir>  # measure it against somebody else's rules
 ```
 
 `analyze --progress-json` reports one JSON object per line on stdout instead of the summary,
 which is how `serve` runs it. See the `serve` section below.
+
+**`mcp` is the second surface over the same stores, and it is `serve`'s shape without a
+browser.** `dunneflow mcp` speaks JSON-RPC 2.0 over stdin and stdout — hand-written against
+the standard library, because the official `mcp` SDK needs `pydantic-core` and there is no
+universal2 wheel for it, which is the same measurement that chose out-of-process parser
+plugins over `tree-sitter`. It takes the same argument `serve` does and asks the same
+question of it (`web.serve.where`), binds one base at a time, and switches with `programs`
+and `open`.
+
+**Three modules and the seam is the point.** `mcp/jsonrpc.py` is the frame and knows
+nothing above it; `mcp/tools.py` holds the twelve bodies, returns plain dictionaries and
+knows nothing about the wire; `mcp/server.py` is the only place that knows both. Every body
+calls what the dashboard calls — nothing under `mcp/` reimplements an answer, and the three
+that were reachable from one surface only (`lookup.py`, `flows.ways_in_affected` and
+`flows.governance_over`, `serve.glossary_sidecars`) were moved out to where both callers
+pass before the module existed (rule 51).
+
+**stdout carries protocol and nothing else**, which is `--progress-json`'s discipline one
+degree stricter: a progress reader skips a line it cannot parse and an MCP client may fail
+the session. Every sentence goes to stderr. **A refusal is an answer**, so it is `isError`
+on a successful call and never a JSON-RPC error — a protocol fault is the other thing —
+and `mcp.Refused` is the type that says the message is already a whole sentence, because
+`serve.why()` puts a class name in front of anything else and the reader here is a model
+that will repeat what it is given.
+
+**`query` is gated twice and the residue is stated.** `mode=ro` refuses every write
+including `WITH x AS (…) DELETE FROM t`, which `sql.parse` reads as READ; the classifier
+refuses `ATTACH`, which `mode=ro` allows and which would reach a database that is not the
+map; `sqlite3` refuses two statements in one `execute`. A statement that cannot be
+classified at all is refused rather than admitted for looking harmless (rule 49).
+`PRAGMA writable_schema=ON` passes both gates and does nothing.
+
+*This module is deliberately outside the no-egress guard in `tests/test_about.py`.* That
+guarantee is about what **produced** the facts, which is why it excludes `web/` too; this
+is `web/`'s sibling. `ingest/` is the opposite case and joins the guard when it is wired.
 
 **`serve` takes a program, an output root, or nothing at all**, and tells the two apart by
 the same question `analyze` asks to keep a program's own output out of its own corpus:

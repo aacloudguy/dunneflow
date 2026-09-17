@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "dunneflow": {
+      "command": "uv",
+      "args": ["run", "dunneflow", "mcp", "output"]
+    }
+  }
+}

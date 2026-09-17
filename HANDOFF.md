@@ -15862,3 +15862,97 @@ replacement: `07-table.jpg` shows two columns and one version open.
 
 1,451 passed, 1 skipped, mypy clean over 141 source files, ruff clean, every relative link
 in `docs/` resolves, all 50 images referenced.
+
+---
+
+# DunneFlow v2 — the record starts here
+
+*Everything above this line is **v1's** record and is not rewritten: it says what was built
+and what it was called at the time, which is the one thing a record may not be edited to
+change. v1 itself is at `../DunneFlow`, untouched and still runnable. `V2-START-HERE.md` is
+the state; `PLAN-v2.md` is the design; this is the chronology.*
+
+## 2026-09-17 — the MCP server, brought to the front
+
+**Tom's call on the ordering, and his reasoning is the part worth keeping.** Asked whether
+to clear the ingest wiring first or take the API surface, he said the existing tool is
+usable as-is and that defects found in it along the way should be *"rolled into that feature
+work at the appropriate time"* rather than scheduled as work of their own. So the MCP server
+moved from `PLAN-v2.md`'s chunk 4 to the front — it is the one chunk that delivers a new
+capability without touching ingest, so it could be written against a tool that was not
+moving underneath it.
+
+**The gate could be read and not run, and that was found before anything was touched.**
+`V2-START-HERE.md` pointed at a golden re-take script "recorded in `HANDOFF.md`'s v2
+entries"; there were none, because this section did not exist until today. `tools/golden.py`
+is that script, recovered *against the recorded values* rather than written from memory —
+sha256 over every field, NUL-terminated and not NUL-separated, which is one byte and the
+difference between reproducing the record and inventing a second self-consistent
+convention. Five of the seven digests, all 25 row counts and all five distributions come
+back byte-identical.
+
+**Two digests did not, and are redefined rather than carried.** `routines.body` and
+`calls.resolved` record values whose statements were never written down, and a bounded
+sweep — permutations up to three columns wide over ten candidates, six orderings, ten
+separators, three renderings of NULL — did not recover them. Bounded and abandoned rather
+than finished, and the file says so: *we did not find it* is not *it is not there*. A
+recorded number whose definition is lost is a label and not an identity, so the remedy is to
+state the definition. It costs the gate nothing, because the artifact is the v1 graph itself
+and a digest is only ever compared between two graphs computed by one script.
+
+**One distribution was recovered on the way**, and it is what makes the rest credible:
+`calls confidence` reads INFERRED 788 in the record and 24,891 unfiltered, because
+confidence is stored on all 30,544 call rows including the 24,103 that resolved to nothing.
+The predicate is `callee_id IS NOT NULL`.
+
+### What was built
+
+Six commits, each green on all three gates and each leaving the golden where it was.
+
+1. **`writable=False` means read-only.** It was assigned and never read again — it chose
+   mkdir-versus-refuse and refuse-versus-discard, and left an ordinary read-write handle
+   under all fourteen reading sites. `?mode=ro` on the existing parameter rather than a
+   second one beside it, because two parameters answering *can this connection write* would
+   have left the lie in place at thirteen sites to close it at one. `read_only_uri` is the
+   one place that spelling lives, escaped, because a `?` in a directory name eats `mode=ro`
+   and hands back a writable connection to a database that does not exist.
+2. **Rule 95**, minted while reading the fingerprint to be sure the change could not move
+   the golden: `code_extraction_inputs()` globs where the reader *lives* and not what it
+   *reads*, and `sql.py` shapes every `sql_ops` row from outside every key. Recorded, not
+   acted on; it belongs in the fingerprint chunk.
+3. **Three answers moved to where all their callers pass**, before the caller that would
+   have copied them existed: `lookup.py`, `flows.ways_in_affected`/`governance_over`, and
+   `serve.glossary_sidecars`. Verified byte-identical over 123 lines of real output against
+   `HEAD`'s `src/` side by side.
+4. **The wire** — `jsonrpc.py` and `server.py`, alone, with an honest empty `tools/list`.
+5. **Nine tools and two resources.**
+6. **The three analysis tools.**
+
+### What driving it found that reading it would not
+
+* **`notifications/initialized` was gated behind the flag it sets.** It was refused —
+  correctly, on its face — the flag stayed false, and every method after the handshake was
+  refused for ever. Every handler was right and only the order was wrong.
+* **Every refusal answered under a null id**, because `parse` raised before the id was read.
+  JSON-RPC reserves null for the case where the id could not be *detected*; a client that
+  gets null for a request it sent with `id: 7` has a reply it cannot account for, which
+  reads as a hang rather than a refusal.
+* **`self._initialized = False` overwrote the handler named `_initialized`.** An attribute
+  and a method share one namespace, and neither gate said so.
+* **`NothingOpen` carries no message at all.** The dashboard's sentence lives in
+  `_refuse_without_base`, where it is delivered — so `why()` over one yields `NothingOpen: `
+  and nothing else, an empty refusal, which is the failure the gate exists to prevent.
+* **The first `_as_markdown` invented a `section["title"]` and a `row[key]`** that
+  `web/documents.py` does not build. Every document would have rendered as empty headings
+  over nothing, and nothing would have raised.
+
+### Open, and stated
+
+* The two redefined digests. If anybody recovers the original statements, add them to
+  `REPRODUCES` rather than editing a number.
+* **Which protocol version Claude Code actually sends is not yet known here.** The server
+  negotiates properly and logs what it was asked for; the first real session records it.
+* `DocStore`, `SourceStore` and `DocSourceStore` still carry `writable=False` without
+  meaning it.
+* `ingest/` still has no tests, and is still absent from the no-egress guard in
+  `test_about.py` — it belongs there and goes in when it is wired.

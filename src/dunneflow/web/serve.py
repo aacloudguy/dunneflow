@@ -1702,14 +1702,23 @@ class _Handler(BaseHTTPRequestHandler):
 
         c = self._inside_compartment(box_id, box)
         ports = (q.get("ports") or ["0"])[0] == "1"
+        roles = c.roles()
         self._json({
             "id": c.id, "name": c.name, **c.stats,
             "inside_of": box_id, "plate": box_id.partition("|")[0],
             "dot": diagram.dot(c, ports=ports),
             "portsDrawn": ports,
             "mermaid": diagram.mermaid(c),
+            # `role` rides here so a hover card can say it in words -- the drawing already
+            # carries it as a class, and a colour a reader cannot name is one they have to
+            # guess at (design rule 1). **Boxes only**: a port stands for another
+            # compartment and a way in is the world outside reaching in, so neither has a
+            # part in this compartment's own flow. Taken once rather than per box, because
+            # `roles()` walks four lanes and a comprehension would walk them per row.
             "by_id": {b.id: {"label": b.label, "kind": b.kind, "holds": b.holds,
-                             "members": b.members, **b.detail}
+                             "members": b.members,
+                             **({"role": roles[b.id]} if b.id in roles else {}),
+                             **b.detail}
                       for b in c.boxes + c.ports + c.entries},
             # Every arrow, keyed by the id `dot()` wrote on it, so a hover over one costs
             # no request. Rule 45's own argument in the other direction: the answer rides
@@ -1754,6 +1763,7 @@ class _Handler(BaseHTTPRequestHandler):
         if c is None:
             self.send_error(404, f"no compartment {wanted!r}")
             return
+        roles = c.roles()
         self._json({
             "id": c.id, "name": c.name, **c.stats,
             # Ports off unless asked for: see `diagram.dot` for the measurement. The page
@@ -1769,8 +1779,16 @@ class _Handler(BaseHTTPRequestHandler):
             # carries a `boxes` *count* -- so the map silently overwrote the number and the
             # page would have read a count off an object. One key meaning two things is
             # rule 32 in a payload, and it is invisible because both halves are real.
+            # `role` rides here so a hover card can say it in words -- the drawing already
+            # carries it as a class, and a colour a reader cannot name is one they have to
+            # guess at (design rule 1). **Boxes only**: a port stands for another
+            # compartment and a way in is the world outside reaching in, so neither has a
+            # part in this compartment's own flow. Taken once rather than per box, because
+            # `roles()` walks four lanes and a comprehension would walk them per row.
             "by_id": {b.id: {"label": b.label, "kind": b.kind, "holds": b.holds,
-                             "members": b.members, **b.detail}
+                             "members": b.members,
+                             **({"role": roles[b.id]} if b.id in roles else {}),
+                             **b.detail}
                       for b in c.boxes + c.ports + c.entries},
             # What each member is called, so a hover card can name what a box holds rather
             # than counting it. Sent with the diagram rather than fetched per hover: it is a

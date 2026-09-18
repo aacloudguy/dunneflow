@@ -182,6 +182,16 @@ const DEFAULTS = {
      drawn, they connect what was disconnected so nothing packs, and on a small
      compartment they outnumber the subject. The count is stated either way. */
   diagramPorts: false,
+  /* **What the diagram spends colour on**, `''` or `'role'` -- design rule 4's own
+     control, one drawing over from the stack's `colorBy`: colour goes on one dimension at
+     a time and the reader says which. Empty by default, so the diagram opens as it always
+     did and the colour is asked for rather than arrived at.
+
+     `'role'` is *what a box does in the flow* -- receives only, emits only, both, or
+     nothing reaches it either way. Measured across four maps before it was built: 9-23%
+     emit only, 25-40% receive only, 15-26% both and 30-44% neither, which is why the
+     fourth state is the untinted ground. */
+  diagramColour: "",
   /* **`nodeShapes` was a default here and is not one now.** Which shapes the boxes are
    * drawn in, as a set -- `kind` spends the channel on five silhouettes and frees colour to
    * carry what changed (design rule 4); `rect` and `round` are one outline for everything.
@@ -800,6 +810,7 @@ function resetSettings(program, current) {
     diagram: 'the plate drawn as a diagram',
     diagramId: 'which compartment the diagram has open',
     diagramPorts: 'whether the diagram draws its crossings',
+    diagramColour: 'what the diagram spends colour on',
     navCase: 'the search matching capitals exactly',
     navWord: 'the search matching whole words',
     navRegex: 'the search reading a regular expression',

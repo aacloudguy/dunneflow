@@ -18485,3 +18485,91 @@ other's map: core `14:1f490b8c6a74ae79`, python `1.0.0:ff80475015590340`, typesc
 `1.1.0:5d04dc6d7233224a`. **Every stored map is invalidated and must be re-analysed** —
 correct and conservative, and chunk 14's precedent: `detectors/__init__.py` is in the core
 key, and over-invalidating is rule 12's safe direction.
+
+## 2026-09-18 — the diagram says what a box does, and it costs no colour anyone was using
+
+Tom, looking at Diagram mode: *"some nodes only ever have links inbound and some only ever
+outbound. Is it possible to render sinks and emitters as different shapes or with different
+colors? Each has a different role, as do the nodes that can do both."*
+
+### What the measurement changed about the ask
+
+**It is four roles, not three**, and the one nobody names is the largest. Across four maps
+— Mensores 930 boxes, DunneNote 244, DunneFlow 169, gstack 163 — the split runs 9–23% emits
+only, 25–40% receives only, 15–26% both, and **30–44% nothing either way**. Folding that
+fourth state into any of the other three would say something false about a third of the
+drawing (design rule 21). It is also what makes the colour affordable: `none` is the
+untinted ground, so only three tints have to be found.
+
+**Shape was not available, which the ask offered first.** Design rule 4 already spends shape
+on *kind* — a bold box for a class, a plain one for a file, a cylinder for a boundary, a note
+for a way in, a dashed ellipse for a port — and stroke means *selected* and *hovered*. Fill
+was the free channel, and design rule 4 says how to spend it: an explicit **colour by**
+selector, one dimension at a time. The stack has had one for a year (*what it is* / *which
+plate* / *what changed*); the diagram had none. So this is that control, with *what it does*
+as its first dimension and **nothing** as its default, which leaves the diagram opening
+exactly as it did.
+
+### The decision Tom made, and its cost
+
+A box's flow can leave the compartment entirely, and crossings are not drawn unless asked
+for (rule 19). So *role as drawn* and *role including crossings* are different answers —
+on DunneFlow, *both* is 26% one way and **57%** the other. Rule 87's trap, and not one to
+resolve silently.
+
+Tom's call was **all of it, drawn or not**: the role is a fact about the program rather than
+about the toggle, and it is the same reading `unlinked` has always taken — `role_none`
+equals it by construction, and a test says so, because the panel prints one and the legend
+prints the other and a reader seeing them disagree would be right to worry.
+
+**The cost is stated on the legend rather than discovered**: with crossings undrawn, a box
+can be coloured with no arrow leaving it. The sentence is dropped the moment the crossings
+are drawn, because then it is not true of what the reader is looking at. Pressed: turning
+crossings on changes **0 of 40** roles, which is the property that makes the reading worth
+having.
+
+### A fourth hue does not exist, and that is measured
+
+Blue for *receives* against violet for *both* came out **ΔE 1.4** apart under deuteranopia
+in the light theme — the same colour. That is `tokens.css`'s own note about the difference
+channel being at capacity, one channel over. So direction is carried on **blue against
+amber**, the axis dichromacy leaves alone, and *both* is separated from both by lightness
+and chroma instead — rule 69's own remedy, the one `--diff-moved` already uses.
+
+Worst separation over the four states, taking the worst of normal vision, deuteranopia and
+protanopia and never an average: **26.1 light, 19.3 dark**, against the shipped red/green
+difference pair's 12.7 and 9.5. Every tint carries `--text` at **7.4:1 or better**, because
+these are fills with a label written across them rather than dots on a ground — a different
+question from what `--graph-*` is measured against, and a tint that swallows its own label
+is a filter (design rule 1).
+
+### The mechanism, which is why the control is free
+
+The role rides into the SVG as a **`class`**, never a Graphviz `fillcolor`. Graphviz writes
+`class=` straight into the `<g>`, so the browser recolours every box by setting one
+attribute on the pan container: no refetch, no second `gv.layout()` on a picture that takes
+93–179 ms to lay out, and the reader's pan and zoom survive. A `fillcolor` would bake one
+answer into the drawing and cost a relayout per toggle. It also keeps the colours in
+`tokens.css` with every other colour, so both themes and every palette reach them.
+
+`applyDiagramColour()` runs from `renderDiagram()` rather than only from the handler — the
+renderer rewrites the mount, so an attribute set in the handler alone would survive until
+the next paint and then vanish (rule 78).
+
+`mermaid()` is the one place a fill is written twice, and the reason it is allowed to be:
+its whole job is source a reader copies somewhere our stylesheet and our themes do not
+exist, so the `classDef`s carry light-theme values with them — and only for the roles a
+compartment actually uses, so a plain compartment emits none.
+
+**A port and a way in get no role**, deliberately. A port stands for a whole other
+compartment and a way in is the world outside reaching in; each already has its own list and
+its own lane, and giving either a part in this compartment's flow would answer about the
+wrong subject — and put colour on something the legend's counts do not cover (rule 32).
+
+### Gates
+
+**1,895 passed · 1 skipped**, mypy clean over 196 files, ruff clean. Twelve new tests; all
+twelve fail against the previous commit. Verified in the browser rather than only in tests:
+the classes survive the WASM Graphviz, the fills change on the four states in both themes,
+the selection stroke still wins over a tinted box, the legend's four counts add to the box
+count beside them, and switching the control neither refetches nor relays out.

@@ -128,6 +128,30 @@
      time (design rule 4), so a node is drawn for its kind or for what changed, never
      both. */
   --graph-mixed:     #00007a;   /* 14.47:1 on the ground */
+  /* **What a box does in the compartment's flow**, on the diagram's *colour by* control:
+     it only receives, it only emits, it does both, or nothing reaches it either way.
+     Measured on four maps -- Mensores 930 boxes, DunneNote 244, DunneFlow 169, gstack 163
+     -- where the split runs 9-23% emits, 25-40% receives, 15-26% both and **30-44%
+     nothing**, which is why the fourth state is the untinted ground rather than a fourth
+     hue: it is the largest population and the least interesting, and tinting it would put
+     the most colour on the least information.
+
+     **A fourth hue was tried first and it does not exist.** Blue for *receives* and violet
+     for *both* came out **1.4 apart** under deuteranopia in the light theme -- the same
+     colour -- which is the note above this one saying the difference channel is at
+     capacity, one channel over. So the pair that carries direction is blue against amber,
+     which is the axis dichromacy leaves alone, and *both* is separated from them by
+     **lightness and chroma** instead (rule 69's own remedy, as `--diff-moved` is).
+
+     Worst separation over the four states, taking the **worst** of normal vision,
+     deuteranopia and protanopia and never an average: **26.1 light, 19.3 dark** -- against
+     the shipped red/green difference pair's 12.7 and 9.5. Every one carries `--text` at
+     **8.7:1 or better** light and **7.4:1** dark, because these are fills with a label on
+     top and a tint that swallows its own text is a filter (design rule 1). */
+  --dgrole-receives: #a0bfeb;   /* text 9.48:1 */
+  --dgrole-emits:    #f7d0a3;   /* text 12.33:1 */
+  --dgrole-both:     #ccafaf;   /* text 8.77:1 */
+
   --graph-edge:      #0d7f75;
   --graph-edge-alpha: 150;
   --graph-plate-fill: #dfe5ee;
@@ -222,6 +246,13 @@
     --graph-module:    #6b6bff;
     --graph-dim:       #344052;
     --graph-dim-alpha: 110;
+    /* The same four states in the dark theme, chosen against `--surface` #161e29 and
+       measured the same way: worst separation **19.3**, text **7.4:1** at worst. `none` is
+       the untinted surface here too. */
+    --dgrole-receives: #2e3d5c;   /* text 9.11:1 */
+    --dgrole-emits:    #574527;   /* text 7.72:1 */
+    --dgrole-both:     #524848;   /* text 7.42:1 */
+
     /* The two grounds `colorBy: 'change'` draws on, and they are two because they are two
        claims. **unchanged** is the comparison having looked and found nothing; **unclaimed**
        is nothing having been asked -- the stack draws boundaries, constants, structures and
@@ -299,6 +330,12 @@
   --graph-module:    #6b6bff;
   --graph-dim:       #344052;
   --graph-dim-alpha: 110;
+  /* The same four states in the dark theme -- see the light block for the measurement.
+     Both spellings of dark are patched, because one without the other is a theme that
+     silently keeps the light fills. */
+  --dgrole-receives: #2e3d5c;   /* text 9.11:1 */
+  --dgrole-emits:    #574527;   /* text 7.72:1 */
+  --dgrole-both:     #524848;   /* text 7.42:1 */
   /* The two grounds `colorBy: 'change'` draws on, and they are two because they are two
      claims. **unchanged** is the comparison having looked and found nothing; **unclaimed**
      is nothing having been asked -- the stack draws boundaries, constants, structures and
@@ -3527,6 +3564,41 @@ kbd { font-family: var(--f-mono); font-size: .66rem; background: var(--sunken);
 .dgm-pan g.node:hover path { stroke: var(--accent); stroke-width: 2; }
 .dgm-pan g.node text { fill: var(--text); }
 .dgm-pan g.node polygon, .dgm-pan g.node ellipse, .dgm-pan g.node path { fill: var(--surface); }
+/* **Colour by what a box does**, and it is off until asked for. One attribute on the pan
+ * container recolours every box, which is the whole reason the role rides into the SVG as
+ * a class rather than as a Graphviz `fillcolor`: switching costs a style recalculation
+ * instead of a refetch and a second `gv.layout()`, and the reader's pan and zoom survive
+ * it. The drawing is 93-179 ms to lay out, so this is the difference between a control
+ * that feels like a filter and one that feels like a reload.
+ *
+ * `none` has no rule at all: it keeps `--surface` above, which is the ground everything
+ * else is measured against and the honest drawing of *nothing reaches this either way*.
+ *
+ * Fill only. The stroke stays whatever the node had, because stroke on this drawing means
+ * *selected* and *hovered* -- `.dgm-on` sets it to `--accent` -- and a role that also wrote
+ * the outline would make the selected box unfindable in the one channel that finds it. */
+.dgm-pan[data-dgcolour="role"] g.node.dgrole-receives :is(polygon, ellipse, path) {
+  fill: var(--dgrole-receives);
+}
+.dgm-pan[data-dgcolour="role"] g.node.dgrole-emits :is(polygon, ellipse, path) {
+  fill: var(--dgrole-emits);
+}
+.dgm-pan[data-dgcolour="role"] g.node.dgrole-both :is(polygon, ellipse, path) {
+  fill: var(--dgrole-both);
+}
+/* The legend's swatches, which are the same three tokens and the ground -- so a reader
+ * matching a colour to a word is matching the colour they are actually looking at
+ * (rule 13). `none` draws the surface with a border, or it would be an invisible chip. */
+.dgm-key { display: inline-flex; align-items: center; gap: .6rem; flex-wrap: wrap;
+           font-size: .7rem; color: var(--text-muted); }
+.dgm-key b { font-weight: 600; color: var(--text); }
+.dgm-key span { display: inline-flex; align-items: center; gap: .25rem; }
+.dgm-key i { width: .7rem; height: .7rem; border-radius: .15rem; display: inline-block;
+             border: 1px solid var(--border-strong); }
+.dgm-key i.dgrole-receives { background: var(--dgrole-receives); }
+.dgm-key i.dgrole-emits    { background: var(--dgrole-emits); }
+.dgm-key i.dgrole-both     { background: var(--dgrole-both); }
+.dgm-key i.dgrole-none     { background: var(--surface); }
 /* **The stroke had no width at all**, so it took Graphviz's default of 1 -- a 1 nobody
    chose. It is a Setting now, in *user units* so it scales with the drawing the way every
    other mark in it does (a rem would scale it with the chrome instead, and zooming in would

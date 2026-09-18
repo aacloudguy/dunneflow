@@ -309,6 +309,11 @@ const state = {
   diagram: false,         // what is lit, drawn as labelled boxes rather than as dots
   diagramId: null,        // which compartment Diagram mode has open
   diagramPorts: false,    // draw the crossings to other compartments -- see diagram.py
+  /* **What the diagram spends colour on**, '' or 'role'. Design rule 4's own control, one
+     drawing over from the stack's `colorBy`: colour goes on one dimension at a time and
+     the reader says which. Empty by default, so the diagram opens exactly as it did and
+     the colour is something you ask for. */
+  diagramColour: "",
   navCase: false,         // the topbar's three, matching the Code box's -- see settings.js
   navWord: false,
   navRegex: false,
@@ -1060,6 +1065,18 @@ function applyPalette() {
  * no way back to a picture -- design rule 6's reasoning, one control over: customisation is
  * clamped, and the clamp is at the one door the value comes through.
  */
+/* **Written onto the pan container, which is the one element that survives a repaint of
+ * everything inside it.** `renderDiagram()` rewrites the mount's innerHTML, so an attribute
+ * set on a node would be thrown away on the next paint; this runs after each one, and the
+ * CSS does the rest. Empty removes the attribute rather than setting it to "", so the
+ * selector is a plain presence test and there is one spelling of *off*. */
+function applyDiagramColour() {
+  const pan = document.getElementById("dgmPan");
+  if (!pan) return;
+  if (state.diagramColour) pan.setAttribute("data-dgcolour", state.diagramColour);
+  else pan.removeAttribute("data-dgcolour");
+}
+
 function applyDiagramLook() {
   const r = document.documentElement;
   /* **Two cursors, not one, and the pair is what the first version got wrong.** It set the
@@ -3752,6 +3769,16 @@ function renderDiagram() {
             subject -- 8 boxes to 29 ports on `pkg:mcp`. Off by default, always counted. */""}
       <label class="dgm-toggle"><input type="checkbox" id="dgmPorts" ${
         c.portsDrawn ? "checked" : ""}> <span class="muted">show crossings</span></label>
+      ${/* Design rule 4's own control, one drawing over from the stack's. Colour goes on
+            one dimension at a time and the reader says which; *nothing* is the default and
+            is a real option rather than an empty first row, so turning it off is as
+            explicit as turning it on. */""}
+      <label class="dgm-toggle"><span class="muted">colour by</span>
+        <select id="dgmColour">
+          <option value="" ${!state.diagramColour ? "selected" : ""}>nothing</option>
+          <option value="role" ${
+            state.diagramColour === "role" ? "selected" : ""}>what it does</option>
+        </select></label>
       <button class="gbtn" data-dgm="fit">fit</button>
       ${/* Design rule 26's stated half, filled by `markDiagramSelection` on the narrow path
             and deliberately empty here: this markup is written by `renderDiagram()`, which
@@ -3759,9 +3786,36 @@ function renderDiagram() {
             Rendering the sentence here as well would be two places answering one question,
             and the one that runs less often would be the stale one (rule 51). */""}
       <span class="hint" id="dgmSel"></span>
+      ${/* **The legend, with a count beside every swatch** -- a colour whose population
+            nobody can see is a claim nobody can weigh (rule 32), and the four numbers add
+            up to the box count already in the sentence above.
+
+            **And it states the cost of the reading that was chosen.** The role counts flow
+            that crosses out of the compartment, which is not drawn unless *show crossings*
+            is on -- so a box can be amber with no arrow leaving it, and a reader who is not
+            told that has found a bug rather than a fact (design rule 1). The sentence is
+            dropped once the crossings are on screen, because then it is not true of what
+            they are looking at. */""}
+      ${state.diagramColour === "role" ? `<span class="dgm-key">
+        <span><i class="dgrole-emits"></i>emits only <b>${c.role_emits ?? 0}</b></span>
+        <span><i class="dgrole-receives"></i>receives only <b>${
+          c.role_receives ?? 0}</b></span>
+        <span><i class="dgrole-both"></i>both <b>${c.role_both ?? 0}</b></span>
+        <span><i class="dgrole-none"></i>neither <b>${c.role_none ?? 0}</b></span>
+        ${c.portsDrawn ? "" : `<span class="muted">counts flow that leaves this
+          compartment, which is not drawn — turn on <b>show crossings</b> to see
+          it</span>`}
+      </span>` : ""}
     </div>
     <div class="dgm-canvas" id="dgmCanvas"><div class="dgm-pan" id="dgmPan">${c.svg}</div>
       <div class="hovercard" id="dgmCard" hidden aria-hidden="true"></div></div>`;
+  /* **Re-applied on every paint, because the line above threw the last one away.** The
+     attribute lives on `#dgmPan`, which this function has just recreated -- so setting it
+     in the handler alone would colour the drawing until the next repaint and then lose it,
+     which is rule 78's shape: a pane brought up to date by the control that moved it is
+     only as correct as the last person to add a control. Set here, where every path
+     through the renderer passes. */
+  applyDiagramColour();
   const svg = host.querySelector("#dgmPan svg");
   if (svg) {
     /* Its own natural size in pixels, taken from the viewBox Graphviz wrote. `width:100%`
@@ -4395,6 +4449,18 @@ document.addEventListener("change", (ev) => {
     used("diagram:ports:" + (state.diagramPorts ? "on" : "off"));
     persist();
     ensureDiagram();
+    return;
+  }
+  if (ev.target.id === "dgmColour") {
+    /* **No refetch and no relayout.** The role is already on every node as a class, so
+       the whole switch is one attribute and a repaint -- which is why this does not call
+       `ensureDiagram()` like its neighbour above does. Calling it would throw away a
+       laid-out SVG and the reader's pan and zoom to change a colour. */
+    state.diagramColour = ev.target.value;
+    used("diagram:colour:" + (state.diagramColour || "none"));
+    persist();
+    applyDiagramColour();
+    renderDiagram();
     return;
   }
   if (ev.target.id !== "dgmPick") return;
@@ -17732,7 +17798,8 @@ const PERSISTED = [
      equal to its default writes a key that can only ever be restored to what it already
      was — and, worse, the reset dialog then names a setting the reader was never offered.
      `state.nodeShapes` stays where it is and is still handed to the engine at mount. */
-  "diagram", "diagramId", "diagramPorts", "diagramCursor", "diagramEdgeWidth",
+  "diagram", "diagramId", "diagramPorts", "diagramColour", "diagramCursor",
+  "diagramEdgeWidth",
   "navCase", "navWord", "navRegex",
   "searchCase", "searchWord", "searchRegex",
   "panels", "inspectorAuto", "navWidth", "codeWidth", "codeFile", "codeOverlay", "codeProv", "codeMarks", "codeRailList",

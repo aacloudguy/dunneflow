@@ -1638,6 +1638,37 @@ queries know a language exists.
   functions, or a boundary kind; opening one returns a **`Compartment` of routines** — the
   same type, so `dot()` and `mermaid()` draw both and a fix to one is a fix to both. A fold
   is a subject in its own right, never one of the things it folds (rule 74).
+
+  **It has a *colour by* control, and it spends the channel on one thing at a time**
+  (design rule 4, one drawing over from the stack's). Its first dimension is **what a box
+  does in the flow** — `Compartment.roles()`: receives only, emits only, both, or nothing
+  either way. Reported by Tom, who noticed some boxes only ever have arrows in and some
+  only ever out. **Four states, not three**: the one nobody names is the largest, 30–44% on
+  every corpus measured, and folding it into the others would say something false about a
+  third of the drawing (design rule 21). It is the untinted ground, which is also why three
+  tints suffice.
+
+  **The role counts flow that crosses out of the compartment**, so it is a fact about the
+  program rather than about the `ports` toggle — the same reading `unlinked` has always
+  taken, and `role_none` equals it by construction. The cost is stated on the legend rather
+  than left to be discovered: with crossings undrawn a box can be coloured with no arrow
+  leaving it, and that sentence is dropped the moment they are drawn.
+
+  **It rides into the SVG as a `class`, never a `fillcolor`**, which is what makes the
+  control free. Graphviz writes `class=` into the `<g>`, so the browser recolours by
+  setting one attribute on the container — no refetch, no second `gv.layout()` on a picture
+  that takes 93–179 ms to lay out, and the reader's pan and zoom survive. It also keeps the
+  colours in `tokens.css` with every other colour. `mermaid()` is the one place a fill is
+  written twice, and deliberately: its whole job is source a reader copies somewhere our
+  stylesheet does not exist.
+
+  **A fourth hue was tried and does not exist.** Blue for *receives* against violet for
+  *both* is ΔE **1.4** under deuteranopia — the same colour — which is `tokens.css`'s own
+  note about the difference channel being at capacity, one channel over. Direction goes on
+  blue against amber, the axis dichromacy leaves alone, and *both* is separated by lightness
+  and chroma (rule 69's remedy, as `--diff-moved` is). Worst separation **26.1 light, 19.3
+  dark** against the shipped difference pair's 12.7 and 9.5, and every tint carries
+  `--text` at 7.4:1 or better, because these are fills with a label written across them.
 - `/api/flow?from=&to=[&inside=]` — one arrow, opened: every call site with the arguments
   **as written** and the callee's declared parameters, or the SQL and network operations
   for an edge into a boundary. Answered on demand — rule 45 where it belongs, bounded by

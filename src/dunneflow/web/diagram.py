@@ -163,11 +163,47 @@ class Compartment:
     out: Flow = field(default_factory=dict)
     into: Flow = field(default_factory=dict)
 
+    def roles(self) -> dict[str, str]:
+        """Each box's part in the flow: `emits`, `receives`, `both`, or `none`.
+
+        **Counted over every lane, including the crossings that are not drawn**, and that
+        is Tom's call rather than the default. It makes the role a fact about the program
+        instead of a fact about the `ports` toggle, and it is the same reading `unlinked`
+        has always taken two lines below -- one question, one answer (rule 13). The cost is
+        stated rather than hidden: with ports off, a box can be `emits` with no outgoing
+        arrow on screen, because the arrow leaves the compartment. The panel already says
+        how many crossings there are and that they are not drawn, and the legend says the
+        role counts them.
+
+        **A port and a way in have no role here and are deliberately absent.** A port is
+        not a thing in this program at all -- it stands for a whole other compartment
+        (rule 74's neighbourhood) -- and a way in is the world outside reaching in, which
+        is why it already has its own list and its own lane. Giving either a part in the
+        flow would be answering about the wrong subject.
+
+        **A way in counts as inbound for the box it enters.** Something outside starts that
+        routine, which is exactly what *receives* means, and the arrow is on the drawing.
+        """
+        ins: set[str] = {dst for _src, dst in self.inside}
+        outs: set[str] = {src for src, _dst in self.inside}
+        ins |= {dst for _src, dst in self.entered}
+        # A crossing leaves through a port and arrives from one, so the box is the near end
+        # in `out` and the far end in `into`.
+        outs |= {src for src, _dst in self.out}
+        ins |= {dst for _src, dst in self.into}
+        out: dict[str, str] = {}
+        for b in self.boxes:
+            i, o = b.id in ins, b.id in outs
+            out[b.id] = ("both" if i and o else "receives" if i
+                         else "emits" if o else "none")
+        return out
+
     @property
     def stats(self) -> dict[str, int]:
         drawn = {b.id for b in self.boxes}
         linked = {x for e in self.inside for x in e}
         linked |= {a for a, _ in self.out} | {b for _, b in self.into}
+        by_role = Counter(self.roles().values())
         return {
             "boxes": len(self.boxes),
             "ports": len(self.ports),
@@ -185,6 +221,16 @@ class Compartment:
             # program -- a file nothing here calls and which calls nothing here -- and it is
             # also exactly what made the first attempt at this a ribbon.
             "unlinked": len(drawn - linked),
+            # **Per role, because the legend states a count beside every swatch** and a
+            # colour whose population nobody can see is a claim nobody can weigh (rule 32).
+            # `none` and `unlinked` are the same population by construction -- a box with
+            # no flow either way is exactly a box with no role -- and they are both here
+            # because one is the sentence the panel has always printed and the other is the
+            # swatch's number, and a reader seeing them disagree would be right to worry.
+            "role_emits": by_role["emits"],
+            "role_receives": by_role["receives"],
+            "role_both": by_role["both"],
+            "role_none": by_role["none"],
         }
 
     def entry_arrows(self) -> list[tuple[str, str]]:
@@ -360,6 +406,22 @@ def _ids(c: Compartment) -> dict[str, str]:
     return {b.id: f"n{i}" for i, b in enumerate([*c.boxes, *c.ports, *c.entries])}
 
 
+# The light-theme role fills, copied from `tokens.css` for `mermaid()` alone -- see the
+# note at the foot of that function for why this one copy is not rule 51's defect. Every
+# number behind these is in the stylesheet beside the tokens, measured there and once.
+MERMAID_ROLE_FILL = {"emits": "#f7d0a3", "receives": "#a0bfeb", "both": "#ccafaf"}
+
+
+def _role_class(roles: dict[str, str], b: Box) -> str:
+    """The class a box carries so the browser can colour it without a relayout.
+
+    Prefixed, because a class in an SVG shares a namespace with every stylesheet on the
+    page and `both` is a word somebody will want for something else (rule 71 -- a class
+    name is global, and a stylesheet gives no warning).
+    """
+    return f"dgrole-{roles.get(b.id, 'none')}"
+
+
 def _quote(s: str) -> str:
     return s.replace("\\", "\\\\").replace('"', '\\"')
 
@@ -406,6 +468,17 @@ def dot(c: Compartment, *, rankdir: str = "TB", ports: bool = False) -> str:
     a control that carries no identity resolves to nothing.
     """
     ids = _ids(c)
+    # **The role rides as a CSS class, never as a `fillcolor`, and that is the whole reason
+    # switching the colour is free.** Graphviz writes `class=` straight into the SVG's
+    # `<g>`, so the browser can recolour every box by setting one attribute on the
+    # container -- no refetch, no second `gv.layout()`, and the reader's pan and zoom
+    # survive. A `fillcolor` here would bake one answer into the drawing and cost a
+    # relayout per toggle, on a picture that takes 93-179 ms to lay out.
+    #
+    # It also keeps the colours in `tokens.css` with every other colour, so the palettes,
+    # the two themes and `cssPalette()` reach them like anything else (design rule 3's
+    # neighbourhood) rather than this module holding a second table of hexes.
+    roles = c.roles()
     out = [
         "digraph compartment {",
         f'  graph [rankdir={rankdir}, pack=true, packmode="node", '
@@ -419,21 +492,22 @@ def dot(c: Compartment, *, rankdir: str = "TB", ports: bool = False) -> str:
         held = f"\\n{b.holds} {'methods' if b.kind == 'class' else 'functions'}"
         if b.kind == "class":
             out.append(f'  {n} [id="{_quote(b.id)}", label="{_quote(b.label)}{held}", '
-                       f'shape=box, style="rounded,bold"];')
+                       f'class="{_role_class(roles, b)}", shape=box, style="rounded,bold"];')
         elif b.kind == "file":
-            out.append(f'  {n} [id="{_quote(b.id)}", label="{_quote(b.label)}{held}"];')
+            out.append(f'  {n} [id="{_quote(b.id)}", label="{_quote(b.label)}{held}", '
+                       f'class="{_role_class(roles, b)}"];')
         elif b.kind == "routine":
             # The second level. A routine says what it is called and nothing else: it
             # holds only itself, so "1 functions" would be a count of the box rather
             # than a fact about the program (rule 32). What it takes and what it gives
             # back is the hover card's invocation line, one glance away.
             out.append(f'  {n} [id="{_quote(b.id)}", label="{_quote(b.label)}", '
-                       f'shape=box, style=rounded];')
+                       f'class="{_role_class(roles, b)}", shape=box, style=rounded];')
         else:
             # What it touches: a cylinder, which is the shape a diagram has always spent on
             # a store, and the bottom of the flow.
             out.append(f'  {n} [id="{_quote(b.id)}", label="{_quote(b.label)}", '
-                       f'shape=cylinder, style=""];')
+                       f'class="{_role_class(roles, b)}", shape=cylinder, style=""];')
     # **Drawn by default, unlike a port, and the difference is measured rather than felt.**
     # Rule 19 turned ports off because they are median 13 and max 41 per compartment against
     # a median of 10 boxes -- they outnumber the subject and they connect what `pack` needs
@@ -481,6 +555,7 @@ def mermaid(c: Compartment) -> str:
     numbering is used; the readable name is in the label where a reader wants it.
     """
     ids = _ids(c)
+    roles = c.roles()
     out = [f"%% {c.name} — {c.stats['boxes']} boxes, {c.stats['routines']} routines",
            "flowchart TD"]
     for b in c.boxes:
@@ -505,6 +580,25 @@ def mermaid(c: Compartment) -> str:
         out.append(f"  {ids[src]} --> {ids[dst]}")
     for src, dst in sorted(list(c.out) + list(c.into)):
         out.append(f"  {ids[src]} -.-> {ids[dst]}")
+    # **The role, in Mermaid's own vocabulary rather than the browser's.** `dot()` hands
+    # the role to the page as a class and lets `tokens.css` colour it, which is right for
+    # a drawing inside this application and useless for the thing this function is for: a
+    # reader copying the source into somewhere else, where neither our stylesheet nor our
+    # themes exist. So the classes carry their colours with them, light-theme values,
+    # named the same as the CSS tokens they were measured against (rule 51's limit -- one
+    # of the two has to be a copy, and the copy is the one that leaves the building).
+    #
+    # Emitted **only where a role is drawn**, so the source stays as short as the picture
+    # is plain: a compartment where everything is `none` gets no `classDef` at all.
+    used = {roles.get(b.id, "none") for b in c.boxes} - {"none"}
+    if used:
+        for role in sorted(used):
+            out.append(f"  classDef dgrole_{role} fill:{MERMAID_ROLE_FILL[role]},"
+                       f"stroke:#94a3b8,color:#0f172a")
+        for role in sorted(used):
+            named = [ids[b.id] for b in c.boxes if roles.get(b.id) == role]
+            if named:
+                out.append(f"  class {','.join(named)} dgrole_{role}")
     return "\n".join(out)
 
 
@@ -626,10 +720,19 @@ def edge_payload(c: Compartment) -> dict[str, dict[str, Any]]:
     return out
 
 
-def box_payload(b: Box) -> dict[str, Any]:
-    """A box as the wire carries it -- the shape the drawing's `by_id` map already uses."""
-    return {"id": b.id, "label": b.label, "kind": b.kind, "holds": b.holds,
-            "members": list(b.members), "labels": list(b.labels), **b.detail}
+def box_payload(b: Box, role: str = "") -> dict[str, Any]:
+    """A box as the wire carries it -- the shape the drawing's `by_id` map already uses.
+
+    `role` is passed in rather than read off the box, because a role is a fact about a box
+    **in its compartment** and a `Box` does not know which one it is in. The default is
+    empty, which is *nobody asked* and not *no flow*: `none` is a real answer and it has
+    its own word (design rule 21).
+    """
+    out = {"id": b.id, "label": b.label, "kind": b.kind, "holds": b.holds,
+           "members": list(b.members), "labels": list(b.labels), **b.detail}
+    if role:
+        out["role"] = role
+    return out
 
 
 # ── the second level: one box, opened ───────────────────────────────────────────────

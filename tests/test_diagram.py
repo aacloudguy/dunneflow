@@ -507,3 +507,116 @@ def test_an_entry_box_is_findable_and_an_entry_arrow_is_known(analyzed: Store) -
     assert eid in payload, "an entry arrow carries no card"
     assert payload[eid]["entry"] is True, "an entry arrow is not marked as one"
     assert diagram.edge_flow(c, src, dst) is not None, "an entry arrow reads as no arrow"
+
+
+# --------------------------------------------------------------------------- #
+# What a box does in the flow
+
+
+def test_every_box_has_exactly_one_role_and_they_are_the_four(analyzed: Store) -> None:
+    """Reported by Tom: *"some nodes only ever have links inbound and some only ever
+    outbound. Each has a different role, as do the nodes that can do both."*
+
+    **Four, not three.** The one he did not name is the largest: boxes with no flow either
+    way, 30-44% of every corpus measured. Folding it into any of the other three would say
+    something false about a third of the drawing (design rule 21).
+    """
+    comps = diagram.build(_model(analyzed))
+    for c in comps.values():
+        roles = c.roles()
+        assert set(roles) == {b.id for b in c.boxes}, (
+            "roles() answers about a different population than the boxes it is asked of")
+        assert set(roles.values()) <= {"emits", "receives", "both", "none"}, roles
+
+
+def test_a_port_and_a_way_in_have_no_role(analyzed: Store) -> None:
+    """Neither is a thing in this compartment's own flow.
+
+    A port stands for a whole other compartment (rule 74's neighbourhood) and a way in is
+    the world outside reaching in -- which is why each already has its own list and its own
+    lane. Giving either a part in the flow would be answering about the wrong subject, and
+    it would put a colour on something the legend's counts do not cover (rule 32).
+    """
+    comps = diagram.build(_model(analyzed))
+    for c in comps.values():
+        ids = set(c.roles())
+        assert not ids & {b.id for b in c.ports}, "a port was given a role"
+        assert not ids & {b.id for b in c.entries}, "a way in was given a role"
+
+
+def test_the_role_counts_flow_that_leaves_the_compartment(analyzed: Store) -> None:
+    """**The reading Tom chose, and the one the whole feature turns on.**
+
+    A box whose every arrow crosses out of the compartment is an emitter of this program's
+    flow, and saying so is a fact about the program rather than about whether `ports` is
+    switched on. The cost is stated on the legend: with crossings undrawn that box is
+    coloured with no visible arrow leaving it.
+
+    Asserted as the *difference* between the two readings, because an assertion about the
+    whole would pass just as well if crossings were being ignored (rule 36).
+    """
+    comps = diagram.build(_model(analyzed))
+    crossing_only = [
+        (c, b) for c in comps.values() for b in c.boxes
+        if b.id not in {x for e in c.inside for x in e}
+        and b.id not in {d for _s, d in c.entered}
+        and (b.id in {s for s, _d in c.out} or b.id in {d for _s, d in c.into})
+    ]
+    assert crossing_only, "the fixture has no box whose only flow crosses out"
+    for c, b in crossing_only:
+        assert c.roles()[b.id] != "none", (
+            f"{b.id} has flow, all of it crossing out, and was reported as having none")
+
+
+def test_the_role_with_no_flow_is_the_same_population_the_panel_already_counts(
+        analyzed: Store) -> None:
+    """`role_none` and `unlinked` are one fact with two names, and they are both on screen.
+
+    The panel has always printed *"N with no flow either way"*; the legend now prints a
+    count beside a swatch. A reader seeing those two disagree would be right to worry, so
+    they are built from the same lanes and this says so (rule 13).
+    """
+    comps = diagram.build(_model(analyzed))
+    for c in comps.values():
+        assert c.stats["role_none"] == c.stats["unlinked"], c.name
+        assert (c.stats["role_emits"] + c.stats["role_receives"]
+                + c.stats["role_both"] + c.stats["role_none"]) == c.stats["boxes"], (
+            "the legend's four numbers do not add up to the box count beside them")
+
+
+def test_the_drawing_carries_the_role_as_a_class_on_every_box(analyzed: Store) -> None:
+    """**A class, never a `fillcolor`**, and that is what makes the control free.
+
+    Graphviz writes `class=` into the SVG's `<g>`, so the browser recolours every box by
+    setting one attribute on the container -- no refetch and no second layout, on a picture
+    that takes 93-179 ms to lay out. A `fillcolor` would bake one answer in and cost a
+    relayout per toggle.
+    """
+    comps = diagram.build(_model(analyzed))
+    c = _busiest(comps)
+    src = diagram.dot(c)
+    for b in c.boxes:
+        assert f'class="dgrole-{c.roles()[b.id]}"' in src, (
+            f"{b.id} is drawn without its role")
+    # And nothing else carries one: a port is drawn with `ports=True` and must stay plain.
+    assert src.count("dgrole-") == len(c.boxes), (
+        "something other than a box was given a role class")
+
+
+def test_the_mermaid_source_carries_its_colours_with_it(analyzed: Store) -> None:
+    """The one place a colour is written twice, and the reason it is allowed to be.
+
+    `dot()` hands the role to the page as a class and lets `tokens.css` colour it. That is
+    right inside this application and useless for what `mermaid()` is for -- a reader
+    copying the source somewhere else, where neither our stylesheet nor our themes exist.
+    So the classes carry light-theme fills with them. Emitted only where a role is drawn,
+    so a compartment where everything is `none` gets no `classDef` at all.
+    """
+    comps = diagram.build(_model(analyzed))
+    c = _busiest(comps)
+    src = diagram.mermaid(c)
+    used = {r for r in c.roles().values()} - {"none"}
+    for role in used:
+        assert f"classDef dgrole_{role} " in src, role
+    assert "dgrole_none" not in src, (
+        "the untinted ground was given a classDef, which draws it as a colour")

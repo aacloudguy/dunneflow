@@ -14078,3 +14078,118 @@ def test_every_boundary_kind_has_its_own_glyph() -> None:
         f"A kind with no glyph draws the fallback, which looks exactly like a kind the "
         f"build has never heard of -- and in three of the four panes, exactly like a QUEUE."
     )
+
+
+# --------------------------------------------------------------------------- #
+# Colouring the diagram by what a box does
+
+
+def test_the_role_tints_carry_their_own_labels() -> None:
+    """These are **fills with a label on top**, not dots, so contrast is about the text.
+
+    `--graph-*` is measured against the ground because a node there is a coloured mark on
+    a surface. A diagram box is the other way round: the box is the colour and `--text` is
+    written across it, so a tint that swallows its own label is a filter (design rule 1).
+    The bar is 7:1 rather than 4.5:1 because the label is 10px.
+    """
+    toks = _base_tokens(_read("tokens.css"))
+    for label, text in (("light", "--text"), ("dark", "--text")):
+        t = toks[label]
+        for role in ("receives", "emits", "both"):
+            key = f"--dgrole-{role}"
+            assert key in t, f"{label}: {key} is not declared"
+            assert _ratio(t[key], t[text]) >= 7.0, (
+                f"{label}: {key} carries its label at {_ratio(t[key], t[text]):.2f}:1")
+
+
+def test_the_four_roles_can_be_told_apart_including_by_a_dichromat() -> None:
+    """Rule 69: contrast says a colour can be read, separation says two can be told apart.
+
+    **A fourth hue was tried and does not exist.** Blue for *receives* against violet for
+    *both* came out ΔE **1.4** under deuteranopia in the light theme — the same colour —
+    which is `tokens.css`'s own note about the difference channel being at capacity, one
+    channel over. So direction is carried on blue against amber, the axis dichromacy leaves
+    alone, and *both* is separated by lightness and chroma instead (as `--diff-moved` is).
+
+    The ground counts as the fourth state: `none` is the untinted surface, which is the
+    largest population on every corpus measured and the least interesting.
+
+    The bar is the shipped red/green difference pair, which scores 12.7 light and 9.5 dark.
+    """
+    toks = _base_tokens(_read("tokens.css"))
+    for label in ("light", "dark"):
+        t = toks[label]
+        states = {r: t[f"--dgrole-{r}"] for r in ("receives", "emits", "both")}
+        states["none"] = t["--surface"]
+        for a, b in itertools.combinations(sorted(states), 2):
+            got = _sep(states[a], states[b])
+            assert got >= 15.0, (
+                f"{label}: {a} and {b} are ΔE {got:.1f} apart at worst across normal "
+                f"vision, deuteranopia and protanopia — a reader cannot tell a box that "
+                f"only {a} from one that only {b}"
+            )
+
+
+def test_both_spellings_of_dark_carry_the_role_tints() -> None:
+    """One without the other is a theme that silently keeps the light fills.
+
+    The stylesheet declares dark twice — under `prefers-color-scheme` and under an explicit
+    `[data-theme="dark"]` — and a token added to one is a reader on the other getting an
+    amber meant for white paper.
+    """
+    code = _css_code(_read("tokens.css"))
+    media = code.split("@media (prefers-color-scheme: dark)", 1)[1]
+    explicit = code.split(':root[data-theme="dark"] {', 1)[1].split("}", 1)[0]
+    for role in ("receives", "emits", "both"):
+        assert f"--dgrole-{role}" in media.split("@media", 1)[0], role
+        assert f"--dgrole-{role}" in explicit, role
+
+
+def test_the_role_is_never_written_onto_the_channel_that_means_selected() -> None:
+    """Stroke on this drawing means *selected* and *hovered*, and it stays that way.
+
+    A role that also wrote the outline would make the selected box unfindable in the one
+    channel that finds it — design rule 4's *one dimension at a time*, arriving as a
+    collision rather than as a preference.
+    """
+    css = _css_code(_read("tokens.css"))
+    for role in ("receives", "emits", "both"):
+        rule = css.split(f"g.node.dgrole-{role} ", 1)[1].split("}", 1)[0]
+        assert "fill:" in rule, role
+        assert "stroke" not in rule, (
+            f"the {role} tint writes the stroke, which is what says *selected*")
+
+
+def test_the_diagram_only_colours_when_it_is_asked_to() -> None:
+    """Design rule 4: colour follows an explicit *colour by*, and *nothing* is the default.
+
+    Gated on an attribute rather than applied outright, so the diagram opens exactly as it
+    did before this existed and the colour is something a reader turns on.
+    """
+    css = _css_code(_read("tokens.css"))
+    for role in ("receives", "emits", "both"):
+        assert f'.dgm-pan[data-dgcolour="role"] g.node.dgrole-{role}' in css, role
+    shell = _read("shell.js")
+    assert 'id="dgmColour"' in shell, "there is no control to ask with"
+    assert 'diagramColour: ""' in _read("settings.js"), (
+        "the setting does not default to off")
+
+
+def test_the_legend_says_what_the_colours_count_and_what_they_include() -> None:
+    """Rule 32 and design rule 1, in the sentence the reader actually has.
+
+    Every swatch carries its population, or a colour is a claim nobody can weigh. And the
+    role counts flow that **crosses out** of the compartment, which is not drawn unless the
+    reader asks — so a box can be coloured with no arrow leaving it, and one who is not told
+    that has found a bug rather than a fact. The sentence is dropped once the crossings are
+    on screen, because then it is not true of what they are looking at.
+    """
+    shell = _read("shell.js")
+    key = shell.split('<span class="dgm-key">', 1)[1].split("</span>` : \"\"}", 1)[0]
+    for count in ("role_emits", "role_receives", "role_both", "role_none"):
+        assert count in key, f"the legend draws a swatch with no count for {count}"
+    assert "c.portsDrawn ?" in key, (
+        "the caveat is unconditional, so it keeps claiming the crossings are undrawn "
+        "after the reader has drawn them"
+    )
+    assert "which is not drawn" in key, "the legend does not state what it is counting"

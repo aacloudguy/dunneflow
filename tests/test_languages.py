@@ -288,6 +288,13 @@ def test_nothing_above_the_graph_names_a_language():
     for where in ABOVE_THE_GRAPH:
         for path in sorted((src / where).rglob("*.py")):
             found += _language_literals(path)
+    # **`anomalies.py` joined the guard on 2026-09-18, and it earned its way in.** It is a
+    # judgement over the graph like the renderers are, and it had never been covered --
+    # which is how `ASYNC_NOT_AWAITED` came to tell every language that its un-awaited call
+    # left *"a coroutine created and never run"*. It says nothing about any language now:
+    # what a dropped async call costs is `unawaited_async`, declared in each reader's own
+    # rules file and read off `files.lang`.
+    found += _language_literals(src / "anomalies.py")
     assert not found, (
         "a language is named above the graph, so adding one is no longer a plugin edit:\n  "
         + "\n  ".join(found))

@@ -18397,3 +18397,91 @@ digests identical**. Eight new tests in `tests/test_traceability_languages.py`; 
 them fail against the unscoped `_builtins`, including the one that matters — a plan whose
 evidence goes from `['formatLedgerWitness']` to four symbols once its TypeScript `hex` and
 `round` stop being read as Python's.
+
+## 2026-09-18 — what a dropped async call costs, per language; and a finding of mine retracted
+
+Backlog 6 done. **Backlog 7 was wrong and is withdrawn**, and the error was mine.
+
+### `ASYNC_NOT_AWAITED` — backlog 6, and it was two defects
+
+`gstack` produced **2 BROKEN**, and `dunneflow check` exits non-zero only on BROKEN, so
+this was the CI gate failing over correct code. Both findings were wrong and for different
+reasons.
+
+**One was a data defect.** `detectors/typescript.yaml` declared
+`WebSocket: {protocol: WS, async: true}` and the same of `EventSource`. Both are
+**constructors**. Read off the bundled `lib.dom.d.ts`, which is the authority this reader
+already carries: `new(url: string | URL, protocols?: string | string[]): WebSocket`. Nothing
+there returns a promise — you attach handlers to what comes back — so *"never awaited"* was
+trivially true and meaningless. Both are `async: false` now, and the NETWORK boundary row is
+untouched: the defect was the flag beside the call, not the call.
+
+`socket.emit` is left alone and that is **stated rather than quiet**. It is probably wrong
+in the same way — `emit` is fire-and-forget and `emitWithAck` is the awaitable one — but no
+map this tool has read holds a single `socket.emit` and socket.io's types are in no corpus
+here, so there is nothing to check a change against (rule 24).
+
+**The other was the finding's own words.** *"The coroutine is created and never run"* is
+exactly true of Python, where `f()` on an `async def` builds a coroutine that never executes
+until something awaits it, and **false of JavaScript**, where the promise runs whether or
+not anybody holds it. The instance it fired on sits three lines under the comment *"No
+await; this is fire-and-forget"* and ends in `.catch(() => {})` — the rejection handled
+explicitly. Correct code, called broken, in a vocabulary belonging to a language with no
+coroutines in it. Rule 98, and the second time this session that a judgement written for
+Python has been put to TypeScript.
+
+**The language declares what it costs**, `unawaited_async` in each reader's own rules file:
+`inert` for Python, `runs` for TypeScript. `anomalies.py` reads it off `files.lang` — per
+row, not per map, because a mixed map holds both answers at once — and **names no language
+at all**, so a third reader answers for itself on the day it is registered. `_ASYNC_COST` is
+the one place the two answers are spelled, with three fields because the severity, the
+sentence and the blind spot are three claims and the old finding got all three wrong
+together. TypeScript's is **SUSPECT**, and its blind spot names the `.catch()` and the
+fire-and-forget idiom that make it a false alarm — which is the anomaly discipline's only
+rule.
+
+**Empty means the detector does not fire**, and a word the table does not know is **refused
+by name** rather than defaulted. A severity is a claim about what dropping a call costs, and
+a misspelling would otherwise arrive as a severity nobody chose in the one command a CI job
+trusts (rule 49).
+
+**There was no test for this detector at all**, which is how it stayed wrong for a year and
+why the change would otherwise have passed in silence. Ten now, in
+`tests/test_async_not_awaited.py`; six of them fail against the previous commit, split
+between the data fix and the wording. And `anomalies.py` **joined the above-the-graph
+guard** — it is a judgement over the graph like the renderers are and had simply never been
+covered, which is the gap that let it tell every language about coroutines.
+
+gstack goes from **2 broken · 1 suspect** to **0 broken · 2 suspect**.
+
+### Backlog 7 is withdrawn, and it was my measurement
+
+I reported that a `fetch` whose URL is a concatenation headed by a name is not recorded as a
+boundary, on three sites in gstack. **All three are inside template literals** — lines
+13–695 of `cookie-picker-ui.ts` and 52–616 of `compare.ts`, which are HTML pages returned as
+strings: `export function getCookiePickerHTML(serverPort: number): string` returns
+`` `<!DOCTYPE html>…` ``. The `fetch` calls in them are browser JavaScript in a string, not
+calls this program makes. **DunneFlow is right to exclude them**, and my grep was counting
+string contents as code.
+
+The accounting is exact. Of **35** `fetch(` occurrences in gstack's 157 program files:
+**29 recorded** as NETWORK boundaries, **4 inside template literals**, **2 method
+definitions** (`fetch(req, server) {`, a Bun/Deno handler), **0 unaccounted** — and no
+recorded row without a matching source line. That is **29 of 29, no false positives**: the
+result I reported as a defect is a clean sweep.
+
+What is left is a residue rather than an item, and it is worth stating because the number
+on the page invites the wrong reading: a program that serves browser JavaScript as a string
+really does cause those requests, and this map cannot see them. NETWORK counts *what this
+program calls*, never *what this program causes*.
+
+### Gates
+
+**1,883 passed · 1 skipped**, mypy clean over 196 files, ruff clean. **7 of 7 golden digests
+identical** — `python.yaml` gained a key so `lang_fingerprint("python")` moved, and the
+digests say no stored fact moved with it. Mensores unchanged at 0 broken · 94 suspect · 14
+informational. All three stamps moved and both builds agree on all three, each opening the
+other's map: core `14:1f490b8c6a74ae79`, python `1.0.0:ff80475015590340`, typescript
+`1.1.0:5d04dc6d7233224a`. **Every stored map is invalidated and must be re-analysed** —
+correct and conservative, and chunk 14's precedent: `detectors/__init__.py` is in the core
+key, and over-invalidating is rule 12's safe direction.

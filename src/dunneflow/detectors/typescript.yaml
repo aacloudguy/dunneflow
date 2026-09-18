@@ -372,7 +372,29 @@ routes:
     strip_groups: true
     evidence: Next.js App Router
 
+# **A promise whose result is discarded still runs.** `fetch(u)` makes the request the
+# moment it is called; dropping the promise loses the ordering, and without a `.catch` the
+# failure, but the work happens. So an un-awaited async call here is not work that did not
+# happen -- it is a risk, and often a deliberate one: gstack's is three lines under the
+# comment *"No await; this is fire-and-forget"* and ends in `.catch(() => {})`.
+unawaited_async: runs
+
 network:
+  # **`async` here means *this call returns a promise*, and it is read by exactly one
+  # judgement: whether a discarded result is a defect.** Two of these said `true` of a
+  # **constructor**, which was a false statement with a visible cost -- gstack's
+  # `new WebSocket(wsUrl)` came out of `dunneflow check` as a BROKEN *"never awaited"*, in
+  # the command that gates CI on BROKEN. Read off the bundled `lib.dom.d.ts`, which is the
+  # authority this reader already carries: `new(url: string | URL, protocols?: string |
+  # string[]): WebSocket` and `new(url: string | URL, eventSourceInitDict?:
+  # EventSourceInit): EventSource`. Neither returns a promise; you attach handlers to what
+  # comes back. Rule 24 -- the field has to mean what it says.
+  #
+  # **`socket.emit` is left as it stands and that is a stated residue, not an oversight.**
+  # `emit` is fire-and-forget in socket.io and `emitWithAck` is the awaitable one, so it is
+  # probably wrong here too -- but socket.io's types are in no corpus this tool has read
+  # and no map holds a single `socket.emit`, so there is nothing to check a change against.
+  # Asserting it from memory is the thing rule 24 forbids.
   libraries:
     fetch: {protocol: HTTP, async: true}
     globalThis.fetch: {protocol: HTTP, async: true}
@@ -386,8 +408,8 @@ network:
     "https.request": {protocol: HTTPS, async: false}
     "http.get": {protocol: HTTP, async: false}
     "https.get": {protocol: HTTPS, async: false}
-    WebSocket: {protocol: WS, async: true}
-    EventSource: {protocol: HTTP, async: true}
+    WebSocket: {protocol: WS, async: false}
+    EventSource: {protocol: HTTP, async: false}
     "socket.emit": {protocol: WS, async: true}
   verbs: [get, post, put, patch, delete, head, options, request]
   # The option-bag keys a request carries, read only where they are written literally.

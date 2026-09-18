@@ -25,6 +25,7 @@ import sqlite3
 import sys
 from dataclasses import dataclass, field
 
+from .detectors import load_rules
 from .resolve.entrypoints import binding_note
 from .schema import make_id
 from .store import Store
@@ -38,6 +39,52 @@ INFO = "INFO"        # worth knowing; not necessarily wrong
 CERTAIN = "CERTAIN"
 PROBABLE = "PROBABLE"
 POSSIBLE = "POSSIBLE"
+
+@dataclass(frozen=True, slots=True)
+class _AsyncCost:
+    """What it costs to drop an async call, in one language's terms.
+
+    Three fields because the severity, the sentence and the blind spot are three separate
+    claims and the old finding got all three wrong at once for TypeScript. Keyed by the
+    `unawaited_async` a reader declares in its own rules file, so this table is the only
+    place the two answers are spelled and `anomalies.py` still names no language.
+    """
+
+    severity: str
+    title: str
+    detail: str
+    blind_spot: str
+
+
+_ASYNC_COST = {
+    # Python. `f()` on an `async def` builds a coroutine and returns it; nothing runs
+    # until something awaits it. The work does not happen, which is BROKEN's own
+    # definition -- the program cannot be correct as written.
+    "inert": _AsyncCost(
+        severity=BROKEN,
+        title="never awaited",
+        detail="The coroutine is created and never run.",
+        blind_spot="The result may be awaited elsewhere, passed to `asyncio.gather`, or "
+                   "scheduled as a task. Calls managed by `async with` are already "
+                   "excluded.",
+    ),
+    # JavaScript and TypeScript. The request is made the moment the call is; what is lost
+    # is the ordering, and without a `.catch` the failure. **Not BROKEN**, because the
+    # work happens and because dropping it deliberately is an idiom with a name.
+    "runs": _AsyncCost(
+        severity=SUSPECT,
+        title="started and not awaited",
+        detail="The promise runs, so the work happens — but nothing waits for it, so its "
+               "ordering against what follows is not guaranteed and a rejection is "
+               "unobserved unless it is caught.",
+        blind_spot="Fire-and-forget is deliberate here often enough to be an idiom, and "
+                   "a `.catch()` on the end handles the rejection this would otherwise "
+                   "warn about — neither is visible to this check, which sees only that "
+                   "no `await` is on the call. A promise stored and awaited later, or "
+                   "handed to `Promise.all`, reads the same way.",
+    ),
+}
+
 
 _SEVERITY_ORDER = {BROKEN: 0, SUSPECT: 1, INFO: 2}
 _CONFIDENCE_ORDER = {CERTAIN: 0, PROBABLE: 1, POSSIBLE: 2}
@@ -597,21 +644,40 @@ def _remote_call_hazards(store: Store, r: Report) -> None:
             ],
         ))
 
+    # **The language decides what a discarded async call costs, and it is asked per row.**
+    # This said *"The coroutine is created and never run"* at BROKEN of every language,
+    # which is true of Python and false of JavaScript -- a promise runs whether or not
+    # anybody holds it. Put to gstack it produced two BROKEN out of the command that gates
+    # CI on BROKEN, one of them three lines under the comment *"No await; this is
+    # fire-and-forget"* and ending in `.catch(() => {})`. Rule 98: a judgement unchanged
+    # for a year, handed a population it had never been shown.
+    #
+    # `files.lang` rather than the map's languages, because this is a claim about one call
+    # site in one file and a mixed map holds both answers at once. Nothing here names a
+    # language: `unawaited_async` is declared in each reader's own rules file, so a third
+    # language answers for itself on the day it is registered (rule 92).
     unawaited = store.query(
-        "SELECT r.id AS rid, r.qualname, n.expr, r.file, n.line FROM net_calls n"
+        "SELECT r.id AS rid, r.qualname, n.expr, r.file, n.line, f.lang AS lang"
+        "  FROM net_calls n"
         " JOIN routines r ON n.routine_id = r.id"
+        " JOIN files f ON n.file = f.path"
         " WHERE n.is_async = 1 AND n.awaited = 0"
         " ORDER BY r.file, n.line, r.qualname, n.expr"
     )
     for x in unawaited:
+        # **Empty means the detector does not fire**, and that is refusing to guess rather
+        # than an omission (rule 49). A severity is a claim about what dropping this call
+        # costs; a language nobody has answered that question for gets no claim made on
+        # its behalf, least of all in the one command a CI job trusts.
+        said = _ASYNC_COST.get(load_rules(str(x["lang"])).unawaited_async)
+        if said is None:
+            continue
         r.add(Anomaly(
-            kind="ASYNC_NOT_AWAITED", severity=BROKEN, confidence=PROBABLE,
-            title=f"`{x['expr']}` in `{x['qualname']}` is never awaited",
-            detail=f"`{x['qualname']}` calls `{x['expr']}` without awaiting it. The "
-                   f"coroutine is created and never run.",
-            blind_spot="The result may be awaited elsewhere, passed to "
-                       "`asyncio.gather`, or scheduled as a task. Calls managed by "
-                       "`async with` are already excluded.",
+            kind="ASYNC_NOT_AWAITED", severity=said.severity, confidence=PROBABLE,
+            title=f"`{x['expr']}` in `{x['qualname']}` is {said.title}",
+            detail=f"`{x['qualname']}` calls `{x['expr']}` without awaiting it. "
+                   + said.detail,
+            blind_spot=said.blind_spot,
             # The routine and the expression it never awaits. Two identical
             # expressions in one routine are two of these, and they take the ordinal --
             # the same residue `call_site_id` carries, for the same reason.

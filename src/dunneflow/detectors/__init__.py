@@ -257,6 +257,24 @@ class RuleSet:
     # fact about the **analysing machine's** version and it is an input to what a call
     # means -- which put it outside every fingerprint. See `builtins` in the YAML.
     builtins: frozenset[str] = field(default_factory=frozenset)
+    # **What it means to create an async call and throw the result away**, declared
+    # because it is a fact about the language and not about the call. Python's coroutine
+    # is *inert*: never awaited, it never runs, and the work simply does not happen --
+    # which is a defect of the first order. A JavaScript promise *runs*: dropping it
+    # loses the ordering and, without a `.catch`, the failure, but the request is made.
+    #
+    # One detector reads it, `anomalies.ASYNC_NOT_AWAITED`, and until 2026-09-18 that
+    # detector said *"The coroutine is created and never run"* of every language. Put to
+    # gstack it produced two BROKEN findings out of the command that gates CI on BROKEN,
+    # and one of them was three lines under the comment *"No await; this is
+    # fire-and-forget"* with a `.catch(() => {})` on the end of it. Correct code, called
+    # broken, in Python's vocabulary, about a language with no coroutines in it (rule 98).
+    #
+    # **Empty means the detector does not fire for that language**, which is rule 49's
+    # shape: a severity is a claim about what a discarded promise costs, and a language
+    # nobody has declared this for is one nobody has answered that question about.
+    # Defaulting to either answer would put a guess in the one command a CI job trusts.
+    unawaited_async: str = ""
 
     def network_profile(self, dotted: str) -> tuple[str, bool] | None:
         """(protocol, is_async_library) for a call, by longest matching prefix.
@@ -490,7 +508,29 @@ def load_rules(lang: str) -> RuleSet:
             (data.get("type_aliases", {}) or {}).get("factories", [])
         ),
         builtins=_builtins(data.get("builtins", []) or [], lang, path),
+        unawaited_async=_unawaited_async(data.get("unawaited_async", ""), lang, path),
     )
+
+
+_UNAWAITED = ("inert", "runs")
+
+
+def _unawaited_async(raw: Any, lang: str, path: Path) -> str:
+    """*inert* or *runs*, or nothing at all -- and never a third word taken on trust.
+
+    A misspelling would otherwise arrive as a severity nobody chose, in the one command a
+    CI job exits non-zero on. Refused by name rather than defaulted (rule 49), and the
+    empty string is a legitimate answer meaning *nobody has said*, which is why it is not
+    in the tuple.
+    """
+    if raw in ("", None):
+        return ""
+    if not isinstance(raw, str) or raw not in _UNAWAITED:
+        raise RulesMissing(
+            f"the {lang} rules at {path} declare `unawaited_async` as {raw!r}; it has to "
+            f"be one of {', '.join(_UNAWAITED)}, or be left out to say nobody has decided"
+        )
+    return raw
 
 
 def _builtins(raw: Any, lang: str, path: Path) -> frozenset[str]:

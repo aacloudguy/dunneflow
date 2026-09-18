@@ -178,6 +178,14 @@ boundaries:
 # Longest prefix wins, which is how `httpx.AsyncClient` is async while `httpx.` is not.
 # --------------------------------------------------------------------------- #
 
+# **A coroutine whose result is discarded never runs at all.** `f()` on an `async def`
+# builds a coroutine object and returns it; nothing executes until something awaits it or
+# hands it to a loop. So an un-awaited async call here is work that does not happen, which
+# is `anomalies.ASYNC_NOT_AWAITED` at BROKEN. Declared rather than assumed, because the
+# other language this build reads answers the opposite way -- see `unawaited_async` in
+# `detectors/__init__.py`.
+unawaited_async: inert
+
 network:
   libraries:
     "requests.":                {protocol: HTTP,  async: false}

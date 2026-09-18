@@ -1438,6 +1438,11 @@ queries know a language exists.
 - `detectors/*.yaml` — **the extension point.** Teaching the tool a new framework is a
   config edit here, not a code change. Prefer adding a rule over adding a branch.
 
+  It also declares what a language *means* where a judgement above the graph has to know —
+  `builtins`, which `resolve/traceability.py` strikes out of its evidence, and
+  `unawaited_async`, which decides whether dropping an async call is BROKEN or SUSPECT.
+  Both were Python's answer given to every corpus until 2026-09-18 (rule 98, twice).
+
   **One file per language, named by that language's manifest**, plus `annotations.yaml`,
   which belongs to no language and so to all of them — it mines governance markers out of
   comments and prose alike. A language's own rules file is hashed with **its** reader, so
@@ -1948,6 +1953,21 @@ recorded as `LOST_EDGE` rather than silently omitted — a missing connection mu
 visible, or a broken program documents as a smaller working one.
 
 `dunneflow check` exits non-zero only on BROKEN, so it can gate CI.
+
+**A severity is a claim about a language, so the language declares it.** `unawaited_async`
+in each reader's own rules file says what it costs to start an async call and drop the
+result: Python's coroutine is `inert` — never awaited, it never runs, which is BROKEN's own
+definition — and a JavaScript promise `runs`, so what is lost is the ordering and, without
+a `.catch`, the failure. `ASYNC_NOT_AWAITED` said *"The coroutine is created and never
+run"* at BROKEN of **every** language until 2026-09-18, and produced two false BROKEN on
+the first TypeScript tree it met: one on `new WebSocket(u)`, a **constructor**
+`typescript.yaml` wrongly declared `async: true`, and one three lines under the comment
+*"No await; this is fire-and-forget"* with a `.catch(() => {})` on the end. Rule 98.
+`anomalies.py` reads the declaration off `files.lang` — per row, because a mixed map holds
+both answers — and **names no language**, which the above-the-graph guard now asserts of it.
+**Empty means the detector does not fire** and an unknown word is refused rather than
+defaulted, because a severity nobody chose is worst in the one command a CI job trusts
+(rule 49).
 
 **Before adding a detector**, verify a sample of its findings against real source. If
 the first thing it reports is a limitation of DunneFlow, fix the limitation instead of

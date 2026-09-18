@@ -17523,3 +17523,128 @@ module system on the reader's behalf.
 
 **`build.gradle.kts` has no population on this machine** and its tests are fixtures. Said
 here rather than left to read as measured.
+
+
+## 2026-09-17 — open question 6: the naming lanes across a mixed corpus
+
+`PLAN-v2.md` §6.6, deferred by chunk 11 for want of a mixed corpus. There is one now:
+DunneFlow's own `src/` reads as **107 Python files and 11 TypeScript**, and the lanes were
+measured against it, against both pure-TypeScript corpora, and against Mensores.
+
+**The plan guessed the answer and the guess was too narrow.** It expected a denominator
+problem confined to mixed maps. Two of the four defects below are already wrong on a
+**single-language** TypeScript map and have been since chunk 9, and one of them would have
+turned the split into a *new* false result: split naively, TypeScript's routines report
+**72.4%** camelCase, under `MIN_PREVALENCE`, so the tool would have replaced a false `D`
+with a false *"this program has no convention"* about a population that is 116 of 116
+consistent.
+
+### What was wrong
+
+| | Defect | Cost |
+|---|---|---|
+| 1 | `case_style` returns one answer where several are true | DunneNote routines **1,151 → 1,297** of 1,348; DunneNote parameters **gap → camelCase 515/519**; DunneFlow commands **snake 14/16 → kebab 16/16** |
+| 2 | a dotted name judged by substituting `.` → `_` | **387 of DunneNote's 389** unreadable module names contain a dash; per segment, kebab 221 and 210 honestly `other` |
+| 3 | the derived lane mines across languages at once | DunneFlow's own tree: `[D] 1,014/1,114` with 100 exceptions, every one a TypeScript name |
+| 4 | conformance measures an unscoped stated rule across every language | *"Functions: snake_case"* → 1,014/1,114, 100 exceptions, all TypeScript names obeying TypeScript |
+
+**Defect 1 is rule 100 and it is the one worth carrying.** `widget` is snake_case,
+camelCase *and* kebab-case; `DDL` is SCREAMING_SNAKE and PascalCase. The function's own
+docstring said a one-word name is *"counted with the majority"* — it was counted with
+whichever of five `if`s came first, and that order was written when Python was the only
+language. Nothing recorded that a choice was being made.
+
+**Defect 2 had a predicate to match, and nobody could ever have run it.**
+`STYLE_PREDICATE["kebab-case"]` required a dash, and the three `str.replace` calls that
+widened the dotted predicates touched none of its substrings. So a dotted kebab claim
+carried a query answering a different question — and only DunneNote having no module
+convention at all kept it off a screen. `DOTTED_STYLE_PREDICATE` is written out beside
+`STYLE_PREDICATE` now rather than produced by patching it.
+
+**Defect 4 is rule 49's failure mode inside the module written to prevent it.** The
+distinction, which is now in the source: a path-shaped scope is *refused* because nothing
+supplies which paths; an entity scope in a mixed map is the opposite case, because **the
+map supplies which languages it holds**. Splitting reads a fact where widening guessed a
+population. So `check_rule` returns a **list**, each result names its language and carries
+a `blind_spot`, and a standard declaring `paths: ['**/*.py']` has closed the axis itself
+and is never labelled — only the languages that actually hold some of the population are
+split, so one is one.
+
+### The decisions taken in the session
+
+* **Only the spelling lanes split**, Tom's call on the measurement. CASE, the gaps and
+  HOUSE_PREFIX carry a language; AFFIX and LEAKAGE do not. An affix is a word a team chose
+  rather than a way of spelling one, and the privacy population is `visibility = 'private'`,
+  which no other reader here records at all — 0 of DunneFlow's 122 TypeScript routines. A
+  test asserts it, so the decision cannot drift into place unnoticed.
+* **Conformance splits rather than refuses**, also Tom's call. Refusing would have been
+  consistent with the path-scope rule and would cost a Python shop its whole conformance
+  lane the day it added one TypeScript file.
+* **One language means no language.** `languages.read` decides, and a single-language map
+  is measured exactly as it was: no language in a claim, none in a query. That is what
+  keeps every recorded figure reproducible, and it is also the honest answer — a map
+  holding one language has no language axis to state.
+
+### Three defects found by running it
+
+* **Two population queries had no `WHERE` at all**, so appending the language clause
+  produced a syntax error rather than a narrower answer. The whole suite passed, because no
+  fixture had ever held two languages. `tests/test_naming_languages.py` now runs every
+  population's language clause as SQL.
+* **The split lost a row, and rule 32 is the name for it.** `dunneflow` is declared in
+  `pyproject.toml`, which no reader claims and which therefore has no row in `files`;
+  scoped by its own file it belonged to no language and simply vanished — *15 commands*
+  over a map holding 16, with every number on screen still looking right. A command's
+  language is the language of the code it starts, asked first, and the declaring file only
+  then. The guard is arithmetic: every population's split totals must sum to its unsplit
+  total.
+* **`dotted` was read off the label**, which now carries a language in front of it, so
+  `"Python modules" in DOTTED` is false and every module would have become an exception
+  again — the defect that line's own comment records, reintroduced by a cosmetic change.
+  It is read off the *scope* instead.
+
+### What it costs, and what it does not
+
+`resolve/` is in no fingerprint, so nothing here invalidates a stored map and no
+`SCHEMA_VERSION` moved. Nothing under `runtime.py`, `packaging/`, `detectors/` or
+`extractors/` was touched, so the frozen-binary gate does not arise.
+
+**Mensores is byte-identical in all eight populations** — routines 3,906/3,907, parameters
+1,796/1,798, classes 1,127/1,179, structures 641/671, modules 628/628, tables 171/183,
+commands 118/123, environment variables 110/120 — and the golden is **7 of 7 digests
+identical**. Verified in the dashboard as well as on the command line: the derived page
+draws sixteen conventions each naming its language, and the checked page draws the
+per-language heading, the population and the *false alarm if* line.
+
+**1,813 passed · 1 skipped**, mypy clean over 189 files, ruff clean.
+
+### Residue, stated rather than fixed
+
+* **DunneCorp's routines are PascalCase 88 against camelCase 79**, and a language split
+  does not touch it: those are two conventions by **role** — React components against
+  ordinary functions. It stays a reported gap, which is the honest answer.
+* **DunneNote's modules stay a gap** (kebab 221, other 210). That tree really does spell
+  module files three ways, and `packages.api-types.src.AddColumnRequest` has no single true
+  answer.
+* **Next.js route segments** — `app.(admin).admin.customers.[id].page` — remain `other`.
+  Route syntax is not an identifier and stripping it here would be guessing at a spelling.
+* **Python's own leading-underscore classes** are untouched: `_Base` and `Exception_` are
+  15 of DunneFlow's 164 and drag that claim to a `D`. That is a pre-existing question about
+  what PascalCase means with an affixed underscore, it is not a language question, and it
+  was left alone deliberately rather than folded into a chunk about something else.
+
+### The user guide now disagrees with the tool, and it did before this too
+
+`docs/tutorial/10-words-and-names.md` prints *"[B] 790/806 Routines are named in
+snake_case"* with a screenshot to match. Run today against the tree it names —
+`analyze src/dunneflow`, which contains the TypeScript reader's eleven `.ts` files — a
+reader sees **Python routines** and **TypeScript routines** as two conventions, and neither
+number is 790 of 806.
+
+**The split is not what made that chapter wrong.** It is pinned to *"DunneFlow's 78 files"*
+and the tree is 118; the routine count it quotes is 806 against 1,279 today. Every figure
+in the tutorial belongs to a self-analysis several chunks old, and the screenshots with
+them. This is named here rather than patched because a chapter cannot be half-retaken — the
+images are the evidence — and because `CLAUDE.md`'s own packaging paragraph went four
+milestones stale and was found exactly this way, by a chapter of the user guide disagreeing
+with it. It belongs to the documentation rewrite, which is already the remaining work.

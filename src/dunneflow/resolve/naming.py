@@ -25,9 +25,11 @@ from __future__ import annotations
 import math
 import re
 from collections import Counter, defaultdict
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 
 from ..store import Store
+from . import languages
 
 # A convention has to be worth stating. Both numbers are printed wherever a convention
 # is, so a reader can disagree with them.
@@ -45,6 +47,13 @@ CAMEL = re.compile(r"[a-z][A-Za-z0-9]*")
 KEBAB = re.compile(r"[a-z0-9]+(-[a-z0-9]+)+")
 DUNDER = re.compile(r"__.*__")
 
+# One token, no separator and no internal case change. `widget` is *equally* snake_case,
+# camelCase and kebab-case; `DDL` is equally SCREAMING_SNAKE and PascalCase. The five
+# regexes above cannot say so, because each returns a yes or a no about its own style and
+# the ambiguity lives between them.
+ONE_LOWER = re.compile(r"[a-z][a-z0-9]*")
+ONE_UPPER = re.compile(r"[A-Z][A-Z0-9]*")
+
 STYLE_NAMES = {
     "snake_case": "snake_case",
     "SCREAMING_SNAKE": "SCREAMING_SNAKE_CASE",
@@ -53,27 +62,133 @@ STYLE_NAMES = {
     "kebab-case": "kebab-case",
 }
 
+# The order to fall back on when a population offers **no** unambiguous name to learn from.
+#
+# It is the tie-break this tool has always applied, written down: while it was implicit in
+# the order of five `if`s nobody could see it, disagree with it, or measure what it cost --
+# and what it cost was one language's preference imposed on every other (rule 100). It is
+# Python's, because Python was the only language when the tests were written.
+#
+# `snake_case` leads rather than `kebab-case`, which is where the `if`s began, because a
+# one-token name reaches this order and a kebab-case one never did: `KEBAB` requires a dash,
+# so `widget` fell past it to `SNAKE`. The order here reproduces that answer rather than the
+# source layout that produced it.
+PREFERENCE = ("snake_case", "SCREAMING_SNAKE", "PascalCase", "camelCase", "kebab-case")
 
-def case_style(name: str) -> str:
-    """Which spelling convention a name follows.
 
-    A single lowercase word is counted as snake_case. It is equally camelCase, and the
-    ambiguity is real; counting it with the majority is what keeps a one-word name from
-    appearing as an exception to every convention at once.
+def styles_of(name: str) -> set[str]:
+    """**Every** spelling convention a name satisfies, not the first one tested.
+
+    `case_style` below has to return one answer, and for a one-token name several are
+    true at once. Which one it returned was decided by the order the tests happened to be
+    written in -- and that order is the first language's preference, invisibly (rule 100).
+    Measured: 146 of DunneNote's routines are single lowercase words, counted as
+    `snake_case` exceptions to a `camelCase` convention they keep perfectly, and its 519
+    parameters were reported as having **no convention at all** where 515 are camelCase.
+
+    The five regexes are used exactly as they were written, which is load-bearing rather
+    than lazy: `SNAKE` is `[a-z0-9_]+` and so tolerates the leading underscore that marks a
+    routine private. Decomposing it into "lowercase words joined by underscores" dropped
+    `_helper` to `other` and cost Mensores 1,811 false exceptions in one population.
     """
     if not name:
-        return "other"
+        return {"other"}
+    out: set[str] = set()
     if KEBAB.fullmatch(name):
-        return "kebab-case"
+        out.add("kebab-case")
     if SNAKE.fullmatch(name):
-        return "snake_case"
+        out.add("snake_case")
     if SCREAMING.fullmatch(name):
-        return "SCREAMING_SNAKE"
+        out.add("SCREAMING_SNAKE")
     if PASCAL.fullmatch(name):
-        return "PascalCase"
+        out.add("PascalCase")
     if CAMEL.fullmatch(name):
-        return "camelCase"
-    return "other"
+        out.add("camelCase")
+    if ONE_LOWER.fullmatch(name):
+        out |= {"snake_case", "camelCase", "kebab-case"}
+    if ONE_UPPER.fullmatch(name):
+        out |= {"SCREAMING_SNAKE", "PascalCase"}
+    return out or {"other"}
+
+
+def styles_in(name: str, dotted: bool) -> set[str]:
+    """The styles a name satisfies, judging a dotted path **segment by segment**.
+
+    A dotted name used to be judged by substituting `.` for `_` and asking the same
+    question. That is exactly right for a tree whose segments are snake_case and silently
+    wrong for one whose segments are not: `apps.desktop.lib.calendar.calendar-nav` becomes
+    `apps_desktop_lib_calendar_calendar-nav`, which holds both separators and so matches no
+    style at all. **387 of DunneNote's 389 unreadable module names contain a dash**, and the
+    tree's real convention -- kebab-case filenames -- was reported as no convention.
+
+    A path is a list of names rather than one name with punctuation in it, so what it
+    satisfies is what *all* of its segments satisfy. The 210 that still read `other` are
+    the honest ones: `packages.api-types.src.AddColumnRequest` spells one segment in kebab
+    and the next in Pascal, and no single answer is true of it.
+    """
+    if not dotted:
+        return styles_of(name)
+    segments = [s for s in name.split(".") if s]
+    if not segments:
+        return {"other"}
+    out = styles_of(segments[0])
+    for segment in segments[1:]:
+        out &= styles_of(segment)
+    return out or {"other"}
+
+
+def case_style(name: str) -> str:
+    """Which spelling convention a name follows, when exactly one answer is wanted.
+
+    A single lowercase word is counted as snake_case. It is equally camelCase and equally
+    kebab-case, and the ambiguity is real; counting it with the majority is what keeps a
+    one-word name from appearing as an exception to every convention at once.
+
+    Derived from `styles_of` through the stated `PREFERENCE` rather than asking the five
+    regexes again, so that what `kebab-case` means is decided in one place (rule 51). This
+    is the answer for a caller holding **one** name and no population to learn from;
+    `resolve_styles` is the answer for a caller holding a population, and it is better,
+    because a population can say which of the true answers its author meant.
+    """
+    got = styles_of(name)
+    if got == {"other"}:
+        return "other"
+    return next(style for style in PREFERENCE if style in got)
+
+
+def resolve_styles(sets: list[set[str]]) -> tuple[list[str], bool]:
+    """One style per name, with the ambiguous ones counted *with the majority*.
+
+    Which is what `case_style`'s docstring has promised since it was written, and what it
+    has never done: it resolved every tie the same way whatever the population looked like.
+    Here the names that are **not** ambiguous vote first, and each ambiguous name then goes
+    to the most popular style it actually satisfies. So `main` lands on `camelCase` in a
+    TypeScript program and on `snake_case` in a Python one, from the same rule.
+
+    `other` never votes. It is the absence of a style rather than one of them, and letting
+    it into the order made Mensores' 1,811 private routines outvote its 1,611 unambiguous
+    snake_case ones and reported the program as having no convention.
+
+    Returns the styles and **whether anything unambiguous was found**, because a population
+    that is ambiguous all the way down was settled by `PREFERENCE` rather than by evidence,
+    and a claim resting on that has to be able to say so.
+    """
+    firm: Counter[str] = Counter()
+    for got in sets:
+        if len(got) == 1:
+            only = next(iter(got))
+            if only != "other":
+                firm[only] += 1
+    order = [style for style, _ in firm.most_common()] or list(PREFERENCE)
+    out: list[str] = []
+    for got in sets:
+        pick = next((style for style in order if style in got), None)
+        if pick is None:
+            # Satisfies nothing the population voted for: fall back to the stated order,
+            # and only then to `other`.
+            pick = next((style for style in PREFERENCE if style in got), "other")
+        out.append(pick)
+    return out, bool(firm)
 
 
 @dataclass(slots=True)
@@ -93,6 +208,11 @@ class Convention:
     population: str      # what was counted over
     total: int
     holds: int
+    # Which language this convention is about, and `""` for *the whole map*. Empty is the
+    # answer for a map holding one language -- which has no language axis to state -- and
+    # for the kinds that are deliberately not split. A field rather than a word parsed back
+    # out of `population`: rule 30, and `Entrypoint.declared` paid for it one module over.
+    lang: str = ""
     exceptions: list[Exception_] = field(default_factory=list)
     sql: str = ""        # reproduces the exceptions, via `dunneflow query`
     note: str = ""
@@ -135,6 +255,7 @@ class Gap:
     """A population with no convention anyone could call dominant."""
 
     population: str
+    lang: str
     total: int
     spread: list[tuple[str, int]]
 
@@ -150,52 +271,84 @@ class NamingMeasurement:
 # Populations
 # --------------------------------------------------------------------------- #
 
-# Each population: a label, the SQL that lists (name, where), and the SQL fragment that
-# selects it again for an exception query. Kept as text so every claim is reproducible
-# through `dunneflow query` rather than only inside this process.
-POPULATIONS: dict[str, tuple[str, str, str]] = {
+# Each population: a label, the SQL that lists (name, where), the SQL fragment that selects
+# it again for an exception query, and the predicate that narrows either one to a single
+# language. Kept as text so every claim is reproducible through `dunneflow query` rather
+# than only inside this process.
+#
+# **The language predicate is written out per population rather than derived**, because the
+# route from a name to a file is different for each and three of them have no `file` column
+# to derive anything from: a parameter reaches one through its routine, and a module *is* a
+# row of `files`. A single clever expression would have to be wrong somewhere, and the
+# reader who checks a claim runs the string that is printed beside it.
+#
+# Always through `files.lang` and never `routines.lang` or `structures.lang`, though both
+# exist: which language a *name* belongs to is a fact about the file it was written in, and
+# two spellings of one question is what rule 51 is about.
+POPULATIONS: dict[str, tuple[str, str, str, str]] = {
     "routines": (
         "routines",
         "SELECT name, file || ':' || line_start AS where_ FROM routines"
         " WHERE is_nested = 0 AND name NOT GLOB '__*__' AND name NOT GLOB '<*>'",
         "FROM routines WHERE is_nested = 0 AND name NOT GLOB '__*__'"
         " AND name NOT GLOB '<*>'",
+        "file IN (SELECT path FROM files WHERE lang = '{lang}')",
     ),
     "classes": (
         "classes",
-        "SELECT name, file || ':' || line AS where_ FROM classes",
+        # `WHERE 1` so that every listing query in this table ends in a `WHERE`, which is
+        # what lets the language clause always be an `AND`. The exception clause beside it
+        # has carried one since it was written, for the same reason.
+        "SELECT name, file || ':' || line AS where_ FROM classes WHERE 1",
         "FROM classes WHERE 1",
+        "file IN (SELECT path FROM files WHERE lang = '{lang}')",
     ),
     "data structures": (
         "structures",
-        "SELECT name, file || ':' || line AS where_ FROM structures",
+        "SELECT name, file || ':' || line AS where_ FROM structures WHERE 1",
         "FROM structures WHERE 1",
+        "file IN (SELECT path FROM files WHERE lang = '{lang}')",
     ),
     "modules": (
         "modules",
         "SELECT DISTINCT module AS name, path AS where_ FROM files WHERE module <> ''",
         "FROM files WHERE module <> ''",
+        "lang = '{lang}'",
     ),  # dotted -- see DOTTED below
     "parameters": (
         "params",
         "SELECT DISTINCT name, '' AS where_ FROM params WHERE name NOT IN ('self', 'cls')",
         "FROM params WHERE name NOT IN ('self', 'cls')",
+        "routine_id IN (SELECT id FROM routines WHERE file IN"
+        " (SELECT path FROM files WHERE lang = '{lang}'))",
     ),
     "database tables": (
         "db_tables",
         "SELECT DISTINCT tbl AS name, file AS where_ FROM sql_ops WHERE tbl <> ''",
         "FROM sql_ops WHERE tbl <> ''",
+        "file IN (SELECT path FROM files WHERE lang = '{lang}')",
     ),
     "commands": (
         "entrypoints",
         "SELECT DISTINCT name, module AS where_ FROM entrypoints WHERE kind = 'CLI'",
         "FROM entrypoints WHERE kind = 'CLI'",
+        # **The routine it starts, and only then the file that declares it.** A command is
+        # the one population here whose declaring file need not be source at all: DunneFlow
+        # names `dunneflow` in `pyproject.toml`, which no reader claims and which therefore
+        # has no row in `files`. Scoped by its own file it belongs to no language and
+        # vanishes from the split -- 15 commands where the map holds 16, a denominator
+        # quietly losing a row (rule 32). What language a command is named in is best
+        # answered by the code it starts, so that is asked first.
+        "COALESCE((SELECT f.lang FROM routines r JOIN files f ON f.path = r.file"
+        "          WHERE r.id = entrypoints.routine_id),"
+        "         (SELECT lang FROM files WHERE path = entrypoints.file)) = '{lang}'",
     ),
     "environment variables": (
         "boundaries",
         "SELECT DISTINCT target AS name, file AS where_ FROM boundaries"
         " WHERE kind = 'ENV' AND target <> ''",
         "FROM boundaries WHERE kind = 'ENV' AND target <> ''",
+        "file IN (SELECT path FROM files WHERE lang = '{lang}')",
     ),
 }
 
@@ -205,15 +358,48 @@ POPULATIONS: dict[str, tuple[str, str, str]] = {
 DOTTED = frozenset({"modules"})
 
 # The SQL predicate that finds a name *not* in a given style. Kept exactly aligned with
-# `case_style` by a test that asserts the two agree on the real corpus -- a claim whose
+# `styles_of` by a test that asserts the two agree on the real corpus -- a claim whose
 # query returns a different count from the claim is worse than no query at all.
+#
+# **`kebab-case` no longer requires a dash**, and that is `styles_of`'s change arriving in
+# the query beside the claim. Once a one-token name counts as kebab-case -- which it is --
+# `NOT GLOB '*-*'` reports `analyze` as an exception to a convention it keeps, and DunneFlow's
+# own 16 commands are 14 one-word names and `ingest-conform` and `ingest-schema`. The claim
+# is *kebab-case, 16 of 16* and the old query returned 14 rows to prove it (rule 13).
 STYLE_PREDICATE = {
     "snake_case": "({n} <> lower({n}) OR {n} GLOB '*[^a-z0-9_]*')",
     "SCREAMING_SNAKE": "({n} <> upper({n}) OR {n} GLOB '*[^A-Z0-9_]*')",
     "PascalCase": "({n} GLOB '[^A-Z]*' OR {n} GLOB '*[^A-Za-z0-9]*')",
     "camelCase": "({n} GLOB '[^a-z]*' OR {n} GLOB '*[^A-Za-z0-9]*')",
-    "kebab-case": "({n} NOT GLOB '*-*' OR {n} GLOB '*[^a-z0-9-]*')",
+    "kebab-case": "({n} GLOB '*[^a-z0-9-]*')",
 }
+
+# The same question about a **dotted** name, which `styles_in` answers segment by segment.
+#
+# Written out rather than produced by patching the strings above, which is what this was:
+# three `str.replace` calls widening a character class to admit the dot. They were correct
+# for the two styles they happened to be tested on and silently absent for `kebab-case`,
+# whose predicate contains none of the three substrings -- so a dotted kebab claim carried a
+# query that answered a different question, and only DunneNote having no module convention
+# at all kept it off the screen.
+#
+# The character-class clause is the segment test collapsed: a path of snake_case segments is
+# exactly a string of `[a-z0-9_.]`. Where a style also constrains a segment's **first**
+# letter, the name is prefixed with a dot so that every segment is preceded by one, and the
+# query looks for a separator followed by the wrong kind of letter.
+DOTTED_STYLE_PREDICATE = {
+    "snake_case": "({n} <> lower({n}) OR {n} GLOB '*[^a-z0-9_.]*')",
+    "SCREAMING_SNAKE": "({n} <> upper({n}) OR {n} GLOB '*[^A-Z0-9_.]*')",
+    "PascalCase": "(('.' || {n}) GLOB '*.[^A-Z]*' OR {n} GLOB '*[^A-Za-z0-9.]*')",
+    "camelCase": "(('.' || {n}) GLOB '*.[^a-z]*' OR {n} GLOB '*[^A-Za-z0-9.]*')",
+    "kebab-case": "({n} GLOB '*[^a-z0-9.-]*')",
+}
+
+
+def style_predicate(style: str, column: str, dotted: bool) -> str:
+    """The SQL that finds a name in `column` which is *not* in `style`."""
+    table = DOTTED_STYLE_PREDICATE if dotted else STYLE_PREDICATE
+    return table[style].format(n=column)
 
 # The column each population's names actually live in, for the exception SQL.
 NAME_COLUMN = {
@@ -239,43 +425,113 @@ def _rows(store: Store, sql: str) -> list[tuple[str, str]]:
 # --------------------------------------------------------------------------- #
 
 
-def mine_case_conventions(store: Store) -> tuple[list[Convention], list[Gap]]:
+def population_name(label: str, lang: str) -> str:
+    """What to call a population on screen: `routines`, or `Python routines`.
+
+    One place, because two lanes name a population and both then have to decide whether to
+    capitalise it to open a sentence -- and a language's display name is already capital,
+    so `.capitalize()` on `TypeScript routines` yields `Typescript routines` (rule 51).
+    """
+    return f"{languages.display(lang)} {label}" if lang else label
+
+
+def leading(named: str, lang: str) -> str:
+    """The same name, fit to start a sentence."""
+    return named if lang else named.capitalize()
+
+
+def tie_note(sets: list[set[str]], style: str) -> str:
+    """Said only where the population chose nothing, and it names what it did not choose.
+
+    A claim resting on `PREFERENCE` rather than on evidence has to be able to say so: the
+    count is right, and the *name* of the convention is this tool's. The alternatives are
+    the styles **every** member also satisfies, counted rather than assumed -- a population
+    of one-token lowercase names has two, and one of all-caps names has one, and a sentence
+    saying "two other styles" over the second would be wrong in the one place it is trying
+    to admit a limitation.
+    """
+    common: set[str] = set(sets[0]) if sets else set()
+    for got in sets[1:]:
+        common &= got
+    others = sorted(common - {style})
+    if not others:
+        return ""
+    # The chosen style leads the list rather than being glued on in front of it: joined
+    # separately, a population with two alternatives reads "snake_case and camelCase and
+    # kebab-case".
+    words = [STYLE_NAMES.get(o, o) for o in [style, *others]]
+    spelled = f"{', '.join(words[:-1])} and {words[-1]}"
+    return (f"Every name in this population is spelled ambiguously — each is {spelled} "
+            f"at once — so nothing here chose between them, and the tie went to the order "
+            f"this tool states. The count is right; which of those names the convention is "
+            f"given is DunneFlow's decision and not the program's.")
+
+
+def _scoped(sql: str, clause: str, lang: str) -> str:
+    """`sql`, narrowed to one language -- or handed back untouched when none is asked for.
+
+    Every population query already ends in a `WHERE`, so the language is always an `AND`.
+    """
+    return sql if not lang else f"{sql} AND {clause.format(lang=lang)}"
+
+
+def mine_case_conventions(
+    store: Store, langs: Sequence[str] = (),
+) -> tuple[list[Convention], list[Gap]]:
+    """How each population spells its names, counted once per language.
+
+    **Spelling is the one thing a language decides for a program**, so mining a mixed
+    corpus as though it were one is the question this could not answer. Measured on
+    DunneFlow's own tree -- 107 Python files and 11 TypeScript -- the joint answer is
+    *"routines are named in snake_case, 1,014 of 1,114"*, a D rating with 100 exceptions,
+    and every one of the 100 is a TypeScript name spelled the way TypeScript spells names.
+    Split, it is 982 of 998 and 116 of 116: two conventions, both true, neither visible
+    before.
+
+    `langs` empty means **do not split**, and that is what a map holding one language
+    passes. A one-language map has no language axis to state, so its report is untouched
+    -- which is also what keeps every figure recorded against Mensores reproducible.
+    """
     conventions: list[Convention] = []
     gaps: list[Gap] = []
 
-    for label, (_table, list_sql, from_clause) in POPULATIONS.items():
-        rows = _rows(store, list_sql)
-        if len(rows) < MIN_POPULATION:
-            continue
-        dotted = label in DOTTED
-        # Per row, not per distinct name. Keying the styles by name collapsed 3,849
-        # routines into 3,063 and reported a 79% convention that actually holds in
-        # every case -- a denominator counted one way and a numerator another.
-        styled = [(n, w, case_style(n.replace(".", "_") if dotted else n)) for n, w in rows]
-        spread = Counter(st for _, _, st in styled)
-        style, holds = spread.most_common(1)[0]
-        total = len(rows)
+    for label, (_table, list_sql, from_clause, lang_clause) in POPULATIONS.items():
+        for lang in (langs or [""]):
+            rows = _rows(store, _scoped(list_sql, lang_clause, lang))
+            if len(rows) < MIN_POPULATION:
+                continue
+            dotted = label in DOTTED
+            named = population_name(label, lang)
+            # Per row, not per distinct name. Keying the styles by name collapsed 3,849
+            # routines into 3,063 and reported a 79% convention that actually holds in
+            # every case -- a denominator counted one way and a numerator another.
+            sets = [styles_in(n, dotted) for n, _ in rows]
+            styled, firm = resolve_styles(sets)
+            spread = Counter(styled)
+            style, holds = spread.most_common(1)[0]
+            total = len(rows)
 
-        if style == "other" or holds / total < MIN_PREVALENCE:
-            gaps.append(Gap(population=label, total=total,
-                            spread=sorted(spread.items(), key=lambda kv: -kv[1])))
-            continue
+            if style == "other" or holds / total < MIN_PREVALENCE:
+                gaps.append(Gap(population=named, lang=lang, total=total,
+                                spread=sorted(spread.items(), key=lambda kv: -kv[1])))
+                continue
 
-        exceptions = [Exception_(n, w) for n, w, st in styled if st != style]
-        column = NAME_COLUMN[label]
-        predicate = STYLE_PREDICATE[style].format(n=column)
-        if dotted:
-            predicate = predicate.replace("a-z0-9_]", "a-z0-9_.]").replace(
-                "A-Za-z0-9]", "A-Za-z0-9.]").replace("A-Z0-9_]", "A-Z0-9_.]")
-        conventions.append(Convention(
-            kind="CASE",
-            claim=f"{label.capitalize()} are named in {STYLE_NAMES[style]}.",
-            population=label,
-            total=total,
-            holds=holds,
-            exceptions=sorted(exceptions, key=lambda e: e.name),
-            sql=f"SELECT DISTINCT {column} {from_clause} AND {predicate}",
-        ))
+            exceptions = [Exception_(n, w)
+                          for (n, w), st in zip(rows, styled, strict=True) if st != style]
+            column = NAME_COLUMN[label]
+            predicate = style_predicate(style, column, dotted)
+            where = _scoped(f"{from_clause} AND {predicate}", lang_clause, lang)
+            conventions.append(Convention(
+                kind="CASE",
+                claim=f"{leading(named, lang)} are named in {STYLE_NAMES[style]}.",
+                population=named,
+                lang=lang,
+                total=total,
+                holds=holds,
+                exceptions=sorted(exceptions, key=lambda e: e.name),
+                sql=f"SELECT DISTINCT {column} {where}",
+                note="" if firm else tie_note(sets, style),
+            ))
     return conventions, gaps
 
 
@@ -590,54 +846,78 @@ def mine_privacy_convention(store: Store) -> list[Convention]:
 # --------------------------------------------------------------------------- #
 
 
-def mine_house_prefix(store: Store) -> list[Convention]:
-    """The `corpname_` case: one token that most names in a population begin with."""
+def mine_house_prefix(store: Store, langs: Sequence[str] = ()) -> list[Convention]:
+    """The `corpname_` case: one token that most names in a population begin with.
+
+    Split with the case conventions, and for the same reason: the token is followed by
+    whichever separator the population spells, so which token leads a name is a claim
+    about a spelling. `langs` empty means do not split.
+    """
     out: list[Convention] = []
     for label in ("environment variables", "database tables", "modules"):
-        _table, list_sql, from_clause = POPULATIONS[label]
-        rows = _rows(store, list_sql)
-        if len(rows) < MIN_POPULATION:
-            continue
-        firsts: Counter[str] = Counter()
-        for name, _ in rows:
-            segs = _segments(name)
-            if segs:
-                firsts[segs[0].lower()] += 1
-        if not firsts:
-            continue
-        token, _first_count = firsts.most_common(1)[0]
-        conforming = [
-            (n, w) for n, w in rows
-            if _segments(n) and _segments(n)[0].lower() == token
-        ]
-        count = len(conforming)
-        if count / len(rows) < MIN_PREVALENCE:
-            continue
-        keep = {n for n, _ in conforming}
-        exceptions = [Exception_(n, w) for n, w in rows if n not in keep]
-        column = NAME_COLUMN[label]
-        out.append(Convention(
-            kind="HOUSE_PREFIX",
-            claim=f"{label.capitalize()} begin with `{token}`.",
-            population=label,
-            total=len(rows),
-            holds=count,
-            exceptions=sorted(exceptions, key=lambda e: e.name),
+        _table, list_sql, from_clause, lang_clause = POPULATIONS[label]
+        for lang in (langs or [""]):
+            rows = _rows(store, _scoped(list_sql, lang_clause, lang))
+            if len(rows) < MIN_POPULATION:
+                continue
+            firsts: Counter[str] = Counter()
+            for name, _ in rows:
+                segs = _segments(name)
+                if segs:
+                    firsts[segs[0].lower()] += 1
+            if not firsts:
+                continue
+            token, _first_count = firsts.most_common(1)[0]
+            conforming = [
+                (n, w) for n, w in rows
+                if _segments(n) and _segments(n)[0].lower() == token
+            ]
+            count = len(conforming)
+            if count / len(rows) < MIN_PREVALENCE:
+                continue
+            keep = {n for n, _ in conforming}
+            exceptions = [Exception_(n, w) for n, w in rows if n not in keep]
+            column = NAME_COLUMN[label]
+            named = population_name(label, lang)
             # A module is `mensores.cli`, a table is `mensores_audit`, an environment
             # variable is `MENSORES_HOME`: the house token is followed by whichever
             # separator that population uses, or by nothing at all when the name is
             # exactly the token.
-            sql=(f"SELECT DISTINCT {column} {from_clause}"
-                 f" AND lower({column}) NOT GLOB '{token}[_.-]*'"
-                 f" AND lower({column}) <> '{token}'"),
-        ))
+            where = _scoped(
+                f"{from_clause} AND lower({column}) NOT GLOB '{token}[_.-]*'"
+                f" AND lower({column}) <> '{token}'", lang_clause, lang)
+            out.append(Convention(
+                kind="HOUSE_PREFIX",
+                claim=f"{leading(named, lang)} begin with `{token}`.",
+                population=named,
+                lang=lang,
+                total=len(rows),
+                holds=count,
+                exceptions=sorted(exceptions, key=lambda e: e.name),
+                sql=f"SELECT DISTINCT {column} {where}",
+            ))
     return out
 
 
 def measure(store: Store) -> NamingMeasurement:
-    """Everything the code says about its own naming, counted."""
-    conventions, gaps = mine_case_conventions(store)
-    conventions.extend(mine_house_prefix(store))
+    """Everything the code says about its own naming, counted.
+
+    **The language axis exists only where the map has one.** `languages.read` is the one
+    place that is asked (rule 51), and a map holding a single language is measured exactly
+    as it was before any of this: no language in a claim, no language in a query, nothing
+    to explain. What changes is the mixed corpus, where mining spelling across two
+    languages at once reports that the program has no convention when in fact it has two.
+
+    Only the two **spelling** lanes split. An affix is a word a team chose rather than a
+    way of spelling one, and the privacy lane's population is `visibility = 'private'`,
+    which is a Python spelling no other reader here records -- measured, 0 of DunneFlow's
+    122 TypeScript routines. Giving either of them a language would be asserting an axis
+    nothing has shown to matter.
+    """
+    langs = languages.read(store)
+    split = langs if len(langs) > 1 else []
+    conventions, gaps = mine_case_conventions(store, split)
+    conventions.extend(mine_house_prefix(store, split))
     conventions.extend(mine_affix_conventions(store))
     conventions.extend(mine_privacy_convention(store))
     conventions.sort(key=lambda c: (-c.total, c.claim))

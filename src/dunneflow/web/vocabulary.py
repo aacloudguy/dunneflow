@@ -31,6 +31,7 @@ from typing import Any
 
 from ..docstore import DocStore
 from ..resolve import glossary as glossary_resolve
+from ..resolve import languages
 from ..resolve import naming as naming_resolve
 from ..resolve.conformance import (
     CHECKED,
@@ -58,6 +59,16 @@ def measure_naming(store: Store) -> dict[str, Any]:
                 "kind": c.kind,
                 "claim": c.claim,
                 "population": c.population,
+                # Which language this convention is about, `""` where the question had no
+                # language axis: a map holding one language, or one of the two kinds that
+                # are deliberately not split. Two spellings because they answer two
+                # questions: `lang` is the stored key, which is what a page groups or
+                # filters on, and `langName` is how the language is spelled in a sentence.
+                # The page composes neither -- `languages.display` is the one place that
+                # decides, because a map may hold a language whose reader is no longer
+                # installed and inventing a capitalisation is a guess (rule 51).
+                "lang": c.lang,
+                "langName": languages.display(c.lang) if c.lang else "",
                 "total": c.total,
                 "holds": c.holds,
                 "rating": c.rating(),
@@ -93,7 +104,9 @@ def measure_naming(store: Store) -> dict[str, Any]:
         ],
         # A population with no dominant convention is a fact about the program, not a
         # blank. Design rule 1: what was looked at and found nothing is stated.
-        "gaps": [{"population": g.population, "total": g.total,
+        "gaps": [{"population": g.population, "lang": g.lang,
+                  "langName": languages.display(g.lang) if g.lang else "",
+                  "total": g.total,
                   "spread": [[k, n] for k, n in g.spread]} for g in m.gaps],
         "thresholds": m.thresholds,
     }
@@ -201,6 +214,15 @@ def checked_naming(store: Store, docs: DocStore | None,
                 "source": c.source,
                 "verdict": c.verdict,
                 "reason": c.reason,
+                # A rule measured once per language is one row per language, so the page
+                # needs to tell them apart -- and `blindSpot` is what keeps the second row
+                # a measurement rather than an accusation: a rule whose document names no
+                # paths was measured against this language because the map holds it, not
+                # because the rule claims it. `langName` is the prose spelling; see
+                # `measure_naming` for why the page is never the one to compose it.
+                "lang": c.lang,
+                "langName": languages.display(c.lang) if c.lang else "",
+                "blindSpot": c.blind_spot,
                 "population": c.population,
                 "scopedBy": c.scoped_by,
                 "total": c.total,

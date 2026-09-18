@@ -39,12 +39,20 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import PurePosixPath
 
 from ..docstore import DocStore
 from ..store import Store
-from .naming import DOTTED, POPULATIONS, Exception_, case_style
+from . import languages
+from .naming import (
+    DOTTED,
+    POPULATIONS,
+    Exception_,
+    population_name,
+    styles_in,
+)
 from .stated import StatedRule, stated_rules
 
 # The three answers. Strings rather than an enum because they travel to a browser as JSON
@@ -94,6 +102,7 @@ SCOPE_TO_POPULATION: dict[str, str] = {
 CONSTANTS = (
     "SELECT DISTINCT name, file AS where_ FROM constants WHERE name <> ''",
     "FROM constants WHERE name <> ''",
+    "file IN (SELECT path FROM files WHERE lang = '{lang}')",
 )
 
 # What a scope word means when this tool holds nothing that could answer it. Stated rather
@@ -121,6 +130,15 @@ class RuleCheck:
     reason: str = ""             # why, whenever the verdict is not CHECKED
     population: str = ""         # what was counted over, in words
     scoped_by: str = ""          # the declared glob, as written, or ""
+    # Which language this rule was measured in, and `""` when the question had no language
+    # axis -- a map holding one language, a scope that narrows to one, or a path-shaped
+    # scope, which is about filenames and not identifiers.
+    lang: str = ""
+    # What would make this result a false alarm, in the anomalies module's discipline. A
+    # rule measured against a language its document never mentions is a true count of a
+    # question nobody may have asked, and saying so is the difference between a finding
+    # and an accusation.
+    blind_spot: str = ""
     total: int = 0
     holds: int = 0
     exceptions: list[Exception_] = field(default_factory=list)
@@ -237,10 +255,16 @@ def _paths(store: Store | None, docs: DocStore | None) -> list[tuple[str, str]]:
 
 
 def _population(rule: StatedRule, globs: list[str], store: Store | None,
-                docs: DocStore | None) -> tuple[str, list[tuple[str, str]], str, str]:
+                docs: DocStore | None, lang: str = "",
+                ) -> tuple[str, list[tuple[str, str]], str, str]:
     """`(label, [(name, where)], sql, refusal)` for one rule's scope.
 
     A non-empty `refusal` means no check may be run, and is the sentence saying why.
+
+    `lang` narrows an **entity** population to one language, through the same clause
+    `naming.py` prints beside its own claims (rule 51). A path scope is never narrowed:
+    `files` is a question about filenames, the population is drawn from the document store
+    as well as the graph, and a document has no language.
     """
     scope = rule.scope.strip().lower()
 
@@ -276,12 +300,16 @@ def _population(rule: StatedRule, globs: list[str], store: Store | None,
             why or f"DunneFlow holds no population it calls “{scope}”")
 
     if label is None:
-        list_sql, _from = CONSTANTS
+        list_sql, _from, lang_clause = CONSTANTS
         label = "constants"
     else:
-        _table, list_sql, _from = POPULATIONS[label]
+        _table, list_sql, _from, lang_clause = POPULATIONS[label]
     if store is None:
         return label, [], list_sql, "this map holds no code graph to count over"
+
+    if lang:
+        list_sql = f"{list_sql} AND {lang_clause.format(lang=lang)}"
+        label = population_name(label, lang)
 
     rows = []
     for r in store.query(list_sql):
@@ -298,45 +326,100 @@ def _population(rule: StatedRule, globs: list[str], store: Store | None,
 
 
 def check_rule(rule: StatedRule, frontmatter: dict[str, str], source: str,
-               store: Store | None, docs: DocStore | None) -> RuleCheck:
-    """One rule, checked -- or refused, with the reason it was refused."""
+               store: Store | None, docs: DocStore | None,
+               langs: Sequence[str] = ()) -> list[RuleCheck]:
+    """One rule, checked -- or refused, with the reason it was refused.
+
+    **A list, because one rule can be more than one question.** A map holding two languages
+    holds two populations of functions, spelled the way each language spells them, and a
+    stated rule that names no path governs both without saying so. Measured on DunneFlow's
+    own tree, *"Functions: snake_case"* scores **1,014 of 1,114** with 100 exceptions, and
+    every one of the 100 is a TypeScript name doing exactly what TypeScript says. One
+    number, 91%, made of two answers that are 98% and 0%.
+
+    This is the failure this module was written to prevent, arriving one door along. A
+    path-shaped scope is *refused* here because nothing supplies which paths -- and the
+    difference is that **the map supplies which languages**. Splitting reads a fact;
+    widening guessed a population. So the rule is measured once per language, each result
+    saying which, and none of them is the sum.
+
+    Each split result carries a `blind_spot`, because a rule measured against a language
+    its document never mentions is a true count of a question nobody may have asked.
+    """
     globs = scope_globs(frontmatter)
     scoped_by = ", ".join(globs)
 
     if not rule.checkable:
-        return RuleCheck(rule=rule, source=source, verdict=NOT_CHECKABLE,
-                         scoped_by=scoped_by,
-                         reason="the rule does not name both a class of identifier and a "
-                                "spelling, so there is no check to write")
+        return [RuleCheck(rule=rule, source=source, verdict=NOT_CHECKABLE,
+                          scoped_by=scoped_by,
+                          reason="the rule does not name both a class of identifier and a "
+                                 "spelling, so there is no check to write")]
 
     style = _pattern_style(rule.pattern)
     if not style:
-        return RuleCheck(rule=rule, source=source, verdict=NOT_CHECKABLE,
-                         scoped_by=scoped_by,
-                         reason=f"“{rule.pattern}” is not a spelling DunneFlow can test — "
-                                "it tests case styles, and inventing a pattern language to "
-                                "cover the rest would mean guessing what this one meant")
+        return [RuleCheck(rule=rule, source=source, verdict=NOT_CHECKABLE,
+                          scoped_by=scoped_by,
+                          reason=f"“{rule.pattern}” is not a spelling DunneFlow can test — "
+                                 "it tests case styles, and inventing a pattern language to "
+                                 "cover the rest would mean guessing what this one meant")]
 
-    label, rows, sql, refusal = _population(rule, globs, store, docs)
-    if refusal:
-        return RuleCheck(rule=rule, source=source, verdict=NO_POPULATION,
-                         population=label, scoped_by=scoped_by, sql=sql, reason=refusal)
-    if not rows:
-        return RuleCheck(rule=rule, source=source, verdict=NO_POPULATION,
-                         population=label, scoped_by=scoped_by, sql=sql,
-                         reason=f"this map holds nothing in {label or 'that population'} — "
-                                "the rule may still be right, and nothing here can say")
+    scope = rule.scope.strip().lower()
+    # `dotted` is a property of the *scope*, not of the label, which now carries a language
+    # in front of it. Asking `label in DOTTED` after the prefix went on would have read
+    # "Python modules" as undotted and made every module an exception again -- the defect
+    # this line's own comment records, reintroduced by a cosmetic change.
+    dotted = SCOPE_TO_POPULATION.get(scope) in DOTTED
 
-    # **A dotted name is a path, not an identifier**, and `naming.py` paid for this once
-    # already: reading `mensores.cli.main` as one word made every module in the program an
-    # exception to its own convention. Reusing `POPULATIONS` without reusing `DOTTED`
-    # reproduced it exactly -- `modules / snake_case` reported **1 of 628** before this line.
-    dotted = label in DOTTED
-    bad = [Exception_(name=n, where=w) for n, w in rows
-           if case_style(n.replace(".", "_") if dotted else n) != style]
-    return RuleCheck(rule=rule, source=source, verdict=CHECKED, population=label,
-                     scoped_by=scoped_by, total=len(rows), holds=len(rows) - len(bad),
-                     exceptions=sorted(bad, key=lambda e: e.name), sql=sql)
+    # A path scope is never split: it asks about filenames, its population is drawn from the
+    # document store as well as the graph, and a document has no language.
+    path_shaped = scope in PATH_SCOPES or scope in DIR_SCOPES
+    candidates: list[str] = [""]
+    if not path_shaped and store is not None and len(langs) > 1:
+        # Only the languages that actually hold some of this population. A rule whose
+        # document already scopes it to `**/*.py` narrows to one language on its own, and
+        # labelling that answer -- or pairing it with an empty TypeScript one -- would be
+        # announcing an axis the reader's own standard had already closed.
+        with_rows = [x for x in langs if _population(rule, globs, store, docs, x)[1]]
+        if len(with_rows) > 1:
+            candidates = with_rows
+
+    out: list[RuleCheck] = []
+    for lang in candidates:
+        blind = "" if not lang else (
+            "the document states no `paths:` scope, so whether this rule was meant for "
+            f"{languages.display(lang)} is not stated — it is measured here because the "
+            "map holds it, not because the rule claims it")
+        label, rows, sql, refusal = _population(rule, globs, store, docs, lang)
+        if refusal:
+            out.append(RuleCheck(rule=rule, source=source, verdict=NO_POPULATION,
+                                 population=label, scoped_by=scoped_by, sql=sql,
+                                 lang=lang, blind_spot=blind, reason=refusal))
+            continue
+        if not rows:
+            out.append(RuleCheck(
+                rule=rule, source=source, verdict=NO_POPULATION, population=label,
+                scoped_by=scoped_by, sql=sql, lang=lang, blind_spot=blind,
+                reason=f"this map holds nothing in {label or 'that population'} — "
+                       "the rule may still be right, and nothing here can say"))
+            continue
+
+        # **A dotted name is a path, not an identifier**, and `naming.py` paid for this
+        # once already: reading `mensores.cli.main` as one word made every module in the
+        # program an exception to its own convention. Reusing `POPULATIONS` without reusing
+        # `DOTTED` reproduced it exactly -- `modules / snake_case` reported **1 of 628**.
+        #
+        # `styles_in` rather than `case_style`, and that is the other half: a name can
+        # satisfy a stated spelling without being the one answer `case_style` picks. A
+        # command called `analyze` keeps a `kebab-case` rule and keeps a `snake_case` one,
+        # and asking which it *is* condemns it to one of the two (rule 100).
+        bad = [Exception_(name=n, where=w) for n, w in rows
+               if style not in styles_in(n, dotted)]
+        out.append(RuleCheck(
+            rule=rule, source=source, verdict=CHECKED, population=label,
+            scoped_by=scoped_by, lang=lang, blind_spot=blind, total=len(rows),
+            holds=len(rows) - len(bad),
+            exceptions=sorted(bad, key=lambda e: e.name), sql=sql))
+    return out
 
 
 def check_stated(store: Store | None, docs: DocStore | None,
@@ -347,6 +430,9 @@ def check_stated(store: Store | None, docs: DocStore | None,
     wrote about itself and a rule an outside standard imposes are different claims, and a
     reader who cannot tell them apart cannot weigh either.
     """
+    # Asked once, of the one place that answers it (rule 51), and only where there is an
+    # axis to split on: a map holding one language is checked exactly as it was before.
+    langs = languages.read(store) if store is not None else []
     out: list[RuleCheck] = []
     for corpus, source in ((docs, OWN), (standards, IMPORTED)):
         if corpus is None:
@@ -359,11 +445,14 @@ def check_stated(store: Store | None, docs: DocStore | None,
             # `docs` for both, never `corpus`: an imported rule is a claim about *this*
             # program, so its population is the program's own files -- never the standards
             # directory's own documents, which nobody is measuring.
-            out.append(check_rule(rule, _front(fronts.get(rule.doc, "")), source,
-                                  store, docs))
+            out.extend(check_rule(rule, _front(fronts.get(rule.doc, "")), source,
+                                  store, docs, langs))
     # Checked first and worst first inside that, because the exceptions are the product.
+    # `population` breaks the tie so a rule's languages keep a stable order beside each
+    # other rather than one decided by whichever scored lower (rule 66).
     order = {CHECKED: 0, NO_POPULATION: 1, NOT_CHECKABLE: 2}
-    return sorted(out, key=lambda c: (order[c.verdict], c.prevalence, c.rule.doc))
+    return sorted(out, key=lambda c: (order[c.verdict], c.prevalence, c.rule.doc,
+                                      c.population))
 
 
 def _front(raw: str) -> dict[str, str]:

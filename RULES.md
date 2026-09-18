@@ -2084,3 +2084,48 @@ rule of that number — a blank canvas must say why it is blank — which does e
     uniqueness test is `_resolve_routine`'s own remedy sitting beside it. Two copies of a
     package in one monorepo leave the declaration unbound **and saying so**, which is the
     right answer rather than a coin toss.
+
+100. **A judge that must pick one of several true answers picks by the order it was
+     written in, and that order is the first language's preference.**
+     `case_style` answers *which spelling convention does this name follow* with one
+     string, and for a one-token name several answers are true at once: `widget` is
+     snake_case, camelCase **and** kebab-case, and `DDL` is SCREAMING_SNAKE and PascalCase.
+     Its own docstring said the ambiguity was real and that a one-word name is *"counted
+     with the majority"*. It was not. It was counted with whichever of five `if`s came
+     first, and that order was written when Python was the only language this tool could
+     read — so the tie went to Python's preference in every corpus, for ever, and nothing
+     recorded that a choice was being made at all.
+
+     What it cost, measured on corpora that were sitting in `output/` the whole time:
+
+     * **DunneNote's routines** read *camelCase, 1,151 of 1,348* with **197 exceptions**.
+       146 of those are single lowercase words obeying the convention perfectly. The
+       figure is 1,297.
+     * **DunneNote's parameters** were reported as a **gap** — *no dominant convention* —
+       in a program where 515 of 519 are camelCase. 335 one-word names had been counted
+       as snake_case, which is not a smaller number than 182: it is a different answer.
+     * **DunneFlow's own commands** read *snake_case, 14 of 16*, naming `ingest-conform`
+       and `ingest-schema` as the exceptions. They are the two names that settle what the
+       convention is; the answer is kebab-case, 16 of 16.
+
+     **A predicate written beside such a judge inherits its blind spot silently.**
+     `STYLE_PREDICATE["kebab-case"]` required a dash, which is right for the question
+     *"is this name kebab-case rather than one of the others"* and wrong for *"is this
+     name kebab-case"*. It returned 14 rows to prove a claim of 16 of 16 — rule 13
+     broken by a predicate nobody had ever been able to run, because until a corpus spelled
+     its names that way no population had ever resolved to kebab.
+
+     The remedy is not a better tie-break. It is to stop returning one answer where several
+     are true: `styles_of` returns **the set**, `resolve_styles` lets the population's own
+     unambiguous names decide which of them its author meant, and where a population offers
+     no unambiguous name at all the fallback order is **named in the source and stated on
+     the claim** — so the tool can say *the count is right and the name of the convention
+     is mine*.
+
+     This is rule 98 arriving through a function rather than through a detector: admitting
+     a new language re-ran a judgement against a population it had never been shown. The
+     tell is different, though, and worth carrying: rule 98's defect appeared the moment a
+     new fact arrived. **This one was already wrong on a single-language TypeScript map
+     and had been for two chunks**, because nobody had asked the old question of the new
+     corpus. A judge with a hidden preference does not announce itself when the second
+     language arrives; it announces itself when somebody finally reads its output.

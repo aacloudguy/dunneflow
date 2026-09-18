@@ -844,10 +844,31 @@ sides produce identical facts.
    byte. Identical → it stays out and Node upgrades stop discarding the TypeScript half.
    Any difference → it goes in and the re-extract is simply paid.
 6. **Do the naming, conformance and `--standards` lanes mean anything across languages?**
-   A convention mined across a Python and a TypeScript corpus at once would report that
+   ~~A convention mined across a Python and a TypeScript corpus at once would report that
    the program has no convention. They probably need to be **per-language**, which changes
    `resolve/naming.py`'s denominators rather than adding a filter. Deferred until chunk 11,
-   when there is a mixed corpus to measure on.
+   when there is a mixed corpus to measure on.~~
+
+   **Answered 2026-09-17, and the premise was narrower than the defect.** Measured on
+   DunneFlow's own tree (107 Python files, 11 TypeScript): yes, the spelling lanes need
+   splitting — *"routines are named in snake_case, 1,014 of 1,114"* is two conventions,
+   **982 of 998** and **116 of 116**. But splitting alone would have replaced a false `D`
+   with a false *gap*, because the shared spelling judge returned **one** answer where a
+   one-token name has several true ones and resolved the tie by the order it was written
+   in, which is Python's (**rule 100**). That defect was **already wrong on a
+   single-language TypeScript map** and had been since chunk 9: DunneNote's routines read
+   1,151 of 1,348 where the figure is 1,297, and its parameters were reported as having no
+   convention at all where 515 of 519 are camelCase.
+
+   So three things moved, not one: the judge returns a set, a dotted name is judged per
+   segment, and the case and house-prefix lanes split per language while affix and privacy
+   deliberately do not. Conformance splits an unscoped rule the same way and carries a
+   blind spot with each result; a standard that declares `paths:` has closed the axis
+   itself and is never labelled. A map holding one language is untouched throughout.
+
+   *Residue, stated rather than fixed:* DunneCorp's routines are PascalCase 88 against
+   camelCase 79 — two conventions split by **role**, React components against ordinary
+   functions, which no language axis reaches. It stays a reported gap.
 7. **Cross-language call edges.** DunneNote is TypeScript calling Rust through Tauri
    `invoke("cmd_name")` — a real edge across a language boundary and a genuinely new
    capability, but it needs a Rust plugin before it can be anything but a dangling name.

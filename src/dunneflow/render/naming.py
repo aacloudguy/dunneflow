@@ -22,13 +22,18 @@ import re
 from pathlib import Path
 
 from ..docstore import DocStore
+from ..resolve import languages
 from ..resolve.conformance import (
     CHECKED,
     NO_POPULATION,
     NOT_CHECKABLE,
     check_stated,
 )
-from ..resolve.naming import Convention, NamingMeasurement, measure
+from ..resolve.naming import (
+    Convention,
+    NamingMeasurement,
+    measure,
+)
 from ..resolve.stated import StatedRule, checkable_sentence, stated_rules
 from ..store import Store
 from .page import Stamp, header
@@ -323,9 +328,17 @@ def _checked_section(store: Store, docs: DocStore | None,
             name = (f"{c.rule.scope} · {c.rule.pattern}"
                     if c.rule.scope and c.rule.pattern
                     else (c.rule.scope or c.rule.pattern or c.rule.heading or "a stated rule"))
+            # The language belongs in the heading, not only in the sentence beneath it. One
+            # rule measured across two languages is two results, and two `#### functions ·
+            # snake_case` headings a screen apart read as the page saying the same thing
+            # twice rather than as the two answers it has.
+            if c.lang:
+                name = f"{name} — {languages.display(c.lang)}"
             lines.append(f"\n#### {_esc(name)}\n")
             lines.append(f"> {_esc(c.rule.text)}\n")
             lines.append(f"*From {_esc(c.rule.doc)}:{c.rule.line} — {_esc(c.source)}.*\n")
+            if c.blind_spot:
+                lines.append(f"*What would make this a false alarm: {_esc(c.blind_spot)}.*\n")
             if c.verdict != CHECKED:
                 lines.append(f"{_esc(c.reason)}.\n")
                 continue

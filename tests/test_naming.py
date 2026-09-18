@@ -19,10 +19,15 @@ from __future__ import annotations
 from pathlib import Path
 
 from dunneflow.resolve.naming import (
+    STYLE_PREDICATE,
     _beats_coincidence,
     case_style,
     measure,
     mine_privacy_convention,
+    resolve_styles,
+    style_predicate,
+    styles_in,
+    styles_of,
 )
 from dunneflow.store import Store
 from dunneflow.walk import analyze_tree
@@ -308,3 +313,138 @@ def test_privacy_is_measured_by_leakage_not_by_underscores(tmp_path: Path) -> No
         assert "called only from its own module" in c.claim
         assert "underscore" not in c.claim.lower()
     store.close()
+
+
+# -- one name, several true answers (rule 100) -------------------------------- #
+
+
+def test_a_one_token_name_satisfies_every_style_it_could_be_written_in() -> None:
+    """`widget` is snake_case, camelCase and kebab-case at once, and all three are true.
+
+    `case_style` has to answer with one of them and picked by the order its tests were
+    written in -- Python's order, because Python was the only language. Measured on
+    DunneNote before this existed: 146 routines and 335 parameters counted as `snake_case`
+    exceptions to conventions they keep perfectly.
+    """
+    assert styles_of("widget") == {"snake_case", "camelCase", "kebab-case"}
+    assert styles_of("DDL") == {"SCREAMING_SNAKE", "PascalCase"}
+    # And a name that settles the question settles it: one answer, not three.
+    assert styles_of("load_widget") == {"snake_case"}
+    assert styles_of("loadWidget") == {"camelCase"}
+    assert styles_of("load-widget") == {"kebab-case"}
+    assert styles_of("WIDGET_HOME") == {"SCREAMING_SNAKE"}
+
+
+def test_a_leading_underscore_still_reads_as_snake_case() -> None:
+    """The regexes are reused exactly as written, and this is why.
+
+    `SNAKE` is `[a-z0-9_]+`, which tolerates the underscore that marks a routine private.
+    Decomposing it into "lowercase words joined by underscores" -- which is what a reader
+    writing this from scratch would do -- drops `_helper` to `other`, and Mensores has
+    1,811 of those in one population: enough to outvote its 1,611 unambiguous names and
+    report a program with a 99.97% convention as having none.
+    """
+    assert styles_of("_helper") == {"snake_case"}
+    assert styles_of("_PRIVATE_HOME") == {"SCREAMING_SNAKE"}
+    assert styles_of("do_GET") == {"other"}
+
+
+def test_an_ambiguous_name_is_counted_with_its_own_populations_majority() -> None:
+    """The docstring's promise, kept: the population decides, not the source layout."""
+    camel = [styles_of(n) for n in ("loadWidget", "saveWidget", "main", "line")]
+    styles, firm = resolve_styles(camel)
+    assert firm, "two unambiguous camelCase names is evidence"
+    assert styles == ["camelCase"] * 4, "the one-token names went to the majority"
+
+    snake = [styles_of(n) for n in ("load_widget", "save_widget", "main", "line")]
+    styles, firm = resolve_styles(snake)
+    assert styles == ["snake_case"] * 4, "the same two names, the other way, from one rule"
+
+
+def test_other_never_votes_on_what_the_convention_is() -> None:
+    """It is the absence of a style rather than one of them.
+
+    Letting it into the order made Mensores' unreadable names the plurality and reported
+    `other` as the convention -- a population's dominant style being "no style".
+    """
+    sets = [styles_of(n) for n in ("do_GET", "do_POST", "visit_Call", "load_widget", "main")]
+    styles, firm = resolve_styles(sets)
+    assert firm
+    assert styles[-2:] == ["snake_case", "snake_case"], (
+        "three unreadable names outvoted the one that could be read"
+    )
+
+
+def test_a_population_with_nothing_unambiguous_says_so() -> None:
+    """Every name one token, so nothing in the population chose: the tie went to the order.
+
+    The count is still right -- they are all spelled the same way -- but *which* convention
+    it is called was decided by this tool and not by the program, and a claim resting on
+    that has to be able to say so.
+    """
+    styles, firm = resolve_styles([styles_of(n) for n in ("alpha", "beta", "gamma")])
+    assert not firm, "nothing here was unambiguous, and the caller has to know"
+    assert styles == ["snake_case"] * 3, "and the stated order settled it"
+
+
+# -- a dotted name is a list of names ----------------------------------------- #
+
+
+def test_a_dotted_name_is_judged_segment_by_segment() -> None:
+    """Substituting `.` for `_` asks the question of a string that was never written.
+
+    `apps.desktop.lib.calendar-nav` becomes `apps_desktop_lib_calendar-nav`, which holds
+    both separators and so matches nothing. **387 of DunneNote's 389 unreadable module
+    names contain a dash**, and a tree whose files are named in kebab-case throughout was
+    reported as having no module convention at all.
+    """
+    assert styles_in("apps.desktop.lib.calendar-nav", dotted=True) == {"kebab-case"}
+    assert "snake_case" in styles_in("mensores.cli.call_args", dotted=True)
+    # And a path whose segments genuinely disagree has no single answer, which is the
+    # honest result rather than a failure of the judge.
+    assert styles_in("packages.api-types.src.AddColumnRequest", dotted=True) == {"other"}
+    # Undotted, the dots are just characters and none of this applies.
+    assert styles_in("apps.desktop", dotted=False) == {"other"}
+
+
+# -- the query beside a claim (rule 13), for every style ---------------------- #
+
+
+def test_every_style_predicate_agrees_with_the_judge_that_produced_it() -> None:
+    """Rule 13 at the level of the predicate, rather than of one corpus that exercised two.
+
+    `test_every_query_returns_exactly_the_exceptions_listed` proves the claims a *fixture*
+    happens to produce, and a fixture only ever reaches the styles it is written in --
+    `kebab-case`'s predicate went years without a population and was wrong when it got one:
+    it required a dash, so the 14 one-word commands of a 16-command kebab-case program were
+    returned as exceptions to a convention that holds in all 16.
+
+    This asks every style about every name directly, in SQLite, so a predicate cannot be
+    right only where somebody thought to look.
+    """
+    import sqlite3
+
+    names = [
+        "widget", "load_widget", "loadWidget", "load-widget", "LoadWidget",
+        "WIDGET_HOME", "DDL", "_helper", "do_GET", "visit_Call", "a1", "X9",
+    ]
+    dotted_names = [
+        "apps.desktop", "apps.desktop.calendar-nav", "mensores.cli.call_args",
+        "packages.api-types.src.AddColumnRequest", "Foo.Bar", "fooBar.bazQux",
+        "A.B", "ONE.TWO_THREE",
+    ]
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE n (name TEXT)")
+    for style in STYLE_PREDICATE:
+        for label, sample, dotted in (("plain", names, False),
+                                      ("dotted", dotted_names, True)):
+            conn.execute("DELETE FROM n")
+            conn.executemany("INSERT INTO n VALUES (?)", [(x,) for x in sample])
+            sql = f"SELECT name FROM n WHERE {style_predicate(style, 'name', dotted)}"
+            returned = {str(r[0]) for r in conn.execute(sql)}
+            expected = {x for x in sample if style not in styles_in(x, dotted)}
+            assert returned == expected, (
+                f"the {label} predicate for {style} disagrees with the judge: "
+                f"it returns {sorted(returned)} where the judge refuses {sorted(expected)}"
+            )
+    conn.close()

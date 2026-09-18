@@ -10663,11 +10663,18 @@ function sourceBadge(src) {
  * Its heading, then its own first words, then the fallback -- a name is not optional
  * (rule 30's family: a label a reader cannot act on is not an identity). */
 function checkedTitle(c) {
-  if (c.scope && c.pattern) return `${c.scope} · ${c.pattern}`;
-  if (c.scope || c.pattern) return c.scope || c.pattern;
-  if (c.heading) return c.heading;
+  /* The language belongs in the title wherever the server sent one. A rule whose document
+   * scopes no paths is measured once per language the map holds, so two panels carry the
+   * same `scope · pattern` and differ only in a number -- which reads as the page saying
+   * one thing twice rather than as the two answers it has. `population` already carries
+   * the word; this is the identity, and rule 30 is about exactly that difference. */
+  const lang = c.langName ? ` — ${c.langName}` : "";
+  if (c.scope && c.pattern) return `${c.scope} · ${c.pattern}${lang}`;
+  if (c.scope || c.pattern) return (c.scope || c.pattern) + lang;
+  if (c.heading) return c.heading + lang;
   const words = String(c.text || "").replace(/[*`_]/g, "").trim();
-  return words ? (words.length > 48 ? words.slice(0, 47) + "…" : words) : "a stated rule";
+  const name = words ? (words.length > 48 ? words.slice(0, 47) + "…" : words) : "a stated rule";
+  return name + lang;
 }
 
 function checkedRow(c, i) {
@@ -10684,6 +10691,10 @@ function checkedRow(c, i) {
     </div>
     <div class="panel-body">
       <div class="termdef"><span class="quoted">${esc(c.text)}</span></div>
+      ${c.blindSpot ? `
+        <div class="why" style="margin-left:0">
+          <span class="ln">false alarm if</span> ${esc(c.blindSpot)}
+        </div>` : ""}
 
       ${c.verdict === "CHECKED" ? `
         <div class="convbar">

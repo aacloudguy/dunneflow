@@ -14,7 +14,7 @@ been rewritten yet. Where they describe the tool they are accurate; where they d
 |---|---|
 | `PLAN-v2.md` | the whole design: the plugin protocol, the registry, the fingerprint split, the TypeScript plugin, the MCP server, the 14 chunks and the gate on each |
 | `CLAUDE.md` | the standing orders — **binding**, and the rules index |
-| `RULES.md` · `DESIGN-RULES.md` | carried over **verbatim, numbering intact**. The numbers are addresses: never reused, never renumbered, never closed up. **v2 continues at engineering rule 100** — 95 is the fingerprint's blind spot, 96 the record minted on demand, 97 the bundled program that does not carry the files it reads, 98 the detector handed a population it was never shown, 99 the name that is relative to the root that declared it. All five 2026-09-17. A rule is never closed; 95's `sql.py` gap was shut by chunk 6 and the general remedy it names is not built. |
+| `RULES.md` · `DESIGN-RULES.md` | carried over **verbatim, numbering intact**. The numbers are addresses: never reused, never renumbered, never closed up. **v2 continues at engineering rule 101** — 95 is the fingerprint's blind spot, 96 the record minted on demand, 97 the bundled program that does not carry the files it reads, 98 the detector handed a population it was never shown, 99 the name that is relative to the root that declared it, 100 the judge that picks one of several true answers by the order it was written in. All six 2026-09-17. A rule is never closed; 95's `sql.py` gap was shut by chunk 6 and the general remedy it names is not built. |
 | `PERFORMANCE.md` | v1's figures. **Every one of them was measured on v1** and none has been reproduced here — do not restate one as though it had been (rule 24). |
 
 ## The four decisions, already taken
@@ -214,6 +214,42 @@ been rewritten yet. Where they describe the tool they are accurate; where they d
   not the analysed tree's. Three more were found by running it — `ways_in` dropped every
   unbound declaration, `_flows` then crashed on `roots[0]`, and the zone map counted one.
 
+* **Open question 6 — the naming lanes across a mixed corpus.** Answered on DunneFlow's own
+  tree, 107 Python files and 11 TypeScript. Yes, the spelling lanes need splitting:
+  *"routines are named in snake_case, **1,014 of 1,114**"*, a D with 100 exceptions, is two
+  conventions — **982 of 998** and **116 of 116** — and every one of the 100 was a
+  TypeScript name spelled the way TypeScript spells names. CASE, the gaps and HOUSE_PREFIX
+  carry a language now; AFFIX and LEAKAGE deliberately do not, because an affix is a word a
+  team chose rather than a way of spelling one and the privacy population is
+  `visibility = 'private'`, which the TypeScript reader never records (0 of 122).
+  Conformance splits an unscoped stated rule the same way, each result carrying a
+  **blind spot** — the distinction from its path-scope refusal is that nothing supplies
+  which *paths* a rule governs and **the map does supply which languages it holds**.
+  A standard declaring `paths: ['**/*.py']` has closed the axis itself and is never
+  labelled. A map holding one language is untouched throughout.
+
+  **But the premise was narrower than the defect, and that is the finding.** Splitting alone
+  would have replaced a false `D` with a false *gap*: the shared spelling judge returned
+  **one** answer where a one-token name has several true ones — `widget` is snake_case,
+  camelCase and kebab-case — and settled the tie by the order five `if`s were written in,
+  which is Python's (**rule 100**). It was **already wrong on a single-language TypeScript
+  map** and had been since chunk 9: DunneNote's routines read 1,151 of 1,348 where the
+  figure is **1,297**, and its parameters were reported as having no convention at all where
+  **515 of 519** are camelCase. Two more: a dotted name was judged by substituting `.` for
+  `_`, which is why **387 of DunneNote's 389** unreadable module names contain a dash; and
+  the kebab predicate required a dash, so it returned 14 rows to prove a claim of 16 of 16
+  and no corpus had ever been able to run it (rule 13).
+
+  Three found by running it: two population queries had no `WHERE` at all, so the language
+  clause was a syntax error and the whole suite passed because no fixture held two
+  languages; the split **lost a row** — `dunneflow` is declared in `pyproject.toml`, which
+  has no row in `files`, so it belonged to no language and the report read *15 commands*
+  over a map holding 16 (rule 32); and `dotted` was read off a label that now carries a
+  language in front of it. Nothing invalidates a stored map — `resolve/` is in no
+  fingerprint and `SCHEMA_VERSION` stays **14**. Mensores byte-identical in all eight
+  populations, **7 of 7 golden digests**, verified in the dashboard as well as the CLI.
+  **1,813 passed · 1 skipped**, mypy clean over 189 files, ruff clean.
+
 ## The gate everything is measured against
 
 `output/GOLDEN-v1.txt` holds row counts, distributions, and **seven identity digests** —
@@ -254,14 +290,17 @@ plan's own, and chunks 5 through 9 were taken in it. Tom's call on the front-loa
 tool is usable as-is, so v1 defects found along the way are rolled into whichever feature
 chunk owns them rather than scheduled as work of their own.
 
-1. **Open question 6 — the naming lanes across a mixed corpus**, which chunk 11 deferred
-   and now has a tree to measure on: DunneFlow's own, Python plus the TypeScript reader's
-   `.ts`. A convention mined across both at once reports that the program has no
-   convention; what is unknown is whether the lanes need splitting or only their
-   denominators do.
-2. **Chunks 13 and 14** — packaging (the fingerprint-equality gate extended to compare
+1. **Chunks 13 and 14** — packaging (the fingerprint-equality gate extended to compare
    per-language stamps between binary and checkout, which chunk 12 did by hand and no
    script does) and the documentation rewrite of "Adding a language".
+
+   **The user guide has fallen behind the tool, and by more than one chunk.** The tutorial
+   is pinned to *"DunneFlow's 78 files"* against 118 today, and
+   `docs/tutorial/10-words-and-names.md` prints figures — *790/806 routines* — from a
+   self-analysis several chunks old, with screenshots to match. The naming split makes that
+   chapter visibly wrong rather than merely stale, because the tree it tells the reader to
+   analyse now holds two languages. A chapter cannot be half-retaken, so this is a
+   re-capture and belongs with the rewrite.
 
 **The `fetch`-through-a-name residue is still open**, and chunk 10 was where it was scheduled
 to close. It did not, and the reason is stated rather than quiet: DunneNote calls `fetch` in
@@ -291,7 +330,7 @@ a target `target_expr` had been carrying all along.
 
 ## Three things not to re-open
 
-* **The rule numbers.** Addresses, not an ordering. v2 continues at 98.
+* **The rule numbers.** Addresses, not an ordering. v2 continues at 101.
 * **No `BROWSER` boundary kind.** Settled on measurement — `BoundaryKind` is read in only six
   places outside `schema.py`, but changing the enum changes the meaning of a fact and
   discards every stored map; and it is not needed. `fetch`/WebSocket are the network under

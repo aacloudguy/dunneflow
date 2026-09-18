@@ -1012,6 +1012,41 @@ docs   ──► extract ──► docs.db  (SQLite) ─────────
   command says how many and where to read them, and the dashboard draws them in a band where
   each says *a word* — one click, persisted per program beside `triage`, with *hold back* on
   the way out. The judgement is offered, not taken.
+- `resolve/naming.py` — **the derived lane, and the one place a spelling is judged.**
+  `styles_of` returns **every** style a name satisfies rather than the first one tested,
+  because for a one-token name several are true at once: `widget` is snake_case, camelCase
+  and kebab-case, `DDL` is SCREAMING_SNAKE and PascalCase. Returning one answer meant the
+  tie was settled by the order five `if`s happened to be in — Python's order, invisibly,
+  in every corpus (**rule 100**). `resolve_styles` lets the population's own unambiguous
+  names decide instead, and where a population offers none the stated `PREFERENCE` settles
+  it **and the claim says so**. `case_style` survives for a caller holding one name and no
+  population, derived from the same set so the two cannot drift (rule 51).
+
+  **A dotted name is a list of names**, judged segment by segment. Substituting `.` for `_`
+  asked the question of a string nobody wrote: `apps.desktop.lib.calendar-nav` became
+  `apps_desktop_lib_calendar-nav`, which holds both separators and matches nothing, and
+  **387 of DunneNote's 389 unreadable module names contain a dash**. `DOTTED_STYLE_PREDICATE`
+  is written out beside `STYLE_PREDICATE` rather than produced by patching it — the three
+  `str.replace` calls that did the patching touched none of the kebab predicate's substrings,
+  so a dotted kebab claim carried a query answering a different question and only DunneNote
+  having no module convention kept it off the screen.
+
+  **Spelling is a language's decision, so the case and house-prefix lanes split per
+  language** and nothing else does. On DunneFlow's own tree — 107 Python files and 11
+  TypeScript — the joint answer was *"routines are named in snake_case, 1,014 of 1,114"*, a
+  D with 100 exceptions, all 100 of them TypeScript names spelled the way TypeScript spells
+  names; split it is **982 of 998** and **116 of 116**. `languages.read` decides, and a map
+  holding one language is measured exactly as it was before: no language in a claim, none in
+  a query, and every figure recorded against a single-language corpus still reproduces. The
+  affix and privacy lanes are **deliberately not split** — an affix is a word a team chose
+  rather than a way of spelling one, and the privacy population is `visibility = 'private'`,
+  a Python spelling no other reader here records (0 of 122 TypeScript routines).
+
+  **A split may not lose a row** (rule 32). `dunneflow` is declared in `pyproject.toml`,
+  which no reader claims and which has no row in `files`; scoped by its own file it belonged
+  to no language and simply vanished, and the report read *15 commands* over a map holding
+  16. A command's language is the language of the code it starts, asked first and the
+  declaring file only then.
 - `resolve/conformance.py` — **reality against intent**, and the third naming question.
   `naming.py` counts and quotes nobody; `stated.py` quotes and counts nothing; this asks
   whether the program does what a rule says. **The population is never inferred from the
@@ -1027,11 +1062,23 @@ docs   ──► extract ──► docs.db  (SQLite) ─────────
   is what hides the failure), while an **entity scope** names its own population and a glob
   narrows it. **Three verdicts, never two** — checked, no population here, not checkable —
   because collapsing any two lets *"we could not check"* read as *"it passes"*. Only case
-  styles are tested, through `naming.case_style` so `kebab-case` means one thing (rule 51);
+  styles are tested, through `naming.styles_in` so `kebab-case` means one thing (rule 51);
   a template like `NN-kebab-name` is quoted back and declared untestable rather than guessed
   at. It reuses `POPULATIONS` **and `DOTTED`**: taking the first without the second
   reproduced rule 51's own defect exactly, reporting `modules / snake_case` as **1 of 628**
   because a dotted path was read as one identifier.
+
+  **A rule that names no path is measured once per language, and that is not the refusal
+  above.** A path-shaped scope is refused because *nothing supplies which paths*; an entity
+  scope in a mixed map is the opposite case, because **the map supplies which languages it
+  holds** — splitting reads a fact where widening guessed a population. Unsplit, DunneFlow's
+  own tree scores *"Functions: snake_case"* at **1,014 of 1,114** with 100 exceptions, every
+  one a TypeScript name obeying TypeScript: one number, 91%, made of two answers that are
+  98% and 0%. `check_rule` returns a **list** for that reason, and each result carries a
+  `blind_spot` — a rule measured against a language its document never mentions is a true
+  count of a question nobody may have asked. A standard that declares `paths: ['**/*.py']`
+  has closed the axis itself and is never labelled: only the languages that actually hold
+  some of the population are split, so one is one.
 - `resolve/shape.py` — **the amendment, and the one place it is judged.** `CLAUDE.md`'s
   founding exclusion read *"local variables, arithmetic, control flow"* until 2026-09-07,
   and the rule behind it has not changed: **a loop or a decision is a subject only where
@@ -1683,6 +1730,8 @@ it was written from.
      re-runs every detector against something it has never seen.
  99. A name is relative to the root that declared it, and a nested manifest's root is
      not the analysed tree's.
+100. A judge that must pick one of several true answers picks by the order it was written
+     in, and that order is the first language's preference.
 ```
 
 ## Anomalies: the discipline

@@ -2024,11 +2024,24 @@ than a list of names, and reads **constants** rather than the text, because a do
 giving *python 628 · typescript 412* as an example is not a violation of the rule it is
 describing (rules 34 and 43).
 
-Under `resolve/` two places name one legitimately — `RESOLVERS`, which is the dispatch
-table, and a language's own package — and **one does not**: `traceability.py` asks Python's
-builtins of every corpus, including one with no Python in it. That is open question 6's
-shape one module over, it is not measured, and the test pins the count at one so it cannot
-grow without somebody deciding it should.
+Under `resolve/` exactly two places name one legitimately — `RESOLVERS`, which is the
+dispatch table, and a language's own package — and **nothing else may at all**. It was one
+more until 2026-09-18: `traceability.py` asked Python's builtins of every corpus, including
+one with no Python in it, and the test pinned that at **one** so it could not grow while it
+went unmeasured. Measured, it was scoped to `languages.read(store)`, the literal went with
+it, and the guard failed saying so — which is how a residue held at a number gets closed
+rather than forgotten. The assertion is zero now.
+
+**The measurement is worth carrying, because the honest headline is that it moved nothing.**
+Removing the exclusion outright changes no verdict on any of four corpora — Mensores 1,463
+graded ids, DunneNote 391, DunneFlow 28, DunneCorp 0. The case for the fix is rule 98: on a
+TypeScript-only map the words it struck were `hex`, `round` and `set`, and the ones waiting
+in a larger tree are `id`, `set`, `type`, `format`, `next`, `open`, `filter`, `map`. A
+**union over the languages the map holds**, never a per-symbol test — the question is not
+*is this symbol a builtin* but *would a document naming this word be naming your symbol*,
+which is about the language the prose is written about. A language declaring no builtins
+contributes none, and the page says which languages' were used, off the field the exclusion
+was built from rather than as a constant reading "Python's" (rule 13).
 
 The two kinds of reader differ in one field:
 

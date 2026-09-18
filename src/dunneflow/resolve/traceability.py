@@ -37,6 +37,7 @@ from ..detectors import load_rules
 from ..docstore import DocStore
 from ..schema import Confidence
 from ..store import Store
+from . import languages
 
 # An id is a marker with a number in it. `WARNING`, `TODO` and `Audit-locked` are
 # markers too, but they name a category rather than a unit of work and cannot be
@@ -63,21 +64,53 @@ _IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{2,}$")
 # to having landed was the word `list`, and it was the only such case on Mensores --
 # which is why the exclusion is this narrow and not a guessed stopword list.
 #
-# **Python's builtins, and Python's alone** -- deliberately not derived from what the map
-# holds, because deriving it would be a claim and not a fix: there is no list of
-# TypeScript's or Go's builtins here to exclude, and a sentence saying *the builtins of
-# every language read are excluded* would be false the first time a second language
-# arrived. The page says which language's these are.
+# **The builtins of the languages this map actually holds**, which for a long time was
+# spelled `load_rules("python").builtins` and asked of every corpus. That is a true
+# statement about Python put to a map with no Python in it: on DunneNote -- 442 TypeScript
+# files, no Python, 391 graded ids -- it struck `hex`, `round` and `set` out of the
+# evidence for being words in a language nobody had read. Open question 6's shape one
+# module over, and the same remedy: the population supplies the axis, so scope the question
+# by it rather than widening the answer (rule 32).
 #
-# **Off `detectors/python.yaml` now, with its twin in `resolve/python/calls.py`.** It was
+# **Measured before it was changed, and the honest headline is that it moved nothing.**
+# Removing the exclusion outright changes **no verdict on any of the four corpora** --
+# Mensores 1,463 ids, DunneNote 391, DunneFlow 28, DunneCorp 0 -- because a name has to be
+# unique in the program *and* collide with a builtin *and* be the thing tipping an id over
+# `STRONG_LANDED_SYMBOLS` before anybody sees it. So this is a correctness fix with a
+# stated effect of nil today, and the reason to make it is rule 98: a detector's population
+# is whatever the map holds, and the words it strikes -- `id`, `set`, `type`, `format`,
+# `next`, `open`, `filter`, `map` -- are ordinary TypeScript names that happen to be
+# Python's. What is nil on these corpora is not nil on the next one.
+#
+# **A language with no declared builtins contributes no exclusions**, and that is the
+# residue rather than a gap to be filled by guessing. `detectors/typescript.yaml` declares
+# none, so a TypeScript-only map now excludes nothing at all -- which is the true answer,
+# where borrowing Python's was a false one. Writing a TypeScript list here would be this
+# tool asserting a fact about a language it reads rather than one it was told, and
+# `load_rules` answers *declared none* distinctly from *refused* precisely so the
+# difference can be kept (rule 49).
+#
+# **Off `detectors/<lang>.yaml`, with Python's twin in `resolve/python/calls.py`.** It was
 # `frozenset(dir(builtins))`, which is a fact about the machine doing the analysing rather
 # than about Python -- `aiter` and `anext` arrived in 3.10, `ExceptionGroup` in 3.11 -- in
 # a value that decides which symbols count as distinctive and that no fingerprint hashed.
-# Declared, it is hashed with **Python's own reader** (`lang_fingerprint`) rather than
-# with the core key, so editing it costs a re-read of the Python half and costs no
-# other language anything. It was `rules_fingerprint()` until chunk 5 split that in two.
-def _builtins() -> frozenset[str]:
-    return load_rules("python").builtins
+# Declared, each list is hashed with **its own reader** (`lang_fingerprint`), so editing one
+# costs a re-read of that language and costs the others nothing.
+def _builtins(store: Store) -> frozenset[str]:
+    """Every builtin name of every language this map holds, in one set.
+
+    A union rather than a per-symbol test, and the distinction is the point. The exclusion
+    is not *is this symbol a builtin* -- a program may perfectly well define its own
+    `hex` -- it is *would a document naming this word be naming your symbol or using the
+    word*. That question is about the language the prose is written **about**, so a mixed
+    map excludes both languages' words from both: a reader of a Python-and-TypeScript
+    program writes `list` generically whichever half they are describing.
+    """
+    out: set[str] = set()
+    for lang in languages.read(store):
+        rules = load_rules(lang)
+        out |= set(rules.builtins)
+    return frozenset(out)
 
 # How many distinctive symbols a plan must name, and have exist, before its work is
 # called likely rather than possible. Printed in the report so it can be argued with.
@@ -283,6 +316,18 @@ class Traceability:
     unique_symbols: int = 0
     total_symbols: int = 0
     doc_prefixes: list[str] = field(default_factory=list)
+    # **Whose builtins were struck out of the evidence, and it is a field rather than a
+    # word the renderer knows.** The page used to say "**Python's**" in prose while the
+    # code asked Python of every corpus; that was true about the code and false about the
+    # map, and a sentence naming a language no reader of this map has heard of is worse
+    # than no sentence. Carried so the claim and the exclusion are the same fact
+    # (rule 13), and empty when the map holds no language that declares any -- which is a
+    # TypeScript-only corpus today, and says so.
+    builtin_languages: list[str] = field(default_factory=list)
+    # What the map holds, so the empty case above can name it. *No builtins were
+    # excluded* and *no builtins were excluded because this map is TypeScript and nobody
+    # has declared TypeScript's* are the same sentence with and without its reason.
+    languages: list[str] = field(default_factory=list)
     inferred_annotations: int = 0
     merged_forms: list[tuple[str, list[str]]] = field(default_factory=list)
 
@@ -475,7 +520,10 @@ def measure(store: Store, docs: DocStore | None) -> Traceability:
 
     # --- did the unannotated ones land? ------------------------------------ #
     pop = _symbol_population(store)
-    builtins_ = _builtins()
+    builtins_ = _builtins(store)
+    result.languages = languages.read(store)
+    result.builtin_languages = [lang for lang in result.languages
+                                if load_rules(lang).builtins]
     unique = {name for name, n in pop.items()
               if n == 1 and name not in builtins_}
     result.total_symbols, result.unique_symbols = len(pop), len(unique)

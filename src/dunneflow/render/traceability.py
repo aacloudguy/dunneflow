@@ -18,6 +18,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from ..docstore import DocStore
+from ..resolve import languages
 from ..resolve.traceability import (
     CODE_IDS_SQL,
     DOC_IDS_SQL,
@@ -290,6 +291,35 @@ def _headlines(t: Traceability) -> list[str]:
     ]
 
 
+def _builtin_sentence(t: Traceability) -> str:
+    """Whose builtin names were struck out, or that nobody's were.
+
+    **Two sentences, because the two states are different facts and one of them used to be
+    told as the other.** This read "**Python's** builtin names are excluded on top of
+    that — they are the only language's this tool holds", which described the *code* and
+    not the *map*: asked of a TypeScript-only corpus it named a language that corpus has
+    no file of, to explain striking out `hex`, `round` and `set`. The exclusion is scoped
+    to the languages the map holds now, so the sentence says which, off the same field the
+    exclusion was built from (rule 13).
+
+    The empty case is stated rather than left as a missing clause. A map whose languages
+    declare no builtins excludes nothing, and *nothing was excluded* is a thing a reader
+    weighing this evidence needs told — not a silence (design rule 21).
+    """
+    if not t.builtin_languages:
+        said = ", ".join(languages.display(lang) for lang in t.languages) or "none"
+        return (f"**No builtin names were excluded on top of that**, because no language "
+                f"this map holds declares any — it holds {said}. Where one does, its "
+                f"builtins come out: one id's entire claim to having landed was the word "
+                f"`list`.")
+    whose = " and ".join(f"**{languages.display(lang)}'s**"
+                         for lang in t.builtin_languages)
+    return (f"{whose} builtin names are excluded on top of that, because they are the "
+            f"builtins of a language this map is written in — a document naming one is "
+            f"using the word rather than naming your symbol. One id's entire claim to "
+            f"having landed was the word `list`.")
+
+
 def _method(t: Traceability) -> list[str]:
     return [
         "## How an id was placed\n",
@@ -309,10 +339,7 @@ def _method(t: Traceability) -> list[str]:
         f"{t.total_symbols:,} names this program defines, {t.unique_symbols:,} "
         "identify exactly one routine, structure or table; the rest — `__init__`, "
         "`check`, `to_dict` — could never distinguish one plan from another, and are "
-        "not counted. **Python's** builtin names are excluded on top of that — they are "
-        "the only language's this tool holds, so the exclusion is narrower than it "
-        "sounds and narrower in one direction: one id's entire claim to having landed "
-        "was the word `list`.\n",
+        f"not counted. {_builtin_sentence(t)}\n",
         "| Threshold | Value |",
         "|---|---:|",
         f"| Distinctive symbols for *likely* rather than *possibly* landed "

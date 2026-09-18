@@ -72,38 +72,34 @@ the order a reader would choose, and the same is true of the six commands
 alphabetical? — which is a product question rather than a correctness one. Until then the
 answer is reproducible and arbitrary, which is rule 66's floor and not its ceiling.
 
-### 4 · `resolve/traceability.py` asks Python's builtins of every corpus
+### 4 · `fetch` through a name
 
-*From chunk 14, 2026-09-17.*
+*From chunk 10, 2026-09-17. Searched for a corpus 2026-09-18.*
 
-`_builtins()` is `load_rules("python").builtins`, used to decide which symbols in a plan
-are *distinctive* enough to count as landed. Asked of a TypeScript-only map it is a true
-count of a question nobody asked — open question 6's shape one module over.
+A boundary that a spelling rule cannot reach because the call goes through a local
+binding. The mechanism exists — the TypeScript checker can say what a name holds — and
+chunk 11 used it for package-resolved boundaries.
 
-**Why not done.** Unmeasured. Nobody has run the traceability lane against a corpus with a
-plan in it and no Python, so the size of the error is unknown and a fix would be a guess.
-`tests/test_languages.py` pins the count of language literals under `resolve/` at one, so
-it cannot grow quietly while this is open.
+**Why not done. Still no population, and now that is measured rather than assumed.** Tom's
+call was to search the Developer directory for open-source trees that might supply one.
+Every `.ts`/`.tsx`/`.js`/`.jsx`/`.mjs` file in it outside `node_modules`, builds and
+virtualenvs was scanned for `fetch` bound to a name — `const x = fetch`, `= window.fetch`,
+`typeof fetch`, `fetch.bind(`, `fetchFn`/`fetchImpl`/`fetchClient`, `this.fetch =`. **One
+hit in the whole tree**, `gstack-main/browse/test/security-sidepanel-dom.test.ts:92`:
+`const origFetch = window.fetch;` — in a test file, which `DiscoveryRules.is_test` excludes
+from program source by design.
 
-**What would settle it.** Measure it on a corpus that has both, then either split per
-language as the naming lanes were, or state the blind spot on the page.
+Of the thirteen JavaScript projects there, exactly two call `fetch` at all in program code:
+DunneNote once, and `gstack-main` **35 times across 21 files** — every one of them spelled
+`fetch`. So the shape is real in principle and is not in this corpus of corpora, and
+guessing at it would be building a feature against no ground truth (rule 24).
 
-### 5 · `fetch` through a name
+**What would settle it.** A corpus that calls `fetch` through a name. `gstack-main` is
+now analysed as `gstack` and is the corpus to re-test against if one is ever found — it is
+the only tree to hand with a real `fetch` population. See item 7, which is what the search
+did turn up.
 
-*From chunk 10, 2026-09-17.*
-
-A boundary that a spelling rule cannot reach because the call goes through a local binding.
-The mechanism exists — the TypeScript checker can say what a name holds — and chunk 11 used
-it for package-resolved boundaries.
-
-**Why not done.** **No population to measure against.** DunneNote calls `fetch` in no
-program file at all, so the feature could not be given a ground truth. Scheduled for chunk
-10, and the reason it did not close is stated rather than quiet.
-
-**What would settle it.** A corpus that calls `fetch` through a name. Then the same shape
-as chunk 11's package matching.
-
-### 6 · Rule 95's general remedy
+### 5 · Rule 95's general remedy
 
 *From chunk 6, 2026-09-17.*
 
@@ -114,6 +110,71 @@ list of directories — is not built**, and a rule is never closed.
 
 **What would settle it.** Either building it, or recording the measurement that says the
 hand-kept list is sufficient and why.
+
+### 6 · `ASYNC_NOT_AWAITED` is a false BROKEN on TypeScript, and it gates CI
+
+*From the corpus search, 2026-09-18.*
+
+`gstack-main` — 157 TypeScript program files, a tree no chunk had read — produces **2
+BROKEN** anomalies, and both are wrong. `dunneflow check` exits non-zero only on BROKEN, so
+this is the command that gates CI calling correct code broken.
+
+* `browse/src/terminal-agent.ts:493` has, on the two lines above it, the comment
+  *"Best-effort sync to parent server so its activeTabId tracking matches. **No await; this
+  is fire-and-forget.**"* Fire-and-forget is a JavaScript idiom, not a defect.
+* `browse/src/cookie-import-browser.ts:933` is `return new Promise((resolve, reject) => {`
+  inside an `async function`.
+
+**And the finding's own words are Python's.** The detail reads *"The coroutine is created
+and never run"*, which is **false in JavaScript** — an un-awaited promise runs, it is merely
+unobserved — and the blind spot offers `asyncio.gather` and `async with` to a reader holding
+a `.ts` file. That is item 4's defect, one detector over: rule 98, a judgement unchanged for
+a year handed a population it has never been shown, exactly as `.d.ts` gave uigen 83 false
+BROKEN in chunk 11.
+
+**Why not done.** Found while searching for a corpus for item 4, which is two items away
+from fixing the anomaly detector. It is also not one fix: the severity, the detail and the
+blind spot are three decisions, and whether an un-awaited promise is reportable at all in a
+language where it is idiomatic is a product question rather than a correctness one.
+
+**What would settle it.** Decide what the detector means in a language with no coroutines:
+either scope it to languages whose un-awaited call really does nothing — `languages.read`,
+as `traceability.py` now does — or keep it for all and demote it from BROKEN with words that
+are true in both. `gstack` is the corpus; the two findings are the ground truth, and both
+must go or be demoted.
+
+### 7 · A `fetch` whose URL is built from a name is not a boundary
+
+*From the corpus search, 2026-09-18.*
+
+Measured on `gstack`: **30 NETWORK rows against 35 `fetch(` occurrences** in the 157
+program files. Precision is perfect — all 30 are real, with their URLs captured, including
+six to `https://api.openai.com/v1/responses`. Of the six occurrences with no row, **three
+are correctly excluded** and are the detector working: two are *method definitions* named
+`fetch` (`fetch(req, server) {`, a Bun/Deno server handler) and one is inside a string
+literal in prose.
+
+The other three are real misses and are one shape:
+
+```ts
+await fetch(BASE + '/cookie-picker' + path, { ... })          // cookie-picker-ui.ts:386
+return fetch(window.__GSTACK_SERVER_URL + '/api/feedback', {  // compare.ts:469
+fetch(window.__GSTACK_SERVER_URL + '/api/progress')           // compare.ts:526
+```
+
+A concatenation whose **head is a name** rather than a literal or a template. Where the
+first fragment is a literal or a template the row is recorded, so what is missing is the
+case where the target cannot be read off the source at all.
+
+**Why not done.** It is adjacent to item 4 and is not item 4: that one is `fetch` reached
+*through* a name, this one is `fetch` by its own name with a *URL* from a name. Found by
+measuring, not scheduled.
+
+**What would settle it.** Decide what a target with no readable URL should say. Recording
+the expression as written is what `call_args` already does (rules 8 and 75), and a row
+whose target is `BASE + '/cookie-picker' + path` is a true statement — where inventing a
+URL for it would not be (rule 1). Recall goes 30/33 → 33/33 with the three method
+definitions and the string still correctly out.
 
 ---
 

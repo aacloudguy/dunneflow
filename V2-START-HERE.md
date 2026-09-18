@@ -316,9 +316,10 @@ been rewritten yet. Where they describe the tool they are accurate; where they d
   .extractors.python.extract import extract_file`. Held by `tests/test_languages.py`, off
   `PLUGINS` rather than a list of names, reading **constants** and not the text (rules 34
   and 43). Under `resolve/`, `RESOLVERS` and a language's own package name one
-  legitimately and **`traceability.py` does not** — it asks Python's builtins of every
-  corpus, which is open question 6's shape one module over, unmeasured, and pinned at one so
-  it cannot grow quietly.
+  legitimately and **nothing else does at all**. `traceability.py` was the one exception,
+  pinned at one so it could not grow while unmeasured; measured on 2026-09-18 it was scoped
+  to the languages the map holds, the literal went, and the guard that held it at one failed
+  saying so. The assertion is zero.
 
   **`--without <lang>` is wired, and it is why the chunk was more than documentation.**
   Writing the chapter about refusals found that `ingest/outofprocess.py` had been telling a

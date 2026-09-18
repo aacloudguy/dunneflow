@@ -18305,3 +18305,95 @@ digests identical** against `output/mensores-v1` — Society re-analysed with
 all 43 routes, now over a symlinked root. No stamp moved: core `d273f41c746d39d2`, python
 `1.0.0:cd8f8435300e2ec5`, typescript `1.1.0:92eb0d173e9807a7`, so no stored map is
 invalidated.
+
+## 2026-09-18 — the builtins a map holds, and a corpus search that found two other things
+
+Backlog 4 done; backlog 5's search done and its answer recorded. Tom's call on both.
+
+### Whose builtins are struck out of the landing evidence — backlog 4
+
+`traceability.py`'s `_builtins()` was `load_rules("python").builtins`, asked of every
+corpus. **Measured first, because that is what the item asked for**, and the headline is
+that removing the exclusion outright changes **no verdict on any of the four corpora** —
+Mensores 1,463 graded ids, DunneNote 391, DunneFlow 28, DunneCorp 0. The exclusion reaches
+4 names on Mensores, 2 on DunneFlow, 3 on DunneNote, 0 on DunneCorp, and none of them was
+ever the symbol tipping an id past `STRONG_LANDED_SYMBOLS`.
+
+So the change is a correctness fix with a stated effect of nil today, and the case for
+making it anyway is rule 98. On DunneNote — 442 TypeScript files, no Python — the words it
+struck were `hex`, `round` and `set`: ordinary TypeScript names that happen to be Python's.
+The list it would strike from a larger TypeScript tree is `id`, `set`, `type`, `format`,
+`next`, `open`, `filter`, `map`. What is nil on these four corpora is not nil on the fifth.
+
+`_builtins(store)` is the union over `languages.read(store)` now. **A union rather than a
+per-symbol test**, and the distinction is the point: the question is not *is this symbol a
+builtin* — a program may define its own `hex` — it is *would a document naming this word be
+naming your symbol or using the word*, which is about the language the prose is written
+**about**. A mixed map excludes both languages' words from both.
+
+**A language that declares no builtins contributes none**, and that is the residue rather
+than a gap to fill. `detectors/typescript.yaml` declares none, so a TypeScript-only map now
+excludes nothing — the true answer, where borrowing Python's was a false one. Writing a
+TypeScript list would be this tool asserting a fact about a language it reads rather than
+one it was told.
+
+**The page's sentence was a constant and is now a field** (rule 13). It read *"**Python's**
+builtin names are excluded — they are the only language's this tool holds"*, which describes
+the code and not the map: on a TypeScript corpus it named a language that corpus has no file
+of, to explain striking out three of its names. `Traceability.builtin_languages` carries it,
+and the empty case gets words of its own rather than a missing clause (design rule 21) —
+*"No builtin names were excluded, because no language this map holds declares any — it holds
+TypeScript."*
+
+**The guard that pinned this residue is how it got closed.**
+`test_only_the_dispatch_table_names_a_resolver` held `traceability.py`'s language literal at
+exactly **one** so it could not grow while it went unmeasured; scoping the question removed
+the literal and the test failed saying so. It asserts **zero** now, which is the whole rule
+rather than an allowance with one name in it. A residue held at a number is a residue
+somebody finds out about.
+
+Mensores is byte-identical through the change — 4,477 names, 4,111 unique — because it holds
+Python. **7 of 7 golden digests**, and no fingerprint moved: `resolve/` is in no key.
+
+### The corpus search — backlog 5, and what it actually found
+
+Tom's call: search the Developer directory for open-source trees that might supply a
+population for *`fetch` through a name*. Every `.ts`/`.tsx`/`.js`/`.jsx`/`.mjs` file outside
+`node_modules`, builds and virtualenvs, for `const x = fetch`, `= window.fetch`, `typeof
+fetch`, `fetch.bind(`, `fetchFn`/`fetchImpl`/`fetchClient`, `this.fetch =`.
+
+**One hit in the whole tree, and it is in a test file** —
+`gstack-main/browse/test/security-sidepanel-dom.test.ts:92`, which `DiscoveryRules.is_test`
+excludes by design. Of thirteen JavaScript projects there, two call `fetch` at all in
+program code: DunneNote once, `gstack-main` 35 times across 21 files, every one spelled
+`fetch`. **So item 5 stays open, measured rather than assumed** (rule 24).
+
+`gstack-main` was analysed anyway and is worth having: 157 TypeScript program files, 924
+routines, 1,323 boundary touches, 1,458 supplied edges, 2 ways in from a `package.json`.
+It is the first tree with a real `fetch` population this tool has ever read, and reading it
+found two things neither of which was on any list.
+
+**A `fetch` whose URL is built from a name is not a boundary** — 30 NETWORK rows against 35
+occurrences. Precision is perfect: all 30 are real, URLs captured. Three of the six misses
+are the detector working — two `fetch(req, server) {` *method definitions* and one inside a
+string literal in prose — and three are one shape, a concatenation whose head is a name:
+`fetch(BASE + '/cookie-picker' + path, …)`. Backlog 7.
+
+**And `ASYNC_NOT_AWAITED` is a false BROKEN on TypeScript**, which matters because
+`dunneflow check` exits non-zero only on BROKEN. Both of gstack's are wrong, and one of them
+has the comment *"No await; this is fire-and-forget"* on the line above it. The finding's own
+words are Python's: *"The coroutine is created and never run"* is **false in JavaScript**,
+where an un-awaited promise runs and is merely unobserved, and the blind spot offers
+`asyncio.gather` and `async with` to somebody holding a `.ts` file. That is this session's
+other item one detector over — rule 98 again, exactly as `.d.ts` gave uigen 83 false BROKEN
+in chunk 11. Backlog 6; not fixed here, because the severity, the detail and the blind spot
+are three decisions and whether the finding belongs in a language with no coroutines is a
+product question.
+
+### Gates
+
+**1,873 passed · 1 skipped**, mypy clean over 195 files, ruff clean. **7 of 7 golden
+digests identical**. Eight new tests in `tests/test_traceability_languages.py`; three of
+them fail against the unscoped `_builtins`, including the one that matters — a plan whose
+evidence goes from `['formatLedgerWitness']` to four symbols once its TypeScript `hex` and
+`round` stop being read as Python's.

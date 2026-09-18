@@ -311,11 +311,16 @@ def test_only_the_dispatch_table_names_a_resolver():
     a language's own package is asserted clean, so a second `load_rules("python")` cannot
     arrive quietly.
 
-    **`traceability.py` is the one exception and it is a stated residue, not an allowance.**
-    Its distinctive-symbol test asks Python's builtins of every corpus, including one with
-    no Python in it — the shape open question 6 found in the naming lanes, one module over,
-    and not yet measured. It is named here so that the count cannot grow without somebody
-    deciding it should.
+    **It was one and it is now none, and this test is how that was noticed.**
+    `traceability.py` asked `load_rules("python").builtins` of every corpus — the shape
+    open question 6 found in the naming lanes, one module over. It was pinned here at
+    exactly one so it could not grow while it went unmeasured, and when it was measured and
+    scoped to `languages.read(store)` the literal went with it, and this assertion failed
+    saying so. A residue held at a number is a residue somebody finds out about.
+
+    So the number is zero, and zero is now the whole rule rather than an allowance with one
+    name in it: no module under `resolve/` outside a reader's own package and the dispatch
+    table may spell a language at all.
     """
     src = Path(ingest.__file__).resolve().parent.parent
     langs = set(ingest.PLUGINS)
@@ -325,13 +330,9 @@ def test_only_the_dispatch_table_names_a_resolver():
         if rel.parts[0] in langs or rel.name == "calls.py":
             continue                       # a reader's own package, and the dispatch table
         found += _language_literals(path)
-    unexpected = [f for f in found if not f.startswith("traceability.py:")]
-    assert not unexpected, (
+    assert not found, (
         "a module under resolve/ has started naming a language:\n  "
-        + "\n  ".join(unexpected))
-    assert len(found) == 1, (
-        f"traceability.py's one language literal is the stated residue; this found "
-        f"{len(found)}:\n  " + "\n  ".join(found))
+        + "\n  ".join(found))
 
 
 # --------------------------------------------------------- declining a language --- #

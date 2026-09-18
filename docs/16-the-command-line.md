@@ -54,6 +54,7 @@ uv run dunneflow analyze <path> --name <program>
 | `--recheck-docs` | re-read documents even where nothing has changed |
 | `--standards <dir>` | admit somebody else's naming standard, into its own store. Repeatable. |
 | `--include-tests` | include test files |
+| `--without <lang>` | do not read that language, and say so. Repeatable, refused for a language this build has no reader for, and refused if it would decline them all. For a machine that lacks a language's toolchain — see [installing](01-installing.md#which-languages-it-reads-and-the-one-thing-you-may-have-to-install) |
 | `--jobs <n>` | parallel workers |
 | `--no-render` | build the graph, write no Markdown |
 | `--no-source` / `--no-doc-source` | do not keep the bodies of the code / the documents |

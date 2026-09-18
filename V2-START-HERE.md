@@ -301,6 +301,58 @@ been rewritten yet. Where they describe the tool they are accurate; where they d
   false BROKEN out of the map. Three categories where the line was written knowing two, and
   the arithmetic still closes: 442 + 315 + 1. Corrected in place there.
 
+* **Chunk 14 — the documentation, and the flag two refusals had been promising.** The last
+  chunk in the plan. **"Adding a language" said the same four lines for a year** — *write
+  one extractor that emits `FileFacts`; nothing else changes* — and that was a claim about a
+  tool nobody had asked. It is now the six things to do, what a plugin gets free and must
+  not reimplement, and three things that will bite, each of the three a rule this tree paid
+  for. `ingest/`, `plugins/<lang>/` and a corrected `canonical/` joined the architecture
+  list; `detectors/*.yaml` and `resolve/` gained the per-language halves they had grown.
+
+  **The promise at the top of it is asserted rather than claimed.** *Nothing above the graph
+  names a language*: two renderers and forty-odd dashboard modules hold **not one string
+  constant** spelling a language, and neither does `walk.py`, which used to open with `from
+  .extractors.python.extract import extract_file`. Held by `tests/test_languages.py`, off
+  `PLUGINS` rather than a list of names, reading **constants** and not the text (rules 34
+  and 43). Under `resolve/`, `RESOLVERS` and a language's own package name one
+  legitimately and **`traceability.py` does not** — it asks Python's builtins of every
+  corpus, which is open question 6's shape one module over, unmeasured, and pinned at one so
+  it cannot grow quietly.
+
+  **`--without <lang>` is wired, and it is why the chunk was more than documentation.**
+  Writing the chapter about refusals found that `ingest/outofprocess.py` had been telling a
+  reader with no Node to *"run again with `--without typescript`"* since chunk 9 — and the
+  flag did not exist. `declined` was a parameter on three functions that **no caller had
+  ever passed**: rule 35 in an argument, and rule 89 broken by the sentence written to keep
+  it. Tom's call was to wire it. `ingest.decline()` is the one place a name is judged, with
+  two refusals — an unknown language, and declining them all — and `declined` filters
+  **last** in `discover`, because taken off `rules` a declined language's files would be
+  tallied as *no reader here claims `.ts`*, said by a build that has one (design rule 21).
+  Measured: **107 read, 11 declined** on DunneFlow's own tree, 118 accounted for, and 0.8 s
+  against 3.7 s because Node is never started. The map records it on `analysis_args`.
+
+  **The user guide gained the subject it had no word for.** *Two languages* appeared nowhere
+  in 4,009 lines of documentation; three chapters now carry it. Writing them found a second
+  gap, **stated rather than fixed**: `_emit` writes to stderr and `serve` runs the analysis
+  `--quiet`, so **the walk's residue never reaches the dialog** — design rule 1 holds for
+  the command line and not for the surface the tool is actually for. A chunk of its own.
+
+  **The tutorial is dated rather than re-taken**, Tom's call: the 21 screenshots are
+  hand-composed captures from 15 September and this session could not drive a browser. Its
+  front page already cited the commit; what it also said was *"every number on every page is
+  one you can reproduce"*, which had stopped being true. **Chapter 10 is rewritten** because
+  it changed *shape* — fifteen conventions where the screenshot shows seven — and the
+  interesting part is what the split replaced: measured across both languages at once,
+  *"routines are named in snake_case"* is **1,014 of 1,114**, a `D` whose hundred exceptions
+  are all TypeScript names spelled the way TypeScript spells names.
+
+  **The core key moved**, `14:c6cd0c4e1d15e9e3` → **`14:d273f41c746d39d2`**, because
+  `ingest/__init__.py` is in it. Correct and conservative — `decline()` cannot change a
+  fact, and over-invalidating is rule 12's safe direction — and it costs one re-analysis.
+  **7 of 7 golden digests identical**, so nothing moved with it, and chunk 13's gate caught
+  the move on the next run with both builds agreeing at the new value. **1,840 passed · 1
+  skipped**, mypy clean over 191 files, ruff clean.
+
 ## The gate everything is measured against
 
 `output/GOLDEN-v1.txt` holds row counts, distributions, and **seven identity digests** —
@@ -341,17 +393,31 @@ plan's own, and chunks 5 through 9 were taken in it. Tom's call on the front-loa
 tool is usable as-is, so v1 defects found along the way are rolled into whichever feature
 chunk owns them rather than scheduled as work of their own.
 
-1. **Chunk 14** — the documentation rewrite: "Adding a language", and registering `ingest/`
-   and `plugins/` in `CLAUDE.md`'s architecture list beside `canonical/`'s paragraph. It is
-   the last chunk in the plan. *Chunk 13 went 2026-09-17; see above.*
+**All fourteen chunks in `PLAN-v2.md` are done.** What follows is what this tree knows it
+still owes, none of it scheduled by the plan:
 
-   **The user guide has fallen behind the tool, and by more than one chunk.** The tutorial
-   is pinned to *"DunneFlow's 78 files"* against 118 today, and
-   `docs/tutorial/10-words-and-names.md` prints figures — *790/806 routines* — from a
-   self-analysis several chunks old, with screenshots to match. The naming split makes that
-   chapter visibly wrong rather than merely stale, because the tree it tells the reader to
-   analyse now holds two languages. A chapter cannot be half-retaken, so this is a
-   re-capture and belongs with the rewrite.
+1. **The tutorial's 21 screenshots.** Chunk 14 dated the tour rather than re-taking it —
+   Tom's call, because the captures are hand-composed 1483×812 images from 15 September and
+   that session could not drive a browser. `docs/tutorial/README.md` now says plainly what
+   the reader is looking at, and **chapter 10 is rewritten** because it changed shape rather
+   than size. The other twelve chapters carry that afternoon's figures against a tree that
+   has gone from 78 files and 925 routines to 118 and 1,283. Re-taking them is prose *and*
+   images together and wants a session that can screenshot.
+
+2. **The analyse dialog cannot see what the walk left out.** `_emit` writes to stderr and
+   `serve` runs the analysis `--quiet`, so *unread: 4,120 `.go`*, *left out as tests* and
+   *declined by you* reach the terminal and never the application. Design rule 1 holds for
+   the command line and not for the surface this tool is for. It wants a channel on
+   `--progress-json` and a decision about where in the panel it goes.
+
+3. **The rendered map is not run-to-run stable** — see below; a chunk of its own, because a
+   report that has to be diffed against a baseline cannot also be the thing being changed.
+
+4. **`resolve/traceability.py` asks Python's builtins of every corpus**, including one with
+   no Python in it. Open question 6's shape one module over, unmeasured, and pinned at one
+   by a test so it cannot grow quietly.
+
+5. **The `fetch`-through-a-name residue**, below.
 
 **The `fetch`-through-a-name residue is still open**, and chunk 10 was where it was scheduled
 to close. It did not, and the reason is stated rather than quiet: DunneNote calls `fetch` in

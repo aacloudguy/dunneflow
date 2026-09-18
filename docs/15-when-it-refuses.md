@@ -43,6 +43,63 @@ first — see [comparing two versions](14-comparing-two-versions.md#getting-a-se
 
 ---
 
+## "holds facts from a reader this build is not"
+
+```
+error: output/some-project/graph@….db holds facts from a reader this build is not:
+typescript (read by 1.1.0:92eb0d173e9807a7). Re-run `dunneflow analyze` -- it re-reads
+only the language that changed, and leaves the rest of the map alone.
+```
+
+**What happened.** The refusal above is about the whole map; this one is about **one
+language in it**. DunneFlow records, per file, which reader produced its facts, and the
+reader for one language moved while the rest of the tool stayed where it was.
+
+**What to do.** Analyse again. The sentence means what it says: the language it names is
+re-read and every other language's rows are left exactly where they are, so on a repository
+that is mostly Python with a little TypeScript this costs seconds rather than a full
+rebuild.
+
+**Why it names the language.** *This map is stale*, said over a Python map whose forty
+TypeScript files are the problem, sends you looking in the wrong place. The name is the
+part you can act on.
+
+---
+
+## "needs `node` … and nothing answers `node --version` on this machine"
+
+```
+typescript needs `node` ≥ 20.0.0 and nothing answers `node --version` on this machine.
+Install it (brew install node, or nodejs.org), or run again with `--without typescript`
+and the map will say those files were declined.
+```
+
+**What happened.** DunneFlow reads TypeScript by asking TypeScript's own compiler, which
+needs Node.js — see [installing](01-installing.md#which-languages-it-reads-and-the-one-thing-you-may-have-to-install).
+It asks before it reads anything, so nothing is half-written when this appears.
+
+**What to do.** Either of the two things the sentence offers, and they are both real:
+
+```bash
+# read the whole tree
+brew install node            # or nodejs.org
+
+# or read the rest of it, and say so
+uv run dunneflow analyze <tree> --name <program> --without typescript
+```
+
+**`--without` is not a way of hiding the problem**, which is the only reason it is offered.
+The run prints what it declined and how many files that was, and the map records it on
+**About this map**'s *It was told* row — so a map with no TypeScript in it can still be told
+apart from a program with no TypeScript in it. Declining every language DunneFlow reads is
+refused rather than obeyed: that is a map with no code in it, and if what you wanted was the
+documentation alone, the thing to reach for is `--no-docs`'s opposite — analyse normally and
+read the Document lane.
+
+**It is not asked for at all** if the tree you point at holds no TypeScript.
+
+---
+
 ## "stores absolute paths"
 
 ```

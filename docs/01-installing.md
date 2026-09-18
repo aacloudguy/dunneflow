@@ -108,6 +108,47 @@ screen to put a window on.
 
 Unlike the Windows chooser, this one **comes to the front on its own**.
 
+## Which languages it reads, and the one thing you may have to install
+
+DunneFlow reads **Python** and **TypeScript** — `.ts`, `.tsx`, `.mts`, `.cts`, JSX and
+TSX included. Python it reads itself, with nothing to install. TypeScript it reads by
+asking TypeScript's own compiler, which needs **Node.js 20 or newer** on the machine.
+
+That asymmetry is deliberate rather than untidy. A language is best read by the thing that
+already understands it, and the alternative — bundling a parser for every language — is
+what makes a tool either enormous or wrong. So the compiler that reads your TypeScript is
+the compiler TypeScript ships, and a name it resolves is a name *it* resolved and not one
+DunneFlow guessed at.
+
+If Node is not there, DunneFlow says so before it reads anything:
+
+```
+typescript needs `node` ≥ 20.0.0 and nothing answers `node --version` on this machine.
+Install it (brew install node, or nodejs.org), or run again with `--without typescript`
+and the map will say those files were declined.
+```
+
+Both halves of that are real. Install Node and the whole tree is read; or decline the
+language and get a map of everything else, with the count of what you left out printed at
+the end of the run and recorded in the map:
+
+```
+files 107 (parsed 107, cached 0, removed 0, failed 0) in 0.8s
+  read: python 107
+  declined by you: 11 typescript — this build has a reader for that language;
+  drop --without to read them
+```
+
+**A declined language is never a silent one.** *You declined TypeScript* and *nothing here
+reads TypeScript* are two different facts with opposite remedies, so they are two different
+sentences. And a map analysed without a language says so in **About this map**, on the
+row headed *It was told* — because a map read `--without typescript` and a map of a
+program actually written in one language hold exactly the same rows, and only one of them
+is the second thing.
+
+**Everything else needs nothing.** If the tree you point it at has no TypeScript in it,
+Node is never looked for.
+
 ## Where maps are kept
 
 A map is not small. One snapshot of a 628-file program is about 160 MB, and each further

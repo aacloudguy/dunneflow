@@ -8,7 +8,10 @@ stops being one.
 
 from __future__ import annotations
 
+import argparse
+import ast
 import inspect
+from pathlib import Path
 
 import pytest
 
@@ -239,3 +242,199 @@ def test_nothing_read_says_nothing_rather_than_an_empty_list(tmp_path):
     stats = walk.WalkStats()
     list(walk.discover(tmp_path, stats=stats))
     assert walk.walk_languages(stats) == ""
+
+
+# --------------------------------------------- what a new language must not touch --- #
+
+# The surfaces `CLAUDE.md`'s **Adding a language** promises know nothing about which
+# language a fact came from. Named as directories rather than derived, because that is the
+# claim: a reader arrives at the graph and stops, and everything above the graph reads
+# `files.lang` as data or not at all.
+ABOVE_THE_GRAPH = ("render", "web")
+
+
+def _language_literals(path: Path) -> list[str]:
+    """Every string constant in this file that spells a language this build reads.
+
+    **Constants, never the text** (rule 34). A docstring in `walk.py` gives *python 628 ·
+    typescript 412* as an example of what the walk prints, and a comment in
+    `resolve/traceability.py` explains which language its builtins belong to — a scan of
+    the bytes would report both as violations of a rule they are describing, which is how a
+    guard comes to be deleted for crying wolf (rule 43).
+
+    Derived from `ingest.PLUGINS` rather than from a list of names, so a third reader is
+    covered by this test on the day it is registered and not on the day somebody remembers
+    (rule 92).
+    """
+    names = {lang.lower() for lang in ingest.PLUGINS}
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    return [f"{path.name}:{n.lineno} {n.value!r}"
+            for n in ast.walk(tree)
+            if isinstance(n, ast.Constant) and isinstance(n.value, str)
+            and n.value.lower() in names]
+
+
+def test_nothing_above_the_graph_names_a_language():
+    """The property that makes *nothing else changes* true, asserted rather than claimed.
+
+    `CLAUDE.md` said *"write one extractor that emits `FileFacts`; nothing else changes —
+    the resolver, renderers, and orientation queries know nothing about any specific
+    language"* for a year, over a tool that had only ever been asked about one. It survived
+    being asked twice, and this is what holds it: 40-odd modules of dashboard and two
+    renderers, and not one of them spells `python`.
+    """
+    src = Path(ingest.__file__).resolve().parent.parent
+    found: list[str] = []
+    for where in ABOVE_THE_GRAPH:
+        for path in sorted((src / where).rglob("*.py")):
+            found += _language_literals(path)
+    assert not found, (
+        "a language is named above the graph, so adding one is no longer a plugin edit:\n  "
+        + "\n  ".join(found))
+
+
+def test_the_walk_dispatches_without_naming_anybody():
+    """`walk.py` groups by language and hands each group to its plugin.
+
+    It used to open `from .extractors.python.extract import extract_file`, which is the
+    whole of what *only Python is extracted* meant: not a policy, an import.
+    """
+    assert not _language_literals(Path(walk.__file__).resolve())
+
+
+def test_only_the_dispatch_table_names_a_resolver():
+    """`resolve/` is the one layer that legitimately names languages, and only there.
+
+    `RESOLVERS` is a dispatch table and naming them is its job — the comment beside it says
+    why it is not derived from a manifest: what runs in this process is decided by a file
+    that is under test, never by a data file. Every *other* module under `resolve/` outside
+    a language's own package is asserted clean, so a second `load_rules("python")` cannot
+    arrive quietly.
+
+    **`traceability.py` is the one exception and it is a stated residue, not an allowance.**
+    Its distinctive-symbol test asks Python's builtins of every corpus, including one with
+    no Python in it — the shape open question 6 found in the naming lanes, one module over,
+    and not yet measured. It is named here so that the count cannot grow without somebody
+    deciding it should.
+    """
+    src = Path(ingest.__file__).resolve().parent.parent
+    langs = set(ingest.PLUGINS)
+    found: list[str] = []
+    for path in sorted((src / "resolve").rglob("*.py")):
+        rel = path.relative_to(src / "resolve")
+        if rel.parts[0] in langs or rel.name == "calls.py":
+            continue                       # a reader's own package, and the dispatch table
+        found += _language_literals(path)
+    unexpected = [f for f in found if not f.startswith("traceability.py:")]
+    assert not unexpected, (
+        "a module under resolve/ has started naming a language:\n  "
+        + "\n  ".join(unexpected))
+    assert len(found) == 1, (
+        f"traceability.py's one language literal is the stated residue; this found "
+        f"{len(found)}:\n  " + "\n  ".join(found))
+
+
+# --------------------------------------------------------- declining a language --- #
+#
+# `--without <lang>` was named as the way out of a missing toolchain by two sentences in
+# `ingest/outofprocess.py` long before it existed anywhere: `declined` was a parameter on
+# three functions and **no caller ever passed it** (rule 35's shape, in an argument). So a
+# reader on a machine with no node was handed a refusal naming a flag `--help` does not
+# list, which is rule 89 broken by the sentence written to keep it. Found by chunk 14
+# writing the chapter about refusals.
+
+def _mixed(tmp_path: Path) -> Path:
+    """A tree with two languages, some tests and a declaration file in it."""
+    (tmp_path / "a.py").write_text("def f():\n    return 1\n", encoding="utf-8")
+    (tmp_path / "b.py").write_text("x = 1\n", encoding="utf-8")
+    (tmp_path / "test_a.py").write_text("def test_f(): pass\n", encoding="utf-8")
+    (tmp_path / "c.ts").write_text("export const x = 1\n", encoding="utf-8")
+    (tmp_path / "d.ts").write_text("export const y = 2\n", encoding="utf-8")
+    (tmp_path / "c.test.ts").write_text("test('x', () => {})\n", encoding="utf-8")
+    (tmp_path / "e.d.ts").write_text("export declare const z: number\n", encoding="utf-8")
+    return tmp_path
+
+
+def test_declining_a_language_nobody_reads_is_refused_naming_the_ones_that_are():
+    """Rule 49. `--without pythn` that quietly declines nothing is the whole map."""
+    with pytest.raises(PluginRefused) as exc:
+        ingest.decline(["pythn"])
+    assert "pythn" in str(exc.value)
+    for lang in ingest.PLUGINS:
+        assert lang in str(exc.value), "the refusal must say what it could have declined"
+
+
+def test_declining_every_language_is_refused_rather_than_obeyed():
+    """A map with no code in it is not a smaller map, and `--no-docs` is what was meant."""
+    with pytest.raises(PluginRefused) as exc:
+        ingest.decline(sorted(ingest.PLUGINS))
+    assert "--no-docs" in str(exc.value)
+
+
+def test_a_declined_name_is_a_key_and_is_matched_without_case():
+    assert ingest.decline(["TypeScript", " typescript "]) == frozenset({"typescript"})
+    assert ingest.decline([]) == frozenset()
+    assert ingest.decline([""]) == frozenset()
+
+
+def test_a_declined_language_is_its_own_answer_and_never_an_unread_suffix(tmp_path):
+    """The placement is the feature (design rule 21).
+
+    Taken off `rules` instead, a declined language's suffixes would leave `suffix_owners`
+    and its files would be tallied as `unclaimed` — *no reader here claims `.ts`*, said by
+    a build that has one. Two facts that look identical in a map and have opposite
+    remedies: one is answered by installing a plugin and the other by dropping a flag.
+    """
+    tree = _mixed(tmp_path)
+    stats = walk.WalkStats()
+    list(walk.discover(tree, stats=stats, declined=frozenset({"typescript"})))
+    assert stats.declined == {"typescript": 2}
+    assert ".ts" not in stats.unclaimed
+    assert "typescript" not in stats.by_lang
+
+
+def test_declining_counts_exactly_what_would_otherwise_have_been_read(tmp_path):
+    """The arithmetic closes, which is what makes the number answer *what did I lose*.
+
+    Asked after the skip rules and the test rule, so a declined language's tests and its
+    `.d.ts` are still reported as tests and as skipped — true, disjoint, and the same
+    sentences an undeclined run prints.
+    """
+    tree = _mixed(tmp_path)
+    full, without = walk.WalkStats(), walk.WalkStats()
+    list(walk.discover(tree, stats=full))
+    list(walk.discover(tree, stats=without, declined=frozenset({"typescript"})))
+
+    assert without.declined["typescript"] == full.by_lang["typescript"]
+    assert without.by_lang == {"python": full.by_lang["python"]}
+    # The other two lanes are untouched: they are facts about the files, not about the run.
+    assert without.tests_excluded == full.tests_excluded
+    assert without.lang_skipped == full.lang_skipped
+
+
+def test_the_walk_says_a_language_was_declined_and_by_whom(tmp_path):
+    """Design rule 1: no filter is ever silent, and this one is the reader's own doing."""
+    tree = _mixed(tmp_path)
+    stats = walk.WalkStats()
+    list(walk.discover(tree, stats=stats, declined=frozenset({"typescript"})))
+    said = walk.walk_residue(stats)
+    line = next(s for s in said if s.startswith("declined by you:"))
+    assert "typescript" in line and "--without" in line
+    assert "no reader here claims" not in line
+
+
+def test_a_declined_language_is_recorded_in_the_map_itself():
+    """`_args_said` records only what **removes** something, and this is the purest case.
+
+    A map analysed `--without typescript` and a map of a tree with no TypeScript in it
+    hold exactly the same rows, and only one of them is a program written in one language.
+    """
+    from dunneflow.cli import _args_said
+
+    args = argparse.Namespace(
+        without=["typescript"], include_tests=False, no_docs=False, docs=None,
+        no_source=False, no_doc_source=False, no_render=False)
+    assert "typescript not read" in _args_said(args)
+
+    args.without = []
+    assert "not read" not in _args_said(args)

@@ -73,7 +73,9 @@ _IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{2,}$")
 # `frozenset(dir(builtins))`, which is a fact about the machine doing the analysing rather
 # than about Python -- `aiter` and `anext` arrived in 3.10, `ExceptionGroup` in 3.11 -- in
 # a value that decides which symbols count as distinctive and that no fingerprint hashed.
-# Declared, it is hashed by `rules_fingerprint()` like every other rule.
+# Declared, it is hashed with **Python's own reader** (`lang_fingerprint`) rather than
+# with the core key, so editing it costs a re-read of the Python half and costs no
+# other language anything. It was `rules_fingerprint()` until chunk 5 split that in two.
 def _builtins() -> frozenset[str]:
     return load_rules("python").builtins
 

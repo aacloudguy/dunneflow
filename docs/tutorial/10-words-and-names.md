@@ -9,6 +9,11 @@ Open **VOCABULARY** in the navigator. There are four rows:
 | Stated rules, checked | 3 |
 | Derived naming standard | 10 |
 
+*(Those are the recorded session's counts — see [a note on the
+numbers](README.md#a-note-on-the-numbers). Run it today and the glossary reads 198 and the
+derived standard 15, for the reason set out under **What the code does with names** below,
+which is the one place this chapter's subject has changed rather than its figures.)*
+
 Two questions, and they are not the same one. *What do this program's words mean* is the
 glossary. *How are its names spelled* is the other three, which look like one question and
 are three — what the code does, what somebody wrote down, and whether they agree.
@@ -82,6 +87,37 @@ Ten conventions, each with a grade, a count and every exception named:
 [A]   13/13  Commands are named in snake_case.
 [A]   12/12  A routine beginning with `cmd` is registered as a way in.
 ```
+
+> ### This page has changed shape since that screenshot, and the reason is worth the detour
+>
+> DunneFlow reads **two languages** now, and its own `src/dunneflow` is 107 Python files
+> and 11 TypeScript. Run the same page today and you get **fifteen** conventions, not ten,
+> and the spelling ones each name a language:
+>
+> ```
+> [B] 991/1,007  Python routines are named in snake_case.        (16 exceptions)
+> [A]   116/116  TypeScript routines are named in camelCase.
+> [B]   388/390  Python parameters are named in snake_case.       (2 exceptions)
+> [A]     79/79  TypeScript parameters are named in camelCase.
+> [A]   107/107  Python modules are named in snake_case.
+> [A]     11/11  TypeScript modules are named in snake_case.
+> ```
+>
+> **The old line was not merely out of date — it was wrong, and by 100 names.** Measured
+> across both languages at once, *"routines are named in snake_case"* scored **1,014 of
+> 1,114**, a `D` with a hundred exceptions; and every single one of those hundred was a
+> TypeScript name spelled the way TypeScript spells names. One number, 91%, made of two
+> answers that are 98% and 100%.
+>
+> That is this chapter's own argument arriving one level up. **A convention is a fact about
+> a population**, and *"this program spells names like this"* is not a question a mixed
+> corpus can answer — so the population is split by the one thing the map can actually be
+> asked, which is what language each file is in. The *affix* conventions (`cmd`, `is`) are
+> deliberately **not** split: an affix is a word a team chose rather than a way of spelling
+> one, and a team that says `cmd` says it in every language it writes.
+>
+> Everything else on the page is exactly as the screenshots show it: the grade, the bar,
+> the named exceptions, and the two notes about what a derived standard is and is not.
 
 **The exceptions are the point**, and the page says so. Sixteen routines are not
 `snake_case`, and reading them tells you something no percentage could: `do_GET`,
@@ -183,12 +219,23 @@ MEASURED — counted against the code
   …
 ```
 
+Run today, that second lane leads with the split described above — `[B] 991/1,007 Python
+routines are named in snake_case` and `[A] 116/116 TypeScript routines are named in
+camelCase` — over the same fifteen conventions the page draws.
+
 `mirror` is the third question and the one with no page of its own: **words the documents
 define that the code never uses.** On DunneFlow it finds three, and all three are wrong in
 an instructive way — they are sentences lifted out of a session journal that happen to be
-shaped like definitions. The command's own last line is the blind spot:
+shaped like definitions. The command's own last line is the blind spot, and it is read off
+the map rather than written into the program:
 
-> only Python is extracted: absent from this graph is not absent from the product.
+> only Python and TypeScript are extracted: absent from this graph is not absent from the
+> product.
+
+That sentence said *only Python* until DunneFlow could read a second language, and it was
+one of five places that claimed it. None of them says it any more because none of them
+decides it: the languages are `SELECT DISTINCT lang FROM files`, so a map read by a build
+with a third reader in it says so without anybody editing a sentence.
 
 ---
 

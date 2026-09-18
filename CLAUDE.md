@@ -866,15 +866,23 @@ different measurement under the same label (rule 24).
 ## Architecture
 
 ```
-source ──► extract ──► graph.db (SQLite) ──► resolve ──► render
-           per file,    the one source                   Markdown + Mermaid
-           parallel,     of truth                        ▲
-           hash-cached                                   │
-docs   ──► extract ──► docs.db  (SQLite) ──────────ATTACH┘
+                  ┌── python ── in this interpreter ──┐
+source ──► walk ──┤                                   ├──► graph.db ──► resolve ──► render
+           per    └── typescript ── node, over a pipe ┘    (SQLite)     per lang    Markdown
+           suffix        one reader per language,           the one      RESOLVERS   + Mermaid
+                         one plugin.json each                source                     ▲
+                                                             of truth                   │
+docs   ──► extract ──► docs.db  (SQLite) ──────────────────────────────────────────ATTACH┘
            per file,    a parallel store, never
            parallel,    the same one
            stat-gated
 ```
+
+**Which reader sees a file is decided by its suffix and by nothing else** — `LANG_SUFFIX`,
+built from the manifests, where a suffix belongs to exactly one language and two plugins
+claiming one is refused at load. The walk groups by language and dispatches; `resolve/`
+groups by `files.lang` and dispatches again. Neither the renderers nor the orientation
+queries know a language exists.
 
 - `runtime.py` — **what this build is and where it lives**, and the only place any of it
   is answered (rule 51). Four questions with two answers each — frozen or not, where my
@@ -902,13 +910,78 @@ docs   ──► extract ──► docs.db  (SQLite) ─────────
 - `store.py` — SQLite. **The spine, not an export format.** Nothing holds the whole
   program in memory; reachability is recursive SQL over indexed edges. This is the one
   decision that lets the tool survive growth — do not replace it with in-memory graphs.
-- `extractors/python/` — stdlib `ast` + `tokenize` only. No third-party parser.
+- `ingest/` — **the seam a language arrives through, and the only place a fact becomes
+  this program's.** Six modules and the split is the point.
+
+  `contract.py` is what a reader may say and what a manifest may claim — `PluginManifest`,
+  `DiscoveryRules`, `Toolchain`, the `IngestPlugin` protocol, and four exceptions that are
+  four different facts: `ToolchainMissing` is never a defect and always recoverable,
+  `PluginRefused` and `RulesMissing` are always build defects, and `ProtocolError` means the
+  channel is carrying something other than this protocol, so every fact already taken from
+  it is suspect (raised once and loudly, never absorbed per file). `codec.py` is the wire
+  form, reflective over `dataclasses.fields()` so a field added to `schema.py` needs no
+  second declaration. `worker.py` spawns, shakes hands, correlates on an id, **drains stderr
+  without ever parsing it**, and respawns once without retrying the file that killed it.
+  `inprocess.py` and `outofprocess.py` are the two kinds of reader. `literals.py` runs the
+  SQL and artefact scanning for every language **in the host** — see `FileFacts.literals`
+  below.
+
+  **`stamp_lang` is the one place a language is written onto a record**, and it refuses a
+  record that brings its own: a reader says which language it *is* once, in the handshake,
+  and the host verifies what came back against what it was handed. `Routine` and
+  `DataStructure` each carried `lang: str = "python"` until chunk 3, which is a default that
+  is right for exactly one reader and silently wrong for every other.
+
+  **`SOURCE_TEXT` is a term of the protocol and was paid for.** Python reads text with
+  universal newlines and Node does not, so every CRLF file hashed differently on the two
+  sides and came back refused as *changed while it was being read* — a whole corpus lost on
+  Windows, to a difference neither side could see.
+
+  **In the core fingerprint, and `canonical/` still is not** (see below): the registry
+  decides which reader sees a file, the contract decides what a reader may say, and
+  `stamp_lang` writes a field into every record. All three shape what a fact *is*.
+- `plugins/<lang>/plugin.json` — **one manifest per language, and it is the extension
+  point at the scale `detectors/*.yaml` is at the scale of a framework.** It declares the
+  suffixes, the skip and test rules, the receiver words, whether the reader supplies edges
+  or reports literals, its rules file, its toolchain, and the files its stamp is computed
+  from.
+
+  **`fingerprint` names files and never globs**, and the asymmetry between the two kinds of
+  reader is deliberate. An out-of-process reader is its **built bundle** — `plugin.json` and
+  `main.bundle.cjs`, never its source tree and never `node_modules` — because a glob over a
+  directory that was not bundled returns `[]`, which hashes to nothing and blames the whole
+  build for one missing plugin (rule 49, in a fingerprint). An in-process reader is a
+  package in this program, so its whole tree is globbed and it cannot forget a file somebody
+  adds.
+
+  **`plugins/typescript/` is a pnpm package built by esbuild into one committed
+  `main.bundle.cjs`**, with the TypeScript compiler inlined — and with its `lib*.d.ts`
+  inlined too, which is rule 97: esbuild cannot carry them because the compiler opens them
+  **by path**, and without them it does not refuse, it builds a program with no `Array` and
+  no DOM and answers anyway. `src/facts.ts` is **generated** from `schema.py` and a test
+  compares, so the two sides of the wire cannot drift. The bundle is committed and a test
+  asserts it is the committed source (rule 37).
+- `extractors/python/` — stdlib `ast` + `tokenize` only. No third-party parser. It is the
+  **in-process plugin's reader**, named by `plugins/python/plugin.json`'s `reader:` field
+  rather than imported by the walk: the one language that runs in this interpreter still
+  arrives through the same seam as the one on the far side of a pipe, and
+  `tests/plugins/python-oop/` runs *this extractor* through a subprocess worker to prove the
+  two paths produce byte-identical facts.
 - `canonical/` — whether two writings are **the same expression**, one module per language.
-  Beside the extractors rather than inside one, and that placement is load-bearing:
-  `code_extraction_inputs()` globs `extractors/python/*.py` into the cache key, so a
-  canonicaliser living there would discard every graph on the machine — sealed snapshots
-  included — each time it was edited, for a module extraction never reads and that cannot
-  change one fact. A language with no entry compares its expressions as written.
+  Beside the readers rather than inside one, and that placement is load-bearing: a plugin's
+  own files are globbed into **that language's** stamp, so a canonicaliser living in
+  `extractors/python/` would discard every Python row in every graph on the machine —
+  sealed snapshots included — each time it was edited, for a module extraction never reads
+  and that cannot change one fact. A language with no entry compares its expressions as
+  written.
+
+  *That sentence used to say `code_extraction_inputs()` and **every graph on the machine**,
+  which was the whole truth while there was one key.* The split made the cost smaller and
+  did not make it acceptable: a sealed snapshot losing its Python rows is still the one
+  store that is not derived losing facts nothing can rebuild (rules 25 and 62). And
+  `canonical/` is in **neither** key, which is the same test both keys apply — what does
+  extraction actually *read*. A canonicaliser cannot change a fact, only whether two facts
+  compare equal.
 - `extractors/docs/` — Markdown, reStructuredText and plain text, scanned by hand for
   the same reason: no markdown library. Emits `DocFacts`.
 
@@ -1296,7 +1369,33 @@ docs   ──► extract ──► docs.db  (SQLite) ─────────
   sites. `forget_file` deletes them *through* `calls`, before emptying it.
 - `detectors/*.yaml` — **the extension point.** Teaching the tool a new framework is a
   config edit here, not a code change. Prefer adding a rule over adding a branch.
+
+  **One file per language, named by that language's manifest**, plus `annotations.yaml`,
+  which belongs to no language and so to all of them — it mines governance markers out of
+  comments and prose alike. A language's own rules file is hashed with **its** reader, so
+  editing `typescript.yaml` costs a re-read of the TypeScript half and costs Python
+  nothing; `annotations.yaml` is in the core key and costs everything. `load_rules` has no
+  default and answers three ways — *declared* · *declared none* · *refused* — because
+  returning an empty rule set for a file that is missing is a reader that quietly finds
+  nothing (rule 49). The glob is the bundle's too: the spec globs this directory rather
+  than naming files, or a new language's rules would be left out of the signed application
+  and `RulesMissing` would arrive on the first `.ts` file and nowhere else (rule 92).
 - `resolve/` — call graph, CLI command trees, flows, naming conventions, glossary.
+  **`resolve/<lang>/` holds the name rules and `RESOLVERS` says who answers for which**;
+  the driver in `resolve/calls.py` groups by `files.lang`. Two things are hoisted into the
+  driver so a new resolver inherits them rather than reimplementing them: the `at_boundary`
+  suppression (rule 2), so a boundary row never reaches a resolver at all, and the
+  missing-target bookkeeping, so **one place** writes `UPDATE calls SET callee_id` where
+  there were three. A resolver returns `Edge` or `NoEdge` and does no arithmetic.
+
+  **A language with no resolver has every call left external and is *named* with its
+  count**, which is a shippable state rather than a gap: TypeScript extraction landed a
+  chunk before its edges did, and a map with routines, boundaries and SQL and no internal
+  edges is honest. **Where a reader's own toolchain names the far end, it is taken rather
+  than re-guessed** — `resolve/typescript/calls.py` turns a location into an id, and the
+  1,935 internal edges DunneNote gained that way are supplied, not inferred: an import
+  alias that collides with a local name and a method reached through a typed receiver are
+  two cases a name cannot get right (rule 5).
 - `render/` — Markdown and Mermaid. **A map needs neither the source tree nor the
   documentation tree**, and saying so cost twenty-eight signatures: `root` and `docs_root`
   were threaded through every renderer and read by none of them, left behind when the nine
@@ -1832,9 +1931,105 @@ so read the body before building against one.
 
 ## Adding a language
 
-Write one extractor that emits `FileFacts`. Nothing else changes — the resolver,
-renderers, and orientation queries know nothing about any specific language. Swift is
-the obvious next one.
+*This section said "write one extractor that emits `FileFacts`; nothing else changes" for a
+year, and it was a claim about a tool that had never been asked.* Asked, in v2, it turned
+out to be **nearly** true and to leave out everything about how the reader gets there. What
+follows is what was actually done twice.
+
+**A reader is a plugin and never an import.** It declares itself in
+`plugins/<lang>/plugin.json` and the registry finds it. **Nothing above the graph names a
+language** — two renderers and forty-odd dashboard modules, and not one string constant
+spelling `python`; `walk.py` dispatches without naming anybody, where it used to open with
+`from .extractors.python.extract import extract_file`, which is the whole of what *only
+Python is extracted* ever meant. `tests/test_languages.py` asserts it, off `PLUGINS` rather
+than a list of names, and reads **constants** rather than the text, because a docstring
+giving *python 628 · typescript 412* as an example is not a violation of the rule it is
+describing (rules 34 and 43).
+
+Under `resolve/` two places name one legitimately — `RESOLVERS`, which is the dispatch
+table, and a language's own package — and **one does not**: `traceability.py` asks Python's
+builtins of every corpus, including one with no Python in it. That is open question 6's
+shape one module over, it is not measured, and the test pins the count at one so it cannot
+grow without somebody deciding it should.
+
+The two kinds of reader differ in one field:
+
+| | |
+|---|---|
+| `in_process: true` | runs in this interpreter, `reader:` names a package in this tree. Python. |
+| `in_process: false` | runs behind a pipe, `entry:` names one built file, `toolchain:` says what has to be on the machine. TypeScript. |
+
+**Which it is, is a decision and not a preference.** `tree-sitter` ships no macOS
+universal2 wheel and neither does `pydantic-core`; this tool freezes to a universal2 bundle
+whose entire runtime dependency list is `pyyaml`. So a language whose only good parser is a
+native extension is read **out of process**, by the toolchain that language already has, and
+the frozen application stays one file. Measured before it was settled: **the transport is
+free** — 0.022 ms a round trip, 0.3% of a run — and the codec is 98% of the 1.48× overhead
+an out-of-process reader costs, so pipelining would buy nothing.
+
+### The six things to do
+
+1. **Generate your fact types, never transcribe them.**
+   `dunneflow ingest-schema --json` emits a descriptor of `schema.py`; write the small
+   generator that turns it into your language's types, and have a **test regenerate and
+   compare**, because a generator nobody runs is a transcription with extra steps.
+   TypeScript's is `tools/gen_facts_ts.py` (Python, so the test needs no toolchain), and the
+   hand-written version it replaced was wrong within an hour: it filled a
+   `NetworkCall.library` field `schema.py` has not got, the codec dropped it into
+   `FileFacts.errors`, and `WalkStats` counts that as a **failed file** — so every
+   TypeScript file with a network call in it would have been reported as unreadable.
+2. **Speak the protocol**: `hello` · `open` · `extract` · `edges` · `close`, NDJSON over
+   stdin and stdout, correlated on an id. **stdout carries protocol and nothing else**; every
+   sentence goes to stderr, which the host drains and never parses.
+3. **Keep the dotted contract.** `ingest/dotted.py` writes down the normalisation every rule
+   in every `detectors/*.yaml` has always been matched against, and
+   **`dunneflow ingest-conform <lang>`** checks your reader keeps it. Run it. TypeScript's
+   twelve clauses are the first time clauses 5, 6 and 7 were ever exercised.
+4. **Write `detectors/<lang>.yaml`** and name it in the manifest. Boundaries, frameworks,
+   and whatever else that language spells its own way. Prefer a rule to a branch.
+5. **Declare `discovery:`** — suffixes, skip dirs, skip names, and the **three shapes of
+   test name**. Do not generalise them into one list: `test_a.py` is a stem prefix and
+   `a.test.ts` is a whole-name suffix, and a shared rule gets both wrong in opposite
+   directions. Python's rule applied to TypeScript admitted **322 of DunneNote's 767 files**,
+   42% of the corpus, as program code.
+6. **Declare `fingerprint:`** — the files your reader's stamp is computed from, named and
+   never globbed. For a bundled reader that is the built artifact, not its source tree.
+
+### What you get for free, and what you must not reimplement
+
+**String literals are scanned in the host.** A reader reports the strings it found
+(`FileFacts.literals`) and stops deciding what a string *means*; `ingest/literals.py` does
+the SQL and artefact scanning for every language at once. So `detectors/<lang>.yaml` stays
+an extension point a plugin never has to be rebuilt for, and one string cannot be read two
+ways in a `.py` and a `.ts` (rule 51, in the fact contract, which is the most expensive
+place to have it).
+
+**Edges are optional and are supplied, not guessed.** `supplies_edges: false` is a complete
+answer: every call is left external and the run says so with a count. If your language has a
+checker that knows the far end, say so and send `edges` — the host turns a location into an
+id, and nothing about that passes through a name.
+
+**Nothing else is yours.** The resolver's boundary suppression, the missing-target
+bookkeeping, `stamp_lang`, the fingerprint, the walk's arithmetic and every surface above
+the graph are the host's. If you find yourself writing one of them, that is the signal the
+seam is in the wrong place.
+
+### Three things that will bite
+
+* **Text.** Python reads with universal newlines and most languages' runtimes do not, so a
+  CRLF file hashes differently on the two sides and comes back *changed while it was being
+  read*. `ingest.contract.SOURCE_TEXT` is the term; honour it.
+* **A bundled reader does not carry the files it opens by path** (rule 97). It will not
+  refuse — it will answer, with less. Split the residue into its reasons and look at the
+  small one.
+* **Admitting a new kind of fact re-runs every detector against a population it has never
+  seen** (rule 98). A reader that is correct can still turn an unchanged detector into a
+  liar: a `.d.ts` read as code gave uigen 83 BROKEN out of the command that gates CI. Run
+  `dunneflow check` on a real tree before believing the map.
+
+**Go and Rust are the obvious next ones** — both ship a toolchain that can be asked, and
+`resolve/manifests/` already reads `go.mod` and `Cargo.toml` for what a program declares
+about itself, which is the half that does not need a reader at all.
 
 ## Shared library: dunnecorp-shared
 

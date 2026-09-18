@@ -22,9 +22,10 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 
-from . import revisions
+from . import ingest, revisions
 from .anomalies import BROKEN, INFO, SUSPECT, detect
 from .docstore import DocStore
+from .ingest.contract import PluginRefused
 from .lookup import find_routine, search_said
 from .migrate import MigrationRefused, migrate_program
 from .render.index import legacy_map_files, render_index
@@ -133,6 +134,13 @@ def _args_said(args: argparse.Namespace) -> str:
     no documentation -- design rule 1 again, one store over.
     """
     said = []
+    # **The purest case of this docstring's own argument.** A map analysed
+    # `--without typescript` and a map of a tree with no TypeScript in it hold exactly the
+    # same rows, and only one of them is a program written in one language. It is what the
+    # run was *told* rather than what it found, so there is no count here — the walk says
+    # that, on the terminal and in the progress stream.
+    for lang in sorted(getattr(args, "without", []) or []):
+        said.append(f"{lang.strip().lower()} not read")
     if args.include_tests:
         said.append("tests included")
     if args.no_docs:
@@ -264,6 +272,14 @@ def cmd_analyze(args: argparse.Namespace) -> int:
     target = Path(args.path).resolve()
     if not target.exists():
         _emit(f"error: {target} does not exist")
+        return 2
+
+    # **Judged before anything is opened**, like every other refusal that can be decided
+    # from the arguments alone: a name nobody reads must not abandon a half-written map.
+    try:
+        declined = ingest.decline(getattr(args, "without", []) or [])
+    except PluginRefused as exc:
+        _emit(f"error: {exc}")
         return 2
 
     source_root = target
@@ -400,7 +416,7 @@ def cmd_analyze(args: argparse.Namespace) -> int:
     prog.step(STEP_EXTRACT)
     stats = analyze_tree(
         source_root, store, include_tests=args.include_tests,
-        jobs=args.jobs, progress=progress,
+        jobs=args.jobs, progress=progress, declined=declined,
     )
     t_extract = time.perf_counter() - t0
 
@@ -1212,6 +1228,13 @@ def build_parser() -> argparse.ArgumentParser:
     a = sub.add_parser("analyze", help="extract, resolve, and write the map")
     common(a)
     a.add_argument("--include-tests", action="store_true", help="include test files")
+    # **Repeatable and validated, because the silent form is the failure.** `--without`
+    # was named as the way out of a missing toolchain by two refusals in
+    # `ingest/outofprocess.py` long before it existed anywhere -- rule 89 broken in the
+    # sentence written to keep it. `ingest.decline` is the one place a name is judged.
+    a.add_argument("--without", action="append", default=[], metavar="LANG",
+                   help="do not read this language, and say so in the map "
+                        "(repeatable; for a machine that lacks its toolchain)")
     a.add_argument("--jobs", type=int, default=None, help="parallel workers")
     a.add_argument("--no-render", action="store_true", help="build the graph only")
     a.add_argument("--docs", help="documentation root (defaults to the package root)")

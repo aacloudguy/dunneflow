@@ -3,9 +3,10 @@
 A walk through the tool, using the tool on itself.
 
 The [reference guide](../README.md) answers *what does this control do*. This answers
-*show me*. Every screenshot here is DunneFlow reading its own source — 78 files, 925
-routines — so every number on every page is one you can reproduce by pointing your own
-copy at the checkout.
+*show me*. Every screenshot here is DunneFlow reading its own source, so every page you
+see is a real page about a real program rather than a mock-up — and the figures are that
+one session's, taken on a stated day. See [a note on the
+numbers](#a-note-on-the-numbers) before you compare them with your own.
 
 DunneFlow is not a code editor or code browser. It looks at application source code
 in a different way. We take apart that source code and watch how information *flows*
@@ -32,8 +33,13 @@ uv run dunneflow analyze src/dunneflow --name dunneflow
 uv run dunneflow serve output/dunneflow
 ```
 
-This should not take long, about twelve seconds. Chapter 1 does this the other way,
-through the dialog rather than the terminal, and explains what it is doing on the way.
+A few seconds. **If you have no Node.js**, DunneFlow will say so and refuse to read the
+eleven TypeScript files in that tree — add `--without typescript` and the rest of the tour
+works unchanged, with the map saying it was told to skip them. See
+[installing](../01-installing.md#which-languages-it-reads-and-the-one-thing-you-may-have-to-install).
+
+Chapter 1 does this the other way, through the dialog rather than the terminal, and
+explains what it is doing on the way.
 
 ## The chapters
 
@@ -66,12 +72,31 @@ a real program, that one tells you what every control does.
 
 ## A note on the numbers
 
-Every figure quoted in these chapters came off the screen or out of a terminal, and all of
-them come from **one map**: DunneFlow reading its own source at `1e76c51`, held against a
-snapshot of `875499c`. Yours will differ the moment the source does. That is the fun of
-the tool, not a flaw in the tutorial. Dive into your own investigation and enjoy the
-ride. Where a number matters, the chapter says how to
-get it yourself, and several of them hand you the exact query.
+**This is a recorded session, and it is dated.** Every figure quoted in these chapters came
+off the screen or out of a terminal, and all of them come from **one map**: DunneFlow
+reading its own source at `1e76c51` on **15 September 2026**, held against a snapshot of
+`875499c`. The screenshots were taken the same afternoon. Yours will differ the moment the
+source does — that is the fun of the tool, not a flaw in the tutorial — and where a number
+matters the chapter says how to get it yourself, several of them handing you the exact
+query.
+
+**Two things have moved further than a number since**, and they are named here so that you
+meet them knowing rather than wondering:
+
+* **The tree has grown.** It was **78 files and 925 routines** that afternoon; the same
+  directory today is **118 files and 1,283 routines**. Every total in chapters 1, 2 and 9
+  is that afternoon's.
+* **DunneFlow reads two languages now**, and one of the pages has changed shape rather than
+  size. Its own `src/dunneflow` holds 107 Python files and 11 TypeScript, so the derived
+  naming standard measures spelling **per language** — fifteen conventions where the
+  screenshots in [chapter 10](10-words-and-names.md) show seven. That chapter has been
+  rewritten against a current run and says so; the screenshots in it are the old page, kept
+  because what they illustrate — a grade, a bar, an exception list, the reason a page
+  refuses to grade one thing against another — is unchanged.
+
+Everything else in the tour behaves exactly as it is shown. A control that is in a
+screenshot is in the product, and the reference guide is the half of this that is not
+dated.
 
 ---
 

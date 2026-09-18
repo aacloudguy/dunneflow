@@ -84,6 +84,53 @@ If the panel says nothing has moved for several minutes, it tells you that and d
 nothing about it. Resolution is legitimately quiet for tens of seconds on a large
 program, so whether that is a wedged job or a long step is your call, not the tool's.
 
+## What it read, and what it left out
+
+A run ends by saying both, and the second half is as much the point as the first. This is
+DunneFlow reading itself, which is two languages:
+
+```
+files 118 (parsed 118, cached 0, removed 0, failed 0) in 1.7s
+  read: python 107 · typescript 11
+    typescript plugins/typescript/tsconfig.json: 11 files
+    typescript opened in 0.3s
+  unread: 8 .js, 5 .json, 4 .yaml, 2 .html, 1 .cjs, 1 .css, 1 .mjs — no reader here
+  claims those suffixes
+  strings not judged: 2,860 python, 110 typescript — outside the 3–200,000 character
+  bound a reader applies before sending
+  calls resolved to somewhere outside this map: 450 typescript — a library, a type
+  declaration or a file no reader claimed; external, and right
+  pruned 16 directories: __pycache__ ×14, node_modules, vendor
+```
+
+**This is the command line's, and only the command line's.** `dunneflow serve` runs the
+analysis with `--quiet` so that its machine-readable progress stream stays clean, and these
+lines go with it — so a reader who analyses from the dialog gets the progress panel and the
+map, and not this. If you want to know what a run left out, run it from a terminal. It is
+the one thing in this guide the application does less well than the command, and it is
+named here rather than glossed over.
+
+**`read:` is per language, and that is not decoration.** *118 files* says nothing about
+whether the TypeScript half of a tree was read at all — a repository whose TypeScript
+reader never ran would report the same total as one with no TypeScript in it. The line
+under it is the reader saying how it divided the work: TypeScript compiles per
+`tsconfig.json`, so it says which ones it found and how many files went into each.
+
+**Everything after `read:` is a filter, and no filter is silent.** Each line is a different
+fact with a different remedy, which is why they are not merged into one:
+
+| | |
+|---|---|
+| `unread: … no reader here claims those suffixes` | this build has no reader for them. Point at a Go repository today and the map is empty; this is the line that says so rather than leaving you with an empty map |
+| `left out as tests` | per language, because a test is spelled differently in each — `test_a.py` and `a.test.ts` are the same idea and not the same rule. `--include-tests` reads them |
+| `declined by you` | you passed `--without <lang>`. A different fact from the first line, with the opposite remedy |
+| `skipped by the reader's own rule` | a `.d.ts` is TypeScript's header file, not a program |
+| `strings not judged` | too short or too long to be worth scanning for SQL and filenames |
+| `pruned N directories` | `node_modules`, `__pycache__`, anything beginning with a dot, and any directory that holds somebody else's map |
+
+If you ever find yourself asking *why is this map smaller than the directory*, the answer
+is one of those lines, and it was printed.
+
 ## Stopping it
 
 **Stop it** ends the run. What it had already written stays on disk, **marked

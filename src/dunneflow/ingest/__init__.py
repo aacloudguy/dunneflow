@@ -295,6 +295,42 @@ def plugin_for(path: str | Path) -> IngestPlugin | None:
     return PLUGINS.get(lang) if lang else None
 
 
+def decline(names: Sequence[str]) -> frozenset[str]:
+    """Turn what somebody typed into languages this build has, or refuse naming both.
+
+    **The one place a declined name is judged** (rule 51), because there are three callers
+    now and the failure they share is silent: `--without pythn` that is simply not in the
+    set reads as a run that declined nothing, and the difference between *I turned Python
+    off* and *I typed it wrong* is the entire map (rule 49).
+
+    **Declining every language is refused too.** It is not a smaller map, it is a map with
+    no code in it, and a reader who meant `--no-docs` should be told rather than handed one.
+
+    The word is matched case-insensitively and nothing else is normalised: `lang` is a key
+    and `display` is prose, and matching the prose would make *TypeScript* and *typescript*
+    two ways to say one thing in a value that is compared as a string everywhere else
+    (rule 30).
+    """
+    asked = {n.strip().lower() for n in names if n and n.strip()}
+    if not asked:
+        return frozenset()
+    unknown = sorted(asked - set(PLUGINS))
+    if unknown:
+        raise PluginRefused(
+            f"nothing in this build reads {', '.join(repr(u) for u in unknown)}, so "
+            f"declining it would change nothing. This build reads: "
+            f"{', '.join(sorted(PLUGINS))}."
+        )
+    if asked >= set(PLUGINS):
+        raise PluginRefused(
+            f"that declines every language this build reads ({', '.join(sorted(PLUGINS))}), "
+            f"which is a map with no code in it rather than a smaller one. To read the "
+            f"documentation alone, analyse and read the Document lane; to skip the "
+            f"documentation, use --no-docs."
+        )
+    return frozenset(asked)
+
+
 def enabled(declined: frozenset[str] = frozenset()) -> dict[str, IngestPlugin]:
     """The plugins this run will use, minus the ones the reader declined by name."""
     return {lang: p for lang, p in PLUGINS.items() if lang not in declined}

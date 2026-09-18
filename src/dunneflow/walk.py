@@ -159,6 +159,12 @@ class WalkStats:
     # process the host cannot look inside, so the count is the only way it can be seen at
     # all. It is per language because the bound is applied by each reader in turn.
     literals_dropped: dict[str, int] = field(default_factory=dict)
+    # Language -> files this build can read and was told not to. **Its own counter and
+    # never `unclaimed`'s**, because they are two different facts that look identical in a
+    # map (design rule 21): *no reader here claims `.go`* is answered by a build that has
+    # one, and *you declined typescript* is answered by not declining it. Flattening them
+    # would tell a reader who declined a language that the tool cannot read it.
+    declined: dict[str, int] = field(default_factory=dict)
     # Languages whose reader declares `reports_literals: false`. A real answer and not an
     # empty one -- that language contributes no SQL and no named files, on purpose -- and
     # it has to be said, because a map with neither is indistinguishable from a program
@@ -212,6 +218,11 @@ def walk_residue(stats: WalkStats) -> list[str]:
     report nobody reads to the end is design rule 1's letter without its point.
     """
     out: list[str] = []
+    if stats.declined:
+        listed = ", ".join(f"{n:,} {lang}" for lang, n in sorted(stats.declined.items()))
+        out.append(f"declined by you: {listed} — this build has a reader for "
+                   + ("that language" if len(stats.declined) == 1 else "those languages")
+                   + "; drop --without to read them")
     if stats.unclaimed:
         worst = sorted(stats.unclaimed.items(), key=lambda kv: (-kv[1], kv[0]))
         listed = ", ".join(f"{n:,} {suffix}" for suffix, n in worst)
@@ -266,7 +277,8 @@ def _tally(counter: dict[str, int], key: str) -> None:
 
 def discover(root: Path, include_tests: bool = False,
              rules: Sequence[DiscoveryRules] | None = None,
-             stats: WalkStats | None = None) -> Iterator[Path]:
+             stats: WalkStats | None = None,
+             declined: frozenset[str] = frozenset()) -> Iterator[Path]:
     """Every source file under `root` that is plausibly part of the program.
 
     **`is_test_path` lived here and is gone**, and its replacement is
@@ -287,6 +299,15 @@ def discover(root: Path, include_tests: bool = False,
     Which suffix belongs to whom is `ingest.suffix_owners`, the same function the registry
     itself is built from (rule 51): a walk that answered `.js` differently from the
     registry would route a file to a reader the fingerprint says never read it.
+
+    **`declined` filters last, and that placement is the whole of what it reports.** Taken
+    off `rules` instead, a declined language's suffixes would leave `owner` and its files
+    would land in `unclaimed` — *no reader here claims `.ts`* said by a build that has one,
+    which is the flattening design rule 21 is about and a false sentence besides. Asked
+    after the skip rules and the test rule, `declined` counts **exactly the files that
+    would otherwise have been read**, so the number answers the only question a reader has
+    about it: what did I lose. The test and skip lines still appear and are still true;
+    the three sets are disjoint and the arithmetic closes.
     """
     root = root.resolve()
     rules = tuple(ingest.discovery()) if rules is None else tuple(rules)
@@ -351,6 +372,10 @@ def discover(root: Path, include_tests: bool = False,
             if not include_tests and rule.is_test(rel):
                 if stats is not None:
                     _tally(stats.tests_excluded, lang)
+                continue
+            if lang in declined:
+                if stats is not None:
+                    _tally(stats.declined, lang)
                 continue
             if stats is not None:
                 _tally(stats.by_lang, lang)
@@ -574,6 +599,7 @@ def analyze_tree(
     include_tests: bool = False,
     jobs: int | None = None,
     progress: Callable[[str, int, int], None] | None = None,
+    declined: frozenset[str] = frozenset(),
 ) -> WalkStats:
     """Extract every changed file under `root` into `store`.
 
@@ -591,7 +617,8 @@ def analyze_tree(
     root = root.resolve()
     stats = WalkStats()
 
-    files = sorted(discover(root, include_tests=include_tests, stats=stats))
+    files = sorted(discover(root, include_tests=include_tests, stats=stats,
+                            declined=declined))
     stats.found = len(files)
 
     known = store.known_hashes()

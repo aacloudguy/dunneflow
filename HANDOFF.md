@@ -17814,3 +17814,149 @@ broad way first).
 * **`--one-way` exists** for a machine that has the binary and cannot analyse with the
   checkout. It says so in the summary line rather than quietly checking half of what the
   other form checks.
+
+## 2026-09-17 — chunk 14: the documentation, and the flag two refusals had been promising
+
+The last chunk in `PLAN-v2.md`. Its line is two clauses — *rewrite "Adding a language";
+register `ingest/` and `plugins/` in the architecture list* — and `V2-START-HERE.md` had
+added the user guide to it.
+
+### `CLAUDE.md`
+
+**"Adding a language" said the same four lines for a year**, and they were a claim about a
+tool that had never been asked: *write one extractor that emits `FileFacts`; nothing else
+changes*. Asked twice, it turned out to be nearly true and to leave out everything about
+how a reader gets there. It is now the six things to do, what you get free and must not
+reimplement, and three things that will bite — each of the three being a rule this tree
+paid for (`SOURCE_TEXT`'s newlines, rule 97's `lib*.d.ts`, rule 98's re-run detectors).
+
+**The promise at the top of it is asserted rather than claimed.** *Nothing above the graph
+names a language* was measured before it was written: two renderers and forty-odd dashboard
+modules hold **not one string constant** spelling `python` or `typescript`, and `walk.py`
+holds none either, where it used to open with `from .extractors.python.extract import
+extract_file` — which is the whole of what *only Python is extracted* ever meant.
+`tests/test_languages.py` holds it, derived from `PLUGINS` rather than a list of names
+(rule 92) and reading **constants** rather than the text, because a docstring giving
+*python 628 · typescript 412* as an example is not a violation of the rule it describes
+(rules 34 and 43).
+
+Under `resolve/` two places name one legitimately — `RESOLVERS`, the dispatch table, and a
+language's own package — and **one does not**: `traceability.py` asks Python's builtins of
+every corpus, including one with no Python in it. That is open question 6's shape one
+module over, it is unmeasured, and the test pins the count at **one** so it cannot grow
+quietly.
+
+Three entries added or corrected beside them: `ingest/` (six modules, `stamp_lang`,
+`SOURCE_TEXT`, and why it is in the core key while `canonical/` is not), `plugins/<lang>/`
+(the manifest, and why `fingerprint` names files for one kind of reader and globs for the
+other), and `extractors/python/` as the in-process plugin's reader rather than an import.
+`detectors/*.yaml` and `resolve/` gained the per-language halves they had grown.
+
+**And `canonical/`'s paragraph was factually wrong.** It said a canonicaliser living in
+`extractors/python/` would be hashed by `code_extraction_inputs()` and *"discard every
+graph on the machine"* — the whole truth while there was one key. Chunk 5 put a plugin's
+own files in **that language's** stamp, so the cost is now every Python row in every graph,
+sealed snapshots included. Smaller, and not acceptable: that is still the one store that is
+not derived losing facts nothing can rebuild (rules 25 and 62).
+
+### The flag two refusals had been promising
+
+Writing the chapter about refusals found it. `ingest/outofprocess.py` tells a reader whose
+machine has no Node to *"run again with `--without typescript` and the map will say those
+files were declined"* — and **`--without` did not exist**. `declined` was a parameter on
+`ingest.enabled`, `suffixes` and `discovery`, and **no caller had ever passed it**: rule
+35's shape in an argument, and rule 89 broken by the sentence written to keep it.
+
+Tom's call was to wire it rather than reword the sentence, and it is now:
+
+* **`ingest.decline()` is the one place a name is judged** (rule 51), with two refusals.
+  `--without pythn` that is simply not in the set reads as a run that declined nothing, and
+  *I turned Python off* against *I typed it wrong* is the entire map (rule 49). Declining
+  **every** language is refused too: that is a map with no code in it rather than a smaller
+  one, and a reader who meant `--no-docs` is told so.
+* **`declined` filters last in `discover`, and that placement is the whole of what it
+  reports.** Taken off `rules` instead, a declined language's suffixes would leave
+  `suffix_owners` and its files would land in `unclaimed` — *no reader here claims `.ts`*,
+  said by a build that has one. Two facts that look identical in a map with **opposite**
+  remedies (design rule 21). Asked after the skip and test rules, the count is exactly the
+  files that would have been read, so the number answers the only question anybody has
+  about it: *what did I lose*. A test asserts the three sets are disjoint and the
+  arithmetic closes.
+* **The walk says it and the map records it.** `declined by you: 11 typescript — this build
+  has a reader for that language; drop --without to read them`, and `analysis_args` gains
+  *typescript not read* — which is `_args_said`'s own docstring arriving at its purest
+  case: a map read `--without typescript` and a map of a program actually written in one
+  language hold exactly the same rows.
+
+Measured on DunneFlow's own tree: **107 read, 11 declined**, 118 accounted for, and 0.8 s
+against 3.7 s because Node is never started.
+
+### The user guide
+
+Three chapters gained the subject they were missing entirely — **the tool reads two
+languages**, which appeared nowhere in 4,009 lines of documentation. `01-installing.md`
+gains *which languages it reads and the one thing you may have to install*;
+`15-when-it-refuses.md` gains the two refusals a v2 reader can actually meet (the missing
+toolchain, and the per-language stale map, which names the language because *this map is
+stale* over a Python map whose forty TypeScript files are the problem sends somebody to the
+wrong place); `04-your-first-map.md` gains *what it read, and what it left out*, which is
+design rule 1's own subject and had no chapter.
+
+**And writing it found a second gap, stated rather than fixed.** `_emit` writes to stderr
+and `dunneflow serve` runs the analysis `--quiet`, so **the residue never reaches the
+dialog**: a reader who analyses from the application gets the progress panel and the map,
+and never *unread: 4,120 `.go`* or *declined by you*. Design rule 1 holds for the command
+line and not for the surface the tool is actually for. The chapter says so in as many words
+rather than glossing it; the fix is a progress-stream channel and a panel decision, and it
+is a chunk of its own.
+
+Every cross-reference and anchor in `docs/` and `docs/tutorial/` was checked mechanically
+after the edits; all resolve.
+
+### The tutorial: dated rather than re-taken
+
+Tom's call, on the evidence. The 21 screenshots are hand-composed 1483×812 captures from
+15 September and this session could not drive a browser to re-take them, so the honest
+thing was to say what the tutorial is rather than pretend it is current.
+
+Its front page already cited `1e76c51` and `875499c`; what it also said was that *"every
+number on every page is one you can reproduce"*, which stopped being true. The note is now
+dated — **15 September 2026**, two minutes before the first screenshot — and names the two
+things that moved further than a number: **78 files and 925 routines against 118 and
+1,283**, and the naming page changing *shape*.
+
+**Chapter 10 is rewritten, because it is the one that changed shape rather than size.** The
+derived standard draws **fifteen** conventions where the screenshot shows seven, most
+naming a language. The interesting part is not the split but what it replaced: measured
+across both languages at once, *"routines are named in snake_case"* scored **1,014 of
+1,114** — a `D` with a hundred exceptions, and every one of the hundred a TypeScript name
+spelled the way TypeScript spells names. One number, 91%, made of two answers that are 98%
+and 100%. That is the chapter's own argument about populations arriving one level up. Its
+`mirror` blind spot now reads *"only Python and TypeScript are extracted"*, and the chapter
+says why that sentence is not edited when a third reader arrives: it is
+`SELECT DISTINCT lang FROM files`.
+
+### Measured
+
+The core key **moved** — `ingest/__init__.py` is in it — from `14:c6cd0c4e1d15e9e3` to
+**`14:d273f41c746d39d2`**. Correct and conservative: the hash is over the bytes of the
+registry, `decline()` cannot change a fact, and over-invalidating is the safe direction of
+rule 12. It costs one re-analysis and it is stated rather than hidden. The two language
+stamps are unmoved.
+
+**7 of 7 golden digests identical**, so no fact moved with the key. Chunk 13's gate caught
+the move on the next run and both builds agree at the new value. **1,840 passed · 1
+skipped**, mypy clean over 191 files, ruff clean.
+
+### Residue
+
+* **`tests/test_mcp_tools.py::test_a_second_analysis_is_refused_and_told_what_is_running`
+  failed once, inside a full-suite run, and has passed every run since** — six in
+  isolation, three at the previous commit, two more full suites. Reported as observed
+  rather than diagnosed: the likely mechanism is that it starts an analysis of a one-file
+  tree as a subprocess and asks for a second immediately, so a first that finishes first
+  leaves nothing to refuse. Whether this diff can influence that timing was not
+  established, and *I did not cause it* is not a claim this session can make.
+* **The dialog cannot see the walk's residue**, above.
+* **`resolve/traceability.py` asks Python's builtins of every corpus**, pinned at one and
+  unmeasured.

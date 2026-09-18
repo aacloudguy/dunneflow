@@ -123,7 +123,7 @@ def check(path: str, current: Path) -> Verdict:
         # only answer that is true on every one of them is what happened when we tried.
         return Verdict(refusal=f"{chosen} cannot be written to: {exc}")
 
-    holds = [d.name for d in revisions.program_dirs(chosen) if d != chosen]
+    holds = [d.name for d in revisions.programs_under(chosen)]
     if holds:
         # Allowed and **said out loud**. Two roots merging is a legitimate thing to want,
         # and a reader who did not expect it must not find out from the program list.
@@ -182,7 +182,7 @@ def move(source_root: Path, target: Path,
     for it, so the exception is the answer. `analysis.run` reports because its work outlives
     the request that started it, which is a different shape (rule 82).
     """
-    programs = sorted(d for d in revisions.program_dirs(source_root) if d != source_root)
+    programs = revisions.programs_under(source_root)
     landed: list[Path] = []
     try:
         for i, d in enumerate(programs):

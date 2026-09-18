@@ -208,7 +208,7 @@ def _programs(where: Path) -> Iterable[Path]:
     """Every analysed program under `where`, or `where` itself if it is one."""
     if revisions.holds_a_map(where):
         return [where]
-    return sorted(p for p in revisions.program_dirs(where) if p != where)
+    return revisions.programs_under(where)
 
 
 # ======================================================================================
@@ -746,13 +746,15 @@ def api_probe(program: Path, keep: Path | None = None) -> tuple[
     with tempfile.TemporaryDirectory(prefix="dunneflow-api-order-") as tmp:
         where = Path(keep) if keep else Path(tmp)
         where.mkdir(parents=True, exist_ok=True)
-        # **Resolved, and it is not tidiness.** `/tmp` and `/var/folders` are both symlinks
-        # on macOS, and `_r_programs` unions a *resolved* `out_dir` with an unresolved
-        # listing — so under a symlinked root every program is listed twice, and the two
-        # copies of the row differ, and reversal swaps which comes first. That is a real
-        # defect in `web/serve.py` and it is not this one; reported separately, and kept
-        # out of here so the probe measures row order rather than its own scaffolding.
-        where = where.resolve()
+        # **Deliberately *not* resolved, and that is a change from how this was written.**
+        # `/tmp` and `/var/folders` are both symlinks on macOS, so a temporary directory
+        # is a symlinked maps root for free — which is the one shape `_r_programs` used to
+        # get wrong, unioning a *resolved* `out_dir` with an unresolved listing and so
+        # naming every program twice. This probe met that on its first run and reported it
+        # as an ordering finding, and resolved its own paths to get past it. The defect is
+        # closed in `revisions.program_dirs`, so the workaround comes out and the shape it
+        # was hiding from becomes coverage: a probe that canonicalises its own root can
+        # never see that class of defect return (rule 43).
         # **A root of its own each, and the leaf named the same in both.** Side by side
         # under one root they are two *programs*, so `/api/programs` lists the other copy
         # and `_r_programs` reports a difference the reader could never see — the probe's

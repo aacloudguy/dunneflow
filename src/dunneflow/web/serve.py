@@ -654,6 +654,23 @@ class _Live:
         # answers both: the claim asks whether anything is actually alive, and `stop` has
         # something to signal.
         self.analysis_proc: Any = None
+        # **And whether the slot is claimed at all, because the child is not the first
+        # thing that exists.** `analysis_running` asked `analysis_proc.poll()` and nothing
+        # else, so between `claim_analysis` returning and `on_start` handing the child over
+        # -- a thread start and a `Popen`, but a window all the same -- the slot read as
+        # free and a second analysis claimed it too. Measured, not feared: two
+        # `claim_analysis` calls in a row both return `True`, the report ends up describing
+        # the second, and the first child is then unreachable because `analysis_proc` has
+        # been overwritten -- so it cannot be stopped and it is writing into the same
+        # output root as the one that displaced it.
+        #
+        # **This is a claim and not a label, which is the distinction rule 30 draws here.**
+        # A label is set by somebody describing the work; this is released by the watching
+        # thread *ending*, in a `finally` it cannot skip, so it cannot outlive the thing it
+        # names -- including when that thread dies without noting, which is the jam the
+        # process question was added for. The process question stays beside it: claimed
+        # with a child that has exited is still a stale lock and is still cleared.
+        self.analysis_claimed = False
 
     # -- the one door onto a version -------------------------------------- #
 
@@ -1065,17 +1082,30 @@ class _Live:
                   done_steps=len(BUILD_STEPS), steps=len(BUILD_STEPS), ms=ms())
 
     def analysis_running(self) -> bool:
-        """Is an analysis *actually* running -- asked of the process, not of the report.
+        """Is an analysis *actually* running -- asked of the claim and of the child.
 
         `state == "working"` is a **label**, and a label outlives the thing it names: a
         watcher that dies without noting leaves it true for ever, and nothing short of
-        restarting the server could then start another analysis. This asks the child
-        (rule 30), which is the one answer that cannot be stale.
+        restarting the server could then start another analysis. So the report's own word
+        is not consulted here at all (rule 30).
+
+        **Two questions, and either one alone gets a real case wrong.** *Is the slot
+        claimed* is the only thing true from the instant somebody takes it -- the child
+        does not exist yet, and asking the child alone let a second analysis in through
+        that window. *Has the child exited* is the only thing that clears a claim whose
+        watcher died. `claimed and (no child yet or the child is alive)` is the conjunction
+        that answers both, and it is not a superset of either (rule 36).
+
+        The claim is released by the watching thread's own `finally`, so *no child yet* is
+        bounded by a thread start rather than by hope -- see `start_analysis`, which is the
+        only place a claim is taken and the only place one is released.
 
         Caller holds `analysis_lock`.
         """
+        if not self.analysis_claimed:
+            return False
         proc = self.analysis_proc
-        return proc is not None and proc.poll() is None
+        return proc is None or proc.poll() is None
 
     def claim_analysis(self, name: str) -> bool:
         """Take the analysis slot, or say it is taken. `claim`'s shape, its own slot.
@@ -1096,6 +1126,7 @@ class _Live:
         with self.analysis_lock:
             if self.analysis_running():
                 return False
+            self.analysis_claimed = True
             self.analysis_proc = None
             self.analysis = {"state": "working", "program": name, "step": "",
                              "done_steps": 0, "steps": 0, "detail": "",
@@ -1106,15 +1137,73 @@ class _Live:
                              "began": time.time(), "moved": time.time()}
             return True
 
+    def start_analysis(self, name: str, *, source: Path, out_root: Path, docs: bool,
+                       run: Any = analysis.run) -> bool:
+        """Claim the slot and start the run. `False` means the slot was taken.
+
+        **One place, because there were two and they were the same eleven lines** -- the
+        dialog's `_p_analyze` and the MCP session's `analyze`, each claiming the slot,
+        each defining its own `hold`, each starting its own thread on `analysis.run`. Two
+        copies of one procedure is where rule 51 says the drift starts, and the drift that
+        was already there is the point: whatever either of them did about a claim that
+        never became a child, it had to do twice.
+
+        **The claim is released in a `finally` around the whole run**, which is what makes
+        `analysis_running`'s *claimed* half safe to trust. Every exit from `analysis.run`
+        already ends in a terminal report -- it reports rather than raising, deliberately
+        -- but *already* is not *always*, and a claim released by anything less than the
+        thread ending is a claim that can outlive it. That is the jam, and the whole reason
+        the slot asks the process at all (rule 30).
+
+        `run` is an argument on `analysis.run`'s own precedent, so a test can hold a slot
+        open without racing a real analysis.
+        """
+        if not self.claim_analysis(name):
+            return False
+
+        def hold(proc: Any) -> None:
+            with self.analysis_lock:
+                self.analysis_proc = proc
+
+        def work() -> None:
+            try:
+                run(source=source, name=name, out_root=out_root, docs=docs,
+                    note=self.note_analysis, on_start=hold)
+            finally:
+                with self.analysis_lock:
+                    self.analysis_claimed = False
+
+        thread = threading.Thread(target=work, name=f"dunneflow-analyze-{name}",
+                                  daemon=True)
+        try:
+            thread.start()
+        except RuntimeError:
+            # A thread that could not be started is a claim nobody will ever release, and
+            # it would hold the slot for the life of the server. Given back here rather
+            # than reported: the caller is about to say the analysis did not start, and it
+            # did not.
+            with self.analysis_lock:
+                self.analysis_claimed = False
+            raise
+        return True
+
     def stop_analysis(self) -> tuple[bool, str]:
         """End the running analysis. Returns whether there was one, and what happened.
 
         The map it was writing marked itself unfinished as it started, so there is nothing
         to clean up here and nothing this process could write if there were (rule 20).
+
+        **Three answers rather than two**, because *nothing is running* and *it is running
+        and I stopped it* do not cover the instant between a claim and its child. Signalling
+        a `None` would be an exception where a sentence belongs, and reporting *nothing is
+        running* over a claimed slot would be a refusal the reader can see is false --
+        there is a panel on their screen saying it started (design rule 21).
         """
         with self.analysis_lock:
             if not self.analysis_running():
                 return False, "no analysis is running"
+            if self.analysis_proc is None:
+                return False, ("the analysis is still starting — ask again in a moment")
             proc, name = self.analysis_proc, self.analysis.get("program", "")
         # Outside the lock: `terminate` then up to six seconds of waiting, and a progress
         # poll must not queue behind it -- the reader pressed Stop and is watching to see
@@ -1130,13 +1219,28 @@ class _Live:
         was moving because it was being watched, which is the one thing a silence detector
         must not do -- and silence is exactly what tells a hang from a long step. Resolution
         on the Society tree is quiet for tens of seconds and is perfectly healthy.
+
+        **`residue` is carried across too, and that is a term of `--progress-json`'s
+        contract rather than a convenience here.** The child sends what the walk left out
+        **once**, the moment it knows, because the fact is fixed and the steps after it are
+        many; replacing the report whole would then wipe it on the very next line and the
+        panel would show it for a fraction of a second. Carried, it is still there when the
+        run says `done`, which is when a reader actually reads it. A fresh claim replaces
+        `self.analysis` outright, so a new run starts with no residue rather than
+        inheriting the last one's.
         """
         with self.analysis_lock:
             was = self.analysis
             fresh = dict(fields)
             fresh["began"] = was.get("began", time.time())
+            if "residue" not in fresh and "residue" in was:
+                fresh["residue"] = was["residue"]
+            # `residue` is in the list because its *arrival* is something happening --
+            # and only its arrival, since it compares equal on every line it is carried
+            # across. Left out, the one moment the walk reports what it left out would
+            # register as silence.
             changed = any(was.get(k) != fresh.get(k)
-                          for k in ("state", "step", "done_steps", "detail"))
+                          for k in ("state", "step", "done_steps", "detail", "residue"))
             fresh["moved"] = time.time() if changed else was.get("moved", time.time())
             self.analysis = fresh
 
@@ -1208,6 +1312,32 @@ class _Live:
             self.docsource.close()
         if self.standards is not None:
             self.standards.close()
+
+
+def said_residue(stored: str | None) -> dict[str, Any]:
+    """`said()`'s three states for a field that holds a **list**.
+
+    Its own function rather than a branch inside `said`, because the two differ in what
+    *nothing* looks like: a scalar's nothing is a word this layer knows (`none`, or
+    blank), and a list's is an empty list. One function testing both would be answering
+    two questions with one shape, and the day a third field arrives it would answer a
+    third.
+
+    **Refused rather than guessed when the stored text will not parse.** A key that
+    holds something other than a JSON list was written by something this build does not
+    understand, and reporting it as *nothing was left out* would be a plausible value
+    standing in for a failure (rule 49). It reads as *not recorded*, which is the true
+    statement: this map cannot say.
+    """
+    if stored is None:
+        return {"recorded": False, "lines": [], "none": False}
+    try:
+        lines = json.loads(stored)
+    except ValueError:
+        return {"recorded": False, "lines": [], "none": False}
+    if not isinstance(lines, list) or not all(isinstance(x, str) for x in lines):
+        return {"recorded": False, "lines": [], "none": False}
+    return {"recorded": True, "lines": lines, "none": not lines}
 
 
 class _Handler(BaseHTTPRequestHandler):
@@ -2278,7 +2408,8 @@ class _Handler(BaseHTTPRequestHandler):
             base = self._live.current
             meta = {k: base.store.get_meta(k) for k in (
                 "program", "revision", "analysed_at", "tool_version", "extractor",
-                "schema_version", "inference", "model", "analysis_args")}
+                "schema_version", "inference", "model", "analysis_args",
+                "walk_residue")}
             counts = base.store.counts()
             # **What this map was read from, not what this build can read** (rule 24).
             # The dialog's subject is the map on screen, and the same claim the mirror
@@ -2346,6 +2477,18 @@ class _Handler(BaseHTTPRequestHandler):
             "extractor": said("extractor"),
             "schema_version": said("schema_version"),
             "analysis_args": said("analysis_args"),
+            # **What the walk left out, and it is three answers rather than a list.** A map
+            # written before `analyze` recorded this cannot say; one recording an empty
+            # list is saying *nothing was left out*, which is a real and different answer;
+            # and one recording lines is saying which. Collapsing the first two would turn
+            # a silence into a promise, which is the failure every other field here is
+            # shaped to avoid (design rule 21).
+            #
+            # The panel says the same thing while a run is going, off the same sentences
+            # -- `walk_residue` is the one place they are worded (rule 51) -- and this is
+            # what a reader gets once the panel is dismissed and next week when they open
+            # the map again.
+            "walk_residue": said_residue(meta.get("walk_residue")),
             # The two the dialog exists for.
             "inference": said("inference"),
             "model": said("model"),
@@ -2702,6 +2845,23 @@ class _Handler(BaseHTTPRequestHandler):
         directory and needs no new argument. A program served from somewhere with no
         siblings gets a list of one, which is the honest answer rather than an empty
         control.
+
+        **The union below is a union of keys, and it only works because both sides are
+        resolved.** `here` has always been `out_dir.resolve()` and the listing was not, so
+        where the root arrives unresolved the two are unequal `Path` objects naming a
+        single directory: the open program came back **twice**, and the copy that was not
+        marked as serving was the one the listing supplied. `/tmp` and `/var/folders` are
+        both symlinks on macOS, so a maps root in a temporary directory is already this
+        shape.
+
+        **Which callers were exposed is worth stating, because it is not this route's
+        own.** `cmd_serve` and the MCP session both reach `_Live` through `serve.where`,
+        which resolves both halves, so the application a reader runs was never wrong here;
+        what is exposed is `_Live`'s two-argument form, where `out_root` is derived as
+        `out_dir.parent` and keeps whatever spelling the caller had. `tools/ordering.py`
+        is such a caller and is how this was found. `program_dirs` resolves now, which is
+        where that has to happen (rule 51) -- the line below asks for nothing and depends
+        on it entirely.
 
         **Named but not opened.** Whether a program's stores are readable by *this* build of
         DunneFlow is a question that costs a graph open and a document-store open apiece,
@@ -3114,7 +3274,8 @@ class _Handler(BaseHTTPRequestHandler):
         # `0` and only `0` is off. An absent parameter means the caller did not say, and
         # documentation is an input this tool reads by default (design rule 11).
         docs = (q.get("docs") or ["1"])[0] != "0"
-        if not self._live.claim_analysis(name):
+        if not self._live.start_analysis(name, source=source, out_root=out_root,
+                                         docs=docs):
             # **The refusal carries the running job, so the reader can act on it.** It used
             # to be a sentence and nothing else -- true, and a dead end: the one thing they
             # might want to do about it is stop it, and nothing on the page offered that.
@@ -3122,15 +3283,6 @@ class _Handler(BaseHTTPRequestHandler):
             running = live.get("program", "")
             self._started(False, f"an analysis of {running} is already running", steps=())
             return
-        def hold(proc: Any) -> None:
-            with self._live.analysis_lock:
-                self._live.analysis_proc = proc
-
-        threading.Thread(
-            target=analysis.run,
-            kwargs={"source": source, "name": name, "out_root": out_root, "docs": docs,
-                    "note": self._live.note_analysis, "on_start": hold},
-            name=f"dunneflow-analyze-{name}", daemon=True).start()
         self._started(True, verdict.note, progress=self._live.analysis_progress, steps=())
 
     def _p_base(self, q: dict[str, list[str]]) -> None:
@@ -3529,7 +3681,7 @@ def _serve_cold(live: _Live, out_root: Path, port: int,
     read it. A server that binds a port and says nothing about *why* it has nothing to show
     is design rule 21's failure one surface over from where that rule was written.
     """
-    found = sorted(d.name for d in revisions.program_dirs(out_root) if d != out_root)
+    found = [d.name for d in revisions.programs_under(out_root)]
     emit(f"no program is open; reading {out_root}")
     if found:
         emit(f"{len(found)} here: {', '.join(found)} — pick one on the page, "
@@ -3871,7 +4023,7 @@ def no_map_here(out_dir: Path, out_root: Path, revision: str | None) -> str:
     """
     if revision:
         return f"no graph for {revision} in {out_dir}"
-    found = sorted(d.name for d in revisions.program_dirs(out_root) if d != out_root)
+    found = [d.name for d in revisions.programs_under(out_root)]
     if found:
         return (f"{out_dir} holds no map of its own. Under this root: "
                 f"{', '.join(found)} — name one of those, or run `dunneflow analyze` "

@@ -20,8 +20,8 @@ by *how often you need it*, not by importance:
 | File | What it holds | When to read it |
 |---|---|---|
 | `CLAUDE.md` | commands, verification gates, architecture, and the **index** of every rule | every session — it is loaded for you |
-| `RULES.md` | the 101 engineering rules **in full**, with the false result each came from — numbered to 102, because 21 does not exist and the numbers are addresses | before working in the area a rule governs |
-| `DESIGN-RULES.md` | the 30 dashboard design rules in full | before building or changing a view |
+| `RULES.md` | the 103 engineering rules **in full**, with the false result each came from — numbered to 104, because 21 does not exist and the numbers are addresses | before working in the area a rule governs |
+| `DESIGN-RULES.md` | the 31 dashboard design rules in full | before building or changing a view |
 | `PERFORMANCE.md` | every measured figure, with its budget and its conditions | before quoting or retaking a number |
 | `BRIEFING.md` | state: what is built, what is next, what is closed | at the start of a session |
 | `HANDOFF.md` | the full chronological record, session by session | when you need why something is the way it is |
@@ -146,7 +146,19 @@ the same question `analyze` asks to keep a program's own output out of its own c
 of hand-written prose (rule 30). **Literally the same function**, `revisions.holds_a_map`
 and its listing form `names_a_map`: the glob was written out three times, twice in
 `program_dirs` and once here, with this file's own sentence claiming they were one question
-while they were three answers (rule 51). A test over the source refuses a fourth. Handed a root with nothing open it **serves the start
+while they were three answers (rule 51). A test over the source refuses a fourth.
+
+**And `program_dirs` resolves its root, which is what makes its answer a set** (rule 103).
+`_r_programs` unions it with the directory being served — `out_dir.resolve()`, resolved
+since the day it was written — so an unresolved listing made two unequal `Path` objects out
+of one directory under a symlinked root, and the open program came back twice with the
+*unmarked* copy supplied by the listing. `/tmp` and `/var/folders` are both symlinks on
+macOS. The **root** is canonicalised and the children are not: `resolve()` on a child that
+is itself a symlink would name a program outside the root that is listing it, and a map
+kept on another disk and linked in is still this root's program. `programs_under` is the
+same question without the root, because five callers spelled that exclusion as
+`if d != out_root` — which is false for exactly the directory it excludes when the root
+arrives unresolved, the same defect wearing the other face. Handed a root with nothing open it **serves the start
 page** rather than refusing: `web/static/start.html`, whose whole job is to say there is
 nothing yet and offer the two things that can be done about it. That is the state a
 double-clicked application begins in.
@@ -544,6 +556,22 @@ reads a source tree into a new directory under the output root and puts it in th
   `--no-docs` run can never reach (rule 32) — and is printed as sent all the way to the
   screen. A failure's reason **leads with the child's last line** and keeps the rest as
   evidence: a traceback says the useful thing last, and this reader does not write code.
+* **And the walk's residue rides that channel, because design rule 1 held for the command
+  line and not for the application.** `walk_residue` has worded *unread: 4,120 `.go`*,
+  *left out as tests: 315 typescript* and *declined by you* since the walk became
+  multi-language, and `analyze` prints them through `_emit` — which is stderr, which
+  `--quiet` empties. So the one surface that could not see what had been filtered out of a
+  map was the dialog that made it. A `residue` record goes on the stream **once**, the
+  moment the walk knows, and `note_analysis` carries it across exactly as it carries
+  `began`: the report is replaced whole, so without that stickiness the panel would show it
+  for the fraction of a second before the next line arrived. Its arrival counts as movement
+  and being carried does not, or a watched run would never look silent. It is recorded on
+  the map as well (`meta.walk_residue`, a JSON list) — a panel is dismissed and a map is
+  kept, and *what is not in this map* is the other half of every count in **About this
+  map**. **Three answers there and not two**: not recorded is a map written before `analyze`
+  could say, an empty list is *nothing was left out*, and lines say which (design rule 21).
+  The panel flattens the first two deliberately — a running commentary announcing *nothing
+  was left out* on every healthy analysis is noise on the common case.
 * **Its own slot, not the switch's.** `claim_analysis` beside `claim`. A switch replaces
   what is on screen; an analysis replaces nothing, so one slot would mean a ninety-second
   read of an unrelated tree locking the reader out of changing versions. That is also why
@@ -580,9 +608,22 @@ be read.
 * `_Live.analysis_proc` holds the child. It was a local inside `analysis.run`, so nothing
   could stop a run at all — no route, no button, and a hung child held the slot until
   somebody killed the server.
-* **`claim_analysis` asks `poll()`, not `state == "working"`** (rule 30). A watcher that dies
-  without noting used to leave that label true for ever; the stale lock is now cleared rather
-  than left for somebody to notice. This is the *"or locked"* half.
+* **The slot asks the claim *and* the child, and neither alone is enough** (rule 104).
+  Asking `state == "working"` is asking a label, and a label outlives the thing it names: a
+  watcher that dies without noting leaves it true for ever, which is why the question moved
+  to the process. But the process does not exist yet — between `claim_analysis` returning
+  and `on_start` handing the child over there is a thread start and a `Popen`, and through
+  that window a second claim succeeded, overwrote the report, and then overwrote
+  `analysis_proc`, leaving the **first** child unreachable and still writing into the same
+  output root. Measured in three lines and no timing at all. So `analysis_running` is
+  `claimed and (no child yet or the child is alive)`; it is not a superset of either half
+  (rule 36), and the stale lock is still cleared rather than left for somebody to notice.
+* **`_Live.start_analysis` is the only place a claim is taken, started or released**, and
+  the release is the watching thread's own `finally`. That is what makes *claimed* safe to
+  trust: a claim given back by a caller saying it is finished can outlive the work, and one
+  given back by the work stopping cannot. It was eleven duplicated lines in `_p_analyze`
+  and in `mcp/session.py`, so whatever either did about a claim that never became a child
+  it had to do twice (rule 51).
 * **The child gets a group of its own and the stop goes to the group.** `analyze` runs a
   `ProcessPoolExecutor` whose workers inherit the pipes: signalling the parent alone left
   **eleven workers** holding stdout open, so `run`'s read loop never returned and the report
@@ -1881,6 +1922,10 @@ it was written from.
      nothing about the others.
 102. A list with no order comes back rearranged; a *sentence* about that order comes back
      wrong.
+103. A path is not a key until it is canonical, and a set cannot deduplicate what does not
+     compare equal.
+104. A slot claimed before the thing that holds it exists is free for as long as it takes
+     to create that thing.
 ```
 
 ## Anomalies: the discipline
@@ -1958,6 +2003,8 @@ so read the body before building against one.
  28. Inference is voluntary and secondary, and a map states whether any was used.
  29. A hidden control is not a dimmed one.
  30. A dimmed control still acts.
+ 31. A panel pinned to an edge grows away from it, so anything inside it that a program
+     fills must be bounded.
 ```
 
 ## Adding a language

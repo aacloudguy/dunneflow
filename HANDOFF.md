@@ -18183,3 +18183,125 @@ Two things this found and did not fix, both now items in `BACKLOG.md` with all t
 resolved path unioned with an unresolved listing and not an ordering defect at all; and the
 comparison lane is probed against a pair differing in **three source files**, which is a
 real result from a small population.
+
+## 2026-09-18 — the residue reaches the application, and two slots that were not slots
+
+Three items out of `BACKLOG.md`, taken in that order because the two small ones clear the
+ground the feature lands on. Tom's call on the slate and on where the residue goes.
+
+### `/api/programs` listed a program twice — backlog 3, and rule 103
+
+`_r_programs` unions the directory being served with `revisions.program_dirs(out_root)`.
+`here` has been `out_dir.resolve()` since the day it was written; the listing resolved
+nothing. Under a maps root reached through a symlink those are two unequal `Path` objects
+naming one directory, so the open program appeared twice in the `<select>` and the copy
+that was **not** marked as the one being read was the listing's. Reproduced exactly:
+`['alpha', 'alpha', 'beta']`.
+
+**The reach is narrower than the backlog said, and saying so is the point.** `cmd_serve`
+and the MCP session both go through `serve.where`, which resolves both halves, so the
+application a reader runs was never wrong here. What is exposed is `_Live`'s two-argument
+form, where `out_root` is derived as `out_dir.parent` and keeps whatever spelling the
+caller had — and `tools/ordering.py:777` is exactly such a caller, which is how the probe
+met it. The first end-to-end test written for this **passed at the previous commit**,
+because it went through `where()`; it was rewritten against the shape that actually
+reaches the defect rather than kept as a test that cannot fail (rule 37).
+
+The fix is one place (rule 51): `program_dirs` resolves its root before it lists. The
+**root** is canonicalised and the children are not, deliberately — `resolve()` on a child
+that is itself a symlink would name a program outside the root that is listing it, and a
+map kept on another disk and linked in is still this root's program. `programs_under` is
+new and is the same question without the root: five callers spelled that exclusion as
+`if d != out_root`, which against an unresolved root is false for exactly the directory it
+excludes, so the two halves had to move together.
+
+**The workaround came out with the defect.** `tools/ordering.py` resolved its own
+temporary directory to get past this; a probe that canonicalises its own root can never see
+this class of defect return (rule 43), so it now runs on the symlinked root it is handed —
+and `--api` is green on all 43 routes that way.
+
+### One slot, two analyses — backlog 9, and rule 104
+
+The flaky test was `test_a_second_analysis_is_refused_and_told_what_is_running`, and the
+backlog's hypothesis was that the first analysis simply finished before the second was
+asked for. That is possible and was never established. **There is a second mechanism, and
+it was there all along**: `analysis_running` asked `analysis_proc.poll()` and nothing else,
+so between `claim_analysis` returning `True` and `on_start` handing the child over the slot
+read as free. Measured in three lines and no timing at all — two `claim_analysis` calls in
+a row both return `True`.
+
+What follows is worse than a duplicated report. The loser overwrites the report; then its
+`on_start` overwrites `analysis_proc`, so the **first** child is unreachable —
+`analysis_stop` cannot signal it, nothing will ever poll it — and it goes on writing into
+the same output root as the run that displaced it.
+
+Asking the child was the right answer to the right question (rule 30: a label outlives the
+thing it names, and a watcher that dies leaves `working` true for ever). It is simply not
+the *whole* question, because the child does not exist yet. `analysis_running` is
+`claimed and (no child yet or the child is alive)` now, which is not a superset of either
+half (rule 36) — and what makes *claimed* safe to trust is that the watching thread's own
+`finally` gives it back, rather than a caller saying it is finished.
+
+`_Live.start_analysis` is the one place a claim is taken, started and released. It was
+eleven duplicated lines in `_p_analyze` and in `mcp/session.py`, so whatever either did
+about a claim that never became a child it had to do twice (rule 51). `stop_analysis`
+gained a third answer for the instant between a claim and its child: signalling a `None`
+would be an exception where a sentence belongs, and *nothing is running* over a claimed
+slot is a refusal the reader can see is false, because the panel on their screen says it
+started (design rule 21).
+
+The test itself no longer races. There is no way to hold a child open from the far side of
+a pipe, so the refusal is asked of the object that makes it — `Session.analyze`, with
+`start_analysis`'s `run` seam holding the slot until the test lets go. The wire stays
+`test_mcp.py`'s subject.
+
+### The walk's residue reaches the application — backlog 2
+
+`walk_residue` has worded these sentences since the walk became multi-language, and
+`analyze` has always printed them — through `_emit`, which is stderr, which `serve` empties
+with `--quiet`. So *unread: 8 `.js`, 5 `.go`…*, *left out as tests*, *pruned 16
+directories* reached a terminal and never the dialog that made the map. Design rule 1 held
+for the command line and not for the surface this tool is actually for.
+
+Three surfaces now, and they are three readers rather than three copies. The terminal is
+unchanged. The `--progress-json` stream carries a `residue` record **once**, the moment the
+walk knows: the fact is fixed and the steps after it are many, so putting it on every line
+would multiply four sentences by however long resolution takes. And `meta.walk_residue`
+holds it on the map, because a panel is dismissed and a map is kept.
+
+**The stickiness is a term of the contract rather than a convenience.** `note_analysis`
+replaces the report whole — deliberately, so a field from a previous step cannot survive
+into this one — so without carrying `residue` across as it carries `began`, the panel would
+show it for the fraction of a second before the next line arrived. Its *arrival* counts as
+movement and being carried does not, or a watched run would never look silent, which is the
+one thing `moved` exists to prevent. A fresh claim replaces the report outright, so a new
+run never inherits the last one's.
+
+**Three answers in *About this map*, and the panel deliberately has two.** Not recorded is a
+map written before `analyze` could say; an empty list is *nothing was left out*, which is a
+real answer and needed a key that is always written; lines say which (design rule 21). The
+panel flattens the first two on purpose — a running commentary announcing *nothing was left
+out* on every healthy analysis is noise on the common case, and until the record arrives
+the true answer is *not yet*. Text that will not parse reads as *not recorded* rather than
+as *none*, because a plausible value standing in for a failure is how the failure hides
+(rule 49).
+
+**Design rule 31 came out of looking at it.** The panel is `position: fixed; bottom: 1rem`,
+so it grows *upward*, and what is at the top of it is the head and the **Stop it** button.
+Measured with fourteen wrapping lines of residue: 558px of content in a 562px window and
+the panel's top edge at **-71px** — the reader told something and losing the control that
+acts on it in the same paint. Capped and scrolling now, on `.an-why`'s precedent.
+
+Verified in the browser rather than only in tests: `/api/about` returns the three states,
+the row renders in the dialog, and a real analysis of a 118-file mixed tree carried five
+residue lines through to `done` and drew them in the panel as a closed disclosure with its
+count.
+
+### Gates
+
+**1,865 passed · 1 skipped**, mypy clean over 194 files, ruff clean. **7 of 7 golden
+digests identical** against `output/mensores-v1` — Society re-analysed with
+`--standards ../dunnecorp-standards`, 4,823 routines. `tools/ordering.py --api` green on
+all 43 routes, now over a symlinked root. No stamp moved: core `d273f41c746d39d2`, python
+`1.0.0:cd8f8435300e2ec5`, typescript `1.1.0:92eb0d173e9807a7`, so no stored map is
+invalidated.

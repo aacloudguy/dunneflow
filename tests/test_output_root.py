@@ -246,3 +246,73 @@ def test_an_unnamed_analysis_still_borrows_the_directory_leaf(tmp_path):
     tree = tmp_path.parent / "atree"
     tree.mkdir(exist_ok=True)
     assert analysis.check(str(tree), "", tmp_path, None).ok
+
+
+# --------------------------------------------------------------------------- #
+# A program directory is a key before it is a location
+
+
+def _linked(tmp_path: Path) -> tuple[Path, Path]:
+    """A maps root, and a symlink to it. Skips where the platform will not make one.
+
+    Not a contrived shape: `/tmp` and `/var/folders` are both symlinks on macOS, so any
+    tool whose maps root is a temporary directory is already standing on this -- which is
+    exactly how `tools/ordering.py` met it.
+    """
+    real = tmp_path / "real"
+    real.mkdir()
+    link = tmp_path / "link"
+    try:
+        link.symlink_to(real, target_is_directory=True)
+    except (OSError, NotImplementedError) as exc:      # Windows without the privilege
+        pytest.skip(f"this platform will not make a symlink here: {exc}")
+    return real, link
+
+
+def test_a_root_reached_through_a_symlink_names_each_program_once(tmp_path):
+    """The same directory reached two ways must compare equal, or a set cannot deduplicate.
+
+    `_r_programs` unions `out_dir.resolve()` with this listing to mark which row is open.
+    Unresolved, the two were unequal `Path` objects naming one directory: every program
+    came back twice and the *unmarked* copy was this function's. Rule 60's argument about a
+    stored path, one question over.
+    """
+    real, link = _linked(tmp_path)
+    _program(real, "mensores")
+
+    assert revisions.program_dirs(link) == revisions.program_dirs(real)
+    # The union `_r_programs` actually makes, spelled here so the test fails on the defect
+    # rather than on a proxy for it (rule 37).
+    here = (link / "mensores").resolve()
+    assert revisions.program_dirs(link) | {here} == {real / "mensores"}
+
+
+def test_a_program_that_is_itself_a_symlink_stays_under_the_root_that_lists_it(tmp_path):
+    """The root is canonicalised; a child is **not** followed, and that is deliberate.
+
+    A map kept on another disk and linked into the maps root is still this root's program,
+    and `resolve()` on the child would name it somewhere else entirely -- so the switch
+    would refuse a program the list had just offered. Only the root moves.
+    """
+    real, link = _linked(tmp_path)
+    elsewhere = tmp_path / "elsewhere"
+    _program(elsewhere, "mensores")
+    (real / "mensores").symlink_to(elsewhere / "mensores", target_is_directory=True)
+
+    assert revisions.program_dirs(link) == {real / "mensores"}
+
+
+def test_the_root_is_never_one_of_its_own_programs_however_it_was_reached(tmp_path):
+    """`programs_under` is the exclusion five callers were spelling for themselves.
+
+    Against an unresolved root `d != out_root` is false for the very directory it excludes,
+    so a root reached through a symlink listed *itself* as a program -- the second half of
+    the same defect, and the reason the comparison now lives beside the resolution (rule 51).
+    """
+    real, link = _linked(tmp_path)
+    revisions.db_path(real, revisions.GRAPH, "2026-01-01T00:00:00Z").touch()
+    _program(real, "mensores")
+
+    assert real in revisions.program_dirs(link), "the root holds a map and is one"
+    assert revisions.programs_under(link) == [real / "mensores"]
+    assert no_map_here(link, link, None).split("Under this root:", 1)[1].count("real") == 0

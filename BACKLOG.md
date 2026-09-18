@@ -36,44 +36,7 @@ which is the honest interim state rather than a silent one.
 a fresh self-analysis, the 21 shots re-composed to the same framing, and every figure and
 alt-text transcription rewritten against them.
 
-### 2 · The analyse dialog cannot see what the walk left out
-
-*From chunk 14, 2026-09-17.*
-
-`_emit` writes to stderr and `dunneflow serve` runs the analysis `--quiet`, so
-*unread: 4,120 `.go`*, *left out as tests: 315 typescript* and *declined by you* reach a
-terminal and never the application. **Design rule 1 holds for the command line and not for
-the surface this tool is actually for** — a reader who analyses from the dialog gets the
-progress panel and the map, and no account of what was filtered out of it.
-
-**Why not done.** Chunk 14 had already taken one feature detour (`--without`), and this
-one needs a UI decision — where in the panel the residue goes, and whether it survives the
-panel being dismissed — that is not a documentation chunk's to make silently.
-`docs/04-your-first-map.md` states the gap in as many words.
-
-**What would settle it.** A `residue` record on the `--progress-json` stream, and the panel
-rendering it. The lines already exist and are already computed; nothing has to be measured
-again.
-
-### 3 · `/api/programs` lists a program twice under a symlinked maps root
-
-*From the `web/` ordering work, 2026-09-18.*
-
-`_r_programs` unions a **resolved** `out_dir` with an **unresolved** `program_dirs`
-listing, so under a root reached through a symlink the two are different `Path` objects
-naming one directory and every program is listed twice. `/tmp` and `/var/folders` are both
-symlinks on macOS, which is how the ordering probe met it — it copies a program into a
-temporary directory, and its first run reported the duplicate as an ordering finding.
-
-**Why not done.** It is not an ordering defect and fixing it inside a chunk about row
-order would be scope this session did not have. The probe resolves its own paths, with a
-comment saying why, so it measures row order rather than its own scaffolding.
-
-**What would settle it.** Resolve both sides of the union in `_r_programs` — or, better,
-have `revisions.program_dirs` return resolved paths, since it is the one place that
-question is answered — and a test over a root that is a symlink to another directory.
-
-### 4 · The comparison lane is probed thinly
+### 2 · The comparison lane is probed thinly
 
 *From the `web/` ordering work, 2026-09-18.*
 
@@ -94,7 +57,7 @@ routines change — Society's `main` at 09b9ef11 against the branch head is thre
 have: two routines sharing a qualname and both behaving differently, two structures
 sharing a module and a name.
 
-### 5 · The rendered map still varies with `--jobs` in one respect
+### 3 · The rendered map still varies with `--jobs` in one respect
 
 *From the ordering fix, 2026-09-17.*
 
@@ -109,7 +72,7 @@ the order a reader would choose, and the same is true of the six commands
 alphabetical? — which is a product question rather than a correctness one. Until then the
 answer is reproducible and arbitrary, which is rule 66's floor and not its ceiling.
 
-### 6 · `resolve/traceability.py` asks Python's builtins of every corpus
+### 4 · `resolve/traceability.py` asks Python's builtins of every corpus
 
 *From chunk 14, 2026-09-17.*
 
@@ -125,7 +88,7 @@ it cannot grow quietly while this is open.
 **What would settle it.** Measure it on a corpus that has both, then either split per
 language as the naming lanes were, or state the blind spot on the page.
 
-### 7 · `fetch` through a name
+### 5 · `fetch` through a name
 
 *From chunk 10, 2026-09-17.*
 
@@ -140,7 +103,7 @@ program file at all, so the feature could not be given a ground truth. Scheduled
 **What would settle it.** A corpus that calls `fetch` through a name. Then the same shape
 as chunk 11's package matching.
 
-### 8 · Rule 95's general remedy
+### 6 · Rule 95's general remedy
 
 *From chunk 6, 2026-09-17.*
 
@@ -151,22 +114,6 @@ list of directories — is not built**, and a rule is never closed.
 
 **What would settle it.** Either building it, or recording the measurement that says the
 hand-kept list is sufficient and why.
-
-### 9 · `test_a_second_analysis_is_refused_and_told_what_is_running` is flaky
-
-*From chunk 14, 2026-09-17.*
-
-Failed once inside a full-suite run; has passed every run since — six in isolation, three
-at the previous commit, and several full suites. The likely mechanism is that it starts an
-analysis of a one-file tree as a subprocess and asks for a second immediately, so a first
-that finishes first leaves nothing to refuse.
-
-**Why not done.** Reported as observed rather than diagnosed. Whether the chunk-14 diff can
-influence that timing was not established, and *I did not cause it* is not a claim that
-session could make.
-
-**What would settle it.** Make the refusal not depend on wall-clock — a first analysis the
-test can hold open, rather than one it races.
 
 ---
 

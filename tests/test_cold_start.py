@@ -427,3 +427,58 @@ def test_only_dunneflow_is_ever_joined(cold, tmp_path):
     finally:
         httpd.shutdown()
         httpd.server_close()
+
+
+# --------------------------------------------------------------------------- #
+# The root a reader actually has: one reached through a symlink
+
+
+def test_a_symlinked_maps_root_lists_each_program_once_and_marks_the_open_one(tmp_path):
+    """One directory reached two ways is one program, and the control has to say which.
+
+    `_r_programs` unions `out_dir.resolve()` with `revisions.program_dirs(out_root)` to
+    mark the row being read. The listing did not resolve, so where the root arrives
+    unresolved the two were unequal `Path` objects naming a single directory: **two rows
+    for the open program**, and `is_here` false for the one the listing supplied — so the
+    `<select>` offered a duplicate that was not marked as open.
+
+    **Handed a program directory, with the root derived** — `_Live`'s two-argument form,
+    `out_root = out_dir.parent`. That is the shape that reaches the defect, and it is a
+    real one rather than a contrivance: `cmd_serve` and the MCP session both go through
+    `serve.where`, which resolves, but `tools/ordering.py:777` constructs a `_Live` exactly
+    like this and met the duplicate on its first run. `/tmp` and `/var/folders` are both
+    symlinks on macOS, so any caller whose maps root is a temporary directory is standing
+    on it.
+
+    Over a real socket, and with a program genuinely open, because the union has nothing
+    to double until there is an `out_dir` to put into it.
+    """
+    real = tmp_path / "real"
+    real.mkdir()
+    link = tmp_path / "link"
+    try:
+        link.symlink_to(real, target_is_directory=True)
+    except (OSError, NotImplementedError) as exc:      # Windows without the privilege
+        pytest.skip(f"this platform will not make a symlink here: {exc}")
+    _make_program(real, "alpha")
+    _make_program(real, "beta")
+
+    out_dir = link / "alpha"
+    live = _Live(out_dir / "source.db", out_dir)
+    graph = revisions.newest(out_dir, revisions.GRAPH)
+    assert graph is not None
+    live.open(graph)
+    httpd = ThreadingHTTPServer(("127.0.0.1", 0), partial(_Handler, live=live))
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    base = f"http://127.0.0.1:{httpd.server_address[1]}"
+    try:
+        d = json.loads(_get(base + "/api/programs")[1])
+        names = [p["name"] for p in d["programs"]]
+        assert names == ["alpha", "beta"], names
+        assert d["serving"] == "alpha"
+        assert [p["name"] for p in d["programs"] if p["serving"]] == ["alpha"], (
+            "exactly one row is the one being read")
+    finally:
+        httpd.shutdown()
+        httpd.server_close()
+        live.close()

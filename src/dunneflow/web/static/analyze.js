@@ -474,6 +474,34 @@
     return `${m} m ${Math.round(n - m * 60)} s`;
   }
 
+  /* **What the walk left out, on the surface this tool is actually for.**
+   *
+   * These sentences have always existed -- `walk_residue` in `walk.py` words them, and
+   * `analyze` has always printed them -- but on stderr, and `serve` runs its child
+   * `--quiet`. So *unread: 4,120 .go*, *left out as tests: 315 typescript* and *declined
+   * by you* reached a terminal and never this panel: design rule 1 held for the command
+   * line and not for the application.
+   *
+   * **Rendered as written, never re-worded here.** They are one sentence each and each one
+   * already names what would change it -- `--include-tests`, dropping `--without`. A
+   * second wording on this side would be a second answer to one question, and the day the
+   * walk learns a new kind of residue the panel would go on saying the old list (rule 51).
+   *
+   * **Absent and empty are not distinguished here, deliberately**, and that is the one
+   * place this differs from *About this map*. A panel is a running commentary: a heading
+   * saying *nothing was left out* on every healthy analysis is noise on the common case,
+   * and until the record arrives the true answer is *not yet*, which is not a state worth
+   * drawing. The map keeps the distinction, because there the question is being asked
+   * rather than answered unprompted (design rule 21). */
+  function residueBlock(a) {
+    const lines = Array.isArray(a.residue) ? a.residue : [];
+    if (!lines.length) return "";
+    return `<details class="an-residue">
+        <summary>What was left out of this map (${lines.length})</summary>
+        <ul>${lines.map((s) => `<li>${esc(s)}</li>`).join("")}</ul>
+      </details>`;
+  }
+
   function analysisPanel() {
     if (!ANALYSIS) return "";
     const a = ANALYSIS;
@@ -493,6 +521,7 @@
          it "did not finish" reads as the tool disagreeing with them. */
       head = "Stopped";
       body = `<p class="an-step">${esc(a.reason || "it was stopped")}</p>
+        ${residueBlock(a)}
         <div class="an-foot">
           <button class="linkbtn" data-anagain="${esc(a.program || "")}">Analyse it again</button>
           <button class="linkbtn" data-andismiss>Close</button>
@@ -513,6 +542,7 @@
                 · ${secs.toFixed(1)} s</p>
         <p class="hint">Opening it reloads the page, because a program switch cannot keep
            the selection, the trail or the version you are on.</p>
+        ${residueBlock(a)}
         <div class="an-foot">
           <button class="linkbtn" data-anopen="${esc(a.program || "")}">Open it</button>
           <button class="linkbtn" data-andismiss>Not now</button>
@@ -532,6 +562,7 @@
         ${quiet > 45 ? `<p class="an-quiet">Nothing new for ${forHowLong(quiet)}. Some steps
            are quiet for a while — resolving a large program says nothing until it is
            done — so this may be working. It may also be stuck.</p>` : ""}
+        ${residueBlock(a)}
         <p class="hint">The map on screen is untouched. Keep reading.</p>
         <div class="an-foot">
           <button class="linkbtn" data-anstop>Stop it</button>

@@ -16,13 +16,15 @@ from __future__ import annotations
 
 import json
 import subprocess
+import threading
 import time
 from pathlib import Path
 from typing import Any
 
 import pytest
 
-from dunneflow.mcp import jsonrpc, resources, tools
+from dunneflow.mcp import Refused, jsonrpc, resources, tools
+from dunneflow.mcp.session import Session
 from dunneflow.runtime import self_argv
 from dunneflow.web import analysis
 
@@ -425,6 +427,14 @@ def test_a_second_analysis_is_refused_and_told_what_is_running(tmp_path: Path) -
 
     A refusal that said only *"one is already running"* would be true and a dead end: the
     one thing the caller may want to do about it is stop that one.
+
+    **In-process, and the first analysis is held rather than raced.** This drove the real
+    server over the pipe and started a real analysis of a one-file tree, then asked for a
+    second immediately -- so a first that finished first left nothing to refuse, and the
+    test failed once inside a full suite and could not be reproduced. There is no way to
+    hold a child open from the far side of a pipe, so the refusal is asked of the object
+    that makes it: `Session.analyze`, with `start_analysis`'s `run` seam holding the slot
+    until this test lets go. The wire is `test_mcp.py`'s subject and is not re-proved here.
     """
     root = tmp_path / "maps"
     root.mkdir()
@@ -432,13 +442,28 @@ def test_a_second_analysis_is_refused_and_told_what_is_running(tmp_path: Path) -
     tree.mkdir()
     (tree / "m.py").write_text("def f():\n    return 1\n", encoding="utf-8")
 
-    with driving(root) as session:
-        session.tool("analyze", {"path": str(tree), "name": "first", "docs": False})
-        said = session.refused("analyze", {"path": str(tree), "name": "second",
-                                           "docs": False})
+    session = Session(root)
+    holding = threading.Event()
+    let_go = threading.Event()
+
+    def held(**_kw: Any) -> None:
+        holding.set()
+        let_go.wait(timeout=30)
+
+    try:
+        assert session.live.start_analysis("first", source=tree, out_root=root,
+                                           docs=False, run=held) is True
+        assert holding.wait(timeout=10), "the first analysis never started"
+
+        with pytest.raises(Refused) as caught:
+            session.analyze(str(tree), name="second", docs=False)
+        said = str(caught.value)
         assert "already running" in said, said
         assert "first" in said, said
         assert "analysis_stop" in said, said
+    finally:
+        let_go.set()
+        session.close()
 
 
 def test_stopping_nothing_is_refused_rather_than_reported_as_a_stop(

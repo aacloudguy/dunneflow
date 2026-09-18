@@ -3073,6 +3073,26 @@ kbd { font-family: var(--f-mono); font-size: .66rem; background: var(--sunken);
  * the one channel design rule 4 says to spend on a single dimension at a time. */
 .analysispanel .an-quiet { font-size: .76rem; color: var(--text-muted); margin: .4rem 0 0;
                            padding-left: .5rem; border-left: 2px solid var(--border-strong); }
+/* **What the walk left out, and it is a disclosure rather than a list.** Four or five
+ * sentences in a panel that is 26rem wide and sits over the map would be the loudest thing
+ * on screen for a fact most readers glance at once -- so the count is always visible and
+ * the sentences are one click away (design rule 27: a container's affordance wins on area).
+ * Drawn like the silence note and for the same reason: this is not a severity. A suffix
+ * nobody has a reader for is a fact about the map, not a fault in it, and spending
+ * `--diff-gone` on it would make that judgement on the reader's behalf (design rule 4). */
+.analysispanel .an-residue { font-size: .76rem; color: var(--text-muted);
+                             margin: .5rem 0 0; padding-left: .5rem;
+                             border-left: 2px solid var(--border-strong); }
+.analysispanel .an-residue summary { cursor: pointer; }
+/* **Bounded, on `.an-why`'s precedent and for its reason.** The panel is fixed to the
+ * bottom of the window and grows upward; a tree with a dozen kinds of residue in it would
+ * push the head and the Stop button off the top of the screen, which takes the control away
+ * from the reader in the act of telling them something. Scrolls instead -- and only when
+ * opened, so the closed state costs nothing. */
+.analysispanel .an-residue ul { margin: .35rem 0 0; padding-left: 1rem;
+                                max-height: 11rem; overflow: auto; }
+.analysispanel .an-residue li { margin: .2rem 0; }
+
 /* The same, in the analyse dialog, where it explains why Analyse will not go yet. */
 .analyze-blocked { margin: 0 0 .7rem; padding: .6rem .7rem; border-radius: .3rem;
                    background: var(--sunken); border: 1px solid var(--border); }
@@ -3103,6 +3123,14 @@ kbd { font-family: var(--f-mono); font-size: .66rem; background: var(--sunken);
 .about-v { font-size: .82rem; overflow-wrap: anywhere; }
 .about-v i { color: var(--text-muted); }
 .about-dim { color: var(--text-muted); font-size: .74rem; }
+/* **A row's value that happens to be several sentences.** Every other value here is one
+ * line, so the list has to sit flush in the value column rather than wearing a browser's
+ * default 40px indent and 1rem of vertical margin -- which is a second left edge inside a
+ * two-column grid, and reads as a nested thing rather than as this row's answer. The
+ * marker is kept: these are separate facts about separate suffixes and running them
+ * together would be one sentence claiming to be several. */
+.about-v .about-residue { margin: 0; padding-left: 1.1rem; }
+.about-v .about-residue li { margin: .15rem 0; }
 /* The two rows the dialog exists for, set apart because they are a different kind of claim
  * from the rows above: those record what happened, these promise what did not. */
 .about-vow { margin: .9rem 0 .5rem; padding: .7rem .8rem; border-radius: .3rem;

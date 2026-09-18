@@ -263,6 +263,30 @@ class _Progress:
         self._say(state="working", step=self.label, done_steps=self.i,
                   steps=len(self.steps), detail=f"{done:,}/{total:,}")
 
+    def residue(self, lines: list[str]) -> None:
+        """What the walk left out, once, as its own object on the machine channel.
+
+        **Design rule 1 on the surface this tool is actually for.** These sentences have
+        always been written -- `walk_residue` computes them and `_emit` prints them -- but
+        `_emit` is stderr and `dunneflow serve` runs its child `--quiet`, so *unread: 4,120
+        `.go`*, *left out as tests: 315 typescript* and *declined by you* reached a terminal
+        and never the application. A reader who analyses from the dialog got the bar and the
+        map and no account of what was filtered out of them.
+
+        **Sent once, when the walk knows, and not repeated.** The stream is one object per
+        line and the steps after this one are many; carrying the residue on every line
+        would multiply a fixed fact by however long resolution takes. The *watcher* is what
+        makes it survive to the end -- `_Live.note_analysis` replaces the report whole, so
+        `residue` is carried across there exactly as `began` is, and that stickiness is a
+        term of this contract rather than an accident of it.
+
+        **The current step is restated with it**, so a client that reads this object like
+        any other does not see the bar jump to a step-less record. Same fields as `detail`,
+        one key more.
+        """
+        self._say(state="working", step=self.label, done_steps=self.i,
+                  steps=len(self.steps), detail="", residue=lines)
+
     def done(self, **fields: object) -> None:
         self._say(state="done", step="", done_steps=len(self.steps),
                   steps=len(self.steps), **fields)
@@ -419,6 +443,26 @@ def cmd_analyze(args: argparse.Namespace) -> int:
         jobs=args.jobs, progress=progress, declined=declined,
     )
     t_extract = time.perf_counter() - t0
+
+    # **What the walk left out, said on both channels and recorded on the map.**
+    #
+    # Three places rather than one, and they are three different readers. The terminal has
+    # always had these sentences and still gets them below, where they sit among the other
+    # figures a run prints. The machine channel gets them here, the moment they are known,
+    # because the dialog's panel is the surface this tool is actually for and it was the
+    # one surface that could not see them (design rule 1). And `meta` gets them because a
+    # panel is dismissed and a map is kept: *what is not in this map* is a fact about the
+    # map, and a reader who opens it next week is owed it as much as the one watching it
+    # being made.
+    #
+    # **Recorded even when it is empty**, which is the answer that could not otherwise be
+    # given. A map written before this key existed cannot say what was left out; one that
+    # records an empty list is saying *nothing was* -- and collapsing those two would turn
+    # a silence into a promise, which is the distinction every field in *About this map*
+    # is built on (design rule 21).
+    residue = walk_residue(stats)
+    prog.residue(residue)
+    store.set_meta("walk_residue", json.dumps(residue))
 
     # **Every manifest, not one.** The package root's -- which for a `src/` layout means
     # `../pyproject.toml`, because packaging metadata sits above the code -- and every
@@ -638,7 +682,7 @@ def cmd_analyze(args: argparse.Namespace) -> int:
         _emit(f"  read: {walk_languages(stats)}")
         for said in stats.reader_notes:
             _emit(f"    {said}")
-        for line in walk_residue(stats):
+        for line in residue:
             _emit("  " + line)
         _emit(
             f"calls {rstats.total:,}: {rstats.certain:,} certain, "

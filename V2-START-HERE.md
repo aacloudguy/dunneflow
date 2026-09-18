@@ -14,7 +14,7 @@ been rewritten yet. Where they describe the tool they are accurate; where they d
 |---|---|
 | `PLAN-v2.md` | the whole design: the plugin protocol, the registry, the fingerprint split, the TypeScript plugin, the MCP server, the 14 chunks and the gate on each |
 | `CLAUDE.md` | the standing orders — **binding**, and the rules index |
-| `RULES.md` · `DESIGN-RULES.md` | carried over **verbatim, numbering intact**. The numbers are addresses: never reused, never renumbered, never closed up. **v2 continues at engineering rule 103** — 95 is the fingerprint's blind spot, 96 the record minted on demand, 97 the bundled program that does not carry the files it reads, 98 the detector handed a population it was never shown, 99 the name that is relative to the root that declared it, 100 the judge that picks one of several true answers by the order it was written in (all six 2026-09-17), 101 the route that is not a branch and 102 the sentence about an order that has none (both 2026-09-18). A rule is never closed; 95's `sql.py` gap was shut by chunk 6 and the general remedy it names is not built. |
+| `RULES.md` · `DESIGN-RULES.md` | carried over **verbatim, numbering intact**. The numbers are addresses: never reused, never renumbered, never closed up. **v2 continues at engineering rule 105, and design rule 32** — 95 is the fingerprint's blind spot, 96 the record minted on demand, 97 the bundled program that does not carry the files it reads, 98 the detector handed a population it was never shown, 99 the name that is relative to the root that declared it, 100 the judge that picks one of several true answers by the order it was written in (all six 2026-09-17), 101 the route that is not a branch and 102 the sentence about an order that has none (both 2026-09-18), 103 the path that is not a key until it is canonical and 104 the slot claimed before the thing that holds it exists (both 2026-09-18), and **design rule 31**, the panel pinned to an edge that grows away from it. A rule is never closed; 95's `sql.py` gap was shut by chunk 6 and the general remedy it names is not built. |
 | `BACKLOG.md` | **what this tree owes** — nine open items and eight stated residues, each with where it came from, why it was not done, and what would settle it. Nothing in it is scheduled by the plan; all fourteen chunks are done. |
 | `PERFORMANCE.md` | v1's figures. **Every one of them was measured on v1** and none has been reproduced here — do not restate one as though it had been (rule 24). |
 
@@ -435,6 +435,19 @@ field on `Entrypoint`, set by the provider that read the manifest — which is t
 point a `package.json` `bin` exists to outrank a guessed `main`. Two sites nearby were
 doing worse than testing that sentence: they **parsed** it back with `rsplit("= ", 1)` for
 a target `target_expr` had been carrying all along.
+
+**Three backlog items are closed** (2026-09-18) and two rules came out of them. `/api/programs`
+listed every program twice under a symlinked maps root — `program_dirs` resolves its root now,
+and **rule 103** is the family rule 60 and 93 belong to: a path is not a key until it is
+canonical, and a set cannot deduplicate what does not compare equal. Making the flaky MCP slot
+test deterministic found **rule 104**: `analysis_running` asked the child and nothing else, so
+between a claim and its `Popen` a second analysis claimed the same slot, overwrote the report
+and left the first child unreachable and still writing. And **the walk's residue reaches the
+application at last** — *unread: 4,120 `.go`*, *left out as tests* — on the `--progress-json`
+stream, carried across the whole-report replacement, and recorded on the map so *About this
+map* can say it after the panel is gone, in three answers rather than two. **Design rule 31**
+is the panel measured while doing it: fixed to the bottom, it grows upward, and fourteen lines
+of residue put its head and its Stop button at **-71px**.
 
 ## Three things not to re-open
 

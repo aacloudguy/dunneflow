@@ -17446,6 +17446,28 @@ function aboutDialog() {
   if (d.analysis_args && d.analysis_args.recorded && d.analysis_args.value) {
     row("It was told", esc(d.analysis_args.value));
   }
+  /* **What is not in this map, which is the other half of every count above it.**
+     *5,470 routines* is a claim about what was read, and a reader cannot weigh it without
+     knowing that 4,120 `.go` files were not -- design rule 1, on the surface that outlives
+     the run. The progress panel says the same sentences while an analysis is going; this is
+     where they are still readable after it has been dismissed, and next week.
+
+     **Three answers and not two.** A map written before `analyze` recorded this cannot say;
+     one recording an empty list is saying nothing was left out, which is a real answer and
+     worth a row of its own; one recording lines is saying which. Collapsing the first two
+     turns a silence into a promise (design rule 21) -- and the server decides which of the
+     three this is, because it is the layer that knows what `analyze` writes (rule 51). */
+  const res = d.walk_residue;
+  if (res && res.recorded) {
+    row("Left out of it", res.none
+      ? "<i>nothing \u2014 every file under that tree had a reader, and none was filtered "
+        + "out</i>"
+      : `<ul class="about-residue">${
+          res.lines.map((s) => `<li>${esc(s)}</li>`).join("")}</ul>`);
+  } else {
+    row("Left out of it",
+        "<i>not recorded \u2014 written before this map could say</i>");
+  }
 
   return `
   <div class="about-scrim" data-closeabout></div>

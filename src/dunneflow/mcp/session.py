@@ -20,7 +20,6 @@ three different facts with three different things to do about them. A failed swi
 
 from __future__ import annotations
 
-import threading
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -229,7 +228,8 @@ class Session:
 
         source = Path(path.strip()).expanduser().resolve()
         program = (name or source.name).strip()
-        if not self.live.claim_analysis(program):
+        if not self.live.start_analysis(program, source=source, out_root=self.out_root,
+                                        docs=docs):
             # The refusal carries the running job, because the one thing the caller may
             # want to do about it is stop that one — and a refusal has to name something
             # that can act on it (rule 89).
@@ -237,16 +237,6 @@ class Session:
             raise Refused(
                 f"an analysis of {running} is already running — ask `analysis_status` how "
                 f"it is going, or `analysis_stop` to end it")
-
-        def hold(proc: Any) -> None:
-            with self.live.analysis_lock:
-                self.live.analysis_proc = proc
-
-        threading.Thread(
-            target=analysis.run,
-            kwargs={"source": source, "name": program, "out_root": self.out_root,
-                    "docs": docs, "note": self.live.note_analysis, "on_start": hold},
-            name=f"dunneflow-mcp-analyze-{program}", daemon=True).start()
         self._log(f"analysing {source} as {program}")
         return {"started": True, "program": program, "source": str(source),
                 "docs": docs,

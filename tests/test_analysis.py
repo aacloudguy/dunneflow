@@ -366,6 +366,7 @@ def test_an_analysis_does_not_take_the_slot_a_switch_uses() -> None:
     lv.analysis = {"state": "idle"}
     lv.analysis_proc = None
 
+    lv.analysis_claimed = True
     lv.analysis_proc = _Alive()
     assert lv.claim_analysis("a") is False, "a live analysis did not hold its own slot"
     assert lv.claim("some-revision") is True, (
@@ -398,6 +399,7 @@ def test_one_analysis_at_a_time_while_one_is_actually_running() -> None:
     import threading
     lv.analysis_lock = threading.Lock()
     lv.analysis = {"state": "idle"}
+    lv.analysis_claimed = True
     lv.analysis_proc = _Alive()
     assert lv.claim_analysis("b") is False, "two analyses claimed the same slot"
 
@@ -416,6 +418,7 @@ def test_a_report_that_outlived_its_process_is_a_stale_lock_and_is_cleared() -> 
     lv = serve_mod._Live.__new__(serve_mod._Live)
     import threading
     lv.analysis_lock = threading.Lock()
+    lv.analysis_claimed = True
     lv.analysis_proc = _Gone()
     lv.analysis = {"state": "working", "program": "wedged", "step": "the glossary",
                    "began": 1.0, "moved": 1.0}
@@ -435,6 +438,7 @@ def test_stopping_when_nothing_runs_says_so_rather_than_pretending() -> None:
     import threading
     lv.analysis_lock = threading.Lock()
     lv.analysis = {"state": "idle"}
+    lv.analysis_claimed = False
     lv.analysis_proc = _Gone()
     assert lv.stop_analysis() == (False, "no analysis is running")
 
@@ -452,6 +456,7 @@ def test_the_analysis_report_is_replaced_whole_except_its_clock() -> None:
     lv = serve_mod._Live.__new__(serve_mod._Live)
     import threading
     lv.analysis_lock = threading.Lock()
+    lv.analysis_claimed = False
     lv.analysis_proc = None
     lv.analysis = {"state": "working", "program": "a", "step": "the glossary",
                    "began": 100.0, "moved": 100.0}
@@ -473,6 +478,7 @@ def test_a_report_that_says_nothing_new_does_not_reset_the_silence() -> None:
     lv = serve_mod._Live.__new__(serve_mod._Live)
     import threading
     lv.analysis_lock = threading.Lock()
+    lv.analysis_claimed = False
     lv.analysis_proc = None
     lv.analysis = {"state": "working", "program": "a", "step": "resolving",
                    "done_steps": 3, "detail": "", "began": 100.0, "moved": 100.0}
@@ -1061,4 +1067,94 @@ def test_nothing_open_means_no_program_is_being_read(tmp_path: Path) -> None:
     served = analysis.check(str(tree), "", root, handler._serving_dir())
     assert not served.ok and "the program being read" in served.refusal, (
         "with a program open the guard stopped firing -- the fix went too far"
+    )
+
+
+# --------------------------------------------------------------------------- #
+# The instant between a claim and its child
+
+
+def _slot(tmp_path):
+    """A `_Live` with nothing but the analysis slot on it. No server, no stores."""
+    lv = serve_mod._Live.__new__(serve_mod._Live)
+    import threading
+    lv.analysis_lock = threading.Lock()
+    lv.analysis = {"state": "idle"}
+    lv.analysis_proc = None
+    lv.analysis_claimed = False
+    return lv
+
+
+def test_a_claimed_slot_with_no_child_yet_is_held(tmp_path) -> None:
+    """**Measured, and it is the hole `analysis_proc.poll()` alone left open.**
+
+    `analysis_running` asked the child and nothing else, so between `claim_analysis`
+    returning `True` and `on_start` handing the child over -- a thread start and a `Popen`
+    -- the slot read as free. Two claims in a row both succeeded: the report ended up
+    describing the second, and the first child became unreachable the moment `on_start`
+    overwrote `analysis_proc`, so it could not be stopped and was writing into the same
+    output root as the one that displaced it.
+
+    The first half of the pair in `analysis_running`; the test below is the second, and
+    neither expression alone satisfies both (rule 36).
+    """
+    lv = _slot(tmp_path)
+    assert lv.claim_analysis("first") is True
+    assert lv.analysis_running() is True, "a claimed slot with no child yet read as free"
+    assert lv.claim_analysis("second") is False, (
+        "two analyses claimed one slot through the window before the first child existed"
+    )
+    assert lv.analysis["program"] == "first", "the loser overwrote the report of the winner"
+
+
+def test_a_claim_is_released_by_the_thread_ending_however_it_ends(
+        tmp_path, monkeypatch) -> None:
+    """The `finally` is the whole of why *claimed* is safe to trust (rule 30).
+
+    `analysis.run` reports rather than raising, so every ordinary exit already ends in a
+    terminal report -- but *already* is not *always*, and a claim released by anything
+    short of the thread ending is a claim that can outlive the thread. Pressed with a run
+    that raises, which is the case no terminal report covers.
+
+    The thread's exception hook is taken over rather than silenced, so the test asserts the
+    exception really did escape `work()`. Silencing it would leave a run that returned
+    quietly passing this test just as well (rule 37).
+    """
+    lv = _slot(tmp_path)
+    done = threading.Event()
+    escaped: list[BaseException | None] = []
+
+    def caught(args: Any) -> None:
+        escaped.append(args.exc_value)
+        done.set()
+
+    monkeypatch.setattr(threading, "excepthook", caught)
+
+    def explodes(**_kw):
+        raise RuntimeError("the watcher died without saying so")
+
+    assert lv.start_analysis("boom", source=tmp_path, out_root=tmp_path, docs=False,
+                             run=explodes) is True
+    assert done.wait(timeout=10), "the run never started"
+    assert isinstance(escaped[0], RuntimeError), escaped
+    for _ in range(200):
+        if not lv.analysis_running():
+            break
+        time.sleep(0.01)
+    assert lv.analysis_running() is False, (
+        "a run that raised held its slot for the life of the server"
+    )
+    assert lv.claim_analysis("next") is True
+
+
+def test_the_instant_before_a_child_exists_has_its_own_sentence(tmp_path) -> None:
+    """Design rule 21: *nothing is running* over a claimed slot is a refusal the reader
+    can see is false, and signalling a `None` is an exception where a sentence belongs."""
+    lv = _slot(tmp_path)
+    assert lv.claim_analysis("first") is True
+    there, said = lv.stop_analysis()
+    assert there is False
+    assert "still starting" in said, said
+    assert said != "no analysis is running", (
+        "the two answers were flattened, and the panel says one of them is wrong"
     )

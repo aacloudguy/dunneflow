@@ -188,16 +188,56 @@ def program_dirs(out_root: Path) -> frozenset[Path]:
     where the question is asked of the tree now. What is left here is the job this can do
     that a walk cannot: answer for the **output root**, cheaply and before any walk starts,
     which is what `serve` and `roots` ask it for.
+
+    **Every path comes back resolved, and that is a correctness property rather than
+    tidiness.** A program directory is a *key* here before it is a location: `_r_programs`
+    unions this set with the directory it is serving to mark which row is open, and two
+    `Path` objects naming one directory through a symlink are unequal, so the served
+    program was listed twice and the duplicate was the row *not* marked. `/tmp` and
+    `/var/folders` are both symlinks on macOS, which is how the ordering probe met it.
+    Rule 60's argument about a stored path, one question over: the same directory reached
+    two ways must compare equal or a set cannot do the job a set is here for.
+
+    The cost is one `readlink` per root rather than per caller, and it is the reason this
+    is the only place the resolution happens (rule 51) -- a caller resolving one side of a
+    comparison and not the other is exactly the defect.
     """
     if not out_root.is_dir():
         return frozenset()
-    found = {out_root} if holds_a_map(out_root) else set()
-    for child in out_root.iterdir():
+    # Resolved **before** anything is listed, so the children are resolved by
+    # construction rather than one at a time. `iterdir` of a resolved directory yields
+    # resolved paths unless a child is itself a symlink -- which `resolve()` on the child
+    # would follow out of this root entirely, and a program that lives somewhere else is
+    # still this root's program. So the root is canonicalised and the children are named
+    # under it.
+    root = out_root.resolve()
+    found = {root} if holds_a_map(root) else set()
+    for child in root.iterdir():
         # `is_dir()` rather than a `try`: an unreadable entry is not a program directory,
         # and an analysis must not fail because something odd sits beside its output.
         if child.is_dir() and holds_a_map(child):
             found.add(child)
     return frozenset(found)
+
+
+def programs_under(out_root: Path) -> list[Path]:
+    """The programs under `out_root`, in order, **not counting the root itself**.
+
+    `program_dirs` answers *which directories here hold a map* and includes `out_root`
+    when it holds one, because the served program can be the root (`serve` takes a
+    program directory or a root, and tells them apart by asking that question). Five
+    callers want the other set -- the start page's listing, the two refusals that name
+    what a root holds, `roots.check`'s note and `roots.move`'s work list -- and every one
+    of them spelled it `if d != out_root`.
+
+    **Five spellings of one exclusion is how the symlink defect would come back.** Against
+    an unresolved `out_root` that comparison is false for the very directory it is meant
+    to exclude, so the root lists itself as one of its own programs; the resolution now
+    lives in `program_dirs` and this is where the comparison that depends on it lives, so
+    a caller cannot get one without the other (rule 51).
+    """
+    root = out_root.resolve()
+    return sorted(d for d in program_dirs(root) if d != root)
 
 
 def revision_of(path: Path) -> str | None:

@@ -2175,3 +2175,74 @@ rule of that number — a blank canvas must say why it is blank — which does e
      finding already opens** — `_at_lines(members)` over `_routine_rows`' own order — so
      the claim and the occurrences beneath it are the same rows in the same order
      (rule 13), and there is one place where that order is decided.
+
+103. **A path is not a key until it is canonical, and a set cannot deduplicate what does
+     not compare equal.**
+     `_r_programs` builds the toolbar's program list by unioning the directory being
+     served — `out_dir.resolve()`, resolved since the day it was written — with
+     `revisions.program_dirs(out_root)`, which resolved nothing. Under a maps root reached
+     through a symlink those are two unequal `Path` objects naming one directory, so the
+     open program appeared **twice** in the `<select>`, and the copy that was not marked as
+     the one being read was the one the listing supplied. Measured: `['alpha', 'alpha',
+     'beta']`.
+
+     `/tmp` and `/var/folders` are both symlinks on macOS, so this is not an exotic shape —
+     it is what any caller whose maps root is a temporary directory is already standing on,
+     and `tools/ordering.py` met it on its first run and worked around it by resolving its
+     own paths.
+
+     Rule 60 is the same argument about an absolute path and rule 93 about a separator, and
+     this completes the family: **the writer of a key decides nothing about it; the
+     comparison does.** A path can be relative, POSIX-separated and still name one directory
+     two ways. What makes the three one rule is that in every case the value is right, the
+     directory is right, and only the *equality* is wrong — which is invisible until two
+     spellings meet in one set.
+
+     The fix is the same shape as the other two: one place canonicalises, and it is the
+     place that answers the question rather than any of the places that ask it (rule 51).
+     `program_dirs` resolves its root before it lists; the **root is canonicalised and the
+     children are not**, deliberately, because `resolve()` on a child that is itself a
+     symlink would name a program somewhere outside the root that is listing it. And the
+     five callers that excluded the root with `if d != out_root` moved to `programs_under`,
+     because an exclusion compared against an unresolved root is false for exactly the
+     directory it excludes — the same defect, wearing the other face.
+
+     **The workaround came out with the defect.** The probe that found this resolved its own
+     temporary directory to get past it; a probe that canonicalises its own root can never
+     see this class of defect return (rule 43), so it now runs on the symlinked root it is
+     handed.
+
+104. **A slot claimed before the thing that holds it exists is free for as long as it takes
+     to create that thing.**
+     `_Live.analysis_running` asked `analysis_proc.poll()` and nothing else — deliberately,
+     and for a good reason: `state == "working"` is a label and a label outlives the thing
+     it names, so a watcher that died without noting would hold the slot for the life of the
+     server (rule 30). The answer to that was to ask the child. The child does not exist
+     yet.
+
+     Between `claim_analysis` returning `True` and `on_start` handing the process over there
+     is a thread start and a `Popen`, and through that window a second claim succeeded.
+     Measured in three lines and no timing at all: two `claim_analysis` calls in a row both
+     return `True`. What follows is worse than a duplicated report. The loser overwrites the
+     report; then *its* `on_start` overwrites `analysis_proc`, so the first child is
+     unreachable — `analysis_stop` cannot signal it, nothing will ever poll it — and it goes
+     on writing into the same output root as the run that displaced it. One slot, two
+     analyses, one of them invisible.
+
+     **Neither question alone is enough, and that is rule 36 arriving from the other end.**
+     *Is the slot claimed* is the only thing true from the instant somebody takes it; *has
+     the child exited* is the only thing that clears a claim whose watcher died. The
+     conjunction is not a superset of either.
+
+     What makes the claim safe to trust is **what releases it**: not a caller saying it is
+     finished, but the watching thread *ending*, in a `finally` it cannot skip. That is the
+     distinction rule 30 actually draws — a label is set by somebody describing the work, a
+     claim is given back by the work stopping — and it is why the release had to move into
+     the one function that also takes the claim and starts the thread. It was two functions
+     doing all three, in `web/serve.py` and in `mcp/session.py`, so whatever either did
+     about a claim that never became a child it had to do twice (rule 51).
+
+     Found while making a flaky test deterministic. The test's stated hypothesis was that
+     the first analysis simply finished before the second was asked for; that is possible
+     and was never established, and this window is a second mechanism that was there all
+     along and reachable by both surfaces.

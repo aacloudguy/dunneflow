@@ -529,3 +529,32 @@ bought a rewrite of settled CSS, neither of which serves the thing the tool is f
     pointer, the tab order and `:focus-within` all at once. This one says a control you have
     made quiet must still **work** when it is reached. Together: quiet is a statement about
     attention, never about capability.
+
+31. **A panel pinned to an edge grows away from it, so anything inside it that a program
+    fills must be bounded.**
+
+    The analysis panel is `position: fixed; bottom: 1rem`, so it grows *upward* — and what
+    is at the top of it is the head that says which program is being read and, in the
+    running state, the **Stop it** button. A list whose length is decided by the tree being
+    analysed therefore decides where the controls are.
+
+    Measured, with fourteen wrapping lines of residue: 558px of content in a 562px window,
+    and the panel's top edge at **-71px**. Not clipped, not scrolled — simply gone, along
+    with the one control that can act on the thing the panel is describing. The reader is
+    told something and loses the ability to do anything about it in the same paint.
+
+    So the list is capped and scrolls (`.an-why` was already doing this for a traceback, and
+    for the same reason). Two things about the shape, both deliberate:
+
+    * **Closed by default, with the count in the summary.** A container's affordance wins on
+      area (design rule 27), and five sentences would be the loudest thing on a screen whose
+      subject is the map behind them. The count is always visible; the sentences are one
+      click away.
+    * **It is not a severity.** A suffix nobody has a reader for is a fact about the map and
+      not a fault in it, so it is drawn like the silence note — muted text on a plain rule —
+      and never in `--diff-gone` beside the failures. Colour is the scarcest channel and
+      this is not the dimension to spend it on (design rule 4).
+
+    The general form: a fixed-position surface has a size budget, and the budget belongs to
+    whichever end is *not* pinned. Anything inside it whose height comes from data has to be
+    given a ceiling there, or the data sets the layout.

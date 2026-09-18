@@ -528,7 +528,7 @@ def mine_case_conventions(
                 lang=lang,
                 total=total,
                 holds=holds,
-                exceptions=sorted(exceptions, key=lambda e: e.name),
+                exceptions=sorted(exceptions, key=lambda e: (e.name, e.where)),
                 sql=f"SELECT DISTINCT {column} {where}",
                 note="" if firm else tie_note(sets, style),
             ))
@@ -726,7 +726,7 @@ def _affix_conventions(
                     exceptions=sorted(
                         (Exception_(members[k][0], members[k][1])
                          for k in keys if k not in set(holds)),
-                        key=lambda e: e.name,
+                        key=lambda e: (e.name, e.where),
                     ),
                     glob=glob,
                     sql=exception_sql.format(
@@ -893,7 +893,7 @@ def mine_house_prefix(store: Store, langs: Sequence[str] = ()) -> list[Conventio
                 lang=lang,
                 total=len(rows),
                 holds=count,
-                exceptions=sorted(exceptions, key=lambda e: e.name),
+                exceptions=sorted(exceptions, key=lambda e: (e.name, e.where)),
                 sql=f"SELECT DISTINCT {column} {where}",
             ))
     return out

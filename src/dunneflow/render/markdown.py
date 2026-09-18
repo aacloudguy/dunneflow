@@ -30,7 +30,7 @@ from .mermaid import command_tree_diagram, flow_diagram
 from .mirror import render_mirror
 from .naming import render_naming
 from .network import render_network
-from .page import Stamp, header
+from .page import Stamp, biggest_first, header
 from .traceability import render_traceability
 
 # Diagrams are bounded because a picture of 4,500 nodes conveys nothing; every
@@ -253,7 +253,7 @@ def _entrypoints(store: Store, out: Path, program: str, stamp: Stamp) -> Path:
             continue
         lines.append(f"## {kind} ({len(items)})\n")
         lines.append("| Name | Module | Detected from |\n|---|---|---|")
-        for e in sorted(items, key=lambda x: x.name):
+        for e in sorted(items, key=lambda x: (x.name, x.module, x.evidence)):
             lines.append(f"| `{_esc(e.name)}` | `{_esc(e.module)}` | {_esc(e.evidence)} |")
         lines.append("")
 
@@ -402,13 +402,13 @@ def _flow_inventory(store: Store, way_in: dict) -> str:
     ph = ",".join("?" * len(reached))
     rows = store.query(
         f"SELECT id, qualname, module, file, line_start FROM routines"
-        f" WHERE id IN ({ph}) ORDER BY module, qualname",
+        f" WHERE id IN ({ph}) ORDER BY module, qualname, file, line_start",
         tuple(reached),
     )
     bounds: dict[str, list[str]] = {}
     for b in store.query(
         f"SELECT routine_id, kind, direction, target FROM boundaries"
-        f" WHERE routine_id IN ({ph}) ORDER BY kind",
+        f" WHERE routine_id IN ({ph}) ORDER BY kind, direction, target",
         tuple(reached),
     ):
         label = f"{b['kind']}{'→' if b['direction'] == 'OUT' else '←'}{b['target'] or '?'}"
@@ -432,7 +432,7 @@ def _flow_inventory(store: Store, way_in: dict) -> str:
 def _routines(store: Store, out: Path, program: str, stamp: Stamp) -> Path:
     rows = store.query(
         "SELECT module, COUNT(*) n FROM routines WHERE name != '<module>'"
-        " GROUP BY module ORDER BY n DESC"
+        " GROUP BY module ORDER BY n DESC, module"
     )
     lines = [header(program, "Routines", stamp)]
     lines.append(
@@ -527,7 +527,8 @@ def _boundaries(store: Store, out: Path, program: str, stamp: Stamp) -> Path:
         targets = Counter(h["target"] for h in hits if h["target"])
         if targets:
             lines.append("| Target | Touches | Direction |\n|---|---:|---|")
-            for tgt, n in targets.most_common():
+            # `most_common()` breaks a tie by insertion order, which here is row order.
+            for tgt, n in sorted(targets.items(), key=lambda kv: (-kv[1], kv[0])):
                 dirs = {h["direction"] for h in hits if h["target"] == tgt}
                 lines.append(f"| `{_esc(tgt)}` | {n} | {'/'.join(sorted(dirs))} |")
             lines.append("")
@@ -553,7 +554,7 @@ def _governance(store: Store, out: Path, program: str, stamp: Stamp) -> Path:
              FROM annotations a
              LEFT JOIN routines r ON a.owner_id = r.id
              LEFT JOIN structures s ON a.owner_id = s.id
-            ORDER BY a.kind, a.value"""
+            ORDER BY a.kind, a.value, file, a.line, owner, a.text"""
     )
     lines = [header(program, "Governance and caveats", stamp)]
     lines.append(
@@ -572,12 +573,12 @@ def _governance(store: Store, out: Path, program: str, stamp: Stamp) -> Path:
         by_kind[r["kind"]].append(r)
 
     lines.append("| Marker | Occurrences | Distinct values |\n|---|---:|---:|")
-    for marker in sorted(by_kind, key=lambda k: -len(by_kind[k])):
+    for marker in sorted(by_kind, key=biggest_first(by_kind)):
         vals = {r["value"] for r in by_kind[marker]}
         lines.append(f"| {marker} | {len(by_kind[marker]):,} | {len(vals):,} |")
     lines.append("")
 
-    for marker in sorted(by_kind, key=lambda k: -len(by_kind[k])):
+    for marker in sorted(by_kind, key=biggest_first(by_kind)):
         items = by_kind[marker]
         lines.append(f"## {marker} ({len(items):,})\n")
         grouped: dict[str, list] = defaultdict(list)

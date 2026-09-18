@@ -31,6 +31,7 @@ is a claim, and *not recorded* is a fact.
 
 from __future__ import annotations
 
+from collections.abc import Callable, Mapping, Sized
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
@@ -101,3 +102,23 @@ def header(program: str, title: str, stamp: Stamp) -> str:
     return (f"# {program} — {title}\n\n"
             f"*{snapshot} — {read} — these documents written "
             f"{stamp.generated}, by DunneFlow.*\n\n")
+
+
+def biggest_first(groups: Mapping[str, Sized]) -> Callable[[str], tuple[int, str]]:
+    """Order group names by size, **and break the ties by name** (rule 66).
+
+    `sorted(by_kind, key=lambda k: -len(by_kind[k]))` was written eight times across these
+    renderers and every one of them was two-thirds of an order: equal-sized groups came out
+    in `dict` insertion order, which is the order the query returned them in, which is
+    rowid order, which is *the order the process pool happened to finish files in*. Two
+    analyses of one tree by one build wrote different documents, for a year, and nobody
+    noticed.
+
+    A count is a defensible order and a rowid is not — it is a position in one database,
+    and it moves when a file is re-read, when `--jobs` changes, or for no reason at all. So
+    where the count ties, the name decides: arbitrary, stated, and the same every time.
+
+    Here rather than at the eight call sites for the reason this module exists at all
+    (rule 51), and `tools/ordering.py` is the gate that says it worked.
+    """
+    return lambda name: (-len(groups[name]), name)

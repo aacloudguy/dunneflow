@@ -418,7 +418,7 @@ def check_rule(rule: StatedRule, frontmatter: dict[str, str], source: str,
             rule=rule, source=source, verdict=CHECKED, population=label,
             scoped_by=scoped_by, lang=lang, blind_spot=blind, total=len(rows),
             holds=len(rows) - len(bad),
-            exceptions=sorted(bad, key=lambda e: e.name), sql=sql))
+            exceptions=sorted(bad, key=lambda e: (e.name, e.where)), sql=sql))
     return out
 
 

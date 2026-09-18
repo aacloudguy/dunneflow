@@ -71,7 +71,7 @@ def render_database(store: Store, out: Path, program: str, stamp: Stamp) -> Path
     rows = store.query(
         "SELECT tbl, SUM(direction='READ') r, SUM(direction='WRITE') w,"
         " SUM(direction='DDL') d, COUNT(DISTINCT routine_id) n"
-        " FROM sql_ops WHERE tbl != '' GROUP BY tbl ORDER BY (r+w+d) DESC"
+        " FROM sql_ops WHERE tbl != '' GROUP BY tbl ORDER BY (r+w+d) DESC, tbl"
     )
     for r in rows:
         mark = "yes" if r["tbl"] in created else "—"
@@ -90,13 +90,17 @@ def render_database(store: Store, out: Path, program: str, stamp: Stamp) -> Path
 
     # -- schema ------------------------------------------------------------- #
     lines.append("## Schema\n")
-    tables = store.query("SELECT * FROM db_tables ORDER BY name, file")
+    tables = store.query("SELECT * FROM db_tables ORDER BY name, file, line")
     by_name: dict[str, list] = defaultdict(list)
     for t in tables:
         by_name[t["name"]].append(t)
 
     idx_by_table: dict[str, list] = defaultdict(list)
-    for i in store.query("SELECT * FROM db_indexes ORDER BY name"):
+    # **`name` alone is not an order here** (rule 66): an index name repeats across
+    # migrations -- `idx_audit_agent` is created in `0008_add_audit_chain.py` and
+    # again in `0014_add_chain_seq.py` -- so the tie fell to rowid, and `07-database.md`
+    # listed the two in a different order from one analysis to the next.
+    for i in store.query("SELECT * FROM db_indexes ORDER BY name, file, line, columns"):
         idx_by_table[i["tbl"]].append(i)
 
     for name in sorted(by_name):
@@ -109,7 +113,7 @@ def render_database(store: Store, out: Path, program: str, stamp: Stamp) -> Path
             )
         for t in defs:
             cols = store.query(
-                "SELECT * FROM db_columns WHERE tbl = ? AND file = ? ORDER BY idx",
+                "SELECT * FROM db_columns WHERE tbl = ? AND file = ? ORDER BY idx, name",
                 (name, t["file"]),
             )
             where = f"{t['file']}:{t['line']}"
@@ -153,7 +157,7 @@ def render_database(store: Store, out: Path, program: str, stamp: Stamp) -> Path
             "SELECT s.tbl, s.operation, s.sql, s.line, r.qualname, r.file"
             "  FROM sql_ops s JOIN routines r ON s.routine_id = r.id"
             " WHERE s.direction = ? AND s.tbl != ''"
-            " ORDER BY s.tbl, r.qualname",
+            " ORDER BY s.tbl, r.qualname, r.file, s.line, s.operation, s.sql",
             (direction,),
         )
         if not hits:

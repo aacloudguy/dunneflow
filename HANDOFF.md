@@ -17960,3 +17960,112 @@ skipped**, mypy clean over 191 files, ruff clean.
 * **The dialog cannot see the walk's residue**, above.
 * **`resolve/traceability.py` asks Python's builtins of every corpus**, pinned at one and
   unmeasured.
+
+## 2026-09-17 — the map is the same map twice, at last
+
+The fifth v1 defect, found by chunk 8's gate and left alone deliberately because a report
+that has to be diffed against a baseline cannot also be the thing being changed. It is a
+chunk of its own and this is it.
+
+### Reproduced before it was touched
+
+Two analyses of Society by the same build, minutes apart: **7 of 15 documents differ**,
+1,488 lines in `06-governance.md` and 656 in `12-traceability.md`. The other eight differ
+only in the snapshot instant, which is correct and is what the cover states three of.
+
+### The probe is a reversal, not a second analysis
+
+`tools/ordering.py`. It copies a program, **reverses the physical row order of every
+table**, re-renders, and diffs the documents with the *written at* line normalised — the
+one line that is meant to differ between two renders of one snapshot.
+
+Two real runs shuffle *some* of the order and catch *some* of the ties, differently each
+time; that is why the record has `07-database.md` stable in one pair and unstable in the
+next, which is what a coin looks like. **Reversal is the worst case and is the same every
+time**, so a map that survives it survives any order, and a run that reports nothing has
+actually checked something (rule 37). Against the same graph the two real runs differed on,
+reversal found **12 of 15 documents and 26,000 differing lines**.
+
+Reversing is safe and that was established rather than assumed: nothing in either store
+declares an `INTEGER PRIMARY KEY`, so no rowid is anybody's key — every identity here is a
+`make_id` string, deliberately — and the one place a rowid is held at all reads and updates
+it inside a single pass. `meta` is left alone, because it is the map's identity and
+rewriting it is the one edit that could change what the store *means*.
+
+### What was fixed, and the shape it always had
+
+Nineteen sites across nine modules, all of one kind: **an order that was two-thirds of an
+order**. Either SQL with no `ORDER BY` or one whose tail is not unique, or a Python
+`sorted()` whose key ties. Rule 66 exactly — undefended ties, never wrong answers.
+
+| Where | What it was |
+|---|---|
+| `resolve/flows.py` | the breadth-first walk had **no order at all** — and `max_nodes` truncates it, so row order decided *which routines a flow diagram draws* |
+| `resolve/cli.py` | `cli_mounts` had none either, so an undefended order decided which six commands `command_tree_diagram` puts in the picture |
+| `store.py` | `entrypoints` `ORDER BY kind, name` — `main` is the commonest name in any tree |
+| `render/database.py` | `db_indexes ORDER BY name` — an index name repeats across migrations |
+| `render/page.biggest_first` | `key=lambda k: -len(groups[k])` written **eight times**, every one of them tied on count and settled by `dict` insertion order |
+| `resolve/glossary.py`, `mirror.py`, `traceability.py`, `naming.py`, `conformance.py`, `anomalies.py` | sightings, definitions, exception lists and detector populations, all in row order |
+
+**`biggest_first` is `render/page.py`'s** for rule 51's reason, which is that module's whole
+argument: eight call sites is eight places to forget. `resolve/flows.py` spells its own
+rather than importing it, because `render/` reads `resolve/` and never the other way round.
+
+### Measured
+
+**Zero.** Every document byte-identical under a full row reversal, and **two real analyses
+of Society now differ in nothing at all** — all fifteen documents, timestamps normalised,
+0 differing lines. **7 of 7 golden digests identical**: no stored fact moved, which is what
+says this was ordering and not content. `resolve/`, `render/`, `store.py` and
+`anomalies.py` are in no fingerprint, so **no stored map anywhere is invalidated** and all
+three stamps are unmoved. **1,843 passed · 1 skipped**, mypy clean over 193 files, ruff
+clean.
+
+### The test, and proving its baseline
+
+`tests/test_ordering.py` renders a fixture twice — once straight, once with every row
+reversed — and asserts byte-identical. **Every file in the fixture is a tie somebody
+actually shipped**, reduced to the smallest program that still has it: two `main` ways in
+in different modules, one index name on one table created in two files, one routine name in
+two modules, one annotation value in two places.
+
+**The first fixture was wrong and the mutation test is what said so** (rule 59). It created
+`idx_shared` on `widget` in one file and on `gadget` in the other — two rows with one name,
+which *looks* like the Society case and is not: the renderer groups indexes by table, so
+each landed in a bucket of its own and the tie never arose. Reintroducing the
+`render/database.py` defect left the test green. With both indexes on one table it goes red,
+and three of four mutations are caught.
+
+**The fourth is not, and that is worth stating rather than glossing.** Undoing `ways_in`'s
+reach tiebreak leaves the test green, because `store.entrypoints()`'s total order already
+settles it — so that tiebreak is defence in depth against `entrypoints()` changing, not the
+load-bearing fix, and the suite does not cover it.
+
+### Two things this changes on purpose
+
+`02-flows.md` and `01-entrypoints.md` draw **different routines and different commands**
+than they did, because the order that decides truncation moved. The old selection was not a
+better one; it was whichever the pool finished first. What a *good* truncation would be is a
+product question and is in `BACKLOG.md`.
+
+### And an instrument that could not see, reporting anyway
+
+The probe's first run said *every document is byte-identical under a full row reversal*
+over a store it had not changed. It globbed `*.db`, then `graph@*.db`, then `docs@*.db`,
+and the first already matches the other two — so every graph was reversed and then reversed
+back. Rule 37 in the instrument, which is the one place it costs most (rule 38), and it is
+a test now.
+
+*It is worth saying plainly that the map had been like this for a year, that every session
+which diffed two maps by hand had seen it, and that the gate which found it was looking at
+something else.*
+
+## 2026-09-17 — `BACKLOG.md`, and what was scattered
+
+Everything a chunk found, stated and deliberately did not do was living in
+`V2-START-HERE.md`'s *What is next* and a dozen `HANDOFF.md` **Residue** sections, which
+meant the only way to know what was outstanding was to read the whole record. Eight open
+items and eight stated residues, each with **where it came from, why it was not done, and
+what would settle it** — an item with no third part is a complaint rather than a task, and
+one with no second is an argument somebody will have again. `V2-START-HERE.md` points at it
+rather than carrying a partial copy, which is rule 51 in a document.

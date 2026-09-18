@@ -394,7 +394,7 @@ def measure(store: Store, docs: DocStore | None) -> Traceability:
              FROM annotations a
              LEFT JOIN routines   r ON a.owner_id = r.id
              LEFT JOIN structures s ON a.owner_id = s.id
-            ORDER BY a.kind, a.value"""
+            ORDER BY a.kind, a.value, file, a.line, owner, a.text"""
     ):
         if not IS_ID.match(row["value"]):
             continue
@@ -444,7 +444,7 @@ def measure(store: Store, docs: DocStore | None) -> Traceability:
     placed: set[tuple[str, str]] = set()          # (id, document) already recorded
     for row in docs.query(
         "SELECT doc, kind, value, line, text, confidence FROM doc_annotations"
-        " ORDER BY value"
+        " ORDER BY value, doc, line, kind, text"
     ):
         doc = row["doc"]
         if doc not in live or not IS_ID.match(row["value"]):

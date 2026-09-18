@@ -130,7 +130,7 @@ def _candidate_terms(store: Store) -> dict[str, Term]:
         if where not in t.where:
             t.where.append(where)
 
-    for r in store.query("SELECT DISTINCT module FROM files WHERE module <> ''"):
+    for r in store.query("SELECT DISTINCT module FROM files WHERE module <> '' ORDER BY module"):
         parts = str(r["module"]).split(".")
         for part in parts:
             note(part, "module", f"module {r['module']}")
@@ -140,18 +140,18 @@ def _candidate_terms(store: Store) -> dict[str, Term]:
     # class name produced `Pre`, `Not` and `Flight` as terms needing definitions. The
     # words a project coins appear as packages and as commands, which is where a person
     # has to name a thing rather than describe one.
-    for r in store.query("SELECT DISTINCT name FROM entrypoints WHERE name <> ''"):
+    for r in store.query("SELECT DISTINCT name FROM entrypoints WHERE name <> '' ORDER BY name"):
         for word in re.split(r"[^A-Za-z0-9]+", str(r["name"])):
             note(word, "way in", f"way in `{r['name']}`", str(r["name"]))
 
-    for r in store.query("SELECT DISTINCT tbl FROM sql_ops WHERE tbl <> ''"):
+    for r in store.query("SELECT DISTINCT tbl FROM sql_ops WHERE tbl <> '' ORDER BY tbl"):
         for word in re.split(r"[^A-Za-z0-9]+", str(r["tbl"])):
             note(word, "table", f"table {r['tbl']}", str(r["tbl"]))
 
     # A constant is the third place a person must name a thing rather than describe
     # one. `EMBEDDING_MODEL` and `MENSORES_DIRNAME` carry the program's configuration
     # vocabulary, and until constants were recorded none of it was here.
-    for r in store.query("SELECT DISTINCT name FROM constants WHERE name <> ''"):
+    for r in store.query("SELECT DISTINCT name FROM constants WHERE name <> '' ORDER BY name"):
         for word in re.split(r"[^A-Za-z0-9]+", str(r["name"])):
             note(word, "constant", f"constant `{r['name']}`", str(r["name"]))
 
@@ -165,7 +165,7 @@ def bind(store: Store, docs: DocStore | None) -> GlossaryReport:
 
     # DECLARED_CODE: a package's own docstring is the only place most programs say
     # what their words mean. `disceptator/__init__.py` opens "Interview engine".
-    for r in store.query("SELECT path, module, doc FROM files WHERE doc <> ''"):
+    for r in store.query("SELECT path, module, doc FROM files WHERE doc <> '' ORDER BY path"):
         module = str(r["module"])
         leaf = module.rsplit(".", 1)[-1].lower()
         target = terms.get(leaf)
@@ -183,7 +183,7 @@ def bind(store: Store, docs: DocStore | None) -> GlossaryReport:
         rows = docs.query(
             "SELECT d.term, d.definition, d.line, d.form, d.heading, d.doc"
             "  FROM definitions d JOIN documents dc ON dc.path = d.doc"
-            " WHERE dc.duplicate_of = ''"
+            " WHERE dc.duplicate_of = '' ORDER BY d.term, d.doc, d.line, d.form"
         )
         report.definitions_seen = len(rows)
         for r in rows:

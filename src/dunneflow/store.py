@@ -1259,10 +1259,12 @@ class Store:
     def routines(self, module: str | None = None) -> list[Routine]:
         if module:
             rows = self.conn.execute(
-                "SELECT * FROM routines WHERE module = ? ORDER BY line_start", (module,)
+                "SELECT * FROM routines WHERE module = ? ORDER BY line_start, file, qualname",
+                (module,)
             )
         else:
-            rows = self.conn.execute("SELECT * FROM routines ORDER BY module, line_start")
+            rows = self.conn.execute(
+                "SELECT * FROM routines ORDER BY module, line_start, file, qualname")
         return [self._routine_from_row(r) for r in rows]
 
     def _routine_from_row(self, row: sqlite3.Row) -> Routine:
@@ -1276,13 +1278,14 @@ class Store:
         comments = [
             Comment(c["text"], c["line"], bool(c["leading"]))
             for c in self.conn.execute(
-                "SELECT * FROM comments WHERE routine_id = ? ORDER BY line", (rid,)
+                "SELECT * FROM comments WHERE routine_id = ? ORDER BY line, text", (rid,)
             )
         ]
         annots = [
             Annotation(a["kind"], a["value"], a["line"], a["text"])
             for a in self.conn.execute(
-                "SELECT * FROM annotations WHERE owner_id = ? ORDER BY line", (rid,)
+                "SELECT * FROM annotations WHERE owner_id = ? ORDER BY line, kind, value, text",
+                (rid,)
             )
         ]
         return Routine(
@@ -1305,12 +1308,17 @@ class Store:
                 declared=bool(r["declared"]),
                 target_kind=TargetKind(r["target_kind"]),
             )
-            for r in self.conn.execute("SELECT * FROM entrypoints ORDER BY kind, name")
+            for r in self.conn.execute(
+                # Two ways in can share a kind and a name and be different front doors --
+                # `main` is the commonest name in any tree. Rule 66: the tail is what
+                # makes this an order rather than a grouping.
+                "SELECT * FROM entrypoints ORDER BY kind, name, module, id")
         ]
 
     def structures(self) -> list[DataStructure]:
         out = []
-        for r in self.conn.execute("SELECT * FROM structures ORDER BY module, line"):
+        for r in self.conn.execute(
+                "SELECT * FROM structures ORDER BY module, line, file, name"):
             flds = [
                 Field_(f["name"], f["type"], f["dflt"], f["comment"])
                 for f in self.conn.execute(
@@ -1375,7 +1383,7 @@ class Store:
                  WHERE c.callee_id IS NOT NULL AND r.depth < ?
             )
             SELECT DISTINCT b.* FROM boundaries b JOIN reach r ON b.routine_id = r.id
-            ORDER BY b.kind, b.target
+            ORDER BY b.kind, b.target, b.direction, b.line, b.evidence
             """,
             (routine_id, max_depth),
         )
@@ -1430,7 +1438,7 @@ class Store:
                  WHERE c.callee_id IS NOT NULL AND r.depth < ?
             )
             SELECT DISTINCT b.* FROM boundaries b JOIN reach r ON b.routine_id = r.id
-            ORDER BY b.kind, b.target
+            ORDER BY b.kind, b.target, b.direction, b.line, b.evidence
             """,
             (*routine_ids, max_depth),
         )

@@ -383,14 +383,14 @@ SELECT DISTINCT d.term, d.definition, d.doc, d.line, d.form, d.heading
   FROM definitions d
   JOIN documents dc ON dc.path = d.doc
  WHERE dc.duplicate_of = ''
- ORDER BY d.term
+ ORDER BY d.term, d.doc, d.line, d.form, d.heading
 """.strip()
 
 ARTEFACT_NAMES_SQL = """
 SELECT stem, name, kind, COUNT(*) refs, COUNT(DISTINCT file) files
   FROM artefacts
  GROUP BY stem, name, kind
- ORDER BY refs DESC
+ ORDER BY refs DESC, stem, name, kind
 """.strip()
 
 
@@ -453,22 +453,30 @@ def _index_code(store: Store) -> dict[str, list[Sighting]]:
             note(key, surface, name, where)
 
     # -- named ------------------------------------------------------------- #
-    for r in store.query("SELECT DISTINCT module, path FROM files WHERE module <> ''"):
+    for r in store.query(
+            "SELECT DISTINCT module, path FROM files WHERE module <> ''"
+            " ORDER BY module, path"):
         module = str(r["module"])
         note(module, "module", module, str(r["path"]))
         for part in module.split("."):
             note(part, "module", module, str(r["path"]))
 
     for table in ("classes", "structures"):
-        for r in store.query(f"SELECT DISTINCT name, file FROM {table} WHERE name <> ''"):
+        for r in store.query(
+                f"SELECT DISTINCT name, file FROM {table} WHERE name <> ''"
+                " ORDER BY name, file"):
             note_words(str(r["name"]), "class", str(r["name"]), str(r["file"]))
 
-    for r in store.query("SELECT DISTINCT name, file FROM db_tables WHERE name <> ''"):
+    for r in store.query(
+            "SELECT DISTINCT name, file FROM db_tables WHERE name <> ''"
+            " ORDER BY name, file"):
         note(str(r["name"]), "table", str(r["name"]), str(r["file"]))
-    for r in store.query("SELECT DISTINCT tbl FROM sql_ops WHERE tbl <> ''"):
+    for r in store.query("SELECT DISTINCT tbl FROM sql_ops WHERE tbl <> '' ORDER BY tbl"):
         note(str(r["tbl"]), "table", str(r["tbl"]), "read or written")
 
-    for r in store.query("SELECT DISTINCT name, module FROM entrypoints WHERE name <> ''"):
+    for r in store.query(
+            "SELECT DISTINCT name, module FROM entrypoints WHERE name <> ''"
+            " ORDER BY name, module"):
         name = str(r["name"])
         note(name, "way in", name, str(r["module"]))
         for word in re.split(r"[^A-Za-z0-9]+", name):
@@ -480,6 +488,7 @@ def _index_code(store: Store) -> dict[str, list[Sighting]]:
     # had abandoned.
     for r in store.query(
         "SELECT DISTINCT name, module FROM constants WHERE name <> ''"
+        " ORDER BY name, module"
     ):
         name = str(r["name"])
         note_words(name, "constant", name, str(r["module"]))
@@ -499,11 +508,12 @@ def _index_code(store: Store) -> dict[str, list[Sighting]]:
 
     for r in store.query(
         "SELECT DISTINCT name, module FROM routines WHERE name <> '' AND name NOT LIKE '<%'"
+        " ORDER BY name, module"
     ):
         note_words(str(r["name"]), "routine", str(r["name"]), str(r["module"]))
-    for r in store.query("SELECT DISTINCT name FROM params WHERE name <> ''"):
+    for r in store.query("SELECT DISTINCT name FROM params WHERE name <> '' ORDER BY name"):
         note_words(str(r["name"]), "param", str(r["name"]), "a parameter")
-    for r in store.query("SELECT DISTINCT name FROM fields WHERE name <> ''"):
+    for r in store.query("SELECT DISTINCT name FROM fields WHERE name <> '' ORDER BY name"):
         note_words(str(r["name"]), "field", str(r["name"]), "a field")
 
     return dict(index)
@@ -517,16 +527,20 @@ def _prose_corpus(store: Store) -> list[tuple[str, str, str]]:
     named for, and this is the only band that reads prose.
     """
     out: list[tuple[str, str, str]] = []
-    for r in store.query("SELECT text, routine_id FROM comments WHERE text <> ''"):
+    for r in store.query(
+            "SELECT text, routine_id FROM comments WHERE text <> ''"
+            " ORDER BY routine_id, line, text"):
         out.append(("comment", str(r["text"]), str(r["routine_id"])))
-    for r in store.query("SELECT doc, path FROM files WHERE doc <> ''"):
+    for r in store.query("SELECT doc, path FROM files WHERE doc <> '' ORDER BY path"):
         out.append(("docstring", str(r["doc"]), str(r["path"])))
     for r in store.query(
-        "SELECT docstring, qualname FROM routines WHERE docstring IS NOT NULL AND docstring <> ''"
+        "SELECT docstring, qualname FROM routines WHERE docstring IS NOT NULL"
+        " AND docstring <> '' ORDER BY qualname, docstring"
     ):
         out.append(("docstring", str(r["docstring"]), str(r["qualname"])))
     for r in store.query(
-        "SELECT docstring, name FROM structures WHERE docstring IS NOT NULL AND docstring <> ''"
+        "SELECT docstring, name FROM structures WHERE docstring IS NOT NULL"
+        " AND docstring <> '' ORDER BY name, docstring"
     ):
         out.append(("docstring", str(r["docstring"]), str(r["name"])))
     return out

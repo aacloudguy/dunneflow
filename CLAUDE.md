@@ -770,6 +770,20 @@ chunk 13 they raised `ImportError` — in the step written to defend rule 12, on
 A Python question kept at a shell call site rots as the Python moves (rule 51), and a test
 now asserts no release script spells one.
 
+**And `tools/ordering.py` when anything under `render/` or `resolve/` has moved.** The map
+may not depend on the order its rows happen to be in — `analyze_tree` collects facts through
+`as_completed`, so every rowid varies run to run, and a query with no `ORDER BY` or one
+ordering on a column with ties returns whatever the pool finished first (rule 66). It was
+like that for a year:
+
+```bash
+uv run python tools/ordering.py output/mensores   # reverses every row, re-renders, diffs
+```
+
+Reversal rather than a second analysis, because two real runs shuffle *some* of the order
+and catch *some* of the ties, differently each time. `tests/test_ordering.py` is the same
+gate on a fixture; every file in it is a tie the Society map was actually unstable on.
+
 Then verify against real code, because unit tests on a toy program cannot catch a
 resolution defect that only appears at scale:
 

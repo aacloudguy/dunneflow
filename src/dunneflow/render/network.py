@@ -21,7 +21,7 @@ from urllib.parse import urlparse
 
 from ..resolve.flows import ways_in
 from ..store import Store
-from .page import Stamp, header
+from .page import Stamp, biggest_first, header
 
 INBOUND_KINDS = ("HTTP_ROUTE", "QUEUE_CONSUMER")
 _URL = re.compile(r"https?://[^\s'\"<>)]+", re.IGNORECASE)
@@ -104,13 +104,13 @@ def render_network(store: Store, out: Path, program: str, stamp: Stamp) -> Path 
         "       b.routine_id"
         "  FROM boundaries b JOIN routines r ON b.routine_id = r.id"
         " WHERE b.kind IN ('NETWORK','CLOUD_SDK','LLM_API')"
-        " ORDER BY r.qualname"
+        " ORDER BY r.qualname, r.file, b.line, b.kind, b.target"
     )
     inbound = store.query(
         f"SELECT e.name, e.kind, e.module, e.routine_id, e.evidence, r.file, r.line_start"
         f"  FROM entrypoints e LEFT JOIN routines r ON e.routine_id = r.id"
         f" WHERE e.kind IN ({','.join('?' * len(INBOUND_KINDS))})"
-        f" ORDER BY e.name",
+        f" ORDER BY e.name, e.module, e.id",
         INBOUND_KINDS,
     )
     net_any = store.query("SELECT COUNT(*) n FROM net_calls")[0]["n"]
@@ -185,7 +185,7 @@ def render_network(store: Store, out: Path, program: str, stamp: Stamp) -> Path 
 
         lines.append("## What this program calls out to\n")
         lines.append("| Destination | Calls | From executable(s) |\n|---|---:|---|")
-        for host in sorted(by_host, key=lambda h: -len(by_host[h])):
+        for host in sorted(by_host, key=biggest_first(by_host)):
             zs = sorted({zone_of(o["routine_id"]) for o in by_host[host]})
             lines.append(
                 f"| `{_esc(host)}` | {len(by_host[host])} "
@@ -208,7 +208,7 @@ def render_network(store: Store, out: Path, program: str, stamp: Stamp) -> Path 
     net = store.query(
         "SELECT n.*, r.qualname, r.file AS rfile FROM net_calls n"
         " JOIN routines r ON n.routine_id = r.id"
-        " ORDER BY n.protocol, r.qualname, n.line"
+        " ORDER BY n.protocol, r.qualname, n.line, rfile, n.destination, n.expr"
     )
     if net:
         lines.append("## Remote call signatures\n")
@@ -222,7 +222,7 @@ def render_network(store: Store, out: Path, program: str, stamp: Stamp) -> Path 
         protos: dict[str, list] = defaultdict(list)
         for n in net:
             protos[n["protocol"]].append(n)
-        for proto in sorted(protos, key=lambda p: -len(protos[p])):
+        for proto in sorted(protos, key=biggest_first(protos)):
             items = protos[proto]
             blocking_count = sum(1 for i in items if not (i["is_async"] and i["awaited"]))
             lines.append(
@@ -281,7 +281,8 @@ def render_network(store: Store, out: Path, program: str, stamp: Stamp) -> Path 
     queue_hits = store.query(
         "SELECT b.direction, b.target, b.evidence, b.line, r.qualname, r.file AS rfile"
         "  FROM boundaries b JOIN routines r ON b.routine_id = r.id"
-        " WHERE b.kind = 'QUEUE' ORDER BY b.direction, r.qualname"
+        " WHERE b.kind = 'QUEUE' ORDER BY b.direction, r.qualname, r.file, b.line,"
+        " b.target"
     )
     if msg or queue_hits:
         lines.append("## Messaging\n")

@@ -15,6 +15,7 @@ been rewritten yet. Where they describe the tool they are accurate; where they d
 | `PLAN-v2.md` | the whole design: the plugin protocol, the registry, the fingerprint split, the TypeScript plugin, the MCP server, the 14 chunks and the gate on each |
 | `CLAUDE.md` | the standing orders — **binding**, and the rules index |
 | `RULES.md` · `DESIGN-RULES.md` | carried over **verbatim, numbering intact**. The numbers are addresses: never reused, never renumbered, never closed up. **v2 continues at engineering rule 101** — 95 is the fingerprint's blind spot, 96 the record minted on demand, 97 the bundled program that does not carry the files it reads, 98 the detector handed a population it was never shown, 99 the name that is relative to the root that declared it, 100 the judge that picks one of several true answers by the order it was written in. All six 2026-09-17. A rule is never closed; 95's `sql.py` gap was shut by chunk 6 and the general remedy it names is not built. |
+| `BACKLOG.md` | **what this tree owes** — eight open items and eight stated residues, each with where it came from, why it was not done, and what would settle it. Nothing in it is scheduled by the plan; all fourteen chunks are done. |
 | `PERFORMANCE.md` | v1's figures. **Every one of them was measured on v1** and none has been reproduced here — do not restate one as though it had been (rule 24). |
 
 ## The four decisions, already taken
@@ -393,47 +394,25 @@ plan's own, and chunks 5 through 9 were taken in it. Tom's call on the front-loa
 tool is usable as-is, so v1 defects found along the way are rolled into whichever feature
 chunk owns them rather than scheduled as work of their own.
 
-**All fourteen chunks in `PLAN-v2.md` are done.** What follows is what this tree knows it
-still owes, none of it scheduled by the plan:
+**All fourteen chunks in `PLAN-v2.md` are done, and so is the run-to-run instability
+below.** What this tree still owes is in **`BACKLOG.md`** — eight open items and eight
+stated residues, each with where it came from, why it was not done, and what would settle
+it. It is there rather than here so that there is one place to read it, and this file does
+not carry a copy that drifts.
 
-1. **The tutorial's 21 screenshots.** Chunk 14 dated the tour rather than re-taking it —
-   Tom's call, because the captures are hand-composed 1483×812 images from 15 September and
-   that session could not drive a browser. `docs/tutorial/README.md` now says plainly what
-   the reader is looking at, and **chapter 10 is rewritten** because it changed shape rather
-   than size. The other twelve chapters carry that afternoon's figures against a tree that
-   has gone from 78 files and 925 routines to 118 and 1,283. Re-taking them is prose *and*
-   images together and wants a session that can screenshot.
+The largest of them, in one line each: the tutorial's **21 screenshots** are a dated
+session and want a re-capture; the **analyse dialog cannot see the walk's residue**, so
+design rule 1 holds for the command line and not for the application; and **`web/` still
+has the ordering defect the map no longer has**, in six queries with no `ORDER BY` at all.
 
-2. **The analyse dialog cannot see what the walk left out.** `_emit` writes to stderr and
-   `serve` runs the analysis `--quiet`, so *unread: 4,120 `.go`*, *left out as tests* and
-   *declined by you* reach the terminal and never the application. Design rule 1 holds for
-   the command line and not for the surface this tool is for. It wants a channel on
-   `--progress-json` and a decision about where in the panel it goes.
-
-3. **The rendered map is not run-to-run stable** — see below; a chunk of its own, because a
-   report that has to be diffed against a baseline cannot also be the thing being changed.
-
-4. **`resolve/traceability.py` asks Python's builtins of every corpus**, including one with
-   no Python in it. Open question 6's shape one module over, unmeasured, and pinned at one
-   by a test so it cannot grow quietly.
-
-5. **The `fetch`-through-a-name residue**, below.
-
-**The `fetch`-through-a-name residue is still open**, and chunk 10 was where it was scheduled
-to close. It did not, and the reason is stated rather than quiet: DunneNote calls `fetch` in
-**no program file at all**, so there was no population to measure a boundary-from-resolution
-feature against. The mechanism now exists — the checker can say what a name holds — and it
-wants a corpus with one in it.
-
-**A fifth v1 defect was found by chunk 8's gate and is not fixed.** The **rendered map is
-not run-to-run stable**: two analyses of Society by the same build differ in seven of the
-fifteen documents — 2,215 lines in `06-governance.md`, 988 in `12-traceability.md` — and
-every difference examined is *order*, never content. `as_completed` decides which file is
-written first, so every rowid varies, and a query with no `ORDER BY` or one ordering on a
-column with ties returns rows in whatever order the pool finished in (rule 66). It touches
-no stored fact — the golden's digests are over sorted ids and are unmoved — and it is a
-chunk of its own, because a report that has to be diffed against a baseline cannot also be
-the thing being changed. `HANDOFF.md` 2026-09-17 has the table and the two named sites.
+**The fifth v1 defect is closed** — the one chunk 8's gate found and left alone. The
+rendered map depended on the order its rows happened to be in, so two analyses of Society by
+the same build wrote different documents; nineteen undefended ties across nine modules
+(rule 66), and the two largest were queries with no `ORDER BY` **at all**, one of which
+decided which routines a flow diagram draws. Measured: every document byte-identical under a
+full row reversal, and two real analyses now differing in **nothing**. `tools/ordering.py`
+is the probe and `tests/test_ordering.py` is the gate; **7 of 7 golden digests** say no
+stored fact moved, and no stamp moved, so no stored map is invalidated.
 
 **All four confirmed v1 defects are closed.** `BKIND_GLYPH` went in `679d772`;
 `writable=False` now opens `?mode=ro` and genuinely refuses a write, which is what the MCP

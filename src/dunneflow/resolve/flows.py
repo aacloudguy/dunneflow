@@ -48,7 +48,9 @@ class Flow:
         for n in self.nodes:
             for b in n.boundaries:
                 out[b.kind.value] = out.get(b.kind.value, 0) + 1
-        return dict(sorted(out.items(), key=lambda kv: -kv[1]))
+        # Commonest kind first, ties by name — `FILE ×7` and `STDIO ×7` are one order
+        # and not two (rule 66).
+        return dict(sorted(out.items(), key=lambda kv: (-kv[1], kv[0])))
 
 
 def trace_flow(
@@ -79,9 +81,21 @@ def trace_flow(
             break
         placeholders = ",".join("?" * len(level))
         rows = store.query(
+            # **Ordered, and it was not** (rule 66) — and here an undefended order is not
+            # cosmetic. The walk is breadth-first and `max_nodes` truncates it, so row
+            # order decides *which routines are in the picture at all*, and row order is
+            # the order the process pool happened to finish files in. Two analyses of one
+            # tree by one build drew different flows.
+            #
+            # By id rather than by qualname: an id is `make_id`'s, derived from names and
+            # never from a position, so it is arbitrary in appearance and identical in
+            # every build at every commit — where a join to `routines` for a readable
+            # order would cost one per level on the cold read this query was batched to
+            # avoid.
             f"SELECT DISTINCT caller_id, callee_id FROM calls"
             f" WHERE caller_id IN ({placeholders})"
-            f"   AND callee_id IS NOT NULL AND external = 0",
+            f"   AND callee_id IS NOT NULL AND external = 0"
+            f" ORDER BY caller_id, callee_id",
             tuple(level),
         )
         nxt: list[str] = []
@@ -114,7 +128,8 @@ def trace_flow(
     }
     bounds_by: dict[str, list[BoundaryHit]] = {}
     for r in store.query(
-        f"SELECT * FROM boundaries WHERE routine_id IN ({ph}) ORDER BY line", tuple(ids)
+        f"SELECT * FROM boundaries WHERE routine_id IN ({ph})"
+        f" ORDER BY line, kind, direction, target, evidence", tuple(ids)
     ):
         if r["salience"] not in allowed:
             continue
@@ -146,7 +161,8 @@ def boundary_index(store: Store, min_salience: str = "normal") -> dict[str, list
                    r.qualname, r.module, r.file
               FROM boundaries b JOIN routines r ON b.routine_id = r.id
              WHERE b.salience IN ({placeholders})
-             ORDER BY b.kind, b.target, r.qualname""",
+             ORDER BY b.kind, b.target, r.qualname, r.file, b.line, b.direction,
+                      b.evidence""",
         tuple(sal),
     )
     out: dict[str, list[dict]] = {}
@@ -156,7 +172,10 @@ def boundary_index(store: Store, min_salience: str = "normal") -> dict[str, list
             "salience": r["salience"], "qualname": r["qualname"], "module": r["module"],
             "file": r["file"], "line": r["line"],
         })
-    return {k: out[k] for k in sorted(out, key=lambda k: -len(out[k]))}
+    # Most populous kind first, **ties broken by name** — see `render/page.biggest_first`,
+    # which is the same three-quarters of an order written eight times over. Not imported
+    # from there: `render/` reads `resolve/` and never the other way round.
+    return {k: out[k] for k in sorted(out, key=lambda k: (-len(out[k]), k))}
 
 
 def entry_reach(store: Store, routine_id: str) -> tuple[int, list[BoundaryKind]]:
@@ -310,7 +329,12 @@ def ways_in(store: Store) -> list[dict]:
         else:
             prev["aliases"].append(e.name)
 
-    out = sorted(best.values(), key=lambda d: -d["reach"])
+    # Ranked by reach, **and ties broken by name and kind** (rule 66). Two ways in
+    # commanding the same number of routines is the ordinary case, not the exotic one:
+    # Society has two `main` entries reaching 17 and 2, and a `README.md` that listed them
+    # in a different order every run was how this whole defect first showed itself.
+    out = sorted(best.values(), key=lambda d: (-d["reach"], d["name"], d["kind"],
+                                               d["evidence"]))
     for d in out:
         d.pop("_score", None)
     return out

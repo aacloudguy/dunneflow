@@ -217,12 +217,12 @@ def _routine_rows(store: Store, where: str,
                    file=str(x["file"] or ""), line=int(x["line_start"] or 0))
         for x in store.query(
             f"SELECT id, qualname, file, line_start FROM routines {where}"
-            " ORDER BY file, line_start", args)
+            " ORDER BY file, line_start, qualname", args)
     ]
 
 
 def _parse_failures(store: Store, r: Report) -> None:
-    for row in store.query("SELECT path, errors FROM files WHERE errors != '[]'"):
+    for row in store.query("SELECT path, errors FROM files WHERE errors != '[]' ORDER BY path"):
         for err in json.loads(row["errors"]):
             r.add(Anomaly(
                 kind="PARSE_ERROR", severity=BROKEN, confidence=CERTAIN,
@@ -246,7 +246,7 @@ def _name_collisions(store: Store, r: Report) -> None:
     for row in store.query(
         "SELECT qualname, COUNT(*) n, GROUP_CONCAT(line_start) lines, MIN(file) f"
         "  FROM routines WHERE name != '<module>'"
-        " GROUP BY qualname HAVING n > 1 ORDER BY n DESC"
+        " GROUP BY qualname HAVING n > 1 ORDER BY n DESC, qualname"
     ):
         # **Every definition that collides, not the group.** The finding is that several
         # things share one name, so a single occurrence would name one arbitrarily -- the
@@ -276,7 +276,7 @@ def _redefinitions(store: Store, r: Report) -> None:
     for row in store.query(
         "SELECT module, name, COUNT(*) n, GROUP_CONCAT(line_start) lines, MIN(file) f"
         "  FROM routines WHERE name != '<module>' AND is_nested = 0 AND is_method = 0"
-        " GROUP BY module, name HAVING n > 1 ORDER BY n DESC"
+        " GROUP BY module, name HAVING n > 1 ORDER BY n DESC, module, name"
     ):
         r.add(Anomaly(
             kind="REDEFINITION", severity=SUSPECT, confidence=CERTAIN,
@@ -307,7 +307,7 @@ def _lost_edges(store: Store, r: Report) -> None:
         " WHERE ambiguous > 1"
         "   AND (callee_expr NOT LIKE '%.%' OR callee_expr LIKE 'self.%'"
         "        OR callee_expr LIKE 'cls.%')"
-        " GROUP BY callee_expr ORDER BY n DESC"
+        " GROUP BY callee_expr ORDER BY n DESC, callee_expr"
     )
     for row in rows:
         r.add(Anomaly(
@@ -339,7 +339,7 @@ def _lost_edges(store: Store, r: Report) -> None:
                     "SELECT c.file, c.line, r.qualname AS caller FROM calls c"
                     "  LEFT JOIN routines r ON r.id = c.caller_id"
                     " WHERE c.ambiguous > 1 AND c.callee_expr = ?"
-                    " ORDER BY c.file, c.line", (row["callee_expr"],))
+                    " ORDER BY c.file, c.line, c.callee_expr", (row["callee_expr"],))
             ],
         ))
 
@@ -352,7 +352,7 @@ def _dead_code(store: Store, r: Report, include_tests: bool) -> None:
         "   AND id NOT IN (SELECT callee_id FROM calls WHERE callee_id IS NOT NULL)"
         "   AND id NOT IN (SELECT routine_id FROM entrypoints"
         "                   WHERE routine_id IS NOT NULL)"
-        " ORDER BY qualname"
+        " ORDER BY qualname, file, line_start"
     )
     if not rows:
         return
@@ -390,6 +390,7 @@ def _unreachable(store: Store, r: Report) -> None:
         row["routine_id"]
         for row in store.query(
             "SELECT DISTINCT routine_id FROM entrypoints WHERE routine_id IS NOT NULL"
+            " ORDER BY routine_id"
         )
     ]
     if not ways_in:
@@ -409,7 +410,7 @@ def _unreachable(store: Store, r: Report) -> None:
                    file=str(x["file"] or ""), line=int(x["line_start"] or 0))
         for x in store.query(
             "SELECT id, qualname, file, line_start FROM routines"
-            " WHERE name != '<module>' ORDER BY file, line_start")
+            " WHERE name != '<module>' ORDER BY file, line_start, qualname")
         if str(x["id"]) not in {str(v) for v in reached}
     ]
     r.add(Anomaly(
@@ -429,7 +430,7 @@ def _unreachable(store: Store, r: Report) -> None:
 def _schema_drift(store: Store, r: Report) -> None:
     for row in store.query(
         "SELECT name, COUNT(DISTINCT file || ':' || line) defs FROM db_tables"
-        " GROUP BY name HAVING defs > 1"
+        " GROUP BY name HAVING defs > 1 ORDER BY name"
     ):
         shapes = store.query(
             "SELECT file, COUNT(*) n FROM db_columns WHERE tbl = ? GROUP BY file",
@@ -469,7 +470,7 @@ def _one_way_tables(store: Store, r: Report) -> None:
         "SELECT tbl, SUM(direction='READ') rd, SUM(direction='WRITE') wr"
         "  FROM sql_ops WHERE tbl != '' GROUP BY tbl"
         " HAVING (rd = 0 AND wr > 0) OR (wr = 0 AND rd > 0)"
-        " ORDER BY (rd + wr) DESC"
+        " ORDER BY (rd + wr) DESC, tbl"
     ):
         write_only = row["rd"] == 0
         r.add(Anomaly(
@@ -495,7 +496,7 @@ def _one_way_tables(store: Store, r: Report) -> None:
                   for x in store.query(
                       "SELECT DISTINCT r.id, r.qualname, r.file, r.line_start"
                       "  FROM sql_ops o JOIN routines r ON r.id = o.routine_id"
-                      " WHERE o.tbl = ? ORDER BY r.file, r.line_start", (row["tbl"],))],
+                      " WHERE o.tbl = ? ORDER BY r.file, r.line_start, r.qualname", (row["tbl"],))],
             ],
         ))
 
@@ -503,7 +504,7 @@ def _one_way_tables(store: Store, r: Report) -> None:
 def _orphan_indexes(store: Store, r: Report) -> None:
     for row in store.query(
         "SELECT name, tbl, file, line FROM db_indexes"
-        " WHERE tbl NOT IN (SELECT name FROM db_tables)"
+        " WHERE tbl NOT IN (SELECT name FROM db_tables) ORDER BY tbl, name, file, line"
     ):
         r.add(Anomaly(
             kind="ORPHAN_INDEX", severity=SUSPECT, confidence=PROBABLE,
@@ -535,6 +536,7 @@ def _remote_call_hazards(store: Store, r: Report) -> None:
         "SELECT r.id AS rid, r.qualname, n.expr, n.protocol, r.file, n.line"
         "  FROM net_calls n"
         " JOIN routines r ON n.routine_id = r.id WHERE n.timeout = ''"
+        " ORDER BY r.file, n.line, r.qualname, n.expr"
     )
     if no_timeout:
         r.add(Anomaly(
@@ -574,7 +576,7 @@ def _remote_call_hazards(store: Store, r: Report) -> None:
                 for x in store.query(
                     "SELECT r.id AS rid, r.qualname, r.file, n.line FROM net_calls n"
                     "  JOIN routines r ON n.routine_id = r.id"
-                    " ORDER BY r.file, n.line")
+                    " ORDER BY r.file, n.line, r.qualname, n.protocol")
             ],
         ))
 
@@ -582,6 +584,7 @@ def _remote_call_hazards(store: Store, r: Report) -> None:
         "SELECT r.id AS rid, r.qualname, n.expr, r.file, n.line FROM net_calls n"
         " JOIN routines r ON n.routine_id = r.id"
         " WHERE n.is_async = 1 AND n.awaited = 0"
+        " ORDER BY r.file, n.line, r.qualname, n.expr"
     )
     for x in unawaited:
         r.add(Anomaly(
@@ -650,7 +653,7 @@ SELECT c.point_id, c.word, c.header, c.file, c.line_start,
   LEFT JOIN constants k ON k.module = r.module AND k.name = c.header
  WHERE c.kind IN ('LOOP', 'COMPREHENSION')
  GROUP BY c.point_id
- ORDER BY c.file, c.line_start
+ ORDER BY c.file, c.line_start, c.point_id
 """
 
 
@@ -770,7 +773,7 @@ def _messaging_hazards(store: Store, r: Report) -> None:
                            file=str(x["file"]), line=int(x["line"] or 0))
                 for x in store.query(
                     "SELECT target, file, line FROM boundaries"
-                    " WHERE kind = 'QUEUE' AND direction = 'OUT' ORDER BY file, line")
+                    " WHERE kind = 'QUEUE' AND direction = 'OUT' ORDER BY file, line, target")
             ],
         ))
 
@@ -778,7 +781,7 @@ def _messaging_hazards(store: Store, r: Report) -> None:
 def _entrypoint_problems(store: Store, r: Report) -> None:
     for row in store.query(
         "SELECT id, kind, name, module, evidence, file, declared FROM entrypoints"
-        " WHERE routine_id IS NULL AND parent_id IS NULL"
+        " WHERE routine_id IS NULL AND parent_id IS NULL ORDER BY name, module, id"
     ):
         # **A known limit is not a suspicion.** A manifest may declare a way in whose
         # target this build has no reader for at all -- DunneNote's three Rust binaries,
@@ -811,6 +814,7 @@ def _entrypoint_problems(store: Store, r: Report) -> None:
         ))
     for row in store.query(
         "SELECT parent_var, child_expr, file, line FROM cli_mounts WHERE child_id IS NULL"
+        " ORDER BY file, line, parent_var, child_expr"
     ):
         r.add(Anomaly(
             kind="UNRESOLVED_MOUNT", severity=SUSPECT, confidence=PROBABLE,
@@ -840,7 +844,7 @@ def _type_gaps(store: Store, r: Report) -> None:
         return
     missing = store.query(
         "SELECT id, qualname, file, line_start FROM routines"
-        " WHERE name != '<module>' AND returns IS NULL ORDER BY qualname"
+        " WHERE name != '<module>' AND returns IS NULL ORDER BY qualname, file, line_start"
     )
     untyped = store.query(
         "SELECT COUNT(DISTINCT routine_id) n FROM params"

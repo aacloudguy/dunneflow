@@ -1074,3 +1074,41 @@ def test_the_installed_copy_can_uninstall_itself() -> None:
         "uninstall no longer looks for the installed copy first"
     )
     assert "packaging/linux/install.sh" in body, "there is no fallback for a fresh checkout"
+
+
+def test_the_release_script_and_the_spec_name_the_same_executable():
+    """The bundle's name is one question; the binary inside it is another, and it is lower.
+
+    `release.sh` reconstructed it as `${APP_NAME%.app}` — `DunneFlow` — where the spec says
+    `dunneflow`, and got away with it because APFS is **case-insensitive by default**. On a
+    case-sensitive volume, which is an option at format time and the default on some CI
+    images, `require_universal` would have refused every good build with *"there is no
+    executable — run '$0 build' first"*, and `sign`, `notarize`, `dmg` and `install` are all
+    behind it. Rule 49 with a plausible sentence on it, and the spec's own NTFS note is the
+    same hazard one platform over.
+
+    Read off `EXE(name=…)`, whose macOS answer is the `orelse` of a conditional: on Windows
+    the executable *is* the name a reader sees, and inside a bundle the bundle supplies it.
+    """
+    tree = ast.parse(SPEC.read_text(encoding="utf-8"))
+    exe = next(n for n in ast.walk(tree)
+               if isinstance(n, ast.Call) and getattr(n.func, "id", "") == "EXE")
+    named = next(k.value for k in exe.keywords if k.arg == "name")
+    # `"DunneFlow" if _WINDOWS else "dunneflow"` -- the second is this platform's.
+    spec_name = ast.literal_eval(named.orelse if isinstance(named, ast.IfExp) else named)
+
+    script = RELEASE.read_text(encoding="utf-8")
+    assert f'BIN="$APP/Contents/MacOS/{spec_name}"' in script, (
+        f"release.sh does not name the executable {spec_name} the way the spec builds it")
+    # And every path *into* the bundle's `MacOS/` uses that one variable. Asked of those
+    # paths rather than of the whole file: `${APP_NAME%.app}` is a fine way to name the
+    # notarisation zip, and banning the expression outright would report that line as the
+    # defect it is not (rule 34, in the guard rather than in the prose).
+    commands = [line for line in script.splitlines() if not line.lstrip().startswith("#")]
+    for line in commands:
+        if "Contents/MacOS/" not in line or "grep -v" in line:
+            continue
+        assert f"Contents/MacOS/{spec_name}" in line, (
+            f"{line.strip()} reaches into the bundle by a name the spec does not build — "
+            f"the executable is {spec_name}, and only a case-insensitive filesystem hides "
+            f"the difference")

@@ -790,6 +790,38 @@ without refusing them. That is the whole point of the `datas` layout in
 `packaging/dunneflow.spec`, and it is a *measurement* rather than a design claim: laid out
 any other way the two builds would refuse each other's maps under rule 12.
 
+*That row is v1's and is left as written* — it really was taken against a build with one
+stamp and one function to compute it, and correcting the name to a function that did not
+then exist would be editing the record to agree with the present. v2's is below.
+
+---
+
+## The stamps, and the gate that takes them (v2, measured 2026-09-17)
+
+There are **three** now, not one: rule 12's key was split at chunk 5 into a core stamp for
+what every language passes through and one per language for that reader's rules and bytes.
+Taken by `tools/fingerprints.py` against a `DUNNEFLOW_ARCH=host` build, at chunk 13:
+
+| Stamp | Value | Read from |
+|---|---|---|
+| `meta.extractor` | `14:c6cd0c4e1d15e9e3` | the map, whoever wrote it |
+| `files.extractor`, python | `1.0.0:cd8f8435300e2ec5` | 107 files |
+| `files.extractor`, typescript | `1.1.0:92eb0d173e9807a7` | 11 files |
+
+Binary and checkout compute all three identically, **and each build opens the other's map**
+— which is the property rather than a proxy for it, since what a colleague meets is
+`Store(writable=False)` raising and not two hex strings failing to match.
+
+| Measure | Conditions | Measured |
+|---|---|---|
+| The whole gate | `src/dunneflow`, 118 files, both languages, both directions | **7.8 s** |
+| The build it gates | `DUNNEFLOW_ARCH=host`, this machine only | **14.0 s** |
+
+The probe tree is this repository's own package because it is the one tree on every machine
+that builds DunneFlow which holds more than one of the languages this build reads. A
+Python-only tree runs in less and compares one stamp fewer, which is what the Linux and
+Windows steps were doing until chunk 13.
+
 ---
 
 ## The wire — a reader on the far side of a pipe (v2, measured 2026-09-17)

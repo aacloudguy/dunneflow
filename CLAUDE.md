@@ -250,7 +250,7 @@ A **release** is `packaging/release.sh`, one verb per step so any of them can be
 ./packaging/release.sh sign      # Developer ID, hardened runtime, secure timestamp
 ./packaging/release.sh notarize   # submit the .app, wait, staple it
 ./packaging/release.sh dmg       # build, sign, notarise and staple DunneFlow-<version>.dmg
-./packaging/release.sh verify    # architectures, signature, Gatekeeper, staple
+./packaging/release.sh verify    # architectures, signature, Gatekeeper, staple, stamps
 ./packaging/release.sh install   # ditto the stapled .app into /Applications
 ./packaging/release.sh all
 ```
@@ -485,10 +485,13 @@ built, a **13 MB** tarball, `glibc 2.14` the floor, and `extractor 9:d6179cee255
 by the binary and computed by the checkout alike — the same fingerprint the Windows build
 stamps. Both directions pressed: each build opened the other's map, 925 routines either way.
 
-**`verify` compares that fingerprint rather than printing it.** The first version printed the
-checkout's, ran the binary, and said *"the binary analysed a tree and wrote a map"* — rule 37,
-in the step written to defend rule 12. It reads the stamp back out with the binary's own
-`query` now. And `tar` named its first archive `DunneFlow--linux-x86_64.tar.gz`: `app_version`
+**`verify` compares those fingerprints rather than printing them.** The first version printed
+the checkout's, ran the binary, and said *"the binary analysed a tree and wrote a map"* —
+rule 37, in the step written to defend rule 12. The version after *that* one asked by writing
+`from dunneflow.detectors import rules_fingerprint` into a here-doc, and chunk 5 split that
+function in two: the step raised `ImportError` for eight chunks, on no test path, saying
+nothing (rule 51, in a shell script). All three platforms run `tools/fingerprints.py` now and
+none of them spells a Python symbol; a test asserts both halves. And `tar` named its first archive `DunneFlow--linux-x86_64.tar.gz`: `app_version`
 asked the binary for `--version`, which this CLI has not got, and an empty string went into a
 path (rule 49, in a file name). It reads the dist-info the spec bundles — the same file
 `tool_version()` stamps into every map.
@@ -744,12 +747,28 @@ not the artifact:
 DUNNEFLOW_ARCH=host uv run pyinstaller packaging/dunneflow.spec --noconfirm
 dist/DunneFlow.app/Contents/MacOS/dunneflow analyze <tree> --name x --output <tmp>   # macOS
 dist/dunneflow/dunneflow analyze <tree> --name x --output <tmp>                      # Linux
-./packaging/release-linux.sh verify        # does all of it, and compares the fingerprint
+./packaging/release-linux.sh verify        # does all of it, and compares the fingerprints
 ```
 
-The one check that is not a ground-truth number: the `extractor` the binary stamps must
-equal the checkout's `rules_fingerprint()`, or the two builds have stopped being able to
-read each other's maps (rule 12, and see **Packaging**).
+The one check that is not a ground-truth number, and it is **`tools/fingerprints.py`**:
+
+```bash
+uv run python tools/fingerprints.py dist/DunneFlow.app/Contents/MacOS/dunneflow
+```
+
+Every stamp the binary writes must equal the one this checkout computes, or the two builds
+have stopped being able to read each other's maps (rule 12, and see **Packaging**). There
+are **two kinds now** — the core key and one per language — so it reads a tree that holds
+every language this build has a reader for, and **refuses when a registered language
+contributed no rows**: a stamp that was never compared is not a stamp that agrees (rule 37).
+It proves the property rather than a proxy for it, by having each build open the other's map
+and letting `Store(writable=False)` speak.
+
+All three `verify` steps run it and **none of them asks the question itself**. Both of the
+two that did were calling `rules_fingerprint()`, which chunk 5 split in two; from then until
+chunk 13 they raised `ImportError` — in the step written to defend rule 12, on no test path.
+A Python question kept at a shell call site rots as the Python moves (rule 51), and a test
+now asserts no release script spells one.
 
 Then verify against real code, because unit tests on a toy program cannot catch a
 resolution defect that only appears at scale:

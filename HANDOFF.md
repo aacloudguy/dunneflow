@@ -17648,3 +17648,169 @@ them. This is named here rather than patched because a chapter cannot be half-re
 images are the evidence — and because `CLAUDE.md`'s own packaging paragraph went four
 milestones stale and was found exactly this way, by a chapter of the user guide disagreeing
 with it. It belongs to the documentation rewrite, which is already the remaining work.
+
+## 2026-09-17 — chunk 13: packaging, and the gate that had been broken for eight chunks
+
+`PLAN-v2.md`'s chunk 13 is one line: *the spec bundles `plugins/` wholesale; the
+fingerprint-equality gate extended to compare per-language stamps between binary and
+checkout.* The first half was already done — chunk 5 wrote `_plugin_files()`, derived from
+the manifests so that what ships and what is stamped are the same bytes by construction,
+and `tests/test_frozen.py` has asserted it since. The second half turned out to be a
+repair before it was an extension.
+
+### What was actually there
+
+| Script | State before this chunk |
+|---|---|
+| `release-linux.sh` | called `dunneflow.detectors.rules_fingerprint` — **raises `ImportError`** |
+| `release.ps1` | same function, same `ImportError` |
+| `release.sh` (macOS) | **no fingerprint check at all** |
+
+Chunk 5 split `rules_fingerprint()` into `core_fingerprint()` and `lang_fingerprint()`.
+Both scripts that asked the question asked it by writing `from dunneflow.detectors import
+rules_fingerprint` into a here-doc and a `-c` argument, so the rename did not touch them and
+nothing failed until somebody ran a release — in the step written to defend rule 12, on no
+test path, saying nothing for eight chunks. **Rule 51 in a shell script**: a Python question
+kept at a shell call site rots as the Python moves, and there were three call sites with
+three spellings, one of which had never asked at all. macOS is the platform the tool is
+developed on and the only one whose builds are signed, notarised and handed to anybody.
+
+And both probe trees were the wrong tree. Linux read `src/dunneflow/web` and Windows
+`src/dunneflow/canonical`; both are Python to the last file, so **no script has ever
+compared a TypeScript stamp** — they would have passed on a build whose TypeScript maps the
+checkout refuses. Rule 37, in the step whose own comment quotes rule 37.
+
+### `tools/fingerprints.py`
+
+One place the question is asked, and the three scripts run it. Beside `tools/golden.py`,
+which is the same shape of thing: a gate a person runs, not a module the application
+imports.
+
+* **It proves the property rather than a proxy for it.** Printing two hex strings and
+  diffing them tests this file's arithmetic. What a colleague meets is
+  `Store(writable=False)` raising, so the gate **opens each build's map with the other
+  build** and lets `_refuse_if_stale` and `_refuse_if_a_language_is_stale` speak — their
+  sentences already name the language and say that re-analysing costs only that language.
+  Both directions, because *both builds open each other's maps* is the claim the record has
+  been making by hand since chunk 5.
+* **The stamps are printed beside the result**, agreeing or not, because a check whose
+  evidence is not shown is a tick (rules 13 and 37).
+* **No language is named here** (rule 92). The list is `ingest.PLUGINS`, so a third reader
+  joins this gate by existing.
+* **A language that contributed no rows is a refusal**, which is the whole of what the two
+  old probe trees got wrong. A stamp that was never compared is not a stamp that agrees.
+* **Three answers when a language contributes nothing, never two** (design rule 21): the
+  tree holds no file that reader claims — a fact about the tree, answered by pointing
+  `--tree` somewhere else; it holds them and none was read — a fact about the machine,
+  answered by installing the toolchain, and the sentence is quoted from the plugin's own
+  manifest rather than copied here (rules 89 and 51); or it was read and disagrees.
+* **`candidates()` asks the plugin's `DiscoveryRules`**, so *this tree holds none* means
+  what the walk means by it — tests and `.d.ts` excluded, per language, because `test_a.py`
+  and `a.test.ts` are two different spellings and a shared rule gets both wrong.
+
+### Pressed, in all three of the ways it can fail
+
+Not asserted — done, against a copy of the real build with one bundled file perturbed:
+
+| Perturbed | What the gate said |
+|---|---|
+| nothing | `they agree on all 3 stamps, and each build opened the other's map` |
+| `--tree src/dunneflow/canonical` | `typescript: … holds no file it claims (.cts, .mts, .ts, .tsx), so its stamp was never compared` |
+| bundled `plugins/typescript/plugin.json` | binary `1.1.0:af854a44b61588eb` against checkout `1.1.0:92eb0d173e9807a7`, core and python unmoved — **and** `holds facts from a reader this build is not: typescript` |
+| bundled `schema.py` | binary `14:ebb285976b712cbc` against checkout `14:c6cd0c4e1d15e9e3`, **and** `was written by a different version of DunneFlow` |
+
+The third is chunk 5's partial discard, visible: core agrees, python agrees, one reader
+moved, and only that reader's rows are refused.
+
+### The tests, and the one worth having
+
+`tests/test_fingerprint_gate.py`, sixteen of them. The refusals are covered — core, one
+language, a language with no rows, a language this build cannot read at all, and every
+disagreement reported rather than only the first. But the two that matter are about the
+scripts, because no test in this suite had ever read one:
+
+* **no release script names a Python symbol at all.** Not *the spelling is right* — it was,
+  once. What is asserted is that there is nothing there for the next split to break.
+* **every release script runs the gate**, macOS included.
+
+Both halves are load-bearing: at `HEAD` before this chunk the first fails on
+`release-linux.sh` and `release.ps1`, and the second fails on `release.sh`.
+
+And one more, which is the probe tree's own property: **`src/dunneflow` holds files every
+registered language claims**, asserted per language off `PLUGINS`. That is the test that
+would have caught `canonical/`.
+
+### Measured
+
+`DUNNEFLOW_ARCH=host`, 14.0 s to build; the gate is **7.8 s** end to end — two analyses of
+118 files and two cross-opens.
+
+```
+             binary                   checkout
+core         14:c6cd0c4e1d15e9e3      14:c6cd0c4e1d15e9e3
+python       1.0.0:cd8f8435300e2ec5   1.0.0:cd8f8435300e2ec5    (107 files)
+typescript   1.1.0:92eb0d173e9807a7   1.1.0:92eb0d173e9807a7    (11 files)
+```
+
+The two chunk 12 recorded by hand, reproduced by the script that now takes them.
+
+**The binary reads three trees and every figure is the recorded one.** DunneNote: 1,518
+routines, 708 structures, 1,867 internal calls, 4 ways in at 0.9.0 — and the checkout gives
+the same numbers to the row. DunneCorp: **36 ways in** and **291 internal calls**, which is
+chunk 11's 403 less the 112 self-calls it fixed. Society through the checkout: 4,823
+routines, 178 ways in, **7 of 7 golden digests identical** — extraction is untouched, which
+the unmoved core stamp says more cheaply than the rebuild does.
+
+### One recorded figure is one out, and it is chunk 11's doing
+
+`PLAN-v2.md`'s chunk 9 amendment records DunneNote as **443 read + 315 left out as tests =
+758, with nothing claimed-but-unread**. Today it is **442**, identically in both builds — so
+it is not a packaging fact. The missing one is `legacy/v0.1/src/vite-env.d.ts`, and chunk
+11's `skip_names` is what moved it: a `.d.ts` is TypeScript's header file, the rule that
+took uigen's Prisma client and its 83 false BROKEN out of the map. The arithmetic still
+closes at 758 — **442 program + 315 tests + 1 declaration** — and the amendment was written
+two chunks before the third category existed. Corrected in place there, because that is a
+figure a session is meant to reproduce rather than a dated record of what was true.
+
+### Stale prose, swept
+
+`CLAUDE.md`'s verification section and `pyproject.toml`'s mypy comment both named
+`rules_fingerprint()`. `PERFORMANCE.md`'s v1 row is left alone and a v2 row added beside it:
+that measurement really was taken against a build with one stamp, and editing it would be
+making the record agree with the present. `PLAN-v2.md` §1e and §1g are left alone for the
+same reason — they are the plan as approved, and §1f is where the split is described.
+
+### And a second defect in the same file, hidden by a filesystem
+
+`require_universal` — which gates `sign`, `notarize`, `dmg` and `install`, the four steps
+whose output reaches somebody else — looked for the executable at
+`$APP/Contents/MacOS/${APP_NAME%.app}`, which is **`DunneFlow`**. The spec builds
+**`dunneflow`**: on macOS the bundle supplies the name a reader sees, so the binary does not
+have to, and `EXE(name=…)` is lowercase everywhere but Windows. It has worked for a year
+because **APFS is case-insensitive by default**. Formatted case-sensitive — an option at the
+volume, and the default on some CI images — every step after `build` would have refused a
+perfectly good bundle with *"there is no executable — run '$0 build' first"*: rule 49 with a
+plausible sentence on it, and the spec's own NTFS note (`DunneFlow.exe` and `dunneflow.exe`
+are one file there) is exactly this hazard one platform over.
+
+`BIN` is the one spelling now, used by `build`, `require_universal`, `verify` and the gate,
+and `tests/test_frozen.py` pins it against `EXE(name=…)` — reading the **`orelse`** of the
+conditional, because the `if` branch is Windows' answer. The assertion is on the lines that
+reach *into* `Contents/MacOS/` and not on the expression: `${APP_NAME%.app}` is a fine way
+to name the notarisation zip, and banning it outright reported that line as the defect it is
+not (rule 34, arriving in the guard rather than in the prose — caught by writing it the
+broad way first).
+
+**1,830 passed · 1 skipped**, mypy clean over 191 files, ruff clean.
+
+### Residue
+
+* **`node` is required to verify the TypeScript half**, and that is stated rather than
+  worked around. The stamp itself is just a hash of two bundled files and could be computed
+  without running anything — but reading it out of a map the binary *wrote* is what proves
+  the stamp was used to label rows rather than merely being computable, which is the
+  distinction `release-linux.sh`'s own comment was written about. A machine without node
+  gets the refusal that names it.
+* **`--one-way` exists** for a machine that has the binary and cannot analyse with the
+  checkout. It says so in the summary line rather than quietly checking half of what the
+  other form checks.

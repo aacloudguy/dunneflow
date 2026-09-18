@@ -12,7 +12,8 @@
 #     sign      Developer ID, hardened runtime, secure timestamp
 #     notarize  submit the .app to Apple, wait for the answer, staple it
 #     dmg       build, sign, notarise and staple the disk image
-#     verify    say whether the result is a thing another Mac will open
+#     verify    say whether the result is a thing another Mac will open — and whether
+#               its maps are ones this checkout can read (rule 12)
 #     install   put the stapled .app in /Applications
 #     all       every one of the above, in that order
 #
@@ -52,6 +53,15 @@ FRAMEWORK_PYTHON="${DUNNEFLOW_UNIVERSAL_PYTHON:-/Library/Frameworks/Python.frame
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DIST="$ROOT/dist"
 APP="$DIST/$APP_NAME"
+# **The executable inside the bundle, spelled once.** It is `EXE(name=…)` in the spec and it
+# is lowercase: the bundle supplies the name a reader sees, so the binary does not have to.
+# `require_universal` reconstructed it as `${APP_NAME%.app}` — `DunneFlow` — and got away
+# with it because APFS is case-insensitive *by default*. Formatted case-sensitive, which is
+# an option at the volume and the default on some CI images, every step after `build` would
+# have refused a perfectly good bundle with "there is no executable — run '$0 build' first"
+# (rule 49, and the spec's own NTFS note one platform over). `tests/test_frozen.py` pins
+# this against `EXE(name=…)`.
+BIN="$APP/Contents/MacOS/dunneflow"
 BUILD_VENV="$ROOT/.venv-universal"
 
 cd "$ROOT"
@@ -122,7 +132,7 @@ step_build() {
         --workpath "$ROOT/build"
     echo
     echo "$(du -sh "$APP" | cut -f1)  $APP"
-    lipo -archs "$APP/Contents/MacOS/dunneflow"
+    lipo -archs "$BIN"
 }
 
 # **Nothing single-arch may be signed, notarised, imaged or installed.**
@@ -137,10 +147,9 @@ step_build() {
 # Asked of the executable, which is what `lipo` can answer for; `step_verify` walks every
 # Mach-O in the bundle and is the fuller version of this question.
 require_universal() {
-    local exe archs
-    exe="$APP/Contents/MacOS/${APP_NAME%.app}"
-    [ -f "$exe" ] || die "there is no executable in $APP_NAME — run '$0 build' first"
-    archs="$(lipo -archs "$exe" 2>/dev/null)"
+    local archs
+    [ -f "$BIN" ] || die "there is no executable in $APP_NAME — run '$0 build' first"
+    archs="$(lipo -archs "$BIN" 2>/dev/null)"
     case " $archs " in
         *" arm64 "*) case " $archs " in *" x86_64 "*) return 0 ;; esac ;;
     esac
@@ -223,7 +232,7 @@ step_verify() {
     [ -d "$APP" ] || die "there is no $APP_NAME to verify"
 
     echo "-- architectures"
-    lipo -archs "$APP/Contents/MacOS/dunneflow" | sed 's/^/   dunneflow: /'
+    lipo -archs "$BIN" | sed 's/^/   dunneflow: /'
     local f
     while read -r f; do
         [ -n "$f" ] || continue
@@ -244,6 +253,26 @@ step_verify() {
     xcrun stapler validate "$APP" || true
     local dmg; dmg="$(dmg_path)"
     [ -f "$dmg" ] && xcrun stapler validate "$dmg" || true
+
+    echo "-- the maps this build writes, against the checkout's"
+    # **The one check here that is not about the signature** (rule 12) — and until chunk 13
+    # this step did not have it, although `CLAUDE.md` described it as the gate's one
+    # non-ground-truth number. Linux had it and Windows had it; the platform this tool is
+    # developed on, and the only one whose builds are signed and handed to anybody, had
+    # never compared a stamp.
+    #
+    # The fingerprint puts the reader in the cache key, so the binary and the checkout
+    # agree on one only if `resource_root()` laid the bundle out the way the spec promises.
+    # Disagree, and the two builds silently refuse each other's maps, which is invisible
+    # until somebody hands a colleague a map. There is one stamp per language as well as
+    # the core one, and `tools/fingerprints.py` is the one place either is asked for —
+    # a Python question written into a shell script is a call site that rots, and both of
+    # the other two scripts had been raising `ImportError` since chunk 5 renamed the
+    # function they named (rule 51).
+    uv run python "$ROOT/tools/fingerprints.py" "$BIN" || die \
+"the binary and this checkout cannot read each other's maps (rule 12). The sentence above
+says which stamp moved and what it costs; the usual cause is something the spec bundles as
+data having moved, or not being bundled at all."
 }
 
 # --- install ---------------------------------------------------------------------------------

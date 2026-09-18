@@ -166,7 +166,7 @@ step_verify() {
             | sort -V | tail -1)"
     echo "   built against glibc ${need:-unknown}; older distributions will refuse it"
 
-    echo "-- the map this build writes, against the checkout's"
+    echo "-- the maps this build writes, against the checkout's"
     # **The one check here that is not a size** (rule 12). The fingerprint puts the reader
     # in the cache key, so the binary and the checkout agree on one only if
     # `resource_root()` laid the bundle out the way the spec promises. Disagree, and the
@@ -176,32 +176,18 @@ step_verify() {
     # **It is compared, not printed.** The first version of this step printed the
     # checkout's fingerprint, ran the binary, and said "the binary analysed a tree and
     # wrote a map" — which is rule 37 exactly: a guard that checks a name appears has not
-    # checked that anything happened. The two numbers were never put beside each other,
-    # so it would have passed on a build whose maps the checkout cannot open.
+    # checked that anything happened.
     #
-    # The binary's own `query` reads the stamp back, so the whole right-hand side of the
-    # comparison comes from the artifact rather than from anything in this tree.
-    local work mine stamped
-    work="$(mktemp -d)"
-    mine="$(uv run python -c 'from dunneflow.detectors import rules_fingerprint
-print(rules_fingerprint())')"
-    "$BIN" analyze "$ROOT/src/dunneflow/web" --name _fpcheck --no-docs --no-render \
-        --output "$work" --quiet >/dev/null \
-        || die "the binary could not analyse anything"
-    stamped="$("$BIN" query "$ROOT" --name _fpcheck --output "$work" \
-                --sql "SELECT value FROM meta WHERE key = 'extractor'" | tail -1 | tr -d ' \r')"
-    rm -rf "$work"
-    echo "   checkout: $mine"
-    echo "   binary:   $stamped"
-    # The binary stamps `<schema>:<fingerprint>`; the checkout function answers the second
-    # half alone. Matched on the suffix so the schema version stays visible in the line
-    # above rather than being stripped out of the evidence (rule 13).
-    [ "${stamped#*:}" = "$mine" ] || die \
-"the binary and this checkout disagree about the extractor fingerprint.
-They cannot read each other's maps (rule 12). The usual cause is the bundle layout: the
-spec must place this package's data under `dunneflow/`, because `fingerprint_files` labels
-every input relative to `runtime.resource_root()`."
-    echo "   they agree — each build can open the other's maps"
+    # **And it is asked in Python, from Python.** The version after that one asked by
+    # writing `from dunneflow.detectors import rules_fingerprint` on the line below;
+    # chunk 5 split that function in two, and this step raised `ImportError` from then
+    # until chunk 13 without a single test noticing — rule 51, in a here-doc. There is one
+    # stamp per language now as well as the core one, so there is more to get wrong, not
+    # less. `tools/fingerprints.py` is where the question lives; this step runs it.
+    uv run python "$ROOT/tools/fingerprints.py" "$BIN" || die \
+"the binary and this checkout cannot read each other's maps (rule 12). The sentence above
+says which stamp moved and what it costs; the usual cause is something the spec bundles as
+data having moved, or not being bundled at all."
 
     echo "-- what a reader can install from"
     # **Asked of the build, never of the repository, and that is the point of this step.**

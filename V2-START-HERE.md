@@ -250,6 +250,57 @@ been rewritten yet. Where they describe the tool they are accurate; where they d
   populations, **7 of 7 golden digests**, verified in the dashboard as well as the CLI.
   **1,813 passed · 1 skipped**, mypy clean over 189 files, ruff clean.
 
+* **Chunk 13 — packaging, and the gate that had been broken for eight chunks.** The spec
+  already bundled `plugins/` from the manifests, so the half that was left was the
+  fingerprint-equality gate — and it turned out to be a repair before it was an extension.
+  Chunk 5 split `rules_fingerprint()` in two; both scripts that asked the question asked it
+  by writing `from dunneflow.detectors import rules_fingerprint` into a here-doc and a `-c`
+  argument, so the rename did not touch them and **`release-linux.sh verify` and
+  `release.ps1` have been raising `ImportError` ever since** — in the step written to defend
+  rule 12, on no test path. macOS had no fingerprint check at all, on the platform whose
+  builds are signed, notarised and handed to somebody. And both probe trees were Python to
+  the last file, so **no script had ever compared a TypeScript stamp**: they would have
+  passed on a build whose TypeScript maps the checkout refuses (rule 37, in the step whose
+  own comment quotes rule 37).
+
+  `tools/fingerprints.py` is the one place the question is asked, and the three scripts run
+  it. It **opens each build's map with the other build** rather than diffing two hex strings
+  — what a colleague meets is `Store(writable=False)` raising, and those sentences already
+  name the language and say re-analysing costs only that language. No language is named in
+  it (rule 92): the list is `ingest.PLUGINS`. **A language that contributed no rows is a
+  refusal**, with three answers and not two (design rule 21) — the tree holds none, the
+  reader could not run, or it ran and disagrees, the middle one quoting the toolchain
+  sentence out of the plugin's own manifest.
+
+  Pressed in all four ways it can fail, against a copy of the real build with one bundled
+  file perturbed — including chunk 5's partial discard made visible: core and python
+  unmoved, typescript at `1.1.0:af854a44b61588eb` against `1.1.0:92eb0d173e9807a7`, and only
+  that reader's rows refused. The two tests that matter read the *scripts*, because none
+  ever had: no release script names a Python symbol at all, and every one of the three runs
+  the gate. Both halves fail at the previous commit.
+
+  **7.8 s** for the gate, 14.0 s for the build. Binary and checkout agree on
+  `14:c6cd0c4e1d15e9e3`, `1.0.0:cd8f8435300e2ec5` and `1.1.0:92eb0d173e9807a7`, which are
+  chunk 12's hand-taken figures reproduced by the script that now takes them. The frozen
+  binary reads three trees to the recorded figure: DunneNote 1,518 routines · 708
+  structures · 1,867 internal calls · 4 ways in at 0.9.0, DunneCorp **36 ways in** and
+  **291 internal calls** (chunk 11's 403 less the 112 self-calls it fixed), Society **7 of 7
+  golden digests**. **1,830 passed · 1 skipped**, mypy clean over 191 files, ruff clean.
+
+  **A second defect in the same file, hidden by a filesystem.** `require_universal` — which
+  gates `sign`, `notarize`, `dmg` and `install` — looked for the executable at
+  `${APP_NAME%.app}`, which is `DunneFlow`, where the spec builds `dunneflow`. It has worked
+  for a year because APFS is case-insensitive *by default*; formatted case-sensitive, every
+  step after `build` refuses a good bundle saying there is no executable. `BIN` is the one
+  spelling now, pinned against `EXE(name=…)`.
+
+  **One recorded figure was one out, and it is chunk 11's doing.** `PLAN-v2.md`'s chunk 9
+  amendment records DunneNote as *443 read + 315 tests = 758*; it is **442** today, in both
+  builds alike, so it is not a packaging fact. `legacy/v0.1/src/vite-env.d.ts` is the file,
+  and chunk 11's `skip_names` moved it — the rule that took uigen's Prisma client and its 83
+  false BROKEN out of the map. Three categories where the line was written knowing two, and
+  the arithmetic still closes: 442 + 315 + 1. Corrected in place there.
+
 ## The gate everything is measured against
 
 `output/GOLDEN-v1.txt` holds row counts, distributions, and **seven identity digests** —
@@ -290,9 +341,9 @@ plan's own, and chunks 5 through 9 were taken in it. Tom's call on the front-loa
 tool is usable as-is, so v1 defects found along the way are rolled into whichever feature
 chunk owns them rather than scheduled as work of their own.
 
-1. **Chunks 13 and 14** — packaging (the fingerprint-equality gate extended to compare
-   per-language stamps between binary and checkout, which chunk 12 did by hand and no
-   script does) and the documentation rewrite of "Adding a language".
+1. **Chunk 14** — the documentation rewrite: "Adding a language", and registering `ingest/`
+   and `plugins/` in `CLAUDE.md`'s architecture list beside `canonical/`'s paragraph. It is
+   the last chunk in the plan. *Chunk 13 went 2026-09-17; see above.*
 
    **The user guide has fallen behind the tool, and by more than one chunk.** The tutorial
    is pinned to *"DunneFlow's 78 files"* against 118 today, and

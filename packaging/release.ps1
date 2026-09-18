@@ -113,31 +113,25 @@ function Invoke-Verify {
     Note "$CliExe speaks: $(($said -split "`n")[0].Trim())"
 
     # **Rule 12, and it is the one check that is not a size or a signature.** The binary and
-    # the checkout must agree on `extractor`, or the two builds have quietly stopped being
+    # the checkout must agree on every stamp, or the two builds have quietly stopped being
     # able to read each other's maps -- which is the opposite of what that rule is for.
-    # A **directory** and not one file: `analyze` handed a single module reports 0 routines,
-    # which is a true answer to a question nobody asked and reads on screen like a broken
-    # build. `canonical/` is the smallest package here that has anything in it.
-    $tmp = Join-Path ([System.IO.Path]::GetTempPath()) ("dunneflow-verify-" + [guid]::NewGuid().ToString('N'))
-    try {
-        $made = & (Join-Path $Build $CliExe) analyze (Join-Path $Root 'src\dunneflow\canonical') `
-            --name verify --output $tmp --no-docs --quiet 2>&1 | Out-String
-        if ($LASTEXITCODE -ne 0) { Die "the binary could not analyse anything:`n$made" }
-        $counted = ($made -split "`n" | Where-Object { $_ -match 'routines' } | Select-Object -First 1)
-        if ($counted) { Note $counted.Trim() }
-        $stamped = (& (Join-Path $Build $CliExe) query (Join-Path $Root 'src') --name verify `
-            --output $tmp --sql "SELECT value FROM meta WHERE key='extractor'" | Select-Object -Last 1).Trim()
-        $checkout = (& uv run python -c `
-            "from dunneflow.detectors import rules_fingerprint; from dunneflow.schema import SCHEMA_VERSION; print(f'{SCHEMA_VERSION}:{rules_fingerprint()}')" `
-            | Select-Object -Last 1).Trim()
-        if ($stamped -ne $checkout) {
-            Die ("the binary stamps $stamped and the checkout computes $checkout.`n" +
-                 '   They can no longer read each other''s maps (rule 12). Something the spec ' +
-                 'bundles as data has moved, or is not being bundled at all.')
-        }
-        Note "extractor $stamped — binary and checkout agree (rule 12)"
-    } finally {
-        if (Test-Path $tmp) { Remove-Item -Recurse -Force $tmp -ErrorAction SilentlyContinue }
+    #
+    # **Asked in Python, from Python, and that is the lesson rather than the style.** This
+    # step used to write `from dunneflow.detectors import rules_fingerprint` into a `-c`
+    # argument. Chunk 5 split that function into a core stamp and one per language, and
+    # from then until chunk 13 this line raised `ImportError` — in the step written to
+    # defend rule 12, on no test path, saying nothing. A Python question kept at a shell
+    # call site rots as the Python moves (rule 51), and there were three scripts asking it
+    # three ways.
+    #
+    # The tree it reads is the package itself and not `canonical\`: one reader per language
+    # means the probe has to hold every language, and `canonical\` is Python to the last
+    # file, so the TypeScript stamp went uncompared and the step passed anyway (rule 37).
+    & uv run python (Join-Path $Root 'tools\fingerprints.py') (Join-Path $Build $CliExe)
+    if ($LASTEXITCODE -ne 0) {
+        Die ('the binary and this checkout cannot read each other''s maps (rule 12). The ' +
+             'sentence above says which stamp moved and what it costs; the usual cause is ' +
+             'something the spec bundles as data having moved, or not being bundled at all.')
     }
 
     # **Said out loud, because a dialog is a poor place to learn it.** Design rule 1, one

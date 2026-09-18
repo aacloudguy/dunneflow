@@ -38,7 +38,7 @@ python_version = "3.12"
 files = ["src", "tests"]
 # `uv run mypy .` is the gate CLAUDE.md prescribes, and `.` overrides `files` above. Once a
 # build exists, `dist/` holds a *copy* of this package — the spec bundles both extractor trees
-# and the detectors' loader as data, so `rules_fingerprint()` has files to hash — and mypy
+# and the detectors' loader as data, so `core_fingerprint()` has files to hash — and mypy
 # finds two modules with one name and stops before checking anything at all. The artifact is
 # not source.
 exclude = '^(dist|build|\.venv-universal)/'

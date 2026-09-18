@@ -705,7 +705,7 @@ if you ever want one.
 | 10 | **Supplied edges.** The `edges` frame, `resolve/typescript/calls.py`, confidence semantics per language documented | resolution rate measured on DunneNote |
 | 11 | **TSX / React** — *done 2026-09-17.* A JSX element is a call; the 36 ways in a Next.js tree declares by file layout; boundaries matched on the package the checker resolved into; a hook's callback is a routine; the map states what it does not claim | DunneCorp ground truth met and printed; `.d.ts` excluded on 83 false BROKENs; 112 self-calls found and fixed |
 | 12 | **Manifest providers.** `resolve/manifests/`, generalised `pkg_root`, per-provider evidence | DunneNote's `package.json` and uigen's read; no sentence says `pyproject.toml` about either |
-| 13 | **Packaging.** Spec bundles `plugins/` wholesale; the fingerprint-equality gate extended to compare **per-language** stamps between binary and checkout | a frozen binary reads a TypeScript tree |
+| 13 | **Packaging** — *done 2026-09-17.* The spec already bundled `plugins/` from the manifests (chunk 5); the gate is `tools/fingerprints.py`, one place all three release scripts ask, comparing the core stamp and one per language and opening each build's map with the other. Two of the three steps had been raising `ImportError` since chunk 5 and macOS had no check at all | a frozen binary reads a TypeScript tree: DunneNote 1,518 routines · 708 structures, DunneCorp 36 ways in · 291 internal calls, all three stamps equal both ways |
 | 14 | **Docs.** Rewrite "Adding a language"; register `ingest/` and `plugins/` in the architecture list beside `canonical/`'s paragraph | — |
 
 ---
@@ -741,6 +741,14 @@ checked by hand:
 >   and `find -name "*.ts"` matches a directory as happily as a file. The walk's arithmetic
 >   closes exactly: **443 read + 315 left out as tests = 758**, with nothing
 >   claimed-but-unread.
+>
+>   *Re-taken by chunk 13 and it is **442**, in the binary and the checkout alike.* Chunk
+>   11's `skip_names` is what moved the file — `legacy/v0.1/src/vite-env.d.ts`, a `.d.ts`,
+>   which is TypeScript's header file and not program source; the same rule that took
+>   uigen's generated Prisma client and its 83 false BROKEN out of the map. So there are
+>   three categories where this line was written knowing two, and the arithmetic still
+>   closes: **442 program + 315 tests + 1 declaration = 758**. A figure a session is meant
+>   to reproduce, so it is corrected here rather than left to be met.
 > * **Two program files import `@tauri-apps/api/core`, not one.** The second is
 >   `legacy/v0.1/src/lib/ipc.ts` — a second copy of the program kept in the tree with its
 >   own `tsconfig.json`. The property this corpus was chosen for is unharmed and is what

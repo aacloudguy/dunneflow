@@ -2129,3 +2129,49 @@ rule of that number — a blank canvas must say why it is blank — which does e
      and had been for two chunks**, because nobody had asked the old question of the new
      corpus. A judge with a hidden preference does not announce itself when the second
      language arrives; it announces itself when somebody finally reads its output.
+
+101. **A route is not a branch, and a probe that asks one query string per route says
+     nothing about the others.**
+     `tools/ordering.py --api` asks every route of two copies of one program, one with
+     every row reversed, and reported `/api/wayin` identical — over a `_mount_name` that
+     returns `ledger` in one row order and `books` in the other, which `BACKLOG.md` had
+     already called the certain one of nine. Both statements were true. The route has two
+     shapes: without `inside` it describes the way in, and only **with** it does it ask
+     what name a sub-application is mounted under. The probe only ever sent the first.
+
+     This is rule 37 at the next level down. That rule is about a guard that checks a name
+     appears without checking anything happens; this is about an instrument that exercises
+     a *door* and reports on the *rooms*. The coverage a route-level probe gives is
+     coverage of route-level answers, and the arithmetic is unforgiving: 43 routes against
+     however many query strings a reader can type.
+
+     Three remedies, and all three were needed. A route with more than one shape is asked
+     **more than once** — `/api/search` with and without a path, `/api/diagram` with and
+     without an id, `/api/wayin` with and without `inside`. A parameter that came back
+     **empty** is a gap in the plan and is named, because `/api/table?name=` is a refusal
+     that is identical on both copies and diffs perfectly clean. And a route that **raised**
+     is named too, for the same reason: it raises the same way twice.
+
+     What is left is stated rather than claimed away: the fixture reaches what it reaches,
+     and `web/queries.py` says in as many words which of its orders a probe could make
+     move and which are defence in depth.
+
+102. **A list with no order comes back rearranged; a *sentence* about that order comes
+     back wrong.**
+     `anomalies.py` reported *"`twin` is defined 2 times in `alpha.work` (lines 23,18).
+     The later definition shadows the earlier."* The lines came from `GROUP_CONCAT`, which
+     has no defined order, and the sentence beside them is a claim **about** the order. So
+     this is not the usual cost of an undefended order — a reader shrugging at a list that
+     moved — it is a finding that names the wrong definition as the live one, in the
+     detector whose whole discipline is that every finding states what would make it a
+     false alarm.
+
+     Rule 66 says an order the tool cannot defend is not an order. This says what the bill
+     is when the order is load-bearing in prose: the same defect, one severity higher, and
+     invisible to a reader who has no second row order to compare against.
+
+     The fix is not `GROUP_CONCAT(x ORDER BY y)`, which needs SQLite 3.44 and would make
+     the sentence depend on a version. It is to build the sentence from **the rows the
+     finding already opens** — `_at_lines(members)` over `_routine_rows`' own order — so
+     the claim and the occurrences beneath it are the same rows in the same order
+     (rule 13), and there is one place where that order is decided.

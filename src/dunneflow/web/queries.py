@@ -80,6 +80,7 @@ SELECT r.id                AS id,
        r.class_name        AS class_name,
        {PACKAGE_EXPR}      AS pkg
 FROM routines r
+ORDER BY r.id
 """
 
 STRUCTURE_NODES = f"""
@@ -91,6 +92,7 @@ SELECT s.id           AS id,
        s.line         AS line,
        {PACKAGE_EXPR} AS pkg
 FROM structures s
+ORDER BY s.id
 """
 
 CONSTANT_NODES = f"""
@@ -102,7 +104,16 @@ SELECT 'const:' || module || '.' || name AS id,
        private        AS private,
        {PACKAGE_EXPR} AS pkg
 FROM constants
+ORDER BY id, file, line
 """
+
+# **The three node queries above were the finding; the `GROUP BY` ones below were not.**
+# Reverting `ROUTINE_NODES`, `STRUCTURE_NODES` or `CONSTANT_NODES` moves `/api/graph` by
+# 50,728, 4,364 and 13,504 lines on DunneFlow's own tree -- the picture itself, arranged
+# differently for the same program. Reverting any of the grouped ones below, or
+# `LAYOUT_READ`, moves nothing: SQLite answers a `GROUP BY` through a sorted b-tree, so
+# they come back ordered by accident. Kept ordered anyway, and labelled, because an order
+# that holds because of a query plan is exactly what rule 66 calls not an order.
 
 # One node per distinct external endpoint, not per touch. 3,950 boundary hits
 # collapse to 1,684 endpoints; drawing a node per hit would draw the same
@@ -117,6 +128,7 @@ SELECT 'bnd:' || kind || ':' || target AS id,
 FROM boundaries
 WHERE target <> ''
 GROUP BY kind, target
+ORDER BY kind, target
 """
 
 # Boundary touches with no named target still happened, and dropping them would
@@ -130,6 +142,7 @@ SELECT 'bnd:' || kind || ':' AS id,
 FROM boundaries
 WHERE target = ''
 GROUP BY kind
+ORDER BY kind
 """
 
 # A file the program *names*: `tabularium.db`, `groma.json`, `STATUSQUO.md`. Rule 17 --
@@ -150,6 +163,7 @@ SELECT 'art:' || name    AS id,
 FROM artefacts
 WHERE name <> ''
 GROUP BY name
+ORDER BY name
 """
 
 ARTEFACT_EDGES = """
@@ -159,6 +173,7 @@ SELECT routine_id     AS src,
 FROM artefacts
 WHERE routine_id IS NOT NULL AND name <> ''
 GROUP BY routine_id, name
+ORDER BY src, dst
 """
 
 # --------------------------------------------------------------------------- #
@@ -170,6 +185,7 @@ SELECT caller_id AS src, callee_id AS dst, confidence AS confidence, COUNT(*) AS
 FROM calls
 WHERE callee_id IS NOT NULL AND at_boundary = 0
 GROUP BY caller_id, callee_id, confidence
+ORDER BY src, dst, confidence
 """
 
 BOUNDARY_EDGES = """
@@ -181,6 +197,7 @@ SELECT routine_id                              AS src,
 FROM boundaries
 WHERE routine_id IS NOT NULL
 GROUP BY routine_id, kind, target
+ORDER BY src, bkind, dst
 """
 
 # --------------------------------------------------------------------------- #
@@ -196,6 +213,7 @@ LAYOUT_READ = """
 SELECT node_id, disk, x, y, z, is_shadow
 FROM layout
 WHERE program = ?
+ORDER BY node_id, disk
 """
 
 LAYOUT_CLEAR = "DELETE FROM layout WHERE program = ?"
@@ -245,7 +263,11 @@ SELECT c.caller_id AS id, c.line, c.confidence, c.callee_expr, c.ambiguous,
 FROM calls c
 JOIN routines r ON r.id = c.caller_id
 WHERE c.callee_id = :id
-ORDER BY r.qualname, c.line
+-- `site_id` last, and it is not decoration. Two calls can share a caller and a line --
+-- `f(g(x))` is two -- so `qualname, line` is not a total order, and which of them the
+-- inspector lists first was decided by the order the rows happened to be in (rule 66).
+-- It is the call site's own identity, which is what `golden.py` sorts `calls` by.
+ORDER BY r.qualname, c.line, c.callee_expr, c.site_id
 """
 
 # A routine that is itself a way in. Declared registration, not inferred reach:
@@ -267,23 +289,46 @@ SELECT c.callee_id AS id, c.callee_expr, c.line, c.confidence, c.external,
 FROM calls c
 LEFT JOIN routines r ON r.id = c.callee_id
 WHERE c.caller_id = :id
-ORDER BY c.line
+-- Ordered on the line alone until 2026-09-18, and a line holds more than one call far
+-- more often than it looks: `name.strip.split(...)` is recorded as two, and `_segments`
+-- in `resolve/naming.py` has two on line 546 and two on 547. The probe found it as a
+-- pair of calls swapping places in the inspector between two readings of one map.
+ORDER BY c.line, c.callee_expr, c.site_id
 """
 
 # TOUCHES, in four kinds. Each keeps the evidence that admitted it: a claim
 # without its provenance is an assertion wearing a uniform (design rule 13).
+#
+# **Every one of these ordered on `line` alone until 2026-09-18, and a line is not a key.**
+# `conn.execute(a); conn.execute(b)` is two `sql_ops` rows on one line and
+# `os.environ.get("WAYLAND_DISPLAY") or os.environ.get("DISPLAY")` is two boundaries on
+# one; each list then came back in whatever order the rows were stored in, so the
+# inspector named a different table between two readings of one map. The tiebreaks are
+# the row's own distinguishing columns rather than a rowid, because a rowid is not stable
+# across an incremental re-analysis and is precisely what this is defending against
+# (rule 66).
+#
+# **Which of them a probe could actually make move, and which are defence in depth.**
+# Measured by reverting each and re-running `tools/ordering.py --api` over Society's 628
+# files, DunneFlow's own mixed tree and the fixture: `ROUTINE_SQL_OPS`, `ROUTINE_BOUNDARIES`,
+# `ROUTINE_ANNOTATIONS`, `ROUTINE_CALLEES`, `CODE_IMPORTS` and `CODE_BOUNDARIES` each moved
+# a route. The rest did not on any corpus to hand, and they are kept anyway rather than
+# reverted -- a `SELECT` whose rows reach a payload with no `ORDER BY` is undefended
+# whatever the query planner happens to do today, and rule 66 is about what the tool can
+# defend rather than about what it got away with. Stated so that nobody reads this block
+# as twenty measured defects.
 ROUTINE_BOUNDARIES = """
 SELECT kind, direction, target, line, evidence, salience
 FROM boundaries
 WHERE routine_id = :id
-ORDER BY salience DESC, line
+ORDER BY salience DESC, line, kind, target, direction, evidence
 """
 
 ROUTINE_SQL_OPS = """
 SELECT operation, direction, tbl, sql, line
 FROM sql_ops
 WHERE routine_id = :id
-ORDER BY line
+ORDER BY line, operation, tbl, sql
 """
 
 # The full record, not a summary. Rule 8: never truncate at ingest, and never
@@ -293,14 +338,14 @@ SELECT expr, protocol, verb, destination, port, is_async, awaited,
        in_async_routine, timeout, retries, tls, payload, headers, topic, ack, line
 FROM net_calls
 WHERE routine_id = :id
-ORDER BY line
+ORDER BY line, destination, verb, protocol, expr
 """
 
 ROUTINE_ARTEFACTS = """
 SELECT name, stem, ext, kind, line, literal, is_pattern
 FROM artefacts
 WHERE routine_id = :id
-ORDER BY line
+ORDER BY line, name, kind
 """
 
 # --------------------------------------------------------------------------- #
@@ -480,14 +525,14 @@ ROUTINE_ANNOTATIONS = """
 SELECT kind, value, line, text
 FROM annotations
 WHERE owner_id = :id AND owner_kind = 'routine'
-ORDER BY line
+ORDER BY line, kind, value, text
 """
 
 ROUTINE_COMMENTS = """
 SELECT line, text, leading
 FROM comments
 WHERE routine_id = :id
-ORDER BY line
+ORDER BY line, leading, text
 """
 
 # --------------------------------------------------------------------------- #
@@ -512,7 +557,7 @@ STRUCTURE_ANNOTATIONS = """
 SELECT kind, value, line, text
 FROM annotations
 WHERE owner_id = :id AND owner_kind = 'structure'
-ORDER BY line
+ORDER BY line, kind, value, text
 """
 
 # A constant has no id of its own in the store -- it is identified by the file and
@@ -1335,6 +1380,7 @@ TABLE_ROUTINES = """
 SELECT DISTINCT o.routine_id AS node
 FROM sql_ops o
 WHERE o.tbl = :name AND o.routine_id IS NOT NULL
+ORDER BY node
 """
 
 
@@ -1429,6 +1475,7 @@ JOIN control c ON c.routine_id = o.routine_id
               AND o.line BETWEEN c.line_start AND c.line_end
               {ON_A_PASS.format(c="c", line="o.line")}
 WHERE o.tbl = :name AND o.routine_id IS NOT NULL
+ORDER BY node
 """
 
 # The decisions this routine makes that another routine also makes, by the test **as
@@ -1458,6 +1505,7 @@ DECISION_ROUTINES = """
 SELECT DISTINCT routine_id AS node
 FROM control
 WHERE kind = 'DECISION' AND header = :header AND routine_id IS NOT NULL
+ORDER BY node
 """
 
 
@@ -1619,14 +1667,14 @@ SELECT r.id AS id, r.name AS name, r.qualname AS qualname,
        r.visibility AS visibility, r.is_nested AS is_nested
 FROM routines r
 WHERE r.file = :file
-ORDER BY r.line_start
+ORDER BY r.line_start, r.qualname, r.id
 """
 
 CODE_DEFS_STRUCTURES = """
 SELECT s.id AS id, s.name AS name, s.kind AS kind, s.line AS line
 FROM structures s
 WHERE s.file = :file
-ORDER BY s.line
+ORDER BY s.line, s.name, s.id
 """
 
 # The clickable half. `callee_id` is the whole reason a name in the source can be a link
@@ -1638,7 +1686,7 @@ SELECT c.line AS line, c.callee_expr AS expr, c.callee_id AS id,
        c.at_boundary AS at_boundary, c.ambiguous AS ambiguous
 FROM calls c
 WHERE c.file = :file
-ORDER BY c.line
+ORDER BY c.line, c.callee_expr, c.site_id
 """
 
 CODE_BOUNDARIES = """
@@ -1646,7 +1694,7 @@ SELECT b.line AS line, b.kind AS kind, b.direction AS direction,
        b.target AS target, b.evidence AS evidence
 FROM boundaries b
 WHERE b.file = :file
-ORDER BY b.line
+ORDER BY b.line, b.kind, b.target, b.direction, b.evidence
 """
 
 CODE_SQL_OPS = """
@@ -1654,7 +1702,7 @@ SELECT o.line AS line, o.operation AS operation, o.direction AS direction,
        COALESCE(o.tbl, '') AS tbl
 FROM sql_ops o
 WHERE o.file = :file
-ORDER BY o.line
+ORDER BY o.line, o.operation, tbl
 """
 
 CODE_CONSTANTS = """
@@ -1662,7 +1710,7 @@ SELECT k.line AS line, k.name AS name, k.module AS module,
        COALESCE(k.type, '') AS type, k.is_final AS is_final
 FROM constants k
 WHERE k.file = :file
-ORDER BY k.line
+ORDER BY k.line, k.module, k.name
 """
 
 CODE_IMPORTS = """
@@ -1670,7 +1718,7 @@ SELECT i.line AS line, i.module AS module, i.name AS name,
        COALESCE(i.alias, '') AS alias, i.is_from AS is_from
 FROM imports i
 WHERE i.file = :file
-ORDER BY i.line
+ORDER BY i.line, i.module, i.name, alias
 """
 
 CODE_ARTEFACTS = """
@@ -1678,7 +1726,7 @@ SELECT a.line AS line, a.name AS name, a.ext AS ext, a.kind AS kind,
        a.is_pattern AS is_pattern
 FROM artefacts a
 WHERE a.file = :file
-ORDER BY a.line
+ORDER BY a.line, a.name, a.kind
 """
 
 CODE_NET_CALLS = """
@@ -1687,14 +1735,14 @@ SELECT n.line AS line, n.protocol AS protocol, COALESCE(n.verb, '') AS verb,
        COALESCE(n.timeout, '') AS timeout, COALESCE(n.retries, '') AS retries
 FROM net_calls n
 WHERE n.file = :file
-ORDER BY n.line
+ORDER BY n.line, destination, verb, n.protocol
 """
 
 CODE_DB_TABLES = """
 SELECT t.line AS line, t.name AS name, t.temporary AS temporary
 FROM db_tables t
 WHERE t.file = :file
-ORDER BY t.line
+ORDER BY t.line, t.name
 """
 
 # Reached through the owner for the same reason the per-file counts are: an annotation

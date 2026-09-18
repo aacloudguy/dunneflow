@@ -163,9 +163,26 @@ def _descendants(store: Store, app_id: str) -> set[str]:
 
 
 def _mount_name(store: Store, child_id: str) -> str:
-    """The name a sub-application is mounted under -- `quaestor`, not its object id."""
+    """The name a sub-application is mounted under -- `quaestor`, not its object id.
+
+    **The earliest mount, taken rather than assumed unique**, which is exactly what
+    `_app_site` two functions up already says about the same table: a first mount is a
+    fact, and *"the name"* would be a claim about all of them. It was `LIMIT 1` with no
+    order at all until 2026-09-18, so an application mounted twice -- `add_typer(inner,
+    name="ledger")` and `add_typer(inner, name="books")` -- printed whichever name the
+    rows happened to be stored in. Not a list that came back shuffled: a **different
+    answer**, which is why a `LIMIT` with no `ORDER BY` is the sharpest form of this
+    defect and why `tools/ordering.py --survey` counts one as a finding rather than
+    exempting it.
+
+    `file, line` and not `name`: alphabetical would be defended and arbitrary, and the
+    order a person wrote them in is the one they can check. The residue is stated rather
+    than hidden -- a second mount under a second name is still not shown anywhere, and
+    this returns the first of them.
+    """
     rows = list(store.query(
-        "SELECT name FROM cli_mounts WHERE child_id = ? AND name <> '' LIMIT 1", (child_id,)))
+        "SELECT name FROM cli_mounts WHERE child_id = ? AND name <> ''"
+        " ORDER BY file, line LIMIT 1", (child_id,)))
     return str(rows[0]["name"]) if rows else ""
 
 

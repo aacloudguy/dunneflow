@@ -236,15 +236,23 @@ def app_command_routines(store: Store, app_id: str, seen: set[str] | None = None
     if app_id in seen:
         return []
     seen.add(app_id)
+    # **Ordered by the name the command is typed under**, which is both a defended order
+    # and a readable one. Neither query had one, and the map never showed it: `ways_in`
+    # takes `len(roots)` and `reachable_from_many` takes a set, so the list's order reached
+    # no document — the *dashboard* sends the list itself, as `nodes` on every row of the
+    # cover, and Society's 107 ids came back arranged differently between two readings of
+    # one map. `routine_id` and `child_id` last, because two commands can share a name.
     out = [
         r["routine_id"]
         for r in store.query(
             "SELECT routine_id FROM entrypoints"
-            " WHERE parent_id = ? AND routine_id IS NOT NULL", (app_id,)
+            " WHERE parent_id = ? AND routine_id IS NOT NULL"
+            " ORDER BY name, routine_id", (app_id,)
         )
     ]
     for m in store.query(
-        "SELECT child_id FROM cli_mounts WHERE parent_id = ? AND child_id IS NOT NULL",
+        "SELECT child_id FROM cli_mounts WHERE parent_id = ? AND child_id IS NOT NULL"
+        " ORDER BY name, child_id",
         (app_id,),
     ):
         out.extend(app_command_routines(store, m["child_id"], seen))

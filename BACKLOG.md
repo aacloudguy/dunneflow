@@ -55,52 +55,46 @@ panel being dismissed — that is not a documentation chunk's to make silently.
 rendering it. The lines already exist and are already computed; nothing has to be measured
 again.
 
-### 3 · `web/` has the ordering defect the map no longer has
+### 3 · `/api/programs` lists a program twice under a symlinked maps root
 
-*From the ordering fix, 2026-09-17. The sites below were surveyed on the same day; the
-triage is partial and says which parts are which.*
+*From the `web/` ordering work, 2026-09-18.*
 
-The rendered map is now byte-identical under a full row reversal. **`web/` was deliberately
-out of scope** — the deliverable was the artifact that gets diffed and handed over, and a
-pane whose rows come back in a different order is a different symptom with no baseline to
-compare against. Everything shared through `resolve/` was fixed and both surfaces have it;
-these are `web/`'s own.
+`_r_programs` unions a **resolved** `out_dir` with an **unresolved** `program_dirs`
+listing, so under a root reached through a symlink the two are different `Path` objects
+naming one directory and every program is listed twice. `/tmp` and `/var/folders` are both
+symlinks on macOS, which is how the ordering probe met it — it copies a program into a
+temporary directory, and its first run reported the duplicate as an ordering finding.
 
-**Nine candidates, and the first count of them was wrong in both directions.** The commit
-message for the ordering fix says *six literal `SELECT`s with no `ORDER BY`*. That number
-came from a survey with two flaws, and both are worth knowing before the next one is
-written:
+**Why not done.** It is not an ordering defect and fixing it inside a chunk about row
+order would be scope this session did not have. The probe resolves its own paths, with a
+comment saying why, so it measures row order rather than its own scaffolding.
 
-* **It dropped computed SQL silently.** `ast.literal_eval` fails on an f-string, and the
-  survey skipped those rather than counting them — so every query built with an `IN
-  ({marks})` placeholder, which is most of the interesting ones, was invisible to it.
-* **It excluded `LIMIT 1`.** That is exactly backwards: **`LIMIT 1` with no `ORDER BY` is
-  the sharpest form of this defect**, because it does not reorder a list, it picks a
-  different answer.
+**What would settle it.** Resolve both sides of the union in `_r_programs` — or, better,
+have `revisions.program_dirs` return resolved paths, since it is the one place that
+question is answered — and a test over a root that is a symlink to another directory.
 
-It also over-counted: three of the six were single-row lookups by a unique id, where order
-cannot matter. Correcting for all three gives:
+### 4 · The comparison lane is probed thinly
 
-| Site | | Standing |
-|---|---|---|
-| `waysin.py:167` | `LIMIT 1`, no order | **Certain.** `SELECT name FROM cli_mounts WHERE child_id = ? AND name <> '' LIMIT 1` — which name a sub-application is mounted under is decided by row order. The sibling of the `resolve/cli.py` mount fix. |
-| `related.py:83` · `related.py:95` | f-string | **Likely.** Both feed the `per` dict that ranks documents by how many ids they share, so a tie in the ranking falls to insertion order. |
-| `waysin.py:59` | f-string | **Likely**, if the rows are rendered as a list — `WHERE id IN (…)` returns them in whatever order the store holds them. |
-| `changes.py:889` · `:934` · `:937` · `:941` · `:964` | f-string | **Unchecked.** `INTERSECT` and plain selects feeding the comparison lanes. `INTERSECT` is unordered by definition. |
+*From the `web/` ordering work, 2026-09-18.*
 
-**What would settle it.** `tools/ordering.py`'s argument, one surface over: ask each route
-twice from two row orders and compare the JSON. The 23 API routes are the population, and
-the reversal helper (`reverse_rows`) is already written and already tested. Triage the nine
-above against what that finds rather than from the list — the list is where to look, not
-what is wrong.
+`tools/ordering.py --api` asks `/api/changes`, `/api/anomalychanges` and `/api/filechanges`
+of a Society pair whose two revisions differ in **three source files**, and of a fixture
+pair differing in one. Both come back identical under a full row reversal, and that is a
+real result — but a comparison lane's ties need two things *in the changed set* to tie, so
+a three-file difference is a small population to conclude from. Five of the nine sites
+`BACKLOG.md` used to name were in `changes.py`, and this is the evidence against them.
 
-**And write the survey properly this time**: read f-strings by joining their literal parts,
-treat `LIMIT n` with no `ORDER BY` as a finding rather than an exemption, and exempt only a
-lookup by a unique key or an aggregate with no `GROUP BY`. The corrected survey is nine
-lines of `ast` and is worth checking in beside the harness so the count is reproducible
-(rule 13).
+**Why not done.** There is no bigger pair to hand: the four Society clones differ by a
+handful of source files each, which is what makes them a useful pair for every other
+purpose.
 
-### 4 · The rendered map still varies with `--jobs` in one respect
+**What would settle it.** A pair built from two points far enough apart that hundreds of
+routines change — Society's `main` at 09b9ef11 against the branch head is three months and
+244 files — analysed once and kept, or a fixture that plants the ties `changes.py` can
+have: two routines sharing a qualname and both behaving differently, two structures
+sharing a module and a name.
+
+### 5 · The rendered map still varies with `--jobs` in one respect
 
 *From the ordering fix, 2026-09-17.*
 
@@ -115,7 +109,7 @@ the order a reader would choose, and the same is true of the six commands
 alphabetical? — which is a product question rather than a correctness one. Until then the
 answer is reproducible and arbitrary, which is rule 66's floor and not its ceiling.
 
-### 5 · `resolve/traceability.py` asks Python's builtins of every corpus
+### 6 · `resolve/traceability.py` asks Python's builtins of every corpus
 
 *From chunk 14, 2026-09-17.*
 
@@ -131,7 +125,7 @@ it cannot grow quietly while this is open.
 **What would settle it.** Measure it on a corpus that has both, then either split per
 language as the naming lanes were, or state the blind spot on the page.
 
-### 6 · `fetch` through a name
+### 7 · `fetch` through a name
 
 *From chunk 10, 2026-09-17.*
 
@@ -146,7 +140,7 @@ program file at all, so the feature could not be given a ground truth. Scheduled
 **What would settle it.** A corpus that calls `fetch` through a name. Then the same shape
 as chunk 11's package matching.
 
-### 7 · Rule 95's general remedy
+### 8 · Rule 95's general remedy
 
 *From chunk 6, 2026-09-17.*
 
@@ -158,7 +152,7 @@ list of directories — is not built**, and a rule is never closed.
 **What would settle it.** Either building it, or recording the measurement that says the
 hand-kept list is sufficient and why.
 
-### 8 · `test_a_second_analysis_is_refused_and_told_what_is_running` is flaky
+### 9 · `test_a_second_analysis_is_refused_and_told_what_is_running` is flaky
 
 *From chunk 14, 2026-09-17.*
 

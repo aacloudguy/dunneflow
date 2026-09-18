@@ -97,6 +97,23 @@ LANES = (
 )
 
 
+def _where(p: Point) -> tuple[str, int, str]:
+    """Where a point is, as a key that is actually an order.
+
+    All five lanes ended `(p.file, p.line_start)`, which ties — and the tie is the one
+    `CLAUDE.md` already names: `[a for a in [b for b in c]]` is **two comprehensions on
+    one line**, and `tools/ordering.py:169` is a real instance of it. So two rows of the
+    worklist swapped places between two readings of one map, decided by the order the
+    rows came back in (rule 66).
+
+    `point_id` is the point's own identity and is what `tools/golden.py` sorts `control`
+    by, so the two agree on what a total order over control points is. Written once and
+    spread into each key rather than typed out five times: five copies is five places to
+    forget the third element (rule 51), which is how the first two got written.
+    """
+    return (p.file, p.line_start, p.point_id)
+
+
 def _grouped(moves: list[Any]) -> list[dict[str, Any]]:
     """One entry per **place**, described by the row that says the most about it.
 
@@ -188,21 +205,19 @@ def for_program(store: Store) -> dict[str, Any]:
     guards = report.by_kind(ControlKind.GUARD)
 
     rates = sorted((p for p in loops if p.band == shape.MOVES),
-                   key=lambda p: (not p.in_loop, -shape.places(p.moves),
-                                 p.file, p.line_start))
+                   key=lambda p: (not p.in_loop, -shape.places(p.moves), *_where(p)))
     forks = sorted((p for p in decisions if p.forks and not _is_match(p)),
-                   key=lambda p: (-p.arms_declared, -shape.places(p.moves),
-                                 p.file, p.line_start))
+                   key=lambda p: (-p.arms_declared, -shape.places(p.moves), *_where(p)))
     ladders = sorted((p for p in decisions if p.arms_declared >= 3 and not _is_match(p)),
-                     key=lambda p: (-p.arms_declared, p.file, p.line_start))
+                     key=lambda p: (-p.arms_declared, *_where(p)))
     recoveries = sorted((p for p in handlers if p.recovers),
                         key=lambda p: (-shape.places(
                                            [m for a in p.arms
                                             if a.kind in shape.RECOVERY_ARMS
                                             for m in a.moves]),
-                                       p.file, p.line_start))
+                                       *_where(p)))
     matches = sorted((p for p in decisions if _is_match(p)),
-                     key=lambda p: (-p.arms_declared, p.file, p.line_start))
+                     key=lambda p: (-p.arms_declared, *_where(p)))
 
     rows = {
         "rates": [_row(p, inside=by_id.get(p.in_loop)) for p in rates],
@@ -345,7 +360,10 @@ def outline_for(store: Store, routine_id: str) -> dict[str, Any]:
     for c in store.query(
         "SELECT line, callee_id, callee_expr FROM calls"
         " WHERE caller_id = ? AND callee_id IS NOT NULL AND line IS NOT NULL"
-        " ORDER BY line", (routine_id,),
+        # `site_id` last, because `describe(measure(conn))` is two calls on one line and
+        # the ribbon drew them in whichever order the rows happened to be in. Same key as
+        # `queries.ROUTINE_CALLEES`, so the ribbon and the inspector agree about a line.
+        " ORDER BY line, callee_expr, site_id", (routine_id,),
     ):
         _place(blocks, int(c["line"])).append({
             "type": "call", "line": int(c["line"]), "node": c["callee_id"],

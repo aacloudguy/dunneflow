@@ -221,6 +221,22 @@ def _routine_rows(store: Store, where: str,
     ]
 
 
+def _at_lines(members: list[Occurrence]) -> str:
+    """The lines a finding is about, in the order the reader will meet them.
+
+    **Not `GROUP_CONCAT`, which has no defined order.** Both detectors below built this
+    string in SQL and then wrote a sentence *about* the order — *"only the last one exists
+    at run time"*, *"the later definition shadows the earlier"* — so `(lines 23,18)` was
+    not a list that came back rearranged but a **false statement about which definition
+    wins**. Found by reversing the rows of a fixture with one name declared twice.
+
+    Built from `members` so the sentence and the occurrences it opens are the same rows in
+    the same order (rule 13), which is also why no `ORDER BY` is spelled here: it is
+    `_routine_rows`' order, decided in one place.
+    """
+    return ",".join(str(m.line) for m in members)
+
+
 def _parse_failures(store: Store, r: Report) -> None:
     for row in store.query("SELECT path, errors FROM files WHERE errors != '[]' ORDER BY path"):
         for err in json.loads(row["errors"]):
@@ -244,7 +260,7 @@ def _parse_failures(store: Store, r: Report) -> None:
 
 def _name_collisions(store: Store, r: Report) -> None:
     for row in store.query(
-        "SELECT qualname, COUNT(*) n, GROUP_CONCAT(line_start) lines, MIN(file) f"
+        "SELECT qualname, COUNT(*) n, MIN(file) f"
         "  FROM routines WHERE name != '<module>'"
         " GROUP BY qualname HAVING n > 1 ORDER BY n DESC, qualname"
     ):
@@ -257,7 +273,7 @@ def _name_collisions(store: Store, r: Report) -> None:
             kind="NAME_COLLISION", severity=BROKEN, confidence=CERTAIN,
             title=f"`{row['qualname']}` is defined {row['n']} times",
             detail=f"`{row['qualname']}` is defined {row['n']} times "
-                   f"(lines {row['lines']}). Only the last one exists at run time; "
+                   f"(lines {_at_lines(members)}). Only the last one exists at run time; "
                    f"every call resolves to it and the others are unreachable.",
             blind_spot="If these are nested functions in different enclosing scopes "
                        "they are distinct and this is a naming defect in DunneFlow, "
@@ -274,15 +290,20 @@ def _name_collisions(store: Store, r: Report) -> None:
 
 def _redefinitions(store: Store, r: Report) -> None:
     for row in store.query(
-        "SELECT module, name, COUNT(*) n, GROUP_CONCAT(line_start) lines, MIN(file) f"
+        "SELECT module, name, COUNT(*) n, MIN(file) f"
         "  FROM routines WHERE name != '<module>' AND is_nested = 0 AND is_method = 0"
         " GROUP BY module, name HAVING n > 1 ORDER BY n DESC, module, name"
     ):
+        members = _routine_rows(
+            store,
+            "WHERE name != '<module>' AND is_nested = 0 AND is_method = 0"
+            "  AND module = ? AND name = ?",
+            (row["module"], row["name"]))
         r.add(Anomaly(
             kind="REDEFINITION", severity=SUSPECT, confidence=CERTAIN,
             title=f"`{row['name']}` is defined {row['n']} times in one module",
             detail=f"`{row['name']}` is defined {row['n']} times in `{row['module']}` "
-                   f"(lines {row['lines']}). The later definition shadows the earlier.",
+                   f"(lines {_at_lines(members)}). The later definition shadows the earlier.",
             blind_spot="Conditional definitions (`if TYPE_CHECKING:`, platform "
                        "branches, try/except ImportError) legitimately define a name "
                        "more than once and only one is ever live.",
@@ -291,11 +312,7 @@ def _redefinitions(store: Store, r: Report) -> None:
             # which part is which.
             ident_parts=(row["module"], row["name"]),
             subject=f"{row['module']}.{row['name']}", file=row["f"], count=row["n"],
-            occurrences=_routine_rows(
-                store,
-                "WHERE name != '<module>' AND is_nested = 0 AND is_method = 0"
-                "  AND module = ? AND name = ?",
-                (row["module"], row["name"])),
+            occurrences=members,
         ))
 
 

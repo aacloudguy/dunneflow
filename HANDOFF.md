@@ -18069,3 +18069,117 @@ items and eight stated residues, each with **where it came from, why it was not 
 what would settle it** — an item with no third part is a complaint rather than a task, and
 one with no second is an argument somebody will have again. `V2-START-HERE.md` points at it
 rather than carrying a partial copy, which is rule 51 in a document.
+
+## 2026-09-18 — the dashboard is the same dashboard twice
+
+`BACKLOG.md` item 3, closed. The rendered map became byte-identical under a full row
+reversal on 2026-09-17 and `web/` was deliberately left out of that scope; this is the same
+claim one surface over. **43 GET routes, two copies of one program, one of them reversed,
+and every answer identical** — on Society's 628 files across two revisions, on DunneFlow's
+own mixed Python/TypeScript tree, and on a fixture built out of ties.
+
+### What the three modes are, and why the probe is the authority
+
+`tools/ordering.py` gains two modes beside the map. It is one file because the reversal is
+the instrument and there may only be one of it (rule 51), and because `tools/` is
+deliberately not a package, so a sibling could only reach `reverse_rows` by path.
+
+`--survey` reads `web/` with `ast` and counts what no `ORDER BY` defends. The previous
+survey said **six** and was wrong in both directions: `ast.literal_eval` raises on an
+f-string and it skipped what it raised on, so every `IN ({marks})` query — most of the
+interesting ones — was invisible; and it **exempted `LIMIT 1`**, which is backwards,
+because a `LIMIT` with no order does not shuffle a list, it picks a different answer. This
+one joins an f-string's literal parts, counts a `LIMIT` as the sharpest finding there is,
+and exempts on two grounds only: an aggregate with no `GROUP BY`, and a lookup whose
+`WHERE` equates **a whole declared key** — read out of the three `SCHEMA_SQL` constants
+rather than guessed from the shape of a column name, so `id = ?` is exempt because
+`routines.id` is a primary key and would not be if it were not. **50 findings of 186
+statements** before the work, **36 after**.
+
+`--api` is the probe, and **it found things the survey cannot see and cleared things the
+survey names**. Two of the three biggest defects were queries that *had* an `ORDER BY` —
+on a column with ties — and two were not in `web/` at all. Of the nine sites the backlog
+named, one was real, and the evidence against the other eight is that the probe could not
+make any of them move.
+
+**Three passes and not two**, because an instrument has to know its own noise floor: the
+straight copy is asked twice, so what differs between two readings of *one* copy is named
+as noise instead of being forgiven by a hand-kept list of keys. Exactly one key is
+normalised by name, `ms`, because three routes report how long they took and a noisy route
+is held *out* of the findings — leaving it would take four routes out of the gate for ever
+and report the run green.
+
+### What was wrong
+
+| | |
+|---|---|
+| `resolve/shape.py` | deduplicated the moving things at a line **before** ordering them, so which of two things on one line survived, and which led it, was row order. `/api/table` said `what: "_flip"` in one order and `what: ""` — a table with no name — in the other. `settle()` is the one place that decision is made now; both callers had their own copy and both had it wrong the same way. |
+| `web/shape.py` | all five worklist lanes ended `(file, line_start)`, which ties on **two comprehensions written on one line** — the tie `CLAUDE.md` already names, and `tools/ordering.py:169` is a real one. `_where()` adds `point_id`, which is what `tools/golden.py` sorts `control` by. |
+| `web/queries.py` | `ROUTINE_NODES`, `STRUCTURE_NODES` and `CONSTANT_NODES` had no order at all: reverting them moves `/api/graph` by **50,728 · 4,364 · 13,504 lines** — the picture itself, arranged differently for one program. `ROUTINE_CALLEES` was ordered on the line alone, and `name.strip.split(...)` is two calls on one line. `ROUTINE_SQL_OPS`, `ROUTINE_BOUNDARIES`, `ROUTINE_ANNOTATIONS`, `CODE_IMPORTS` and `CODE_BOUNDARIES` likewise. |
+| `resolve/flows.py` | `app_command_routines` had no order in either query, and **the map never showed it**: `ways_in` takes `len(roots)` and `reachable_from_many` takes a set, so the list's order reached no document. The dashboard sends the list — Society's 107 ids on the cover, arranged differently between two readings. |
+| `web/waysin.py` | `_mount_name` was a `LIMIT 1` with no order, so an application mounted twice printed whichever name the rows held. Its own sibling `_app_site` already does `ORDER BY line LIMIT 1` and says why. |
+| `anomalies.py` | **rule 102**, and the worst of them. `GROUP_CONCAT(line_start)` has no defined order and the sentence beside it is a claim *about* the order — *"(lines 23,18). The later definition shadows the earlier."* Not a list that came back rearranged: a finding naming the wrong definition as the live one, in the detector whose whole discipline is stating what would make it a false alarm. |
+
+### Rule 101, and the miss that earned it
+
+The probe reported `/api/wayin` identical over a `_mount_name` that answers `ledger` in one
+row order and `books` in the other — the site the backlog had already called **certain**.
+Both statements were true: the route has two shapes, and only the one carrying `inside`
+asks what a sub-application is mounted under. **A route is not a branch.** Three remedies
+were all needed — a route with more than one shape is asked more than once; a parameter
+that came back **empty** is a gap in the plan and is named, because `/api/table?name=` is a
+refusal identical on both copies; and a route that **raised** is named too, because it
+raises the same way twice. The empty-parameter check found two more the moment it existed.
+
+### What is measured, and what is defence in depth
+
+Stated rather than glossed, because the diff adds nine `ORDER BY`s no probe could make
+move. Reverting each and re-running over all three corpora: the three node queries above,
+`ROUTINE_CALLEES`, `ROUTINE_SQL_OPS`, `ROUTINE_BOUNDARIES`, `ROUTINE_ANNOTATIONS`,
+`CODE_IMPORTS`, `CODE_BOUNDARIES`, `TABLE_ROUTINES`, `app_command_routines`, `_mount_name`,
+`settle` and `_where` each moved a route. The seven `GROUP BY` graph queries and
+`LAYOUT_READ` moved nothing — SQLite answers a `GROUP BY` through a sorted b-tree, so they
+come back ordered by accident. **Kept ordered anyway and labelled in the file**: an order
+that holds because of a query plan is precisely what rule 66 calls not an order.
+
+### The gate, and proving its baseline
+
+`tests/test_ordering.py` grows the dashboard half beside the map half: a two-revision
+fixture whose every file plants a tie somebody actually ships — one sub-application mounted
+under two names, two SQL operations on one line, two calls on one line, two comprehensions
+on one line **each reaching a boundary**, two imports on one line, one name declared twice
+in one module. It walks `_Handler.ROUTES`, so a route added tomorrow is asked by default,
+and `NOT_JSON`'s four exemptions are spelled out rather than described.
+
+**Four mutations, four caught — after the fixture was corrected twice** (rule 59). Two
+comprehensions that move nothing enter no lane, so the `_where` mutation passed until each
+one reached a boundary; and the fixture's `alpha/__init__.py` is empty and sorted first, so
+`/api/file` was asked about a file with nothing in it. That second one is why the probe now
+picks the **busiest** file rather than the first, and why an empty parameter fails the run.
+
+### Measured
+
+**Nothing stored moved and no stamp moved.** `resolve/`, `web/` and `anomalies.py` are in
+no fingerprint, so **no map anywhere is invalidated**; the golden is 5 of 7 identical with
+the two it redefines held back, as always. **The rendered map is untouched** — all 15
+documents byte-identical on Society and on DunneFlow's own tree once the render instant is
+normalised, which is what says this landed on the dashboard and nowhere else. Both map
+probes still clean. **1,845 passed · 1 skipped** (three consecutive full runs), mypy clean
+over 193 files, ruff clean.
+
+`mcp/tools.py` reuses `web/detail`, `web/search`, `web/shape` and `web/serve`, so the
+second surface gets every one of these without being touched.
+
+### Residue
+
+Every map on disk was **stale** at the start of this session — chunk 14 moved the core key
+to `14:d273f41c746d39d2` and the one re-analysis it costs had never been run, so the first
+probe refused on all 25 of them. `output/mensores-pair` (Society at e2e658b4 sealed, and at
+03ebbd93 working, with `--standards`) and `output/df-order` were built for this and are
+current.
+
+Two things this found and did not fix, both now items in `BACKLOG.md` with all three parts:
+`/api/programs` lists every program **twice** under a symlinked maps root, which is a
+resolved path unioned with an unresolved listing and not an ordering defect at all; and the
+comparison lane is probed against a pair differing in **three source files**, which is a
+real result from a small population.

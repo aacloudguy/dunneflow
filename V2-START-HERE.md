@@ -14,8 +14,8 @@ been rewritten yet. Where they describe the tool they are accurate; where they d
 |---|---|
 | `PLAN-v2.md` | the whole design: the plugin protocol, the registry, the fingerprint split, the TypeScript plugin, the MCP server, the 14 chunks and the gate on each |
 | `CLAUDE.md` | the standing orders — **binding**, and the rules index |
-| `RULES.md` · `DESIGN-RULES.md` | carried over **verbatim, numbering intact**. The numbers are addresses: never reused, never renumbered, never closed up. **v2 continues at engineering rule 101** — 95 is the fingerprint's blind spot, 96 the record minted on demand, 97 the bundled program that does not carry the files it reads, 98 the detector handed a population it was never shown, 99 the name that is relative to the root that declared it, 100 the judge that picks one of several true answers by the order it was written in. All six 2026-09-17. A rule is never closed; 95's `sql.py` gap was shut by chunk 6 and the general remedy it names is not built. |
-| `BACKLOG.md` | **what this tree owes** — eight open items and eight stated residues, each with where it came from, why it was not done, and what would settle it. Nothing in it is scheduled by the plan; all fourteen chunks are done. |
+| `RULES.md` · `DESIGN-RULES.md` | carried over **verbatim, numbering intact**. The numbers are addresses: never reused, never renumbered, never closed up. **v2 continues at engineering rule 103** — 95 is the fingerprint's blind spot, 96 the record minted on demand, 97 the bundled program that does not carry the files it reads, 98 the detector handed a population it was never shown, 99 the name that is relative to the root that declared it, 100 the judge that picks one of several true answers by the order it was written in (all six 2026-09-17), 101 the route that is not a branch and 102 the sentence about an order that has none (both 2026-09-18). A rule is never closed; 95's `sql.py` gap was shut by chunk 6 and the general remedy it names is not built. |
+| `BACKLOG.md` | **what this tree owes** — nine open items and eight stated residues, each with where it came from, why it was not done, and what would settle it. Nothing in it is scheduled by the plan; all fourteen chunks are done. |
 | `PERFORMANCE.md` | v1's figures. **Every one of them was measured on v1** and none has been reproduced here — do not restate one as though it had been (rule 24). |
 
 ## The four decisions, already taken
@@ -402,8 +402,20 @@ not carry a copy that drifts.
 
 The largest of them, in one line each: the tutorial's **21 screenshots** are a dated
 session and want a re-capture; the **analyse dialog cannot see the walk's residue**, so
-design rule 1 holds for the command line and not for the application; and **`web/` still
-has the ordering defect the map no longer has**, in six queries with no `ORDER BY` at all.
+design rule 1 holds for the command line and not for the application; and the **comparison
+lane is probed against a pair differing in three source files**, which is a real result
+from a small population.
+
+**`web/`'s own ordering defect is closed** (2026-09-18). All 43 GET routes answer the same
+thing under a full row reversal, on Society across two revisions, on DunneFlow's own mixed
+tree and on a fixture built out of ties — `tools/ordering.py --api`, beside the map probe
+and a `--survey` that counts what no `ORDER BY` defends (50 findings before, 36 after). Two
+of the three biggest defects were queries that *had* an `ORDER BY`, on a column with ties,
+and two were not in `web/` at all; of the nine sites the backlog named, one was real. The
+worst was `anomalies.py` reporting *"(lines 23,18). The later definition shadows the
+earlier"* — **rule 102**, a sentence about an order built on `GROUP_CONCAT`, which has
+none. **Rule 101** is the miss that probe made first: a route is not a branch, and it
+reported `/api/wayin` clean over the one site the backlog had called certain.
 
 **The fifth v1 defect is closed** — the one chunk 8's gate found and left alone. The
 rendered map depended on the order its rows happened to be in, so two analyses of Society by
@@ -426,7 +438,7 @@ a target `target_expr` had been carrying all along.
 
 ## Three things not to re-open
 
-* **The rule numbers.** Addresses, not an ordering. v2 continues at 101.
+* **The rule numbers.** Addresses, not an ordering. v2 continues at 103.
 * **No `BROWSER` boundary kind.** Settled on measurement — `BoundaryKind` is read in only six
   places outside `schema.py`, but changing the enum changes the meaning of a fact and
   discards every stored map; and it is not needed. `fetch`/WebSocket are the network under

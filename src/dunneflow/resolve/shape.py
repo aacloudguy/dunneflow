@@ -53,6 +53,7 @@ from __future__ import annotations
 
 from bisect import bisect_left, bisect_right
 from collections import defaultdict
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 
 from ..schema import ArmKind, ControlKind
@@ -268,6 +269,36 @@ _MOVE_QUERIES = (
 )
 
 
+def settle(rows: Iterable[Move]) -> list[Move]:
+    """One routine's moving things, deduplicated by place and in a defended order.
+
+    **The dedup and the order are one decision, and this is the one place it is made**
+    (rule 51). Both callers had their own copy of the loop and both got it wrong the same
+    way, which is what that rule predicts: the rows were deduplicated *first*, keeping
+    whichever the pool had answered with, and sorted afterwards on `line` alone. So two
+    things moved with the order of the rows -- which `detail` a place ends up with, and
+    which of several places on one line leads it.
+
+    `(line, kind, what)` is the identity of a place; `detail` is the only thing two rows
+    sharing one can differ in. Sorting **before** the dedup is therefore what makes the
+    survivor a fact about the rows rather than about which query finished first (rule 66),
+    and the sort key is total, so nothing downstream is left with a tie to settle.
+
+    It cost `/api/table` and `/api/algorithms`: `web/shape.py:_grouped` leads each line
+    with the first `SQL` or `NET` row it finds, so a line holding two answered *"what:
+    `_flip`"* in one row order and *"what: ``"*, a table with no name, in the other.
+    """
+    out: list[Move] = []
+    seen: set[tuple[int, str, str]] = set()
+    for m in sorted(rows, key=lambda m: (m.line, m.kind, m.what, m.detail)):
+        key = (m.line, m.kind, m.what)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(m)
+    return out
+
+
 def _moves_by_routine(store: Store) -> dict[str, list[Move]]:
     """Every moving thing in the program, grouped by the routine it sits in.
 
@@ -276,22 +307,15 @@ def _moves_by_routine(store: Store) -> dict[str, list[Move]]:
     on the *work* and not only on the answer (rule 55) -- what comes back is every
     moving thing once, sorted, and every point then costs two bisections.
     """
-    seen: set[tuple[str, int, str, str]] = set()
-    out: dict[str, list[Move]] = defaultdict(list)
+    found: dict[str, list[Move]] = defaultdict(list)
     for sql in _MOVE_QUERIES:
         for r in store.query(sql):
             rid, line = r["routine_id"], r["line"]
             if not rid or line is None:
                 continue
-            key = (rid, int(line), r["kind"], r["target"] or "")
-            if key in seen:
-                continue
-            seen.add(key)
-            out[rid].append(Move(line=int(line), kind=r["kind"], what=r["target"] or "",
-                                 detail=r["detail"] or ""))
-    for moves in out.values():
-        moves.sort(key=lambda m: m.line)
-    return out
+            found[rid].append(Move(line=int(line), kind=r["kind"], what=r["target"] or "",
+                                   detail=r["detail"] or ""))
+    return {rid: settle(rows) for rid, rows in found.items()}
 
 
 def _calls_by_routine(store: Store) -> dict[str, list[int]]:
@@ -561,19 +585,16 @@ def moves_in_routine(store: Store, routine_id: str) -> list[Move]:
     "what is a move" the first time either was touched (rule 51).
     """
     moves: list[Move] = []
-    seen: set[tuple[int, str, str]] = set()
     for sql in _MOVE_QUERIES:
         for r in store.query(f"{sql} WHERE routine_id = ?", (routine_id,)):
             if r["line"] is None:
                 continue
-            key = (int(r["line"]), r["kind"], r["target"] or "")
-            if key in seen:
-                continue
-            seen.add(key)
             moves.append(Move(line=int(r["line"]), kind=r["kind"],
                               what=r["target"] or "", detail=r["detail"] or ""))
-    moves.sort(key=lambda m: m.line)
-    return moves
+    # `settle` and not a second copy of it. The `ORDER BY` this wants cannot go in
+    # `_MOVE_QUERIES`, because this caller appends its own `WHERE` to the same strings --
+    # so the order is decided in Python, once, where both callers already meet.
+    return settle(moves)
 
 
 def outline(store: Store, routine_id: str) -> list[Point]:

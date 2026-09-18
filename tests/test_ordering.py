@@ -32,10 +32,16 @@ import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
+from dunneflow import revisions
+from dunneflow.docstore import DocStore
+from dunneflow.extractors.docs import extract_doc
 from dunneflow.render.markdown import render_all
 from dunneflow.resolve.calls import resolve_calls
+from dunneflow.resolve.cli import resolve_cli
+from dunneflow.resolve.entrypoints import entrypoints_from_packaging
 from dunneflow.store import Store
 from dunneflow.walk import analyze_tree
+from dunneflow.web import serve as serve_mod
 
 ROOT = Path(__file__).resolve().parents[1]
 # A fixed instant: the cover states when the documents were written, so two
@@ -203,3 +209,239 @@ def test_meta_is_left_alone(tmp_path):
         assert dict(store.conn.execute("SELECT key, value FROM meta")) == before
     finally:
         store.close()
+
+
+# ====================================================================================== #
+# The dashboard.
+#
+# `web/` was deliberately out of scope when the map was fixed: the deliverable was the
+# artifact that gets diffed and handed over. These are the same claim one surface over, and
+# `tools/ordering.py --api` is the instrument — asking every route of two copies of one
+# program, one of them reversed, with a **fresh `_Live`** per copy because most of the
+# dashboard is cached and a third of it is filled before the first request arrives.
+#
+# What it found on DunneFlow's own tree, none of it visible to the survey and two of the
+# three not even in `web/`: `resolve/shape.py` deduplicated the moving things at a line
+# before it ordered them, so *which* of two things on one line led it was row order;
+# `web/shape.py`'s five worklist lanes all ended `(file, line_start)`, which ties on two
+# comprehensions written on one line; and ten of `web/queries.py`'s node and edge queries
+# had no `ORDER BY` at all, so the picture itself came back arranged differently.
+# ====================================================================================== #
+
+# One tie per line, and every one of them a shape this tool actually reads.
+PAIR_ONE = {
+    "alpha/__init__.py": "",
+    "alpha/__main__.py": '''\
+"""The way in."""
+import sqlite3
+from pathlib import Path
+
+import typer
+
+app = typer.Typer(name="alpha")
+inner = typer.Typer(name="inner")
+# **One sub-application mounted under two names.** `_mount_name` takes the first row a
+# `LIMIT 1` with no `ORDER BY` returns, so which name the pane prints was row order.
+app.add_typer(inner, name="ledger")
+app.add_typer(inner, name="books")
+
+
+@inner.command()
+def post(path: str) -> None:
+    """A command of the sub-application, so it is a mounted tree rather than an unused
+    object -- which is what makes `describe()` ask what name it is mounted under."""
+    main(path)
+
+
+@app.command()
+def main(path: str) -> None:
+    """Do the thing."""
+    conn = sqlite3.connect(path)
+    # Two SQL operations on one line, so `_grouped` has two rows to lead with.
+    conn.execute("INSERT INTO ledger (id)"); conn.execute("INSERT INTO audit (id)")
+    # Two calls on one line: `ROUTINE_CALLEES` ordered on the line alone.
+    describe(measure(conn))
+
+
+def measure(conn):
+    """Count what is there."""
+    return conn.execute("SELECT id FROM ledger").fetchall()
+
+
+def audit(conn):
+    """A second routine touching the same table, so `TABLE_ROUTINES` returns a list."""
+    return conn.execute("SELECT id FROM ledger WHERE id > 0").fetchall()
+
+
+def sweep(conn):
+    """A third caller, so the edge list has something to shuffle."""
+    audit(conn)
+    measure(conn)
+    describe([])
+
+
+def describe(rows):
+    """Say what it is."""
+    # **Two comprehensions on one line, each reaching a boundary.** Both are therefore in
+    # the `rates` lane with the same number of places, so the lane's key ties on
+    # (file, line_start) — which is the real shape found at `tools/ordering.py:169`.
+    # Two that move nothing is not the same fixture: neither enters a lane, and the
+    # mutation goes uncaught (rule 59).
+    return sorted({p.name for p in Path("i").glob("*.md")} | {q.stem for q in Path("o").glob("*")})
+''',
+    "alpha/work.py": '''\
+"""A second module, so a name can be in two."""
+import os
+# Two names on one line is two `imports` rows on one line, which is what the code
+# browser's per-file lists tie on.
+from os import environ, getenv
+
+
+def _cache():
+    # AUDIT: LOCK-7
+    return getenv("ALPHA_HOME") or environ.get("HOME") or os.getcwd()
+
+
+def main():
+    """A second `main`, which is the commonest tie in any tree."""
+    return _cache()
+
+
+def twin():
+    """Declared twice in one module, so two ids share one qualname."""
+    return _cache()
+
+
+def twin():  # noqa: F811 - deliberate, see the docstring above
+    """The second declaration. Colliding definitions keep separate identities."""
+    return os.getcwd()
+''',
+    # A declared way in, so the command tree has a name of its own. Without it the tree
+    # and the `main` in `work.py` are both called `main`, `describe()` matches on the name
+    # the row prints, and the sub-application is unreachable through the route.
+    "pyproject.toml": '''\
+[project]
+name = "alpha"
+version = "0.1.0"
+[project.scripts]
+alpha = "alpha.__main__:app"
+''',
+    "README.md": '''\
+# Alpha
+
+What this is for. See PLAN-01 and AC-19.
+
+- `ledger`: where the rows go.
+''',
+}
+
+# The second revision, so the comparison lane has a pair rather than a short circuit.
+PAIR_TWO = {**PAIR_ONE, "alpha/work.py": PAIR_ONE["alpha/work.py"].replace(
+    "    return getenv(\"ALPHA_HOME\") or environ.get(\"HOME\") or os.getcwd()",
+    "    return getenv(\"ALPHA_HOME\") or os.getcwd()") + '''
+
+def extra():
+    """Only the second version has this one."""
+    return _cache()
+'''}
+
+
+def _revision(out: Path, tree: Path, files: dict[str, str], rev: str) -> None:
+    """One point in time of one program, as `analyze` would leave it."""
+    for rel, body in files.items():
+        path = tree / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(body, encoding="utf-8")
+
+    store = Store(revisions.db_path(out, revisions.GRAPH, rev))
+    analyze_tree(tree, store)
+    entrypoints_from_packaging(tree, store)
+    resolve_calls(store)
+    resolve_cli(store)
+    store.set_meta("revision", rev)
+    # Three states and never two: a graph with no `complete` key at all is one written
+    # before the key existed and opens fine, but a base built here should say it finished
+    # rather than lean on that.
+    store.set_meta("complete", "yes")
+    store.conn.commit()
+    store.close()
+
+    docs = DocStore(revisions.db_path(out, revisions.DOCS, rev))
+    docs.set_meta("revision", rev)
+    for md in sorted(tree.rglob("*.md")):
+        docs.write_doc_facts(extract_doc(md, tree))
+    docs.conn.commit()
+    docs.close()
+
+
+def _pair(tmp_path: Path) -> Path:
+    """A program directory with two revisions, which the comparison lane needs.
+
+    `/api/changes`, `/api/anomalychanges` and `/api/filechanges` short-circuit on a program
+    holding one version — they answer *"this program has one version"* and answer it
+    identically whatever the rows are doing. A one-revision fixture would leave three
+    routes reported clean without either of them having been asked a question (rule 37).
+    """
+    out = tmp_path / "prog"
+    out.mkdir()
+    for i, files in enumerate((PAIR_ONE, PAIR_TWO)):
+        tree = tmp_path / f"tree{i}"
+        tree.mkdir()
+        _revision(out, tree, files, f"2026-08-30T10:0{i}:00Z")
+    return out
+
+
+# **The routes that answer a fact about the run rather than about the map.** Named, and the
+# list is of *exceptions*, so a route that starts moving between two readings of one copy
+# has to be added here on purpose rather than quietly dropping out of the gate — which is
+# what would happen if noise were simply tolerated, because the probe holds a noisy route
+# out of its findings (`GET_WITHOUT_BASE`'s own argument, one file over).
+KNOWN_NOISE: frozenset[str] = frozenset()
+
+
+def test_the_dashboard_answers_the_same_whatever_order_the_rows_are_in(tmp_path: Path) -> None:
+    """Every route, asked of two copies of one program, one of them reversed.
+
+    Not "the counts match": the whole JSON, because a list that comes back rearranged has
+    the same length and says something different — which is exactly what `/api/graph` was
+    doing, arranging the picture itself differently for the same program.
+    """
+    found, noise, vacuous = order.api_probe(_pair(tmp_path))
+
+    assert not vacuous, (
+        "these routes were asked nothing, or raised, so nothing about them was checked "
+        "and the run is green for no reason (rule 37): " + ", ".join(vacuous))
+    assert set(noise) <= KNOWN_NOISE, (
+        "these routes differ between two readings of the *same* copy, so the probe cannot "
+        "say anything about row order for them: " + ", ".join(sorted(set(noise) - KNOWN_NOISE)))
+    assert not found, (
+        "these routes depend on the order rows are stored in, which is the order the "
+        "process pool happened to finish files in (rule 66): " + ", ".join(sorted(found)))
+
+
+def test_every_route_the_server_answers_is_in_the_population(tmp_path: Path) -> None:
+    """The probe walks `ROUTES`, so a route added tomorrow is asked without being listed.
+
+    What can still go wrong is the **exemption** list growing, and that is why it is spelled
+    out here rather than described. `NOT_JSON` is the four entries that do not answer JSON —
+    two spellings of the shell, the start page, and a 204 with no body — and a fifth name
+    added to it would take a route out of the gate with nothing saying so.
+    """
+    from dunneflow.web.serve import _Handler
+
+    assert frozenset({"/", "/index.html", "/start", "/favicon.ico"}) == order.NOT_JSON
+    assert set(_Handler.ROUTES) >= order.NOT_JSON
+
+    out = _pair(tmp_path)
+    plan = {}
+    graph = revisions.newest(out, revisions.GRAPH)
+    assert graph is not None, "the fixture wrote no graph"
+    live = serve_mod._Live(out / "source.db", out)
+    live.open(graph)
+    try:
+        plan = order.choose(live)
+    finally:
+        live.close()
+    assert set(plan) <= set(_Handler.ROUTES), (
+        "the plan names routes this server does not answer: "
+        + ", ".join(sorted(set(plan) - set(_Handler.ROUTES))))

@@ -20,7 +20,7 @@ by *how often you need it*, not by importance:
 | File | What it holds | When to read it |
 |---|---|---|
 | `CLAUDE.md` | commands, verification gates, architecture, and the **index** of every rule | every session — it is loaded for you |
-| `RULES.md` | the 93 engineering rules **in full**, with the false result each came from — numbered to 94, because 21 does not exist and the numbers are addresses | before working in the area a rule governs |
+| `RULES.md` | the 101 engineering rules **in full**, with the false result each came from — numbered to 102, because 21 does not exist and the numbers are addresses | before working in the area a rule governs |
 | `DESIGN-RULES.md` | the 30 dashboard design rules in full | before building or changing a view |
 | `PERFORMANCE.md` | every measured figure, with its budget and its conditions | before quoting or retaking a number |
 | `BRIEFING.md` | state: what is built, what is next, what is closed | at the start of a session |
@@ -777,8 +777,21 @@ ordering on a column with ties returns whatever the pool finished first (rule 66
 like that for a year:
 
 ```bash
-uv run python tools/ordering.py output/mensores   # reverses every row, re-renders, diffs
+uv run python tools/ordering.py output/mensores          # reverses every row, re-renders, diffs
+uv run python tools/ordering.py output/mensores --api    # every GET route, asked twice
+uv run python tools/ordering.py --survey                 # the statements no ORDER BY defends
 ```
+
+**`--api` is the same argument one surface over, and it is what `web/` is measured by.**
+The rendered map is the artifact that gets handed over; the dashboard is where a reader
+actually stands, and it had the defect the map no longer had. It asks every route in
+`_Handler.ROUTES` of two copies of one program with a **fresh `_Live` each**, because most
+of the dashboard is cached and a third of it is filled before the first request arrives.
+Three passes and not two: the straight copy is asked twice, so what differs between two
+readings of *one* copy is named as noise rather than forgiven by a hand-kept list. A route
+that was asked nothing, handed an empty parameter, or raised is **named and fails the run** —
+each of those diffs perfectly clean (rule 37). `--survey` says where to look and decides
+nothing; it is **rule 101** that says why the probe and not the survey is the authority.
 
 Reversal rather than a second analysis, because two real runs shuffle *some* of the order
 and catch *some* of the ties, differently each time. `tests/test_ordering.py` is the same
@@ -1864,6 +1877,10 @@ it was written from.
      not the analysed tree's.
 100. A judge that must pick one of several true answers picks by the order it was written
      in, and that order is the first language's preference.
+101. A route is not a branch, and a probe that asks one query string per route says
+     nothing about the others.
+102. A list with no order comes back rearranged; a *sentence* about that order comes back
+     wrong.
 ```
 
 ## Anomalies: the discipline

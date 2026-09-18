@@ -57,20 +57,48 @@ again.
 
 ### 3 · `web/` has the ordering defect the map no longer has
 
-*From the ordering fix, 2026-09-17.*
+*From the ordering fix, 2026-09-17. The sites below were surveyed on the same day; the
+triage is partial and says which parts are which.*
 
-The rendered map is now byte-identical under a full row reversal. **Six literal `SELECT`s
-under `web/` still have no `ORDER BY` at all** — in `cover.py`, `related.py`, `serve.py`,
-`shape.py` and `waysin.py` — plus an unknown number with a partial one. Everything shared
-through `resolve/` was fixed and benefits both surfaces; these are `web/`'s own.
+The rendered map is now byte-identical under a full row reversal. **`web/` was deliberately
+out of scope** — the deliverable was the artifact that gets diffed and handed over, and a
+pane whose rows come back in a different order is a different symptom with no baseline to
+compare against. Everything shared through `resolve/` was fixed and both surfaces have it;
+these are `web/`'s own.
 
-**Why not done.** Scope, stated in advance: the deliverable was the map, which is the
-artifact that gets diffed and handed over. A pane whose rows come back in a different order
-is a different symptom with no baseline to compare against.
+**Nine candidates, and the first count of them was wrong in both directions.** The commit
+message for the ordering fix says *six literal `SELECT`s with no `ORDER BY`*. That number
+came from a survey with two flaws, and both are worth knowing before the next one is
+written:
 
-**What would settle it.** `tools/ordering.py`'s argument, one surface over: a harness that
-asks each route twice from two row orders and compares the JSON. The 23 API routes are the
-population.
+* **It dropped computed SQL silently.** `ast.literal_eval` fails on an f-string, and the
+  survey skipped those rather than counting them — so every query built with an `IN
+  ({marks})` placeholder, which is most of the interesting ones, was invisible to it.
+* **It excluded `LIMIT 1`.** That is exactly backwards: **`LIMIT 1` with no `ORDER BY` is
+  the sharpest form of this defect**, because it does not reorder a list, it picks a
+  different answer.
+
+It also over-counted: three of the six were single-row lookups by a unique id, where order
+cannot matter. Correcting for all three gives:
+
+| Site | | Standing |
+|---|---|---|
+| `waysin.py:167` | `LIMIT 1`, no order | **Certain.** `SELECT name FROM cli_mounts WHERE child_id = ? AND name <> '' LIMIT 1` — which name a sub-application is mounted under is decided by row order. The sibling of the `resolve/cli.py` mount fix. |
+| `related.py:83` · `related.py:95` | f-string | **Likely.** Both feed the `per` dict that ranks documents by how many ids they share, so a tie in the ranking falls to insertion order. |
+| `waysin.py:59` | f-string | **Likely**, if the rows are rendered as a list — `WHERE id IN (…)` returns them in whatever order the store holds them. |
+| `changes.py:889` · `:934` · `:937` · `:941` · `:964` | f-string | **Unchecked.** `INTERSECT` and plain selects feeding the comparison lanes. `INTERSECT` is unordered by definition. |
+
+**What would settle it.** `tools/ordering.py`'s argument, one surface over: ask each route
+twice from two row orders and compare the JSON. The 23 API routes are the population, and
+the reversal helper (`reverse_rows`) is already written and already tested. Triage the nine
+above against what that finds rather than from the list — the list is where to look, not
+what is wrong.
+
+**And write the survey properly this time**: read f-strings by joining their literal parts,
+treat `LIMIT n` with no `ORDER BY` as a finding rather than an exemption, and exempt only a
+lookup by a unique key or an aggregate with no `GROUP BY`. The corrected survey is nine
+lines of `ast` and is worth checking in beside the harness so the count is reproducible
+(rule 13).
 
 ### 4 · The rendered map still varies with `--jobs` in one respect
 

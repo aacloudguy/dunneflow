@@ -19351,3 +19351,23 @@ scope in its qualname, and a class nested in a function does not. The ordinal ma
 identities, so nothing collides and nothing is lost; what is missing is that their qualnames
 do not say which factory each belongs to. Noticed here, not acted on, and not filed as a task
 until there is a reader who wants the answer.
+
+### The same day, later — and what the verification run found instead
+
+The full-tree analysis started to prove the fix above did that and then ran into something
+else. **Both halves are worth having.**
+
+**The fix is proven on the real tree.** Python's phase closed normally: 4,197 files, 82,102
+routines, 3,767 structures, 347,005 calls. All four vendored Pythons are in the map, and the
+population that crashed it reads `CFunctionType` **8 rows · 8 ids**, `SpawnProcess` 8 · 8,
+`SpawnContext` 8 · 8, `Protocol` 4 · 4.
+
+**And then C++ did not close.** `UnrealEngine-release` entire is **165,828** candidate files
+against the 18,191 of `Engine/Source/Runtime` — 84,803 headers and 48,254 sources. One
+transaction per language plus WAL means the log cannot checkpoint until the language is done,
+and past `cache_size` every insert reads pages back out of it. After 1 h 45 m the log was
+734 MB and the process was at **0.1% CPU**, down from 98%. Stopped rather than finished, and
+filed as `BACKLOG.md` item 7 with the sample that names the mechanism.
+
+**Rule 80 checked rather than assumed**: the C++ transaction rolled back whole, the committed
+Python rows stayed, and `finished()` is empty — the store does not claim to be a map.

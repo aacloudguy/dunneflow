@@ -83,6 +83,42 @@ now analysed as `gstack` and is the corpus to re-test against if one is ever fou
 the only tree to hand with a real `fetch` population, and the tool scores **29 of 29** on
 it with no false positives, so the direct case needs nothing.
 
+### 7 · One transaction per language does not scale past about twenty thousand files
+
+*Found 2026-09-19, analysing the whole of `UnrealEngine-release`.*
+
+`analyze_tree` wraps a language's entire per-file write loop in one `store.batch()` — *"one
+transaction per reader; per-file commits dominate otherwise"* — and the store is in WAL mode.
+**SQLite cannot checkpoint a WAL while a write transaction is open**, so the log grows for the
+whole of a language's files and never shrinks.
+
+Past the point where it outgrows `cache_size` (64 MB), every index insert has to read pages
+back out of the log. Sampled at 1 h 39 m: `executemany` → `sqlite3BtreeIndexMoveto` →
+`sqlite3PagerGet` → `sqlite3WalReadFrame`, with `sqlite3PcacheFetchStress` spilling dirty
+pages continuously. It degrades rather than plateaus.
+
+**Measured on that run.** The tree holds **165,828** candidate files — 84,803 `.h`, 48,254
+`.cpp`, 11,565 `.py`, 283 `.ts`, 29 `.kt`. Python's transaction closed normally at 4,197
+files. The C++ one did not: after 1 h 45 m the log stood at **734 MB** and throughput had
+fallen from **98% CPU at the start to 0.1%**, about 2 MB a minute and falling. The run was
+stopped rather than finished.
+
+**It is a threshold and not a wall, which is why it had never been seen.** The recorded Unreal
+run of 2026-09-19 read `Engine/Source/Runtime` — **18,191 files in 8 m 54 s** — in exactly the
+same single transaction, and its log stayed inside the cache. Everything else this tool has
+read is smaller again. The whole tree is about nine times the largest corpus ever put through
+it.
+
+**Rule 80 held, and that was checked rather than assumed.** The killed run rolled the C++
+transaction back whole, left the committed Python rows, and `finished()` is empty — the store
+does not claim to be a finished map.
+
+**What would settle it.** Committing inside a language rather than only at the end of one, on
+a bound that is measured rather than guessed — files, or rows, or the log's own size — against
+the figure the comment defends, which is that per-file commits dominate. Both numbers have to
+be taken on one corpus big enough to show the effect, because the present answer is right for
+every tree this project has measured and wrong for the one it has not.
+
 ### 5 · Rule 95's general remedy
 
 *From chunk 6, 2026-09-17.*

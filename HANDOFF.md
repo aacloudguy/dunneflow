@@ -19435,3 +19435,33 @@ not.
 The bound counts **files** because that is the shape of the evidence, and what actually hurts
 is rows written. A tree of 19,000 enormous files passes it. In `BACKLOG.md`, with what a
 better key would cost.
+
+### The breakdown proposed two parts it should not have, and the tree found both
+
+*Same day, from the ingest the guard was written for.*
+
+**A part has to read what the breakdown says it reads** (rule 13), and the first cut did not
+guarantee that. A plugin's `skip_dirs` is matched against the path **relative to the analysed
+root**, so a directory named in one yields different files depending on where the walk
+started:
+
+| | from the top of Unreal | walked as its own root |
+|---|---:|---:|
+| `Engine/Source/ThirdParty` | 620 files | **57,373** |
+| `Engine/Binaries` | 3,146 files | **3,619** |
+
+The word `ThirdParty` is in the C++ reader's skip list; rooted at `ThirdParty` itself it is in
+no relative path any more, and 57,373 vendored files come flooding in. The same for
+`Binaries`, more quietly.
+
+**One was caught by the guard and one was not, and that is the useful part.**
+`Engine.Source.ThirdParty` was **refused for being over the bound** — the system catching its
+own advice, which is what a guard is for. `Engine.Binaries` simply read **473 files nobody
+asked for** and reported success. A wrong answer that fails loudly costs an hour; a wrong
+answer that succeeds goes into the map.
+
+`parts_under` now refuses to propose any directory whose path crosses a name a reader skips,
+and those files join `Breakdown.uncovered`. Unreal: **84 parts covering 84,590 files, 3,766
+stated as reached by none**, and the arithmetic closes. The count is non-zero rather than
+academic because the skip is *per language* — Python files under `Binaries` are admitted from
+the root, which is why that directory has 3,146 files at all.

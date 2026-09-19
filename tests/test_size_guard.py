@@ -171,3 +171,32 @@ def test_a_run_stopped_between_commits_keeps_what_it_committed(tmp_path, monkeyp
         assert not kept.finished(), "a partial map must never claim to be finished (rule 80)"
     finally:
         kept.close()
+
+
+def test_a_directory_a_reader_skips_is_never_proposed_as_a_part(tmp_path):
+    """The defect the breakdown shipped with, and it is rule 13's shape.
+
+    A plugin's `skip_dirs` is matched against the path **relative to the analysed root**, so
+    a directory named there yields different files depending on where the walk started.
+    `Engine/Source/ThirdParty` is 620 files seen from the top of Unreal and **57,373** walked
+    as its own root: the word the C++ reader hides on is no longer in any relative path.
+
+    Both cases were observed rather than reasoned. The breakdown proposed `Engine/Binaries`,
+    and analysing it read **3,619** files where the part claimed 3,146 — 473 nobody asked
+    for, silently. It proposed `Engine/Source/ThirdParty`, and that one was refused by the
+    guard itself for being over the bound, which is the system catching its own advice.
+
+    `ThirdParty` is in the C++ reader's skip list and not in `walk.SKIP_DIRS`, so Python
+    files under it are admitted from the root — which is exactly why the count is non-zero
+    and the directory still cannot be a part.
+    """
+    _tree(tmp_path, {"good/a": 6, "good/b": 6, "ThirdParty/vendored": 5})
+    cut = parts_under(tmp_path, bound=8)
+
+    assert cut.total == 17
+    named = {d.name for d, _ in cut.parts}
+    assert "ThirdParty" not in named, "a part must read what the breakdown says it reads"
+    assert (tmp_path / "ThirdParty", 5) in cut.uncovered
+
+    # And the arithmetic closes: every file is either in a part or stated as in none.
+    assert sum(n for _, n in cut.parts) + sum(n for _, n in cut.uncovered) == cut.total

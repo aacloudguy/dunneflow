@@ -400,17 +400,25 @@ TOO_BIG = 20_000
 class Breakdown:
     """A tree cut into pieces an `analyze` command can each read whole.
 
-    `uncovered` is the honest half and is why this is a record rather than a list. A part is
-    a **directory**, and `analyze` reads a directory *and everything under it* — so a
-    directory that had to be split cannot also be a part, because the command for it would
-    re-read the children already covered and would itself be the oversized analysis this
-    whole mechanism exists to refuse. Its own files therefore belong to no part, and saying
-    so is the only truthful answer available (design rule 1: no filter is ever silent).
+    `uncovered` is the honest half and is why this is a record rather than a list. **A part
+    has to read what the breakdown says it reads** (rule 13), and there are two ways a
+    directory can fail that:
 
-    It is empty on every tree measured so far — `UnrealEngine-release` puts **0** files in
-    that position across all 86 of its parts — which is why the case is stated rather than
-    solved. Solving it needs an `analyze` that can read one directory without descending,
-    and that is a feature with its own argument, not a detail of a guard.
+    * **It had to be split.** `analyze` reads a directory *and everything under it*, so a
+      directory whose children are already parts cannot also be one — the command for it
+      would re-read them and would itself be the oversized analysis this mechanism exists to
+      refuse. Its own files then belong to no part.
+    * **Its path crosses a name a reader skips.** A plugin's `skip_dirs` is matched against
+      the path *relative to the analysed root*, so the same directory yields different files
+      depending on where the walk started. `Engine/Source/ThirdParty` is 620 files seen from
+      the top of Unreal and **57,373** walked as its own root, because the word `ThirdParty`
+      — which the C++ reader skips — is no longer in any relative path. Proposing it would
+      hand somebody a command that reads 92x what it promised, out of a directory the tool
+      is configured to ignore.
+
+    The second was found the hard way: the breakdown proposed both, and analysing them read
+    473 files nobody asked for in one case and was refused outright in the other. Two parts
+    of Unreal's 86, 3,766 files of 88,356.
     """
 
     total: int
@@ -452,9 +460,20 @@ def parts_under(root: Path, bound: int = TOO_BIG,
     if len(files) <= bound:
         return Breakdown(len(files), [], [])
 
+    # Every name any reader prunes, as one set. A part may not sit under one of these, and
+    # the reason is above: the rule that hides them is written against a path relative to
+    # whatever root is being analysed, so rooting a command inside one un-hides everything
+    # it was meant to hide.
+    skipped = {name for plugin in ingest.PLUGINS.values()
+               for name in plugin.manifest.discovery.skip_dirs}
     left: list[tuple[Path, int]] = []
 
     def cut(prefix: tuple[str, ...], members: list[tuple[str, ...]]) -> list[tuple[Path, int]]:
+        if any(part in skipped for part in prefix):
+            # Nothing under here can be a part, and descending would only produce more of
+            # them. The whole subtree is reported as reached by no command.
+            left.append((root.joinpath(*prefix), len(members)))
+            return []
         if len(members) <= bound:
             return [(root.joinpath(*prefix) if prefix else root, len(members))]
         # `()` is a file sitting directly in this directory rather than under a child of it.

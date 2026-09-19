@@ -199,6 +199,44 @@ def _tree(src: Path, dest: str) -> list[tuple[str, str]]:
     return out
 
 
+def _reader_files() -> list[tuple[str, str]]:
+    """Every **in-process** reader's tree, named by the manifest that declares it.
+
+    This line read `_tree(PKG / "extractors" / "python", …)` until 2026-09-18, two lines
+    under a comment arguing rule 92 for the rules directory and four above one arguing it
+    for the plugins. It was the whole truth while the only reader in this interpreter was
+    Python's, and it is the *third* enumeration in this file to be found the same way —
+    `detectors/*.yaml` was named until TypeScript, `plugins/` was a tree until TypeScript
+    brought a `node_modules`.
+
+    What it costs is worse than either, because it fails later and quieter. A new
+    in-process reader's manifest ships (`_plugin_files` finds it), its rules ship (the glob
+    finds them), the registry loads it, and every gate here passes — and the reader's own
+    bytes are not in the bundle. `resource_root()` then has nothing to hash for
+    `lang_fingerprint`, and the application meets its first file of that language in a
+    colleague's hands.
+
+    `reader` is relative to the package root rather than to the plugin directory, because
+    an in-process reader is part of this program; an out-of-process one declares `entry`
+    instead and its bytes are its `fingerprint`, which `_plugin_files` already ships. A
+    plugin declaring neither is refused at load, so there is no third case here.
+    """
+    out: list[tuple[str, str]] = []
+    for manifest in sorted((PKG / "plugins").glob("*/plugin.json")):
+        rel = json.loads(manifest.read_text(encoding="utf-8")).get("reader", "")
+        if not rel:
+            continue                      # a reader on the far side of a pipe
+        src = PKG / Path(rel)
+        if not src.is_dir():
+            raise SystemExit(
+                f"the {manifest.parent.name} plugin declares its reader at {rel} and this "
+                f"tree has no such directory at {src}. An in-process reader is bundled as "
+                f"the bytes its stamp is computed from; there is nothing to ship."
+            )
+        out += _tree(src, f"dunneflow/{rel}")
+    return out
+
+
 def _plugin_files() -> list[tuple[str, str]]:
     """`plugin.json` and the files it names, for every plugin in the tree.
 
@@ -243,7 +281,12 @@ datas = [
     # SQL parsing reshapes every `sql_ops` row and moved no key at all before it.
     (str(PKG / "sql.py"), "dunneflow"),
     *_tree(PKG / "ingest", "dunneflow/ingest"),
-    *_tree(PKG / "extractors" / "python", "dunneflow/extractors/python"),
+    # **Every in-process reader, found rather than named** — see `_reader_files()`. The
+    # documentation scanner stays spelled out beside it because it is not a language
+    # reader: no manifest declares it, nothing routes a suffix to it, and it is hashed by
+    # `doc_extraction_inputs()` rather than by any language's key. Two different questions,
+    # and only one of them has a registry to ask.
+    *_reader_files(),
     *_tree(PKG / "extractors" / "docs", "dunneflow/extractors/docs"),
     # **Every plugin, and exactly the bytes its manifest names.** A tree here was right
     # while the only plugin was a `plugin.json`; the TypeScript reader brought a

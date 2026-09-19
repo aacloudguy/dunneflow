@@ -18678,3 +18678,163 @@ its `.items()` is the same defect and is invisible to a reader of the source.
 **1,897 passed · 1 skipped**, mypy clean over 196 files, ruff clean. The wide pair and the
 fixture both come back clean under a full row reversal, and nothing stored moved — `web/`
 is in no fingerprint and no analysis code was touched.
+
+## 2026-09-18 — the file every session loads, cut back to an index a second time
+
+`CLAUDE.md` was **2,241 lines / 160,758 bytes**, which is within 2 KB of the size that
+caused the *first* split on 2026-09-02 (162,893 → 34,583). The two sections that were not
+cut then are the two that grew back: **Architecture at 890 lines**, 40% of the file, and
+**Packaging at 525**. It is now **458 lines / 27,639 bytes** — 5.8× smaller — and what left
+went into four satellites on the existing convention, split by *how often you need it*:
+
+| File | Lines | Held |
+|---|---|---|
+| `ARCHITECTURE.md` | 1,255 | the module list, and **The surfaces** — `serve`, `mcp`, `query`, the analyse dialog |
+| `PACKAGING.md` | 319 | the spec, the three release scripts, signing, notarisation, `runtime.py`'s four questions |
+| `GROUND-TRUTH.md` | 194 | the corpora, what each reproduces, and the two probes that are not tests |
+| `LANGUAGES.md` | 126 | what it costs to teach this tool a new language |
+
+### 217 lines of `serve` were filed under `## Packaging — the frozen application`
+
+Found by the cut rather than by reading. The Packaging section's own content ends at the
+notarisation note; everything from **`serve` also *makes* a program.** to the two ALGORITHMS
+surfaces — the analyse dialog, the stop button, the progress stream, program switching,
+*About this map*, diagram mode — sat underneath that heading with no heading of its own. So
+a reader looking for the analyse dialog under `## Commands` did not find it, and a reader
+opening Packaging found it by accident. Both halves are `ARCHITECTURE.md`'s **The surfaces**
+now, which is the one place either question is asked.
+
+### The 2026-09-02 method was reused, and check 2 earned its keep
+
+Same five checks the first split recorded. Check 1 — every cut segment diffed against the
+original — passed on all six. **Check 2 caught a real loss**: of 1,922 substantive lines,
+nine did not reproduce verbatim, and eight were deliberate rewrites. The ninth was
+`CLAUDE.md:108`, the opening line of the `mcp` paragraph — *"**`mcp` is the second surface
+over the same stores, and it is `serve`'s shape without a"* — dropped because the cut began
+at 109 and the paragraph began at 108. A boundary off by one line, invisible in every other
+check: the paragraph still read as prose, still ended correctly, and had simply lost the
+claim it was making. Restored. Check 3 enumerated the indexes rather than counting them —
+**104 engineering entries, 1..105 with the gap at 21 and no duplicates; 31 design entries,
+no gaps** — check 4 resolved every pointer, and check 5 found no open item living only in a
+cut region.
+
+### A reference that had been dangling since the first split
+
+`web/filediff.py`'s entry ends *"`autojunk=False`, measured rather than preferred (see the
+budget below)"*. There is no budget below it and there has not been one since 2026-09-02,
+when every measured figure went to `PERFORMANCE.md` — `autojunk` appears once in `CLAUDE.md`
+and twice there. It survived sixteen days and a fourteen-chunk plan because nothing reads a
+cross-reference. It points at `PERFORMANCE.md` now.
+
+Three other references broke because the split moved their target and were rewritten by
+name: `:275` and `:419` (*"the verification gate below"*, Packaging → Verification) and
+`:976` (*"See **Packaging** above"*, Architecture → Packaging). `:442`'s *"see **Packaging**
+above"* is untouched and still true, which is why Windows and Linux stay inside
+`PACKAGING.md` with their parent rather than becoming files of their own. Two pointers in
+`BRIEFING.md` named sections that have moved and now name where they went.
+
+### Gates
+
+**1,897 passed · 1 skipped**, mypy clean over 196 files, ruff clean. No test parses
+`CLAUDE.md`; `tests/test_languages.py:280` quotes **Adding a language**'s founding sentence
+in a docstring and that sentence is findable in `LANGUAGES.md`. Nothing under `src/` moved,
+so no fingerprint moved and no stored map is invalidated.
+
+### Residue
+
+Four new `.md` files at the root change what DunneFlow finds when it reads its own tree, so
+`docs/tutorial/06-document.md`'s **26 documents carrying 29 definitions and 45 governance
+ids** is stale. It was already stale — `BACKLOG.md` item 1, the 21 screenshots — and this is
+a line on that item rather than a new one.
+
+## 2026-09-18 — two enumerations found on the road to a third language
+
+Chunk B1 of the C++/Kotlin work, and both of these were found by planning the route rather
+than by walking it. Neither is a new feature and both are repairs to the seam a third
+reader has to come through.
+
+### `canonical/` was reading a table that had already moved out of it
+
+`canonical/__init__.py` declared `LANG_SUFFIX = {".py": "python", ".pyi": "python"}` under
+a comment reading *"it is here now because here is the one place that consults it"* — and
+`ingest/__init__.py`'s docstring has said since chunk 5 that **the table moved there and
+became derived from the manifests**, quoting that exact sentence as the thing that stopped
+being true. The move was recorded, the copy was left behind, and the copy was the one being
+read: `canonical()` asked the hand-written table and nothing else asked anything. Two
+modules each documenting that they owned one question, and the one that said it had taken
+it over was not consulted.
+
+**It had drifted in both directions**, which is what a second answer always does.
+
+* It did not know `.ts`. So from the day TypeScript landed, a canonicaliser for it could
+  have been written, registered in `CANONICAL`, and **never once reached** — the lookup
+  that decides whether to call one could not name the language, and the comparison would
+  have fallen through to *as written*, which is indistinguishable from this module's own
+  honest fallback (rule 49). Nothing would have failed.
+* It claimed `.pyi`, which **no reader claims at all**. Harmless only because no `.pyi`
+  fact exists to compare.
+
+`canonical()` asks `ingest.language_of` now. The two directions of the fallback are stated
+where they were flattened: *no reader claims this suffix* and *one does and has no canonical
+form* are different facts and neither is inferred from the other.
+
+**And the test that guarded it could not fail.**
+`test_only_the_python_canonicaliser_knows_how_to_canonicalise` asserts
+`set(CANONICAL) <= set(LANG_SUFFIX.values())` — no canonicaliser filed under a language no
+suffix produces, rule 35 in a table. Asked of a table holding only Python, the right-hand
+side was `{"python"}` and the left could only ever be a subset of it: a true assertion about
+a question that could not come out wrong. Asked of the registry it is a real question again.
+Its unclaimed-suffix probe was the literal `.kt`, which chunk C would have quietly turned
+into a claimed one; it picks the first genuinely unclaimed suffix now.
+
+### The spec named the one reader it could find
+
+`packaging/dunneflow.spec`'s `datas` read `_tree(PKG / "extractors" / "python", …)` — two
+lines under a comment arguing that the rules directory is *"globbed, never named, and that
+is rule 92 rather than economy"*, and four above one saying of the plugins that *"nothing
+here enumerates"* them. **Both of those were rewritten when TypeScript found them.** This
+one had not been, because Python is still the only reader that runs in this interpreter, so
+the enumeration was still accidentally complete.
+
+What it would cost lands later and quieter than either of the other two. A new in-process
+reader's manifest ships (`_plugin_files` finds it), its rules ship (the glob finds them),
+the registry loads it, every existing assertion in `test_frozen.py` passes — and the
+reader's own bytes are not in the bundle, so `lang_fingerprint` has nothing to hash and the
+application meets its first file of that language in somebody else's hands.
+
+`_reader_files()` derives it from each manifest's `reader` field, on `_plugin_files()`'s own
+precedent, and refuses by name when a declared reader is not there. **Measured: the derived
+list is byte-identical to the named one today** — 2 files, same destinations — so this ships
+exactly what it shipped before and will go on being right when it should not be.
+
+`extractors/docs` stays spelled out beside it, deliberately: it is not a language reader, no
+manifest declares it, nothing routes a suffix to it, and it is hashed by
+`doc_extraction_inputs()` rather than by any language's key. Two questions, and only one has
+a registry to ask.
+
+**A second test was pinning the enumeration rather than the property it was named for.**
+`test_the_bundle_layout_matches_what_resource_root_expects` asserted the literal string
+`dunneflow/extractors/python` — it passed *because* the spec named Python's reader, and
+would have gone on passing while a second one went unbundled. It asks the derived
+destination now, which is the claim the test's own name makes.
+
+### Gates
+
+**1,899 passed · 1 skipped**, mypy clean over 196 files, ruff clean. Built
+`DUNNEFLOW_ARCH=host` in 8.8 s and ran the fingerprint gate through the binary: **3 of 3
+stamps agree and each build opened the other's map**, `python 107, typescript 11`. The
+golden is 5 of 7 against the report with the two documented holdbacks — its normal answer.
+
+**Nothing moved that could invalidate a map**, and it was checked rather than assumed:
+`canonical/` is in no cache key by design, `packaging/` and `tests/` are in none, and the
+19 files that *are* in one were asked directly — none of them was touched.
+
+### Residue
+
+`PERFORMANCE.md`'s stamp table is dated 2026-09-17 and all three values have since moved,
+in the three commits of 18 September that touched `detectors/python.yaml`,
+`detectors/typescript.yaml` and `detectors/__init__.py`. The table is left exactly as it
+was — it states when it was taken and against what, so a value that has moved is a dated
+measurement and not a wrong one — with today's retake recorded beneath it and the reason.
+A stamp is not a figure to hold steady; it is a claim that two builds agree.
+

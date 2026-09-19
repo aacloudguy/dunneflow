@@ -33,14 +33,25 @@ from __future__ import annotations
 from collections.abc import Callable
 from pathlib import Path
 
+from ..ingest import language_of
 from .python import canonical_expr
 
-# Which language owns a file, by suffix.
+# **Which language owns a file is `ingest`'s answer, and this module stopped having one of
+# its own on 2026-09-18.** `LANG_SUFFIX` was declared here as `{".py": "python", ".pyi":
+# "python"}` under a comment reading *"it is here now because here is the one place that
+# consults it"* -- and `ingest/__init__.py`'s own docstring has said since it was written
+# that the table **moved there** and became derived from the manifests, quoting that very
+# sentence as the thing that stopped being true. The move was recorded and the copy was
+# left behind, so the file that says it took the question over was not the one being asked
+# it: `canonical()` read the hand-written table and nothing else did.
 #
-# **This is the same question `walk.py` used to answer and never asked.** `LANG_SUFFIX` sat
-# there declared and read by nothing at all -- a constant that looked like a decision and
-# governed no code (rule 35). It is here now because here is the one place that consults it.
-LANG_SUFFIX: dict[str, str] = {".py": "python", ".pyi": "python"}
+# It had already drifted, which is what a second answer always does. It did not know `.ts`
+# existed -- so from the day TypeScript landed, a canonicaliser for it could have been
+# written, registered in `CANONICAL` below, and **never once reached**, because the lookup
+# that decides whether to call one could not name the language. Nothing failed; the
+# comparison simply fell through to *as written* for every TypeScript expression in every
+# map, which is exactly what this module's honest fallback looks like from the outside
+# (rule 49, and rule 51 for why one question may not have two tables).
 
 # How each language says two writings are the same expression. A language with no entry has
 # no canonical form here, and `canonical` says so by returning what it was given.
@@ -57,7 +68,12 @@ def canonical(expr: str, path: str | Path) -> str:
     **Unchanged is an answer, not a failure.** Where no language claims the suffix, the
     comparison falls back to what was written -- the honest question when there is nothing
     better to ask, and not a plausible value standing in for a measurement (rule 49).
+
+    **Two ways to arrive at that fallback, and they are different facts.** No reader claims
+    the suffix at all, or one does and has no canonical form here. Both correctly compare as
+    written, and neither is inferred from the other -- which is why `language_of` is asked
+    first rather than `CANONICAL` being keyed on the suffix directly.
     """
-    lang = LANG_SUFFIX.get(Path(path).suffix.lower())
+    lang = language_of(path)
     fn = CANONICAL.get(lang or "")
     return fn(expr) if fn is not None else expr

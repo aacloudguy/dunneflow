@@ -11,11 +11,12 @@ from __future__ import annotations
 import argparse
 import ast
 import inspect
+import re
 from pathlib import Path
 
 import pytest
 
-from dunneflow import ingest, walk
+from dunneflow import canonical, ingest, walk
 from dunneflow.detectors import RulesMissing, load_rules
 from dunneflow.ingest.contract import (
     DiscoveryRules,
@@ -340,6 +341,48 @@ def test_only_the_dispatch_table_names_a_resolver():
     assert not found, (
         "a module under resolve/ has started naming a language:\n  "
         + "\n  ".join(found))
+
+
+def test_the_canonical_seam_asks_ingest_which_language_owns_a_file():
+    """One question, one table — and for a year there were two.
+
+    `canonical/__init__.py` declared `LANG_SUFFIX = {".py": "python", ".pyi": "python"}`
+    under a comment claiming *"here is the one place that consults it"*, while
+    `ingest/__init__.py`'s docstring said the table had **moved there** and become derived
+    from the manifests, quoting that same sentence as the thing that had stopped being
+    true. The move was recorded and the copy was left behind, so the module that said it
+    owned the question was not the one being asked it.
+
+    **Both directions of drift were live when this was written**, which is what a second
+    answer always does. It did not know `.ts`: a TypeScript canonicaliser could have been
+    registered in `CANONICAL` and never once reached, because the lookup that decides
+    whether to call one could not name the language — and the comparison would have fallen
+    through to *as written*, indistinguishable from this module's honest fallback (rule
+    49). And it claimed `.pyi`, which no reader claims at all.
+
+    So the assertion is the one that cannot drift: `canonical` spells no suffix, and the
+    answer it gives is the registry's.
+    """
+    mod = Path(canonical.__file__).resolve()
+    body = mod.read_text()
+    # `CANONICAL` names languages and that is its job, exactly as `RESOLVERS` does above —
+    # what runs in this process is decided by a file under test, never by a data file. What
+    # may not be here is a second answer to *which language owns this suffix*.
+    assert not re.search(r"^LANG_SUFFIX\s*[:=]", body, re.M), (
+        "canonical/__init__.py has declared a suffix table of its own again")
+    assert "language_of" in body, (
+        "canonical() must ask the registry which language owns a file")
+
+    # The property, not a proxy for it (rule 37): every suffix the registry claims reaches
+    # its language's entry, and one it does not claim reaches nobody's.
+    for suffix, lang in ingest.LANG_SUFFIX.items():
+        expr = "f( 1 ,2 )"
+        got = canonical.canonical(expr, f"a{suffix}")
+        if lang in canonical.CANONICAL:
+            assert got != expr, f"{suffix} is claimed by {lang} and was not canonicalised"
+        else:
+            assert got == expr, f"{suffix} has no canonical form and must compare as written"
+    assert canonical.canonical("f( 1 ,2 )", "a.nobody") == "f( 1 ,2 )"
 
 
 # --------------------------------------------------------- declining a language --- #

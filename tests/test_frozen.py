@@ -174,6 +174,41 @@ def test_a_plugins_own_files_are_in_the_bundle():
             )
 
 
+def test_an_in_process_reader_is_found_in_the_spec_and_never_named():
+    """Rule 92, the third time in this one file, and the quietest of the three.
+
+    `datas` read `_tree(PKG / "extractors" / "python", …)` until 2026-09-18 — two lines
+    under a comment arguing that the rules directory is *"globbed, never named, and that is
+    rule 92 rather than economy"*, and four above one saying of the plugins that *"nothing
+    here enumerates"* them. Both of those were rewritten when a second language found them.
+    This one had not been, because Python was still the only reader running in this
+    interpreter.
+
+    **What it would cost is later and quieter than either.** A new in-process reader's
+    manifest ships, its rules ship, the registry loads it, every other assertion in this
+    file passes — and its own bytes are missing, so `lang_fingerprint` hashes nothing and
+    the application meets its first file of that language in somebody else's hands.
+
+    So the assertion is the property rather than the absence (rule 37): every reader the
+    registry says runs in this process has its declared directory in the spec's output, and
+    the spec's source does not spell it.
+    """
+    from dunneflow import ingest
+
+    spec = SPEC.read_text(encoding="utf-8")
+    assert "_reader_files()" in spec, "the in-process readers are not derived at all"
+    for lang, plugin in sorted(ingest.PLUGINS.items()):
+        rel = plugin.manifest.reader
+        if not rel:
+            continue                      # a reader on the far side of a pipe
+        assert rel not in spec, (
+            f"the spec names {lang}'s reader ({rel}) instead of finding it — rule 92"
+        )
+        assert (SRC / Path(rel)).is_dir(), (
+            f"{lang} declares a reader at {rel} and this tree has no such directory"
+        )
+
+
 def test_a_plugin_ships_the_bytes_it_is_stamped_from_and_not_its_workshop():
     """The bundle is derived from the manifests, never from the directory listing.
 
@@ -485,11 +520,24 @@ def test_the_bundle_layout_matches_what_resource_root_expects():
     segment, same labels, same fingerprint — so a map made by the binary opens in the
     checkout and back. Laid out any other way the two would refuse each other's maps under
     rule 12, which is the opposite of what that rule is for.
+
+    **The third assertion used to be the string `dunneflow/extractors/python`**, which
+    pinned the enumeration rule 92 was about rather than the layout this test is named for:
+    it passed because the spec named Python's reader, and it would have gone on passing
+    while a second in-process reader went unbundled. It asks the derived destination now,
+    which is the same claim about the thing that actually ships.
     """
+    from dunneflow import ingest
+
     spec = SPEC.read_text(encoding="utf-8")
     assert '"dunneflow/detectors"' in spec
     assert '"dunneflow/web/static"' in spec
-    assert "dunneflow/extractors/python" in spec
+    assert 'f"dunneflow/{rel}"' in spec, (
+        "an in-process reader is no longer placed under the package root's own name"
+    )
+    for lang, plugin in sorted(ingest.PLUGINS.items()):
+        if rel := plugin.manifest.reader:
+            assert (SRC / Path(rel)).is_dir(), f"{lang}'s reader is not where it says"
 
 
 def test_the_entry_point_calls_freeze_support_before_anything_else():

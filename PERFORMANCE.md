@@ -812,6 +812,19 @@ Binary and checkout compute all three identically, **and each build opens the ot
 — which is the property rather than a proxy for it, since what a colleague meets is
 `Store(writable=False)` raising and not two hex strings failing to match.
 
+**Retaken 2026-09-18, and all three had moved.** `14:1f490b8c6a74ae79`,
+`1.0.0:ff80475015590340`, `1.1.0:5d04dc6d7233224a`, same 107 and 11 files, binary and
+checkout still identical and still opening each other's maps. The table above is left
+exactly as it was, because it says when it was taken and against what — a value that has
+since moved is a dated measurement, not a wrong one. What moved it is the three commits of
+18 September that touched `detectors/python.yaml`, `detectors/typescript.yaml` and
+`detectors/__init__.py`: the builtins a map holds, what a dropped async call costs per
+language, and `ingest/__init__.py` joining the core key with `decline()`. Every one of them
+is a change to what a reader *reads*, so all three keys moving is rule 12 working rather
+than drift. **A stamp is not a figure to hold steady** — it is a claim that two builds agree,
+and the retake is here so that the next reader who runs the gate and sees different hex
+knows that is expected and where to look if it is not.
+
 | Measure | Conditions | Measured |
 |---|---|---|
 | The whole gate | `src/dunneflow`, 118 files, both languages, both directions | **7.8 s** |
@@ -931,3 +944,4 @@ preference.** `npm install typescript` now installs the Go port, whose JavaScrip
 point exposes no `createProgram`, no `SyntaxKind` and no `createSourceFile` — measured:
 `typeof ts.createProgram` is `undefined` at 7.0.2 and `function` at 5.9.3. The plugin pins
 5.9.3.
+

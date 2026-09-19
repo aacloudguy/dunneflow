@@ -614,19 +614,29 @@ def test_only_the_python_canonicaliser_knows_how_to_canonicalise():
     canonicaliser there would discard every graph on the machine — sealed snapshots included
     — every time it was edited, for a change that cannot alter one fact.
     """
-    from dunneflow.canonical import CANONICAL, LANG_SUFFIX, canonical
+    from dunneflow.canonical import CANONICAL, canonical
+    from dunneflow.ingest import LANG_SUFFIX
+
+    # **The table is `ingest`'s, and asking the right one is half of what this asserts.**
+    # This read `canonical.LANG_SUFFIX` until 2026-09-18 -- a hand-written
+    # `{".py": "python", ".pyi": "python"}` that `ingest/__init__.py` had already declared
+    # it had taken over. So the assertion below held against a table that knew only Python,
+    # which is to say it could not fail: every canonicaliser there could ever be was
+    # Python's. Asked of the registry it is a real question again.
+    owned = set(LANG_SUFFIX.values())
 
     # **The direction that can actually be wrong.** A language may have an extractor and no
     # canonicaliser -- it then compares as written, which is honest. What cannot be right is
-    # a canonicaliser filed under a language no suffix produces: `canonical` looks it up
-    # through `LANG_SUFFIX`, so nothing could ever reach it (rule 35, in a table).
-    assert set(CANONICAL) <= set(LANG_SUFFIX.values()), (
-        f"canonicalisers no suffix can reach: {sorted(set(CANONICAL) - set(LANG_SUFFIX.values()))}"
+    # a canonicaliser filed under a language no suffix produces: `canonical` looks the
+    # language up before dispatching, so nothing could ever reach it (rule 35, in a table).
+    assert set(CANONICAL) <= owned, (
+        f"canonicalisers no suffix can reach: {sorted(set(CANONICAL) - owned)}"
     )
     # A suffix nobody claims compares as written -- an answer, not a failure (rule 49).
     assert canonical('d["k"]', "a/b.py") == "d['k']"
-    assert canonical('d["k"]', "a/b.kt") == 'd["k"]', (
-        "an unknown language was canonicalised by somebody else's rules"
+    unclaimed = next(s for s in (".kt", ".zz", ".nobody") if s not in LANG_SUFFIX)
+    assert canonical('d["k"]', f"a/b{unclaimed}") == 'd["k"]', (
+        "an unclaimed suffix was canonicalised by somebody else's rules"
     )
     assert canonical("**kwargs", "a/b.py") == "**kwargs", (
         "a splat is not an expression, and must survive being handed to a parser"

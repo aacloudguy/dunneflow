@@ -13,7 +13,9 @@ been rewritten yet. Where they describe the tool they are accurate; where they d
 | File | For |
 |---|---|
 | `PLAN-v2.md` | the whole design: the plugin protocol, the registry, the fingerprint split, the TypeScript plugin, the MCP server, the 14 chunks and the gate on each |
-| `CLAUDE.md` | the standing orders — **binding**, and the rules index |
+| `CLAUDE.md` | the standing orders — **binding**, and the rules index. **Cut back to an index on 2026-09-18**, 2,241 lines to 458; what left is in the four files below. |
+| `ARCHITECTURE.md` · `PACKAGING.md` | what each module owns and what each surface answers; and the frozen application. Read the entry for a module before working in it. |
+| `GROUND-TRUTH.md` · `LANGUAGES.md` | the corpora and what each reproduces; and what it costs to teach this tool a new language. |
 | `RULES.md` · `DESIGN-RULES.md` | carried over **verbatim, numbering intact**. The numbers are addresses: never reused, never renumbered, never closed up. **v2 continues at engineering rule 106, and design rule 32** — 95 is the fingerprint's blind spot, 96 the record minted on demand, 97 the bundled program that does not carry the files it reads, 98 the detector handed a population it was never shown, 99 the name that is relative to the root that declared it, 100 the judge that picks one of several true answers by the order it was written in (all six 2026-09-17), 101 the route that is not a branch and 102 the sentence about an order that has none (both 2026-09-18), 103 the path that is not a key until it is canonical and 104 the slot claimed before the thing that holds it exists (both 2026-09-18), 105 the order taken over a set that a row-reversal probe cannot see (2026-09-18), and **design rule 31**, the panel pinned to an edge that grows away from it. A rule is never closed; 95's `sql.py` gap was shut by chunk 6 and the general remedy it names is not built. |
 | `BACKLOG.md` | **what this tree owes** — four open items and eleven stated residues, each with where it came from, why it was not done, and what would settle it. Nothing in it is scheduled by the plan; all fourteen chunks are done. |
 | `PERFORMANCE.md` | v1's figures. **Every one of them was measured on v1** and none has been reproduced here — do not restate one as though it had been (rule 24). |
@@ -354,6 +356,94 @@ been rewritten yet. Where they describe the tool they are accurate; where they d
   **7 of 7 golden digests identical**, so nothing moved with it, and chunk 13's gate caught
   the move on the next run with both builds agreeing at the new value. **1,840 passed · 1
   skipped**, mypy clean over 191 files, ruff clean.
+
+* **C++, and the first language this tool is not written in.** Hand-written, in-process,
+  stdlib only — and a semantic read was refused on evidence rather than principle:
+  `../UnrealEngine-release` holds **zero `*.generated.h`** and `clang++` dies fatally on its
+  first `#include`, so a reader needing a compilation database would refuse the one tree it
+  exists for. **1,957 files of `Runtime/Core` in 8.1 s**: 31,516 routines, 6,016 structures,
+  83,068 calls, 750 boundary touches, 0 errors. Median **2.2 ms a file** against a stated
+  budget of 15. Every call is external and the run says so with a count, which is the
+  shippable state the architecture already describes.
+
+  **Rule 98 for the third time, and it cost the command that gates CI.** The first full run
+  reported **3,875 BROKEN**, all `NAME_COLLISION` — *"only the last one exists at run
+  time"*, which is true of Python, true of TypeScript and false of C++, where `operator<<`
+  is defined 180 times in that one module. The remedy is `unawaited_async`'s exactly:
+  **`redefinition`** is declared by the language (`shadows` · `overloads` · empty, and empty
+  means the detector does not fire), read per row off `files.lang`, and `anomalies.py` names
+  no language. **0 broken** afterwards.
+
+  Six defects the corpus found, each a plausible map rather than an error: `GENERATED_BODY()`
+  stealing the first method's body, `public:` reading as a member-initialiser list, `UCLASS(…)`
+  reading as a constructor, chained calls taking arguments from the wrong parentheses, string
+  literals invisible as arguments, and line numbers compounding across `\`-continuations. And
+  one design assumption corrected by the tree: **the file is part of a routine's identity**,
+  because a declaration is not a routine, so there is no header-and-`.cpp` pair to merge —
+  221 qualnames in 400 files had a body in two places and the store refused the second.
+
+  `tests/fixtures/polyglot/` is the fingerprint probe now: `src/dunneflow` could not exercise
+  a reader for a language this tool is not written in, and a test said so by name. Building
+  it found **`BACKLOG.md` item 6** — `probe.py` and `probe.ts` side by side cannot be
+  analysed at all, which is older than the language that found it. **1,928 passed · 1
+  skipped**, mypy clean over 211 files, ruff clean, 4 of 4 stamps agreeing across three
+  languages with each build opening the other's map. Every stamp moved, deliberately:
+  `detectors/__init__.py` gained a key and is in the core.
+
+* **`CLAUDE.md` is an index again** — 2,241 lines to **458**, a 5.8× cut, with
+  `ARCHITECTURE.md`, `PACKAGING.md`, `GROUND-TRUTH.md` and `LANGUAGES.md` beside it. The cut
+  found 217 lines of `serve` prose filed under `## Packaging`, a `(see the budget below)`
+  that had pointed at nothing since the *first* split, and — through the 2026-09-02 split's
+  own five-check method — one genuinely dropped line, the opening claim of the `mcp`
+  paragraph.
+
+* **Two enumerations on the road to a third language.** `canonical/__init__.py` was reading a
+  hand-written suffix table that `ingest` had already taken over and that had drifted both
+  ways (it did not know `.ts`; it claimed `.pyi`), and its guarding test could not fail.
+  `packaging/dunneflow.spec` named `extractors/python` two lines under a comment arguing
+  rule 92 — a new in-process reader would have shipped everything except its own bytes.
+
+* **`CLAUDE.md` is an index again** — 2,241 lines to **458**, a 5.8× cut, with
+  `ARCHITECTURE.md`, `PACKAGING.md`, `GROUND-TRUTH.md` and `LANGUAGES.md` beside it. The cut
+  found 217 lines of `serve` prose filed under `## Packaging`, a `(see the budget below)`
+  that had pointed at nothing since the *first* split, and — through the 2026-09-02 split's
+  own five-check method — one genuinely dropped line, the opening claim of the `mcp`
+  paragraph.
+
+* **Two enumerations on the road to a third language.** `canonical/__init__.py` was reading a
+  hand-written suffix table that `ingest` had already taken over and that had drifted both
+  ways (it did not know `.ts`; it claimed `.pyi`), and its guarding test could not fail.
+  `packaging/dunneflow.spec` named `extractors/python` two lines under a comment arguing
+  rule 92 — a new in-process reader would have shipped everything except its own bytes.
+
+* **Kotlin, the fourth language — and the seam cost almost nothing.** A manifest, a rules
+  file, one entry in `_IN_PROCESS`, one file in the probe tree, one name in the plugin-set
+  assertion. Nothing in `packaging/`, nothing in `walk.py`, nothing above the graph, no new
+  key in the detector grammar. **The corpus was cloned because there was none** — one `.kt`
+  file existed on this machine — so `ankidroid/Anki-Android` at `c964d52b` is the demo:
+  1,416 Kotlin files, no Java, a real application. **894 files in 16.1 s**, 6,199 routines,
+  2,405 structures, 21,474 calls, 2,298 boundary touches, **0 Kotlin anomalies of any
+  severity**, and the map is genuinely mixed — `kotlin 887 · python 2 · typescript 5`, whose
+  only two BROKEN are two real Python 2 files.
+
+  **Rule 98 cost nothing this time, which is the result.** Kotlin overloads, so a year ago
+  that would have been thousands of false `NAME_COLLISION`; it was one line,
+  `redefinition: overloads`. The first language to meet a wrong judgement pays for the key
+  and the second fills it in.
+
+  Three things are Kotlin's and not C++'s and each shaped the reader: **expression bodies**
+  (`fun f() = expr` has no braces and is the first function in the first file of the corpus),
+  **lambdas everywhere** (a declaration is found by its keyword, never by its brace), and
+  **nesting block comments** — the exact opposite of C++'s rule for the same three
+  characters, and the concrete reason the two lexers are two modules. A shared one would be
+  in neither language's stamp (rule 12).
+
+  Four defects, all found by the corpus: return types missing from every routine (the header
+  was cut at `)` and Kotlin writes the type after it), `abstract fun` stealing the next
+  function's body, `companion object` named `<anonymous>` where Kotlin names it `Companion`,
+  and a chained call taking its arguments from the first parentheses — the last of which the
+  C++ reader had taught us to look for. **1,993 passed · 1 skipped**, mypy clean over 223
+  files, ruff clean, **5 of 5 stamps agreeing across four languages**.
 
 ## The gate everything is measured against
 

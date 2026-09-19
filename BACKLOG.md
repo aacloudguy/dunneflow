@@ -32,6 +32,11 @@ session could not drive a browser, and a chapter cannot be half-retaken — the 
 the evidence. `docs/tutorial/README.md` now says plainly what the reader is looking at,
 which is the honest interim state rather than a silent one.
 
+**And one more figure went stale on 2026-09-18.** The `CLAUDE.md` split added four `.md`
+files at the root, so `docs/tutorial/06-document.md`'s *"26 documents carrying 29
+definitions and 45 governance ids"* — DunneFlow's own count of its own corpus — is now
+wrong by construction. Same remedy, same session.
+
 **What would settle it.** A session that can screenshot, doing prose and images together:
 a fresh self-analysis, the 21 shots re-composed to the same framing, and every figure and
 alt-text transcription rewritten against them.

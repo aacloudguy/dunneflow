@@ -3942,8 +3942,8 @@ Rules 28, 29 and 30.
 |---|---|
 | The dashboard is the parent; the graph is a view inside it, **no iframe** | `HANDOFF.md` "Chunk 2, next" |
 | `graph.js` is the engine, renamed not removed | same |
-| Astro 5 + Tailwind 4 **struck**; vanilla + deck.gl, no Node | `CLAUDE.md` dashboard preamble |
-| SQLite is the spine — never replaced with in-memory graphs | `CLAUDE.md` Architecture |
+| Astro 5 + Tailwind 4 **struck**; vanilla + deck.gl, no Node | `CLAUDE.md` "Dashboard: design rules" |
+| SQLite is the spine — never replaced with in-memory graphs | `ARCHITECTURE.md`, `store.py` |
 | `docs.db` stays parallel to `graph.db`, never inside it | same |
 | **Both** a package graph and the 2.5D stack; the SVG is not the endpoint | `HANDOFF.md` "Opening screen", "Wanted later" |
 | The graph follows the theme — both palettes, a Setting, usage retires the loser | `HANDOFF.md`; design rule 2 |

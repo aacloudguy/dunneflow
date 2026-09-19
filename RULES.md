@@ -2246,3 +2246,34 @@ rule of that number — a blank canvas must say why it is blank — which does e
      the first analysis simply finished before the second was asked for; that is possible
      and was never established, and this window is a second mechanism that was there all
      along and reachable by both surfaces.
+
+105. **An order taken over a set is the hash seed's, and a row-reversal probe cannot see
+     it.**
+     `tools/ordering.py` reverses every row of every table and asks whether the answer
+     changed. That is the worst case for row order and it is the same every time, which is
+     what makes it a usable gate — and it says nothing whatever about a list whose order
+     was never row order in the first place.
+
+     Four of `web/changes.py`'s lists are sorted in Python over a **set**: `both =
+     here_d.keys() & there_d.keys()`, and the two subtractions beside it. `sorted` is
+     stable, so rows equal on the key keep the order they arrived in, and the order they
+     arrived in is CPython's set iteration — which for strings is decided by
+     `PYTHONHASHSEED` and is therefore different in every process. Measured over 20 seeds
+     against the unfixed sort: two structures tied on `(module, name)` came back one way
+     **12 times and the other way 8**, while the reversal probe reported the route clean on
+     every one of them.
+
+     So a route can be reversal-clean and still hand two readers different pages, and a
+     third reader a third page after a restart. That is rule 66's own failure — an order the
+     tool cannot defend — arriving through a door the instrument built for rule 66 does not
+     open.
+
+     **The fix is not a better probe.** A total key is what removes the dependence on the
+     input's order altogether, whatever that order was: `_settle` closes on the row's `id`,
+     so there is no equal pair left for stability to decide. The probe stays exactly as
+     useful as it was for the half it can see, and the half it cannot see is stated in a
+     test that presses the property rather than the instrument.
+
+     The same shape is waiting anywhere a `sorted()` is handed a `set`, a `dict.keys()`
+     intersection or a `frozenset` and given a key that does not separate every member —
+     and none of it is visible to a probe that shuffles storage.

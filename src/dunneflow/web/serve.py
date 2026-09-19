@@ -2910,9 +2910,12 @@ class _Handler(BaseHTTPRequestHandler):
         # is showing. From cold there is nothing being read and `here` is the root itself,
         # which is not a program; adding it would invent a row for a directory that holds
         # no map (rule 30). Sorted by name so the order is total and does not move between
-        # polls.
+        # polls — and **total means the spelling too**, because `found` is a set and
+        # `.lower()` alone ties `Mensores` against `mensores`, which are two directories on
+        # a case-sensitive volume and one hash seed's opinion apart in this list (rule 105).
         rows = []
-        for d in sorted(found | ({here} if opened else set()), key=lambda p: p.name.lower()):
+        for d in sorted(found | ({here} if opened else set()),
+                        key=lambda p: (p.name.lower(), p.name)):
             is_here = opened and d == here
             rows.append({
                 "name": d.name,

@@ -31,6 +31,7 @@ import importlib.util
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 from dunneflow import revisions
 from dunneflow.docstore import DocStore
@@ -235,6 +236,7 @@ PAIR_ONE = {
 """The way in."""
 import sqlite3
 from pathlib import Path
+from typing import Any
 
 import typer
 
@@ -316,6 +318,49 @@ def twin():  # noqa: F811 - deliberate, see the docstring above
     """The second declaration. Colliding definitions keep separate identities."""
     return os.getcwd()
 ''',
+    # **The comparison lane's own ties, and they have to be in the *changed* set.**
+    # `alpha/work.py`'s two `twin`s tie on (module, qualname) in the map, and for as long
+    # as they were identical in both revisions they reached no changed list at all -- so
+    # `/api/changes` answered three lists of one row each and the gate passed over a lane
+    # that had never been asked a question it could get wrong (rule 37). These move.
+    "alpha/shapes.py": '''\
+"""Shapes, and the tie `ORDER BY s.module, s.name` cannot break.
+
+A nested class is keyed on the path that reaches it -- `make_id(module.Outer.Config)` --
+but its `name` column is the bare `Config` and its `module` is the file. So two classes of
+one module each holding a `Config` are two ids with one (module, name), which is the
+structure lane's tie and is one of the commonest shapes in Python: `class Meta` in Django,
+`class Config` in Pydantic, `class Params` in anything with a settings object.
+"""
+from dataclasses import dataclass
+
+
+@dataclass
+class Ledger:
+    """Where the rows go."""
+
+    id: str
+
+    @dataclass
+    class Config:
+        """The first of the pair."""
+
+        depth: int = 1
+
+
+@dataclass
+class Audit:
+    """What was done to them."""
+
+    id: str
+
+    @dataclass
+    class Config:
+        """The second, and identical to the first in both the columns the order is
+        taken over."""
+
+        depth: int = 1
+''',
     # A declared way in, so the command tree has a name of its own. Without it the tree
     # and the `main` in `work.py` are both called `main`, `describe()` matches on the name
     # the row prints, and the sub-application is unreachable through the route.
@@ -336,14 +381,48 @@ What this is for. See PLAN-01 and AC-19.
 }
 
 # The second revision, so the comparison lane has a pair rather than a short circuit.
-PAIR_TWO = {**PAIR_ONE, "alpha/work.py": PAIR_ONE["alpha/work.py"].replace(
-    "    return getenv(\"ALPHA_HOME\") or environ.get(\"HOME\") or os.getcwd()",
-    "    return getenv(\"ALPHA_HOME\") or os.getcwd()") + '''
+#
+# **Each edit here exists to put a tie in one of `changes.py`'s ordered lists**, because a
+# pair that differs only in distinct names proves what a fixture of distinct names always
+# proves: nothing. `_cache` changes so there is a `behaves` row at all; both `twin`s change
+# so two of them tie on (module, qualname); `spare` arrives twice so `only_in_base` ties on
+# the same key; and both `Config`s gain a field so the structure lanes tie on
+# (module, name). Society's pair supplies none of these -- see `_pair`.
+PAIR_TWO = {
+    **PAIR_ONE,
+    "alpha/work.py": PAIR_ONE["alpha/work.py"].replace(
+        "    return getenv(\"ALPHA_HOME\") or environ.get(\"HOME\") or os.getcwd()",
+        "    return getenv(\"ALPHA_HOME\") or os.getcwd()",
+    ).replace(
+        '    """Declared twice in one module, so two ids share one qualname."""\n'
+        "    return _cache()",
+        '    """Declared twice in one module, so two ids share one qualname."""\n'
+        "    return _cache() or os.sep",
+    ).replace(
+        '    """The second declaration. Colliding definitions keep separate identities."""\n'
+        "    return os.getcwd()",
+        '    """The second declaration. Colliding definitions keep separate identities."""\n'
+        "    return os.getcwd() or os.sep",
+    ) + '''
 
 def extra():
     """Only the second version has this one."""
     return _cache()
-'''}
+
+
+def spare():
+    """Twice again, and only in this revision -- so both land in `only_in_base`, which is
+    the same (module, qualname) order one list over."""
+    return _cache()
+
+
+def spare():  # noqa: F811 - deliberate, as `twin` is
+    """The second one."""
+    return os.getcwd()
+''',
+    "alpha/shapes.py": PAIR_ONE["alpha/shapes.py"].replace(
+        "        depth: int = 1", "        depth: int = 1\n        width: int = 0"),
+}
 
 
 def _revision(out: Path, tree: Path, files: dict[str, str], rev: str) -> None:
@@ -417,6 +496,83 @@ def test_the_dashboard_answers_the_same_whatever_order_the_rows_are_in(tmp_path:
     assert not found, (
         "these routes depend on the order rows are stored in, which is the order the "
         "process pool happened to finish files in (rule 66): " + ", ".join(sorted(found)))
+
+
+# The three lanes the fixture plants a tie in, as `(key in the answer, the column that
+# names the row)`. Named rather than discovered, so a lane that stops holding its tie is a
+# failure here and not a quiet loss of coverage.
+TIED_LANES = (("only_in_base", "qualname", "line_start"),
+              ("edited_only", "qualname", "line_start"),
+              ("structures_declared", "name", "line"))
+
+
+def _changes(out: Path) -> dict[str, Any]:
+    """`/api/changes` over the fixture pair, asked as the probe asks it."""
+    graph = revisions.newest(out, revisions.GRAPH)
+    assert graph is not None, "the fixture wrote no graph"
+    live = serve_mod._Live(out / "source.db", out)
+    live.open(graph)
+    try:
+        plan = order.choose(live)
+        assert "/api/changes" in plan, "the fixture pair does not reach the comparison lane"
+        return order.ask(live, "/api/changes", plan["/api/changes"][0])
+    finally:
+        live.close()
+
+
+def test_the_comparison_lane_is_asked_a_question_it_could_get_wrong(tmp_path: Path) -> None:
+    """Rule 37, aimed at the fixture above — and the whole reason this file grew.
+
+    The comparison lane came back clean under a full row reversal for as long as anyone
+    had asked it, and on 2026-09-18 that was measured rather than believed: Society's pair
+    differs in three source files, so `BACKLOG.md` item 2 said the population was thin. A
+    pair built from Society's `main` against its branch head — **384 files against 628**,
+    2,733 rows in `only_in_base` alone — came back clean too, and then held **no tie at
+    all**: not one of the five maps to hand declares one name twice in one module, over
+    9,972 routines. Neither did this fixture, whose comparison lane answered three lists of
+    **one row each**.
+
+    So the lane was clean because it had never been asked a question it could get wrong,
+    which is not the same claim and is the one worth gating. These are the ties.
+    """
+    ans = _changes(_pair(tmp_path))
+    for lane, names, _ in TIED_LANES:
+        rows = ans.get(lane) or []
+        keys = [(r.get("module"), r.get(names)) for r in rows]
+        tied = {k for k in keys if keys.count(k) > 1}
+        assert tied, (
+            f"`{lane}` holds no two rows with one (module, {names}), so the order it is "
+            "served in cannot be wrong and the gate over it checks nothing (rule 37)")
+
+
+def test_two_rows_of_one_name_are_told_apart_by_where_they_are(tmp_path: Path) -> None:
+    """A tie is settled by source order and closed by the id, in every lane at once.
+
+    **The row-reversal probe cannot see half of this, and that is the finding.** Four of
+    these lists are sorted in Python over a **set** — `both = here_d.keys() & there_d.keys()`
+    and the two subtractions beside it — and `sorted` is stable, so rows equal on the key
+    keep the order the set iterated in. That order is the hash seed's, not the rows', so
+    reversing every table in the store changes nothing about it: measured over 20 seeds
+    against the unfixed sort, the two `Config` rows came back one way 12 times and the
+    other way 8, while the reversal probe reported the route clean every time. Rule 105.
+
+    So this states the property directly rather than through the instrument: whatever a
+    lane holds, it is served in `_settle`'s order, and `_settle` separates rows that
+    `(module, name)` cannot.
+    """
+    from dunneflow.web.changes import _settle
+
+    ans = _changes(_pair(tmp_path))
+    for lane, names, line in TIED_LANES:
+        rows = ans.get(lane) or []
+        by_id = {str(r["id"]): dict(r) for r in rows}
+        keys = [_settle(by_id, str(r["id"]), names, line) for r in rows]
+        assert len(set(keys)) == len(keys), (
+            f"`{lane}` holds two rows the order cannot tell apart, so which comes first is "
+            f"whatever wrote first (rule 66): {keys}")
+        assert keys == sorted(keys), (
+            f"`{lane}` is not served in the order `_settle` gives, so the two are two "
+            f"answers rather than one (rule 51): {keys}")
 
 
 def test_every_route_the_server_answers_is_in_the_population(tmp_path: Path) -> None:

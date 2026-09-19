@@ -18573,3 +18573,108 @@ twelve fail against the previous commit. Verified in the browser rather than onl
 the classes survive the WASM Graphviz, the fills change on the four states in both themes,
 the selection stroke still wins over a tinted box, the legend's four counts add to the box
 count beside them, and switching the control neither refetches nor relays out.
+
+## 2026-09-18 — the comparison lane, asked a question it could get wrong
+
+`BACKLOG.md` item 2, closed — and it turned out to be a defect rather than the thin
+evidence it was filed as. The item said `tools/ordering.py --api` probes `/api/changes`,
+`/api/anomalychanges` and `/api/filechanges` of a Society pair differing in **three source
+files**, which is a real result from a small population. Both of its suggested remedies
+were taken, and they answered different questions.
+
+### The wide pair, which settled the population and found nothing
+
+Society's `origin/main` at `09b9ef11` against the branch head at `03ebbd93` — **384 Python
+files against 628**, 523 changed under `src`, three months apart. Cloned read-only into a
+scratchpad, analysed, sealed, and the branch head analysed beside it as
+`output/mensores-wide`; the old tree is gone and the snapshot does not need it, which is
+what a sealed snapshot is for (rules 25 and 62).
+
+The comparison lane goes from three files to a real corpus:
+
+| | |
+|---|---|
+| `only_in_base` · `only_in_compared` | **2,733** · 58 |
+| `behaves` · `edited_only` | 395 · 369 |
+| structures, either side | 364 · 2, with 29 declaring differently |
+| `/api/filechanges` · `/api/anomalychanges` | 632 rows · 63 |
+
+**Every route answers the same thing under a full row reversal.** So the backlog's
+suspicion about the population was right and its conclusion would have been wrong: the lane
+is clean at 2,733 rows exactly as it was at three.
+
+### And then the measurement that mattered
+
+A clean run over rows that cannot tie proves nothing (rule 37), so the next question was
+whether the wide pair holds a **tie** — two rows equal on the key each list is ordered by,
+`(module, qualname)` for a routine and `(module, name)` for a structure.
+
+**It holds none. Neither does any map to hand**: zero tied keys over **9,972 routines**
+across Mensores at both ends, DunneNote, DunneCorp and DunneFlow's own tree. And the
+fixture in `tests/test_ordering.py`, built out of ties for exactly this reason, answered
+`/api/changes` with **three lists of one row each**.
+
+So the lane had never been asked a question it could get wrong, which is a different claim
+from *the lane is right* and is the one the evidence supported.
+
+**The tie is constructible, and both shapes are ordinary.** `_identity` mints a second
+declaration of one name an id of its own — `make_id(qualname, "#2")`, deliberately, so that
+colliding definitions keep separate identities — and leaves `(module, qualname)` identical.
+A nested class is keyed on `module.Outer.Config` while its `name` column says only
+`Config`, so two classes of one module each holding a `Config` are two ids with one
+`(module, name)`: `class Meta` in Django, `class Config` in Pydantic.
+
+Planted in the fixture — both `twin`s edited, a `spare` declared twice and only on one side,
+both `Config`s gaining a field — `/api/changes` **differs under reversal**. Nine sites, and
+they were four `ORDER BY`s, four Python `sorted()`s and one more found on the way out.
+
+### Rule 105, and why half of this was invisible to the instrument
+
+Reverting the four Python sorts and leaving the SQL fixed, the probe reports the route
+**clean**. Their input is a set — `both = here_d.keys() & there_d.keys()` and the two
+subtractions beside it — and `sorted` is stable, so rows equal on the key keep the order the
+*set* iterated in. That order is `PYTHONHASHSEED`'s, not the rows'. Reversing every table in
+the store moves it not at all.
+
+Measured over 20 seeds against the unfixed structure sort: the two `Config` rows came back
+one way **12 times and the other way 8**, with the reversal probe reporting the route clean
+on every one of them. A route can be reversal-clean and still hand two readers different
+pages, and a third reader a third page after a restart.
+
+**The fix is not a better probe.** `_settle` is the one place the closer is spelled (rule
+51) and it closes on the row's `id`, so there is no equal pair left for stability to decide
+— whatever the input's order was. Source order first, because the position is what a reader
+wants when two rows are otherwise the same row; the id makes it total. A position orders and
+never keys, which is `changes.py`'s own rule.
+
+The gate is stated as the property rather than through the instrument, because a seed-varying
+test would pass 1.7% of the time with the defect present, and a check that cries wolf has
+already failed the other way round (rule 43). Two tests: one asserts the fixture still holds
+a tie in each of the three lanes (rule 37, aimed at the fixture), the other that every lane
+is served in `_settle`'s order and that `_settle` separates rows `(module, name)` cannot.
+Both fail against the previous commit, as does the reversal probe.
+
+### The ninth site, and the survey that found it
+
+`--survey` gains rule 105's population beside the `ORDER BY` one, and like it decides
+nothing: **5 of 26** `sorted()` calls over a set take a `key=`, which is where a key that
+does not separate every member can hide. Two were the defect. Two in `resolve/flows.py` are
+total — `BoundaryKind` has ten members and ten distinct values, no aliases — and were
+checked rather than assumed.
+
+The fifth was `serve.py`'s program list: `key=lambda p: p.name.lower()`, under a comment
+saying *"sorted by name so the order is total"*. It is not — `Mensores` and `mensores` are
+two directories on a case-sensitive volume, which is the same filesystem trap chunk 13 paid
+for in `require_universal`, and one hash seed's opinion apart in this list. Now
+`(p.name.lower(), p.name)`, which makes the sentence beside it true.
+
+**The survey is a floor rather than the population**, and that is in `BACKLOG.md` as a
+residue: unorderedness propagates, so a dict built by iterating a set and then sorted over
+its `.items()` is the same defect and is invisible to a reader of the source.
+`web/changes.py` held two of each, and only the two written as set algebra are in the count.
+
+### Gates
+
+**1,897 passed · 1 skipped**, mypy clean over 196 files, ruff clean. The wide pair and the
+fixture both come back clean under a full row reversal, and nothing stored moved — `web/`
+is in no fingerprint and no analysis code was touched.

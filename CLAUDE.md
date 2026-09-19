@@ -20,7 +20,7 @@ by *how often you need it*, not by importance:
 | File | What it holds | When to read it |
 |---|---|---|
 | `CLAUDE.md` | commands, verification gates, architecture, and the **index** of every rule | every session — it is loaded for you |
-| `RULES.md` | the 103 engineering rules **in full**, with the false result each came from — numbered to 104, because 21 does not exist and the numbers are addresses | before working in the area a rule governs |
+| `RULES.md` | the 104 engineering rules **in full**, with the false result each came from — numbered to 105, because 21 does not exist and the numbers are addresses | before working in the area a rule governs |
 | `DESIGN-RULES.md` | the 31 dashboard design rules in full | before building or changing a view |
 | `PERFORMANCE.md` | every measured figure, with its budget and its conditions | before quoting or retaking a number |
 | `BRIEFING.md` | state: what is built, what is next, what is closed | at the start of a session |
@@ -820,8 +820,17 @@ like that for a year:
 ```bash
 uv run python tools/ordering.py output/mensores          # reverses every row, re-renders, diffs
 uv run python tools/ordering.py output/mensores --api    # every GET route, asked twice
-uv run python tools/ordering.py --survey                 # the statements no ORDER BY defends
+uv run python tools/ordering.py --survey                 # what no ORDER BY, and no key, defends
+uv run python tools/ordering.py output/mensores-wide --api   # the comparison lane's own pair
 ```
+
+**`output/mensores-wide` is the pair the comparison lane is measured against**, and it is
+wide on purpose: Society's `main` at `09b9ef11` against the branch head at `03ebbd93`,
+**384 Python files against 628**, where the `mensores` pair differs in three. It is what
+takes `/api/changes` from three rows to 2,733, and its old side's tree is gone — a sealed
+snapshot does not need one (rules 25 and 62). Rebuild it by cloning that repository at
+`origin/main` into a scratchpad, analysing it with `--standards ../dunnecorp-standards`,
+sealing, and analysing the branch head beside it.
 
 **`--api` is the same argument one surface over, and it is what `web/` is measured by.**
 The rendered map is the artifact that gets handed over; the dashboard is where a reader
@@ -836,7 +845,15 @@ nothing; it is **rule 101** that says why the probe and not the survey is the au
 
 Reversal rather than a second analysis, because two real runs shuffle *some* of the order
 and catch *some* of the ties, differently each time. `tests/test_ordering.py` is the same
-gate on a fixture; every file in it is a tie the Society map was actually unstable on.
+gate on a fixture; every file in it is a tie the Society map was actually unstable on —
+including the three the *comparison* lane needs, which no corpus supplies at all.
+
+**Half of what this gate covers, the reversal cannot see, and that is rule 105.** A
+`sorted()` handed a set keeps the set's order for rows equal on the key, and that order is
+the hash seed's rather than the rows' — so a route can be reversal-clean and still hand two
+readers different pages. `--survey` counts that population beside the `ORDER BY` one and
+decides nothing about either; what settles it is a **total** key, and in `web/changes.py`
+that is `_settle`.
 
 Then verify against real code, because unit tests on a toy program cannot catch a
 resolution defect that only appears at scale:
@@ -1786,6 +1803,17 @@ queries know a language exists.
   browser's route already does. Both new lanes together are **+3 ms** (451 → 454, median of
   eight alternating builds on a warm disk), and `_changed_files` is one bound three lanes
   take rather than three copies waiting to disagree.
+
+  **Every list here is ordered by something total, and `_settle` is the one place the
+  closer is spelled** (rule 51). `(module, qualname)` and `(module, name)` both look unique
+  and neither is: `_identity` mints a second declaration of one name a `#2` id of its own so
+  colliding definitions keep separate identities, and a nested class is keyed on
+  `module.Outer.Config` while its `name` column says only `Config`. Eight sites ordered on
+  those pairs alone until 2026-09-18 — four `ORDER BY`s and four Python `sorted()`s — and
+  the four in Python are **rule 105**: their input is a set, so what decided a tie was the
+  hash seed rather than the rows, and the reversal probe that gates every other route here
+  structurally could not see it. Source order, closed by the id; a position orders and never
+  keys, which is this module's own rule.
 - `web/filediff.py` — the **text lane** of a comparison, beside `changes.py`'s fact lane.
   The file-level answer costs **no body reads at all**: the sidecar is content-addressed,
   so equal hashes are equal bytes and comparing two path maps *is* the file-level diff.
@@ -1962,6 +1990,7 @@ it was written from.
      compare equal.
 104. A slot claimed before the thing that holds it exists is free for as long as it takes
      to create that thing.
+105. An order taken over a set is the hash seed's, and a row-reversal probe cannot see it.
 ```
 
 ## Anomalies: the discipline

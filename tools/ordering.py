@@ -216,6 +216,11 @@ def _programs(where: Path) -> Iterable[Path]:
 # ======================================================================================
 
 WEB = Path(__file__).resolve().parents[1] / "src" / "dunneflow" / "web"
+# **The whole package, and `--at` does not move it.** The `ORDER BY` survey defaults to
+# `web/` because that is where the statements are and it reads one directory; rule 105's
+# question is about `sorted()` and is asked of every module there is, recursively. One
+# command reading two extents is worth naming rather than leaving to be discovered.
+PKG = WEB.parent
 
 # An aggregate over a whole population returns one row, and one row has no order. `GROUP
 # BY` is what turns it back into a list, which is why the exemption names it.
@@ -388,6 +393,72 @@ def report_survey(sites: list[Site], where: Path, width: int = 200) -> None:
         mark = "!!" if any(s.finding for s in sites if s.verdict == verdict) else "  "
         print(f"   {mark} {n:>4}  {verdict}")
     print(f"\n   {len(sites)} statements read, in {len(sorted(where.glob('*.py')))} modules")
+
+
+# **The second population, and the reversal cannot see any of it (rule 105).** `sorted()`
+# is stable, so rows equal on the key keep the order they arrived in — and when what
+# arrived is a **set**, a `dict.keys()` intersection or a set comprehension, that order is
+# CPython's hash order and so the hash seed's. Reversing every row in the store moves it not
+# at all: measured over 20 seeds against `web/changes.py`'s unfixed structure sort, two rows
+# tied on `(module, name)` came back one way 12 times and the other way 8, with the route
+# reported clean on every one of them.
+#
+# So this is listed beside the `ORDER BY` survey rather than probed, and like that one it
+# **decides nothing**. A `sorted(a_set)` with no `key=` is total by definition and is
+# counted and not shown; a `key=` is where a non-total one can hide, and whether it is total
+# is a question about that key that only a reader can answer.
+#
+# It reads the source rather than the behaviour for the same reason the other survey does,
+# and it is a **floor rather than the population**: unorderedness propagates, so a dict built
+# by iterating a set and then sorted over its `.items()` is the same defect and is invisible
+# here. `web/changes.py` held two of each.
+_UNORDERED_CALLS = {"set", "frozenset"}
+
+
+@dataclass(frozen=True)
+class SetSort:
+    """One `sorted()` handed something that has no order of its own."""
+
+    file: str
+    line: int
+    keyed: bool
+    source: str
+
+
+def set_sorts(where: Path) -> list[SetSort]:
+    """Every `sorted()` in `where` whose input is a set, by the shape of the expression."""
+    out: list[SetSort] = []
+    for path in sorted(where.rglob("*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+                    and node.func.id == "sorted" and node.args):
+                continue
+            arg, kind = node.args[0], ""
+            if isinstance(arg, ast.BinOp) and isinstance(
+                    arg.op, ast.BitAnd | ast.BitOr | ast.Sub):
+                kind = "set algebra"
+            elif isinstance(arg, ast.SetComp | ast.Set):
+                kind = "a set literal"
+            elif (isinstance(arg, ast.Call) and isinstance(arg.func, ast.Name)
+                  and arg.func.id in _UNORDERED_CALLS):
+                kind = f"{arg.func.id}()"
+            if kind:
+                rel = path.relative_to(where.parent) if where.parent in path.parents else path
+                out.append(SetSort(str(rel), node.lineno,
+                                   any(k.arg == "key" for k in node.keywords), kind))
+    return out
+
+
+def report_set_sorts(sites: list[SetSort]) -> None:
+    """The keyed ones, then the denominator. The unkeyed are counted and not listed."""
+    keyed = [s for s in sites if s.keyed]
+    for s in sorted(keyed, key=lambda s: (s.file, s.line)):
+        print(f"   {s.file + ':' + str(s.line):<44} over {s.source}")
+    print(f"\n   {len(keyed)} of {len(sites)} take a `key=`, which is where a key that does "
+          "not separate every member can hide")
+    print(f"   {len(sites) - len(keyed)} take none, and sorting a set by its own values "
+          "is total by definition")
 
 
 # ======================================================================================
@@ -817,6 +888,10 @@ def main(argv: list[str] | None = None) -> int:
             return 1
         print(f"== {at}")
         report_survey(survey(at), at)
+        # The second population, in the same breath, because they are two ways for one
+        # claim to be false and a reader looking at either wants to know about the other.
+        print(f"\n== `sorted()` over something with no order, under {PKG}")
+        report_set_sorts(set_sorts(PKG))
         return 0
 
     if args.program is None:

@@ -224,11 +224,17 @@ SELECT f.path, f.module, f.doc FROM {db}.files f
 # Present on one side and not the other. Unbounded, unlike the prose lanes below: this is an
 # indexed set difference over 671 rows, not a scan of text, and a structure whose whole file
 # was removed must still be reported.
+# **`(module, name)` is not unique either, and a nested class is why.** A structure is keyed
+# on the path that reaches it — `make_id("module.Outer.Config")` — while `name` is the bare
+# `Config` and `module` is the file. So two classes of one module each holding a `Config`
+# are two ids with one (module, name): `class Meta` in Django, `class Config` in Pydantic,
+# `class Params` in anything with a settings object. `line` then `id`, for `ONLY_IN_BASE`'s
+# reasons exactly.
 STRUCTURES_ONLY = """
 SELECT s.id, s.name, s.kind, s.module, s.file, s.line
   FROM {X}.structures s
  WHERE s.id NOT IN (SELECT id FROM {Y}.structures)
- ORDER BY s.module, s.name
+ ORDER BY s.module, s.name, s.line, s.id
 """
 
 # What a structure **declares**: its kind and what it inherits. The structure equivalent of
@@ -284,23 +290,34 @@ SELECT module, name, value, type, is_final FROM {db}.constants
 # `{B}` is the **base** and `{A}` the **compared**, everywhere in this module. The base
 # is the version the dashboard is serving, which is why it is the one that is `main` when
 # a comparison rides the connection the server already holds open (see `build`).
+#
+# **`(module, qualname)` is not unique, and every list in this module ordered on it alone
+# until 2026-09-18.** A module may declare one name twice — `_identity` mints the second an
+# id of its own, `make_id(qualname, "#2")`, precisely so that colliding definitions keep
+# separate identities — and then two rows are equal on the whole order and come back in
+# whatever order the pool happened to finish files in (rule 66). So each of these ends on
+# `line_start` and then on `id`: source order is the only order that means anything to a
+# reader looking at two declarations of one name, and the id is what makes it **total**.
+#
+# A position is used to *order* and never to *key*, which is the distinction the module
+# docstring turns on and the same one `COMMENTS_IN` states above.
 ONLY_IN_BASE = """
 SELECT id, name, qualname, module, file, line_start
   FROM {B}.routines WHERE id NOT IN (SELECT id FROM {A}.routines)
- ORDER BY module, qualname
+ ORDER BY module, qualname, line_start, id
 """
 
 ONLY_IN_COMPARED = """
 SELECT id, name, qualname, module, file, line_start
   FROM {A}.routines WHERE id NOT IN (SELECT id FROM {B}.routines)
- ORDER BY module, qualname
+ ORDER BY module, qualname, line_start, id
 """
 
 EDITED = """
 SELECT y.id, y.name, y.qualname, y.module, y.file, y.line_start
   FROM {A}.routines x JOIN {B}.routines y ON y.id = x.id
  WHERE x.body_hash <> y.body_hash
- ORDER BY y.module, y.qualname
+ ORDER BY y.module, y.qualname, y.line_start, y.id
 """
 
 RETURNS_MOVED = """
@@ -631,6 +648,31 @@ def _module_docs_moved(conn: sqlite3.Connection, A: str,
             and _prose(here[path][1]) != _prose(there[path][1])]
 
 
+def _settle(rows: dict[str, dict[str, Any]], key: str,
+            name: str, line: str) -> tuple[str, str, int, str]:
+    """Where to put a row whose module and name are somebody else's too.
+
+    **The four sorts below and the four `ORDER BY`s above are one order**, and it has to be
+    total or it is not an order at all (rule 66). `(module, qualname)` and `(module, name)`
+    both look unique and neither is: a module may declare one name twice — `_identity`
+    mints the second a `#2` id of its own so that colliding definitions keep separate
+    identities — and a nested `Config` is keyed on `module.Outer.Config` while its `name`
+    column says only `Config`.
+
+    So: **source order, closed by the id.** The position is what a reader wants when two
+    rows are otherwise the same row, and the id is what makes the order total when even
+    that ties. It orders and never keys, which is the distinction the module docstring
+    turns on.
+
+    A row that is not in `rows` sorts to the front on empty strings rather than raising —
+    every caller drops it immediately afterwards with `if … in …`, and a `KeyError` inside
+    a sort key would take the whole comparison down for one absent row.
+    """
+    row = rows.get(key, {})
+    return (str(row.get("module", "")), str(row.get(name, "")),
+            int(row.get(line, 0) or 0), key)
+
+
 def _structures_declared(conn: sqlite3.Connection, A: str,
                          B: str) -> dict[str, set[str]]:
     """Structures present in both versions that **declare** something different.
@@ -942,13 +984,19 @@ def build(base: Path, compared: Path,
                 f"SELECT id, name, kind, module, file, line FROM {A}.structures"):
             struct_named.setdefault(r["id"], dict(r))
 
+        # **The same order the two SQL lanes take, and it has to end the same way.** These
+        # four sorts are the comparison lane's own, and all four ended on a key that is not
+        # unique — `(module, name)` for a structure and a bare `qualname` for a routine —
+        # so a module with two `Config`s or two declarations of one name handed the reader
+        # a list arranged by whichever row the pool wrote first (rule 66). `_settle` is the
+        # one place these four spell that closer, so they cannot drift apart from each
+        # other (rule 51); the four statements above spell the same order in SQL, and the
+        # two readings are held together by the test rather than by the code.
         structures_declared = [
             {**struct_named[sid],
              "moved": sorted(kinds) + (["docstring"] if sid in struct_documented else [])}
             for sid, kinds in sorted(
-                declared.items(),
-                key=lambda kv: (struct_named.get(kv[0], {}).get("module", ""),
-                                struct_named.get(kv[0], {}).get("name", "")))
+                declared.items(), key=lambda kv: _settle(struct_named, kv[0], "name", "line"))
             if sid in struct_named
         ]
         # Defined by subtraction from the band beside it, exactly as `explained_only` is, so
@@ -956,8 +1004,7 @@ def build(base: Path, compared: Path,
         structures_explained = [
             struct_named[sid] for sid in sorted(
                 struct_documented - declared.keys(),
-                key=lambda s: (struct_named.get(s, {}).get("module", ""),
-                               struct_named.get(s, {}).get("name", "")))
+                key=lambda s: _settle(struct_named, s, "name", "line"))
             if sid in struct_named
         ]
 
@@ -981,10 +1028,14 @@ def build(base: Path, compared: Path,
 
         behaves_rows = [
             {**named[rid], "moved": tags(rid, kinds)}
-            for rid, kinds in sorted(behaves.items(),
-                                     key=lambda kv: named.get(kv[0], {}).get("qualname", ""))
+            for rid, kinds in sorted(
+                behaves.items(), key=lambda kv: _settle(named, kv[0], "qualname", "line_start"))
             if rid in named
         ]
+        # **The one band with no sort of its own, and it is `EDITED`'s order carried by a
+        # dict.** `edited` is built from that statement and Python keeps insertion order, so
+        # this band is ordered exactly as far as that `ORDER BY` is — which is why the
+        # closer had to go on the statement and not only on the sorts around it.
         edited_only = [{**row, "moved": tags(rid, [])}
                        for rid, row in edited.items() if rid not in behaves]
         # The fifth band, and it holds exactly what would otherwise be in none: the same
@@ -1000,7 +1051,7 @@ def build(base: Path, compared: Path,
         explained_only = [
             named[rid] for rid in sorted(
                 (commented | documented) - behaves.keys() - edited.keys(),
-                key=lambda r: named.get(r, {}).get("qualname", ""))
+                key=lambda r: _settle(named, r, "qualname", "line_start"))
             if rid in named
         ]
 

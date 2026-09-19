@@ -36,27 +36,6 @@ which is the honest interim state rather than a silent one.
 a fresh self-analysis, the 21 shots re-composed to the same framing, and every figure and
 alt-text transcription rewritten against them.
 
-### 2 · The comparison lane is probed thinly
-
-*From the `web/` ordering work, 2026-09-18.*
-
-`tools/ordering.py --api` asks `/api/changes`, `/api/anomalychanges` and `/api/filechanges`
-of a Society pair whose two revisions differ in **three source files**, and of a fixture
-pair differing in one. Both come back identical under a full row reversal, and that is a
-real result — but a comparison lane's ties need two things *in the changed set* to tie, so
-a three-file difference is a small population to conclude from. Five of the nine sites
-`BACKLOG.md` used to name were in `changes.py`, and this is the evidence against them.
-
-**Why not done.** There is no bigger pair to hand: the four Society clones differ by a
-handful of source files each, which is what makes them a useful pair for every other
-purpose.
-
-**What would settle it.** A pair built from two points far enough apart that hundreds of
-routines change — Society's `main` at 09b9ef11 against the branch head is three months and
-244 files — analysed once and kept, or a fixture that plants the ties `changes.py` can
-have: two routines sharing a qualname and both behaving differently, two structures
-sharing a module and a name.
-
 ### 3 · The rendered map still varies with `--jobs` in one respect
 
 *From the ordering fix, 2026-09-17.*
@@ -129,4 +108,5 @@ that nobody spends a session rediscovering them and filing them as bugs.
 | **A Linux session cannot run the recorded ground truth** | None of the four Society clones nor `../dunnecorp-standards` is on that machine, so no figure in `CLAUDE.md` was retaken there. Do not restate a Mensores figure measured elsewhere as though it had been reproduced (rule 24). |
 | **A program that serves browser JavaScript as a string has calls this map cannot see** | `gstack`'s `getCookiePickerHTML(): string` returns an HTML page holding four `fetch` calls, and `design/src/compare.ts` another. Those requests really are made — from the browser, by code this program wrote — and the map says nothing about them. Correctly: a string is not code, which is rule 9's argument one direction over, and reading one would mean parsing every template literal in every language. Stated so the NETWORK count is read as *what this program calls*, never *what this program causes*. 2026-09-18. |
 | **`socket.emit` may be wrongly declared async** | `detectors/typescript.yaml` says `async: true`; `emit` is fire-and-forget in socket.io and `emitWithAck` is the awaitable one, so it is probably wrong beside `WebSocket` and `EventSource`, which were corrected. Left alone because **no map this tool has read holds a single `socket.emit`** and socket.io's types are in no corpus here, so there is nothing to check a change against. Asserting it from memory is what rule 24 forbids. 2026-09-18. |
+| **Rule 105's survey is a floor, not the population** | `tools/ordering.py --survey` lists the five `sorted()` calls whose input is *written as* a set and which take a `key=`. Unorderedness propagates, so a dict built by iterating a set and then sorted over its `.items()` is the same defect and is invisible to it — `web/changes.py` held two of each, and only the two written as set algebra are in the count. Catching the rest means following the provenance of a value, which is a different instrument. The reversal probe cannot see any of them. 2026-09-18. |
 | **`PERFORMANCE.md` is v1's, except where it says otherwise** | Every figure above the v2 headings was measured on v1 and none has been reproduced in this tree. |

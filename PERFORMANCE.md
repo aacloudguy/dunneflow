@@ -975,12 +975,28 @@ not needed.
 | boundary touches | 750 |
 | `graph.db` | 62.7 MB |
 
-### What that says about the whole engine, and it is an extrapolation and says so
+### A whole subtree: `Engine/Source/Runtime`, read to the end
 
-`Engine/Source/Runtime` is **18,681 files**, 9.5× `Core`, and the store is the cost: a run of
-it took **14 m 54 s** wall against 425 s of user CPU — 49% of one core, with the rest of the
-time spent writing to the external volume. `graph.db` reached **766 MB**, which is 12× Core's
-for 9.5× the files.
+*Retaken 2026-09-19, completing for the first time — the run below it died fourteen minutes
+in on the `OverflowError` that section records.*
+
+| | |
+|---|---|
+| files | **18,191** read (cpp 18,188 · python 3), 0 failed, 497 left out as tests |
+| whole run, `--no-docs` | **8 m 54 s** at 88% CPU, 457 s user |
+| routines · structures | 262,879 · 44,501 |
+| calls | 947,786, of which 947,710 external |
+| ways in | **7,090**, and 6,992 of them Blueprint-callable C++ |
+| boundary touches | 2,424 |
+| anomalies | 1 broken — a real collision in one of the three Python files |
+
+**The same run also took 45 m 42 s at 22% CPU**, same tree, same build, same machine. Both
+are recorded rather than the better one. The corpus is on an external volume, which is the
+condition this file names at the top as dominating every cold row — and a fivefold spread is
+the widest yet seen. A figure whose conditions swing it that far has to carry them (rule 24).
+
+An earlier run of the same subtree took **14 m 54 s** wall against 425 s of user CPU — 49% of
+one core — and reached **766 MB** of `graph.db`, 12× Core's for 9.5× the files.
 
 Scaled to the whole engine less `Engine/Source/ThirdParty` — about **89,000 files** — that is
 of the order of **3 GB of graph** and over an hour, dominated by the write. Nothing here has

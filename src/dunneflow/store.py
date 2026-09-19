@@ -467,6 +467,46 @@ CREATE INDEX IF NOT EXISTS ix_constants_name   ON constants(name);
 CREATE INDEX IF NOT EXISTS ix_constants_module ON constants(module);
 """
 
+# **How large the write-ahead log may get before a burst stops to let it drain**, and it is
+# `cache_size` above said in bytes. The two belong together: SQLite cannot checkpoint a WAL
+# while a write transaction is open, so a burst that never commits grows one without bound —
+# and the moment it outgrows the page cache, every index insert starts reading pages back out
+# of it. That is not a slowdown, it is a different cost curve.
+#
+# **Measured rather than chosen.** Analysing the whole of `UnrealEngine-release` — 84,159 C++
+# files in one transaction — the log reached 734 MB and throughput fell from 98% CPU to 0.1%,
+# about 2 MB a minute and still falling, after 1 h 45 m. Sampled there:
+# `sqlite3BtreeIndexMoveto` → `sqlite3PagerGet` → `sqlite3WalReadFrame`, with
+# `sqlite3PcacheFetchStress` spilling dirty pages continuously. `Engine/Source/Runtime`,
+# 18,191 files, went through the same single transaction in 8 m 54 s because its log stayed
+# inside the cache. The cap is where that difference is.
+#
+# Half the cache and not all of it, because the cache also holds what is being *read* —
+# `known_hashes`, the index pages an insert walks — and a WAL exactly the size of the cache
+# leaves that nothing.
+#
+# **What it is worth, measured on one part rather than argued.** `Engine/Source/Runtime`,
+# 18,191 files, extracted to the external volume:
+#
+#     with this cap     700 s, log held at 136 MB, 62 drains, 17,664 files committed at 10 min
+#     without it        stopped at 29 min, log 533 MB and growing, **0 files committed**
+#
+# Two separate wins in those rows and only the first is about speed. The second is that the
+# capped run had **committed** all but a few hundred files by the time the other had committed
+# none: one transaction means a run interrupted at 28 minutes has nothing to show for it, and
+# `known_hashes` cannot resume what was never written.
+#
+# It costs nothing where it is not needed: 3,169 files took 12.9 s capped against 13.0 s
+# uncapped, and 9,591 took 42.3 s against 40.7 s — 4%, for a log held at 93 MB instead of
+# 264 MB.
+WAL_CAP_BYTES = 32 * 1024 * 1024
+
+# How often the log is measured, in files. A `stat` is cheap and this is a run that is
+# already reading files off a disk, but it is not free and nothing needs it per file: the cap
+# is a soft ceiling, and overshooting it by a few hundred files' worth of rows costs a
+# checkpoint that was going to happen anyway.
+WAL_CHECK_EVERY = 256
+
 
 class UnfinishedMapError(RuntimeError):
     """An analysis started writing this map and never finished. **Rule 80.**
@@ -643,6 +683,12 @@ class Store:
             sqlite3.connect(self.path, check_same_thread=not shared)
         )
         self.conn.row_factory = sqlite3.Row
+        # How many times a burst stopped to let the log drain, and how many files since the
+        # log was last measured. `settled` is reported rather than kept private: a run that
+        # had to settle nine times is a run whose tree is near the guard's bound, and that is
+        # worth a reader knowing.
+        self.settled = 0
+        self._since_check = 0
         self._refuse_wrong_kind()
         if not writable:
             self.rebuilt = False
@@ -865,6 +911,48 @@ class Store:
         except Exception:
             self.conn.rollback()
             raise
+
+    def settle_if_large(self) -> bool:
+        """Commit mid-burst when the write-ahead log has outgrown the page cache.
+
+        **A burst must be one transaction and a burst must also end**, and until this existed
+        only the first half was true. `batch()` is right that per-file commits dominate a run
+        of ordinary size; what it could not say is that the transaction it opens keeps SQLite
+        from checkpointing the log, so a long enough burst builds a log nothing can drain and
+        then pays to read its own writes back out of it. `WAL_CAP_BYTES` carries the
+        measurement.
+
+        Committing here is safe because of where the loop already stands, and each of the
+        three is a real constraint rather than a hope:
+
+        * **`prune_missing` has already run**, so no commit can publish a half-pruned map;
+        * **`supplied_edges` is written after the loop** and is replaced whole per language,
+          so it never straddles one of these;
+        * **rule 80 is unaffected** -- `complete` is written last and committed on its own, so
+          a map that stops between two of these still says it is not finished.
+
+        What it buys beyond the crawl is that a killed run **keeps what it committed**, and
+        `known_hashes` makes the next run skip those files rather than start again. Before
+        this, a run stopped anywhere in a language lost that whole language.
+
+        Returns whether it committed, so a caller can count them -- which is how this is
+        tested, rather than by timing anything.
+        """
+        self._since_check += 1
+        if self._since_check < WAL_CHECK_EVERY:
+            return False
+        self._since_check = 0
+        # The WAL sits beside the database and is absent until the first write, so a missing
+        # one is "nothing to drain" rather than anything to report.
+        try:
+            size = self.path.with_name(self.path.name + "-wal").stat().st_size
+        except OSError:
+            return False
+        if size < WAL_CAP_BYTES:
+            return False
+        self.conn.commit()
+        self.settled += 1
+        return True
 
     # -- meta ------------------------------------------------------------- #
 

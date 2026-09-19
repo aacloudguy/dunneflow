@@ -57,7 +57,15 @@ from .sourcedb import STATE_FOR_COMPARISON, DocSourceStore, SourceStore
 from .sourcedb import capture as capture_source
 from .standards import STANDARDS_DB, standards_refusal
 from .store import StaleGraphError, Store, UnfinishedMapError, unfinished_sentence
-from .walk import analyze_docs_tree, analyze_tree, walk_languages, walk_residue
+from .walk import (
+    TOO_BIG,
+    Breakdown,
+    analyze_docs_tree,
+    analyze_tree,
+    parts_under,
+    walk_languages,
+    walk_residue,
+)
 
 
 def _default_paths(target: Path, name: str | None, out_root: Path) -> tuple[str, Path]:
@@ -292,6 +300,113 @@ class _Progress:
                   steps=len(self.steps), **fields)
 
 
+# How many parts a refusal prints before it stops and says how many are left. A tree splits
+# the way its own directories do, not evenly: Unreal comes out as 86 parts of which 18 hold
+# 90% of the files and 50 hold 1.5% between them. Printing all 86 into a terminal -- or into
+# the application's analysis pane, which is narrower than prose (rule 91) -- buries the ones
+# that matter under the ones that do not. The bound is stated when it bites and `--parts`
+# prints the whole list, so nothing is hidden (design rule 1).
+PARTS_SHOWN = 12
+
+
+def _part_lines(parts: list[tuple[Path, int]], root: Path, args: argparse.Namespace,
+                limit: int | None) -> list[str]:
+    """One runnable command per part, ready to paste.
+
+    Every part goes to **one output root**, so the pieces of one tree sit together as one
+    maps root and `dunneflow serve` lists them side by side. A name is the part's path under
+    the root, dotted -- `Engine.Source.Runtime` -- because that is what tells two parts
+    apart when a reader is looking at a list of them, and a bare leaf name does not: this
+    tree holds two directories called `Runtime`.
+    """
+    out_root = _out_root(args)
+    shown = parts if limit is None else parts[:limit]
+    lines = []
+    for d, n in shown:
+        rel = d.relative_to(root)
+        name = ".".join(rel.parts) if rel.parts else root.name
+        lines.append(f"  dunneflow analyze {_shell_quote(str(d))} "
+                     f"--name {name} --output {_shell_quote(str(out_root / root.name))}"
+                     f"   # {n:,} files")
+    return lines
+
+
+def _shell_quote(s: str) -> str:
+    """Quote a path for a line somebody is going to paste into a shell.
+
+    Not `shlex.quote`, whose job is safety against a hostile string; this is a path that
+    already exists, and what it has to survive is a space in it. A path with no space is
+    left bare, because quoting every one of them makes a list of commands harder to read for
+    a hazard that is not there.
+    """
+    return s if all(c not in s for c in ' \t"\'\\') else "'" + s.replace("'", "'\\''") + "'"
+
+
+def _size_verdict(root: Path, args: argparse.Namespace) -> int | None:
+    """Refuse a tree too big to finish, and say what to read instead. `None` means carry on.
+
+    **What the number means matters more than the number.** `walk.TOO_BIG` is the edge of
+    what this tool is known to read rather than a limit somebody liked the look of, so the
+    sentence carries its provenance: a reader deciding whether to use `--any-size` is
+    deciding whether to go past the largest tree anyone has taken through it, and that is a
+    different decision from exceeding a setting.
+    """
+    cut = parts_under(root)
+    total, parts = cut.total, cut.parts
+
+    if args.parts:
+        if cut.whole:
+            # A tree already inside the bound has no parts, and saying so is the answer to
+            # the question rather than an empty list (design rule 21).
+            _emit(f"{root} is one part: the walk reads {total:,} files of it, within the "
+                  f"{TOO_BIG:,} this tool is known to finish.")
+            return 0
+        _emit(f"{root} is {total:,} files the walk would read, cut into {len(parts):,} "
+              f"parts of at most {TOO_BIG:,}:")
+        for line in _part_lines(parts, root, args, None):
+            _emit(line)
+        _emit_uncovered(cut, root)
+        return 0
+
+    if cut.whole:
+        return None
+
+    _emit(
+        f"error: {root} is {total:,} files the walk would read, and the largest tree this "
+        f"tool is known to read in one go is {TOO_BIG:,}.\n"
+        f"\nThat is not a setting. Past it a run has never been finished here — the last "
+        f"attempt at a tree this size reached 0.1% CPU after an hour and three quarters and "
+        f"was stopped — so what follows is the tree cut into parts that are each within it, "
+        f"every one into the same output root so they can be read side by side:"
+    )
+    for line in _part_lines(parts, root, args, PARTS_SHOWN):
+        _emit(line)
+    if len(parts) > PARTS_SHOWN:
+        rest = parts[PARTS_SHOWN:]
+        _emit(f"  … and {len(rest):,} more parts, {sum(n for _, n in rest):,} files — "
+              f"`dunneflow analyze {_shell_quote(str(root))} --parts` prints all of them.")
+    _emit_uncovered(cut, root)
+    _emit("\nOr `--any-size` to read it whole anyway, however long it takes.")
+    return 2
+
+
+def _emit_uncovered(cut: Breakdown, root: Path) -> None:
+    """Say which files no part reaches, where there are any.
+
+    Never silent and never invented: a directory that had to be split cannot also be a
+    command, so its own files are outside every part (`walk.Breakdown`). It is empty on
+    every tree measured — Unreal puts none there — and the sentence appears only when it
+    would be true.
+    """
+    if not cut.uncovered:
+        return
+    n = sum(k for _, k in cut.uncovered)
+    _emit(f"\n{n:,} files sit directly in a directory that had to be split, so no part "
+          f"above reaches them — reading that directory would read its parts again:")
+    for d, k in cut.uncovered:
+        _emit(f"  {d.relative_to(root)}   # {k:,} files")
+
+
 def cmd_analyze(args: argparse.Namespace) -> int:
     target = Path(args.path).resolve()
     if not target.exists():
@@ -309,6 +424,15 @@ def cmd_analyze(args: argparse.Namespace) -> int:
     source_root = target
     out_root = _out_root(args)
     program, out_dir = _default_paths(target, args.name, out_root)
+
+    # **The size guard, judged before anything is opened**, like the refusals above it: a
+    # tree nobody can finish must not abandon a half-written map. It costs a `discover()` --
+    # 52 s on a tree of 88,356 files -- and that is the trade being made and is said out
+    # loud, because a minute spent here is the alternative to an hour spent finding out.
+    if args.parts or not args.any_size:
+        verdict = _size_verdict(source_root, args)
+        if verdict is not None:
+            return verdict
     # What this run will do, decided before it starts doing it: the dashboard draws a bar
     # against this list and it has to be right from the first line.
     prog = _Progress(analysis_steps(args), on=args.progress_json)
@@ -680,6 +804,15 @@ def cmd_analyze(args: argparse.Namespace) -> int:
             f"removed {stats.removed}, failed {stats.failed}) in {t_extract:.1f}s"
         )
         _emit(f"  read: {walk_languages(stats)}")
+        # **Said only when it happened**, and it is worth saying: a burst that had to stop
+        # for its own write-ahead log is a tree near the size this tool is known to finish,
+        # and a reader watching one run slower than the last is owed the reason rather than
+        # left to guess at the disk (design rule 1). Silent on every ordinary run, because
+        # the count is zero and a line that always reads `0` teaches nobody anything.
+        if getattr(store, "settled", 0):
+            _emit(f"  the write-ahead log was drained {store.settled} time"
+                  f"{'' if store.settled == 1 else 's'} mid-read, which is what keeps a "
+                  f"tree this size from slowing to a crawl")
         for said in stats.reader_notes:
             _emit(f"    {said}")
         for line in residue:
@@ -1305,6 +1438,14 @@ def build_parser() -> argparse.ArgumentParser:
     # failure's reason has to survive somewhere a parser is not reading (see `_Progress`).
     a.add_argument("--progress-json", action="store_true",
                    help="report progress as one JSON object per line on stdout")
+    # **The two halves of the size guard.** `--parts` answers the question the refusal
+    # raises and does nothing else; `--any-size` overrules it. Both are named *in* the
+    # refusal, because a refusal that does not name a command that can act on the thing it
+    # is refusing leaves the reader nowhere to go (rule 89).
+    a.add_argument("--parts", action="store_true",
+                   help="print the tree cut into parts small enough to read, and stop")
+    a.add_argument("--any-size", action="store_true",
+                   help="read a tree larger than the guard allows, however long it takes")
     a.set_defaults(func=cmd_analyze)
 
     t = sub.add_parser("touches", help="what does this routine reach?")

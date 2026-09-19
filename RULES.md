@@ -2328,3 +2328,40 @@ rule of that number — a blank canvas must say why it is blank — which does e
      exits non-zero on, about two routines in two files in two languages. Both detectors
      group by language now, which is what the comment above `_shadowing_langs` had said the
      scope was since the day it was written.
+
+107. **A burst must end, and a transaction is not a bound.**
+     `analyze_tree` wrapped a language's entire write loop in one transaction — *"one
+     transaction per reader; per-file commits dominate otherwise"* — and that sentence was
+     measured, correct, and silent about the case it could not cover. **SQLite cannot
+     checkpoint a write-ahead log while a write transaction is open.** So the log grows for
+     as long as the burst does, and the moment it outgrows `cache_size` every index insert
+     starts reading pages back out of it. That is not a slowdown, it is a different cost
+     curve, and it arrives without a symptom until it is already unusable.
+
+     Analysing the whole of `UnrealEngine-release` — 84,159 C++ files in one transaction —
+     the log reached **734 MB** and the process **0.1% CPU**, down from 98%, after 1 h 45 m.
+     Sampled there: `sqlite3BtreeIndexMoveto` → `sqlite3PagerGet` → `sqlite3WalReadFrame`,
+     with `sqlite3PcacheFetchStress` spilling dirty pages continuously.
+
+     **The same work, bounded and not**, on `Engine/Source/Runtime` — 18,191 files, the
+     largest tree this tool had read end to end:
+
+         bounded     700 s, log held at 136 MB, 62 drains
+         unbounded   stopped at 29 minutes, log 533 MB, still going
+
+     **And the second column of that table is worth more than the first.** At the ten-minute
+     mark the bounded run had **committed 17,664 of 18,191 files** and the unbounded one had
+     committed **none** — one transaction means a run killed at 28 minutes has nothing
+     whatever to show for it, and the file cache cannot resume what was never written. The
+     bound did not only make it faster; it made it *interruptible*, which is the property
+     rule 80 is about and which no amount of speed substitutes for.
+
+     It costs nothing where it is not needed — 3,169 files, 12.9 s bounded against 13.0 s —
+     so the old sentence stays true and is now true of a bounded thing.
+
+     **The general shape.** Any accumulator with no ceiling is a bound nobody set: a
+     transaction, a batch, a buffer, a list a loop appends to. "One per X" is a *grouping*
+     and reads like a limit, and the two are only the same while X is small. The question to
+     ask of one is not *how many groups* but *how large can a group get*, and the answer has
+     to come from the thing that has to hold it — here, `cache_size`, two lines further up
+     the same file.

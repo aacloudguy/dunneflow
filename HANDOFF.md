@@ -19371,3 +19371,67 @@ filed as `BACKLOG.md` item 7 with the sample that names the mechanism.
 
 **Rule 80 checked rather than assumed**: the C++ transaction rolled back whole, the committed
 Python rows stayed, and `finished()` is empty — the store does not claim to be a map.
+
+## 2026-09-19 — a guard on what may be ingested, and the bound that makes it finishable
+
+Tom, after the Unreal run was stopped: *"Seems like we need an ingest guard to prevent users
+from attempting to ingest too much at once, and breaking it down for them."* Two things, and
+the second is the one that had to come first.
+
+### Rule 107 — a burst must end, and a transaction is not a bound
+
+`BACKLOG.md` item 7, now closed. `analyze_tree` held **one transaction per language** and the
+store is in WAL mode; SQLite cannot checkpoint a log inside an open write transaction, so the
+log grew for as long as the language did and then every index insert began reading pages back
+out of it. `Store.settle_if_large` ends a burst when the log outgrows half the page cache,
+and `WAL_CAP_BYTES` sits beside the `cache_size` it is derived from so the two cannot drift.
+
+**Measured on one part rather than argued** — `Engine/Source/Runtime`, 18,191 files:
+
+| | bounded | unbounded |
+|---|---|---|
+| wall | **700 s** | stopped at **29 m**, still going |
+| log | held at **136 MB**, 62 drains | **533 MB** and growing |
+| committed at 10 minutes | **17,664 of 18,191** | **0** |
+
+**The third row is worth more than the first**, and it is the half that is not about speed.
+One transaction means a run killed at 28 minutes has nothing to show for it, and
+`known_hashes` cannot resume what was never written. The bound made the run *interruptible*,
+which is rule 80's property and which no amount of speed substitutes for.
+
+It costs nothing where it is not needed — 3,169 files in 12.9 s bounded against 13.0 s — so
+`analyze_tree`'s original sentence stays true and is now true of a bounded thing.
+
+### The guard, and what it cannot cover
+
+`walk.parts_under` cuts a tree into parts no larger than `TOO_BIG`, descending **only into
+what is oversized**. Choosing a depth instead would give 109 parts of wildly uneven size; the
+adaptive cut gives 86 whose largest is `Engine/Source/Runtime` at exactly 18,191 — the corpus
+the recorded run used. That is the tree's own structure answering, not a coincidence.
+
+`TOO_BIG` is **20,000 files**, and the refusal says where that came from: it is the edge of
+what this tool is known to read end to end, not a setting. `--parts` prints the whole list,
+`--any-size` goes through, and both are named in the refusal (rule 89).
+
+**`serve` was not touched and that is the design.** It runs `analyze` as a child and
+`web/analysis.py:_reason` promotes the child's last stderr line — so the refusal reaches the
+analysis pane in its own words, where Tom got a traceback.
+
+**And the guard's own defect, caught by its own test.** The first cut made a split directory's
+own files a part named for that directory — but `analyze` descends, so the command for
+`Engine/Plugins` would have read all 51,069 files under it: the very analysis the guard
+exists to refuse, inside the guard's advice. `Breakdown.uncovered` states those files instead.
+It is **0 on Unreal** across all 86 parts, which is why the case is stated rather than solved;
+solving it needs an `analyze` that can read one directory without descending.
+
+### Gates
+
+**2,004 passed · 1 skipped**, mypy clean over 225 files, ruff clean. Golden **7 of 7** against
+`GOLDEN-v2.txt` and 6 of 6 rekeyed against v1 — a commit bound must not move a fact, and does
+not.
+
+### Residue
+
+The bound counts **files** because that is the shape of the evidence, and what actually hurts
+is rows written. A tree of 19,000 enormous files passes it. In `BACKLOG.md`, with what a
+better key would cost.

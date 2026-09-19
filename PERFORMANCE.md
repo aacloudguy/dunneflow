@@ -1020,3 +1020,54 @@ It is three paths now: below the mean the answer needs no arithmetic, the exact 
 summed in **log space** through `lgamma` while the term count is under 4,000 so every figure
 already recorded reproduces unchanged, and beyond that a normal approximation with a
 continuity correction, with its conditions stated here rather than left to be discovered.
+
+## The whole engine, and the bound the store needed (v2, measured 2026-09-19)
+
+The section above ends by scaling `Engine/Source/Runtime` to *"about 89,000 files … over an
+hour, dominated by the write"*, and says plainly that nothing had been measured at that size.
+It has been now. **The walk reads 88,356 files of `UnrealEngine-release`** — 46,330 `.h`,
+36,623 `.cpp`, 4,197 `.py`, 459 TypeScript, 29 Kotlin — and the prediction was right about
+which half hurts.
+
+### What one transaction costs at that size
+
+| | |
+|---|---|
+| the attempt | whole tree, one `analyze`, **stopped after 1 h 45 m** |
+| write-ahead log | **734 MB** and growing, never checkpointed |
+| throughput | **98% CPU at the start, 0.1% at the end**, about 2 MB a minute |
+| committed when stopped | **4,197 files** — the Python transaction. C++ rolled back whole |
+
+`analyze_tree` held one transaction per language, and SQLite cannot checkpoint a log inside
+an open write transaction. Sampled at 1 h 39 m: `sqlite3BtreeIndexMoveto` →
+`sqlite3PagerGet` → `sqlite3WalReadFrame`, with `sqlite3PcacheFetchStress` spilling
+continuously — the page cache thrashing against a log several times its size. **Rule 107.**
+
+### The same part, bounded and not
+
+`Engine/Source/Runtime`, 18,191 files, extraction only, to the external volume:
+
+| | bounded (`store.WAL_CAP_BYTES`) | unbounded |
+|---|---|---|
+| wall | **700 s** | stopped at **29 m**, still going |
+| log | held at **136 MB**, 62 drains | **533 MB** and growing |
+| committed at 10 minutes | **17,664 of 18,191** | **0** |
+
+The third row is the one that matters most and it is not about speed: one transaction means a
+run killed at 28 minutes has nothing to show for it, and `known_hashes` cannot resume what was
+never written.
+
+**It costs nothing where it is not needed**, which is what keeps `analyze_tree`'s original
+argument true:
+
+| files | bounded | unbounded | log, bounded vs not |
+|---:|---|---|---|
+| 3,169 | 12.9 s | 13.0 s | 96 MB · 112 MB |
+| 9,591 | 42.3 s | 40.7 s | 93 MB · 264 MB |
+
+### And the external volume, again
+
+`Engine/Source/Developer`, 3,169 files, identical work: **21.9 s** writing to the external
+volume against **13.1 s** to the internal SSD — 1.7×. Smaller than the fivefold spread the
+`Runtime` row records, and in the same direction. Every figure in this section was taken
+writing to the external volume, which is where these maps live.

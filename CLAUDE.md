@@ -24,7 +24,7 @@ what it is doing:
 | File | What it holds | When to read it |
 |---|---|---|
 | `CLAUDE.md` | what the tool is for, the commands, the verification gates, and the **index** of every rule | every session — it is loaded for you |
-| `RULES.md` | the 105 engineering rules **in full**, with the false result each came from — numbered to 106, because 21 does not exist and the numbers are addresses | before working in the area a rule governs |
+| `RULES.md` | the 106 engineering rules **in full**, with the false result each came from — numbered to 107, because 21 does not exist and the numbers are addresses | before working in the area a rule governs |
 | `DESIGN-RULES.md` | the 31 dashboard design rules in full | before building or changing a view |
 | `ARCHITECTURE.md` | what each module owns, and what each surface answers — `serve`, `mcp`, `query`, and everything under them | before working in a module, or adding a route |
 | `PACKAGING.md` | the spec, the three release scripts, signing, notarisation, and what a frozen build reads as a file | before touching `packaging/` or `runtime.py` |
@@ -318,6 +318,7 @@ it was written from.
 105. An order taken over a set is the hash seed's, and a row-reversal probe cannot see it.
 106. An identity assembled from names alone is only unique inside one language's
      naming.
+107. A burst must end, and a transaction is not a bound.
 ```
 
 ## Anomalies: the discipline

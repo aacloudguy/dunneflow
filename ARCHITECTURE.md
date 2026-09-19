@@ -420,6 +420,21 @@ queries know a language exists.
 - `store.py` — SQLite. **The spine, not an export format.** Nothing holds the whole
   program in memory; reachability is recursive SQL over indexed edges. This is the one
   decision that lets the tool survive growth — do not replace it with in-memory graphs.
+
+  **A burst of writes is one transaction and also has a ceiling**, which is rule 107 and
+  `settle_if_large`. SQLite cannot checkpoint a write-ahead log inside an open write
+  transaction, so "one transaction per reader" grew a log nothing could drain and then paid
+  to read its own writes back out of it: 734 MB and 0.1% CPU on a tree of 84,159 files.
+  `WAL_CAP_BYTES` carries the measurement and sits beside the `cache_size` it is derived
+  from. What it buys beyond speed is that a killed run **keeps what it committed**.
+- `walk.py` — discovery, and **the size guard**. `parts_under` cuts a tree into parts no
+  larger than `TOO_BIG`, descending only into what is oversized, and `Breakdown.uncovered`
+  states the one thing a cut of directories cannot cover: a directory that had to be split
+  cannot also be a part, because the command for it would read its children again. The bound
+  is the edge of what has been read end to end — 18,191 files — rather than a limit somebody
+  chose, and `cli.py` says so in the refusal. `serve` is not involved: it runs `analyze` as a
+  child and promotes the child's own last line, so the refusal reaches the analysis pane
+  without a second copy of the sentence (rule 51).
 - `ingest/` — **the seam a language arrives through, and the only place a fact becomes
   this program's.** Six modules and the split is the point.
 

@@ -382,6 +382,108 @@ def discover(root: Path, include_tests: bool = False,
             yield p
 
 
+# **How many files this tool is known to read in one go.** Not a guess and not a round
+# number chosen for looking like one: `Engine/Source/Runtime` of `UnrealEngine-release` is
+# **18,191** files and is the largest tree ever read end to end — 8 m 54 s, on record. The
+# whole of that tree is 88,356, which is 4.9x it, and that run degraded to 0.1% CPU and was
+# stopped after 1 h 45 m (`store.WAL_CAP_BYTES` carries the mechanism, and the bound there
+# is what makes a tree this size finishable at all).
+#
+# So the guard is set at the **edge of measured experience** rather than at a limit, and the
+# refusal says which number it is and where it came from. A reader who has a tree between
+# 18,191 and 20,000 files is inside what has been done; one with 88,356 is being told that
+# nobody has, and handed the parts.
+TOO_BIG = 20_000
+
+
+@dataclass(slots=True)
+class Breakdown:
+    """A tree cut into pieces an `analyze` command can each read whole.
+
+    `uncovered` is the honest half and is why this is a record rather than a list. A part is
+    a **directory**, and `analyze` reads a directory *and everything under it* — so a
+    directory that had to be split cannot also be a part, because the command for it would
+    re-read the children already covered and would itself be the oversized analysis this
+    whole mechanism exists to refuse. Its own files therefore belong to no part, and saying
+    so is the only truthful answer available (design rule 1: no filter is ever silent).
+
+    It is empty on every tree measured so far — `UnrealEngine-release` puts **0** files in
+    that position across all 86 of its parts — which is why the case is stated rather than
+    solved. Solving it needs an `analyze` that can read one directory without descending,
+    and that is a feature with its own argument, not a detail of a guard.
+    """
+
+    total: int
+    parts: list[tuple[Path, int]]
+    uncovered: list[tuple[Path, int]]
+
+    @property
+    def whole(self) -> bool:
+        """Is the tree already one part? Then there is nothing to break down."""
+        return not self.parts
+
+
+def parts_under(root: Path, bound: int = TOO_BIG,
+                rules: Sequence[DiscoveryRules] | None = None) -> Breakdown:
+    """The tree cut into parts no larger than `bound`, or `[]` if it already is one.
+
+    **The cut is adaptive, and that is what makes it worth printing.** Choosing a depth
+    gives a reader 109 parts of wildly different sizes, most of them a handful of files;
+    descending only into what is oversized gives the fewest parts that satisfy the bound,
+    and for Unreal the largest of them comes out as `Engine/Source/Runtime` — 18,191 files,
+    which is precisely the corpus the recorded run used. That is a good sign rather than a
+    coincidence: the tree's own structure is what both the bound and the corpus came from.
+
+    A directory that has to be split may also hold files of its own, and those are a part
+    named for the directory itself. Without that they would belong to no part and the
+    breakdown would silently cover less than the tree — design rule 1, in an instruction
+    somebody is going to paste into a shell.
+
+    **One walk, not one per candidate.** `discover` is a 52-second answer on a tree this
+    size and asking it per directory would be quadratic; it is asked once and the paths are
+    bucketed here. That also makes the parts exactly what an analysis would read — the same
+    function, the same exclusions — rather than a second opinion about the tree (rule 51).
+
+    **The count comes back either way** so that the one walk answers both questions: it is
+    52 seconds on a tree this size, and asking a second time merely to say how big something
+    is would be the more expensive half of the guard.
+    """
+    files = [p.relative_to(root) for p in discover(root, rules=rules)]
+    if len(files) <= bound:
+        return Breakdown(len(files), [], [])
+
+    left: list[tuple[Path, int]] = []
+
+    def cut(prefix: tuple[str, ...], members: list[tuple[str, ...]]) -> list[tuple[Path, int]]:
+        if len(members) <= bound:
+            return [(root.joinpath(*prefix) if prefix else root, len(members))]
+        # `()` is a file sitting directly in this directory rather than under a child of it.
+        groups: dict[tuple[str, ...], list[tuple[str, ...]]] = {}
+        for rel in members:
+            groups.setdefault(rel[:1] if len(rel) > 1 else (), []).append(rel[1:])
+        own = groups.pop((), None)
+        out: list[tuple[Path, int]] = []
+        if not groups:
+            # Nowhere left to descend: every file sits in this one directory and it is over
+            # the bound. Reported as the oversized part it is rather than pretended about --
+            # the reader can see the number and decide.
+            return [(root.joinpath(*prefix) if prefix else root, len(members))]
+        for head, rest in groups.items():
+            out.extend(cut(prefix + head, rest))
+        if own:
+            # **Not a part**, because the command for this directory would read the children
+            # above as well. See `Breakdown.uncovered`.
+            left.append((root.joinpath(*prefix) if prefix else root, len(own)))
+        return out
+
+    parts = cut((), [p.parts for p in files])
+    return Breakdown(
+        len(files),
+        sorted(parts, key=lambda kv: (-kv[1], str(kv[0]))),
+        sorted(left, key=lambda kv: (-kv[1], str(kv[0]))),
+    )
+
+
 def discover_docs(root: Path, suffixes: frozenset[str] = DOC_SUFFIXES,
                   nested: list[str] | None = None,
                   exclude: frozenset[Path] = frozenset(),
@@ -673,7 +775,12 @@ def analyze_tree(
         plugin.open(root, owned.get(lang, []))
         stats.reader_notes.extend(f"{lang} {n}" for n in plugin.opened_notes)
         try:
-            # One transaction per reader; per-file commits dominate otherwise.
+            # One transaction per reader; per-file commits dominate otherwise — **and it
+            # ends early when the log outgrows the page cache** (`settle_if_large`). The
+            # two are not in tension: this still commits per burst rather than per file, and
+            # what the bound removes is the case the sentence above never had to cover,
+            # which is a burst so long that SQLite can never checkpoint the log it is
+            # writing. Unreal's 84,159 C++ files in one transaction is that case.
             with store.batch():
                 for ff in plugin.extract(wanted, root, relay, jobs):
                     _verify_lang(ff, lang)
@@ -687,6 +794,7 @@ def analyze_tree(
                             stats.literals_dropped.get(lang, 0) + ff.literals_dropped
                         )
                     store.write_file_facts(ff)
+                    store.settle_if_large()
                     stats.parsed += 1
                     if ff.errors:
                         stats.failed += 1

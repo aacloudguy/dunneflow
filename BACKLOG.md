@@ -83,42 +83,6 @@ now analysed as `gstack` and is the corpus to re-test against if one is ever fou
 the only tree to hand with a real `fetch` population, and the tool scores **29 of 29** on
 it with no false positives, so the direct case needs nothing.
 
-### 7 · One transaction per language does not scale past about twenty thousand files
-
-*Found 2026-09-19, analysing the whole of `UnrealEngine-release`.*
-
-`analyze_tree` wraps a language's entire per-file write loop in one `store.batch()` — *"one
-transaction per reader; per-file commits dominate otherwise"* — and the store is in WAL mode.
-**SQLite cannot checkpoint a WAL while a write transaction is open**, so the log grows for the
-whole of a language's files and never shrinks.
-
-Past the point where it outgrows `cache_size` (64 MB), every index insert has to read pages
-back out of the log. Sampled at 1 h 39 m: `executemany` → `sqlite3BtreeIndexMoveto` →
-`sqlite3PagerGet` → `sqlite3WalReadFrame`, with `sqlite3PcacheFetchStress` spilling dirty
-pages continuously. It degrades rather than plateaus.
-
-**Measured on that run.** The tree holds **165,828** candidate files — 84,803 `.h`, 48,254
-`.cpp`, 11,565 `.py`, 283 `.ts`, 29 `.kt`. Python's transaction closed normally at 4,197
-files. The C++ one did not: after 1 h 45 m the log stood at **734 MB** and throughput had
-fallen from **98% CPU at the start to 0.1%**, about 2 MB a minute and falling. The run was
-stopped rather than finished.
-
-**It is a threshold and not a wall, which is why it had never been seen.** The recorded Unreal
-run of 2026-09-19 read `Engine/Source/Runtime` — **18,191 files in 8 m 54 s** — in exactly the
-same single transaction, and its log stayed inside the cache. Everything else this tool has
-read is smaller again. The whole tree is about nine times the largest corpus ever put through
-it.
-
-**Rule 80 held, and that was checked rather than assumed.** The killed run rolled the C++
-transaction back whole, left the committed Python rows, and `finished()` is empty — the store
-does not claim to be a finished map.
-
-**What would settle it.** Committing inside a language rather than only at the end of one, on
-a bound that is measured rather than guessed — files, or rows, or the log's own size — against
-the figure the comment defends, which is that per-file commits dominate. Both numbers have to
-be taken on one corpus big enough to show the effect, because the present answer is right for
-every tree this project has measured and wrong for the one it has not.
-
 ### 5 · Rule 95's general remedy
 
 *From chunk 6, 2026-09-17.*
@@ -150,4 +114,5 @@ that nobody spends a session rediscovering them and filing them as bugs.
 | **A program that serves browser JavaScript as a string has calls this map cannot see** | `gstack`'s `getCookiePickerHTML(): string` returns an HTML page holding four `fetch` calls, and `design/src/compare.ts` another. Those requests really are made — from the browser, by code this program wrote — and the map says nothing about them. Correctly: a string is not code, which is rule 9's argument one direction over, and reading one would mean parsing every template literal in every language. Stated so the NETWORK count is read as *what this program calls*, never *what this program causes*. 2026-09-18. |
 | **`socket.emit` may be wrongly declared async** | `detectors/typescript.yaml` says `async: true`; `emit` is fire-and-forget in socket.io and `emitWithAck` is the awaitable one, so it is probably wrong beside `WebSocket` and `EventSource`, which were corrected. Left alone because **no map this tool has read holds a single `socket.emit`** and socket.io's types are in no corpus here, so there is nothing to check a change against. Asserting it from memory is what rule 24 forbids. 2026-09-18. |
 | **Rule 105's survey is a floor, not the population** | `tools/ordering.py --survey` lists the five `sorted()` calls whose input is *written as* a set and which take a `key=`. Unorderedness propagates, so a dict built by iterating a set and then sorted over its `.items()` is the same defect and is invisible to it — `web/changes.py` held two of each, and only the two written as set algebra are in the count. Catching the rest means following the provenance of a value, which is a different instrument. The reversal probe cannot see any of them. 2026-09-18. |
+| **The size guard counts files and nothing else** | `walk.TOO_BIG` is 20,000 *files*, which is the shape of the evidence — `Engine/Source/Runtime` is 18,191 and is the largest tree read end to end. A tree of 19,000 enormous files passes it and a tree of 25,000 tiny ones is refused, and neither is what the bound is really about: the thing that hurts is rows written, not files read. Bytes or an estimate of rows would be the honest key, and taking one needs a corpus spread wide enough to separate the two — which is a measurement, not an edit. Stated so the number is read as what it is. 2026-09-19. |
 | **`PERFORMANCE.md` is v1's, except where it says otherwise** | Every figure above the v2 headings was measured on v1 and none has been reproduced in this tree. |

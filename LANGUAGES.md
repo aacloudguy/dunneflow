@@ -157,6 +157,35 @@ as a module does for Python. Left out it is wrong rather than merely unnecessary
 proved it inside one module: 221 qualnames with a body in two files, and
 `UNIQUE constraint failed: routines.id`.
 
+## A fourth reader, and what the third one got wrong about it
+
+*Written after Kotlin, which took a day where C++ took a session.* The chapter above is
+right; what it does not say is **how much of the cost is the language rather than the seam**.
+
+**The seam costs almost nothing now, and that is measurable.** Kotlin needed: a manifest, a
+rules file, one entry in `_IN_PROCESS`, one file in the probe tree, and one name in the
+plugin-set assertion. Nothing in `packaging/`, nothing in `walk.py`, nothing above the graph,
+and no new key in the detector grammar. Every one of those five is in the list above, and the
+list is now complete rather than hopeful.
+
+**What varies by two orders of magnitude is the reader.** C++ needed a line-continuation
+splice, a preprocessor, a most-vexing-parse refusal and a header/implementation rule; Kotlin
+needed none of them and is about half the size. The two things Kotlin needed that C++ did not
+are worth naming because they generalise: a language with **expression bodies** cannot be read
+by looking for braces, and a language whose **house style is lambdas** cannot be read by
+treating a brace as a scope. Ask both questions of the next language before writing anything.
+
+**`redefinition` is the second judgement to be declared rather than branched on**, after
+`unawaited_async`, and Kotlin needed it on day one — it overloads, like C++ and unlike Python.
+That it was already there is the point: the first language to hit a wrong judgement pays for
+the key, and the second one just fills it in. When a detector is wrong about your language,
+look for the key before you write the `if`.
+
+**And a residue can be larger in one language than in another for the same reason.** *A
+collection operator is a call and not a loop* is true of C++ and Kotlin alike, and it costs
+far more in Kotlin, where `forEach` is the idiom rather than the exception. State the residue
+in the language's own terms, not in the tool's.
+
 **Go and Rust are the obvious next ones** — both ship a toolchain that can be asked, and
 `resolve/manifests/` already reads `go.mod` and `Cargo.toml` for what a program declares
 about itself, which is the half that does not need a reader at all.

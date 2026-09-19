@@ -50,6 +50,13 @@ def _extract_one_cpp(args: tuple[str, str]) -> FileFacts:
     return extract_file(Path(path_s), Path(root_s))
 
 
+def _extract_one_kotlin(args: tuple[str, str]) -> FileFacts:
+    """Worker entry point for the Kotlin reader. See `_extract_one_cpp` for why each reader
+    gets its own function rather than a parameterised shim."""
+    from ..extractors.kotlin.extract import extract_file
+    path_s, root_s = args
+    return extract_file(Path(path_s), Path(root_s))
+
 
 class InProcessPlugin:
     """Wraps a reader that runs here, so the host cannot tell the two kinds apart."""

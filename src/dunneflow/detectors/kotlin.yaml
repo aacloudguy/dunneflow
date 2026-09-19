@@ -1,0 +1,156 @@
+# Boundary rules for Kotlin.
+#
+# In **Kotlin's** extraction stamp, so editing this re-reads every `.kt` file and costs the
+# other three languages nothing.
+#
+# Matched against the dotted form of a call expression — `ingest/dotted.py`, the same
+# contract every reader is held to. Kotlin folds `?.` away with `.`, so `db?.query(x)` is
+# `db.query`; a call in the middle folds to its callee, so `Room.databaseBuilder(c).build()`
+# is `Room.databaseBuilder.build`; and type arguments are not part of a name, so
+# `listOf<String>()` is `listOf`.
+#
+# **Nothing is resolved** (rule 4 and rule 5), so a rule matches the *written* prefix. An
+# `import java.io.File` followed by `File(path)` is spelled `File`, and an
+# `import java.io.*` followed by the same is spelled the same — which is why the bare names
+# are declared alongside the qualified ones.
+
+version: 1
+
+boundaries:
+  - kind: ENV
+    direction: IN
+    exact: [System.getenv, System.getProperty, getenv]
+    target_arg: 0
+
+  - kind: FILE
+    direction: IN
+    exact: [File, FileInputStream, FileReader, BufferedReader,
+            java.io.File, java.io.FileInputStream]
+    method: [readText, readLines, readBytes, bufferedReader, inputStream, forEachLine,
+             useLines, exists, listFiles, openFileInput]
+    target_arg: 0
+  - kind: FILE
+    direction: OUT
+    exact: [FileOutputStream, FileWriter, java.io.FileOutputStream]
+    method: [writeText, writeBytes, appendText, printWriter, outputStream, mkdirs,
+             createNewFile, deleteRecursively, openFileOutput, renameTo]
+    target_arg: 0
+
+  # `fetch`'s Kotlin cousins. OkHttp, Retrofit, Ktor and the JDK's own client — the four a
+  # corpus this size actually holds, named by the prefix the author wrote.
+  - kind: NETWORK
+    direction: BOTH
+    prefix: [OkHttpClient, Retrofit., HttpClient, URL., java.net.]
+    exact: [URL, HttpURLConnection, okhttp3.OkHttpClient]
+    method: [newCall, enqueue, openConnection, openStream, connect]
+    target_arg: 0
+
+  # Room and SQLite, which is how an Android application keeps anything.
+  - kind: DATABASE
+    direction: BOTH
+    prefix: [Room., SQLiteDatabase.]
+    method: [rawQuery, execSQL, insert, update, delete, query, compileStatement,
+             databaseBuilder, openOrCreateDatabase, openDatabase]
+    target_arg: 0
+
+  - kind: PROCESS
+    direction: BOTH
+    exact: [ProcessBuilder, Runtime.getRuntime.exec, startActivity, startService]
+    method: [exec, startActivity, startActivityForResult, sendBroadcast]
+    target_arg: 0
+
+  # `salience: low` for `print`'s reason in `python.yaml`: a log line is a boundary and is
+  # not the one a reader is looking for.
+  - kind: STDIO
+    direction: OUT
+    salience: low
+    exact: [println, print, System.out.println, System.err.println]
+    prefix: [Timber., Log., android.util.Log.]
+    target_arg: 0
+  - kind: STDIO
+    direction: IN
+    salience: low
+    exact: [readLine, readln]
+    target_arg: 0
+
+  - kind: CRYPTO
+    direction: BOTH
+    exact: [MessageDigest.getInstance, Cipher.getInstance, SecureRandom, KeyStore.getInstance]
+    prefix: [javax.crypto., java.security.]
+
+entry_names: [main]
+
+entrypoints:
+  # **Android declares its ways in by annotation and by supertype**, and only the first is
+  # something this grammar can match. An `Activity` is started by the system and nothing in
+  # the program calls it — so without a rule it reads as dead code in a worklist.
+  - kind: LIBRARY
+    decorator_method: [AndroidEntryPoint, HiltAndroidApp, Composable, Provides, Binds]
+    evidence: "registered with the framework by annotation"
+  - kind: HTTP_ROUTE
+    decorator_method: [GET, POST, PUT, DELETE, PATCH, HEAD, Path, Query, Body, Multipart]
+    evidence: "an HTTP call declared by annotation (Retrofit)"
+  - kind: SCHEDULED
+    decorator_method: [Scheduled, PeriodicWorkRequest]
+    evidence: "run on a schedule by the framework"
+  # A test is a way in too: nothing in the program calls it, and it is the only caller many
+  # routines have. Kept separate so a reader can tell it from a way in a user reaches.
+  - kind: CLI
+    decorator_method: [Test, ParameterizedTest, Before, After, BeforeClass, AfterClass]
+    evidence: "run by the test framework"
+
+artefacts:
+  extensions:
+    DATABASE: [db, sqlite, sqlite3, anki2]
+    CONFIG: [json, xml, yaml, yml, toml, properties, gradle]
+    ARCHIVE: [zip, apkg, colpkg, jar, apk]
+
+type_aliases:
+  constructors: [listOf, mutableListOf, setOf, mutableSetOf, mapOf, mutableMapOf,
+                 arrayOf, arrayListOf, emptyList, emptyMap, emptySet, sequenceOf]
+  factories: []
+
+network:
+  libraries:
+    "OkHttpClient": {protocol: HTTP, async: false}
+    "Retrofit.": {protocol: HTTP, async: true}
+    "HttpClient": {protocol: HTTP, async: true}
+  verbs: [GET, POST, PUT, DELETE, PATCH, HEAD, OPTIONS]
+  kwargs: []
+
+# **A dropped `async` runs**, which is JavaScript's answer and not Python's. `async { … }` in
+# a coroutine scope starts immediately and returns a `Deferred`; never awaiting it loses the
+# ordering and, without a handler, the failure — the work still happens. So the cost is
+# SUSPECT rather than BROKEN, exactly as for a promise.
+#
+# A `suspend fun` is a different thing and is not this: it cannot be called without being
+# suspended, so there is no dropped result to report.
+unawaited_async: runs
+
+# **Kotlin overloads**, like C++ and unlike Python: a second `fun` with a different parameter
+# list is a different function, and `@JvmOverloads` generates more of them. Calling that a
+# name collision would report the language working as a defect (rule 98).
+redefinition: overloads
+
+# Names a bare call may resolve to without being a routine in this program (rule 3). Kotlin's
+# standard library is mostly extension functions on ordinary types, so this is the set a
+# document naming `map` or `filter` is not naming a symbol of yours.
+builtins: [
+  "also", "apply", "arrayListOf", "arrayOf", "assert", "buildList", "buildMap",
+  "buildString", "check", "checkNotNull", "coerceAtLeast", "coerceAtMost", "coerceIn",
+  "count", "downTo", "drop", "dropLast", "emptyList", "emptyMap", "emptySet", "error",
+  "filter", "filterIsInstance", "filterNot", "filterNotNull", "first", "firstOrNull",
+  "flatMap", "flatten", "fold", "forEach", "forEachIndexed", "getOrDefault", "getOrElse",
+  "getOrNull", "getOrPut", "groupBy", "indexOf", "isEmpty", "isNotEmpty", "isNullOrBlank",
+  "isNullOrEmpty", "joinToString", "last", "lastOrNull", "lazy", "let", "listOf",
+  "listOfNotNull", "map", "mapIndexed", "mapNotNull", "mapOf", "maxOf", "maxOrNull",
+  "minOf", "minOrNull", "mutableListOf", "mutableMapOf", "mutableSetOf", "none", "orEmpty",
+  "plus", "reduce", "removeAll", "repeat", "require", "requireNotNull", "reversed", "run",
+  "runCatching", "sequenceOf", "setOf", "single", "singleOrNull", "sortedBy",
+  "sortedByDescending", "split", "sumOf", "take", "takeIf", "takeLast", "takeUnless",
+  "takeWhile", "toBoolean", "toByteArray", "toDouble", "toDoubleOrNull", "toFloat", "toInt",
+  "toIntOrNull", "toList", "toLong", "toLongOrNull", "toMap", "toMutableList", "toSet",
+  "toString", "toTypedArray", "trim", "trimEnd", "trimIndent", "trimMargin", "trimStart",
+  "until", "use", "with", "withContext", "zip",
+  "TODO", "arrayOfNulls", "compareTo", "equals", "hashCode", "it", "this",
+]

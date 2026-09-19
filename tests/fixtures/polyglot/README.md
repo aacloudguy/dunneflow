@@ -33,4 +33,5 @@ reproduction rather than fixed in passing, because the fix changes how an id is 
 that discards every stored map.
 
 So the stems differ, and the reason is written down instead of being a detail nobody can
-account for.
+account for. `kotlin_probe.kt` joined them when Kotlin was registered, which is the rule
+this directory exists to enforce: the test fails until the new language has a file here.

@@ -19016,3 +19016,91 @@ later one shadows the earlier* means anything. An empty list of shadowing langua
 to a `WHERE 0` rather than to no filter, because *no rows* and *no filter* are opposite
 answers and the second is the silent default rule 49 forbids.
 
+## 2026-09-18 — Kotlin, and a seam that has stopped costing anything
+
+The fourth language, the second hand-written reader, and the first one where the seam was
+not the work. `dunneflow analyze` reads Anki-Android: **894 files in 16.1 s**, 6,199
+routines, 2,405 structures, 21,474 calls, 2,298 boundary touches, 12 ways in, **0 Kotlin
+anomalies of any severity**.
+
+### The corpus was cloned, because there was none
+
+Measured before the plan was written: **one `.kt` file in the whole Developer directory**, a
+fixture in `graphify-5`, and no `kotlinc`. Building a reader against that is what rule 24
+forbids, so Tom's call was to clone one. `ankidroid/Anki-Android` at `c964d52b` —
+**1,416 Kotlin files, no Java at all**, a real application with real ways in.
+
+It turned out to be a **mixed** corpus, which was luck rather than design and is worth
+having: the map reads `kotlin 887 · python 2 · typescript 5`, and the two Python files are
+genuinely unparseable — `print 'x'` is Python 2 — so the only two BROKEN in the map are true.
+
+### Why it is read without a compiler, and it is not C++'s reason
+
+C++ refused a semantic read on evidence: the demo corpus cannot tell a compiler how it is
+built without being built first. Kotlin's compiler **could** be asked, and asking it would
+mean a JVM on every machine that reads a `.kt` file and a `kotlin-compiler-embeddable` jar
+inside a bundle whose entire runtime dependency list is `pyyaml`. The trade is stated rather
+than assumed: what it would buy is resolved calls, and what it would cost is the frozen
+application.
+
+### Three things that are Kotlin's and not C++'s
+
+* **Expression bodies.** `fun f() = expr` has no braces, is a routine, and is the *first
+  function in the first file of the corpus*. A brace-tree reader finds none of them. Its
+  extent is the one heuristic in this reader and is named as one — what it can get wrong is
+  where a body ends, never whether the routine exists, its name or its parameters.
+* **Most braces open nothing.** `apply { }`, `let { }`, `forEach { }` and trailing-lambda
+  call syntax mean a declaration has to be found by its **keyword**, not by its brace. Keyed
+  the other way a class with three methods has forty scopes.
+* **Block comments nest**, which is the exact opposite of C++'s rule for the same three
+  characters — and the concrete reason the two lexers are two modules rather than one.
+  A shared module would live in **neither** language's stamp: `lang_extraction_inputs` globs
+  `extractors/<lang>/*`, so editing it would change what both readers read and invalidate
+  nothing (rule 12). A reader is self-contained or it is not fingerprinted.
+
+### Rule 98 cost nothing this time, and that is the result
+
+Kotlin overloads, like C++ and unlike Python — and `@JvmOverloads` generates more of them. A
+year ago that would have been several thousand false `NAME_COLLISION` out of the command
+that gates CI. It was one line in `kotlin.yaml`: `redefinition: overloads`. **The first
+language to meet a wrong judgement pays for the key; the second one fills it in.**
+`unawaited_async: runs` went in beside it for the same reason — `async { }` in a coroutine
+scope starts immediately, so a dropped `Deferred` is JavaScript's SUSPECT and not Python's
+BROKEN.
+
+### Four defects, all found by the corpus
+
+* **Return types were missing from every routine.** The header was cut at the parameter
+  list's `)`, and Kotlin writes the return type *after* it — so there was nothing left to
+  read. Six of six functions in the first real file came back with none.
+* **`abstract fun go()` stole the next function's body.** The guard that spots *the next
+  declaration begins here* compared against where the scan started rather than against the
+  token before it, so it never fired on the first token after the parameter list — which is
+  exactly where the next declaration sits when this one has no body. The abstract
+  declaration became a routine and the real one disappeared, two wrong facts in two lines.
+  The set it checks had to grow the modifiers too: `private` sits between them.
+* **A `companion object` was `<anonymous>`.** Kotlin names it `Companion`, which is how it is
+  addressed from Java and how it appears in a stack trace; inventing a word for something the
+  language has already named is not a reader's job.
+* **A chained call took its arguments from the first parentheses.** `Room.databaseBuilder(c)
+  .build()` would have handed `build` the argument `c`. The same defect the C++ reader had,
+  caught here by having seen it there.
+
+### Gates
+
+**1,993 passed · 1 skipped**, mypy clean over 223 files, ruff clean. Frozen build carries
+`extractors/kotlin` and `plugins/kotlin` because `_reader_files()` finds them; the gate reads
+all four languages and **5 of 5 stamps agree with each build opening the other's map**
+(`cpp 1, kotlin 1, python 1, typescript 1`). The golden is 5 of 7 against the report with its
+two documented holdbacks — Python has not moved.
+
+The core stamp moved again, to `14:e9094721e5b17f6b`, because `ingest/__init__.py` gained an
+entry. Deliberate, and rule 12's safe direction.
+
+### What the seam cost, which is the finding
+
+A manifest, a rules file, one entry in `_IN_PROCESS`, one file in the probe tree, one name in
+the plugin-set assertion. **Nothing in `packaging/`** — because the spec was taught to find
+in-process readers earlier the same day — nothing in `walk.py`, nothing above the graph, and
+no new key in the detector grammar. `LANGUAGES.md` says so with the list now complete rather
+than hopeful.

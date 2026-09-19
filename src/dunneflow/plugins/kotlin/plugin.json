@@ -1,0 +1,31 @@
+{
+  "lang": "kotlin",
+  "display": "Kotlin",
+  "version": "1.0.0",
+  "protocol": 1,
+  "schema_version": 14,
+  "rules": "kotlin.yaml",
+  "in_process": true,
+  "reader": "extractors/kotlin",
+  "receiver_words": ["this"],
+  "supplies_edges": false,
+  "reports_literals": true,
+  "discovery": {
+    "suffixes": [".kt", ".kts"],
+    "skip_dirs": [
+      "build",
+      ".gradle",
+      ".idea",
+      "generated",
+      "out",
+      "captures"
+    ],
+    "skip_names": ["build.gradle.kts", "settings.gradle.kts"],
+    "test_dirs": ["test", "tests", "androidTest", "testFixtures", "sharedTest"],
+    "test_name_suffixes": ["Test.kt", "Tests.kt", "Spec.kt"],
+    "test_stem_prefixes": [],
+    "test_stem_suffixes": [],
+    "test_stem_exact": []
+  },
+  "fingerprint": ["plugin.json"]
+}

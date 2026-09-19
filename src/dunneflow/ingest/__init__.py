@@ -49,7 +49,12 @@ from .contract import (
 from .contract import (
     stamp_lang as stamp_lang,  # re-exported: `ingest.stamp_lang` is where callers look
 )
-from .inprocess import InProcessPlugin, _extract_one, _extract_one_cpp
+from .inprocess import (
+    InProcessPlugin,
+    _extract_one,
+    _extract_one_cpp,
+    _extract_one_kotlin,
+)
 from .outofprocess import OutOfProcessPlugin
 
 # Settled at import, on `detectors/__init__.py`'s precedent and for its reason: an
@@ -65,7 +70,8 @@ PROTOCOL = 1
 # out of the manifest, and that is the whole difference between a plugin table and an
 # entry-point group: what may run in this process is decided by this file, which is in the
 # cache key and under test, and never by a name in a data file.
-_IN_PROCESS = {"python": _extract_one, "cpp": _extract_one_cpp}
+_IN_PROCESS = {"python": _extract_one, "cpp": _extract_one_cpp,
+               "kotlin": _extract_one_kotlin}
 
 
 def _rules(block: dict[str, Any], lang: str) -> DiscoveryRules:

@@ -110,10 +110,12 @@ Unlike the Windows chooser, this one **comes to the front on its own**.
 
 ## Which languages it reads, and the one thing you may have to install
 
-DunneFlow reads **Python**, **TypeScript** — `.ts`, `.tsx`, `.mts`, `.cts`, JSX and
-TSX included — and **C++**: `.cpp`, `.cc`, `.cxx`, `.hpp`, `.h`, `.inl` and their siblings.
+DunneFlow reads **Python**; **TypeScript** — `.ts`, `.tsx`, `.mts`, `.cts`, JSX and TSX
+included; **C++** — `.cpp`, `.cc`, `.cxx`, `.hpp`, `.h`, `.inl` and their siblings; and
+**Kotlin** — `.kt` and `.kts`.
 
-**Only one of the three needs anything installed.** Python and C++ DunneFlow reads itself.
+**Only one of the four needs anything installed.** Python, C++ and Kotlin DunneFlow reads
+itself.
 TypeScript it reads by asking TypeScript's own compiler, which needs **Node.js 20 or newer**
 on the machine.
 
@@ -123,21 +125,30 @@ what makes a tool either enormous or wrong. So the compiler that reads your Type
 the compiler TypeScript ships, and a name it resolves is a name *it* resolved and not one
 DunneFlow guessed at.
 
-**C++ is the exception, and it is worth knowing why before you read a C++ map.** The thing
-that already understands C++ is a compiler, and a compiler needs to know how your program is
-built — every include path and every defined symbol — before it will read a single file. Most
-large C++ trees cannot supply that without being built first. So DunneFlow reads C++ by
-*reading* it, without resolving anything, and what you get is honest about the difference:
+**C++ and Kotlin are read without a compiler, and it is worth knowing why before you read
+one of those maps.** For C++ the reason is that a compiler needs to know how your program is
+built — every include path and every defined symbol — before it will read a single file, and
+most large C++ trees cannot supply that without being built first. For Kotlin the compiler
+*could* be asked, and asking it would mean a Java runtime on every machine that reads a `.kt`
+file. Neither is read by guessing instead; both are read by *reading*, and what you get is
+honest about the difference:
 
 | It tells you | It does not tell you |
 |---|---|
 | every routine, and where its body is | which of three overloads a call meant |
 | what it touches — files, the environment, the network, a database | where a call goes inside your own program |
-| every loop, branch, guard and handler | what a macro expands to |
-| what it is called, and what a `UFUNCTION` registers with Blueprint | anything from a header it did not itself read |
+| every loop, branch, guard and handler | what a C++ macro expands to |
+| what registers it — a `UFUNCTION` with Blueprint, an `@AndroidEntryPoint` with Android | anything from a file it did not itself read |
 
-Calls in a C++ map are all **external**, and the run says so with a count rather than leaving
-you to notice. That is the tool being clear about what it did, not a setting to change.
+Calls in a C++ or Kotlin map are all **external**, and the run says so with a count rather
+than leaving you to notice. That is the tool being clear about what it did, not a setting to
+change.
+
+**One thing to expect in a Kotlin map in particular.** Kotlin's house style is
+`items.forEach { … }` rather than a `for` loop, and a collection operator is a *call* — so a
+per-element rate hidden inside one is not drawn as a loop, where the same rate written as a
+`for` is. The map is not wrong about it; it simply does not see it, and that is worth knowing
+before you read the Algorithms page of a Kotlin program.
 
 If Node is not there, DunneFlow says so before it reads anything:
 

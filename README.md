@@ -132,12 +132,14 @@ docs   ──► extract ──► docs.db  (SQLite) ─────────
 SQLite is the spine, not an export format — nothing holds the whole program in memory,
 and reachability is recursive SQL over indexed edges.
 
-**Three languages, and each is read by whatever understands it best.** Python is stdlib
-`ast` and `tokenize`; TypeScript is read by TypeScript's own compiler, out of process, so a
-name it resolves is one *it* resolved; C++ is read syntactically, in process, because most
-large C++ trees cannot tell a compiler how they are built without being built first — so a
-C++ map states what it touches and does not claim to know where a call goes. Documents are
-scanned by hand. No third-party parser in any of it.
+**Four languages, and each is read by whatever understands it best.** Python is stdlib
+`ast` and `tokenize`. TypeScript is read by TypeScript's own compiler, out of process, so a
+name it resolves is one *it* resolved. C++ and Kotlin are read syntactically, in process,
+for two different reasons: most large C++ trees cannot tell a compiler how they are built
+without being built first, and asking Kotlin's compiler would put a Java runtime inside a
+bundle whose whole dependency list is `pyyaml`. So a C++ or Kotlin map states what a program
+touches and does not claim to know where a call goes — and says so with a count rather than
+leaving it to be noticed. Documents are scanned by hand. No third-party parser in any of it.
 
 Teaching the tool a new framework is normally a config edit in `detectors/*.yaml`,
 not a code change.

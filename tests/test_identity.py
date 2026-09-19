@@ -14,6 +14,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from dunneflow.extractors.python.extract import extract_file
+from dunneflow.schema import definition_id
 from dunneflow.store import Store
 from dunneflow.walk import analyze_tree
 
@@ -159,3 +160,47 @@ def test_two_languages_in_one_directory_do_not_collide_on_an_id(tmp_path):
     settings = list(store.query("SELECT id FROM structures WHERE name = 'Setting'"))
     assert len({r["id"] for r in settings}) == len(settings) == 3
     store.close()
+
+
+def test_a_conditional_class_keeps_two_identities_rather_than_colliding(tmp_path):
+    """One name declared twice is ordinary Python, and it must not refuse the file.
+
+    Not a broken program: `REDEFINITION`'s blind spot has named this shape since it was
+    written — `if TYPE_CHECKING:`, a platform branch, a version branch — and CPython's own
+    standard library is full of it. `multiprocessing/context.py` declares `SpawnProcess`
+    under `if sys.platform != 'win32'` and again under `else`.
+
+    Routines have had `_identity`'s ordinal since the reader was written and structures had
+    none, which the store caught the only way it could: `UNIQUE constraint failed:
+    structures.id`, out of an analysis of Unreal, at the first of **213 files** in that tree
+    that declare one structure name twice.
+    """
+    src = (
+        "import sys\n\n"
+        "if sys.platform != 'win32':\n\n"
+        "    class SpawnProcess:\n"
+        "        method: str = 'fork'\n\n"
+        "else:\n\n"
+        "    class SpawnProcess:\n"
+        "        method: str = 'spawn'\n"
+    )
+    root = tmp_path / "cond"
+    root.mkdir()
+    (root / "context.py").write_text(src, encoding="utf-8")
+    facts = extract_file(root / "context.py", root)
+    assert not facts.errors, facts.errors
+
+    both = [s for s in facts.structures if s.name == "SpawnProcess"]
+    assert len(both) == 2, "a conditional definition is still a definition"
+    assert both[0].id != both[1].id, "colliding structures must keep distinct ids"
+
+    # The first keeps the plain two-part id, as an overload set's first declaration does.
+    assert both[0].id == definition_id("context.py", "context.SpawnProcess")
+
+    # And the count is the structures' own: a routine of that name must not push the first
+    # structure of it to `#2`, because they are rows in two tables and never collide.
+    (root / "mixed.py").write_text(
+        "def Thing() -> None:\n    pass\n\n\nclass Thing:\n    x: int = 1\n", encoding="utf-8")
+    mixed = extract_file(root / "mixed.py", root)
+    struct = next(s for s in mixed.structures if s.name == "Thing")
+    assert struct.id == definition_id("mixed.py", "mixed.Thing")

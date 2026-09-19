@@ -19285,3 +19285,69 @@ Two definitions of one **structure** name in one Python file still collide: `_id
 gives a routine an ordinal and the two `DataStructure` sites do not. TypeScript, C++ and
 Kotlin all carry it. Left out deliberately rather than folded into a change that was already
 discarding every map on disk; it is in `BACKLOG.md` with what would settle it.
+
+## 2026-09-19 — the residue filed that morning, hit by lunchtime
+
+`dunneflow analyze` on `UnrealEngine-release`, from the application, died on:
+
+```
+sqlite3.IntegrityError: UNIQUE constraint failed: structures.id
+```
+
+This is the residue the rule 106 entry above filed rather than fixed — *two definitions of
+one name in one Python file still collide, if they are structures* — and the argument for
+leaving it out was that rule 106 is about two **files** and folding a second defect into a
+change that was already discarding every map would be two things at once. That argument was
+sound and the estimate of how long it would keep was wrong: it cost Tom the next analysis he
+ran.
+
+### It is not a broken program, and that is the finding
+
+The blind spot on `REDEFINITION` has named this shape since it was written — *conditional
+definitions (`if TYPE_CHECKING:`, platform branches, try/except ImportError) legitimately
+define a name more than once and only one is ever live* — and CPython's own standard library
+is full of it. Measured over the tree rather than guessed at: **213 of Unreal's 11,565 Python
+files** declare one structure name twice.
+
+* `multiprocessing/context.py` — `SpawnProcess` and `SpawnContext`, once under
+  `if sys.platform != 'win32'` and once under `else`.
+* `ctypes/__init__.py` — `CFunctionType`, inside `CFUNCTYPE` and again inside `WINFUNCTYPE`.
+* `pip/_vendor/typing_extensions.py` and setuptools' copy — `Protocol`, on a version branch.
+
+Most of the 213 are test files and `DiscoveryRules.is_test` keeps those out of program
+source; the four above are not, and Unreal vendors Python four times over — Win64, WinArm64,
+Mac and Linux — so each is in the map four times.
+
+### The fix is the one the routines already had
+
+`_identity` has given a routine an ordinal among real duplicates since the reader was
+written. `_structure_identity` is the same three lines with **its own count**, which is the
+part worth stating: a routine and a structure of one name are rows in two tables and their
+ids never meet, so a shared counter would give the *first* structure of a name a `#2` on
+account of a routine — an ordinal that counts something the reader cannot see.
+
+**Only Python was wrong.** C++ keeps `seen` and `seen_records`, Kotlin keeps `seen` and
+`seen_types`, and TypeScript shares one map but keys structures under a `struct\0` prefix so
+the two never meet. Three readers had it right and the oldest one did not, which is the same
+shape as rule 106 itself.
+
+**And it was unreachable until this morning.** While an id was the name alone, a structure
+declared twice in one file collided with itself in any tree at all — and no corpus this tool
+had read carried one, because none of them vendors a standard library. Putting the file into
+the identity did not cause it; analysing a tree eleven thousand Python files wide did.
+
+### Gates
+
+**1,996 passed · 1 skipped**, mypy clean over 224 files, ruff clean. The golden is **7 of 7**
+against `GOLDEN-v2.txt` and 6 of 6 rekeyed against v1 — Society declares no structure name
+twice, so nothing there moves. The whole-tree scan that found the 213 reports **0 files with
+a colliding id** over the same 11,565.
+
+### Residue
+
+`ctypes/__init__.py` declares `CFunctionType` inside two different *functions*, and both come
+out as `ctypes.CFunctionType` — rule 10 is about a nested **function** carrying its enclosing
+scope in its qualname, and a class nested in a function does not. The ordinal makes them two
+identities, so nothing collides and nothing is lost; what is missing is that their qualnames
+do not say which factory each belongs to. Noticed here, not acted on, and not filed as a task
+until there is a reader who wants the answer.

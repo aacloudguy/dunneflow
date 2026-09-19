@@ -225,6 +225,13 @@ class _Extractor(ast.NodeVisitor):
         # A broken program may define one qualified name twice. Both keep an identity
         # of their own rather than merging, so the collision can be reported.
         self._seen_qualnames: dict[str, int] = {}
+        # **The same discipline for structures, and it is a separate count.** A routine and
+        # a structure of one name are rows in two tables and their ids never meet, so
+        # sharing the counter would give the *first* structure of a name a `#2` on account
+        # of a routine — an ordinal that counts something the reader cannot see. Had this
+        # for routines since it was written and not for structures, which cost an analysis
+        # of Unreal outright: `UNIQUE constraint failed: structures.id`.
+        self._seen_structures: dict[str, int] = {}
 
         self.control: list[ControlPoint] = []
         self.control_arms: list[ControlArm] = []
@@ -261,6 +268,28 @@ class _Extractor(ast.NodeVisitor):
         """
         n = self._seen_qualnames.get(qualname, 0)
         self._seen_qualnames[qualname] = n + 1
+        return definition_id(self.path, qualname, n + 1)
+
+    def _structure_identity(self, qualname: str) -> str:
+        """`_identity` for a data structure, and the same rule for the same reason.
+
+        **One qualified name declared twice is ordinary Python, not a broken program.** The
+        `REDEFINITION` detector has named the shape in its blind spot since it was written —
+        conditional definitions under `if TYPE_CHECKING:`, a platform branch, a version
+        branch — and CPython's own standard library is full of them: `multiprocessing/
+        context.py` declares `SpawnProcess` under `if sys.platform != 'win32'` and again
+        under `else`, and `ctypes/__init__.py` declares `CFunctionType` inside two different
+        factory functions. Every one of those is one name and two declarations, and only one
+        is ever live.
+
+        Routines have been given an ordinal for this since the reader was written. Structures
+        were not, and it was not reachable while the id held no file — so it surfaced the
+        first time somebody analysed a tree carrying a vendored Python: **213 of Unreal's
+        11,565 Python files** mint two structures with one name, and the analysis died on the
+        first of them. The store is right to refuse; the reader was wrong to hand it two.
+        """
+        n = self._seen_structures.get(qualname, 0)
+        self._seen_structures[qualname] = n + 1
         return definition_id(self.path, qualname, n + 1)
 
     def module_scope(self) -> Routine:
@@ -459,7 +488,7 @@ class _Extractor(ast.NodeVisitor):
             return False
 
         self.structures.append(DataStructure(
-            id=definition_id(self.path, f"{self.module}.{name}"),
+            id=self._structure_identity(f"{self.module}.{name}"),
             name=name,
             kind=StructureKind.TYPE_ALIAS,
             module=self.module,
@@ -670,8 +699,8 @@ class _Extractor(ast.NodeVisitor):
             if doc:
                 annots.extend(mine_annotations(doc, node.lineno))
             self.structures.append(DataStructure(
-                id=definition_id(self.path,
-                                 ".".join([self.module, *self._class, node.name])),
+                id=self._structure_identity(
+                    ".".join([self.module, *self._class, node.name])),
                 name=node.name,
                 kind=kind or StructureKind.CLASS,
                 module=self.module,

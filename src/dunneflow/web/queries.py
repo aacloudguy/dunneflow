@@ -634,6 +634,15 @@ WHERE r.id = :id
 # reaches. `first` gives the card one name to show beside the count, taken by
 # salience so the one shown is the one that mattered most to the detector.
 #
+# **Every `first` here orders on the column it is selecting, and that is rule 66 rather
+# than tidiness.** `LIMIT 1` over `(salience, line)` looks decided and is not: two
+# comprehensions written on one line are two boundaries at one salience and one line, so
+# the card said `*.md` in one row order and `*` in the other. The remedy is rule 105's --
+# a **total** key, not a better probe -- and the column being shown is what makes it
+# total, because two rows that agree on it give one answer whichever is picked. Found by
+# `tools/ordering.py` on 2026-09-19 after rule 106 moved every id and the probe's own
+# tiebreak handed it a different routine to ask about.
+#
 # **A boundary already named by a more specific record on the same line is not
 # counted again.** This was found by looking at the card rather than by any test:
 # `write_spec_seal_atomic` showed three tables *and* "DATABASE 20", which reads as
@@ -657,7 +666,7 @@ HOVER_BOUNDARY_KINDS = """
 SELECT kind, COUNT(*) AS n,
        (SELECT b2.target FROM boundaries b2
          WHERE b2.routine_id = :id AND b2.kind = b.kind AND b2.target <> ''
-         ORDER BY b2.salience DESC, b2.line LIMIT 1) AS first
+         ORDER BY b2.salience DESC, b2.line, b2.target LIMIT 1) AS first
 FROM boundaries b
 WHERE b.routine_id = :id
   AND NOT EXISTS (SELECT 1 FROM sql_ops s
@@ -699,7 +708,7 @@ HOVER_SQL_UNTABLED = """
 SELECT direction AS kind, COUNT(*) AS n,
        (SELECT s2.operation FROM sql_ops s2
          WHERE s2.routine_id = :id AND s2.tbl = '' AND s2.direction = s.direction
-         ORDER BY s2.line LIMIT 1) AS first
+         ORDER BY s2.line, s2.operation LIMIT 1) AS first
 FROM sql_ops s
 WHERE s.routine_id = :id AND s.tbl = ''
 GROUP BY direction
@@ -711,7 +720,7 @@ SELECT protocol AS kind, COUNT(*) AS n,
        (SELECT n2.destination FROM net_calls n2
          WHERE n2.routine_id = :id AND n2.protocol = n.protocol
                AND n2.destination <> ''
-         ORDER BY n2.line LIMIT 1) AS first
+         ORDER BY n2.line, n2.destination LIMIT 1) AS first
 FROM net_calls n
 WHERE n.routine_id = :id
 GROUP BY protocol
@@ -721,7 +730,7 @@ ORDER BY n DESC, protocol
 HOVER_ARTEFACTS = """
 SELECT COUNT(DISTINCT name) AS n,
        (SELECT a2.name FROM artefacts a2 WHERE a2.routine_id = :id
-         ORDER BY a2.line LIMIT 1) AS first
+         ORDER BY a2.line, a2.name LIMIT 1) AS first
 FROM artefacts a
 WHERE a.routine_id = :id
 """
@@ -796,15 +805,17 @@ HOVER_BOUNDARY_NODE = """
 SELECT COUNT(*) AS hits, COUNT(DISTINCT routine_id) AS callers,
        (SELECT b2.direction FROM boundaries b2
          WHERE b2.kind = :kind AND COALESCE(b2.target,'') = COALESCE(:target,'')
-         ORDER BY b2.salience DESC LIMIT 1) AS direction
+         ORDER BY b2.salience DESC, b2.direction LIMIT 1) AS direction
 FROM boundaries b
 WHERE b.kind = :kind AND COALESCE(b.target,'') = COALESCE(:target,'')
 """
 
 HOVER_ARTEFACT_NODE = """
 SELECT COUNT(*) AS mentions, COUNT(DISTINCT routine_id) AS namers,
-       (SELECT a2.ext FROM artefacts a2 WHERE a2.name = :name LIMIT 1) AS ext,
-       (SELECT a2.kind FROM artefacts a2 WHERE a2.name = :name LIMIT 1) AS akind
+       (SELECT a2.ext FROM artefacts a2 WHERE a2.name = :name
+         ORDER BY a2.ext LIMIT 1) AS ext,
+       (SELECT a2.kind FROM artefacts a2 WHERE a2.name = :name
+         ORDER BY a2.kind LIMIT 1) AS akind
 FROM artefacts a
 WHERE a.name = :name
 """

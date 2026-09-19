@@ -59,6 +59,8 @@ from ...schema import (
     StructureKind,
     call_site_id,
     control_point_id,
+    definition_id,
+    entrypoint_id,
     hash_source,
     make_id,
     stored_path,
@@ -251,10 +253,15 @@ class _Extractor(ast.NodeVisitor):
     # -- scope ------------------------------------------------------------- #
 
     def _identity(self, qualname: str) -> str:
-        """A stable id for a qualified name, disambiguating any real duplicate."""
+        """A stable id for a qualified name in this file, disambiguating a real duplicate.
+
+        The counter is per file because the identity is (`schema.definition_id`, rule 106):
+        two files cannot reach the same ordinal for the same name, so nothing has to be
+        counted across them.
+        """
         n = self._seen_qualnames.get(qualname, 0)
         self._seen_qualnames[qualname] = n + 1
-        return make_id(qualname) if n == 0 else make_id(qualname, f"#{n + 1}")
+        return definition_id(self.path, qualname, n + 1)
 
     def module_scope(self) -> Routine:
         """The routine module-level code belongs to, **prepared and not claimed**.
@@ -274,7 +281,7 @@ class _Extractor(ast.NodeVisitor):
         """
         if self._module_routine is None:
             self._module_routine = Routine(
-                id=make_id(f"{self.module}.{MODULE_SCOPE}"),
+                id=definition_id(self.path, f"{self.module}.{MODULE_SCOPE}"),
                 name=MODULE_SCOPE,
                 qualname=f"{self.module}.{MODULE_SCOPE}",
                 module=self.module,
@@ -452,7 +459,7 @@ class _Extractor(ast.NodeVisitor):
             return False
 
         self.structures.append(DataStructure(
-            id=make_id(f"{self.module}.{name}"),
+            id=definition_id(self.path, f"{self.module}.{name}"),
             name=name,
             kind=StructureKind.TYPE_ALIAS,
             module=self.module,
@@ -663,7 +670,8 @@ class _Extractor(ast.NodeVisitor):
             if doc:
                 annots.extend(mine_annotations(doc, node.lineno))
             self.structures.append(DataStructure(
-                id=make_id(".".join([self.module, *self._class, node.name])),
+                id=definition_id(self.path,
+                                 ".".join([self.module, *self._class, node.name])),
                 name=node.name,
                 kind=kind or StructureKind.CLASS,
                 module=self.module,
@@ -726,7 +734,7 @@ class _Extractor(ast.NodeVisitor):
                 for t in node.targets:
                     if isinstance(t, ast.Name):
                         self.cli_apps.append(CliApp(
-                            id=make_id("cliapp", f"{self.module}.{t.id}"),
+                            id=make_id("cliapp", self.path, t.id),
                             var=t.id,
                             module=self.module,
                             file=self.path,
@@ -1217,7 +1225,7 @@ class _Extractor(ast.NodeVisitor):
                 # argparse: `sub.add_parser("serve")` names a subcommand outright.
                 # There is no application object to mount, so record the command.
                 ep = Entrypoint(
-                    id=make_id("ep", f"{self.module}:{arg0.value}"),
+                    id=entrypoint_id(self.path, arg0.value),
                     kind=EntrypointKind.CLI,
                     name=arg0.value,
                     routine_id=None,
@@ -1301,7 +1309,7 @@ class _Extractor(ast.NodeVisitor):
             return
         name = _kwarg_str(inner, "name") or target.rsplit(".", 1)[-1]
         self.entrypoints.append(Entrypoint(
-            id=make_id("ep", f"{self.module}:{dec}:{name}"),
+            id=entrypoint_id(self.path, dec, name),
             kind=rule.kind,
             name=name,
             routine_id=None,
@@ -1482,7 +1490,7 @@ class _Extractor(ast.NodeVisitor):
             rule = self.rules.match_decorator(dec)
             if rule is not None:
                 self.entrypoints.append(Entrypoint(
-                    id=make_id("ep", routine.qualname),
+                    id=entrypoint_id(self.path, routine.qualname),
                     kind=rule.kind,
                     name=routine.name,
                     routine_id=routine.id,
@@ -1498,7 +1506,7 @@ class _Extractor(ast.NodeVisitor):
             )
             if kind is not None:
                 self.entrypoints.append(Entrypoint(
-                    id=make_id("ep", routine.qualname),
+                    id=entrypoint_id(self.path, routine.qualname),
                     kind=kind,
                     name=f"{routine.class_name}.{routine.name}",
                     routine_id=routine.id,
@@ -1514,7 +1522,7 @@ class _Extractor(ast.NodeVisitor):
             and routine.name in self.rules.entry_names
         ):
             self.entrypoints.append(Entrypoint(
-                id=make_id("ep", routine.qualname),
+                id=entrypoint_id(self.path, routine.qualname),
                 kind=EntrypointKind.MAIN,
                 name=routine.name,
                 routine_id=routine.id,
@@ -1698,7 +1706,7 @@ def extract_file(path: Path, root: Path, src: str | None = None) -> FileFacts:
                     target = candidate
                     break
         facts.entrypoints.append(Entrypoint(
-            id=make_id("ep", f"{module}:__main__"),
+            id=entrypoint_id(rel, "__main__"),
             kind=EntrypointKind.MAIN,
             name=f"python -m {module}",
             routine_id=target.id if target else None,

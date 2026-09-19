@@ -36,8 +36,8 @@ from ...schema import (
     Param,
     Routine,
     StructureKind,
+    definition_id,
     hash_source,
-    make_id,
 )
 from . import names
 from .ctx import Ctx
@@ -84,12 +84,12 @@ def _routine(ctx: Ctx, scope: Scope, seen: dict[str, int]) -> Routine:
     name = scope.name.rsplit(".", 1)[-1]
     enclosing = scope.enclosing_type()
 
-    key = make_id(ctx.path, qualname)
+    key = definition_id(ctx.path, qualname)
     n = seen.get(key, 0)
     seen[key] = n + 1
     # Overloads, and two declarations of one name. Kept as separate identities rather than
     # one silently replacing the other.
-    ident = key if n == 0 else make_id(ctx.path, qualname, f"#{n + 1}")
+    ident = definition_id(ctx.path, qualname, n + 1)
 
     header_line = ctx.line(scope.header[0].start) if scope.header else 1
     return Routine(
@@ -178,13 +178,13 @@ def _type(ctx: Ctx, scope: Scope,
     qualname = names.join(ctx.package, scope.qual_prefix())
     kind = (StructureKind.ENUM if "enum" in scope.modifiers
             else _STRUCTURE_KIND.get(scope.type_word, StructureKind.CLASS))
-    key = make_id(ctx.path, qualname)
+    key = definition_id(ctx.path, qualname)
     n = seen.get(key, 0)
     seen[key] = n + 1
     line = ctx.line(scope.header[0].start) if scope.header else 1
     bases = _bases(ctx, scope)
     struct = DataStructure(
-        id=key if n == 0 else make_id(ctx.path, qualname, f"#{n + 1}"),
+        id=definition_id(ctx.path, qualname, n + 1),
         name=scope.name,
         kind=kind,
         module=ctx.module,

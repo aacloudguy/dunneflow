@@ -36,7 +36,7 @@
  */
 
 import ts from "typescript";
-import { callSiteId, controlPointId, hashSource, makeId } from "./ids.js";
+import { callSiteId, controlPointId, definitionId, hashSource } from "./ids.js";
 import { dotted, isConstruction } from "./dotted.js";
 import {
   matchCall, matchNetwork, matchSubscript,
@@ -245,13 +245,13 @@ export class Extractor {
   identity(qualname: string): string {
     const n = this.seenQualnames.get(qualname) ?? 0;
     this.seenQualnames.set(qualname, n + 1);
-    return n === 0 ? makeId(qualname) : makeId(qualname, `#${n + 1}`);
+    return definitionId(this.path, qualname, n + 1);
   }
 
   moduleScope(): Routine {
     if (this.moduleRoutine === null) {
       this.moduleRoutine = {
-        id: makeId(`${this.module}.${MODULE_SCOPE}`),
+        id: definitionId(this.path, `${this.module}.${MODULE_SCOPE}`),
         name: MODULE_SCOPE,
         qualname: `${this.module}.${MODULE_SCOPE}`,
         module: this.module,

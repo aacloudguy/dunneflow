@@ -194,6 +194,27 @@ export function makeId(...parts: string[]): string {
   return blake2bHex(parts.join("\u0000"), 8);
 }
 
+/**
+ * `schema.definition_id`: a routine or a structure is the file it is in and its qualified
+ * name, with an ordinal among real duplicates.
+ *
+ * **The file is in it, and that is rule 106.** `moduleName` turns a path into a dotted name
+ * with the suffix dropped, and Python's reader does the same — so `probe.ts` and `probe.py`
+ * in one directory are both module `probe`, both declare `main`, and `probe.main` was one id
+ * in two languages. The host's docstring carries the reproduction.
+ *
+ * The ordinal counts from 1 and 1 is spelled by leaving the part off, so an overload set's
+ * first declaration keeps the plain two-part id.
+ */
+export function definitionId(file: string, qualname: string, ordinal = 1): string {
+  return ordinal === 1 ? makeId(file, qualname) : makeId(file, qualname, `#${ordinal}`);
+}
+
+/** `schema.entrypoint_id`: the file that declares a way in, and whatever names it there. */
+export function entrypointId(file: string, ...parts: string[]): string {
+  return makeId("ep", file, ...parts);
+}
+
 /** `schema.call_site_id`. The ordinal is the only discriminator that is not a position. */
 export function callSiteId(callerId: string, calleeExpr: string, ordinal: number): string {
   return makeId("site", callerId, calleeExpr, String(ordinal));

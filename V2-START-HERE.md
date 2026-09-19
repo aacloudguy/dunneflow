@@ -16,8 +16,8 @@ been rewritten yet. Where they describe the tool they are accurate; where they d
 | `CLAUDE.md` | the standing orders — **binding**, and the rules index. **Cut back to an index on 2026-09-18**, 2,241 lines to 458; what left is in the four files below. |
 | `ARCHITECTURE.md` · `PACKAGING.md` | what each module owns and what each surface answers; and the frozen application. Read the entry for a module before working in it. |
 | `GROUND-TRUTH.md` · `LANGUAGES.md` | the corpora and what each reproduces; and what it costs to teach this tool a new language. |
-| `RULES.md` · `DESIGN-RULES.md` | carried over **verbatim, numbering intact**. The numbers are addresses: never reused, never renumbered, never closed up. **v2 continues at engineering rule 106, and design rule 32** — 95 is the fingerprint's blind spot, 96 the record minted on demand, 97 the bundled program that does not carry the files it reads, 98 the detector handed a population it was never shown, 99 the name that is relative to the root that declared it, 100 the judge that picks one of several true answers by the order it was written in (all six 2026-09-17), 101 the route that is not a branch and 102 the sentence about an order that has none (both 2026-09-18), 103 the path that is not a key until it is canonical and 104 the slot claimed before the thing that holds it exists (both 2026-09-18), 105 the order taken over a set that a row-reversal probe cannot see (2026-09-18), and **design rule 31**, the panel pinned to an edge that grows away from it. A rule is never closed; 95's `sql.py` gap was shut by chunk 6 and the general remedy it names is not built. |
-| `BACKLOG.md` | **what this tree owes** — four open items and eleven stated residues, each with where it came from, why it was not done, and what would settle it. Nothing in it is scheduled by the plan; all fourteen chunks are done. |
+| `RULES.md` · `DESIGN-RULES.md` | carried over **verbatim, numbering intact**. The numbers are addresses: never reused, never renumbered, never closed up. **v2 continues at engineering rule 107, and design rule 32** — 95 is the fingerprint's blind spot, 96 the record minted on demand, 97 the bundled program that does not carry the files it reads, 98 the detector handed a population it was never shown, 99 the name that is relative to the root that declared it, 100 the judge that picks one of several true answers by the order it was written in (all six 2026-09-17), 101 the route that is not a branch and 102 the sentence about an order that has none (both 2026-09-18), 103 the path that is not a key until it is canonical and 104 the slot claimed before the thing that holds it exists (both 2026-09-18), 105 the order taken over a set that a row-reversal probe cannot see (2026-09-18), 106 the identity that is only unique inside one language's naming (2026-09-19, and the one that discarded every stored map), and **design rule 31**, the panel pinned to an edge that grows away from it. A rule is never closed; 95's `sql.py` gap was shut by chunk 6 and the general remedy it names is not built. |
+| `BACKLOG.md` | **what this tree owes** — four open items and twelve stated residues, each with where it came from, why it was not done, and what would settle it. Nothing in it is scheduled by the plan; all fourteen chunks are done. |
 | `PERFORMANCE.md` | v1's figures. **Every one of them was measured on v1** and none has been reproduced here — do not restate one as though it had been (rule 24). |
 
 ## The four decisions, already taken
@@ -434,13 +434,33 @@ been rewritten yet. Where they describe the tool they are accurate; where they d
 
 ## The gate everything is measured against
 
-`output/GOLDEN-v1.txt` holds row counts, distributions, and **seven identity digests** —
-sorted `routines.id`, `structures.id`, `entrypoints.id`, `calls.site_id`,
-`control.point_id`, plus body hashes and resolved-call tuples.
+**The live baseline is `output/GOLDEN-v2.txt` and has been since 2026-09-19.**
+`output/GOLDEN-v1.txt` is a dated record of what v1 read and is never rewritten; every one
+of the five identity digests in it moved when rule 106 put the file into a definition's
+identity, and none of them will reproduce again. A fresh graph compared against it reports
+five MOVED, correctly and for ever. The v2 report is compared for **all seven** digests,
+because `tools/golden.py` wrote both sides of that comparison — so the two holdbacks whose
+v1 statement was lost do not arise.
 
-`make_id` is derived from names and never from positions, so **while `extractors/python/`
-is unchanged, every one of those digests must stay byte-identical.** Not "the counts should
-match" — a total can hold while its contents swap.
+Both reports hold row counts, distributions, and **seven identity digests** — sorted
+`routines.id`, `structures.id`, `entrypoints.id`, `calls.site_id`, `control.point_id`, plus
+body hashes and resolved-call tuples.
+
+`definition_id` is derived from a file and a name and never from a position, so **while the
+readers are unchanged, every one of those digests must stay byte-identical.** Not "the
+counts should match" — a total can hold while its contents swap.
+
+**And a digest cannot tell a re-keying from a change of facts**, which is the position rule
+106 put this gate in: every digest is taken *over* the thing that moved. `--rekeyed`
+projects each table onto its facts and none of its ids, and that is the comparison the
+change was taken on — against `output/mensores-v1/`, v1's own graph read by v1, **all six
+projections byte-identical while all five identity digests moved**. The pair is the gate;
+neither half says it alone.
+
+```bash
+uv run python tools/golden.py <new.db> --against output/GOLDEN-v2.txt   # 7 of 7
+uv run python tools/golden.py output/mensores-v1/graph@*.db --rekeyed <new.db>
+```
 
 **The script is `tools/golden.py`**, written 2026-09-17, because the one this file used to
 point at — "recorded in `HANDOFF.md`'s v2 entries" — was never written, so the gate could be
@@ -459,6 +479,9 @@ original's and not a second convention that happens to be self-consistent.
 uv run python tools/golden.py output/mensores-v1/graph@*.db --against output/GOLDEN-v1.txt
 uv run python tools/golden.py <v1.db> <v2.db>    # the gate: all seven, both sides computed here
 ```
+
+That paragraph is about `GOLDEN-v1.txt` and stays true of it. What changed is which report
+is the baseline, not how the script serialises one.
 
 Two of the baseline's figures reproduce numbers written in `CLAUDE.md` exactly — 43,926 call
 arguments over 30,544 call sites, and 9,625 control points — which is what says the baseline

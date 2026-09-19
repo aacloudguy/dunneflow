@@ -280,7 +280,7 @@ def test_the_probe_file_reads_as_a_whole_program():
     nothing it exists to refuse (rule 37).
     """
     root = Path(__file__).resolve().parent / "fixtures" / "polyglot"
-    f = extract_file(root / "kotlin_probe.kt", root)
+    f = extract_file(root / "probe.kt", root)
     assert f.errors == []
     assert [r.qualname for r in f.routines] == [
         "probe.loadConfig", "probe.root", "probe.main"]

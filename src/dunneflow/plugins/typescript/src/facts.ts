@@ -22,7 +22,7 @@
  */
 
 /** `schema.SCHEMA_VERSION`. A plugin declaring another number is refused by name. */
-export const SCHEMA_VERSION = 14;
+export const SCHEMA_VERSION = 15;
 
 export type ArmKind = "if" | "elif" | "else" | "else if" | "case" | "default" | "try" | "except" | "catch" | "finally" | "for" | "while" | "do";
 

@@ -27,8 +27,8 @@ from ...schema import (
     FileFacts,
     ImportRec,
     Routine,
+    entrypoint_id,
     hash_source,
-    make_id,
     stored_path,
 )
 from . import calls as calls_mod
@@ -178,7 +178,7 @@ def _entrypoints(ctx: Ctx, rules: RuleSet, rs: list[Routine]) -> list[Entrypoint
     for r in rs:
         if r.name in rules.entry_names and not r.is_method:
             out.append(Entrypoint(
-                id=make_id(ctx.path, r.qualname, "main"),
+                id=entrypoint_id(ctx.path, r.qualname, "main"),
                 kind=EntrypointKind.MAIN, name=r.name, routine_id=r.id,
                 module=ctx.module,
                 evidence=f"{r.name}() at {ctx.path}:{r.line_start}", declared=False))
@@ -197,7 +197,7 @@ def _entrypoints(ctx: Ctx, rules: RuleSet, rs: list[Routine]) -> list[Entrypoint
                 continue
             target = by_qualname.get(qual)
             out.append(Entrypoint(
-                id=make_id(ctx.path, qual, rule.kind.value),
+                id=entrypoint_id(ctx.path, qual, rule.kind.value),
                 kind=rule.kind, name=qual.rsplit(".", 1)[-1],
                 routine_id=target.id if target is not None else None,
                 module=ctx.module, evidence=rule.evidence or ", ".join(decs),

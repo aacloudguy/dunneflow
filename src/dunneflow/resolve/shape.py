@@ -607,6 +607,16 @@ def outline(store: Store, routine_id: str) -> list[Point]:
     Ordered by where each point starts, and by the *widest* first where two start on the
     same line -- a `for x in [y for y in z]` is a loop containing a comprehension, and
     the containing one has to be drawn first for the nesting to read at all.
+
+    **And by `point_id` after that, because those two are not a total key** (rules 66 and
+    105). Two comprehensions written on one line have the same start and the same extent,
+    so the pair ties outright and the ribbon drew them in whatever order the rows happened
+    to be in. `point_id` is `make_id("control", routine, kind, header, ordinal)` -- derived
+    from what the point *is*, so it separates every pair and separates them the same way in
+    every process. Found by `tools/ordering.py` on 2026-09-19, and only because rule 106
+    moved every id: the probe picks the busiest routine and breaks its own tie on
+    `caller_id`, so re-keying the map changed which routine it asked about and the new one
+    had two spans on one line. The defect was a year old and the pick had been hiding it.
     """
     moves = moves_in_routine(store, routine_id)
     calls = sorted(int(r["line"]) for r in store.query(
@@ -628,7 +638,7 @@ def outline(store: Store, routine_id: str) -> list[Point]:
     for r in store.query(
         "SELECT c.*, COALESCE(r.qualname,'') AS qualname, COALESCE(r.module,'') AS module"
         " FROM control c LEFT JOIN routines r ON r.id = c.routine_id"
-        " WHERE c.routine_id = ? ORDER BY c.line_start, c.line_end DESC",
+        " WHERE c.routine_id = ? ORDER BY c.line_start, c.line_end DESC, c.point_id",
         (routine_id,),
     ):
         lo, hi = int(r["line_start"]), int(r["line_end"])

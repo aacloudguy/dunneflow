@@ -139,9 +139,10 @@ def module_routine(ctx: Ctx) -> Routine:
     `routines` otherwise — the shape `FileFacts.module_scope` documents, and the one that
     stops a file with a stray string at the top from growing a routine nobody wrote.
     """
-    from ...schema import make_id
+    from ...schema import definition_id
     return Routine(
-        id=make_id(f"{ctx.path}\x00<module>"),
+        id=definition_id(
+            ctx.path, f"{ctx.module}.<module>" if ctx.module else "<module>"),
         name="<module>",
         qualname=f"{ctx.module}.<module>" if ctx.module else "<module>",
         module=ctx.module,

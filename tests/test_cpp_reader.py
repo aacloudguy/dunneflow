@@ -330,7 +330,7 @@ def test_the_probe_file_reads_as_a_whole_program():
     (rule 37).
     """
     root = Path(__file__).resolve().parent / "fixtures" / "polyglot"
-    facts = extract_file(root / "cpp_probe.cpp", root)
+    facts = extract_file(root / "probe.cpp", root)
     assert facts.errors == []
     assert [r.qualname for r in facts.routines] == ["probe.LoadConfig", "main"]
     assert [e.kind.value for e in facts.entrypoints] == ["MAIN"]

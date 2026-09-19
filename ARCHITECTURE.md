@@ -397,6 +397,16 @@ queries know a language exists.
   holds no position, like every other id here: an ordinal among identical expressions in
   the same caller, with the residue stated in the docstring rather than hidden.
 
+  **Every id a reader mints is one of four functions here, and no reader spells one
+  itself.** `definition_id(file, qualname[, ordinal])` for a routine or a structure,
+  `entrypoint_id(file, …)` for a way in, then `call_site_id` and `control_point_id`, which
+  are derived from a routine's. The file is in the first two and that is **rule 106**: a
+  qualified name is only unique inside one language's naming, so `probe.py` and `probe.ts`
+  in one directory were module `probe` twice and `probe.main` was one id in two languages —
+  a tree that could not be analysed at all. `plugins/typescript/src/ids.ts` is the one
+  deliberate second implementation, on the far side of a pipe where rule 51 cannot reach,
+  and it is pinned from both sides by a test.
+
   **A stored path is an identity too, which is why `stored_path` lives here** beside
   `make_id` — the one place a `path` or `file` column is spelled, and every writer passes
   through it (rule 51). Rule 60 made those paths relative because an absolute one names one

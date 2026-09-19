@@ -1,8 +1,9 @@
 # The probe tree the fingerprint gate reads
 
-**Not a test fixture in the usual sense.** Nothing asserts what is in these files; what the
-gate needs is that every reader this build registers finds *something here to read*, so that
-its stamp is compared against a real map rather than against nothing (rule 37).
+**It answers two questions, and it was written for the first.** The gate needs every reader
+this build registers to find *something here to read*, so that its stamp is compared against a
+real map rather than against nothing (rule 37). Since 2026-09-19 it is also the corpus rule
+106 was minted from — see the last section, which is the reason the four files share a stem.
 
 `tools/fingerprints.py` points here by default. It used to point at `src/dunneflow`, which
 was the right answer for exactly as long as the languages this tool reads were the languages
@@ -19,19 +20,24 @@ about if they are going to.
 
 Adding a language means adding a file here. The test fails until you do.
 
-## Why the three files do not share a stem
+## Why the four files share a stem, which is the point
 
-They were `probe.py`, `probe.ts` and `probe.cpp`, and that tree **cannot be analysed**:
+They are `probe.py`, `probe.ts`, `probe.cpp` and `probe.kt` **deliberately**. For a day they
+could not be: named that way, this tree could not be analysed at all.
 
     sqlite3.IntegrityError: UNIQUE constraint failed: routines.id
 
 Python and TypeScript both derive a module name from the path with the suffix removed, so
-both files are module `probe`, both declare `main`, and `probe.main` is one id in two
-languages. It is a defect between the two readers that were here before C++ — the C++ reader
-puts the file in every identity and is immune — and it is in `BACKLOG.md` with this
-reproduction rather than fixed in passing, because the fix changes how an id is derived and
-that discards every stored map.
+both files were module `probe`, both declare `main`, and `probe.main` was one id in two
+languages. The stems were forced apart, the reproduction written down here, and the fix filed
+as `BACKLOG.md` item 6 — because it changes how an id is derived and that discards every
+stored map on every machine.
 
-So the stems differ, and the reason is written down instead of being a detail nobody can
-account for. `kotlin_probe.kt` joined them when Kotlin was registered, which is the rule
-this directory exists to enforce: the test fails until the new language has a file here.
+It was taken on 2026-09-19. A definition is keyed on **the file it is in** as well as its
+name (`schema.definition_id`, rule 106), so four files can share a stem, one module name, and
+a `main` apiece. Putting the stems back is what proves it: this tree is the smallest program
+that could not be read, and it is now read.
+
+`tests/test_identity.py` asserts that property against this directory, so the fixture is not
+only a probe for the fingerprint gate any more — it is also the corpus rule 106 was minted
+from. Adding a language means adding a file here, and it may share the stem.

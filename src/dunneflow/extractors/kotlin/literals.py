@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 
-from ...schema import LiteralKind, Routine, StringLiteral, make_id
+from ...schema import LiteralKind, Routine, StringLiteral, definition_id
 from .ctx import Ctx
 from .lexer import Span
 from .scopes import Scope
@@ -99,7 +99,7 @@ def module_routine(ctx: Ctx) -> Routine:
     demand is what invented 65 routines when the literal split was first made.
     """
     return Routine(
-        id=make_id(ctx.path, "<module>"),
+        id=definition_id(ctx.path, f"{ctx.module}.<module>" if ctx.module else "<module>"),
         name="<module>",
         qualname=f"{ctx.module}.<module>" if ctx.module else "<module>",
         module=ctx.module,

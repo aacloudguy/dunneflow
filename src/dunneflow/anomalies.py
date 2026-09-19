@@ -355,17 +355,18 @@ def _lang_clause(langs: list[str]) -> tuple[str, tuple[str, ...]]:
 def _name_collisions(store: Store, r: Report) -> None:
     where, params = _lang_clause(_shadowing_langs(store))
     for row in store.query(
-        "SELECT r.qualname AS qualname, COUNT(*) n, MIN(r.file) f"
+        "SELECT r.qualname AS qualname, f.lang AS lang, COUNT(*) n, MIN(r.file) f"
         "  FROM routines r JOIN files f ON r.file = f.path"
         f" WHERE r.name != '<module>' AND {where}"
-        " GROUP BY r.qualname HAVING n > 1 ORDER BY n DESC, r.qualname",
+        " GROUP BY f.lang, r.qualname HAVING n > 1 ORDER BY n DESC, f.lang, r.qualname",
         params,
     ):
         # **Every definition that collides, not the group.** The finding is that several
         # things share one name, so a single occurrence would name one arbitrarily -- the
         # same reason `MIN(file)` is kept out of the key just below.
         members = _routine_rows(
-            store, "WHERE name != '<module>' AND qualname = ?", (row["qualname"],))
+            store, "WHERE name != '<module>' AND qualname = ? AND lang = ?",
+            (row["qualname"], row["lang"]))
         r.add(Anomaly(
             kind="NAME_COLLISION", severity=BROKEN, confidence=CERTAIN,
             title=f"`{row['qualname']}` is defined {row['n']} times",
@@ -376,10 +377,10 @@ def _name_collisions(store: Store, r: Report) -> None:
                        "they are distinct and this is a naming defect in DunneFlow, "
                        "not in the program. Check whether the definitions sit inside "
                        "different functions.",
-            # Grouped by qualname, so the qualname is the key -- unique by construction.
-            # `f` is MIN(file) and is deliberately not here: it names one of the
-            # colliding definitions arbitrarily, and which one it names can move.
-            ident_parts=(row["qualname"],),
+            # Grouped by language and qualname, so the pair is the key -- unique by
+            # construction. `f` is MIN(file) and is deliberately not here: it names one of
+            # the colliding definitions arbitrarily, and which one it names can move.
+            ident_parts=(str(row["lang"]), row["qualname"]),
             subject=row["qualname"], file=row["f"], count=row["n"],
             occurrences=members,
         ))
@@ -388,17 +389,19 @@ def _name_collisions(store: Store, r: Report) -> None:
 def _redefinitions(store: Store, r: Report) -> None:
     where, params = _lang_clause(_shadowing_langs(store))
     for row in store.query(
-        "SELECT r.module AS module, r.name AS name, COUNT(*) n, MIN(r.file) f"
+        "SELECT r.module AS module, r.name AS name, f.lang AS lang, COUNT(*) n,"
+        "       MIN(r.file) f"
         "  FROM routines r JOIN files f ON r.file = f.path"
         f" WHERE r.name != '<module>' AND r.is_nested = 0 AND r.is_method = 0 AND {where}"
-        " GROUP BY r.module, r.name HAVING n > 1 ORDER BY n DESC, r.module, r.name",
+        " GROUP BY f.lang, r.module, r.name HAVING n > 1"
+        " ORDER BY n DESC, f.lang, r.module, r.name",
         params,
     ):
         members = _routine_rows(
             store,
             "WHERE name != '<module>' AND is_nested = 0 AND is_method = 0"
-            "  AND module = ? AND name = ?",
-            (row["module"], row["name"]))
+            "  AND module = ? AND name = ? AND lang = ?",
+            (row["module"], row["name"], row["lang"]))
         r.add(Anomaly(
             kind="REDEFINITION", severity=SUSPECT, confidence=CERTAIN,
             title=f"`{row['name']}` is defined {row['n']} times in one module",
@@ -407,10 +410,10 @@ def _redefinitions(store: Store, r: Report) -> None:
             blind_spot="Conditional definitions (`if TYPE_CHECKING:`, platform "
                        "branches, try/except ImportError) legitimately define a name "
                        "more than once and only one is ever live.",
-            # The GROUP BY key, both halves of it: the same name in two modules is two
-            # findings, and joining them into one string would be a key that cannot say
-            # which part is which.
-            ident_parts=(row["module"], row["name"]),
+            # The GROUP BY key, all three parts of it: the same name in two modules is
+            # two findings, and joining them into one string would be a key that cannot
+            # say which part is which.
+            ident_parts=(str(row["lang"]), row["module"], row["name"]),
             subject=f"{row['module']}.{row['name']}", file=row["f"], count=row["n"],
             occurrences=members,
         ))

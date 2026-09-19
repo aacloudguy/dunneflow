@@ -60,9 +60,44 @@ DIGESTS: tuple[tuple[str, str], ...] = (
 
 # The digests whose recorded v1 value this script reproduces. Named rather than counted, so
 # that a sixth one being recovered later is a line added here and not a number edited.
+#
+# **All five moved on 2026-09-19 and none of them will reproduce again.** Rule 106 put the
+# file into a definition's identity, so every id in every map is a different hash of the
+# same facts. This set is kept because it is what the *v1 report* can be compared for, and
+# `GOLDEN-v1.txt` is a dated record rather than a live baseline: a fresh graph compared
+# against it now reports five MOVED, correctly and for ever. `GOLDEN-v2.txt` is the live
+# baseline, it carries `TAKEN_HERE` below, and every one of its seven digests is comparable
+# because this script wrote both sides of that comparison.
 REPRODUCES = frozenset({
     "routines.id", "structures.id", "entrypoints.id", "calls.site_id", "control.point_id",
 })
+
+# The line a report written by this script carries, and the thing `--against` asks of a
+# report before deciding how much of it to trust. Not a version and not a date: the only
+# question is *did the statements below come from this file*, because two of the seven are
+# this file's own definitions and a report that predates it cannot answer for them.
+TAKEN_HERE = "# digests: all seven are this script's own statements"
+
+# What a map says when its keys are taken out of it — the check the rule 106 change was
+# made under, and the only one that can tell *re-keyed* from *changed*. Every column here
+# is a fact about the program; not one of them is an id, so two graphs of one tree agree
+# on all four across a change that moves every id, and disagree the moment extraction
+# does something different. A digest cannot do this job: it is keyed on the thing that
+# moved.
+REKEYED: tuple[tuple[str, str], ...] = (
+    ("routines", "SELECT qualname, name, module, file, line_start, line_end, lang,"
+                 "       body_hash FROM routines ORDER BY 1,2,3,4,5,6,7,8"),
+    ("structures", "SELECT name, kind, module, file, line, lang FROM structures"
+                   " ORDER BY 1,2,3,4,5,6"),
+    ("calls", "SELECT file, callee_expr, line, confidence, external, ambiguous, at_boundary"
+              "  FROM calls ORDER BY 1,2,3,4,5,6,7"),
+    ("boundaries", "SELECT file, kind, direction, target, line FROM boundaries"
+                   " ORDER BY 1,2,3,4,5"),
+    ("control", "SELECT file, kind, line_start, line_end, header, arms FROM control"
+                " ORDER BY 1,2,3,4,5,6"),
+    ("entrypoints", "SELECT kind, name, module, file, evidence FROM entrypoints"
+                    " ORDER BY 1,2,3,4,5"),
+)
 
 DISTRIBUTIONS: tuple[tuple[str, str], ...] = (
     ("boundaries kind/dir",
@@ -129,6 +164,7 @@ def take(path: Path, header: str = "") -> str:
         if header:
             out.append(f"# {header}")
         out.append(f"# graph: {path.name}")
+        out.append(TAKEN_HERE)
         out.append("")
         out.append("## row counts")
         for table in tables(conn):
@@ -197,6 +233,46 @@ def compare(left: dict[str, str], right: dict[str, str], left_name: str, right_n
     return 0
 
 
+def rekeyed(left: Path, right: Path) -> int:
+    """Are these two graphs the same program under different keys?
+
+    **The question `--against` cannot ask.** Every digest in this file is taken over ids, so
+    a change to how an id is derived moves all of them and says nothing whatever about
+    whether extraction still reads the same program. That is exactly the position rule 106
+    put this gate in on 2026-09-19: five of five digests moved by construction, and the only
+    thing that could distinguish *we re-keyed the map* from *we broke the reader* was a
+    comparison with the keys taken out.
+
+    So `REKEYED` projects each table onto its facts and none of its ids, and the two graphs
+    are compared column for column. Against `output/mensores-v1/` -- v1's own graph, read by
+    v1 -- all six agree, which is the statement the change was taken on.
+
+    It is not a replacement for the digests and does not want to be: two routines that swap
+    identities are invisible here and loud there. The pair is the gate.
+    """
+    a, b = _open(left), _open(right)
+    try:
+        moved = []
+        for label, sql in REKEYED:
+            da, _ = digest(a, sql)
+            db, rows = digest(b, sql)
+            if da == db:
+                print(f"same   {label:<12}{da}  ({rows:,} rows)")
+            else:
+                moved.append(label)
+                print(f"MOVED  {label:<12}{left.name}={da}  {right.name}={db}")
+        if moved:
+            print(f"\n{len(moved)} of {len(REKEYED)} projections differ, so these two graphs "
+                  f"are not one program under two keys — something extraction reads changed.")
+            return 1
+        print(f"\nall {len(REKEYED)} projections identical: the same facts, differently "
+              f"keyed.")
+        return 0
+    finally:
+        a.close()
+        b.close()
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(
         prog="golden", description="Take the golden for a graph, or compare two.")
@@ -204,7 +280,10 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("other", type=Path, nargs="?",
                    help="a second graph; the two are compared instead of printed")
     p.add_argument("--against", type=Path, default=None,
-                   help="a written report (output/GOLDEN-v1.txt) to compare against")
+                   help="a written report (output/GOLDEN-v2.txt) to compare against")
+    p.add_argument("--rekeyed", type=Path, default=None,
+                   help="a second graph: compare the two with every id taken out, which is"
+                        " what tells a re-keying from a change of facts")
     p.add_argument("--header", default="", help="the first line of a freshly taken report")
     p.add_argument("--adopt", action="store_true",
                    help="say which recorded digests this script reproduces, and which it redefines")
@@ -215,10 +294,19 @@ def main(argv: list[str] | None = None) -> int:
         right = _recorded(take(args.other))
         return compare(left, right, args.graph.name, args.other.name)
 
+    if args.rekeyed:
+        return rekeyed(args.graph, args.rekeyed)
+
     if args.against:
-        recorded = _recorded(args.against.read_text(encoding="utf-8"))
+        report = args.against.read_text(encoding="utf-8")
+        # **How much of the report to trust is the report's own claim**, not a flag and not
+        # a filename. A report this script wrote answers for all seven; `GOLDEN-v1.txt`
+        # predates it and answers for five, and since rule 106 those five all moved -- so
+        # comparing against it is a historical question and says so rather than failing
+        # silently at a different scope.
+        only = None if TAKEN_HERE in report else REPRODUCES
         taken = _recorded(take(args.graph))
-        return compare(recorded, taken, "recorded", "taken", only=REPRODUCES)
+        return compare(_recorded(report), taken, "recorded", "taken", only=only)
 
     if args.adopt:
         conn = _open(args.graph)

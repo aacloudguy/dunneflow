@@ -2277,3 +2277,54 @@ rule of that number — a blank canvas must say why it is blank — which does e
      The same shape is waiting anywhere a `sorted()` is handed a `set`, a `dict.keys()`
      intersection or a `frozenset` and given a key that does not separate every member —
      and none of it is visible to a probe that shuffles storage.
+
+106. **An identity assembled from names alone is only unique inside one language's
+     naming.**
+     A tree holding `probe.py` and `probe.ts` side by side could not be analysed at all:
+
+         sqlite3.IntegrityError: UNIQUE constraint failed: routines.id
+
+     Every reader derives a module name from the path with the suffix dropped, so both
+     files were module `probe`, both declared `main`, and `make_id("probe.main")` is one id
+     in two languages. The store is the only thing that noticed, and what it could say was
+     that a constraint failed.
+
+     **It is older than the language that found it.** Python and TypeScript had both been
+     here since chunk 9; no corpus happened to put two same-stemmed files of different
+     languages in one directory, because DunneNote and DunneCorp are TypeScript-shaped and
+     Society is Python. It surfaced while building the C++ reader's probe tree, and the C++
+     reader was immune by accident of a different fix — it puts the file in every identity,
+     because a C++ routine is a body and a body is in exactly one file. The remedy was
+     already written, in one of the four readers, for another reason.
+
+     **The discriminator is the file and not the language**, and the difference is the whole
+     of the rule. A `lang` part looks like the direct answer and closes only the case that
+     was reported: `probe.ts` and `probe.tsx` are one module in **one** reader, and would
+     collide exactly as before. A file is the smaller claim and the true one — a definition
+     is written down somewhere, once — so `schema.definition_id` is `(file, qualname[,
+     ordinal])` and `entrypoint_id` carries the file too.
+
+     **A file is not a position** (`make_id`). Where a definition lives survives everything
+     moving inside it; the line it sits on does not. Moving a routine between files reads as
+     a removal and an addition, which is what a rename already gets and for the same reason:
+     nothing in the source says the two are the same thing. What is in the id is the path
+     *inside the analysed tree*, never the one on this machine, or two checkouts of one
+     program would pair with nothing (rule 60).
+
+     **The cost was the point, and it was taken deliberately.** `make_id` is what every
+     stored map on every machine is keyed on, so this discards all of them, sealed snapshots
+     included (rules 25 and 62). What made it checkable is that a digest cannot tell a
+     re-keying from a change of facts — every digest is taken *over* the thing that moved.
+     `tools/golden.py --rekeyed` projects each table onto its facts and none of its ids, and
+     against the preserved v1 graph all six projections are byte-identical while all five
+     identity digests move. That pair of results is the evidence, and neither half says it
+     alone.
+
+     **And it moved a detector that had never been shown this population** (rule 98, the
+     fifth time). `NAME_COLLISION` and `REDEFINITION` group by qualname across every
+     language whose rules say a later definition shadows an earlier one — which was
+     unobservable while a tree like this could not be analysed. The first map ever made of
+     one reported `probe.main is defined 2 times` at BROKEN, out of the command a CI job
+     exits non-zero on, about two routines in two files in two languages. Both detectors
+     group by language now, which is what the comment above `_shadowing_langs` had said the
+     scope was since the day it was written.

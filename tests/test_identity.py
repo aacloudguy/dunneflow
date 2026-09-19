@@ -14,6 +14,8 @@ from __future__ import annotations
 from pathlib import Path
 
 from dunneflow.extractors.python.extract import extract_file
+from dunneflow.store import Store
+from dunneflow.walk import analyze_tree
 
 BASE = '''import os
 
@@ -82,11 +84,33 @@ def test_a_real_edit_is_visible_and_contained(tmp_path):
     )
 
 
-def test_identity_does_not_depend_on_the_file_path(tmp_path):
-    """The same module analysed from two checkouts must yield the same identities."""
+def test_identity_does_not_depend_on_where_the_tree_is(tmp_path):
+    """The same module analysed from two checkouts must yield the same identities.
+
+    **This is not in tension with rule 106**, and the distinction is the whole reason the
+    path a definition carries is `stored_path`'s and not the one on this machine. What is in
+    an id is where the file sits *inside the analysed tree*, which is a fact about the
+    program; where the tree sits is a fact about a laptop, and two checkouts of one program
+    must pair across it or nothing can be compared to anything (rule 60).
+    """
     a = _by_qualname(tmp_path, "checkout_one", BASE)
     b = _by_qualname(tmp_path, "checkout_two", BASE)
     assert {q: r.id for q, r in a.items()} == {q: r.id for q, r in b.items()}
+
+
+def test_identity_does_depend_on_where_the_file_is_in_the_tree(tmp_path):
+    """Rule 106's own half, stated so the test above cannot be read as denying it.
+
+    One file, one module name, two directories — and two identities, because a definition is
+    keyed on the file it is written in. Without it `probe.py` and `probe.ts` are one routine.
+    """
+    one = tmp_path / "one"
+    (one / "pkg").mkdir(parents=True)
+    (one / "m.py").write_text(BASE, encoding="utf-8")
+    (one / "pkg" / "m.py").write_text(BASE, encoding="utf-8")
+    top = {r.qualname: r for r in extract_file(one / "m.py", one).routines}
+    nested = {r.qualname: r for r in extract_file(one / "pkg" / "m.py", one).routines}
+    assert top["m.alpha"].id != nested["pkg.m.alpha"].id
 
 
 def test_duplicate_qualnames_keep_separate_identities(tmp_path):
@@ -102,3 +126,36 @@ def test_duplicate_qualnames_keep_separate_identities(tmp_path):
     assert len(same) == 2
     assert same[0].id != same[1].id, "colliding definitions must keep distinct ids"
     assert routines  # sanity
+
+
+# ------------------------------------------------------------------- rule 106 --- #
+
+def test_two_languages_in_one_directory_do_not_collide_on_an_id(tmp_path):
+    """The tree that could not be analysed at all, analysed — rule 106.
+
+    `tests/fixtures/polyglot/` holds `probe.py`, `probe.ts`, `probe.cpp` and `probe.kt`.
+    Every reader derives a module name from the path with the suffix dropped, so all four
+    are module `probe` and three of them declare `probe.main`. Keyed on the name alone that
+    is one id in three languages, and the store said so:
+
+        sqlite3.IntegrityError: UNIQUE constraint failed: routines.id
+
+    The stems were forced apart for a day and are back, because a fixture that avoids the
+    defect proves nothing about it. What is asserted is not *the ids differ* — a hash of
+    different inputs differs by construction — but that **the analysis completes and every
+    definition in it survives as itself**, which is what the collision took away.
+    """
+    root = Path(__file__).parent / "fixtures" / "polyglot"
+    store = Store(tmp_path / "g.db")
+    analyze_tree(root, store)
+
+    rows = list(store.query("SELECT id, qualname, lang FROM routines"))
+    assert len({r["id"] for r in rows}) == len(rows), "two definitions share one identity"
+
+    mains = sorted(r["lang"] for r in rows if r["qualname"] == "probe.main")
+    assert mains == ["kotlin", "python", "typescript"], (
+        "one module name, one routine name, three languages — all three must be here"
+    )
+    settings = list(store.query("SELECT id FROM structures WHERE name = 'Setting'"))
+    assert len({r["id"] for r in settings}) == len(settings) == 3
+    store.close()

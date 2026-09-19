@@ -83,36 +83,6 @@ now analysed as `gstack` and is the corpus to re-test against if one is ever fou
 the only tree to hand with a real `fetch` population, and the tool scores **29 of 29** on
 it with no false positives, so the direct case needs nothing.
 
-### 6 · Two languages in one directory can collide on a routine id
-
-*Found 2026-09-18, building the C++ reader's probe tree.*
-
-A tree holding `probe.py` and `probe.ts` side by side **cannot be analysed at all**:
-
-```
-sqlite3.IntegrityError: UNIQUE constraint failed: routines.id
-```
-
-Both readers derive a module name from the path with the suffix removed, so both files are
-module `probe`; both declare `main`; and `make_id` is derived from names, so `probe.main` is
-one id in two languages. Reproduced in three lines against `tests/fixtures/polyglot` before
-its files were given distinct stems.
-
-**It is older than the language that found it.** Python and TypeScript have both been here
-since chunk 9 and neither corpus happened to put two same-stemmed files of different
-languages in one directory — DunneNote and DunneCorp are TypeScript-shaped, Society is
-Python. The C++ reader is immune by accident of a different fix: it puts the file in every
-identity, because a C++ routine is a body and a body is in exactly one file.
-
-**Why not done.** The fix is to put the language, or the file, into a routine's identity, and
-`make_id` is what every stored map is keyed on — so it discards every graph on every machine,
-sealed snapshots included, and moves all seven golden digests. That is a deliberate,
-announced change and not something to do in passing while adding a language (rules 25 and 62).
-
-**What would settle it.** Deciding which discriminator is right — the file is the honest one
-and is what C++ already does — then taking the invalidation knowingly, with the golden
-baseline regenerated and the reason recorded beside it.
-
 ### 5 · Rule 95's general remedy
 
 *From chunk 6, 2026-09-17.*
@@ -135,7 +105,7 @@ that nobody spends a session rediscovering them and filing them as bugs.
 | | |
 |---|---|
 | **`node` is needed to verify the TypeScript stamp** | `tools/fingerprints.py` reads the stamp out of a map the binary *wrote*, which is what proves the stamp labels rows rather than merely being computable (rule 37). A machine without node gets a refusal naming it. Chunk 13. |
-| **The golden redefines two of its seven digests** | `routines.body` and `calls.resolved` record values whose statement was never written down and was not recovered by a bounded sweep. `tools/golden.py` redefines them explicitly and compares graph to graph. *We did not find it* is not *it is not there* (rule 24). Chunk 0. |
+| **`GOLDEN-v1.txt` redefines two of its seven digests, and is history now** | `routines.body` and `calls.resolved` record values whose v1 statement was never written down and was not recovered by a bounded sweep (rule 24, chunk 0). It stopped mattering on 2026-09-19: rule 106 moved all five of the digests that *did* reproduce, so the live baseline is `output/GOLDEN-v2.txt`, `tools/golden.py` wrote both sides of that comparison, and it is **7 of 7** with no holdbacks. The v1 report is kept as a dated record and compares for five, all of which now move. |
 | **DunneCorp's routines are two conventions by role** | PascalCase 88 against camelCase 79 — React components against ordinary functions. A language split does not touch it, and it stays a reported gap because that is the true answer. Open question 6. |
 | **DunneNote's modules stay a gap** | kebab 221, other 210. That tree really does spell module files three ways. Open question 6. |
 | **Next.js route segments read as `other`** | `app.(admin).admin.customers.[id].page`. Route syntax is not an identifier and stripping it would be guessing at a spelling. Open question 6. |
@@ -144,4 +114,5 @@ that nobody spends a session rediscovering them and filing them as bugs.
 | **A program that serves browser JavaScript as a string has calls this map cannot see** | `gstack`'s `getCookiePickerHTML(): string` returns an HTML page holding four `fetch` calls, and `design/src/compare.ts` another. Those requests really are made — from the browser, by code this program wrote — and the map says nothing about them. Correctly: a string is not code, which is rule 9's argument one direction over, and reading one would mean parsing every template literal in every language. Stated so the NETWORK count is read as *what this program calls*, never *what this program causes*. 2026-09-18. |
 | **`socket.emit` may be wrongly declared async** | `detectors/typescript.yaml` says `async: true`; `emit` is fire-and-forget in socket.io and `emitWithAck` is the awaitable one, so it is probably wrong beside `WebSocket` and `EventSource`, which were corrected. Left alone because **no map this tool has read holds a single `socket.emit`** and socket.io's types are in no corpus here, so there is nothing to check a change against. Asserting it from memory is what rule 24 forbids. 2026-09-18. |
 | **Rule 105's survey is a floor, not the population** | `tools/ordering.py --survey` lists the five `sorted()` calls whose input is *written as* a set and which take a `key=`. Unorderedness propagates, so a dict built by iterating a set and then sorted over its `.items()` is the same defect and is invisible to it — `web/changes.py` held two of each, and only the two written as set algebra are in the count. Catching the rest means following the provenance of a value, which is a different instrument. The reversal probe cannot see any of them. 2026-09-18. |
+| **Two definitions of one name in one Python file still collide, if they are structures** | `_identity` gives a routine an ordinal among real duplicates and has since it was written; Python's two `DataStructure` sites call `definition_id` with no ordinal, so `class Foo` written twice in one file is one id twice and the store refuses the file. TypeScript, C++ and Kotlin all carry the ordinal. Untouched by rule 106, which is about two *files*, and left out of it deliberately rather than folded into a change that was already discarding every map. Reproduced rather than reasoned: a file declaring `@dataclass class Foo` twice yields two structures and **one id**. What would settle it: a `seen` counter beside the routines' one, and that file as a fixture. 2026-09-19. |
 | **`PERFORMANCE.md` is v1's, except where it says otherwise** | Every figure above the v2 headings was measured on v1 and none has been reproduced in this tree. |

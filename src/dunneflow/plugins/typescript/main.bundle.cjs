@@ -211103,6 +211103,12 @@ function blake2bHex(text, outlen) {
 function makeId(...parts) {
   return blake2bHex(parts.join("\0"), 8);
 }
+function definitionId(file, qualname, ordinal = 1) {
+  return ordinal === 1 ? makeId(file, qualname) : makeId(file, qualname, `#${ordinal}`);
+}
+function entrypointId(file, ...parts) {
+  return makeId("ep", file, ...parts);
+}
 function callSiteId(callerId, calleeExpr, ordinal) {
   return makeId("site", callerId, calleeExpr, String(ordinal));
 }
@@ -211316,7 +211322,7 @@ function waysIn(rel, sf, rules2, routines, anchors) {
     if (rule.pages.has(base)) {
       const target = defaultExport(sf, anchors, byName);
       return [{
-        id: makeId("ep", `${rel}:${url}`),
+        id: entrypointId(rel, url),
         kind,
         name: url,
         routine_id: target?.id ?? null,
@@ -211330,7 +211336,7 @@ function waysIn(rel, sf, rules2, routines, anchors) {
       for (const verb of exportedNames(sf)) {
         if (!rule.verbs.has(verb)) continue;
         out.push({
-          id: makeId("ep", `${rel}:${verb} ${url}`),
+          id: entrypointId(rel, `${verb} ${url}`),
           kind,
           // The verb leads, because two files serving one path with different methods are
           // two ways in and the method is what tells them apart.
@@ -211508,12 +211514,12 @@ var Extractor = class {
   identity(qualname) {
     const n = this.seenQualnames.get(qualname) ?? 0;
     this.seenQualnames.set(qualname, n + 1);
-    return n === 0 ? makeId(qualname) : makeId(qualname, `#${n + 1}`);
+    return definitionId(this.path, qualname, n + 1);
   }
   moduleScope() {
     if (this.moduleRoutine === null) {
       this.moduleRoutine = {
-        id: makeId(`${this.module}.${MODULE_SCOPE}`),
+        id: definitionId(this.path, `${this.module}.${MODULE_SCOPE}`),
         name: MODULE_SCOPE,
         qualname: `${this.module}.${MODULE_SCOPE}`,
         module: this.module,
@@ -214049,12 +214055,12 @@ function resolveOne(checker, node, anchors) {
 }
 
 // src/facts.ts
-var SCHEMA_VERSION = 14;
+var SCHEMA_VERSION = 15;
 
 // src/main.ts
 var PROTOCOL = 1;
 var LANG = "typescript";
-var VERSION = "1.1.0";
+var VERSION = "1.2.0";
 var session = new Session();
 var rules = parseRules({});
 function send(frame) {

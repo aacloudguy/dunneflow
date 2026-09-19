@@ -57,7 +57,10 @@ def test_every_row_says_which_reader_produced_it(tmp_path):
     assert [r[2] for r in rows] == [want, want]
     # A version **and** a hash: the version is what the reader says it is, the hash is
     # what it is. A label alone does not move when somebody edits the bundle (rule 30).
-    assert want.startswith("1.0.0:") and len(want.split(":", 1)[1]) == 16
+    # The version is read off the manifest rather than spelled here: a literal would fail
+    # every time a reader is versioned, which is a test about nothing (rule 43).
+    declared = ingest.PLUGINS["python"].manifest.version
+    assert want.startswith(f"{declared}:") and len(want.split(":", 1)[1]) == 16
 
 
 def test_the_core_stamp_and_the_language_stamp_are_different_questions():

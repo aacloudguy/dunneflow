@@ -19170,3 +19170,118 @@ The 14 unbound interface methods are a *stated* limit, not a silence: `declared`
 the way in exists and the map does not claim where it lands. Binding them needs the
 information a C++ reader does not have — which class implements an interface — and guessing
 is what produced the 55.
+
+## 2026-09-19 — a definition carries its file, and every map on disk was discarded for it
+
+`BACKLOG.md` item 6, taken deliberately. A tree holding `probe.py` and `probe.ts` side by
+side could not be analysed at all:
+
+```
+sqlite3.IntegrityError: UNIQUE constraint failed: routines.id
+```
+
+Both readers derive a module name from the path with the suffix dropped, so both files were
+module `probe`, both declared `main`, and `make_id("probe.main")` was one id in two
+languages. **Rule 106**: an identity assembled from names alone is only unique inside one
+language's naming. `schema.definition_id` is `(file, qualname[, ordinal])` and
+`schema.entrypoint_id` carries the file too; all four readers pass through them, and
+`plugins/typescript/src/ids.ts` mirrors both on the far side of the pipe.
+
+### Why the file and not the language
+
+The language is the answer the symptom suggests and it closes only the case that was
+reported. `probe.ts` and `probe.tsx` are one module in **one** reader and would collide
+exactly as before, so a `lang` part would have bought a fix that survives until the next
+corpus. A file is the smaller claim and the true one — a definition is written down
+somewhere, once — and it was **already what C++ and Kotlin did**, for a different reason
+each. Three of the four readers were right by accident before this was a rule.
+
+A file is not a position (`make_id`): where a definition lives survives everything moving
+inside it. What goes in the id is the path *inside the analysed tree*, never this machine's,
+or two checkouts of one program would pair with nothing (rule 60) — `test_identity.py` now
+asserts both halves of that, because the test that says identity survives a checkout move
+reads as denying rule 106 unless the other one is beside it.
+
+### The proof is the fixture's own file names
+
+`tests/fixtures/polyglot/` exists because its files could not share a stem; the README
+recorded the reproduction and forced them apart. They are `probe.py`, `probe.ts`,
+`probe.cpp` and `probe.kt` again — four files, one module name, three `probe.main`s and a
+C++ `main`, three `Setting`s, all distinct. `tools/fingerprints.py` reads that tree, so the
+frozen build and the checkout now both prove themselves on the smallest program that could
+not be read.
+
+### What a digest cannot tell you, and what was built because of it
+
+Every digest in `tools/golden.py` is taken **over** the thing that moved, so all five that
+reproduced v1 moved by construction and said nothing whatever about whether extraction still
+reads the same program. `--rekeyed` is the comparison that can: six projections, each table
+onto its facts and none of its ids. Against `output/mensores-v1/` — v1's own graph, read by
+v1 — **all six are byte-identical**, while all five identity digests moved. Every row count
+and all five distributions diff clean against `GOLDEN-v1.txt` as well, the only differences
+being two tables and one meta key that did not exist in v1.
+
+`output/GOLDEN-v2.txt` is the live baseline and is **7 of 7**, because this script wrote both
+sides of that comparison — so the two holdbacks whose v1 statement was lost do not arise.
+`GOLDEN-v1.txt` is kept unedited as the dated record; a report says in its own header whether
+its digests are this script's, and `--against` asks that rather than being told by a flag.
+
+### Two defects the change made reachable, both older than it
+
+* **A false BROKEN out of the command a CI job trusts.** The first map ever made of a
+  mixed-stem tree reported `probe.main is defined 2 times` at BROKEN — two routines, two
+  files, two languages. `NAME_COLLISION` and `REDEFINITION` filtered their *population* to
+  the languages that declare `redefinition: shadows` and then grouped across all of them,
+  which is rule 98 for the fifth time and which the comment above `_shadowing_langs` had
+  already said was wrong: *a collision is between definitions in one language, because that
+  is the only scope in which the later one shadows the earlier means anything.* Both group by
+  language now. Zero BROKEN on the probe tree, and the cross-language `REDEFINITION` went
+  with it.
+* **A rule 66 tie a year old, found because the probe changed its mind.** `tools/ordering.py`
+  picks the busiest routine and breaks its own tie on `caller_id` — a hash — so re-keying the
+  map handed it a different routine, and that one had two comprehensions on one line.
+  `/api/shape` drew them in storage order (`ORDER BY c.line_start, c.line_end DESC` is not
+  total over two spans of one extent on one line) and `/api/hover` picked `first` the same
+  way. The remedy is rule 105's — a total key, not a better probe: `point_id` on the outline,
+  and each `first` subquery orders on the column it is selecting. Five more `LIMIT 1`s in
+  `queries.py` with no total order went with them.
+
+### The cost, taken knowingly
+
+`make_id` is what every stored map is keyed on, so this discarded all of them on every
+machine, sealed snapshots included (rules 25 and 62). `SCHEMA_VERSION` is **15** and the core
+stamp is `15:0646c5a29b5380cc`; all four readers were versioned and all four manifests moved
+to schema 15.
+
+**23 output directories were deleted rather than rebuilt** — 1.6 GB, Tom's call on a
+measurement: nine `mensores-*` held the identical 628-file · 4,823-routine analysis under
+nine chunk labels, and `av-ch12`, `treality-ch12` and `rain-ch12` held 0, 0 and 1 files,
+being chunk 12's refusal probes. Re-analysing any of them would put today's answer under a
+name that says chunk 6 (rule 24); their figures are in this file, which is the record.
+
+Rebuilt and current: `output/mensores` (Society at 03ebbd93, with `--standards`),
+`output/mensores-pair`, `output/mensores-wide` — its old side cloned fresh from
+`society-2026-08-26` at `origin/main`, **09b9ef11, 384 files, 2,148 routines**, the recorded
+figures exactly — `output/df-order`, `output/dunnenote`, and the six programs of
+`output/demo`.
+
+### Gates
+
+**1,995 passed · 1 skipped**, mypy clean over 224 files, ruff clean. Golden **7 of 7**
+against `GOLDEN-v2.txt` and 6 of 6 rekeyed against v1. The four executables reach
+**1,381 · 423 · 292 · 112** and conformance reads **4 checked · 1 nothing to check · 10 not
+checkable**. DunneNote comes back at 1,518 · 708 · 1,867 · 4 and DunneCorp at 36 ways in and
+291 internal calls, both the recorded figures. The frozen build agrees with the checkout on
+**all five stamps**, each opening the other's map, over the shared-stem probe tree. All three
+reversal probes clean — the map, the API, and the comparison lane's own pair.
+
+And the thing identity exists for, checked end to end: `/api/changes` on the rebuilt demo
+pair pairs 4,823 routines against 4,770 with exactly **53 unpaired**, which is the
+difference, and names `work_items` as the table that arrived.
+
+### Residue
+
+Two definitions of one **structure** name in one Python file still collide: `_identity`
+gives a routine an ordinal and the two `DataStructure` sites do not. TypeScript, C++ and
+Kotlin all carry it. Left out deliberately rather than folded into a change that was already
+discarding every map on disk; it is in `BACKLOG.md` with what would settle it.

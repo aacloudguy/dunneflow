@@ -31,8 +31,8 @@ from dunneflow.schema import (
     FileFacts,
     call_site_id,
     control_point_id,
+    definition_id,
     hash_source,
-    make_id,
 )
 
 LANG = "typescript"
@@ -240,8 +240,8 @@ def test_every_id_the_reader_minted_is_the_one_python_would_have(facts):
     """
     shop = facts["shop.ts"]
     by = _by_name(shop.routines)
-    assert by["save"].id == make_id("shop.Store.save")
-    assert by["load"].id == make_id("shop.load")
+    assert by["save"].id == definition_id("shop.ts", "shop.Store.save")
+    assert by["load"].id == definition_id("shop.ts", "shop.load")
     assert shop.content_hash == hash_source(SNIPPETS["shop.ts"])
 
     log = next(c for c in shop.calls if c.callee_expr == "console.log")
@@ -534,7 +534,7 @@ def test_an_overload_set_keeps_two_identities_rather_than_colliding():
     ids = [r.id for r in ff.routines]
     assert len(ids) == 3
     assert len(set(ids)) == 3, "two declarations of one name collapsed into one identity"
-    assert ids[0] == make_id("over.f"), "the first keeps the plain id"
+    assert ids[0] == definition_id("over.ts", "over.f"), "the first keeps the plain id"
 
 
 def test_a_bare_library_name_matches_exactly_and_never_as_a_prefix():

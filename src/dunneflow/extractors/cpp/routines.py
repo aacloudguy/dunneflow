@@ -56,8 +56,8 @@ from ...schema import (
     Param,
     Routine,
     StructureKind,
+    definition_id,
     hash_source,
-    make_id,
 )
 from . import names
 from .ctx import Ctx
@@ -147,13 +147,13 @@ def _routine(ctx: Ctx, scope: Scope, seen: dict[str, int]) -> Routine:
     # So there is no linkage question here at all. `Scope.is_internal` and a `static` check
     # were written for this and are gone with it: a distinction that decides nothing is a
     # constant that looks like a decision (rule 35).
-    key = make_id(ctx.path, qualname)
+    key = definition_id(ctx.path, qualname)
     n = seen.get(key, 0)
     seen[key] = n + 1
     # Two definitions of one name in one file -- overloads, or both arms of an `#ifdef`
     # read as live. Both are kept as separate identities rather than one replacing the
     # other, which is the mechanism Python's reader already uses for a colliding name.
-    ident = key if n == 0 else make_id(ctx.path, qualname, f"#{n + 1}")
+    ident = definition_id(ctx.path, qualname, n + 1)
 
     start = ctx.tok_line(scope.open_tok)
     end = ctx.tok_line(scope.close_tok) if scope.close_tok >= 0 else start
@@ -383,11 +383,11 @@ def _record(ctx: Ctx, scope: Scope,
     line = ctx.line(scope.header[0].start) if scope.header else ctx.tok_line(scope.open_tok)
     bases = _bases(scope.header)
     kind = _RECORD_KIND.get(scope.record_word, StructureKind.CLASS)
-    key = make_id(ctx.path, qualname or name)
+    key = definition_id(ctx.path, qualname or name)
     n = seen.get(key, 0)
     seen[key] = n + 1
     struct = DataStructure(
-        id=key if n == 0 else make_id(ctx.path, qualname or name, f"#{n + 1}"),
+        id=definition_id(ctx.path, qualname or name, n + 1),
         name=name,
         kind=kind,
         module=ctx.module,

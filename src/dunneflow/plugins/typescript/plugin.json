@@ -1,9 +1,9 @@
 {
   "lang": "typescript",
   "display": "TypeScript",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "protocol": 1,
-  "schema_version": 14,
+  "schema_version": 15,
   "rules": "typescript.yaml",
   "in_process": false,
   "entry": "main.bundle.cjs",

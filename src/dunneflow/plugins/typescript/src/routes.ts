@@ -34,7 +34,7 @@
  */
 
 import ts from "typescript";
-import { makeId } from "./ids.js";
+import { entrypointId } from "./ids.js";
 import type { Entrypoint, EntrypointKind, Routine } from "./facts.js";
 import type { RouteRule, RuleSet } from "./rules.js";
 
@@ -145,7 +145,7 @@ export function waysIn(
     if (rule.pages.has(base)) {
       const target = defaultExport(sf, anchors, byName);
       return [{
-        id: makeId("ep", `${rel}:${url}`),
+        id: entrypointId(rel, url),
         kind,
         name: url,
         routine_id: target?.id ?? null,
@@ -160,7 +160,7 @@ export function waysIn(
       for (const verb of exportedNames(sf)) {
         if (!rule.verbs.has(verb)) continue;
         out.push({
-          id: makeId("ep", `${rel}:${verb} ${url}`),
+          id: entrypointId(rel, `${verb} ${url}`),
           kind,
           // The verb leads, because two files serving one path with different methods are
           // two ways in and the method is what tells them apart.

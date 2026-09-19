@@ -41,7 +41,11 @@ from typing import Literal
 # 13: `SuppliedEdge` -- a reader whose toolchain resolves names says where a call goes.
 # 14: `Entrypoint.declared` and `target_kind` -- a way in read out of a manifest,
 #     said as fields rather than as a sentence somebody has to parse back.
-SCHEMA_VERSION = 14
+# 15: identity carries the file. A routine, a structure and a way in are keyed on the file
+#     they are written in as well as on their name (`definition_id`, rule 106). No column
+#     moved and no field was added: what changed is what every id in a map is made of, so
+#     every map written by 14 is discarded rather than read.
+SCHEMA_VERSION = 15
 
 
 # --------------------------------------------------------------------------- #
@@ -1129,6 +1133,52 @@ def make_id(*parts: str) -> str:
     """
     raw = "\x00".join(parts)
     return hashlib.blake2b(raw.encode("utf-8"), digest_size=8).hexdigest()
+
+
+def definition_id(file: str, qualname: str, ordinal: int = 1) -> str:
+    """Identity of one definition -- a routine or a data structure.
+
+    **The file is in it, and that is rule 106.** A qualified name is only unique inside one
+    language's way of naming things, and two languages in one directory do not share one.
+    `probe.py` and `probe.ts` are both module `probe`, both declare `main`, and `probe.main`
+    was one id in two languages -- so a tree holding them could not be analysed at all:
+
+        sqlite3.IntegrityError: UNIQUE constraint failed: routines.id
+
+    The discriminator is the **file** and not the language, because the language does not
+    close it: `probe.ts` and `probe.tsx` are one module in *one* reader, and a `lang` part
+    would leave that collision exactly where it was. A file is the smaller claim and the true
+    one -- a definition is written down somewhere, once.
+
+    It is not a position (`make_id`). A file is where a definition *lives*, which survives
+    everything moving inside it; a line is where it happens to sit today, which does not.
+    Moving a routine between files reads as a removal and an addition, which is the same
+    honesty a rename gets and for the same reason: nothing in the source says the two are
+    the same thing.
+
+    `ordinal` tells apart real duplicates -- an overload set, a name declared twice -- and is
+    the same discriminator, and the same stated residue, as `call_site_id`'s. It counts from
+    1, and 1 is spelled by leaving the part off, so the first declaration of a name keeps the
+    plain two-part id.
+    """
+    return make_id(file, qualname) if ordinal == 1 else make_id(file, qualname, f"#{ordinal}")
+
+
+def entrypoint_id(file: str, *parts: str) -> str:
+    """Identity of one way in: the file that declares it, and whatever names it there.
+
+    `definition_id`'s argument, one table over, and the parts after the file are each
+    reader's own because a way in is not spelled one way -- a decorator and a name, a route
+    and a verb, a routine's qualname, a conventional `main`. What is shared is the namespace
+    and the file, which is what stops two readers of one directory minting one id (rule 106).
+
+    Three of the four readers already carried the file and Python did not; it was safe only
+    because no other reader minted an `ep` from a module name, which is a fact about today's
+    set of readers rather than about ids. `resolve/entrypoints.py` mints `make_id("script",
+    ...)` and is deliberately **not** here: those come from a manifest's declaration rather
+    than from reading a file, and that function says so.
+    """
+    return make_id("ep", file, *parts)
 
 
 def call_site_id(caller_id: str, callee_expr: str, ordinal: int) -> str:

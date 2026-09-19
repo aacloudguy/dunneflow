@@ -157,6 +157,19 @@ as a module does for Python. Left out it is wrong rather than merely unnecessary
 proved it inside one module: 221 qualnames with a body in two files, and
 `UNIQUE constraint failed: routines.id`.
 
+**And a reader does not decide this at all any more — `schema.definition_id` does** (rule
+106, 2026-09-19). A definition is `(file, qualname[, ordinal])` and a way in is
+`entrypoint_id(file, …)`, in one function each, for every reader including the one on the
+far side of a pipe: `plugins/typescript/src/ids.ts` mirrors both, and that mirror is pinned
+from both sides by `tests/test_typescript.py`. Do not mint an id any other way.
+
+The paragraph above was the right instinct arrived at one reader at a time, and the reason
+it had to become a rule is that **a qualified name is only unique inside one language's
+naming**. `probe.py` and `probe.ts` in one directory are both module `probe`, both declare
+`main`, and for as long as an id was the name alone that tree could not be analysed at all.
+The C++ reader was immune by accident; the two readers that had been here a chunk longer
+were not, and no corpus had happened to show it.
+
 ## A fourth reader, and what the third one got wrong about it
 
 *Written after Kotlin, which took a day where C++ took a session.* The chapter above is

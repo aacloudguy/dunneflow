@@ -87,7 +87,8 @@ program, so whether that is a wedged job or a long step is your call, not the to
 ## What it read, and what it left out
 
 A run ends by saying both, and the second half is as much the point as the first. This is
-DunneFlow reading itself, which is two languages:
+DunneFlow reading itself — two of the three languages it reads, because its own source holds
+no C++:
 
 ```
 files 118 (parsed 118, cached 0, removed 0, failed 0) in 1.7s

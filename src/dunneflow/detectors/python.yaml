@@ -436,3 +436,9 @@ builtins: [
   "pow", "print", "property", "quit", "range", "repr", "reversed", "round", "set",
   "setattr", "slice", "sorted", "staticmethod", "str", "sum", "super", "tuple", "type",
   "vars", "zip"]
+
+# A second `def foo` at one scope replaces the first: the earlier definition is
+# unreachable and every call resolves to the later one. `NAME_COLLISION` and
+# `REDEFINITION` are right to say so — of *this* language. See `redefinition` in
+# `detectors/__init__.py`.
+redefinition: shadows

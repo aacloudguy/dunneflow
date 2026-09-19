@@ -945,3 +945,62 @@ point exposes no `createProgram`, no `SyntaxKind` and no `createSourceFile` — 
 `typeof ts.createProgram` is `undefined` at 7.0.2 and `function` at 5.9.3. The plugin pins
 5.9.3.
 
+---
+
+## The C++ reader, and the first tree that is not small (v2, measured 2026-09-18)
+
+Apple M1, macOS 26.2, corpus on an external volume — **which is load-bearing here and is
+why it is in the heading** (rule 24). At this size the cost is not extraction.
+
+### Reading, measured on 300 real files of `Engine/Source/Runtime/Core`
+
+| Measure | Budget | Measured |
+|---|---|---|
+| One file, lex → preprocess → tokenise → scope tree | < 15 ms | **2.2 ms median**, 6.9 ms mean, 28.8 ms p95, 160.6 ms max |
+| Throughput, one core | — | 1.76 MB/s |
+
+The budget was stated before the reader was written and is falsifiable: the fallback if it
+had been missed was a flat `(kind, start, end)` token array instead of boxed objects. It was
+not needed.
+
+### A whole module: `Engine/Source/Runtime/Core`
+
+| | |
+|---|---|
+| files | **1,957** read, 0 failed, 176 left out as tests |
+| extraction | **8.1 s** |
+| whole run, `--no-docs` | **12.4 s** |
+| routines · structures | 31,516 · 6,016 |
+| calls | 83,068, **all external** — no resolver, and the run says so with a count |
+| boundary touches | 750 |
+| `graph.db` | 62.7 MB |
+
+### What that says about the whole engine, and it is an extrapolation and says so
+
+`Engine/Source/Runtime` is **18,681 files**, 9.5× `Core`, and the store is the cost: a run of
+it took **14 m 54 s** wall against 425 s of user CPU — 49% of one core, with the rest of the
+time spent writing to the external volume. `graph.db` reached **766 MB**, which is 12× Core's
+for 9.5× the files.
+
+Scaled to the whole engine less `Engine/Source/ThirdParty` — about **89,000 files** — that is
+of the order of **3 GB of graph** and over an hour, dominated by the write. Nothing here has
+been measured at that size and the figure is not claimed as one; what is claimed is that the
+reader is not the bottleneck and the store is.
+
+### The defect that only a big tree could find
+
+The `Runtime` run died **fourteen minutes in**, after every fact had been extracted, resolved
+and written, in the last pass before the map was rendered:
+
+```
+OverflowError: int too large to convert to float
+  resolve/naming.py:613 in _beats_coincidence
+```
+
+`math.comb(total, i)` is an exact integer, and past a few thousand it has more digits than a
+float has range. The affix-convention test has computed an exact binomial tail since it was
+written and never met a population big enough — Society's largest is in the low thousands.
+It is three paths now: below the mean the answer needs no arithmetic, the exact tail is
+summed in **log space** through `lgamma` while the term count is under 4,000 so every figure
+already recorded reproduces unchanged, and beyond that a normal approximation with a
+continuity correction, with its conditions stated here rather than left to be discovered.

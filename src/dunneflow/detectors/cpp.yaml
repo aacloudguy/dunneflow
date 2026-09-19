@@ -1,0 +1,243 @@
+# Boundary rules for C++.
+#
+# This file is the extension point. It is in **C++'s** extraction stamp
+# (`detectors.lang_extraction_inputs`), so editing it re-reads every C++ file and costs
+# Python and TypeScript nothing.
+#
+# Rules are matched against the **dotted form** of a call expression, the same contract as
+# every other language's: `ingest/dotted.py`. C++ spells the separator three ways and all
+# three fold to a dot, so one rule covers all of them —
+# `FFileHelper::SaveStringToFile`, `Helper->SaveStringToFile` and `h.SaveStringToFile` are
+# one name here. A call in the middle folds to its callee, which is what makes
+# `IFileManager::Get().Delete()` reachable as `IFileManager.Get.Delete`; and template
+# arguments are not part of a name, so `TArray<FString>::Add` is `TArray.Add`.
+#
+# Match forms, unchanged because they are the contract and not a dialect:
+#   exact     -- the full dotted name equals one of these
+#   prefix    -- the dotted name starts with one of these
+#   method    -- the last segment equals one of these, whatever the receiver
+#   contains  -- the dotted name contains one of these
+#
+# **Two C++ shapes are deliberately not here, and both are in code.** `std::cout << x` has
+# no parentheses, so no form above can reach it — `extractors/cpp/calls.py` recognises a
+# short fixed list of stream objects by shape, on the precedent the Python reader sets for
+# argparse registration: a *shape* lives in code, a *name* lives here. And the most vexing
+# parse — `std::ifstream f(path);` against `int x(5);` — is settled by the allow-list the
+# FILE rules below already are, because telling them apart in general needs a symbol table.
+#
+# **Unreal's macros are entrypoint rules rather than boundary rules.** `UFUNCTION(
+# BlueprintCallable)` is a registration (rule 7): it says this C++ can be called from
+# Blueprint, which nothing else in the map would ever show as a way in. The reader emits
+# each identifier-shaped macro argument as its own decorator, so `decorator_method` matches
+# `BlueprintCallable` directly and needs no new key in this grammar.
+
+version: 1
+
+boundaries:
+  # ---------------------------------------------------------------- environment ---
+  - kind: ENV
+    direction: IN
+    exact: [getenv, _wgetenv, _dupenv_s, secure_getenv,
+            FPlatformMisc.GetEnvironmentVariable,
+            FGenericPlatformMisc.GetEnvironmentVariable]
+    target_arg: 0
+  - kind: ENV
+    direction: OUT
+    exact: [setenv, _putenv, _putenv_s, unsetenv,
+            FPlatformMisc.SetEnvironmentVar]
+    target_arg: 0
+
+  # ----------------------------------------------------------------------- files ---
+  # The standard library, the C library, and Unreal's own three file surfaces. A stream
+  # class is named here as well as called: `std::ifstream f(path)` is a construction, and
+  # `calls.py` recognises it only because this list says the type is a file.
+  - kind: FILE
+    direction: IN
+    exact: [fopen, fopen_s, freopen, fread, fgets, fgetc, getline, open, read, mmap,
+            std.ifstream, std.wifstream, ifstream,
+            FFileHelper.LoadFileToString, FFileHelper.LoadFileToStringArray,
+            FFileHelper.LoadFileToArray, FFileHelper.LoadANSITextFileToStrings,
+            IFileManager.Get.CreateFileReader, IPlatformFile.OpenRead]
+    method: [LoadFileToString, LoadFileToArray, CreateFileReader, OpenRead]
+    target_arg: 0
+  - kind: FILE
+    direction: OUT
+    exact: [fwrite, fputs, fputc, fprintf, write, ftruncate, remove, rename, unlink,
+            std.ofstream, std.wofstream, ofstream,
+            FFileHelper.SaveStringToFile, FFileHelper.SaveStringArrayToFile,
+            FFileHelper.SaveArrayToFile,
+            IFileManager.Get.CreateFileWriter, IFileManager.Get.Delete,
+            IFileManager.Get.Move, IPlatformFile.OpenWrite]
+    method: [SaveStringToFile, SaveArrayToFile, CreateFileWriter, OpenWrite]
+    target_arg: 0
+  - kind: FILE
+    direction: BOTH
+    exact: [std.fstream, fstream, std.filesystem.copy, std.filesystem.create_directory,
+            IFileManager.Get.MakeDirectory, IFileManager.Get.FileExists,
+            IFileManager.Get.DirectoryExists]
+    prefix: [std.filesystem.]
+    target_arg: 0
+
+  # --------------------------------------------------------------------- network ---
+  - kind: NETWORK
+    direction: BOTH
+    exact: [socket, connect, bind, listen, accept, send, sendto, recv, recvfrom,
+            getaddrinfo, gethostbyname,
+            FHttpModule.Get.CreateRequest, FTcpSocketBuilder, FUdpSocketBuilder]
+    prefix: [curl_easy_, curl_multi_, curl_global_, FHttpModule., ISocketSubsystem.]
+    method: [ProcessRequest, SetURL, CreateRequest]
+    target_arg: 0
+
+  # -------------------------------------------------------------------- database ---
+  - kind: DATABASE
+    direction: BOTH
+    prefix: [sqlite3_, mysql_, PQ, redisCommand]
+    exact: [sqlite3_open, sqlite3_exec, sqlite3_prepare_v2]
+    target_arg: 1
+
+  # --------------------------------------------------------------------- process ---
+  - kind: PROCESS
+    direction: BOTH
+    exact: [system, popen, _popen, fork, execv, execvp, execl, execlp, posix_spawn,
+            CreateProcessA, CreateProcessW, ShellExecuteA, ShellExecuteW,
+            FPlatformProcess.CreateProc, FPlatformProcess.ExecProcess,
+            FPlatformProcess.LaunchURL]
+    method: [CreateProc, ExecProcess, LaunchURL]
+    target_arg: 0
+
+  # ----------------------------------------------------------------------- stdio ---
+  # `salience: low` for the same reason Python's `print` carries it: a log line is a
+  # boundary and it is not the one a reader is looking for, and a panel that ranks it with
+  # a database write is a panel nobody reads.
+  #
+  # `UE_LOG` is a **macro**, and a macro invocation is deliberately not a call anywhere else
+  # in this reader. It is named here because what it does is unarguable — text leaves the
+  # program, every time — which is the same licence `python.yaml` takes with `print`.
+  #
+  # **`check`, `ensure` and `verify` were here and have been taken out**, on the first run
+  # against real source. They are assertions: they write to the log *on failure* and
+  # otherwise do nothing, so recording one as STDIO OUT is a claim that text leaves the
+  # program at a line where, in every healthy run, none does. On `Paths.cpp` three of the
+  # five boundaries found were `check`, which is the anomalies discipline's own test — if
+  # the first thing a detector reports is a limitation of the tool, fix the limitation.
+  # Nothing is lost: an assertion is a guard, and `resolve/shape.py` already models guards,
+  # so the flow the reader cares about is recorded as the control point it is.
+  - kind: STDIO
+    direction: OUT
+    salience: low
+    exact: [printf, vprintf, puts, putchar, perror, UE_LOG, UE_LOGFMT, UE_CLOG]
+    prefix: [std.printf]
+    target_arg: 0
+  - kind: STDIO
+    direction: IN
+    salience: low
+    exact: [scanf, getchar, gets, std.getline]
+    target_arg: 0
+
+  # ---------------------------------------------------------------------- crypto ---
+  - kind: CRYPTO
+    direction: BOTH
+    prefix: [EVP_, SHA1_, SHA256_, MD5_, RAND_, FSHA1., FMD5., FAES., FSHA256.]
+    exact: [CryptEncrypt, CryptDecrypt]
+
+# ------------------------------------------------------------------- ways in ---
+#
+# `main` and its platform siblings. `WinMain` and `wWinMain` are Windows' entry points and
+# `DllMain` is a library's; all four are the place a program starts and none of them is
+# reached by a call this map can see.
+entry_names: [main, WinMain, wWinMain, DllMain]
+
+entrypoints:
+  # **The feature this file exists for.** A `UFUNCTION` marked `BlueprintCallable` is C++
+  # that Blueprint calls, and nothing in the C++ itself calls it — so without this it is a
+  # routine with no callers, which reads as dead code in a worklist. `LIBRARY` is the kind
+  # because that is exactly what it is: a way in for something outside this program.
+  - kind: LIBRARY
+    decorator_method: [BlueprintCallable, BlueprintImplementableEvent,
+                       BlueprintNativeEvent, BlueprintPure, CallInEditor]
+    evidence: "callable from Blueprint (UFUNCTION)"
+  # A replicated function runs on the other side of the network by the engine's doing.
+  - kind: SIGNAL
+    decorator_method: [Server, Client, NetMulticast, Reliable, Unreliable]
+    evidence: "invoked over the network by replication (UFUNCTION)"
+  # An exec function is typed into the console by a person.
+  - kind: CLI
+    decorator_method: [Exec]
+    evidence: "callable from the console (UFUNCTION Exec)"
+
+# ---------------------------------------------------------------- what a file is ---
+artefacts:
+  extensions:
+    DATABASE: [db, sqlite, sqlite3]
+    CONFIG: [ini, cfg, json, xml, yaml, yml, toml]
+    ARCHIVE: [zip, pak, 7z, tar, gz]
+    ASSET: [uasset, umap, uproject, uplugin, usf, ush]
+
+# ------------------------------------------------------------------------ types ---
+type_aliases:
+  constructors: [vector, map, unordered_map, set, unordered_set, array, variant,
+                 optional, function, pair, tuple, shared_ptr, unique_ptr, weak_ptr,
+                 TArray, TMap, TSet, TSharedPtr, TSharedRef, TWeakPtr, TUniquePtr,
+                 TFunction, TOptional, TVariant]
+  factories: []
+
+network:
+  libraries:
+    "curl_easy_": {protocol: HTTP, async: false}
+    "curl_multi_": {protocol: HTTP, async: true}
+    "FHttpModule.": {protocol: HTTP, async: true}
+  verbs: [GET, POST, PUT, DELETE, PATCH, HEAD, OPTIONS]
+  kwargs: []
+
+# **Empty, and that is a decision.** `unawaited_async` says what it costs to start an async
+# call and drop the result. Python's coroutine is `inert` — never awaited, it never runs, so
+# dropping one is BROKEN. A JavaScript promise `runs`, so what is lost is the ordering and
+# the failure. C++ is neither, and it is not one answer: a dropped `std::future` blocks in
+# its destructor, a detached `std::thread` terminates the program, and a C++20 coroutine
+# does whatever its promise type says — which is a per-type answer this reader cannot read.
+#
+# An empty value means **the detector does not fire**, which is the honest state. A severity
+# nobody chose is worst in the one command a CI job trusts (rule 49), and this is precisely
+# the shape rule 98 was minted from: admitting a new kind of fact re-runs every detector
+# against a population it has never seen, and `ASYNC_NOT_AWAITED` at BROKEN produced two
+# false BROKEN on the first TypeScript tree it met.
+unawaited_async: ""
+
+# Names a bare call may resolve to without being a routine in this program (rule 3).
+# The C and C++ standard libraries' free functions, plus the operators that look like calls.
+# `resolve/traceability.py` also strikes these out of its evidence: a document naming
+# `size` or `data` is not naming your symbol.
+builtins: [
+  "abs", "abort", "alignof", "assert", "atexit", "atof", "atoi", "atol", "atoll",
+  "bsearch", "calloc", "ceil", "cos", "exit", "exp", "fabs", "floor", "fmod", "free",
+  "getchar", "gets", "isalnum", "isalpha", "isdigit", "islower", "isspace", "isupper",
+  "labs", "log", "log2", "log10", "malloc", "memchr", "memcmp", "memcpy", "memmove",
+  "memset", "offsetof", "pow", "putchar", "puts", "qsort", "rand", "realloc", "round",
+  "sin", "sizeof", "snprintf", "sprintf", "sqrt", "srand", "sscanf", "strcat", "strchr",
+  "strcmp", "strcpy", "strlen", "strncat", "strncmp", "strncpy", "strrchr", "strstr",
+  "strtod", "strtol", "strtoul", "tan", "tolower", "toupper", "va_arg", "va_end",
+  "va_start", "wcslen",
+  "std.abs", "std.accumulate", "std.advance", "std.all_of", "std.any_of", "std.array",
+  "std.back_inserter", "std.begin", "std.copy", "std.count", "std.count_if", "std.data",
+  "std.distance", "std.end", "std.equal", "std.fill", "std.find", "std.find_if",
+  "std.for_each", "std.forward", "std.get", "std.make_pair", "std.make_shared",
+  "std.make_tuple", "std.make_unique", "std.max", "std.min", "std.move", "std.none_of",
+  "std.pair", "std.remove", "std.remove_if", "std.reverse", "std.size", "std.sort",
+  "std.stod", "std.stoi", "std.stol", "std.string", "std.swap", "std.to_string",
+  "std.transform", "std.tuple", "std.unique", "std.vector",
+  "static_cast", "dynamic_cast", "const_cast", "reinterpret_cast", "typeid",
+  "decltype", "noexcept", "sizeof...",
+]
+
+# **C++ overloads, and that is the language working rather than a defect.** A second
+# definition with a different parameter list is a *different routine*; `operator<<` is
+# defined 180 times in Unreal's `Core` module alone, `operator=` 61 times and
+# `FName::FName` 36. Left at Python's answer the first run of this reader produced
+# **3,875 BROKEN** out of the command `dunneflow check` gates CI with, each one saying
+# *"Only the last one exists at run time"* about code where all of them do (rule 98).
+#
+# The residue is stated rather than hidden: a genuine one-definition-rule violation is
+# **not** reported. Telling one from an overload needs parameter *types*, and this
+# reader has none — and both arms of an `#ifdef` are read as live, so even an identical
+# signature twice in one file is usually the two arms rather than a defect.
+redefinition: overloads

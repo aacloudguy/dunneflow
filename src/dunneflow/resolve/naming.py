@@ -594,6 +594,12 @@ def _routine_properties(store: Store) -> dict[str, set[str]]:
     return props
 
 
+# Above this many terms the exact tail is replaced by a normal approximation. Chosen so
+# every corpus this tool had read before C++ stays on the exact path and reproduces its
+# recorded numbers exactly: the largest population Society offers is in the low thousands.
+_EXACT_TERMS = 4_000
+
+
 def _beats_coincidence(holds: int, total: int, base_rate: float, tests: int) -> bool:
     """Would this many hits happen anyway, given how common the property already is?
 
@@ -604,15 +610,54 @@ def _beats_coincidence(holds: int, total: int, base_rate: float, tests: int) -> 
     Blind spot: this tests for coincidence, not for meaning. A convention can be
     statistically undeniable and still be an accident of how one team happened to spell
     things. That is why the exceptions are always printed beside the number.
+
+    **It was written as an exact binomial tail and that stops working at scale.**
+    `math.comb(total, i)` is an exact integer, and past a few thousand it is an integer with
+    more digits than a float has range — so multiplying it by a probability raises
+    `OverflowError: int too large to convert to float`. It never fired on Society, DunneNote
+    or DunneCorp, whose largest populations are in the low thousands; it killed a run of
+    Unreal's `Runtime` **fourteen minutes in**, after every fact had been extracted, resolved
+    and written, in the last pass before the map was rendered.
+
+    Three paths now, and the first two exist so nothing already measured moves:
+
+    * **Below the mean, the answer is known without arithmetic.** If `holds` is no more than
+      what the base rate predicts, the tail is at least a half and cannot beat a threshold
+      that is orders of magnitude smaller. This is also what bounds the loop below: past this
+      point the tail is always the short end.
+    * **Exact, in log space, while the term count is small.** `lgamma` instead of `comb`, so
+      the same answer arrives without ever building the huge integer.
+    * **A normal approximation with a continuity correction beyond that.** At those
+      populations the binomial is indistinguishable from it, and a figure that cannot be
+      computed is worth less than one computed a stated way (rule 24 — the conditions are
+      the point, and they are written down here).
     """
     if base_rate >= 1.0:
         return False          # the property is universal; the affix explains nothing
     if base_rate <= 0.0:
         return True
-    tail = sum(
-        math.comb(total, i) * base_rate**i * (1.0 - base_rate) ** (total - i)
-        for i in range(holds, total + 1)
-    )
+    if total <= 0 or holds <= 0:
+        return False
+    mean = total * base_rate
+    if holds <= mean:
+        return False          # no more than chance predicts; the tail is >= 0.5
+
+    if total - holds + 1 <= _EXACT_TERMS:
+        log_n = math.lgamma(total + 1)
+        log_p = math.log(base_rate)
+        log_q = math.log1p(-base_rate)
+        tail = 0.0
+        for i in range(holds, total + 1):
+            term = (log_n - math.lgamma(i + 1) - math.lgamma(total - i + 1)
+                    + i * log_p + (total - i) * log_q)
+            tail += math.exp(term)
+    else:
+        sd = math.sqrt(total * base_rate * (1.0 - base_rate))
+        if sd <= 0.0:
+            return True
+        z = (holds - 0.5 - mean) / sd
+        tail = 0.5 * math.erfc(z / math.sqrt(2.0))
+
     return tail * tests < COINCIDENCE_THRESHOLD
 
 

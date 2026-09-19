@@ -123,6 +123,40 @@ seam is in the wrong place.
   ordinary mechanism is overloading. Run `dunneflow check` on a real tree before believing
   the map.
 
+## A third reader, and what it cost that the chapter above did not predict
+
+*Written after C++, which is the first language this tool is not itself written in. Nothing
+above was wrong; these are the four things it did not say.*
+
+**A judgement you have to correct is a key in somebody's rules file, not a branch.** Two of
+them exist now and they are the same shape: `unawaited_async` says what a dropped async call
+costs, `redefinition` says what a second definition of one name means. Both are declared by
+the language, read per row off `files.lang`, and both take **empty to mean the detector does
+not fire** — a severity nobody chose is worst in the command a CI job trusts (rule 49). When
+a detector is wrong about your language, add the third key rather than the first `if`.
+
+**The probe tree is not this repository any more, and adding a language means adding a file
+to it.** `tools/fingerprints.py` read `src/dunneflow` because it held real source in every
+language this build reads — which was true exactly while those were the languages DunneFlow
+is *written in*. It is `tests/fixtures/polyglot/` now, one file per registered language, and
+`test_the_default_probe_tree_holds_every_language_this_build_reads` fails until yours is
+there. That test is not an obstacle; it is the thing standing between you and a stamp
+compared against an empty map (rule 37).
+
+**The packaging spec finds in-process readers now, and did not before.** It named
+`extractors/python` literally, two lines under a comment arguing rule 92 about the rules
+directory. A new in-process reader would have had its manifest ship, its rules ship, the
+registry load it — and its own bytes missing from the bundle, so `lang_fingerprint` hashed
+nothing and the application met its first file of that language in somebody else's hands.
+
+**Decide what belongs in a routine's identity before you write the reader, not after.** The
+C++ reader was designed to leave the file out of an id for externally-linked names, so that
+a header's declaration and a `.cpp`'s definition would land on one routine. There is no such
+pair — *a declaration with no body is not a routine* — so the file belongs in the identity,
+as a module does for Python. Left out it is wrong rather than merely unnecessary, and Unreal
+proved it inside one module: 221 qualnames with a body in two files, and
+`UNIQUE constraint failed: routines.id`.
+
 **Go and Rust are the obvious next ones** — both ship a toolchain that can be asked, and
 `resolve/manifests/` already reads `go.mod` and `Cargo.toml` for what a program declares
 about itself, which is the half that does not need a reader at all.

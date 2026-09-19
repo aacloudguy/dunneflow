@@ -433,3 +433,8 @@ artefacts:
     DATA: [json, jsonl, ndjson, csv, tsv, xml, parquet, avro, proto, wasm]
     ARCHIVE: [zip, tar, gz, tgz, bz2, xz, zst, 7z]
     STYLE: [css, scss, sass, less]
+
+# Same as Python's: a second `function foo` at one scope replaces the first. TypeScript
+# *declaration* overloads are a different thing — several signatures over one
+# implementation — and the reader already records an overload set as one name.
+redefinition: shadows

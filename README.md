@@ -130,8 +130,14 @@ docs   ──► extract ──► docs.db  (SQLite) ─────────
 ```
 
 SQLite is the spine, not an export format — nothing holds the whole program in memory,
-and reachability is recursive SQL over indexed edges. Python extraction uses stdlib
-`ast` and `tokenize` only; documents are scanned by hand. No third-party parser.
+and reachability is recursive SQL over indexed edges.
+
+**Three languages, and each is read by whatever understands it best.** Python is stdlib
+`ast` and `tokenize`; TypeScript is read by TypeScript's own compiler, out of process, so a
+name it resolves is one *it* resolved; C++ is read syntactically, in process, because most
+large C++ trees cannot tell a compiler how they are built without being built first — so a
+C++ map states what it touches and does not claim to know where a call goes. Documents are
+scanned by hand. No third-party parser in any of it.
 
 Teaching the tool a new framework is normally a config edit in `detectors/*.yaml`,
 not a code change.
@@ -180,4 +186,7 @@ Two platform differences are documented rather than fixed, because neither is Du
 to fix: on **Windows** a folder chooser asked for by a background process opens behind the
 browser, and the Windows build is unsigned, so SmartScreen warns once. On **Linux** the
 folder picker needs zenity or kdialog installed, and says so by name if neither is.
-TypeScript extraction and cross-process stitching come next. See `BRIEFING.md`.
+
+*This paragraph ended "TypeScript extraction and cross-process stitching come next" until
+2026-09-18, by which point TypeScript had shipped and C++ had joined it.* What is actually
+next is in `BACKLOG.md`, which is the one place it is written down.

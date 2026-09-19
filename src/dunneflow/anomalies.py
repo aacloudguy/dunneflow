@@ -305,11 +305,61 @@ def _parse_failures(store: Store, r: Report) -> None:
             ))
 
 
+# **What a second definition of one name means, asked of the language that wrote it.**
+#
+# `NAME_COLLISION` and `REDEFINITION` both say *the later definition shadows the earlier*,
+# and both were right about every corpus this tool had read — all of which were Python or
+# TypeScript, where they are. C++ overloads: a second definition with a different parameter
+# list is a different routine, and the first run of the C++ reader turned Unreal's `Core`
+# module into **3,875 BROKEN** out of the command a CI job exits non-zero on — `operator<<`
+# defined 180 times, which is that language working exactly as intended.
+#
+# Rule 98 for the third time, and the remedy is `unawaited_async`'s: the language declares
+# it, `anomalies.py` names no language, and **empty means the detector does not fire**.
+# Asked off `files.lang` per row rather than of the map, because a mixed map holds both
+# answers at once and one file's answer is not another's.
+_SHADOWS = "shadows"
+
+
+def _shadowing_langs(store: Store) -> list[str]:
+    """The languages in this map where a second definition replaces the first.
+
+    **Asked once and answered in SQL, not once per finding.** Written first as a lookup per
+    collision group — `SELECT lang FROM files WHERE path = ?` against `MIN(file)` — which is
+    wrong twice over. It is a query per group, and on a tree the size of Unreal's `Runtime`
+    that is tens of thousands of them; and `MIN(file)` names *one* of the colliding
+    definitions arbitrarily, so in a mixed map the language of one file decided the verdict
+    for a group that may hold several.
+
+    Filtering the population instead makes the grouping right as well as the speed: a
+    collision is between definitions **in one language**, because that is the only scope in
+    which *the later one shadows the earlier* means anything.
+    """
+    langs = [row["lang"] for row in
+             store.query("SELECT DISTINCT lang FROM files WHERE lang != '' ORDER BY lang")]
+    return [str(x) for x in langs if load_rules(str(x)).redefinition == _SHADOWS]
+
+
+def _lang_clause(langs: list[str]) -> tuple[str, tuple[str, ...]]:
+    """A `files.lang IN (…)` fragment, or one that matches nothing.
+
+    An empty list has to mean **no rows**, never *no filter*: a map holding only languages
+    that overload would otherwise have every one of its definitions judged by a rule none of
+    them declared, which is the silent default rule 49 forbids.
+    """
+    if not langs:
+        return "0", ()
+    return "f.lang IN (" + ",".join("?" * len(langs)) + ")", tuple(langs)
+
+
 def _name_collisions(store: Store, r: Report) -> None:
+    where, params = _lang_clause(_shadowing_langs(store))
     for row in store.query(
-        "SELECT qualname, COUNT(*) n, MIN(file) f"
-        "  FROM routines WHERE name != '<module>'"
-        " GROUP BY qualname HAVING n > 1 ORDER BY n DESC, qualname"
+        "SELECT r.qualname AS qualname, COUNT(*) n, MIN(r.file) f"
+        "  FROM routines r JOIN files f ON r.file = f.path"
+        f" WHERE r.name != '<module>' AND {where}"
+        " GROUP BY r.qualname HAVING n > 1 ORDER BY n DESC, r.qualname",
+        params,
     ):
         # **Every definition that collides, not the group.** The finding is that several
         # things share one name, so a single occurrence would name one arbitrarily -- the
@@ -336,10 +386,13 @@ def _name_collisions(store: Store, r: Report) -> None:
 
 
 def _redefinitions(store: Store, r: Report) -> None:
+    where, params = _lang_clause(_shadowing_langs(store))
     for row in store.query(
-        "SELECT module, name, COUNT(*) n, MIN(file) f"
-        "  FROM routines WHERE name != '<module>' AND is_nested = 0 AND is_method = 0"
-        " GROUP BY module, name HAVING n > 1 ORDER BY n DESC, module, name"
+        "SELECT r.module AS module, r.name AS name, COUNT(*) n, MIN(r.file) f"
+        "  FROM routines r JOIN files f ON r.file = f.path"
+        f" WHERE r.name != '<module>' AND r.is_nested = 0 AND r.is_method = 0 AND {where}"
+        " GROUP BY r.module, r.name HAVING n > 1 ORDER BY n DESC, r.module, r.name",
+        params,
     ):
         members = _routine_rows(
             store,

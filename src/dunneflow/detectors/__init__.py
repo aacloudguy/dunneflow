@@ -275,6 +275,22 @@ class RuleSet:
     # nobody has declared this for is one nobody has answered that question about.
     # Defaulting to either answer would put a guess in the one command a CI job trusts.
     unawaited_async: str = ""
+    # **What a second definition of one name means**, declared for the same reason and
+    # found the same way — by running a correct new reader at an unchanged judgement
+    # (rule 98, the third time).
+    #
+    # Python *shadows*: a second `def foo` replaces the first, the earlier one is
+    # unreachable, and `NAME_COLLISION` is right to call that BROKEN. C++ *overloads*: a
+    # second definition with a different parameter list is a **different routine**, which
+    # is not a defect but the language's ordinary mechanism. Unreal's `Core` alone answers
+    # `operator<<` 180 times, `operator=` 61, `FName::FName` 36 — and the first run of the
+    # C++ reader produced **3,875 BROKEN** out of the command `dunneflow check` gates CI
+    # with, every one of them a sentence in Python's vocabulary: *"Only the last one exists
+    # at run time; every call resolves to it and the others are unreachable."*
+    #
+    # **Empty means the detector does not fire**, as above. A language nobody has answered
+    # this for gets no claim made on its behalf.
+    redefinition: str = ""
 
     def network_profile(self, dotted: str) -> tuple[str, bool] | None:
         """(protocol, is_async_library) for a call, by longest matching prefix.
@@ -509,10 +525,12 @@ def load_rules(lang: str) -> RuleSet:
         ),
         builtins=_builtins(data.get("builtins", []) or [], lang, path),
         unawaited_async=_unawaited_async(data.get("unawaited_async", ""), lang, path),
+        redefinition=_redefinition(data.get("redefinition", ""), lang, path),
     )
 
 
 _UNAWAITED = ("inert", "runs")
+_REDEFINITION = ("shadows", "overloads")
 
 
 def _unawaited_async(raw: Any, lang: str, path: Path) -> str:
@@ -529,6 +547,23 @@ def _unawaited_async(raw: Any, lang: str, path: Path) -> str:
         raise RulesMissing(
             f"the {lang} rules at {path} declare `unawaited_async` as {raw!r}; it has to "
             f"be one of {', '.join(_UNAWAITED)}, or be left out to say nobody has decided"
+        )
+    return raw
+
+
+def _redefinition(raw: Any, lang: str, path: Path) -> str:
+    """*shadows* or *overloads*, or nothing at all — `_unawaited_async`'s shape exactly.
+
+    Two questions with the same structure get the same validator rather than one
+    generalised one: each names its own key and its own words in the refusal, which is what
+    makes the sentence something a plugin author can act on (rule 89).
+    """
+    if raw in ("", None):
+        return ""
+    if not isinstance(raw, str) or raw not in _REDEFINITION:
+        raise RulesMissing(
+            f"the {lang} rules at {path} declare `redefinition` as {raw!r}; it has to "
+            f"be one of {', '.join(_REDEFINITION)}, or be left out to say nobody has decided"
         )
     return raw
 

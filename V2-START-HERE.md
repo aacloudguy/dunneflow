@@ -403,6 +403,39 @@ been rewritten yet. Where they describe the tool they are accurate; where they d
   `packaging/dunneflow.spec` named `extractors/python` two lines under a comment arguing
   rule 92 — a new in-process reader would have shipped everything except its own bytes.
 
+* **C++, and the first language this tool is not written in.** Hand-written, in-process,
+  stdlib only — and a semantic read was refused on evidence rather than principle:
+  `../UnrealEngine-release` holds **zero `*.generated.h`** and `clang++` dies fatally on its
+  first `#include`, so a reader needing a compilation database would refuse the one tree it
+  exists for. **1,957 files of `Runtime/Core` in 8.1 s**: 31,516 routines, 6,016 structures,
+  83,068 calls, 750 boundary touches, 0 errors. Median **2.2 ms a file** against a stated
+  budget of 15. Every call is external and the run says so with a count, which is the
+  shippable state the architecture already describes.
+
+  **Rule 98 for the third time, and it cost the command that gates CI.** The first full run
+  reported **3,875 BROKEN**, all `NAME_COLLISION` — *"only the last one exists at run
+  time"*, which is true of Python, true of TypeScript and false of C++, where `operator<<`
+  is defined 180 times in that one module. The remedy is `unawaited_async`'s exactly:
+  **`redefinition`** is declared by the language (`shadows` · `overloads` · empty, and empty
+  means the detector does not fire), read per row off `files.lang`, and `anomalies.py` names
+  no language. **0 broken** afterwards.
+
+  Six defects the corpus found, each a plausible map rather than an error: `GENERATED_BODY()`
+  stealing the first method's body, `public:` reading as a member-initialiser list, `UCLASS(…)`
+  reading as a constructor, chained calls taking arguments from the wrong parentheses, string
+  literals invisible as arguments, and line numbers compounding across `\`-continuations. And
+  one design assumption corrected by the tree: **the file is part of a routine's identity**,
+  because a declaration is not a routine, so there is no header-and-`.cpp` pair to merge —
+  221 qualnames in 400 files had a body in two places and the store refused the second.
+
+  `tests/fixtures/polyglot/` is the fingerprint probe now: `src/dunneflow` could not exercise
+  a reader for a language this tool is not written in, and a test said so by name. Building
+  it found **`BACKLOG.md` item 6** — `probe.py` and `probe.ts` side by side cannot be
+  analysed at all, which is older than the language that found it. **1,928 passed · 1
+  skipped**, mypy clean over 211 files, ruff clean, 4 of 4 stamps agreeing across three
+  languages with each build opening the other's map. Every stamp moved, deliberately:
+  `detectors/__init__.py` gained a key and is in the core.
+
 * **`CLAUDE.md` is an index again** — 2,241 lines to **458**, a 5.8× cut, with
   `ARCHITECTURE.md`, `PACKAGING.md`, `GROUND-TRUTH.md` and `LANGUAGES.md` beside it. The cut
   found 217 lines of `serve` prose filed under `## Packaging`, a `(see the budget below)`

@@ -360,7 +360,10 @@ def test_the_double_is_not_in_the_shipped_plugins_dir():
     assert "python-oop" not in PLUGINS
     # The readers this build ships, and the double is not among them however many
     # there are.
-    assert sorted(PLUGINS) == ["python", "typescript"]
+    assert sorted(PLUGINS) == ["cpp", "python", "typescript"], (
+        "a plugin has joined or left the shipped set — if that is intended, say so "
+        "here, because this is the assertion that would otherwise let the test's "
+        "own double ship as a real one")
 
 
 # ---------------------------------------------------------------- conformance - #

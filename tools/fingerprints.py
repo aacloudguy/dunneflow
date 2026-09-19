@@ -58,12 +58,20 @@ from dunneflow.store import StaleGraphError, Store, read_only_uri
 
 ROOT = Path(__file__).resolve().parent.parent
 
-# The probe tree, and it is this repository's own package deliberately. It is the one tree
-# on every machine that builds DunneFlow which holds source in more than one of the
-# languages this build reads -- 107 Python files and 11 TypeScript, read in four seconds.
+# The probe tree. **It was `src/dunneflow` and could not stay.**
+#
+# This repository's own package was the right answer for exactly as long as the languages
+# this build reads were the languages it is *written in* -- 107 Python files and 11
+# TypeScript, real code, on every machine that builds DunneFlow. C++ ended that: the package
+# will never hold a `.cpp`, so the package tree stopped being able to exercise every reader
+# and `test_the_default_probe_tree_holds_every_language_this_build_reads` failed saying so,
+# which is exactly what it was written to do (rule 92).
+#
 # A tree that exercises one reader lets the other's stamp go unchecked, and an unchecked
-# stamp is what this gate exists to stop being possible.
-PROBE = Path("src/dunneflow")
+# stamp is what this gate exists to stop being possible -- so the probe is now a tree whose
+# whole purpose is to hold one file per registered language. Adding a language means adding
+# a file there; the test fails until you do.
+PROBE = Path("tests/fixtures/polyglot")
 
 # The two names the maps are written under. Different, so that a failure leaves two
 # directories a person can open rather than one that was overwritten.

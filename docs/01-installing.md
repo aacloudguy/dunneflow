@@ -110,15 +110,34 @@ Unlike the Windows chooser, this one **comes to the front on its own**.
 
 ## Which languages it reads, and the one thing you may have to install
 
-DunneFlow reads **Python** and **TypeScript** — `.ts`, `.tsx`, `.mts`, `.cts`, JSX and
-TSX included. Python it reads itself, with nothing to install. TypeScript it reads by
-asking TypeScript's own compiler, which needs **Node.js 20 or newer** on the machine.
+DunneFlow reads **Python**, **TypeScript** — `.ts`, `.tsx`, `.mts`, `.cts`, JSX and
+TSX included — and **C++**: `.cpp`, `.cc`, `.cxx`, `.hpp`, `.h`, `.inl` and their siblings.
+
+**Only one of the three needs anything installed.** Python and C++ DunneFlow reads itself.
+TypeScript it reads by asking TypeScript's own compiler, which needs **Node.js 20 or newer**
+on the machine.
 
 That asymmetry is deliberate rather than untidy. A language is best read by the thing that
 already understands it, and the alternative — bundling a parser for every language — is
 what makes a tool either enormous or wrong. So the compiler that reads your TypeScript is
 the compiler TypeScript ships, and a name it resolves is a name *it* resolved and not one
 DunneFlow guessed at.
+
+**C++ is the exception, and it is worth knowing why before you read a C++ map.** The thing
+that already understands C++ is a compiler, and a compiler needs to know how your program is
+built — every include path and every defined symbol — before it will read a single file. Most
+large C++ trees cannot supply that without being built first. So DunneFlow reads C++ by
+*reading* it, without resolving anything, and what you get is honest about the difference:
+
+| It tells you | It does not tell you |
+|---|---|
+| every routine, and where its body is | which of three overloads a call meant |
+| what it touches — files, the environment, the network, a database | where a call goes inside your own program |
+| every loop, branch, guard and handler | what a macro expands to |
+| what it is called, and what a `UFUNCTION` registers with Blueprint | anything from a header it did not itself read |
+
+Calls in a C++ map are all **external**, and the run says so with a count rather than leaving
+you to notice. That is the tool being clear about what it did, not a setting to change.
 
 If Node is not there, DunneFlow says so before it reads anything:
 

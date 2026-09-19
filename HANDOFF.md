@@ -18838,3 +18838,181 @@ was — it states when it was taken and against what, so a value that has moved 
 measurement and not a wrong one — with today's retake recorded beneath it and the reason.
 A stamp is not a figure to hold steady; it is a claim that two builds agree.
 
+## 2026-09-18 — C++, read without a compiler
+
+The third language, and the first one this tool is not itself written in. `dunneflow analyze`
+reads Unreal Engine now: **1,957 files of `Runtime/Core` in 8.1 s**, 31,516 routines, 6,016
+structures, 83,068 calls, 750 boundary touches, 0 errors.
+
+### A semantic read was refused on evidence, not on principle
+
+The plan asked clang first. Two measurements closed it. `../UnrealEngine-release` holds
+**zero `*.generated.h`** — the tree has never been built, so UnrealHeaderTool has never run —
+and `clang++ -fsyntax-only` on `Runtime/Core/Private/Misc/Guid.cpp` dies **fatally** on its
+first `#include "Misc/Guid.h"`: one error, no AST, nothing to read. A reader needing a
+compilation database would refuse the one tree it exists for.
+
+So it is hand-written and in-process, stdlib only, in `extractors/docs/`'s idiom — and the
+same measurement that put the TypeScript reader behind a pipe applies here in reverse:
+`libclang` and `tree-sitter` ship no macOS universal2 wheel, and this tool's whole runtime
+dependency list is `pyyaml`.
+
+**Eight modules, five phases, one forward pass each.** `lexer` (splice and mask) ·
+`preprocessor` · `tokens` · `scopes` (the brace tree) · `names` (the dotted contract) ·
+`routines` · `control` · `calls` · `literals` · `extract`. Measured on 300 real Unreal files:
+**median 2.2 ms a file, mean 6.9 ms**, against a stated budget of 15.
+
+### The refusal the whole reader is built on
+
+**A declaration with no body is not a routine.** Unreal is 51,282 headers against 23,322
+`.cpp`; read as declarations they would roughly double the map with rows holding nothing —
+`.d.ts`'s argument in a language where the header is the majority of the corpus rather than
+the exception. It also *dissolves* the header-and-`.cpp` double rather than solving it: a
+routine is a body, a body is in one place, and there is never a pair to reconcile.
+
+### Rule 98, and it cost the command that gates CI
+
+The first full run reported **3,875 BROKEN**. Every one was `NAME_COLLISION`, whose sentence
+is *"Only the last one exists at run time; every call resolves to it and the others are
+unreachable"* — which is true of Python, true of TypeScript, and **false of C++**, where
+overloading is the language's ordinary mechanism. `operator<<` is defined 180 times in
+`Runtime/Core` alone, `operator=` 61 times, `FName::FName` 36.
+
+A judgement unchanged for a year, handed a population it had never been shown — the third
+time this tree has paid for it, after `.d.ts` giving uigen 83 false BROKEN and
+`ASYNC_NOT_AWAITED` giving gstack two.
+
+The remedy is `unawaited_async`'s, exactly: **a severity is a claim about a language, so the
+language declares it.** `redefinition:` is `shadows` for Python and TypeScript, `overloads`
+for C++, and **empty means the detector does not fire** — refused by name rather than
+defaulted, because a severity nobody chose is worst in the one command a CI job trusts.
+`anomalies.py` reads it off `files.lang` per row and names no language. **0 broken, 0
+suspect, 7 informational** afterwards.
+
+The residue is stated: a genuine one-definition-rule violation is now **not** reported.
+Telling one from an overload needs parameter types, and both arms of an `#ifdef` are read as
+live, so even an identical signature twice in one file is usually the two arms.
+
+### Six defects the corpus found, each a plausible map rather than an error
+
+* **`GENERATED_BODY()` stole the first method's body.** It carries no `;`, so its `()` read
+  as a parameter list — every UObject's first method was called `GENERATED_BODY` and owned
+  `Tick`'s body. And `public:` after it read as a **member-initialiser list**, because `:` is
+  how one begins. An access label is a statement boundary now.
+* **`UCLASS(Blueprintable) class FOO_API AThing : public AActor`** is a name, a parameter
+  list and a base clause — the exact shape of a constructor. A record keyword can never sit
+  between a parameter list and a body, so one there means the candidate was a macro.
+* **Chained calls took their arguments from the wrong parentheses.**
+  `IFileManager::Get().FileExists(*InPath)` recorded a target of `').FileExists(*InPath'` —
+  a string that is in the file, starts mid-expression, and is an argument to nothing.
+* **String-literal arguments were invisible.** Literals are blanked so a `{` inside one is
+  not a brace — which also meant `getenv("HOME")` had an empty target, in a reader whose
+  whole job at a boundary is to say *what* it touches. They are single tokens now, at the
+  same offsets.
+* **`check`, `ensure` and `verify` were STDIO and are not.** They are assertions: they write
+  on failure and otherwise do nothing, so the rule claimed text leaves the program at a line
+  where in every healthy run none does. Three of `Paths.cpp`'s five boundaries were `check`.
+  Nothing is lost — an assertion is a guard, and `resolve/shape.py` already models guards.
+* **Line numbers compounded across continuations.** A continued line was folded into the one
+  above and got no entry, on the argument that it is the logical line a compiler sees. It is
+  also one lost line number per continuation, growing down the file — every routine below the
+  second continuation reported two lines high, in a map that still opens and still looks
+  right.
+
+### The file is part of a routine's identity, and that corrected a design assumption
+
+The design said: fold the file in for internal linkage, leave it out otherwise so a header's
+declaration and a `.cpp`'s definition land on one routine. The second half was already wrong
+— **a declaration is not a routine**, so there is no pair to merge. Left out it is not merely
+unnecessary but wrong: `Internal/IO/IoDispatcherFilesystemStats.h` gives its methods empty
+inline bodies under one arm of an `#if` and the `.cpp` defines them for real, and with both
+arms read as live **221 qualnames in 400 files had a body in two places**. The store refused
+the second with `UNIQUE constraint failed: routines.id`, then refused `structures.id` on the
+next run for the same reason one table over. `Scope.is_internal` and a `static` check were
+written for the abandoned half and went with it (rule 35).
+
+### The probe tree could no longer do its job, and a test said so
+
+`tools/fingerprints.py` read `src/dunneflow` — right for exactly as long as the languages
+this build reads were the languages it is *written in*. The package will never hold a `.cpp`,
+so `test_the_default_probe_tree_holds_every_language_this_build_reads` failed by name, which
+is what it was written to do (rule 92). `tests/fixtures/polyglot/` is the probe now: one real
+file per registered language, each with a way in, a boundary, a loop and a branch, because a
+stamp compared over an empty map is the nothing the gate exists to refuse (rule 37).
+
+**And building it found a defect older than the language that found it.** The three files
+were `probe.py`, `probe.ts` and `probe.cpp`, and that tree cannot be analysed at all: Python
+and TypeScript both derive a module name from the path with the suffix removed, so both are
+module `probe`, both declare `main`, and `probe.main` is one id in two languages. C++ is
+immune by accident of the fix above. It is **`BACKLOG.md` item 6** with the reproduction, not
+fixed in passing — the fix changes how an id is derived and discards every stored map.
+
+### Gates
+
+**1,928 passed · 1 skipped**, mypy clean over 211 files, ruff clean. The golden is 5 of 7
+against the report with its two documented holdbacks. Frozen build in 9.3 s; the bundle
+carries `extractors/cpp` and `plugins/cpp` because `_reader_files()` finds them rather than
+naming them, and the gate reads all three languages: **4 of 4 stamps agree and each build
+opened the other's map**, `cpp 1, python 1, typescript 1`.
+
+**Every stamp moved and that is deliberate.** `detectors/__init__.py` gained `redefinition`
+and is in the core key; `python.yaml` and `typescript.yaml` declare it and are in theirs.
+Core `14:5576a86c2b32bca0`, python `1.0.0:48a09233720a2c80`, typescript
+`1.1.0:dfbeacab493e025a`, cpp `1.0.0:4ecbedb2fa590671`. Every stored map is invalidated and
+costs one re-analysis, which is rule 12's safe direction: the alternative is a map whose
+rows were judged by a rule this build no longer holds.
+
+## 2026-09-18 — the first tree that is not small, and the defect only it could find
+
+Chunk B3, the measurement chunk, and the plan said it was the one that could come back
+negative. It came back with one real defect and one honest limit.
+
+### `Engine/Source/Runtime`: 18,681 files, and the store is the cost
+
+**14 m 54 s wall against 425 s of user CPU** — 49% of one core, the rest spent writing to the
+external volume the corpus lives on. `graph.db` reached **766 MB**, 12× `Core`'s for 9.5× the
+files. Extraction is not the bottleneck and was never going to be: the reader is 2.2 ms a
+file at the median.
+
+Scaled to the whole engine less `ThirdParty` — about 89,000 files — that is of the order of
+3 GB of graph and over an hour. **Not measured, and not claimed as a measurement**: what is
+claimed is where the time goes, which is a different and smaller statement (rule 24).
+
+### `OverflowError`, fourteen minutes in, in the last pass before the map is written
+
+```
+  resolve/naming.py:613 in _beats_coincidence
+  math.comb(total, i) * base_rate**i * (1.0 - base_rate) ** (total - i)
+  OverflowError: int too large to convert to float
+```
+
+Every fact had been extracted, resolved and written. The affix-convention test has computed
+an **exact** binomial tail since it was written, and `math.comb(total, i)` past a few
+thousand is an integer with more digits than a float has range. It had never fired because no
+corpus was big enough — Society's largest population is in the low thousands, and this one is
+in the hundreds of thousands.
+
+Three paths now, and the first two exist so that nothing already measured moves. Below the
+mean the answer needs no arithmetic — the tail is at least a half and cannot beat a threshold
+orders of magnitude smaller, which is also what bounds the loop. The exact tail is summed in
+**log space** through `lgamma` while the term count is under 4,000, so every figure already
+recorded reproduces unchanged and Society stays on that path. Beyond that, a normal
+approximation with a continuity correction, with its conditions written down beside it rather
+than left to be discovered.
+
+**It is nothing to do with C++** except that C++ is the first reader to hand this tool a tree
+two orders of magnitude larger than the ones it grew up on. That is what the chunk was for.
+
+### And one defect of my own, found the same way
+
+`_redefinition_shadows` — written an hour earlier, in the fix for rule 98 above — asked
+`SELECT lang FROM files WHERE path = ?` **once per collision group**, against `MIN(file)`.
+Wrong twice: a query per group is tens of thousands of them on a tree this size, and
+`MIN(file)` names *one* of the colliding definitions arbitrarily, so in a mixed map one
+file's language decided the verdict for a group holding several. The population is filtered
+in SQL now, per language, which makes the grouping right as well as the speed — a collision
+is between definitions **in one language**, because that is the only scope in which *the
+later one shadows the earlier* means anything. An empty list of shadowing languages compiles
+to a `WHERE 0` rather than to no filter, because *no rows* and *no filter* are opposite
+answers and the second is the silent default rule 49 forbids.
+

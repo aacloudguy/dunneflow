@@ -83,6 +83,36 @@ now analysed as `gstack` and is the corpus to re-test against if one is ever fou
 the only tree to hand with a real `fetch` population, and the tool scores **29 of 29** on
 it with no false positives, so the direct case needs nothing.
 
+### 6 · Two languages in one directory can collide on a routine id
+
+*Found 2026-09-18, building the C++ reader's probe tree.*
+
+A tree holding `probe.py` and `probe.ts` side by side **cannot be analysed at all**:
+
+```
+sqlite3.IntegrityError: UNIQUE constraint failed: routines.id
+```
+
+Both readers derive a module name from the path with the suffix removed, so both files are
+module `probe`; both declare `main`; and `make_id` is derived from names, so `probe.main` is
+one id in two languages. Reproduced in three lines against `tests/fixtures/polyglot` before
+its files were given distinct stems.
+
+**It is older than the language that found it.** Python and TypeScript have both been here
+since chunk 9 and neither corpus happened to put two same-stemmed files of different
+languages in one directory — DunneNote and DunneCorp are TypeScript-shaped, Society is
+Python. The C++ reader is immune by accident of a different fix: it puts the file in every
+identity, because a C++ routine is a body and a body is in exactly one file.
+
+**Why not done.** The fix is to put the language, or the file, into a routine's identity, and
+`make_id` is what every stored map is keyed on — so it discards every graph on every machine,
+sealed snapshots included, and moves all seven golden digests. That is a deliberate,
+announced change and not something to do in passing while adding a language (rules 25 and 62).
+
+**What would settle it.** Deciding which discriminator is right — the file is the honest one
+and is what C++ already does — then taking the invalidation knowingly, with the golden
+baseline regenerated and the reason recorded beside it.
+
 ### 5 · Rule 95's general remedy
 
 *From chunk 6, 2026-09-17.*

@@ -19104,3 +19104,69 @@ the plugin-set assertion. **Nothing in `packaging/`** — because the spec was t
 in-process readers earlier the same day — nothing in `walk.py`, nothing above the graph, and
 no new key in the detector grammar. `LANGUAGES.md` says so with the list now complete rather
 than hopeful.
+
+## 2026-09-19 — Unreal's `Runtime`, read to the end, and rule 5 at a scale nobody had tried
+
+The scan that had never been watched to completion. **18,191 files, 8 m 54 s**: 262,879
+routines, 44,501 structures, 947,786 calls, 2,424 boundary touches, **7,090 ways in**, exit
+zero. The `OverflowError` the last attempt died on is gone, which is what the run was for.
+
+**One BROKEN in the whole map, and it is not C++.** `TraceLog/create_standalone.py` declares
+one nested `predicate` twice — a real Python collision in a tree of three Python files. Zero
+C++ anomalies of any severity, for the second corpus running.
+
+### The feature the ruleset exists for, checked against the source
+
+6,992 of the ways in are `LIBRARY` — C++ that Blueprint calls and nothing in the C++ calls,
+which without a rule reads as dead code in a worklist. Verified rather than asserted: the
+tree holds **7,258 `UFUNCTION(…)` declarations carrying a Blueprint marker** by grep, and the
+map records 6,992. The gap is explicable and was checked — 77 declarations name two markers
+and yield one way in, 497 test files are out of the map, and `_annotated` deduplicates a
+qualname within a file. One file was read by hand end to end:
+`ClothingSimulationInteractorNv.h` has exactly one `UFUNCTION(BlueprintCallable)`, and the
+map has exactly one way in for it, named `SetAnimDriveDamperStiffness`.
+
+### And that hand-check found the defect of the session
+
+The entrypoint bound to a routine **in another file** — correctly, as it happens, but by a
+path I had not designed for. `resolve/cli.py:_resolve_routine` ends in a map-wide match on
+the target's **last segment**, taken when it is unique. That is a fair bet in a Python
+program of five thousand routines and an accident in a C++ one of 262,879.
+
+**55 of 4,369 bound ways in were on the wrong routine.** `UAISense_Blueprint.OnUpdate` was
+bound to the only `OnUpdate` in the map — in `VirtualTextureScalability.cpp`, a file with
+nothing whatever to do with it. Rule 5, in shared code that has been right for a year,
+handed a population it had never been shown (rule 98, the fourth time this week).
+
+A qualified target is now matched **on the whole name or not at all**: an unambiguous
+qualname, then whatever the file imported, then unbound. The first attempt kept the
+module-and-name fallback and left **14** — every one of them a pure-virtual interface method
+taking the body of a same-named wrapper *in the same header*, `ITypedElementObjectInterface.
+GetObject` on `TTypedElement.GetObject`. The same bare-name bet one scope tighter, so that
+fallback went too; each of the 14 has an *ambiguous* exact match (two routines share the
+qualname), so all fourteen become unbound, which is the honest answer for a target this map
+cannot place.
+
+Measured: **55 wrong → 0**, and **4,369 bound → 6,511**, because an exact qualname reaches
+across files where the old path could not. The import branch is one function now rather than
+a copy in each arm (rule 51).
+
+**Python is unmoved, and that was the thing to check.** Society's four executables reach
+**1,381 · 423 · 292 · 112**, the recorded figures exactly, before and after. 1,993 passed · 1
+skipped, mypy clean over 224 files, ruff clean, golden 5 of 7 with its two documented
+holdbacks.
+
+### A figure that varies by five times, and the conditions are the reason
+
+The same analysis, same tree, same build: **8 m 54 s at 88% CPU** and **45 m 42 s at 22%**.
+The corpus is on an external volume, which `PERFORMANCE.md` already names as the condition
+that dominates every cold row in this project — and this is the widest spread yet recorded.
+Both are stated rather than the better one; a figure whose conditions swing it fivefold is a
+figure that has to carry them (rule 24).
+
+### Residue
+
+The 14 unbound interface methods are a *stated* limit, not a silence: `declared` records that
+the way in exists and the map does not claim where it lands. Binding them needs the
+information a C++ reader does not have — which class implements an interface — and guessing
+is what produced the 55.

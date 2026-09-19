@@ -216,28 +216,67 @@ def _resolve_routine(store: Store, r: _AppResolver, module: str, file: str,
                      expr: str) -> str | None:
     """Find the routine an expression names: local first, then whatever was imported."""
     name = expr.rsplit(".", 1)[-1]
+    # **A qualified target is matched on the whole name, and never on its last segment.**
+    #
+    # The fallback at the foot of this function takes a bare name that is unique in the
+    # map, which is a fair bet in a Python program of five thousand routines and an
+    # accident in a C++ one of 262,879. Unreal's `Runtime` proved it: 55 of 4,369 bound
+    # ways in landed on the wrong routine, `UAISense_Blueprint.OnUpdate` on the only
+    # `OnUpdate` in the map — in `VirtualTextureScalability.cpp`, a file with nothing to do
+    # with it. Rule 5, at a scale that had never been put to it (rule 98).
+    #
+    # So a target that names a scope is resolved by that name or not at all. Tried before
+    # the module lookup because it is the stronger claim: an exact qualname is the thing
+    # itself, where a module-and-name pair is two halves that happen to agree.
+    if "." in expr:
+        exact = store.query(
+            "SELECT id FROM routines WHERE qualname = ? LIMIT 2", (expr,))
+        if len(exact) == 1:
+            return str(exact[0]["id"])
+        # **And nothing else, for a qualified target.** The two fallbacks below both match
+        # on the last segment — map-wide, and within one module — and both are the same
+        # bare-name bet one scope apart. Unreal showed each of them wrong in turn: first 55
+        # ways in landing on an unrelated file, then 14 landing on a *different class in
+        # the same header*, where a pure-virtual `ITypedElementObjectInterface.GetObject`
+        # took the body of `TTypedElement.GetObject` beside it. A wrapper with the same
+        # method name is the commonest thing in that file, not a coincidence worth trading
+        # on. An import may still place it, so that path is tried; otherwise unbound, and
+        # `declared` keeps the honest half — this way in exists, and this map cannot say
+        # where it lands.
+        return _by_import(store, r, module, file, expr, name)
     row = store.query(
         "SELECT id FROM routines WHERE module = ? AND name = ? LIMIT 1", (module, name)
     )
     if row:
         return str(row[0]["id"])
-    entry = r.imports.get(file, {}).get(expr.split(".")[0])
-    if entry:
-        mod, iname, is_from = entry
-        abs_mod = _absolute(mod, module, module in r.packages)
-        lookup = abs_mod if is_from and iname == expr.split(".")[0] else f"{abs_mod}.{iname}"
-        row = store.query(
-            "SELECT id FROM routines WHERE module = ? AND name = ? LIMIT 1", (lookup, name)
-        )
-        if row:
-            return str(row[0]["id"])
-        row = store.query(
-            "SELECT id FROM routines WHERE module = ? AND name = ? LIMIT 1", (abs_mod, name)
-        )
-        if row:
-            return str(row[0]["id"])
+    found = _by_import(store, r, module, file, expr, name)
+    if found:
+        return found
     row = store.query("SELECT id FROM routines WHERE name = ? LIMIT 2", (name,))
     return str(row[0]["id"]) if len(row) == 1 else None
+
+
+def _by_import(store: Store, r: _AppResolver, module: str, file: str,
+               expr: str, name: str) -> str | None:
+    """Whatever the file imported under the target's first segment, if anything.
+
+    One function because both branches above need it and neither may have its own copy
+    (rule 51). A language with no import table — which is every language whose reader does
+    not fill one — gets `None` here, which is the right answer rather than an empty one.
+    """
+    entry = r.imports.get(file, {}).get(expr.split(".")[0])
+    if not entry:
+        return None
+    mod, iname, is_from = entry
+    abs_mod = _absolute(mod, module, module in r.packages)
+    lookup = abs_mod if is_from and iname == expr.split(".")[0] else f"{abs_mod}.{iname}"
+    for candidate in (lookup, abs_mod):
+        row = store.query(
+            "SELECT id FROM routines WHERE module = ? AND name = ? LIMIT 1",
+            (candidate, name))
+        if row:
+            return str(row[0]["id"])
+    return None
 
 
 def command_tree(store: Store, app_id: str, depth: int = 0,

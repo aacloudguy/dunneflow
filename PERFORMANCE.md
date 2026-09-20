@@ -1071,3 +1071,33 @@ argument true:
 volume against **13.1 s** to the internal SSD — 1.7×. Smaller than the fivefold spread the
 `Runtime` row records, and in the same direction. Every figure in this section was taken
 writing to the external volume, which is where these maps live.
+
+### The whole tree, read in parts (measured 2026-09-20)
+
+`UnrealEngine-release` as **85 programs**, driven by `walk.parts_under`:
+
+| | |
+|---|---|
+| files | **88,209** |
+| routines · structures | **915,064** · 142,623 |
+| calls | **3,839,085** |
+| ways in | **27,290** |
+| boundary touches | 33,445 |
+| files carrying a recorded parse error | 84 — Python 2 in Unreal's bundled Maya tools |
+| first pass | **327 minutes** |
+| re-read after the reader's stamp moved | **282 minutes** |
+| on disk | ~19 GB |
+
+**The per-part fixed cost dominates the tail and is not explained.** The largest part is
+18,191 files in 2,093 s; parts of **11 to 15 files take 110–400 s each**. Whatever that is, it
+is not reading files. Fifty of the 85 parts hold 1.5% of the files between them and cost
+roughly a third of the wall clock.
+
+### Opening the largest part in the dashboard: 27.6 minutes
+
+`/api/program` on `Engine.Source.Runtime` — 18,191 files, 262,879 routines, 6,064,042 lines —
+reports `done` after **1,659,334 ms**, most of it in *the 2.5D model and its payload*. It does
+open, every route answers 200, and the cover is correct. But a reader who clicks a program and
+waits twenty-eight minutes has not been given a reading tool, and design rule 45's bargain —
+the bound is the reader opening one thing — does not survive a map this size. Recorded as the
+figure it is; no conclusion is drawn here about which of the six steps to attack.

@@ -83,6 +83,41 @@ now analysed as `gstack` and is the corpus to re-test against if one is ever fou
 the only tree to hand with a real `fetch` population, and the tool scores **29 of 29** on
 it with no false positives, so the direct case needs nothing.
 
+### 8 · A map of 262,879 routines takes 27.6 minutes to open
+
+*From the Unreal ingest, 2026-09-20.*
+
+`/api/program` on `Engine.Source.Runtime` reports `done` after **1,659,334 ms**, most of it in
+*the 2.5D model and its payload*. Every route then answers 200 and the cover is right — it
+works, at a speed that makes it unusable. Design rule 45's bargain is that the bound on this
+work is *a reader opening one thing*; at 18,191 files that bound is no longer a bound.
+
+**Why not done.** It is a fresh measurement on the first corpus big enough to show it, and
+nothing yet says which of the six build steps owns the time — the step label is the whole of
+the evidence. Guessing at the 2.5D model because it is named in the last progress line is
+exactly the plausible diagnosis rule 39 was minted from.
+
+**What would settle it.** Timing the six steps separately on this part, then deciding whether
+the answer is a bound on the payload, a lazier build, or a refusal that says a map this large
+opens in the documents and not in the graph.
+
+### 9 · A part of fifteen files costs two hundred seconds
+
+*From the Unreal ingest, 2026-09-20.*
+
+The largest part — 18,191 files — took 2,093 s. Parts of **11 to 15 files took 110–400 s
+each**, and fifty such parts hold 1.5% of the tree's files between them while costing roughly
+a third of the 327-minute wall clock. Whatever that time is, it is not reading files.
+
+**Why not done.** Noticed while watching the ingest rather than measured; the per-part log has
+wall time and the analysis's own `files … in N.Ns`, and the gap between those two is the whole
+finding. It is fixed cost per `analyze`, and the candidates — opening four readers, the
+document walk, the manifest search, rendering thirteen documents for a program with almost
+nothing in it — have not been separated.
+
+**What would settle it.** Timing one tiny part with each phase instrumented. The figure that
+matters is the gap, not the total.
+
 ### 5 · Rule 95's general remedy
 
 *From chunk 6, 2026-09-17.*

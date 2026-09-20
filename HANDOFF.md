@@ -19496,3 +19496,49 @@ summary; `IngestPlugin.lost` counts it and `walk.py` folds it into `stats.failed
 terminal has scrolled. That is the narrower gap and it is real, but it is not silence.
 
 Golden **7 of 7** — Society is Python and cannot move. The four short parts were re-read.
+
+## 2026-09-20 — Unreal, complete: 85 programs, and two figures that are not good news
+
+**The ingest is done and verified.** `output/UnrealEngine-release` holds **85 programs ·
+88,209 files · 915,064 routines · 142,623 structures · 3,839,085 calls · 27,290 ways in**.
+Every part reports `complete: yes`, **no part is stale**, and the largest opens in the
+dashboard with every route answering 200.
+
+84 files carry a recorded parse error and all 84 are **Python 2** in Unreal's bundled Maya
+rigging tools — `print` without parentheses, tabs against spaces. That is the designed
+behaviour and not a loss: each has a `files` row that says what went wrong.
+
+### The re-read, and a driver bug that wasted nothing but looked like it had
+
+Fixing the tokenizer moved the C++ reader's stamp, so 81 of 85 parts became stale — rule 12
+working, caused by the fix landing mid-ingest. The re-read took **282 minutes** and reported
+`81 re-read, 0 failed`, after which **all 81 were still stale**.
+
+The maps had been written to `output/` instead of `output/UnrealEngine-release/`: the
+re-run driver passed `--output root.parent` where the first ingest passed `--output
+root`. The work was sound and in the wrong place; the 81 directories were moved in and the
+root verified again. Worth writing down because *"it said 0 failed"* was true and useless —
+the only thing that settled it was asking the store the same question again afterwards.
+
+### Two figures, recorded because they are the cost of this corpus
+
+* **Opening `Engine.Source.Runtime` takes 27.6 minutes.** `/api/program` reports `done` after
+  1,659,334 ms, most of it in *the 2.5D model and its payload*. It works and is unusable, and
+  design rule 45's bargain — the bound is a reader opening one thing — does not survive a map
+  of 262,879 routines. `BACKLOG.md` item 8, with the reason no diagnosis is offered: the step
+  label is the whole of the evidence, and guessing from it is rule 39.
+* **A part of fifteen files costs 110–400 s.** The 18,191-file part took 2,093 s; fifty parts
+  holding 1.5% of the tree between them cost about a third of the wall clock. Fixed cost per
+  `analyze`, unseparated. Item 9.
+
+### What is not covered, and it is deliberate
+
+`Engine/Source/ThirdParty` — 620 files from the top of the tree, **57,373** walked as its own
+root — is reached by no part, because the C++ reader skips `ThirdParty` by name and that rule
+is written against a path relative to whatever root is analysed. `Engine.Binaries` keeps a
+**473-file over-read** from the first ingest for the same reason; the corrected guard no
+longer proposes either. Both are stated in `Breakdown.uncovered` rather than papered over.
+
+**And a call from one part to another is external in both.** This is complete coverage of the
+tree, not one picture of it — the cost of the option chosen, stated again here because the
+figures above are the first thing anyone will quote.

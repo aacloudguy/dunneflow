@@ -19542,3 +19542,23 @@ longer proposes either. Both are stated in `Breakdown.uncovered` rather than pap
 **And a call from one part to another is external in both.** This is complete coverage of the
 tree, not one picture of it — the cost of the option chosen, stated again here because the
 figures above are the first thing anyone will quote.
+
+### The rebuild, and a comment that nearly cost 610 minutes
+
+App rebuilt, Developer ID signed, **notarised and stapled**, installed, and the guard verified
+through the installed binary: pointing it at `UnrealEngine-release` refuses with its own
+sentence and exits 2. Five of five stamps agree between binary and checkout, and the core key
+is still `15:0646c5a29b5380cc` — **0 of 85 Unreal parts stale**, which was the thing to protect.
+
+**And it was nearly not.** The note about `is_test` being root-relative was written into
+`ingest/contract.py`, which `core_extraction_inputs()` hashes — `(_PKG_ROOT / "ingest").glob
+("*.py")`. A **docstring** moved the core key to `15:b052360f2255630e` and would have staled
+every map in `output/`, the 85 Unreal parts among them: 610 minutes of reading, discarded for
+a comment. Caught by checking the fingerprint before committing rather than after.
+
+The note is in `walk.py` instead, which is deliberately not in the key, and `BACKLOG.md` item
+10 carries the substance. **The rule to take from it**: `schema.py`, `sql.py`,
+`detectors/__init__.py`, `detectors/annotations.yaml` and every `ingest/*.py` are hashed by
+their bytes — there is no such thing as a free comment in one of them. That is rule 12 working
+exactly as designed and it has a sharp edge; the edge is worth knowing before an edit, not
+after.

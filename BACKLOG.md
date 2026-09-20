@@ -83,6 +83,63 @@ now analysed as `gstack` and is the corpus to re-test against if one is ever fou
 the only tree to hand with a real `fetch` population, and the tool scores **29 of 29** on
 it with no false positives, so the direct case needs nothing.
 
+### 10 · A discovery rule is relative to the root, so a part is not a piece of the tree
+
+*From the Unreal ingest, 2026-09-19/20. **This is the one to pick up next** — it is the only
+open item that leaves a map on disk holding facts the tool would not have gathered.*
+
+**The mechanism.** Every path-shaped discovery rule is matched against the path *relative to
+the analysed root*: `DiscoveryRules.skip_dirs` and `DiscoveryRules.is_test`'s `test_dirs` both
+walk `rel.parts`. Move the root and the same file is judged differently, because the component
+that hid it is no longer in any relative path.
+
+Measured, twice, and in opposite directions:
+
+| | from the top of the tree | as its own root |
+|---|---:|---:|
+| `Engine/Source/ThirdParty` | 620 files | **57,373** |
+| `Engine/Binaries` | 3,146 files | **3,619** |
+| a `tests/` directory | 0 files | **all of them** |
+
+The first two are C++: that reader skips `ThirdParty` and `Binaries` by name. The third is the
+same defect in the test rule and is reachable by anybody who points `analyze` at a test
+directory — it is not hypothetical and it is not guarded anywhere.
+
+**What is on disk because of it.** `output/UnrealEngine-release/Engine.Binaries` holds
+**3,619 files where the tree-root view has 3,146** — 473 C++ files from a directory the C++
+reader is configured to ignore, read because the part was rooted inside it. The map is
+internally consistent and is *not* the map the whole tree would have produced.
+`Engine/Source/ThirdParty`'s 620 files are covered by nothing at all: `walk.parts_under` now
+refuses to propose either directory, so both sit in `Breakdown.uncovered`.
+
+**Why not done.** Because the honest fix is a decision about what a part *is*, and it is not
+this session's to take. The tool's contract has always been **a root is a program** — rules,
+module names and stored paths are all relative to it — and by that contract analysing
+`Engine/Source/ThirdParty` is not a piece of Unreal, it is a different program that happens to
+live inside it. Nothing is broken; a breakdown is what introduced the claim that N roots add up
+to one tree, and that claim is the thing that is false.
+
+**What would settle it — three shapes, and they are not equivalent.**
+
+1. **Let an analysis be told the tree it is part of.** `analyze <part> --part-of <tree>` judges
+   every discovery rule against the path relative to `<tree>` while the root stays `<part>`.
+   Smallest change that makes a part a genuine piece: `Engine/Binaries` would then read 3,146,
+   and `Engine/Source/ThirdParty` would read 620 and could be a part again. It needs the two
+   roots kept apart everywhere discovery touches a path, and a map that records which it was
+   read under — a figure quoted off a part is otherwise unreproducible (rule 24).
+2. **Let a part exclude what another part covers.** Solves `Breakdown.uncovered`'s *other*
+   half too — the split directory that cannot be a command because `analyze` descends — but
+   leaves the skip-rule asymmetry exactly as it is. Useful, narrower, and not a fix for this.
+3. **Say a part is its own program and stop pretending otherwise.** Cheapest and least
+   satisfying: the breakdown states that each part is read as a root in its own right and that
+   what a reader skips is judged from there. Costs nothing, fixes nothing, and makes the
+   `Engine.Binaries` map defensible by naming what it is.
+
+**Whichever is chosen, two things have to happen to the map that exists.** `Engine.Binaries`
+is re-read or relabelled, and `Engine/Source/ThirdParty`'s 620 files are either covered or
+their absence is stated somewhere a reader of the map will see it — today it is stated only in
+the guard's output, which nobody re-runs.
+
 ### 8 · A map of 262,879 routines takes 27.6 minutes to open
 
 *From the Unreal ingest, 2026-09-20.*

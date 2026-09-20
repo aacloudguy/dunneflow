@@ -464,6 +464,15 @@ def parts_under(root: Path, bound: int = TOO_BIG,
     # the reason is above: the rule that hides them is written against a path relative to
     # whatever root is being analysed, so rooting a command inside one un-hides everything
     # it was meant to hide.
+    #
+    # **`skip_dirs` is only half of it**, and the other half is not defended here because it
+    # cannot be reached from here. `DiscoveryRules.is_test` matches `test_dirs` against
+    # `rel.parts` in exactly the same way: a tree excludes `tests/helper.py` and analysing
+    # that `tests/` directory *as the root* admits it. No breakdown can propose such a
+    # directory — from the top it has no discovered files to be counted, so it is in no
+    # part's tally — but anybody may point `analyze` at one by hand. `BACKLOG.md` item 10
+    # carries both halves and the three ways out; this line guards the half that a
+    # breakdown can actually offer somebody.
     skipped = {name for plugin in ingest.PLUGINS.values()
                for name in plugin.manifest.discovery.skip_dirs}
     left: list[tuple[Path, int]] = []

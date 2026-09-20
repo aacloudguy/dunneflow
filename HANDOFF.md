@@ -19562,3 +19562,112 @@ The note is in `walk.py` instead, which is deliberately not in the key, and `BAC
 their bytes — there is no such thing as a free comment in one of them. That is rule 12 working
 exactly as designed and it has a sharp edge; the edge is worth knowing before an edit, not
 after.
+
+## 2026-09-20 — A part is a piece of its tree, and the climb that left the tree entirely
+
+Three Unreal follow-ups: `BACKLOG.md` item 10, and items 8 and 9, which both said *measure
+before fixing*. Measuring found something neither item was about.
+
+### `--part-of`, and the whole tree covered at last
+
+Every path-shaped discovery rule — a reader's `skip_dirs`, and `is_test`'s `test_dirs` — is
+matched against the path relative to the **analysed** root, so a directory read on its own is
+judged by a path no longer containing the component that hid it. `analyze <part> --part-of
+<tree>` judges from the tree while the root stays the part, so module names, stored paths and
+the store key are untouched.
+
+**It is on every command a breakdown prints**, because for a part crossing no such name the
+two answers are identical, and one rule is cheaper to keep right than a condition at two call
+sites. There were two sites: `cli._part_lines` and `tools/ingest_parts.py` wrote the same
+command independently, which is how a driver forgets a flag. `cli.part_argv` is the one
+spelling now, output root included — the mistake that put 81 maps in the wrong directory last
+session is no longer available to make.
+
+The guard's refusal of skipped directories is lifted, because the command it prints is now
+true of them. **Unreal goes from 84 parts covering 84,590 files with 3,766 reached by none, to
+86 parts covering all 88,356 with `Breakdown.uncovered` empty**, and the arithmetic closes
+against what is on disk: 86 parts, 88,356 files, none incomplete. `Engine.Binaries` re-read to
+`files 3146 (parsed 0, cached 3146, removed 473)` — item 10's 473 over-read files pruned —
+and `Engine.Source.ThirdParty`, reachable by no command since the guard was written, read at
+620.
+
+**Not one byte of it is in a fingerprint.** `walk.py`, `cli.py` and `resolve/` are in no key;
+the core stayed `15:0646c5a29b5380cc` through every commit, checked before each rather than
+after, and **86 of 86 parts open with 0 stale**.
+
+### Rule 108, and it was found by the instrument rather than by the search
+
+Items 8 and 9 both said the evidence was a step label. So: `_Progress.step` times all eight
+phases plus the unnamed region before the first, `--timings` prints the table, and
+`--progress-json` carries `ms` on every object — which it never did, so `serve`'s pane could
+say how far a run had got and never how long. `web.serve._Clock` does the same for the
+dashboard's six build steps and sub-times the four things step 1 conflates; it is one class
+because there were already two copies of `perf_counter` + `ms()` and a third was about to be
+written.
+
+The first table taken with it, on `Engine/Source/ThirdParty` — 620 files of code — read
+**265 s, of which 205 s was documents**. The document root was
+`/Volumes/.../Developer`: `find_package_root` climbs until it meets any of six filenames and
+had no ceiling, so it went **four levels above the tree** into the directory that holds every
+project on this machine, which contains a stray `package.json`.
+
+**What that had put on disk.** Every one of the 85 Unreal maps holds the same **15,497
+documents, 2,607 of them from programs that are not Unreal**, and each records its tree as
+**`Developer`** — rule 64's identifying leaf, naming a directory that is nobody's program. A
+document is evidence (design rule 11), so 85 glossaries, naming standards, mirrors and
+traceability reports were measured partly over somebody else's vocabulary. Nothing failed and
+nothing warned.
+
+`--part-of` is the ceiling: a part of a tree cannot belong to a package above that tree.
+`ThirdParty` re-read holds **11,850 documents, all inside itself, 15 MB against 107 MB**. The
+other 84 parts still carry the foreign corpus and are `BACKLOG.md` item 11; the unbounded
+climb for an `analyze` with no `--part-of` is item 12, stated rather than guessed at because
+every candidate stopping condition is a guess.
+
+### One judgement, three times
+
+`Engine/Binaries` then showed the other half of item 9: **writing the map 855.6 s and looking
+for anomalies 306.4 s, 94.8% of a 1,226.6 s run.** `render_all` detected anomalies for
+`09-anomalies.md`, `_overview` detected them again for the headline that points at it, and
+`analyze` a third time for its own step — one judgement over one unchanged store. It takes
+the report now and the step order follows the work. **Writing the map: 855.6 s → 19.3 s**,
+held by a test that counts calls rather than seconds and that fails at the previous commit.
+
+**One claim was overstated and is corrected here rather than quietly.** The first draft said
+`_overview`'s plain `detect(store)` counted a different population from the file it points
+at. Measured: `include_tests` reaches only `_dead_code`, where it selects between two
+blind-spot sentences and changes no query and no count. The headline and its destination have
+always agreed; what was wrong was that they agreed *by accident*. Stated as the hazard it is.
+
+**And the totals of those two runs are not comparable, which is worth more than the speedup.**
+Between them, resolution did byte-identical work — `263,472 calls: 23,278 certain, 10
+inferred, 240,184 external` in both — in **27.3 s and then 360.8 s**. A 13× spread on the
+external volume that this session did not cause and cannot explain, so the 1,226.6 → 714.7
+total is not evidence about a fix that moved 836 s somewhere visible (rule 24). The render row
+is the claim.
+
+### What the six dashboard steps say, on the one part measured
+
+`Engine.Plugins.AI`, 331 files: **the naming standard is 48.4 s of 54.0 s** and *the 2.5D
+model and its payload* is under a second. Item 8's text says *"most of it in the 2.5D model
+and its payload"* on the evidence of which label was most recent. **This does not settle item
+8** — that is `Engine.Source.Runtime`, 18,191 files, and it has not been opened with the
+instrument — but it is the first evidence of any kind and it points elsewhere. Rule 39,
+twice in one day.
+
+`_Clock` shipped a false report of its own first: with one cursor, *the 2.5D model and its
+payload* read **0.0 s** on a boot where it had just taken all four of the laps printed above
+it, because the step's delta was measured from the last lap rather than the last step. A step
+is timed from the last step and a lap from the last anything, so a step contains its parts
+rather than reporting their crumbs.
+
+### Also
+
+`PLAN-BATCH-INGEST.md` — design only, nothing built, at Tom's direction. What a run and a job
+are, where the state lives, what the application polls, and the four failures the Unreal
+ingest actually had that it is answerable to, including `0 failed` being true and useless.
+
+**2,024 passed · 1 skipped**, mypy clean over 227 files, ruff clean. **7 of 7 golden digests
+identical** on a fresh Society read with `--standards`, at 4,823 routines. Both ordering
+gates clean — every document byte-identical and every route the same answer under a full row
+reversal. Five stamps unmoved, 86 of 86 parts open, 0 stale.

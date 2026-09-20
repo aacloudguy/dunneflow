@@ -16,8 +16,8 @@ been rewritten yet. Where they describe the tool they are accurate; where they d
 | `CLAUDE.md` | the standing orders — **binding**, and the rules index. **Cut back to an index on 2026-09-18**, 2,241 lines to 458; what left is in the four files below. |
 | `ARCHITECTURE.md` · `PACKAGING.md` | what each module owns and what each surface answers; and the frozen application. Read the entry for a module before working in it. |
 | `GROUND-TRUTH.md` · `LANGUAGES.md` | the corpora and what each reproduces; and what it costs to teach this tool a new language. |
-| `RULES.md` · `DESIGN-RULES.md` | carried over **verbatim, numbering intact**. The numbers are addresses: never reused, never renumbered, never closed up. **v2 continues at engineering rule 108, and design rule 32** — 95 is the fingerprint's blind spot, 96 the record minted on demand, 97 the bundled program that does not carry the files it reads, 98 the detector handed a population it was never shown, 99 the name that is relative to the root that declared it, 100 the judge that picks one of several true answers by the order it was written in (all six 2026-09-17), 101 the route that is not a branch and 102 the sentence about an order that has none (both 2026-09-18), 103 the path that is not a key until it is canonical and 104 the slot claimed before the thing that holds it exists (both 2026-09-18), 105 the order taken over a set that a row-reversal probe cannot see (2026-09-18), 106 the identity that is only unique inside one language's naming (2026-09-19, and the one that discarded every stored map), 107 the burst that must end because a transaction is not a bound (2026-09-19), and **design rule 31**, the panel pinned to an edge that grows away from it. A rule is never closed; 95's `sql.py` gap was shut by chunk 6 and the general remedy it names is not built. |
-| `BACKLOG.md` | **what this tree owes** — seven open items and twelve stated residues, each with where it came from, why it was not done, and what would settle it. Nothing in it is scheduled by the plan; all fourteen chunks are done. |
+| `RULES.md` · `DESIGN-RULES.md` | carried over **verbatim, numbering intact**. The numbers are addresses: never reused, never renumbered, never closed up. **v2 continues at engineering rule 109, and design rule 32** — 95 is the fingerprint's blind spot, 96 the record minted on demand, 97 the bundled program that does not carry the files it reads, 98 the detector handed a population it was never shown, 99 the name that is relative to the root that declared it, 100 the judge that picks one of several true answers by the order it was written in (all six 2026-09-17), 101 the route that is not a branch and 102 the sentence about an order that has none (both 2026-09-18), 103 the path that is not a key until it is canonical and 104 the slot claimed before the thing that holds it exists (both 2026-09-18), 105 the order taken over a set that a row-reversal probe cannot see (2026-09-18), 106 the identity that is only unique inside one language's naming (2026-09-19, and the one that discarded every stored map), 107 the burst that must end because a transaction is not a bound (2026-09-19), 108 the walk up the tree that does not know when it has left it and answers anyway (2026-09-20, and the one that put 2,607 of somebody else's documents into each of 85 maps), and **design rule 31**, the panel pinned to an edge that grows away from it. A rule is never closed; 95's `sql.py` gap was shut by chunk 6 and the general remedy it names is not built. |
+| `BACKLOG.md` | **what this tree owes** — eight open items and twelve stated residues, each with where it came from, why it was not done, and what would settle it. Nothing in it is scheduled by the plan; all fourteen chunks are done. |
 | `PERFORMANCE.md` | v1's figures. **Every one of them was measured on v1** and none has been reproduced here — do not restate one as though it had been (rule 24). |
 
 ## The four decisions, already taken
@@ -432,6 +432,40 @@ been rewritten yet. Where they describe the tool they are accurate; where they d
   C++ reader had taught us to look for. **1,993 passed · 1 skipped**, mypy clean over 223
   files, ruff clean, **5 of 5 stamps agreeing across four languages**.
 
+* **A part is a piece of its tree, and a climb that had left the tree entirely.** Three
+  Unreal follow-ups, and the third was found by the instrument built for the second.
+  **`analyze --part-of <tree>`** judges every path-shaped discovery rule from the tree while
+  the root stays the part, so `Engine/Binaries` reads the 3,146 files the tree admits rather
+  than the 3,619 a root of its own does, and `Engine/Source/ThirdParty` — reachable by no
+  command since the guard was written — reads its 620. **Unreal goes from 84 parts covering
+  84,590 files with 3,766 reached by none, to 86 covering all 88,356 with
+  `Breakdown.uncovered` empty**, and the arithmetic closes against disk. `cli.part_argv` is
+  the one spelling of a part's command, output root included, where the refusal and
+  `tools/ingest_parts.py` each wrote their own (rule 51) — which is how a driver forgets a
+  flag, and how 81 maps went to the wrong directory last session.
+
+  **Rule 108 is the defect of the session and no item was looking for it.**
+  `--timings` on `analyze` and `_Clock` in `serve` were built because items 8 and 9 both
+  said the evidence was a step label; the first table taken with them showed a part of
+  **620 code files spending 205 s of 265 s on documents**. `find_package_root` climbs to the
+  first of six filenames and had no ceiling, so it went **four levels above the tree** into
+  the directory holding every project on this machine. Every one of the 85 Unreal maps holds
+  the same **15,497 documents, 2,607 of them from other programs**, and records its tree as
+  **`Developer`** — rule 64's identifying leaf, naming nobody's program. `--part-of` is the
+  ceiling; `ThirdParty` re-read holds 11,850 documents, all its own, 15 MB against 107 MB.
+  The other 84 are `BACKLOG.md` item 11 and the unbounded climb without the flag is item 12.
+
+  **And one judgement was made three times.** `Engine/Binaries` spent **855.6 s writing the
+  map and 306.4 s on anomalies, 94.8% of a 1,226.6 s run**: `render_all` detected for
+  `09-anomalies.md`, `_overview` detected again for the headline pointing at it, and
+  `analyze` a third time. `render_all` takes the report — **855.6 s → 19.3 s** — held by a
+  test that counts calls, not seconds. The two runs' *totals* are not comparable and
+  `PERFORMANCE.md` says why: resolution did byte-identical work in 27.3 s and then 360.8 s.
+
+  `PLAN-BATCH-INGEST.md` is the design note for reading a tree that takes days — Tom's call,
+  design only. **2,024 passed · 1 skipped**, mypy clean over 227 files, ruff clean, **7 of 7
+  golden digests**, both ordering gates clean, five stamps unmoved and 86 of 86 parts open.
+
 ## The gate everything is measured against
 
 **The live baseline is `output/GOLDEN-v2.txt` and has been since 2026-09-19.**
@@ -496,14 +530,19 @@ tool is usable as-is, so v1 defects found along the way are rolled into whicheve
 chunk owns them rather than scheduled as work of their own.
 
 **All fourteen chunks in `PLAN-v2.md` are done, and so is the run-to-run instability
-below.** What this tree still owes is in **`BACKLOG.md`** — four open items and eleven
+below.** What this tree still owes is in **`BACKLOG.md`** — eight open items and twelve
 stated residues, each with where it came from, why it was not done, and what would settle
 it. It is there rather than here so that there is one place to read it, and this file does
 not carry a copy that drifts.
 
-The largest of them, in one line each: the tutorial's **21 screenshots** are a dated
-session and want a re-capture; **rule 95's general remedy** is unbuilt; and `fetch`
-**through a name** still has no corpus to be built against.
+The largest of them, in one line each. **Item 11 is the one to pick up next** and is the
+only one that leaves maps on disk holding facts the tool would not have gathered: 84 of
+Unreal's 86 parts still carry 2,607 of another program's documents each and still call their
+tree `Developer`, and re-reading them with `--part-of` settles it. Then **item 8**, the map
+of 262,879 routines that takes 27.6 minutes to open, which now has an instrument pointed at
+it and a first reading that contradicts its own text. After those: the tutorial's **21
+screenshots** are a dated session and want a re-capture; **rule 95's general remedy** is
+unbuilt; and `fetch` **through a name** still has no corpus to be built against.
 
 **`web/`'s own ordering defect is closed** (2026-09-18). All 43 GET routes answer the same
 thing under a full row reversal, on Society across two revisions, on DunneFlow's own mixed
@@ -550,7 +589,7 @@ of residue put its head and its Stop button at **-71px**.
 
 ## Three things not to re-open
 
-* **The rule numbers.** Addresses, not an ordering. v2 continues at 103.
+* **The rule numbers.** Addresses, not an ordering. v2 continues at 109.
 * **No `BROWSER` boundary kind.** Settled on measurement — `BoundaryKind` is read in only six
   places outside `schema.py`, but changing the enum changes the meaning of a fact and
   discards every stored map; and it is not needed. `fetch`/WebSocket are the network under

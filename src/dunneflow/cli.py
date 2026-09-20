@@ -149,6 +149,29 @@ def _args_said(args: argparse.Namespace) -> str:
     # that, on the terminal and in the progress stream.
     for lang in sorted(getattr(args, "without", []) or []):
         said.append(f"{lang.strip().lower()} not read")
+    # **A part, and where in its tree it sits.** It belongs here on the docstring's own
+    # test -- judging from the tree is what *removes* the files the tree was hiding, which
+    # is why `Engine/Binaries` is 3,146 with it and 3,619 without. And it belongs here for
+    # a second reason the others do not have: a figure taken off a part cannot be
+    # reproduced by anybody who does not know it was read as one (rule 24).
+    #
+    # The part's path **relative to the tree**, never the tree's own path: an absolute path
+    # is one machine's directory layout written into a map built to be handed over
+    # (rule 60), and the relative position is the whole of what a reader needs to run the
+    # command again.
+    #
+    # A tree given as its own `--part-of` is the ordinary whole-program case spelled the
+    # long way and removes nothing, so it says nothing (rule 13).
+    #
+    # `relative_to` cannot raise here because `cmd_analyze` refuses a `--part-of` that does
+    # not contain the target before anything is opened, several hundred lines above. Said
+    # out loud because that is this function's one precondition and a new caller would not
+    # find it -- and because catching the error instead would turn a build defect into a
+    # map that quietly does not say how it was read (rule 49).
+    if getattr(args, "part_of", None):
+        where = Path(args.path).resolve().relative_to(Path(args.part_of).resolve())
+        if where != Path("."):
+            said.append(f"read as a part of its tree, at {where.as_posix()}")
     if args.include_tests:
         said.append("tests included")
     if args.no_docs:
@@ -187,6 +210,14 @@ ALL_STEPS = frozenset({
     STEP_BODIES, STEP_RENDER, STEP_ANOMALIES,
 })
 
+# **Not a step, and deliberately not in `ALL_STEPS`.** Nothing advances to it and no bar
+# draws it: it is the name the timings table gives to everything that happens before the
+# first step, which is where a refusal is decided, a tree is walked to size it, a package
+# root is found and three stores are opened. A run reports progress from its first step
+# and always has; what it could not do was say what the run had already spent getting
+# there, which on a small part is most of it.
+STEP_BEFORE = "before the first step"
+
 
 def analysis_steps(args: argparse.Namespace) -> tuple[str, ...]:
     """The steps *this* run will take, in order.
@@ -209,9 +240,12 @@ def analysis_steps(args: argparse.Namespace) -> tuple[str, ...]:
     steps.append(STEP_RESOLVE)
     if not args.no_source:
         steps.append(STEP_BODIES)
+    # **Anomalies before the map**, because the map is written out of the report and was
+    # detecting it twice more to get one. Order follows work; the set and the count are
+    # unchanged.
+    steps.append(STEP_ANOMALIES)
     if not args.no_render:
         steps.append(STEP_RENDER)
-    steps.append(STEP_ANOMALIES)
     return tuple(steps)
 
 
@@ -230,6 +264,19 @@ class _Progress:
     **The step label is asserted against the list**, because a step advanced under a name
     `analysis_steps` did not produce is a bar that silently never moves -- the shape of
     rule 44, arriving from the other end.
+
+    **It times what it announces**, and that is why the timing lives here rather than in
+    eight places. `analyze` has had three `perf_counter` spans for a year -- extraction,
+    resolution, rendering -- and between them they cover about half of what a run does:
+    the size guard's walk, the store and sidecar opens, the documents, the document
+    bodies, the standards, the source bodies and the anomalies were all untimed. That was
+    survivable until a part of **fifteen files cost 110-400 seconds** on Unreal, at which
+    point the only instrument anybody had was a stopwatch against a total (`BACKLOG.md`
+    item 9). A step is the one thing every phase already passes through, so timing it here
+    costs one `perf_counter` and cannot fall behind the list (rule 51).
+
+    The clock starts when the reporter is built, which is before the graph is opened,
+    because the first thing worth timing is the opening.
     """
 
     def __init__(self, steps: tuple[str, ...], on: bool) -> None:
@@ -237,6 +284,17 @@ class _Progress:
         self.on = on
         self.i = 0
         self.label = steps[0] if steps else ""
+        # **The pre-step region is a phase with no name and it was the suspect**, so it is
+        # timed like the others and reported under one: everything from the first argument
+        # to the first `step()` -- the size guard's `discover`, the manifest walk-up, the
+        # standards refusals, the source store and the graph.
+        self._t0 = time.perf_counter()
+        self._at = self._t0
+        # **Milliseconds, as `web.serve._Clock` records them.** Two instruments and one
+        # unit: they are separate classes because they time separate things on separate
+        # surfaces, and the one way that costs a session is for the number to mean
+        # seconds in one of them.
+        self.spent: list[tuple[str, int]] = []
         # Where a step is also **recorded**, so a map that never finished can name where it
         # stopped. Wired to the store once there is one -- the reporter is built before the
         # graph is opened, because it has to be able to report the opening.
@@ -251,11 +309,20 @@ class _Progress:
             return
         print(json.dumps(fields), flush=True)
 
+    def _close(self, label: str) -> None:
+        """Bank what the phase just finishing cost. Called on every advance, and at the end."""
+        now = time.perf_counter()
+        self.spent.append((label, round((now - self._at) * 1000)))
+        self._at = now
+
     def step(self, label: str) -> None:
         """Advance to a named step. A step this run is not taking is not an error here."""
         assert label in ALL_STEPS, f"unknown analysis step {label!r}"
         if label not in self.steps:
             return
+        # The first advance closes the region *before* any step, which has no label of
+        # its own and was the untimed half of the run.
+        self._close(self.label if self.spent else STEP_BEFORE)
         self.i = self.steps.index(label)
         self.label = label
         # Committed as it goes, so a killed run leaves a map that can say *"stopped while
@@ -264,12 +331,23 @@ class _Progress:
         if self.mark is not None:
             self.mark("step", label)
         self._say(state="working", step=label, done_steps=self.i,
-                  steps=len(self.steps), detail="")
+                  steps=len(self.steps), detail="", ms=self.ms())
+
+    def ms(self) -> int:
+        """Milliseconds since the run began.
+
+        **On every object, because the stream had none at all.** `dunneflow serve` runs its
+        child `--progress-json --quiet`, so the three timings `analyze` printed went to a
+        stderr nobody was reading and the application could say how far a run had got but
+        never how long it had taken. A cumulative figure rather than a delta: a client that
+        misses a line still has a true number, which a delta does not survive.
+        """
+        return round((time.perf_counter() - self._t0) * 1000)
 
     def detail(self, done: int, total: int) -> None:
         """Restate the current step with a count. The step is unchanged; only the inside."""
         self._say(state="working", step=self.label, done_steps=self.i,
-                  steps=len(self.steps), detail=f"{done:,}/{total:,}")
+                  steps=len(self.steps), detail=f"{done:,}/{total:,}", ms=self.ms())
 
     def residue(self, lines: list[str]) -> None:
         """What the walk left out, once, as its own object on the machine channel.
@@ -293,11 +371,40 @@ class _Progress:
         one key more.
         """
         self._say(state="working", step=self.label, done_steps=self.i,
-                  steps=len(self.steps), detail="", residue=lines)
+                  steps=len(self.steps), detail="", residue=lines, ms=self.ms())
 
     def done(self, **fields: object) -> None:
         self._say(state="done", step="", done_steps=len(self.steps),
-                  steps=len(self.steps), **fields)
+                  steps=len(self.steps), ms=self.ms(), **fields)
+
+    def timings(self) -> list[str]:
+        """The phase table, in the order the run took them.
+
+        Chronological rather than by size, because a reader comparing two runs of the same
+        tree needs the rows to line up, and because the order is itself a fact about the
+        run -- an ordering by cost would hide that the documents come after the source.
+
+        **The gap is the finding and the total is not.** A part of fifteen files costing
+        two hundred seconds is not slow at reading fifteen files; what the table has to
+        show is which phase is indifferent to how much there is to do. So every phase is
+        listed, including the ones that cost nothing -- a phase absent from a table is
+        indistinguishable from a phase that was instant, and only one of those is news
+        (design rule 21).
+        """
+        now = time.perf_counter()
+        total = now - self._t0
+        # **The phase still running is one of them**, computed here rather than banked by
+        # whoever happens to call this. `done()` is only reached on the machine channel --
+        # the prose path prints a summary instead -- so a table built from `spent` alone
+        # is a table with its last phase missing, and the last phase is the anomalies.
+        # Rule 32: a count must say what it counts, and a row that is simply absent says
+        # nothing at all.
+        rows = [*self.spent, (self.label, round((now - self._at) * 1000))]
+        width = max(len(n) for n, _ in rows)
+        lines = [f"  {name:<{width}}  {took / 1000:7.1f}s  {took / 10 / total:5.1f}%"
+                 for name, took in rows]
+        lines.append(f"  {'the whole run':<{width}}  {total:7.1f}s")
+        return lines
 
 
 # How many parts a refusal prints before it stops and says how many are left. A tree splits
@@ -309,26 +416,50 @@ class _Progress:
 PARTS_SHOWN = 12
 
 
-def _part_lines(parts: list[tuple[Path, int]], root: Path, args: argparse.Namespace,
-                limit: int | None) -> list[str]:
-    """One runnable command per part, ready to paste.
+def part_name(part: Path, root: Path) -> str:
+    """What a part of `root` is called.
+
+    The part's path under the root, dotted -- `Engine.Source.Runtime` -- because that is
+    what tells two parts apart when a reader is looking at a list of them, and a bare leaf
+    name does not: this tree holds two directories called `Runtime`.
+    """
+    rel = part.relative_to(root)
+    return ".".join(rel.parts) if rel.parts else root.name
+
+
+def part_argv(part: Path, root: Path, out_root: Path) -> list[str]:
+    """The one spelling of the command that reads a part of a tree (rule 51).
+
+    Two things wrote this command independently until 2026-09-20 -- the refusal that prints
+    it and `tools/ingest_parts.py`, which runs it -- and a rule kept at two call sites is
+    one that has to be right in both. It was not: the driver and the printer are the two
+    places `--part-of` had to reach, and either of them forgetting it is a map with facts
+    in that the tree would not have gathered, reported as a success.
+
+    **`--part-of` is on every part, not only the ones that need it.** For a part whose path
+    crosses no name a reader skips and no test directory the flag changes nothing, because
+    the components it adds to the judged path are exactly the ones that match nothing -- so
+    one rule is both correct and cheaper to keep than a condition somebody has to evaluate.
 
     Every part goes to **one output root**, so the pieces of one tree sit together as one
-    maps root and `dunneflow serve` lists them side by side. A name is the part's path under
-    the root, dotted -- `Engine.Source.Runtime` -- because that is what tells two parts
-    apart when a reader is looking at a list of them, and a bare leaf name does not: this
-    tree holds two directories called `Runtime`.
+    maps root and `dunneflow serve` lists them side by side.
     """
+    return ["dunneflow", "analyze", str(part),
+            "--part-of", str(root),
+            "--name", part_name(part, root),
+            "--output", str(out_root / root.name)]
+
+
+def _part_lines(parts: list[tuple[Path, int]], root: Path, args: argparse.Namespace,
+                limit: int | None) -> list[str]:
+    """One runnable command per part, ready to paste."""
     out_root = _out_root(args)
     shown = parts if limit is None else parts[:limit]
-    lines = []
-    for d, n in shown:
-        rel = d.relative_to(root)
-        name = ".".join(rel.parts) if rel.parts else root.name
-        lines.append(f"  dunneflow analyze {_shell_quote(str(d))} "
-                     f"--name {name} --output {_shell_quote(str(out_root / root.name))}"
-                     f"   # {n:,} files")
-    return lines
+    return [
+        "  " + " ".join(_shell_quote(a) for a in part_argv(d, root, out_root))
+        + f"   # {n:,} files"
+        for d, n in shown
+    ]
 
 
 def _shell_quote(s: str) -> str:
@@ -342,7 +473,8 @@ def _shell_quote(s: str) -> str:
     return s if all(c not in s for c in ' \t"\'\\') else "'" + s.replace("'", "'\\''") + "'"
 
 
-def _size_verdict(root: Path, args: argparse.Namespace) -> int | None:
+def _size_verdict(root: Path, args: argparse.Namespace,
+                  part_of: Path | None = None) -> int | None:
     """Refuse a tree too big to finish, and say what to read instead. `None` means carry on.
 
     **What the number means matters more than the number.** `walk.TOO_BIG` is the edge of
@@ -350,8 +482,18 @@ def _size_verdict(root: Path, args: argparse.Namespace) -> int | None:
     sentence carries its provenance: a reader deciding whether to use `--any-size` is
     deciding whether to go past the largest tree anyone has taken through it, and that is a
     different decision from exceeding a setting.
+
+    **`part_of` is asked the same question the analysis will be**, or the guard refuses the
+    command the guard itself printed. `Engine/Source/ThirdParty` is 620 files as a part of
+    Unreal and 57,373 as a root of its own, and a bound applied to the second of those
+    numbers would turn the fix for `BACKLOG.md` item 10 into a refusal (rule 51: the walk
+    and the guard cannot be allowed two answers about what a command reads).
+
+    A tree named here is also the root the parts are **named and rooted against**, so a
+    part that still has to be cut yields sub-parts of the same tree rather than of itself.
     """
-    cut = parts_under(root)
+    tree = part_of or root
+    cut = parts_under(root, judge_root=part_of)
     total, parts = cut.total, cut.parts
 
     if args.parts:
@@ -363,9 +505,9 @@ def _size_verdict(root: Path, args: argparse.Namespace) -> int | None:
             return 0
         _emit(f"{root} is {total:,} files the walk would read, cut into {len(parts):,} "
               f"parts of at most {TOO_BIG:,}:")
-        for line in _part_lines(parts, root, args, None):
+        for line in _part_lines(parts, tree, args, None):
             _emit(line)
-        _emit_uncovered(cut, root)
+        _emit_uncovered(cut, tree)
         return 0
 
     if cut.whole:
@@ -379,13 +521,13 @@ def _size_verdict(root: Path, args: argparse.Namespace) -> int | None:
         f"was stopped — so what follows is the tree cut into parts that are each within it, "
         f"every one into the same output root so they can be read side by side:"
     )
-    for line in _part_lines(parts, root, args, PARTS_SHOWN):
+    for line in _part_lines(parts, tree, args, PARTS_SHOWN):
         _emit(line)
     if len(parts) > PARTS_SHOWN:
         rest = parts[PARTS_SHOWN:]
         _emit(f"  … and {len(rest):,} more parts, {sum(n for _, n in rest):,} files — "
               f"`dunneflow analyze {_shell_quote(str(root))} --parts` prints all of them.")
-    _emit_uncovered(cut, root)
+    _emit_uncovered(cut, tree)
     _emit("\nOr `--any-size` to read it whole anyway, however long it takes.")
     return 2
 
@@ -421,6 +563,25 @@ def cmd_analyze(args: argparse.Namespace) -> int:
         _emit(f"error: {exc}")
         return 2
 
+    # **The tree this is a part of, judged here for the same reason.** It decides which
+    # files are read, so a wrong one is a map with the wrong facts in it rather than a
+    # command that fails, and there is nothing to be gained from finding out after a store
+    # is open. An ancestor or nothing: a directory the part does not sit under cannot
+    # supply a relative path for it at all, and the sentence says both paths because
+    # neither alone tells a reader which end they got wrong (rule 89).
+    part_of: Path | None = None
+    if getattr(args, "part_of", None):
+        part_of = Path(args.part_of).resolve()
+        if not part_of.is_dir():
+            _emit(f"error: --part-of {args.part_of} is not a directory that exists.")
+            return 2
+        if not target.is_relative_to(part_of):
+            _emit(f"error: --part-of {part_of} does not contain {target}, so it is not the "
+                  f"tree this is a part of. The flag says where to judge a reader's skip "
+                  f"rules and its test rule from, and that has to be a directory the part "
+                  f"sits under.")
+            return 2
+
     source_root = target
     out_root = _out_root(args)
     program, out_dir = _default_paths(target, args.name, out_root)
@@ -430,7 +591,7 @@ def cmd_analyze(args: argparse.Namespace) -> int:
     # 52 s on a tree of 88,356 files -- and that is the trade being made and is said out
     # loud, because a minute spent here is the alternative to an hour spent finding out.
     if args.parts or not args.any_size:
-        verdict = _size_verdict(source_root, args)
+        verdict = _size_verdict(source_root, args, part_of)
         if verdict is not None:
             return verdict
     # What this run will do, decided before it starts doing it: the dashboard draws a bar
@@ -456,7 +617,12 @@ def cmd_analyze(args: argparse.Namespace) -> int:
     # returns **every** manifest at that level -- two at one directory is the ordinary
     # polyglot repository (DunneNote's `package.json` beside its `Cargo.toml`), and
     # stopping at the first would make the answer depend on which name sorts earlier.
-    pkg_root, root_manifests = manifests.find_package_root(target)
+    #
+    # **`part_of` is the ceiling, and without one the climb has none.** It reached the
+    # Developer directory from a part of Unreal -- four levels above the tree, on a stray
+    # `package.json` -- and took the document root and the tree's name with it. See
+    # `find_package_root`.
+    pkg_root, root_manifests = manifests.find_package_root(target, part_of)
 
     # The leaf that **identifies this tree**, and only the leaf: `target` is an absolute
     # path, and recording it would put one machine's directory layout into a map built to
@@ -564,7 +730,7 @@ def cmd_analyze(args: argparse.Namespace) -> int:
     prog.step(STEP_EXTRACT)
     stats = analyze_tree(
         source_root, store, include_tests=args.include_tests,
-        jobs=args.jobs, progress=progress, declined=declined,
+        jobs=args.jobs, progress=progress, declined=declined, part_of=part_of,
     )
     t_extract = time.perf_counter() - t0
 
@@ -896,6 +1062,28 @@ def cmd_analyze(args: argparse.Namespace) -> int:
         rev_rows = tuple(source.revisions())
         source.close()
 
+    # **Before the map is written, because the map is built out of it.** This ran after
+    # rendering and rendering detected twice more -- once for `09-anomalies.md` and once
+    # for the headline in `README.md` that points at it -- so one judgement over one
+    # unchanged store was made three times. On `Engine/Binaries`, 3,146 files and 71,306
+    # routines, `detect` is 306 s: the run spent **855.6 s writing the map and 306.4 s
+    # looking for anomalies, 94.8% of 1,226.6 s**, deciding the same thing three times.
+    #
+    # The step order follows the work rather than the other way round. It is the same
+    # steps and the same count; what changes is that the step named *looking for
+    # anomalies* is now the one that looks for them, which is the only arrangement a
+    # phase table can be read off (rule 32). `--no-render` is unaffected: this runs
+    # either way, which is what it has always done.
+    prog.step(STEP_ANOMALIES)
+    store.warm()
+    rep = detect(store, include_tests=args.include_tests)
+    ac = rep.counts()
+    if not args.quiet and any(ac.values()):
+        _emit(
+            f"anomalies: {ac.get(BROKEN, 0)} broken, {ac.get(SUSPECT, 0)} suspect, "
+            f"{ac.get(INFO, 0)} informational"
+        )
+
     if not args.no_render:
         prog.step(STEP_RENDER)
         t2 = time.perf_counter()
@@ -912,7 +1100,7 @@ def cmd_analyze(args: argparse.Namespace) -> int:
         map_out = revisions.map_dir(out_dir, revision)
         files = render_all(store, map_out, program,
                            include_tests=args.include_tests,
-                           docs=doc_store, standards=standards_store)
+                           docs=doc_store, standards=standards_store, report=rep)
         # And the listing that says which map is which. Written every time, because a
         # revision's *state* changes underneath it -- sealing one makes every earlier
         # listing wrong about which snapshot is the working one.
@@ -926,16 +1114,6 @@ def cmd_analyze(args: argparse.Namespace) -> int:
                 # a real map of a revision nothing records, and the reader decides.
                 _emit(f"        {index.name} lists this directory's maps; {len(stale)} "
                       f"documents from before maps were named are still beside it")
-
-    prog.step(STEP_ANOMALIES)
-    store.warm()
-    rep = detect(store, include_tests=args.include_tests)
-    ac = rep.counts()
-    if not args.quiet and any(ac.values()):
-        _emit(
-            f"anomalies: {ac.get(BROKEN, 0)} broken, {ac.get(SUSPECT, 0)} suspect, "
-            f"{ac.get(INFO, 0)} informational"
-        )
 
     c = store.counts()
     # **stdout is one channel or the other, never both.** With `--progress-json` it is the
@@ -969,6 +1147,13 @@ def cmd_analyze(args: argparse.Namespace) -> int:
             # says what it is in its own first heading).
             print(f"map:   {revisions.map_dir(out_dir, revision)}/README.md")
             print(f"index: {out_dir}/README.md")
+    # **After `prog.done`, because `done` closes the last phase.** On stderr with the rest
+    # of the prose, so it cannot land in the middle of the machine channel, and behind a
+    # flag because it is an instrument rather than part of what a run says.
+    if args.timings:
+        _emit("where the time went:")
+        for line in prog.timings():
+            _emit(line)
     if doc_store is not None:
         doc_store.close()
     if standards_store is not None:
@@ -1446,6 +1631,21 @@ def build_parser() -> argparse.ArgumentParser:
                    help="print the tree cut into parts small enough to read, and stop")
     a.add_argument("--any-size", action="store_true",
                    help="read a tree larger than the guard allows, however long it takes")
+    # **The third half, and it is what makes a part a piece of its tree.** Every
+    # path-shaped discovery rule -- a reader's `skip_dirs`, and `is_test`'s `test_dirs` --
+    # is matched against the path relative to the analysed root, so a directory read as a
+    # root of its own is judged by a path that no longer contains the component that hid
+    # it. Named in the commands `--parts` prints, because a part read without it is not
+    # the part the breakdown described. `BACKLOG.md` item 10 and `walk.discover` carry
+    # the measurements.
+    a.add_argument("--part-of", metavar="TREE",
+                   help="judge skip and test rules from TREE, which this is a part of")
+    # **An instrument, so it is a flag and not the default.** Three of the eight phases
+    # have printed a time for a year and the other five have not, which was survivable
+    # until a part of fifteen files cost 110-400 s on Unreal and the only evidence was a
+    # total (`BACKLOG.md` item 9). On stderr with the prose, never on the machine channel.
+    a.add_argument("--timings", action="store_true",
+                   help="print what each phase of the run cost")
     a.set_defaults(func=cmd_analyze)
 
     t = sub.add_parser("touches", help="what does this routine reach?")

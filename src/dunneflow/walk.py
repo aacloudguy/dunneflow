@@ -278,7 +278,8 @@ def _tally(counter: dict[str, int], key: str) -> None:
 def discover(root: Path, include_tests: bool = False,
              rules: Sequence[DiscoveryRules] | None = None,
              stats: WalkStats | None = None,
-             declined: frozenset[str] = frozenset()) -> Iterator[Path]:
+             declined: frozenset[str] = frozenset(),
+             judge_root: Path | None = None) -> Iterator[Path]:
     """Every source file under `root` that is plausibly part of the program.
 
     **`is_test_path` lived here and is gone**, and its replacement is
@@ -308,8 +309,24 @@ def discover(root: Path, include_tests: bool = False,
     would otherwise have been read**, so the number answers the only question a reader has
     about it: what did I lose. The test and skip lines still appear and are still true;
     the three sets are disjoint and the arithmetic closes.
+
+    **`judge_root` is where the path-shaped rules are measured from, and `root` is still
+    the program.** Every such rule -- a plugin's `skip_dirs`, and `is_test`'s `test_dirs` --
+    is matched against `rel.parts`, so the same file is judged differently depending on
+    where the walk started: the component that hid it is no longer in any relative path.
+    `Engine/Source/ThirdParty` is 620 files seen from the top of Unreal and **57,373**
+    walked as its own root, and `Engine/Binaries` is 3,146 against **3,619** -- the second
+    of which went onto disk reporting success. Given the tree a part belongs to, this walk
+    judges as the tree would while `root` stays the part, so module names, stored paths and
+    the store key are untouched. `None` means the two are the same, which is every analysis
+    of a whole program and the only behaviour there has ever been.
+
+    A prefix that crosses none of those names gives the same answer either way, which is
+    why the flag is a no-op on all but a handful of parts: the extra components it adds to
+    `rel` are exactly the ones that match nothing.
     """
     root = root.resolve()
+    judged_from = root if judge_root is None else judge_root.resolve()
     rules = tuple(ingest.discovery()) if rules is None else tuple(rules)
     owner = ingest.suffix_owners(rules)
     by_lang = {r.lang: r for r in rules}
@@ -349,7 +366,10 @@ def discover(root: Path, include_tests: bool = False,
             p = here / fn
             suffix = p.suffix.lower()
             lang = owner.get(suffix)
-            rel = p.relative_to(root)
+            # Measured from the tree when there is one, so a part is judged as the piece
+            # of a program it is rather than as a program of its own. `root` is unchanged
+            # and is still what every key below is relative to.
+            rel = p.relative_to(judged_from)
             # Declarations follow the corpus. This is not a filter on what is yielded --
             # a manifest is never source -- it is the walk answering the one question
             # `resolve/manifests` cannot answer for itself: which directories in this
@@ -401,24 +421,29 @@ class Breakdown:
     """A tree cut into pieces an `analyze` command can each read whole.
 
     `uncovered` is the honest half and is why this is a record rather than a list. **A part
-    has to read what the breakdown says it reads** (rule 13), and there are two ways a
-    directory can fail that:
+    has to read what the breakdown says it reads** (rule 13), and one thing makes a
+    directory fail that: **it had to be split.** `analyze` reads a directory *and everything
+    under it*, so a directory whose children are already parts cannot also be one — the
+    command for it would re-read them and would itself be the oversized analysis this
+    mechanism exists to refuse. Its own files then belong to no part.
 
-    * **It had to be split.** `analyze` reads a directory *and everything under it*, so a
-      directory whose children are already parts cannot also be one — the command for it
-      would re-read them and would itself be the oversized analysis this mechanism exists to
-      refuse. Its own files then belong to no part.
-    * **Its path crosses a name a reader skips.** A plugin's `skip_dirs` is matched against
-      the path *relative to the analysed root*, so the same directory yields different files
-      depending on where the walk started. `Engine/Source/ThirdParty` is 620 files seen from
-      the top of Unreal and **57,373** walked as its own root, because the word `ThirdParty`
-      — which the C++ reader skips — is no longer in any relative path. Proposing it would
-      hand somebody a command that reads 92x what it promised, out of a directory the tool
-      is configured to ignore.
+    **There were two, and the second is now a flag rather than a refusal.** A plugin's
+    `skip_dirs` is matched against the path *relative to the analysed root*, so the same
+    directory yields different files depending on where the walk started:
+    `Engine/Source/ThirdParty` is 620 files seen from the top of Unreal and **57,373**
+    walked as its own root, because the word `ThirdParty` — which the C++ reader skips — is
+    no longer in any relative path. Found the hard way, and both directions were observed:
+    the breakdown proposed `Engine/Binaries` and analysing it read **473 files nobody asked
+    for** while reporting success, and it proposed `Engine/Source/ThirdParty`, which the
+    guard then refused for being over the bound — the system catching its own advice. Two
+    parts of Unreal's 86, 3,766 files of 88,356.
 
-    The second was found the hard way: the breakdown proposed both, and analysing them read
-    473 files nobody asked for in one case and was refused outright in the other. Two parts
-    of Unreal's 86, 3,766 files of 88,356.
+    Refusing to propose them was the interim answer and it covered less of the tree than the
+    tree has. `analyze --part-of <tree>` judges every path-shaped rule from the tree while
+    the root stays the part (`discover`), so such a directory can be a part again and reads
+    what the breakdown claims. **The flag is what makes that safe, so every command this
+    breakdown is printed as carries it** — one spelling, in `cli.part_argv`, rather than a
+    rule kept at the call sites that would have to be right in each of them (rule 51).
     """
 
     total: int
@@ -432,7 +457,8 @@ class Breakdown:
 
 
 def parts_under(root: Path, bound: int = TOO_BIG,
-                rules: Sequence[DiscoveryRules] | None = None) -> Breakdown:
+                rules: Sequence[DiscoveryRules] | None = None,
+                judge_root: Path | None = None) -> Breakdown:
     """The tree cut into parts no larger than `bound`, or `[]` if it already is one.
 
     **The cut is adaptive, and that is what makes it worth printing.** Choosing a depth
@@ -455,34 +481,26 @@ def parts_under(root: Path, bound: int = TOO_BIG,
     **The count comes back either way** so that the one walk answers both questions: it is
     52 seconds on a tree this size, and asking a second time merely to say how big something
     is would be the more expensive half of the guard.
+
+    **`judge_root` is `discover`'s and is passed through for the same reason the walk takes
+    it** (rule 51): a breakdown of a part already being read as a piece of its tree has to
+    cut the files that part actually reads, or the guard refuses the command the guard
+    printed. It is asked here and nowhere else in this function -- the bucketing below is
+    over paths relative to `root`, because those are what name a part.
     """
-    files = [p.relative_to(root) for p in discover(root, rules=rules)]
+    files = [p.relative_to(root) for p in discover(root, rules=rules, judge_root=judge_root)]
     if len(files) <= bound:
         return Breakdown(len(files), [], [])
 
-    # Every name any reader prunes, as one set. A part may not sit under one of these, and
-    # the reason is above: the rule that hides them is written against a path relative to
-    # whatever root is being analysed, so rooting a command inside one un-hides everything
-    # it was meant to hide.
-    #
-    # **`skip_dirs` is only half of it**, and the other half is not defended here because it
-    # cannot be reached from here. `DiscoveryRules.is_test` matches `test_dirs` against
-    # `rel.parts` in exactly the same way: a tree excludes `tests/helper.py` and analysing
-    # that `tests/` directory *as the root* admits it. No breakdown can propose such a
-    # directory — from the top it has no discovered files to be counted, so it is in no
-    # part's tally — but anybody may point `analyze` at one by hand. `BACKLOG.md` item 10
-    # carries both halves and the three ways out; this line guards the half that a
-    # breakdown can actually offer somebody.
-    skipped = {name for plugin in ingest.PLUGINS.values()
-               for name in plugin.manifest.discovery.skip_dirs}
+    # **A directory under a name a reader skips is a part again**, and the counts here are
+    # already the right ones: `members` came out of the single `discover(root)` above, so
+    # `Engine/Source/ThirdParty` is bucketed with the 620 files the tree admits and never
+    # the 57,373 it holds. What used to be missing was a command that would read those 620,
+    # and `--part-of` is it — so this function proposes the directory and `cli.part_argv`
+    # writes the flag that makes the proposal true. `Breakdown` carries why.
     left: list[tuple[Path, int]] = []
 
     def cut(prefix: tuple[str, ...], members: list[tuple[str, ...]]) -> list[tuple[Path, int]]:
-        if any(part in skipped for part in prefix):
-            # Nothing under here can be a part, and descending would only produce more of
-            # them. The whole subtree is reported as reached by no command.
-            left.append((root.joinpath(*prefix), len(members)))
-            return []
         if len(members) <= bound:
             return [(root.joinpath(*prefix) if prefix else root, len(members))]
         # `()` is a file sitting directly in this directory rather than under a child of it.
@@ -730,6 +748,7 @@ def analyze_tree(
     jobs: int | None = None,
     progress: Callable[[str, int, int], None] | None = None,
     declined: frozenset[str] = frozenset(),
+    part_of: Path | None = None,
 ) -> WalkStats:
     """Extract every changed file under `root` into `store`.
 
@@ -743,12 +762,17 @@ def analyze_tree(
     says have not changed, because a reader that resolves symbols over a subset of the
     compilation answers wrongly rather than partially; `extract` is then given only what
     missed the cache. Python's reader needs neither, and says so in `InProcessPlugin.open`.
+
+    **`part_of` reaches `discover` and nothing else.** It decides which files are *judged*
+    in; every key written below is still relative to `root`, which is what keeps a part's
+    stored paths and module names its own -- so two parts of one tree cannot collide, and a
+    part re-read with the flag is the same map minus whatever the tree was hiding.
     """
     root = root.resolve()
     stats = WalkStats()
 
     files = sorted(discover(root, include_tests=include_tests, stats=stats,
-                            declined=declined))
+                            declined=declined, judge_root=part_of))
     stats.found = len(files)
 
     known = store.known_hashes()

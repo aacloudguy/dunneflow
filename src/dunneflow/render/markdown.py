@@ -14,7 +14,7 @@ from collections import Counter, defaultdict
 from datetime import datetime
 from pathlib import Path
 
-from ..anomalies import detect
+from ..anomalies import Report, detect
 from ..detectors import rules_document
 from ..docstore import DocStore
 from ..resolve.cli import command_tree
@@ -78,12 +78,39 @@ def render_all(store: Store, out_dir: Path, program: str,
                when: datetime | None = None, include_tests: bool = False,
                docs: DocStore | None = None,
                standards: DocStore | None = None,
-               standards_note: str = "") -> list[Path]:
-    """Write the whole map. Returns the files written."""
+               standards_note: str = "",
+               report: Report | None = None) -> list[Path]:
+    """Write the whole map. Returns the files written.
+
+    **`report` is the anomalies, detected once.** This function called `detect` twice --
+    here for `09-anomalies.md` and again inside `_overview` for the headline that points
+    at it -- and `cli.py` called it a third time for its own step. Three runs of one
+    judgement over one unchanged store, and on `Engine/Binaries` (3,146 files, 71,306
+    routines) `detect` is **306 s**: writing the map took 855.6 s and looking for
+    anomalies another 306.4 s, which is **94.8% of a 1,226.6 s run** spent deciding the
+    same thing three times.
+
+    **And one of the three asked a different question**, which is worth stating exactly
+    because it is a hazard today and not yet a defect. `_overview`'s call was plain
+    `detect(store)` and so took `include_tests`' default rather than the run's, while the
+    other two passed it. Measured rather than assumed: `include_tests` reaches only
+    `_dead_code`, where it selects between two **blind-spot sentences** and changes no
+    query and no count -- so the README's *"N broken"* and the `09-anomalies.md` it sends
+    the reader to have always agreed. What was wrong was the *reason* they agreed, which
+    was that the argument happened not to matter; the moment a detector reads it for
+    anything a reader can count, the headline and its destination disagree and nothing
+    anywhere says so. One report removes the question.
+
+    `None` still detects, because this function is called from places that have no report
+    to hand and a renderer that silently wrote no anomalies would be worse than a slow one
+    (rule 49).
+    """
     out_dir.mkdir(parents=True, exist_ok=True)
     stamp = Stamp.of(store, when)
+    if report is None:
+        report = detect(store, include_tests)
     written = [
-        _overview(store, out_dir, program, stamp),
+        _overview(store, out_dir, program, stamp, report),
         _entrypoints(store, out_dir, program, stamp),
         _flows(store, out_dir, program, stamp),
         _routines(store, out_dir, program, stamp),
@@ -92,7 +119,7 @@ def render_all(store: Store, out_dir: Path, program: str,
         _governance(store, out_dir, program, stamp),
         render_database(store, out_dir, program, stamp),
         render_network(store, out_dir, program, stamp),
-        render_anomalies(detect(store, include_tests), out_dir, program, stamp),
+        render_anomalies(report, out_dir, program, stamp),
         # Documentation is a parallel input, so its two documents are written whether or
         # not any documentation was found. A glossary that says "nothing defines these
         # eleven words" is a finding; an absent glossary is a silence.
@@ -109,7 +136,8 @@ def render_all(store: Store, out_dir: Path, program: str,
 # --------------------------------------------------------------------------- #
 
 
-def _overview(store: Store, out: Path, program: str, stamp: Stamp) -> Path:
+def _overview(store: Store, out: Path, program: str, stamp: Stamp,
+              rep: Report) -> Path:
     c = store.counts()
     bi = boundary_index(store)
 
@@ -159,7 +187,6 @@ def _overview(store: Store, out: Path, program: str, stamp: Stamp) -> Path:
             lines.append(f"| {kind} | {len(hits):,} | {_esc(top[0][0]) if top else '—'} |")
         lines.append("")
 
-    rep = detect(store)
     ac = rep.counts()
     if any(ac.values()):
         lines.append("## What looks wrong\n")

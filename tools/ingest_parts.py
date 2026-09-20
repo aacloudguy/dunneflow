@@ -11,6 +11,13 @@ Every part goes into one maps root named for the tree, so `dunneflow serve` list
 by side. A part that fails is reported and the rest still run: eighty-odd analyses where one
 bad file stops the other eighty-five would be a worse tool than one that says which part it
 could not read.
+
+**The command itself is `cli.part_argv` and is not spelled here** (rule 51). It was spelled
+here, in parallel with the refusal that prints it, and that is two places a flag has to
+reach -- including `--part-of`, without which a part is judged as a root of its own. The
+output root is part of that one answer too: a re-run driver that passed `root.parent` where
+the first ingest passed `root` wrote 81 maps into the wrong directory and reported
+`0 failed`, which was true and useless.
 """
 
 from __future__ import annotations
@@ -23,6 +30,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
+from dunneflow.cli import part_argv, part_name  # noqa: E402
 from dunneflow.walk import parts_under  # noqa: E402
 
 
@@ -47,13 +55,16 @@ def main(argv: list[str] | None = None) -> int:
         print("  already one part — analyse it directly")
         return 0
 
-    dest = args.output / root.name
     done = failed = 0
     started = time.perf_counter()
     for i, (d, n) in enumerate(cut.parts, 1):
-        name = ".".join(d.relative_to(root).parts) or root.name
-        cmd = ["uv", "run", "dunneflow", "analyze", str(d),
-               "--name", name, "--output", str(dest)]
+        # **The command comes from `cli.part_argv` and is not written here** (rule 51).
+        # It was written here, and the two spellings drifted the moment one of them
+        # learned `--part-of`: a part read without that flag is judged as a root of its
+        # own, which is 473 files nobody asked for in the one case it has been measured
+        # in -- reported as a success.
+        name = part_name(d, root)
+        cmd = ["uv", "run", *part_argv(d, root, args.output)]
         head = f"[{i}/{len(cut.parts)}] {name} ({n:,} files)"
         if args.dry_run:
             print(head + " — " + " ".join(cmd), flush=True)

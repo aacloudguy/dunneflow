@@ -96,7 +96,7 @@ def names_a_manifest(filenames: Iterable[str]) -> bool:
     return any(fn in MANIFEST_FILES for fn in filenames)
 
 
-def find_package_root(target: Path) -> tuple[Path, list[Path]]:
+def find_package_root(target: Path, ceiling: Path | None = None) -> tuple[Path, list[Path]]:
     """The nearest ancestor holding **any** manifest, and every manifest at that level.
 
     This generalises the `pyproject.toml` walk-up that stood in `cli.py:283` -- the whole
@@ -108,11 +108,39 @@ def find_package_root(target: Path) -> tuple[Path, list[Path]]:
 
     **Every manifest at that level, not the first.** Two at one level is DunneNote, and
     stopping at the first would make the answer depend on which filename sorts earlier.
+
+    **`ceiling` is where the climb stops, and the climb had none.** This walk decides two
+    things a reader will never trace back to it -- the **documentation root** (`cli.py`
+    passes `pkg_root` to `analyze_docs_tree`) and the leaf that **identifies the tree**
+    (rule 64) -- and it climbed to the filesystem root looking for any of six filenames.
+    Measured on 2026-09-20, analysing a part of Unreal: the climb went four levels past
+    the tree into the *Developer directory itself*, which holds a stray `package.json`,
+    and the document walk then read **every project on this machine**. Each of the 85
+    Unreal maps holds the same 15,497 documents, **2,607 of them from programs that are
+    not Unreal** -- and a document is evidence (design rule 11), so their glossaries,
+    naming standards, mirrors and traceability were all measured partly over somebody
+    else's vocabulary. It cost about 205 s a part, which over 85 parts is most of a
+    327-minute run.
+
+    `None` keeps the unbounded climb, which is what a whole-program analysis wants and
+    what rule 64 was minted on: `.../society-2026-08-26/src` really does belong to the
+    `pyproject.toml` one level up. **`analyze --part-of <tree>` supplies the ceiling**,
+    because a part of a tree cannot belong to a package above that tree -- that is what
+    being a part means. The general case, an `analyze` of a bare subdirectory with no
+    `--part-of`, still climbs without one and is stated in `BACKLOG.md`: nothing in the
+    arguments says where to stop, and guessing at a stopping condition would be a rule
+    with no evidence behind it.
     """
     for candidate in (target, *target.parents):
         found = sorted(candidate / n for n in MANIFEST_FILES if (candidate / n).is_file())
         if found:
             return candidate, found
+        if ceiling is not None and candidate == ceiling:
+            # The tree itself declares nothing, so the part is its own package root. Not
+            # a failure and not a fallback: it is the same answer an unbounded climb gives
+            # for a bare directory of source, arrived at honestly rather than by carrying
+            # on until something unrelated matched (rule 49).
+            break
     return target, []
 
 

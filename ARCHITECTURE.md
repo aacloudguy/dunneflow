@@ -435,6 +435,18 @@ queries know a language exists.
   chose, and `cli.py` says so in the refusal. `serve` is not involved: it runs `analyze` as a
   child and promotes the child's own last line, so the refusal reaches the analysis pane
   without a second copy of the sentence (rule 51).
+
+  **`judge_root` is where a path-shaped rule is measured from, and `root` is still the
+  program.** A reader's `skip_dirs` and `is_test`'s `test_dirs` both walk `rel.parts`, so
+  the same file is judged differently depending on where the walk started —
+  `Engine/Source/ThirdParty` is 620 files from the top of Unreal and **57,373** as a root
+  of its own. `analyze --part-of <tree>` supplies the tree: discovery judges as the tree
+  would while the root stays the part, so module names, stored paths and the store key are
+  untouched. The flag is on **every** command a breakdown prints (`cli.part_argv`, the one
+  spelling both the refusal and `tools/ingest_parts.py` use), because for a part crossing
+  no such name the two answers are identical and one rule is cheaper to keep right than a
+  condition at two call sites. With it, `Breakdown.uncovered` holds only the split-directory
+  half and Unreal is **86 parts covering all 88,356 files** where it was 84 covering 84,590.
 - `ingest/` — **the seam a language arrives through, and the only place a fact becomes
   this program's.** Six modules and the split is the point.
 

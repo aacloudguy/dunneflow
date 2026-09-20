@@ -17,7 +17,9 @@ from pathlib import Path
 
 import pytest
 
+from dunneflow import revisions
 from dunneflow import store as store_mod
+from dunneflow.cli import build_parser, cmd_analyze, part_argv
 from dunneflow.store import Store
 from dunneflow.walk import analyze_tree, discover, parts_under
 
@@ -29,6 +31,21 @@ def _tree(root: Path, spec: dict[str, int]) -> None:
         d.mkdir(parents=True, exist_ok=True)
         for i in range(n):
             (d / f"m{i}.py").write_text(f"def f{i}():\n    return {i}\n", encoding="utf-8")
+
+
+def _cpp(root: Path, spec: dict[str, int]) -> None:
+    """The same, in a second language -- and the second language is the whole point.
+
+    **A skip rule belongs to one reader**, which is why `Engine/Binaries` holds 3,146 files
+    from the top of Unreal rather than none: the C++ reader skips the directory by name and
+    the Python reader reads straight through it. A fixture written in one language cannot
+    show that asymmetry, and it is the asymmetry the defect lives in.
+    """
+    for where, n in spec.items():
+        d = root / where
+        d.mkdir(parents=True, exist_ok=True)
+        for i in range(n):
+            (d / f"u{i}.cpp").write_text(f"void f{i}() {{ }}\n", encoding="utf-8")
 
 
 # ------------------------------------------------------------------- the guard --- #
@@ -173,8 +190,8 @@ def test_a_run_stopped_between_commits_keeps_what_it_committed(tmp_path, monkeyp
         kept.close()
 
 
-def test_a_directory_a_reader_skips_is_never_proposed_as_a_part(tmp_path):
-    """The defect the breakdown shipped with, and it is rule 13's shape.
+def test_a_directory_a_reader_skips_is_proposed_with_the_flag_that_makes_it_true(tmp_path):
+    """The defect the breakdown shipped with, and the shape the fix took.
 
     A plugin's `skip_dirs` is matched against the path **relative to the analysed root**, so
     a directory named there yields different files depending on where the walk started.
@@ -182,21 +199,158 @@ def test_a_directory_a_reader_skips_is_never_proposed_as_a_part(tmp_path):
     as its own root: the word the C++ reader hides on is no longer in any relative path.
 
     Both cases were observed rather than reasoned. The breakdown proposed `Engine/Binaries`,
-    and analysing it read **3,619** files where the part claimed 3,146 — 473 nobody asked
+    and analysing it read **3,619** files where the part claimed 3,146 -- 473 nobody asked
     for, silently. It proposed `Engine/Source/ThirdParty`, and that one was refused by the
     guard itself for being over the bound, which is the system catching its own advice.
 
-    `ThirdParty` is in the C++ reader's skip list and not in `walk.SKIP_DIRS`, so Python
-    files under it are admitted from the root — which is exactly why the count is non-zero
-    and the directory still cannot be a part.
+    **Refusing to propose them was the interim answer and it covered less of the tree than
+    the tree has.** The count the breakdown holds was always right -- it comes off the one
+    `discover(root)` above, so the directory is bucketed with the files the *tree* admits.
+    What was missing was a command that would read exactly those, and `--part-of` is it. So
+    the directory is a part again, and what keeps the proposal true is that every command
+    carries the flag -- asserted here off `part_argv` rather than by matching text, because
+    a guard that checks a name appears has not checked that anything happens (rules 34, 37).
     """
     _tree(tmp_path, {"good/a": 6, "good/b": 6, "ThirdParty/vendored": 5})
+    _cpp(tmp_path, {"ThirdParty/vendored": 5})
     cut = parts_under(tmp_path, bound=8)
 
+    # Seventeen, not twenty-two: the five C++ files are what the C++ reader hides, and the
+    # five Python ones beside them are what makes the directory non-empty at all.
     assert cut.total == 17
     named = {d.name for d, _ in cut.parts}
-    assert "ThirdParty" not in named, "a part must read what the breakdown says it reads"
-    assert (tmp_path / "ThirdParty", 5) in cut.uncovered
+    assert "ThirdParty" in named, "a covered directory must be offered as a part"
+    assert (tmp_path / "ThirdParty", 5) not in cut.uncovered
 
-    # And the arithmetic closes: every file is either in a part or stated as in none.
+    # And the arithmetic still closes: every file is either in a part or stated as in none.
     assert sum(n for _, n in cut.parts) + sum(n for _, n in cut.uncovered) == cut.total
+
+    # The flag, on every one of them, naming the tree.
+    for d, _ in cut.parts:
+        argv = part_argv(d, tmp_path, tmp_path.parent / "out")
+        assert "--part-of" in argv, f"{d} would be read as a root of its own"
+        assert argv[argv.index("--part-of") + 1] == str(tmp_path)
+
+
+def test_a_part_under_a_skipped_directory_reads_what_the_tree_admits(tmp_path):
+    """`ThirdParty`'s two numbers, in miniature, and the flag that reconciles them.
+
+    The whole of `BACKLOG.md` item 10 in three walks: the tree hides these files, the part
+    on its own does not, and the part told which tree it belongs to agrees with the tree.
+    Python's own `site-packages` rather than C++'s `ThirdParty`, because a skip rule belongs
+    to **one** reader -- which is why Unreal's `Engine/Binaries` holds 3,146 files at all,
+    the C++ reader skipping a directory the Python reader reads right through.
+    """
+    _tree(tmp_path, {"ThirdParty/vendored": 5, "own": 2})
+    _cpp(tmp_path, {"ThirdParty/vendored": 5})
+    part = tmp_path / "ThirdParty"
+
+    from_the_tree = sorted(p for p in discover(tmp_path) if part in p.parents)
+    as_its_own_root = sorted(discover(part))
+    as_a_part = sorted(discover(part, judge_root=tmp_path))
+
+    assert len(from_the_tree) == 5, "the tree hides the five the C++ reader skips"
+    assert len(as_its_own_root) == 10, "and rooting inside it un-hides every one of them"
+    assert as_a_part == from_the_tree, "a part judged from its tree agrees with its tree"
+
+
+def test_a_part_that_is_a_test_directory_is_hidden_by_the_tree_it_belongs_to(tmp_path):
+    """The half no breakdown can propose, and which nothing guarded.
+
+    `DiscoveryRules.is_test` matches `test_dirs` against `rel.parts` exactly as `skip_dirs`
+    does, so pointing `analyze` at a `tests/` directory admits every file in it -- measured
+    as *0 files from the top, all of them as its own root*. No breakdown can offer such a
+    directory, because from the top it has no discovered files to be counted and so is in no
+    part's tally; but anybody may type it, and until `--part-of` there was nothing to type
+    instead.
+    """
+    _tree(tmp_path, {"tests/unit": 4, "own": 2})
+    part = tmp_path / "tests"
+
+    assert [p for p in discover(tmp_path) if part in p.parents] == []
+    assert len(list(discover(part))) == 4
+    assert list(discover(part, judge_root=tmp_path)) == []
+
+    # And `--include-tests` still overrules it, from either root: the flag says where a rule
+    # is measured from, never whether it applies.
+    assert len(list(discover(part, judge_root=tmp_path, include_tests=True))) == 4
+
+
+def test_the_flag_changes_nothing_where_the_tree_hides_nothing(tmp_path):
+    """Which is why it is on every part rather than on the ones somebody judged to need it.
+
+    The components `--part-of` adds to the judged path are exactly the ones that match no
+    rule, so for all but a handful of parts the two answers are the same walk. A condition
+    here would be a rule kept at a call site, and the call sites are where this defect came
+    from in the first place (rule 51).
+    """
+    _tree(tmp_path, {"lib/deep/deeper": 4})
+    part = tmp_path / "lib" / "deep"
+    assert list(discover(part)) == list(discover(part, judge_root=tmp_path))
+
+
+def test_a_part_of_a_tree_it_does_not_sit_under_is_refused(tmp_path):
+    """Refused from the arguments alone, before a store is open.
+
+    The flag decides which files are read, so a wrong one is a map with the wrong facts in
+    it rather than a command that fails -- and finding that out after a store is open means
+    abandoning a half-written map. Both paths are in the sentence, because neither alone
+    tells a reader which end they got wrong (rule 89).
+    """
+    _tree(tmp_path, {"part": 2, "elsewhere": 2})
+    args = build_parser().parse_args(
+        ["analyze", str(tmp_path / "part"), "--name", "p",
+         "--output", str(tmp_path / "out"), "--part-of", str(tmp_path / "elsewhere"),
+         "--no-docs", "--no-render", "--quiet"])
+    assert cmd_analyze(args) == 2
+
+
+def test_a_part_records_where_in_its_tree_it_was_read(tmp_path):
+    """A figure taken off a part cannot be reproduced by somebody who does not know that.
+
+    Rule 24, and it is the reason this belongs beside `--without` on `analysis_args` rather
+    than being left unsaid: `Engine/Binaries` is 3,146 files read as a part and 3,619 read
+    as a root, and the two maps look equally healthy from the inside. The **relative**
+    position, never the tree's own path -- an absolute path is one machine's directory
+    layout written into a map built to be handed over (rule 60).
+    """
+    _tree(tmp_path, {"part/sub": 2})
+    out = tmp_path / "out"
+    args = build_parser().parse_args(
+        ["analyze", str(tmp_path / "part"), "--name", "p", "--output", str(out),
+         "--part-of", str(tmp_path), "--no-docs", "--no-render", "--quiet"])
+    assert cmd_analyze(args) == 0
+
+    written = revisions.newest(out / "p", revisions.GRAPH)
+    assert written is not None
+    store = Store(written, writable=False)
+    try:
+        said = store.get_meta("analysis_args") or ""
+    finally:
+        store.close()
+    assert "part" in said and str(tmp_path) not in said, said
+
+
+def test_a_tree_given_as_its_own_part_of_says_nothing(tmp_path):
+    """The whole-program case spelled the long way removes nothing, so it claims nothing.
+
+    Design rule 1 runs both directions: a map must say what was filtered out of it, and it
+    must not say something was when it was not (rule 13).
+    """
+    _tree(tmp_path, {"m": 2})
+    out = tmp_path / "out"
+    args = build_parser().parse_args(
+        ["analyze", str(tmp_path), "--name", "p", "--output", str(out),
+         "--part-of", str(tmp_path), "--no-docs", "--no-render", "--quiet"])
+    assert cmd_analyze(args) == 0
+
+    written = revisions.newest(out / "p", revisions.GRAPH)
+    assert written is not None
+    store = Store(written, writable=False)
+    try:
+        said = store.get_meta("analysis_args") or ""
+    finally:
+        store.close()
+    # The other two flags of this run do remove something and do say so; only the clause
+    # this test is about must be absent.
+    assert "part of its tree" not in said, said

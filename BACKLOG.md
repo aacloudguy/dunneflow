@@ -83,62 +83,59 @@ now analysed as `gstack` and is the corpus to re-test against if one is ever fou
 the only tree to hand with a real `fetch` population, and the tool scores **29 of 29** on
 it with no false positives, so the direct case needs nothing.
 
-### 10 · A discovery rule is relative to the root, so a part is not a piece of the tree
+### 11 · 84 maps hold another program's documents, and call their tree `Developer`
 
-*From the Unreal ingest, 2026-09-19/20. **This is the one to pick up next** — it is the only
-open item that leaves a map on disk holding facts the tool would not have gathered.*
+*From the Unreal ingest, 2026-09-20. **This is the one to pick up next** — it is the only
+open item that leaves maps on disk holding facts the tool would not have gathered.*
 
-**The mechanism.** Every path-shaped discovery rule is matched against the path *relative to
-the analysed root*: `DiscoveryRules.skip_dirs` and `DiscoveryRules.is_test`'s `test_dirs` both
-walk `rel.parts`. Move the root and the same file is judged differently, because the component
-that hid it is no longer in any relative path.
+**Rule 108**, found by the phase timings built for item 9. `find_package_root` climbed four
+levels above the tree into the Developer directory, which holds a stray `package.json`, so
+the document root of every Unreal part was *every project on this machine*.
 
-Measured, twice, and in opposite directions:
+| | |
+|---|---:|
+| documents in each part's map | **15,497** |
+| of those, from programs that are not Unreal | **2,607** |
+| the tree each map says it is of | **`Developer`** |
+| what the document walk cost a part | roughly **205 s**, over 85 parts |
 
-| | from the top of the tree | as its own root |
-|---|---:|---:|
-| `Engine/Source/ThirdParty` | 620 files | **57,373** |
-| `Engine/Binaries` | 3,146 files | **3,619** |
-| a `tests/` directory | 0 files | **all of them** |
+A document is evidence (design rule 11), so each part's **glossary, naming standard, mirror
+and traceability** was measured over a corpus that is partly somebody else's vocabulary, and
+`tree_leaf` — rule 64's identifying leaf — is the name of a directory that is nobody's
+program.
 
-The first two are C++: that reader skips `ThirdParty` and `Binaries` by name. The third is the
-same defect in the test rule and is reachable by anybody who points `analyze` at a test
-directory — it is not hypothetical and it is not guarded anywhere.
+**What is fixed and what is not.** `analyze --part-of <tree>` is the ceiling, and the two
+parts re-read this session are correct: `Engine.Source.ThirdParty` holds 11,850 documents,
+all of them inside itself, in a 15 MB store against 107 MB. **The other 84 parts still hold
+the foreign corpus.**
 
-**What is on disk because of it.** `output/UnrealEngine-release/Engine.Binaries` holds
-**3,619 files where the tree-root view has 3,146** — 473 C++ files from a directory the C++
-reader is configured to ignore, read because the part was rooted inside it. The map is
-internally consistent and is *not* the map the whole tree would have produced.
-`Engine/Source/ThirdParty`'s 620 files are covered by nothing at all: `walk.parts_under` now
-refuses to propose either directory, so both sit in `Breakdown.uncovered`.
+**Why not done.** It is 84 analyses, and they are cheap only in the sense that the code is
+cached — the document phase is the whole of the cost and it is the phase being re-taken.
+Worth doing in one pass with whatever item 8 decides, rather than twice.
 
-**Why not done.** Because the honest fix is a decision about what a part *is*, and it is not
-this session's to take. The tool's contract has always been **a root is a program** — rules,
-module names and stored paths are all relative to it — and by that contract analysing
-`Engine/Source/ThirdParty` is not a piece of Unreal, it is a different program that happens to
-live inside it. Nothing is broken; a breakdown is what introduced the claim that N roots add up
-to one tree, and that claim is the thing that is false.
+**What would settle it.** Re-reading the 84 with `--part-of`, then asking each map the two
+questions afterwards: that it holds no document outside the tree, and that it names its own
+tree. `PLAN-BATCH-INGEST.md` is written around exactly that reconciliation.
 
-**What would settle it — three shapes, and they are not equivalent.**
+### 12 · An `analyze` with no `--part-of` still climbs without a ceiling
 
-1. **Let an analysis be told the tree it is part of.** `analyze <part> --part-of <tree>` judges
-   every discovery rule against the path relative to `<tree>` while the root stays `<part>`.
-   Smallest change that makes a part a genuine piece: `Engine/Binaries` would then read 3,146,
-   and `Engine/Source/ThirdParty` would read 620 and could be a part again. It needs the two
-   roots kept apart everywhere discovery touches a path, and a map that records which it was
-   read under — a figure quoted off a part is otherwise unreproducible (rule 24).
-2. **Let a part exclude what another part covers.** Solves `Breakdown.uncovered`'s *other*
-   half too — the split directory that cannot be a command because `analyze` descends — but
-   leaves the skip-rule asymmetry exactly as it is. Useful, narrower, and not a fix for this.
-3. **Say a part is its own program and stop pretending otherwise.** Cheapest and least
-   satisfying: the breakdown states that each part is read as a root in its own right and that
-   what a reader skips is judged from there. Costs nothing, fixes nothing, and makes the
-   `Engine.Binaries` map defensible by naming what it is.
+*From rule 108, 2026-09-20.*
 
-**Whichever is chosen, two things have to happen to the map that exists.** `Engine.Binaries`
-is re-read or relabelled, and `Engine/Source/ThirdParty`'s 620 files are either covered or
-their absence is stated somewhere a reader of the map will see it — today it is stated only in
-the guard's output, which nobody re-runs.
+`--part-of` bounds the climb for a part. A plain `analyze <some/subdirectory>` has no tree
+to be bounded by and still walks its ancestors to `/`, looking for any of six filenames, and
+takes the document root and the tree's name from wherever it lands.
+
+**Why not done.** Nothing in those arguments says where to stop, and every candidate
+stopping condition is a guess: the git root is a guess (a tree need not be under one, and a
+monorepo's root is not a program), the first directory holding no manifest is a guess, and a
+depth limit is the worst of the three. Inventing one would be a rule with no evidence behind
+it, which is what rule 24 is about.
+
+**What would settle it.** Either a measurement that says how far real trees' package roots
+actually sit above their source — which the corpora here could answer — or the honest
+alternative, which is to **say what it did**: a run that took its documentation root from
+four levels up should print that, and today it prints nothing at all. The second is small and
+is design rule 1's shape.
 
 ### 8 · A map of 262,879 routines takes 27.6 minutes to open
 
@@ -149,31 +146,57 @@ the guard's output, which nobody re-runs.
 works, at a speed that makes it unusable. Design rule 45's bargain is that the bound on this
 work is *a reader opening one thing*; at 18,191 files that bound is no longer a bound.
 
-**Why not done.** It is a fresh measurement on the first corpus big enough to show it, and
-nothing yet says which of the six build steps owns the time — the step label is the whole of
-the evidence. Guessing at the 2.5D model because it is named in the last progress line is
-exactly the plausible diagnosis rule 39 was minted from.
+**The instrument exists now** (2026-09-20). `web.serve._Clock` times all six steps and
+sub-times the five things step 1 conflates — reading the graph into a model, laying it out,
+transposing it into the payload, and the root package — and `serve` prints each as it ends.
+`/api/base` carries the table as `spent`.
 
-**What would settle it.** Timing the six steps separately on this part, then deciding whether
-the answer is a bound on the payload, a lazier build, or a refusal that says a map this large
-opens in the documents and not in the graph.
+**And the first reading of it contradicts the sentence above.** On `Engine.Plugins.AI` —
+331 files, so not this part — the six steps came out **2.3 s · 0.5 s · 0.0 s · 48.4 s ·
+2.2 s · 0.8 s** of 54.0 s: *the naming standard, stated and derived* is 90% of it and *the
+2.5D model and its payload* is under a second. That is one part and not the one this item is
+about, so it settles nothing here; it is recorded because it is the first evidence of any
+kind, and because it points somewhere other than where the last progress line does. Rule 39
+exactly.
 
-### 9 · A part of fifteen files costs two hundred seconds
+**Why not done.** `Engine.Source.Runtime` has not been opened with the instrument. It is a
+~28-minute measurement and the machine has been reading Unreal all session.
 
-*From the Unreal ingest, 2026-09-20.*
+**What would settle it.** Opening that part with the six timings, and separately timing the
+first `/api/graph` — `json.dumps` of the whole payload runs per request, uncached, and is
+**not** inside the 1,659,334 ms, so whatever it costs at 262,879 routines is a second figure
+nobody has taken. Then deciding whether the answer is a bound on the payload, a lazier
+build, or a refusal that says a map this large opens in the documents and not in the graph.
 
-The largest part — 18,191 files — took 2,093 s. Parts of **11 to 15 files took 110–400 s
-each**, and fifty such parts hold 1.5% of the tree's files between them while costing roughly
-a third of the 327-minute wall clock. Whatever that time is, it is not reading files.
+### 9 · The documents of a part are not bounded the way its code is
 
-**Why not done.** Noticed while watching the ingest rather than measured; the per-part log has
-wall time and the analysis's own `files … in N.Ns`, and the gap between those two is the whole
-finding. It is fixed cost per `analyze`, and the candidates — opening four readers, the
-document walk, the manifest search, rendering thirteen documents for a program with almost
-nothing in it — have not been separated.
+*From the Unreal ingest, 2026-09-20. Reshaped the same day — the original item was "a part of
+fifteen files costs two hundred seconds", and the two causes it was looking for were found.*
 
-**What would settle it.** Timing one tiny part with each phase instrumented. The figure that
-matters is the gap, not the total.
+`analyze --timings` prints what every phase cost, and `--progress-json` carries `ms`. With
+it, the original item split into two answered halves and one that is left:
+
+* **Answered — the document root was outside the tree.** **Rule 108**, now item 11: the
+  document walk read every project on the machine, about 205 s a part over 85 parts, which
+  is most of a 327-minute run.
+* **Answered — one judgement made three times.** `detect` ran for `09-anomalies.md`, again
+  inside `_overview` for the headline that points at it, and a third time for `analyze`'s own
+  step. On `Engine/Binaries` writing the map was **855.6 s** and the anomalies **306.4 s** —
+  **94.8% of a 1,226.6 s run**. `render_all` takes the report now.
+* **Left.** A part's *documents* are still whatever is physically under its root, where its
+  *code* is what a reader admits. `Engine/Source/ThirdParty` is 620 files of code and
+  **57,373 files on disk**, and with the ceiling in place it still holds **11,850 documents**
+  and spends **71.9% of a 241 s run** on them.
+
+**Why not done.** Because it is not obviously wrong. Those documents really are in that
+directory, and design rule 11 says documentation and source are equal inputs — a reader's
+`skip_dirs` is a statement about what is *program source*, and nothing has ever said it is a
+statement about prose. Applying one reader's skip list to documents would also be a
+per-language rule applied to a thing that has no language.
+
+**What would settle it.** Deciding what a part's documentation *is*, with a measurement
+behind it: how much of a corpus's prose sits under a directory some reader skips, across the
+corpora here. Until then the number is what it is and is now visible, which it was not.
 
 ### 5 · Rule 95's general remedy
 

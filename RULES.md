@@ -2365,3 +2365,55 @@ rule of that number — a blank canvas must say why it is blank — which does e
      ask of one is not *how many groups* but *how large can a group get*, and the answer has
      to come from the thing that has to hold it — here, `cache_size`, two lines further up
      the same file.
+
+108. **A walk up the tree does not know when it has left it, and it answers anyway.**
+     `find_package_root` climbs from the analysed directory through its ancestors looking
+     for any of six manifest filenames, and stops at the first that matches. Rule 64 is why
+     it climbs at all — `.../society-2026-08-26/src` really does belong to the
+     `pyproject.toml` one level up, and the leaf that identifies a tree is the package
+     root's and not the analysed directory's. What it had no answer for is **where to
+     stop**, and `(target, *target.parents)` ends at `/`.
+
+     Found by analysing one part of Unreal with the phase timings that had just been built
+     for `BACKLOG.md` item 9. `Engine/Source/ThirdParty` is 620 files of code; the run took
+     **265 s**, of which **205 s — 77.5% — was documents**. The climb had gone **four levels
+     above the tree** into the Developer directory, which is not a project and is not
+     anybody's program, and which happens to hold a stray `package.json`. So `pkg_root` was
+     the whole of that directory, and `analyze_docs_tree` read **every project on the
+     machine**.
+
+     **What it put on disk.** Every one of the 85 Unreal part maps holds the same
+     **15,497 documents, 2,607 of them from programs that are not Unreal** — `AgentUX`,
+     `beads-main`, `knowledge-catalog-main`, `usdview`. A document is evidence (design rule
+     11), so the glossary, the naming standard, the mirror and traceability were each
+     measured over a corpus that was partly somebody else's vocabulary, in 85 maps, none of
+     which said anything was wrong. At roughly 205 s a part over 85 parts that is most of a
+     327-minute run, and a 107 MB document store per part of which the great majority is the
+     same foreign corpus copied 85 times.
+
+     **And it took rule 64's own subject with it.** `tree_leaf = pkg_root.name` is the leaf
+     that identifies a tree, and every one of those maps records its tree as
+     **`Developer`** -- the name of the directory that holds every project on this machine.
+     Rule 64 exists because `.../society-2026-08-26/src` identifies itself as `src`, which
+     names every src-layout program ever analysed and so identifies none of them; the
+     remedy was to ask the package root instead, and here the package root was four levels
+     outside the program. A rule that fixes an identity by delegating it inherits whatever
+     the delegate gets wrong.
+
+     `analyze --part-of <tree>` is the ceiling: a part of a tree cannot belong to a package
+     above that tree, which is what being a part *means*. Where the ceiling is reached and
+     nothing has declared anything, the part is its own package root — the same answer a
+     bare directory of source already gets, arrived at honestly rather than by carrying on
+     until something unrelated matched (rule 49).
+
+     **The general shape, and it is rule 107's one subject over.** An accumulator with no
+     ceiling is a bound nobody set; a **search** with no ceiling is a stopping condition
+     nobody set, and it is worse in one specific way — an unbounded accumulator eventually
+     becomes slow, and an unbounded search *succeeds*. It returns a confident answer of
+     exactly the right type, and every consumer downstream treats it as the answer to the
+     question they asked. The question to ask of a climb is not *what am I looking for* but
+     *what would it mean to have gone too far*, and if there is no answer to the second then
+     the first has no bound on how wrong it can be. The unbounded climb is still there for
+     an `analyze` with no `--part-of`, because nothing in those arguments says where to
+     stop and inventing a stopping condition would be a rule with no evidence behind it —
+     stated in `BACKLOG.md` rather than guessed at.

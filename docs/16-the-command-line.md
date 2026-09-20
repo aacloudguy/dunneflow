@@ -55,7 +55,9 @@ uv run dunneflow analyze <path> --name <program>
 | `--standards <dir>` | admit somebody else's naming standard, into its own store. Repeatable. |
 | `--include-tests` | include test files |
 | `--without <lang>` | do not read that language, and say so. Repeatable, refused for a language this build has no reader for, and refused if it would decline them all. For a machine that lacks a language's toolchain — see [installing](01-installing.md#which-languages-it-reads-and-the-one-thing-you-may-have-to-install) |
+| `--part-of <tree>` | this is a part of `<tree>`, so judge what to skip and what is a test from there. A directory read on its own is judged by a path that no longer contains the component that hid something — see [when it refuses](15-when-it-refuses.md) |
 | `--jobs <n>` | parallel workers |
+| `--timings` | print what each phase of the run cost |
 | `--no-render` | build the graph, write no Markdown |
 | `--no-source` / `--no-doc-source` | do not keep the bodies of the code / the documents |
 | `--quiet` | say nothing but failures |

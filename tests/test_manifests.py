@@ -112,6 +112,58 @@ def test_a_tree_declaring_nothing_is_its_own_root(tmp_path):
     assert found_root == root and found == []
 
 
+def test_a_climb_with_no_ceiling_leaves_the_tree_and_answers_anyway(tmp_path):
+    """**Rule 108**, and the measurement it was minted from.
+
+    `find_package_root` climbs until it meets any of six filenames, and until 2026-09-20 it
+    climbed to the filesystem root. Analysing `Engine/Source/ThirdParty` as a part of
+    Unreal, it went **four levels past the tree** into the Developer directory -- which is
+    not a project, and which holds a stray `package.json` -- and took two things with it
+    that no reader would ever trace back here: the **documentation root**, and the leaf
+    that identifies the tree (rule 64).
+
+    What that cost, measured rather than reasoned: every one of the 85 Unreal part maps
+    holds the same **15,497 documents, 2,607 of them from programs that are not Unreal**,
+    and a document is evidence (design rule 11) -- so each part's glossary, naming
+    standard, mirror and traceability was measured partly over somebody else's vocabulary.
+    It did not fail and it did not warn. It answered.
+    """
+    dev = tmp_path / "developer"
+    tree = dev / "tree"
+    part = tree / "engine" / "part"
+    part.mkdir(parents=True)
+    (part / "a.py").write_text("x = 1\n", encoding="utf-8")
+    # The stray manifest four levels up, in a directory that is nobody's program.
+    (dev / "package.json").write_text('{"name": "not-a-project"}', encoding="utf-8")
+
+    # Unbounded, which is still what a whole-program analysis wants (rule 64).
+    assert manifests.find_package_root(part)[0] == dev
+
+    # Told the tree it is a part of, the climb stops there -- and the tree declaring
+    # nothing means the part is its own root, which is the same answer a bare directory
+    # of source gets, arrived at honestly rather than by carrying on (rule 49).
+    found_root, found = manifests.find_package_root(part, tree)
+    assert found_root == part and found == []
+
+
+def test_a_ceiling_does_not_hide_a_manifest_at_or_below_it(tmp_path):
+    """The bound stops the climb; it does not change what the climb finds on the way.
+
+    A part of a tree that *does* declare something still belongs to that declaration --
+    otherwise the fix for one false answer would have invented a second one, which is
+    rule 20's shape: a read may refuse, but it may never repair.
+    """
+    tree = tmp_path / "tree"
+    part = tree / "engine" / "part"
+    part.mkdir(parents=True)
+    (tree / "pyproject.toml").write_text("[project]\nname = 'real'\n", encoding="utf-8")
+    (tmp_path / "package.json").write_text('{"name": "stray"}', encoding="utf-8")
+
+    found_root, found = manifests.find_package_root(part, tree)
+    assert found_root == tree, "the tree's own manifest is not above the ceiling"
+    assert [p.name for p in found] == ["pyproject.toml"]
+
+
 def test_a_manifest_that_cannot_be_parsed_says_so_rather_than_vanishing(tmp_path):
     """Read and unparseable is a different fact from not there, and only one of them
     is about this program (rule 20 -- a read may refuse, but it may never repair)."""

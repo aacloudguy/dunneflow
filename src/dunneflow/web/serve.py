@@ -161,14 +161,20 @@ def glossary_sidecars(source: SourceStore | None, docsource: DocSourceStore | No
     }
 
 
-def columnar(model: GraphModel) -> dict[str, Any]:
+def columnar(model: GraphModel, clock: _Clock | None = None) -> dict[str, Any]:
     """The whole stack as parallel arrays, with every drawn thing already positioned.
 
     Shadows are appended after real nodes and carry `real[i]`, the index of the node they
     proxy. That is what the transposition lines are drawn from, and it means the client
     never has to build a lookup to find where a shadow's real self lives.
+
+    `clock` is the instrument and changes nothing: this and `structural` are two of the
+    five things *the 2.5D model and its payload* names, and a step label that conflates
+    five things cannot say which of them costs 27.6 minutes on a map of 262,879 routines.
     """
     pos = structural(model)
+    if clock is not None:
+        clock.lap("· laying it out")
     index: dict[tuple[str, str], int] = {}
 
     ids: list[str] = []
@@ -291,13 +297,26 @@ def read_level(q: dict[str, list[str]]) -> tuple[str, int]:
 
 
 def build_payload(store: Store, program: str,
-                  level: str = "routine", min_disk: int | None = None) -> dict[str, Any]:
+                  level: str = "routine", min_disk: int | None = None,
+                  clock: _Clock | None = None) -> dict[str, Any]:
     """One level of the stack, positioned and columnar.
 
     The program's name rides with it because the browser keys stored settings per program:
     a plate order and a set of colours worked out for one codebase mean nothing in another.
+
+    **`clock` splits the step that no evidence could name** (`BACKLOG.md` item 8). Three
+    phases with quite different shapes hide behind one label: `graph.build` is six scans
+    of the store, `structural` is a sort and a phyllotaxis per drawn node, and the
+    transposition is ten parallel lists over nodes, shadows and edges in pure Python. A
+    sub-lap is written with a leading `·` so a reader can see at a glance that it is
+    inside the step above it and not a seventh one (rule 32).
     """
-    payload = columnar(build(store, level=level, min_disk=min_disk))
+    model = build(store, level=level, min_disk=min_disk)
+    if clock is not None:
+        clock.lap("· reading the graph into a model")
+    payload = columnar(model, clock)
+    if clock is not None:
+        clock.lap("· transposing it into the payload")
     payload["program"] = program
     return payload
 
@@ -488,6 +507,58 @@ BUILD_STEPS: tuple[str, ...] = (
 )
 
 
+class _Clock:
+    """How long since a switch began, and what each phase of it cost.
+
+    **One spelling of a `perf_counter` and its `ms()`** (rule 51). There were two, in
+    `switch_program` and in `switch`, and a third was about to be written -- which is
+    where a rule kept at call sites goes: `switch_program` would have grown per-step
+    timings and `switch` would not, and the one figure a reader could get would depend on
+    whether they had changed program or revision to get there.
+
+    **Why it exists at all.** `/api/program` on `Engine.Source.Runtime` reports `done`
+    after **1,659,334 ms** -- 27.6 minutes for a map of 262,879 routines -- and the only
+    evidence of where that went is which step label was most recent when it finished. That
+    is not evidence: the last label before `done` is simply the last one sent, and reading
+    a diagnosis off it is the plausible-diagnosis-of-a-real-symptom rule 39 was minted
+    from. `BACKLOG.md` item 8 says so and offers none.
+
+    `ms()` stays **cumulative**, which is what the client draws and what every existing
+    caller means by it; the two banking methods record deltas. A client that misses a
+    line still has a true cumulative figure, which a stream of deltas does not survive.
+
+    **Two cursors, because a step's own row must not be the crumbs its parts left.** A
+    step is timed from the last *step*, a lap from the last *anything* -- so
+    `the 2.5D model and its payload` reports the whole of itself and the four `·` rows
+    under it are a breakdown of that number rather than a competitor for it. Written the
+    single-cursor way first and it read **0.0s** for a step that had just taken all four
+    of the laps above it, which is a report that is arithmetically true and says the
+    opposite of what happened.
+    """
+
+    __slots__ = ("_at", "_step_at", "_t0", "spent")
+
+    def __init__(self) -> None:
+        self._t0 = self._at = self._step_at = time.perf_counter()
+        self.spent: list[tuple[str, int]] = []
+
+    def ms(self) -> int:
+        """Milliseconds since this began."""
+        return round((time.perf_counter() - self._t0) * 1000)
+
+    def lap(self, label: str) -> None:
+        """Bank a part of the step in progress. Measured from the last lap of any kind."""
+        now = time.perf_counter()
+        self.spent.append((label, round((now - self._at) * 1000)))
+        self._at = now
+
+    def phase(self, label: str) -> None:
+        """Bank a whole step. Measured from the last step, so it *contains* its laps."""
+        now = time.perf_counter()
+        self.spent.append((label, round((now - self._step_at) * 1000)))
+        self._at = self._step_at = now
+
+
 class _Live:
     """The read-only stores the dashboard queries while it is open.
 
@@ -675,7 +746,7 @@ class _Live:
     # -- the one door onto a version -------------------------------------- #
 
     def open(self, graph_db: Path,
-             step: Any = None) -> None:
+             step: Any = None, clock: _Clock | None = None) -> None:
         """Make `graph_db` the base: build everything from it, then swap it in.
 
         The same method at boot and at a switch, deliberately. A second builder would be
@@ -689,7 +760,16 @@ class _Live:
         reader keeps the map they had. That is rule 20's shape applied to a swap -- a
         switch may refuse, it may never leave a broken base behind.
         """
+        # **The one choke point all six steps pass through, so the timing is here.** The
+        # step *before* this one is what has just finished, which is the only phase whose
+        # cost is known at the moment a label changes; the last one is banked at the end.
+        # Six numbers instead of a label, which is the whole of `BACKLOG.md` item 8's
+        # *what would settle it*.
+        clock = clock or _Clock()
+
         def _step(i: int) -> None:
+            if i:
+                clock.phase(BUILD_STEPS[i - 1])
             if step is not None:
                 step(BUILD_STEPS[i], i, len(BUILD_STEPS))
 
@@ -718,8 +798,9 @@ class _Live:
         docs: DocStore | None = None
         try:
             _step(1)
-            payload = build_payload(store, self.out_dir.name)
+            payload = build_payload(store, self.out_dir.name, clock=clock)
             root = root_package(store)
+            clock.lap("· the root package")
 
             _step(2)
             files = build_files(store, self.source, revision=source_revision)
@@ -791,6 +872,10 @@ class _Live:
                       # without the other would place this version's crossings in the last
                       # version's boxes.
                       compartments={}, box_of={}, box_label={}, curiosities={}, algorithms={})
+        # The sixth, which no later `_step` can bank. Before the swap rather than after
+        # it: what the reader waited for is the build, and the swap is three statements
+        # under a lock.
+        clock.phase(BUILD_STEPS[-1])
         with self.lock:
             outgoing = self._base
             self._base = fresh
@@ -938,14 +1023,12 @@ class _Live:
         store's own sentence in the progress report. That is `open()`'s own rule (20) and
         the reason the build happens before the swap rather than after it.
         """
-        t = time.perf_counter()
-
-        def ms() -> int:
-            return round((time.perf_counter() - t) * 1000)
+        clock = _Clock()
+        ms = clock.ms
 
         def step(label: str, i: int, n: int) -> None:
             self.note(state="working", revision=name, program=name, step=label,
-                      done_steps=i, steps=n, ms=ms())
+                      done_steps=i, steps=n, ms=ms(), spent=list(clock.spent))
 
         graph_db = revisions.newest(out_dir, revisions.GRAPH)
         if graph_db is None:
@@ -963,7 +1046,7 @@ class _Live:
         try:
             (self.out_dir, self.source, self.docsource,
              self.standards) = out_dir, source, docsource, standards
-            self.open(graph_db, step)
+            self.open(graph_db, step, clock)
         except Exception as exc:                  # noqa: BLE001 -- a report, not a swallow
             (self.out_dir, self.source, self.docsource, self.standards) = was
             # **All three, and `standards` was missing from both of these lists.** It was
@@ -993,7 +1076,8 @@ class _Live:
             if old is not None:
                 old.close()
         self.note(state="done", revision=name, program=name, step="",
-                  done_steps=len(BUILD_STEPS), steps=len(BUILD_STEPS), ms=ms())
+                  done_steps=len(BUILD_STEPS), steps=len(BUILD_STEPS), ms=ms(),
+                  spent=list(clock.spent))
 
     def close_program(self) -> None:
         """Put the server back to having nothing open, so `/` is the start page again.
@@ -1063,23 +1147,22 @@ class _Live:
         by writing a traceback to the terminal and leaving the report saying "working"
         for ever is the same defect as a spinner that never stops.
         """
-        t = time.perf_counter()
-
-        def ms() -> int:
-            return round((time.perf_counter() - t) * 1000)
+        clock = _Clock()
+        ms = clock.ms
 
         def step(name: str, i: int, n: int) -> None:
             self.note(state="working", revision=revision, step=name,
-                      done_steps=i, steps=n, ms=ms())
+                      done_steps=i, steps=n, ms=ms(), spent=list(clock.spent))
 
         try:
-            self.open(graph_db, step)
+            self.open(graph_db, step, clock)
         except Exception as exc:                  # noqa: BLE001 -- see the docstring:
             self.note(state="failed", revision=revision,   # this is a report, not a swallow
                       steps=len(BUILD_STEPS), ms=ms(), reason=why(exc))
             return
         self.note(state="done", revision=revision, step="",
-                  done_steps=len(BUILD_STEPS), steps=len(BUILD_STEPS), ms=ms())
+                  done_steps=len(BUILD_STEPS), steps=len(BUILD_STEPS), ms=ms(),
+                  spent=list(clock.spent))
 
     def analysis_running(self) -> bool:
         """Is an analysis *actually* running -- asked of the claim and of the child.
@@ -1239,6 +1322,13 @@ class _Live:
             # and only its arrival, since it compares equal on every line it is carried
             # across. Left out, the one moment the walk reports what it left out would
             # register as silence.
+            #
+            # **`ms` is deliberately not in it and must never be added.** The child stamps
+            # every line with how long the run has taken, so `ms` differs on every line by
+            # construction -- putting it here would make `moved` bump because a clock
+            # moved, and a run would report itself as progressing for as long as it was
+            # being watched. That is the exact failure this list exists to prevent, and
+            # silence is what tells a hang from a long step.
             changed = any(was.get(k) != fresh.get(k)
                           for k in ("state", "step", "done_steps", "detail", "residue"))
             fresh["moved"] = time.time() if changed else was.get("moved", time.time())
@@ -4098,7 +4188,30 @@ def serve(out_dir: Path, *, port: int = 8787, open_browser: bool = True,
     if graph_db is None or not graph_db.exists():
         _serve_cold(live, out_root, port, open_browser, emit)
         return
-    live.open(graph_db, lambda name, i, n: emit(f"  [{i + 1}/{n}] {name}…"))
+    # **The cost of each step, not only its name.** A step label said what the build was
+    # doing and never what it had cost, which is survivable at ten seconds and is not at
+    # 27.6 minutes -- and the terminal is the surface where somebody diagnosing that will
+    # actually be standing. Printed as each step *ends*, so a run still going has already
+    # told the reader everything it knows.
+    boot = _Clock()
+    # A cursor, not `spent[-1]`: step 1 banks four laps of its own -- the model, the
+    # layout, the transposition and the root package -- and a printer that shows only the
+    # most recent would drop three of the five numbers the whole instrument is for. Rule
+    # 32 one more time: a report must account for what it counts.
+    said = 0
+
+    def _drain() -> None:
+        nonlocal said
+        for was, took in boot.spent[said:]:
+            emit(f"      {was} — {took / 1000:.1f}s")
+        said = len(boot.spent)
+
+    def _boot_step(name: str, i: int, n: int) -> None:
+        _drain()
+        emit(f"  [{i + 1}/{n}] {name}…")
+
+    live.open(graph_db, _boot_step, boot)
+    _drain()
 
     files = live.current.files
     naming = live.current.naming

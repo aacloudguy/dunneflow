@@ -1101,3 +1101,83 @@ open, every route answers 200, and the cover is correct. But a reader who clicks
 waits twenty-eight minutes has not been given a reading tool, and design rule 45's bargain —
 the bound is the reader opening one thing — does not survive a map this size. Recorded as the
 figure it is; no conclusion is drawn here about which of the six steps to attack.
+
+## Where the time actually goes in a run (v2, measured 2026-09-20)
+
+The section above records that a part of 11–15 files cost 110–400 s and says plainly that
+nothing had separated the causes. **`analyze --timings` separates them**: `_Progress.step`
+is the one chokepoint every phase passes through, so all eight are timed, plus the region
+before the first step that nothing covered — the size guard's walk, the manifest walk-up,
+the standards refusals and three store opens. `--progress-json` carries `ms` on every
+object, which it never did, so `serve`'s analysis pane can say how long as well as how far.
+
+### `Engine/Source/ThirdParty`, 620 files of code and 57,373 on disk
+
+The part that had been reachable by no command until `--part-of`. Read as a part of the
+tree, to the external volume:
+
+| | before the ceiling | after |
+|---|---:|---:|
+| reading the source tree | 42.2 s | 55.1 s |
+| **reading the documents** | **167.1 s** | **146.7 s** |
+| capturing the document bodies | 38.3 s | 26.8 s |
+| resolving | 1.1 s | 1.6 s |
+| writing the map | 10.5 s | 5.8 s |
+| **the whole run** | **265.0 s** | **241.2 s** |
+| documents in the map | **15,544** | **11,850** |
+| document store | **107 MB** | **15 MB** |
+
+**The 620 files of code are 20% of it and the documents are three quarters.** Before the
+ceiling, the document root was the *Developer directory* — every project on this machine,
+rule 108 — and 2,607 of those documents belonged to other programs. After it, every
+document is inside the part. The *time* barely moved and the *corpus* is right, which is the
+distinction worth keeping: the fix was never about speed.
+
+### `Engine/Binaries`, 3,146 files and 71,306 routines
+
+Re-read with `--part-of`, which is also where item 10's 473 over-read files were pruned:
+`files 3146 (parsed 0, cached 3146, removed 473, failed 0)`.
+
+| | detecting three times | detecting once |
+|---|---:|---:|
+| **writing the map** | **855.6 s** (69.8%) | **19.3 s** (2.7%) |
+| looking for anomalies | 306.4 s (25.0%) | 293.6 s (41.1%) |
+| resolving | 27.3 s | 360.8 s |
+| the whole run | 1,226.6 s | 714.7 s |
+
+**Read the first row and not the last.** `render_all` detected anomalies for
+`09-anomalies.md` and `_overview` detected them again for the headline that points at it,
+and `analyze` detected them a third time for its own step — one judgement over one unchanged
+store, three times. It takes the report now, and writing the map goes from **855.6 s to
+19.3 s**. That is the claim, and it is held by a test that counts calls rather than seconds.
+
+**The last row is not comparable and saying so is the point (rule 24).** Between the two
+runs, resolution did byte-identical work — `263,472 calls: 23,278 certain, 10 inferred,
+240,184 external` in both — in **27.3 s and then 360.8 s**, a 13× spread this session cannot
+explain and did not cause. These maps live on the external volume, which this file already
+records at 1.7–5× the internal SSD depending on how much of the store is in the page cache,
+and an hour of reading Unreal sits between the two runs. A total that swallows a 333-second
+unexplained difference is not evidence about a fix that moved 836 seconds somewhere visible.
+
+### Opening a part in the dashboard: the six steps, at last
+
+`web.serve._Clock` times all six `BUILD_STEPS` and sub-times the four things step 1
+conflates. `Engine.Plugins.AI`, 331 files, booted twice:
+
+| | cold | warm |
+|---|---:|---:|
+| opening the graph | 2.3 s | 1.3 s |
+| the 2.5D model and its payload | 0.0 s | **0.5 s** — of which the model 0.5 s, layout 0.0 s, transposition 0.0 s, root package 0.0 s |
+| the file list | 0.0 s | 0.2 s |
+| **the naming standard, stated and derived** | **48.4 s** | **16.6 s** |
+| the glossary | 2.2 s | 0.3 s |
+| the cover | 0.8 s | 0.9 s |
+| total | 54.0 s | 19.9 s |
+
+**This is not `BACKLOG.md` item 8 and must not be quoted as though it were.** Item 8 is
+`Engine.Source.Runtime` — 18,191 files, 262,879 routines, 1,659,334 ms — and that part has
+not been opened with the instrument. What this says is only that on the one part measured,
+*the naming standard* is 90% and *the 2.5D model and its payload* is under a second, where
+the item's text says *"most of it in the 2.5D model and its payload"* on the evidence of
+which step label was most recent. One part is not the other and neither settles the other;
+what has changed is that there is now an instrument instead of a label.

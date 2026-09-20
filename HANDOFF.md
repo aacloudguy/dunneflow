@@ -19465,3 +19465,34 @@ and those files join `Breakdown.uncovered`. Unreal: **84 parts covering 84,590 f
 stated as reached by none**, and the arithmetic closes. The count is non-zero rather than
 academic because the skip is *per language* — Python files under `Binaries` are admitted from
 the root, which is why that directory has 3,146 files at all.
+
+### Seven files the tree lost, and one typo in Unreal's own source
+
+The ingest finished — **85 parts, 88,202 files, 914,956 routines, 3,838,318 calls, 327
+minutes** — and then the arithmetic was checked part by part against what the breakdown had
+claimed. Five parts disagreed. One was `Engine.Binaries` over-reading by 473, above. The
+other four were **short by one or two files each, seven in all**, and every one of them read
+perfectly well by hand.
+
+`Engine/Plugins/AI/MassAI/.../MassStateTreeSubsystem.cpp` contains **`ĘntityManager`** —
+U+0118, where somebody meant `E`. `ch.isalpha()` is true of it; `_IDENT_RE` was `[A-Za-z_$]`,
+ASCII only. So the character was steered into a branch whose pattern could not match it and
+landed on a bare `assert`, which killed the reader for that file — and its header with it,
+because the same typo is in both.
+
+**The module already knew the right answer and the assert was talking over it.** Twenty lines
+down: *"A byte this reader has no token for. Skipped rather than refused: it is one character
+of one file, and stopping would cost the whole file's facts."* Both asserts are now that same
+fallthrough, so a guard and a matcher edited apart can never again cost a file.
+
+**Widened rather than narrowed, and that is the substantive choice.** C++ has allowed extended
+identifiers since C++11. Narrowing the guard to ASCII instead would skip the `Ę` and tokenise
+`ntityManager` — an identifier that exists in no source file anywhere, reported with exactly
+the confidence of a real one. Rule 49's shape in a lexer.
+
+**Not silent, and the earlier reading of it was wrong.** The run *does* say `failed 2` in its
+summary; `IngestPlugin.lost` counts it and `walk.py` folds it into `stats.failed`. What the
+**map** has is no `files` row at all, so the artifact cannot answer *what was lost* after the
+terminal has scrolled. That is the narrower gap and it is real, but it is not silence.
+
+Golden **7 of 7** — Society is Python and cannot move. The four short parts were re-read.

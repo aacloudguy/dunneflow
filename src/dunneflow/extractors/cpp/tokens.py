@@ -55,7 +55,17 @@ class Token:
     start: int
 
 
-_IDENT_RE = re.compile(r"[A-Za-z_$][A-Za-z0-9_$]*")
+# **Unicode-aware, because the guard that reaches it is.** `ch.isalpha()` is true of every
+# letter in every alphabet; this pattern was `[A-Za-z_$]`, ASCII only. A character the guard
+# admitted and the pattern refused fell on an `assert` and took the whole file with it —
+# `Ę` (U+0118) where somebody meant `E`, one typo in one Unreal source file, and the map
+# lost that file and its header with no row to say they had ever been seen.
+#
+# Widening rather than narrowing the guard, for two reasons. C++ has permitted extended
+# identifiers since C++11 and compilers accept them, so a letter really is a letter here.
+# And narrowing would be worse than either: `Ęntity` would skip the `Ę` and tokenise
+# `ntity`, an identifier that is in no source file, reported with confidence.
+_IDENT_RE = re.compile(r"(?:[^\W\d]|\$)[\w$]*")
 _NUM_RE = re.compile(r"\.?\d[\w.']*(?:[eEpP][+-][\w.']*)*")
 
 # Longest first: the scanner takes the first that matches, so `<<=` must be offered before
@@ -102,14 +112,24 @@ def tokenize(code: str, masked: Masked | None = None) -> list[Token]:
 
         if ch.isalpha() or ch in "_$":
             m = _IDENT_RE.match(code, i)
-            assert m is not None
+            if m is None:
+                # **Unreachable, and not asserted.** The pattern above admits everything
+                # this guard does, so a mismatch means the two have been edited apart —
+                # and the cost of that was one `assert` killing a file entire. This module
+                # already says what to do with a character it has no token for, twenty
+                # lines down: skip it, because it is one character and refusing costs the
+                # whole file's facts. The same answer is the right one here.
+                i += 1
+                continue
             out.append(Token(TokenKind.IDENT, m.group(), i))
             i = m.end()
             continue
 
         if ch.isdigit() or (ch == "." and i + 1 < n and code[i + 1].isdigit()):
             m = _NUM_RE.match(code, i)
-            assert m is not None
+            if m is None:                      # the same argument as the identifier above
+                i += 1
+                continue
             out.append(Token(TokenKind.NUM, m.group(), i))
             i = m.end()
             continue

@@ -349,3 +349,45 @@ def _facts(src: str):
         path = root / "m.cpp"
         path.write_text(src, encoding="utf-8")
         return extract_file(path, root)
+
+
+def test_a_letter_outside_ascii_does_not_cost_the_file(tmp_path):
+    """One typo in one file took that file and its header out of the map entirely.
+
+    `Engine/Plugins/AI/MassAI/.../MassStateTreeSubsystem.cpp` in `UnrealEngine-release`
+    contains `ĘntityManager` — U+0118, where somebody meant `E`. `ch.isalpha()` is true of
+    it and `_IDENT_RE` was `[A-Za-z_$]`, so the character was steered into a branch whose
+    pattern could not match it and fell on a bare `assert`. The reader died, the file was
+    counted as failed, and **no `files` row was written for it** — so the map itself could
+    not say the file had ever been seen.
+
+    Found by analysing Unreal in parts: four parts held one or two fewer files than the walk
+    had found, seven files in all, and every one of them read perfectly well by hand.
+
+    The identifier is kept **whole**. Skipping the character instead would tokenise
+    `ntityManager`, an identifier that appears in no source file anywhere, and report it with
+    the same confidence as a real one.
+    """
+    src = (
+        "struct Holder { int x; };\n"
+        "void Use()\n"
+        "{\n"
+        "\tHolder* ĘntityManager = nullptr;\n"
+        "\t(void)ĘntityManager;\n"
+        "}\n"
+    )
+    root = tmp_path / "tree"
+    root.mkdir()
+    (root / "m.cpp").write_text(src, encoding="utf-8")
+
+    facts = extract_file(root / "m.cpp", root)
+    assert facts.errors == [], facts.errors
+    assert [r.name for r in facts.routines] == ["Use"]
+
+    from dunneflow.extractors.cpp.lexer import mask
+    from dunneflow.extractors.cpp.preprocessor import scan
+    from dunneflow.extractors.cpp.tokens import tokenize
+    masked = mask(src)
+    words = [t.text for t in tokenize(scan(masked).code, masked)]
+    assert "ĘntityManager" in words, "the identifier must survive as one word"
+    assert "ntityManager" not in words, "a half-eaten identifier is worse than none"

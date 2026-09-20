@@ -19671,3 +19671,69 @@ ingest actually had that it is answerable to, including `0 failed` being true an
 identical** on a fresh Society read with `--standards`, at 4,823 routines. Both ordering
 gates clean — every document byte-identical and every route the same answer under a full row
 reversal. Five stamps unmoved, 86 of 86 parts open, 0 stale.
+
+## 2026-09-20 — The whole tree re-read, and item 9 answered by its own smallest parts
+
+Tom's call: run the pass that corrects the Developer-root defect. `tools/ingest_parts.py`
+over all 86 parts with `--part-of`, extraction cached. **86 parts read, 0 failed, 402
+minutes.**
+
+### The reconciliation, because `0 failed` was true and useless once already
+
+Asked of the stores rather than the exit code, which is the check `PLAN-BATCH-INGEST.md`
+was written around and the one the first ingest never did:
+
+| | |
+|---|---:|
+| parts · files | **86 · 88,356** — exactly what the breakdown claims |
+| stale · incomplete | **0 · 0** |
+| **documents from other programs** | **0** |
+| documents, whole tree | 12,886, from ~1.3 million rows across 85 copies of one foreign corpus |
+
+**One check cried wolf and it was the check, not the maps.** Two parts reported their tree
+as `Developer` — `Engine.Plugins.Developer` and `Engine.Source.Developer`, which are
+directories of that name *inside* Unreal, so their own leaf legitimately is `Developer` and
+their documents are all inside them. The guard matched on a string where the question is
+whether the climb left the tree (rule 30: a label is not an identity). The
+foreign-document count is what actually answers it, and it is zero.
+
+### Item 9 is answered, by the parts it was named for
+
+*"A part of fifteen files costs two hundred seconds."* The seven parts of 11–15 files now
+run in **9–19 s, median 17 s**, against **110–400 s each** in the first ingest. The median
+of all 86 is **16 s**. Two changes did it and neither was about speed: the document root is
+bounded to the part (rule 108), so a part no longer walks every project on this machine, and
+the map is written from one anomaly detection rather than three.
+
+### The total went up, and one part is the whole of it
+
+**402 minutes against the first ingest's 327**, with extraction cached where the first pass
+did it cold. `Engine.Source.Runtime` took **8,815 s (2 h 27 m)** against **2,093 s (35 m)** —
+36% of the pass for 21% of the files — and every other part got dramatically faster. No
+claim that the fix caused it: the store was cold, these maps are on the external volume, and
+the clean measurement of that effect is already recorded — `Engine/Binaries` resolved
+byte-identical work in 27.3 s and then 360.8 s minutes apart. Runtime is the same
+262,879-routine map that takes 27.6 minutes to open, so this is `BACKLOG.md` item 8's cost
+appearing on a second surface.
+
+### A defect in the driver, found by reading its own output
+
+`[1/86] Engine.Source.Runtime (18,191 files) — 8815s` and then nothing. The driver greps
+**stderr** for the per-part summary; `cmd_analyze` prints that line with a bare `print()`, to
+**stdout**. It has never matched, so **every part of the 327-minute first ingest logged its
+wall time and a blank where its routines, calls and ways in belong** — silently. Rule 44:
+reading a field from the wrong place renders nothing and throws nothing. It is a large part
+of why that ingest's arithmetic had to be re-checked by hand and why the seven lost files
+were nearly missed. Reads stdout now, and says `?? this part printed no summary line` rather
+than leaving a blank (rule 37). Fixed mid-run, so it takes effect next time; this pass still
+logged bare times, and the reconciliation above does not depend on them.
+
+### Residue
+
+`Engine.Source.ThirdParty` holds **11,850 of the tree's 12,886 documents** — 620 files of
+code on 57,373 files of vendored library source. That narrows `BACKLOG.md` item 9's
+remaining half from a property of parts to one directory, and the question it leaves is
+whether vendored third-party prose is documentation of the program. Item 11 is closed; the
+unbounded climb for an `analyze` with no `--part-of` is still item 12. Nine pool workers
+orphaned by the *first* ingest are still alive at 22 h; this pass leaked none, so it is an
+interrupted run's leak — stated as a residue.

@@ -83,40 +83,6 @@ now analysed as `gstack` and is the corpus to re-test against if one is ever fou
 the only tree to hand with a real `fetch` population, and the tool scores **29 of 29** on
 it with no false positives, so the direct case needs nothing.
 
-### 11 · 84 maps hold another program's documents, and call their tree `Developer`
-
-*From the Unreal ingest, 2026-09-20. **This is the one to pick up next** — it is the only
-open item that leaves maps on disk holding facts the tool would not have gathered.*
-
-**Rule 108**, found by the phase timings built for item 9. `find_package_root` climbed four
-levels above the tree into the Developer directory, which holds a stray `package.json`, so
-the document root of every Unreal part was *every project on this machine*.
-
-| | |
-|---|---:|
-| documents in each part's map | **15,497** |
-| of those, from programs that are not Unreal | **2,607** |
-| the tree each map says it is of | **`Developer`** |
-| what the document walk cost a part | roughly **205 s**, over 85 parts |
-
-A document is evidence (design rule 11), so each part's **glossary, naming standard, mirror
-and traceability** was measured over a corpus that is partly somebody else's vocabulary, and
-`tree_leaf` — rule 64's identifying leaf — is the name of a directory that is nobody's
-program.
-
-**What is fixed and what is not.** `analyze --part-of <tree>` is the ceiling, and the two
-parts re-read this session are correct: `Engine.Source.ThirdParty` holds 11,850 documents,
-all of them inside itself, in a 15 MB store against 107 MB. **The other 84 parts still hold
-the foreign corpus.**
-
-**Why not done.** It is 84 analyses, and they are cheap only in the sense that the code is
-cached — the document phase is the whole of the cost and it is the phase being re-taken.
-Worth doing in one pass with whatever item 8 decides, rather than twice.
-
-**What would settle it.** Re-reading the 84 with `--part-of`, then asking each map the two
-questions afterwards: that it holds no document outside the tree, and that it names its own
-tree. `PLAN-BATCH-INGEST.md` is written around exactly that reconciliation.
-
 ### 12 · An `analyze` with no `--part-of` still climbs without a ceiling
 
 *From rule 108, 2026-09-20.*
@@ -183,10 +149,13 @@ it, the original item split into two answered halves and one that is left:
   inside `_overview` for the headline that points at it, and a third time for `analyze`'s own
   step. On `Engine/Binaries` writing the map was **855.6 s** and the anomalies **306.4 s** —
   **94.8% of a 1,226.6 s run**. `render_all` takes the report now.
-* **Left.** A part's *documents* are still whatever is physically under its root, where its
-  *code* is what a reader admits. `Engine/Source/ThirdParty` is 620 files of code and
-  **57,373 files on disk**, and with the ceiling in place it still holds **11,850 documents**
-  and spends **71.9% of a 241 s run** on them.
+* **Left, and the whole-tree re-read on 2026-09-20 measured how much of it there is.** A
+  part's *documents* are still whatever is physically under its root, where its *code* is
+  what a reader admits. Across all 86 parts the tree now holds **12,886 documents — and
+  11,850 of them are `Engine.Source.ThirdParty`'s**, a part of 620 code files sitting on
+  57,373 files of vendored library source. Every other part in Unreal is in double or
+  single figures. So this is not a general property of parts; it is one directory, and the
+  question is whether vendored third-party prose is documentation of the program.
 
 **Why not done.** Because it is not obviously wrong. Those documents really are in that
 directory, and design rule 11 says documentation and source are equal inputs — a reader's
@@ -194,9 +163,11 @@ directory, and design rule 11 says documentation and source are equal inputs —
 statement about prose. Applying one reader's skip list to documents would also be a
 per-language rule applied to a thing that has no language.
 
-**What would settle it.** Deciding what a part's documentation *is*, with a measurement
-behind it: how much of a corpus's prose sits under a directory some reader skips, across the
-corpora here. Until then the number is what it is and is now visible, which it was not.
+**What would settle it.** Deciding what a part's documentation *is*. The measurement that
+was wanted has been taken and it narrows the question rather than answering it: 92% of the
+tree's documents are under one directory that the C++ reader skips by name for code. Until
+somebody decides whether that is evidence about Unreal, the number is what it is and is now
+visible, which it was not.
 
 ### 5 · Rule 95's general remedy
 
@@ -229,5 +200,6 @@ that nobody spends a session rediscovering them and filing them as bugs.
 | **A program that serves browser JavaScript as a string has calls this map cannot see** | `gstack`'s `getCookiePickerHTML(): string` returns an HTML page holding four `fetch` calls, and `design/src/compare.ts` another. Those requests really are made — from the browser, by code this program wrote — and the map says nothing about them. Correctly: a string is not code, which is rule 9's argument one direction over, and reading one would mean parsing every template literal in every language. Stated so the NETWORK count is read as *what this program calls*, never *what this program causes*. 2026-09-18. |
 | **`socket.emit` may be wrongly declared async** | `detectors/typescript.yaml` says `async: true`; `emit` is fire-and-forget in socket.io and `emitWithAck` is the awaitable one, so it is probably wrong beside `WebSocket` and `EventSource`, which were corrected. Left alone because **no map this tool has read holds a single `socket.emit`** and socket.io's types are in no corpus here, so there is nothing to check a change against. Asserting it from memory is what rule 24 forbids. 2026-09-18. |
 | **Rule 105's survey is a floor, not the population** | `tools/ordering.py --survey` lists the five `sorted()` calls whose input is *written as* a set and which take a `key=`. Unorderedness propagates, so a dict built by iterating a set and then sorted over its `.items()` is the same defect and is invisible to it — `web/changes.py` held two of each, and only the two written as set algebra are in the count. Catching the rest means following the provenance of a value, which is a different instrument. The reversal probe cannot see any of them. 2026-09-18. |
+| **A killed analysis can leave its pool behind** | Nine `ProcessPoolExecutor` workers from the original Unreal ingest were still alive 22 hours later, parented to init, idle at 5.5 MB each. Harmless where they are, and the 86-part re-read on 2026-09-20 added none — so it is an interrupted run's leak rather than an ordinary one's. Stated because a batch runner doing this nightly would accumulate them, and `PLAN-BATCH-INGEST.md` is the place that would have to care. 2026-09-20. |
 | **The size guard counts files and nothing else** | `walk.TOO_BIG` is 20,000 *files*, which is the shape of the evidence — `Engine/Source/Runtime` is 18,191 and is the largest tree read end to end. A tree of 19,000 enormous files passes it and a tree of 25,000 tiny ones is refused, and neither is what the bound is really about: the thing that hurts is rows written, not files read. Bytes or an estimate of rows would be the honest key, and taking one needs a corpus spread wide enough to separate the two — which is a measurement, not an edit. Stated so the number is read as what it is. 2026-09-19. |
 | **`PERFORMANCE.md` is v1's, except where it says otherwise** | Every figure above the v2 headings was measured on v1 and none has been reproduced in this tree. |

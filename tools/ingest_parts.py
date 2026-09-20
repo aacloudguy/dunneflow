@@ -74,9 +74,19 @@ def main(argv: list[str] | None = None) -> int:
         took = time.perf_counter() - t
         if r.returncode == 0:
             done += 1
-            # The summary line the CLI prints last, which carries the figures.
-            tail = [ln for ln in r.stderr.splitlines() if ln.startswith(f"{name}:")]
-            said = tail[-1] if tail else ""
+            # **The summary is on stdout and this looked on stderr**, so it has never once
+            # found it: every part in the 327-minute Unreal ingest logged its wall time
+            # and a blank where its routines, calls and ways in should have been. Rule 44
+            # -- reading a field from the wrong place renders nothing and throws nothing.
+            # `_emit` is stderr and carries the prose; the one line that carries the
+            # figures is a bare `print`, which is the channel a summary belongs on.
+            #
+            # **And the absence is now said out loud** (rule 37, design rule 1). A blank
+            # after a dash is indistinguishable from a part that reported nothing, and a
+            # driver whose whole job is to say what 86 analyses did may not be silent
+            # about having failed to read one of them.
+            tail = [ln for ln in r.stdout.splitlines() if ln.startswith(f"{name}:")]
+            said = tail[-1] if tail else "?? this part printed no summary line"
             drained = [ln.strip() for ln in r.stderr.splitlines()
                        if "write-ahead log was drained" in ln]
             print(f"{head} — {took:.0f}s   {said}", flush=True)

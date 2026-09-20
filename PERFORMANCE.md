@@ -1181,3 +1181,39 @@ not been opened with the instrument. What this says is only that on the one part
 the item's text says *"most of it in the 2.5D model and its payload"* on the evidence of
 which step label was most recent. One part is not the other and neither settles the other;
 what has changed is that there is now an instrument instead of a label.
+
+### The whole tree re-read as parts, with the climb bounded (measured 2026-09-20)
+
+`tools/ingest_parts.py` over all 86 parts with `--part-of`, extraction cached throughout, to
+the external volume. **86 parts read, 0 failed, 402 minutes.**
+
+| | |
+|---|---:|
+| parts · files | **86 · 88,356** — the breakdown's own figures, reconciled against disk |
+| stale · incomplete | **0 · 0** |
+| documents, whole tree | **12,886**, of which 11,850 are `Engine.Source.ThirdParty`'s |
+| documents from other programs | **0** |
+| median part | **16 s** |
+
+**The headline is the smallest parts, because they are what item 9 was about.** Parts of
+11–15 files cost **110–400 s each** in the first ingest; the seven of them now run in
+**9–19 s, median 17 s**. Half of all 86 parts finish inside 16 seconds. Two changes account
+for it and neither was about speed: the document root is bounded to the part (rule 108), so
+a part no longer walks every project on the machine, and the map is written from one
+anomaly detection rather than three.
+
+**And the total went up, which is worth stating rather than hiding.** 402 minutes against
+the first ingest's 327, with extraction cached where the first pass did it from scratch.
+**One part accounts for all of it and more**: `Engine.Source.Runtime` took **8,815 s
+(2 h 27 m)** here against **2,093 s (35 m)** then — 36% of the whole pass, for 21% of the
+files. Everything else got dramatically faster.
+
+No claim is made that the fix caused that. The store was cold, these maps live on the
+external volume, and the clean measurement of that effect is already in this file:
+`Engine/Binaries` resolved byte-identical work in **27.3 s and then 360.8 s** in two runs
+minutes apart. `Engine.Source.Runtime` is the largest map this tool has, and it is the same
+262,879-routine store that takes 27.6 minutes to *open* — which is `BACKLOG.md` item 8, and
+this is that cost appearing on a second surface.
+
+The five slowest, for scale: Runtime 8,815 s · Source.Editor 4,891 s · Plugins.Runtime
+3,301 s · Binaries 2,380 s · VirtualProduction 1,595 s.

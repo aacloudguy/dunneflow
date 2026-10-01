@@ -3,6 +3,8 @@ name = "dunneflow"
 version = "0.2.0"
 description = "DunneFlow — maps what moves through a program: entrypoints, flows, routines, and boundaries."
 requires-python = ">=3.12"
+license = "MIT"
+license-files = ["LICENSE", "THIRD-PARTY-NOTICES.md", "licenses/*"]
 dependencies = [
     "pyyaml>=6.0",
 ]

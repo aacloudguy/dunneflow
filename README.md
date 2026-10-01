@@ -284,3 +284,11 @@ and the `v1-final` tag. The working record for this line starts at
 [`V2-START-HERE.md`](V2-START-HERE.md). `BRIEFING.md` and `HANDOFF.md` are carried over from
 0.1.0 and describe its state. The figures in [`PERFORMANCE.md`](PERFORMANCE.md) were measured
 on 0.1.0 unless marked otherwise.
+
+## Licence
+
+DunneFlow is released under the [MIT licence](LICENSE), © 2026 Thomas Williams. It carries
+deck.gl, Mermaid and markdown-it (MIT), @hpcc-js/wasm and the TypeScript compiler
+(Apache-2.0), and Graphviz (EPL-1.0), each under its own licence; the packaged applications
+add CPython, PyYAML and OpenSSL. [`THIRD-PARTY-NOTICES.md`](THIRD-PARTY-NOTICES.md) lists them
+all, and every licence text is in [`licenses/`](licenses/).

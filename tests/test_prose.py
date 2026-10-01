@@ -130,7 +130,7 @@ def test_the_vendored_library_is_recorded_with_its_reason() -> None:
     assert re.fullmatch(r"\d+\.\d+\.\d+", rec["markdown-it"]), (
         f"the version is not an exact one: {rec['markdown-it']!r}"
     )
-    assert rec.get("license") == "MIT"
+    assert rec.get("licenses", {}).get("markdown-it") == "MIT"
     why = rec.get("why-markdown-it", "")
     # The two properties it was chosen for, and neither is "it parses markdown".
     assert "map" in why and "html:false" in why.replace(" ", ""), (

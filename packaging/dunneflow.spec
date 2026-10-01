@@ -315,6 +315,12 @@ datas = [
     *_tree(PKG / "web" / "vendor", "dunneflow/web/vendor"),
     # Which DunneFlow read this map, from the one place that answers it.
     *copy_metadata("dunneflow"),
+    # The licence and everyone else's. MIT, Apache-2.0, EPL-1.0 and the PSF licence each ask
+    # that their notice travel with a binary copy, and the application is a binary copy of
+    # all four. Read by nobody at run time, so outside `dunneflow/` and in no cache key.
+    (str(ROOT / "LICENSE"), "."),
+    (str(ROOT / "THIRD-PARTY-NOTICES.md"), "."),
+    *[(str(p), "licenses") for p in sorted((ROOT / "licenses").glob("*.txt"))],
 ]
 
 # PyYAML's C extension is **never used and is not shippable universal2**. Every call site in

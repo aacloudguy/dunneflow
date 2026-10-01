@@ -1,6 +1,6 @@
 {
   "name": "@dunneflow/typescript-reader",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "private": true,
   "type": "module",
   "description": "DunneFlow's TypeScript reader: one FileFacts per file, over NDJSON on stdin and stdout.",

@@ -61769,9 +61769,9 @@ ${lanes.join("\n")}
             const originalModuleSpecifier = canHaveModuleSpecifier(enclosingDeclaration) ? tryGetModuleSpecifierFromDeclaration(enclosingDeclaration) : void 0;
             const contextFile = context.enclosingFile;
             const resolutionMode = overrideImportMode || originalModuleSpecifier && host.getModeForUsageLocation(contextFile, originalModuleSpecifier) || contextFile && host.getDefaultResolutionModeForFile(contextFile);
-            const cacheKey = createModeAwareCacheKey(contextFile.path, resolutionMode);
+            const cacheKey2 = createModeAwareCacheKey(contextFile.path, resolutionMode);
             const links = getSymbolLinks(symbol);
-            let specifier = links.specifierCache && links.specifierCache.get(cacheKey);
+            let specifier = links.specifierCache && links.specifierCache.get(cacheKey2);
             if (!specifier) {
               const isBundle2 = !!compilerOptions.outFile;
               const { moduleResolverHost } = context.tracker;
@@ -61789,7 +61789,7 @@ ${lanes.join("\n")}
                 { overrideImportMode }
               ));
               links.specifierCache ?? (links.specifierCache = /* @__PURE__ */ new Map());
-              links.specifierCache.set(cacheKey, specifier);
+              links.specifierCache.set(cacheKey2, specifier);
             }
             return specifier;
           }
@@ -78003,12 +78003,12 @@ ${lanes.join("\n")}
           );
         }
         function inferTypeForHomomorphicMappedType(source, target, constraint) {
-          const cacheKey = source.id + "," + target.id + "," + constraint.id;
-          if (reverseHomomorphicMappedCache.has(cacheKey)) {
-            return reverseHomomorphicMappedCache.get(cacheKey);
+          const cacheKey2 = source.id + "," + target.id + "," + constraint.id;
+          if (reverseHomomorphicMappedCache.has(cacheKey2)) {
+            return reverseHomomorphicMappedCache.get(cacheKey2);
           }
           const type = createReverseMappedType(source, target, constraint);
-          reverseHomomorphicMappedCache.set(cacheKey, type);
+          reverseHomomorphicMappedCache.set(cacheKey2, type);
           return type;
         }
         function isPartiallyInferableType(type) {
@@ -78058,9 +78058,9 @@ ${lanes.join("\n")}
           return getTypeFromInference(inference) || unknownType;
         }
         function inferReverseMappedType(source, target, constraint) {
-          const cacheKey = source.id + "," + target.id + "," + constraint.id;
-          if (reverseMappedCache.has(cacheKey)) {
-            return reverseMappedCache.get(cacheKey) || unknownType;
+          const cacheKey2 = source.id + "," + target.id + "," + constraint.id;
+          if (reverseMappedCache.has(cacheKey2)) {
+            return reverseMappedCache.get(cacheKey2) || unknownType;
           }
           reverseMappedSourceStack.push(source);
           reverseMappedTargetStack.push(target);
@@ -78074,7 +78074,7 @@ ${lanes.join("\n")}
           reverseMappedSourceStack.pop();
           reverseMappedTargetStack.pop();
           reverseExpandingFlags = saveExpandingFlags;
-          reverseMappedCache.set(cacheKey, type);
+          reverseMappedCache.set(cacheKey2, type);
           return type;
         }
         function* getUnmatchedProperties(source, target, requireOptionalProperties, matchDiscriminantProperties) {
@@ -94899,11 +94899,11 @@ ${lanes.join("\n")}
           }
           return noIterationTypes;
         }
-        function getCachedIterationTypes(type, cacheKey) {
-          return type[cacheKey];
+        function getCachedIterationTypes(type, cacheKey2) {
+          return type[cacheKey2];
         }
-        function setCachedIterationTypes(type, cacheKey, cachedTypes2) {
-          return type[cacheKey] = cachedTypes2;
+        function setCachedIterationTypes(type, cacheKey2, cachedTypes2) {
+          return type[cacheKey2] = cachedTypes2;
         }
         function getIterationTypesOfIterable(type, use, errorNode) {
           var _a, _b;
@@ -94931,8 +94931,8 @@ ${lanes.join("\n")}
             }
             return iterationTypes2;
           }
-          const cacheKey = use & 2 ? "iterationTypesOfAsyncIterable" : "iterationTypesOfIterable";
-          const cachedTypes2 = getCachedIterationTypes(type, cacheKey);
+          const cacheKey2 = use & 2 ? "iterationTypesOfAsyncIterable" : "iterationTypesOfIterable";
+          const cachedTypes2 = getCachedIterationTypes(type, cacheKey2);
           if (cachedTypes2) return cachedTypes2 === noIterationTypes ? void 0 : cachedTypes2;
           let allIterationTypes;
           for (const constituent of type.types) {
@@ -94945,7 +94945,7 @@ ${lanes.join("\n")}
                   addRelatedInfo(rootDiag, ...errorOutputContainer.errors);
                 }
               }
-              setCachedIterationTypes(type, cacheKey, noIterationTypes);
+              setCachedIterationTypes(type, cacheKey2, noIterationTypes);
               return void 0;
             } else if ((_b = errorOutputContainer == null ? void 0 : errorOutputContainer.errors) == null ? void 0 : _b.length) {
               for (const diag2 of errorOutputContainer.errors) {
@@ -94955,7 +94955,7 @@ ${lanes.join("\n")}
             allIterationTypes = append(allIterationTypes, iterationTypes2);
           }
           const iterationTypes = allIterationTypes ? combineIterationTypes(allIterationTypes) : noIterationTypes;
-          setCachedIterationTypes(type, cacheKey, iterationTypes);
+          setCachedIterationTypes(type, cacheKey2, iterationTypes);
           return iterationTypes === noIterationTypes ? void 0 : iterationTypes;
         }
         function getAsyncFromSyncIterationTypes(iterationTypes, errorNode) {
@@ -213732,6 +213732,9 @@ var LIB_DIR = "/__dunneflow_ts_libs__";
 function readSource(abs) {
   return (0, import_node_fs.readFileSync)(abs, "utf8").replace(/\r\n?/g, "\n");
 }
+function cacheKey(path) {
+  return path.split(import_node_path.sep).join("/");
+}
 function relPath(root, abs) {
   let rel = (0, import_node_path.relative)(root, abs).split(import_node_path.sep).join("/");
   if (!rel || rel.startsWith("..")) rel = abs.split(import_node_path.sep).join("/");
@@ -213772,7 +213775,7 @@ function projectOf(root, abs) {
 var Session = class {
   root = ".";
   projects = [];
-  /** Absolute path -> the source file the program parsed, so both passes share one AST. */
+  /** `cacheKey(path)` -> the source file the program parsed, so both passes share one AST. */
   byPath = /* @__PURE__ */ new Map();
   /**
    * Build one program per project over `files`.
@@ -213846,7 +213849,7 @@ var Session = class {
       }
     };
     host.getSourceFile = (fileName, _languageVersion, onError) => {
-      const held = cache.get(fileName);
+      const held = cache.get(cacheKey(fileName));
       if (held !== void 0) return held;
       let text;
       const lib = libOf(fileName);
@@ -213861,7 +213864,7 @@ var Session = class {
         }
       }
       const sf = makeSourceFile(fileName, text);
-      cache.set(fileName, sf);
+      cache.set(cacheKey(fileName), sf);
       return sf;
     };
     return host;
@@ -213876,7 +213879,7 @@ var Session = class {
    * edge pass minted for it would name a call site the map does not have.
    */
   sourceFile(abs, rel, source) {
-    const held = this.byPath.get(abs);
+    const held = this.byPath.get(cacheKey(abs));
     if (held === void 0) return makeSourceFile(rel, source);
     if (held.text !== source) {
       throw new Error(
@@ -214060,7 +214063,7 @@ var SCHEMA_VERSION = 15;
 // src/main.ts
 var PROTOCOL = 1;
 var LANG = "typescript";
-var VERSION = "1.2.0";
+var VERSION = "1.2.1";
 var session = new Session();
 var rules = parseRules({});
 function send(frame) {

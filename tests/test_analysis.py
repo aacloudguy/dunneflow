@@ -824,6 +824,10 @@ def test_the_forceful_rung_answers_rather_than_raising_however_it_fails(
     monkeypatch.setattr(analysis.os, "kill", _raiser(blows_up), raising=False)
     monkeypatch.setattr(analysis.os, "killpg", _raiser(blows_up), raising=False)
     monkeypatch.setattr(analysis.os, "getpgid", _raiser(blows_up), raising=False)
+    # Windows' rung is `taskkill` rather than a signal, so it is asked through
+    # `subprocess.run`; unpatched, this test ran a real `taskkill` on a pid that does not
+    # exist, got an answer, and read True on Windows alone.
+    monkeypatch.setattr(analysis.subprocess, "run", _raiser(blows_up))
     assert analysis._kill_group(_Unreachable(blows_up)) is False, (
         "the second rung raised into the handler rather than reporting it could not act"
     )

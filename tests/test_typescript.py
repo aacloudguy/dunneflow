@@ -1398,3 +1398,28 @@ def test_the_words_and_the_sentence_are_the_languages_and_not_the_renderers():
     # under what the map does not claim.
     assert declared["use client"].get("claimed", True) is True
     assert "use strict" not in declared
+
+
+def test_both_passes_find_one_tree_whatever_the_separator():
+    """The extractor and the compiler share one parse, and that rests on one cache key.
+
+    `main.ts` resolves a file to `C:\\…\\a.ts`; the compiler asks the host for `C:/…/a.ts`.
+    Keyed as each side spelt it, `Session.sourceFile` missed on Windows, quietly parsed the
+    file a second time, and handed the extractor a tree the checker had never bound — so
+    every TypeScript file failed with "Cannot read properties of undefined (reading
+    'members')" on Windows and nowhere else. Found on GIZA on 2026-10-01; a macOS or Linux
+    run cannot see it, because there both spellings are the same string.
+
+    So it is held over the source rather than by behaviour: every read and write of the
+    shared cache goes through `cacheKey`, and `cacheKey` folds the platform separator.
+    """
+    program = (Path(ingest.__file__).parent.parent / "plugins" / "typescript" / "src"
+               / "program.ts").read_text(encoding="utf-8")
+    import re
+    touches = re.findall(r"\b(?:byPath|cache)\.(?:get|set|has|delete)\(([^,)]*)", program)
+    assert touches, "the shared cache is no longer reached the way this test reads it"
+    unkeyed = [arg for arg in touches if not arg.strip().startswith("cacheKey(")]
+    assert not unkeyed, f"the shared cache is reached by a raw path: {unkeyed}"
+    body = program[program.index("export function cacheKey"):]
+    body = body[:body.index("\n}")]
+    assert "split(sep)" in body, "cacheKey no longer folds the platform separator"

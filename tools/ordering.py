@@ -743,8 +743,11 @@ def ask_all(program: Path, plan: dict[str, list[dict[str, list[str]]]]) -> dict[
                 # `/api/base` all report the root they were opened from — so without this
                 # the probe reports its own scaffolding as a finding, every run, on every
                 # program. The program before its root, because one contains the other.
-                said = said.replace(str(program), "<program>").replace(
-                    str(program.parent), "<root>")
+                # Masked as the text holds it, which is JSON: a Windows root arrives with
+                # each separator doubled (`C:\\Users`), so the raw `str()` never matched
+                # there, and the probe reported the two copies' homes as an ordering defect.
+                for path, mask in ((program, "<program>"), (program.parent, "<root>")):
+                    said = said.replace(json.dumps(str(path))[1:-1], mask)
                 out[key] = MEASURED.sub('"ms": <measured>', said)
         return out
     finally:

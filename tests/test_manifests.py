@@ -417,7 +417,7 @@ def test_manifests_are_collected_by_the_code_walk_and_share_its_prunes(tmp_path)
     })
     stats = WalkStats()
     list(discover(root, stats=stats))
-    got = sorted(str(p.relative_to(root)) for p in stats.manifests)
+    got = sorted(p.relative_to(root).as_posix() for p in stats.manifests)
     assert got == ["package.json", "packages/inner/package.json"]
 
 

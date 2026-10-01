@@ -13,6 +13,7 @@ the source has checked that a string appears, not that a write fails.
 
 from __future__ import annotations
 
+import os
 import sqlite3
 from pathlib import Path
 
@@ -129,7 +130,11 @@ def test_a_path_is_escaped_into_the_uri_rather_than_pasted_into_it(
     through the fix for the failure.
     """
     uri = read_only_uri(Path("out") / name / "graph.db")
-    assert uri == f"file:out/{escaped}/graph.db?mode=ro", uri
+    # The separator is the platform's, and a Windows `\\` is itself escaped, to `%5C`, which
+    # SQLite decodes back before opening (`read_only_uri`'s docstring). Asserted as `/` alone,
+    # this failed on Windows over a spelling the function documents as correct.
+    sep = "/" if os.sep == "/" else "%5C"
+    assert uri == f"file:out{sep}{escaped}{sep}graph.db?mode=ro", uri
     assert uri.count("?") == 1, f"the path spent the query separator: {uri}"
 
 
@@ -140,7 +145,9 @@ def test_a_map_under_an_awkward_directory_name_still_opens_read_only(
     The round trip is what matters: quote it, hand it to SQLite, and get the same file
     back — with the write still refused.
     """
-    awkward = tmp_path / "why? #1 100%"
+    # `?` is the character this exists for, and Windows will not put one in a filename at
+    # all -- there it cannot reach a URI, so `#` and `%` carry the test on their own.
+    awkward = tmp_path / ("why? #1 100%" if os.name != "nt" else "why #1 100%")
     awkward.mkdir()
     db = awkward / "graph.db"
     Store(db).close()

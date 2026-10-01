@@ -31,7 +31,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from functools import partial
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 from urllib.parse import parse_qs
 
@@ -4067,11 +4067,15 @@ def _reveal_linux(target: Path) -> tuple[bool, str]:
     if not _desktop_session():
         return False, NO_SESSION_REVEAL
     # `as_uri` percent-encodes, which the bus requires and a space in a directory name would
-    # otherwise break; `str(target)` is what a command line wants. Two spellings of one path
-    # because the two rungs are genuinely different interfaces, not one with a flag.
+    # otherwise break; the plain path is what a command line wants. Two spellings of one path
+    # because the two rungs are genuinely different interfaces, not one with a flag. Both are
+    # POSIX by construction, since this branch only ever talks to a Linux desktop: spelt from
+    # the native `Path` instead, the tests that drive it under a patched `sys.platform` raised
+    # on Windows, where `/tmp/maps` is a relative path and has no URI.
+    posix = PurePosixPath(target.as_posix())
     rungs = [
-        [*_REVEAL_BUS, f"array:string:{target.as_uri()}", "string:"],
-        ["xdg-open", str(target)],
+        [*_REVEAL_BUS, f"array:string:{posix.as_uri()}", "string:"],
+        ["xdg-open", str(posix)],
     ]
     why = NO_REVEAL
     for argv in rungs:

@@ -183,6 +183,26 @@ hand-kept list is sufficient and why.
 
 ---
 
+### 13 · `/api/table?name=annotations` follows the order its rows are stored in
+
+*From the ordering gate run for the Windows fixes, 2026-10-01.*
+
+`tools/ordering.py --api` on a fresh map of DunneFlow's own `src` reports one route that is
+not the same under a full row reversal. Two of the `annotations` table's SQL operations,
+`CREATE TABLE` and `CREATE INDEX`, swap places, and nothing else moves. It is the same at
+`a877bd3`, before that session's changes, so it was not introduced there. The document
+probe is clean on the same map.
+
+The two rows almost certainly share every sort key `_r_table` orders by, so the tie falls
+to storage order (rule 66). Each answer is true, but the order is not one the tool can
+defend.
+
+**What would settle it.** Add a final, total tie-break to the query behind `_r_table`'s
+operations, such as the operation's file, line and kind. Then show the reversal probe clean
+on that route.
+
+---
+
 ## Stated residues — known, bounded, and not defects
 
 These are not tasks. They are places where the honest answer is a limitation, recorded so

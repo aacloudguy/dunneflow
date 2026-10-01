@@ -39,6 +39,19 @@ export function readSource(abs: string): string {
   return readFileSync(abs, "utf8").replace(/\r\n?/g, "\n");
 }
 
+/**
+ * The cache's one spelling of a path, and it is the compiler's: forward slashes on every
+ * platform, which is how the host is asked for a file (`C:/…/a.ts`) while `main.ts`
+ * resolves the same file to `C:\…\a.ts`. Keyed as each side spelt it, the lookup in
+ * `sourceFile` missed on Windows and handed the extractor a second, **unbound** parse of
+ * the file, and the checker crashed on the first node it was asked about ("Cannot read
+ * properties of undefined (reading 'members')"). Every `byPath` read and write goes
+ * through this (rules 51 and 103).
+ */
+export function cacheKey(path: string): string {
+  return path.split(sep).join("/");
+}
+
 /** The stored spelling of a path: relative to the analysed root, POSIX (rule 93). */
 export function relPath(root: string, abs: string): string {
   let rel = relative(root, abs).split(sep).join("/");
@@ -101,7 +114,7 @@ export interface Project {
 export class Session {
   root = ".";
   projects: Project[] = [];
-  /** Absolute path -> the source file the program parsed, so both passes share one AST. */
+  /** `cacheKey(path)` -> the source file the program parsed, so both passes share one AST. */
   private byPath = new Map<string, ts.SourceFile>();
 
   /**
@@ -191,7 +204,7 @@ export class Session {
       }
     };
     host.getSourceFile = (fileName, _languageVersion, onError): ts.SourceFile | undefined => {
-      const held = cache.get(fileName);
+      const held = cache.get(cacheKey(fileName));
       if (held !== undefined) return held;
       let text: string;
       const lib = libOf(fileName);
@@ -209,7 +222,7 @@ export class Session {
       // that and nothing in the extractor reads `sf.fileName` at all — a stored path is a
       // fact about a file and travels as one, in `FileFacts.path`, never on the AST.
       const sf = makeSourceFile(fileName, text);
-      cache.set(fileName, sf);
+      cache.set(cacheKey(fileName), sf);
       return sf;
     };
     return host;
@@ -225,7 +238,7 @@ export class Session {
    * edge pass minted for it would name a call site the map does not have.
    */
   sourceFile(abs: string, rel: string, source: string): ts.SourceFile {
-    const held = this.byPath.get(abs);
+    const held = this.byPath.get(cacheKey(abs));
     if (held === undefined) return makeSourceFile(rel, source);
     if (held.text !== source) {
       throw new Error(

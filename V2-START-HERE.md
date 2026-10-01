@@ -17,7 +17,7 @@ been rewritten yet. Where they describe the tool they are accurate; where they d
 | `ARCHITECTURE.md` · `PACKAGING.md` | what each module owns and what each surface answers; and the frozen application. Read the entry for a module before working in it. |
 | `GROUND-TRUTH.md` · `LANGUAGES.md` | the corpora and what each reproduces; and what it costs to teach this tool a new language. |
 | `RULES.md` · `DESIGN-RULES.md` | carried over **verbatim, numbering intact**. The numbers are addresses: never reused, never renumbered, never closed up. **v2 continues at engineering rule 109, and design rule 32** — 95 is the fingerprint's blind spot, 96 the record minted on demand, 97 the bundled program that does not carry the files it reads, 98 the detector handed a population it was never shown, 99 the name that is relative to the root that declared it, 100 the judge that picks one of several true answers by the order it was written in (all six 2026-09-17), 101 the route that is not a branch and 102 the sentence about an order that has none (both 2026-09-18), 103 the path that is not a key until it is canonical and 104 the slot claimed before the thing that holds it exists (both 2026-09-18), 105 the order taken over a set that a row-reversal probe cannot see (2026-09-18), 106 the identity that is only unique inside one language's naming (2026-09-19, and the one that discarded every stored map), 107 the burst that must end because a transaction is not a bound (2026-09-19), 108 the walk up the tree that does not know when it has left it and answers anyway (2026-09-20, and the one that put 2,607 of somebody else's documents into each of 85 maps), and **design rule 31**, the panel pinned to an edge that grows away from it. A rule is never closed; 95's `sql.py` gap was shut by chunk 6 and the general remedy it names is not built. |
-| `BACKLOG.md` | **what this tree owes** — seven open items and thirteen stated residues, each with where it came from, why it was not done, and what would settle it. Nothing in it is scheduled by the plan; all fourteen chunks are done. |
+| `BACKLOG.md` | **what this tree owes** — eight open items and thirteen stated residues, each with where it came from, why it was not done, and what would settle it. Nothing in it is scheduled by the plan; all fourteen chunks are done. |
 | `PERFORMANCE.md` | v1's figures. **Every one of them was measured on v1** and none has been reproduced here — do not restate one as though it had been (rule 24). |
 
 ## The four decisions, already taken
@@ -549,7 +549,7 @@ tool is usable as-is, so v1 defects found along the way are rolled into whicheve
 chunk owns them rather than scheduled as work of their own.
 
 **All fourteen chunks in `PLAN-v2.md` are done, and so is the run-to-run instability
-below.** What this tree still owes is in **`BACKLOG.md`** — seven open items and thirteen
+below.** What this tree still owes is in **`BACKLOG.md`** — eight open items and thirteen
 stated residues, each with where it came from, why it was not done, and what would settle
 it. It is there rather than here so that there is one place to read it, and this file does
 not carry a copy that drifts.

@@ -59,7 +59,11 @@ def drive(messages: list[Any], where: Path | None = None) -> Session:
     lines = "".join(
         (m if isinstance(m, str) else json.dumps(m)) + "\n" for m in messages)
     argv = self_argv("mcp", *( [str(where)] if where else [] ))
-    done = subprocess.run(argv, input=lines, capture_output=True, text=True, timeout=120)
+    # UTF-8 both ways, said rather than inherited: `text=True` alone decodes with the
+    # console's code page on Windows, and the em dash test then reads its own reader's
+    # mojibake as the server's fault.
+    done = subprocess.run(argv, input=lines, capture_output=True, encoding="utf-8",
+                          timeout=120)
     assert done.returncode == 0, f"the server exited {done.returncode}: {done.stderr}"
 
     replies = []

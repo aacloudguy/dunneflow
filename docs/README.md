@@ -51,7 +51,7 @@ The middle of the screen is one selection read six ways. Each one is a unique po
 | | |
 |---|---|
 | [15. When it refuses](15-when-it-refuses.md) | Every refusal DunneFlow can give you, in plain words, and what to do about each. |
-| [16. The command line](16-the-command-line.md) | All twelve commands, for when you want an answer without opening a browser. |
+| [16. The command line](16-the-command-line.md) | All thirteen commands, for when you want an answer without opening a browser, or want an agent to ask for you. |
 
 ## Learn it by watching it read itself
 

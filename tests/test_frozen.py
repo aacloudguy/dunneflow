@@ -901,6 +901,27 @@ def test_the_release_script_and_the_spec_name_the_same_bundle():
     assert "codesign --deep" not in commands
 
 
+def test_the_bundle_version_is_read_from_pyproject_and_never_spelled():
+    """The `.app`'s version is `pyproject.toml`'s, read, never a second literal (rule 51).
+
+    `CFBundleShortVersionString` was `"0.1.0"` in the spec while pyproject said the same, and
+    the two agreed by coincidence. `release.sh` names the `.dmg` off the plist, so bumping
+    pyproject alone would have shipped the new tool in a disk image named for the old one.
+    Read as syntax rather than text: the value must be a name, not a constant.
+    """
+    tree = ast.parse(SPEC.read_text(encoding="utf-8"))
+    bundle = next(n for n in ast.walk(tree)
+                  if isinstance(n, ast.Call) and getattr(n.func, "id", "") == "BUNDLE")
+    plist = next(k.value for k in bundle.keywords if k.arg == "info_plist")
+    assert isinstance(plist, ast.Dict)
+    version = next(v for k, v in zip(plist.keys, plist.values, strict=True)
+                   if isinstance(k, ast.Constant) and k.value == "CFBundleShortVersionString")
+    assert not isinstance(version, ast.Constant), (
+        f"the spec spells the bundle version as {ast.unparse(version)} — read it from "
+        "pyproject.toml instead")
+    assert "pyproject.toml" in SPEC.read_text(encoding="utf-8")
+
+
 def test_the_entitlements_file_asks_for_nothing():
     """An empty list of claims, and it is a claim in its own right.
 

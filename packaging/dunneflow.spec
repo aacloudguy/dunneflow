@@ -75,6 +75,7 @@ reader can click past, and not Gatekeeper, which is a refusal they cannot.
 import json
 import os
 import sys
+import tomllib
 from pathlib import Path
 
 from PyInstaller.utils.hooks import copy_metadata
@@ -85,6 +86,15 @@ from PyInstaller.utils.hooks import copy_metadata
 
 ROOT = Path(SPECPATH).parent           # noqa: F821 -- SPECPATH is PyInstaller's
 PKG = ROOT / "src" / "dunneflow"
+
+# **The version is `pyproject.toml`'s, and this file only reads it** (rule 51). It was spelled
+# here a second time as `CFBundleShortVersionString`, which is the one `release.sh` names the
+# `.dmg` after -- so a release that bumped pyproject alone would have shipped a 0.2.0 tool in
+# `DunneFlow-0.1.0.dmg`, with the About panel and the disk image disagreeing about which
+# DunneFlow it was. The Windows zip and the Linux tarball already read pyproject or the
+# dist-info; now the bundle does too.
+VERSION = tomllib.loads(
+    (ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]["version"]
 
 # **Three platforms, asked once.** `_WINDOWS` was the only one named, and everything else
 # read as "not Windows" -- which was true while there were two and quietly wrong the moment
@@ -388,6 +398,6 @@ if _MACOS:
             # network, and the map states that as a standing guarantee.
             "NSHighResolutionCapable": True,
             "LSBackgroundOnly": False,
-            "CFBundleShortVersionString": "0.1.0",
+            "CFBundleShortVersionString": VERSION,
         },
     )

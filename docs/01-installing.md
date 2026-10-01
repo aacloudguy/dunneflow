@@ -4,9 +4,13 @@ There are two ways to have DunneFlow: 1. the application, or 2: a checkout. Whic
 want depends on whether you intend to change it. The application comes in a Mac build, a
 Windows build and a Linux build; everything after this chapter is the same on all three.
 
+**The application is on the [releases page](https://github.com/aacloudguy/dunneflow/releases/latest)**:
+one download for each platform, and a `SHA256SUMS` file beside them if you want to check
+what arrived is what was published.
+
 ## The application, on a Mac
 
-`DunneFlow.dmg` - open it, drag **DunneFlow** to Applications, double-click it. It opens
+`DunneFlow-<version>.dmg` - open it, drag **DunneFlow** to Applications, double-click it. It opens
 your browser on [the start page](03-the-start-page.md) and that is the whole of the
 setup. There is no Python to install, no terminal, and no configuration file.
 

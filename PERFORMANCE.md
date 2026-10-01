@@ -842,7 +842,7 @@ Windows steps were doing until chunk 13.
 **Every figure above this heading was measured on v1.** These are v2's, and they are the
 first ones taken here (rule 24: none of v1's has been reproduced in this tree).
 
-`PLAN-v2.md` says the number that matters most is taken at chunk 7: **the subprocess
+v2's design plan says the number that matters most is taken at chunk 7: **the subprocess
 protocol's overhead against in-process extraction, measured on the Python test double** —
 the one comparison where both sides produce provably identical facts. They do: 628 files,
 zero differing, seven of seven golden digests identical.
@@ -914,7 +914,7 @@ happens, not how much of it there is.
 
 **The floor of the bound is not what saves the wire, and that was measured before it was
 set.** Of 46,524 strings, the floor at three drops 4,022. Taking six instead — the bound
-`_scan_sql` has always applied, and the number `PLAN-v2.md` named — would drop a further
+`_scan_sql` has always applied, and the number the design plan named — would drop a further
 6,861 and save **0.43 MB, 1.6% of the payload**, while putting every four-character
 filename a `detectors/<lang>.yaml` might name outside the map with nothing to say so. The
 ceiling is the half that earns its place.

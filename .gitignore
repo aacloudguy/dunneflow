@@ -44,3 +44,7 @@ packaging/icon/*.iconset/
 # The `.icns` is deliberately NOT ignored. It is a build *input* now -- the spec refuses to
 # build without it (rule 49) -- and unlike the ladder it cannot be regenerated from anything
 # in this repository unless the drawing it came from is here too.
+
+# Claude Code's per-person instructions file: a contributor's own arrangements, never the
+# project's. `CLAUDE.md` is the shared one.
+CLAUDE.local.md

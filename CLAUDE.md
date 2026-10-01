@@ -1,18 +1,14 @@
-> **This is the v2 tree. Read `V2-START-HERE.md` first, then `PLAN-v2.md`.**
->
-> This file below is still v1's and has not been rewritten. Where it describes the tool it
-> is accurate; where it describes state, commands or architecture it describes v1. v1 itself
-> is at `../DunneFlow`, untouched and still runnable.
-
 # DunneFlow
 
 Maps what moves through a program: where it starts, what it runs, what it touches, and
 why. Built for a reader who reads code but does not write it, and who thinks in
 entrypoints, flows, routines, and boundaries.
 
-**New here? Read `BRIEFING.md` first** — where the code lives, what is built, what we are
-doing now, and which decisions are closed. This file is the standing orders; `HANDOFF.md`
-is the chronological record.
+**New here?** `README.md` says what the tool does and `docs/` is the user guide. This file is
+the standing orders for working *on* it: what it is for, the commands, the gates, and the
+index of every rule. What is open is `BACKLOG.md`. The session-by-session development record
+is kept outside this repository; where a comment or test cites `HANDOFF.md`, `BRIEFING.md`
+or `PLAN-v2.md`, that is what it means.
 
 The rules moved out of this file when it outgrew what a session can carry, and the split is
 by *how often you need it*, not by importance. **It has been done twice**: the rules and the
@@ -31,12 +27,10 @@ what it is doing:
 | `GROUND-TRUTH.md` | the corpora, what each is for, the figure each reproduces, and the two probes that are not tests | before quoting a figure, retaking one, or rebuilding the pair |
 | `LANGUAGES.md` | what it actually costs to teach this tool a new language | before writing a reader |
 | `PERFORMANCE.md` | every measured figure, with its budget and its conditions | before quoting or retaking a number |
-| `BRIEFING.md` | state: what is built, what is next, what is closed | at the start of a session |
-| `BACKLOG.md` | what this tree owes, each with where it came from and what would settle it | when choosing what to do next |
-| `HANDOFF.md` | the full chronological record, session by session | when you need why something is the way it is |
+| `BACKLOG.md` | what this tree owes, each with where it came from and what would settle it | at the start of a session, and when choosing what to do next |
 
 A rule is cited as a bare number — "rule 45", "design rule 19" — from code comments, tests
-and both records; **3,326** such citations across `src/` and `tests/` as of 2026-09-15 —
+and the development record; **3,326** such citations across `src/` and `tests/` as of 2026-09-15 —
 2,489 to the engineering rules and 837 to the design ones, over 129 files. `RULES.md` carries
 the command that counts them, because the first retake gave two different answers in two
 shells — and the *second* retake, recorded the same day, did not reproduce against its own
@@ -50,9 +44,8 @@ addresses. Never reuse one, never renumber, never close a gap.**
 every `.md` in this repository, outside fenced blocks and inline code, the split was
 **381 `-ise` to 35 `-ize`** — `analyse`, `colour`, `behaviour`, `normalise`,
 `canonicalise`. The 35 were drift, quotations, or identifiers, and the convention was
-already the one the project had been writing in for a year. Tom's own inclination is
-American and he has said so; this is his delegation of the choice, not a claim about which
-is correct.
+already the one the project had been writing in for a year. It is a convention, not a claim
+about which spelling is correct.
 
 **Three kinds of word, and only the first one moves.**
 
@@ -60,13 +53,12 @@ is correct.
 |---|---|
 | **Prose** — comments, docstrings, documents, and **the strings a reader sees on screen** | British. A UI label is prose: the reader reads it, nobody imports it. |
 | **Identifiers** — `dunneflow analyze`, `analyze.js`, `Analyze.OPTION`, `analyze_tree`, a CSS `color:` | **Never touched.** They are addresses, like the rule numbers: something types them, imports them or matches them, and a spelling change is a rename with no warning. |
-| **Quotations** — Tom's words in `HANDOFF.md`, a sentence read out of somebody else's document, a library's own name | **Never touched, in either direction.** Evidence is quoted as written or it is not evidence. |
+| **Quotations** — a person's words quoted in a comment, test or record, a sentence read out of somebody else's document, a library's own name | **Never touched, in either direction.** Evidence is quoted as written or it is not evidence. |
 
-**The dated record is not rewritten.** `HANDOFF.md` says what was built and what it was
-called at the time; `BRIEFING.md`'s "before that" entries are the same. Correcting a
-spelling there would be editing the record to agree with the present, which is the one
-thing a record may not do. Live surfaces — the product, the user guide, this file — are
-brought into line instead.
+**The dated record is not rewritten.** The development record says what was built and what
+it was called at the time. Correcting a spelling there would be editing the record to agree
+with the present, which is the one thing a record may not do. Live surfaces — the product,
+the user guide, this file — are brought into line instead.
 
 *What this rule was minted from:* the program selector's last option read
 **+ Analyze a directory…** and the dialog it opened was titled **Analyse a directory** —
@@ -168,7 +160,7 @@ different measurement under the same label (rule 24).
 These each came from a false result on real code. Keep them.
 
 *There is no engineering rule 21, and nothing is missing.* The numbers are cited from code
-comments, tests and `HANDOFF.md`, so they are addresses rather than an ordering and are
+comments, tests and the development record, so they are addresses rather than an ordering and are
 never reused or closed up. Every "design rule 21" in the codebase refers to the dashboard
 rule of that number — a blank canvas must say why it is blank — which does exist.
 
@@ -422,41 +414,3 @@ A reader is a plugin and never an import, and **nothing above the graph names a 
 What that costs in practice — the six things to do, what a plugin gets for free and must not
 reimplement, and the three things that will bite — is `LANGUAGES.md`. Read all of it before
 writing a reader, and the third section twice.
-
-## Shared library: dunnecorp-shared
-
-This project consumes `github.com/aacloudguy/dunnecorp-shared`, DunneCorp's
-shared library of code, Claude Code skills, governance templates, and CI
-patterns.
-
-**Before writing any new utility, helper, workflow, skill, or template, check
-whether it already exists there.** The library exists specifically because the
-same concepts were being rebuilt independently in each repository.
-
-How to check, in order:
-
-1. Read `catalog.json` in the shared library and match the task against the
-   `use_when` field of each asset.
-2. If an asset matches, use it. Add the dependency rather than reimplementing.
-3. If something close but not exact exists, prefer extending it in the shared
-   library (via a PR there) over writing a local variant here.
-4. Only write something new here when nothing comparable exists, or when the
-   need is genuinely specific to this project.
-
-If the library is not checked out locally, read the catalog directly:
-
-```bash
-gh api repos/aacloudguy/dunnecorp-shared/contents/catalog.json \
-  --jq '.content' | base64 -d
-```
-
-A local checkout exists at `../SharedCode`.
-
-### Contributing back
-
-If you build something here that is reusable, it belongs in the shared library.
-Open a PR against `dunnecorp-shared` following its `CONTRIBUTING.md`: add the
-asset, register it in `catalog.json` with a `use_when` trigger, and include the
-required ADR/CMR record. Then depend on the new tag from here.
-
-DunneFlow itself is a candidate for `packages/python/` once it settles.

@@ -8,8 +8,8 @@ a false result that real code produced, and the body says what produced it.
 agree with a rule and still reimplement the defect it was written from: every one of these
 was, at the time, the obvious thing to do.
 
-Cited as bare numbers — "rule 45" — from code comments, tests, `HANDOFF.md` and
-`BRIEFING.md`; **3,326** such citations across `src/` and `tests/`, 2,489 of them to these
+Cited as bare numbers — "rule 45" — from code comments, tests and the development
+record; **3,326** such citations across `src/` and `tests/`, 2,489 of them to these
 rules and 837 to the design ones, over 129 files — retaken 2026-09-15 *after* the session
 that last wrote it down, which had moved it by three while writing. That is the third time
 this figure has failed to reproduce against its own commit, and the reason the command is
@@ -44,7 +44,7 @@ grep -rliE "\brules? [0-9]+"         --exclude-dir=__pycache__ src tests | wc -l
 These each came from a false result on real code. Keep them.
 
 *There is no engineering rule 21, and nothing is missing.* The numbers are cited from code
-comments, tests and `HANDOFF.md`, so they are addresses rather than an ordering and are
+comments, tests and the development record, so they are addresses rather than an ordering and are
 never reused or closed up. Every "design rule 21" in the codebase refers to the dashboard
 rule of that number — a blank canvas must say why it is blank — which does exist.
 
@@ -1714,8 +1714,8 @@ rule of that number — a blank canvas must say why it is blank — which does e
     without a single error: the tool reports `Clicked at (300, 250)` either way (rule 76 — an
     echo is not an act).
 
-    **What it looks like from inside is a moving floor.** This session recorded, in
-    `HANDOFF.md` and in `BRIEFING.md`, that clicks below a vertical threshold were not
+    **What it looks like from inside is a moving floor.** This session recorded, in the
+    development record, that clicks below a vertical threshold were not
     arriving: pointer y=45 landed and y=40 did not, and after a reload y=88 stopped landing
     on a page where y=109 had worked twenty minutes before. That is a coherent, plausible,
     entirely fictional diagnosis — a pointer floor that happened to sit just above the
@@ -1925,7 +1925,7 @@ rule of that number — a blank canvas must say why it is blank — which does e
     what a program does with its database. Nobody looks, because the cache is working
     exactly as designed.
 
-    `schema.py` is the second gap and was already known — `PLAN-v2.md` §1f puts it in the
+    `schema.py` is the second gap and was already known — v2's design plan (§1f) puts it in the
     key — but it was named for a different reason, that `SCHEMA_VERSION` is bumped by hand
     and a forgotten bump is the same failure. `sql.py` was named by nobody, and the
     difference is instructive: the module whose *absence* from a list is hardest to notice

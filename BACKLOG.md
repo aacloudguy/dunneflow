@@ -1,17 +1,17 @@
 # Backlog
 
-**What this tree knows it owes, in one place.** `PLAN-v2.md`'s fourteen chunks are all
-done, so nothing here is scheduled by the plan — every item is something a chunk found,
-stated, and deliberately did not do. Until 2026-09-17 they lived scattered across
-`V2-START-HERE.md`'s *What is next* and a dozen `HANDOFF.md` **Residue** sections, which
-meant the only way to know what was outstanding was to read the whole record.
+**What this tree knows it owes, in one place.** The fourteen chunks of v2's design plan are
+all done, so nothing here is scheduled by the plan — every item is something a chunk found,
+stated, and deliberately did not do. Until 2026-09-17 they lived scattered across the
+development record's *What is next* and a dozen **Residue** sections, which meant the only
+way to know what was outstanding was to read the whole record.
 
 **Every item says where it came from, why it was not done, and what would settle it.** An
 item with no *what would settle it* is a complaint rather than a task, and an item whose
 *why not* is missing is one somebody will redo the argument for.
 
-**This file is not the record.** `HANDOFF.md` says what happened and when; this says what
-has not. When an item is done it leaves here and the record keeps it.
+**This file is not the record.** The development record, kept outside this repository, says
+what happened and when; this says what has not. When an item is done it leaves here and the record keeps it.
 
 ---
 
@@ -220,6 +220,6 @@ that nobody spends a session rediscovering them and filing them as bugs.
 | **A program that serves browser JavaScript as a string has calls this map cannot see** | `gstack`'s `getCookiePickerHTML(): string` returns an HTML page holding four `fetch` calls, and `design/src/compare.ts` another. Those requests really are made — from the browser, by code this program wrote — and the map says nothing about them. Correctly: a string is not code, which is rule 9's argument one direction over, and reading one would mean parsing every template literal in every language. Stated so the NETWORK count is read as *what this program calls*, never *what this program causes*. 2026-09-18. |
 | **`socket.emit` may be wrongly declared async** | `detectors/typescript.yaml` says `async: true`; `emit` is fire-and-forget in socket.io and `emitWithAck` is the awaitable one, so it is probably wrong beside `WebSocket` and `EventSource`, which were corrected. Left alone because **no map this tool has read holds a single `socket.emit`** and socket.io's types are in no corpus here, so there is nothing to check a change against. Asserting it from memory is what rule 24 forbids. 2026-09-18. |
 | **Rule 105's survey is a floor, not the population** | `tools/ordering.py --survey` lists the five `sorted()` calls whose input is *written as* a set and which take a `key=`. Unorderedness propagates, so a dict built by iterating a set and then sorted over its `.items()` is the same defect and is invisible to it — `web/changes.py` held two of each, and only the two written as set algebra are in the count. Catching the rest means following the provenance of a value, which is a different instrument. The reversal probe cannot see any of them. 2026-09-18. |
-| **A killed analysis can leave its pool behind** | Nine `ProcessPoolExecutor` workers from the original Unreal ingest were still alive 22 hours later, parented to init, idle at 5.5 MB each. Harmless where they are, and the 86-part re-read on 2026-09-20 added none — so it is an interrupted run's leak rather than an ordinary one's. Stated because a batch runner doing this nightly would accumulate them, and `PLAN-BATCH-INGEST.md` is the place that would have to care. 2026-09-20. |
+| **A killed analysis can leave its pool behind** | Nine `ProcessPoolExecutor` workers from the original Unreal ingest were still alive 22 hours later, parented to init, idle at 5.5 MB each. Harmless where they are, and the 86-part re-read on 2026-09-20 added none — so it is an interrupted run's leak rather than an ordinary one's. Stated because a batch runner doing this nightly would accumulate them, and the batch-ingest design is the place that would have to care. 2026-09-20. |
 | **The size guard counts files and nothing else** | `walk.TOO_BIG` is 20,000 *files*, which is the shape of the evidence — `Engine/Source/Runtime` is 18,191 and is the largest tree read end to end. A tree of 19,000 enormous files passes it and a tree of 25,000 tiny ones is refused, and neither is what the bound is really about: the thing that hurts is rows written, not files read. Bytes or an estimate of rows would be the honest key, and taking one needs a corpus spread wide enough to separate the two — which is a measurement, not an edit. Stated so the number is read as what it is. 2026-09-19. |
 | **`PERFORMANCE.md` is v1's, except where it says otherwise** | Every figure above the v2 headings was measured on v1 and none has been reproduced in this tree. |

@@ -1324,7 +1324,7 @@ def cmd_naming(args: argparse.Namespace) -> int:
 
     Neither lane is a requirement and neither is a comparison. Form is counted off the
     graph; Vocabulary is quoted out of whatever the project happens to have written down.
-    Checking either against a standard a team supplies is not built -- see `BRIEFING.md`.
+    Checking either against a standard a team supplies is not built -- see `BACKLOG.md`.
     """
     opened = _open_store(args)
     if not opened:

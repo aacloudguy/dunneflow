@@ -280,10 +280,9 @@ background process opens behind the browser, and on **Linux** the folder picker 
 or kdialog installed, and says so by name if neither is.
 
 The 0.1.0 line is kept on the [`v1`](https://github.com/aacloudguy/dunneflow/tree/v1) branch
-and the `v1-final` tag. The working record for this line starts at
-[`V2-START-HERE.md`](V2-START-HERE.md). `BRIEFING.md` and `HANDOFF.md` are carried over from
-0.1.0 and describe its state. The figures in [`PERFORMANCE.md`](PERFORMANCE.md) were measured
-on 0.1.0 unless marked otherwise.
+and the `v1-final` tag. What is open is [`BACKLOG.md`](BACKLOG.md), and how to work on the
+tool is [`CLAUDE.md`](CLAUDE.md). The figures in [`PERFORMANCE.md`](PERFORMANCE.md) were
+measured on 0.1.0 unless marked otherwise.
 
 ## Licence
 

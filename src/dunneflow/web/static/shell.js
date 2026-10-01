@@ -15222,7 +15222,7 @@ function fitFields(root) {
 
   /* One canvas for the page, kept between passes so this is not a fresh 2D context per
      render. `measureText` needs the *field's* font and no two of these share one: they run
-     from 10.24px sans to 12.48px mono at a 16px root, and all of it again at Tom's 24. */
+     from 10.24px sans to 12.48px mono at a 16px root, and all of it again at a 24px one. */
   const cx = fitFields.cx
     || (fitFields.cx = document.createElement("canvas").getContext("2d"));
 

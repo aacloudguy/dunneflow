@@ -315,5 +315,5 @@ only the profile name.
 *This paragraph said "still to do: notarisation, the universal build, an icon, and Windows"
 until 2026-09-15, by which point all four were done and shipped — it was four milestones
 stale in the one file every session loads, and it was found by a chapter of the user guide
-disagreeing with it.* What is still open is stated in `BRIEFING.md` and nowhere else, so
+disagreeing with it.* What is still open is stated in `BACKLOG.md` and nowhere else, so
 there is one place to read it.

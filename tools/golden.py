@@ -6,8 +6,8 @@ derived from names and never from positions, so while `extractors/python/` is un
 every one of those digests must stay byte-identical -- not "the counts should match", which
 a swap of contents can satisfy while the total holds.
 
-**The script that took it was never recorded.** `V2-START-HERE.md` points at
-`HANDOFF.md`'s v2 entries and there are none, so until this file existed the gate could be
+**The script that took it was never recorded.** The development record pointed at its own
+v2 entries and there were none, so until this file existed the gate could be
 read and not run. This is that script, recovered against the recorded values rather than
 written from memory: five of the seven digests reproduce exactly, which is what says the
 serialisation below is the original's and not a second convention that happens to be

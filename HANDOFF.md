@@ -205,12 +205,11 @@ nothing runs on a schedule.
 
 The feature was scoped as "infer what these words mean." Checking the source first
 inverted it. Mensores already contains a fully authored naming standard:
-`.groma/milestones/v1.1-harness-ownership/NAMING.md`, a table headed "The pantheon"
-that maps every component to its Latin name with etymology and a historical-accuracy
-rating -- `quaestor` = "the accounts magistrate who inquires into & audits the records
-(root *quaerere*)"; `disceptator` = "one who argues out a contested point"; `groma` =
-"the surveyor's instrument that lays out the lines". `.groma/PROJECT.md` carries its own
-`## Glossary` section defining `mensor` from *mētior*, to measure.
+a naming table in its planning documents that maps every component to its Latin name, with
+an etymology and a historical-accuracy rating for each, and a project glossary that defines
+the project's own name. *(The glosses quoted here originally were removed on 2026-10-01,
+before the repository was published: they were the program's internal vocabulary, not
+DunneFlow's.)*
 
 **9 of the 11 opaque terms are already defined by the project.** Only `oscal` (a NIST
 acronym) and `testkit` (an English compound) are undefined anywhere, and neither is a
@@ -237,7 +236,7 @@ A classifier for "is this term explained or only named?" was built and **discard
 scored `oscal` and `procurator` as explained when their glosses describe the module and
 never touch the word. That distinction is semantic and a regex cannot make it. What
 survived is one precise detector -- **a docstring that defines a term using the term**
-(`dispensator -- the Mensores Dispensator`) -- narrowed to opaque words only, because
+(`<component> -- the <Program> <Component>`) -- narrowed to opaque words only, because
 `feedback -- agent-feedback loop` is circular and harmless. One finding, correct.
 
 ### Documentation as a first-class input — decided 2026-08-27

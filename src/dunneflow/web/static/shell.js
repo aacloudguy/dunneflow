@@ -2,12 +2,6 @@
 "use strict";
 
 /* ════════════════════════════════════════════════════════════
-   Real data, lifted from output/mensores/graph.db.
-   Nothing here is invented — the comments below are Mensores'
-   actual governance comments, at their actual line numbers.
-   ════════════════════════════════════════════════════════════ */
-
-/* ════════════════════════════════════════════════════════════
    The data these views draw comes from the server, not from here.
 
    This file began as the ratified prototype with Mensores' real numbers pinned

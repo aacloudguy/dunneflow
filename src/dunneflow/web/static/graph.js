@@ -217,6 +217,13 @@ const g = {
   data: null, prepared: null, deckgl: null,
   // A fit was asked for while the container had no size; owed until it has one.
   fitOwed: false,
+  /* The camera on screen is a fit, and the reader has not moved it since. While it holds, a
+   * container that changes size is refitted: a fit taken at a transitional size -- arriving
+   * from Shape while the pane was still settling -- was kept as though it were the reader's
+   * framing, and the stack drew as a thin row behind the panels (BACKLOG 15). The diagram's
+   * `dgmFitWhole` is the same bargain. */
+  fitKept: false,
+  fitSubset: null,        // what the kept fit framed: the whole stack, or a selection
   viewState: { target: [0, 0, 0], zoom: -4, rotationX: 35, rotationOrbit: 20,
                minZoom: -9, maxZoom: 8 },
   moving: false, stopTimer: 0,
@@ -495,6 +502,8 @@ function fitView(d, rotationX = g.viewState.rotationX, subset = null) {
     return { ...g.viewState, rotationX };
   }
   g.fitOwed = false;
+  g.fitKept = true;
+  g.fitSubset = subset;
   let scale = Math.min((w * 0.90) / (2 * b.radius), (h * 0.88) / vertical);
   /* **The floor, applied to the scale rather than to the bounds.** Clamping here says the
    * thing that was actually wanted -- *this many world units stay visible* -- in one place
@@ -2512,7 +2521,10 @@ function mount(container, raw, options = {}) {
      * second feature, and it wants a look at whether a cursor changing shape as the pointer
      * crosses a crowded plate reads as information or as flicker. */
     getCursor: ({ isDragging }) => (isDragging ? 'grabbing' : CURSOR_RETICULE),
-    onViewStateChange,
+    /* Only a reader's gesture reaches the engine through this prop; every move the code
+     * makes calls `onViewStateChange` directly. So this is where a kept fit stops being
+     * one -- the reader's framing is theirs, and a resize must not take it away. */
+    onViewStateChange: (p) => { g.fitKept = false; onViewStateChange(p); },
     /* Routed by *layer*, not by index. Two pickable layers now report through one handler,
      * and `info.index` from the pointer layer is an index into two dozen arrows -- read as
      * a node index it would select a different routine, silently and plausibly. Design
@@ -2618,6 +2630,23 @@ function mount(container, raw, options = {}) {
   });
 
   g.mounted = true;
+  /* A kept fit follows its container (BACKLOG 15). One refit per frame however many sizes
+   * a pane passes through while it settles, and nothing at all once the reader has moved
+   * the camera, because `fitKept` is cleared by their gesture. */
+  if (typeof ResizeObserver !== 'undefined') {
+    let queued = false;
+    new ResizeObserver(() => {
+      if (!g.fitKept || queued) return;
+      queued = true;
+      requestAnimationFrame(() => {
+        queued = false;
+        if (g.fitKept && g.prepared && container.clientWidth && container.clientHeight) {
+          onViewStateChange({ viewState: fitView(g.prepared, g.viewState.rotationX,
+                                                 g.fitSubset) });
+        }
+      });
+    }).observe(container);
+  }
   window.__deck = g.deckgl;
   if (!ticking) { ticking = true; tick(); }
   announceSelection();
@@ -2908,12 +2937,14 @@ window.DunneFlowGraph = {
    * switch away and back (design rule 26). */
   resize() {
     if (!g.deckgl) return;
-    if (g.fitOwed && g.prepared && g.container?.clientWidth && g.container?.clientHeight) {
+    if ((g.fitOwed || g.fitKept) && g.prepared
+        && g.container?.clientWidth && g.container?.clientHeight) {
       /* Through the same path a drag or a snap takes, so the HUD's readout and the "way
          back" anchor see this exactly as they see any other camera move. A private
          `setProps` here would be a second way the view state changes, and only one of them
          would be watched. */
-      onViewStateChange({ viewState: fitView(g.prepared) });
+      onViewStateChange({ viewState: g.fitOwed ? fitView(g.prepared)
+        : fitView(g.prepared, g.viewState.rotationX, g.fitSubset) });
     }
     draw();
   },

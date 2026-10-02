@@ -606,7 +606,11 @@ const state = {
      the next thing that happens. */
   docNote: "",
   colourBy: "none",
-  colWidths: { q: 26, why: 30, fan: 5, chg: 7 },
+  /* 47rem in all, which is the centre's usable width at a 1,483 px window with both panes
+     open (BACKLOG 19, measured 2026-10-02). It was 68rem, so CONNECTIONS and CHANGED sat
+     past the edge and the header clipped to "CONNECTIO" -- on the screen the docs are
+     photographed at. A reader's own widths are kept as they were dragged. */
+  colWidths: { q: 17, why: 16, fan: 7, chg: 7 },
   // No filter can be applied yet, so none is claimed. The prototype carried three
   // pinned chips and the strip announced "showing 187 of 4,568 routines" over a view
   // that was filtering nothing -- a silent filter is bad, and an *announced* filter
@@ -1228,19 +1232,7 @@ const NAV_ROUTES = {
                   { label: b.dataset.label || "", note: b.dataset.stepnote || "" });
   },
   pins:        () => { state.view = "pins"; },
-  a:           (b) => {
-    state.view = "anomalies";
-    // Fetched on demand, not with the cover: the findings are large and most
-    // sessions read the counts without ever opening the list.
-    loadAnomalies().then(render);
-    /* And the comparison over them, through the same door and on the same bargain — the
-       dearest of the three overlays, so it is never paid by a reader who does not open
-       this list. It repaints itself when an answer arrives. */
-    ensureAnomalyOverlay();
-    state.sev = b.dataset.sevnav || "suspect";
-    state.cursor = 0;
-    used("anomalies");
-  },
+  a:           (b) => openSeverity(b.dataset.sevnav || "suspect"),
   /* These four set what you are looking AT, and keep the centre pane's current mode.
    *
    * They used to be `() => { state.view = state.mode; ensureGraph(); }` -- four routes
@@ -2366,6 +2358,34 @@ function codeOverlay() {
  * because the navigator states a count beside every other row and a blank there reads as
  * *nothing here* rather than as *not asked for yet* -- the same argument that put the
  * vocabulary lane sizes on the cover. */
+/* The worklist, opened on one severity -- **the one door**, for the navigator row, the tab
+   inside the page and the cover's doorway alike. The tab used to set `state.sev` and repaint,
+   so the page headed itself *anomalies › Informational* while the navigator kept **Suspect**
+   lit and the trail still ended on it (BACKLOG 22, rule 78). The navigator's own rows mark
+   themselves from this state; a caller that is not the navigator files its own trail step. */
+const SEV_LABEL = { broken: "Broken", suspect: "Suspect", info: "Informational" };
+
+function openSeverity(k) {
+  state.view = "anomalies";
+  // Fetched on demand, not with the cover: the findings are large and most
+  // sessions read the counts without ever opening the list.
+  loadAnomalies().then(render);
+  /* And the comparison over them, through the same door and on the same bargain — the
+     dearest of the three overlays, so it is never paid by a reader who does not open
+     this list. It repaints itself when an answer arrives. */
+  ensureAnomalyOverlay();
+  state.sev = k;
+  state.cursor = 0;
+  used("anomalies");
+}
+
+/* What the shell is waiting for, while it waits (BACKLOG 21). A no-op once the first render
+   has replaced the note, so a late call says nothing over a pane that is already drawn. */
+function bootSay(text) {
+  const note = document.getElementById("bootNote");
+  if (note) note.textContent = text;
+}
+
 async function loadRevisions() {
   try {
     const r = await fetch("/api/revisions");
@@ -8155,6 +8175,10 @@ function recordSelection(label, note, view) {
     label: label || subjectLabel(),
     note: note || "",
     subject: selectionSnapshot(),
+    /* On the worklist the severity is where you were, as much as the view is: Suspect and
+       Informational are two lists. Without it a switch between them was folded into the
+       step before as a repeat, and the trail went on ending *Suspect* (BACKLOG 22). */
+    sev: (view || state.view) === "anomalies" ? state.sev : "",
   };
   /* **By subject, never by label.** `pushTrail` deduplicated on the label, which was fine
      while steps were named by hand and is wrong the moment every click makes one: two
@@ -8173,12 +8197,14 @@ function recordSelection(label, note, view) {
      the move now (`selectFromNav`'s `name`), so there is one step, it is named when it is
      made, and nothing is left over to adopt. */
   const at = state.trail[trailAt];
-  if (at && at.view === step.view && sameSelection(at.subject, step.subject)) return;
+  if (at && at.view === step.view && (at.sev || "") === step.sev
+      && sameSelection(at.subject, step.subject)) return;
   /* **The graph catching up is not a move.** A routine picked from a list is recorded
      with no picks, and a moment later the stack announces the same routine as its pick --
      one act, two steps, and the trail read "cmd_serve › cmd_serve". The step is brought up
      to date in place instead. Found photographing the tutorial, 2026-10-02. */
-  if (at && at.view === step.view && caughtUp(at.subject, step.subject)) {
+  if (at && at.view === step.view && (at.sev || "") === step.sev
+      && caughtUp(at.subject, step.subject)) {
     at.subject = step.subject;
     return;
   }
@@ -8351,6 +8377,7 @@ function paintModes() {
 function goToTrailStep(step) {
   const bothCentre = CENTRE_MODES.includes(step.view) && CENTRE_MODES.includes(state.view);
   if (!bothCentre) state.view = step.view;
+  if (step.sev) { state.sev = step.sev; state.cursor = 0; buildNav(); }
   if (step.subject) applySelectionStep(step.subject);
   else render();
 }
@@ -8375,6 +8402,30 @@ function pushTrail(view, label, note) {
  * because a trail that silently forgets is worse than a short one -- the reader would have
  * no way to know Back can still reach further than the bar shows.
  */
+/* **What the bar does not show includes what it has scrolled away** (BACKLOG 27). The window
+   is the last `trailCap` steps, and `+N behind` counted the steps outside it -- but the bar
+   scrolls sideways with its scrollbar hidden, so steps scrolled off the left of the window
+   were neither on screen nor in the count, and a filter that removes things and says
+   nothing is design rule 1's whole subject. So each edge is the window's own count plus the
+   steps scrolled past it, measured after every paint and on every scroll. */
+function countTrailEdges(tm) {
+  const ol = tm.querySelector(".trail");
+  if (!ol) return;
+  const box = ol.getBoundingClientRect();
+  let left = 0, right = 0;
+  for (const li of ol.children) {
+    const r = li.getBoundingClientRect();
+    if (r.right <= box.left + 1) left++;
+    else if (r.left >= box.right - 1) right++;
+  }
+  for (const span of tm.querySelectorAll("[data-trailedge]")) {
+    const edge = span.dataset.trailedge;
+    const n = Number(span.dataset.window || 0) + (edge === "behind" ? left : right);
+    span.hidden = !n;
+    span.textContent = `+${n} ${edge}`;
+  }
+}
+
 function trailBar() {
   if (!state.trailShown) return "";
   if (state.trail.length < 2 && !state.pins.length) return "";
@@ -8393,8 +8444,9 @@ function trailBar() {
   return `
   <div class="trailbar">
     <span class="trail-label">Trail</span>
-    ${behind ? `<span class="trail-behind" title="Back reaches them; the bar shows ${
-      show} at a time">+${behind} behind</span>` : ""}
+    <span class="trail-behind" data-trailedge="behind" data-window="${behind}"
+      title="Back reaches them; the bar shows ${show} at a time"
+      ${behind ? "" : "hidden"}>+${behind} behind</span>
     <ol class="trail">
       ${state.trail.slice(from, end).map((t, k) => {
         const i = from + k;
@@ -8419,8 +8471,9 @@ function trailBar() {
               >${esc(t.label)}</button></li>`;
       }).join("")}
     </ol>
-    ${ahead ? `<span class="trail-behind" title="Forward reaches them; the bar shows ${
-      show} at a time">+${ahead} ahead</span>` : ""}
+    <span class="trail-behind" data-trailedge="ahead" data-window="${ahead}"
+      title="Forward reaches them; the bar shows ${show} at a time"
+      ${ahead ? "" : "hidden"}>+${ahead} ahead</span>
     <button class="linkbtn" data-trailback ${canUndoSelection() ? "" : "disabled"}
             title="Back to the previous step (⌘Z)">\u2190 Back</button>
     <button class="linkbtn" data-trailfwd ${canRedoSelection() ? "" : "disabled"}
@@ -9636,6 +9689,12 @@ function labelFor(nodeId) {
   const r = (ROUTINES || []).find(x => x.id === nodeId);
   if (r) return r.name;
   if (SPECIMEN && SPECIMEN.id === nodeId) return (SPECIMEN.identity || {}).name || SPECIMEN.label;
+  /* A boundary's id is `bnd:KIND:target` (`web/documents.py`), and the step is recorded
+     before its detail arrives -- so the trail read *bnd:NETWO…{url}api/programs'*, a key,
+     where every other step carries a name (BACKLOG 23). Its kind and target are in the id,
+     and an empty target is the inspector's own "(KIND, unnamed)". */
+  const bnd = /^bnd:([^:]+):(.*)$/s.exec(nodeId || "");
+  if (bnd) return bnd[2] ? `${bnd[1]} ${bnd[2]}` : `(${bnd[1]}, unnamed)`;
   return nodeId;
 }
 
@@ -9679,7 +9738,7 @@ function detailFlowCol(side, rows, total, noun, empty) {
             : `<span class="dflow-dead" title="${esc(r.callee_expr || "")}">${
                  esc(r.name || r.callee_expr)}${
                  r.at_boundary ? `<span class="dim">at the boundary</span>`
-                 : r.constructs ? `<span class="dim">builds ${esc(r.constructs)}</span>`
+                 : r.constructs ? `<span class="dim" title="${esc(r.constructs)}">a class of this program</span>`
                  : r.external ? `<span class="dim">outside this map</span>` : ""}</span>`}
         </div>`).join("")
     : `<div class="hint">${empty}</div>`;
@@ -11764,6 +11823,11 @@ function followSelectionIntoCode() {
   /* No answer yet -- the specimen is still in flight. Left unmarked so the next render asks
      again, rather than marked and never asked again (rule 49: refuse, do not invent). */
   if (!SPECIMEN) return;
+  /* Nor before the file list has arrived. Marked then, the subject counted as followed with
+     no file found -- and the persisted file from the last selection was loaded instead, so
+     the CODE note read "357 lines, 37 clickable" for `resolve/entrypoints.py` with
+     `cmd_serve` selected (BACKLOG 28). The boot asks again once the list is here. */
+  if (!FILES.length) return;
   /* From here the question *has* been answered for this subject, whatever the answer was.
      A specimen with no file -- a boundary, a fold, a table -- is a real answer and marking
      it is what stops this retrying on every repaint for as long as it is selected. */
@@ -12846,7 +12910,10 @@ function viewInspector() {
               ? `<span class="dim" data-fit="module">${esc(c.module)}</span>` : ""}</button>`
           : `<code>${esc(c.callee_expr)}${c.at_boundary
               ? `<span class="dim">  at the boundary</span>`
-              : c.constructs ? `<span class="dim">  builds ${esc(c.constructs)}</span>` : ""}</code>`}
+              /* The class's qualname is long enough to push the badge off the pane, and the
+                 call already spells the class: so the row says what kind of call this is,
+                 and the qualname is the hover. */
+              : c.constructs ? `<span class="dim" title="${esc(c.constructs)}">  a class of this program</span>` : ""}</code>`}
         ${callBadge(c)}
       </div>
       ${why(c.line)}`).join("")
@@ -13377,6 +13444,11 @@ function render() {
      * `block: "nearest"` so it never scrolls the page, only the bar. */
     const here = tm.querySelector(".trailstep.here");
     if (here) here.scrollIntoView({ block: "nearest", inline: "end" });
+    const ol = tm.querySelector(".trail");
+    if (ol) {
+      countTrailEdges(tm);
+      ol.addEventListener("scroll", () => countTrailEdges(tm), { passive: true });
+    }
   }
   const np = $("#navPins");
   if (np) { np.textContent = state.pins.length; np.className = "n" + (state.pins.length ? " sevcount info" : ""); }
@@ -13931,7 +14003,9 @@ function wire() {
   }));
   $$("[data-sev]").forEach(b => b.addEventListener("click", () => {
     if (b.disabled) return;
-    state.sev = b.dataset.sev; state.cursor = 0; render();
+    openSeverity(b.dataset.sev);
+    pushTrail("anomalies", SEV_LABEL[b.dataset.sev] || b.dataset.sev);
+    buildNav(); render();
   }));
   $$("[data-cursor]").forEach(b => b.addEventListener("click", () => {
     state.cursor = parseInt(b.dataset.cursor, 10); render();
@@ -13965,10 +14039,9 @@ function wire() {
 
   /* cover: the anomaly panel is a doorway, not a readout */
   $$("[data-gosev]").forEach(b => b.addEventListener("click", () => {
-    loadAnomalies().then(render);
-    ensureAnomalyOverlay();        // the other door in, and it must pay the same toll
-    state.view = "anomalies"; state.sev = b.dataset.gosev; state.cursor = 0;
-    used("anomalies"); render();
+    openSeverity(b.dataset.gosev);   // the other door in, and it must pay the same toll
+    pushTrail("anomalies", SEV_LABEL[b.dataset.gosev] || b.dataset.gosev);
+    buildNav(); render();
   }));
 
   /* glossary filter — refills three elements, and touches nothing else.
@@ -14607,6 +14680,9 @@ const WIRED_ATTRS = new Set([
      `aboutopen` sits on the `.srcpath` button, which was a readout until there was
      something true to put in it -- see the markup. */
   "aboutopen", "aboutagain", "closeabout",
+  /* The trail bar's two edge counts: which edge (`trailedge`) and how many steps the window
+     left out before any were scrolled away (`window`). Read back by `countTrailEdges`. */
+  "trailedge", "window",
   /* The search's four. `searchline` rides with `searchgo` on the same button and carries no
      handler of its own -- it is the line the click is about, and the roster is a list of
      attributes the shell writes, not only of the ones that are clicked. */
@@ -15955,16 +16031,22 @@ function codeNote() {
   if (!FILES.length) return "reading the file list…";
   if (state.codeFile) {
     const f = FILES.find(x => x.path === state.codeFile);
-    if (CODEFILE && CODEFILE.loading) return `opening ${esc(state.codeFile)}…`;
+    /* An answer about another file is not an answer about this one: a note that counted the
+       last file's lines under this one's name was the defect (BACKLOG 28). */
+    if (!CODEFILE || CODEFILE.loading || CODEFILE.file !== state.codeFile) {
+      return `opening ${esc(state.codeFile)}…`;
+    }
     if (CODEFILE && CODEFILE.available === false) return esc(CODEFILE.reason || "not available");
-    const n = CODEFILE ? CODEFILE.lines.length : (f ? f.lines : 0);
-    const links = CODEFILE ? CODEFILE.links.length : 0;
+    const n = CODEFILE.lines.length || (f ? f.lines : 0);
+    const links = CODEFILE.links.length;
     /* The unplaced count is not decoration. A call whose expression appears twice on its
        line has no column we can honestly give it, so it is not underlined -- and a name
        that is not clickable, with nothing said about it, reads as a name the map does not
        know. */
-    const un = CODEFILE && CODEFILE.unplaced ? `, ${CODEFILE.unplaced} overlapping and left plain` : "";
-    return `${n.toLocaleString()} lines, ${links} clickable${un}`;
+    const un = CODEFILE.unplaced ? `, ${CODEFILE.unplaced} overlapping and left plain` : "";
+    /* Named, so the count can be checked against the file it is about. */
+    const name = state.codeFile.split("/").pop();
+    return `${esc(name)}: ${n.toLocaleString()} lines, ${links} clickable${un}`;
   }
   const { rows, filtered } = matchingFiles();
   if (!filtered) return `${FILES.length.toLocaleString()} files — open one, or search names or source`;
@@ -16927,9 +17009,13 @@ const NAV_GROUPS = [
   { id: "navAnom", title: "Anomalies", open: true, items: () => {
       const a = (STATS && STATS.anomalies) || { broken: 0, suspect: 0, info: 0 };
       return [
-        { nav: "a", sevnav: "broken",  label: "Broken", n: a.broken,  dot: "broken" },
-        { nav: "a", sevnav: "suspect", label: "Suspect", n: a.suspect, dot: "suspect" },
-        { nav: "a", sevnav: "info",    label: "Info",    n: a.info,    dot: "info" },
+        /* Lit from the state, not only from the click: the tab inside the page moves the
+           same state and the row has to follow it (BACKLOG 22). One label per severity,
+           the page's own. */
+        ...["broken", "suspect", "info"].map(k => ({
+          nav: "a", sevnav: k, label: SEV_LABEL[k], n: a[k], dot: k,
+          current: state.view === "anomalies" && state.sev === k,
+        })),
       ];
     } },
 ];
@@ -18022,11 +18108,23 @@ function persist() {
 
 /* Settings are loaded once the program is known, because they are stored per program: a
  * disk order and a set of colours worked out for one codebase mean nothing in another. */
+/* The table's default widths before 2026-10-02. The shell saves every persisted field,
+   defaults included, so a reader who never dragged a column carries these in storage and
+   would never see the new ones: a stored set equal to this, exactly, is read as never
+   chosen (BACKLOG 19, Tom 2026-10-02). Any other stored width is the reader's and is kept. */
+const OLD_DEFAULT_COLS = { q: 26, why: 30, fan: 5, chg: 7 };
+
 function adoptSettings(name) {
   program = name;
   settings = Settings.loadSettings(name);
+  const defaultCols = { ...state.colWidths };
   for (const k of PERSISTED) {
     if (k in settings) state[k] = settings[k];
+  }
+  const cw = state.colWidths || {};
+  if (Object.keys(OLD_DEFAULT_COLS).every(k => cw[k] === OLD_DEFAULT_COLS[k])
+      && Object.keys(cw).length === Object.keys(OLD_DEFAULT_COLS).length) {
+    state.colWidths = defaultCols;
   }
   /* **A routine picked in the graph is half a selection, and only that half was saved.**
      `picks` is persisted so the plates a reader chose come back; `selected` is not, because
@@ -18750,12 +18848,42 @@ function revealSelectedRow(force, attr = "row") {
   const sc = row && scrollerFor(row);
   if (!row || !sc) return;
   lastRevealedRow[attr] = state.selected;
+  /* **A row inside a skipped group reports where it was, not where it is.** The document's
+     groups are `content-visibility: auto`, and the browser does not lay out a skipped
+     group's rows -- so `getBoundingClientRect` on the selected row returned a stale
+     position on screen while its group sat 1,900 px above the viewport, and every
+     measurement below aimed at a ghost (BACKLOG 16). The target's own group is made to
+     render first; one group, so the saving the property exists for is untouched. */
+  const group = row.closest(".docgroup");
+  if (group) group.style.contentVisibility = "visible";
   const rb = row.getBoundingClientRect(), sb = sc.getBoundingClientRect();
   const hidden = rb.bottom < sb.top || rb.top > sb.bottom;
   if (!force && !hidden) return;
   /* Centred rather than merely inside: a row that lands one pixel below the header is on
      screen and still nowhere the eye goes. */
-  sc.scrollTop += (rb.top - sb.top) - (sb.height / 2) + (rb.height / 2);
+  const off = () => {
+    const r = row.getBoundingClientRect(), b = sc.getBoundingClientRect();
+    return (r.top - b.top) - (b.height / 2) + (r.height / 2);
+  };
+  sc.scrollTop += off();
+  /* **And then measured again, because the first measurement was of a placeholder.** The
+     document's groups are `content-visibility: auto` at an intrinsic 24rem, so every group
+     above the row is measured at that size until the scroll brings it near enough to lay
+     out at its real one -- and Routines' groups are far shorter. The content above shrank
+     under the scroll and the row ended about twenty-five wheel ticks past the viewport, from
+     the opening scroll and from **Go to it** alike (BACKLOG 16, rule 73). So it converges:
+     a few frames, each correcting what the last one's layout moved, and it stops as soon as
+     the row is where it was sent or the scroller cannot move it any further. */
+  let tries = 6;
+  const settle = () => {
+    if (!row.isConnected || tries-- <= 0) return;
+    const d = off();
+    if (Math.abs(d) < 2) return;
+    const before = sc.scrollTop;
+    sc.scrollTop += d;
+    if (sc.scrollTop !== before) requestAnimationFrame(settle);
+  };
+  requestAnimationFrame(settle);
 }
 
 function revealSelectedRoutine() {
@@ -20946,9 +21074,20 @@ function paneCostRem() {
 
 /* Which panes this window has no room for, in the order they are given up. A set rather
  * than a name, because at the narrowest width both go. */
+/* How narrow the graph's own pane may be before its Plates panel starts on the rail. At a
+   1,483 px window with both side panes open the graph has about 50rem, and the plate list
+   and the slider panel covered half of the stack until the reader folded them by hand --
+   which is what every photograph in the docs needed first (BACKLOG 19, Tom 2026-10-02). */
+const PLATES_FOLD_REM = 60;
+
 function narrowFolds() {
   const folds = new Set();
   if (!state.paneAuto) return folds;
+  /* The graph's pane is measured rather than derived: the Plates track sits inside it, so
+     folding it does not change the width it is judged by, and nothing here can oscillate. */
+  const gm = document.getElementById("graphMount");
+  const graphRem = gm ? gm.getBoundingClientRect().width / rootPx() : 0;
+  if (graphRem && graphRem < PLATES_FOLD_REM) folds.add("legend");
   const cost = paneCostRem();
   const have = window.innerWidth / rootPx();
   if (have >= NAV_MIN_REM + CENTRE_FLOOR_REM + cost.inspector) return folds;
@@ -20972,7 +21111,7 @@ function narrowFolds() {
  * that the rule no longer wants the fold, so widening puts the reader back where they were
  * and narrowing again folds again -- the same "re-clamped rather than remembered narrower"
  * decision the navigator's width makes two functions down. */
-const paneHeld = { navigator: false, inspector: false };
+const paneHeld = { navigator: false, inspector: false, legend: false };
 
 function autoFoldsHere(name) {
   return !paneHeld[name] && narrowFolds().has(name);
@@ -21254,6 +21393,7 @@ async function boot() {
      the version strip arrived seconds after everything else (BACKLOG 18). Nothing in it
      depends on the cover, and `loadRevisions` cannot throw. */
   const revisionsLoaded = loadRevisions();
+  bootSay("Reading the map — its cover first, then the versions it holds…");
   try {
     await loadCover();
     /* After the cover, never before: the cover names the served program, and this fills in
@@ -21332,6 +21472,7 @@ async function boot() {
    * before it can decide whether the Changes group applies at all -- so it is awaited
    * rather than fired and forgotten, or the first `buildNav()` runs against an empty list
    * and the group is missing until something else happens to rebuild the pane. */
+  bootSay("Reading the map — which versions it holds…");
   await revisionsLoaded;
   reconcileBase();
   /* The two toolbar controls, from the list that has just arrived. Before `buildNav`,
@@ -21387,7 +21528,10 @@ async function boot() {
   /* The file list, beside the routine list and for the same reason: the navigator asks
    * for both, neither changes while the map is open, and the server already built this one
    * at boot. If a file was open when the reader last closed the page, it comes back. */
-  loadFiles().then(() => { if (state.codeFile) return loadCodeFile(state.codeFile); })
+  loadFiles().then(() => {
+    followSelectionIntoCode();       // the selection's file, now there is a list to find it in
+    if (state.codeFile) return loadCodeFile(state.codeFile);
+  })
              .then(buildNav)
              .catch(err => { state.navNote = `could not read the file list: ${err.message}`; });
   /* **`render()` as well as `buildNav()`, and the centre is the half that was missing.**

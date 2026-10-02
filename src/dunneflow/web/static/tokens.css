@@ -2797,6 +2797,9 @@ kbd { font-family: var(--f-mono); font-size: .66rem; background: var(--sunken);
 .wl-jump { display: flex; flex-direction: column; gap: .3rem; margin-top: .75rem; }
 
 .seg.postures { flex-wrap: wrap; }
+/* The Algorithms lanes wrap rather than run off the pane: five titles need 943 px in one row
+ * and the centre has 795 at a 1,483 px window with both panes open (BACKLOG 19). */
+.seg.tabs { flex-wrap: wrap; max-width: 100%; }
 .postblurb { font-size: .78rem; color: var(--text-muted); margin: .5rem 0 .6rem; }
 .egressgrid { display: flex; flex-direction: column; gap: .2rem; }
 .egressrow { display: flex; align-items: baseline; gap: .5rem; padding: .28rem .4rem;

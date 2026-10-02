@@ -2801,10 +2801,13 @@ def test_the_graph_is_never_framed_against_a_container_it_cannot_measure() -> No
         "so the HUD and the way-back anchor never see it"
     )
     # Not an unconditional re-fit: switching away and back must keep the reader's camera.
-    assert "if (g.fitOwed &&" in rs, (
+    # Refitted only while a fit is owed or is still the camera on screen (BACKLOG 15), and
+    # the second is cleared by a reader's gesture, so a camera they set is never re-framed.
+    assert "if ((g.fitOwed || g.fitKept) &&" in rs, (
         "every reveal re-frames the stack, which throws away the camera the reader set "
         "(design rule 26)"
     )
+    assert "g.fitKept = false" in _code(engine), "nothing a reader does ends a kept fit"
 
 
 def test_the_navigator_follows_whoever_drove_the_selection() -> None:

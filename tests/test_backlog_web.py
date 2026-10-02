@@ -42,3 +42,96 @@ def test_the_versions_are_asked_for_with_the_cover_not_after_it():
     asked, cover = boot.index("loadRevisions()"), boot.index("await loadCover()")
     assert asked < cover, "the versions are requested after the cover"
     assert "await loadRevisions()" not in boot, "a second, serial request was left behind"
+
+
+def test_a_fit_nobody_has_moved_follows_its_container():
+    """BACKLOG 15: the graph arrived framed for a transitional size and stayed that way."""
+    engine = _code(_read("graph.js"))
+    fit = _fn(engine, "fitView")
+    assert "g.fitKept = true" in fit and "g.fitSubset = subset" in fit
+    # Cleared by the reader's gesture, which is the one path the controller prop takes.
+    assert re.search(r"onViewStateChange: \(p\) => \{ g\.fitKept = false;", engine)
+    mount = _fn(engine, "mount")
+    assert "new ResizeObserver" in mount and "g.fitKept" in mount
+    assert "g.fitSubset" in mount, "a resize would refit the whole stack over a framed selection"
+
+
+def test_a_revealed_row_is_measured_again_after_the_layout_it_caused():
+    """BACKLOG 16: one measurement of a `content-visibility` placeholder sent the row past
+    the viewport, from the opening scroll and from Go to it alike."""
+    reveal = _code(_fn(_read("shell.js"), "revealSelectedRow"))
+    assert "requestAnimationFrame(settle)" in reveal
+    assert "row.isConnected" in reveal, "a row the pane has replaced is chased for ever"
+
+
+def test_the_loading_shell_says_what_it_is_waiting_for():
+    """BACKLOG 21: twenty blank seconds on a cold open (design rule 21)."""
+    html = _read("index.html")
+    mount = html[html.index('id="viewMount"'):]
+    assert 'id="bootNote"' in mount[:300], "the view mount starts empty again"
+    boot = _code(_fn(_read("shell.js"), "boot"))
+    assert boot.count("bootSay(") >= 2
+
+
+def test_every_door_into_a_severity_moves_the_navigator_and_the_trail():
+    """BACKLOG 22: the tab inside the page moved the view and told neither."""
+    js = _code(_read("shell.js"))
+    tab = js.split('$$("[data-sev]")', 1)[1][:300]
+    cover = js.split('$$("[data-gosev]")', 1)[1][:300]
+    for door in (tab, cover):
+        assert "openSeverity(" in door and "pushTrail(" in door and "buildNav()" in door
+    assert re.search(r"current: state\.view === \"anomalies\" && state\.sev === k", js)
+
+
+def test_a_boundary_step_is_named_by_its_kind_and_target():
+    """BACKLOG 23: the trail read `bnd:NETWO…`, a key."""
+    label = _code(_fn(_read("shell.js"), "labelFor"))
+    assert "bnd:" in label and "unnamed" in label
+
+
+def test_the_trail_counts_the_steps_it_has_scrolled_away():
+    """BACKLOG 27: steps off the left of a scrolled bar were neither shown nor counted."""
+    js = _read("shell.js")
+    edges = _code(_fn(js, "countTrailEdges"))
+    assert "getBoundingClientRect" in edges and "dataset.window" in edges
+    paint = _code(js).split('const tm = $("#trailMount");', 1)[1][:900]
+    assert "countTrailEdges(tm)" in paint and '"scroll"' in paint
+
+
+def test_the_code_note_is_about_the_file_it_names():
+    """BACKLOG 28: "357 lines" of the last file, under the next selection."""
+    js = _read("shell.js")
+    follow = _code(_fn(js, "followSelectionIntoCode"))
+    files_first = follow.index("if (!FILES.length) return;")
+    assert files_first < follow.index("codeFollowedFor = inspectorFor")
+    note = _code(_fn(js, "codeNote"))
+    assert "CODEFILE.file !== state.codeFile" in note
+
+
+def test_a_worklist_step_carries_its_severity():
+    """BACKLOG 22, as found by pointer: Suspect then Informational is one view and one
+    selection, so the second step was folded into the first and Back could not return."""
+    js = _read("shell.js")
+    rec = _code(_fn(js, "recordSelection"))
+    assert "sev:" in rec and "(at.sev || \"\") === step.sev" in rec
+    assert "state.sev = step.sev" in _code(_fn(js, "goToTrailStep"))
+
+
+def test_the_document_renders_the_group_it_measures():
+    """BACKLOG 16, as found by pointer: a row in a skipped `content-visibility` group reports
+    a stale position, so the reveal aimed at a ghost."""
+    reveal = _code(_fn(_read("shell.js"), "revealSelectedRow"))
+    assert reveal.index('contentVisibility = "visible"') < reveal.index("getBoundingClientRect")
+
+
+def test_the_centre_fits_the_window_the_docs_are_taken_at():
+    """BACKLOG 19, measured at 1,483 px: a 795 px centre, a 1,088 px table, 943 px of tabs."""
+    js, css = _read("shell.js"), _read("tokens.css")
+    widths = re.search(r"colWidths: \{ q: (\d+), why: (\d+), fan: (\d+), chg: (\d+) \}", js)
+    assert widths and sum(map(int, widths.groups())) <= 47
+    assert re.search(r"\.seg\.tabs \{[^}]*flex-wrap: wrap", css)
+    adopt = _code(_fn(js, "adoptSettings"))
+    assert "OLD_DEFAULT_COLS" in adopt, "a reader who never dragged a column keeps 68rem"
+    folds = _code(_fn(js, "narrowFolds"))
+    assert 'folds.add("legend")' in folds and "PLATES_FOLD_REM" in folds
+    assert re.search(r"const paneHeld = \{[^}]*legend: false", js)

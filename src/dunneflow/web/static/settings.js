@@ -644,7 +644,7 @@ const DEFAULTS = {
   searchRegex: false,
   ambient: false,         // anomaly badges wherever a thing appears
   hideInferred: false,
-  colWidths: { q: 26, why: 30, fan: 5, chg: 7 },  // the columns the routine list can fill
+  colWidths: { q: 17, why: 16, fan: 7, chg: 7 },  // the columns the routine list can fill
   // today; lines/returns/params/touches come back with an endpoint that serves them
   /* `value` open because it is the whole point of a constant's pane; `reads` closed because
      it states a limit rather than a finding, and a caveat that opens itself every time

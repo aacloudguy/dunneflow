@@ -232,7 +232,12 @@
                   hidden aria-expanded="false" aria-controls="graphLegend"
                   title="Show the plates"><span class="railtext">Plates</span></button>
         </div>
-        <div class="viewmount" id="viewMount"></div>
+        <!-- Not empty while the shell starts: a blank canvas must say why it is blank (design
+             rule 21). It was blank for about twenty seconds on a cold open, with the filter
+             strip hidden and nothing in its place (BACKLOG 21). The first render replaces it,
+             and `boot` says what it is waiting for as it goes. -->
+        <div class="viewmount" id="viewMount"><div class="panel"><div class="panel-body"><p
+          class="hint" id="bootNote">Reading the map&hellip;</p></div></div></div>
       </div>
     </main>
 

@@ -9,8 +9,10 @@ written code to understand how it flows, how it moves information around. You po
 a directory of source, it reads the code and the documentation beside it, and it gives you
 a map you can walk around in.
 
-Nothing leaves your machine. No part of the analysis calls a model or opens a network
-connection.
+**The analysis is deterministic.** No language model is involved at any step: DunneFlow
+parses the code and reads the prose by fixed rules, so the same tree read twice gives the
+same map, fact for fact. Nothing leaves your machine, and
+no part of the analysis calls a model or opens a network connection.
 
 ## Start here
 
@@ -66,10 +68,11 @@ These are worth knowing before you trust anything on the screen.
 **Every finding states what would make it a false alarm.** An anomaly carries a severity
 (what it would mean for your program), a confidence (how sure DunneFlow is), and a blind
 spot (what would make it wrong). Those are three different questions and DunneFlow never
-blurs them. These are best guesses from an AI algorithm. They are worth a look, but nothing
-is guaranteed or certain to be a real issue. You must use your own judgment when reviewing
-anomalies. The intent is to focus your attention on items that might be of interest, nothing
-more or less.
+blurs them. A finding is not a guess by a model — it is a fixed rule applied to what was
+read, and the same map always gives the same findings — but a rule can still be wrong about
+your program, which is exactly what the blind spot says. Treat each one as worth a look, not
+as a verdict: you must use your own judgment when reviewing anomalies. The intent is to focus
+your attention on items that might be of interest, nothing more or less.
 
 **Every reported meaning carries its provenance, and the provenance opens.** A quoted
 definition proves itself with a file and a line you can click through to. A measured

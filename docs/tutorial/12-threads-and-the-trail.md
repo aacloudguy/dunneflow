@@ -94,7 +94,7 @@ The last lane on `entrypoints_from_manifests` is three outliers:
 *The most in `entrypoints`*, not the most in the program. That is the difference between
 this panel and [chapter 11](11-worth-a-look.md)'s: a curiosity is *somewhere in this
 program and worth the walk*, a thread is *beside you*. The most-commented routine in the
-whole program has 782 comments; the most-commented one in this module has 2, and when you
+whole program has 785 comments; the most-commented one in this module has 2, and when you
 are standing in `entrypoints` the second number is the useful one.
 
 ## Keeping something
@@ -102,7 +102,7 @@ are standing in `entrypoints` the second number is the useful one.
 Press **◇ Keep this** on the `binding_note` thread. Then click `_target_routine`, the thread
 above it, and follow that one instead.
 
-![The dashboard on the Diagram view of entrypoints.py, with _target_routine selected and outlined in the drawing. The trail reads "Worth a look › entrypoints_from_manifests › _target_routine", after its count of the steps behind, followed by Back, Forward, Clear and a filled badge reading "◆ 1 kept". The inspector shows resolve.entrypoints._target_routine at resolve/entrypoints.py:69–117, tagged ANALYSED and ROUTINE. IN 1 lists entrypoints_from_manifests, CERTAIN, under the docstring "Find the routine a `module:attr` console-script target names." OUT 7 call sites lists exact (CERTAIN), module.startswith (EXTERNAL), exact (CERTAIN), len (EXTERNAL), query in store (CERTAIN), len (EXTERNAL) and str (EXTERNAL). TOUCHES 1 reads SELECT routines READ :112. SHAPE 6 shows guard 3, loop 2, decision 1 and "1 thing moves inside them, and 2 calls go to this program's own code."](images/12-trail-and-kept.jpg)
+![The dashboard on the Diagram view of the resolve compartment, "40 boxes over 178 routines", with _target_routine selected and entrypoints.py — the box that holds it — outlined. The trail reads "Worth a look › entrypoints_from_manifests › _target_routine", after its count of the steps behind, followed by Back, Forward, Clear and a filled badge reading "◆ 1 kept". The inspector shows resolve.entrypoints._target_routine at resolve/entrypoints.py:69–117, tagged ANALYSED and ROUTINE. IN 1 lists entrypoints_from_manifests, CERTAIN, under the docstring "Find the routine a `module:attr` console-script target names." OUT 7 call sites lists exact (CERTAIN), module.startswith (EXTERNAL), exact (CERTAIN), len (EXTERNAL), query in store (CERTAIN), len (EXTERNAL) and str (EXTERNAL). TOUCHES 1 reads SELECT routines READ :112. SHAPE 6 shows guard 3, loop 2, decision 1 and "1 thing moves inside them, and 2 calls go to this program's own code."](images/12-trail-and-kept.jpg)
 
 You are on `_target_routine` now, and `binding_note` is not lost. The trail gains a badge,
 **◆ 1 kept**, and the navigator's EXPLORE group gains a row, **Kept · 1**. Click either and

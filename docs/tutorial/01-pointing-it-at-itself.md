@@ -89,7 +89,7 @@ The reference chapter [Your first map](../04-your-first-map.md) walks the panel 
 ## What you get
 
 ```
-dunneflow: 1,550 routines · 3,261 internal calls · 526 boundary touches ·
+dunneflow: 1,552 routines · 3,315 internal calls · 526 boundary touches ·
            207 structures · 24 ways in
 ```
 

@@ -1,9 +1,9 @@
 # 7. Diagram
 
-The stack draws all 2,690 nodes. This draws forty boxes, and answers a different question:
+The stack draws all 2,692 nodes. This draws forty boxes, and answers a different question:
 **what is this one part shaped like, and what flows through it.**
 
-![Diagram mode with the resolve compartment chosen. A dropdown reads "resolve — 40 boxes" and the line beside it reads "40 boxes over 176 routines · 17 flows within · 80 crossing to 11 other compartments (not drawn) · 9 with no flow either way · drawn in 25 ms · double-click a box to open it", with a "show crossings" checkbox. Below are "colour by" set to "nothing", a "fit" button, and the text "· 1 box selected" with a "frame it" button. Forty small labelled boxes are scattered over the pane, most of them joined to nothing; in the middle, entrypoints.py with 12 functions is drawn bold, with arrows to manifests.py and languages.py, and conformance.py, stated.py, mirror.py, naming.py, traceability.py, cli.py and others also point into languages.py](images/07-diagram-compartment.jpg)
+![Diagram mode with the resolve compartment chosen. A dropdown reads "resolve — 40 boxes" and the line beside it reads "40 boxes over 178 routines · 17 flows within · 80 crossing to 11 other compartments (not drawn) · 9 with no flow either way · drawn in 25 ms · double-click a box to open it", with a "show crossings" checkbox. Below are "colour by" set to "nothing", a "fit" button, and the text "· 1 box selected" with a "frame it" button. Forty small labelled boxes are scattered over the pane, most of them joined to nothing; in the middle, entrypoints.py with 12 functions is drawn bold, with arrows to manifests.py and languages.py, and conformance.py, stated.py, mirror.py, naming.py, traceability.py, cli.py and others also point into languages.py](images/07-diagram-compartment.jpg)
 
 ## The line under the dropdown
 
@@ -12,7 +12,7 @@ you are looking at:
 
 | | |
 |---|---|
-| **40 boxes over 176 routines** | a fold, and what it folded |
+| **40 boxes over 178 routines** | a fold, and what it folded |
 | **17 flows within** | arrows drawn inside this compartment |
 | **80 crossing to 11 other compartments (not drawn)** | arrows that leave |
 | **9 with no flow either way** | boxes here that connect to nothing |
@@ -83,7 +83,7 @@ like a bug.
 
 So turn on **show crossings**:
 
-![The same compartment with show crossings ticked. The line now reads "40 boxes over 176 routines · 17 flows within · 80 crossing to 11 other compartments · 9 with no flow either way · drawn in 22 ms", without "(not drawn)", and the legend has lost its warning. Dashed ellipses for the other compartments have joined the drawing — render, web, mcp, cli, anomalies, detectors, store and schema, with ARTEFACT, FILE and DATABASE for the boundaries — and dashed arrows run from nearly every box to them, so the whole compartment is fitted into a wide, shallow band, a dense mesh too small to read at this size](images/07-crossings.jpg)
+![The same compartment with show crossings ticked. The line now reads "40 boxes over 178 routines · 17 flows within · 80 crossing to 11 other compartments · 9 with no flow either way · drawn in 24 ms", without "(not drawn)", and the legend has lost its warning. Dashed ellipses for the other compartments have joined the drawing — render, web, mcp, cli, anomalies, detectors, store and schema, with ARTEFACT, FILE and DATABASE for the boundaries — and dashed arrows run from nearly every box to them, so the whole compartment is fitted into a wide, shallow band, a dense mesh too small to read at this size](images/07-crossings.jpg)
 
 Now the line drops *(not drawn)*, the legend drops its warning, and the picture shows you
 why the crossings are off by default: it connects everything to everything and stops
@@ -96,7 +96,7 @@ Double-click `entrypoints.py` and the boxes become the routines inside it, descr
 same sentence — including which box you are inside, so it is never a drawing you cannot
 place. **‹ out** goes back up.
 
-![The second level. Beside "resolve — 40 boxes" are a "‹ out" button and the title entrypoints.py, then "12 routines · 11 flows within · 18 crossing to 8 other boxes (not drawn) · drawn in 1 ms", show crossings unticked, colour by "nothing", and "· you are inside what you picked". entrypoints_from_packaging sits at the top and points down into entrypoints_from_manifests, which has solid arrows to _import_prefixes, _target_routine, _target_file, a DATABASE cylinder and _mint; _target_routine points down to exact; collisions points into _mint; binding_note, on the right, points to _resolved and _declaration and has no arrow coming in; record_manifests stands alone. The inspector is headed resolve.entrypoints, resolve/entrypoints.py:38–356, with a code button, ANALYSED, FILE and "12 folded", and lists HOLDS 12, each routine on one line with its code button and line number, from _import_prefixes at :38 to record_manifests at :350. The trail ends "inside entrypoints.py › Graph › Diagram"](images/07-box-open.jpg)
+![The second level. Beside "resolve — 40 boxes" are a "‹ out" button and the title entrypoints.py, then "12 routines · 11 flows within · 18 crossing to 8 other boxes (not drawn) · drawn in 2 ms", show crossings unticked, colour by "nothing", and "· you are inside what you picked". entrypoints_from_packaging sits at the top and points down into entrypoints_from_manifests, which has solid arrows to _import_prefixes, _target_routine, _target_file, a DATABASE cylinder and _mint; _target_routine points down to exact; collisions points into _mint; binding_note, on the right, points to _resolved and _declaration and has no arrow coming in; record_manifests stands alone. The inspector is headed resolve.entrypoints, resolve/entrypoints.py:38–356, with a code button, ANALYSED, FILE and "12 folded", and lists HOLDS 12, each routine on one line with its code button and line number, from _import_prefixes at :38 to record_manifests at :350. The trail ends "Document › Diagram › entrypoints.py"](images/07-box-open.jpg)
 
 Your selection is inside this box, and the head says so in as many words: **you are inside
 what you picked**. The one box selected a moment ago is now the frame around everything

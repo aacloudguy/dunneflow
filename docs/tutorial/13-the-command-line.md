@@ -94,18 +94,18 @@ uv run dunneflow check output/dunneflow
 ```
 
 ```
-[SUSPECT/PROBABLE] LOST_EDGE: `_literal` could not be connected: 2 definitions share the name  extractors/python/extract.py
-[SUSPECT/PROBABLE] LOST_EDGE: `_scan` could not be connected: 2 definitions share the name  extractors/cpp/control.py
+[SUSPECT/PROBABLE] LOST_EDGE: `self.ancestors` could not be connected: 2 definitions share the name  extractors/cpp/scopes.py
+[SUSPECT/PROBABLE] LOST_EDGE: `self.masked.line_at` could not be connected: 2 definitions share the name  extractors/cpp/ctx.py
 …
 [SUSPECT/PROBABLE] NO_TIMEOUT: 2 of 3 remote calls set no timeout  web/serve.py:3764
 …
-0 broken, 26 suspect, 18 informational
+0 broken, 21 suspect, 18 informational
 ```
 
-Same forty-four findings as [chapter 9](09-what-looks-wrong.md): the 26 suspect ones a line
+Same thirty-nine findings as [chapter 9](09-what-looks-wrong.md): the 21 suspect ones a line
 each, and the 18 informational ones counted in the last line — `--all` prints those too.
 **It exits non-zero only on BROKEN**, so it can gate a build without failing it every time
-the tool is merely unsure. Here it exits `0` with 26 findings printed.
+the tool is merely unsure. Here it exits `0` with 21 findings printed.
 
 ## The vocabulary, without a browser
 
@@ -117,8 +117,8 @@ uv run dunneflow naming output/dunneflow
 STATED — nothing in this program's documentation states a naming rule
 
 MEASURED — counted against the code
-  [B] 1,231/1,247  Python routines are named in snake_case.  (16 exceptions)
-  [B] 611/621  A routine marked private is called only from its own module.  (10 exceptions)
+  [B] 1,233/1,249  Python routines are named in snake_case.  (16 exceptions)
+  [B] 616/623  A routine marked private is called only from its own module.  (7 exceptions)
   …
   [D] 165/182  Python classes are named in PascalCase.  (17 exceptions)
   …
@@ -173,9 +173,9 @@ uv run dunneflow revisions output/dunneflow
 
 ```
 revision               state            captured                files  label
-2026-10-02T19:59:52Z   WORKING          2026-10-02T19:59:52Z      142
-2026-10-02T19:59:47Z   FOR_COMPARISON   2026-10-02T19:59:47Z      141  DunneFlow at 1017ef4 - before the Windows fix
-2026-10-02T19:59:41Z   FOR_COMPARISON   2026-10-02T19:59:41Z      141  DunneFlow at 0804aa7 - before parts
+2026-10-02T21:37:19Z   WORKING          2026-10-02T21:37:19Z      142
+2026-10-02T21:37:11Z   FOR_COMPARISON   2026-10-02T21:37:11Z      141  DunneFlow at 1017ef4 - before the Windows fix
+2026-10-02T21:37:03Z   FOR_COMPARISON   2026-10-02T21:37:03Z      141  DunneFlow at 0804aa7 - before parts
 ```
 
 The versions from [chapter 8](08-two-versions.md), and the mechanism behind them in one

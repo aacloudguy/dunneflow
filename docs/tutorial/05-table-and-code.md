@@ -7,24 +7,25 @@ Two views, one after the other, because they answer the same question at two dis
 
 Every routine in the program as a row.
 
-![Table mode. A banner reads "SHOWING resolve.entrypoints.entrypoints_from_manifests row 886 of 1,550 as sorted here" with a "Go to it" button. Below it ROW DENSITY offers Compact, Comfortable and Spacious, with the note "Drag a column edge to resize — widths store in rem, so the scale control moves them too" and a "changes" button. The next line reads "against 2026-10-02 19:59:47: +23 added · 64 behave differently · ≈ 32 edited only · 1,431 unchanged · 1 deleted — in 2026-10-02 19:59:47 only, so not listed here". The table has ROUTINE, WHY, CONNECTIONS and CHANGED columns, and the selected row, entrypoints_from_manifests, is at the top of it: 2← 6→, a hollow circle under CHANGED, and a WHY cell that is a whole paragraph, beginning "Bind, mint and record every way in the manifests declared." and going on to explain the tree argument and why a collision is refused rather than overwritten. Below it entrypoints_from_packaging begins "Every way in the manifests at one…", 0← 2→. The comparison strip at the top reads "you chose: the compared version is older"](images/05-table.jpg)
+![Table mode. A banner reads "SHOWING resolve.entrypoints.entrypoints_from_manifests row 886 of 1,552 as sorted here" with a "Go to it" button. Below it ROW DENSITY offers Compact, Comfortable and Spacious, with the note "Drag a column edge to resize — widths store in rem, so the scale control moves them too" and a "changes" button. The next line reads "against 2026-10-02 21:37:11: +25 added · 63 behave differently · ≈ 33 edited only · 1,431 unchanged · 1 deleted — in 2026-10-02 21:37:11 only, so not listed here". The table has ROUTINE, WHY, CONNECTIONS and CHANGED columns, and the selected row, entrypoints_from_manifests, is at the top of it: 2← 6→, a hollow circle under CHANGED, and a WHY cell that is a whole paragraph, beginning "Bind, mint and record every way in the manifests declared." and going on to explain the tree argument and why a collision is refused rather than overwritten. Below it entrypoints_from_packaging begins "Every way in the manifests at one…", 0← 2→. The comparison strip at the top reads "you chose: the compared version is older"](images/05-table.jpg)
 
 *The screenshots in this chapter were taken with the comparison's direction already turned
 round, which is why the strip says **you chose: the compared version is older** and the
-counts say **+23 added**. Chapter 8 is about that button. Left alone, it says
-**assuming the compared version is newer** and the same 23 routines are counted as
-**−23 deleted**.*
+counts say **+25 added**. Chapter 8 is about that button. Left alone, it says
+**assuming the compared version is newer** and the same 25 routines are counted as
+**−25 deleted**.*
 
-### It brings your selection into view once
+### It brings your selection into view when you arrive
 
-> **SHOWING** `resolve.entrypoints.entrypoints_from_manifests` row 886 of 1,550 as sorted here — **Go to it**
+> **SHOWING** `resolve.entrypoints.entrypoints_from_manifests` row 886 of 1,552 as sorted here — **Go to it**
 
 You are still on the routine you picked in chapter 3, and the table knows. It says where the
 row is, and *as sorted here* is meant literally: sort by another column and the row has
 another number.
 
-Arriving with a selection, the table scrolls to it once — a selection 886 rows down is an answer
-nobody can see, so it is brought into view. **After that it leaves you alone.** Scroll away
+Every time you arrive with a selection — the first visit or the fifth — the table scrolls to
+it, because a selection 886 rows down is an answer nobody can see. **Once you are there it
+leaves you alone.** Scroll away
 to read the rows around it and nothing drags you back on the next repaint; an automatic move
 may not fight a deliberate one. When you want your row again, **Go to it** is the button,
 and the cost of asking is one click.
@@ -42,7 +43,7 @@ what would break if it did not. That
 prose was in the source; DunneFlow just put it next to the name it belongs to.
 
 **This is the argument for reading documentation as a first-class input.** A list of
-1,550 function names is not orientation. A list of 1,550 function names with what their authors
+1,552 function names is not orientation. A list of 1,552 function names with what their authors
 said about them is a different artefact entirely.
 
 ### Row density and column widths
@@ -59,14 +60,14 @@ small thing that is invisible when it works and infuriating when it does not.
 
 Press **Code**. Now you are looking at the file.
 
-![Code mode showing resolve/entrypoints.py. The header reads "resolve.entrypoints · 357 lines · 13 definitions · 21 marks" with buttons for changes, margin 21 and detach. Below: "Against 2026-10-02 19:59:47: 66 lines added and 17 lines deleted. The deleted lines are shown where they belong, with their own numbers — they are not in the file you are reading." Then "5 routines here the comparison has something to say about. This is the lane a text diff cannot give: what a routine does, not which of its lines moved." listing _target_routine as "behaves differently — call_args, calls, params, comments, docstring", entrypoints_from_manifests as "behaves differently — call_args, calls, params, docstring", entrypoints_from_packaging as "behaves differently — call_args", and _import_prefixes and exact as "added". The source begins with the module docstring, "Ways in that are declared rather than written -- bound, minted and recorded." In the navigator, CODE reads "entrypoints.py: 357 lines, 37 clickable". A footer reads "SOURCE Read from the content-addressed sidecar — the file as measured at 2026-10-02T19:59:52Z, not as the tree stands now."](images/05-code-and-the-fact-lane.jpg)
+![Code mode showing resolve/entrypoints.py. The header reads "resolve.entrypoints · 357 lines · 13 definitions · 21 marks" with buttons for changes, margin 21 and detach. Below: "Against 2026-10-02 21:37:11: 66 lines added and 17 lines deleted. The deleted lines are shown where they belong, with their own numbers — they are not in the file you are reading." Then "5 routines here the comparison has something to say about. This is the lane a text diff cannot give: what a routine does, not which of its lines moved." listing _target_routine as "behaves differently — call_args, calls, params, comments, docstring", entrypoints_from_manifests as "behaves differently — call_args, calls, params, docstring", entrypoints_from_packaging as "behaves differently — call_args", and _import_prefixes and exact as "added". The source begins with the module docstring, "Ways in that are declared rather than written -- bound, minted and recorded." In the navigator, CODE reads "entrypoints.py: 357 lines, 37 clickable". A footer reads "SOURCE Read from the content-addressed sidecar — the file as measured at 2026-10-02T21:37:19Z, not as the tree stands now."](images/05-code-and-the-fact-lane.jpg)
 
 ### It is not reading your disk
 
 The footer is the important part:
 
 > **SOURCE** Read from the content-addressed sidecar — the file as measured at
-> 2026-10-02T19:59:52Z, not as the tree stands now.
+> 2026-10-02T21:37:19Z, not as the tree stands now.
 
 DunneFlow kept a copy of every file it read. What you are looking at is the source *as it
 was when the map was made* — not what is on disk this second. If you had edited

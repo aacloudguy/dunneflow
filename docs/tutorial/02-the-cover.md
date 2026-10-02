@@ -3,11 +3,11 @@
 The map opens on the cover. It is the answer to *what is this program*, in three panels,
 before you have asked anything specific.
 
-![The DunneFlow dashboard showing the dunneflow map. The heading reads "dunneflow 142 files · 53,939 lines · 1,550 routines · analysed 2026-10-02 19:59 UTC". WHERE TO START ranks dunneflow, tagged CLI and DECLARED, at 488 with the line "pyproject.toml [project.scripts] dunneflow = dunneflow.cli:main"; then serve at 71 (web/serve.py:4182) and another serve at 57 (mcp/server.py:325), both MAIN and GUESSED; run at 17; _Handler.do_GET at 4 and _Handler.do_POST at 2, tagged HTTP_ROUTE and GUESSED; and a second run at 2. Every bar after the first is short. WHAT IT TOUCHES totals 526: DATABASE 290, FILE 154, STDIO 62, PROCESS 9, ENV 5, CRYPTO 3, NETWORK 3. WHAT LOOKS WRONG shows Broken 0, Suspect 26, Informational 18. The navigator on the left lists WAYS IN 7 and ROUTINES 1,550 "in 24 packages", with web 352, extractors 296, resolve 199, plugins 126 and render 103 at the top; the inspector is folded to its rail on the right](images/02-the-cover.jpg)
+![The DunneFlow dashboard showing the dunneflow map. The heading reads "dunneflow 142 files · 53,988 lines · 1,552 routines · analysed 2026-10-02 21:37 UTC". WHERE TO START ranks dunneflow, tagged CLI and DECLARED, at 500 with the line "pyproject.toml [project.scripts] dunneflow = dunneflow.cli:main"; then serve at 71 (web/serve.py:4182) and another serve at 57 (mcp/server.py:325), both MAIN and GUESSED; run at 17; _Handler.do_GET at 4 and _Handler.do_POST at 2, tagged HTTP_ROUTE and GUESSED; and a second run at 2. Every bar after the first is short. WHAT IT TOUCHES totals 526: DATABASE 290, FILE 154, STDIO 62, PROCESS 9, ENV 5, CRYPTO 3, NETWORK 3. WHAT LOOKS WRONG shows Broken 0, Suspect 21, Informational 18. The navigator on the left lists WAYS IN 7 and ROUTINES 1,552 "in 24 packages", with web 352, extractors 296, resolve 201, plugins 126 and render 103 at the top; the inspector is folded to its rail on the right](images/02-the-cover.jpg)
 
 ## The heading
 
-> **dunneflow** 142 files · 53,939 lines · 1,550 routines · analysed 2026-10-02 19:59 UTC
+> **dunneflow** 142 files · 53,988 lines · 1,552 routines · analysed 2026-10-02 21:37 UTC
 
 The date is not decoration, it's a label. A map is a reading of a tree at a moment, and it
 keeps saying which moment for as long as it exists. Later, when the source has moved on, 
@@ -18,7 +18,7 @@ this line is how you know what you are looking at.
 > ranked by how much of the program each one commands
 
 Seven ways in, and the first one — `dunneflow` itself, the command you type — commands
-488 of the 1,550 routines. The two `serve`s command 71 and 57 — the dashboard's server and
+500 of the 1,552 routines. The two `serve`s command 71 and 57 — the dashboard's server and
 the agent's — and `run` 17. Then the drop is steep: 4, 2, 2.
 
 That shape is the useful part. It says DunneFlow is a command-line program with one large
@@ -68,7 +68,7 @@ reason for this panel. **Three network touches, in a program that serves a
 dashboard.** Open **BOUNDARIES** in the navigator, click **NETWORK**, and the stack lights
 what is behind the number:
 
-![The graph after clicking NETWORK under BOUNDARIES. The trail reads "dunneflow › NETWORK › NETWORK f'{url}api/programs'". The heads-up panel says "60 fps · 2,690 nodes · 25 plates" and "on ext:<small outside>, pkg:web · f'{url}api/programs', (NETWORK, unnamed) · 4 nodes · 0 within · 2 crossing · 2,686 dimmed · focus: only what is lit answers", with the sliders open beneath it; the stack is grey but for a few lit nodes and the links between them, and the Plates panel is folded to its rail. The navigator's BOUNDARIES group is open at "7 kinds": DATABASE 290, FILE 154, STDIO 62, PROCESS 9, ENV 5, CRYPTO 3, NETWORK 3. The inspector on the right is headed f'{url}api/programs', tagged ANALYSED and BOUNDARY: IN 1, already_serving from web.serve, INFERRED; OUT 0, "It calls nothing this map can see."; TOUCHES 0; and REACHED FROM INSIDE, "not reached from inside any loop. Listed below with 1 other enclosing span — a decision that writes is a fact about this, even though it is not a rate", above the row already_serving HANDLER 3744; then GOVERNANCE 0 and THREADS TO PULL 0](images/02-network.jpg)
+![The graph after clicking NETWORK under BOUNDARIES. The trail reads "dunneflow › NETWORK › NETWORK f'{url}api/programs'". The heads-up panel says "60 fps · 2,692 nodes · 25 plates" and "on ext:<small outside>, pkg:web · f'{url}api/programs', (NETWORK, unnamed) · 4 nodes · 0 within · 2 crossing · 2,688 dimmed · focus: only what is lit answers", with the sliders open beneath it; the stack is grey but for a few lit nodes and the links between them, and the Plates panel is folded to its rail. The navigator's BOUNDARIES group is open at "7 kinds": DATABASE 290, FILE 154, STDIO 62, PROCESS 9, ENV 5, CRYPTO 3, NETWORK 3. The inspector on the right is headed f'{url}api/programs', tagged ANALYSED and BOUNDARY: IN 1, already_serving from web.serve, INFERRED; OUT 0, "It calls nothing this map can see."; TOUCHES 0; and REACHED FROM INSIDE, "not reached from inside any loop. Listed below with 1 other enclosing span — a decision that writes is a fact about this, even though it is not a rate", above the row already_serving HANDLER 3744; then GOVERNANCE 0 and THREADS TO PULL 0](images/02-network.jpg)
 
 Two boundary nodes and the two routines that reach them. The three touches are:
 
@@ -109,11 +109,11 @@ problems were fixed, so anything that is wrong with DunneFlow now is a new probl
 
 ## The navigator
 
-Down the left: **WAYS IN 7**, **ROUTINES 1,550 in 24 packages**, and below them CHANGES,
+Down the left: **WAYS IN 7**, **ROUTINES 1,552 in 24 packages**, and below them CHANGES,
 CODE, EXPLORE, PACKAGES, BOUNDARIES, DATABASE, STRUCTURES, VOCABULARY, ALGORITHMS,
 ANOMALIES.
 
-The package list is ranked by size — `web` 352, `extractors` 296, `resolve` 199, `plugins`
+The package list is ranked by size — `web` 352, `extractors` 296, `resolve` 201, `plugins`
 126, `render` 103 — and runs all the way down: the five smallest, `macapp` 4, `canonical` 3,
 `lookup` 2, `standards` 2 and `words` 2, carry a `·small` mark, because they are too small for a plate
 of their own and the stack draws them together. Marked, and **still listed**, with their

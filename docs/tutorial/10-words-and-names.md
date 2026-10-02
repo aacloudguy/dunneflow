@@ -76,15 +76,15 @@ actually worth defining.
 
 Click **Derived naming standard**.
 
-![The derived naming standard page. Three highlighted notes: "This standard was derived from the code, not required of it. Every convention below was found by counting what the program actually does. None of it was imposed by anyone, and none of it is measured against a standard your team wrote — that is stated rules, checked, and it measures a rule somebody stated rather than a convention found here. So a convention holding 100% of the time means the code is consistent, not that it is correct.", followed by "A leading underscore is counted as a violation here, which is the strict reading. Settings can allow it as a privacy mark."; "Somebody may also have written naming rules down. Those are quoted rather than counted, and they live on their own page so that neither can be mistaken for the other. Neither page compares them", with a link reading "Stated naming rules — 0 read from your documents"; and "Every figure here is counted, not guessed. The exceptions are the point." Below, a section headed HOW NAMES ARE SPELLED · 11 with the line "Measured per row rather than per distinct name", and the first convention: "Python routines", graded B, "Python routines are named in snake_case.", a bar reading 1,231 of 1,247, and a list headed 16 EXCEPTIONS beginning do_GET web/serve.py:3644 and do_POST web/serve.py:3669](images/10-derived.jpg)
+![The derived naming standard page. Three highlighted notes: "This standard was derived from the code, not required of it. Every convention below was found by counting what the program actually does. None of it was imposed by anyone, and none of it is measured against a standard your team wrote — that is stated rules, checked, and it measures a rule somebody stated rather than a convention found here. So a convention holding 100% of the time means the code is consistent, not that it is correct.", followed by "A leading underscore is counted as a violation here, which is the strict reading. Settings can allow it as a privacy mark."; "Somebody may also have written naming rules down. Those are quoted rather than counted, and they live on their own page so that neither can be mistaken for the other. Neither page compares them", with a link reading "Stated naming rules — 0 read from your documents"; and "Every figure here is counted, not guessed. The exceptions are the point." Below, a section headed HOW NAMES ARE SPELLED · 11 with the line "Measured per row rather than per distinct name", and the first convention: "Python routines", graded B, "Python routines are named in snake_case.", a bar reading 1,233 of 1,249, and a list headed 16 EXCEPTIONS beginning do_GET web/serve.py:3644 and do_POST web/serve.py:3669](images/10-derived.jpg)
 
 Sixteen conventions, each with a grade, a count and every exception named:
 
 ```
-[B] 1,231/1,247  Python routines are named in snake_case.          (16 exceptions)
-[B]     611/621  A routine marked private is called only
-                 from its own module.                               (10 exceptions)
-[B]     432/434  Python parameters are named in snake_case.          (2 exceptions)
+[B] 1,233/1,249  Python routines are named in snake_case.          (16 exceptions)
+[B]     616/623  A routine marked private is called only
+                 from its own module.                               (7 exceptions)
+[B]     433/435  Python parameters are named in snake_case.          (2 exceptions)
 [B]     211/213  Python database tables are named in snake_case.     (2 exceptions)
 [D]     165/182  Python classes are named in PascalCase.            (17 exceptions)
 [D]     146/157  Python data structures are named in PascalCase.    (11 exceptions)
@@ -232,7 +232,7 @@ uv run dunneflow mirror   output/dunneflow
 STATED — nothing in this program's documentation states a naming rule
 
 MEASURED — counted against the code
-  [B] 1,231/1,247  Python routines are named in snake_case.  (16 exceptions)
+  [B] 1,233/1,249  Python routines are named in snake_case.  (16 exceptions)
   …
 ```
 
@@ -243,7 +243,7 @@ underscore allowed).`
 `mirror` is the third question and the one with no page of its own: **words the documents
 define that the code never uses.** On DunneFlow it reads two definitions, and both are
 wrong in an instructive way — they are headings out of this tutorial, as it stood when the
-map was made, that happen to be shaped like definitions: *The 111 and the 159*, and
+map was made, that happen to be shaped like definitions: *The 141 and the 197*, and
 chapter 13's *The vocabulary, without a browser*. Both are set aside as phrases rather than
 words, so nothing is carried forward and every row of its table reads 0. (*The glossary*,
 at the top of this chapter, used to be read as a third; a heading whose next line is only an

@@ -17,8 +17,31 @@ what happened and when; this says what has not. When an item is done it leaves h
 
 ## Open
 
-Nothing, as of 2026-10-02. Every item found while photographing the docs, and every older
-one, was closed that day or moved to the residues below with the decision that put it there.
+Every item found while photographing the docs on 2026-10-02, and every older one, was closed
+that day or moved to the residues below with the decision that put it there — except one,
+found while the prose was being rewritten against the third retake.
+
+### 29 · A Python routine that calls itself is never an edge to itself
+
+**Found:** the tutorial's chapter 9, on the screenshot map (clone `5b737a0`, release 5).
+`_pick` in `resolve/python/calls.py` drops the caller from every candidate list ("ignoring
+self-recursion"), so a recursive call finds nothing in its own module and falls through to
+the program-wide name index. On DunneFlow's own map that gives three wrong answers for one
+fact: `extractors.cpp.literals._all` → `extractors.kotlin.literals._all` and
+`web.shape._tally` → `walk._tally` are **bound** to a same-named routine in another module
+(rule 1, rule 5); `extractors.cpp.calls._walk`, `resolve.shape.nesting.walk` and nine more are
+LOST_EDGE, ambiguous between strangers; and the remaining ~35 recursive sites are counted
+EXTERNAL, which is rule 26's false claim. The TypeScript reader binds recursion to itself.
+
+**Why not done:** it changes resolution figures — internal calls, lost edges, reach and the
+findings that read them — on every map, and the screenshot map's figures had just been
+retaken. Fixing it now means rebuilding the tour maps and retaking the shots again.
+
+**What would settle it:** a recursive call resolves to the caller (the in-module lookup finds
+the caller itself and stops there), never falls through to the program-wide index, and is
+neither EXTERNAL nor LOST. Whether a self-edge is drawn is a separate choice for `render/`.
+The test is the six sites above on a synthetic tree, with a same-named function in a second
+module as the decoy; the gates are the Society golden, `tools/ordering.py` and a re-release.
 
 ---
 

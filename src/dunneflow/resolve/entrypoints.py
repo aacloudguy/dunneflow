@@ -35,7 +35,39 @@ from . import languages, manifests
 from .manifests import ManifestEntry, ManifestReading, TargetKind
 
 
-def _target_routine(store: Store, module: str, attr: str) -> str | None:
+def _import_prefixes(where: str, tree: Path | None) -> tuple[str, ...]:
+    """The dotted names a manifest **above** the analysed tree spells that tree by.
+
+    The other half of `_target_routine`'s suffix match. There the stored module is the
+    longer name; here it is the shorter one. `pyproject.toml` declares
+    `dunneflow = "dunneflow.cli:main"`, the reader is told to analyse `src/dunneflow`, and
+    module names are derived from the tree analysed -- so the module is stored as `cli`,
+    neither `dunneflow.cli` nor anything ending in it, and the program's own front door
+    was reported as declared and leading nowhere. Found photographing the tutorial,
+    2026-10-02, on the very tree the tutorial tells a reader to analyse.
+
+    **Only the directories the climb actually passed**, read off the disk, never a count
+    of segments. `../../pyproject.toml` climbs over `src/dunneflow`, so the candidates are
+    `src.dunneflow` and `dunneflow`, longest first. Stripping any one leading segment
+    would bind `other.cli:main` -- a second package's script in the same `pyproject.toml`
+    -- to this tree's `cli.main`, a false edge in the one table that outranks every
+    heuristic (rule 1).
+    """
+    if tree is None:
+        return ()
+    climb = 0
+    for part in Path(where).parts[:-1]:
+        if part != "..":
+            break
+        climb += 1
+    if climb == 0:
+        return ()
+    above = tree.resolve().parts[-climb:]
+    return tuple(".".join(above[i:]) for i in range(len(above)))
+
+
+def _target_routine(store: Store, module: str, attr: str,
+                    prefixes: tuple[str, ...] = ()) -> str | None:
     """Find the routine a `module:attr` console-script target names.
 
     **A module name is relative to its own package root, and a nested manifest's root is
@@ -51,19 +83,30 @@ def _target_routine(store: Store, module: str, attr: str) -> str | None:
     (`LIMIT 2`, which is `_resolve_routine`'s own remedy beside this one). Two copies of a
     package in one monorepo leave the declaration unbound and saying so, which is the
     right answer rather than a coin toss.
+
+    `prefixes` is the opposite case, a manifest **above** the tree -- see
+    `_import_prefixes`. It is tried after the exact name and before the suffix match,
+    because a prefix read off the disk is evidence and a suffix is a guess.
     """
-    row = store.query(
-        "SELECT id FROM routines WHERE module = ? AND name = ? LIMIT 1", (module, attr)
-    )
-    if row:
-        return str(row[0]["id"])
-    # A Typer/Click application object rather than a function: the way in is the
-    # module that builds it.
-    row = store.query(
-        "SELECT id FROM routines WHERE module = ? AND name = '<module>' LIMIT 1", (module,)
-    )
-    if row:
-        return str(row[0]["id"])
+    def exact(name: str) -> str | None:
+        for wanted in (attr, "<module>"):
+            # `<module>`: a Typer/Click application object rather than a function, and
+            # the way in is the module that builds it.
+            row = store.query(
+                "SELECT id FROM routines WHERE module = ? AND name = ? LIMIT 1",
+                (name, wanted))
+            if row:
+                return str(row[0]["id"])
+        return None
+
+    found_id = exact(module)
+    if found_id:
+        return found_id
+    for prefix in prefixes:
+        if module.startswith(prefix + "."):
+            found_id = exact(module[len(prefix) + 1:])
+            if found_id:
+                return found_id
     for name in (attr, "<module>"):
         found = store.query(
             "SELECT id FROM routines WHERE module LIKE ? AND name = ? LIMIT 2",
@@ -206,12 +249,17 @@ def _mint(entry: ManifestEntry, reading: ManifestReading) -> str:
             else make_id("script", reading.where, entry.name))
 
 
-def entrypoints_from_manifests(readings: list[ManifestReading], store: Store
-                               ) -> list[Entrypoint]:
+def entrypoints_from_manifests(readings: list[ManifestReading], store: Store,
+                               tree: Path | None = None) -> list[Entrypoint]:
     """Bind, mint and record every way in the manifests declared.
 
     Returns what was written, root declarations first, so a caller reporting on the run
     reads the program's own before its members'.
+
+    `tree` is the analysed directory, the one every `where` is relative to. It is needed
+    only for a manifest that climbs out of it, to read the names of the directories the
+    climb passed (`_import_prefixes`); without it such a declaration binds as it always
+    did, by exact name or dotted suffix.
 
     **A collision is refused, not overwritten.** Two declarations landing on one id is
     two ways in the map can only hold one of, and `INSERT OR REPLACE` would make the
@@ -229,7 +277,8 @@ def entrypoints_from_manifests(readings: list[ManifestReading], store: Store
             taken[ident] = reading.where
             if entry.target_kind == TargetKind.MODULE_ATTR:
                 module, _, attr = entry.target.partition(":")
-                routine_id = _target_routine(store, module, attr or "main")
+                routine_id = _target_routine(store, module, attr or "main",
+                                             _import_prefixes(reading.where, tree))
             elif entry.target_kind == TargetKind.FILE:
                 module = ""
                 routine_id = _target_file(store, reading.where, entry.target)
@@ -295,7 +344,7 @@ def entrypoints_from_packaging(root: Path, store: Store,
     """
     at_root = sorted(root / n for n in manifests.MANIFEST_FILES if (root / n).is_file())
     readings = manifests.read_all(at_root, [], relative_to=relative_to or root)
-    return entrypoints_from_manifests(readings, store)
+    return entrypoints_from_manifests(readings, store, relative_to or root)
 
 
 def record_manifests(readings: list[ManifestReading], store: Store) -> None:

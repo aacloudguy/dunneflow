@@ -766,7 +766,7 @@ def cmd_analyze(args: argparse.Namespace) -> int:
     # holding a map are gone before a filename is looked at (rule 92).
     readings = manifests.read_all(root_manifests, stats.manifests,
                                   relative_to=source_root)
-    entrypoints_from_manifests(readings, store)
+    entrypoints_from_manifests(readings, store, source_root)
     record_manifests(readings, store)
 
     # What the program says its own version is, with the tier it was learned at. Recorded
@@ -838,7 +838,8 @@ def cmd_analyze(args: argparse.Namespace) -> int:
                 f"cached {doc_stats.cached}, removed {doc_stats.removed}, "
                 f"failed {doc_stats.failed}): {dc['definitions']:,} definitions, "
                 f"{dc['doc_rules']:,} stated rules, {dc['doc_annotations']:,} governance ids"
-                + (f"; {duplicates:,} are copies of another document"
+                + ("; 1 is a copy of another document" if duplicates == 1
+                   else f"; {duplicates:,} are copies of another document"
                    if duplicates else "")
             )
             # Design rule 1: no filter is ever silent. A nested checkout can be most

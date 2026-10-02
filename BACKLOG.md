@@ -37,8 +37,35 @@ files at the root, so `docs/tutorial/06-document.md`'s *"26 documents carrying 2
 definitions and 45 governance ids"* — DunneFlow's own count of its own corpus — is now
 wrong by construction. Same remedy, same session.
 
-**What would settle it.** A session that can screenshot, doing prose and images together:
-a fresh self-analysis, the 21 shots re-composed to the same framing, and every figure and
+**The capture path, probed 2026-10-02, and it works.** What was missing was never the
+window size. It was whether the automation tab was the **active, highlighted tab** of a
+window in front. In the background the page reported `outerWidth` 0 and
+`visibilityState: hidden`, ignored `resize_window`, and its screenshot covered only the
+top-left of the viewport, which is the clipping the 2026-09-15 session hit. With Tom sizing
+the window first and highlighting the tab, the same page reported `visible` at 1,920×919
+CSS, the screenshot held all four edges, and clicks landed where they were aimed (two
+probes, both within a pixel). **And once the tab is active, `resize_window` works too**,
+in device pixels: on Tom's display (`devicePixelRatio` 2, 89 CSS px of browser chrome),
+`resize_window(2966, 1802)` gave a viewport of exactly **1,483×812**, the old images' framing.
+
+**What the recipe has to carry.** At that size the screenshot frame is 1,482×812, so one
+capture at `scale: 1` is already 1:1 with the old images. Anything wider is scaled down to
+1,568 across, and there four quadrant `zoom` calls stitched with Pillow give the viewport at
+twice the resolution (3,136×1,500 from a 1,920×919 window), seamlessly. A `zoom` region is
+checked against the viewport in CSS pixels after scaling, so its bottom edge has to stop one
+pixel short. The pointer is drawn into the capture, so it is parked off the subject before
+every shot. Headless Chrome also gives a full frame with WebGL2 on Metal, but it photographs
+a page as loaded and nothing more, so it is the fallback rather than the route.
+
+**And the map is gone.** Neither `output/dunneflow` nor the sealed `875499c` snapshot
+survives, so chapters 1–7 cannot be retaken against the afternoon they describe. Both
+commits are still in the history, so the pair can be rebuilt from worktrees. Chapter 8's
+story, *what did the Linux work change*, is exactly `875499c` → `1e76c51`; held against
+`HEAD` instead, the same pair would be fifty-eight commits and a second language. Which pair
+the chapter tells is Tom's call.
+
+**What would settle it.** A session doing prose and images together: a fresh self-analysis,
+the 21 shots re-composed with Tom's window and tab set up as above, and every figure and
 alt-text transcription rewritten against them.
 
 ### 3 · The rendered map still varies with `--jobs` in one respect

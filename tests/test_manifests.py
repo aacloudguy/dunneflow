@@ -502,6 +502,45 @@ def test_a_declared_way_in_is_bound_to_the_module_scope_of_its_file(tmp_path):
     store.close()
 
 
+@pytest.mark.parametrize("package_dir", ["src/p", "p"])
+def test_a_manifest_above_the_tree_binds_by_the_directories_it_climbed(tmp_path,
+                                                                       package_dir):
+    """`pyproject.toml` says `p.cli:main`, the tree analysed is the package, and the module
+    is stored as `cli`. DunneFlow's own front door read *declared and not bound* on the
+    very tree its tutorial tells a reader to analyse -- for a `src/` layout and a flat one
+    alike."""
+    root = _tree(tmp_path, {
+        "pyproject.toml": '[project]\nname = "p"\n[project.scripts]\nx = "p.cli:main"\n',
+        f"{package_dir}/__init__.py": "",
+        f"{package_dir}/cli.py": "def main():\n    pass\n"})
+    tree = root / package_dir
+    store = Store(tmp_path / "g.db")
+    analyze_tree(tree, store)
+    eps = entrypoints_from_manifests(_read(tree), store, tree)
+    bound = store.query("SELECT module, name FROM routines WHERE id = ?",
+                        (eps[0].routine_id,))
+    assert [(r["module"], r["name"]) for r in bound] == [("cli", "main")]
+    store.close()
+
+
+def test_a_prefix_the_climb_did_not_pass_is_never_stripped(tmp_path):
+    """A second package's script in the same `pyproject.toml` names the same module and
+    function as this tree's, and binding it here would be a false edge in the table that
+    outranks every heuristic. It stays unbound and says why."""
+    root = _tree(tmp_path, {
+        "pyproject.toml": ('[project]\nname = "p"\n[project.scripts]\n'
+                           'y = "other.cli:main"\n'),
+        "src/p/__init__.py": "",
+        "src/p/cli.py": "def main():\n    pass\n"})
+    tree = root / "src" / "p"
+    store = Store(tmp_path / "g.db")
+    analyze_tree(tree, store)
+    eps = entrypoints_from_manifests(_read(tree), store, tree)
+    assert eps[0].routine_id is None
+    assert "named no routine" in binding_note(store, eps[0].id).sentence
+    store.close()
+
+
 def test_a_target_is_resolved_against_its_own_manifest(tmp_path):
     """`./src/index.ts` in `packages/api-types/package.json` is a file beside that
     manifest; joined to the root it would name a different file or none at all."""

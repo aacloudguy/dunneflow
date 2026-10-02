@@ -8095,8 +8095,15 @@ const SUBJECT_KEYS = ["selected", "fold", "flow", "plate", "diagramId", "diagram
                       "codeFile", "wayIn", "wayInside"];
 
 function caughtUp(a, b) {
+  /* The step that was recorded before the graph answered may hold no picks, or the picks
+     of whatever was selected before -- a routine chosen from a list while a boundary was
+     lit kept the boundary's nodes until the stack caught up. Either way, the same subject
+     arriving with one node as its pick is the stack agreeing, not the reader moving. */
   return !!a && !!b && SUBJECT_KEYS.every(k => (a[k] || null) === (b[k] || null)) &&
-         a.picks.length === 0 && b.picks.length === 1 && b.picks[0].kind === "node";
+         b.picks.length === 1 && b.picks[0].kind === "node" &&
+         a.picks.every(p => p.kind === "node") &&     // dropping a plate is a real step
+         !(a.picks.length === 1 && a.picks[0].kind === "node" &&
+           a.picks[0].index === b.picks[0].index);
 }
 
 function sameSelection(a, b) {

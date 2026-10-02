@@ -142,6 +142,10 @@ it must reproduce:
 | `render/`, `resolve/` | `tools/ordering.py`, and `--api` for `web/` | the map may not depend on the order its rows happen to be in (rules 66 and 105) |
 | anything at all, before it is called done | the real-code ground truth in `GROUND-TRUTH.md` | unit tests on a toy program cannot catch a resolution defect that only appears at scale |
 
+**Society is unpublished.** It is a 628-file Python application, package `mensores`, and the
+real-code gate runs against snapshots of it that only the maintainer has. A contributor
+without them reports that gate as not run, never as passed.
+
 **The four Society clones are read-only and only two of them are the pair.** Naming the
 wrong one cost a whole analysis once and the result looked perfectly healthy —
 `GROUND-TRUTH.md` says which is which, and never restate a figure measured on another

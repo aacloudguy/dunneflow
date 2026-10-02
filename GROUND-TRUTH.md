@@ -7,7 +7,12 @@ reproduce** — plus the two probes that are not tests: `tools/ordering.py` and
 
 **Read this before quoting a figure, retaking one, or rebuilding the comparison pair.** A
 row here states its conditions where they are load-bearing, and a measurement taken without
-reproducing them is a different measurement under the same label (rule 24). The four
+reproducing them is a different measurement under the same label (rule 24).
+
+**Society is unpublished.** It is a 628-file Python application whose package is `mensores`,
+and most figures in this repository were measured on it. Its snapshots sit beside this
+repository as `../society-<date>` and are the maintainer's, so a contributor without them
+cannot run this gate and should say so rather than report it passed. The four
 Society clones are read-only and only two of them are the pair; getting that wrong cost a
 whole analysis once, and the result looked perfectly healthy.
 

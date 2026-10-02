@@ -321,3 +321,13 @@ def test_the_about_dialog_keeps_the_three_states_apart() -> None:
     assert "res.none" in js, "the empty answer has no words of its own"
     assert "res.recorded" in js, "*cannot say* and *nothing* were flattened"
     assert "about-residue" in js
+
+
+def test_one_pruned_directory_is_one_directory() -> None:
+    """Found retaking the guide: DunneFlow's own map said *pruned 1 directories: vendor*."""
+    from dunneflow.walk import WalkStats, walk_residue
+
+    one = WalkStats(pruned={"vendor": 1})
+    assert "pruned 1 directory: vendor" in walk_residue(one)
+    two = WalkStats(pruned={"vendor": 1, "node_modules": 1})
+    assert any(line.startswith("pruned 2 directories: ") for line in walk_residue(two))

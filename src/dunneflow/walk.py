@@ -40,6 +40,7 @@ from .ingest.contract import DiscoveryRules
 from .resolve.manifests import MANIFEST_FILES
 from .schema import DocFacts, FileFacts, hash_source, stored_path
 from .store import Store
+from .words import plural
 
 # Directories that never contain the program under study, **whatever language it is written
 # in** -- and that qualifier is the rule rather than a remark. A plugin's own skip list is
@@ -267,7 +268,10 @@ def walk_residue(stats: WalkStats) -> list[str]:
     if stats.pruned:
         worst = sorted(stats.pruned.items(), key=lambda kv: (-kv[1], kv[0]))
         listed = ", ".join(f"{name} ×{n}" if n > 1 else name for name, n in worst)
-        out.append(f"pruned {sum(stats.pruned.values()):,} directories: {listed}")
+        # `plural`, because one pruned directory read "pruned 1 directories: vendor" on
+        # every map of a tree with a single `vendor/` (found retaking the guide, 2026-10-02).
+        out.append(f"pruned {plural(sum(stats.pruned.values()), 'directory', 'directories')}"
+                   f": {listed}")
     return out
 
 

@@ -214058,12 +214058,12 @@ function resolveOne(checker, node, anchors) {
 }
 
 // src/facts.ts
-var SCHEMA_VERSION = 15;
+var SCHEMA_VERSION = 16;
 
 // src/main.ts
 var PROTOCOL = 1;
 var LANG = "typescript";
-var VERSION = "1.2.1";
+var VERSION = "1.3.0";
 var session = new Session();
 var rules = parseRules({});
 function send(frame) {

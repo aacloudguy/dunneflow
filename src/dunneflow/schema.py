@@ -45,7 +45,10 @@ from typing import Literal
 #     they are written in as well as on their name (`definition_id`, rule 106). No column
 #     moved and no field was added: what changed is what every id in a map is made of, so
 #     every map written by 14 is discarded rather than read.
-SCHEMA_VERSION = 15
+# 16: `CallSite.bound_locally`, and `calls.constructs`. A bare call to a name the routine
+#     binds itself is not a call to whatever else in the program shares the name, and a
+#     call that builds one of this program's own classes is not external (BACKLOG 24, 14).
+SCHEMA_VERSION = 16
 
 
 # --------------------------------------------------------------------------- #
@@ -340,6 +343,12 @@ class CallSite:
     # can be trusted to set (rule 35): it arrived with the TypeScript reader that fills
     # it, and it is False for Python, which has no such syntax.
     is_construction: bool = False
+    # **A bare call to a name this routine binds itself** -- a parameter, an assignment,
+    # a loop or `with` target. `say = emit or (lambda _: None)` then `say(...)` calls
+    # whatever `emit` held, and a resolver that matched it by name to the one routine in
+    # the program called `say` drew an edge into another module's closure (BACKLOG 24,
+    # rule 1). The reader knows the binding and the resolver does not, so the reader says.
+    bound_locally: bool = False
 
 
 @dataclass(slots=True)

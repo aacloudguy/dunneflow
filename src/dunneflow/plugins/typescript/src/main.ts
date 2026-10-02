@@ -39,7 +39,7 @@ import { SCHEMA_VERSION, type FileFacts } from "./facts.js";
 
 const PROTOCOL = 1;
 const LANG = "typescript";
-const VERSION = "1.2.1";
+const VERSION = "1.3.0";
 
 interface Frame {
   t?: string;

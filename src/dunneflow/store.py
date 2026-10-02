@@ -141,7 +141,14 @@ CREATE TABLE IF NOT EXISTS calls (
     -- `new Foo()` against `Foo()`. Two spellings that call one name and do two different
     -- things, so they stay two facts (rule 30, and `ingest/dotted.py` clause 7). Always 0
     -- for Python, which has no such syntax.
-    construction INTEGER NOT NULL DEFAULT 0
+    construction INTEGER NOT NULL DEFAULT 0,
+    -- The callee is a name the calling routine binds itself (a parameter, an assignment),
+    -- so it is not resolved by name against the rest of the program.
+    bound_locally INTEGER NOT NULL DEFAULT 0,
+    -- The qualname of this program's class that the call builds, when the class defines
+    -- no constructor to draw an edge to. Such a call is not external: what it builds is
+    -- here, and only the routine is missing because there is none.
+    constructs  TEXT NOT NULL DEFAULT ''
 );
 
 -- What one caller actually passed, as written. Hangs off `calls.site_id` rather than
@@ -1173,9 +1180,10 @@ class Store:
         c.executemany(
             "INSERT INTO calls"
             "(file,caller_id,callee_expr,line,callee_id,confidence,external,at_boundary,"
-            "site_id,construction) VALUES(?,?,?,?,?,?,?,?,?,?)",
+            "site_id,construction,bound_locally) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
             [(ff.path, k.caller_id, k.callee_expr, k.line, k.callee_id, k.confidence.value,
-              int(k.external), int(k.at_boundary), k.site_id, int(k.is_construction))
+              int(k.external), int(k.at_boundary), k.site_id, int(k.is_construction),
+              int(k.bound_locally))
              for k in ff.calls],
         )
         c.executemany(

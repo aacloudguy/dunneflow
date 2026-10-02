@@ -989,6 +989,12 @@ def cmd_analyze(args: argparse.Namespace) -> int:
             f"{rstats.inferred:,} inferred, {rstats.external:,} external "
             f"({rstats.rate():.0f}% internal) in {t_resolve:.1f}s"
         )
+        # Neither resolved nor external, so the three figures above fall short of the
+        # total by exactly these, and the line says so rather than leave the sum to fail.
+        if rstats.constructions:
+            n = rstats.constructions
+            _emit(f"  and {n:,} build{'s' if n == 1 else ''} one of this program's own "
+                  f"classes, which defines no constructor to point at")
         # **What was handed over, as against what was argued for.** A supplied edge is
         # CERTAIN and so is a Python edge pinned by an import, so the line above cannot
         # tell them apart — and *how much of this map did we not have to guess* is the

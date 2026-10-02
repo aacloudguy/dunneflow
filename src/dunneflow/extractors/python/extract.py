@@ -251,6 +251,9 @@ class _Extractor(ast.NodeVisitor):
         self._ladder_tails: set[int] = set()
 
         self._scope: list[Routine] = []
+        # The names each routine on `_scope` binds itself, in step with it. See
+        # `_locally_bound`.
+        self._bound: list[frozenset[str]] = []
         self._class: list[str] = []
         self._class_bases: dict[str, list[str]] = {}
         self._module_routine: Routine | None = None
@@ -657,6 +660,7 @@ class _Extractor(ast.NodeVisitor):
         self._detect_entrypoint(routine, decorators)
 
         self._scope.append(routine)
+        self._bound.append(_locally_bound(node))
         # A function defined inside a loop starts its own body at depth 0: control nesting
         # belongs to a routine, and carrying the enclosing loop's depth into it would say a
         # closure's first `if` is three levels deep because of where it happens to be
@@ -669,6 +673,7 @@ class _Extractor(ast.NodeVisitor):
         finally:
             self._depth = outer_depth
             self._scope.pop()
+            self._bound.pop()
 
     visit_FunctionDef = _visit_function
     visit_AsyncFunctionDef = _visit_function
@@ -1240,6 +1245,13 @@ class _Extractor(ast.NodeVisitor):
             confidence=Confidence.INFERRED, at_boundary=at_boundary,
             site_id=call_site_id(caller_id, expr, ordinal),
             args=args or [],
+            bound_locally=(
+                "." not in expr and bool(self._scope)
+                and self._scope[-1].id == caller_id
+                # A closure calling its enclosing routine's parameter is calling a value
+                # just the same, so every scope the call sits in is asked.
+                and any(expr in names for names in self._bound)
+            ),
         ))
 
     def visit_Call(self, node: ast.Call) -> None:
@@ -1577,6 +1589,40 @@ class _Extractor(ast.NodeVisitor):
         # every call inside one recorded twice (rule 40: two detectors recording one act
         # is two numbers about one thing).
         self._visit_decision(node)
+
+
+def _locally_bound(fn: ast.FunctionDef | ast.AsyncFunctionDef) -> frozenset[str]:
+    """Every name `fn` binds in its own scope: parameters and whatever it assigns.
+
+    A bare call to one of these calls *the value the routine holds*, which no resolver can
+    name -- `say = emit or (lambda _: None)` then `say(...)` (BACKLOG 24). Matching it by
+    name against the program found the one routine called `say`, a closure in another
+    module, and drew an INFERRED edge to it. So the reader says which names are local and
+    the resolver leaves those calls alone (rule 1).
+
+    Walked without entering a nested `def`, `class` or `lambda`, which are scopes of their
+    own -- and a nested `def` is deliberately **not** a local name here, because a call to
+    it should still find the closure it defines. `global` and `nonlocal` names are taken
+    back out: they are bindings somewhere else. A comprehension's target is counted as the
+    routine's, which is wider than Python's scoping and errs towards no edge.
+    """
+    a = fn.args
+    names = {x.arg for x in (*a.posonlyargs, *a.args, *a.kwonlyargs)}
+    names.update(x.arg for x in (a.vararg, a.kwarg) if x is not None)
+    declared: set[str] = set()
+    stack: list[ast.AST] = list(fn.body)
+    while stack:
+        n = stack.pop()
+        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)):
+            continue
+        if isinstance(n, (ast.Global, ast.Nonlocal)):
+            declared.update(n.names)
+        elif isinstance(n, ast.Name) and isinstance(n.ctx, (ast.Store, ast.Del)):
+            names.add(n.id)
+        elif isinstance(n, ast.ExceptHandler) and n.name:
+            names.add(n.name)
+        stack.extend(ast.iter_child_nodes(n))
+    return frozenset(names - declared)
 
 
 def _kwarg_str(call: ast.Call, key: str) -> str | None:

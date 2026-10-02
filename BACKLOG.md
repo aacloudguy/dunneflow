@@ -17,57 +17,6 @@ what happened and when; this says what has not. When an item is done it leaves h
 
 ## Open
 
-### 1 · The tutorial's 21 screenshots
-
-*From chunk 14, 2026-09-17.*
-
-`docs/tutorial/` carries the figures of one session — DunneFlow reading itself at
-`1e76c51` on 15 September 2026 — against a tree that has gone from **78 files and 925
-routines to 118 and 1,283**. Chapter 10 was rewritten because it changed *shape* rather
-than size (fifteen naming conventions where its screenshot shows seven, most naming a
-language); the other twelve chapters carry that afternoon's numbers.
-
-**Why not done.** Tom's call. The captures are hand-composed 1483×812 images and the
-session could not drive a browser, and a chapter cannot be half-retaken — the images are
-the evidence. `docs/tutorial/README.md` now says plainly what the reader is looking at,
-which is the honest interim state rather than a silent one.
-
-**And one more figure went stale on 2026-09-18.** The `CLAUDE.md` split added four `.md`
-files at the root, so `docs/tutorial/06-document.md`'s *"26 documents carrying 29
-definitions and 45 governance ids"* — DunneFlow's own count of its own corpus — is now
-wrong by construction. Same remedy, same session.
-
-**The capture path, probed 2026-10-02, and it works.** What was missing was never the
-window size. It was whether the automation tab was the **active, highlighted tab** of a
-window in front. In the background the page reported `outerWidth` 0 and
-`visibilityState: hidden`, ignored `resize_window`, and its screenshot covered only the
-top-left of the viewport, which is the clipping the 2026-09-15 session hit. With Tom sizing
-the window first and highlighting the tab, the same page reported `visible` at 1,920×919
-CSS, the screenshot held all four edges, and clicks landed where they were aimed (two
-probes, both within a pixel). **And once the tab is active, `resize_window` works too**,
-in device pixels: on Tom's display (`devicePixelRatio` 2, 89 CSS px of browser chrome),
-`resize_window(2966, 1802)` gave a viewport of exactly **1,483×812**, the old images' framing.
-
-**What the recipe has to carry.** At that size the screenshot frame is 1,482×812, so one
-capture at `scale: 1` is already 1:1 with the old images. Anything wider is scaled down to
-1,568 across, and there four quadrant `zoom` calls stitched with Pillow give the viewport at
-twice the resolution (3,136×1,500 from a 1,920×919 window), seamlessly. A `zoom` region is
-checked against the viewport in CSS pixels after scaling, so its bottom edge has to stop one
-pixel short. The pointer is drawn into the capture, so it is parked off the subject before
-every shot. Headless Chrome also gives a full frame with WebGL2 on Metal, but it photographs
-a page as loaded and nothing more, so it is the fallback rather than the route.
-
-**And the map is gone.** Neither `output/dunneflow` nor the sealed `875499c` snapshot
-survives, so chapters 1–7 cannot be retaken against the afternoon they describe. Both
-commits are still in the history, so the pair can be rebuilt from worktrees. Chapter 8's
-story, *what did the Linux work change*, is exactly `875499c` → `1e76c51`; held against
-`HEAD` instead, the same pair would be fifty-eight commits and a second language. Which pair
-the chapter tells is Tom's call.
-
-**What would settle it.** A session doing prose and images together: a fresh self-analysis,
-the 21 shots re-composed with Tom's window and tab set up as above, and every figure and
-alt-text transcription rewritten against them.
-
 ### 3 · The rendered map still varies with `--jobs` in one respect
 
 *From the ordering fix, 2026-09-17.*
@@ -228,23 +177,6 @@ defend.
 operations, such as the operation's file, line and kind. Then show the reversal probe clean
 on that route.
 
-### 14 · A dataclass in this program is called EXTERNAL, once per call site
-
-*Found photographing the tutorial, 2026-10-02 (retake defect 5).*
-
-`resolve.entrypoints.binding_note` lists `BindingNote` as EXTERNAL six times in OUT 13.
-`BindingNote` is a dataclass in the same module. A call to a class with no `__init__` of
-its own resolves to no routine, so it falls through to external, which is not where it
-lives. OUT also counts call sites rather than callees and does not say so (rule 32).
-
-**Why not done.** Resolving a constructor to its structure changes `calls.resolved`, which
-moves the Society golden. It is a resolver change with a re-baseline, not a fix to make in
-a documentation pass.
-
-**What would settle it.** A call to a class this map holds resolves to that structure, with
-a confidence. The inspector either says "sites" or groups by callee. Society is
-re-baselined, and the move in `calls.resolved` is explained.
-
 ### 15 · The graph can arrive framed for a size it no longer has
 
 *Retake defect 8.*
@@ -262,12 +194,13 @@ measuring the container at mount.
 *Retake defect 14.*
 
 Selecting a routine and switching to Document opened the Routines document about 25 wheel
-ticks below the selected row, which was highlighted but off screen. **Go to it** lands
-correctly. The likely cause is a scroll taken before the tables above had laid out
+ticks below the selected row, which was highlighted but off screen. On the second retake
+**Go to it** landed past the row as well (retake defect 42), at `resolve.languages` rather
+than `resolve.entrypoints`, so the button shares the defect rather than being its remedy. The likely cause is a scroll taken before the tables above had laid out
 (rule 73).
 
-**What would settle it.** The opening scroll is the same call **Go to it** makes, run after
-layout.
+**What would settle it.** The opening scroll and **Go to it** become one call, run after
+the tables above the row have laid out, with a test that the row is inside the scroller.
 
 ### 17 · Hiding then re-dimming unselected nodes loses the lit colouring
 
@@ -309,6 +242,89 @@ to name its population or fixed.
 
 **What would settle it.** A judgement on the panes' default widths at a 1,440–1,500 px
 window (design rule 53), measured, not guessed.
+
+### 21 · The loading shell is blank and does not say why
+
+*Retake defect 40.*
+
+For about twenty seconds after the start page hands a program over, the shell shows its
+three panes and nothing in them: the filter strip is hidden until the shell runs (defect 31's
+fix), and nothing takes its place. A blank canvas must say why it is blank (design rule 21).
+
+**What would settle it.** The shell says *reading the map…*, or what it is waiting for, until
+the first pane has something to show, checked on a cold open from the external volume.
+
+### 22 · The Informational tab moves the view without telling the navigator or the trail
+
+*Retake defect 43.*
+
+On the worklist, switching from Suspect to Informational inside the page heads it
+*anomalies › Informational*, while the navigator keeps **Suspect** lit and the trail still
+ends *Suspect*. The tab is a control that moves the pane without passing through the
+selection, which is rule 78's shape and design rule 26's.
+
+**What would settle it.** The tab goes through the same setter the navigator row does, with
+a test that the navigator, the trail and the heading agree after either gesture.
+
+### 23 · The trail names a boundary node by its raw id
+
+*Seen during the 2026-10-02 retake.*
+
+Selecting BOUNDARIES › NETWORK leaves a trail step reading *bnd:NETW…{url}api/programs'*,
+an internal key, where every other step carries a label a reader would recognise.
+
+**What would settle it.** `subjectLabel` names a boundary node by its kind and target, as
+the inspector does.
+
+### 25 · The map's mirror page carries another program's story
+
+*Found 2026-10-02 while rewriting the tutorial's chapter 10.*
+
+`13-mirror.md` is written into every map with prose from `resolve/mirror.py` that describes
+Society: *"things Mensores was never asked to name"*, the `tabularium.db` paragraph, and
+*Society of Mensores* as an example. DunneFlow's own map says so about DunneFlow. It is the
+development record's reasoning, printed as though it were a finding about the program read.
+
+**What would settle it.** The page states its rule and its thresholds in words that name
+no corpus, and keeps the history in the module's docstring, where it belongs.
+
+### 26 · A heading followed by an image is read as a definition
+
+*Found 2026-10-02 while rewriting the tutorial's chapter 10.*
+
+Run over this repository's documentation, the definition extractor took **The glossary**,
+a tutorial heading, as a term, and its *definition* was the alt text of the screenshot
+beneath it. Two of the three definitions it reads in DunneFlow are headings of this kind.
+`mirror` sets them aside as "not words", but the glossary counts them.
+
+**What would settle it.** An image line is not a definition body, with a test on a heading
+followed by `![…](…)`.
+
+### 27 · The trail bar loses steps off its left edge without counting them
+
+*Found 2026-10-02 while rewriting the tutorial's chapter 12.*
+
+The bar draws the last twelve steps, and *+N behind* counts what it did not draw. But the
+twelve scroll sideways with the scrollbar hidden, so steps scrolled off the left are
+neither visible nor counted. That is a filter that is silent (design rule 1).
+
+**What would settle it.** Either the bar does not scroll, or *+N behind* counts what is out
+of view, checked at 1,483 px with a trail longer than the bar.
+
+### 28 · Small wording and count defects found during the retake
+
+- `naming --allow-leading-underscore` tags *(a leading underscore allowed)* on claims it
+  cannot change, such as kebab-case commands and TypeScript camelCase, but not on Python's
+  snake_case claims. The Settings text promises that only the claims it changed say so.
+- "`note` is called 1 times" (LOST_EDGE detail) and "1 terms carried forward" (`mirror`).
+- `touches` and `impact` print a stray blank first line when `--output` is given.
+- With `cmd_serve` selected, the navigator's CODE note still read "357 lines, 37
+  clickable", which is `resolve/entrypoints.py`, the previous selection.
+- The plate-arrangement tooltip says "92% fewer crossings" where the measurement, and now
+  the guide, say 91.7%.
+
+**What would settle it.** Each is fixed with a test where one can be written, or reworded.
+None changes a figure in the guide.
 
 ---
 

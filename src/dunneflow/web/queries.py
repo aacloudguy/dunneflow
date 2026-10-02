@@ -284,7 +284,7 @@ ORDER BY kind, name
 # answer includes leaving the program. `external` and `at_boundary` say which.
 ROUTINE_CALLEES = """
 SELECT c.callee_id AS id, c.callee_expr, c.line, c.confidence, c.external,
-       c.at_boundary, c.ambiguous,
+       c.at_boundary, c.ambiguous, c.constructs,
        r.name, r.qualname, r.module, r.file
 FROM calls c
 LEFT JOIN routines r ON r.id = c.callee_id

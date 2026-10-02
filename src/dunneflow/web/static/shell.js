@@ -7955,12 +7955,16 @@ function viewSettings() {
   </div>`;
 }
 
-function sec(key, title, count, bodyHtml) {
+/* `unit` says what `count` counts where the heading alone does not (rule 32): OUT lists one
+   row per call site, so a routine that calls `found.append` three times is OUT 3, and a
+   bare number read as three different things it calls. */
+function sec(key, title, count, bodyHtml, unit = "") {
   const open = state.insp[key];
   return `<div class="flowsec" data-open="${open}" data-sec="${key}">
     <h3><button aria-expanded="${open}">
       <span class="caret">\u25bc</span>${esc(title)}
-      ${count != null ? `<span class="secn">${count}</span>` : ""}
+      ${count != null ? `<span class="secn">${count}${unit
+        ? `<span class="secu"> ${esc(unit)}</span>` : ""}</span>` : ""}
       <span class="rule"></span>
     </button></h3>
     <div class="flowsec-body">${bodyHtml}</div>
@@ -9671,6 +9675,7 @@ function detailFlowCol(side, rows, total, noun, empty) {
             : `<span class="dflow-dead" title="${esc(r.callee_expr || "")}">${
                  esc(r.name || r.callee_expr)}${
                  r.at_boundary ? `<span class="dim">at the boundary</span>`
+                 : r.constructs ? `<span class="dim">builds ${esc(r.constructs)}</span>`
                  : r.external ? `<span class="dim">outside this map</span>` : ""}</span>`}
         </div>`).join("")
     : `<div class="hint">${empty}</div>`;
@@ -9682,7 +9687,8 @@ function detailFlowCol(side, rows, total, noun, empty) {
         total.toLocaleString()} ${noun} — show all</button>`
     : "";
   return `<section class="dflow-col ${esc(side)}">
-      <h4>${side === "in" ? "IN" : "OUT"} <span class="num">${total.toLocaleString()}</span></h4>
+      <h4>${side === "in" ? "IN" : "OUT"} <span class="num">${total.toLocaleString()}</span>${
+        side === "out" ? `<span class="dim"> ${total === 1 ? "call site" : "call sites"}</span>` : ""}</h4>
       ${body}${cut}
     </section>`;
 }
@@ -9771,7 +9777,7 @@ function detailPanel() {
           id.line_start ? `:${id.line_start}` : ""}</div>
         ${id.docstring ? `<div class="why">${esc(String(id.docstring).split("\n")[0])}</div>` : ""}
       </section>
-      ${detailFlowCol("out", outRows, calls.length, "calls", "It calls nothing this map can see.")}
+      ${detailFlowCol("out", outRows, calls.length, "call sites", "It calls nothing this map can see.")}
     </div>
 
     <div class="dtouch">
@@ -11876,6 +11882,10 @@ function jointed(name) {
 
 function callBadge(c) {
   if (c.external) return `<span class="conf badge external">EXTERNAL</span>`;
+  /* One of this program's own classes, which defines no constructor to point at -- a
+     dataclass, an enum. Not external, because it is here; not an edge, because there is no
+     routine (BACKLOG 14). It was EXTERNAL once per call site until 2026-10-02. */
+  if (c.constructs) return `<span class="conf badge builds">CLASS</span>`;
   if (c.ambiguous) return `<span class="conf badge suspect">AMBIGUOUS</span>`;
   return `<span class="conf badge ${c.confidence === "CERTAIN" ? "certain" : "inferred"}"
     >${esc(c.confidence || "INFERRED")}</span>`;
@@ -12826,7 +12836,8 @@ function viewInspector() {
             esc(c.name || c.callee_expr)}</code>${c.module
               ? `<span class="dim" data-fit="module">${esc(c.module)}</span>` : ""}</button>`
           : `<code>${esc(c.callee_expr)}${c.at_boundary
-              ? `<span class="dim">  at the boundary</span>` : ""}</code>`}
+              ? `<span class="dim">  at the boundary</span>`
+              : c.constructs ? `<span class="dim">  builds ${esc(c.constructs)}</span>` : ""}</code>`}
         ${callBadge(c)}
       </div>
       ${why(c.line)}`).join("")
@@ -12913,7 +12924,8 @@ function viewInspector() {
       </div>
     </div>
     ${sec("in", "In", callers.length + eps.length, inBody)}
-    ${sec("out", "Out", calls.length, outBody)}
+    ${sec("out", "Out", calls.length, outBody,
+          calls.length === 1 ? "call site" : "call sites")}
     ${sec("touches", "Touches", touches.length, touchBody)}
     ${/* **A boundary's links back, and only a boundary's** — this is the shared routine
          path, and `loops` is on a BOUNDARY specimen and no other. Drawn from the presence

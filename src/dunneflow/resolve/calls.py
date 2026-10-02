@@ -67,7 +67,7 @@ def resolve_calls(store: Store) -> ResolveStats:
     (rule 40).
     """
     stats = ResolveStats()
-    updates: list[tuple[str | None, str, int, int, int]] = []
+    updates: list[tuple[str | None, str, int, int, str, int]] = []
 
     # Grouped in Python rather than by `ORDER BY lang`, because the rowid order within a
     # language has to be the order the decisions come back in and a sort would be a second
@@ -76,7 +76,7 @@ def resolve_calls(store: Store) -> ResolveStats:
     for row in store.query(
         "SELECT c.rowid AS rowid, c.file AS file, c.caller_id AS caller_id,"
         "       c.callee_expr AS callee_expr, c.at_boundary AS at_boundary,"
-        "       c.site_id AS site_id, f.lang AS lang"
+        "       c.site_id AS site_id, c.bound_locally AS bound_locally, f.lang AS lang"
         "  FROM calls c LEFT JOIN files f ON f.path = c.file"
     ):
         stats.total += 1
@@ -99,12 +99,13 @@ def resolve_calls(store: Store) -> ResolveStats:
             # Rule 2, and it is judged here so that no resolver can decide otherwise.
             per.external += 1
             per.suppressed += 1
-            updates.append((None, Confidence.INFERRED.value, 1, 0, row["rowid"]))
+            updates.append((None, Confidence.INFERRED.value, 1, 0, "", row["rowid"]))
             continue
 
         work.setdefault(lang, []).append((row["rowid"], CallRow(
             file=row["file"], caller_id=row["caller_id"],
             callee_expr=row["callee_expr"], site_id=row["site_id"],
+            bound_locally=bool(row["bound_locally"]),
         )))
 
     for lang, pairs in work.items():
@@ -117,7 +118,7 @@ def resolve_calls(store: Store) -> ResolveStats:
             stats.unresolved_langs[lang] = len(pairs)
             per.external += len(pairs)
             updates.extend(
-                (None, Confidence.INFERRED.value, 1, 0, rowid) for rowid, _ in pairs
+                (None, Confidence.INFERRED.value, 1, 0, "", rowid) for rowid, _ in pairs
             )
             continue
 
@@ -143,7 +144,13 @@ def resolve_calls(store: Store) -> ResolveStats:
                     per.inherited += 1
                 if d.supplied:
                     per.supplied += 1
-                updates.append((d.target, d.confidence.value, 0, 0, rowid))
+                updates.append((d.target, d.confidence.value, 0, 0, "", rowid))
+            elif d.constructs:
+                # Builds one of this program's classes, which has no constructor routine
+                # to draw an edge to. Not external -- the class is here -- and not an
+                # edge, so it is counted on its own (BACKLOG 14, rule 32).
+                per.constructions += 1
+                updates.append((None, Confidence.INFERRED.value, 0, 0, d.constructs, rowid))
             else:
                 # **A call with no edge is an external call, and it is counted here.** The
                 # `UPDATE` two lines down writes `external = 1` to the store, so a figure
@@ -166,7 +173,7 @@ def resolve_calls(store: Store) -> ResolveStats:
                 if d.candidates > 1:
                     per.ambiguous += 1
                 updates.append((None, Confidence.INFERRED.value, 1,
-                                d.candidates if d.candidates > 1 else 0, rowid))
+                                d.candidates if d.candidates > 1 else 0, "", rowid))
 
     # `total` is already the whole count; the rest is folded up from the languages so the
     # published figure and the per-language ones cannot disagree (rule 13).
@@ -182,8 +189,8 @@ def resolve_calls(store: Store) -> ResolveStats:
 
     with store.batch():
         store.conn.executemany(
-            "UPDATE calls SET callee_id = ?, confidence = ?, external = ?, ambiguous = ?"
-            " WHERE rowid = ?",
+            "UPDATE calls SET callee_id = ?, confidence = ?, external = ?, ambiguous = ?,"
+            " constructs = ? WHERE rowid = ?",
             updates,
         )
     return stats

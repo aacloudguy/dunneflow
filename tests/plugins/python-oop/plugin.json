@@ -3,7 +3,7 @@
   "display": "Python (out of process)",
   "version": "1.0.0",
   "protocol": 1,
-  "schema_version": 15,
+  "schema_version": 16,
   "rules": "python.yaml",
   "in_process": false,
   "entry": "worker.py",

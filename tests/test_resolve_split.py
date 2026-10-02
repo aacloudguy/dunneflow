@@ -306,7 +306,9 @@ def test_a_call_row_carries_no_rowid(tmp_path):
     `site_id` is this call's **identity**, minted from the caller, the expression and an
     ordinal. A supplied edge names a call site by that identity, so a resolver without it
     would have to match on file and line — a second identity function for call sites, in
-    the one place the two could disagree unnoticed (rule 30).
+    the one place the two could disagree unnoticed (rule 30). `bound_locally` joined it on
+    2026-10-02: a fact about the call that only the reader knows (BACKLOG 24).
     """
     assert not hasattr(CallRow("a.py", "a:f", "x"), "rowid")
-    assert set(CallRow.__slots__) == {"file", "caller_id", "callee_expr", "site_id"}
+    assert set(CallRow.__slots__) == {"file", "caller_id", "callee_expr", "site_id",
+                                      "bound_locally"}

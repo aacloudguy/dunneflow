@@ -2081,6 +2081,9 @@ table.grid tbody tr[aria-selected="true"] td:first-child { box-shadow: inset .18
 .badge.broken   { background: var(--sev-broken-bg); color: var(--sev-broken); }
 .badge.certain  { background: var(--accent-soft); color: var(--accent-text); }
 .badge.inferred { background: var(--sunken); color: var(--text-muted); border: 1px dashed var(--border-strong); }
+/* A construction of this program's own class with no constructor routine: neither a
+ * confidence nor external, so neither of their looks (design rule 5). */
+.badge.builds   { background: var(--sunken); color: var(--text-muted); border: 1px solid var(--border-strong); }
 
 /* ═══ inspector ═══ */
 .inspector {
@@ -2108,6 +2111,7 @@ table.grid tbody tr[aria-selected="true"] td:first-child { box-shadow: inset .18
 .flowsec[data-open="false"] > h3 > button { padding-bottom: 0; }
 .flowsec .rule { flex: 1; height: 1px; background: var(--border); }
 .flowsec .secn { color: var(--text-faint); font-weight: 600; }
+.flowsec .secu { font-weight: 400; text-transform: none; letter-spacing: 0; }
 
 .flowitem { display: flex; gap: .4rem; align-items: baseline; font-size: .76rem; padding: .1rem 0; }
 .flowitem .arrow { color: var(--text-faint); font-family: var(--f-mono); flex: none; }

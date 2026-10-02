@@ -94,6 +94,11 @@ class NoEdge:
 
     candidates: int = 0
     suppressed: bool = False
+    # **Not external, and still no edge.** The qualname of one of this program's own
+    # classes that the call builds, when that class has no constructor routine to point at
+    # -- a dataclass, an enum, a class that inherits `__init__` from outside. The thing
+    # built is here; only the routine is missing, because there is none (BACKLOG 14).
+    constructs: str = ""
 
 
 Decision = Edge | NoEdge
@@ -113,6 +118,10 @@ class ResolveStats:
     # Python edge pinned by an import, and *how many of these did we not have to guess*
     # is the question this chunk exists to be able to answer (rule 32).
     supplied: int = 0
+    # Calls that build one of this program's own classes and have no routine to point at
+    # (`NoEdge.constructs`). Neither resolved nor external, so a figure that added
+    # `resolved` and `external` up to `total` would be short by exactly these (rule 32).
+    constructions: int = 0
     # One entry per language the map holds, filled on the total only, so a figure can say
     # what it counts (rule 32). A map of one language reads exactly as it always did.
     langs: dict[str, ResolveStats] = field(default_factory=dict)
@@ -163,6 +172,7 @@ class ResolveStats:
         self.ambiguous += other.ambiguous
         self.inherited += other.inherited
         self.supplied += other.supplied
+        self.constructions += other.constructions
 
 
 @dataclass(frozen=True, slots=True)
@@ -186,6 +196,9 @@ class CallRow:
     caller_id: str
     callee_expr: str
     site_id: str = ""
+    # The callee is a name the calling routine binds itself (`CallSite.bound_locally`), so
+    # what it calls is a value, not a definition anything could be matched to by name.
+    bound_locally: bool = False
 
 
 class Resolver(Protocol):

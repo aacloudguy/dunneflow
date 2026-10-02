@@ -69,6 +69,16 @@ class _Index:
     roots: set[str] = field(default_factory=set)
     bases_of: dict[str, list[str]] = field(default_factory=dict)
     caller_info: dict[str, tuple[str, str | None]] = field(default_factory=dict)
+    caller_qual: dict[str, str] = field(default_factory=dict)
+    # A nested routine's id -> the qualname of the scope that encloses it. A closure is
+    # reachable from that scope and from what it encloses, and from nowhere else.
+    enclosing: dict[str, str] = field(default_factory=dict)
+    # This program's classes, so that `Foo(...)` can find the thing it builds.
+    class_by_module: dict[tuple[str, str], list[str]] = field(default_factory=dict)
+    class_by_name: dict[str, list[str]] = field(default_factory=dict)
+    class_kind: dict[str, str] = field(default_factory=dict)
+    class_short: dict[str, str] = field(default_factory=dict)
+    init_of: dict[str, str] = field(default_factory=dict)
 
 
 def _build_index(store: Store) -> _Index:
@@ -82,18 +92,30 @@ def _build_index(store: Store) -> _Index:
     """
     ix = _Index(
         by_module_name=defaultdict(list), by_name=defaultdict(list),
-        by_class_method=defaultdict(list),
+        by_class_method=defaultdict(list), class_by_module=defaultdict(list),
+        class_by_name=defaultdict(list),
     )
     for r in store.query(
-        "SELECT id, name, module, class_name, file, is_nested FROM routines"
+        "SELECT id, name, qualname, module, class_name, file, is_nested FROM routines"
         " WHERE lang = ?", (LANG,)
     ):
         rid, name, mod, cls = r["id"], r["name"], r["module"], r["class_name"]
         ix.caller_info[rid] = (mod, cls)
+        ix.caller_qual[rid] = r["qualname"]
         if name == "<module>":
             continue
         ix.by_module_name[(mod, name)].append(rid)
-        ix.by_name[name].append(rid)
+        if r["is_nested"]:
+            # **A closure is not a name the program can call** (BACKLOG 24, rule 10). It
+            # stays in its module's index, filtered by `_visible` to the scope that
+            # encloses it, and out of the program-wide one entirely: `render_maps`'s local
+            # `say` matched `web.analysis.run.say` through it, an edge into another
+            # module's closure that no execution could take.
+            ix.enclosing[rid] = r["qualname"].rsplit(".", 1)[0]
+        else:
+            ix.by_name[name].append(rid)
+        if name == "__init__" and cls:
+            ix.init_of[r["qualname"].rsplit(".", 1)[0]] = rid
         if cls:
             ix.by_class_method[(cls, name)].append(rid)
         ix.modules.add(mod)
@@ -114,7 +136,69 @@ def _build_index(store: Store) -> _Index:
             short = b.rsplit(".", 1)[-1]
             if short not in existing:
                 existing.append(short)
+
+    # The classes again, for what a call to one builds. A dataclass, an enum or a named
+    # tuple has a constructor its decorator or base writes, so it is never walked to a base
+    # class's `__init__` -- `StructureKind` says which a class is.
+    for c in store.query(
+        "SELECT c.name, c.qualname, c.module, COALESCE(s.kind, 'CLASS') AS kind"
+        "  FROM classes c JOIN files f ON f.path = c.file"
+        "  LEFT JOIN structures s ON s.file = c.file AND s.name = c.name"
+        "       AND s.module = c.module AND s.line = c.line"
+        " WHERE f.lang = ? ORDER BY c.qualname, c.file", (LANG,)
+    ):
+        q = c["qualname"]
+        if q in ix.class_short:
+            continue
+        ix.class_by_module[(c["module"], c["name"])].append(q)
+        ix.class_by_name[c["name"]].append(q)
+        ix.class_kind[q] = c["kind"]
+        ix.class_short[q] = c["name"]
     return ix
+
+
+def _visible(ix: _Index, ids: list[str], caller_id: str) -> list[str]:
+    """`ids` less the closures the caller is not inside.
+
+    A nested routine is reachable from the scope that encloses it and from anything that
+    scope encloses -- a sibling closure calling it, or itself. From anywhere else in the
+    module a bare call to its name is a call to something else, and matching it here would
+    be a CERTAIN edge no execution could take.
+    """
+    if not ix.enclosing:
+        return ids
+    caller = ix.caller_qual.get(caller_id, "")
+    out = []
+    for i in ids:
+        scope = ix.enclosing.get(i)
+        if scope is None or caller == scope or caller.startswith(scope + "."):
+            out.append(i)
+    return out
+
+
+def _in_module(ix: _Index, key: tuple[str, str], caller_id: str) -> str | None:
+    """The one routine `key` -- (module, name) -- names that this caller can reach."""
+    return _pick(_visible(ix, ix.by_module_name.get(key, []), caller_id), caller_id)
+
+
+def _constructor(ix: _Index, cls: str, conf: Confidence, caller_id: str) -> Decision:
+    """What a call building `cls`, one of this program's classes, is a call to.
+
+    Its own `__init__` first, then -- for a plain class only -- one it inherits from a base
+    this program defines, which is rule 11 for constructors. Failing both, the class has no
+    constructor routine here, and the honest answer is the class itself: not external,
+    because it is in this program, and no edge, because there is no routine to point at
+    (BACKLOG 14). It was EXTERNAL once per call site until 2026-10-02.
+    """
+    own = ix.init_of.get(cls)
+    if own and own != caller_id:
+        return Edge(own, conf)
+    if ix.class_kind.get(cls) == "CLASS":
+        for base in ix.bases_of.get(ix.class_short[cls], []):
+            found = _method_through_bases(ix, base, "__init__", caller_id)
+            if found:
+                return Edge(found, conf, inherited=True)
+    return NoEdge(constructs=cls)
 
 
 def _method_through_bases(ix: _Index, cls: str, method: str, caller_id: str,
@@ -167,6 +251,11 @@ def _pick(ids: list[str], caller_id: str) -> str | None:
     return candidates[0] if len(candidates) == 1 else None
 
 
+def _one(ids: list[str]) -> str | None:
+    """The single entry, or nothing. Two classes sharing a name are no answer."""
+    return ids[0] if len(ids) == 1 else None
+
+
 def _candidates(ids: list[str], caller_id: str) -> int:
     """How many definitions competed. More than one is why an edge went missing."""
     return len([i for i in ids if i != caller_id])
@@ -198,28 +287,50 @@ def resolve(store: Store, lang: str, rows: Sequence[CallRow]) -> Iterator[Decisi
         inherited = False
         suppressed = False
 
+        if row.bound_locally:
+            # A name this routine binds itself -- a parameter, an assignment. What it calls
+            # is whatever value it holds, and matching the name against the program would
+            # be guessing (BACKLOG 24, rule 1). No rivals are counted: the binding has
+            # already settled that none of them is meant.
+            yield NoEdge(candidates=0, suppressed=True)
+            continue
+
+        # One of this program's classes the call names, and how sure that is. Looked for
+        # only where no routine answered, because a class and a routine never share a
+        # module-level name and the routine lookups are the older, measured path.
+        cls: str | None = None
+        cls_conf = Confidence.CERTAIN
+
         if len(parts) == 1:
             # Bare name: the enclosing module first, then whatever was imported.
-            target = _pick(ix.by_module_name.get((caller_module, last), []), caller_id)
+            target = _in_module(ix, (caller_module, last), caller_id)
             if target:
                 conf = Confidence.CERTAIN
-            elif last in alias_map:
+            else:
+                cls = _one(ix.class_by_module.get((caller_module, last), []))
+            if not target and not cls and last in alias_map:
                 mod, name, is_from = alias_map[last]
                 if is_from:
                     abs_mod = _absolute(mod, caller_module, caller_is_pkg)
-                    target = _pick(ix.by_module_name.get((abs_mod, name), []), caller_id)
+                    target = _in_module(ix, (abs_mod, name), caller_id)
                     if target:
                         conf = Confidence.CERTAIN
-                    elif abs_mod and abs_mod.split(".")[0] not in ix.roots:
+                    else:
+                        cls = _one(ix.class_by_module.get((abs_mod, name), []))
+                    if not target and not cls and abs_mod \
+                            and abs_mod.split(".")[0] not in ix.roots:
                         # Imported from outside this program: `from dataclasses import
                         # field` means `field(...)` is dataclasses', however many local
                         # routines happen to share the name. No rivals are counted --
                         # the import has already settled it.
                         yield NoEdge(candidates=0, suppressed=True)
                         continue
-            if not target and last not in builtins_:
+            if not target and not cls and last not in builtins_:
                 target = _pick(ix.by_name.get(last, []), caller_id)
-            elif not target:
+                if not target:
+                    cls = _one(ix.class_by_name.get(last, []))
+                    cls_conf = Confidence.INFERRED
+            elif not target and not cls:
                 suppressed = True
 
         elif parts[0] in receivers and len(parts) == 2:
@@ -240,8 +351,10 @@ def resolve(store: Store, lang: str, rows: Sequence[CallRow]) -> Iterator[Decisi
         else:
             prefix = ".".join(parts[:-1])
             head = parts[0]
+            # The module paths this spelling could be naming, for a class if no routine.
+            homes = [prefix]
             if prefix in ix.modules:
-                target = _pick(ix.by_module_name.get((prefix, last), []), caller_id)
+                target = _in_module(ix, (prefix, last), caller_id)
                 if target:
                     conf = Confidence.CERTAIN
             if not target and head in alias_map:
@@ -251,17 +364,22 @@ def resolve(store: Store, lang: str, rows: Sequence[CallRow]) -> Iterator[Decisi
                     # `from pkg import mod` then `mod.fn`, or `from pkg import Cls`
                     # then `Cls.method`.
                     cand = f"{abs_mod}.{name}" if abs_mod else name
-                    target = _pick(ix.by_module_name.get((cand, last), []), caller_id)
+                    homes.append(cand)
+                    target = _in_module(ix, (cand, last), caller_id)
                     if target:
                         conf = Confidence.CERTAIN
                     else:
                         target = _pick(ix.by_class_method.get((name, last), []), caller_id)
                 else:
                     joined = ".".join([abs_mod, *parts[1:-1]]) if len(parts) > 2 else abs_mod
-                    target = _pick(ix.by_module_name.get((joined, last), []), caller_id)
+                    homes.append(joined)
+                    target = _in_module(ix, (joined, last), caller_id)
                     if target:
                         conf = Confidence.CERTAIN
             if not target:
+                cls = next((c for c in (_one(ix.class_by_module.get((h, last), []))
+                                        for h in homes) if c), None)
+            if not target and not cls:
                 # An attribute call on something local. Name uniqueness is all we have.
                 target = _method_through_bases(ix, parts[-2], last, caller_id)
                 if not target:
@@ -269,6 +387,8 @@ def resolve(store: Store, lang: str, rows: Sequence[CallRow]) -> Iterator[Decisi
 
         if target:
             yield Edge(target, conf, inherited=inherited)
+        elif cls:
+            yield _constructor(ix, cls, cls_conf, caller_id)
         else:
             # An edge lost to ambiguity is not the same as a call that leaves the
             # program. Recording the candidate count makes a missing connection

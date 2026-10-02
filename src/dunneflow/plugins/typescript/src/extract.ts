@@ -43,7 +43,7 @@ import {
   type BoundaryRule, type RuleSet, type TargetKind,
 } from "./rules.js";
 import { waysIn } from "./routes.js";
-import { packageBoundary } from "./pkg.js";
+import { isGlobalFetch, packageBoundary } from "./pkg.js";
 import type {
   ArmKind,
   BoundaryHit,
@@ -735,7 +735,11 @@ export class Extractor {
       // what the compiler resolved; a name rule is a guess about what somebody called a
       // local variable. Either way it is one boundary and never one from each (rule 40).
       const inPackage = packageBoundary(this.checker, node, this.rules);
-      const named = matchCall(this.rules, expr);
+      // The global `fetch` called through another name -- asked of the checker only where
+      // neither the package nor the spelling has said anything (BACKLOG 4).
+      const viaName = inPackage === null && matchCall(this.rules, expr) === null
+        && isGlobalFetch(this.checker, node) ? "fetch" : "";
+      const named = matchCall(this.rules, viaName || expr);
       const rule: BoundaryRule | null = inPackage !== null
         ? {
             kind: inPackage.rule.kind,
@@ -761,7 +765,7 @@ export class Extractor {
         if (rule.salience !== "normal") hit.salience = rule.salience;
         this.boundaries.push(hit);
       }
-      this.maybeNetwork(node, expr, line);
+      this.maybeNetwork(node, expr, line, viaName || expr);
     }
     // **Outside the `expr` test, and that is the fix rather than the shape it started
     // in.** A `.map`/`.filter`/`.forEach` chain is a loop that is an expression, and
@@ -1020,8 +1024,11 @@ export class Extractor {
     return true;
   }
 
-  maybeNetwork(node: ts.CallExpression | ts.NewExpression, expr: string, line: number): void {
-    const lib = matchNetwork(this.rules, expr);
+  maybeNetwork(node: ts.CallExpression | ts.NewExpression, expr: string, line: number,
+               matchAs: string = expr): void {
+    // `matchAs` is what the call is known to be, `expr` what it was written as. They differ
+    // only for the global `fetch` reached through another name (BACKLOG 4).
+    const lib = matchNetwork(this.rules, matchAs);
     if (lib === null) return;
     const last = expr.slice(expr.lastIndexOf(".") + 1).toLowerCase();
     const call: NetworkCall = {

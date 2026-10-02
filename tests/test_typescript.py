@@ -1423,3 +1423,72 @@ def test_both_passes_find_one_tree_whatever_the_separator():
     body = program[program.index("export function cacheKey"):]
     body = body[:body.index("\n}")]
     assert "split(sep)" in body, "cacheKey no longer folds the platform separator"
+
+
+# ------------------------------------------------- fetch through a name (BACKLOG 4) --- #
+
+FETCH_TREE: dict[str, str] = {
+    "tsconfig.json": """{
+  "compilerOptions": { "strict": true, "target": "ES2022", "module": "ESNext",
+                       "moduleResolution": "bundler", "lib": ["ES2022", "DOM"] }
+}
+""",
+    "net.ts": """
+const f = fetch;
+const g = window.fetch;
+const h = fetch.bind(globalThis);
+let reassigned = fetch;
+
+function fetchLike(u: string): string { return u; }
+const mine = fetchLike;
+
+export async function direct() { return fetch("/direct"); }
+export async function viaConst() { return f("/f"); }
+export async function viaWindow() { return g("/g"); }
+export async function viaBind() { return h("/h"); }
+export async function viaLet() { return reassigned("/let"); }
+export async function injected(fetchImpl: typeof fetch) { return fetchImpl("/injected"); }
+export function ours() { return mine("/ours"); }
+""",
+}
+
+
+@pytest.fixture(scope="module")
+def fetched(tmp_path_factory):
+    """A synthetic tree, because no real one calls `fetch` through a name (BACKLOG 4)."""
+    if PLUGIN is None:
+        pytest.skip("no typescript plugin in this build")
+    root = tmp_path_factory.mktemp("tsfetch")
+    paths = []
+    for name, source in FETCH_TREE.items():
+        p = root / name
+        p.write_text(source, encoding="utf-8")
+        if name.endswith(".ts"):
+            paths.append(p)
+    PLUGIN.probe()
+    PLUGIN.open(root, paths)
+    try:
+        facts = {ff.path: ff for ff in PLUGIN.extract(paths, root)}
+    finally:
+        PLUGIN.close()
+    return facts["net.ts"]
+
+
+def test_the_global_fetch_held_in_a_const_is_a_network_call(fetched):
+    """`const f = fetch`, `window.fetch` and a `.bind` of it: the request is made."""
+    network = {n.expr for n in fetched.network}
+    boundaries = {b.evidence for b in fetched.boundaries if b.kind.value == "NETWORK"}
+    for expr in ("fetch", "f", "g", "h"):
+        assert expr in network, (expr, network)
+        assert expr in boundaries, (expr, boundaries)
+    destinations = {n.expr: n.destination for n in fetched.network}
+    assert destinations["f"] == "/f"
+
+
+def test_a_name_that_only_might_hold_fetch_is_not_one(fetched):
+    """By value, never by type: a parameter typed `typeof fetch` holds whatever it was
+    handed (DunneNote's `fetchImpl`), a `let` can be rebound, and a const holding this
+    program's own function is this program's code (rule 5)."""
+    named = {n.expr for n in fetched.network} | {b.evidence for b in fetched.boundaries}
+    for expr in ("fetchImpl", "reassigned", "mine"):
+        assert expr not in named, expr

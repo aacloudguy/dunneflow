@@ -17,33 +17,6 @@ what happened and when; this says what has not. When an item is done it leaves h
 
 ## Open
 
-### 4 · `fetch` through a name
-
-*From chunk 10, 2026-09-17. Searched for a corpus 2026-09-18.*
-
-A boundary that a spelling rule cannot reach because the call goes through a local
-binding. The mechanism exists — the TypeScript checker can say what a name holds — and
-chunk 11 used it for package-resolved boundaries.
-
-**Why not done. Still no population, and now that is measured rather than assumed.** Tom's
-call was to search the Developer directory for open-source trees that might supply one.
-Every `.ts`/`.tsx`/`.js`/`.jsx`/`.mjs` file in it outside `node_modules`, builds and
-virtualenvs was scanned for `fetch` bound to a name — `const x = fetch`, `= window.fetch`,
-`typeof fetch`, `fetch.bind(`, `fetchFn`/`fetchImpl`/`fetchClient`, `this.fetch =`. **One
-hit in the whole tree**, `gstack-main/browse/test/security-sidepanel-dom.test.ts:92`:
-`const origFetch = window.fetch;` — in a test file, which `DiscoveryRules.is_test` excludes
-from program source by design.
-
-Of the thirteen JavaScript projects there, exactly two call `fetch` at all in program code:
-DunneNote once, and `gstack-main` **35 times across 21 files** — every one of them spelled
-`fetch`. So the shape is real in principle and is not in this corpus of corpora, and
-guessing at it would be building a feature against no ground truth (rule 24).
-
-**What would settle it.** A corpus that calls `fetch` through a name. `gstack-main` is
-now analysed as `gstack` and is the corpus to re-test against if one is ever found — it is
-the only tree to hand with a real `fetch` population, and the tool scores **29 of 29** on
-it with no false positives, so the direct case needs nothing.
-
 ### 8 · A map of 262,879 routines takes 27.6 minutes to open
 
 *From the Unreal ingest, 2026-09-20.*

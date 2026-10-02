@@ -116,3 +116,52 @@ export function packageBoundary(
   }
   return null;
 }
+
+/**
+ * Is this call the global `fetch` reached through another name? (BACKLOG 4.)
+ *
+ * `const f = fetch; f(url)`, `const get = window.fetch`, `const go = fetch.bind(globalThis)`:
+ * the request is made, and the spelling rule sees `f`, which is not a boundary by any name
+ * it knows. The checker can follow the binding, so it is asked -- as `packageBoundary`
+ * asks it about a package -- and only where the spelling has already said nothing.
+ *
+ * **By value, never by type.** A parameter typed `typeof fetch` has fetch's signature and
+ * holds whatever its caller passed: DunneNote's `fetchImpl` is exactly that, in a corpus
+ * whose stated ground truth is that no program file calls `fetch` at all (rule 5). So the
+ * callee has to be a `const` whose initialiser *is* the global -- written as `fetch`,
+ * `window.fetch` or `globalThis.fetch`, or a `.bind` of one -- and the global is confirmed
+ * by its declaration being the standard library's, not a routine of this program that
+ * happens to share the name.
+ *
+ * **Proved on a fixture and on no real corpus.** Searched for one on 2026-09-18: one hit
+ * in the whole Developer tree, in a test file. Built on Tom's call (2026-10-02), pressed in
+ * `tests/test_typescript.py`, and re-run on `gstack`, the only real `fetch` population to
+ * hand, to show it changes nothing there.
+ */
+export function isGlobalFetch(
+  checker: ts.TypeChecker | undefined,
+  node: ts.CallExpression | ts.NewExpression,
+): boolean {
+  if (checker === undefined || !ts.isIdentifier(node.expression)) return false;
+  const held = checker.getSymbolAtLocation(node.expression)?.valueDeclaration;
+  if (held === undefined || !ts.isVariableDeclaration(held) || held.initializer === undefined
+      || !ts.isVariableDeclarationList(held.parent)
+      || (held.parent.flags & ts.NodeFlags.Const) === 0) {
+    return false;
+  }
+  let init: ts.Expression = held.initializer;
+  if (ts.isCallExpression(init) && ts.isPropertyAccessExpression(init.expression)
+      && init.expression.name.text === "bind") {
+    init = init.expression.expression;
+  }
+  const named = ts.isIdentifier(init) ? init
+    : ts.isPropertyAccessExpression(init) ? init.name : undefined;
+  if (named === undefined || named.text !== "fetch") return false;
+  const declared = checker.getSymbolAtLocation(named)?.declarations?.[0];
+  if (declared === undefined) return false;
+  const file = declared.getSourceFile();
+  if (!file.isDeclarationFile) return false;
+  const pkg = packageOf(file.fileName);
+  return pkg === "" ? /\/lib\.[^/]*\.d\.ts$/.test(file.fileName)
+    : pkg === "node" || pkg === "undici-types";
+}

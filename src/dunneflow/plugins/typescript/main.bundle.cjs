@@ -211391,6 +211391,25 @@ function packageBoundary(checker, node, rules2) {
   }
   return null;
 }
+function isGlobalFetch(checker, node) {
+  if (checker === void 0 || !import_typescript3.default.isIdentifier(node.expression)) return false;
+  const held = checker.getSymbolAtLocation(node.expression)?.valueDeclaration;
+  if (held === void 0 || !import_typescript3.default.isVariableDeclaration(held) || held.initializer === void 0 || !import_typescript3.default.isVariableDeclarationList(held.parent) || (held.parent.flags & import_typescript3.default.NodeFlags.Const) === 0) {
+    return false;
+  }
+  let init2 = held.initializer;
+  if (import_typescript3.default.isCallExpression(init2) && import_typescript3.default.isPropertyAccessExpression(init2.expression) && init2.expression.name.text === "bind") {
+    init2 = init2.expression.expression;
+  }
+  const named = import_typescript3.default.isIdentifier(init2) ? init2 : import_typescript3.default.isPropertyAccessExpression(init2) ? init2.name : void 0;
+  if (named === void 0 || named.text !== "fetch") return false;
+  const declared = checker.getSymbolAtLocation(named)?.declarations?.[0];
+  if (declared === void 0) return false;
+  const file = declared.getSourceFile();
+  if (!file.isDeclarationFile) return false;
+  const pkg = packageOf(file.fileName);
+  return pkg === "" ? /\/lib\.[^/]*\.d\.ts$/.test(file.fileName) : pkg === "node" || pkg === "undici-types";
+}
 
 // src/extract.ts
 var LITERAL_MIN = 3;
@@ -211949,7 +211968,8 @@ var Extractor = class {
     if (expr) {
       const owner = this.owner();
       const inPackage = packageBoundary(this.checker, node, this.rules);
-      const named = matchCall(this.rules, expr);
+      const viaName = inPackage === null && matchCall(this.rules, expr) === null && isGlobalFetch(this.checker, node) ? "fetch" : "";
+      const named = matchCall(this.rules, viaName || expr);
       const rule = inPackage !== null ? {
         kind: inPackage.rule.kind,
         direction: inPackage.rule.direction,
@@ -211989,7 +212009,7 @@ var Extractor = class {
         if (rule.salience !== "normal") hit.salience = rule.salience;
         this.boundaries.push(hit);
       }
-      this.maybeNetwork(node, expr, line);
+      this.maybeNetwork(node, expr, line, viaName || expr);
     }
     this.maybeComprehension(node);
     if (import_typescript4.default.isCallExpression(node)) this.expressionsIn(node.expression);
@@ -212203,8 +212223,8 @@ var Extractor = class {
     this.boundaries.push(hit);
     return true;
   }
-  maybeNetwork(node, expr, line) {
-    const lib = matchNetwork(this.rules, expr);
+  maybeNetwork(node, expr, line, matchAs = expr) {
+    const lib = matchNetwork(this.rules, matchAs);
     if (lib === null) return;
     const last = expr.slice(expr.lastIndexOf(".") + 1).toLowerCase();
     const call = {
